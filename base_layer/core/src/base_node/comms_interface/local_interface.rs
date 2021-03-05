@@ -33,11 +33,14 @@ use crate::{
     proof_of_work::PowAlgorithm,
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
-        types::{Commitment, HashOutput, Signature},
+        types::{Commitment, Signature},
     },
 };
 use std::sync::Arc;
-use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{BlockHash, HashOutput},
+};
 use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::broadcast;
 

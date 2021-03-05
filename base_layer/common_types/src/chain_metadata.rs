@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::types::BlockHash;
+use crate::types::{BlockHash, HashOutput};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 use tari_crypto::tari_utilities::hex::Hex;
@@ -139,6 +139,47 @@ impl Display for ChainMetadata {
         fmt.write_str(&format!("Pruning horizon : {}\n", self.pruning_horizon))?;
         fmt.write_str(&format!("Effective pruned height : {}\n", self.pruned_height))?;
         Ok(())
+    }
+}
+
+/// This struct contains global reorg info
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Hash)]
+pub struct ReorgInfo {
+    /// The tip hash of the last reorg chain
+    pub last_reorg_best_block: Option<HashOutput>,
+    /// The number of blocks contained in the last reorg
+    pub num_blocks_reorged: u64,
+    /// The tip height the chain was at after the last reorg
+    pub tip_height: u64,
+}
+
+impl ReorgInfo {
+    pub fn new() -> Self {
+        Self {
+            last_reorg_best_block: None,
+            num_blocks_reorged: 0,
+            tip_height: 0,
+        }
+    }
+}
+
+impl Default for ReorgInfo {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Display for ReorgInfo {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        let last_reorg_best_block = match self.last_reorg_best_block.clone() {
+            None => "None".to_string(),
+            Some(v) => v.to_hex(),
+        };
+        write!(
+            f,
+            "Last reorg - best block: {}, depth: {}, tip height: {}",
+            last_reorg_best_block, self.num_blocks_reorged, self.tip_height
+        )
     }
 }
 

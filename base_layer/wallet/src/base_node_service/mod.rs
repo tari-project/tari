@@ -29,7 +29,9 @@ pub mod service;
 
 use crate::{
     base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, service::BaseNodeService},
+    output_manager_service::handle::OutputManagerHandle,
     storage::database::{WalletBackend, WalletDatabase},
+    transaction_service::handle::TransactionServiceHandle,
 };
 use futures::{future, Future};
 use log::*;
@@ -81,6 +83,8 @@ where T: WalletBackend + 'static
 
         context.spawn_when_ready(move |handles| async move {
             let connectivity_manager = handles.expect_handle::<ConnectivityRequester>();
+            let output_manager_service = handles.expect_handle::<OutputManagerHandle>();
+            let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
 
             let service = BaseNodeService::new(
                 config,
@@ -89,6 +93,8 @@ where T: WalletBackend + 'static
                 event_publisher,
                 handles.get_shutdown_signal(),
                 db,
+                output_manager_service,
+                transaction_service,
             )
             .start();
             futures::pin_mut!(service);

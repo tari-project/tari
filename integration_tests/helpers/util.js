@@ -153,7 +153,7 @@ function consoleLogBalance(balance) {
     );
 }
 
-function consoleLogCoinbaseDetails(txnDetails) {
+function consoleLogTransactionDetailsFormat2(txnDetails) {
     console.log(
         "  Transaction " + pad("'" + txnDetails["tx_id"] + "'", 24) +
         " has status " + pad("'" + txnDetails["status"] + "'", 40) +
@@ -184,5 +184,5 @@ module.exports = {
     hexSwitchEndianness,
     consoleLogTransactionDetails,
     consoleLogBalance,
-    consoleLogCoinbaseDetails
+    consoleLogTransactionDetailsFormat2
 };

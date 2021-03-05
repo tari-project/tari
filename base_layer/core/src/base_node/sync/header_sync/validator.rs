@@ -37,7 +37,6 @@ use crate::{
     consensus::ConsensusManager,
     proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
     tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex},
-    transactions::types::HashOutput,
     validation::helpers::{
         check_header_timestamp_greater_than_median,
         check_pow_data,
@@ -47,6 +46,7 @@ use crate::{
 };
 use log::*;
 use std::cmp::Ordering;
+use tari_common_types::types::HashOutput;
 
 const LOG_TARGET: &str = "c::bn::header_sync";
 

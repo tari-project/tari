@@ -41,13 +41,14 @@ use crate::{
     proto::base_node::{SyncKernelsRequest, SyncUtxosRequest, SyncUtxosResponse},
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
-        types::{HashDigest, HashOutput, RangeProofService},
+        types::{HashDigest, RangeProofService},
     },
 };
 use croaring::Bitmap;
 use futures::StreamExt;
 use log::*;
 use std::convert::TryInto;
+use tari_common_types::types::HashOutput;
 use tari_comms::PeerConnection;
 use tari_crypto::{
     commitment::HomomorphicCommitment,

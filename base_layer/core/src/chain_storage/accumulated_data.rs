@@ -24,7 +24,7 @@ use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::ChainStorageError,
     proof_of_work::{Difficulty, PowAlgorithm},
-    transactions::types::{BlindingFactor, Commitment, HashOutput},
+    transactions::types::{BlindingFactor, Commitment},
 };
 use croaring::Bitmap;
 use log::*;
@@ -39,6 +39,7 @@ use serde::{
     Serializer,
 };
 use std::{fmt, fmt::Display};
+use tari_common_types::types::HashOutput;
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_mmr::pruned_hashset::PrunedHashSet;
 

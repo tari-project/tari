@@ -14,11 +14,14 @@ use crate::{
     },
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
-        types::{HashOutput, Signature},
+        types::Signature,
     },
 };
 use croaring::Bitmap;
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_common_types::{
+    chain_metadata::{ChainMetadata, ReorgInfo},
+    types::HashOutput,
+};
 use tari_mmr::Hash;
 
 /// Identify behaviour for Blockchain database back ends. Implementations must support `Send` and `Sync` so that
@@ -126,6 +129,8 @@ pub trait BlockchainBackend: Send + Sync {
     fn fetch_tip_header(&self) -> Result<ChainHeader, ChainStorageError>;
     /// Returns the stored chain metadata.
     fn fetch_chain_metadata(&self) -> Result<ChainMetadata, ChainStorageError>;
+    /// Returns the reorg info.
+    fn fetch_reorg_info(&self) -> Result<ReorgInfo, ChainStorageError>;
     /// Returns the UTXO count
     fn utxo_count(&self) -> Result<usize, ChainStorageError>;
     /// Returns the kernel count

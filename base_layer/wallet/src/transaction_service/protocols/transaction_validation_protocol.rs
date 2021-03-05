@@ -328,6 +328,7 @@ where TBackend: TransactionBackend + 'static
                                             );
                                             e
                                         });
+                                    drop(client);
                                     delay.await;
                                     retries += 1;
                                     batches = self.get_transaction_batches().await.map_err(|e| TransactionServiceProtocolError::new(self.id, e))?;
@@ -348,6 +349,7 @@ where TBackend: TransactionBackend + 'static
                                     );
                                     e
                                 });
+                                drop(client);
                                 delay.await;
                                 batches.push(batch);
                                 retries += 1;
@@ -562,7 +564,9 @@ where TBackend: TransactionBackend + 'static
             .await?
             .values()
             .filter(|tx| {
-                tx.status == TransactionStatus::MinedUnconfirmed || tx.status == TransactionStatus::MinedConfirmed
+                tx.status == TransactionStatus::Broadcast ||
+                    tx.status == TransactionStatus::MinedUnconfirmed ||
+                    tx.status == TransactionStatus::MinedConfirmed
             })
             .cloned()
             .collect();

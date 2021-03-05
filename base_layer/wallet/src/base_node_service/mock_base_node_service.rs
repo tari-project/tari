@@ -100,6 +100,7 @@ impl MockBaseNodeService {
             updated: None,
             latency: None,
             online,
+            reorg_info: Default::default(),
         }
     }
 
@@ -111,6 +112,7 @@ impl MockBaseNodeService {
             updated: None,
             latency: None,
             online: OnlineState::Online,
+            reorg_info: Default::default(),
         }
     }
 

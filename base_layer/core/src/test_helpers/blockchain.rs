@@ -49,7 +49,7 @@ use crate::{
     },
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
-        types::{CryptoFactories, HashOutput, Signature},
+        types::{CryptoFactories, Signature},
     },
     validation::{
         block_validators::{BodyOnlyValidator, OrphanBlockValidator},
@@ -62,7 +62,10 @@ use std::{
     ops::Deref,
     path::{Path, PathBuf},
 };
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_common_types::{
+    chain_metadata::{ChainMetadata, ReorgInfo},
+    types::HashOutput,
+};
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
 
@@ -284,6 +287,10 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_chain_metadata(&self) -> Result<ChainMetadata, ChainStorageError> {
         self.db.fetch_chain_metadata()
+    }
+
+    fn fetch_reorg_info(&self) -> Result<ReorgInfo, ChainStorageError> {
+        self.db.fetch_reorg_info()
     }
 
     fn utxo_count(&self) -> Result<usize, ChainStorageError> {

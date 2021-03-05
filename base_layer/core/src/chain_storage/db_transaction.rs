@@ -24,7 +24,7 @@ use crate::{
     chain_storage::{error::ChainStorageError, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, MmrTree},
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
-        types::{Commitment, HashOutput},
+        types::Commitment,
     },
 };
 use croaring::Bitmap;
@@ -33,7 +33,10 @@ use std::{
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
-use tari_common_types::types::BlockHash;
+use tari_common_types::{
+    chain_metadata::ReorgInfo,
+    types::{BlockHash, HashOutput},
+};
 use tari_crypto::tari_utilities::{
     hex::{to_hex, Hex},
     Hashable,
@@ -248,6 +251,11 @@ impl DbTransaction {
         self
     }
 
+    pub fn set_reorg_info(&mut self, reorg_info: ReorgInfo) -> &mut Self {
+        self.operations.push(WriteOperation::SetReorgInfo(reorg_info));
+        self
+    }
+
     pub(crate) fn operations(&self) -> &[WriteOperation] {
         &self.operations
     }
@@ -330,6 +338,7 @@ pub enum WriteOperation {
         kernel_sum: Commitment,
         utxo_sum: Commitment,
     },
+    SetReorgInfo(ReorgInfo),
 }
 
 impl fmt::Display for WriteOperation {
@@ -438,6 +447,7 @@ impl fmt::Display for WriteOperation {
             ),
             SetPruningHorizonConfig(pruning_horizon) => write!(f, "Set config: pruning horizon to {}", pruning_horizon),
             SetPrunedHeight { height, .. } => write!(f, "Set pruned height to {}", height),
+            SetReorgInfo(reorg_info) => write!(f, "Set reorg info ({})", reorg_info),
         }
     }
 }

@@ -218,6 +218,17 @@ where TBackend: TransactionBackend + 'static
                 },
             };
 
+            if !completed_tx.valid {
+                info!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) is detected as being invalid and will stop being broadcast", self.tx_id
+                );
+                return Err(TransactionServiceProtocolError::new(
+                    self.tx_id,
+                    TransactionServiceError::InvalidTransaction,
+                ));
+            }
+
             if !(completed_tx.status == TransactionStatus::Completed ||
                 completed_tx.status == TransactionStatus::Broadcast ||
                 completed_tx.status == TransactionStatus::MinedUnconfirmed)

@@ -6,7 +6,7 @@ const MergeMiningProxyProcess = require('../../helpers/mergeMiningProxyProcess')
 const WalletProcess = require('../../helpers/walletProcess');
 const expect = require('chai').expect;
 const {waitFor, getTransactionOutputHash, sleep, consoleLogTransactionDetails, consoleLogBalance,
-    consoleLogCoinbaseDetails} = require('../../helpers/util');
+    consoleLogTransactionDetailsFormat2} = require('../../helpers/util');
 const TransactionBuilder = require('../../helpers/transactionBuilder');
 let lastResult;
 
@@ -287,6 +287,21 @@ When(/I mine (\d+) blocks on (.*)/, {timeout: 600*1000}, async function (numBloc
     this.tipHeight += parseInt(numBlocks);
 });
 
+When(/I sync mine (\d+) blocks on (.*)/, {timeout: 1200*1000}, async function (numBlocks, name) {
+    var height;
+    for(let i=0;i<numBlocks;i++) {
+        await this.mineBlock(name);
+        this.tipHeight += 1;
+        height = parseInt(this.tipHeight);
+        await this.forEachClientAsync(async (client, name) => {
+            await waitFor(async() => client.getTipHeight(), height, 1200*1000);
+            const currTip = await client.getTipHeight();
+            console.log(`Node ${name} is at tip: ${currTip} (should be`, height, `)`);
+            expect(currTip).to.equal(height);
+        })
+    }
+});
+
 When(/I mine (\d+) blocks using wallet (.*) on (.*)/, {timeout: 600*1000}, async function (numBlocks, walletName,nodeName) {
     let nodeClient = this.getClient(nodeName);
     let walletClient =this.getWallet(walletName).getClient()
@@ -302,6 +317,20 @@ When(/I merge mine (.*) blocks via (.*)/, {timeout: 600*1000}, async function (n
     this.tipHeight += parseInt(numBlocks);
 });
 
+When(/I sync merge mine (.*) blocks via (.*)/, {timeout: 1200*1000}, async function (numBlocks, mmProxy) {
+    var height;
+    for(let i=0;i<numBlocks;i++) {
+        await this.mergeMineBlock(mmProxy);
+        this.tipHeight += 1;
+        height = parseInt(this.tipHeight);
+        await this.forEachClientAsync(async (client, name) => {
+            await waitFor(async() => client.getTipHeight(), height, 1200*1000);
+            const currTip = await client.getTipHeight();
+            console.log(`Node ${name} is at tip: ${currTip} (should be`, height, `)`);
+            expect(currTip).to.equal(height);
+        })
+    }
+});
 
 When(/I mine but don't submit a block (.*) on (.*)/, async function (blockName, nodeName) {
     await this.mineBlock(nodeName, block => {
@@ -923,10 +952,24 @@ When(/I list all coinbase transactions for wallet (.*)/, {timeout: 20*1000}, asy
     let transactions = await walletClient.getAllCoinbaseTransactions();
     if (transactions.length > 0) {
         for (i = 0; i < transactions.length; i++) {
-            consoleLogCoinbaseDetails(transactions[i]);
+            consoleLogTransactionDetailsFormat2(transactions[i]);
         }
     } else {
          console.log("  No coinbase transactions found!");
+    }
+});
+
+When(/I list all normal transactions for wallet (.*)/, {timeout: 20*1000}, async function (walletName) {
+    let wallet = this.getWallet(walletName);
+    let walletClient = wallet.getClient();
+    console.log("\nListing all normal transactions: ", walletName)
+    let transactions = await walletClient.getAllNormalTransactions();
+    if (transactions.length > 0) {
+        for (i = 0; i < transactions.length; i++) {
+            consoleLogTransactionDetailsFormat2(transactions[i]);
+        }
+    } else {
+         console.log("  No normal transactions found!");
     }
 });
 
@@ -965,24 +1008,103 @@ Then(/the number of coinbase transactions for wallet (.*) and wallet (.*) are (.
             walletStats[0][1] + walletStats[1][1]
         );
     } else {
-        except("\nCoinbase comparison: Not enough results saved on the stack!").to.equal("")
+        expect("\nCoinbase comparison: Not enough results saved on the stack!").to.equal("")
     }
 });
 
+Then(/all coinbase transactions for wallet (.*) and wallet (.*) have consistent but opposing validity/, {timeout: 20*1000}, async function (
+    walletNameA,
+    walletNameB
+) {
+    let walletClientA = this.getWallet(walletNameA).getClient();
+    let transactionsA = await walletClientA.getAllCoinbaseTransactions();
+    let walletClientB = this.getWallet(walletNameB).getClient();
+    let transactionsB = await walletClientB.getAllCoinbaseTransactions();
+    if ((transactionsA === undefined) || (transactionsB === undefined)) {
+        expect("\nNo transactions found!").to.equal("")
+    }
+    let validA = transactionsA[0]["valid"];
+    for (let i = 0; i<transactionsA.length; i++) {
+        if (transactionsA[0]["valid"] != transactionsA[i]["valid"]) {
+            expect("\n" + walletNameA + "'s coinbase transactions do not have a consistent validity status").to.equal("")
+        };
+    }
+    let validB = transactionsB[0]["valid"];
+    for (let i = 0; i<transactionsB.length; i++) {
+        if (transactionsB[0]["valid"] != transactionsB[i]["valid"]) {
+            expect("\n" + walletNameB + "'s coinbase transactions do not have a consistent validity status").to.equal("")
+        };
+    }
+    expect(validA).to.equal(!validB)
+});
+
+Then(/all normal transactions for wallet (.*) and wallet (.*) have consistent but opposing validity/, {timeout: 20*1000}, async function (
+    walletNameA,
+    walletNameB
+) {
+    let walletClientA = this.getWallet(walletNameA).getClient();
+    let transactionsA = await walletClientA.getAllNormalTransactions();
+    let walletClientB = this.getWallet(walletNameB).getClient();
+    let transactionsB = await walletClientB.getAllNormalTransactions();
+    if ((transactionsA === undefined) || (transactionsB === undefined)) {
+        expect("\nNo transactions found!").to.equal("")
+    }
+    let validA = transactionsA[0]["valid"];
+    for (let i = 0; i<transactionsA.length; i++) {
+        if (transactionsA[0]["valid"] != transactionsA[i]["valid"]) {
+            expect("\n" + walletNameA + "'s normal transactions do not have a consistent validity status").to.equal("")
+        };
+    }
+    let validB = transactionsB[0]["valid"];
+    for (let i = 0; i<transactionsB.length; i++) {
+        if (transactionsB[0]["valid"] != transactionsB[i]["valid"]) {
+            expect("\n" + walletNameB + "'s normal transactions do not have a consistent validity status").to.equal("")
+        };
+    }
+    expect(validA).to.equal(!validB)
+});
+
+Then(/all coinbase transactions for wallet (.*) are valid/, {timeout: 20*1000}, async function (
+    walletName
+) {
+    let walletClient = this.getWallet(walletName).getClient();
+    let transactions = await walletClient.getAllCoinbaseTransactions();
+    if ((transactions === undefined)) {
+        expect("\nNo transactions found!").to.equal("")
+    }
+    let valid = transactions[0]["valid"];
+    for (let i = 0; i<transactions.length; i++) {
+        expect(transactions[i]["valid"]).to.equal(true)
+    }
+});
+
+Then(/all normal transactions for wallet (.*) are valid/, {timeout: 20*1000}, async function (
+    walletName
+) {
+    let walletClient = this.getWallet(walletName).getClient();
+    let transactions = await walletClient.getAllNormalTransactions();
+    if ((transactions === undefined)) {
+        expect("\nNo transactions found!").to.equal("")
+    }
+    let valid = transactions[0]["valid"];
+    for (let i = 0; i<transactions.length; i++) {
+        expect(transactions[i]["valid"]).to.equal(true)
+    }
+});
 
 When(/I request the difficulties of a node (.*)/, async function (node) {
-          let client = this.getClient(node);
-          let difficulties = await client.getNetworkDifficulties(2,0,2);
-          this.lastResult = difficulties;
+    let client = this.getClient(node);
+    let difficulties = await client.getNetworkDifficulties(2,0,2);
+    this.lastResult = difficulties;
 });
 
 Then('difficulties are available', function () {
-           assert(this.lastResult.length,3);
-           // check genesis block, chain in reverse height order
-           assert(this.lastResult[2]["difficulty"],'1');
-           assert(this.lastResult[2]["estimated_hash_rate"],'0');
-           assert(this.lastResult[2]["height"],'1');
-           assert(this.lastResult[2]["pow_algo"],'0');
+    assert(this.lastResult.length,3);
+    // check genesis block, chain in reverse height order
+    assert(this.lastResult[2]["difficulty"],'1');
+    assert(this.lastResult[2]["estimated_hash_rate"],'0');
+    assert(this.lastResult[2]["height"],'1');
+    assert(this.lastResult[2]["pow_algo"],'0');
 
 });
 

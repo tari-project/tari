@@ -43,14 +43,17 @@ use crate::{
     tari_utilities::epoch_time::EpochTime,
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
-        types::{Commitment, HashOutput, Signature},
+        types::{Commitment, Signature},
     },
 };
 use croaring::Bitmap;
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use std::{mem, ops::RangeBounds, sync::Arc, time::Instant};
-use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
+use tari_common_types::{
+    chain_metadata::{ChainMetadata, ReorgInfo},
+    types::{BlockHash, HashOutput},
+};
 use tari_mmr::pruned_hashset::PrunedHashSet;
 
 const LOG_TARGET: &str = "c::bn::async_db";
@@ -134,6 +137,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     //---------------------------------- Metadata --------------------------------------------//
     make_async_fn!(get_chain_metadata() -> ChainMetadata, "get_chain_metadata");
+
+    make_async_fn!(fetch_reorg_info() -> ReorgInfo, "fetch_reorg_info");
 
     make_async_fn!(fetch_horizon_data() -> Option<HorizonData>, "fetch_horizon_data");
 

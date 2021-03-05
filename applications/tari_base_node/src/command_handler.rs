@@ -31,6 +31,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use tari_common_types::types::HashOutput;
 use tari_comms::{
     connectivity::ConnectivityRequester,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerManager, PeerManagerError, PeerQuery},
@@ -47,7 +48,7 @@ use tari_core::{
     mempool::service::LocalMempoolService,
     proof_of_work::PowAlgorithm,
     tari_utilities::{hex::Hex, message_format::MessageFormat},
-    transactions::types::{Commitment, HashOutput, Signature},
+    transactions::types::{Commitment, Signature},
 };
 use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_wallet::util::emoji::EmojiId;

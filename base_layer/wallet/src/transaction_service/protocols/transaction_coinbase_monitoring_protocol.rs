@@ -389,6 +389,7 @@ where TBackend: TransactionBackend + 'static
                             "Coinbase transaction (TxId: {}) not mined yet, still waiting.", self.tx_id,
                         );
                         // Wait out the remainder of the delay before proceeding with next loop
+                        drop(client);
                         delay.await;
                         break;
                     },

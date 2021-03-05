@@ -46,7 +46,7 @@ use crate::{
     tari_utilities::epoch_time::EpochTime,
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
-        types::{Commitment, HashDigest, HashOutput, Signature},
+        types::{Commitment, HashDigest, Signature},
     },
     validation::{HeaderValidation, OrphanValidation, PostOrphanBodyValidation, ValidationError},
 };
@@ -62,7 +62,10 @@ use std::{
     time::Instant,
 };
 use strum_macros::Display;
-use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
+use tari_common_types::{
+    chain_metadata::{ChainMetadata, ReorgInfo},
+    types::{BlockHash, HashOutput},
+};
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tari_mmr::{MerkleMountainRange, MutableMmr};
 use uint::static_assertions::_core::ops::RangeBounds;
@@ -344,7 +347,13 @@ where B: BlockchainBackend
         db.fetch_chain_metadata()
     }
 
-    // Fetch the utxo
+    /// Returns a copy of the last reorg info
+    pub fn fetch_reorg_info(&self) -> Result<ReorgInfo, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_reorg_info()
+    }
+
+    /// Fetch the utxo
     pub fn fetch_utxo(&self, hash: HashOutput) -> Result<Option<TransactionOutput>, ChainStorageError> {
         let db = self.db_read_access()?;
         Ok(db.fetch_output(&hash)?.map(|(out, _index)| out))
@@ -829,6 +838,40 @@ where B: BlockchainBackend
             &*self.consensus_manager.chain_strength_comparer(),
             block,
         )?;
+
+        // Update reorg info
+        if let BlockAddResult::ChainReorg(_, reorg_chain) = block_add_result.clone() {
+            let tip_height = match reorg_chain.first() {
+                Some(val) => val.block.header.height - 1,
+                None => {
+                    return Err(ChainStorageError::InvalidOperation(
+                        "Cannot extract meta data from the reorged chain".to_string(),
+                    ))
+                },
+            };
+            let num_blocks_reorged = reorg_chain.len() as u64;
+            let last_reorg_best_block = Some(match reorg_chain.first() {
+                Some(val) => val.accumulated_data.hash.clone(),
+                None => {
+                    return Err(ChainStorageError::InvalidOperation(
+                        "Cannot extract meta data from the reorged chain".to_string(),
+                    ))
+                },
+            });
+            let reorg_info = ReorgInfo {
+                last_reorg_best_block,
+                num_blocks_reorged,
+                tip_height,
+            };
+            trace!(
+                target: LOG_TARGET,
+                "Updating reorg info in the database - after restore ({})",
+                reorg_info
+            );
+            let mut txn = DbTransaction::new();
+            txn.set_reorg_info(reorg_info);
+            db.write(txn)?;
+        }
 
         // Cleanup of backend when in pruned mode.
         match block_add_result {
@@ -1493,6 +1536,21 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
     );
     db.write(txn)?;
 
+    // Update reorg info
+    let reorg_info = ReorgInfo {
+        last_reorg_best_block: Some(header_accumulated_data.hash),
+        num_blocks_reorged: 0,
+        tip_height: last_header.height,
+    };
+    trace!(
+        target: LOG_TARGET,
+        "Updating reorg info in the database - after rewind ({})",
+        reorg_info
+    );
+    let mut txn = DbTransaction::new();
+    txn.set_reorg_info(reorg_info);
+    db.write(txn)?;
+
     Ok(removed_blocks)
 }
 
@@ -1597,13 +1655,14 @@ fn handle_possible_reorg<T: BlockchainBackend>(
     // TODO: We already have the first link in this chain, can be optimized to exclude it
     let reorg_chain = get_orphan_link_main_chain(db, &fork_header.accumulated_data.hash)?;
     // }
-    let fork_height = reorg_chain
-        .front()
-        .expect("The new orphan block should be in the queue")
-        .block
-        .header
-        .height -
-        1;
+    let fork_height = match reorg_chain.front() {
+        Some(val) => val.block.header.height - 1,
+        None => {
+            return Err(ChainStorageError::InvalidOperation(
+                "The new orphan block should be in the queue".to_string(),
+            ))
+        },
+    };
 
     let num_added_blocks = reorg_chain.len();
     let removed_blocks = reorganize_chain(db, block_validator, fork_height, tip_header.height(), &reorg_chain)?;
@@ -1708,6 +1767,30 @@ fn restore_reorged_chain<T: BlockchainBackend>(
     previous_chain: Vec<Arc<ChainBlock>>,
 ) -> Result<(), ChainStorageError>
 {
+    // Reorg info
+    let mut tip_height = 0u64;
+    let mut num_blocks_reorged = 0u64;
+    let mut last_reorg_best_block = None;
+    if !previous_chain.is_empty() {
+        tip_height = match previous_chain.last() {
+            Some(val) => val.block.header.height,
+            None => {
+                return Err(ChainStorageError::InvalidOperation(
+                    "Cannot extract meta data from the previous chain".to_string(),
+                ))
+            },
+        };
+        num_blocks_reorged = previous_chain.len() as u64;
+        last_reorg_best_block = Some(match previous_chain.last() {
+            Some(val) => val.accumulated_data.hash.clone(),
+            None => {
+                return Err(ChainStorageError::InvalidOperation(
+                    "Cannot extract meta data from the previous chain".to_string(),
+                ))
+            },
+        });
+    }
+
     let invalid_chain = rewind_to_height(db, height)?;
     debug!(
         target: LOG_TARGET,
@@ -1726,6 +1809,24 @@ fn restore_reorged_chain<T: BlockchainBackend>(
         insert_block(&mut txn, block)?;
     }
     db.write(txn)?;
+
+    // Update reorg info
+    if last_reorg_best_block.is_some() {
+        let reorg_info = ReorgInfo {
+            last_reorg_best_block,
+            num_blocks_reorged,
+            tip_height,
+        };
+        trace!(
+            target: LOG_TARGET,
+            "Updating reorg info in the database - after restore ({})",
+            reorg_info
+        );
+        let mut txn = DbTransaction::new();
+        txn.set_reorg_info(reorg_info);
+        db.write(txn)?;
+    }
+
     Ok(())
 }
 

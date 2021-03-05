@@ -22,3 +22,5 @@
 
 pub const BLOCK_HASH_LENGTH: usize = 32;
 pub type BlockHash = Vec<u8>;
+/// Define the data type that is used to store results of `HashDigest`
+pub type HashOutput = Vec<u8>;
