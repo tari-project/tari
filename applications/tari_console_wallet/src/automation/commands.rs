@@ -256,11 +256,11 @@ pub async fn make_it_rain(
 
     for i in 0..num_txs {
         // Manage Tx rate
-        let actual_ms = (Utc::now() - started_at).num_milliseconds() as u64;
-        let target_ms = (i as f64 / (txps / 1000.0)) as u64;
+        let actual_ms = (Utc::now() - started_at).num_milliseconds();
+        let target_ms = (i as f64 / (txps / 1000.0)) as i64;
         if target_ms - actual_ms > 0 {
             // Maximum delay between Txs set to 120 s
-            delay_for(Duration::from_millis((target_ms - actual_ms).min(120_000u64))).await;
+            delay_for(Duration::from_millis((target_ms - actual_ms).min(120_000i64) as u64)).await;
         }
         // Send Tx
         let amount = start_amount + inc_amount * (i as u64);
