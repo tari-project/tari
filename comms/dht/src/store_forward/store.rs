@@ -38,6 +38,7 @@ use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
     pipeline::PipelineError,
 };
+use tari_utilities::epoch_time::EpochTime;
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::storeforward::store";
@@ -419,6 +420,12 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             message.body_len(),
             message.dht_header.message_tag,
         );
+
+        if let Some(expires) = message.dht_header.expires {
+            if expires < EpochTime::now() {
+                return SafResult::Err(StoreAndForwardError::InvalidStoreMessage);
+            }
+        }
 
         let stored_message = NewStoredMessage::try_construct(message, priority)
             .ok_or_else(|| StoreAndForwardError::InvalidStoreMessage)?;

@@ -21,34 +21,17 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    envelope::datetime_to_timestamp,
     proto::{
         envelope::DhtHeader,
         store_forward::{StoredMessage, StoredMessagesRequest, StoredMessagesResponse},
     },
     store_forward::{database, StoreAndForwardError},
 };
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use prost::Message;
-use prost_types::Timestamp;
 use rand::{rngs::OsRng, RngCore};
-use std::{
-    cmp,
-    convert::{TryFrom, TryInto},
-};
-
-/// Utility function that converts a `chrono::DateTime<Utc>` to a `prost::Timestamp`
-pub(crate) fn datetime_to_timestamp(datetime: DateTime<Utc>) -> Timestamp {
-    Timestamp {
-        seconds: datetime.timestamp(),
-        nanos: datetime.timestamp_subsec_nanos().try_into().unwrap_or(std::i32::MAX),
-    }
-}
-
-/// Utility function that converts a `prost::Timestamp` to a `chrono::DateTime<Utc>`
-pub(crate) fn timestamp_to_datetime(timestamp: Timestamp) -> DateTime<Utc> {
-    let naive = NaiveDateTime::from_timestamp(timestamp.seconds, cmp::max(0, timestamp.nanos) as u32);
-    DateTime::from_utc(naive, Utc)
-}
+use std::convert::{TryFrom, TryInto};
 
 impl StoredMessagesRequest {
     pub fn new() -> Self {

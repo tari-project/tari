@@ -24,6 +24,7 @@ use bitflags::bitflags;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use std::{
+    cmp,
     convert::{TryFrom, TryInto},
     fmt,
     fmt::Display,
@@ -34,6 +35,33 @@ use thiserror::Error;
 
 // Re-export applicable protos
 pub use crate::proto::envelope::{dht_header::Destination, DhtEnvelope, DhtHeader, DhtMessageType, Network};
+use chrono::{DateTime, NaiveDateTime, Utc};
+use prost_types::Timestamp;
+use tari_utilities::epoch_time::EpochTime;
+
+/// Utility function that converts a `chrono::DateTime<Utc>` to a `prost::Timestamp`
+pub(crate) fn datetime_to_timestamp(datetime: DateTime<Utc>) -> Timestamp {
+    Timestamp {
+        seconds: datetime.timestamp(),
+        nanos: datetime.timestamp_subsec_nanos().try_into().unwrap_or(std::i32::MAX),
+    }
+}
+
+/// Utility function that converts a `prost::Timestamp` to a `chrono::DateTime<Utc>`
+pub(crate) fn timestamp_to_datetime(timestamp: Timestamp) -> DateTime<Utc> {
+    let naive = NaiveDateTime::from_timestamp(timestamp.seconds, cmp::max(0, timestamp.nanos) as u32);
+    DateTime::from_utc(naive, Utc)
+}
+
+/// Utility function that converts a `chrono::DateTime` to a `EpochTime`
+pub(crate) fn datetime_to_epochtime(datetime: DateTime<Utc>) -> EpochTime {
+    EpochTime::from(datetime)
+}
+
+/// Utility function that converts a `EpochTime` to a `chrono::DateTime`
+pub(crate) fn epochtime_to_datetime(datetime: EpochTime) -> DateTime<Utc> {
+    DateTime::from(datetime)
+}
 
 #[derive(Debug, Error)]
 pub enum DhtMessageError {
@@ -110,6 +138,7 @@ pub struct DhtMessageHeader {
     pub network: Network,
     pub flags: DhtMessageFlags,
     pub message_tag: MessageTag,
+    pub expires: Option<EpochTime>,
 }
 
 impl DhtMessageHeader {
@@ -152,6 +181,8 @@ impl TryFrom<DhtHeader> for DhtMessageHeader {
             )
         };
 
+        let expires: Option<DateTime<Utc>> = header.expires.map(timestamp_to_datetime);
+
         Ok(Self {
             version: header.version,
             destination,
@@ -162,6 +193,7 @@ impl TryFrom<DhtHeader> for DhtMessageHeader {
             network: Network::from_i32(header.network).ok_or_else(|| DhtMessageError::InvalidNetwork)?,
             flags: DhtMessageFlags::from_bits(header.flags).ok_or_else(|| DhtMessageError::InvalidMessageFlags)?,
             message_tag: MessageTag::from(header.message_tag),
+            expires: expires.map(datetime_to_epochtime),
         })
     }
 }
@@ -179,6 +211,7 @@ impl TryFrom<Option<DhtHeader>> for DhtMessageHeader {
 
 impl From<DhtMessageHeader> for DhtHeader {
     fn from(header: DhtMessageHeader) -> Self {
+        let expires = header.expires.map(epochtime_to_datetime);
         Self {
             version: header.version,
             ephemeral_public_key: header
@@ -192,6 +225,7 @@ impl From<DhtMessageHeader> for DhtHeader {
             network: header.network as i32,
             flags: header.flags.bits(),
             message_tag: header.message_tag.as_value(),
+            expires: expires.map(datetime_to_timestamp),
         }
     }
 }

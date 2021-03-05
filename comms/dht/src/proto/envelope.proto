@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package tari.dht.envelope;
 
+import "google/protobuf/timestamp.proto";
+
 enum DhtMessageType {
     // Indicated this message is not a DHT message
     DhtMessageTypeNone = 0;
@@ -43,6 +45,8 @@ message DhtHeader {
     // Message trace ID
     // TODO: Remove for mainnet or when testing message traces is not required
     uint64 message_tag = 10;
+    // Expiry timestamp for the message
+    google.protobuf.Timestamp expires = 11;
 }
 
 enum Network {

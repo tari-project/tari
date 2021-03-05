@@ -26,7 +26,7 @@ use crate::{
     broadcast_strategy::BroadcastStrategy,
     crypt,
     discovery::DhtDiscoveryRequester,
-    envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
+    envelope::{datetime_to_timestamp, DhtMessageFlags, DhtMessageHeader, NodeDestination},
     outbound::{
         message::{DhtOutboundMessage, OutboundEncryption, SendFailure},
         message_params::FinalSendMessageParams,
@@ -36,6 +36,7 @@ use crate::{
     proto::envelope::{DhtMessageType, Network, OriginMac},
 };
 use bytes::Bytes;
+use chrono::{DateTime, Utc};
 use digest::Digest;
 use futures::{
     channel::oneshot,
@@ -68,6 +69,7 @@ pub struct BroadcastLayer {
     dht_discovery_requester: DhtDiscoveryRequester,
     node_identity: Arc<NodeIdentity>,
     target_network: Network,
+    message_validity_window: chrono::Duration,
 }
 
 impl BroadcastLayer {
@@ -76,6 +78,7 @@ impl BroadcastLayer {
         dht_requester: DhtRequester,
         dht_discovery_requester: DhtDiscoveryRequester,
         target_network: Network,
+        message_validity_window: chrono::Duration,
     ) -> Self
     {
         BroadcastLayer {
@@ -83,6 +86,7 @@ impl BroadcastLayer {
             dht_requester,
             dht_discovery_requester,
             target_network,
+            message_validity_window,
         }
     }
 }
@@ -97,6 +101,7 @@ impl<S> Layer<S> for BroadcastLayer {
             self.dht_requester.clone(),
             self.dht_discovery_requester.clone(),
             self.target_network,
+            self.message_validity_window,
         )
     }
 }
@@ -110,6 +115,7 @@ pub struct BroadcastMiddleware<S> {
     dht_discovery_requester: DhtDiscoveryRequester,
     node_identity: Arc<NodeIdentity>,
     target_network: Network,
+    message_validity_window: chrono::Duration,
 }
 
 impl<S> BroadcastMiddleware<S> {
@@ -119,6 +125,7 @@ impl<S> BroadcastMiddleware<S> {
         dht_requester: DhtRequester,
         dht_discovery_requester: DhtDiscoveryRequester,
         target_network: Network,
+        message_validity_window: chrono::Duration,
     ) -> Self
     {
         Self {
@@ -127,6 +134,7 @@ impl<S> BroadcastMiddleware<S> {
             dht_discovery_requester,
             node_identity,
             target_network,
+            message_validity_window,
         }
     }
 }
@@ -151,6 +159,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError> + Clo
             self.dht_discovery_requester.clone(),
             self.target_network,
             msg,
+            self.message_validity_window,
         )
         .handle()
     }
@@ -163,6 +172,7 @@ struct BroadcastTask<S> {
     dht_discovery_requester: DhtDiscoveryRequester,
     request: Option<DhtOutboundRequest>,
     target_network: Network,
+    message_validity_window: chrono::Duration,
 }
 type FinalMessageParts = (Option<Arc<CommsPublicKey>>, Option<Bytes>, Bytes);
 
@@ -176,6 +186,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         dht_discovery_requester: DhtDiscoveryRequester,
         target_network: Network,
         request: DhtOutboundRequest,
+        message_validity_window: chrono::Duration,
     ) -> Self
     {
         Self {
@@ -185,6 +196,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             dht_discovery_requester,
             target_network,
             request: Some(request),
+            message_validity_window,
         }
     }
 
@@ -306,6 +318,8 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                     }
                 }
 
+                let expires = Utc::now() + self.message_validity_window;
+
                 match self
                     .generate_send_messages(
                         peers,
@@ -317,6 +331,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                         force_origin,
                         is_broadcast,
                         body,
+                        Some(expires),
                     )
                     .await
                 {
@@ -408,6 +423,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         force_origin: bool,
         is_broadcast: bool,
         body: Bytes,
+        expires: Option<DateTime<Utc>>,
     ) -> Result<(Vec<DhtOutboundMessage>, Vec<MessageSendState>), DhtOutboundError>
     {
         let dht_flags = encryption.flags() | extra_flags;
@@ -437,6 +453,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                     ephemeral_public_key: ephemeral_public_key.clone(),
                     origin_mac: origin_mac.clone(),
                     is_broadcast,
+                    expires: expires.map(datetime_to_timestamp),
                 },
                 send_state,
             )
@@ -574,6 +591,7 @@ mod test {
             dht_requester,
             dht_discover_requester,
             Network::LocalTest,
+            chrono::Duration::seconds(10800),
         );
         let (reply_tx, _reply_rx) = oneshot::channel();
 
@@ -617,6 +635,7 @@ mod test {
             dht_requester,
             dht_discover_requester,
             Network::LocalTest,
+            chrono::Duration::seconds(10800),
         );
         let (reply_tx, reply_rx) = oneshot::channel();
 
@@ -667,6 +686,7 @@ mod test {
             dht_requester,
             dht_discover_requester,
             Network::LocalTest,
+            chrono::Duration::seconds(10800),
         );
         let (reply_tx, reply_rx) = oneshot::channel();
 

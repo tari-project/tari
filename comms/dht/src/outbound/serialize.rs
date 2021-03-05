@@ -76,6 +76,7 @@ where S: Service<OutboundMessage, Response = (), Error = PipelineError> + Clone 
                 dht_flags,
                 origin_mac,
                 reply,
+                expires,
                 ..
             } = message;
             trace!(
@@ -84,7 +85,6 @@ where S: Service<OutboundMessage, Response = (), Error = PipelineError> + Clone 
                 message.tag,
                 destination_node_id.short_str()
             );
-
             let dht_header = custom_header.map(DhtHeader::from).unwrap_or_else(|| DhtHeader {
                 version: DHT_ENVELOPE_HEADER_VERSION,
                 origin_mac: origin_mac.map(|b| b.to_vec()).unwrap_or_else(Vec::new),
@@ -94,6 +94,7 @@ where S: Service<OutboundMessage, Response = (), Error = PipelineError> + Clone 
                 flags: dht_flags.bits(),
                 destination: Some(destination.into()),
                 message_tag: tag.as_value(),
+                expires,
             });
             let envelope = DhtEnvelope::new(dht_header, body);
 

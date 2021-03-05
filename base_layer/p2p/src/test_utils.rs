@@ -70,6 +70,7 @@ pub fn make_dht_header(trace: MessageTag) -> DhtMessageHeader {
         network: Network::LocalTest,
         flags: DhtMessageFlags::NONE,
         message_tag: trace,
+        expires: None,
     }
 }
 
