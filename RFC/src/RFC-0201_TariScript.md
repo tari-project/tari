@@ -480,7 +480,7 @@ Once again, transaction fees are ignored to simplify the illustration.
 Alice owns \\( C_a \\) and provides the required script to spend the UTXO as was described in the previous cases.
 
 Alice needs a public key from Bob, \\( K_{Sb} \\) to complete the one-sided transaction. This key can be obtained
-out-of-bound, and will typically be Bob's wallet public key on the Tari network.
+out-of-band, and will typically be Bob's wallet public key on the Tari network.
 
 Alice uses Bob's public key to create a shared secret, \\( k_b \\) for the output commitment, \\( C_b \\), using
 Diffie-Hellman key exchange.
@@ -760,7 +760,7 @@ The capital letter subscripts, _R_ and _S_ refer to a UTXO _receiver_ and _scrip
 | \\( C_i \\)             | A Pedersen commitment,  i.e. \\( k_i \cdot{G} + v_i \cdot H \\)                                                                    |
 | \\( \hat{C}_i \\)       | A modified Pedersen commitment, \\( \hat{C}_i = (k_i + \rpc_i)\cdot{G} + v_i\cdot H  \\)                                           |
 | \\( \input_i \\)        | The serialised input for script \\( \script_i \\)                                                                                  |
-| \\( s_{Si} \\)          | A script signature for output \\( i \\). \\( s_{Si} = r_{Si} + k_{Si}\hash{\alpha_i \cat \theta_i \cat h_i} \\)                    |
+| \\( s_{Si} \\)          | A script signature for output \\( i \\). \\( s_{Si} = r_{Si} + k_{Si}\hash{R_i \cat \alpha_i \cat \theta_i \cat h_i} \\)                    |
 
 ## Extensions
 
