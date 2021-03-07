@@ -352,7 +352,7 @@ impl Hashable for TransactionInput {
 
 impl Display for TransactionInput {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        fmt.write_str(&format!("{} [{:?}]\n", self.commitment.to_hex(), self.features))
+        write!(fmt, "{} [{:?}]", self.commitment.to_hex(), self.features)
     }
 }
 
@@ -471,13 +471,14 @@ impl Default for TransactionOutput {
 impl Display for TransactionOutput {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         let proof = self.proof.to_hex();
-        fmt.write_str(&format!(
-            "({} [{:?}] Proof: {}..{})",
+        write!(
+            fmt,
+            "{} [{:?}] Proof: {}..{}",
             self.commitment.to_hex(),
             self.features,
             proof[0..16].to_string(),
             proof[proof.len() - 16..proof.len()].to_string()
-        ))
+        )
     }
 }
 

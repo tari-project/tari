@@ -22,6 +22,7 @@
 
 use super::LOG_TARGET;
 use crate::command_handler::{delimit_command_string, CommandHandler, Format};
+use futures::future::Either;
 use log::*;
 use rustyline::{
     completion::Completer,
@@ -40,13 +41,14 @@ use tari_app_utilities::utilities::{
     parse_emoji_id_or_public_key_or_node_id,
 };
 use tari_core::{
+    crypto::tari_utilities::hex::from_hex,
     tari_utilities::hex::Hex,
     transactions::types::{Commitment, PrivateKey, PublicKey, Signature},
 };
 use tari_shutdown::Shutdown;
 
 /// Enum representing commands used by the basenode
-#[derive(Clone, PartialEq, Debug, Display, EnumIter, EnumString)]
+#[derive(Clone, Copy, PartialEq, Debug, Display, EnumIter, EnumString)]
 #[strum(serialize_all = "kebab_case")]
 pub enum BaseNodeCommand {
     Help,
@@ -152,7 +154,7 @@ impl Parser {
     fn process_command<'a, I: Iterator<Item = &'a str>>(
         &mut self,
         command: BaseNodeCommand,
-        args: I,
+        mut args: I,
         _del_arg_vec: Vec<String>,
         shutdown: &mut Shutdown,
     )
@@ -160,7 +162,11 @@ impl Parser {
         use BaseNodeCommand::*;
         match command {
             Help => {
-                self.print_help(args);
+                self.print_help(
+                    args.next()
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(BaseNodeCommand::Help),
+                );
             },
             Status => {
                 self.command_handler.status();
@@ -252,8 +258,7 @@ impl Parser {
     }
 
     /// Displays the commands or context specific help for a given command
-    fn print_help<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
-        let help_for = BaseNodeCommand::from_str(args.next().unwrap_or_default()).unwrap_or(BaseNodeCommand::Help);
+    fn print_help(&self, help_for: BaseNodeCommand) {
         use BaseNodeCommand::*;
         match help_for {
             Help => {
@@ -331,11 +336,11 @@ impl Parser {
                 println!("Calculates the time average time taken to mine a given range of blocks.");
             },
             GetBlock => {
-                println!("View a block of a height, call this command via:");
-                println!("get-block [height of the block] [format]");
+                println!("Display a block by height or hash:");
+                println!("get-block [height or hash of the block] [format]");
                 println!(
-                    "[height of the block] The height of the block to fetch from the main chain. The genesis block \
-                     has height zero."
+                    "[height or hash of the block] The height or hash of the block to fetch from the main chain. The \
+                     genesis block has height zero."
                 );
                 println!(
                     "[format] Optional. Supported options are 'json' and 'text'. 'text' is the default if omitted."
@@ -383,32 +388,37 @@ impl Parser {
 
     /// Function to process the get-block command
     fn process_get_block<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
-        // let command_arg = args.take(4).collect::<Vec<&str>>();
-        let height = args.next();
-        if height.is_none() {
-            self.print_help("get-block".split(' '));
-            return;
-        }
-        let height = match height.unwrap().parse::<u64>().ok() {
-            Some(height) => height,
+        let height_or_hash = match args.next() {
+            Some(s) => s
+                .parse::<u64>()
+                .ok()
+                .map(Either::Left)
+                .or_else(|| from_hex(s).ok().map(Either::Right)),
             None => {
-                println!("Invalid block height provided. Height must be an integer.");
-                self.print_help("get-block".split(' '));
+                self.print_help(BaseNodeCommand::GetBlock);
                 return;
             },
         };
+
         let format = match args.next() {
             Some(v) if v.to_ascii_lowercase() == "json" => Format::Json,
             Some(v) if v.to_ascii_lowercase() == "text" => Format::Text,
             None => Format::Text,
             Some(_) => {
-                println!("Unrecognized format sspecifier");
-                self.print_help("get-block".split(' '));
+                println!("Unrecognized format specifier");
+                self.print_help(BaseNodeCommand::GetBlock);
                 return;
             },
         };
 
-        self.command_handler.get_block(height, format)
+        match height_or_hash {
+            Some(Either::Left(height)) => self.command_handler.get_block(height, format),
+            Some(Either::Right(hash)) => self.command_handler.get_block_by_hash(hash, format),
+            None => {
+                println!("Invalid block height or hash provided. Height must be an integer.");
+                self.print_help(BaseNodeCommand::GetBlock);
+            },
+        };
     }
 
     /// Function to process the search utxo command
@@ -416,14 +426,14 @@ impl Parser {
         // let command_arg = args.take(4).collect::<Vec<&str>>();
         let hex = args.next();
         if hex.is_none() {
-            self.print_help("search-utxo".split(' '));
+            self.print_help(BaseNodeCommand::SearchUtxo);
             return;
         }
         let commitment = match Commitment::from_hex(&hex.unwrap().to_string()) {
             Ok(v) => v,
             _ => {
                 println!("Invalid commitment provided.");
-                self.print_help("search-utxo".split(' '));
+                self.print_help(BaseNodeCommand::SearchUtxo);
                 return;
             },
         };
@@ -435,14 +445,14 @@ impl Parser {
         // let command_arg = args.take(4).collect::<Vec<&str>>();
         let hex = args.next();
         if hex.is_none() {
-            self.print_help("search-stxo".split(' '));
+            self.print_help(BaseNodeCommand::SearchStxo);
             return;
         }
         let commitment = match Commitment::from_hex(&hex.unwrap().to_string()) {
             Ok(v) => v,
             _ => {
                 println!("Invalid commitment provided.");
-                self.print_help("search-stxo".split(' '));
+                self.print_help(BaseNodeCommand::SearchStxo);
                 return;
             },
         };
@@ -455,28 +465,28 @@ impl Parser {
         // let command_arg = args.take(4).collect::<Vec<&str>>();
         let hex = args.next();
         if hex.is_none() {
-            self.print_help("search-kernel".split(' '));
+            self.print_help(BaseNodeCommand::SearchKernel);
             return;
         }
         let public_nonce = match PublicKey::from_hex(&hex.unwrap().to_string()) {
             Ok(v) => v,
             _ => {
                 println!("Invalid public nonce provided.");
-                self.print_help("search-kernel".split(' '));
+                self.print_help(BaseNodeCommand::SearchKernel);
                 return;
             },
         };
 
         let hex = args.next();
         if hex.is_none() {
-            self.print_help("search-kernel".split(' '));
+            self.print_help(BaseNodeCommand::SearchKernel);
             return;
         }
         let signature = match PrivateKey::from_hex(&hex.unwrap().to_string()) {
             Ok(v) => v,
             _ => {
                 println!("Invalid signature provided.");
-                self.print_help("search-kernel".split(' '));
+                self.print_help(BaseNodeCommand::SearchKernel);
                 return;
             },
         };
@@ -630,7 +640,7 @@ impl Parser {
     }
 
     fn process_header_stats<'a, I: Iterator<Item = &'a str>>(&self, args: I) {
-        let command_arg = args.map(|arg| arg.to_string()).take(2).collect::<Vec<String>>();
+        let command_arg = args.take(2).collect::<Vec<_>>();
         if command_arg.len() != 2 {
             println!("Prints out certain stats to of the block chain in csv format for easy copy, use as follows: ");
             println!("Period-stats [start height] [end height]");
