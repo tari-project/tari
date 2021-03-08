@@ -147,7 +147,7 @@ The same as [`CheckHeightVerify`](#checkheightverifyheight), except that the hei
 
 ##### CompareHeight
 
-The same as [`CompareHeight`](#checkheightheight) except that the height to compare against the block height
+The same as [`CheckHeight`](#checkheightheight) except that the height to compare against the block height
   is popped off the stack instead of being hardcoded in the script.
 
 Pops the top of the stack as `height`, then pushes the value of (`height` - the current height) to the stack.
@@ -281,7 +281,7 @@ Pops the top two items, and compares their values.
 `n` + 1 items are popped from the stack. If the last item popped matches at least one of the first `n` items popped,
 push 1 onto the stack. Push 0 otherwise.
 
-* Fails with `EMPTY_STACK` if the stack has fewer than `n` items.
+* Fails with `EMPTY_STACK` if the stack has fewer than `n` + 1 items.
 
 #### OrVerify(n)
 
