@@ -98,7 +98,11 @@ use futures::{pin_mut, FutureExt};
 use log::*;
 use parser::Parser;
 use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{
+    net::SocketAddr,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tari_app_utilities::{
     identity_management::setup_node_identity,
     initialization::init_configuration,
@@ -290,8 +294,17 @@ async fn cli_loop(parser: Parser, command_handler: Arc<CommandHandler>, mut shut
     let read_command_fut = read_command(rustyline).fuse();
     pin_mut!(read_command_fut);
     let mut shutdown_signal = shutdown.to_signal();
+    let start_time = Instant::now();
     loop {
-        let mut interval = time::delay_for(Duration::from_secs(30)).fuse();
+        let delay_time = if start_time.elapsed() < Duration::from_secs(120) {
+            Duration::from_secs(2)
+        } else if start_time.elapsed() < Duration::from_secs(300) {
+            Duration::from_secs(10)
+        } else {
+            Duration::from_secs(30)
+        };
+
+        let mut interval = time::delay_for(delay_time).fuse();
         futures::select! {
                 res = read_command_fut => {
                     match res {
@@ -310,7 +323,6 @@ async fn cli_loop(parser: Parser, command_handler: Arc<CommandHandler>, mut shut
                 },
                 () = interval => {
                        command_handler.status();
-                       print!(">> ")
                },
                 _ = shutdown_signal => {
                     break;

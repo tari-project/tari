@@ -28,7 +28,7 @@ use futures::{
 };
 use log::*;
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{hash_map::Entry, HashMap, VecDeque},
     future::Future,
     time::{Duration, Instant},
 };
@@ -53,11 +53,22 @@ pub enum MetricWrite {
 pub enum MetricRead {
     MessagesReceivedGetTimeseries(NodeId, oneshot::Sender<TimeSeries<()>>),
     MessagesReceivedRateExceeding((usize, Duration), oneshot::Sender<Vec<(NodeId, f32)>>),
+    MessagesReceivedTotalCountInTimespan(Duration, oneshot::Sender<usize>),
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct MetricsState {
     messages_recv: HashMap<NodeId, TimeSeries<()>>,
+    all_messages_recv: TimeSeries<()>,
+}
+
+impl Default for MetricsState {
+    fn default() -> Self {
+        Self {
+            all_messages_recv: TimeSeries::new(100000),
+            messages_recv: HashMap::<NodeId, TimeSeries<()>>::new(),
+        }
+    }
 }
 
 impl MetricsState {
@@ -81,6 +92,7 @@ impl MetricsState {
                 entry.insert(t);
             },
         }
+        self.all_messages_recv.inc();
     }
 
     pub fn drop_metrics(&mut self, node_id: &NodeId) {
@@ -103,6 +115,11 @@ impl MetricsState {
                 }
             })
             .collect()
+    }
+
+    pub fn message_received_get_total_count_in_timespan(&self, timespan: Duration) -> usize {
+        let since = Instant::now() - timespan;
+        self.all_messages_recv.count_since(since)
     }
 }
 
@@ -159,38 +176,46 @@ impl MetricsCollector {
             MessagesReceivedRateExceeding((counts, timespan), reply) => {
                 let _ = reply.send(self.state.message_received_get_nodes_exceeding(counts, timespan));
             },
+            MessagesReceivedTotalCountInTimespan(timespan, reply) => {
+                let _ = reply.send(self.state.message_received_get_total_count_in_timespan(timespan));
+            },
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct TimeSeries<T> {
-    values: Vec<(Instant, T)>,
+    values: VecDeque<(Instant, T)>,
+    capacity: usize,
 }
 
 impl<T> TimeSeries<T> {
     pub fn new(capacity: usize) -> Self {
         Self {
-            values: Vec::with_capacity(capacity),
+            values: VecDeque::with_capacity(capacity),
+            capacity,
         }
     }
 
     pub fn empty() -> Self {
-        Self { values: Vec::new() }
+        Self {
+            values: VecDeque::new(),
+            capacity: 100,
+        }
     }
 
     pub fn push(&mut self, item: T) {
-        if self.values.capacity() == 0 {
+        if self.capacity == 0 {
             return;
         }
         debug_assert!(
-            self.values.len() <= self.values.capacity(),
+            self.values.len() <= self.capacity,
             "TimeSeries::values exceeded capacity"
         );
-        if self.values.len() == self.values.capacity() {
-            self.values.remove(0);
+        if self.values.len() == self.capacity {
+            self.values.pop_front();
         }
-        self.values.push((Instant::now(), item));
+        self.values.push_back((Instant::now(), item));
     }
 
     pub fn count_since(&self, when: Instant) -> usize {
@@ -202,7 +227,7 @@ impl<T> TimeSeries<T> {
     }
 
     pub fn timespan(&self) -> Option<Duration> {
-        self.values.first().map(|(i, _)| i.elapsed())
+        self.values.front().map(|(i, _)| i.elapsed())
     }
 
     /// Return the rate at which samples occur within this timeseries
@@ -290,6 +315,16 @@ impl MetricsCollectorHandle {
             .send(MetricOp::Read(MetricRead::MessagesReceivedRateExceeding(
                 (counts, timespan),
                 reply_tx,
+            )))
+            .await?;
+        reply_rx.await.map_err(Into::into)
+    }
+
+    pub async fn get_total_message_count_in_timespan(&mut self, timespan: Duration) -> Result<usize, MetricsError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.inner
+            .send(MetricOp::Read(MetricRead::MessagesReceivedTotalCountInTimespan(
+                timespan, reply_tx,
             )))
             .await?;
         reply_rx.await.map_err(Into::into)

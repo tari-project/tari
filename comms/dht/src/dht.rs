@@ -268,6 +268,10 @@ impl Dht {
         self.event_publisher.subscribe()
     }
 
+    pub fn metrics_collector(&self) -> MetricsCollectorHandle {
+        self.metrics_collector.clone()
+    }
+
     /// Returns an the full DHT stack as a `tower::layer::Layer`. This can be composed with
     /// other inbound middleware services which expect an DecryptedDhtMessage
     pub fn inbound_middleware_layer<S>(

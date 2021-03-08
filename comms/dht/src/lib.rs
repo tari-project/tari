@@ -133,6 +133,7 @@ mod builder;
 pub use builder::DhtBuilder;
 
 mod connectivity;
+pub use connectivity::MetricsCollectorHandle;
 
 mod config;
 pub use config::DhtConfig;
