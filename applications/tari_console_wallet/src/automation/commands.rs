@@ -35,7 +35,7 @@ use tari_comms::connectivity::{ConnectivityEvent, ConnectivityRequester};
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::{
     tari_utilities::hex::Hex,
-    transactions::tari_amount::{uT, MicroTari},
+    transactions::tari_amount::{uT, MicroTari, Tari},
 };
 use tari_wallet::{
     output_manager_service::{handle::OutputManagerHandle, TxId},
@@ -62,6 +62,8 @@ pub enum WalletCommand {
     CoinSplit,
     DiscoverPeer,
     Whois,
+    ListUtxos,
+    CountUtxos,
 }
 
 #[derive(Debug, EnumString, PartialEq, Clone)]
@@ -408,37 +410,38 @@ pub async fn command_runner(
     println!("==============");
     println!("Command Runner");
     println!("==============");
+    use WalletCommand::*;
     for (idx, parsed) in commands.into_iter().enumerate() {
         println!("{}. {}", idx + 1, parsed);
 
         match parsed.command {
-            WalletCommand::GetBalance => match output_service.clone().get_balance().await {
+            GetBalance => match output_service.clone().get_balance().await {
                 Ok(balance) => {
                     println!("{}", balance);
                 },
                 Err(e) => eprintln!("GetBalance error! {}", e),
             },
-            WalletCommand::DiscoverPeer => {
+            DiscoverPeer => {
                 if !online {
                     online = wait_for_comms(&connectivity_requester).await?;
                 }
                 discover_peer(dht_service.clone(), parsed.args).await?
             },
-            WalletCommand::SendTari => {
+            SendTari => {
                 let tx_id = send_tari(transaction_service.clone(), parsed.args).await?;
                 debug!(target: LOG_TARGET, "send-tari tx_id {}", tx_id);
                 tx_ids.push(tx_id);
             },
-            WalletCommand::MakeItRain => {
+            MakeItRain => {
                 let rain_ids = make_it_rain(handle.clone(), transaction_service.clone(), parsed.args).await?;
                 tx_ids.extend(rain_ids);
             },
-            WalletCommand::CoinSplit => {
+            CoinSplit => {
                 let tx_id = coin_split(&parsed.args, &mut output_service, &mut transaction_service.clone()).await?;
                 tx_ids.push(tx_id);
                 println!("Coin split succeeded");
             },
-            WalletCommand::Whois => {
+            Whois => {
                 let public_key = match parsed.args[0].clone() {
                     ParsedArgument::PublicKey(key) => Ok(Box::new(key)),
                     _ => Err(CommandError::Argument),
@@ -447,6 +450,35 @@ pub async fn command_runner(
 
                 println!("Public Key: {}", public_key.to_hex());
                 println!("Emoji ID  : {}", emoji_id);
+            },
+            ListUtxos => {
+                let utxos = output_service.get_unspent_outputs().await?;
+                let count = utxos.len();
+                let sum: MicroTari = utxos.iter().map(|utxo| utxo.value).sum();
+                for (i, utxo) in utxos.iter().enumerate() {
+                    println!("{}. Value: {} {}", i + 1, utxo.value, utxo.features);
+                }
+                println!("Total number of UTXOs: {}", count);
+                println!("Total value of UTXOs: {}", sum);
+            },
+            CountUtxos => {
+                let utxos = output_service.get_unspent_outputs().await?;
+                let count = utxos.len();
+                let values: Vec<MicroTari> = utxos.iter().map(|utxo| utxo.value).collect();
+                let sum: MicroTari = values.iter().sum();
+                println!("Total number of UTXOs: {}", count);
+                println!("Total value of UTXOs : {}", sum);
+                if let Some(min) = values.iter().min() {
+                    println!("Minimum value UTXO   : {}", min);
+                }
+                if count > 0 {
+                    let average = f64::from(sum) / count as f64;
+                    let average = Tari::from(average / 1_000_000f64);
+                    println!("Average value UTXO   : {}", average);
+                }
+                if let Some(max) = values.iter().max() {
+                    println!("Maximum value UTXO   : {}", max);
+                }
             },
         }
     }
