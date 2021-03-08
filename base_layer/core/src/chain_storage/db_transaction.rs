@@ -178,12 +178,6 @@ impl DbTransaction {
         self
     }
 
-    pub fn update_utxo_sum(&mut self, header_hash: HashOutput, utxo_sum: Commitment) -> &mut Self {
-        self.operations
-            .push(WriteOperation::UpdateUtxoSum { header_hash, utxo_sum });
-        self
-    }
-
     pub fn prune_outputs_and_update_horizon(&mut self, output_mmr_positions: Vec<u32>, horizon: u64) -> &mut Self {
         self.operations.push(WriteOperation::PruneOutputsAndUpdateHorizon {
             output_positions: output_mmr_positions,
@@ -325,10 +319,6 @@ pub enum WriteOperation {
         header_hash: HashOutput,
         kernel_sum: Commitment,
     },
-    UpdateUtxoSum {
-        header_hash: HashOutput,
-        utxo_sum: Commitment,
-    },
     SetBestBlock {
         height: u64,
         hash: HashOutput,
@@ -435,7 +425,6 @@ impl fmt::Display for WriteOperation {
                 horizon
             ),
             UpdateKernelSum { header_hash, .. } => write!(f, "Update kernel sum for block: {}", header_hash.to_hex()),
-            UpdateUtxoSum { header_hash, .. } => write!(f, "Update utxo sum for block: {}", header_hash.to_hex()),
             SetBestBlock {
                 height,
                 hash,

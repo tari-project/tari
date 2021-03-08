@@ -33,7 +33,7 @@ use log::*;
 use std::marker::PhantomData;
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 
-const LOG_TARGET: &str = "c::bn::states::horizon_state_sync::chain_balance";
+const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync::chain_balance";
 
 /// Validate that the chain balances at a given height.
 pub struct ChainBalanceValidator<B> {
@@ -64,7 +64,7 @@ impl<B: BlockchainBackend> FinalHorizonStateValidation<B> for ChainBalanceValida
         let emission_h = self.get_emission_commitment_at(height);
         let total_offset = self.fetch_total_offset_commitment(height, backend)?;
 
-        warn!(
+        debug!(
             target: LOG_TARGET,
             "Emission:{:?}. Offset:{:?}, total kernel: {:?}, height: {}, total_utxo: {:?}",
             emission_h,
@@ -92,11 +92,9 @@ impl<B: BlockchainBackend> ChainBalanceValidator<B> {
     fn get_emission_commitment_at(&self, height: u64) -> Commitment {
         let total_supply =
             self.rules.get_total_emission_at(height) + self.rules.consensus_constants(height).faucet_value();
-        trace!(
+        debug!(
             target: LOG_TARGET,
-            "Expected emission at height {} is {}",
-            height,
-            total_supply
+            "Expected emission at height {} is {}", height, total_supply
         );
         self.commit_value(total_supply)
     }
