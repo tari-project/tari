@@ -88,10 +88,11 @@ pub enum SyncStatus {
 
 impl SyncStatus {
     pub fn is_lagging(&self) -> bool {
-        match self {
-            SyncStatus::Lagging(_, _) | SyncStatus::LaggingBehindHorizon(_, _) => true,
-            SyncStatus::UpToDate => false,
-        }
+        !self.is_up_to_date()
+    }
+
+    pub fn is_up_to_date(&self) -> bool {
+        matches!(self, SyncStatus::UpToDate)
     }
 }
 
@@ -205,6 +206,14 @@ impl StateInfo {
         match self {
             Self::BlockSync(info) => Some(info.clone()),
             _ => None,
+        }
+    }
+
+    pub fn is_synced(&self) -> bool {
+        use StateInfo::*;
+        match self {
+            StartUp | HeaderSync(_) | HorizonSync(_) | BlockSync(_) => false,
+            Listening(info) => info.is_synced(),
         }
     }
 }

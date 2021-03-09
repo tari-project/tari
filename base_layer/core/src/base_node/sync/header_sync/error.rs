@@ -57,4 +57,6 @@ pub enum BlockHeaderSyncError {
     InvalidBlockHeight(u64, u64),
     #[error("Unable to find chain split from peer `{0}`")]
     ChainSplitNotFound(NodeId),
+    #[error("Node could not find any other node with which to sync. Silence.")]
+    NetworkSilence,
 }

@@ -24,7 +24,7 @@ use crate::{
     base_node::{
         comms_interface::BlockEvent,
         state_machine_service::states::{BlockSyncInfo, Listening, StateEvent, StateInfo, StatusInfo},
-        sync::{HeaderSynchronizer, SyncPeers},
+        sync::{BlockHeaderSyncError, HeaderSynchronizer, SyncPeers},
         BaseNodeStateMachine,
     },
     chain_storage::BlockchainBackend,
@@ -38,11 +38,19 @@ const LOG_TARGET: &str = "c::bn::header_sync";
 #[derive(Clone, Debug, Default)]
 pub struct HeaderSync {
     sync_peers: Vec<NodeId>,
+    is_synced: bool,
 }
 
 impl HeaderSync {
     pub fn new(sync_peers: Vec<NodeId>) -> Self {
-        Self { sync_peers }
+        Self {
+            sync_peers,
+            is_synced: false,
+        }
+    }
+
+    pub fn is_synced(&self) -> bool {
+        self.is_synced
     }
 
     pub async fn next_event<B: BlockchainBackend + 'static>(
@@ -66,7 +74,7 @@ impl HeaderSync {
         );
 
         let status_event_sender = shared.status_event_sender.clone();
-        let bootstrapped = shared.bootstrapped_sync;
+        let bootstrapped = shared.is_bootstrapped();
         synchronizer.on_progress(move |current_height, remote_tip_height, sync_peers| {
             let _ = status_event_sender.broadcast(StatusInfo {
                 bootstrapped,
@@ -87,7 +95,13 @@ impl HeaderSync {
         match synchronizer.synchronize().await {
             Ok(sync_peer) => {
                 info!(target: LOG_TARGET, "Headers synchronized in {:.0?}", timer.elapsed());
+                self.is_synced = true;
                 StateEvent::HeadersSynchronized(sync_peer)
+            },
+            Err(err @ BlockHeaderSyncError::NetworkSilence) => {
+                warn!(target: LOG_TARGET, "{}", err);
+                self.is_synced = true;
+                StateEvent::NetworkSilence
             },
             Err(err) => {
                 debug!(target: LOG_TARGET, "Header sync failed: {}", err);

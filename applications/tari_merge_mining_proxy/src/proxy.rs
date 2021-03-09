@@ -483,7 +483,7 @@ impl InnerService {
             } else {
                 self.initial_sync_achieved.store(true, Ordering::Relaxed);
                 let msg = format!(
-                    "Initial base node sync achieved at height #{}",
+                    "Initial base node sync achieved. Ready to mine at height #{}",
                     new_block_template.header.as_ref().map(|h| h.height).unwrap_or_default()
                 );
                 debug!(target: LOG_TARGET, "{}", msg);

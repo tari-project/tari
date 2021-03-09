@@ -131,6 +131,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     }
 
     async fn wait_until_online(&mut self) -> Result<(), BlockHeaderSyncError> {
+        const MAX_ONLINE_ATTEMPTS: usize = 5;
         let mut attempts = 0;
         loop {
             match self.connectivity.wait_for_connectivity(Duration::from_secs(10)).await {
@@ -142,13 +143,21 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     );
                     // If we have waited a long enough for more node connections and we have some connections, let's try
                     // and sync
-                    if attempts > 6 && n > 0 {
+                    if attempts > MAX_ONLINE_ATTEMPTS && n > 0 {
                         warn!(
                             target: LOG_TARGET,
                             "This node is still not well connected, attempting to sync with {} node(s).", n
                         );
                         break Ok(());
                     }
+                    if attempts > MAX_ONLINE_ATTEMPTS && n == 0 {
+                        warn!(
+                            target: LOG_TARGET,
+                            "This node is still not connected to any other nodes. Assuming that this is the only node.",
+                        );
+                        break Err(BlockHeaderSyncError::NetworkSilence);
+                    }
+
                     attempts += 1;
                 },
                 Err(err) => break Err(err.into()),

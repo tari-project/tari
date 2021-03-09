@@ -99,8 +99,7 @@ impl BlockHeaderSha3 {
             .clone()
             .chain(self.nonce.to_le_bytes())
             .chain(&self.pow_bytes)
-            .finalize()
-            .to_vec();
+            .finalize();
         let hash = Sha3_256::digest(&hash);
         big_endian_difficulty(&hash)
     }
