@@ -136,7 +136,7 @@ mod test {
     async fn rate_limit() {
         let repeater = stream::repeat(());
 
-        let mut rate_limited = repeater.rate_limit(10, Duration::from_millis(100)).fuse();
+        let mut rate_limited = repeater.rate_limit(10, Duration::from_secs(100)).fuse();
 
         let mut timeout = time::delay_for(Duration::from_millis(50)).fuse();
         let mut count = 0usize;
