@@ -849,6 +849,7 @@ Then(/while mining via (.*) all transactions in wallet (.*) are found to be Mine
                     return true;
                 } else {
                     await nodeClient.mineBlock(walletClient);
+                    this.tipHeight += 1;
                     return false;
                 }
             }
@@ -879,6 +880,7 @@ Then(/while merge mining via (.*) all transactions in wallet (.*) are found to b
                     return true;
                 } else {
                     await this.mergeMineBlock(mmProxy);
+                    this.tipHeight += 1;
                     return false;
                 }
             }
@@ -1038,6 +1040,7 @@ When(/I send (.*) transactions of (.*) uT each from wallet (.*) to wallet (.*) a
             batch++;
             console.log(i, "/", numTransactions, " transactions sent");
         }
+        await sleep(50);
     }
 
     console.log(numTransactions, " transactions successfully sent.");
