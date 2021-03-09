@@ -36,7 +36,7 @@ use tari_comms::{
     peer_manager::{NodeId, Peer, PeerFeatures, PeerManager, PeerManagerError, PeerQuery},
     NodeIdentity,
 };
-use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
+use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester, MetricsCollectorHandle};
 use tari_core::{
     base_node::{
         state_machine_service::states::{PeerMetadata, StatusInfo},
@@ -59,6 +59,7 @@ pub struct CommandHandler {
     executor: runtime::Handle,
     blockchain_db: AsyncBlockchainDb<LMDBDatabase>,
     discovery_service: DhtDiscoveryRequester,
+    dht_metrics_collector: MetricsCollectorHandle,
     base_node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
     connectivity: ConnectivityRequester,
@@ -73,6 +74,7 @@ impl CommandHandler {
             executor,
             blockchain_db: ctx.blockchain_db().into(),
             discovery_service: ctx.base_node_dht().discovery_service_requester(),
+            dht_metrics_collector: ctx.base_node_dht().metrics_collector(),
             base_node_identity: ctx.base_node_identity(),
             peer_manager: ctx.base_node_comms().peer_manager(),
             connectivity: ctx.base_node_comms().connectivity(),
@@ -88,6 +90,8 @@ impl CommandHandler {
         let mut mempool = self.mempool_service.clone();
         let peer_manager = self.peer_manager.clone();
         let mut connectivity = self.connectivity.clone();
+        let mut metrics = self.dht_metrics_collector.clone();
+
         self.executor.spawn(async move {
             let state = state_info.recv().await.unwrap();
             let metadata = node.get_metadata().await.unwrap();
@@ -101,16 +105,26 @@ impl CommandHandler {
             let mempool_stats = mempool.get_mempool_stats().await.unwrap();
             let banned_peers = banned_peers(&peer_manager).await.unwrap();
             let conns = connectivity.get_active_connections().await.unwrap();
+            let messages = metrics
+                .get_total_message_count_in_timespan(Duration::from_secs(60))
+                .await
+                .unwrap();
             let status = format!(
-                "{}: State: {}, Tip: {} ({}), Mempool: {}tx ({}g, +/- {}blks), Connections: {}, Banned: {}",
+                "{}: State: {}, Tip: {} ({}), Mempool: {}tx ({}g, +/- {}blks), Connections: {}, Messages (last \
+                 60s):{}, Banned: {}",
                 Utc::now().format("%H:%M"),
                 state.state_info.short_desc(),
                 metadata.height_of_longest_chain(),
                 last_block_time.to_rfc2822(),
                 mempool_stats.total_txs,
                 mempool_stats.total_weight,
-                mempool_stats.total_weight / 19500,
+                if mempool_stats.total_weight == 0 {
+                    0
+                } else {
+                    1 + mempool_stats.total_weight / 19500
+                },
                 conns.len(),
+                messages,
                 banned_peers.len()
             );
             info!(target: "base_node::app::status", "{}", status);
