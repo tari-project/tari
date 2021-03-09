@@ -446,20 +446,20 @@ impl From<Transaction> for AggregateBody {
 impl Display for AggregateBody {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
         if !self.is_sorted() {
-            fmt.write_str("WARNING: Block body is not sorted.\n")?;
+            writeln!(fmt, "WARNING: Block body is not sorted.")?;
         }
-        fmt.write_str("--- Transaction Kernels ---\n")?;
+        writeln!(fmt, "--- Transaction Kernels ---")?;
         for (i, kernel) in self.kernels.iter().enumerate() {
-            fmt.write_str(&format!("Kernel {}:\n", i))?;
-            fmt.write_str(&format!("{}\n", kernel))?;
+            writeln!(fmt, "Kernel {}:", i)?;
+            writeln!(fmt, "{}", kernel)?;
         }
-        fmt.write_str(&format!("--- Inputs ({}) ---\n", self.inputs.len()))?;
+        writeln!(fmt, "--- Inputs ({}) ---", self.inputs.len())?;
         for input in self.inputs.iter() {
-            fmt.write_str(&format!("{}", input))?;
+            writeln!(fmt, "{}", input)?;
         }
-        fmt.write_str(&format!("--- Outputs ({}) ---\n", self.outputs.len()))?;
+        writeln!(fmt, "--- Outputs ({}) ---", self.outputs.len())?;
         for output in self.outputs.iter() {
-            fmt.write_str(&format!("{}", output))?;
+            writeln!(fmt, "{}", output)?;
         }
         Ok(())
     }

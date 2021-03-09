@@ -47,7 +47,7 @@ use tari_core::{
     mempool::service::LocalMempoolService,
     proof_of_work::PowAlgorithm,
     tari_utilities::{hex::Hex, message_format::MessageFormat},
-    transactions::types::{Commitment, Signature},
+    transactions::types::{Commitment, HashOutput, Signature},
 };
 use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_wallet::util::emoji::EmojiId;
@@ -171,6 +171,27 @@ impl CommandHandler {
                         block.to_json().unwrap_or_else(|_| "Error deserializing block".into())
                     ),
                     (None, _) => println!("Block not found at height {}", height),
+                },
+            };
+        });
+    }
+
+    pub fn get_block_by_hash(&self, hash: HashOutput, format: Format) {
+        let blockchain = self.blockchain_db.clone();
+        self.executor.spawn(async move {
+            match blockchain.fetch_block_by_hash(hash).await {
+                Err(err) => {
+                    println!("Failed to retrieve blocks: {}", err);
+                    warn!(target: LOG_TARGET, "{}", err);
+                    return;
+                },
+                Ok(data) => match (data, format) {
+                    (Some(block), Format::Text) => println!("{}", block),
+                    (Some(block), Format::Json) => println!(
+                        "{}",
+                        block.to_json().unwrap_or_else(|_| "Error deserializing block".into())
+                    ),
+                    (None, _) => println!("Block not found"),
                 },
             };
         });
