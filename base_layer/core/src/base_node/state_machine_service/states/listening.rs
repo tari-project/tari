@@ -24,7 +24,7 @@ use crate::{
     base_node::{
         chain_metadata_service::{ChainMetadataEvent, PeerChainMetadata},
         state_machine_service::{
-            states::{BlockSync, StateEvent, StateEvent::FatalError, StateInfo, SyncStatus, Waiting},
+            states::{BlockSync, HeaderSync, StateEvent, StateEvent::FatalError, StateInfo, SyncStatus, Waiting},
             BaseNodeStateMachine,
         },
         sync::SyncPeers,
@@ -109,7 +109,7 @@ impl Listening {
             },
         };
         // If we do not have any blocks go straight to initial sync
-        if local.height_of_longest_chain() == 0 {
+        if !self.is_synced && local.height_of_longest_chain() == 0 {
             info!(
                 target: LOG_TARGET,
                 "Chain height is at 0, proceeding directly to initial sync"
@@ -122,10 +122,6 @@ impl Listening {
         while let Some(metadata_event) = shared.metadata_event_stream.next().await {
             match metadata_event.as_ref().map(|v| v.deref()) {
                 Ok(ChainMetadataEvent::PeerChainMetadataReceived(peer_metadata_list)) => {
-                    if peer_metadata_list.is_empty() {
-                        debug!(target: LOG_TARGET, "No peers in chain metadata round");
-                        continue;
-                    }
                     let mut peer_metadata_list = peer_metadata_list.clone();
 
                     // lets update the peer data from the chain meta data
@@ -155,6 +151,11 @@ impl Listening {
                             target: LOG_TARGET,
                             "No peer metadata to check. Continuing in listening state.",
                         );
+
+                        if !self.is_synced {
+                            self.is_synced = true;
+                            shared.set_state_info(StateInfo::Listening(ListeningInfo::new(self.is_synced)));
+                        }
                         continue;
                     }
 
@@ -194,17 +195,13 @@ impl Listening {
 
                     if sync_mode.is_lagging() {
                         return StateEvent::FallenBehind(sync_mode);
-                    } else {
-                        if !shared.bootstrapped_sync && sync_mode == SyncStatus::UpToDate {
-                            shared.bootstrapped_sync = true;
-                            debug!(
-                                target: LOG_TARGET,
-                                "Initial sync achieved, bootstrap done: {}", sync_mode
-                            );
-                        }
-                        self.is_synced = true;
-                        shared.set_state_info(StateInfo::Listening(ListeningInfo::new(true)));
                     }
+
+                    if !self.is_synced {
+                        self.is_synced = true;
+                        debug!(target: LOG_TARGET, "Initial sync achieved");
+                    }
+                    shared.set_state_info(StateInfo::Listening(ListeningInfo::new(true)));
                 },
                 Err(broadcast::RecvError::Lagged(n)) => {
                     debug!(target: LOG_TARGET, "Metadata event subscriber lagged by {} item(s)", n);
@@ -227,6 +224,14 @@ impl Listening {
 impl From<Waiting> for Listening {
     fn from(_: Waiting) -> Self {
         Default::default()
+    }
+}
+
+impl From<HeaderSync> for Listening {
+    fn from(sync: HeaderSync) -> Self {
+        Self {
+            is_synced: sync.is_synced(),
+        }
     }
 }
 

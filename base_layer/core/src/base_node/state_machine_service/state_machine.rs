@@ -71,10 +71,10 @@ pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     pub(super) config: BaseNodeStateMachineConfig,
     pub(super) info: StateInfo,
     pub(super) sync_validators: SyncValidators<B>,
-    pub(super) bootstrapped_sync: bool,
     pub(super) consensus_rules: ConsensusManager,
     pub(super) status_event_sender: Arc<watch::Sender<StatusInfo>>,
     pub(super) randomx_factory: RandomXFactory,
+    is_bootstrapped: bool,
     event_publisher: broadcast::Sender<Arc<StateEvent>>,
     interrupt_signal: ShutdownSignal,
 }
@@ -110,8 +110,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             event_publisher,
             status_event_sender: Arc::new(status_event_sender),
             sync_validators,
-            bootstrapped_sync: false,
             randomx_factory,
+            is_bootstrapped: false,
             consensus_rules,
             interrupt_signal,
         }
@@ -132,6 +132,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
                 }
             },
             (HeaderSync(s), HeaderSyncFailed) => Waiting(s.into()),
+            (HeaderSync(s), NetworkSilence) => Listening(s.into()),
             (HorizonStateSync(s), HorizonStateSynchronized) => BlockSync(s.into()),
             (HorizonStateSync(s), HorizonStateSyncFailure) => Waiting(s.into()),
             (BlockSync(s), BlocksSynchronized) => Listening(s.into()),
@@ -154,7 +155,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     /// This function will publish the current StatusInfo to the channel
     pub fn publish_event_info(&mut self) {
         let status = StatusInfo {
-            bootstrapped: self.bootstrapped_sync,
+            bootstrapped: self.is_bootstrapped(),
             state_info: self.info.clone(),
         };
 
@@ -166,7 +167,15 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     /// Sets the StatusInfo.
     pub fn set_state_info(&mut self, info: StateInfo) {
         self.info = info;
+        if self.info.is_synced() && !self.is_bootstrapped {
+            debug!(target: LOG_TARGET, "Node has bootstrapped");
+            self.is_bootstrapped = true;
+        }
         self.publish_event_info();
+    }
+
+    pub fn is_bootstrapped(&self) -> bool {
+        self.is_bootstrapped
     }
 
     /// Start the base node runtime.

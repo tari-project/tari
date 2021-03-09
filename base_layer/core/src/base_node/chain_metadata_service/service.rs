@@ -198,9 +198,7 @@ impl ChainMetadataService {
                 );
                 // If we have chain metadata to send to the base node service, send them now
                 // because the next round of pings is happening.
-                if !self.peer_chain_metadata.is_empty() {
-                    self.flush_chain_metadata_to_event_publisher().await?;
-                }
+                self.flush_chain_metadata_to_event_publisher().await?;
                 // Ensure that we're waiting for the correct amount of peers to respond
                 // and have allocated space for their replies
                 self.resize_chainstate_buffer(*num_peers);
