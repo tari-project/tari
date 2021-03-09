@@ -434,6 +434,7 @@ mod test {
                 network: Network::LocalTest,
                 flags: Default::default(),
                 message_tag: MessageTag::new(),
+                expires: None,
             },
             authenticated_origin: None,
             source_peer,

@@ -24,7 +24,7 @@ use crate::{
     actor::DhtRequester,
     config::DhtConfig,
     crypt,
-    envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
+    envelope::{timestamp_to_datetime, DhtMessageFlags, DhtMessageHeader, NodeDestination},
     inbound::{DecryptedDhtMessage, DhtInboundMessage},
     outbound::{OutboundMessageRequester, SendMessageParams},
     proto::{
@@ -36,12 +36,7 @@ use crate::{
             StoredMessagesResponse,
         },
     },
-    store_forward::{
-        error::StoreAndForwardError,
-        message::timestamp_to_datetime,
-        service::FetchStoredMessageQuery,
-        StoreAndForwardRequester,
-    },
+    store_forward::{error::StoreAndForwardError, service::FetchStoredMessageQuery, StoreAndForwardRequester},
 };
 use digest::Digest;
 use futures::{channel::mpsc, future, stream, Future, SinkExt, StreamExt};

@@ -359,6 +359,7 @@ impl Dht {
                 self.dht_requester(),
                 self.discovery_service_requester(),
                 self.config.network,
+                chrono::Duration::from_std(self.config.saf_msg_validity).unwrap(),
             ))
             .layer(MessageLoggingLayer::new(format!(
                 "Outbound [{}]",

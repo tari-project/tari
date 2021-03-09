@@ -30,6 +30,7 @@ use futures::{task::Context, Future};
 use log::*;
 use std::task::Poll;
 use tari_comms::{peer_manager::Peer, pipeline::PipelineError};
+use tari_utilities::epoch_time::EpochTime;
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::storeforward::forward";
@@ -187,6 +188,19 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 message.dht_header.message_tag
             );
             return Ok(());
+        }
+
+        if let Some(expires) = &dht_header.expires {
+            if expires < &EpochTime::now() {
+                debug!(
+                    target: LOG_TARGET,
+                    "Received message {} from peer '{}' that is expired. Discarding message (Trace: {})",
+                    message.tag,
+                    source_peer.node_id.short_str(),
+                    message.dht_header.message_tag
+                );
+                return Ok(());
+            }
         }
 
         let body = decryption_result

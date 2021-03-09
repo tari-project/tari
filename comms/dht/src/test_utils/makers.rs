@@ -90,6 +90,7 @@ pub fn make_dht_header(
         network: Network::LocalTest,
         flags,
         message_tag: trace,
+        expires: None,
     }
 }
 
@@ -195,5 +196,6 @@ pub fn create_outbound_message(body: &[u8]) -> DhtOutboundMessage {
         reply: None.into(),
         origin_mac: None,
         is_broadcast: false,
+        expires: None,
     }
 }

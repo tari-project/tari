@@ -93,6 +93,7 @@ pub fn create_dummy_message<T>(inner: T, public_key: &CommsPublicKey) -> DomainM
             network: Network::LocalTest,
             destination: Default::default(),
             message_tag: MessageTag::new(),
+            expires: None,
         },
         authenticated_origin: None,
         source_peer: peer_source,

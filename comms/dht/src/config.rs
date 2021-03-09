@@ -42,6 +42,10 @@ pub struct DhtConfig {
     /// Send to this many peers when using the propagate strategy
     /// Default: 4
     pub propagation_factor: usize,
+    /// The amount of seconds added to the current time (Utc) which will then be used to check if the message has
+    /// expired or not when processing the message
+    /// Default: 10800
+    pub saf_msg_validity: Duration,
     /// The maximum number of messages that can be stored using the Store-and-forward middleware.
     /// Default: 100,000
     pub saf_msg_storage_capacity: usize,
@@ -172,6 +176,7 @@ impl Default for DhtConfig {
             flood_ban_max_msg_count: 1000,
             flood_ban_timespan: Duration::from_secs(100),
             offline_peer_cooldown: Duration::from_secs(24 * 60 * 60),
+            saf_msg_validity: Duration::from_secs(10800),
         }
     }
 }

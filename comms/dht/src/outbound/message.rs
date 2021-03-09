@@ -167,6 +167,7 @@ pub struct DhtOutboundMessage {
     pub network: Network,
     pub dht_flags: DhtMessageFlags,
     pub is_broadcast: bool,
+    pub expires: Option<prost_types::Timestamp>,
 }
 
 impl fmt::Display for DhtOutboundMessage {
