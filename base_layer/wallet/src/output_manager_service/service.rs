@@ -491,7 +491,7 @@ where TBackend: OutputManagerBackend + 'static
             .cancel_pending_transaction_at_block_height(block_height)
             .await?;
 
-        let key = self.get_next_coinbase_key().await?;
+        let key = self.get_coinbase_key_for_height(block_height).await?;
 
         let nonce = PrivateKey::random(&mut OsRng);
         let (tx, _) = CoinbaseBuilder::new(self.resources.factories.clone())
@@ -1141,9 +1141,9 @@ where TBackend: OutputManagerBackend + 'static
         Ok(key.k)
     }
 
-    async fn get_next_coinbase_key(&self) -> Result<PrivateKey, OutputManagerError> {
-        let mut km = self.coinbase_key_manager.lock().await;
-        let key = km.next_key()?;
+    async fn get_coinbase_key_for_height(&self, height: u64) -> Result<PrivateKey, OutputManagerError> {
+        let km = self.coinbase_key_manager.lock().await;
+        let key = km.derive_key(height)?;
         Ok(key.k)
     }
 }
