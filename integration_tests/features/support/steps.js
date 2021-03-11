@@ -182,6 +182,52 @@ Then('all nodes are at current tip height', {timeout: 1200*1000},async function 
     })
 });
 
+Then(/meddling with block template data from node (.*) for wallet (.*) is not allowed/, async function (baseNodeName, walletName) {
+    let baseNodeClient = this.getClient(baseNodeName);
+    let walletClient =this.getWallet(walletName).getClient()
+
+    // No meddling with data
+    // - Current tip
+    let currHeight = await baseNodeClient.getTipHeight();
+    // - New block
+    let newBlock = await baseNodeClient.mineBlockBeforeSubmit(walletClient, 0);
+//    console.log("\nNew block:\n");
+//    console.dir(newBlock, { depth: null });
+    // - Submit block to base node
+    let response = await baseNodeClient.submitMinedBlock(newBlock);
+    // - Verify new height
+    expect(await baseNodeClient.getTipHeight()).to.equal((currHeight + 1));
+
+    // Meddle with data - kernel_mmr_size
+    // - New block
+    newBlock = await baseNodeClient.mineBlockBeforeSubmit(walletClient, 0);
+    // - Change kernel_mmr_size
+    newBlock.block.header.kernel_mmr_size = parseInt(newBlock.block.header.kernel_mmr_size) + 1;
+    // - Try to submit illegal block to base node
+    try {
+        response = await baseNodeClient.submitMinedBlock(newBlock);
+        expect('Meddling with MMR size for Kernel not detected!').to.equal("")
+    } catch (err) {
+        console.log("\nMeddle with kernel_mmr_size - error details (as expected):\n", err.details);
+        expect(err.details.includes('Block validation error: MMR size for Kernel does not match.')).to.equal(true);
+    }
+
+    // Meddle with data - output_mmr_size
+    // - New block
+    newBlock = await baseNodeClient.mineBlockBeforeSubmit(walletClient, 0);
+    // - Change output_mmr_size
+    newBlock.block.header.output_mmr_size = parseInt(newBlock.block.header.output_mmr_size) + 1;
+    // - Try to submit illegal block to base node
+    try {
+        response = await baseNodeClient.submitMinedBlock(newBlock);
+        expect('Meddling with MMR size for UTXO not detected!').to.equal("")
+    } catch (err) {
+        console.log("Meddle with output_mmr_size - error details (as expected):\n", err.details);
+        expect(err.details.includes('Block validation error: MMR size for UTXO does not match.')).to.equal(true);
+    }
+});
+
+
 When(/I create a transaction (.*) spending (.*) to (.*)/, function (txnName, inputs, output) {
 
     let txInputs = inputs.split(",").map(input  => this.outputs[input]);
@@ -965,7 +1011,7 @@ Then(/the number of coinbase transactions for wallet (.*) and wallet (.*) are (.
             walletStats[0][1] + walletStats[1][1]
         );
     } else {
-        except("\nCoinbase comparison: Not enough results saved on the stack!").to.equal("")
+        expect("\nCoinbase comparison: Not enough results saved on the stack!").to.equal("")
     }
 });
 

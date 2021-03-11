@@ -986,8 +986,6 @@ impl BlockchainBackend for LMDBDatabase {
     }
 
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError> {
-        let mark = Instant::now();
-
         let txn = ReadTransaction::new(&*self.env).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
         let res = match key {
             DbKey::BlockHeader(k) => {
@@ -1029,7 +1027,6 @@ impl BlockchainBackend for LMDBDatabase {
                 .fetch_orphan(&txn, k)?
                 .map(|val| DbValue::OrphanBlock(Box::new(val))),
         };
-        trace!(target: LOG_TARGET, "Fetched key {} in {:.0?}", key, mark.elapsed());
         Ok(res)
     }
 
@@ -1472,7 +1469,6 @@ impl BlockchainBackend for LMDBDatabase {
     }
 
     fn fetch_mmr_leaf_index(&self, tree: MmrTree, hash: &Hash) -> Result<Option<u32>, ChainStorageError> {
-        trace!(target: LOG_TARGET, "Fetch MMR leaf index");
         let txn = ReadTransaction::new(&*self.env).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
         self.fetch_mmr_leaf_index(&*txn, tree, hash)
     }
