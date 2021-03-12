@@ -30,7 +30,7 @@ const ALL_ONES: usize = std::usize::MAX;
 
 /// Returns the MMR node index derived from the leaf index.
 pub fn node_index(leaf_index: usize) -> usize {
-    if leaf_index == 0 {
+    if leaf_index == 0 || leaf_index > std::usize::MAX / 2 {
         return 0;
     }
     2 * leaf_index - leaf_index.count_ones() as usize
