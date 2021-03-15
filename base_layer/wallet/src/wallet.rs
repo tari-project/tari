@@ -203,7 +203,7 @@ where
             ))
             .add_initializer(TransactionServiceInitializer::new(
                 config.transaction_service_config.unwrap_or_default(),
-                peer_message_subscription_factory.clone(),
+                peer_message_subscription_factory,
                 transaction_backend,
                 node_identity.clone(),
                 factories.clone(),
@@ -211,7 +211,6 @@ where
             .add_initializer(ContactsServiceInitializer::new(contacts_backend))
             .add_initializer(BaseNodeServiceInitializer::new(
                 config.base_node_service_config,
-                peer_message_subscription_factory,
                 bn_service_db,
             ));
 
