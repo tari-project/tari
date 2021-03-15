@@ -153,6 +153,9 @@ mod submit_transaction {
                 outputs: vec![],
                 kernels: vec![],
             }),
+            script_offset: Some(BlindingFactor {
+                data: RistrettoSecretKey::default().to_vec(),
+            }),
         };
         let resp = service
             .submit_transaction(req_mock.request_with_context(Default::default(), txn))

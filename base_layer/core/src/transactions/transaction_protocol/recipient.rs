@@ -34,6 +34,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum RecipientState {
     Finalized(Box<RecipientSignedMessage>),
     Failed(TransactionProtocolError),

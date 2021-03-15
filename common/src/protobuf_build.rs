@@ -140,12 +140,23 @@ impl ProtoCompiler {
             return Err("proto_path not specified".to_string());
         }
 
-        self.include_paths.extend(self.proto_paths.clone());
+        let include_protos =
+            self.include_paths
+                .iter()
+                .fold(Vec::with_capacity(self.include_paths.len()), |mut protos, path| {
+                    protos.extend(walk_files(&path, "proto"));
+                    protos
+                });
 
-        let protos = self.proto_paths.iter().fold(Vec::new(), |mut protos, path| {
-            protos.extend(walk_files(&path, "proto"));
-            protos
-        });
+        let protos = self
+            .proto_paths
+            .iter()
+            .fold(Vec::with_capacity(self.proto_paths.len()), |mut protos, path| {
+                protos.extend(walk_files(&path, "proto"));
+                protos
+            });
+
+        self.include_paths.extend(self.proto_paths.clone());
 
         let mut config = prost_build::Config::new();
 
@@ -183,9 +194,9 @@ impl ProtoCompiler {
         fs::remove_dir_all(&tmp_out_dir).map_err(|err| format!("Failed to remove temporary dir: {}", err))?;
 
         if self.emit_rerun_if_changed_directives {
-            for p in &protos {
+            protos.iter().chain(include_protos.iter()).for_each(|p| {
                 println!("cargo:rerun-if-changed={}", p.to_string_lossy());
-            }
+            });
         }
 
         Ok(())

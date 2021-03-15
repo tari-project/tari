@@ -25,11 +25,12 @@ use std::{fmt::Debug, iter, thread, time::Duration};
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
-    types::{CommitmentFactory, PrivateKey, PublicKey},
+    types::{CommitmentFactory, PrivateKey, PublicKey, Signature},
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+    script::{ExecutionStack, TariScript},
 };
 
 pub fn assert_change<F, T>(mut func: F, to: T, poll_count: usize)
@@ -86,7 +87,25 @@ pub fn make_input<R: Rng + CryptoRng>(
 {
     let key = PrivateKey::random(rng);
     let commitment = factory.commit_value(&key, val.into());
-    let input = TransactionInput::new(OutputFeatures::default(), commitment);
+    // TODO: Populate script with the proper value
+    let script = TariScript::default().as_bytes();
+    // TODO: Populate input_data with the proper value
+    let input_data = ExecutionStack::default().as_bytes();
+    // TODO: Populate height with the proper value
+    let height = 0;
+    // TODO: Populate script_signature with the proper value
+    let script_signature = Signature::default();
+    // TODO: Populate offset_pub_key with the proper value
+    let offset_pub_key = PublicKey::default();
+    let input = TransactionInput::new(
+        OutputFeatures::default(),
+        commitment,
+        script,
+        input_data,
+        height,
+        script_signature,
+        offset_pub_key,
+    );
     (input, UnblindedOutput::new(val, key, None))
 }
 
@@ -99,7 +118,25 @@ pub fn make_input_with_features<R: Rng + CryptoRng>(
 {
     let spending_key = PrivateKey::random(rng);
     let commitment = factory.commit_value(&spending_key, value.into());
-    let input = TransactionInput::new(features.clone().unwrap_or_default(), commitment);
+    // TODO: Populate script with the proper value
+    let script = TariScript::default().as_bytes();
+    // TODO: Populate input_data with the proper value
+    let input_data = ExecutionStack::default().as_bytes();
+    // TODO: Populate height with the proper value
+    let height = 0;
+    // TODO: Populate script_signature with the proper value
+    let script_signature = Signature::default();
+    // TODO: Populate offset_pub_key with the proper value
+    let offset_pub_key = PublicKey::default();
+    let input = TransactionInput::new(
+        features.clone().unwrap_or_default(),
+        commitment,
+        script,
+        input_data,
+        height,
+        script_signature,
+        offset_pub_key,
+    );
     (input, UnblindedOutput::new(value, spending_key, features))
 }
 

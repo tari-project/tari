@@ -46,6 +46,7 @@ use std::{convert::TryFrom, sync::Arc};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
+#[allow(clippy::large_enum_variant)]
 pub enum ConsensusManagerError {
     #[error("Difficulty adjustment encountered an error: `{0}`")]
     DifficultyAdjustmentError(#[from] DifficultyAdjustmentError),

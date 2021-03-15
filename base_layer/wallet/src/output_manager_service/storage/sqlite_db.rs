@@ -1323,9 +1323,13 @@ mod test {
     use tari_core::transactions::{
         tari_amount::MicroTari,
         transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
-        types::{CommitmentFactory, CryptoFactories, PrivateKey},
+        types::{CommitmentFactory, CryptoFactories, PrivateKey, PublicKey, Signature},
     };
-    use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
+    use tari_crypto::{
+        commitment::HomomorphicCommitmentFactory,
+        keys::SecretKey,
+        script::{ExecutionStack, TariScript},
+    };
     use tempfile::tempdir;
 
     pub fn random_string(len: usize) -> String {
@@ -1336,7 +1340,26 @@ mod test {
         let key = PrivateKey::random(rng);
         let factory = CommitmentFactory::default();
         let commitment = factory.commit_value(&key, val.into());
-        let input = TransactionInput::new(OutputFeatures::default(), commitment);
+
+        // TODO: Populate script with the proper value
+        let script = TariScript::default().as_bytes();
+        // TODO: Populate input_data with the proper value
+        let input_data = ExecutionStack::default().as_bytes();
+        // TODO: Populate height with the proper value
+        let height = 0;
+        // TODO: Populate script_signature with the proper value
+        let script_signature = Signature::default();
+        // TODO: Populate offset_pub_key with the proper value
+        let offset_pub_key = PublicKey::default();
+        let input = TransactionInput::new(
+            OutputFeatures::default(),
+            commitment,
+            script,
+            input_data,
+            height,
+            script_signature,
+            offset_pub_key,
+        );
 
         (input, UnblindedOutput::new(val, key, None))
     }

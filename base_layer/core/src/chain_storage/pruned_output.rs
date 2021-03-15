@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::transactions::{transaction::TransactionOutput, types::HashOutput};
 
+#[allow(clippy::large_enum_variant)]
 pub enum PrunedOutput {
     Pruned {
         output_hash: HashOutput,

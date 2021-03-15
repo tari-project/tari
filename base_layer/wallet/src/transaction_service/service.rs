@@ -1988,7 +1988,13 @@ where
             self.node_identity.public_key().clone(),
             found_tx.amount,
             MicroTari::from(2000), // a placeholder fee for this test function
-            Transaction::new(Vec::new(), Vec::new(), vec![kernel], BlindingFactor::default()),
+            Transaction::new(
+                Vec::new(),
+                Vec::new(),
+                vec![kernel],
+                BlindingFactor::default(),
+                BlindingFactor::default(),
+            ),
             TransactionStatus::Completed,
             found_tx.message.clone(),
             found_tx.timestamp,
