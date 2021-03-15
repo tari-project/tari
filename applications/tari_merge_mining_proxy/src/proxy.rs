@@ -22,7 +22,7 @@
 
 use crate::{
     block_template_data::{BlockTemplateDataBuilder, BlockTemplateRepository},
-    common::{json_rpc, merge_mining, monero_rpc::CoreRpcErrorCode, proxy},
+    common::{json_rpc, merge_mining, monero_rpc::CoreRpcErrorCode, proxy, proxy::convert_json_to_hyper_json_response},
     error::MmProxyError,
 };
 use bytes::Bytes;
@@ -775,53 +775,55 @@ impl InnerService {
             monerod_uri,
         );
 
-        let json_response = if self.config.proxy_submit_to_origin {
+        let mut submit_block = false;
+        let body: Bytes = request.body().clone();
+        let json = json::from_slice::<json::Value>(&body[..]).unwrap_or_default();
+        if let Some(method) = json["method"].as_str() {
+            match method {
+                "submitblock" | "submit_block" => {
+                    submit_block = true;
+                },
+                _ => {},
+            }
+        }
+
+        let json_response;
+
+        // If the request is a block submission and we are not submitting blocks
+        // to the origin (self-select mode, see next comment for a full explanation)
+        if submit_block && !self.config.proxy_submit_to_origin {
+            debug!(
+                target: LOG_TARGET,
+                "[monerod] skip: Proxy configured for self-select mode. Pool will submit to MoneroD, submitting to \
+                 Tari.",
+            );
+
+            // This is required for self-select configuration.
+            // We are not submitting the block to Monero here (the pool does this),
+            // we are only interested in intercepting the request for the purposes of
+            // submitting the block to Tari which will only happen if the accept response
+            // (which normally would occur for normal mining) is provided here.
+            // There is no point in trying to submit the block to Monero here since the
+            // share submitted by XMRig is only guaranteed to meet the difficulty of
+            // min(Tari,Monero) since that is what was returned with the original template.
+            // So it would otherwise be a duplicate submission of what the pool will do
+            // itself (whether the miner submits directly to monerod or the pool does,
+            // the pool is the only one being paid out here due to the nature
+            // of self-select). Furthermore, discussions with devs from Monero and XMRig are
+            // very much against spamming the nodes unnecessarily.
+            // NB!: This is by design, do not change this without understanding
+            // it's implications.
+            let accept_response = json_rpc::default_block_accept_response(json["id"].as_i64());
+            json_response =
+                convert_json_to_hyper_json_response(accept_response, StatusCode::OK, monerod_uri.clone()).await?;
+        } else {
             let resp = builder
                 // This is a cheap clone of the request body
-                .body(request.body().clone())
+                .body(body)
                 .send()
                 .await
                 .map_err(MmProxyError::MonerodRequestFailed)?;
-            convert_reqwest_response_to_hyper_json_response(resp).await?
-        } else {
-            let json = json::from_slice::<json::Value>(&request.body()[..])?;
-            match json["method"].as_str() {
-                Some("submitblock") | Some("submit_block") => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "[monerod] skip: Proxy configured for self-select mode. Pool will submit to MoneroD, \
-                         submitting to Tari.",
-                    );
-
-                    // This is required for self-select configuration.
-                    // We are not submitting the block to Monero here (the pool does this),
-                    // we are only interested in intercepting the request for the purposes of
-                    // submitting the block to Tari which will only happen if the accept response
-                    // (which normally would occur for normal mining) is provided here.
-                    // There is no point in trying to submit the block to Monero here since the
-                    // share submitted by XMRig is only guaranteed to meet the difficulty of
-                    // min(Tari,Monero) since that is what was returned with the original template.
-                    // So it would otherwise be a duplicate submission of what the pool will do
-                    // itself (whether the miner submits directly to monerod or the pool does,
-                    // the pool is the only one being paid out here due to the nature
-                    // of self-select). Furthermore, discussions with devs from Monero and XMRig are
-                    // very much against spamming the nodes unnecessarily.
-                    // NB!: This is by design, do not change this without understanding
-                    // it's implications.
-                    let accept_response = json_rpc::default_block_accept_response(json["id"].as_i64());
-                    proxy::convert_json_to_hyper_json_response(accept_response, StatusCode::OK, monerod_uri.clone())
-                        .await?
-                },
-                _ => {
-                    let resp = builder
-                        // This is a cheap clone of the request body
-                        .body(request.body().clone())
-                        .send()
-                        .await
-                        .map_err(MmProxyError::MonerodRequestFailed)?;
-                    convert_reqwest_response_to_hyper_json_response(resp).await?
-                },
-            }
+            json_response = convert_reqwest_response_to_hyper_json_response(resp).await?
         };
 
         let rpc_status = if json_response.body()["error"].is_null() {
