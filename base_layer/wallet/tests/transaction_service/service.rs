@@ -1247,7 +1247,16 @@ fn finalize_tx_with_missing_output() {
 
     let finalized_transaction_message = proto::TransactionFinalizedMessage {
         tx_id: recipient_reply.tx_id,
-        transaction: Some(Transaction::new(vec![], vec![], vec![], PrivateKey::random(&mut OsRng)).into()),
+        transaction: Some(
+            Transaction::new(
+                vec![],
+                vec![],
+                vec![],
+                PrivateKey::random(&mut OsRng),
+                PrivateKey::random(&mut OsRng),
+            )
+            .into(),
+        ),
     };
 
     runtime
@@ -1454,7 +1463,13 @@ fn test_power_mode_updates() {
         .with_signature(&Signature::default())
         .build()
         .unwrap();
-    let tx = Transaction::new(vec![], vec![], vec![kernel], PrivateKey::random(&mut OsRng));
+    let tx = Transaction::new(
+        vec![],
+        vec![],
+        vec![kernel],
+        PrivateKey::random(&mut OsRng),
+        PrivateKey::random(&mut OsRng),
+    );
     let completed_tx1 = CompletedTransaction {
         tx_id: 1,
         source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
@@ -4318,7 +4333,13 @@ fn broadcast_all_completed_transactions_on_startup() {
         .build()
         .unwrap();
 
-    let tx = Transaction::new(vec![], vec![], vec![kernel], PrivateKey::random(&mut OsRng));
+    let tx = Transaction::new(
+        vec![],
+        vec![],
+        vec![kernel],
+        PrivateKey::random(&mut OsRng),
+        PrivateKey::random(&mut OsRng),
+    );
 
     let completed_tx1 = CompletedTransaction {
         tx_id: 1,
@@ -4647,7 +4668,13 @@ fn only_start_one_tx_broadcast_protocol_at_a_time() {
         .build()
         .unwrap();
 
-    let tx = Transaction::new(vec![], vec![], vec![kernel], PrivateKey::random(&mut OsRng));
+    let tx = Transaction::new(
+        vec![],
+        vec![],
+        vec![kernel],
+        PrivateKey::random(&mut OsRng),
+        PrivateKey::random(&mut OsRng),
+    );
 
     let completed_tx1 = CompletedTransaction {
         tx_id: 1,
@@ -4706,7 +4733,13 @@ fn dont_broadcast_invalid_transactions() {
         .build()
         .unwrap();
 
-    let tx = Transaction::new(vec![], vec![], vec![kernel], PrivateKey::random(&mut OsRng));
+    let tx = Transaction::new(
+        vec![],
+        vec![],
+        vec![kernel],
+        PrivateKey::random(&mut OsRng),
+        PrivateKey::random(&mut OsRng),
+    );
 
     let completed_tx1 = CompletedTransaction {
         tx_id: 1,

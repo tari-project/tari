@@ -22,7 +22,10 @@
 
 use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
-use tari_core::transactions::{transaction::TransactionInput, types::Commitment};
+use tari_core::transactions::{
+    transaction::TransactionInput,
+    types::{Commitment, PublicKey},
+};
 use tari_crypto::tari_utilities::{ByteArray, Hashable};
 
 impl TryFrom<grpc::TransactionInput> for TransactionInput {
@@ -37,7 +40,24 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
         let commitment = Commitment::from_bytes(&input.commitment)
             .map_err(|err| format!("Could not convert input commitment:{}", err))?;
 
-        Ok(Self { features, commitment })
+        let script_signature = input
+            .script_signature
+            .ok_or_else(|| "script_signature not provided".to_string())?
+            .try_into()
+            .map_err(|_| "script_signature could not be converted".to_string())?;
+
+        let offset_pub_key =
+            PublicKey::from_bytes(input.offset_pub_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+
+        Ok(Self {
+            features,
+            commitment,
+            script: input.script,
+            input_data: input.input_data,
+            height: input.height,
+            script_signature,
+            offset_pub_key,
+        })
     }
 }
 
@@ -51,6 +71,14 @@ impl From<TransactionInput> for grpc::TransactionInput {
             }),
             commitment: Vec::from(input.commitment.as_bytes()),
             hash,
+            script: input.script,
+            input_data: input.input_data,
+            height: input.height,
+            script_signature: Some(grpc::Signature {
+                public_nonce: Vec::from(input.script_signature.get_public_nonce().as_bytes()),
+                signature: Vec::from(input.script_signature.get_signature().as_bytes()),
+            }),
+            offset_pub_key: input.offset_pub_key.as_bytes().to_vec(),
         }
     }
 }

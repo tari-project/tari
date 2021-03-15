@@ -218,7 +218,13 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     assert_eq!(outbound_pub_key, outbound_txs[0].destination_public_key);
 
     let mut completed_txs = Vec::new();
-    let tx = Transaction::new(vec![], vec![], vec![], PrivateKey::random(&mut OsRng));
+    let tx = Transaction::new(
+        vec![],
+        vec![],
+        vec![],
+        PrivateKey::random(&mut OsRng),
+        PrivateKey::random(&mut OsRng),
+    );
 
     for i in 0..messages.len() {
         completed_txs.push(CompletedTransaction {

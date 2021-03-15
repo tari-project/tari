@@ -68,12 +68,13 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         transaction::{OutputFeatures, Transaction, TransactionInput, UnblindedOutput},
-        types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey},
+        types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey, Signature},
     },
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+    script::{ExecutionStack, TariScript},
     tari_utilities::hex::Hex,
 };
 use tari_p2p::{initialization::CommsConfig, transport::TransportType};
@@ -111,7 +112,25 @@ pub fn make_input<R: Rng + CryptoRng>(
 {
     let key = PrivateKey::random(rng);
     let commitment = factories.commitment.commit_value(&key, val.into());
-    let input = TransactionInput::new(OutputFeatures::default(), commitment);
+    // TODO: Populate script with the proper value
+    let script = TariScript::default().as_bytes();
+    // TODO: Populate input_data with the proper value
+    let input_data = ExecutionStack::default().as_bytes();
+    // TODO: Populate height with the proper value
+    let height = 0;
+    // TODO: Populate script_signature with the proper value
+    let script_signature = Signature::default();
+    // TODO: Populate offset_pub_key with the proper value
+    let offset_pub_key = PublicKey::default();
+    let input = TransactionInput::new(
+        OutputFeatures::default(),
+        commitment,
+        script,
+        input_data,
+        height,
+        script_signature,
+        offset_pub_key,
+    );
     (input, UnblindedOutput::new(val, key, None))
 }
 
@@ -749,7 +768,13 @@ pub async fn complete_sent_transaction<
                 p.destination_public_key.clone(),
                 p.amount,
                 p.fee,
-                Transaction::new(Vec::new(), Vec::new(), Vec::new(), BlindingFactor::default()),
+                Transaction::new(
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    BlindingFactor::default(),
+                    BlindingFactor::default(),
+                ),
                 TransactionStatus::Completed,
                 p.message.clone(),
                 Utc::now().naive_utc(),

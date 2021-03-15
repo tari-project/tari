@@ -44,6 +44,8 @@ message BlockHeader {
     uint64 kernel_mmr_size = 12;
     // The size of the output MMR
     uint64 output_mmr_size = 13;
+    // Sum of script offsets for all kernels in this block.
+    bytes total_script_offset = 14;
 }
 
 // A Tari block. Blocks are linked together into a blockchain.
@@ -96,7 +98,8 @@ message NewBlockHeaderTemplate {
     bytes total_kernel_offset = 4;
     // Proof of work metadata
     ProofOfWork pow = 5;
-
+    // Sum of script offsets for all kernels in this block.
+    bytes total_script_offset = 6;
 }
 
 // The new block template is used constructing a new partial block, allowing a miner to added the coinbase utxo and as a final step the Base node to add the MMR roots to the header.

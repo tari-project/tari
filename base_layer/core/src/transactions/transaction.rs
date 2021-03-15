@@ -25,6 +25,7 @@
 
 use crate::transactions::{
     aggregated_body::AggregateBody,
+    crypto::script::{ScriptError, TariScript},
     tari_amount::{uT, MicroTari},
     transaction_protocol::{build_challenge, RewindData, TransactionMetadata},
     types::{
@@ -51,6 +52,7 @@ use std::{
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
+    hash::blake2::Blake256,
     range_proof::{
         FullRewindResult as CryptoFullRewindResult,
         RangeProofError,
@@ -182,6 +184,8 @@ pub enum TransactionError {
     NoCoinbase,
     #[error("Input maturity not reached")]
     InputMaturity,
+    #[error("Tari script error")]
+    ScriptError(#[from] ScriptError),
 }
 
 //-----------------------------------------     UnblindedOutput   ----------------------------------------------------//
@@ -208,7 +212,15 @@ impl UnblindedOutput {
     /// Commits an UnblindedOutput into a Transaction input
     pub fn as_transaction_input(&self, factory: &CommitmentFactory, features: OutputFeatures) -> TransactionInput {
         let commitment = factory.commit(&self.spending_key, &self.value.into());
-        TransactionInput { commitment, features }
+        TransactionInput {
+            features,
+            commitment,
+            script: vec![],
+            input_data: vec![],
+            height: 0,
+            script_signature: Default::default(),
+            offset_pub_key: Default::default(),
+        }
     }
 
     pub fn as_transaction_output(&self, factories: &CryptoFactories) -> Result<TransactionOutput, TransactionError> {
@@ -222,6 +234,8 @@ impl UnblindedOutput {
                     .construct_proof(&self.spending_key, self.value.into())?,
             )
             .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?,
+            script_hash: Vec::from(TariScript::default().as_hash::<Blake256>().map_err(|e| (e))?),
+            offset_pub_key: Default::default(),
         };
         // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
         if !output.verify_range_proof(&factories.range_proof)? {
@@ -255,6 +269,8 @@ impl UnblindedOutput {
             features: self.features.clone(),
             commitment,
             proof,
+            script_hash: Vec::from(TariScript::default().as_hash::<Blake256>().map_err(|e| (e))?),
+            offset_pub_key: Default::default(),
         };
         // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
         if !output.verify_range_proof(&factories.range_proof)? {
@@ -304,13 +320,40 @@ pub struct TransactionInput {
     pub features: OutputFeatures,
     /// The commitment referencing the output being spent.
     pub commitment: Commitment,
+    /// The serialised script
+    pub script: Vec<u8>,
+    /// The script input data, if any
+    pub input_data: Vec<u8>,
+    /// The block height that the UTXO was mined
+    pub height: u64,
+    /// A signature with k_s, signing the script, input data, and mined height
+    pub script_signature: Signature,
+    /// The offset pubkey, K_O
+    pub offset_pub_key: PublicKey,
 }
 
 /// An input for a transaction that spends an existing output
 impl TransactionInput {
     /// Create a new Transaction Input
-    pub fn new(features: OutputFeatures, commitment: Commitment) -> TransactionInput {
-        TransactionInput { features, commitment }
+    pub fn new(
+        features: OutputFeatures,
+        commitment: Commitment,
+        script: Vec<u8>,
+        input_data: Vec<u8>,
+        height: u64,
+        script_signature: Signature,
+        offset_pub_key: PublicKey,
+    ) -> TransactionInput
+    {
+        TransactionInput {
+            features,
+            commitment,
+            script,
+            input_data,
+            height,
+            script_signature,
+            offset_pub_key,
+        }
     }
 
     /// Accessor method for the commitment contained in an input
@@ -335,6 +378,11 @@ impl From<TransactionOutput> for TransactionInput {
         TransactionInput {
             features: item.features,
             commitment: item.commitment,
+            script: vec![],
+            input_data: vec![],
+            height: 0,
+            script_signature: Default::default(),
+            offset_pub_key: item.offset_pub_key,
         }
     }
 }
@@ -369,16 +417,29 @@ pub struct TransactionOutput {
     pub commitment: Commitment,
     /// A proof that the commitment is in the right range
     pub proof: RangeProof,
+    /// Tari script serialised script hash
+    pub script_hash: Vec<u8>,
+    /// Tari script offset pubkey, K_O
+    pub offset_pub_key: PublicKey,
 }
 
-/// An output for a transaction, includes a range proof
+/// An output for a transaction, includes a range proof and Tari script metadata
 impl TransactionOutput {
     /// Create new Transaction Output
-    pub fn new(features: OutputFeatures, commitment: Commitment, proof: RangeProof) -> TransactionOutput {
+    pub fn new(
+        features: OutputFeatures,
+        commitment: Commitment,
+        proof: RangeProof,
+        script_hash: Vec<u8>,
+        offset_pub_key: PublicKey,
+    ) -> TransactionOutput
+    {
         TransactionOutput {
             features,
             commitment,
             proof,
+            script_hash,
+            offset_pub_key,
         }
     }
 
@@ -464,6 +525,8 @@ impl Default for TransactionOutput {
             OutputFeatures::default(),
             CommitmentFactory::default().zero(),
             RangeProof::default(),
+            TariScript::default().as_hash::<Blake256>().unwrap().to_vec(),
+            PublicKey::default(),
         )
     }
 }
@@ -708,6 +771,9 @@ pub struct Transaction {
     pub offset: BlindingFactor,
     /// The constituents of a transaction which has the same structure as the body of a block.
     pub body: AggregateBody,
+    /// A scalar offset that links outputs and inputs to prevent cut-through, enforcing the correct application of
+    /// the output script.
+    pub script_offset: BlindingFactor,
 }
 
 impl Transaction {
@@ -717,11 +783,16 @@ impl Transaction {
         outputs: Vec<TransactionOutput>,
         kernels: Vec<TransactionKernel>,
         offset: BlindingFactor,
+        script_offset: BlindingFactor,
     ) -> Transaction
     {
         let mut body = AggregateBody::new(inputs, outputs, kernels);
         body.sort();
-        Transaction { offset, body }
+        Transaction {
+            offset,
+            body,
+            script_offset,
+        }
     }
 
     /// Validate this transaction by checking the following:
@@ -825,6 +896,7 @@ impl Display for Transaction {
 pub struct TransactionBuilder {
     body: AggregateBody,
     offset: Option<BlindingFactor>,
+    script_offset: Option<BlindingFactor>,
     reward: Option<MicroTari>,
 }
 
@@ -837,6 +909,12 @@ impl TransactionBuilder {
     /// Update the offset of an existing transaction
     pub fn add_offset(&mut self, offset: BlindingFactor) -> &mut Self {
         self.offset = Some(offset);
+        self
+    }
+
+    /// Update the script offset of an existing transaction
+    pub fn add_script_offset(&mut self, script_offset: BlindingFactor) -> &mut Self {
+        self.script_offset = Some(script_offset);
         self
     }
 
@@ -877,11 +955,17 @@ impl TransactionBuilder {
 
     /// Build the transaction.
     pub fn build(self, factories: &CryptoFactories) -> Result<Transaction, TransactionError> {
-        if let Some(offset) = self.offset {
-            let (i, o, k) = self.body.dissolve();
-            let tx = Transaction::new(i, o, k, offset);
-            tx.validate_internal_consistency(factories, self.reward)?;
-            Ok(tx)
+        if let Some(script_offset) = self.script_offset {
+            if let Some(offset) = self.offset {
+                let (i, o, k) = self.body.dissolve();
+                let tx = Transaction::new(i, o, k, offset, script_offset);
+                tx.validate_internal_consistency(factories, self.reward)?;
+                Ok(tx)
+            } else {
+                Err(TransactionError::ValidationError(
+                    "Transaction validation failed".into(),
+                ))
+            }
         } else {
             Err(TransactionError::ValidationError(
                 "Transaction validation failed".into(),
@@ -896,6 +980,7 @@ impl Default for TransactionBuilder {
             offset: None,
             body: AggregateBody::empty(),
             reward: None,
+            script_offset: None,
         }
     }
 }
@@ -918,6 +1003,7 @@ mod test {
     use tari_crypto::{
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
         ristretto::pedersen::PedersenCommitmentFactory,
+        script::ExecutionStack,
     };
 
     #[test]
@@ -962,7 +1048,17 @@ mod test {
         let v = PrivateKey::from(2u64.pow(32) + 1);
         let c = factories.commitment.commit(&k2, &v);
         let proof = factories.range_proof.construct_proof(&k2, 2u64.pow(32) + 1).unwrap();
-        let tx_output3 = TransactionOutput::new(OutputFeatures::default(), c, RangeProof::from_bytes(&proof).unwrap());
+        // TODO: Populate script_hash with the proper value
+        let script_hash = TariScript::default().as_hash::<Blake256>().unwrap().to_vec();
+        // TODO: Populate offset_pub_key with the proper value
+        let offset_pub_key = PublicKey::default();
+        let tx_output3 = TransactionOutput::new(
+            OutputFeatures::default(),
+            c,
+            RangeProof::from_bytes(&proof).unwrap(),
+            script_hash,
+            offset_pub_key,
+        );
         assert_eq!(tx_output3.verify_range_proof(&factories.range_proof).unwrap(), false);
     }
 
@@ -1011,9 +1107,28 @@ mod test {
         let v = PrivateKey::from(2u64.pow(32) + 1);
         let c = factories.commitment.commit(&k, &v);
 
-        let mut input = TransactionInput::new(OutputFeatures::default(), c);
+        // TODO: Populate script with the proper value
+        let script = TariScript::default().as_bytes();
+        // TODO: Populate input_data with the proper value
+        let input_data = ExecutionStack::default().as_bytes();
+        // TODO: Populate height with the proper value
+        let height = 0;
+        // TODO: Populate script_signature with the proper value
+        let script_signature = Signature::default();
+        // TODO: Populate offset_pub_key with the proper value
+        let offset_pub_key = PublicKey::default();
+        let mut input = TransactionInput::new(
+            OutputFeatures::default(),
+            c,
+            script,
+            input_data,
+            height,
+            script_signature,
+            offset_pub_key,
+        );
+
         let mut kernel = create_test_kernel(0.into(), 0);
-        let mut tx = Transaction::new(Vec::new(), Vec::new(), Vec::new(), 0.into());
+        let mut tx = Transaction::new(Vec::new(), Vec::new(), Vec::new(), 0.into(), 0.into());
 
         // lets add timelocks
         input.features.maturity = 5;
