@@ -67,9 +67,19 @@ class BaseNodeClient {
     return this.client
       .listHeaders()
       .sendMessage({ from_height: 0, num_headers: 1 })
-      .then((header) => {
-        return header;
+      .then((headers) => {
+        const header = headers[0];
+        return Object.assign(header, {
+          height: +header.height,
+        });
       });
+  }
+
+  getTipHeight() {
+    return this.client
+      .getTipInfo()
+      .sendMessage({})
+      .then((tip) => parseInt(tip.metadata.height_of_longest_chain));
   }
 
   getPreviousBlockTemplate(height) {
@@ -149,15 +159,6 @@ class BaseNodeClient {
       .sendMessage({ excess_sig: txn })
       .then((res) => {
         return res.result;
-      });
-  }
-
-  getTipHeight() {
-    return this.client
-      .getTipInfo()
-      .sendMessage({})
-      .then((tip) => {
-        return parseInt(tip.metadata.height_of_longest_chain);
       });
   }
 
@@ -273,7 +274,7 @@ class BaseNodeClient {
     let template = await this.getMinedCandidateBlock(weight);
     return this.submitTemplate(template, beforeSubmit).then(
       async () => {
-        let tip = await this.getTipHeight();
+        // let tip = await this.getTipHeight();
         // console.log("Node is at tip:", tip);
       },
       (err) => {

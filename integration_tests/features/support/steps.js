@@ -290,6 +290,23 @@ Then(/node (.*) is at height (\d+)/, { timeout: 120 * 1000 }, async function (na
     expect(await client.getTipHeight()).to.equal(height);
 });
 
+Then('all nodes are on the same chain at height {int}', {timeout: 1200 * 1000}, async function (height) {
+    let tipHash = null;
+    await this.forEachClientAsync(async (client, name) => {
+        await waitFor(async() => client.getTipHeight(), height, 115 * 1000);
+        const currTip = await client.getTipHeader();
+        expect(currTip.height).to.equal(height);
+        if (!tipHash) {
+            tipHash = currTip.hash.toString('hex');
+            console.log(`Node ${name} is at tip: ${tipHash}`);
+        } else {
+            let currTipHash = currTip.hash.toString('hex');
+            console.log(`Node ${name} is at tip: ${currTipHash} (should be ${tipHash})`);
+            expect(currTipHash).to.equal(tipHash);
+        }
+    })
+});
+
 Then("all nodes are at height {int}", { timeout: 1200 * 1000 }, async function (height) {
     await this.forEachClientAsync(async (client, name) => {
         await waitFor(async () => client.getTipHeight(), height, 115 * 1000);
@@ -305,7 +322,7 @@ Then("all nodes are at current tip height", { timeout: 1200 * 1000 }, async func
     await this.forEachClientAsync(async (client, name) => {
         await waitFor(async () => client.getTipHeight(), height, 1200 * 1000);
         const currTip = await client.getTipHeight();
-        console.log(`Node ${name} is at tip: ${currTip} (should be`, height, `)`);
+        console.log(`Node ${name} is at tip: ${currTip} (expected ${height})`);
         expect(currTip).to.equal(height);
     });
 });
@@ -433,7 +450,9 @@ Then(/node (.*) is at tip (.*)/, async function (node, name) {
     let client = this.getClient(node);
     let header = await client.getTipHeader();
     // console.log("headers:", this.headers);
-    expect(this.headers[name].hash).to.equal(header.hash);
+    const existingHeader = this.headers[name];
+    expect(existingHeader).to.not.be.null;
+    expect(existingHeader.hash.toString('hex')).to.equal(header.hash.toString('hex'));
 });
 
 When(/I mine a block on (.*) with coinbase (.*)/, { timeout: 600 * 1000 }, async function (name, coinbaseName) {
@@ -441,12 +460,15 @@ When(/I mine a block on (.*) with coinbase (.*)/, { timeout: 600 * 1000 }, async
         this.addOutput(coinbaseName, candidate.originalTemplate.coinbase);
         return candidate;
     });
+    this.tipHeight += 1;
 });
 
-When(/I mine (\d+) custom weight blocks on (.*) with weight (\d+)/, { timeout: 600 * 1000 }, async function (numBlocks, name, weight) {
-    for (let i = 0; i < numBlocks; i++) {
-        await this.mineBlock(name, 17);
+When(/I mine (\d+) custom weight blocks on (.*) with weight (\d+)/, { timeout: -1}, async function (numBlocks, name, weight) {
+    for(let i=0;i<numBlocks;i++) {
+        // If a block cannot be mined quickly enough (or the process has frozen), timeout.
+       await withTimeout(60 * 1000, this.mineBlock(name, parseInt(weight)));
     }
+    this.tipHeight += parseInt(numBlocks);
 });
 
 When(/Mining node (.*) mines (\d+) blocks on (.*)/, { timeout: 600 * 1000 }, async function (miner, numBlocks, node) {
@@ -459,9 +481,9 @@ When(/I update the parent of block (.*) to be an orphan/, async function (block)
     //TODO
 });
 
-When(/I mine (\d+) blocks on (.*)/, { timeout: 600 * 1000 }, async function (numBlocks, name) {
+When(/I mine (\d+) blocks on (.*)/, { timeout: -1 }, async function (numBlocks, name) {
     for (let i = 0; i < numBlocks; i++) {
-        await this.mineBlock(name, 0);
+        await withTimeout(60 * 1000, this.mineBlock(name, 0));
     }
     this.tipHeight += parseInt(numBlocks);
 });
