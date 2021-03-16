@@ -236,8 +236,10 @@ impl From<HeaderSync> for Listening {
 }
 
 impl From<BlockSync> for Listening {
-    fn from(_: BlockSync) -> Self {
-        Default::default()
+    fn from(sync: BlockSync) -> Self {
+        Self {
+            is_synced: sync.is_synced(),
+        }
     }
 }
 
