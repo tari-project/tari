@@ -139,7 +139,7 @@ Given(/I have (.*) non-default wallets connected to all seed nodes using (.*)/, 
 
 
 
-Given(/I have a merge mining proxy (.*) connected to (.*) and (.*)/,{timeout: 20*1000}, async function (mmProxy, node, wallet) {
+Given(/I have a merge mining proxy (.*) connected to (.*) and (.*) with default config/,{timeout: 20*1000}, async function (mmProxy, node, wallet) {
     let baseNode = this.getNode(node);
     let walletNode = this.getWallet(wallet);
     const proxy = new MergeMiningProxyProcess(mmProxy, baseNode.getGrpcAddress(), walletNode.getGrpcAddress());
@@ -147,6 +147,66 @@ Given(/I have a merge mining proxy (.*) connected to (.*) and (.*)/,{timeout: 20
     this.addProxy(mmProxy, proxy);
 });
 
+Given(/I have a merge mining proxy (.*) connected to (.*) and (.*) with origin submission disabled/,{timeout: 20*1000}, async function (mmProxy, node, wallet) {
+    let baseNode = this.getNode(node);
+    let walletNode = this.getWallet(wallet);
+    const proxy = new MergeMiningProxyProcess(mmProxy, baseNode.getGrpcAddress(), walletNode.getGrpcAddress(), false);
+    await proxy.startNew();
+    this.addProxy(mmProxy, proxy);
+});
+
+Given(/I have a merge mining proxy (.*) connected to (.*) and (.*) with origin submission enabled/,{timeout: 20*1000}, async function (mmProxy, node, wallet) {
+    let baseNode = this.getNode(node);
+    let walletNode = this.getWallet(wallet);
+    const proxy = new MergeMiningProxyProcess(mmProxy, baseNode.getGrpcAddress(), walletNode.getGrpcAddress(), true);
+    await proxy.startNew();
+    this.addProxy(mmProxy, proxy);
+});
+
+When(/I ask for a block height from proxy (.*)/, async function (mmProxy) {
+    lastResult = 'NaN';
+    let proxy = this.getProxy(mmProxy)
+    let proxyClient = proxy.createClient();
+    let height = await proxyClient.getHeight();
+    lastResult = height;
+});
+
+Then('Proxy response height is valid', function () {
+     assert(Number.isInteger(lastResult),true);
+});
+
+When(/I ask for a a block template from proxy (.*)/, async function (mmProxy) {
+    lastResult = {};
+    let proxy = this.getProxy(mmProxy)
+    let proxyClient = proxy.createClient();
+    let template = await proxyClient.getBlockTemplate();
+    lastResult = template;
+});
+
+Then('Proxy response block template is valid', function () {
+     assert(typeof lastResult === 'object' && lastResult !== null,true);
+     assert(typeof(lastResult['_aux']) !== 'undefined',true);
+     assert(lastResult['status'],'OK');
+});
+
+When(/I submit a block through proxy (.*)/, async function (mmProxy) {
+    let blockTemplateBlob = lastResult['blocktemplate_blob'];
+    let proxy = this.getProxy(mmProxy)
+    let proxyClient = proxy.createClient();
+    let result = await proxyClient.submitBlock(blockTemplateBlob);
+    lastResult = result;
+});
+
+Then('Proxy response block submission is valid with submitting to origin', function () {
+     assert(typeof lastResult['result'] === 'object' && lastResult['result']  !== null, true);
+     assert(typeof(lastResult['result']['_aux']) !== 'undefined', true);
+     assert(lastResult['result']['status'],'OK');
+});
+
+Then('Proxy response block submission is valid without submitting to origin', function () {
+     assert(lastResult['result']  !== null,true);
+     assert(lastResult['status'],'OK');
+});
 
 When(/I start (.*)/, {timeout: 20*1000}, async function (name) {
     await this.startNode(name);
