@@ -122,6 +122,14 @@ class BaseNodeClient {
         );
     }
 
+    transactionStateResult(txn) {
+        return this.client.transactionState().sendMessage({excess_sig: txn}).then(
+          res => {
+            return res.result
+          }
+        );
+    }
+
     getTipHeight() {
         return this.client.getTipInfo()
             .sendMessage({})
