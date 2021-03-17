@@ -6437,6 +6437,11 @@ mod test {
                 .block_on((*alice_wallet).wallet.output_manager_service.get_balance())
                 .unwrap();
 
+            // test "funds pending" when pending incoming would cover
+            let fee = wallet_get_fee_estimate(alice_wallet, pre_balance.available_balance.into(), 25, 1, 2, error_ptr);
+            assert_eq!(fee, 0);
+            assert_eq!(error, 115);
+
             let secret_key_base_node = private_key_generate();
             let public_key_base_node = public_key_from_private_key(secret_key_base_node, error_ptr);
             let utxo_message_str = CString::new("UTXO Import").unwrap();

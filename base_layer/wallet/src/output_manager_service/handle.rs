@@ -402,7 +402,7 @@ impl OutputManagerHandle {
     }
 
     /// Create a coin split transaction.
-    /// Returns (tx_id, tx, fee, utxo_total_value).
+    /// Returns (tx_id, tx, fee, utxos_total_value).
     pub async fn create_coin_split(
         &mut self,
         amount_per_split: MicroTari,
