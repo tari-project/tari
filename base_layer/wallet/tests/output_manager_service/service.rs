@@ -1294,10 +1294,11 @@ fn test_utxo_stxo_invalid_txo_validation() {
     let invalid_output = UnblindedOutput::new(MicroTari::from(invalid_value), invalid_key, None);
     let invalid_tx_output = invalid_output.as_transaction_output(&factories).unwrap();
 
+    let invalid_db_output = DbUnblindedOutput::from_unblinded_output(invalid_output.clone(), &factories).unwrap();
     backend
         .write(WriteOperation::Insert(DbKeyValuePair::UnspentOutput(
-            invalid_output.spending_key.clone(),
-            Box::new(DbUnblindedOutput::from_unblinded_output(invalid_output.clone(), &factories).unwrap()),
+            invalid_db_output.commitment.clone(),
+            Box::new(invalid_db_output),
         )))
         .unwrap();
     backend
@@ -1310,22 +1311,23 @@ fn test_utxo_stxo_invalid_txo_validation() {
     let spent_value1 = 500;
     let spent_output1 = UnblindedOutput::new(MicroTari::from(spent_value1), spent_key1, None);
     let spent_tx_output1 = spent_output1.as_transaction_output(&factories).unwrap();
+    let spent_db_output1 = DbUnblindedOutput::from_unblinded_output(spent_output1.clone(), &factories).unwrap();
 
     backend
         .write(WriteOperation::Insert(DbKeyValuePair::SpentOutput(
-            spent_output1.spending_key.clone(),
-            Box::new(DbUnblindedOutput::from_unblinded_output(spent_output1.clone(), &factories).unwrap()),
+            spent_db_output1.commitment.clone(),
+            Box::new(spent_db_output1),
         )))
         .unwrap();
 
     let spent_key2 = PrivateKey::random(&mut OsRng);
     let spent_value2 = 800;
     let spent_output2 = UnblindedOutput::new(MicroTari::from(spent_value2), spent_key2, None);
-
+    let spent_db_output2 = DbUnblindedOutput::from_unblinded_output(spent_output2, &factories).unwrap();
     backend
         .write(WriteOperation::Insert(DbKeyValuePair::SpentOutput(
-            spent_output2.spending_key.clone(),
-            Box::new(DbUnblindedOutput::from_unblinded_output(spent_output2, &factories).unwrap()),
+            spent_db_output2.commitment.clone(),
+            Box::new(spent_db_output2),
         )))
         .unwrap();
 

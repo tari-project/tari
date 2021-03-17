@@ -164,11 +164,33 @@ struct TariPrivateKey *private_key_from_hex(const char *hex,int* error_out);
 void private_key_destroy(struct TariPrivateKey *pk);
 
 /// -------------------------------- Seed Words  -------------------------------------------------- ///
+// Create an empty instance of TariSeedWords
+struct TariSeedWords *seed_words_create();
+
 // Get the number of seed words in the provided collection
 unsigned int seed_words_get_length(struct TariSeedWords *seed_words, int* error_out);
 
 // Get a seed word from the provided collection at the specified position
 char *seed_words_get_at(struct TariSeedWords *seed_words, unsigned int position, int* error_out);
+
+/// Add a word to the provided TariSeedWords instance
+///
+/// ## Arguments
+/// `seed_words` - The pointer to a TariSeedWords
+/// `word` - Word to add
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// 'c_uchar' - Returns a u8 version of the `SeedWordPushResult` enum indicating whether the word was not a valid seed
+/// word, if the push was successful and whether the push was successful and completed the full Seed Phrase
+///     '0' -> InvalidSeedWord
+///     '1' -> SuccessfulPush
+///     '2' -> SeedPhraseComplete
+///     '3' -> InvalidSeedPhrase
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+unsigned char seed_words_push_word(struct TariSeedWords *seed_words,  const char *word, int* error_out);
 
 // Frees the memory for a TariSeedWords collection
 void seed_words_destroy(struct TariSeedWords *seed_words);
@@ -182,7 +204,7 @@ struct TariContact *contact_create(const char *alias, struct TariPublicKey *publ
 char *contact_get_alias(struct TariContact *contact,int* error_out);
 
 /// Gets the TariPublicKey of the TariContact
-struct TariPublicKey *contact_get_public_key(struct TariContact *contact,int* error_out);
+struct TariPublicKey *contact_get_public_key(struct TariContact *contact, int* error_out);
 
 // Frees memory for a TariContact
 void contact_destroy(struct TariContact *contact);
@@ -633,6 +655,44 @@ const char *wallet_get_value(struct TariWallet *wallet, const char* key, int* er
 /// None
 bool wallet_clear_value(struct TariWallet *wallet, const char* key, int* error_out);
 
+/// Check if a Wallet has the data of an In Progress Recovery in its database.
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer.
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `bool` - Return a boolean value indicating whether there is an in progress recovery or not. An error will also
+/// result in a false result.
+///
+/// # Safety
+/// None
+bool wallet_is_recovery_in_progress(struct TariWallet *wallet, int* error_out);
+
+/// Check if a Wallet has the data of an In Progress Recovery in its database.
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer.
+/// `base_node_public_key` - The TariPublicKey pointer of the Base Node the recovery process will use
+/// `recovery_progress_callback` - The callback function pointer that will be used to asynchronously communicate
+/// progress to the client. The first argument is the current block the process has completed and the second argument is
+/// the total chain height. When the current block reaches the total chain height the process is complete.
+///     - The first callback with arguments (0,1) indicate a successful base node connection and process has started
+///     - In progress callbacks will be of the form (n, m) where n < m
+///     - If the process completed successfully then the final callback will have arguments (x, x) where x == x
+///     - If there is an error in the process then the final callback will be called with zero arguments i.e. (0, 0)
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `bool` - Return a boolean value indicating whether the process started successfully or not, the process will
+/// continue to run asynchronously and communicate it progress via the callback. An error will also produce a false
+/// result.
+///
+/// # Safety
+/// None
+bool wallet_start_recovery(struct TariWallet *wallet, struct TariPublicKey *base_node_public_key, void (*recovery_progress_callback)(unsigned long long, unsigned long long), int* error_out);
 
 // Frees memory for a TariWallet
 void wallet_destroy(struct TariWallet *wallet);

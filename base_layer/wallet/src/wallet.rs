@@ -405,4 +405,15 @@ where
         self.transaction_service.remove_encryption().await?;
         Ok(())
     }
+
+    /// Utility function to find out if there is data in the database indicating that there is an incomplete recovery
+    /// process in progress
+    pub async fn is_recovery_in_progress(&self) -> Result<bool, WalletError> {
+        use crate::tasks::wallet_recovery::RECOVERY_HEIGHT_KEY;
+        Ok(self
+            .db
+            .get_client_key_value(RECOVERY_HEIGHT_KEY.to_string())
+            .await?
+            .is_some())
+    }
 }
