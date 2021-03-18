@@ -36,7 +36,12 @@ use tari_core::{
     validation::{
         block_validators::{BodyOnlyValidator, OrphanBlockValidator},
         header_validator::HeaderValidator,
-        transaction_validators::{MempoolValidator, TxInputAndMaturityValidator, TxInternalConsistencyValidator},
+        transaction_validators::{
+            MempoolValidator,
+            TxConsensusValidator,
+            TxInputAndMaturityValidator,
+            TxInternalConsistencyValidator,
+        },
     },
 };
 use tari_service_framework::ServiceHandles;
@@ -195,6 +200,7 @@ async fn build_node_context(
     let mempool_validator = MempoolValidator::new(vec![
         Box::new(TxInternalConsistencyValidator::new(factories.clone())),
         Box::new(TxInputAndMaturityValidator::new(blockchain_db.clone())),
+        Box::new(TxConsensusValidator::new(blockchain_db.clone())),
     ]);
     let mempool = Mempool::new(MempoolConfig::default(), Arc::new(mempool_validator));
 
