@@ -839,40 +839,6 @@ where B: BlockchainBackend
             block,
         )?;
 
-        // Update reorg info
-        if let BlockAddResult::ChainReorg(_, reorg_chain) = block_add_result.clone() {
-            let tip_height = match reorg_chain.first() {
-                Some(val) => val.block.header.height - 1,
-                None => {
-                    return Err(ChainStorageError::InvalidOperation(
-                        "Cannot extract meta data from the reorged chain".to_string(),
-                    ))
-                },
-            };
-            let num_blocks_reorged = reorg_chain.len() as u64;
-            let last_reorg_best_block = Some(match reorg_chain.first() {
-                Some(val) => val.accumulated_data.hash.clone(),
-                None => {
-                    return Err(ChainStorageError::InvalidOperation(
-                        "Cannot extract meta data from the reorged chain".to_string(),
-                    ))
-                },
-            });
-            let reorg_info = ReorgInfo {
-                last_reorg_best_block,
-                num_blocks_reorged,
-                tip_height,
-            };
-            trace!(
-                target: LOG_TARGET,
-                "Updating reorg info in the database - after restore ({})",
-                reorg_info
-            );
-            let mut txn = DbTransaction::new();
-            txn.set_reorg_info(reorg_info);
-            db.write(txn)?;
-        }
-
         // Cleanup of backend when in pruned mode.
         match block_add_result {
             BlockAddResult::Ok(_) | BlockAddResult::ChainReorg(_, _) => {
@@ -1528,13 +1494,11 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
 
     // Update metadata
     let (last_header, header_accumulated_data) = db.fetch_header_and_accumulated_data(height)?;
-
     txn.set_best_block(
         last_header.height,
         header_accumulated_data.hash.clone(),
         header_accumulated_data.total_accumulated_difficulty,
     );
-    db.write(txn)?;
 
     // Update reorg info
     let reorg_info = ReorgInfo {
@@ -1547,8 +1511,8 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
         "Updating reorg info in the database - after rewind ({})",
         reorg_info
     );
-    let mut txn = DbTransaction::new();
     txn.set_reorg_info(reorg_info);
+
     db.write(txn)?;
 
     Ok(removed_blocks)
@@ -1672,6 +1636,29 @@ fn handle_possible_reorg<T: BlockchainBackend>(
     // reorg is required when any blocks are removed or more than one are added
     // see https://github.com/tari-project/tari/issues/2101
     if num_removed_blocks > 0 || num_added_blocks > 1 {
+        // Update reorg info
+        let last_reorg_best_block = Some(match reorg_chain.front() {
+            Some(val) => val.accumulated_data.hash.clone(),
+            None => {
+                return Err(ChainStorageError::InvalidOperation(
+                    "Cannot extract meta data from the reorged chain".to_string(),
+                ))
+            },
+        });
+        let reorg_info = ReorgInfo {
+            last_reorg_best_block,
+            num_blocks_reorged: num_added_blocks as u64,
+            tip_height: fork_height,
+        };
+        trace!(
+            target: LOG_TARGET,
+            "Updating reorg info in the database - after restore ({})",
+            reorg_info
+        );
+        let mut txn = DbTransaction::new();
+        txn.set_reorg_info(reorg_info);
+        db.write(txn)?;
+
         info!(
             target: LOG_TARGET,
             "Chain reorg required from {} to {} (accum_diff:{}, hash:{}) to (accum_diff:{}, hash:{}). Number of \
@@ -1808,7 +1795,6 @@ fn restore_reorged_chain<T: BlockchainBackend>(
         txn.delete(DbKey::OrphanBlock(block.accumulated_data.hash.clone()));
         insert_block(&mut txn, block)?;
     }
-    db.write(txn)?;
 
     // Update reorg info
     if last_reorg_best_block.is_some() {
@@ -1822,10 +1808,10 @@ fn restore_reorged_chain<T: BlockchainBackend>(
             "Updating reorg info in the database - after restore ({})",
             reorg_info
         );
-        let mut txn = DbTransaction::new();
         txn.set_reorg_info(reorg_info);
-        db.write(txn)?;
     }
+
+    db.write(txn)?;
 
     Ok(())
 }

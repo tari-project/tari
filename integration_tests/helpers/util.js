@@ -130,21 +130,6 @@ const getTransactionOutputHash = function(output) {
     return Buffer.from(final);
 }
 
-function consoleLogTransactionDetails(txnDetails, txId) {
-    var found = txnDetails[0];
-    var status = txnDetails[1];
-    if (found) {
-         console.log(
-             "  Transaction " + pad("'" + status.transactions[0]["tx_id"] + "'", 24) +
-             " has status " + pad("'" + status.transactions[0]["status"] + "'", 40) +
-             " and " + pad("is_cancelled(" + status.transactions[0]["is_cancelled"] + ")", 21) +
-             " and " + pad("is_valid(" + status.transactions[0]["valid"] + ")", 16)
-         );
-    } else {
-         console.log("  Transaction '" + txId + "' " + status);
-    }
-}
-
 function consoleLogBalance(balance) {
     console.log(
         "  Available " + pad(balance["available_balance"], 16) +
@@ -153,7 +138,7 @@ function consoleLogBalance(balance) {
     );
 }
 
-function consoleLogTransactionDetailsFormat2(txnDetails) {
+function consoleLogTransactionDetails(txnDetails) {
     console.log(
         "  Transaction " + pad("'" + txnDetails["tx_id"] + "'", 24) +
         " has status " + pad("'" + txnDetails["status"] + "'", 40) +
@@ -183,6 +168,5 @@ module.exports = {
     getTransactionOutputHash,
     hexSwitchEndianness,
     consoleLogTransactionDetails,
-    consoleLogBalance,
-    consoleLogTransactionDetailsFormat2
+    consoleLogBalance
 };

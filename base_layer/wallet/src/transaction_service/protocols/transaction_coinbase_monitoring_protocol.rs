@@ -388,8 +388,9 @@ where TBackend: TransactionBackend + 'static
                             target: LOG_TARGET,
                             "Coinbase transaction (TxId: {}) not mined yet, still waiting.", self.tx_id,
                         );
-                        // Wait out the remainder of the delay before proceeding with next loop
+                        // Note: RPC connections must be dropped explicitly otherwise they stay open
                         drop(client);
+                        // Wait out the remainder of the delay before proceeding with next loop
                         delay.await;
                         break;
                     },

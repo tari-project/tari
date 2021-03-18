@@ -328,7 +328,9 @@ where TBackend: TransactionBackend + 'static
                                             );
                                             e
                                         });
+                                    // Note: RPC connections must be dropped explicitly otherwise they stay open
                                     drop(client);
+                                    // Wait out the remainder of the delay before proceeding with next loop
                                     delay.await;
                                     retries += 1;
                                     batches = self.get_transaction_batches().await.map_err(|e| TransactionServiceProtocolError::new(self.id, e))?;
@@ -349,7 +351,9 @@ where TBackend: TransactionBackend + 'static
                                     );
                                     e
                                 });
+                                // Note: RPC connections must be dropped explicitly otherwise they stay open
                                 drop(client);
+                                // Wait out the remainder of the delay before proceeding with next loop
                                 delay.await;
                                 batches.push(batch);
                                 retries += 1;
