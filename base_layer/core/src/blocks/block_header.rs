@@ -106,7 +106,7 @@ pub struct BlockHeader {
     pub kernel_mmr_size: u64,
     /// Sum of kernel offsets for all kernels in this block.
     pub total_kernel_offset: BlindingFactor,
-    /// Sum of script offsets for all kernels in this block.
+    /// Sum of script offsets for all transactions in this block
     pub total_script_offset: BlindingFactor,
     /// Nonce increment used to mine this block.
     pub nonce: u64,

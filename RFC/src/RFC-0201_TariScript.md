@@ -366,7 +366,7 @@ pub struct BlockHeader {
     
     ...
     
-    /// Sum of script offsets for all kernels in this block.
+    /// Sum of script offsets for all transactions in this block
     pub total_script_offset: BlindingFactor,
 }
 ```
