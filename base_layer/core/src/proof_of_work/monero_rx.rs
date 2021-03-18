@@ -445,6 +445,7 @@ mod test {
             kernel_mr: vec![0],
             kernel_mmr_size: 0,
             total_kernel_offset: RistrettoSecretKey::from(0),
+            total_script_offset: RistrettoSecretKey::from(0),
             nonce: 0,
             pow: ProofOfWork::default(),
         };
@@ -538,6 +539,7 @@ mod test {
             kernel_mr: vec![0],
             kernel_mmr_size: 0,
             total_kernel_offset: RistrettoSecretKey::from(0),
+            total_script_offset: RistrettoSecretKey::from(0),
             nonce: 0,
             pow: ProofOfWork::default(),
         };
@@ -588,6 +590,7 @@ mod test {
             kernel_mr: vec![0],
             kernel_mmr_size: 0,
             total_kernel_offset: RistrettoSecretKey::from(0),
+            total_script_offset: RistrettoSecretKey::from(0),
             nonce: 0,
             pow: ProofOfWork::default(),
         };
@@ -638,6 +641,7 @@ mod test {
             kernel_mr: vec![0],
             kernel_mmr_size: 0,
             total_kernel_offset: RistrettoSecretKey::from(0),
+            total_script_offset: RistrettoSecretKey::from(0),
             nonce: 0,
             pow: ProofOfWork::default(),
         };
@@ -690,6 +694,7 @@ mod test {
             kernel_mr: vec![0],
             kernel_mmr_size: 0,
             total_kernel_offset: RistrettoSecretKey::from(0),
+            total_script_offset: RistrettoSecretKey::from(0),
             nonce: 0,
             pow: ProofOfWork::default(),
         };
@@ -738,6 +743,7 @@ mod test {
             kernel_mr: vec![0],
             kernel_mmr_size: 0,
             total_kernel_offset: RistrettoSecretKey::from(0),
+            total_script_offset: RistrettoSecretKey::from(0),
             nonce: 0,
             pow: ProofOfWork::default(),
         };
@@ -771,6 +777,7 @@ mod test {
             kernel_mr: vec![0],
             kernel_mmr_size: 0,
             total_kernel_offset: RistrettoSecretKey::from(0),
+            total_script_offset: RistrettoSecretKey::from(0),
             nonce: 0,
             pow: ProofOfWork::default(),
         };

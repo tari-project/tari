@@ -181,6 +181,7 @@ impl CoinbaseBuilder {
         builder
             .add_output(output)
             .add_offset(BlindingFactor::default())
+            .add_script_offset(BlindingFactor::default())
             .with_reward(total_reward)
             .with_kernel(kernel);
         let tx = builder

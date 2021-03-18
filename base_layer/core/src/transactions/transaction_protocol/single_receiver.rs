@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::transactions::{
+    crypto::{hash::blake2::Blake256, script::TariScript},
     transaction::{OutputFeatures, TransactionOutput},
     transaction_protocol::{
         build_challenge,
@@ -110,11 +111,17 @@ impl SingleReceiverTransactionProtocol {
                 .range_proof
                 .construct_proof(&spending_key, sender_info.amount.into())?
         };
+        // TODO: Populate script_hash with the proper value
+        let script_hash = TariScript::default().as_hash::<Blake256>().unwrap().to_vec();
+        // TODO: Populate offset_pub_key with the proper value
+        let offset_pub_key = PublicKey::default();
         Ok(TransactionOutput::new(
             features,
             commitment,
             RangeProof::from_bytes(&proof)
                 .map_err(|_| TPE::RangeProofError(RangeProofError::ProofConstructionError))?,
+            script_hash,
+            offset_pub_key,
         ))
     }
 }

@@ -316,6 +316,8 @@ impl SenderTransactionProtocol {
             tx_builder.add_output(o.clone());
         }
         tx_builder.add_offset(info.offset.clone());
+        // TODO: Add proper script_offset here
+        tx_builder.add_script_offset(BlindingFactor::default());
         let mut s_agg = info.signatures[0].clone();
         info.signatures.iter().skip(1).for_each(|s| s_agg = &s_agg + s);
         let excess = PedersenCommitment::from_public_key(&info.public_excess);

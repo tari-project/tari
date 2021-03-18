@@ -45,6 +45,7 @@ use tari_crypto::{
     common::Blake256,
     keys::{PublicKey as PK, SecretKey},
     range_proof::RangeProofService,
+    script::{ExecutionStack, TariScript},
 };
 
 pub fn make_input<R: Rng + CryptoRng>(
@@ -56,7 +57,25 @@ pub fn make_input<R: Rng + CryptoRng>(
     let key = PrivateKey::random(rng);
     let v = PrivateKey::from(val);
     let commitment = factory.commit(&key, &v);
-    let input = TransactionInput::new(OutputFeatures::default(), commitment);
+    // TODO: Populate script with the proper value
+    let script = TariScript::default().as_bytes();
+    // TODO: Populate input_data with the proper value
+    let input_data = ExecutionStack::default().as_bytes();
+    // TODO: Populate height with the proper value
+    let height = 0;
+    // TODO: Populate script_signature with the proper value
+    let script_signature = Signature::default();
+    // TODO: Populate offset_pub_key with the proper value
+    let offset_pub_key = PublicKey::default();
+    let input = TransactionInput::new(
+        OutputFeatures::default(),
+        commitment,
+        script,
+        input_data,
+        height,
+        script_signature,
+        offset_pub_key,
+    );
     (input, UnblindedOutput::new(val, key, None))
 }
 
@@ -216,7 +235,25 @@ pub fn create_test_input(
     let spending_key = PrivateKey::random(&mut OsRng);
     let commitment = factory.commit(&spending_key, &PrivateKey::from(amount));
     let features = OutputFeatures::with_maturity(maturity);
-    let input = TransactionInput::new(features.clone(), commitment);
+    // TODO: Populate script with the proper value
+    let script = TariScript::default().as_bytes();
+    // TODO: Populate input_data with the proper value
+    let input_data = ExecutionStack::default().as_bytes();
+    // TODO: Populate height with the proper value
+    let height = 0;
+    // TODO: Populate script_signature with the proper value
+    let script_signature = Signature::default();
+    // TODO: Populate offset_pub_key with the proper value
+    let offset_pub_key = PublicKey::default();
+    let input = TransactionInput::new(
+        features.clone(),
+        commitment,
+        script,
+        input_data,
+        height,
+        script_signature,
+        offset_pub_key,
+    );
     let unblinded_output = UnblindedOutput::new(amount, spending_key, Some(features));
     (input, unblinded_output)
 }
@@ -343,7 +380,12 @@ pub fn create_utxo(
     let features = features.unwrap_or_default();
     let commitment = factories.commitment.commit_value(&keys.k, value.into());
     let proof = factories.range_proof.construct_proof(&keys.k, value.into()).unwrap();
-    let utxo = TransactionOutput::new(features, commitment, proof.into());
+    // TODO: Populate script_hash with the proper value
+    let script_hash = TariScript::default().as_hash::<Blake256>().unwrap().to_vec();
+    // TODO: Populate offset_pub_key with the proper value
+    let offset_pub_key = PublicKey::default();
+
+    let utxo = TransactionOutput::new(features, commitment, proof.into(), script_hash, offset_pub_key);
     (utxo, keys.k)
 }
 

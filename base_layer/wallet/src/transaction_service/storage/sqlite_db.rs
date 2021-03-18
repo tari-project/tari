@@ -1758,7 +1758,13 @@ mod test {
             InboundTransactionSql::try_from(inbound_tx1.clone()).unwrap()
         );
 
-        let tx = Transaction::new(vec![], vec![], vec![], PrivateKey::random(&mut OsRng));
+        let tx = Transaction::new(
+            vec![],
+            vec![],
+            vec![],
+            PrivateKey::random(&mut OsRng),
+            PrivateKey::random(&mut OsRng),
+        );
 
         let completed_tx1 = CompletedTransaction {
             tx_id: 2,
@@ -2054,7 +2060,13 @@ mod test {
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount: MicroTari::from(100),
             fee: MicroTari::from(100),
-            transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::random(&mut OsRng)),
+            transaction: Transaction::new(
+                vec![],
+                vec![],
+                vec![],
+                PrivateKey::random(&mut OsRng),
+                PrivateKey::random(&mut OsRng),
+            ),
             status: TransactionStatus::MinedUnconfirmed,
             message: "Yo!".to_string(),
             timestamp: Utc::now().naive_utc(),
@@ -2127,7 +2139,13 @@ mod test {
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount: MicroTari::from(100),
             fee: MicroTari::from(100),
-            transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::random(&mut OsRng)),
+            transaction: Transaction::new(
+                vec![],
+                vec![],
+                vec![],
+                PrivateKey::random(&mut OsRng),
+                PrivateKey::random(&mut OsRng),
+            ),
             status: TransactionStatus::MinedUnconfirmed,
             message: "Yo!".to_string(),
             timestamp: Utc::now().naive_utc(),

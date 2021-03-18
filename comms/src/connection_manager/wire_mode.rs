@@ -22,7 +22,7 @@
 
 use std::convert::TryFrom;
 
-const COMMS_WIRE_MODE: u8 = 0x06;
+const COMMS_WIRE_MODE: u8 = 0x07;
 const LIVENESS_WIRE_MODE: u8 = 0x46; // E
 
 #[repr(u8)]

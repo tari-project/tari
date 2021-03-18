@@ -38,7 +38,7 @@ use crate::{
             TransactionKernel,
             TransactionOutput,
         },
-        types::{BlindingFactor, Commitment},
+        types::{BlindingFactor, Commitment, PublicKey},
     },
 };
 use std::convert::{TryFrom, TryInto};
@@ -104,15 +104,37 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
             .ok_or_else(|| "Transaction output commitment not provided".to_string())?
             .map_err(|err| err.to_string())?;
 
-        Ok(Self { features, commitment })
+        let script_signature = input
+            .script_signature
+            .ok_or_else(|| "script_signature not provided".to_string())?
+            .try_into()
+            .map_err(|err: ByteArrayError| err.to_string())?;
+
+        let offset_pub_key =
+            PublicKey::from_bytes(input.offset_pub_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+
+        Ok(Self {
+            features,
+            commitment,
+            script: input.script,
+            input_data: input.input_data,
+            height: input.height,
+            script_signature,
+            offset_pub_key,
+        })
     }
 }
 
 impl From<TransactionInput> for proto::types::TransactionInput {
-    fn from(output: TransactionInput) -> Self {
+    fn from(input: TransactionInput) -> Self {
         Self {
-            features: Some(output.features.into()),
-            commitment: Some(output.commitment.into()),
+            features: Some(input.features.into()),
+            commitment: Some(input.commitment.into()),
+            script: input.script,
+            input_data: input.input_data,
+            height: input.height,
+            script_signature: Some(input.script_signature.into()),
+            offset_pub_key: input.offset_pub_key.as_bytes().to_vec(),
         }
     }
 }
@@ -134,10 +156,15 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
             .ok_or_else(|| "Transaction output commitment not provided".to_string())?
             .map_err(|err| err.to_string())?;
 
+        let offset_pub_key =
+            PublicKey::from_bytes(output.offset_pub_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+
         Ok(Self {
             features,
             commitment,
             proof: BulletRangeProof(output.range_proof),
+            script_hash: output.script_hash,
+            offset_pub_key,
         })
     }
 }
@@ -148,6 +175,8 @@ impl From<TransactionOutput> for proto::types::TransactionOutput {
             features: Some(output.features.into()),
             commitment: Some(output.commitment.into()),
             range_proof: output.proof.to_vec(),
+            script_hash: output.script_hash,
+            offset_pub_key: output.offset_pub_key.as_bytes().to_vec(),
         }
     }
 }
@@ -216,8 +245,17 @@ impl TryFrom<proto::types::Transaction> for Transaction {
             .body
             .map(TryInto::try_into)
             .ok_or_else(|| "Body not provided".to_string())??;
+        let script_offset = tx
+            .script_offset
+            .map(|script_offset| BlindingFactor::from_bytes(&script_offset.data))
+            .ok_or_else(|| "Script offset not provided".to_string())?
+            .map_err(|err| err.to_string())?;
 
-        Ok(Self { offset, body })
+        Ok(Self {
+            offset,
+            body,
+            script_offset,
+        })
     }
 }
 
@@ -226,6 +264,7 @@ impl From<Transaction> for proto::types::Transaction {
         Self {
             offset: Some(tx.offset.into()),
             body: Some(tx.body.into()),
+            script_offset: Some(tx.script_offset.into()),
         }
     }
 }

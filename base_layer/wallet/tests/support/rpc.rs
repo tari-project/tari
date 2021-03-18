@@ -295,7 +295,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         request: Request<TransactionProto>,
     ) -> Result<Response<TxSubmissionResponseProto>, RpcStatus>
     {
-        let delay_lock = (*acquire_lock!(self.state.response_delay));
+        let delay_lock = *acquire_lock!(self.state.response_delay);
         if let Some(delay) = delay_lock {
             delay_for(delay).await;
         }
@@ -323,7 +323,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         request: Request<SignatureProto>,
     ) -> Result<Response<TxQueryResponseProto>, RpcStatus>
     {
-        let delay_lock = (*acquire_lock!(self.state.response_delay));
+        let delay_lock = *acquire_lock!(self.state.response_delay);
         if let Some(delay) = delay_lock {
             delay_for(delay).await;
         }
@@ -350,7 +350,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         request: Request<SignaturesProto>,
     ) -> Result<Response<TxQueryBatchResponsesProto>, RpcStatus>
     {
-        let delay_lock = (*acquire_lock!(self.state.response_delay));
+        let delay_lock = *acquire_lock!(self.state.response_delay);
         if let Some(delay) = delay_lock {
             delay_for(delay).await;
         }
@@ -395,7 +395,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         request: Request<FetchMatchingUtxos>,
     ) -> Result<Response<FetchUtxosResponse>, RpcStatus>
     {
-        let delay_lock = (*acquire_lock!(self.state.response_delay));
+        let delay_lock = *acquire_lock!(self.state.response_delay);
         if let Some(delay) = delay_lock {
             delay_for(delay).await;
         }
@@ -482,7 +482,13 @@ mod test {
             is_synced: true,
         });
 
-        let tx = Transaction::new(vec![], vec![], vec![], BlindingFactor::default());
+        let tx = Transaction::new(
+            vec![],
+            vec![],
+            vec![],
+            BlindingFactor::default(),
+            BlindingFactor::default(),
+        );
 
         let resp = TxSubmissionResponse::try_from(client.submit_transaction(tx.into()).await.unwrap()).unwrap();
         assert_eq!(resp.rejection_reason, TxSubmissionRejectionReason::TimeLocked);
