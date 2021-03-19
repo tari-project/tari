@@ -625,10 +625,8 @@ where TBackend: OutputManagerBackend + 'static
 
         for uo in outputs.iter() {
             builder.with_input(
-                uo.unblinded_output.as_transaction_input(
-                    &self.resources.factories.commitment,
-                    uo.unblinded_output.features.clone(),
-                ),
+                uo.unblinded_output
+                    .as_transaction_input(&self.resources.factories.commitment),
                 uo.unblinded_output.clone(),
             );
         }
