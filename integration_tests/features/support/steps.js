@@ -249,7 +249,7 @@ Given(
       true
     );
     await proxy.startNew();
-    this.addProxy(mmProxy, proxy);
+    this.addProxy(mmProxy, proxy, node);
   }
 );
 
@@ -267,7 +267,7 @@ Given(
       false
     );
     await proxy.startNew();
-    this.addProxy(mmProxy, proxy);
+    this.addProxy(mmProxy, proxy, node);
   }
 );
 
@@ -285,7 +285,7 @@ Given(
       true
     );
     await proxy.startNew();
-    this.addProxy(mmProxy, proxy);
+    this.addProxy(mmProxy, proxy, node);
   }
 );
 
@@ -635,6 +635,7 @@ When(
   /I mine a block on (.*) with coinbase (.*)/,
   { timeout: 600 * 1000 },
   async function (name, coinbaseName) {
+    this.tipHeight = await this.getClient(name).getTipHeight();
     await this.mineBlock(name, 0, (candidate) => {
       this.addOutput(coinbaseName, candidate.originalTemplate.coinbase);
       return candidate;
@@ -647,6 +648,7 @@ When(
   /I mine (\d+) custom weight blocks on (.*) with weight (\d+)/,
   { timeout: -1 },
   async function (numBlocks, name, weight) {
+    this.tipHeight = await this.getClient(name).getTipHeight();
     for (let i = 0; i < numBlocks; i++) {
       // If a block cannot be mined quickly enough (or the process has frozen), timeout.
       await withTimeout(60 * 1000, this.mineBlock(name, parseInt(weight)));
@@ -676,6 +678,7 @@ When(
   /I mine (\d+) blocks on (.*)/,
   { timeout: -1 },
   async function (numBlocks, name) {
+    this.tipHeight = await this.getClient(name).getTipHeight();
     for (let i = 0; i < numBlocks; i++) {
       await withTimeout(60 * 1000, this.mineBlock(name, 0));
     }
@@ -684,14 +687,40 @@ When(
 );
 
 When(
+  /I keep all nodes in sync and mine (\d+) blocks on (.*)/,
+  { timeout: 1200 * 1000 },
+  async function (numBlocks, name) {
+    var height;
+    this.tipHeight = await this.getClient(name).getTipHeight();
+    for (let i = 0; i < numBlocks; i++) {
+      await this.mineBlock(name);
+      this.tipHeight += 1;
+      height = parseInt(this.tipHeight);
+      await this.forEachClientAsync(async (client, name) => {
+        await waitFor(async () => client.getTipHeight(), height, 1200 * 1000);
+        const currTip = await client.getTipHeight();
+        console.log(
+          `Node ${name} is at tip: ${currTip} (should be`,
+          height,
+          `)`
+        );
+        expect(currTip).to.equal(height);
+      });
+    }
+  }
+);
+
+When(
   /I mine (\d+) blocks using wallet (.*) on (.*)/,
   { timeout: 600 * 1000 },
   async function (numBlocks, walletName, nodeName) {
+    this.tipHeight = await this.getClient(nodeName).getTipHeight();
     let nodeClient = this.getClient(nodeName);
     let walletClient = this.getWallet(walletName).getClient();
     for (let i = 0; i < numBlocks; i++) {
       await nodeClient.mineBlock(walletClient);
     }
+    this.tipHeight += parseInt(numBlocks);
   }
 );
 
@@ -699,10 +728,35 @@ When(
   /I merge mine (.*) blocks via (.*)/,
   { timeout: 600 * 1000 },
   async function (numBlocks, mmProxy) {
+    this.tipHeight = await this.getProxyNodeClient(mmProxy).getTipHeight();
     for (let i = 0; i < numBlocks; i++) {
       await this.mergeMineBlock(mmProxy, 0);
     }
     this.tipHeight += parseInt(numBlocks);
+  }
+);
+
+When(
+  /I keep all nodes in sync and merge mine (.*) blocks via (.*)/,
+  { timeout: 1200 * 1000 },
+  async function (numBlocks, mmProxy) {
+    var height;
+    this.tipHeight = await this.getProxyNodeClient(mmProxy).getTipHeight();
+    for (let i = 0; i < numBlocks; i++) {
+      await this.mergeMineBlock(mmProxy);
+      this.tipHeight += 1;
+      height = parseInt(this.tipHeight);
+      await this.forEachClientAsync(async (client, name) => {
+        await waitFor(async () => client.getTipHeight(), height, 1200 * 1000);
+        const currTip = await client.getTipHeight();
+        console.log(
+          `Node ${name} is at tip: ${currTip} (should be`,
+          height,
+          `)`
+        );
+        expect(currTip).to.equal(height);
+      });
+    }
   }
 );
 
@@ -1193,7 +1247,7 @@ Then(
         .getClient()
         .isTransactionAtLeastPending(txIds[i]);
       //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-      //consoleLogTransactionDetails(txnDetails, txIds[i]);
+      //consoleLogTransactionDetails(txnDetails[1].transactions[0]);
       expect(transactionPending).to.equal(true);
     }
   }
@@ -1245,7 +1299,7 @@ Then(
           .getClient()
           .isTransactionAtLeastPending(txIds[i]);
         //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-        //consoleLogTransactionDetails(txnDetails, txIds[i]);
+        //consoleLogTransactionDetails(txnDetails[1].transactions[0]);
         expect(transactionPending).to.equal(true);
       }
     }
@@ -1297,7 +1351,7 @@ Then(
         .getClient()
         .isTransactionAtLeastCompleted(txIds[i]);
       //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-      //consoleLogTransactionDetails(txnDetails, txIds[i]);
+      //consoleLogTransactionDetails(txnDetails[1].transactions[0]);
       expect(transactionCompleted).to.equal(true);
     }
   }
@@ -1350,7 +1404,7 @@ Then(
           .getClient()
           .isTransactionAtLeastCompleted(txIds[i]);
         //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-        //consoleLogTransactionDetails(txnDetails, txIds[i]);
+        //consoleLogTransactionDetails(txnDetails[1].transactions[0]);
         expect(transactionCompleted).to.equal(true);
       }
     }
@@ -1402,7 +1456,7 @@ Then(
         .getClient()
         .isTransactionAtLeastBroadcast(txIds[i]);
       //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-      //consoleLogTransactionDetails(txnDetails, txIds[i]);
+      //consoleLogTransactionDetails(txnDetails[1].transactions[0]);
       expect(transactionBroadcasted).to.equal(true);
     }
   }
@@ -1454,8 +1508,6 @@ Then(
         let transactionBroadcasted = await wallet
           .getClient()
           .isTransactionAtLeastBroadcast(txIds[i]);
-        //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-        //consoleLogTransactionDetails(txnDetails, txIds[i]);
         expect(transactionBroadcasted).to.equal(true);
       }
     }
@@ -1507,7 +1559,7 @@ Then(
         .getClient()
         .isTransactionAtLeastMinedUnconfirmed(txIds[i]);
       //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-      //consoleLogTransactionDetails(txnDetails, txIds[i]);
+      //consoleLogTransactionDetails(txnDetails[1].transactions[0]);
       expect(isTransactionAtLeastMinedUnconfirmed).to.equal(true);
     }
   }
@@ -1558,7 +1610,7 @@ Then(
           .getClient()
           .isTransactionAtLeastMinedUnconfirmed(txIds[i]);
         //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-        //consoleLogTransactionDetails(txnDetails, txIds[i]);
+        //consoleLogTransactionDetails(txnDetails[1].transactions[0]);
         expect(isTransactionAtLeastMinedUnconfirmed).to.equal(true);
       }
     }
@@ -1609,7 +1661,7 @@ Then(
         .getClient()
         .isTransactionMinedUnconfirmed(txIds[i]);
       //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-      //consoleLogTransactionDetails(txnDetails, txIds[i]);
+      //consoleLogTransactionDetails(txnDetails[1].transactions[0]);
       expect(isTransactionMinedUnconfirmed).to.equal(true);
     }
   }
@@ -1661,7 +1713,7 @@ Then(
           .getClient()
           .isTransactionMinedUnconfirmed(txIds[i]);
         //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-        //consoleLogTransactionDetails(txnDetails, txIds[i]);
+        //consoleLogTransactionDetails(txnDetails[1].transactions[0]);
         expect(isTransactionMinedUnconfirmed).to.equal(true);
       }
     }
@@ -1712,7 +1764,7 @@ Then(
         .getClient()
         .isTransactionMinedConfirmed(txIds[i]);
       //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-      //consoleLogTransactionDetails(txnDetails, txIds[i]);
+      //consoleLogTransactionDetails(txnDetails[1].transactions[0]);
       expect(isTransactionMinedConfirmed).to.equal(true);
     }
   }
@@ -1770,7 +1822,7 @@ Then(
         .getClient()
         .isTransactionMinedConfirmed(txIds[i]);
       //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-      //consoleLogTransactionDetails(txnDetails, txIds[i]);
+      //consoleLogTransactionDetails(txnDetails[1].transactions[0]);
       expect(isTransactionMinedConfirmed).to.equal(true);
     }
   }
@@ -1827,7 +1879,7 @@ Then(
         .getClient()
         .isTransactionMinedConfirmed(txIds[i]);
       //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-      //consoleLogTransactionDetails(txnDetails, txIds[i]);
+      //consoleLogTransactionDetails(txnDetails[1].transactions[0]);
       expect(isTransactionMinedConfirmed).to.equal(true);
     }
   }
@@ -1878,7 +1930,7 @@ Then(
           .getClient()
           .isTransactionMinedConfirmed(txIds[i]);
         //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-        //consoleLogTransactionDetails(txnDetails, txIds[i]);
+        //consoleLogTransactionDetails(txnDetails[1].transactions[0]);
         expect(isTransactionMinedConfirmed).to.equal(true);
       }
     }
@@ -1886,19 +1938,26 @@ Then(
 );
 
 When(
-  /I list all coinbase transactions for wallet (.*)/,
+  /I list all (.*) transactions for wallet (.*)/,
   { timeout: 20 * 1000 },
-  async function (walletName) {
-    let wallet = this.getWallet(walletName);
-    let walletClient = wallet.getClient();
-    console.log("\nListing all coinbase transactions: ", walletName);
-    let transactions = await walletClient.getAllCoinbaseTransactions();
+  async function (transaction_type, walletName) {
+    let walletClient = this.getWallet(walletName).getClient();
+    var transactions;
+    var type;
+    if (transaction_type === "NORMAL") {
+      transactions = await walletClient.getAllNormalTransactions();
+      type = "NORMAL";
+    } else {
+      transactions = await walletClient.getAllCoinbaseTransactions();
+      type = "COINBASE";
+    }
+    console.log("\nListing all `" + type + "` transactions: ", walletName);
     if (transactions.length > 0) {
       for (i = 0; i < transactions.length; i++) {
-        consoleLogCoinbaseDetails(transactions[i]);
+        consoleLogTransactionDetails(transactions[i]);
       }
     } else {
-      console.log("  No coinbase transactions found!");
+      console.log("  No `" + type + "` transactions found!");
     }
   }
 );
