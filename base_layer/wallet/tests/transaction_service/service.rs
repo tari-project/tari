@@ -195,11 +195,7 @@ pub fn setup_transaction_service<T: TransactionBackend + 'static, P: AsRef<Path>
             comms.node_identity(),
             factories,
         ))
-        .add_initializer(BaseNodeServiceInitializer::new(
-            BaseNodeServiceConfig::default(),
-            subscription_factory,
-            db,
-        ))
+        .add_initializer(BaseNodeServiceInitializer::new(BaseNodeServiceConfig::default(), db))
         .build();
 
     let handles = runtime.block_on(fut).expect("Service initialization failed");

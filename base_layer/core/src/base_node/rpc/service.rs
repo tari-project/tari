@@ -29,6 +29,7 @@ use crate::{
             FetchMatchingUtxos,
             FetchUtxosResponse,
             Signatures as SignaturesProto,
+            TipInfoResponse,
             TxLocation,
             TxQueryBatchResponse,
             TxQueryBatchResponses,
@@ -305,6 +306,26 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
 
         Ok(Response::new(FetchUtxosResponse {
             outputs: res.into_iter().map(Into::into).collect(),
+            is_synced,
+        }))
+    }
+
+    async fn get_tip_info(&self, _request: Request<()>) -> Result<Response<TipInfoResponse>, RpcStatus> {
+        let state_machine = self.state_machine();
+        let status_watch = state_machine.get_status_info_watch();
+        let is_synced = match (*status_watch.borrow()).state_info {
+            StateInfo::Listening(li) => li.is_synced(),
+            _ => false,
+        };
+
+        let metadata = self
+            .db
+            .get_chain_metadata()
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+
+        Ok(Response::new(TipInfoResponse {
+            metadata: Some(metadata.into()),
             is_synced,
         }))
     }
