@@ -191,7 +191,7 @@ fn test_insert_and_process_published_block() {
     assert_eq!(snapshot_txs.len(), 0);
 
     let stats = mempool.stats().unwrap();
-    assert_eq!(stats.total_txs, 1);
+    assert_eq!(stats.total_txs, 0);
     assert_eq!(stats.unconfirmed_txs, 0);
     assert_eq!(stats.reorg_txs, 1);
     assert_eq!(stats.total_weight, 30);
