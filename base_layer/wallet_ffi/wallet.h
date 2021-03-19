@@ -365,6 +365,7 @@ struct TariCommsConfig *comms_config_create(const char *public_address,
                                      const char *database_name,
                                      const char *datastore_path,
                                      unsigned long long discovery_timeout_in_secs,
+                                     unsigned long long saf_message_duration_in_secs,
                                      int* error_out);
 
 // Set the Comms Secret Key for an existing TariCommsConfig. Usually this key is maintained by the backend but if it is required to set a specific

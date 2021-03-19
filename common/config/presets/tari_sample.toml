@@ -36,3 +36,6 @@ proxy_submit_to_origin = true
 monerod_use_auth=false
 monerod_username=""
 monerod_password=""
+
+[wallet]
+saf_expiry_duration = 10800
