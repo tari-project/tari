@@ -37,7 +37,7 @@
 #[macro_use]
 extern crate bitflags;
 
-#[cfg(feature = "base_node")]
+#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 pub mod blocks;
 #[cfg(feature = "base_node")]
 pub mod chain_storage;

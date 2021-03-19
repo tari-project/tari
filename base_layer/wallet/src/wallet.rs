@@ -203,7 +203,7 @@ where
             ))
             .add_initializer(TransactionServiceInitializer::new(
                 config.transaction_service_config.unwrap_or_default(),
-                peer_message_subscription_factory.clone(),
+                peer_message_subscription_factory,
                 transaction_backend,
                 node_identity.clone(),
                 factories.clone(),
@@ -211,7 +211,6 @@ where
             .add_initializer(ContactsServiceInitializer::new(contacts_backend))
             .add_initializer(BaseNodeServiceInitializer::new(
                 config.base_node_service_config,
-                peer_message_subscription_factory,
                 bn_service_db,
             ));
 
@@ -404,5 +403,16 @@ where
         self.output_manager_service.remove_encryption().await?;
         self.transaction_service.remove_encryption().await?;
         Ok(())
+    }
+
+    /// Utility function to find out if there is data in the database indicating that there is an incomplete recovery
+    /// process in progress
+    pub async fn is_recovery_in_progress(&self) -> Result<bool, WalletError> {
+        use crate::tasks::wallet_recovery::RECOVERY_HEIGHT_KEY;
+        Ok(self
+            .db
+            .get_client_key_value(RECOVERY_HEIGHT_KEY.to_string())
+            .await?
+            .is_some())
     }
 }

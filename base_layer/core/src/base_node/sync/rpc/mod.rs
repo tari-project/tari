@@ -20,15 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#[cfg(feature = "base_node")]
 mod service;
+#[cfg(feature = "base_node")]
 pub use service::BaseNodeSyncRpcService;
 
 // TODO: Tests need to be rewritten
 // #[cfg(test)]
 // mod tests;
 
+#[cfg(feature = "base_node")]
+use crate::chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend};
+
 use crate::{
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     proto,
     proto::base_node::{
         FindChainSplitRequest,
@@ -85,6 +89,7 @@ pub trait BaseNodeSyncService: Send + Sync + 'static {
     async fn sync_utxos(&self, request: Request<SyncUtxosRequest>) -> Result<Streaming<SyncUtxosResponse>, RpcStatus>;
 }
 
+#[cfg(feature = "base_node")]
 pub fn create_base_node_sync_rpc_service<B: BlockchainBackend + 'static>(
     db: AsyncBlockchainDb<B>,
 ) -> BaseNodeSyncRpcServer<BaseNodeSyncRpcService<B>> {

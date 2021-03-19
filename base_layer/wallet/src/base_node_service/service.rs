@@ -27,25 +27,19 @@ use super::{
 };
 use crate::storage::database::WalletDatabase;
 use std::{
+    convert::TryFrom,
     sync::Arc,
     time::{Duration, Instant},
 };
 
 use chrono::{NaiveDateTime, Utc};
-use futures::{pin_mut, Stream, StreamExt};
+use futures::{pin_mut, StreamExt};
 use log::*;
-use rand::rngs::OsRng;
-use std::convert::TryInto;
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    waiting_requests::{generate_request_key, RequestKey},
-};
-use tari_comms::peer_manager::Peer;
-use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundMessageRequester};
-use tari_core::proto::{base_node as proto, base_node::base_node_service_request::Request as BaseNodeRequestProto};
+use tari_common_types::chain_metadata::ChainMetadata;
+use tari_comms::{connectivity::ConnectivityRequester, peer_manager::Peer};
 
 use crate::storage::database::WalletBackend;
-use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
+use tari_core::base_node::rpc::BaseNodeWalletRpcClient;
 use tari_service_framework::reply_channel::Receiver;
 use tari_shutdown::ShutdownSignal;
 use tokio::time;
@@ -60,14 +54,6 @@ pub struct BaseNodeState {
     pub updated: Option<NaiveDateTime>,
     pub latency: Option<Duration>,
     pub online: OnlineState,
-}
-
-impl BaseNodeState {
-    fn set_online(&mut self, online: OnlineState) -> Self {
-        self.online = online;
-
-        self.clone()
-    }
 }
 
 /// Connection state of the Base Node
@@ -90,39 +76,27 @@ impl Default for BaseNodeState {
     }
 }
 
-/// Keep track of the identity and the time the request was sent
-#[derive(Debug, Clone, Copy)]
-struct RequestMetadata {
-    request_key: RequestKey,
-    sent: NaiveDateTime,
-}
-
 /// The wallet base node service is responsible for handling requests to be sent to the connected base node.
-pub struct BaseNodeService<BNResponseStream, T>
+pub struct BaseNodeService<T>
 where T: WalletBackend + 'static
 {
     config: BaseNodeServiceConfig,
-    base_node_response_stream: Option<BNResponseStream>,
     request_stream: Option<Receiver<BaseNodeServiceRequest, Result<BaseNodeServiceResponse, BaseNodeServiceError>>>,
-    outbound_messaging: OutboundMessageRequester,
+    connectivity_manager: ConnectivityRequester,
     event_publisher: BaseNodeEventSender,
     base_node_peer: Option<Peer>,
     shutdown_signal: Option<ShutdownSignal>,
     state: BaseNodeState,
-    requests: Vec<RequestMetadata>,
     db: WalletDatabase<T>,
 }
 
-impl<BNResponseStream, T> BaseNodeService<BNResponseStream, T>
-where
-    T: WalletBackend + 'static,
-    BNResponseStream: Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>>,
+impl<T> BaseNodeService<T>
+where T: WalletBackend + 'static
 {
     pub fn new(
         config: BaseNodeServiceConfig,
-        base_node_response_stream: BNResponseStream,
         request_stream: Receiver<BaseNodeServiceRequest, Result<BaseNodeServiceResponse, BaseNodeServiceError>>,
-        outbound_messaging: OutboundMessageRequester,
+        connectivity_manager: ConnectivityRequester,
         event_publisher: BaseNodeEventSender,
         shutdown_signal: ShutdownSignal,
         db: WalletDatabase<T>,
@@ -130,14 +104,12 @@ where
     {
         Self {
             config,
-            base_node_response_stream: Some(base_node_response_stream),
             request_stream: Some(request_stream),
-            outbound_messaging,
+            connectivity_manager,
             event_publisher,
             base_node_peer: None,
             shutdown_signal: Some(shutdown_signal),
             state: Default::default(),
-            requests: Default::default(),
             db,
         }
     }
@@ -151,6 +123,22 @@ where
         &self.state
     }
 
+    /// Utility function to set and publish offline state
+    fn set_offline(&mut self) {
+        let now = Utc::now().naive_utc();
+        let state = BaseNodeState {
+            chain_metadata: None,
+            is_synced: None,
+            updated: Some(now),
+            latency: None,
+            online: OnlineState::Offline,
+        };
+
+        let event = BaseNodeEvent::BaseNodeState(state.clone());
+        self.publish_event(event);
+        self.set_state(state);
+    }
+
     /// Starts the service.
     pub async fn start(mut self) -> Result<(), BaseNodeServiceError> {
         let request_stream = self
@@ -159,13 +147,6 @@ where
             .expect("Wallet Base Node Service initialized without request_stream")
             .fuse();
         pin_mut!(request_stream);
-
-        let base_node_response_stream = self
-            .base_node_response_stream
-            .take()
-            .expect("Wallet Base Node Service initialized without base_node_response_stream")
-            .fuse();
-        pin_mut!(base_node_response_stream);
 
         let interval = self.config.refresh_interval;
         let mut refresh_tick = time::interval_at((Instant::now() + interval).into(), interval).fuse();
@@ -192,13 +173,6 @@ where
                     });
                 },
 
-                // Base Node Responses
-                response = base_node_response_stream.select_next_some() => {
-                    if let Err(e) = self.handle_base_node_response(response).await {
-                        warn!(target: LOG_TARGET, "Failed to handle base node response: {}", e);
-                    }
-                },
-
                 // Refresh Interval Tick
                 _ = refresh_tick.select_next_some() => {
                     if let Err(e) = self.refresh_chain_metadata().await {
@@ -223,137 +197,64 @@ where
             .clone()
             .ok_or_else(|| BaseNodeServiceError::NoBaseNodePeer)?;
 
-        let request_key = generate_request_key(&mut OsRng);
+        let peer = base_node_peer.node_id;
         let now = Utc::now().naive_utc();
 
-        self.requests.push(RequestMetadata { request_key, sent: now });
+        let mut connection = self.connectivity_manager.dial_peer(peer).await.map_err(|e| {
+            self.set_offline();
+            error!(target: LOG_TARGET, "Error dialing base node peer: {}", e);
+            BaseNodeServiceError::RpcError("Dial error".to_string())
+        })?;
 
-        // remove old requests
-        let (current_requests, old_requests): (Vec<RequestMetadata>, Vec<RequestMetadata>) =
-            self.requests.iter().partition(|r| {
-                let age = Utc::now().naive_utc() - r.sent;
-                // convert to std Duration
-                let age = Duration::from_millis(age.num_milliseconds() as u64);
+        let mut client = connection.connect_rpc::<BaseNodeWalletRpcClient>().await.map_err(|e| {
+            self.set_offline();
+            error!(target: LOG_TARGET, "Error connecting to base node peer RPC: {}", e);
+            BaseNodeServiceError::RpcError("RPC connection error".to_string())
+        })?;
 
-                age <= self.config.request_max_age
-            });
-
-        self.requests = current_requests;
-
-        // check if base node is offline
-        self.check_online_status(old_requests.len());
-
-        // send the new request
-        let request = BaseNodeRequestProto::GetChainMetadata(true);
-        let service_request = proto::BaseNodeServiceRequest {
-            request_key,
-            request: Some(request),
-        };
-
-        let message = OutboundDomainMessage::new(TariMessageType::BaseNodeRequest, service_request);
-
-        let dest_public_key = base_node_peer.public_key;
-
-        self.outbound_messaging
-            .send_direct(dest_public_key, message)
+        let latency = client
+            .get_last_request_latency()
             .await
-            .map_err(BaseNodeServiceError::OutboundError)?;
+            .map_err(|_| BaseNodeServiceError::RpcError("Latency request error".to_string()))?;
 
-        Ok(())
-    }
+        trace!(
+            target: LOG_TARGET,
+            "Base node latency: {} ms",
+            latency.unwrap_or_default().as_millis()
+        );
 
-    fn check_online_status(&mut self, discarded: usize) {
-        // if we are discarding old requests and have never received a response
-        let never_connected = discarded > 0 && self.state.updated.is_none();
+        let tip_info = client
+            .get_tip_info()
+            .await
+            .map_err(|_| BaseNodeServiceError::RpcError("Tip info request error".to_string()))?;
 
-        // or if the last time we received a response is greater than the max request age config
-        let timing_out = if let Some(updated) = self.state.updated {
-            let now = Utc::now().naive_utc();
-            let millis = (now - updated).num_milliseconds() as u64;
-            let last_updated = Duration::from_millis(millis);
+        let metadata = tip_info
+            .metadata
+            .ok_or_else(|| BaseNodeServiceError::RpcError("Tip info no metadata".to_string()))?;
 
-            matches!(self.state.online, OnlineState::Online) && last_updated > self.config.request_max_age
-        } else {
-            false
+        let chain_metadata = ChainMetadata::try_from(metadata)
+            .map_err(|_| BaseNodeServiceError::ConversionError("Error in chain metadata conversion".to_string()))?;
+
+        // store chain metadata in the wallet db
+        self.db.set_chain_metadata(chain_metadata.clone()).await?;
+
+        let state = BaseNodeState {
+            chain_metadata: Some(chain_metadata),
+            is_synced: Some(tip_info.is_synced),
+            updated: Some(now),
+            latency,
+            online: OnlineState::Online,
         };
 
-        // then the base node is currently not responding
-        if never_connected || timing_out {
-            debug!(
-                target: LOG_TARGET,
-                "Base node is offline. Either we never connected ({}), or haven't received a response newer than the \
-                 max request age ({}).",
-                never_connected,
-                timing_out
-            );
-            let state = self.state.set_online(OnlineState::Offline);
-            let event = BaseNodeEvent::BaseNodeState(state);
-            self.publish_event(event);
-        }
-    }
-
-    /// Handles the response from the connected base node.
-    async fn handle_base_node_response(
-        &mut self,
-        response: DomainMessage<proto::BaseNodeServiceResponse>,
-    ) -> Result<(), BaseNodeServiceError>
-    {
-        let DomainMessage::<_> { inner: message, .. } = response;
-
-        let (found, remaining): (Vec<RequestMetadata>, Vec<RequestMetadata>) = self
-            .requests
-            .iter()
-            .partition(|&&r| r.request_key == message.request_key);
-
-        if !found.is_empty() {
-            trace!(target: LOG_TARGET, "Handle base node response message: {:?}", message);
-
-            let now = Utc::now().naive_utc();
-            let time_sent = found.first().unwrap().sent;
-            let millis = (now - time_sent).num_milliseconds() as u64;
-            let latency = Duration::from_millis(millis);
-
-            match message.response {
-                Some(proto::base_node_service_response::Response::ChainMetadata(chain_metadata)) => {
-                    trace!(target: LOG_TARGET, "Chain Metadata response {:?}", chain_metadata);
-                    debug!(target: LOG_TARGET, "Base node latency: {}ms", millis);
-                    let metadata: ChainMetadata = chain_metadata
-                        .try_into()
-                        .map_err(BaseNodeServiceError::InvalidBaseNodeResponse)?;
-
-                    // store chain metadata in the wallet db
-                    self.db.set_chain_metadata(metadata.clone()).await?;
-
-                    let state = BaseNodeState {
-                        is_synced: Some(message.is_synced),
-                        chain_metadata: Some(metadata),
-                        updated: Some(now),
-                        latency: Some(latency),
-                        online: OnlineState::Online,
-                    };
-                    self.publish_event(BaseNodeEvent::BaseNodeState(state.clone()));
-                    self.set_state(state);
-                },
-                _ => {
-                    trace!(
-                        target: LOG_TARGET,
-                        "Received a base node response currently unaccounted for: {:?}",
-                        message
-                    );
-                },
-            }
-
-            self.requests = remaining;
-        }
+        let event = BaseNodeEvent::BaseNodeState(state.clone());
+        self.publish_event(event);
+        self.set_state(state);
 
         Ok(())
     }
 
+    // reset base node state
     fn reset_state(&mut self) {
-        // drop outstanding reqs
-        self.requests = Vec::new();
-
-        // reset base node state
         let state = BaseNodeState::default();
         self.publish_event(BaseNodeEvent::BaseNodeState(state.clone()));
         self.set_state(state);

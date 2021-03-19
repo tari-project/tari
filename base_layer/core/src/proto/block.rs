@@ -22,28 +22,14 @@
 
 use super::core as proto;
 use crate::{
-    blocks::{Block, BlockHeader, NewBlock, NewBlockHeaderTemplate, NewBlockTemplate},
+    blocks::{Block, NewBlock, NewBlockHeaderTemplate, NewBlockTemplate},
     chain_storage::{BlockHeaderAccumulatedData, HistoricalBlock},
-    proof_of_work::{PowAlgorithm, ProofOfWork},
+    proof_of_work::ProofOfWork,
     transactions::types::BlindingFactor,
 };
-use prost_types::Timestamp;
 use std::convert::{TryFrom, TryInto};
 use tari_common_types::types::BLOCK_HASH_LENGTH;
-use tari_crypto::tari_utilities::{epoch_time::EpochTime, ByteArray};
-
-/// Utility function that converts a `prost::Timestamp` to a `chrono::DateTime`
-pub(crate) fn timestamp_to_datetime(timestamp: Timestamp) -> EpochTime {
-    (timestamp.seconds as u64).into()
-}
-
-/// Utility function that converts a `chrono::DateTime` to a `prost::Timestamp`
-pub(crate) fn datetime_to_timestamp(datetime: EpochTime) -> Timestamp {
-    Timestamp {
-        seconds: datetime.as_u64() as i64,
-        nanos: 0,
-    }
-}
+use tari_crypto::tari_utilities::ByteArray;
 
 //---------------------------------- Block --------------------------------------------//
 
@@ -70,83 +56,6 @@ impl From<Block> for proto::Block {
         Self {
             header: Some(block.header.into()),
             body: Some(block.body.into()),
-        }
-    }
-}
-
-//---------------------------------- BlockHeader --------------------------------------------//
-
-impl TryFrom<proto::BlockHeader> for BlockHeader {
-    type Error = String;
-
-    fn try_from(header: proto::BlockHeader) -> Result<Self, Self::Error> {
-        let total_kernel_offset =
-            BlindingFactor::from_bytes(&header.total_kernel_offset).map_err(|err| err.to_string())?;
-
-        let timestamp = header
-            .timestamp
-            .map(timestamp_to_datetime)
-            .ok_or_else(|| "timestamp not provided".to_string())?;
-
-        let pow = match header.pow {
-            Some(p) => ProofOfWork::try_from(p)?,
-            None => return Err("No proof of work provided".into()),
-        };
-        Ok(Self {
-            version: header.version as u16,
-            height: header.height,
-            prev_hash: header.prev_hash,
-            timestamp,
-            output_mr: header.output_mr,
-            range_proof_mr: header.range_proof_mr,
-            output_mmr_size: header.output_mmr_size,
-            kernel_mr: header.kernel_mr,
-            kernel_mmr_size: header.kernel_mmr_size,
-            total_kernel_offset,
-            nonce: header.nonce,
-            pow,
-        })
-    }
-}
-
-impl From<BlockHeader> for proto::BlockHeader {
-    fn from(header: BlockHeader) -> Self {
-        Self {
-            version: header.version as u32,
-            height: header.height,
-            prev_hash: header.prev_hash,
-            timestamp: Some(datetime_to_timestamp(header.timestamp)),
-            output_mr: header.output_mr,
-            range_proof_mr: header.range_proof_mr,
-            kernel_mr: header.kernel_mr,
-            total_kernel_offset: header.total_kernel_offset.to_vec(),
-            nonce: header.nonce,
-            pow: Some(proto::ProofOfWork::from(header.pow)),
-            kernel_mmr_size: header.kernel_mmr_size,
-            output_mmr_size: header.output_mmr_size,
-        }
-    }
-}
-
-//---------------------------------- ProofOfWork --------------------------------------------//
-#[allow(deprecated)]
-impl TryFrom<proto::ProofOfWork> for ProofOfWork {
-    type Error = String;
-
-    fn try_from(pow: proto::ProofOfWork) -> Result<Self, Self::Error> {
-        Ok(Self {
-            pow_algo: PowAlgorithm::try_from(pow.pow_algo)?,
-            pow_data: pow.pow_data,
-        })
-    }
-}
-
-#[allow(deprecated)]
-impl From<ProofOfWork> for proto::ProofOfWork {
-    fn from(pow: ProofOfWork) -> Self {
-        Self {
-            pow_algo: pow.pow_algo as u64,
-            pow_data: pow.pow_data,
         }
     }
 }

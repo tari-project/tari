@@ -29,6 +29,7 @@ use crate::proto::{
         FetchMatchingUtxos,
         FetchUtxosResponse,
         Signatures,
+        TipInfoResponse,
         TxQueryBatchResponses,
         TxQueryResponse,
         TxSubmissionResponse,
@@ -68,6 +69,9 @@ pub trait BaseNodeWalletService: Send + Sync + 'static {
         &self,
         request: Request<FetchMatchingUtxos>,
     ) -> Result<Response<FetchUtxosResponse>, RpcStatus>;
+
+    #[rpc(method = 5)]
+    async fn get_tip_info(&self, request: Request<()>) -> Result<Response<TipInfoResponse>, RpcStatus>;
 }
 
 #[cfg(feature = "base_node")]

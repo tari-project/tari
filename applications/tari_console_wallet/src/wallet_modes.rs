@@ -29,7 +29,7 @@ use crate::{
 
 use log::*;
 use rand::{rngs::OsRng, seq::SliceRandom};
-use std::{fs, fs::remove_file, io::Stdout, net::SocketAddr, path::PathBuf};
+use std::{fs, io::Stdout, net::SocketAddr, path::PathBuf};
 use tari_app_utilities::utilities::ExitCodes;
 use tari_common::GlobalConfig;
 use tari_comms::peer_manager::Peer;
@@ -186,9 +186,10 @@ pub fn recovery_mode(
         Ok(_) => println!("Wallet recovered!"),
         Err(e) => {
             error!(target: LOG_TARGET, "Recovery failed: {}", e);
-            println!("Recovery failed.");
-            // remove the wallet file
-            remove_file(config.console_wallet_db_file).map_err(|e| ExitCodes::IOError(e.to_string()))?;
+            println!(
+                "Recovery failed. Restarting the console wallet will restart the recovery process from where you left \
+                 off. If you want to start with a fresh wallet then delete the wallet data file"
+            );
 
             return Err(e);
         },

@@ -21,21 +21,18 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use chrono::offset::Local;
-use futures::StreamExt;
+use futures::{FutureExt, StreamExt};
 use log::*;
 use rustyline::Editor;
-use std::convert::TryFrom;
 use tari_app_utilities::utilities::ExitCodes;
 use tari_comms::peer_manager::Peer;
-use tari_core::{
-    base_node::sync::rpc,
-    blocks::BlockHeader,
-    proto::base_node::{SyncUtxosRequest, SyncUtxosResponse},
-    tari_utilities::{hex::Hex, Hashable},
-    transactions::{tari_amount::MicroTari, transaction::TransactionOutput, types::PrivateKey},
-};
+use tari_core::transactions::types::PrivateKey;
+use tari_crypto::tari_utilities::hex::Hex;
 use tari_key_manager::mnemonic::to_secretkey;
-use tari_wallet::WalletSqlite;
+use tari_wallet::{
+    tasks::wallet_recovery::{WalletRecoveryEvent, WalletRecoveryTask},
+    WalletSqlite,
+};
 
 pub const LOG_TARGET: &str = "wallet::recovery";
 
@@ -66,77 +63,34 @@ pub fn prompt_private_key_from_seed_words() -> Result<PrivateKey, ExitCodes> {
 /// blockchain, and attempting to rewind them. Any outputs that are successfully rewound are then imported into the
 /// wallet.
 pub async fn wallet_recovery(wallet: &mut WalletSqlite, base_node: &Peer) -> Result<(), ExitCodes> {
-    println!(
-        "Connecting to base node with public key: {}",
-        base_node.public_key.to_hex()
-    );
+    let mut recovery_task = WalletRecoveryTask::new(wallet.clone(), base_node.public_key.clone());
 
-    let node_id = wallet.comms.node_identity();
-    let public_key = node_id.public_key();
+    let mut event_stream = recovery_task
+        .get_event_receiver()
+        .ok_or_else(|| ExitCodes::RecoveryError("Unable to get recovery event stream".to_string()))?
+        .fuse();
 
-    let mut conn = wallet.comms.connectivity().dial_peer(base_node.node_id.clone()).await?;
-    let mut client = conn.connect_rpc::<rpc::BaseNodeSyncRpcClient>().await?;
-    println!("Base node connected.");
+    let mut recovery_join_handle = tokio::spawn(recovery_task.run()).fuse();
 
-    let latency = client.get_last_request_latency().await?;
-    println!("Latency: {} ms.", latency.unwrap_or_default().as_millis());
-
-    let chain_metadata = client.get_chain_metadata().await?;
-    let height = chain_metadata.height_of_longest_chain();
-    println!("Chain Height: {}.", height);
-
-    let header = client.get_header_by_height(height).await?;
-    let header = BlockHeader::try_from(header).map_err(ExitCodes::ConversionError)?;
-    let start = 0;
-    let end_header_hash = header.hash();
-    let request = SyncUtxosRequest { start, end_header_hash };
-    let mut output_stream = client.sync_utxos(request).await?;
-    println!("Streaming transaction outputs...");
-
-    let mut num_utxos = 0;
-    let mut total_amount = MicroTari::from(0);
-
-    while let Some(response) = output_stream.next().await {
-        let response: SyncUtxosResponse = response.map_err(|e| ExitCodes::ConversionError(e.to_string()))?;
-
-        let outputs: Vec<TransactionOutput> = response
-            .utxos
-            .into_iter()
-            .filter_map(|utxo| {
-                if let Some(output) = utxo.output {
-                    TransactionOutput::try_from(output).ok()
-                } else {
-                    None
+    loop {
+        futures::select! {
+            event = event_stream.select_next_some() => {
+                match event {
+                    WalletRecoveryEvent::ConnectedToBaseNode(pk) => {
+                        println!("Connected to base node: {}", pk.to_hex());
+                    },
+                    WalletRecoveryEvent::Progress(current, total) => {
+                        let percentage_progress = ((current as f32) * 100f32 / (total as f32)).round() as u32;
+                        println!("{}: Recovery process {}% complete.", Local::now(), percentage_progress);
+                    },
+                    WalletRecoveryEvent::Completed(num_utxos, total_amount) => {
+                        println!("Recovered {} outputs with a value of {}", num_utxos, total_amount);
+                    },
                 }
-            })
-            .collect();
-        println!("Scanning {} outputs...", outputs.len());
-
-        let unblinded_outputs = wallet.output_manager_service.rewind_outputs(outputs).await?;
-
-        if !unblinded_outputs.is_empty() {
-            println!("Importing {} outputs...", unblinded_outputs.len());
-
-            for uo in unblinded_outputs {
-                wallet
-                    .import_utxo(
-                        uo.value,
-                        &uo.spending_key,
-                        public_key,
-                        format!("Recovered on {}.", Local::now()),
-                    )
-                    .await?;
-
-                num_utxos += 1;
-                total_amount += uo.value;
+            },
+            recovery_result = recovery_join_handle => {
+               return recovery_result.map_err(|e| ExitCodes::RecoveryError(format!("{}", e)))?.map_err(|e| ExitCodes::RecoveryError(format!("{}", e)));
             }
         }
     }
-
-    println!(
-        "Recovered and imported {} outputs, with a total value of {}.",
-        num_utxos, total_amount
-    );
-
-    Ok(())
 }

@@ -65,6 +65,8 @@ pub enum WalletError {
     ServiceInitializationError(#[from] ServiceInitializationError),
     #[error("Base Node Service error: {0}")]
     BaseNodeServiceError(#[from] BaseNodeServiceError),
+    #[error("Error performing wallet recovery: '{0}'")]
+    WalletRecoveryError(String),
 }
 
 #[derive(Debug, Error)]

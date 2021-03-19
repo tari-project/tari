@@ -19,7 +19,8 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::proof_of_work::{monero_rx::MoneroData, PowAlgorithm};
+
+use crate::proof_of_work::PowAlgorithm;
 use bytes::BufMut;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
@@ -82,14 +83,8 @@ impl Display for PowAlgorithm {
 impl Display for ProofOfWork {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
         writeln!(fmt, "Mining algorithm: {}", self.pow_algo)?;
-
-        match self.pow_algo {
-            PowAlgorithm::Monero => match MoneroData::from_pow_data(&self.pow_data) {
-                Ok(v) => writeln!(fmt, "Pow data: {}", v),
-                Err(_) => writeln!(fmt, "Pow data: MALFORMED DATA"),
-            },
-            _ => writeln!(fmt, "Pow data: {}", self.pow_data.to_hex()),
-        }
+        writeln!(fmt, "Pow data: {}", self.pow_data.to_hex())?;
+        Ok(())
     }
 }
 

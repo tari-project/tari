@@ -580,7 +580,7 @@ where TBackend: OutputManagerBackend + 'static
             num_outputs
         );
 
-        let (utxos, _) = self
+        let (utxos, _, _) = self
             .select_utxos(amount, fee_per_gram, num_outputs as usize, None)
             .await?;
         debug!(target: LOG_TARGET, "{} utxos selected.", utxos.len());
@@ -605,10 +605,7 @@ where TBackend: OutputManagerBackend + 'static
             target: LOG_TARGET,
             "Preparing to send transaction. Amount: {}. Fee per gram: {}. ", amount, fee_per_gram,
         );
-        let (outputs, _) = self.select_utxos(amount, fee_per_gram, 1, None).await?;
-        let total = outputs
-            .iter()
-            .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
+        let (outputs, _, total) = self.select_utxos(amount, fee_per_gram, 1, None).await?;
 
         let offset = PrivateKey::random(&mut OsRng);
         let nonce = PrivateKey::random(&mut OsRng);
@@ -686,8 +683,7 @@ where TBackend: OutputManagerBackend + 'static
         message: String,
     ) -> Result<(TxId, MicroTari, Transaction), OutputManagerError>
     {
-        let (inputs, _) = self.select_utxos(amount, fee_per_gram, 1, None).await?;
-        let total = inputs.iter().map(|x| x.unblinded_output.value).sum::<MicroTari>();
+        let (inputs, _, total) = self.select_utxos(amount, fee_per_gram, 1, None).await?;
 
         let offset = PrivateKey::random(&mut OsRng);
         let nonce = PrivateKey::random(&mut OsRng);
@@ -845,7 +841,7 @@ where TBackend: OutputManagerBackend + 'static
         fee_per_gram: MicroTari,
         output_count: usize,
         strategy: Option<UTXOSelectionStrategy>,
-    ) -> Result<(Vec<DbUnblindedOutput>, bool), OutputManagerError>
+    ) -> Result<(Vec<DbUnblindedOutput>, bool, MicroTari), OutputManagerError>
     {
         debug!(
             target: LOG_TARGET,
@@ -856,7 +852,7 @@ where TBackend: OutputManagerBackend + 'static
             strategy
         );
         let mut utxos = Vec::new();
-        let mut total = MicroTari::from(0);
+        let mut utxos_total_value = MicroTari::from(0);
         let mut fee_without_change = MicroTari::from(0);
         let mut fee_with_change = MicroTari::from(0);
 
@@ -864,7 +860,7 @@ where TBackend: OutputManagerBackend + 'static
 
         // Attempt to get the chain tip height
         let chain_metadata = self.base_node_service.get_chain_metadata().await?;
-        let (connected, tip_height) = match chain_metadata {
+        let (connected, tip_height) = match &chain_metadata {
             Some(metadata) => (true, metadata.height_of_longest_chain()),
             None => (false, 0),
         };
@@ -937,24 +933,36 @@ where TBackend: OutputManagerBackend + 'static
         let mut require_change_output = false;
         for o in uo.iter() {
             utxos.push(o.clone());
-            total += o.unblinded_output.value;
+            utxos_total_value += o.unblinded_output.value;
             // The assumption here is that the only output will be the payment output and change if required
             fee_without_change = Fee::calculate(fee_per_gram, 1, utxos.len(), output_count);
-            if total == amount + fee_without_change {
+            if utxos_total_value == amount + fee_without_change {
                 break;
             }
             fee_with_change = Fee::calculate(fee_per_gram, 1, utxos.len(), output_count + 1);
-            if total >= amount + fee_with_change {
+            if utxos_total_value >= amount + fee_with_change {
                 require_change_output = true;
                 break;
             }
         }
 
-        if (total != amount + fee_without_change) && (total < amount + fee_with_change) {
-            return Err(OutputManagerError::NotEnoughFunds);
+        let current_chain_tip = chain_metadata.map(|cm| cm.height_of_longest_chain());
+        let balance = self.get_balance(current_chain_tip).await?;
+        let pending_incoming = balance.pending_incoming_balance;
+
+        let perfect_utxo_selection = utxos_total_value == amount + fee_without_change;
+        let not_enough_spendable = utxos_total_value < amount + fee_with_change;
+        let enough_with_pending = utxos_total_value + pending_incoming >= amount + fee_with_change;
+
+        if !perfect_utxo_selection && not_enough_spendable {
+            if enough_with_pending {
+                return Err(OutputManagerError::FundsPending);
+            } else {
+                return Err(OutputManagerError::NotEnoughFunds);
+            }
         }
 
-        Ok((utxos, require_change_output))
+        Ok((utxos, require_change_output, utxos_total_value))
     }
 
     /// Set the base node public key to the list that will be used to check the status of UTXO's on the base chain. If
@@ -1014,7 +1022,7 @@ where TBackend: OutputManagerBackend + 'static
         );
         let mut output_count = split_count;
         let total_split_amount = amount_per_split * split_count as u64;
-        let (inputs, require_change_output) = self
+        let (inputs, require_change_output, utxos_total_value) = self
             .select_utxos(
                 total_split_amount,
                 fee_per_gram,
@@ -1022,9 +1030,6 @@ where TBackend: OutputManagerBackend + 'static
                 Some(UTXOSelectionStrategy::Largest),
             )
             .await?;
-        let utxo_total_value = inputs
-            .iter()
-            .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
         let input_count = inputs.len();
         if require_change_output {
             output_count = split_count + 1
@@ -1052,7 +1057,7 @@ where TBackend: OutputManagerBackend + 'static
         }
         trace!(target: LOG_TARGET, "Add outputs to coin split transaction.");
         let mut outputs: Vec<DbUnblindedOutput> = Vec::with_capacity(output_count);
-        let change_output = utxo_total_value
+        let change_output = utxos_total_value
             .checked_sub(fee)
             .ok_or(OutputManagerError::NotEnoughFunds)?
             .checked_sub(total_split_amount)
@@ -1090,7 +1095,7 @@ where TBackend: OutputManagerBackend + 'static
         trace!(target: LOG_TARGET, "Finalize coin split transaction ({}).", tx_id);
         stp.finalize(KernelFeatures::empty(), &factories)?;
         let tx = stp.take_transaction()?;
-        Ok((tx_id, tx, fee, utxo_total_value))
+        Ok((tx_id, tx, fee, utxos_total_value))
     }
 
     /// Return the Seed words for the current Master Key set in the Key Manager
