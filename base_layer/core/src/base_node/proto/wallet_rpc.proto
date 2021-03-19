@@ -68,7 +68,7 @@ message TipInfoResponse {
 
 message ReorgInfo {
     // The tip hash of the last reorg chain
-    google.protobuf.BytesValue last_reorg_best_block = 1;
+    bytes last_reorg_best_block = 1;
     // The number of blocks contained in the last reorg
     uint64 num_blocks_reorged = 2;
     // The tip height the chain was at after the last reorg

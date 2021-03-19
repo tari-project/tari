@@ -146,7 +146,7 @@ impl Display for ChainMetadata {
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Hash)]
 pub struct ReorgInfo {
     /// The tip hash of the last reorg chain
-    pub last_reorg_best_block: Option<HashOutput>,
+    pub last_reorg_best_block: HashOutput,
     /// The number of blocks contained in the last reorg
     pub num_blocks_reorged: u64,
     /// The tip height the chain was at after the last reorg
@@ -156,7 +156,7 @@ pub struct ReorgInfo {
 impl ReorgInfo {
     pub fn new() -> Self {
         Self {
-            last_reorg_best_block: None,
+            last_reorg_best_block: HashOutput::default(),
             num_blocks_reorged: 0,
             tip_height: 0,
         }
@@ -171,15 +171,17 @@ impl Default for ReorgInfo {
 
 impl Display for ReorgInfo {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        let last_reorg_best_block = match self.last_reorg_best_block.clone() {
-            None => "None".to_string(),
-            Some(v) => v.to_hex(),
-        };
-        write!(
-            f,
-            "Last reorg - best block: {}, depth: {}, tip height: {}",
-            last_reorg_best_block, self.num_blocks_reorged, self.tip_height
-        )
+        if self.last_reorg_best_block == HashOutput::default() {
+            write!(f, "Last reorg - None")
+        } else {
+            write!(
+                f,
+                "Last reorg - best block: {}, depth: {}, tip height: {}",
+                self.last_reorg_best_block.to_hex(),
+                self.num_blocks_reorged,
+                self.tip_height
+            )
+        }
     }
 }
 

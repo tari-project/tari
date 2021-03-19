@@ -1527,20 +1527,18 @@ impl BlockchainBackend for LMDBDatabase {
     }
 
     // Fetches the reorg info from the provided metadata db.
-    fn fetch_reorg_info(&self) -> Result<ReorgInfo, ChainStorageError> {
+    fn fetch_reorg_info(&self) -> Result<Option<ReorgInfo>, ChainStorageError> {
         let k = MetadataKey::ReorgInfo;
         let txn = ReadTransaction::new(&*self.env).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
         let val: Option<MetadataValue> = lmdb_get(&txn, &self.metadata_db, &(k as u32))?;
         match val {
-            Some(MetadataValue::ReorgInfo(reorg_info)) => Ok(reorg_info),
+            Some(MetadataValue::ReorgInfo(reorg_info)) => Ok(Some(reorg_info)),
             _ => {
                 trace!(
                     target: LOG_TARGET,
-                    "ReorgInfo not found in the database; possibly a reorg has not yet happened, returning default \
-                     values ({})",
-                    ReorgInfo::default()
+                    "ReorgInfo not found in the database; possibly a reorg has not yet happened, returning None.",
                 );
-                Ok(ReorgInfo::default())
+                Ok(None)
             },
         }
     }

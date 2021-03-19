@@ -289,7 +289,7 @@ impl BlockchainBackend for TempDatabase {
         self.db.fetch_chain_metadata()
     }
 
-    fn fetch_reorg_info(&self) -> Result<ReorgInfo, ChainStorageError> {
+    fn fetch_reorg_info(&self) -> Result<Option<ReorgInfo>, ChainStorageError> {
         self.db.fetch_reorg_info()
     }
 

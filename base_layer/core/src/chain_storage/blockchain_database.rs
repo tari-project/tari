@@ -348,7 +348,7 @@ where B: BlockchainBackend
     }
 
     /// Returns a copy of the last reorg info
-    pub fn fetch_reorg_info(&self) -> Result<ReorgInfo, ChainStorageError> {
+    pub fn fetch_reorg_info(&self) -> Result<Option<ReorgInfo>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_reorg_info()
     }
@@ -1502,7 +1502,7 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
 
     // Update reorg info
     let reorg_info = ReorgInfo {
-        last_reorg_best_block: Some(header_accumulated_data.hash),
+        last_reorg_best_block: header_accumulated_data.hash,
         num_blocks_reorged: 0,
         tip_height: last_header.height,
     };
@@ -1637,14 +1637,14 @@ fn handle_possible_reorg<T: BlockchainBackend>(
     // see https://github.com/tari-project/tari/issues/2101
     if num_removed_blocks > 0 || num_added_blocks > 1 {
         // Update reorg info
-        let last_reorg_best_block = Some(match reorg_chain.front() {
+        let last_reorg_best_block = match reorg_chain.front() {
             Some(val) => val.accumulated_data.hash.clone(),
             None => {
                 return Err(ChainStorageError::InvalidOperation(
                     "Cannot extract meta data from the reorged chain".to_string(),
                 ))
             },
-        });
+        };
         let reorg_info = ReorgInfo {
             last_reorg_best_block,
             num_blocks_reorged: num_added_blocks as u64,
@@ -1757,7 +1757,7 @@ fn restore_reorged_chain<T: BlockchainBackend>(
     // Reorg info
     let mut tip_height = 0u64;
     let mut num_blocks_reorged = 0u64;
-    let mut last_reorg_best_block = None;
+    let mut last_reorg_best_block = HashOutput::default();
     if !previous_chain.is_empty() {
         tip_height = match previous_chain.last() {
             Some(val) => val.block.header.height,
@@ -1768,14 +1768,14 @@ fn restore_reorged_chain<T: BlockchainBackend>(
             },
         };
         num_blocks_reorged = previous_chain.len() as u64;
-        last_reorg_best_block = Some(match previous_chain.last() {
+        last_reorg_best_block = match previous_chain.last() {
             Some(val) => val.accumulated_data.hash.clone(),
             None => {
                 return Err(ChainStorageError::InvalidOperation(
                     "Cannot extract meta data from the previous chain".to_string(),
                 ))
             },
-        });
+        };
     }
 
     let invalid_chain = rewind_to_height(db, height)?;
@@ -1797,7 +1797,7 @@ fn restore_reorged_chain<T: BlockchainBackend>(
     }
 
     // Update reorg info
-    if last_reorg_best_block.is_some() {
+    if last_reorg_best_block != HashOutput::default() {
         let reorg_info = ReorgInfo {
             last_reorg_best_block,
             num_blocks_reorged,

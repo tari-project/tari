@@ -326,11 +326,19 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .await
             .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
 
-        let reorg_info = self
+        let reorg_info = match self
             .db
             .fetch_reorg_info()
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+        {
+            None => None,
+            Some(val) => Some(ReorgInfo {
+                last_reorg_best_block: val.last_reorg_best_block.clone(),
+                num_blocks_reorged: val.num_blocks_reorged,
+                tip_height: val.tip_height,
+            }),
+        };
 
         Ok(Response::new(TipInfoResponse {
             metadata: Some(ChainMetadata {
@@ -341,11 +349,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 effective_pruned_height: metadata.pruned_height(),
             }),
             is_synced,
-            reorg_info: Some(ReorgInfo {
-                last_reorg_best_block: reorg_info.last_reorg_best_block.clone(),
-                num_blocks_reorged: reorg_info.num_blocks_reorged,
-                tip_height: reorg_info.tip_height,
-            }),
+            reorg_info,
         }))
     }
 }

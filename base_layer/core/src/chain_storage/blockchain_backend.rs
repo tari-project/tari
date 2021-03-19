@@ -130,7 +130,7 @@ pub trait BlockchainBackend: Send + Sync {
     /// Returns the stored chain metadata.
     fn fetch_chain_metadata(&self) -> Result<ChainMetadata, ChainStorageError>;
     /// Returns the reorg info.
-    fn fetch_reorg_info(&self) -> Result<ReorgInfo, ChainStorageError>;
+    fn fetch_reorg_info(&self) -> Result<Option<ReorgInfo>, ChainStorageError>;
     /// Returns the UTXO count
     fn utxo_count(&self) -> Result<usize, ChainStorageError>;
     /// Returns the kernel count

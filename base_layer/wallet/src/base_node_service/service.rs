@@ -35,7 +35,10 @@ use std::{
 use chrono::{NaiveDateTime, Utc};
 use futures::{pin_mut, StreamExt};
 use log::*;
-use tari_common_types::chain_metadata::{ChainMetadata, ReorgInfo};
+use tari_common_types::{
+    chain_metadata::{ChainMetadata, ReorgInfo},
+    types::HashOutput,
+};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::Peer};
 use tokio::task;
 
@@ -79,7 +82,7 @@ impl Default for BaseNodeState {
             updated: None,
             latency: None,
             online: OnlineState::Connecting,
-            reorg_info: Default::default(),
+            reorg_info: None,
         }
     }
 }
@@ -254,12 +257,20 @@ where T: WalletBackend + 'static
         // store chain metadata in the wallet db
         self.db.set_chain_metadata(chain_metadata.clone()).await?;
 
-        let reorg_info_new = tip_info
-            .reorg_info
-            .ok_or_else(|| BaseNodeServiceError::RpcError("Tip info has no reorg info".to_string()))?;
-
-        if let Some(reorg_info_current) = self.state.reorg_info.clone() {
-            if reorg_info_current.last_reorg_best_block != reorg_info_new.last_reorg_best_block {
+        let reorg_info_new = match tip_info.reorg_info {
+            Some(val) => Some(ReorgInfo {
+                last_reorg_best_block: val.last_reorg_best_block,
+                num_blocks_reorged: val.num_blocks_reorged,
+                tip_height: val.tip_height,
+            }),
+            None => None,
+        };
+        let current_last_reorg_best_block = match self.state.reorg_info.clone() {
+            None => HashOutput::default(),
+            Some(val) => val.last_reorg_best_block,
+        };
+        if let Some(val) = reorg_info_new.clone() {
+            if current_last_reorg_best_block != val.last_reorg_best_block {
                 let mut transaction_service = self.transaction_service.clone();
                 let mut output_manager_service = self.output_manager_service.clone();
                 task::spawn(async move {
@@ -299,7 +310,7 @@ where T: WalletBackend + 'static
                     }
                 });
             };
-        };
+        }
 
         let state = BaseNodeState {
             chain_metadata: Some(chain_metadata),
@@ -307,11 +318,7 @@ where T: WalletBackend + 'static
             updated: Some(now),
             latency,
             online: OnlineState::Online,
-            reorg_info: Some(ReorgInfo {
-                last_reorg_best_block: reorg_info_new.last_reorg_best_block,
-                num_blocks_reorged: reorg_info_new.num_blocks_reorged,
-                tip_height: reorg_info_new.tip_height,
-            }),
+            reorg_info: reorg_info_new,
         };
 
         let event = BaseNodeEvent::BaseNodeState(state.clone());

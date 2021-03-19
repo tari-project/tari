@@ -25,6 +25,7 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
+use tari_common_types::types::HashOutput;
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 use tari_core::{
     base_node::{
@@ -120,7 +121,7 @@ impl BaseNodeWalletRpcMockState {
                 }),
                 is_synced: true,
                 reorg_info: Option::from(ReorgInfo {
-                    last_reorg_best_block: None,
+                    last_reorg_best_block: HashOutput::default(),
                     num_blocks_reorged: 0,
                     tip_height: 0,
                 }),
@@ -480,6 +481,7 @@ mod test {
     };
 
     use std::convert::TryFrom;
+    use tari_common_types::types::HashOutput;
     use tari_core::{
         base_node::{
             proto::wallet_rpc::{TxSubmissionRejectionReason, TxSubmissionResponse},
@@ -547,7 +549,7 @@ mod test {
             metadata: Some(chain_metadata),
             is_synced: false,
             reorg_info: Option::from(ReorgInfo {
-                last_reorg_best_block: None,
+                last_reorg_best_block: HashOutput::default(),
                 num_blocks_reorged: 0,
                 tip_height: 0,
             }),

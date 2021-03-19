@@ -138,7 +138,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     //---------------------------------- Metadata --------------------------------------------//
     make_async_fn!(get_chain_metadata() -> ChainMetadata, "get_chain_metadata");
 
-    make_async_fn!(fetch_reorg_info() -> ReorgInfo, "fetch_reorg_info");
+    make_async_fn!(fetch_reorg_info() -> Option<ReorgInfo>, "fetch_reorg_info");
 
     make_async_fn!(fetch_horizon_data() -> Option<HorizonData>, "fetch_horizon_data");
 
