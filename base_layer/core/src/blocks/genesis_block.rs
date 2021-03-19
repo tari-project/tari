@@ -116,7 +116,7 @@ pub fn get_stibbons_genesis_block_raw() -> Block {
             // TODO: Replace default script hash ?
             script_hash: TariScript::default().as_hash::<Blake256>().unwrap().to_vec(),
             // TODO: Replace default offset public key
-            offset_pub_key: Default::default()
+            script_offset_public_key: Default::default()
         }],
         vec![TransactionKernel {
             features: KernelFeatures::COINBASE_KERNEL,
@@ -224,7 +224,7 @@ pub fn get_ridcully_genesis_block_raw() -> Block {
             // TODO: Replace default script hash ?
             script_hash: TariScript::default().as_hash::<Blake256>().unwrap().to_vec(),
             // TODO: Replace default offset public key
-            offset_pub_key: Default::default()
+            script_offset_public_key: Default::default()
         }],
         vec![TransactionKernel {
             features: KernelFeatures::COINBASE_KERNEL,

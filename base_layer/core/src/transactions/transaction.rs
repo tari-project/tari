@@ -30,6 +30,7 @@ use crate::transactions::{
     transaction_protocol::{build_challenge, RewindData, TransactionMetadata},
     types::{
         BlindingFactor,
+        Challenge,
         Commitment,
         CommitmentFactory,
         CryptoFactories,
@@ -42,6 +43,7 @@ use crate::transactions::{
     },
 };
 use digest::Input;
+use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::{max, min, Ordering},
@@ -53,6 +55,7 @@ use std::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     hash::blake2::Blake256,
+    keys::{PublicKey as PublicKeyTrait, SecretKey},
     range_proof::{
         FullRewindResult as CryptoFullRewindResult,
         RangeProofError,
@@ -60,6 +63,7 @@ use tari_crypto::{
         RewindResult as CryptoRewindResult,
         REWIND_USER_MESSAGE_LENGTH,
     },
+    script::ExecutionStack,
     tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable},
 };
 use thiserror::Error;
@@ -184,7 +188,7 @@ pub enum TransactionError {
     NoCoinbase,
     #[error("Input maturity not reached")]
     InputMaturity,
-    #[error("Tari script error")]
+    #[error("Tari script error : {0}")]
     ScriptError(#[from] ScriptError),
 }
 
@@ -197,30 +201,81 @@ pub struct UnblindedOutput {
     pub value: MicroTari,
     pub spending_key: BlindingFactor,
     pub features: OutputFeatures,
+    pub script: TariScript,
+    pub input_data: ExecutionStack,
+    pub height: u64,
+    pub script_private_key: PrivateKey,
+    pub script_offset_public_key: PublicKey,
 }
 
 impl UnblindedOutput {
     /// Creates a new un-blinded output
-    pub fn new(value: MicroTari, spending_key: BlindingFactor, features: Option<OutputFeatures>) -> UnblindedOutput {
+    pub fn new(
+        value: MicroTari,
+        spending_key: BlindingFactor,
+        features: Option<OutputFeatures>,
+        script: TariScript,
+        input_data: ExecutionStack,
+        height: u64,
+        script_private_key: PrivateKey,
+        script_offset_public_key: PublicKey,
+    ) -> UnblindedOutput
+    {
         UnblindedOutput {
             value,
             spending_key,
             features: features.unwrap_or_default(),
+            script,
+            input_data,
+            height,
+            script_private_key,
+            script_offset_public_key,
+        }
+    }
+
+    /// Commits an UnblindedOutput into a Transaction input without a script signature
+    pub fn as_transaction_input(&self, factory: &CommitmentFactory) -> TransactionInput {
+        let commitment = factory.commit(&self.spending_key, &self.value.into());
+        TransactionInput {
+            features: self.features.clone(),
+            commitment,
+            script: self.script.clone(),
+            input_data: self.input_data.clone(),
+            height: self.height,
+            script_signature: Default::default(),
+            script_offset_public_key: Default::default(),
         }
     }
 
     /// Commits an UnblindedOutput into a Transaction input
-    pub fn as_transaction_input(&self, factory: &CommitmentFactory, features: OutputFeatures) -> TransactionInput {
+    pub fn as_transaction_input_with_script_signature(
+        &self,
+        factory: &CommitmentFactory,
+    ) -> Result<TransactionInput, TransactionError>
+    {
         let commitment = factory.commit(&self.spending_key, &self.value.into());
-        TransactionInput {
-            features,
+        let script_nonce = PrivateKey::random(&mut OsRng);
+        let public_script_nonce = PublicKey::from_secret_key(&script_nonce);
+        let e = Challenge::new()
+            .chain(public_script_nonce.as_bytes())
+            .chain(self.script.as_bytes().as_slice())
+            .chain(self.input_data.as_bytes().as_slice())
+            .chain(&self.height.to_le_bytes())
+            .result()
+            .to_vec();
+
+        let script_signature = Signature::sign(self.script_private_key.clone(), script_nonce, &e)
+            .map_err(|_| TransactionError::InvalidSignatureError)?;
+
+        Ok(TransactionInput {
+            features: self.features.clone(),
             commitment,
-            script: vec![],
-            input_data: vec![],
-            height: 0,
-            script_signature: Default::default(),
-            offset_pub_key: Default::default(),
-        }
+            script: self.script.clone(),
+            input_data: self.input_data.clone(),
+            height: self.height,
+            script_signature,
+            script_offset_public_key: self.script_offset_public_key.clone(),
+        })
     }
 
     pub fn as_transaction_output(&self, factories: &CryptoFactories) -> Result<TransactionOutput, TransactionError> {
@@ -234,8 +289,8 @@ impl UnblindedOutput {
                     .construct_proof(&self.spending_key, self.value.into())?,
             )
             .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?,
-            script_hash: Vec::from(TariScript::default().as_hash::<Blake256>().map_err(|e| (e))?),
-            offset_pub_key: Default::default(),
+            script_hash: self.script.as_hash::<Blake256>()?.to_vec(),
+            script_offset_public_key: self.script_offset_public_key.clone(),
         };
         // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
         if !output.verify_range_proof(&factories.range_proof)? {
@@ -269,8 +324,8 @@ impl UnblindedOutput {
             features: self.features.clone(),
             commitment,
             proof,
-            script_hash: Vec::from(TariScript::default().as_hash::<Blake256>().map_err(|e| (e))?),
-            offset_pub_key: Default::default(),
+            script_hash: self.script.as_hash::<Blake256>()?.to_vec(),
+            script_offset_public_key: self.script_offset_public_key.clone(),
         };
         // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
         if !output.verify_range_proof(&factories.range_proof)? {
@@ -314,22 +369,22 @@ impl Ord for UnblindedOutput {
 /// A transaction input.
 ///
 /// Primarily a reference to an output being spent by the transaction.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransactionInput {
     /// The features of the output being spent. We will check maturity for all outputs.
     pub features: OutputFeatures,
     /// The commitment referencing the output being spent.
     pub commitment: Commitment,
     /// The serialised script
-    pub script: Vec<u8>,
+    pub script: TariScript,
     /// The script input data, if any
-    pub input_data: Vec<u8>,
+    pub input_data: ExecutionStack,
     /// The block height that the UTXO was mined
     pub height: u64,
     /// A signature with k_s, signing the script, input data, and mined height
     pub script_signature: Signature,
     /// The offset pubkey, K_O
-    pub offset_pub_key: PublicKey,
+    pub script_offset_public_key: PublicKey,
 }
 
 /// An input for a transaction that spends an existing output
@@ -338,11 +393,11 @@ impl TransactionInput {
     pub fn new(
         features: OutputFeatures,
         commitment: Commitment,
-        script: Vec<u8>,
-        input_data: Vec<u8>,
+        script: TariScript,
+        input_data: ExecutionStack,
         height: u64,
         script_signature: Signature,
-        offset_pub_key: PublicKey,
+        script_offset_public_key: PublicKey,
     ) -> TransactionInput
     {
         TransactionInput {
@@ -352,7 +407,7 @@ impl TransactionInput {
             input_data,
             height,
             script_signature,
-            offset_pub_key,
+            script_offset_public_key,
         }
     }
 
@@ -374,15 +429,15 @@ impl TransactionInput {
 }
 
 impl From<TransactionOutput> for TransactionInput {
-    fn from(item: TransactionOutput) -> Self {
+    fn from(output: TransactionOutput) -> Self {
         TransactionInput {
-            features: item.features,
-            commitment: item.commitment,
-            script: vec![],
-            input_data: vec![],
+            features: output.features,
+            commitment: output.commitment,
+            script: TariScript::default(),
+            input_data: ExecutionStack::default(),
             height: 0,
             script_signature: Default::default(),
-            offset_pub_key: item.offset_pub_key,
+            script_offset_public_key: output.script_offset_public_key,
         }
     }
 }
@@ -393,6 +448,11 @@ impl Hashable for TransactionInput {
         HashDigest::new()
             .chain(self.features.to_bytes())
             .chain(self.commitment.as_bytes())
+            .chain(self.script.as_bytes())
+            .chain(self.input_data.as_bytes())
+            .chain(self.height.to_le_bytes())
+            .chain(&self.script_signature.get_signature().as_bytes())
+            .chain(self.script_offset_public_key.as_bytes())
             .result()
             .to_vec()
     }
@@ -401,6 +461,18 @@ impl Hashable for TransactionInput {
 impl Display for TransactionInput {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         write!(fmt, "{} [{:?}]", self.commitment.to_hex(), self.features)
+    }
+}
+
+impl PartialOrd for TransactionInput {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.commitment.partial_cmp(&other.commitment)
+    }
+}
+
+impl Ord for TransactionInput {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.commitment.cmp(&other.commitment)
     }
 }
 
@@ -420,7 +492,7 @@ pub struct TransactionOutput {
     /// Tari script serialised script hash
     pub script_hash: Vec<u8>,
     /// Tari script offset pubkey, K_O
-    pub offset_pub_key: PublicKey,
+    pub script_offset_public_key: PublicKey,
 }
 
 /// An output for a transaction, includes a range proof and Tari script metadata
@@ -431,7 +503,7 @@ impl TransactionOutput {
         commitment: Commitment,
         proof: RangeProof,
         script_hash: Vec<u8>,
-        offset_pub_key: PublicKey,
+        script_offset_public_key: PublicKey,
     ) -> TransactionOutput
     {
         TransactionOutput {
@@ -439,7 +511,7 @@ impl TransactionOutput {
             commitment,
             proof,
             script_hash,
-            offset_pub_key,
+            script_offset_public_key,
         }
     }
 
@@ -514,6 +586,8 @@ impl Hashable for TransactionOutput {
             .chain(self.features.to_bytes())
             .chain(self.commitment.as_bytes())
             // .chain(range proof) // See docs as to why we exclude this
+            .chain(self.script_hash.as_bytes())
+            .chain(self.script_offset_public_key.as_bytes())
             .result()
             .to_vec()
     }

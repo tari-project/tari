@@ -42,7 +42,10 @@ use crate::{
     },
 };
 use std::convert::{TryFrom, TryInto};
-use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
+use tari_crypto::{
+    script::{ExecutionStack, TariScript},
+    tari_utilities::{ByteArray, ByteArrayError},
+};
 
 //---------------------------------- TransactionKernel --------------------------------------------//
 
@@ -110,17 +113,17 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
             .try_into()
             .map_err(|err: ByteArrayError| err.to_string())?;
 
-        let offset_pub_key =
-            PublicKey::from_bytes(input.offset_pub_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+        let script_offset_public_key =
+            PublicKey::from_bytes(input.script_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
 
         Ok(Self {
             features,
             commitment,
-            script: input.script,
-            input_data: input.input_data,
+            script: TariScript::from_bytes(input.script.as_slice()).map_err(|err| format!("{:?}", err))?,
+            input_data: ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
             height: input.height,
             script_signature,
-            offset_pub_key,
+            script_offset_public_key,
         })
     }
 }
@@ -130,11 +133,11 @@ impl From<TransactionInput> for proto::types::TransactionInput {
         Self {
             features: Some(input.features.into()),
             commitment: Some(input.commitment.into()),
-            script: input.script,
-            input_data: input.input_data,
+            script: input.script.as_bytes(),
+            input_data: input.input_data.as_bytes(),
             height: input.height,
             script_signature: Some(input.script_signature.into()),
-            offset_pub_key: input.offset_pub_key.as_bytes().to_vec(),
+            script_offset_public_key: input.script_offset_public_key.as_bytes().to_vec(),
         }
     }
 }
@@ -156,15 +159,15 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
             .ok_or_else(|| "Transaction output commitment not provided".to_string())?
             .map_err(|err| err.to_string())?;
 
-        let offset_pub_key =
-            PublicKey::from_bytes(output.offset_pub_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+        let script_offset_public_key =
+            PublicKey::from_bytes(output.script_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
 
         Ok(Self {
             features,
             commitment,
             proof: BulletRangeProof(output.range_proof),
             script_hash: output.script_hash,
-            offset_pub_key,
+            script_offset_public_key,
         })
     }
 }
@@ -176,7 +179,7 @@ impl From<TransactionOutput> for proto::types::TransactionOutput {
             commitment: Some(output.commitment.into()),
             range_proof: output.proof.to_vec(),
             script_hash: output.script_hash,
-            offset_pub_key: output.offset_pub_key.as_bytes().to_vec(),
+            script_offset_public_key: output.script_offset_public_key.as_bytes().to_vec(),
         }
     }
 }
