@@ -41,7 +41,7 @@ use crate::{
         TargetDifficulties,
     },
     common::rolling_vec::RollingVec,
-    consensus::{chain_strength_comparer::ChainStrengthComparer, ConsensusManager},
+    consensus::{chain_strength_comparer::ChainStrengthComparer, ConsensusConstants, ConsensusManager},
     proof_of_work::{monero_rx::MoneroData, PowAlgorithm, TargetDifficultyWindow},
     tari_utilities::epoch_time::EpochTime,
     transactions::{
@@ -271,16 +271,18 @@ where B: BlockchainBackend
     ) -> Result<ChainHeader, ChainStorageError>
     {
         let db = self.db_read_access()?;
-        // let prev  = db.fetch_chain_header_in_all_chains(&header.prev_hash)?.ok_or_else(||
-        // ChainStorageError::ValueNotFound {     entity: "Header".to_string(),
-        //     field: "hash".to_string(),
-        //     value:  header.prev_hash.to_hex()
-        // })?;
         let accum_data = self.validators.header.validate(&*db, &header, &prev.accumulated_data)?;
         Ok(ChainHeader {
             header,
             accumulated_data: accum_data.build()?,
         })
+    }
+
+    /// Returns a reference to the consensus cosntants at the current height
+    pub fn consensus_constants(&self) -> Result<&ConsensusConstants, ChainStorageError> {
+        let height = self.get_height()?;
+
+        Ok(self.consensus_manager.consensus_constants(height))
     }
 
     // Be careful about making this method public. Rather use `db_and_metadata_read_access`
@@ -324,8 +326,6 @@ where B: BlockchainBackend
     /// Returns the height of the current longest chain. This method will only fail if there's a fairly serious
     /// synchronisation problem on the database. You can try calling [BlockchainDatabase::try_recover_metadata] in
     /// that case to re-sync the metadata; or else just exit the program.
-    ///
-    /// If the chain is empty (the genesis block hasn't been added yet), this function returns `None`
     pub fn get_height(&self) -> Result<u64, ChainStorageError> {
         let db = self.db_read_access()?;
         Ok(db.fetch_chain_metadata()?.height_of_longest_chain())

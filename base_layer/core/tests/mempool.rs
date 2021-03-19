@@ -35,6 +35,7 @@ use helpers::{
     nodes::{create_network_with_2_base_nodes_with_config, create_network_with_3_base_nodes_with_config},
     sample_blockchains::create_new_blockchain,
 };
+use tari_crypto::keys::PublicKey as PublicKeyTrait;
 // use crate::helpers::database::create_store;
 use std::{ops::Deref, sync::Arc, time::Duration};
 use tari_comms_dht::domain_message::OutboundDomainMessage;
@@ -50,14 +51,16 @@ use tari_core::{
     proof_of_work::Difficulty,
     proto,
     transactions::{
-        helpers::{schema_to_transaction, spend_utxos},
-        tari_amount::{uT, T},
-        transaction::{OutputFeatures, Transaction},
-        types::CryptoFactories,
+        fee::Fee,
+        helpers::{schema_to_transaction, spend_utxos, TestParams},
+        tari_amount::{uT, MicroTari, T},
+        transaction::{KernelBuilder, OutputFeatures, Transaction, TransactionOutput, UnblindedOutput},
+        transaction_protocol::{build_challenge, TransactionMetadata},
+        types::{Commitment, CryptoFactories, PublicKey, Signature},
     },
     tx,
     txn_schema,
-    validation::transaction_validators::TxInputAndMaturityValidator,
+    validation::transaction_validators::{TxConsensusValidator, TxInputAndMaturityValidator},
 };
 use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType};
 use tari_test_utils::async_assert_eventually;
@@ -634,6 +637,87 @@ fn receive_and_propagate_transaction() {
             expect = TxStorageResponse::NotStored,
         );
     });
+}
+
+#[test]
+fn consensus_validation() {
+    let network = Network::LocalNet;
+    let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
+    let mempool_validator = TxConsensusValidator::new(store.clone());
+    let mempool = Mempool::new(MempoolConfig::default(), Arc::new(mempool_validator));
+    // Create a block with 1 output
+    let txs = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![5 * T])];
+    generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
+
+    // build huge tx manually - the TransactionBuilder already has checks for max inputs/outputs
+    let factories = CryptoFactories::default();
+    let test_params = TestParams::new();
+    let fee_per_gram = 15;
+    let input_count = 1;
+    let output_count = 1_600; // 😵
+    let amount = MicroTari::from(5_000_000);
+
+    let input = outputs[1][0].clone();
+    let sum_inputs_blinding_factors = input.spending_key.clone();
+    let inputs = vec![input.as_transaction_input(&factories.commitment, OutputFeatures::default())];
+
+    let fee = Fee::calculate(fee_per_gram.into(), 1, input_count, output_count);
+    let amount_per_output = (amount - fee) / output_count as u64;
+    let amount_for_last_output = (amount - fee) - amount_per_output * (output_count as u64 - 1);
+    let mut unblinded_outputs = Vec::with_capacity(output_count);
+    for i in 0..output_count {
+        let output_amount = if i < output_count - 1 {
+            amount_per_output
+        } else {
+            amount_for_last_output
+        };
+        let utxo = UnblindedOutput::new(output_amount, test_params.spend_key.clone(), None);
+        unblinded_outputs.push(utxo.clone());
+    }
+
+    let mut sum_outputs_blinding_factors = unblinded_outputs[0].spending_key.clone();
+    for uo in unblinded_outputs.iter().skip(1) {
+        sum_outputs_blinding_factors = sum_outputs_blinding_factors + uo.spending_key.clone();
+    }
+    let excess_blinding_factor = sum_outputs_blinding_factors - sum_inputs_blinding_factors;
+
+    let outputs = unblinded_outputs
+        .iter()
+        .map(|o| o.as_transaction_output(&factories))
+        .collect::<Result<Vec<TransactionOutput>, _>>()
+        .unwrap();
+
+    let tx_meta = TransactionMetadata { fee, lock_height: 0 };
+
+    let nonce = test_params.nonce.clone();
+    let public_nonce = PublicKey::from_secret_key(&nonce);
+    let offset = test_params.offset;
+    let offset_blinding_factor = &excess_blinding_factor - &offset;
+    let excess = PublicKey::from_secret_key(&offset_blinding_factor);
+    let e = build_challenge(&public_nonce, &tx_meta);
+    let k = offset_blinding_factor;
+    let r = nonce;
+    let s = Signature::sign(k, r, &e).unwrap();
+
+    let kernel = KernelBuilder::new()
+        .with_fee(fee)
+        .with_lock_height(0)
+        .with_excess(&Commitment::from_public_key(&excess))
+        .with_signature(&s)
+        .build()
+        .unwrap();
+    let kernels = vec![kernel];
+    let tx = Transaction::new(inputs, outputs, kernels, offset);
+    let weight = tx.calculate_weight();
+
+    let height = blocks.len() as u64;
+    let constants = consensus_manager.consensus_constants(height);
+    // check the tx weight is more than the max for 1 block
+    assert!(weight > constants.get_max_block_transaction_weight());
+
+    let response = mempool.insert(Arc::new(tx)).unwrap();
+    // make sure the tx was not accepted into the mempool
+    assert!(matches!(response, TxStorageResponse::NotStored));
 }
 
 #[test]
