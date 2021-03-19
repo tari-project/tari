@@ -119,7 +119,9 @@
 #[macro_use]
 extern crate lazy_static;
 mod callback_handler;
+mod enums;
 mod error;
+mod tasks;
 
 use crate::{
     callback_handler::CallbackHandler,
@@ -199,6 +201,7 @@ use tari_wallet::{
     Wallet,
 };
 
+use crate::{enums::SeedWordPushResult, tasks::recovery_event_monitoring};
 use futures::StreamExt;
 use log4rs::append::{
     rolling_file::{
@@ -213,6 +216,7 @@ use tari_p2p::transport::TransportType::Tor;
 use tari_wallet::{
     error::WalletStorageError,
     output_manager_service::protocols::txo_validation_protocol::TxoValidationType,
+    tasks::wallet_recovery::WalletRecoveryTask,
     types::ValidationRetryStrategy,
     WalletSqlite,
 };
@@ -805,6 +809,21 @@ pub unsafe extern "C" fn private_key_from_hex(key: *const c_char, error_out: *mu
 /// -------------------------------------------------------------------------------------------- ///
 /// ----------------------------------- Seed Words ----------------------------------------------///
 
+/// Create an empty instance of TariSeedWords
+///
+/// ## Arguments
+/// None
+///
+/// ## Returns
+/// `TariSeedWords` - Returns an empty TariSeedWords instance
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn seed_words_create() -> *mut TariSeedWords {
+    Box::into_raw(Box::new(TariSeedWords(Vec::new())))
+}
+
 /// Gets the length of TariSeedWords
 ///
 /// ## Arguments
@@ -868,6 +887,69 @@ pub unsafe extern "C" fn seed_words_get_at(
         }
     }
     CString::into_raw(word)
+}
+
+/// Add a word to the provided TariSeedWords instance
+///
+/// ## Arguments
+/// `seed_words` - The pointer to a TariSeedWords
+/// `word` - Word to add
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// 'c_uchar' - Returns a u8 version of the `SeedWordPushResult` enum indicating whether the word was not a valid seed
+/// word, if the push was successful and whether the push was successful and completed the full Seed Phrase
+///     '0' -> InvalidSeedWord
+///     '1' -> SuccessfulPush
+///     '2' -> SeedPhraseComplete     
+///     '3' -> InvalidSeedPhrase
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn seed_words_push_word(
+    seed_words: *mut TariSeedWords,
+    word: *const c_char,
+    error_out: *mut c_int,
+) -> c_uchar
+{
+    use tari_key_manager::mnemonic::{Mnemonic, MnemonicLanguage};
+
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if seed_words.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("seed words".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+
+    let word_string;
+    if word.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("word".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return SeedWordPushResult::InvalidSeedWord as u8;
+    } else {
+        word_string = CStr::from_ptr(word).to_str().unwrap().to_owned();
+    }
+
+    // Check word is from a word list
+    if MnemonicLanguage::from(word_string.as_str()).is_err() {
+        log::error!(target: LOG_TARGET, "{} is not a valid mnemonic seed word", word_string);
+        return SeedWordPushResult::InvalidSeedWord as u8;
+    }
+
+    (*seed_words).0.push(word_string);
+    if (*seed_words).0.len() >= 24 {
+        if let Err(e) = TariPrivateKey::from_mnemonic(&(*seed_words).0) {
+            log::error!(target: LOG_TARGET, "Problem building private key from seed phrase");
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return SeedWordPushResult::InvalidSeedPhrase as u8;
+        } else {
+            return SeedWordPushResult::SeedPhraseComplete as u8;
+        }
+    }
+
+    SeedWordPushResult::SuccessfulPush as u8
 }
 
 /// Frees memory for a TariSeedWords
@@ -5311,6 +5393,107 @@ pub unsafe extern "C" fn wallet_clear_value(
     }
 }
 
+/// Check if a Wallet has the data of an In Progress Recovery in its database.
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer.
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `bool` - Return a boolean value indicating whether there is an in progress recovery or not. An error will also
+/// result in a false result.
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet, error_out: *mut c_int) -> bool {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    }
+
+    match (*wallet).runtime.block_on((*wallet).wallet.is_recovery_in_progress()) {
+        Ok(result) => result,
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            false
+        },
+    }
+}
+
+/// Check if a Wallet has the data of an In Progress Recovery in its database.
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer.
+/// `base_node_public_key` - The TariPublicKey pointer of the Base Node the recovery process will use
+/// `recovery_progress_callback` - The callback function pointer that will be used to asynchronously communicate
+/// progress to the client. The first argument is the current block the process has completed and the second argument is
+/// the total chain height. When the current block reaches the total chain height the process is complete.
+///     - The first callback with arguments (0,1) indicate a successful base node connection and process has started
+///     - In progress callbacks will be of the form (n, m) where n < m
+///     - If the process completed successfully then the final callback will have arguments (x, x) where x == x
+///     - If there is an error in the process then the final callback will be called with zero arguments i.e. (0, 0)
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `bool` - Return a boolean value indicating whether the process started successfully or not, the process will
+/// continue to run asynchronously and communicate it progress via the callback. An error will also produce a false
+/// result.
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn wallet_start_recovery(
+    wallet: *mut TariWallet,
+    base_node_public_key: *mut TariPublicKey,
+    recovery_progress_callback: unsafe extern "C" fn(u64, u64),
+    error_out: *mut c_int,
+) -> bool
+{
+    use futures::FutureExt;
+
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    }
+
+    let mut recovery_task = WalletRecoveryTask::new((*wallet).wallet.clone(), (*base_node_public_key).clone());
+
+    let event_stream = match recovery_task.get_event_receiver() {
+        None => {
+            error = LibWalletError::from(WalletError::WalletRecoveryError(
+                "No recovery event stream available".to_string(),
+            ))
+            .code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return false;
+        },
+        Some(e) => e.fuse(),
+    };
+
+    let recovery_join_handle = (*wallet).runtime.spawn(recovery_task.run()).fuse();
+
+    // Spawn a task to monitor the recovery process events and call the callback appropriately
+    (*wallet).runtime.spawn(recovery_event_monitoring(
+        event_stream,
+        recovery_join_handle,
+        recovery_progress_callback,
+    ));
+
+    true
+}
+
 /// This function will produce a partial backup of the specified wallet database file. This backup will be written to
 /// the provided file (full path must include the filename and extension) and will include the full wallet db but will
 /// clear the sensitive Comms Private Key
@@ -7094,6 +7277,49 @@ mod test {
 
             comms_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
+        }
+    }
+
+    #[test]
+    pub fn test_seed_words() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+
+            let mnemonic = vec![
+                "clever", "jaguar", "bus", "engage", "oil", "august", "media", "high", "trick", "remove", "tiny",
+                "join", "item", "tobacco", "orange", "pony", "tomorrow", "also", "dignity", "giraffe", "little",
+                "board", "army", "scale",
+            ];
+
+            let seed_words = seed_words_create();
+
+            let w = CString::new("hodl").unwrap();
+            let w_str: *const c_char = CString::into_raw(w) as *const c_char;
+
+            assert_eq!(
+                seed_words_push_word(seed_words, w_str, error_ptr),
+                SeedWordPushResult::InvalidSeedWord as u8
+            );
+
+            let mut count = 0;
+            for w in mnemonic.iter() {
+                count += 1;
+                let w = CString::new(*w).unwrap();
+                let w_str: *const c_char = CString::into_raw(w) as *const c_char;
+
+                if count < 24 {
+                    assert_eq!(
+                        seed_words_push_word(seed_words, w_str, error_ptr),
+                        SeedWordPushResult::SuccessfulPush as u8
+                    );
+                } else {
+                    assert_eq!(
+                        seed_words_push_word(seed_words, w_str, error_ptr),
+                        SeedWordPushResult::SeedPhraseComplete as u8
+                    );
+                }
+            }
         }
     }
 }

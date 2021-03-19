@@ -20,14 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#[cfg(feature = "base_node")]
 mod block;
-pub(crate) mod block_header;
-mod new_block_template;
-mod new_blockheader_template;
+#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
+pub mod block_header;
 
+#[cfg(feature = "base_node")]
 pub mod genesis_block;
-
+#[cfg(feature = "base_node")]
+mod new_block_template;
+#[cfg(feature = "base_node")]
+mod new_blockheader_template;
+#[cfg(feature = "base_node")]
 pub use block::{Block, BlockBuilder, BlockValidationError, NewBlock};
+#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 pub use block_header::{BlockHeader, BlockHeaderValidationError};
+#[cfg(feature = "base_node")]
 pub use new_block_template::NewBlockTemplate;
+#[cfg(feature = "base_node")]
 pub use new_blockheader_template::NewBlockHeaderTemplate;

@@ -35,10 +35,10 @@ pub mod monero_rx;
 #[cfg(feature = "base_node")]
 pub use monero_rx::monero_difficulty;
 
-#[cfg(feature = "base_node")]
+#[cfg(any(feature = "base_node", feature = "transactions"))]
 #[allow(clippy::module_inception)]
 mod proof_of_work;
-#[cfg(feature = "base_node")]
+#[cfg(any(feature = "base_node", feature = "transactions"))]
 pub use proof_of_work::ProofOfWork;
 
 #[cfg(any(feature = "base_node", feature = "transactions"))]

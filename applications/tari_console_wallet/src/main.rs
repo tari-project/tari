@@ -65,8 +65,8 @@ fn main_inner() -> Result<(), ExitCodes> {
         tari_splash_screen("Console Wallet");
     }
 
-    // check for recovery
-    let boot_mode = boot(&bootstrap, &config)?;
+    // check for recovery based on existence of wallet file
+    let mut boot_mode = boot(&bootstrap, &config)?;
 
     let master_key = if matches!(boot_mode, WalletBoot::Recovery) {
         let private_key = prompt_private_key_from_seed_words()?;
@@ -92,6 +92,12 @@ fn main_inner() -> Result<(), ExitCodes> {
 
     // initialize wallet
     let mut wallet = runtime.block_on(init_wallet(&config, arg_password, master_key, shutdown_signal))?;
+
+    // Check if there is an in progress recovery in the wallet's database
+    if runtime.block_on(wallet.is_recovery_in_progress())? {
+        println!("A Wallet Recovery was found to be in progress, continuing.");
+        boot_mode = WalletBoot::Recovery;
+    }
 
     // get base node/s
     let base_node_config = runtime.block_on(get_base_node_peer_config(&config, &mut wallet))?;

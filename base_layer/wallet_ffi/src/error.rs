@@ -29,6 +29,7 @@ use tari_crypto::{
     signatures::SchnorrSignatureError,
     tari_utilities::{hex::HexError, ByteArrayError},
 };
+use tari_key_manager::mnemonic::MnemonicError;
 use tari_wallet::{
     contacts_service::error::{ContactsServiceError, ContactsServiceStorageError},
     error::{WalletError, WalletStorageError},
@@ -267,6 +268,10 @@ impl From<WalletError> for LibWalletError {
                 code: 426,
                 message: format!("{:?}", w),
             },
+            WalletError::WalletRecoveryError(_) => Self {
+                code: 427,
+                message: format!("{:?}", w),
+            },
             // This is the catch all error code. Any error that is not explicitly mapped above will be given this code
             _ => Self {
                 code: 999,
@@ -414,6 +419,16 @@ impl From<TransactionError> for LibWalletError {
                 code: 650,
                 message: format!("{:?}", v),
             },
+        }
+    }
+}
+
+impl From<MnemonicError> for LibWalletError {
+    fn from(err: MnemonicError) -> Self {
+        error!(target: LOG_TARGET, "{}", format!("{:?}", err));
+        Self {
+            code: 910,
+            message: format!("{:?}", err),
         }
     }
 }

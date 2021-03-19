@@ -47,5 +47,7 @@ pub mod types {
 
 #[cfg(feature = "base_node")]
 mod block;
-#[cfg(feature = "base_node")]
+#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
+mod block_header;
+#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 pub mod utils;
