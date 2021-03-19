@@ -2,6 +2,7 @@ syntax = "proto3";
 
 import "google/protobuf/wrappers.proto";
 import "block.proto";
+import "chain_metadata.proto";
 import "types.proto";
 import "transaction.proto";
 
@@ -47,7 +48,6 @@ message TxQueryBatchResponse {
 message TxQueryBatchResponses {
     repeated TxQueryBatchResponse responses = 1;
     bool is_synced = 2;
-
 }
 
 message FetchMatchingUtxos {
@@ -57,5 +57,21 @@ message FetchMatchingUtxos {
 message FetchUtxosResponse {
     repeated tari.types.TransactionOutput outputs = 1;
     bool is_synced = 2;
+}
+
+message TipInfoResponse {
+    ChainMetadata metadata = 1;
+    bool is_synced = 2;
+    // The last known reorg metadata information
+    ReorgInfo reorg_info = 3;
+}
+
+message ReorgInfo {
+    // The tip hash of the last reorg chain
+    bytes last_reorg_best_block = 1;
+    // The number of blocks contained in the last reorg
+    uint64 num_blocks_reorged = 2;
+    // The tip height the chain was at after the last reorg
+    uint64 tip_height = 3;
 }
 

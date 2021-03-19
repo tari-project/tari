@@ -22,12 +22,13 @@
 
 use crate::output_manager_service::error::OutputManagerStorageError;
 use std::cmp::Ordering;
+use tari_common_types::types::HashOutput;
 use tari_core::{
     tari_utilities::hash::Hashable,
     transactions::{
         transaction::UnblindedOutput,
         transaction_protocol::RewindData,
-        types::{Commitment, CryptoFactories, HashOutput},
+        types::{Commitment, CryptoFactories},
     },
 };
 

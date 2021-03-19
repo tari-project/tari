@@ -24,14 +24,11 @@ use crate::{
     blocks::{block_header::BlockHeader, Block, NewBlockTemplate},
     chain_storage::HistoricalBlock,
     proof_of_work::Difficulty,
-    transactions::{
-        transaction::{TransactionKernel, TransactionOutput},
-        types::HashOutput,
-    },
+    transactions::transaction::{TransactionKernel, TransactionOutput},
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display, Formatter};
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
 
 /// API Response enum
 #[derive(Debug, Serialize, Deserialize, Clone)]

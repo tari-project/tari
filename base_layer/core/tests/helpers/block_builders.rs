@@ -23,6 +23,7 @@
 use croaring::Bitmap;
 use rand::{rngs::OsRng, RngCore};
 use std::{iter::repeat_with, sync::Arc};
+use tari_common_types::types::HashOutput;
 use tari_core::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{
@@ -47,7 +48,7 @@ use tari_core::{
             TransactionOutput,
             UnblindedOutput,
         },
-        types::{Commitment, CryptoFactories, HashDigest, HashOutput, PublicKey},
+        types::{Commitment, CryptoFactories, HashDigest, PublicKey},
     },
 };
 use tari_crypto::{

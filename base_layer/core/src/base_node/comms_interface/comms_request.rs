@@ -24,10 +24,11 @@ use crate::{
     blocks::NewBlockTemplate,
     chain_storage::MmrTree,
     proof_of_work::PowAlgorithm,
-    transactions::types::{Commitment, HashOutput, Signature},
+    transactions::types::{Commitment, Signature},
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
+use tari_common_types::types::HashOutput;
 use tari_crypto::tari_utilities::hex::Hex;
 
 /// A container for the parameters required for a FetchMmrState request.

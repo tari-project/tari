@@ -26,9 +26,12 @@ use crate::{
     mempool::{service::MempoolHandle, TxStorageResponse},
     proto::{
         base_node::{
+            ChainMetadata,
             FetchMatchingUtxos,
             FetchUtxosResponse,
+            ReorgInfo,
             Signatures as SignaturesProto,
+            TipInfoResponse,
             TxLocation,
             TxQueryBatchResponse,
             TxQueryBatchResponses,
@@ -306,6 +309,47 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         Ok(Response::new(FetchUtxosResponse {
             outputs: res.into_iter().map(Into::into).collect(),
             is_synced,
+        }))
+    }
+
+    async fn get_tip_info(&self, _request: Request<()>) -> Result<Response<TipInfoResponse>, RpcStatus> {
+        let state_machine = self.state_machine();
+        let status_watch = state_machine.get_status_info_watch();
+        let is_synced = match (*status_watch.borrow()).state_info {
+            StateInfo::Listening(li) => li.is_synced(),
+            _ => false,
+        };
+
+        let metadata = self
+            .db
+            .get_chain_metadata()
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+
+        let reorg_info = match self
+            .db
+            .fetch_reorg_info()
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+        {
+            None => None,
+            Some(val) => Some(ReorgInfo {
+                last_reorg_best_block: val.last_reorg_best_block.clone(),
+                num_blocks_reorged: val.num_blocks_reorged,
+                tip_height: val.tip_height,
+            }),
+        };
+
+        Ok(Response::new(TipInfoResponse {
+            metadata: Some(ChainMetadata {
+                height_of_longest_chain: Some(metadata.height_of_longest_chain()),
+                best_block: Some(metadata.best_block().to_vec()),
+                pruning_horizon: metadata.pruning_horizon(),
+                accumulated_difficulty: metadata.accumulated_difficulty().to_be_bytes().to_vec(),
+                effective_pruned_height: metadata.pruned_height(),
+            }),
+            is_synced,
+            reorg_info,
         }))
     }
 }

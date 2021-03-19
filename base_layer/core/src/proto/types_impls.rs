@@ -21,8 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::types as proto;
-use crate::transactions::types::{BlindingFactor, Commitment, HashOutput, PrivateKey, PublicKey, Signature};
+use crate::transactions::types::{BlindingFactor, Commitment, PrivateKey, PublicKey, Signature};
 use std::convert::TryFrom;
+use tari_common_types::types::HashOutput;
 use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
 
 //---------------------------------- Commitment --------------------------------------------//

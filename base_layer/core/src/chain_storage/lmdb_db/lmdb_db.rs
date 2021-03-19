@@ -74,7 +74,7 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
-        types::{Commitment, HashDigest, HashOutput, Signature},
+        types::{Commitment, HashDigest, Signature},
     },
 };
 use croaring::Bitmap;
@@ -91,8 +91,8 @@ use std::{
     time::Instant,
 };
 use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    types::{BlockHash, BLOCK_HASH_LENGTH},
+    chain_metadata::{ChainMetadata, ReorgInfo},
+    types::{BlockHash, HashOutput, BLOCK_HASH_LENGTH},
 };
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex, ByteArray};
 use tari_mmr::{Hash, MerkleMountainRange, MutableMmr};
@@ -414,6 +414,9 @@ impl LMDBDatabase {
                         MetadataKey::HorizonData,
                         MetadataValue::HorizonData(HorizonData::new(kernel_sum, utxo_sum)),
                     )?;
+                },
+                SetReorgInfo(reorg_info) => {
+                    self.set_metadata(&write_txn, MetadataKey::ReorgInfo, MetadataValue::ReorgInfo(reorg_info))?;
                 },
             }
         }
@@ -1519,6 +1522,23 @@ impl BlockchainBackend for LMDBDatabase {
         })
     }
 
+    // Fetches the reorg info from the provided metadata db.
+    fn fetch_reorg_info(&self) -> Result<Option<ReorgInfo>, ChainStorageError> {
+        let k = MetadataKey::ReorgInfo;
+        let txn = ReadTransaction::new(&*self.env).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+        let val: Option<MetadataValue> = lmdb_get(&txn, &self.metadata_db, &(k as u32))?;
+        match val {
+            Some(MetadataValue::ReorgInfo(reorg_info)) => Ok(Some(reorg_info)),
+            _ => {
+                trace!(
+                    target: LOG_TARGET,
+                    "ReorgInfo not found in the database; possibly a reorg has not yet happened, returning None.",
+                );
+                Ok(None)
+            },
+        }
+    }
+
     fn utxo_count(&self) -> Result<usize, ChainStorageError> {
         let txn = ReadTransaction::new(&*self.env).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
         lmdb_len(&txn, &self.utxos_db)
@@ -1676,7 +1696,7 @@ fn fetch_chain_height(txn: &ConstTransaction<'_>, db: &Database) -> Result<u64, 
     }
 }
 
-// // Fetches the effective pruned height from the provided metadata db.
+// Fetches the effective pruned height from the provided metadata db.
 fn fetch_pruned_height(txn: &ConstTransaction<'_>, db: &Database) -> Result<u64, ChainStorageError> {
     let k = MetadataKey::PrunedHeight;
     let val: Option<MetadataValue> = lmdb_get(&txn, &db, &(k as u32))?;
@@ -1752,6 +1772,7 @@ enum MetadataKey {
     PruningHorizon,
     PrunedHeight,
     HorizonData,
+    ReorgInfo,
 }
 
 impl fmt::Display for MetadataKey {
@@ -1763,6 +1784,7 @@ impl fmt::Display for MetadataKey {
             MetadataKey::PrunedHeight => f.write_str("Effective pruned height"),
             MetadataKey::BestBlock => f.write_str("Chain tip block hash"),
             MetadataKey::HorizonData => f.write_str("Database info"),
+            MetadataKey::ReorgInfo => f.write_str("Reorg info"),
         }
     }
 }
@@ -1776,6 +1798,7 @@ enum MetadataValue {
     PruningHorizon(u64),
     PrunedHeight(u64),
     HorizonData(HorizonData),
+    ReorgInfo(ReorgInfo),
 }
 
 impl fmt::Display for MetadataValue {
@@ -1787,6 +1810,7 @@ impl fmt::Display for MetadataValue {
             MetadataValue::PrunedHeight(height) => write!(f, "Effective pruned height is {}", height),
             MetadataValue::BestBlock(hash) => write!(f, "Chain tip block hash is {}", hash.to_hex()),
             MetadataValue::HorizonData(_) => write!(f, "Horizon data"),
+            MetadataValue::ReorgInfo(_) => write!(f, "Reorg info"),
         }
     }
 }

@@ -13,6 +13,7 @@ tari_comms = { path = "../../comms", features = ["rpc"]}
 tari_comms_dht = {  path = "../../comms/dht"}
 tari_core = {  path = "../../base_layer/core", default-features = false, features = ["transactions"]}
 tari_p2p = {  path = "../../base_layer/p2p" }
+tari_common_types = {  path = "../../base_layer/common_types" }
 tari_service_framework = {  path = "../../base_layer/service_framework"}
 tari_shutdown = { path = "../../infrastructure/shutdown"}
 tari_mmr = {  path = "../../base_layer/mmr" }
