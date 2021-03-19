@@ -41,12 +41,17 @@ use crate::transactions::{
 };
 use digest::Digest;
 use log::*;
+use rand::rngs::OsRng;
 use std::{
     cmp::max,
     collections::HashMap,
     fmt::{Debug, Error, Formatter},
 };
-use tari_crypto::{keys::PublicKey as PublicKeyTrait, tari_utilities::fixed_set::FixedSet};
+use tari_crypto::{
+    keys::{PublicKey as PublicKeyTrait, SecretKey},
+    script::{script, ExecutionStack, TariScript},
+    tari_utilities::fixed_set::FixedSet,
+};
 
 pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
 
@@ -68,12 +73,18 @@ pub struct SenderTransactionInitializer {
     unblinded_inputs: Vec<UnblindedOutput>,
     outputs: Vec<UnblindedOutput>,
     change_secret: Option<BlindingFactor>,
+    change_script: Option<TariScript>,
+    change_input_data: Option<ExecutionStack>,
+    change_script_private_key: Option<PrivateKey>,
+    change_script_offset_private_key: Option<PrivateKey>,
     rewind_data: Option<RewindData>,
     offset: Option<BlindingFactor>,
     excess_blinding_factor: BlindingFactor,
     private_nonce: Option<PrivateKey>,
     message: Option<String>,
     prevent_fee_gt_amount: bool,
+    recipient_scripts: FixedSet<TariScript>,
+    recipient_script_offset_private_keys: FixedSet<PrivateKey>,
 }
 
 pub struct BuildError {
@@ -98,12 +109,18 @@ impl SenderTransactionInitializer {
             unblinded_inputs: Vec::new(),
             outputs: Vec::new(),
             change_secret: None,
+            change_script: None,
+            change_input_data: None,
+            change_script_private_key: None,
+            change_script_offset_private_key: None,
             rewind_data: None,
             offset: None,
             private_nonce: None,
             excess_blinding_factor: BlindingFactor::default(),
             message: None,
             prevent_fee_gt_amount: true,
+            recipient_scripts: FixedSet::new(num_recipients),
+            recipient_script_offset_private_keys: FixedSet::new(num_recipients),
         }
     }
 
@@ -117,6 +134,15 @@ impl SenderTransactionInitializer {
     /// Set the amount to pay to the ith recipient. This method will silently fail if `receiver_index` >= num_receivers.
     pub fn with_amount(&mut self, receiver_index: usize, amount: MicroTari) -> &mut Self {
         self.amounts.set_item(receiver_index, amount);
+        self
+    }
+
+    /// Set the spending script of the ith recipient's output, a script offset will be generated for this recipient at
+    /// the same time. This method will silently fail if `receiver_index` >= num_receivers.
+    pub fn with_recipient_script(&mut self, receiver_index: usize, script: TariScript) -> &mut Self {
+        self.recipient_scripts.set_item(receiver_index, script);
+        self.recipient_script_offset_private_keys
+            .set_item(receiver_index, PrivateKey::random(&mut OsRng));
         self
     }
 
@@ -168,6 +194,20 @@ impl SenderTransactionInitializer {
         self
     }
 
+    /// Provide the script data that will be used to spend the change output
+    pub fn with_change_script(
+        &mut self,
+        script: TariScript,
+        input_data: ExecutionStack,
+        script_private_key: PrivateKey,
+    ) -> &mut Self
+    {
+        self.change_script = Some(script);
+        self.change_input_data = Some(input_data);
+        self.change_script_private_key = Some(script_private_key);
+        self.change_script_offset_private_key = Some(PrivateKey::random(&mut OsRng));
+    }
+
     /// Provide the private nonce that will be used for the sender's partial signature for the transaction.
     pub fn with_private_nonce(&mut self, nonce: PrivateKey) -> &mut Self {
         self.private_nonce = Some(nonce);
@@ -207,6 +247,9 @@ impl SenderTransactionInitializer {
             Some(MicroTari(0)) => Ok((fee_without_change, MicroTari(0), None)),
             Some(v) => {
                 let change_amount = v.checked_sub(extra_fee);
+                let change_script_offset_private_key = PrivateKey::random(&mut OsRng);
+                self.change_script_offset_private_key = Some(change_script_offset_private_key.clone());
+
                 match change_amount {
                     // You can't win. Just add the change to the fee (which is less than the cost of adding another
                     // output and go without a change output
@@ -217,7 +260,25 @@ impl SenderTransactionInitializer {
                             .change_secret
                             .as_ref()
                             .ok_or_else(|| "Change spending key was not provided")?;
-                        let change_unblinded_output = UnblindedOutput::new(v, change_key.clone(), None);
+                        let change_unblinded_output = UnblindedOutput::new(
+                            v,
+                            change_key.clone(),
+                            None,
+                            self.change_script
+                                .as_ref()
+                                .ok_or_else(|| "Change script was not provided")?
+                                .clone(),
+                            self.change_input_data
+                                .as_ref()
+                                .ok_or_else(|| "Change script was not provided")?
+                                .clone(),
+                            0,
+                            self.change_script_private_key
+                                .as_ref()
+                                .ok_or_else(|| "Change script private key was not provided")?
+                                .clone(),
+                            PublicKey::from_secret_key(&change_script_offset_private_key),
+                        );
                         Ok((fee_with_change, v, Some(change_unblinded_output)))
                     },
                 }
@@ -253,13 +314,24 @@ impl SenderTransactionInitializer {
         Self::check_value("Missing Lock Height", &self.lock_height, &mut message);
         Self::check_value("Missing Fee per gram", &self.fee_per_gram, &mut message);
         Self::check_value("Missing Offset", &self.offset, &mut message);
-        Self::check_value("Missing Private nonce", &self.private_nonce, &mut message);
+        Self::check_value("Change script", &self.private_nonce, &mut message);
+        Self::check_value("Change input data", &self.private_nonce, &mut message);
+        Self::check_value("Change script private key", &self.private_nonce, &mut message);
+
         if !message.is_empty() {
             return self.build_err(&message.join(","));
         }
         if !self.amounts.is_full() {
             let size = self.amounts.size();
             return self.build_err(&*format!("Missing all {} amounts", size));
+        }
+        if !self.recipient_script_offset_private_keys.is_full() {
+            let size = self.recipient_script_offset_private_keys.size();
+            return self.build_err(&*format!("Missing all {} recipient script offset private keys", size));
+        }
+        if !self.recipient_scripts.is_full() {
+            let size = self.recipient_scripts.size();
+            return self.build_err(&*format!("Missing all {} recipient scripts", size));
         }
         if self.inputs.is_empty() {
             return self.build_err("A transaction cannot have zero inputs");
@@ -364,7 +436,13 @@ impl SenderTransactionInitializer {
             amount_to_self,
             ids,
             amounts: self.amounts.into_vec(),
+            recipient_scripts: self.recipient_scripts.into_vec(),
+            recipient_script_offset_private_keys: self.recipient_script_offset_private_keys.into_vec(),
             change,
+            change_script: self.change_script,
+            change_input_data: self.change_input_data,
+            change_script_private_key: self.change_script_private_key,
+            change_script_offset_private_key: self.change_script_offset_private_key,
             metadata: TransactionMetadata {
                 fee: total_fee,
                 lock_height: self.lock_height.unwrap(),

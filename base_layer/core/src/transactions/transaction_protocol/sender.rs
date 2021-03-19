@@ -45,7 +45,11 @@ use crate::transactions::{
 use digest::Digest;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use tari_crypto::{ristretto::pedersen::PedersenCommitment, tari_utilities::ByteArray};
+use tari_crypto::{
+    ristretto::pedersen::PedersenCommitment,
+    script::{ExecutionStack, TariScript},
+    tari_utilities::ByteArray,
+};
 
 //----------------------------------------   Local Data types     ----------------------------------------------------//
 
@@ -58,7 +62,13 @@ pub(super) struct RawTransactionInfo {
     pub amount_to_self: MicroTari,
     pub ids: Vec<u64>,
     pub amounts: Vec<MicroTari>,
+    pub recipient_scripts: Vec<TariScript>,
+    pub recipient_script_offset_private_keys: Vec<PrivateKey>,
     pub change: MicroTari,
+    pub change_script: Option<TariScript>,
+    pub change_input_data: Option<ExecutionStack>,
+    pub change_script_private_key: Option<PrivateKey>,
+    pub change_script_offset_private_key: Option<PrivateKey>,
     pub metadata: TransactionMetadata,
     pub inputs: Vec<TransactionInput>,
     pub outputs: Vec<TransactionOutput>,
@@ -92,6 +102,10 @@ pub struct SingleRoundSenderData {
     pub metadata: TransactionMetadata,
     /// Plain text message to receiver
     pub message: String,
+    /// Script Hash
+    pub script_hash: Vec<u8>,
+    /// Script offset public key
+    pub script_offset_public_key: PublicKey,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -220,6 +234,11 @@ impl SenderTransactionProtocol {
         }
     }
 
+    /// Method for the send to get the change output
+    pub fn get_change_output(&self) {
+        TO DO
+    }
+
     /// This function will return the value of the change transaction
     pub fn get_change_amount(&self) -> Result<MicroTari, TPE> {
         match &self.state {
@@ -267,6 +286,8 @@ impl SenderTransactionProtocol {
                     public_excess: info.public_excess.clone(),
                     metadata: info.metadata.clone(),
                     message: info.message.clone(),
+                    script_hash: vec![],
+                    script_offset_public_key: Default::default(),
                 })
             },
             _ => Err(TPE::InvalidStateError),
