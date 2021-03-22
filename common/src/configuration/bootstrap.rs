@@ -126,6 +126,12 @@ pub struct ConfigBootstrap {
     /// Wallet notify script
     #[structopt(long, alias("notify"))]
     pub wallet_notify: Option<PathBuf>,
+    #[structopt(long, alias("max-blocks"))]
+    pub miner_max_blocks: Option<u64>,
+    #[structopt(long, alias("min-difficulty"))]
+    pub miner_min_diff: Option<u64>,
+    #[structopt(long, alias("max-difficulty"))]
+    pub miner_max_diff: Option<u64>,
 }
 
 impl Default for ConfigBootstrap {
@@ -145,6 +151,9 @@ impl Default for ConfigBootstrap {
             change_password: false,
             recovery: false,
             wallet_notify: None,
+            miner_max_blocks: None,
+            miner_min_diff: None,
+            miner_max_diff: None,
         }
     }
 }
