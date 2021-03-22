@@ -881,13 +881,29 @@ impl InnerService {
     }
 
     async fn handle(self, mut request: Request<Body>) -> Result<Response<Body>, MmProxyError> {
+        let start = Instant::now();
         let bytes = proxy::read_body_until_end(request.body_mut()).await?;
         let request = request.map(|_| bytes.freeze());
+        let method_name;
+        match *request.method() {
+            Method::GET => {
+                let mut chars = request.uri().path().chars();
+                chars.next();
+                method_name = chars.as_str().to_string();
+            },
+            Method::POST => {
+                let json = json::from_slice::<json::Value>(request.body()).unwrap_or_default();
+                method_name = str::replace(json["method"].as_str().unwrap_or_default(), "\"", "");
+            },
+            _ => {
+                method_name = "unsupported".to_string();
+            },
+        }
 
         debug!(
             target: LOG_TARGET,
             "request: {} ({})",
-            String::from_utf8_lossy(&request.body()[..]),
+            String::from_utf8_lossy(&request.body().clone()[..]),
             request
                 .headers()
                 .iter()
@@ -898,17 +914,31 @@ impl InnerService {
 
         let (request, monerod_resp) = self.proxy_request_to_monerod(request).await?;
         // Any failed (!= 200 OK) responses from Monero are immediately returned to the requester
-        if !monerod_resp.status().is_success() {
+        let monerod_status = monerod_resp.status();
+        if !monerod_status.is_success() {
             // we dont break on xmrig returned error.
             warn!(
                 target: LOG_TARGET,
                 "Monerod returned an error: {}",
                 monerod_resp.status()
             );
+            println!(
+                "Method: {}, MoneroD Status: {}, Proxy Status: N/A, Response Time: {}ms",
+                method_name,
+                monerod_status,
+                start.elapsed().as_millis()
+            );
             return Ok(monerod_resp.map(|json| json.to_string().into()));
         }
 
         let response = self.get_proxy_response(request, monerod_resp).await?;
+        println!(
+            "Method: {}, MoneroD Status: {}, Proxy Status: {}, Response Time: {}ms",
+            method_name,
+            monerod_status,
+            response.status(),
+            start.elapsed().as_millis()
+        );
         Ok(response)
     }
 }
