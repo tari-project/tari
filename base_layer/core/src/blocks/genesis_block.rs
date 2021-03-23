@@ -31,7 +31,6 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         bullet_rangeproofs::BulletRangeProof,
-        crypto::script::TariScript,
         tari_amount::MicroTari,
         transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionKernel, TransactionOutput},
         types::{Commitment, PrivateKey, PublicKey, Signature},
@@ -39,6 +38,7 @@ use crate::{
 };
 use tari_crypto::{
     hash::blake2::Blake256,
+    script::TariScript,
     tari_utilities::{hash::Hashable, hex::*},
 };
 

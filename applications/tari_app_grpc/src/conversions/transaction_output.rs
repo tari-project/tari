@@ -40,14 +40,14 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
 
         let commitment = Commitment::from_bytes(&output.commitment)
             .map_err(|err| format!("Invalid output commitment: {}", err.to_string()))?;
-        let offset_pub_key =
-            PublicKey::from_bytes(output.offset_pub_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+        let script_offset_public_key =
+            PublicKey::from_bytes(output.script_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
         Ok(Self {
             features,
             commitment,
             proof: BulletRangeProof(output.range_proof),
             script_hash: output.script_hash,
-            offset_pub_key,
+            script_offset_public_key,
         })
     }
 }
@@ -64,7 +64,7 @@ impl From<TransactionOutput> for grpc::TransactionOutput {
             commitment: Vec::from(output.commitment.as_bytes()),
             range_proof: Vec::from(output.proof.as_bytes()),
             script_hash: output.script_hash,
-            offset_pub_key: output.offset_pub_key.as_bytes().to_vec(),
+            script_offset_public_key: output.script_offset_public_key.as_bytes().to_vec(),
         }
     }
 }

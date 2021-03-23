@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::transactions::{
-    crypto::hash::blake2::Blake256,
     transaction::{OutputFeatures, TransactionOutput},
     transaction_protocol::{
         build_challenge,
@@ -35,6 +34,7 @@ use crate::transactions::{
 use digest::Input;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
+    hash::blake2::Blake256,
     keys::PublicKey as PK,
     range_proof::{RangeProofError, RangeProofService as RPS},
     tari_utilities::byte_array::ByteArray,

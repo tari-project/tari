@@ -452,6 +452,12 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
     fn remove_encryption(&self) -> Result<(), OutputManagerStorageError> {
         Ok(())
     }
+
+    fn update_mined_height(&self, tx_id: u64, height: u64) -> Result<(), OutputManagerStorageError> {
+        Err(OutputManagerStorageError::UnexpectedResult(
+            "Not Implemented".to_string(),
+        ))
+    }
 }
 
 // A struct that contains the extra info we are using in the Sql version of this backend
