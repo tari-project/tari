@@ -1876,7 +1876,7 @@ where
         let (ts_request_sender, _ts_request_receiver) = reply_channel::unbounded();
         let (event_publisher, _) = broadcast::channel(100);
         let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher.clone());
-        let constants = ConsensusConstantsBuilder::new(Network::Stibbons).build();
+        let constants = ConsensusConstantsBuilder::new(Network::Weatherwax).build();
         let shutdown_signal = self.resources.shutdown_signal.clone();
         let (sender, receiver_bns) = reply_channel::unbounded();
         let (event_publisher_bns, _) = broadcast::channel(100);

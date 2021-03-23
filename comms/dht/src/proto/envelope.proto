@@ -60,6 +60,8 @@ enum Network {
     NetworkRidcully = 3;
     // Stibbons
     NetworkStibbons = 4;
+    // Weatherwax
+    NetworkWeatherwax = 5;
 }
 
 message DhtEnvelope {
