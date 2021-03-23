@@ -407,7 +407,9 @@ impl<B: Backend> Component<B> for TransactionsTab {
         ));
         span_vec.push(Span::raw(" to select a transaction, "));
         span_vec.push(Span::styled("C", Style::default().add_modifier(Modifier::BOLD)));
-        span_vec.push(Span::raw(" to cancel a selected Pending Tx."));
+        span_vec.push(Span::raw(" to cancel a selected Pending Tx, "));
+        span_vec.push(Span::styled("Esc", Style::default().add_modifier(Modifier::BOLD)));
+        span_vec.push(Span::raw(" to go to the top of the list."));
 
         let instructions = Paragraph::new(Spans::from(span_vec)).wrap(Wrap { trim: true });
         f.render_widget(instructions, areas[1]);

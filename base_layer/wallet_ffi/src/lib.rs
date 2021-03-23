@@ -7302,13 +7302,11 @@ mod test {
                 SeedWordPushResult::InvalidSeedWord as u8
             );
 
-            let mut count = 0;
-            for w in mnemonic.iter() {
-                count += 1;
+            for (count, w) in mnemonic.iter().enumerate() {
                 let w = CString::new(*w).unwrap();
                 let w_str: *const c_char = CString::into_raw(w) as *const c_char;
 
-                if count < 24 {
+                if count + 1 < 24 {
                     assert_eq!(
                         seed_words_push_word(seed_words, w_str, error_ptr),
                         SeedWordPushResult::SuccessfulPush as u8
