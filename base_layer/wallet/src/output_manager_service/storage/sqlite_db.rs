@@ -626,27 +626,23 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn update_output_mined_height(
-        &self,
-        commitment: &Commitment,
-        height: u64,
-    ) -> Result<DbUnblindedOutput, OutputManagerStorageError>
-    {
+    fn update_mined_height(&self, tx_id: u64, height: u64) -> Result<(), OutputManagerStorageError> {
         let conn = self.database_connection.acquire_lock();
-        let output = OutputSql::find_by_commitment(&commitment.to_vec(), &conn)?;
+        let output = OutputSql::find_by_tx_id(tx_id, &conn)?;
 
-        let mut o = output.update(
-            UpdateOutput {
-                status: None,
-                tx_id: None,
-                spending_key: None,
-                height: Some(height),
-            },
-            &(*conn),
-        )?;
-        self.decrypt_if_necessary(&mut o)?;
+        for o in output.iter() {
+            let _ = o.update(
+                UpdateOutput {
+                    status: None,
+                    tx_id: None,
+                    spending_key: None,
+                    height: Some(height),
+                },
+                &(*conn),
+            )?;
+        }
 
-        Ok(DbUnblindedOutput::try_from(o)?)
+        Ok(())
     }
 
     fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), OutputManagerStorageError> {
@@ -896,6 +892,13 @@ impl OutputSql {
             .filter(outputs::status.ne(cancelled))
             .filter(outputs::commitment.eq(commitment))
             .first::<OutputSql>(conn)?)
+    }
+
+    /// Find outputs via tx_id
+    pub fn find_by_tx_id(tx_id: TxId, conn: &SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        Ok(outputs::table
+            .filter(outputs::tx_id.eq(Some(tx_id as i64)))
+            .load(conn)?)
     }
 
     /// Find outputs via tx_id that are encumbered. Any outputs that are encumbered cannot be marked as spent.

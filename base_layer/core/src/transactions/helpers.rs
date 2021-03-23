@@ -55,7 +55,6 @@ pub fn make_input<R: Rng + CryptoRng>(
 ) -> (TransactionInput, UnblindedOutput)
 {
     let key = PrivateKey::random(rng);
-    let script_key = PrivateKey::random(rng);
     let v = PrivateKey::from(val);
     let commitment = factory.commit(&key, &v);
     // TODO: Populate script with the proper value
@@ -71,25 +70,23 @@ pub fn make_input<R: Rng + CryptoRng>(
     let input = TransactionInput::new(
         OutputFeatures::default(),
         commitment,
-        script.clone(),
-        input_data.clone(),
+        script,
+        input_data,
         height,
         script_signature,
-        offset_pub_key.clone(),
+        offset_pub_key,
     );
-    (
-        input,
-        UnblindedOutput::new(
-            val,
-            key,
-            None,
-            script,
-            input_data.clone(),
-            height,
-            script_key,
-            offset_pub_key,
-        ),
-    )
+    let unblinded = UnblindedOutput::new(
+        val,
+        key.clone(),
+        None,
+        TariScript::default(),
+        ExecutionStack::default(),
+        0,
+        key.clone(),
+        PublicKey::from_secret_key(&key),
+    );
+    (input, unblinded)
 }
 
 #[derive(Default)]
@@ -246,7 +243,6 @@ pub fn create_test_input(
 ) -> (TransactionInput, UnblindedOutput)
 {
     let spending_key = PrivateKey::random(&mut OsRng);
-    let script_key = PrivateKey::random(&mut OsRng);
     let commitment = factory.commit(&spending_key, &PrivateKey::from(amount));
     let features = OutputFeatures::with_maturity(maturity);
     // TODO: Populate script with the proper value
@@ -262,21 +258,21 @@ pub fn create_test_input(
     let input = TransactionInput::new(
         features.clone(),
         commitment,
-        script.clone(),
-        input_data.clone(),
+        script,
+        input_data,
         height,
         script_signature,
-        offset_pub_key.clone(),
+        offset_pub_key,
     );
     let unblinded_output = UnblindedOutput::new(
         amount,
-        spending_key,
+        spending_key.clone(),
         Some(features),
-        script,
-        input_data.clone(),
-        height,
-        script_key,
-        offset_pub_key,
+        TariScript::default(),
+        ExecutionStack::default(),
+        0,
+        spending_key.clone(),
+        PublicKey::from_secret_key(&spending_key),
     );
     (input, unblinded_output)
 }
@@ -324,7 +320,16 @@ pub fn create_tx(
         } else {
             amount_for_last_output
         };
-        let utxo = UnblindedOutput::new(output_amount, test_params.spend_key.clone(), None);
+        let utxo = UnblindedOutput::new(
+            output_amount,
+            test_params.spend_key.clone(),
+            None,
+            TariScript::default(),
+            ExecutionStack::default(),
+            0,
+            test_params.spend_key.clone(),
+            PublicKey::from_secret_key(&test_params.spend_key),
+        );
         unblinded_outputs.push(utxo.clone());
         stx_builder.with_output(utxo);
     }
@@ -357,20 +362,38 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
         .with_change_secret(test_params.change_key.clone());
 
     for input in &schema.from {
-        let utxo = input.as_transaction_input(&factories.commitment, input.features.clone());
+        let utxo = input.as_transaction_input(&factories.commitment);
         stx_builder.with_input(utxo, input.clone());
     }
     let mut outputs = Vec::with_capacity(schema.to.len());
     for val in schema.to {
         let k = PrivateKey::random(&mut OsRng);
-        let utxo = UnblindedOutput::new(val, k, Some(schema.features.clone()));
+        let utxo = UnblindedOutput::new(
+            val,
+            k.clone(),
+            Some(schema.features.clone()),
+            TariScript::default(),
+            ExecutionStack::default(),
+            0,
+            k.clone(),
+            PublicKey::from_secret_key(&k),
+        );
         outputs.push(utxo.clone());
         stx_builder.with_output(utxo);
     }
 
     let mut stx_protocol = stx_builder.build::<Blake256>(&factories).unwrap();
     let change = stx_protocol.get_change_amount().unwrap();
-    let change_output = UnblindedOutput::new(change, test_params.change_key.clone(), Some(schema.features));
+    let change_output = UnblindedOutput::new(
+        change,
+        test_params.change_key.clone(),
+        Some(schema.features),
+        TariScript::default(),
+        ExecutionStack::default(),
+        0,
+        test_params.change_key.clone(),
+        PublicKey::from_secret_key(&test_params.change_key.clone()),
+    );
     outputs.push(change_output);
     match stx_protocol.finalize(KernelFeatures::empty(), &factories) {
         Ok(_) => (),

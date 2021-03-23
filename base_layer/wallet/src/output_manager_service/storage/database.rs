@@ -38,7 +38,11 @@ use std::{
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{OutputFeatures, UnblindedOutput},
-    types::{BlindingFactor, Commitment, CryptoFactories, PrivateKey},
+    types::{BlindingFactor, Commitment, CryptoFactories, PrivateKey, PublicKey},
+};
+use tari_crypto::{
+    keys::PublicKey as pk,
+    script::{ExecutionStack, TariScript},
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database";
@@ -98,12 +102,8 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
         &self,
         commitment: &Commitment,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError>;
-    /// Update the height at which this output was mined
-    fn update_output_mined_height(
-        &self,
-        commitment: &Commitment,
-        height: u64,
-    ) -> Result<DbUnblindedOutput, OutputManagerStorageError>;
+    /// Update the mined height for all outputs for this tx_id
+    fn update_mined_height(&self, tx_id: u64, height: u64) -> Result<(), OutputManagerStorageError>;
 }
 
 /// Holds the outputs that have been selected for a given pending transaction waiting for confirmation

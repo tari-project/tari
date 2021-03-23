@@ -390,6 +390,10 @@ where TBackend: OutputManagerBackend + 'static
                 .rewind_outputs(outputs)
                 .await
                 .map(OutputManagerResponse::RewindOutputs),
+            OutputManagerRequest::UpdateMinedHeight(tx_id, height) => self
+                .get_coinbase_transaction(tx_id, reward, fees, block_height)
+                .await
+                .map(OutputManagerResponse::CoinbaseTransaction),
         }
     }
 
@@ -1216,7 +1220,18 @@ where TBackend: OutputManagerBackend + 'static
                     )
                     .ok()
             })
-            .map(|output| UnblindedOutput::new(output.committed_value, output.blinding_factor, None))
+            .map(|output| {
+                UnblindedOutput::new(
+                    output.committed_value,
+                    output.blinding_factor.clone(),
+                    None,
+                    TariScript::default(),
+                    ExecutionStack::default(),
+                    0,
+                    output.blinding_factor.clone(),
+                    PublicKey::from_secret_key(&output.blinding_factor),
+                )
+            })
             .collect();
 
         Ok(rewound_outputs)

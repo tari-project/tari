@@ -23,6 +23,7 @@
 
 use crate::{
     consensus::{emission::Emission, ConsensusConstants},
+    crypto::script,
     transactions::{
         tari_amount::{uT, MicroTari},
         transaction::{
@@ -37,7 +38,7 @@ use crate::{
         types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey, Signature},
     },
 };
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::PublicKey as PK};
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, inputs, keys::PublicKey as PK};
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error, PartialEq)]
@@ -50,6 +51,8 @@ pub enum CoinbaseBuildError {
     MissingNonce,
     #[error("The spend key for this coinbase transaction wasn't provided")]
     MissingSpendKey,
+    #[error("The script key for this coinbase transaction wasn't provided")]
+    MissingScriptKey,
     #[error("An error occurred building the final transaction: `{0}`")]
     BuildError(String),
     #[error("Some inconsistent data was given to the builder. This transaction is not valid")]
@@ -61,6 +64,7 @@ pub struct CoinbaseBuilder {
     block_height: Option<u64>,
     fees: Option<MicroTari>,
     spend_key: Option<PrivateKey>,
+    script_key: Option<PrivateKey>,
     private_nonce: Option<PrivateKey>,
     rewind_data: Option<RewindData>,
 }
@@ -74,6 +78,7 @@ impl CoinbaseBuilder {
             block_height: None,
             fees: None,
             spend_key: None,
+            script_key: None,
             private_nonce: None,
             rewind_data: None,
         }
@@ -94,6 +99,13 @@ impl CoinbaseBuilder {
     /// Provides the private spend key for this transaction. This will usually be provided by a miner's wallet instance.
     pub fn with_spend_key(mut self, key: PrivateKey) -> Self {
         self.spend_key = Some(key);
+        self
+    }
+
+    /// Provides the private script key for this transaction. This will usually be provided by a miner's wallet
+    /// instance.
+    pub fn with_script_key(mut self, key: PrivateKey) -> Self {
+        self.script_key = Some(key);
         self
     }
 
@@ -151,6 +163,7 @@ impl CoinbaseBuilder {
         let nonce = self.private_nonce.ok_or_else(|| CoinbaseBuildError::MissingNonce)?;
         let public_nonce = PublicKey::from_secret_key(&nonce);
         let key = self.spend_key.ok_or_else(|| CoinbaseBuildError::MissingSpendKey)?;
+        let script_key = self.script_key.ok_or_else(|| CoinbaseBuildError::MissingSpendKey)?;
         let output_features = OutputFeatures::create_coinbase(height + constants.coinbase_lock_height());
         let excess = self.factories.commitment.commit_value(&key, 0);
         let kernel_features = KernelFeatures::create_coinbase();
@@ -158,7 +171,16 @@ impl CoinbaseBuilder {
         let challenge = build_challenge(&public_nonce, &metadata);
         let sig = Signature::sign(key.clone(), nonce, &challenge)
             .map_err(|_| CoinbaseBuildError::BuildError("Challenge could not be represented as a scalar".into()))?;
-        let unblinded_output = UnblindedOutput::new(total_reward, key, Some(output_features));
+        let unblinded_output = UnblindedOutput::new(
+            total_reward,
+            key,
+            Some(output_features),
+            tari_crypto::script!(Nop),
+            tari_crypto::inputs!(PublicKey::from_secret_key(&script_key)),
+            height,
+            script_key,
+            PublicKey::default(),
+        );
         let output = if let Some(rewind_data) = self.rewind_data.as_ref() {
             unblinded_output
                 .as_rewindable_transaction_output(&self.factories, rewind_data)
