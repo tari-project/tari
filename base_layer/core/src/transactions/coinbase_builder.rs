@@ -37,11 +37,7 @@ use crate::{
         types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey, Signature},
     },
 };
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::PublicKey as PK,
-    script::{ExecutionStack, TariScript},
-};
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, inputs, keys::PublicKey as PK, script};
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error, PartialEq)]

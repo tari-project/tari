@@ -470,12 +470,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e88b166b48e29667f5443df64df3c61dc07dc2b1a0b0d231800e07f09a33ecc1"
 
 [[package]]
-name = "cassowary"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df8670b8c7b9dae1793364eafadf7239c40d669904660c5960d74cfd80b46a53"
-
-[[package]]
 name = "cast"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -838,31 +832,6 @@ dependencies = [
  "autocfg",
  "cfg-if 1.0.0",
  "lazy_static 1.4.0",
-]
-
-[[package]]
-name = "crossterm"
-version = "0.17.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f4919d60f26ae233e14233cc39746c8c8bb8cd7b05840ace83604917b51b6c7"
-dependencies = [
- "bitflags 1.2.1",
- "crossterm_winapi",
- "lazy_static 1.4.0",
- "libc",
- "mio 0.7.10",
- "parking_lot",
- "signal-hook",
- "winapi 0.3.9",
-]
-
-[[package]]
-name = "crossterm_winapi"
-version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2265c3f8e080075d9b6417aa72293fc71662f34b4af2612d8d1b074d29510db"
-dependencies = [
- "winapi 0.3.9",
 ]
 
 [[package]]
@@ -2222,23 +2191,10 @@ dependencies = [
  "kernel32-sys",
  "libc",
  "log 0.4.14",
- "miow 0.2.2",
+ "miow",
  "net2",
  "slab",
  "winapi 0.2.8",
-]
-
-[[package]]
-name = "mio"
-version = "0.7.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2182a122f3b7f3f5329cb1972cee089ba2459a0a80a56935e6e674f096f8d839"
-dependencies = [
- "libc",
- "log 0.4.14",
- "miow 0.3.6",
- "ntapi",
- "winapi 0.3.9",
 ]
 
 [[package]]
@@ -2249,7 +2205,7 @@ checksum = "afcb699eb26d4332647cc848492bbc15eafb26f08d0304550d5aa1f612e066f0"
 dependencies = [
  "iovec",
  "libc",
- "mio 0.6.23",
+ "mio",
 ]
 
 [[package]]
@@ -2262,16 +2218,6 @@ dependencies = [
  "net2",
  "winapi 0.2.8",
  "ws2_32-sys",
-]
-
-[[package]]
-name = "miow"
-version = "0.3.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a33c1b55807fbed163481b5ba66db4b2fa6cde694a5027be10fb724206c5897"
-dependencies = [
- "socket2",
- "winapi 0.3.9",
 ]
 
 [[package]]
@@ -2405,15 +2351,6 @@ checksum = "ffb4262d26ed83a1c0a33a38fe2bb15797329c85770da05e6b828ddb782627af"
 dependencies = [
  "memchr",
  "version_check 0.9.3",
-]
-
-[[package]]
-name = "ntapi"
-version = "0.3.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f6bb902e437b6d86e03cce10a7e2af662292c5dfef23b65899ea3ac9354ad44"
-dependencies = [
- "winapi 0.3.9",
 ]
 
 [[package]]
@@ -3294,16 +3231,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rpassword"
-version = "5.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ffc936cf8a7ea60c58f030fd36a612a48f440610214dc54bc36431f9ea0c3efb"
-dependencies = [
- "libc",
- "winapi 0.3.9",
-]
-
-[[package]]
 name = "rust-ini"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3636,17 +3563,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7fdf1b9db47230893d76faad238fd6097fd6d6a9245cd7a4d90dbd639536bbd2"
 
 [[package]]
-name = "signal-hook"
-version = "0.1.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e31d442c16f047a671b5a71e2161d6e68814012b7f5379d269ebd915fac2729"
-dependencies = [
- "libc",
- "mio 0.7.10",
- "signal-hook-registry",
-]
-
-[[package]]
 name = "signal-hook-registry"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3876,7 +3792,7 @@ dependencies = [
  "tari_common_types",
  "tari_comms",
  "tari_core",
- "tari_crypto 0.9.0",
+ "tari_crypto",
  "tari_wallet",
  "tonic",
  "tonic-build",
@@ -3899,7 +3815,7 @@ dependencies = [
  "tari_common",
  "tari_comms",
  "tari_core",
- "tari_crypto 0.9.0",
+ "tari_crypto",
  "tari_p2p",
  "tari_wallet",
  "thiserror",
@@ -3939,7 +3855,7 @@ dependencies = [
  "tari_comms",
  "tari_comms_dht",
  "tari_core",
- "tari_crypto 0.9.0",
+ "tari_crypto",
  "tari_mmr",
  "tari_p2p",
  "tari_service_framework",
@@ -4002,7 +3918,7 @@ dependencies = [
  "futures 0.3.13",
  "rand 0.7.3",
  "serde 1.0.124",
- "tari_crypto 0.9.0",
+ "tari_crypto",
  "tokio",
 ]
 
@@ -4035,7 +3951,7 @@ dependencies = [
  "serde_json",
  "snow",
  "tari_common",
- "tari_crypto 0.9.0",
+ "tari_crypto",
  "tari_shutdown",
  "tari_storage",
  "tari_test_utils",
@@ -4079,7 +3995,7 @@ dependencies = [
  "tari_common",
  "tari_comms",
  "tari_comms_rpc_macros",
- "tari_crypto 0.9.0",
+ "tari_crypto",
  "tari_shutdown",
  "tari_storage",
  "tari_test_utils",
@@ -4108,44 +4024,6 @@ dependencies = [
  "tokio",
  "tokio-macros",
  "tower-service",
-]
-
-[[package]]
-name = "tari_console_wallet"
-version = "0.8.6"
-dependencies = [
- "chrono",
- "chrono-english",
- "config",
- "crossterm",
- "dirs-next",
- "futures 0.3.13",
- "log 0.4.14",
- "qrcode",
- "rand 0.7.3",
- "rpassword",
- "rustyline",
- "structopt",
- "strum",
- "strum_macros 0.19.4",
- "tari_app_grpc",
- "tari_app_utilities",
- "tari_common",
- "tari_comms",
- "tari_comms_dht",
- "tari_core",
- "tari_crypto 0.9.0",
- "tari_key_manager 0.2.7",
- "tari_p2p",
- "tari_shutdown",
- "tari_wallet",
- "thiserror",
- "time",
- "tokio",
- "tonic",
- "tui",
- "unicode-segmentation",
- "unicode-width",
 ]
 
 [[package]]
@@ -4185,7 +4063,7 @@ dependencies = [
  "tari_comms",
  "tari_comms_dht",
  "tari_comms_rpc_macros",
- "tari_crypto 0.9.0",
+ "tari_crypto",
  "tari_mmr",
  "tari_p2p",
  "tari_service_framework",
@@ -4198,33 +4076,6 @@ dependencies = [
  "tokio-macros",
  "ttl_cache",
  "uint 0.8.5",
-]
-
-[[package]]
-name = "tari_crypto"
-version = "0.8.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa6c6c4c942a4f31ce59662ecbba3b1de23eec5cb19ce727cc58dfbf1c2a8e42"
-dependencies = [
- "base64 0.10.1",
- "blake2",
- "blake3",
- "cbindgen",
- "clear_on_drop",
- "curve25519-dalek",
- "digest 0.8.1",
- "k12",
- "lazy_static 1.4.0",
- "merlin",
- "rand 0.7.3",
- "rmp-serde",
- "serde 1.0.124",
- "serde_json",
- "sha2",
- "sha3 0.9.1",
- "tari_bulletproofs",
- "tari_utilities",
- "thiserror",
 ]
 
 [[package]]
@@ -4265,22 +4116,6 @@ dependencies = [
 
 [[package]]
 name = "tari_key_manager"
-version = "0.2.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e096176295d4500950f9cf915be3052595f7a7edf015f2b8057f00a1979b2df"
-dependencies = [
- "digest 0.8.1",
- "rand 0.7.3",
- "serde 1.0.124",
- "serde_derive",
- "serde_json",
- "sha2",
- "tari_crypto 0.8.3",
- "thiserror",
-]
-
-[[package]]
-name = "tari_key_manager"
 version = "0.8.6"
 dependencies = [
  "digest 0.8.1",
@@ -4289,7 +4124,7 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "sha2",
- "tari_crypto 0.9.0",
+ "tari_crypto",
  "thiserror",
 ]
 
@@ -4318,7 +4153,7 @@ dependencies = [
  "tari_app_grpc",
  "tari_common",
  "tari_core",
- "tari_crypto 0.9.0",
+ "tari_crypto",
  "tari_utilities",
  "thiserror",
  "tokio",
@@ -4348,7 +4183,7 @@ dependencies = [
  "tari_app_utilities",
  "tari_common",
  "tari_core",
- "tari_crypto 0.9.0",
+ "tari_crypto",
  "thiserror",
  "tokio",
  "tonic",
@@ -4367,7 +4202,7 @@ dependencies = [
  "rand 0.7.3",
  "serde 1.0.124",
  "serde_json",
- "tari_crypto 0.9.0",
+ "tari_crypto",
  "tari_infra_derive",
  "tari_utilities",
  "thiserror",
@@ -4398,7 +4233,7 @@ dependencies = [
  "tari_common",
  "tari_comms",
  "tari_comms_dht",
- "tari_crypto 0.9.0",
+ "tari_crypto",
  "tari_service_framework",
  "tari_shutdown",
  "tari_storage",
@@ -4513,8 +4348,8 @@ dependencies = [
  "tari_comms",
  "tari_comms_dht",
  "tari_core",
- "tari_crypto 0.9.0",
- "tari_key_manager 0.8.6",
+ "tari_crypto",
+ "tari_key_manager",
  "tari_p2p",
  "tari_service_framework",
  "tari_shutdown",
@@ -4544,8 +4379,8 @@ dependencies = [
  "tari_comms",
  "tari_comms_dht",
  "tari_core",
- "tari_crypto 0.9.0",
- "tari_key_manager 0.8.6",
+ "tari_crypto",
+ "tari_key_manager",
  "tari_p2p",
  "tari_shutdown",
  "tari_utilities",
@@ -4586,6 +4421,7 @@ dependencies = [
  "serde 1.0.124",
  "serde_json",
  "tari_core",
+ "tari_crypto",
  "tari_utilities",
  "tokio",
 ]
@@ -4697,7 +4533,7 @@ dependencies = [
  "lazy_static 1.4.0",
  "libc",
  "memchr",
- "mio 0.6.23",
+ "mio",
  "mio-uds",
  "num_cpus",
  "pin-project-lite 0.1.12",
@@ -5169,19 +5005,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4189890526f0168710b6ee65ceaedf1460c48a14318ceec933cb26baa492096a"
 dependencies = [
  "linked-hash-map 0.5.4",
-]
-
-[[package]]
-name = "tui"
-version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2eaeee894a1e9b90f80aa466fe59154fdb471980b5e104d8836fcea309ae17e"
-dependencies = [
- "bitflags 1.2.1",
- "cassowary",
- "crossterm",
- "unicode-segmentation",
- "unicode-width",
 ]
 
 [[package]]

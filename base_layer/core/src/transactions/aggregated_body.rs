@@ -411,10 +411,7 @@ impl AggregateBody {
     }
 
     /// this will validate the script offset of the aggregate body.
-    fn validate_script_offset(
-        &self,
-        script_offset: Commitment,    ) -> Result<(), TransactionError>
-    {
+    fn validate_script_offset(&self, script_offset: Commitment) -> Result<(), TransactionError> {
         trace!(target: LOG_TARGET, "Checking script offset");
         // lets count up the input script public keys
         let mut input_keys = PublicKey::default();
@@ -426,8 +423,9 @@ impl AggregateBody {
         let mut output_keys = PublicKey::default();
         for output in &self.outputs {
             output_keys = output_keys +
-                PrivateKey::from_bytes(&output.hash()).map_err(|e| TransactionError::Unknown(e.to_string()))? *
-                    output.offset_pub_key.clone();
+                PrivateKey::from_bytes(&output.hash())
+                    .map_err(|e| TransactionError::ConversionError(e.to_string()))? *
+                    output.script_offset_public_key.clone();
         }
         let lhs = HomomorphicCommitment::from_public_key(&(input_keys - output_keys));
         if lhs != script_offset {
