@@ -72,7 +72,7 @@ use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     range_proof::REWIND_USER_MESSAGE_LENGTH,
     script,
-    script::{ExecutionStack, Opcode::Nop, TariScript},
+    script::{ExecutionStack, TariScript},
 };
 use tari_key_manager::{
     key_manager::KeyManager,

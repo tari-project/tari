@@ -62,7 +62,6 @@ use tari_core::{
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
-    keys::PublicKey as PublicKeyTrait,
     script::{ExecutionStack, TariScript},
     tari_utilities::{
         hex::{from_hex, Hex},

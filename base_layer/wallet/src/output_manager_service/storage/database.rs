@@ -37,12 +37,7 @@ use std::{
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction::{OutputFeatures, UnblindedOutput},
-    types::{BlindingFactor, Commitment, CryptoFactories, PrivateKey, PublicKey},
-};
-use tari_crypto::{
-    keys::PublicKey as pk,
-    script::{ExecutionStack, TariScript},
+    types::{BlindingFactor, Commitment, PrivateKey},
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database";

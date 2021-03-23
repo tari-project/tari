@@ -453,7 +453,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
         Ok(())
     }
 
-    fn update_mined_height(&self, tx_id: u64, height: u64) -> Result<(), OutputManagerStorageError> {
+    fn update_mined_height(&self, _tx_id: u64, _height: u64) -> Result<(), OutputManagerStorageError> {
         Err(OutputManagerStorageError::UnexpectedResult(
             "Not Implemented".to_string(),
         ))
