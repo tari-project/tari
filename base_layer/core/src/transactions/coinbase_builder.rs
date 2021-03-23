@@ -23,7 +23,6 @@
 
 use crate::{
     consensus::{emission::Emission, ConsensusConstants},
-    crypto::script,
     transactions::{
         tari_amount::{uT, MicroTari},
         transaction::{
@@ -38,7 +37,7 @@ use crate::{
         types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey, Signature},
     },
 };
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, inputs, keys::PublicKey as PK};
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, inputs, keys::PublicKey as PK, script};
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error, PartialEq)]
@@ -175,8 +174,8 @@ impl CoinbaseBuilder {
             total_reward,
             key,
             Some(output_features),
-            tari_crypto::script!(Nop),
-            tari_crypto::inputs!(PublicKey::from_secret_key(&script_key)),
+            script!(Nop),
+            inputs!(PublicKey::from_secret_key(&script_key)),
             height,
             script_key,
             PublicKey::default(),
