@@ -132,6 +132,7 @@ pub async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut NodeEvent
         let wallet2 = wallets.get(i + 1).unwrap();
 
         banner!("🌎 '{}' is going to try discover '{}'.", wallet1, wallet2);
+        log::info!("'{}' is going to try discover '{}'.", wallet1, wallet2);
 
         let start = Instant::now();
         let discovery_result = wallet1
@@ -183,7 +184,7 @@ pub async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut NodeEvent
     total_messages
 }
 
-pub async fn network_peer_list_stats(nodes: &[TestNode], wallets: &[TestNode]) {
+pub async fn print_network_peer_list_stats(nodes: &[TestNode], wallets: &[TestNode]) {
     let mut stats = HashMap::<String, usize>::with_capacity(wallets.len());
     for wallet in wallets {
         let mut num_known = 0;
@@ -218,7 +219,7 @@ pub async fn network_peer_list_stats(nodes: &[TestNode], wallets: &[TestNode]) {
     );
 }
 
-pub async fn network_connectivity_stats(nodes: &[TestNode], wallets: &[TestNode], quiet_mode: bool) {
+pub async fn print_network_connectivity_stats(nodes: &[TestNode], wallets: &[TestNode], quiet_mode: bool) {
     pub async fn display(nodes: &[TestNode], quiet_mode: bool) -> (usize, usize) {
         let mut total = 0;
         let mut avg = Vec::new();
@@ -926,7 +927,7 @@ async fn setup_comms_dht(
     let (messaging_events_tx, _) = broadcast::channel(100);
 
     let comms = comms
-        .add_rpc_server(RpcServer::new().add_service(dht.rpc_service()))
+        .add_rpc_server(RpcServer::new().add_service(dht.create_rpc_service()))
         .add_protocol_extension(MessagingProtocolExtension::new(
             messaging_events_tx.clone(),
             pipeline::Builder::new()

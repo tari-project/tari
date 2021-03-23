@@ -32,7 +32,7 @@ use log::*;
 use std::{sync::Arc, time::Instant};
 use tari_comms::{
     connectivity::{ConnectivityError, ConnectivityEvent, ConnectivityEventRx, ConnectivityRequester},
-    peer_manager::{node_id::NodeDistance, NodeId, PeerManagerError, PeerQuery, PeerQuerySortBy},
+    peer_manager::{NodeDistance, NodeId, PeerManagerError, PeerQuery, PeerQuerySortBy},
     NodeIdentity,
     PeerConnection,
     PeerManager,

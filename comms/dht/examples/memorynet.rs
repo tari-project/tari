@@ -44,8 +44,8 @@ use crate::memory_net::utilities::{
     drain_messaging_events,
     get_name,
     make_node,
-    network_connectivity_stats,
-    network_peer_list_stats,
+    print_network_connectivity_stats,
+    print_network_peer_list_stats,
     shutdown_all,
     take_a_break,
 };
@@ -55,9 +55,9 @@ use std::{iter::repeat_with, time::Duration};
 use tari_comms::peer_manager::PeerFeatures;
 
 // Size of network. Must be at least 2
-const NUM_NODES: usize = 2;
+const NUM_NODES: usize = 32;
 // Must be at least 2
-const NUM_WALLETS: usize = 2;
+const NUM_WALLETS: usize = 24;
 const QUIET_MODE: bool = true;
 /// Number of neighbouring nodes each node should include in the connection pool
 const NUM_NEIGHBOURING_NODES: usize = 8;
@@ -112,7 +112,7 @@ async fn main() {
         repeat_with(|| {
             make_node(
                 PeerFeatures::COMMUNICATION_CLIENT,
-                vec![nodes[OsRng.gen_range(0, NUM_NODES - 1)].node_identity()],
+                vec![nodes[OsRng.gen_range(0, NUM_NODES)].node_identity()],
                 node_message_tx.clone(),
                 NUM_NEIGHBOURING_NODES,
                 NUM_RANDOM_NODES,
@@ -191,9 +191,9 @@ async fn main() {
     let mut total_messages = 0;
     total_messages += drain_messaging_events(&mut messaging_events_rx, false).await;
 
-    network_peer_list_stats(&nodes, &nodes).await;
-    network_peer_list_stats(&nodes, &wallets).await;
-    network_connectivity_stats(&nodes, &wallets, QUIET_MODE).await;
+    print_network_peer_list_stats(&nodes, &nodes).await;
+    print_network_peer_list_stats(&nodes, &wallets).await;
+    print_network_connectivity_stats(&nodes, &wallets, QUIET_MODE).await;
 
     {
         let count = seed_node[0].comms.peer_manager().count().await;
@@ -241,8 +241,8 @@ async fn main() {
 
     println!("{} messages sent in total across the network", total_messages);
 
-    network_peer_list_stats(&nodes, &wallets).await;
-    network_connectivity_stats(&nodes, &wallets, QUIET_MODE).await;
+    print_network_peer_list_stats(&nodes, &wallets).await;
+    print_network_connectivity_stats(&nodes, &wallets, QUIET_MODE).await;
 
     banner!("That's it folks! Network is shutting down...");
     log::info!("------------------------------- SHUTDOWN -------------------------------");

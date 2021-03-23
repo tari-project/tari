@@ -199,7 +199,7 @@ pub fn run_python_network_graph_render(
         ],
     };
 
-    let result = Command::new("python")
+    let result = Command::new("python3")
         .args(arguments)
         .spawn()
         .map_err(|_| "Could not execute Python command".to_string())?;

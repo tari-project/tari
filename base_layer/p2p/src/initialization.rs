@@ -365,7 +365,7 @@ where
         .node_identity()
         .has_peer_features(PeerFeatures::COMMUNICATION_NODE)
     {
-        comms = comms.add_rpc_server(RpcServer::new().add_service(dht.rpc_service()));
+        comms = comms.add_rpc_server(RpcServer::new().add_service(dht.create_rpc_service()));
     }
 
     // Hook up DHT messaging middlewares

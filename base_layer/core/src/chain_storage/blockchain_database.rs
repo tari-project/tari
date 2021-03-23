@@ -1860,7 +1860,8 @@ fn remove_orphan<T: BlockchainBackend>(db: &mut T, hash: HashOutput) -> Result<(
     db.write(txn)
 }
 
-/// Gets all blocks from the orphan to the point where it connects to the best chain
+/// Gets all blocks from the orphan to the point where it connects to the best chain.
+/// Will always return at least one block.
 // TODO: this would probably perform better if it reused the db transaction
 #[allow(clippy::ptr_arg)]
 fn get_orphan_link_main_chain<T: BlockchainBackend>(

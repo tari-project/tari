@@ -32,15 +32,14 @@
 //! 1. The first "wallet" in the list attempts to discover the last "wallet" in the list
 //!
 //! The suggested way to run this is:
-//!
-//! `RUST_BACKTRACE=1 RUST_LOG=trace cargo run --example memorynet 2> /tmp/debug.log`
+//!RUST_BACKTRACE=1 RUST_LOG=trace cargo run --example memorynet 2> /tmp/debug.log`
 
 // Size of network
-const NUM_SEED_NODES: usize = 2;
+const NUM_SEED_NODES: usize = 6;
 // Size of network
 const NUM_NODES: usize = 40;
 // Must be at least 2
-const NUM_WALLETS: usize = 6;
+const NUM_WALLETS: usize = 2;
 const QUIET_MODE: bool = true;
 /// Number of neighbouring nodes each node should include in the connection pool
 const NUM_NEIGHBOURING_NODES: usize = 8;
