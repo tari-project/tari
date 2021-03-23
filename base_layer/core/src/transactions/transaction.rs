@@ -25,7 +25,6 @@
 
 use crate::transactions::{
     aggregated_body::AggregateBody,
-    crypto::script::{ScriptError, TariScript},
     tari_amount::{uT, MicroTari},
     transaction_protocol::{build_challenge, RewindData, TransactionMetadata},
     types::{
@@ -63,7 +62,7 @@ use tari_crypto::{
         RewindResult as CryptoRewindResult,
         REWIND_USER_MESSAGE_LENGTH,
     },
-    script::ExecutionStack,
+    script::{ExecutionStack, ScriptError, TariScript},
     tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable},
 };
 use thiserror::Error;
@@ -286,16 +285,14 @@ impl UnblindedOutput {
             .result()
             .to_vec();
         let beta = PrivateKey::from_bytes(beta_hash.as_slice())?;
-        let commitment = factories
-            .commitment
-            .commit(&(self.spending_key.clone() + beta), &self.value.into());
+        let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
         let output = TransactionOutput {
             features: self.features.clone(),
             commitment,
             proof: RangeProof::from_bytes(
                 &factories
                     .range_proof
-                    .construct_proof(&self.spending_key, self.value.into())?,
+                    .construct_proof(&(self.spending_key.clone() + beta), self.value.into())?,
             )
             .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?,
             script_hash: self.script.as_hash::<Blake256>()?.to_vec(),
@@ -324,12 +321,10 @@ impl UnblindedOutput {
             .to_vec();
         let beta = PrivateKey::from_bytes(beta_hash.as_slice())?;
 
-        let commitment = factories
-            .commitment
-            .commit(&(self.spending_key.clone() + beta), &self.value.into());
+        let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
 
         let proof_bytes = factories.range_proof.construct_proof_with_rewind_key(
-            &self.spending_key,
+            &(self.spending_key.clone() + beta),
             self.value.into(),
             &rewind_data.rewind_key,
             &rewind_data.rewind_blinding_key,

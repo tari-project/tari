@@ -10,7 +10,7 @@ edition = "2018"
 tari_common_types = { version = "^0.8", path = "../../base_layer/common_types"}
 tari_comms = { version = "^0.8", path = "../../comms"}
 tari_comms_dht = { version = "^0.8", path = "../../comms/dht" }
-tari_crypto = "^0.9"
+tari_crypto = { git = "https://github.com/philipr-za/tari-crypto/", branch = "philip-serde-execution-stack" }
 tari_key_manager = { version = "^0.8", path = "../key_manager" }
 tari_p2p = { version = "^0.8", path = "../p2p" }
 tari_service_framework = { version = "^0.8", path = "../service_framework"}

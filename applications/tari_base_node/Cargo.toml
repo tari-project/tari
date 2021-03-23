@@ -17,7 +17,7 @@ tari_service_framework = {  path = "../../base_layer/service_framework"}
 tari_shutdown = { path = "../../infrastructure/shutdown"}
 tari_mmr = {  path = "../../base_layer/mmr" }
 tari_wallet = { path = "../../base_layer/wallet" }
-tari_crypto = "^0.9"
+tari_crypto = { git = "https://github.com/philipr-za/tari-crypto/", branch = "philip-serde-execution-stack" }
 tari_app_grpc = {  path = "../tari_app_grpc" }
 tari_app_utilities = { path = "../tari_app_utilities"}
 

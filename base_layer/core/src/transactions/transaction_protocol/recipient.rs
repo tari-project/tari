@@ -32,6 +32,7 @@ use crate::transactions::{
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt};
+use tari_crypto::script::{ExecutionStack, TariScript};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[allow(clippy::large_enum_variant)]

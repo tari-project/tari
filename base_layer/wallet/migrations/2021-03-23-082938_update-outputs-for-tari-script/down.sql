@@ -1,0 +1,2 @@
+-- This migration is only meant for fresh databases on a testnet reset, the up.sql will not run on a db containing
+-- data so the down is not needed

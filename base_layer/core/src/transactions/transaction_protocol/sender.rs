@@ -46,6 +46,7 @@ use digest::Digest;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use tari_crypto::{
+    keys::PublicKey as PublicKeyTrait,
     ristretto::pedersen::PedersenCommitment,
     script::{ExecutionStack, TariScript},
     tari_utilities::ByteArray,
@@ -234,11 +235,6 @@ impl SenderTransactionProtocol {
         }
     }
 
-    /// Method for the send to get the change output
-    pub fn get_change_output(&self) {
-        TO DO
-    }
-
     /// This function will return the value of the change transaction
     pub fn get_change_amount(&self) -> Result<MicroTari, TPE> {
         match &self.state {
@@ -279,6 +275,15 @@ impl SenderTransactionProtocol {
     pub fn get_single_round_message(&self) -> Result<SingleRoundSenderData, TPE> {
         match &self.state {
             SenderState::SingleRoundMessageReady(info) | SenderState::CollectingSingleSignature(info) => {
+                let recipient_script =
+                    info.recipient_scripts.first().cloned().ok_or_else(|| {
+                        TPE::IncompleteStateError("The recipient script should be available".to_string())
+                    })?;
+                let recipient_script_offset_public_key =
+                    PublicKey::from_secret_key(info.recipient_script_offset_private_keys.first().ok_or_else(|| {
+                        TPE::IncompleteStateError("The recipient script offset should be available".to_string())
+                    })?);
+
                 Ok(SingleRoundSenderData {
                     tx_id: info.ids[0],
                     amount: self.get_total_amount().unwrap(),
@@ -286,8 +291,8 @@ impl SenderTransactionProtocol {
                     public_excess: info.public_excess.clone(),
                     metadata: info.metadata.clone(),
                     message: info.message.clone(),
-                    script_hash: vec![],
-                    script_offset_public_key: Default::default(),
+                    script_hash: recipient_script.as_hash()?.to_vec(),
+                    script_offset_public_key: recipient_script_offset_public_key,
                 })
             },
             _ => Err(TPE::InvalidStateError),

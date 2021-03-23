@@ -17,6 +17,10 @@ message SingleRoundSenderData {
     TransactionMetadata metadata = 5;
     // Plain text message to receiver
     string message = 6;
+    // Tari script serialised script hash
+    bytes script_hash = 7;
+    // Tari script offset pubkey, K_O
+    bytes script_offset_public_key = 8;
 }
 
 message TransactionSenderMessage {

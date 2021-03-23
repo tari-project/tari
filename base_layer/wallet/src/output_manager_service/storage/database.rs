@@ -98,6 +98,12 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
         &self,
         commitment: &Commitment,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError>;
+    /// Update the height at which this output was mined
+    fn update_output_mined_height(
+        &self,
+        commitment: &Commitment,
+        height: u64,
+    ) -> Result<DbUnblindedOutput, OutputManagerStorageError>;
 }
 
 /// Holds the outputs that have been selected for a given pending transaction waiting for confirmation
@@ -354,18 +360,12 @@ where T: OutputManagerBackend + 'static
     pub async fn accept_incoming_pending_transaction(
         &self,
         tx_id: TxId,
-        amount: MicroTari,
-        spending_key: PrivateKey,
-        output_features: OutputFeatures,
-        factory: &CryptoFactories,
+        output: DbUnblindedOutput,
         coinbase_block_height: Option<u64>,
     ) -> Result<(), OutputManagerStorageError>
     {
         let db_clone = self.db.clone();
-        let output = DbUnblindedOutput::from_unblinded_output(
-            UnblindedOutput::new(amount, spending_key.clone(), Some(output_features)),
-            factory,
-        )?;
+
         tokio::task::spawn_blocking(move || {
             db_clone.write(WriteOperation::Insert(DbKeyValuePair::PendingTransactionOutputs(
                 tx_id,
@@ -606,6 +606,20 @@ where T: OutputManagerBackend + 'static
     {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.cancel_pending_transaction_at_block_height(block_height))
+            .await
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
+            .and_then(|inner_result| inner_result)
+    }
+
+    pub async fn update_output_mined_height(
+        &self,
+        commitment: Commitment,
+
+        height: u64,
+    ) -> Result<DbUnblindedOutput, OutputManagerStorageError>
+    {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.update_(&commitment))
             .await
             .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)

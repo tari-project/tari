@@ -67,8 +67,11 @@ use tari_core::{
     },
 };
 use tari_crypto::{
-    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+    inputs,
+    keys::{PublicKey as PublicKeyTrait, SecretKey, SecretKey as SecretKeyTrait},
     range_proof::REWIND_USER_MESSAGE_LENGTH,
+    script,
+    script::Opcode::Nop,
 };
 use tari_key_manager::{
     key_manager::KeyManager,
@@ -440,32 +443,46 @@ where TBackend: OutputManagerBackend + 'static
         sender_message: TransactionSenderMessage,
     ) -> Result<ReceiverTransactionProtocol, OutputManagerError>
     {
-        let (tx_id, amount) = match sender_message.single() {
-            Some(data) => (data.tx_id, data.amount),
+        let single_round_sender_data = match sender_message.single() {
+            Some(data) => data,
             _ => return Err(OutputManagerError::InvalidSenderMessage),
         };
 
-        let key = self.get_next_spend_key().await?;
+        // Confirm script hash is for the expected script, at the moment assuming Nop
+        if single_round_sender_data.script_hash != script!(Nop).as_hash()? {
+            return Err(OutputManagerError::InvalidScriptHash);
+        }
+
+        let spending_key = self.get_next_spend_key().await?;
+        let script_private_key = self.get_next_spend_key().await?;
+
+        let output = DbUnblindedOutput::from_unblinded_output(
+            UnblindedOutput::new(
+                single_round_sender_data.amount,
+                spending_key.clone(),
+                None,
+                script!(Nop),
+                inputs!(PublicKey::from_secret_key(&script_private_key)),
+                single_round_sender_data.height,
+                script_private_key,
+                single_round_sender_data.script_offset_public_key.clone(),
+            ),
+            &self.resources.factories,
+        )?;
+
         self.resources
             .db
-            .accept_incoming_pending_transaction(
-                tx_id,
-                amount,
-                key.clone(),
-                OutputFeatures::default(),
-                &self.resources.factories,
-                None,
-            )
+            .accept_incoming_pending_transaction(single_round_sender_data.tx_id, output, None)
             .await?;
 
-        self.confirm_encumberance(tx_id).await?;
+        self.confirm_encumberance(single_round_sender_data.tx_id).await?;
 
         let nonce = PrivateKey::random(&mut OsRng);
 
         let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(
             sender_message,
             nonce,
-            key,
+            spending_key,
             OutputFeatures::default(),
             &self.resources.factories,
             &self.resources.rewind_data,
@@ -620,13 +637,14 @@ where TBackend: OutputManagerBackend + 'static
             .with_offset(offset.clone())
             .with_private_nonce(nonce.clone())
             .with_amount(0, amount)
+            .with_recipient_script(0, script!(Nop))
             .with_message(message)
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
 
         for uo in outputs.iter() {
             builder.with_input(
                 uo.unblinded_output
-                    .as_transaction_input(&self.resources.factories.commitment),
+                    .as_transaction_input_with_script_signature(&self.resources.factories.commitment)?,
                 uo.unblinded_output.clone(),
             );
         }
@@ -644,6 +662,7 @@ where TBackend: OutputManagerBackend + 'static
             let key = self.get_next_spend_key().await?;
             change_key = Some(key.clone());
             builder.with_rewindable_change_secret(key, self.resources.rewind_data.clone());
+            builder.with_change_script(script!(Nop), inputs!(PublicKey::from_secret_key(&script_private_key)));
         }
 
         let stp = builder
@@ -1133,6 +1152,13 @@ where TBackend: OutputManagerBackend + 'static
     }
 
     async fn get_next_spend_key(&self) -> Result<PrivateKey, OutputManagerError> {
+        let mut km = self.key_manager.lock().await;
+        let key = km.next_key()?;
+        self.resources.db.increment_key_index().await?;
+        Ok(key.k)
+    }
+
+    async fn get_next_script_key(&self) -> Result<PrivateKey, OutputManagerError> {
         let mut km = self.key_manager.lock().await;
         let key = km.next_key()?;
         self.resources.db.increment_key_index().await?;
