@@ -55,12 +55,13 @@ pub fn make_input<R: Rng + CryptoRng>(
 ) -> (TransactionInput, UnblindedOutput)
 {
     let key = PrivateKey::random(rng);
+    let script_key = PrivateKey::random(rng);
     let v = PrivateKey::from(val);
     let commitment = factory.commit(&key, &v);
     // TODO: Populate script with the proper value
-    let script = TariScript::default().as_bytes();
+    let script = TariScript::default();
     // TODO: Populate input_data with the proper value
-    let input_data = ExecutionStack::default().as_bytes();
+    let input_data = ExecutionStack::default();
     // TODO: Populate height with the proper value
     let height = 0;
     // TODO: Populate script_signature with the proper value
@@ -70,13 +71,25 @@ pub fn make_input<R: Rng + CryptoRng>(
     let input = TransactionInput::new(
         OutputFeatures::default(),
         commitment,
-        script,
-        input_data,
+        script.clone(),
+        input_data.clone(),
         height,
         script_signature,
-        offset_pub_key,
+        offset_pub_key.clone(),
     );
-    (input, UnblindedOutput::new(val, key, None))
+    (
+        input,
+        UnblindedOutput::new(
+            val,
+            key,
+            None,
+            script,
+            input_data.clone(),
+            height,
+            script_key,
+            offset_pub_key,
+        ),
+    )
 }
 
 #[derive(Default)]
@@ -233,12 +246,13 @@ pub fn create_test_input(
 ) -> (TransactionInput, UnblindedOutput)
 {
     let spending_key = PrivateKey::random(&mut OsRng);
+    let script_key = PrivateKey::random(&mut OsRng);
     let commitment = factory.commit(&spending_key, &PrivateKey::from(amount));
     let features = OutputFeatures::with_maturity(maturity);
     // TODO: Populate script with the proper value
-    let script = TariScript::default().as_bytes();
+    let script = TariScript::default();
     // TODO: Populate input_data with the proper value
-    let input_data = ExecutionStack::default().as_bytes();
+    let input_data = ExecutionStack::default();
     // TODO: Populate height with the proper value
     let height = 0;
     // TODO: Populate script_signature with the proper value
@@ -248,13 +262,22 @@ pub fn create_test_input(
     let input = TransactionInput::new(
         features.clone(),
         commitment,
-        script,
-        input_data,
+        script.clone(),
+        input_data.clone(),
         height,
         script_signature,
+        offset_pub_key.clone(),
+    );
+    let unblinded_output = UnblindedOutput::new(
+        amount,
+        spending_key,
+        Some(features),
+        script,
+        input_data.clone(),
+        height,
+        script_key,
         offset_pub_key,
     );
-    let unblinded_output = UnblindedOutput::new(amount, spending_key, Some(features));
     (input, unblinded_output)
 }
 

@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::transactions::{
-    crypto::{hash::blake2::Blake256, script::TariScript},
+    crypto::hash::blake2::Blake256,
     transaction::{OutputFeatures, TransactionOutput},
     transaction_protocol::{
         build_challenge,
@@ -105,7 +105,7 @@ impl SingleReceiverTransactionProtocol {
             .chain(sender_info.script_offset_public_key.clone().as_bytes())
             .result()
             .to_vec();
-        let beta = PrivateKey::from_bytes(beta_hash.as_slice())?;
+        let beta = PrivateKey::from_bytes(beta_hash.as_slice()).map_err(|_| TPE::SerializationError)?;
 
         let proof = if let Some(rewind_data) = rewind_data {
             factories.range_proof.construct_proof_with_rewind_key(

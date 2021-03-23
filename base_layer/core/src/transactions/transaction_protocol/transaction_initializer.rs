@@ -49,7 +49,7 @@ use std::{
 };
 use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey},
-    script::{script, ExecutionStack, TariScript},
+    script::{ExecutionStack, TariScript},
     tari_utilities::fixed_set::FixedSet,
 };
 
@@ -139,10 +139,16 @@ impl SenderTransactionInitializer {
 
     /// Set the spending script of the ith recipient's output, a script offset will be generated for this recipient at
     /// the same time. This method will silently fail if `receiver_index` >= num_receivers.
-    pub fn with_recipient_script(&mut self, receiver_index: usize, script: TariScript) -> &mut Self {
+    pub fn with_recipient_script(
+        &mut self,
+        receiver_index: usize,
+        script: TariScript,
+        recipient_script_offset_private_key: PrivateKey,
+    ) -> &mut Self
+    {
         self.recipient_scripts.set_item(receiver_index, script);
         self.recipient_script_offset_private_keys
-            .set_item(receiver_index, PrivateKey::random(&mut OsRng));
+            .set_item(receiver_index, recipient_script_offset_private_key);
         self
     }
 
@@ -200,12 +206,14 @@ impl SenderTransactionInitializer {
         script: TariScript,
         input_data: ExecutionStack,
         script_private_key: PrivateKey,
+        script_offset_private_key: PrivateKey,
     ) -> &mut Self
     {
         self.change_script = Some(script);
         self.change_input_data = Some(input_data);
         self.change_script_private_key = Some(script_private_key);
-        self.change_script_offset_private_key = Some(PrivateKey::random(&mut OsRng));
+        self.change_script_offset_private_key = Some(script_offset_private_key);
+        self
     }
 
     /// Provide the private nonce that will be used for the sender's partial signature for the transaction.

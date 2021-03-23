@@ -189,6 +189,8 @@ pub enum TransactionError {
     InputMaturity,
     #[error("Tari script error : {0}")]
     ScriptError(#[from] ScriptError),
+    #[error("Error performing conversion: {0}")]
+    ConversionError(String),
 }
 
 //-----------------------------------------     UnblindedOutput   ----------------------------------------------------//
@@ -279,12 +281,13 @@ impl UnblindedOutput {
 
     pub fn as_transaction_output(&self, factories: &CryptoFactories) -> Result<TransactionOutput, TransactionError> {
         let beta_hash = Blake256::new()
-            .chain(self.script.as_hash()?.as_bytes())
+            .chain(self.script.as_hash::<Blake256>()?.as_bytes())
             .chain(self.features.to_bytes())
             .chain(self.script_offset_public_key.as_bytes())
             .result()
             .to_vec();
-        let beta = PrivateKey::from_bytes(beta_hash.as_slice())?;
+        let beta = PrivateKey::from_bytes(beta_hash.as_slice())
+            .map_err(|e| TransactionError::ConversionError(e.to_string()))?;
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
         let output = TransactionOutput {
             features: self.features.clone(),
@@ -314,12 +317,13 @@ impl UnblindedOutput {
     ) -> Result<TransactionOutput, TransactionError>
     {
         let beta_hash = Blake256::new()
-            .chain(self.script.as_hash()?.as_bytes())
+            .chain(self.script.as_hash::<Blake256>()?.as_bytes())
             .chain(self.features.to_bytes())
             .chain(self.script_offset_public_key.as_bytes())
             .result()
             .to_vec();
-        let beta = PrivateKey::from_bytes(beta_hash.as_slice())?;
+        let beta = PrivateKey::from_bytes(beta_hash.as_slice())
+            .map_err(|e| TransactionError::ConversionError(e.to_string()))?;
 
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
 

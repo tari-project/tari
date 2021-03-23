@@ -46,6 +46,7 @@ use digest::Digest;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use tari_crypto::{
+    common::Blake256,
     keys::PublicKey as PublicKeyTrait,
     ristretto::pedersen::PedersenCommitment,
     script::{ExecutionStack, TariScript},
@@ -291,7 +292,10 @@ impl SenderTransactionProtocol {
                     public_excess: info.public_excess.clone(),
                     metadata: info.metadata.clone(),
                     message: info.message.clone(),
-                    script_hash: recipient_script.as_hash()?.to_vec(),
+                    script_hash: recipient_script
+                        .as_hash::<Blake256>()
+                        .map_err(|_| TPE::SerializationError)?
+                        .to_vec(),
                     script_offset_public_key: recipient_script_offset_public_key,
                 })
             },

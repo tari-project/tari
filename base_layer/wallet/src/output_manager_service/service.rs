@@ -88,6 +88,8 @@ const LOG_TARGET: &str = "wallet::output_manager_service";
 const LOG_TARGET_STRESS: &str = "stress_test::output_manager_service";
 
 const KEY_MANAGER_COINBASE_BRANCH_KEY: &str = "coinbase";
+const KEY_MANAGER_COINBASE_SCRIPT_BRANCH_KEY: &str = "coinbase_script";
+const KEY_MANAGER_SCRIPT_BRANCH_KEY: &str = "script";
 const KEY_MANAGER_RECOVERY_VIEWONLY_BRANCH_KEY: &str = "recovery_viewonly";
 const KEY_MANAGER_RECOVERY_BLINDING_BRANCH_KEY: &str = "recovery_blinding";
 
@@ -100,7 +102,9 @@ where TBackend: OutputManagerBackend + 'static
 {
     resources: OutputManagerResources<TBackend>,
     key_manager: Mutex<KeyManager<PrivateKey, KeyDigest>>,
+    script_key_manager: Mutex<KeyManager<PrivateKey, KeyDigest>>,
     coinbase_key_manager: Mutex<KeyManager<PrivateKey, KeyDigest>>,
+    coinbase_script_key_manager: Mutex<KeyManager<PrivateKey, KeyDigest>>,
     request_stream:
         Option<reply_channel::Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
     base_node_update_publisher: broadcast::Sender<CommsPublicKey>,
@@ -147,9 +151,21 @@ where TBackend: OutputManagerBackend + 'static
             0,
         );
 
+        let coinbase_script_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
+            key_manager_state.master_key.clone(),
+            KEY_MANAGER_COINBASE_SCRIPT_BRANCH_KEY.to_string(),
+            0,
+        );
+
         let key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
             key_manager_state.master_key.clone(),
             key_manager_state.branch_seed,
+            key_manager_state.primary_key_index,
+        );
+
+        let script_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
+            key_manager_state.master_key.clone(),
+            KEY_MANAGER_SCRIPT_BRANCH_KEY.to_string(),
             key_manager_state.primary_key_index,
         );
 
@@ -195,7 +211,9 @@ where TBackend: OutputManagerBackend + 'static
         Ok(OutputManagerService {
             resources,
             key_manager: Mutex::new(key_manager),
+            script_key_manager: Mutex::new(script_key_manager),
             coinbase_key_manager: Mutex::new(coinbase_key_manager),
+            coinbase_script_key_manager: Mutex::new(coinbase_script_key_manager),
             request_stream: Some(request_stream),
             base_node_update_publisher,
             base_node_service,
@@ -453,8 +471,7 @@ where TBackend: OutputManagerBackend + 'static
             return Err(OutputManagerError::InvalidScriptHash);
         }
 
-        let spending_key = self.get_next_spend_key().await?;
-        let script_private_key = self.get_next_spend_key().await?;
+        let (spending_key, script_private_key) = self.get_next_spend_and_script_key().await?;
 
         let output = DbUnblindedOutput::from_unblinded_output(
             UnblindedOutput::new(
@@ -463,7 +480,7 @@ where TBackend: OutputManagerBackend + 'static
                 None,
                 script!(Nop),
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
-                single_round_sender_data.height,
+                0,
                 script_private_key,
                 single_round_sender_data.script_offset_public_key.clone(),
             ),
@@ -508,27 +525,37 @@ where TBackend: OutputManagerBackend + 'static
             .cancel_pending_transaction_at_block_height(block_height)
             .await?;
 
-        let key = self.get_coinbase_key_for_height(block_height).await?;
+        let (spending_key, script_key) = self.get_coinbase_spend_and_script_key_for_height(block_height).await?;
 
         let nonce = PrivateKey::random(&mut OsRng);
         let (tx, _) = CoinbaseBuilder::new(self.resources.factories.clone())
             .with_block_height(block_height)
             .with_fees(fees)
-            .with_spend_key(key.clone())
+            .with_spend_key(spending_key.clone())
             .with_nonce(nonce)
             .with_rewind_data(self.resources.rewind_data.clone())
             .build_with_reward(&self.resources.consensus_constants, reward)?;
+
+        let output = DbUnblindedOutput::from_unblinded_output(
+            UnblindedOutput::new(
+                stp.get_change_amount()?,
+                spending_key,
+                None,
+                script!(Nop),
+                inputs!(PublicKey::from_secret_key(&script_private_key)),
+                block_height,
+                script_key,
+                PublicKey::default(),
+            ),
+            &self.resources.factories,
+        )?;
 
         self.resources
             .db
             .accept_incoming_pending_transaction(
                 tx_id,
-                reward + fees,
-                key,
-                OutputFeatures::create_coinbase(
-                    block_height + self.resources.consensus_constants.coinbase_lock_height(),
-                ),
-                &self.resources.factories,
+                output,
+
                 Some(block_height),
             )
             .await?;
@@ -637,7 +664,7 @@ where TBackend: OutputManagerBackend + 'static
             .with_offset(offset.clone())
             .with_private_nonce(nonce.clone())
             .with_amount(0, amount)
-            .with_recipient_script(0, script!(Nop))
+            .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng))
             .with_message(message)
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
 
@@ -655,14 +682,24 @@ where TBackend: OutputManagerBackend + 'static
             outputs.len()
         );
         let fee_without_change = Fee::calculate(fee_per_gram, 1, outputs.len(), 1);
-        let mut change_key: Option<PrivateKey> = None;
+        let mut change_keys: Option<(PrivateKey, PrivateKey, PrivateKey)> = None;
         // If the input values > the amount to be sent + fee_without_change then we will need to include a change
         // output
         if total > amount + fee_without_change {
-            let key = self.get_next_spend_key().await?;
-            change_key = Some(key.clone());
-            builder.with_rewindable_change_secret(key, self.resources.rewind_data.clone());
-            builder.with_change_script(script!(Nop), inputs!(PublicKey::from_secret_key(&script_private_key)));
+            let (spending_key, script_private_key) = self.get_next_spend_and_script_key().await?;
+            let script_offset_private_key = PrivateKey::random(&mut OsRng);
+            change_keys = Some((
+                spending_key.clone(),
+                script_private_key.clone(),
+                script_offset_private_key.clone(),
+            ));
+            builder.with_rewindable_change_secret(spending_key, self.resources.rewind_data.clone());
+            builder.with_change_script(
+                script!(Nop),
+                inputs!(PublicKey::from_secret_key(&script_private_key)),
+                script_private_key,
+                script_offset_private_key,
+            );
         }
 
         let stp = builder
@@ -671,9 +708,18 @@ where TBackend: OutputManagerBackend + 'static
 
         // If a change output was created add it to the pending_outputs list.
         let mut change_output = Vec::<DbUnblindedOutput>::new();
-        if let Some(key) = change_key {
+        if let Some((spending_key, script_private_key, script_offset_private_key)) = change_keys {
             change_output.push(DbUnblindedOutput::from_unblinded_output(
-                UnblindedOutput::new(stp.get_amount_to_self()?, key, None),
+                UnblindedOutput::new(
+                    stp.get_change_amount()?,
+                    spending_key,
+                    None,
+                    script!(Nop),
+                    inputs!(PublicKey::from_secret_key(&script_private_key)),
+                    0,
+                    script_private_key,
+                    PublicKey::from_secret_key(&script_offset_private_key),
+                ),
                 &self.resources.factories,
             )?);
         }
@@ -708,6 +754,7 @@ where TBackend: OutputManagerBackend + 'static
 
         let offset = PrivateKey::random(&mut OsRng);
         let nonce = PrivateKey::random(&mut OsRng);
+        let script_offset_private_key = PrivateKey::random(&mut OsRng);
 
         // Create builder with no recipients (other than ourselves)
         let mut builder = SenderTransactionProtocol::builder(0);
@@ -717,24 +764,31 @@ where TBackend: OutputManagerBackend + 'static
             .with_offset(offset.clone())
             .with_private_nonce(nonce.clone())
             .with_amount(0, amount)
+            .with_recipient_script(0, script!(Nop), script_offset_private_key.clone())
             .with_message(message)
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
 
         for uo in &inputs {
             builder.with_input(
-                uo.unblinded_output.as_transaction_input(
-                    &self.resources.factories.commitment,
-                    uo.unblinded_output.features.clone(),
-                ),
+                uo.unblinded_output
+                    .as_transaction_input_with_script_signature(&self.resources.factories.commitment)?,
                 uo.unblinded_output.clone(),
             );
         }
 
-        let spend_key = self.get_next_spend_key().await?;
-        let utxo = DbUnblindedOutput::rewindable_from_unblinded_output(
-            UnblindedOutput::new(amount, spend_key, None),
+        let (spending_key, script_private_key) = self.get_next_spend_and_script_key().await?;
+        let utxo = DbUnblindedOutput::from_unblinded_output(
+            UnblindedOutput::new(
+                single_round_sender_data.amount,
+                spending_key.clone(),
+                None,
+                script!(Nop),
+                inputs!(PublicKey::from_secret_key(&script_private_key)),
+                0,
+                script_private_key,
+                PublicKey::from_secret_key(&script_offset_private_key),
+            ),
             &self.resources.factories,
-            &self.resources.rewind_data,
         )?;
         builder.with_output(utxo.unblinded_output.clone());
 
@@ -744,9 +798,19 @@ where TBackend: OutputManagerBackend + 'static
         let fee = Fee::calculate(fee_per_gram, 1, inputs.len(), 1);
         let change_value = total.saturating_sub(amount).saturating_sub(fee);
         if change_value > 0.into() {
-            let key = self.get_next_spend_key().await?;
-            change_key = Some(key.clone());
-            builder.with_rewindable_change_secret(key, self.resources.rewind_data.clone());
+            let (spending_key, script_private_key) = self.get_next_spend_and_script_key().await?;
+            change_keys = Some((
+                spending_key.clone(),
+                script_private_key.clone(),
+                script_offset_private_key.clone(),
+            ));
+            builder.with_rewindable_change_secret(spending_key, self.resources.rewind_data.clone());
+            builder.with_change_script(
+                script!(Nop),
+                inputs!(PublicKey::from_secret_key(&script_private_key)),
+                script_private_key,
+                script_offset_private_key,
+            );
         }
 
         let factories = CryptoFactories::default();
@@ -754,12 +818,19 @@ where TBackend: OutputManagerBackend + 'static
             .build::<HashDigest>(&self.resources.factories)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
-        if let Some(key) = change_key {
-            let change_amount = stp.get_change_amount()?;
-            let change_output = DbUnblindedOutput::rewindable_from_unblinded_output(
-                UnblindedOutput::new(change_amount, key, None),
+        if let Some((spending_key, script_private_key, script_offset_private_key)) = change_keys {
+            let change_output = DbUnblindedOutput::from_unblinded_output(
+                UnblindedOutput::new(
+                    stp.get_change_amount()?,
+                    spending_key,
+                    None,
+                    script!(Nop),
+                    inputs!(PublicKey::from_secret_key(&script_private_key)),
+                    0,
+                    script_private_key,
+                    PublicKey::from_secret_key(&script_offset_private_key),
+                ),
                 &self.resources.factories,
-                &self.resources.rewind_data,
             )?;
 
             outputs.push(change_output);
@@ -1151,24 +1222,26 @@ where TBackend: OutputManagerBackend + 'static
         Ok(rewound_outputs)
     }
 
-    async fn get_next_spend_key(&self) -> Result<PrivateKey, OutputManagerError> {
+    /// Return the next pair of (spending_key, script_private_key) from the key managers. These will always be generated
+    /// in tandem and at corresponding increments
+    async fn get_next_spend_and_script_key(&self) -> Result<(PrivateKey, PrivateKey), OutputManagerError> {
         let mut km = self.key_manager.lock().await;
         let key = km.next_key()?;
+
+        let mut skm = self.script_key_manager.lock().await;
+        let script_key = skm.next_key()?;
+
         self.resources.db.increment_key_index().await?;
-        Ok(key.k)
+        Ok((key.k, script_key.k))
     }
 
-    async fn get_next_script_key(&self) -> Result<PrivateKey, OutputManagerError> {
-        let mut km = self.key_manager.lock().await;
-        let key = km.next_key()?;
-        self.resources.db.increment_key_index().await?;
-        Ok(key.k)
-    }
-
-    async fn get_coinbase_key_for_height(&self, height: u64) -> Result<PrivateKey, OutputManagerError> {
+    async fn get_coinbase_spend_and_script_key_for_height(&self, height: u64) -> Result<(PrivateKey, PrivateKey), OutputManagerError> {
         let km = self.coinbase_key_manager.lock().await;
-        let key = km.derive_key(height)?;
-        Ok(key.k)
+        let spending_key = km.derive_key(height)?;
+
+        let mut skm = self.coinbase_script_key_manager.lock().await;
+        let script_key = skm.next_key()?;
+        Ok((spending_key.k, script_key.k)
     }
 }
 
