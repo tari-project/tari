@@ -47,10 +47,8 @@ Given(/I have a base node (.*) connected to node (.*)/, {timeout: 20*1000}, asyn
     await sleep(1000);
 });
 
-
-
-Given(/I have a pruned node (.*) connected to node (.*)/, {timeout: 20*1000}, async function (name, node) {
-    const miner = this.createNode(name, { pruningHorizon: 5});
+Given(/I have a pruned node (.*) connected to node (.*) with pruning horizon set to (.*)/, {timeout: 20*1000}, async function (name, node, horizon) {
+    const miner = this.createNode(name, { horizon});
     miner.setPeerSeeds([this.nodes[node].peerAddress()]);
     await miner.startNew();
     this.addNode(name, miner);

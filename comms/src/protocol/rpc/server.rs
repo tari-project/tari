@@ -464,8 +464,8 @@ where
             let msg = format!(
                 "This node tried to return a message that exceeds the maximum frame size. Max = {:.4} MiB, Got = \
                  {:.4} MiB",
-                buf.len() as f32 / (1024.0 * 1024.0),
-                RPC_MAX_FRAME_SIZE as f32 / (1024.0 * 1024.0)
+                RPC_MAX_FRAME_SIZE as f32 / (1024.0 * 1024.0),
+                buf.len() as f32 / (1024.0 * 1024.0)
             );
             warn!(target: LOG_TARGET, "{}", msg);
             sink.send(

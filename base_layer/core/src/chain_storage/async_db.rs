@@ -308,13 +308,8 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
-    pub fn update_deleted(&mut self, header_hash: HashOutput, deleted: Bitmap) -> &mut Self {
-        self.transaction.update_deleted(header_hash, deleted);
-        self
-    }
-
-    pub fn update_kernel_sum(&mut self, header_hash: HashOutput, kernel_sum: Commitment) -> &mut Self {
-        self.transaction.update_kernel_sum(header_hash, kernel_sum);
+    pub fn update_deleted_with_diff(&mut self, header_hash: HashOutput, deleted: Bitmap) -> &mut Self {
+        self.transaction.update_deleted_with_diff(header_hash, deleted);
         self
     }
 
