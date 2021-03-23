@@ -40,6 +40,7 @@ use crate::transactions::{
         Signature,
     },
 };
+use tari_crypto::commitment::HomomorphicCommitment;
 use digest::Input;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -49,6 +50,7 @@ use std::{
     hash::{Hash, Hasher},
     ops::Add,
 };
+use tari_crypto::keys::PublicKey as pk;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     hash::blake2::Blake256,
@@ -529,7 +531,18 @@ impl TransactionOutput {
 
     /// Verify that range proof is valid
     pub fn verify_range_proof(&self, prover: &RangeProofService) -> Result<bool, TransactionError> {
-        Ok(prover.verify(&self.proof.0, &self.commitment))
+
+            //let construct beta for the utxo
+    let beta_hash = Blake256::new()
+    .chain(self.script_hash.clone())
+    .chain(self.features.to_bytes())
+    .chain(self.offset_pub_key.as_bytes())
+    .result()
+    .to_vec();
+    let beta = PrivateKey::from_bytes(beta_hash.as_slice()).map_err(|e| TransactionError::Unknown(e.to_string()))?;
+    let public_beta = PublicKey::from_secret_key(&beta);
+    let beta_commitment = HomomorphicCommitment::from_public_key(&public_beta).add(&self.commitment);
+        Ok(prover.verify(&self.proof.0, &beta_commitment))
     }
 
     /// Attempt to rewind the range proof to reveal the proof message and committed value

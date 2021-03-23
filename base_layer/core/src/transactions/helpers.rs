@@ -37,6 +37,8 @@ use crate::transactions::{
     types::{Commitment, CommitmentFactory, CryptoFactories, PrivateKey, PublicKey, Signature},
     SenderTransactionProtocol,
 };
+use tari_crypto::tari_utilities::ByteArray;
+use digest::Digest;
 use num::pow;
 use rand::{rngs::OsRng, CryptoRng, Rng};
 use std::sync::Arc;
@@ -420,19 +422,27 @@ pub fn create_utxo(
     value: MicroTari,
     factories: &CryptoFactories,
     features: Option<OutputFeatures>,
-) -> (TransactionOutput, PrivateKey)
+    script: &TariScript,
+) -> (TransactionOutput, PrivateKey, PrivateKey)
 {
     let keys = generate_keys();
+    let offset_private_key = generate_keys();
     let features = features.unwrap_or_default();
     let commitment = factories.commitment.commit_value(&keys.k, value.into());
-    let proof = factories.range_proof.construct_proof(&keys.k, value.into()).unwrap();
-    // TODO: Populate script_hash with the proper value
-    let script_hash = TariScript::default().as_hash::<Blake256>().unwrap().to_vec();
-    // TODO: Populate offset_pub_key with the proper value
-    let offset_pub_key = PublicKey::default();
+    let script_hash = script.as_hash::<Blake256>().unwrap().to_vec();
+    let offset_pub_key = PublicKey::from_secret_key(&offset_private_key.k);
+    //let construct beta for the utxo
+    let beta_hash = Blake256::new()
+            .chain(script_hash.clone())
+            .chain(features.to_bytes())
+            .chain(offset_pub_key.as_bytes())
+            .result()
+            .to_vec();
+    let beta = PrivateKey::from_bytes(beta_hash.as_slice()).unwrap();
+    let proof = factories.range_proof.construct_proof(&(&keys.k + &beta), value.into()).unwrap();
 
     let utxo = TransactionOutput::new(features, commitment, proof.into(), script_hash, offset_pub_key);
-    (utxo, keys.k)
+    (utxo, keys.k,offset_private_key.k)
 }
 
 pub fn schema_to_transaction(txns: &[TransactionSchema]) -> (Vec<Arc<Transaction>>, Vec<UnblindedOutput>) {

@@ -17,7 +17,7 @@ members = [
     "infrastructure/test_utils",
     "applications/tari_base_node",
     #"applications/tari_console_wallet",
-    "applications/test_faucet",
+    #"applications/test_faucet",
     "applications/tari_app_utilities",
     "applications/tari_merge_mining_proxy",
     "applications/tari_mining_node",
