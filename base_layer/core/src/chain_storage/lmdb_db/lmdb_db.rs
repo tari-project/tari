@@ -70,7 +70,7 @@ use crate::{
         MmrTree,
         PrunedOutput,
     },
-    crypto::tari_utilities::hex::to_hex,
+    tari_utilities::hex::to_hex,
     transactions::{
         aggregated_body::AggregateBody,
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},

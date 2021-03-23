@@ -101,6 +101,8 @@ pub enum OutputManagerError {
     NodeIdError(#[from] NodeIdError),
     #[error("Script hash does not match expected script")]
     InvalidScriptHash,
+    #[error("Tari script error : {0}")]
+    ScriptError(#[from] ScriptError),
 }
 
 #[derive(Debug, Error, PartialEq)]

@@ -611,15 +611,9 @@ where T: OutputManagerBackend + 'static
             .and_then(|inner_result| inner_result)
     }
 
-    pub async fn update_output_mined_height(
-        &self,
-        commitment: Commitment,
-
-        height: u64,
-    ) -> Result<DbUnblindedOutput, OutputManagerStorageError>
-    {
+    pub async fn update_output_mined_height(&self, tx_id: u64, height: u64) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.update_(&commitment))
+        tokio::task::spawn_blocking(move || db_clone.update_mined_height(tx_id, height))
             .await
             .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)

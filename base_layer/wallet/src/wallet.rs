@@ -38,12 +38,11 @@ use crate::{
         storage::database::TransactionBackend,
         TransactionServiceInitializer,
     },
-};use tari_crypto::script::TariScript;use tari_crypto::script::ExecutionStack;use tari_core::transactions::types::PublicKey;
+};
 use aes_gcm::{
     aead::{generic_array::GenericArray, NewAead},
     Aes256Gcm,
 };
-use tari_crypto::keys::PublicKey as sk;
 use digest::Digest;
 use log::*;
 use std::{marker::PhantomData, sync::Arc};
@@ -59,13 +58,15 @@ use tari_core::{
     consensus::Network,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{OutputFeatures, UnblindedOutput},
-        types::{CryptoFactories, PrivateKey},
+        transaction::UnblindedOutput,
+        types::{CryptoFactories, PrivateKey, PublicKey},
     },
 };
 use tari_crypto::{
     common::Blake256,
+    keys::PublicKey as sk,
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
+    script::{ExecutionStack, TariScript},
     signatures::{SchnorrSignature, SchnorrSignatureError},
     tari_utilities::hex::Hex,
 };
@@ -309,12 +310,16 @@ where
         message: String,
     ) -> Result<TxId, WalletError>
     {
-        let unblinded_output = UnblindedOutput::new(amount, spending_key.clone(), None,
-        TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        spending_key.clone(),
-        PublicKey::from_secret_key(&spending_key),);
+        let unblinded_output = UnblindedOutput::new(
+            amount,
+            spending_key.clone(),
+            None,
+            TariScript::default(),
+            ExecutionStack::default(),
+            0,
+            spending_key.clone(),
+            PublicKey::from_secret_key(&spending_key),
+        );
 
         self.output_manager_service.add_output(unblinded_output.clone()).await?;
 
@@ -327,7 +332,7 @@ where
             target: LOG_TARGET,
             "UTXO (Commitment: {}) imported into wallet",
             unblinded_output
-                .as_transaction_input(&self.factories.commitment, OutputFeatures::default())
+                .as_transaction_input(&self.factories.commitment)
                 .commitment
                 .to_hex()
         );

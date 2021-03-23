@@ -26,8 +26,10 @@ use tari_core::transactions::{
     transaction::TransactionInput,
     types::{Commitment, PublicKey},
 };
-use tari_crypto::script::TariScript;use tari_crypto::script::ExecutionStack;
-use tari_crypto::tari_utilities::{ByteArray, Hashable};
+use tari_crypto::{
+    script::{ExecutionStack, TariScript},
+    tari_utilities::{ByteArray, Hashable},
+};
 
 impl TryFrom<grpc::TransactionInput> for TransactionInput {
     type Error = String;
@@ -47,8 +49,8 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
             .try_into()
             .map_err(|_| "script_signature could not be converted".to_string())?;
 
-        let offset_pub_key =
-            PublicKey::from_bytes(input.offset_pub_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+        let script_offset_public_key =
+            PublicKey::from_bytes(input.script_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
         let script = TariScript::from_bytes(input.script.as_slice()).map_err(|err| format!("{:?}", err))?;
         let input_data = ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?;
 
@@ -56,10 +58,10 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
             features,
             commitment,
             script,
-                        input_data,
+            input_data,
             height: input.height,
             script_signature,
-            offset_pub_key,
+            script_offset_public_key,
         })
     }
 }
@@ -81,7 +83,7 @@ impl From<TransactionInput> for grpc::TransactionInput {
                 public_nonce: Vec::from(input.script_signature.get_public_nonce().as_bytes()),
                 signature: Vec::from(input.script_signature.get_signature().as_bytes()),
             }),
-            offset_pub_key: input.offset_pub_key.as_bytes().to_vec(),
+            script_offset_public_key: input.script_offset_public_key.as_bytes().to_vec(),
         }
     }
 }

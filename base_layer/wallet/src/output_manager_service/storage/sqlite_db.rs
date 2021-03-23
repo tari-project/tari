@@ -53,18 +53,17 @@ use std::{
     time::Duration,
 };
 use tari_core::{
-    crypto::script::ExecutionStack,
     tari_utilities::hash::Hashable,
     transactions::{
         tari_amount::MicroTari,
         transaction::{OutputFeatures, OutputFlags, UnblindedOutput},
-        types::{Commitment, CryptoFactories, PrivateKey},
+        types::{Commitment, CryptoFactories, PrivateKey, PublicKey},
     },
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
-    keys::PublicKey,
-    script::TariScript,
+    keys::PublicKey as PublicKeyTrait,
+    script::{ExecutionStack, TariScript},
     tari_utilities::{
         hex::{from_hex, Hex},
         ByteArray,

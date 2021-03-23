@@ -1796,8 +1796,6 @@ where
     /// the outputs
     #[cfg(feature = "test_harness")]
     pub async fn mine_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
-        use tari_core::transactions::transaction::OutputFeatures;
-
         let completed_txs = self.db.get_completed_transactions().await?;
         let _found_tx = completed_txs.get(&tx_id).ok_or_else(|| {
             TransactionServiceError::TestHarnessError("Could not find Completed TX to mine.".to_string())
@@ -1816,7 +1814,7 @@ where
                     .iter()
                     .map(|o| {
                         o.unblinded_output
-                            .as_transaction_input(&self.resources.factories.commitment, OutputFeatures::default())
+                            .as_transaction_input(&self.resources.factories.commitment)
                     })
                     .collect(),
                 pending_tx
