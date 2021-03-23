@@ -274,22 +274,24 @@ When(/I spend outputs (.*) via (.*)/, async function (inputs, node) {
 
 
 Then(/(.*) has (.*) in (.*) state/, async  function (node ,txn, pool) {
+    let client = this.getClient(node);
+    let sig = this.transactions[txn].body.kernels[0].excess_sig;
+    await waitFor(async() => client.transactionStateResult(sig), pool, 1200*1000);
     this.lastResult = await this.getClient(node).transactionState(this.transactions[txn].body.kernels[0].excess_sig);
      console.log(`Node ${node} response is: ${this.lastResult.result}`);
     expect(this.lastResult.result).to.equal(pool);
 });
 
-Then(/(.*) is in the (.*) of all nodes/, async  function (txn, pool) {
-    for (const x in this.nodes){
-    this.lastResult = await this.getClient(x).transactionState(this.transactions[txn].body.kernels[0].excess_sig);
-    console.log(`Node ${x} response is: ${this.lastResult.result}`);
-    expect(this.lastResult.result).to.equal(pool);
-}
-for (const x in this.seeds){
-    this.lastResult = await this.getClient(x).transactionState(this.transactions[txn].body.kernels[0].excess_sig);
-    console.log(`Node ${x} response is: ${this.lastResult.result}`);
-    expect(this.lastResult.result).to.equal(pool);
-}
+
+ 
+Then(/(.*) is in the (.*) of all nodes/, {timeout: 1200*1000}, async  function (txn, pool) {
+    let sig = this.transactions[txn].body.kernels[0].excess_sig;
+    await this.forEachClientAsync(async (client, name) => {
+        await waitFor(async() => client.transactionStateResult(sig), pool, 1200*1000);        
+        this.lastResult = await client.transactionState(sig);
+        console.log(`Node ${name} response is: ${this.lastResult.result}`);
+         expect(this.lastResult.result).to.equal(pool);
+    })
 });
 
 Then(/(.*) is in the mempool/, function (txn) {
