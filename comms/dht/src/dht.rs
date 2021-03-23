@@ -137,30 +137,28 @@ impl Dht {
             .await
             .map_err(DhtInitializationError::DatabaseMigrationFailed)?;
 
-        //  dht.network_discovery_service(shutdown_signal.clone()).spawn();
-        dht.connectivity_service(shutdown_signal.clone()).spawn();
-        dht.store_and_forward_service(
+        dht.create_network_discovery_service(shutdown_signal.clone()).spawn();
+        dht.create_connectivity_service(shutdown_signal.clone()).spawn();
+        dht.create_store_and_forward_service(
             conn.clone(),
             saf_receiver,
             shutdown_signal.clone(),
             saf_response_signal_receiver,
         )
         .spawn();
-        dht.actor(conn, dht_receiver, shutdown_signal.clone()).spawn();
-        dht.discovery_service(discovery_receiver, shutdown_signal).spawn();
+        dht.create_actor(conn, dht_receiver, shutdown_signal.clone()).spawn();
+        dht.create_discovery_service(discovery_receiver, shutdown_signal).spawn();
 
         debug!(target: LOG_TARGET, "Dht initialization complete.");
 
         Ok(dht)
     }
 
-    /// Create a DHT RPC service
-    pub fn rpc_service(&self) -> rpc::DhtService<rpc::DhtRpcServiceImpl> {
+    pub fn create_rpc_service(&self) -> rpc::DhtService<rpc::DhtRpcServiceImpl> {
         rpc::DhtService::new(rpc::DhtRpcServiceImpl::new(self.peer_manager.clone()))
     }
 
-    /// Create a DHT actor
-    fn actor(
+    fn create_actor(
         &self,
         conn: DbConnection,
         request_receiver: mpsc::Receiver<DhtRequest>,
@@ -179,8 +177,7 @@ impl Dht {
         )
     }
 
-    /// Create the discovery service
-    fn discovery_service(
+    fn create_discovery_service(
         &self,
         request_receiver: mpsc::Receiver<DhtDiscoveryRequest>,
         shutdown_signal: ShutdownSignal,
@@ -196,7 +193,7 @@ impl Dht {
         )
     }
 
-    fn connectivity_service(&self, shutdown_signal: ShutdownSignal) -> DhtConnectivity {
+    fn create_connectivity_service(&self, shutdown_signal: ShutdownSignal) -> DhtConnectivity {
         DhtConnectivity::new(
             self.config.clone(),
             self.peer_manager.clone(),
@@ -209,8 +206,7 @@ impl Dht {
         )
     }
 
-    /// Create the network discovery service
-    fn network_discovery_service(&self, shutdown_signal: ShutdownSignal) -> DhtNetworkDiscovery {
+    fn create_network_discovery_service(&self, shutdown_signal: ShutdownSignal) -> DhtNetworkDiscovery {
         DhtNetworkDiscovery::new(
             self.config.clone(),
             Arc::clone(&self.node_identity),
@@ -221,7 +217,7 @@ impl Dht {
         )
     }
 
-    fn store_and_forward_service(
+    fn create_store_and_forward_service(
         &self,
         conn: DbConnection,
         request_rx: mpsc::Receiver<StoreAndForwardRequest>,

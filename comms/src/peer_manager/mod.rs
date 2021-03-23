@@ -78,6 +78,10 @@ pub use error::PeerManagerError;
 pub mod node_id;
 pub use node_id::NodeId;
 
+mod xor_distance;
+pub use xor_distance::XorDistance;
+pub type NodeDistance = XorDistance;
+
 mod node_identity;
 pub use node_identity::{NodeIdentity, NodeIdentityError};
 

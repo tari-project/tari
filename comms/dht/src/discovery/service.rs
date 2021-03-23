@@ -350,7 +350,7 @@ impl DhtDiscoveryService {
             .outbound_requester
             .send_message_no_header(
                 SendMessageParams::new()
-                    .broadcast(Vec::new())
+                    .closest(destination.to_derived_node_id().ok_or_else(|| DhtDiscoveryError::InvalidNodeId)?, Vec::new())
                     .with_destination(destination)
                     .with_encryption(OutboundEncryption::EncryptFor(dest_public_key))
                     .with_dht_message_type(DhtMessageType::Discovery)

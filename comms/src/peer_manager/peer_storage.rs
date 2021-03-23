@@ -23,7 +23,8 @@
 use crate::{
     consts::PEER_MANAGER_MAX_FLOOD_PEERS,
     peer_manager::{
-        node_id::{NodeDistance, NodeId},
+        NodeDistance,
+        node_id::{ NodeId},
         peer::{Peer, PeerFlags},
         peer_id::{generate_peer_key, PeerId},
         PeerFeatures,

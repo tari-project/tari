@@ -399,6 +399,33 @@ impl DhtActor {
                     .await?;
                 Ok(peers.into_iter().map(|p| p.peer_node_id().clone()).collect())
             },
+
+            CloserOnly(destination_node_id) => {
+                // Find the bucket that this node is in
+
+                let distance = node_identity.node_id().distance(&destination_node_id);
+                let num_buckets = 100;
+                let k = 20;
+                let bucket = distance.get_bucket(num_buckets);
+
+                let query = PeerQuery::new().select_where(|peer|
+                    {
+                        if peer.node_id == destination_node_id {
+                            return true;
+                        }
+
+                        if !peer.has_features(PeerFeatures::MESSAGE_PROPAGATION) {
+                            return false;
+                        }
+
+                        let distance = peer.node_id.distance(node_identity.node_id());
+                        distance > bucket.0 && distance < bucket.1
+                    }
+                ).sort_by(PeerQuerySortBy::LastConnected).limit(k);
+
+                let peers = peer_manager.perform_query(query).await?;;
+                Ok(peers.into_iter().map(|p| p.node_id.clone()).collect())
+            },
             Closest(closest_request) => {
                 let connections = connectivity
                     .select_connections(ConnectivitySelection::closest_to(

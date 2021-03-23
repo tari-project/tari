@@ -23,6 +23,7 @@
 use crate::peer_manager::{peer_id::PeerId, NodeId, Peer, PeerManagerError};
 use std::cmp::min;
 use tari_storage::{IterationResult, KeyValueStore};
+use chrono::NaiveDateTime;
 
 type Predicate<'a, A> = Box<dyn FnMut(&A) -> bool + Send + 'a>;
 
@@ -33,6 +34,8 @@ pub enum PeerQuerySortBy<'a> {
     None,
     /// Sort by distance from a given node id
     DistanceFrom(&'a NodeId),
+    /// Sort by last connected
+    LastConnected
 }
 
 impl Default for PeerQuerySortBy<'_> {
@@ -129,17 +132,28 @@ where DS: KeyValueStore<PeerId, Peer>
         match self.query.sort_by {
             PeerQuerySortBy::None => self.get_query_results(),
             PeerQuerySortBy::DistanceFrom(node_id) => self.get_distance_sorted_results(node_id),
+            PeerQuerySortBy::LastConnected => self.get_last_connected_sorted_results()
         }
     }
 
     pub fn get_distance_sorted_results(&mut self, node_id: &NodeId) -> Result<Vec<Peer>, PeerManagerError> {
+       self.get_sorted_results(|peer| peer.node_id.distance(node_id))
+    }
+
+    pub fn get_last_connected_sorted_results(&mut self) -> Result<Vec<Peer>, PeerManagerError> {
+        self.get_sorted_results(|peer| peer.connection_stats.last_connected_at.unwrap_or_else(|| NaiveDateTime::from_timestamp(0,0)))
+    }
+
+    fn get_sorted_results<T, F>(&mut self, sort_key: F)  -> Result<Vec<Peer>, PeerManagerError>
+        where T: Ord, F: Fn(&Peer) -> T
+    {
         let mut peer_keys = Vec::new();
-        let mut distances = Vec::new();
+        let mut sort_values = Vec::new();
         self.store
             .for_each_ok(|(peer_key, peer)| {
                 if self.query.is_selected(&peer) {
                     peer_keys.push(peer_key);
-                    distances.push(node_id.distance(&peer.node_id));
+                    sort_values.push(sort_key(&peer));
                 }
 
                 IterationResult::Continue
@@ -160,8 +174,8 @@ where DS: KeyValueStore<PeerId, Peer>
         let mut selected_peers = Vec::with_capacity(max_available);
         for i in 0..max_available {
             for j in (i + 1)..peer_keys.len() {
-                if distances[i] > distances[j] {
-                    distances.swap(i, j);
+                if sort_values[i] > sort_values[j] {
+                    sort_values.swap(i, j);
                     peer_keys.swap(i, j);
                 }
             }
