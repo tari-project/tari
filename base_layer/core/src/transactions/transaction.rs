@@ -239,7 +239,7 @@ impl UnblindedOutput {
     pub fn as_transaction_input(&self, factory: &CommitmentFactory, features: OutputFeatures) -> TransactionInput {
         let commitment = factory.commit(&self.spending_key, &self.value.into());
         TransactionInput {
-            features: self.features.clone(),
+            features,
             commitment,
             script: self.script.clone(),
             input_data: self.input_data.clone(),

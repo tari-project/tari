@@ -4421,6 +4421,7 @@ dependencies = [
  "serde 1.0.125",
  "serde_json",
  "tari_core",
+ "tari_crypto",
  "tari_utilities",
  "tokio",
 ]

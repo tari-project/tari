@@ -345,12 +345,12 @@ impl AggregateBody {
     ) -> Result<(), TransactionError>
     {
         let total_offset = factories.commitment.commit_value(&tx_offset, total_reward.0);
-        let script_offset_G = factories.commitment.commit_value(&script_offset, 0);
+        let script_offset_g = factories.commitment.commit_value(&script_offset, 0);
 
         self.verify_kernel_signatures()?;
         self.validate_kernel_sum(total_offset, &factories.commitment)?;
         self.validate_range_proofs(&factories.range_proof)?;
-        self.validate_script_offset(script_offset_G, &factories.commitment)
+        self.validate_script_offset(script_offset_g)
     }
 
     pub fn dissolve(self) -> (Vec<TransactionInput>, Vec<TransactionOutput>, Vec<TransactionKernel>) {
@@ -413,9 +413,7 @@ impl AggregateBody {
     /// this will validate the script offset of the aggregate body.
     fn validate_script_offset(
         &self,
-        script_offset: Commitment,
-        factory: &CommitmentFactory,
-    ) -> Result<(), TransactionError>
+        script_offset: Commitment,    ) -> Result<(), TransactionError>
     {
         trace!(target: LOG_TARGET, "Checking script offset");
         // lets count up the input script public keys
