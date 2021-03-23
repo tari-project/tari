@@ -193,6 +193,8 @@ pub enum TransactionError {
     ConversionError(String),
     #[error("The script offset in body does not balance")]
     ScriptOffset,
+    #[error("{0}")]
+    Other(String),
 }
 
 //-----------------------------------------     UnblindedOutput   ----------------------------------------------------//
@@ -452,8 +454,8 @@ impl TransactionInput {
     pub fn run_script(&self) -> Result<PublicKey, TransactionError> {
         match self.script.execute(&self.input_data)? {
             StackItem::PublicKey(pubkey) => Ok(pubkey),
-            _ => Err(TransactionError::Unknown(
-                "THe script executed successfully but it did not leave a public key on the stack, ".to_string(),
+            _ => Err(TransactionError::Other(
+                "The script executed successfully but it did not leave a public key on the stack, ".to_string(),
             )),
         }
     }
@@ -587,7 +589,7 @@ impl TransactionOutput {
             .result()
             .to_vec();
         let beta =
-            PrivateKey::from_bytes(beta_hash.as_slice()).map_err(|e| TransactionError::Unknown(e.to_string()))?;
+            PrivateKey::from_bytes(beta_hash.as_slice()).map_err(|e| TransactionError::Other(format!("Error creating beta hash in rangeproof verification. {}", e)))?;
 
         let public_beta = PublicKey::from_secret_key(&beta);
         let beta_commitment = HomomorphicCommitment::from_public_key(&public_beta).add(&self.commitment);
