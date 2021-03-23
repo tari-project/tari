@@ -66,6 +66,29 @@ Given(
 );
 
 Given(
+  /I connect node (.*) to node (.*) and wait (.*) seconds/,
+  { timeout: 1200 * 1000 },
+  async function (nodeNameA, nodeNameB, waitSeconds) {
+    expect(waitSeconds < 1190).to.equal(true);
+    console.log(
+      "Connecting",
+      nodeNameA,
+      "to",
+      nodeNameB,
+      ", waiting for",
+      waitSeconds,
+      "seconds"
+    );
+    nodeA = this.getNode(nodeNameA);
+    nodeB = this.getNode(nodeNameB);
+    nodeA.setPeerSeeds([nodeB.peerAddress()]);
+    await this.stopNode(nodeNameA);
+    await this.startNode(nodeNameA);
+    await sleep(waitSeconds * 1000);
+  }
+);
+
+Given(
   /I have a pruned node (.*) connected to node (.*) with pruning horizon set to (.*)/,
   { timeout: 20 * 1000 },
   async function (name, node, horizon) {
@@ -408,6 +431,26 @@ Then(
 );
 
 Then(
+  /node (.*) is at the same height as node (.*)/,
+  { timeout: 120 * 1000 },
+  async function (nodeA, nodeB) {
+    expectedHeight = parseInt(await this.getClient(nodeB).getTipHeight());
+    await waitFor(
+      async () => this.getClient(nodeA).getTipHeight(),
+      expectedHeight,
+      115 * 1000
+    );
+    currentHeight = await this.getClient(nodeA).getTipHeight();
+    console.log(
+      `Node ${nodeA} is at tip: ${currentHeight} (should be`,
+      expectedHeight,
+      `)`
+    );
+    expect(currentHeight).to.equal(expectedHeight);
+  }
+);
+
+Then(
   "all nodes are on the same chain at height {int}",
   { timeout: 1200 * 1000 },
   async function (height) {
@@ -454,6 +497,29 @@ Then(
       const currTip = await client.getTipHeight();
       console.log(`Node ${name} is at tip: ${currTip} (expected ${height})`);
       expect(currTip).to.equal(height);
+    });
+  }
+);
+
+Then(
+  /all nodes are at the same height as node (.*)/,
+  { timeout: 1200 * 1000 },
+  async function (nodeB) {
+    expectedHeight = parseInt(await this.getClient(nodeB).getTipHeight());
+    console.log("Wait for all nodes to reach height of", expectedHeight);
+    await this.forEachClientAsync(async (client, name) => {
+      await waitFor(
+        async () => client.getTipHeight(),
+        expectedHeight,
+        1200 * 1000
+      );
+      const currTip = await client.getTipHeight();
+      console.log(
+        `Node ${name} is at tip: ${currTip} (should be`,
+        expectedHeight,
+        `)`
+      );
+      expect(currTip).to.equal(expectedHeight);
     });
   }
 );

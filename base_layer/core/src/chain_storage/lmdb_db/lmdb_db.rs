@@ -632,13 +632,12 @@ impl LMDBDatabase {
     ) -> Result<bool, ChainStorageError>
     {
         if let Some(current_header_at_height) = lmdb_get::<_, BlockHeader>(txn, &self.headers_db, &header.height)? {
-            let hash = current_header_at_height.hash();
             if current_header_at_height.hash() != accum_data.hash {
                 return Err(ChainStorageError::InvalidOperation(format!(
                     "There is a different header stored at height {} already. New header ({}), current header: ({})",
                     header.height,
-                    hash.to_hex(),
-                    accum_data.hash.to_hex()
+                    accum_data.hash.to_hex(),
+                    current_header_at_height.hash().to_hex(),
                 )));
             }
             return Ok(false);

@@ -91,3 +91,147 @@ Feature: Reorgs
     When I create a transaction TX2 spending CB1 to UTX2
     When I submit transaction TX2 to PNODE1
     Then PNODE1 has TX2 in MEMPOOL state
+
+Scenario Outline: Massive multiple reorg
+        #
+        # Chain 1a:
+        #   Mine X1 blocks (orphan_storage_capacity default set to 10)
+        #
+    Given I have a seed node SEED_A1
+        # Add multiple base nodes to ensure more robust comms
+    And I have a base node NODE_A1 connected to seed SEED_A1
+    And I have a base node NODE_A2 connected to seed SEED_A1
+    When I mine <X1> blocks on SEED_A1
+    Then node NODE_A1 is at height <X1>
+    Then node NODE_A2 is at height <X1>
+        #
+        # Chain 1b:
+        #   Mine Y1 blocks (orphan_storage_capacity default set to 10)
+        #
+    And I have a seed node SEED_A2
+        # Add multiple base nodes to ensure more robust comms
+    And I have a base node NODE_A3 connected to seed SEED_A2
+    And I have a base node NODE_A4 connected to seed SEED_A2
+    When I mine <Y1> blocks on SEED_A2
+    Then node NODE_A3 is at height <Y1>
+    Then node NODE_A4 is at height <Y1>
+        #
+        # Connect Chain 1a and 1b
+        #
+    And I connect node NODE_A1 to node NODE_A3 and wait 1 seconds
+    And I connect node NODE_A2 to node NODE_A4 and wait 1 seconds
+    And I connect node SEED_A1 to node SEED_A2 and wait <SYNC_TIME> seconds
+    Then node SEED_A1 is at the same height as node SEED_A2
+    When I mine 10 blocks on SEED_A1
+    Then node SEED_A2 is at the same height as node SEED_A1
+    Then node NODE_A1 is at the same height as node SEED_A1
+    Then node NODE_A2 is at the same height as node SEED_A1
+    Then node NODE_A3 is at the same height as node SEED_A1
+    Then node NODE_A4 is at the same height as node SEED_A1
+        #
+        # Chain 2a:
+        #   Mine X2 blocks (orphan_storage_capacity default set to 10)
+        #
+    Given I have a seed node SEED_B1
+        # Add multiple base nodes to ensure more robust comms
+    And I have a base node NODE_B1 connected to seed SEED_B1
+    And I have a base node NODE_B2 connected to seed SEED_B1
+    When I mine <X2> blocks on SEED_B1
+    Then node NODE_B1 is at height <X2>
+    Then node NODE_B2 is at height <X2>
+        #
+        # Chain 2b:
+        #   Mine Y2 blocks (orphan_storage_capacity default set to 10)
+        #
+    And I have a seed node SEED_B2
+        # Add multiple base nodes to ensure more robust comms
+    And I have a base node NODE_B3 connected to seed SEED_B2
+    And I have a base node NODE_B4 connected to seed SEED_B2
+    When I mine <Y2> blocks on SEED_B2
+    Then node NODE_B3 is at height <Y2>
+    Then node NODE_B4 is at height <Y2>
+        #
+        # Connect Chain 2a and 2b
+        #
+    And I connect node NODE_B1 to node NODE_B3 and wait 1 seconds
+    And I connect node NODE_B2 to node NODE_B4 and wait 1 seconds
+    And I connect node SEED_B1 to node SEED_B2 and wait <SYNC_TIME> seconds
+    Then node SEED_B1 is at the same height as node SEED_B2
+    When I mine 10 blocks on SEED_B1
+    Then node SEED_B2 is at the same height as node SEED_B1
+    Then node NODE_B1 is at the same height as node SEED_B1
+    Then node NODE_B2 is at the same height as node SEED_B1
+    Then node NODE_B3 is at the same height as node SEED_B1
+    Then node NODE_B4 is at the same height as node SEED_B1
+        #
+        # Connect Chain 1 and 2
+        #
+    And I connect node NODE_A1 to node NODE_B1 and wait 1 seconds
+    And I connect node NODE_A3 to node NODE_B3 and wait 1 seconds
+    And I connect node SEED_A1 to node SEED_B1 and wait <SYNC_TIME> seconds
+    Then node SEED_A1 is at the same height as node SEED_B1
+    When I mine 10 blocks on SEED_A1
+    Then all nodes are at the same height as node SEED_A1
+    @critical
+    Examples:
+        | X1     | Y1     | X2    | Y2   | SYNC_TIME |
+        | 5      | 10     | 15    | 20   | 20        |
+
+    @long-running
+    Examples:
+        | X1     | Y1     | X2    | Y2   | SYNC_TIME |
+        | 100    | 125    | 150   | 175  | 30        |
+
+    @long-running @to-be-fixed-currently-failing
+    Examples:
+        | X1     | Y1     | X2    | Y2   | SYNC_TIME |
+        | 500    | 550    | 600   | 650  | 60        |
+
+Scenario Outline: Massive reorg simple case
+        #
+        # Chain 1a:
+        #   Mine X1 blocks (orphan_storage_capacity default set to 10)
+        #
+    Given I have a seed node SEED_A1
+        # Add multiple base nodes to ensure more robust comms
+    And I have a base node NODE_A1 connected to seed SEED_A1
+    And I have a base node NODE_A2 connected to seed SEED_A1
+    When I mine <X1> blocks on SEED_A1
+    Then node NODE_A1 is at height <X1>
+    Then node NODE_A2 is at height <X1>
+        #
+        # Chain 1b:
+        #   Mine Y1 blocks (orphan_storage_capacity default set to 10)
+        #
+    And I have a seed node SEED_A2
+        # Add multiple base nodes to ensure more robust comms
+    And I have a base node NODE_A3 connected to seed SEED_A2
+    And I have a base node NODE_A4 connected to seed SEED_A2
+    When I mine <Y1> blocks on SEED_A2
+    Then node NODE_A3 is at height <Y1>
+    Then node NODE_A4 is at height <Y1>
+        #
+        # Connect Chain 1a and 1b
+        #
+#    And I connect node NODE_A1 to node NODE_A3 and wait 1 seconds
+#    And I connect node NODE_A2 to node NODE_A4 and wait 1 seconds
+        # Note: If the above two lines are included in the test, the 500+ case sometimes
+        #       passes as well.
+    And I connect node SEED_A1 to node SEED_A2 and wait <SYNC_TIME> seconds
+    Then node SEED_A1 is at the same height as node SEED_A2
+    When I mine 10 blocks on SEED_A1
+    Then all nodes are at the same height as node SEED_A1
+    @critical
+    Examples:
+        | X1     | Y1     | SYNC_TIME |
+        | 5      | 10     | 20        |
+
+    @long-running
+    Examples:
+        | X1     | Y1     | SYNC_TIME |
+        | 100    | 125    | 30        |
+
+    @long-running @to-be-fixed-currently-failing
+    Examples:
+        | X1     | Y1     | SYNC_TIME |
+        | 500    | 550    | 60        |
