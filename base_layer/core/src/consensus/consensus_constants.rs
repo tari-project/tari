@@ -341,7 +341,7 @@ impl ConsensusConstants {
         vec![
             ConsensusConstants {
                 effective_from_height: 0,
-                coinbase_lock_height: 60,
+                coinbase_lock_height: 6,
                 blockchain_version: 1,
                 future_time_limit: 540,
                 difficulty_block_window: 90,
