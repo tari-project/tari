@@ -95,6 +95,10 @@ class CustomWorld {
         return this.wallets[name];
     }
 
+    getProxy(name) {
+        return this.proxies[name];
+    }
+
     async forEachClientAsync(f) {
         let promises = [];
 

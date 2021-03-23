@@ -89,9 +89,9 @@ function createEnv(name="config_identity", isWallet=false, nodeFile="newnodeid.j
     }
     //console.log(configEnvs);
     var fullEnvs = {...envs,...configEnvs};
-    if (isWallet) {
+    //if (isWallet) {
         //console.log(name, mapEnvs(options || {}));
-    }
+    //}
     return {...fullEnvs, ...mapEnvs(options || {}) } ;
 }
 

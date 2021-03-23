@@ -350,22 +350,26 @@ impl InnerService {
             let start = Instant::now();
             match base_node_client.submit_block(block_data.tari_block).await {
                 Ok(resp) => {
-                    json_resp = json_rpc::success_response(
-                        request["id"].as_i64(),
-                        json!({ "status": "OK", "untrusted": !self.initial_sync_achieved.load(Ordering::Relaxed) }),
-                    );
-
-                    let resp = resp.into_inner();
-                    json_resp = append_aux_chain_data(
-                        json_resp,
-                        json!({"id": TARI_CHAIN_ID, "block_hash": resp.block_hash.to_hex()}),
-                    );
-                    debug!(
-                        target: LOG_TARGET,
-                        "Submitted block #{} to Tari node in {:.0?} (SubmitBlock)",
-                        height,
-                        start.elapsed()
-                    );
+                    if !self.config.proxy_submit_to_origin {
+                        // self-select related, do not change.
+                        json_resp = json_rpc::default_block_accept_response(request["id"].as_i64());
+                    } else {
+                        json_resp = json_rpc::success_response(
+                            request["id"].as_i64(),
+                            json!({ "status": "OK", "untrusted": !self.initial_sync_achieved.load(Ordering::Relaxed) }),
+                        );
+                        let resp = resp.into_inner();
+                        json_resp = append_aux_chain_data(
+                            json_resp,
+                            json!({"id": TARI_CHAIN_ID, "block_hash": resp.block_hash.to_hex()}),
+                        );
+                        debug!(
+                            target: LOG_TARGET,
+                            "Submitted block #{} to Tari node in {:.0?} (SubmitBlock)",
+                            height,
+                            start.elapsed()
+                        );
+                    }
                     self.block_templates.remove(&hash).await;
                 },
                 Err(err) => {

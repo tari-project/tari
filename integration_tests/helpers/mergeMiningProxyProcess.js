@@ -9,12 +9,13 @@ const {createEnv} = require("./config");
 let outputProcess;
 
 class MergeMiningProxyProcess {
-    constructor(name, baseNodeAddress, walletAddress) {
+    constructor(name, baseNodeAddress, walletAddress, submitOrigin=true) {
         this.name = name;
         this.nodeAddress = baseNodeAddress.split(":")[0];
         this.nodeGrpcPort = baseNodeAddress.split(":")[1];
         this.walletAddress = walletAddress.split(":")[0];
         this.walletGrpcPort = walletAddress.split(":")[1];
+        this.submitOrigin = submitOrigin
     }
 
     async init() {
@@ -33,11 +34,14 @@ class MergeMiningProxyProcess {
 
             let proxyAddress = "127.0.0.1:" + this.port;
             let envs = createEnv(this.name, false, "nodeid.json", this.walletAddress, this.walletGrpcPort, this.port, this.nodeAddress, this.nodeGrpcPort, this.baseNodePort, proxyAddress, [], []);
-
+            var extraEnvs = {
+            TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_SUBMIT_TO_ORIGIN: this.submitOrigin,
+            }
+            let completeEnvs = {...envs,...extraEnvs};
             var ps = spawn(cmd, args, {
                 cwd: this.baseDir,
                 // shell: true,
-                env: {...process.env, ...envs}
+                env: {...process.env, ...completeEnvs}
             });
 
             ps.stdout.on('data', (data) => {
