@@ -44,7 +44,7 @@ pub struct NewBlockHeaderTemplate {
     /// Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
     /// block from the total kernel offset of the previous block header.
     pub total_kernel_offset: BlindingFactor,
-    /// Sum of script offsets for all transactions in this block
+    /// Sum of script offsets for all kernels in this block.
     pub total_script_offset: BlindingFactor,
     /// Proof of work summary
     pub pow: ProofOfWork,

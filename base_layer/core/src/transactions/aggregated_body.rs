@@ -23,16 +23,18 @@ use crate::transactions::{
     fee::Fee,
     tari_amount::*,
     transaction::*,
-    types::{BlindingFactor, Commitment, CommitmentFactory, CryptoFactories, PrivateKey, RangeProofService},
+    types::{BlindingFactor, Commitment, CommitmentFactory, CryptoFactories, PrivateKey, PublicKey, RangeProofService},
 };
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
+    commitment::{HomomorphicCommitment, HomomorphicCommitmentFactory},
     ristretto::pedersen::PedersenCommitment,
-    tari_utilities::hex::Hex,
+    tari_utilities::{hex::Hex, ByteArray, Hashable},
 };
+// use tari_crypto::script::ExecutionStack;
+// use tari_crypto::script::StackItem;
 
 pub const LOG_TARGET: &str = "c::tx::aggregated_body";
 
@@ -336,16 +338,19 @@ impl AggregateBody {
     /// for a transaction
     pub fn validate_internal_consistency(
         &self,
-        offset: &BlindingFactor,
+        tx_offset: &BlindingFactor,
+        script_offset: &BlindingFactor,
         total_reward: MicroTari,
         factories: &CryptoFactories,
     ) -> Result<(), TransactionError>
     {
-        let total_offset = factories.commitment.commit_value(&offset, total_reward.0);
+        let total_offset = factories.commitment.commit_value(&tx_offset, total_reward.0);
+        let script_offset_g = factories.commitment.commit_value(&script_offset, 0);
 
         self.verify_kernel_signatures()?;
         self.validate_kernel_sum(total_offset, &factories.commitment)?;
-        self.validate_range_proofs(&factories.range_proof)
+        self.validate_range_proofs(&factories.range_proof)?;
+        self.validate_script_offset(script_offset_g)
     }
 
     pub fn dissolve(self) -> (Vec<TransactionInput>, Vec<TransactionOutput>, Vec<TransactionKernel>) {
@@ -402,6 +407,32 @@ impl AggregateBody {
             ));
         }
 
+        Ok(())
+    }
+
+    /// this will validate the script offset of the aggregate body.
+    fn validate_script_offset(
+        &self,
+        script_offset: Commitment,    ) -> Result<(), TransactionError>
+    {
+        trace!(target: LOG_TARGET, "Checking script offset");
+        // lets count up the input script public keys
+        let mut input_keys = PublicKey::default();
+        for input in &self.inputs {
+            input_keys = input_keys + input.run_and_verify_script()?;
+        }
+
+        // Now lets gather the output public keys and hashes.
+        let mut output_keys = PublicKey::default();
+        for output in &self.outputs {
+            output_keys = output_keys +
+                PrivateKey::from_bytes(&output.hash()).map_err(|e| TransactionError::Unknown(e.to_string()))? *
+                    output.offset_pub_key.clone();
+        }
+        let lhs = HomomorphicCommitment::from_public_key(&(input_keys - output_keys));
+        if lhs != script_offset {
+            return Err(TransactionError::ScriptOffset);
+        }
         Ok(())
     }
 

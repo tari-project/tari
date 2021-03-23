@@ -41,6 +41,7 @@ use crate::transactions::{
         Signature,
     },
 };
+use tari_crypto::commitment::HomomorphicCommitment;
 use digest::Input;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
@@ -51,6 +52,7 @@ use std::{
     hash::{Hash, Hasher},
     ops::Add,
 };
+use tari_crypto::keys::PublicKey as pk;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     hash::blake2::Blake256,
@@ -62,7 +64,7 @@ use tari_crypto::{
         RewindResult as CryptoRewindResult,
         REWIND_USER_MESSAGE_LENGTH,
     },
-    script::{ExecutionStack, ScriptError, TariScript},
+    script::{ExecutionStack, ScriptError, StackItem, TariScript},
     tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable},
 };
 use thiserror::Error;
@@ -191,6 +193,8 @@ pub enum TransactionError {
     ScriptError(#[from] ScriptError),
     #[error("Error performing conversion: {0}")]
     ConversionError(String),
+    #[error("The script offset in body does not balance")]
+    ScriptOffset,
 }
 
 //-----------------------------------------     UnblindedOutput   ----------------------------------------------------//
@@ -444,7 +448,39 @@ impl TransactionInput {
     pub fn is_equal_to(&self, output: &TransactionOutput) -> bool {
         self.commitment == output.commitment && self.features == output.features
     }
-}
+
+    /// This will run the script contained in the TransactionInput, returning either a script error or the resulting
+    /// public key.
+    pub fn run_script(&self) -> Result<PublicKey, TransactionError> {
+        match self.script.execute(&self.input_data)? {
+            StackItem::PublicKey(pubkey) => Ok(pubkey),
+            _ => Err(TransactionError::Unknown(
+                "THe script executed successfully but it did not leave a public key on the stack, ".to_string(),
+            )),
+        }
+    }
+
+    pub fn validate_script_signature(&self, key: &PublicKey) -> Result<(), TransactionError> {
+        let r = self.script_signature.get_public_nonce();
+        let m = HashDigest::new()
+            .chain(r.as_bytes())
+            .chain(self.input_data.as_bytes())
+            .result()
+            .to_vec();
+        if self.script_signature.verify_challenge(key, &m) {
+            Ok(())
+        } else {
+            Err(TransactionError::InvalidSignatureError)
+        }
+    }
+
+    /// This will run the script and verify the script signature. If its valid, it will return the resulting public key
+    /// from the script.
+    pub fn run_and_verify_script(&self) -> Result<PublicKey, TransactionError> {
+        let key = self.run_script()?;
+        self.validate_script_signature(&key)?;
+        Ok(key)
+    }
 
 impl From<TransactionOutput> for TransactionInput {
     fn from(output: TransactionOutput) -> Self {
@@ -458,6 +494,8 @@ impl From<TransactionOutput> for TransactionInput {
             script_offset_public_key: output.script_offset_public_key,
         }
     }
+
+
 }
 
 /// Implement the canonical hashing function for TransactionInput for use in ordering
@@ -545,7 +583,17 @@ impl TransactionOutput {
 
     /// Verify that range proof is valid
     pub fn verify_range_proof(&self, prover: &RangeProofService) -> Result<bool, TransactionError> {
-        Ok(prover.verify(&self.proof.0, &self.commitment))
+    let beta_hash = Blake256::new()
+    .chain(self.script_hash.clone())
+    .chain(self.features.to_bytes())
+    .chain(self.script_offset_public_key.as_bytes())
+    .result()
+    .to_vec();
+    let beta = PrivateKey::from_bytes(beta_hash.as_slice()).map_err(|e| TransactionError::Unknown(e.to_string()))?;
+
+    let public_beta = PublicKey::from_secret_key(&beta);
+    let beta_commitment = HomomorphicCommitment::from_public_key(&public_beta).add(&self.commitment);
+        Ok(prover.verify(&self.proof.0, &beta_commitment))
     }
 
     /// Attempt to rewind the range proof to reveal the proof message and committed value
@@ -901,7 +949,8 @@ impl Transaction {
     ) -> Result<(), TransactionError>
     {
         let reward = reward.unwrap_or_else(|| 0 * uT);
-        self.body.validate_internal_consistency(&self.offset, reward, factories)
+        self.body
+            .validate_internal_consistency(&self.offset, &self.script_offset, reward, factories)
     }
 
     pub fn get_body(&self) -> &AggregateBody {

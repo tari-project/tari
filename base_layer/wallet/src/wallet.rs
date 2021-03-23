@@ -38,11 +38,12 @@ use crate::{
         storage::database::TransactionBackend,
         TransactionServiceInitializer,
     },
-};
+};use tari_crypto::script::TariScript;use tari_crypto::script::ExecutionStack;use tari_core::transactions::types::PublicKey;
 use aes_gcm::{
     aead::{generic_array::GenericArray, NewAead},
     Aes256Gcm,
 };
+use tari_crypto::keys::PublicKey as sk;
 use digest::Digest;
 use log::*;
 use std::{marker::PhantomData, sync::Arc};
@@ -308,7 +309,12 @@ where
         message: String,
     ) -> Result<TxId, WalletError>
     {
-        let unblinded_output = UnblindedOutput::new(amount, spending_key.clone(), None);
+        let unblinded_output = UnblindedOutput::new(amount, spending_key.clone(), None,
+        TariScript::default(),
+        ExecutionStack::default(),
+        0,
+        spending_key.clone(),
+        PublicKey::from_secret_key(&spending_key),);
 
         self.output_manager_service.add_output(unblinded_output.clone()).await?;
 
