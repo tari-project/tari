@@ -113,9 +113,9 @@ pub fn make_input<R: Rng + CryptoRng>(
     let key = PrivateKey::random(rng);
     let commitment = factories.commitment.commit_value(&key, val.into());
     // TODO: Populate script with the proper value
-    let script = TariScript::default().as_bytes();
+    let script = TariScript::default();
     // TODO: Populate input_data with the proper value
-    let input_data = ExecutionStack::default().as_bytes();
+    let input_data = ExecutionStack::default();
     // TODO: Populate height with the proper value
     let height = 0;
     // TODO: Populate script_signature with the proper value
@@ -131,7 +131,17 @@ pub fn make_input<R: Rng + CryptoRng>(
         script_signature,
         offset_pub_key,
     );
-    (input, UnblindedOutput::new(val, key, None))
+    let unblinded_output = UnblindedOutput::new(
+        val,
+        key.clone(),
+        None,
+        TariScript::default(),
+        ExecutionStack::default(),
+        0,
+        key.clone(),
+        PublicKey::from_secret_key(&key),
+    );
+    (input, unblinded_output)
 }
 
 pub fn random_string(len: usize) -> String {

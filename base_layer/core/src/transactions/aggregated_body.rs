@@ -29,11 +29,10 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
+    commitment::{HomomorphicCommitment, HomomorphicCommitmentFactory},
     ristretto::pedersen::PedersenCommitment,
     tari_utilities::{hex::Hex, ByteArray, Hashable},
 };
-use tari_crypto::commitment::HomomorphicCommitment;
 // use tari_crypto::script::ExecutionStack;
 // use tari_crypto::script::StackItem;
 
@@ -421,20 +420,20 @@ impl AggregateBody {
         trace!(target: LOG_TARGET, "Checking script offset");
         // lets count up the input script public keys
         let mut input_keys = PublicKey::default();
-        for input in self.inputs {
+        for input in &self.inputs {
             input_keys = input_keys + input.run_and_verify_script()?;
         }
 
         // Now lets gather the output public keys and hashes.
         let mut output_keys = PublicKey::default();
-        for output in self.outputs {
+        for output in &self.outputs {
             output_keys = output_keys +
                 PrivateKey::from_bytes(&output.hash()).map_err(|e| TransactionError::Unknown(e.to_string()))? *
-                    output.offset_pub_key;
+                    output.offset_pub_key.clone();
         }
         let lhs = HomomorphicCommitment::from_public_key(&(input_keys - output_keys));
-        if lhs != script_offset{
-            return Err(TransactionError::ScriptOffset)
+        if lhs != script_offset {
+            return Err(TransactionError::ScriptOffset);
         }
         Ok(())
     }

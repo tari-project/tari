@@ -35,11 +35,14 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use tari_crypto::keys::PublicKey as pk;
+use tari_core::transactions::types::PublicKey;
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{OutputFeatures, UnblindedOutput},
     types::{BlindingFactor, Commitment, CryptoFactories, PrivateKey},
 };
+use tari_crypto::script::ExecutionStack;use tari_crypto::script::TariScript;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database";
 
@@ -363,7 +366,16 @@ where T: OutputManagerBackend + 'static
     {
         let db_clone = self.db.clone();
         let output = DbUnblindedOutput::from_unblinded_output(
-            UnblindedOutput::new(amount, spending_key.clone(), Some(output_features)),
+            UnblindedOutput::new(
+                amount,
+                spending_key.clone(),
+                Some(output_features),
+                TariScript::default(),
+                ExecutionStack::default(),
+                0,
+                spending_key.clone(),
+                PublicKey::from_secret_key(&spending_key),
+            ),
             factory,
         )?;
         tokio::task::spawn_blocking(move || {

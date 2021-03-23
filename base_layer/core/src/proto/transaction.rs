@@ -42,7 +42,10 @@ use crate::{
     },
 };
 use std::convert::{TryFrom, TryInto};
-use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
+use tari_crypto::{
+    script::{ExecutionStack, TariScript},
+    tari_utilities::{ByteArray, ByteArrayError},
+};
 
 //---------------------------------- TransactionKernel --------------------------------------------//
 
@@ -116,8 +119,8 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
         Ok(Self {
             features,
             commitment,
-            script: input.script,
-            input_data: input.input_data,
+            script: TariScript::from_bytes(input.script.as_slice()).map_err(|err| format!("{:?}", err))?,
+            input_data: ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
             height: input.height,
             script_signature,
             offset_pub_key,
@@ -130,8 +133,8 @@ impl From<TransactionInput> for proto::types::TransactionInput {
         Self {
             features: Some(input.features.into()),
             commitment: Some(input.commitment.into()),
-            script: input.script,
-            input_data: input.input_data,
+            script: input.script.as_bytes(),
+            input_data: input.input_data.as_bytes(),
             height: input.height,
             script_signature: Some(input.script_signature.into()),
             offset_pub_key: input.offset_pub_key.as_bytes().to_vec(),

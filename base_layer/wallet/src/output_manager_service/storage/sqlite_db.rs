@@ -40,7 +40,10 @@ use crate::{
     schema::{key_manager_states, outputs, pending_transaction_outputs},
     storage::sqlite_utilities::WalletDbConnection,
     util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
-};
+};use tari_crypto::script::ExecutionStack;
+use tari_crypto::keys::PublicKey as pk;
+use tari_crypto::script::TariScript;
+use tari_core::transactions::types::PublicKey;
 use aes_gcm::{aead::Error as AeadError, Aes256Gcm, Error};
 use chrono::{Duration as ChronoDuration, NaiveDateTime, Utc};
 use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
@@ -945,20 +948,26 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
     type Error = OutputManagerStorageError;
 
     fn try_from(o: OutputSql) -> Result<Self, Self::Error> {
+        let key =PrivateKey::from_vec(&o.spending_key).map_err(|_| {
+            error!(
+                target: LOG_TARGET,
+                "Could not create PrivateKey from stored bytes, They might be encrypted"
+            );
+            OutputManagerStorageError::ConversionError
+        })?;
         let unblinded_output = UnblindedOutput::new(
             MicroTari::from(o.value as u64),
-            PrivateKey::from_vec(&o.spending_key).map_err(|_| {
-                error!(
-                    target: LOG_TARGET,
-                    "Could not create PrivateKey from stored bytes, They might be encrypted"
-                );
-                OutputManagerStorageError::ConversionError
-            })?,
+            key.clone(),
             Some(OutputFeatures {
                 flags: OutputFlags::from_bits(o.flags as u8)
                     .ok_or_else(|| OutputManagerStorageError::ConversionError)?,
                 maturity: o.maturity as u64,
             }),
+            TariScript::default(),
+            ExecutionStack::default(),
+            0,
+            key.clone(),
+            PublicKey::from_secret_key(&key),
         );
         let hash = match o.hash {
             None => {

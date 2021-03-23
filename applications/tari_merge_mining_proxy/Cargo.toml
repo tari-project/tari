@@ -15,7 +15,7 @@ envlog = ["env_logger"]
 tari_app_grpc = { path = "../tari_app_grpc" }
 tari_common = {  path = "../../common" }
 tari_core = {  path = "../../base_layer/core", default-features = false, features = ["transactions"]}
-tari_crypto = "^0.9"
+tari_crypto = { git = "https://github.com/philipr-za/tari-crypto/", branch = "philip-serde-execution-stack" }
 tari_utilities = "^0.3"
 
 bincode = "1.3.1"

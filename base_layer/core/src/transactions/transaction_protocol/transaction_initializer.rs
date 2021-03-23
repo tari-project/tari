@@ -46,7 +46,11 @@ use std::{
     collections::HashMap,
     fmt::{Debug, Error, Formatter},
 };
-use tari_crypto::{keys::PublicKey as PublicKeyTrait, tari_utilities::fixed_set::FixedSet};
+use tari_crypto::{
+    keys::PublicKey as PublicKeyTrait,
+    script::{ExecutionStack, TariScript},
+    tari_utilities::fixed_set::FixedSet,
+};
 
 pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
 
@@ -217,7 +221,17 @@ impl SenderTransactionInitializer {
                             .change_secret
                             .as_ref()
                             .ok_or_else(|| "Change spending key was not provided")?;
-                        let change_unblinded_output = UnblindedOutput::new(v, change_key.clone(), None);
+                        let change_unblinded_output = UnblindedOutput::new(
+                            v,
+                            change_key.clone(),
+                            None,
+                            TariScript::default(),
+                            ExecutionStack::default(),
+                            0,
+                            change_key.clone(),
+                            PublicKey::from_secret_key(&change_key),
+                        );
+
                         Ok((fee_with_change, v, Some(change_unblinded_output)))
                     },
                 }

@@ -37,7 +37,11 @@ use crate::{
         types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey, Signature},
     },
 };
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::PublicKey as PK};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::PublicKey as PK,
+    script::{ExecutionStack, TariScript},
+};
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error, PartialEq)]
@@ -158,7 +162,16 @@ impl CoinbaseBuilder {
         let challenge = build_challenge(&public_nonce, &metadata);
         let sig = Signature::sign(key.clone(), nonce, &challenge)
             .map_err(|_| CoinbaseBuildError::BuildError("Challenge could not be represented as a scalar".into()))?;
-        let unblinded_output = UnblindedOutput::new(total_reward, key, Some(output_features));
+        let unblinded_output = UnblindedOutput::new(
+            total_reward,
+            key.clone(),
+            Some(output_features),
+            TariScript::default(),
+            ExecutionStack::default(),
+            0,
+            key.clone(),
+            PublicKey::from_secret_key(&key),
+        );
         let output = if let Some(rewind_data) = self.rewind_data.as_ref() {
             unblinded_output
                 .as_rewindable_transaction_output(&self.factories, rewind_data)

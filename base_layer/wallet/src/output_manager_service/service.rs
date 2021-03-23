@@ -69,6 +69,7 @@ use tari_core::{
 use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
     range_proof::REWIND_USER_MESSAGE_LENGTH,
+    script::{ExecutionStack, TariScript},
 };
 use tari_key_manager::{
     key_manager::KeyManager,
@@ -656,7 +657,16 @@ where TBackend: OutputManagerBackend + 'static
         let mut change_output = Vec::<DbUnblindedOutput>::new();
         if let Some(key) = change_key {
             change_output.push(DbUnblindedOutput::from_unblinded_output(
-                UnblindedOutput::new(stp.get_amount_to_self()?, key, None),
+                UnblindedOutput::new(
+                    stp.get_amount_to_self()?,
+                    key.clone(),
+                    None,
+                    TariScript::default(),
+                    ExecutionStack::default(),
+                    0,
+                    key.clone(),
+                    PublicKey::from_secret_key(&key),
+                ),
                 &self.resources.factories,
             )?);
         }
@@ -715,7 +725,16 @@ where TBackend: OutputManagerBackend + 'static
 
         let spend_key = self.get_next_spend_key().await?;
         let utxo = DbUnblindedOutput::rewindable_from_unblinded_output(
-            UnblindedOutput::new(amount, spend_key, None),
+            UnblindedOutput::new(
+                amount,
+                spend_key.clone(),
+                None,
+                TariScript::default(),
+                ExecutionStack::default(),
+                0,
+                spend_key.clone(),
+                PublicKey::from_secret_key(&spend_key),
+            ),
             &self.resources.factories,
             &self.resources.rewind_data,
         )?;
@@ -740,7 +759,16 @@ where TBackend: OutputManagerBackend + 'static
         if let Some(key) = change_key {
             let change_amount = stp.get_change_amount()?;
             let change_output = DbUnblindedOutput::rewindable_from_unblinded_output(
-                UnblindedOutput::new(change_amount, key, None),
+                UnblindedOutput::new(
+                    change_amount,
+                    key.clone(),
+                    None,
+                    TariScript::default(),
+                    ExecutionStack::default(),
+                    0,
+                    key.clone(),
+                    PublicKey::from_secret_key(&key),
+                ),
                 &self.resources.factories,
                 &self.resources.rewind_data,
             )?;
@@ -1066,7 +1094,16 @@ where TBackend: OutputManagerBackend + 'static
 
             let spend_key = self.get_next_spend_key().await?;
             let utxo = DbUnblindedOutput::from_unblinded_output(
-                UnblindedOutput::new(output_amount, spend_key, None),
+                UnblindedOutput::new(
+                    output_amount,
+                    spend_key.clone(),
+                    None,
+                    TariScript::default(),
+                    ExecutionStack::default(),
+                    0,
+                    spend_key.clone(),
+                    PublicKey::from_secret_key(&spend_key),
+                ),
                 &self.resources.factories,
             )?;
             outputs.push(utxo.clone());
@@ -1128,7 +1165,12 @@ where TBackend: OutputManagerBackend + 'static
                     )
                     .ok()
             })
-            .map(|output| UnblindedOutput::new(output.committed_value, output.blinding_factor, None))
+            .map(|output| UnblindedOutput::new(output.committed_value, output.blinding_factor.clone(), None,
+                TariScript::default(),
+                ExecutionStack::default(),
+                0,
+                output.blinding_factor.clone(),
+                PublicKey::from_secret_key(&output.blinding_factor),))
             .collect();
 
         Ok(rewound_outputs)
