@@ -209,10 +209,11 @@ pub fn check_accounting_balance(
         return Ok(());
     }
     let offset = &block.header.total_kernel_offset;
+    let script_offset = &block.header.total_script_offset;
     let total_coinbase = rules.calculate_coinbase_and_fees(block);
     block
         .body
-        .validate_internal_consistency(&offset, total_coinbase, factories)
+        .validate_internal_consistency(&offset, &script_offset, total_coinbase, factories)
         .map_err(|err| {
             warn!(
                 target: LOG_TARGET,

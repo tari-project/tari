@@ -25,7 +25,7 @@
 
 use crate::transactions::{
     aggregated_body::AggregateBody,
-    crypto::script::{ScriptError, TariScript},
+    
     tari_amount::{uT, MicroTari},
     transaction_protocol::{build_challenge, RewindData, TransactionMetadata},
     types::{
@@ -51,6 +51,7 @@ use std::{
     ops::Add,
 };
 use tari_crypto::{
+    script::{ScriptError, TariScript,StackItem},
     commitment::HomomorphicCommitmentFactory,
     hash::blake2::Blake256,
     range_proof::{
@@ -62,6 +63,7 @@ use tari_crypto::{
     },
     tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable},
 };
+use tari_crypto::script::ExecutionStack;
 use thiserror::Error;
 
 // Tx_weight(inputs(12,500), outputs(500), kernels(1)) = 19,003, still well enough below block weight of 19,500
@@ -184,8 +186,12 @@ pub enum TransactionError {
     NoCoinbase,
     #[error("Input maturity not reached")]
     InputMaturity,
-    #[error("Tari script error")]
+    #[error("Tari script error {0}")]
     ScriptError(#[from] ScriptError),
+    #[error("The script offset in body does not balance")]
+    ScriptOffset,
+    #[error("Unknown error in transaction: {0}")]
+    Unknown(String),
 }
 
 //-----------------------------------------     UnblindedOutput   ----------------------------------------------------//
@@ -321,7 +327,7 @@ pub struct TransactionInput {
     /// The commitment referencing the output being spent.
     pub commitment: Commitment,
     /// The serialised script
-    pub script: Vec<u8>,
+    pub script: TariScript,
     /// The script input data, if any
     pub input_data: Vec<u8>,
     /// The block height that the UTXO was mined
@@ -371,19 +377,37 @@ impl TransactionInput {
     pub fn is_equal_to(&self, output: &TransactionOutput) -> bool {
         self.commitment == output.commitment && self.features == output.features
     }
-}
 
-impl From<TransactionOutput> for TransactionInput {
-    fn from(item: TransactionOutput) -> Self {
-        TransactionInput {
-            features: item.features,
-            commitment: item.commitment,
-            script: vec![],
-            input_data: vec![],
-            height: 0,
-            script_signature: Default::default(),
-            offset_pub_key: item.offset_pub_key,
+    /// This will run the script contained in the TransactionInput, returning either a script error or the resulting
+    /// public key.
+    pub fn run_script(&self) -> Result<PublicKey, TransactionError> {
+        let inputs = ExecutionStack::from_bytes(&self.input_data)?;
+        match self.script.execute(&inputs)?{
+            StackItem::PublicKey(pubkey) => Ok(pubkey),
+            _ => Err(TransactionError::Unknown("THe script executed successfully but it did not leave a public key on the stack, ".to_string()))
         }
+    }
+
+    pub fn validate_script_signature(&self, key: PublicKey) -> Result<(), TransactionError> {
+        let r = self.script_signature.get_public_nonce();
+        let m = HashDigest::new()
+            .chain(r.as_bytes())
+            .chain(self.input_data)
+            .result()
+            .to_vec();
+        if self.script_signature.verify_challenge(&key, &m) {
+            Ok(())
+        } else {
+            Err(TransactionError::InvalidSignatureError)
+        }
+    }
+
+    /// This will run the script and verify the script signature. If its valid, it will return the resulting public key
+    /// from the script.
+    pub fn run_and_verify_script(&self) -> Result<PublicKey, TransactionError> {
+        let key = self.run_script()?;
+        self.validate_script_signature(key)?;
+        Ok(key)
     }
 }
 
@@ -440,6 +464,25 @@ impl TransactionOutput {
             proof,
             script_hash,
             offset_pub_key,
+        }
+    }
+
+    pub fn to_transactional_input(
+        self,
+        height: u64,
+        input_data: Vec<u8>,
+        script: Vec<u8>,
+        script_signature: Signature,
+    ) -> TransactionInput
+    {
+        TransactionInput {
+            features: self.features,
+            commitment: self.commitment,
+            script,
+            input_data,
+            height,
+            script_signature,
+            offset_pub_key: self.offset_pub_key,
         }
     }
 
@@ -513,6 +556,8 @@ impl Hashable for TransactionOutput {
         HashDigest::new()
             .chain(self.features.to_bytes())
             .chain(self.commitment.as_bytes())
+            .chain(self.script_hash)
+            .chain(self.offset_pub_key.as_bytes())
             // .chain(range proof) // See docs as to why we exclude this
             .result()
             .to_vec()
@@ -809,7 +854,8 @@ impl Transaction {
     ) -> Result<(), TransactionError>
     {
         let reward = reward.unwrap_or_else(|| 0 * uT);
-        self.body.validate_internal_consistency(&self.offset, reward, factories)
+        self.body
+            .validate_internal_consistency(&self.offset, &self.script_offset, reward, factories)
     }
 
     pub fn get_body(&self) -> &AggregateBody {
