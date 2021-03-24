@@ -53,7 +53,7 @@ mod helpers;
 #[test]
 fn test_genesis_block() {
     let factories = CryptoFactories::default();
-    let network = Network::Stibbons;
+    let network = Network::Weatherwax;
     let rules = ConsensusManagerBuilder::new(network).build();
     let backend = create_test_db();
     let rx = RandomXFactory::new(RandomXConfig::default(), 1);

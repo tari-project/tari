@@ -408,10 +408,10 @@ impl OutputManagerHandle {
     /// Returns (tx_id, tx, fee, utxo_total_value).
     pub async fn create_coin_split(
         &mut self,
-        amount_per_split: MicroTari,
-        split_count: usize,
-        fee_per_gram: MicroTari,
-        lock_height: Option<u64>,
+        _amount_per_split: MicroTari,
+        _split_count: usize,
+        _fee_per_gram: MicroTari,
+        _lock_height: Option<u64>,
     ) -> Result<(u64, Transaction, MicroTari, MicroTari), OutputManagerError>
     {
         // match self

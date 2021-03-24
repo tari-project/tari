@@ -168,7 +168,8 @@ fn check_inputs_are_utxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result
         .ok_or_else(|| ValidationError::PreviousHashNotFound)?;
 
     for input in block.body.inputs() {
-        if let Some(index) = db.fetch_mmr_leaf_index(MmrTree::Utxo, &input.hash())? {
+        let hash = input.hash();
+        if let Some(index) = db.fetch_mmr_leaf_index(MmrTree::Utxo, &hash)? {
             if data.deleted().contains(index) {
                 warn!(
                     target: LOG_TARGET,
@@ -176,6 +177,7 @@ fn check_inputs_are_utxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result
                 );
                 return Err(ValidationError::ContainsSTxO);
             }
+            
         } else {
             warn!(
                 target: LOG_TARGET,

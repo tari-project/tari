@@ -179,7 +179,7 @@ pub async fn create_wallet(
         user_agent: "/tari/wallet/test".to_string(),
         dht: DhtConfig {
             discovery_request_timeout: Duration::from_secs(30),
-            network: DhtNetwork::Stibbons,
+            network: DhtNetwork::Weatherwax,
             ..Default::default()
         },
         allow_test_addresses: true,
@@ -191,7 +191,7 @@ pub async fn create_wallet(
         peer_seeds: Default::default(),
     };
 
-    let config = WalletConfig::new(comms_config, factories, None, None, Network::Stibbons, None, None, None);
+    let config = WalletConfig::new(comms_config, factories, None, None, Network::Weatherwax, None, None, None);
     let db = WalletMemoryDatabase::new();
     let (backend, _) = make_transaction_database(Some(datastore_path.to_str().unwrap().to_string()));
 

@@ -465,6 +465,7 @@ impl TransactionInput {
         let m = HashDigest::new()
             .chain(r.as_bytes())
             .chain(self.input_data.as_bytes())
+            .chain(self.height.to_le_bytes())
             .result()
             .to_vec();
         if self.script_signature.verify_challenge(key, &m) {
