@@ -221,6 +221,9 @@ where T: WalletBackend + 'static
 
         let tip_info = client.get_tip_info().await?;
 
+        // Note: Dropping the client here reduces the number of concurrent RPC connections
+        drop(client);
+
         let metadata = tip_info
             .metadata
             .ok_or_else(|| BaseNodeServiceError::InvalidBaseNodeResponse("Tip info no metadata".to_string()))?;
