@@ -169,8 +169,8 @@ bitflags! {
 pub enum TransactionError {
     #[error("Error validating the transaction: {0}")]
     ValidationError(String),
-    #[error("Signature is invalid")]
-    InvalidSignatureError,
+    #[error("Signature is invalid: {0}")]
+    InvalidSignatureError(String),
     #[error("Transaction kernel does not contain a signature")]
     NoSignatureError,
     #[error("A range proof construction or verification has produced an error: {0}")]
@@ -270,7 +270,7 @@ impl UnblindedOutput {
             .to_vec();
 
         let script_signature = Signature::sign(self.script_private_key.clone(), script_nonce, &e)
-            .map_err(|_| TransactionError::InvalidSignatureError)?;
+            .map_err(|_| TransactionError::InvalidSignatureError("Generating script signature".to_string()))?;
 
         Ok(TransactionInput {
             features: self.features.clone(),
@@ -471,7 +471,9 @@ impl TransactionInput {
         if self.script_signature.verify_challenge(key, &m) {
             Ok(())
         } else {
-            Err(TransactionError::InvalidSignatureError)
+            Err(TransactionError::InvalidSignatureError(
+                "Verifying script signature".to_string(),
+            ))
         }
     }
 
@@ -854,7 +856,9 @@ impl TransactionKernel {
         if self.excess_sig.verify_challenge(excess, &c) {
             Ok(())
         } else {
-            Err(TransactionError::InvalidSignatureError)
+            Err(TransactionError::InvalidSignatureError(
+                "Verifying kernel signature".to_string(),
+            ))
         }
     }
 }
