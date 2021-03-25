@@ -502,15 +502,13 @@ impl From<TransactionOutput> for TransactionInput {
 }
 
 /// Implement the canonical hashing function for TransactionInput for use in ordering
+//Note we use the hash of an UTXO to ID it, so we need the hash of the TransactionInput to equal the hash of the TransactionOutput
 impl Hashable for TransactionInput {
     fn hash(&self) -> Vec<u8> {
         HashDigest::new()
             .chain(self.features.to_bytes())
             .chain(self.commitment.as_bytes())
-            .chain(self.script.as_bytes())
-            .chain(self.input_data.as_bytes())
-            .chain(self.height.to_le_bytes())
-            .chain(&self.script_signature.get_signature().as_bytes())
+            .chain(self.script.as_hash::<Blake256>().unwrap())
             .chain(self.script_offset_public_key.as_bytes())
             .result()
             .to_vec()
