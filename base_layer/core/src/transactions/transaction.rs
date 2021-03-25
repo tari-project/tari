@@ -464,6 +464,7 @@ impl TransactionInput {
         let r = self.script_signature.get_public_nonce();
         let m = HashDigest::new()
             .chain(r.as_bytes())
+            .chain(self.script.as_bytes())
             .chain(self.input_data.as_bytes())
             .chain(self.height.to_le_bytes())
             .result()
