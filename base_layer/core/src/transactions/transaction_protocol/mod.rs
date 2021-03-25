@@ -124,6 +124,8 @@ pub enum TransactionProtocolError {
     UnsupportedError(String),
     #[error("There has been an error serializing or deserializing this structure")]
     SerializationError,
+    #[error("Conversion error: `{0}`")]
+    ConversionError(String),
 }
 
 /// Transaction metadata, including the fee and lock height

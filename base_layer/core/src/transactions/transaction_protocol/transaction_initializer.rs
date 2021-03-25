@@ -438,6 +438,13 @@ impl SenderTransactionInitializer {
             }
         }
 
+        // Calculate the Inputs portion of Gamma so we don't have to store the individual script private keys in
+        // RawTransactionInfo while we wait for the recipients reply
+        let mut gamma = PrivateKey::default();
+        for uo in self.unblinded_inputs.iter() {
+            gamma += uo.script_private_key.clone();
+        }
+
         // Everything is here. Let's send some Tari!
         let sender_info = RawTransactionInfo {
             num_recipients: self.num_recipients,
@@ -459,6 +466,7 @@ impl SenderTransactionInitializer {
             outputs,
             offset,
             offset_blinding_factor,
+            gamma,
             public_excess: excess,
             private_nonce: nonce,
             public_nonce: public_nonce.clone(),

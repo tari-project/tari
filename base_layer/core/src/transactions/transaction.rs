@@ -464,6 +464,7 @@ impl TransactionInput {
         let r = self.script_signature.get_public_nonce();
         let m = HashDigest::new()
             .chain(r.as_bytes())
+            .chain(self.script.as_bytes())
             .chain(self.input_data.as_bytes())
             .chain(self.height.to_le_bytes())
             .result()
@@ -1101,17 +1102,11 @@ impl TransactionBuilder {
 
     /// Build the transaction.
     pub fn build(self, factories: &CryptoFactories) -> Result<Transaction, TransactionError> {
-        if let Some(script_offset) = self.script_offset {
-            if let Some(offset) = self.offset {
-                let (i, o, k) = self.body.dissolve();
-                let tx = Transaction::new(i, o, k, offset, script_offset);
-                tx.validate_internal_consistency(factories, self.reward)?;
-                Ok(tx)
-            } else {
-                Err(TransactionError::ValidationError(
-                    "Transaction validation failed".into(),
-                ))
-            }
+        if let (Some(script_offset), Some(offset)) = (self.script_offset, self.offset) {
+            let (i, o, k) = self.body.dissolve();
+            let tx = Transaction::new(i, o, k, offset, script_offset);
+            tx.validate_internal_consistency(factories, self.reward)?;
+            Ok(tx)
         } else {
             Err(TransactionError::ValidationError(
                 "Transaction validation failed".into(),

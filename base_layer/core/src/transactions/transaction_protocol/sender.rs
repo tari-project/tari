@@ -77,6 +77,7 @@ pub(super) struct RawTransactionInfo {
     pub offset: BlindingFactor,
     // The sender's blinding factor shifted by the sender-selected offset
     pub offset_blinding_factor: BlindingFactor,
+    pub gamma: PrivateKey,
     pub public_excess: PublicKey,
     // The sender's private nonce
     pub private_nonce: PrivateKey,
@@ -346,8 +347,13 @@ impl SenderTransactionProtocol {
             tx_builder.add_output(o.clone());
         }
         tx_builder.add_offset(info.offset.clone());
-        // TODO: Add proper script_offset here
-        tx_builder.add_script_offset(BlindingFactor::default());
+
+        let mut gamma = info.gamma.clone();
+        for o in info.outputs.iter() {
+            gamma += PrivateKey::from_bytes(&output.hash()).map_err(|e| TPE::ConversionError(e.to_string()))? *
+        }
+
+        info.tx_builder.add_script_offset(BlindingFactor::default());
         let mut s_agg = info.signatures[0].clone();
         info.signatures.iter().skip(1).for_each(|s| s_agg = &s_agg + s);
         let excess = PedersenCommitment::from_public_key(&info.public_excess);
