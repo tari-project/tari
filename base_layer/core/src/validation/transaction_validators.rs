@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    chain_storage::{BlockchainBackend, BlockchainDatabase, MmrTree},
+    chain_storage::{BlockchainBackend, BlockchainDatabase},
     tari_utilities::hex::Hex,
     transactions::{transaction::Transaction, types::CryptoFactories},
     validation::{MempoolTransactionValidation, ValidationError},
@@ -106,13 +106,20 @@ fn verify_not_stxos<B: BlockchainBackend>(tx: &Transaction, db: &B) -> Result<()
             )
         });
     for input in tx.body.inputs() {
-        if let Some(index) = db.fetch_mmr_leaf_index(MmrTree::Utxo, &input.hash())? {
+        if let Some((_, index, height)) = db.fetch_output(&input.hash())? {
             if data.deleted().contains(index) {
                 warn!(
                     target: LOG_TARGET,
-                    "Transaction validation failed due to already spent input: {}", input
+                    "Block validation failed due to already spent input: {}", input
                 );
                 return Err(ValidationError::ContainsSTxO);
+            }
+            if height != input.height {
+                warn!(
+                    target: LOG_TARGET,
+                    "Block validation failed due to input not having correct mined height({}): {}", height, input
+                );
+                return Err(ValidationError::InvalidMinedHeight);
             }
         } else {
             warn!(

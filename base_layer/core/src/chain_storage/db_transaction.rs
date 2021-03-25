@@ -120,7 +120,14 @@ impl DbTransaction {
     }
 
     /// Adds a UTXO into the current transaction and update the TXO MMR.
-    pub fn insert_utxo(&mut self, utxo: TransactionOutput, header_hash: HashOutput, header_height: u64, mmr_leaf_index: u32) -> &mut Self {
+    pub fn insert_utxo(
+        &mut self,
+        utxo: TransactionOutput,
+        header_hash: HashOutput,
+        header_height: u64,
+        mmr_leaf_index: u32,
+    ) -> &mut Self
+    {
         self.operations.push(WriteOperation::InsertOutput {
             header_hash,
             header_height,

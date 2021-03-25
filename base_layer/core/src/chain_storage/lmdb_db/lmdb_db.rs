@@ -210,7 +210,7 @@ impl LMDBDatabase {
                         "Inserting output `{}`",
                         to_hex(&output.commitment.as_bytes())
                     );
-                    self.insert_output(&write_txn, header_hash,header_height, *output, mmr_position)?;
+                    self.insert_output(&write_txn, header_hash, header_height, *output, mmr_position)?;
                 },
                 InsertPrunedOutput {
                     header_hash,
@@ -219,7 +219,14 @@ impl LMDBDatabase {
                     proof_hash,
                     mmr_position,
                 } => {
-                    self.insert_pruned_output(&write_txn, header_hash,header_height, output_hash, proof_hash, mmr_position)?;
+                    self.insert_pruned_output(
+                        &write_txn,
+                        header_hash,
+                        header_height,
+                        output_hash,
+                        proof_hash,
+                        mmr_position,
+                    )?;
                 },
                 InsertInput {
                     header_hash,
@@ -1409,7 +1416,11 @@ impl BlockchainBackend for LMDBDatabase {
         }
     }
 
-    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(TransactionOutput, u32, u64)>, ChainStorageError> {
+    fn fetch_output(
+        &self,
+        output_hash: &HashOutput,
+    ) -> Result<Option<(TransactionOutput, u32, u64)>, ChainStorageError>
+    {
         debug!(target: LOG_TARGET, "Fetch output: {}", output_hash.to_hex());
         let txn = ReadTransaction::new(&*self.env)?;
         if let Some((index, key)) =
@@ -1426,7 +1437,7 @@ impl BlockchainBackend for LMDBDatabase {
                 if output.output.is_none() {
                     unimplemented!("Output has been pruned");
                 }
-                Ok(Some((output.output.unwrap(), output.mmr_position,output.mined_height)))
+                Ok(Some((output.output.unwrap(), output.mmr_position, output.mined_height)))
             } else {
                 Ok(None)
             }

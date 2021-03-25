@@ -280,7 +280,8 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         mmr_position: u32,
     ) -> &mut Self
     {
-        self.transaction.insert_utxo(output, header_hash,header_height, mmr_position);
+        self.transaction
+            .insert_utxo(output, header_hash, header_height, mmr_position);
         self
     }
 
