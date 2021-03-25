@@ -57,6 +57,7 @@ pub(crate) struct TransactionOutputRowData {
     pub mmr_position: u32,
     pub hash: HashOutput,
     pub range_proof_hash: HashOutput,
+    pub mined_height : u64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

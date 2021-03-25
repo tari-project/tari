@@ -120,9 +120,10 @@ impl DbTransaction {
     }
 
     /// Adds a UTXO into the current transaction and update the TXO MMR.
-    pub fn insert_utxo(&mut self, utxo: TransactionOutput, header_hash: HashOutput, mmr_leaf_index: u32) -> &mut Self {
+    pub fn insert_utxo(&mut self, utxo: TransactionOutput, header_hash: HashOutput, header_height: u64, mmr_leaf_index: u32) -> &mut Self {
         self.operations.push(WriteOperation::InsertOutput {
             header_hash,
+            header_height,
             output: Box::new(utxo),
             mmr_position: mmr_leaf_index,
         });
@@ -134,11 +135,13 @@ impl DbTransaction {
         output_hash: HashOutput,
         proof_hash: HashOutput,
         header_hash: HashOutput,
+        header_height: u64,
         mmr_leaf_index: u32,
     ) -> &mut Self
     {
         self.operations.push(WriteOperation::InsertPrunedOutput {
             header_hash,
+            header_height,
             output_hash,
             proof_hash,
             mmr_position: mmr_leaf_index,
@@ -288,11 +291,13 @@ pub enum WriteOperation {
     },
     InsertOutput {
         header_hash: HashOutput,
+        header_height: u64,
         output: Box<TransactionOutput>,
         mmr_position: u32,
     },
     InsertPrunedOutput {
         header_hash: HashOutput,
+        header_height: u64,
         output_hash: HashOutput,
         proof_hash: HashOutput,
         mmr_position: u32,
@@ -367,13 +372,15 @@ impl fmt::Display for WriteOperation {
             ),
             InsertOutput {
                 header_hash,
+                header_height,
                 output,
                 mmr_position,
             } => write!(
                 f,
-                "Insert output {} in block:{} position: {}",
+                "Insert output {} in block:{},#{} position: {}",
                 output.hash().to_hex(),
                 header_hash.to_hex(),
+                header_height,
                 mmr_position
             ),
             InsertInput {
@@ -407,6 +414,7 @@ impl fmt::Display for WriteOperation {
             ),
             InsertPrunedOutput {
                 header_hash: _,
+                header_height: _,
                 output_hash: _,
                 proof_hash: _,
                 mmr_position: _,
