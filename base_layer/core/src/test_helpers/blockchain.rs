@@ -250,7 +250,7 @@ impl BlockchainBackend for TempDatabase {
         self.db.fetch_utxos_by_mmr_position(start, end, deleted)
     }
 
-    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(TransactionOutput, u32)>, ChainStorageError> {
+    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(TransactionOutput, u32, u64)>, ChainStorageError> {
         self.db.fetch_output(output_hash)
     }
 

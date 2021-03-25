@@ -168,14 +168,20 @@ fn check_inputs_are_utxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result
         .ok_or_else(|| ValidationError::PreviousHashNotFound)?;
 
     for input in block.body.inputs() {
-        let hash = input.hash();
-        if let Some(index) = db.fetch_mmr_leaf_index(MmrTree::Utxo, &hash)? {
+        if let Some(_,index,height) = db.fetch_output(&input.hash())? {
             if data.deleted().contains(index) {
                 warn!(
                     target: LOG_TARGET,
                     "Block validation failed due to already spent input: {}", input
                 );
                 return Err(ValidationError::ContainsSTxO);
+            }
+            if height != input.mined_height{
+                warn!(
+                    target: LOG_TARGET,
+                    "Block validation failed due to input not having correct mined height({}): {}", height,input
+                );
+                return Err(ValidationError::InvalidMinedHeight);
             }
             
         } else {
