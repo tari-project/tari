@@ -29,12 +29,11 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 use tari_crypto::{
-    commitment::{HomomorphicCommitment, HomomorphicCommitmentFactory},
+    commitment::HomomorphicCommitmentFactory,
+    keys::PublicKey as PublicKeyTrait,
     ristretto::pedersen::PedersenCommitment,
     tari_utilities::{hex::Hex, ByteArray, Hashable},
 };
-// use tari_crypto::script::ExecutionStack;
-// use tari_crypto::script::StackItem;
 
 pub const LOG_TARGET: &str = "c::tx::aggregated_body";
 
@@ -345,7 +344,7 @@ impl AggregateBody {
     ) -> Result<(), TransactionError>
     {
         let total_offset = factories.commitment.commit_value(&tx_offset, total_reward.0);
-        let script_offset_g = factories.commitment.commit_value(&script_offset, 0);
+        let script_offset_g = PublicKey::from_secret_key(&script_offset);
 
         self.verify_kernel_signatures()?;
         self.validate_kernel_sum(total_offset, &factories.commitment)?;
@@ -411,7 +410,7 @@ impl AggregateBody {
     }
 
     /// this will validate the script offset of the aggregate body.
-    fn validate_script_offset(&self, script_offset: Commitment) -> Result<(), TransactionError> {
+    fn validate_script_offset(&self, script_offset: PublicKey) -> Result<(), TransactionError> {
         trace!(target: LOG_TARGET, "Checking script offset");
         // lets count up the input script public keys
         let mut input_keys = PublicKey::default();
@@ -427,7 +426,7 @@ impl AggregateBody {
                     .map_err(|e| TransactionError::ConversionError(e.to_string()))? *
                     output.script_offset_public_key.clone();
         }
-        let lhs = HomomorphicCommitment::from_public_key(&(input_keys - output_keys));
+        let lhs = input_keys - output_keys;
         if lhs != script_offset {
             return Err(TransactionError::ScriptOffset);
         }

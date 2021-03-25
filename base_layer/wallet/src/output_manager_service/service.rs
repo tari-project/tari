@@ -770,8 +770,6 @@ where TBackend: OutputManagerBackend + 'static
             .with_fee_per_gram(fee_per_gram)
             .with_offset(offset.clone())
             .with_private_nonce(nonce.clone())
-            .with_amount(0, amount)
-            .with_recipient_script(0, script!(Nop), script_offset_private_key.clone())
             .with_message(message)
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
 
@@ -797,7 +795,7 @@ where TBackend: OutputManagerBackend + 'static
             ),
             &self.resources.factories,
         )?;
-        builder.with_output(utxo.unblinded_output.clone());
+        builder.with_output(utxo.unblinded_output.clone(), script_offset_private_key.clone());
 
         let mut outputs = vec![utxo];
         let mut change_keys = None;

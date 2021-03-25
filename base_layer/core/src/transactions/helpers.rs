@@ -333,7 +333,7 @@ pub fn create_tx(
             PublicKey::from_secret_key(&test_params.spend_key),
         );
         unblinded_outputs.push(utxo.clone());
-        stx_builder.with_output(utxo);
+        stx_builder.with_output(utxo, PrivateKey::default());
     }
 
     let mut stx_protocol = stx_builder.build::<Blake256>(&factories).unwrap();
@@ -381,7 +381,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
             PublicKey::from_secret_key(&k),
         );
         outputs.push(utxo.clone());
-        stx_builder.with_output(utxo);
+        stx_builder.with_output(utxo, PrivateKey::default());
     }
 
     let mut stx_protocol = stx_builder.build::<Blake256>(&factories).unwrap();

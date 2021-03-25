@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 tari_comms = { path = "../../comms"}
-tari_crypto = { git = "https://github.com/philipr-za/tari-crypto/", branch = "philip-serde-execution-stack" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto/", branch = "main" }
 tari_common = { path = "../../common" }
 tari_p2p = { path = "../../base_layer/p2p" }
 tari_wallet = { path = "../../base_layer/wallet" }

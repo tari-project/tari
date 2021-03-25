@@ -11,7 +11,7 @@ edition = "2018"
 tari_common_types = { version = "^0.8", path = "../../base_layer/common_types"}
 tari_core = {  path = "../../base_layer/core"}
 tari_wallet = {  path = "../../base_layer/wallet"}
-tari_crypto = { git = "https://github.com/philipr-za/tari-crypto/", branch = "philip-serde-execution-stack" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto/", branch = "main" }
 tari_comms = { path = "../../comms"}
 
 chrono = "0.4.6"

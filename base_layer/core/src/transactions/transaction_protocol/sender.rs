@@ -49,8 +49,8 @@ use tari_crypto::{
     common::Blake256,
     keys::PublicKey as PublicKeyTrait,
     ristretto::pedersen::PedersenCommitment,
-    script::{ExecutionStack, TariScript},
-    tari_utilities::ByteArray,
+    script::TariScript,
+    tari_utilities::{ByteArray, Hashable},
 };
 
 //----------------------------------------   Local Data types     ----------------------------------------------------//
@@ -67,16 +67,13 @@ pub(super) struct RawTransactionInfo {
     pub recipient_scripts: Vec<TariScript>,
     pub recipient_script_offset_private_keys: Vec<PrivateKey>,
     pub change: MicroTari,
-    pub change_script: Option<TariScript>,
-    pub change_input_data: Option<ExecutionStack>,
-    pub change_script_private_key: Option<PrivateKey>,
-    pub change_script_offset_private_key: Option<PrivateKey>,
     pub metadata: TransactionMetadata,
     pub inputs: Vec<TransactionInput>,
     pub outputs: Vec<TransactionOutput>,
     pub offset: BlindingFactor,
     // The sender's blinding factor shifted by the sender-selected offset
     pub offset_blinding_factor: BlindingFactor,
+    pub gamma: PrivateKey,
     pub public_excess: PublicKey,
     // The sender's private nonce
     pub private_nonce: PrivateKey,
@@ -318,7 +315,19 @@ impl SenderTransactionProtocol {
                     ));
                 }
                 // Consolidate transaction info
-                info.outputs.push(rec.output);
+                info.outputs.push(rec.output.clone());
+                // Update Gamma with this output
+                let recipient_script_offset_private_key =
+                    info.recipient_script_offset_private_keys.first().ok_or_else(|| {
+                        TPE::IncompleteStateError(
+                            "For single recipient there should be one recipient script offset".to_string(),
+                        )
+                    })?;
+                info.gamma = info.gamma.clone() -
+                    PrivateKey::from_bytes(rec.output.hash().as_slice())
+                        .map_err(|e| TPE::ConversionError(e.to_string()))? *
+                        recipient_script_offset_private_key.clone();
+
                 // nonce is in the signature, so we'll add those together later
                 info.public_excess = &info.public_excess + &rec.public_spend_key;
                 info.public_nonce_sum = &info.public_nonce_sum + rec.partial_signature.get_public_nonce();
@@ -346,8 +355,7 @@ impl SenderTransactionProtocol {
             tx_builder.add_output(o.clone());
         }
         tx_builder.add_offset(info.offset.clone());
-        // TODO: Add proper script_offset here
-        tx_builder.add_script_offset(BlindingFactor::default());
+        tx_builder.add_script_offset(info.gamma.clone());
         let mut s_agg = info.signatures[0].clone();
         info.signatures.iter().skip(1).for_each(|s| s_agg = &s_agg + s);
         let excess = PedersenCommitment::from_public_key(&info.public_excess);
