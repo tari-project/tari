@@ -27,6 +27,6 @@ thiserror = "1.0"
 
 
 [dev-dependencies]
-tari_crypto = { git = "https://github.com/philipr-za/tari-crypto/", branch = "philip-serde-execution-stack" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto/", branch = "main" }
 prost-types = "0.6.1"
 chrono = "0.4"

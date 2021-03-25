@@ -37,7 +37,6 @@ use crate::transactions::{
     types::{Commitment, CommitmentFactory, CryptoFactories, PrivateKey, PublicKey, Signature},
     SenderTransactionProtocol,
 };
-use tari_crypto::tari_utilities::ByteArray;
 use digest::Digest;
 use num::pow;
 use rand::{rngs::OsRng, CryptoRng, Rng};
@@ -48,6 +47,7 @@ use tari_crypto::{
     keys::{PublicKey as PK, SecretKey},
     range_proof::RangeProofService,
     script::{ExecutionStack, TariScript},
+    tari_utilities::ByteArray,
 };
 
 pub fn make_input<R: Rng + CryptoRng>(
@@ -333,7 +333,7 @@ pub fn create_tx(
             PublicKey::from_secret_key(&test_params.spend_key),
         );
         unblinded_outputs.push(utxo.clone());
-        stx_builder.with_output(utxo);
+        stx_builder.with_output(utxo, PrivateKey::default());
     }
 
     let mut stx_protocol = stx_builder.build::<Blake256>(&factories).unwrap();
@@ -381,7 +381,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
             PublicKey::from_secret_key(&k),
         );
         outputs.push(utxo.clone());
-        stx_builder.with_output(utxo);
+        stx_builder.with_output(utxo, PrivateKey::default());
     }
 
     let mut stx_protocol = stx_builder.build::<Blake256>(&factories).unwrap();
@@ -431,18 +431,21 @@ pub fn create_utxo(
     let commitment = factories.commitment.commit_value(&keys.k, value.into());
     let script_hash = script.as_hash::<Blake256>().unwrap().to_vec();
     let offset_pub_key = PublicKey::from_secret_key(&offset_private_key.k);
-    //let construct beta for the utxo
+    // let construct beta for the utxo
     let beta_hash = Blake256::new()
-            .chain(script_hash.clone())
-            .chain(features.to_bytes())
-            .chain(offset_pub_key.as_bytes())
-            .result()
-            .to_vec();
+        .chain(script_hash.clone())
+        .chain(features.to_bytes())
+        .chain(offset_pub_key.as_bytes())
+        .result()
+        .to_vec();
     let beta = PrivateKey::from_bytes(beta_hash.as_slice()).unwrap();
-    let proof = factories.range_proof.construct_proof(&(&keys.k + &beta), value.into()).unwrap();
+    let proof = factories
+        .range_proof
+        .construct_proof(&(&keys.k + &beta), value.into())
+        .unwrap();
 
     let utxo = TransactionOutput::new(features, commitment, proof.into(), script_hash, offset_pub_key);
-    (utxo, keys.k,offset_private_key.k)
+    (utxo, keys.k, offset_private_key.k)
 }
 
 pub fn schema_to_transaction(txns: &[TransactionSchema]) -> (Vec<Arc<Transaction>>, Vec<UnblindedOutput>) {

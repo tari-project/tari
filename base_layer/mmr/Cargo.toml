@@ -25,7 +25,7 @@ criterion = { version="0.2", optional = true }
 rand="0.7.0"
 blake2 = "0.8.0"
 tari_infra_derive= { path = "../../infrastructure/derive", version = "^0.8" }
-tari_crypto = { git = "https://github.com/philipr-za/tari-crypto/", branch = "philip-serde-execution-stack" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto/", branch = "main" }
 serde_json = "1.0"
 bincode = "1.1"
 [lib]

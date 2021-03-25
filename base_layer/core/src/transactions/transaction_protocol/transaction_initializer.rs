@@ -50,7 +50,7 @@ use std::{
 use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     script::{ExecutionStack, TariScript},
-    tari_utilities::fixed_set::FixedSet,
+    tari_utilities::{fixed_set::FixedSet, ByteArray, Hashable},
 };
 
 pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
@@ -72,6 +72,7 @@ pub struct SenderTransactionInitializer {
     inputs: Vec<TransactionInput>,
     unblinded_inputs: Vec<UnblindedOutput>,
     outputs: Vec<UnblindedOutput>,
+    script_offset_private_keys: Vec<PrivateKey>,
     change_secret: Option<BlindingFactor>,
     change_script: Option<TariScript>,
     change_input_data: Option<ExecutionStack>,
@@ -108,6 +109,7 @@ impl SenderTransactionInitializer {
             inputs: Vec::new(),
             unblinded_inputs: Vec::new(),
             outputs: Vec::new(),
+            script_offset_private_keys: vec![],
             change_secret: None,
             change_script: None,
             change_input_data: None,
@@ -173,10 +175,12 @@ impl SenderTransactionInitializer {
         self
     }
 
-    /// Adds an output to the transaction. This can be called multiple times
-    pub fn with_output(&mut self, output: UnblindedOutput) -> &mut Self {
+    /// As the Sender adds an output to the transaction. Because we are adding this output as the sender a
+    /// script_offset_private_key needs to be provided with the output. This can be called multiple times
+    pub fn with_output(&mut self, output: UnblindedOutput, script_offset_private_key: PrivateKey) -> &mut Self {
         self.excess_blinding_factor = &self.excess_blinding_factor + &output.spending_key;
         self.outputs.push(output);
+        self.script_offset_private_keys.push(script_offset_private_key);
         self
     }
 
@@ -375,6 +379,11 @@ impl SenderTransactionInitializer {
         };
 
         if let Some(change_unblinded_output) = change_output {
+            let change_output_script_offset_private_key = match self.change_script_offset_private_key {
+                None => return self.build_err("A change output script offset was not provided"),
+                Some(ref pk) => pk.clone(),
+            };
+
             self.excess_blinding_factor = self.excess_blinding_factor + change_unblinded_output.spending_key.clone();
 
             // If rewind data is present we produce a rewindable output, else a standard output
@@ -394,12 +403,34 @@ impl SenderTransactionInitializer {
                 }
             };
             self.outputs.push(change_unblinded_output);
+            self.script_offset_private_keys
+                .push(change_output_script_offset_private_key);
             outputs.push(change_output);
         }
 
         // Prevent overflow attacks by imposing sane limits on outputs
         if outputs.len() > MAX_TRANSACTION_OUTPUTS {
             return self.build_err("Too many outputs in transaction");
+        }
+
+        // Calculate the Inputs portion of Gamma so we don't have to store the individual script private keys in
+        // RawTransactionInfo while we wait for the recipients reply
+        let mut gamma = PrivateKey::default();
+        for uo in self.unblinded_inputs.iter() {
+            gamma = gamma + uo.script_private_key.clone();
+        }
+
+        if outputs.len() != self.script_offset_private_keys.len() {
+            return self
+                .build_err("There should be the same number of sender added outputs as script offset private keys");
+        }
+
+        for (o, opk) in outputs.iter().zip(self.script_offset_private_keys.iter()) {
+            let output_hash = match PrivateKey::from_bytes(&o.hash()) {
+                Ok(h) => h,
+                Err(_e) => return self.build_err("Output hash to private key conversion error"),
+            };
+            gamma = gamma - output_hash * opk.clone();
         }
 
         let nonce = self.private_nonce.clone().unwrap();
@@ -438,13 +469,6 @@ impl SenderTransactionInitializer {
             }
         }
 
-        // Calculate the Inputs portion of Gamma so we don't have to store the individual script private keys in
-        // RawTransactionInfo while we wait for the recipients reply
-        let mut gamma = PrivateKey::default();
-        for uo in self.unblinded_inputs.iter() {
-            gamma += uo.script_private_key.clone();
-        }
-
         // Everything is here. Let's send some Tari!
         let sender_info = RawTransactionInfo {
             num_recipients: self.num_recipients,
@@ -454,10 +478,6 @@ impl SenderTransactionInitializer {
             recipient_scripts: self.recipient_scripts.into_vec(),
             recipient_script_offset_private_keys: self.recipient_script_offset_private_keys.into_vec(),
             change,
-            change_script: self.change_script,
-            change_input_data: self.change_input_data,
-            change_script_private_key: self.change_script_private_key,
-            change_script_offset_private_key: self.change_script_offset_private_key,
             metadata: TransactionMetadata {
                 fee: total_fee,
                 lock_height: self.lock_height.unwrap(),
