@@ -1403,13 +1403,14 @@ mod test {
     use std::{convert::TryFrom, iter, time::Duration};
     use tari_core::transactions::{
         tari_amount::MicroTari,
-        transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
+        transaction::{TransactionInput, UnblindedOutput},
         types::{CommitmentFactory, CryptoFactories, PrivateKey, PublicKey, Signature},
     };
     use tari_crypto::{
         commitment::HomomorphicCommitmentFactory,
-        keys::SecretKey,
-        script::{ExecutionStack, TariScript},
+        inputs,
+        keys::{PublicKey as PublicKeyTrait, SecretKey},
+        script,
     };
     use tempfile::tempdir;
 
@@ -1419,30 +1420,30 @@ mod test {
 
     pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: MicroTari) -> (TransactionInput, UnblindedOutput) {
         let key = PrivateKey::random(rng);
+        let script_key = PrivateKey::random(rng);
+        let script_offset_private_key = PrivateKey::random(rng);
         let factory = CommitmentFactory::default();
         let commitment = factory.commit_value(&key, val.into());
 
-        // TODO: Populate script with the proper value
-        let script = TariScript::default().as_bytes();
-        // TODO: Populate input_data with the proper value
-        let input_data = ExecutionStack::default().as_bytes();
-        // TODO: Populate height with the proper value
+        let script = script!(Nop);
+        let input_data = inputs!(PublicKey::from_secret_key(&script_key));
         let height = 0;
-        // TODO: Populate script_signature with the proper value
-        let script_signature = Signature::default();
-        // TODO: Populate offset_pub_key with the proper value
-        let offset_pub_key = PublicKey::default();
-        let input = TransactionInput::new(
-            OutputFeatures::default(),
-            commitment,
+        let unblinded_output = UnblindedOutput::new(
+            val,
+            key,
+            None,
             script,
             input_data,
             height,
-            script_signature,
-            offset_pub_key,
+            script_key,
+            PublicKey::from_secret_key(&script_offset_private_key),
         );
 
-        (input, UnblindedOutput::new(val, key, None))
+        let input = unblinded_output
+            .as_transaction_input_with_script_signature(&factory)
+            .unwrap();
+
+        (input, unblinded_output)
     }
 
     #[test]
