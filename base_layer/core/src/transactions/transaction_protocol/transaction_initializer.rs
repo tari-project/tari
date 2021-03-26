@@ -476,7 +476,9 @@ impl SenderTransactionInitializer {
             recipient_scripts: self.recipient_scripts.into_vec(),
             recipient_script_offset_private_keys: self.recipient_script_offset_private_keys.into_vec(),
             change,
-            change_script_offset_private_key: self.change_script_offset_private_key,
+            change_script_offset_public_key: self
+                .change_script_offset_private_key
+                .map(|pk| PublicKey::from_secret_key(&pk)),
             metadata: TransactionMetadata {
                 fee: total_fee,
                 lock_height: self.lock_height.unwrap(),
