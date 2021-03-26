@@ -297,7 +297,23 @@ Given(
     const miningNode = new MiningNodeProcess(
       miner,
       baseNode.getGrpcAddress(),
-      walletNode.getGrpcAddress()
+      walletNode.getGrpcAddress(),
+      true
+    );
+    this.addMiningNode(miner, miningNode);
+  }
+);
+
+Given(
+  /I have mine-before-tip mining node (.*) connected to base node (.*) and wallet (.*)/,
+  function (miner, node, wallet) {
+    let baseNode = this.getNode(node);
+    let walletNode = this.getWallet(wallet);
+    const miningNode = new MiningNodeProcess(
+      miner,
+      baseNode.getGrpcAddress(),
+      walletNode.getGrpcAddress(),
+      false
     );
     this.addMiningNode(miner, miningNode);
   }
@@ -661,6 +677,16 @@ When(
   async function (miner, numBlocks, node) {
     let miningNode = this.getMiningNode(miner);
     await miningNode.init(numBlocks, 1, 100000);
+    await miningNode.startNew();
+  }
+);
+
+When(
+  /Mining node (.*) mines (\d+) blocks with min difficulty (\d+) and max difficulty (\d+)/,
+  { timeout: 600 * 1000 },
+  async function (miner, numBlocks, min, max) {
+    let miningNode = this.getMiningNode(miner);
+    await miningNode.init(numBlocks, min, max, miningNode.mineOnTipOnly);
     await miningNode.startNew();
   }
 );

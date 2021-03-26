@@ -8,8 +8,8 @@ const { createEnv } = require("./config");
 let outputProcess;
 
 class MiningNodeProcess {
-  constructor(name, baseNodeAddress, walletAddress) {
-    this.name = name;
+  constructor(name, baseNodeAddress, walletAddress, mineOnTipOnly = true) {
+    this.name = `MiningNode-${name}`;
     this.maxBlocks = 1;
     this.minDiff = 0;
     this.maxDiff = 100000;
@@ -17,9 +17,10 @@ class MiningNodeProcess {
     this.nodeGrpcPort = baseNodeAddress.split(":")[1];
     this.walletAddress = walletAddress.split(":")[0];
     this.walletGrpcPort = walletAddress.split(":")[1];
+    this.mineOnTipOnly = mineOnTipOnly;
   }
 
-  async init(maxBlocks, minDiff, maxDiff) {
+  async init(maxBlocks, minDiff, maxDiff, mineOnTipOnly) {
     this.maxBlocks = maxBlocks || this.maxBlocks;
     this.minDiff = minDiff || this.minDiff;
     this.maxDiff = maxDiff || this.maxDiff;
@@ -27,6 +28,7 @@ class MiningNodeProcess {
       new Date(),
       "yyyymmddHHMM"
     )}/${this.name}`;
+    this.mineOnTipOnly = mineOnTipOnly || this.mineOnTipOnly;
   }
 
   run(cmd, args, saveFile) {
@@ -47,7 +49,7 @@ class MiningNodeProcess {
         this.nodeGrpcPort,
         this.baseNodePort,
         "127.0.0.1:8084",
-        [],
+        { mineOnTipOnly: this.mineOnTipOnly },
         []
       );
 
@@ -85,22 +87,20 @@ class MiningNodeProcess {
   }
 
   async startNew() {
-    return await this.run(
-      await this.compile(),
-      [
-        "--base-path",
-        ".",
-        "--init",
-        "--daemon",
-        "--max-blocks",
-        this.maxBlocks,
-        "--min-difficulty",
-        this.minDiff,
-        "--max-difficulty",
-        this.maxDiff,
-      ],
-      true
-    );
+    await this.init();
+    const args = [
+      "--base-path",
+      ".",
+      "--init",
+      "--daemon",
+      "--max-blocks",
+      this.maxBlocks,
+      "--min-difficulty",
+      this.minDiff,
+      "--max-difficulty",
+      this.maxDiff,
+    ];
+    return await this.run(await this.compile(), args, true);
   }
 
   async compile() {
