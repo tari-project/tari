@@ -24,7 +24,7 @@ use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
     output_manager_service::{
         config::OutputManagerServiceConfig,
-        error::{OutputManagerError, OutputManagerError::OutputManagerStorageError, OutputManagerProtocolError},
+        error::{OutputManagerError, OutputManagerProtocolError},
         handle::{OutputManagerEventSender, OutputManagerRequest, OutputManagerResponse, PublicRewindKeys},
         protocols::txo_validation_protocol::{TxoValidationProtocol, TxoValidationType},
         storage::{
@@ -761,6 +761,7 @@ where TBackend: OutputManagerBackend + 'static
 
         let offset = PrivateKey::random(&mut OsRng);
         let nonce = PrivateKey::random(&mut OsRng);
+        let script_offset_private_key = PrivateKey::random(&mut OsRng);
 
         // Create builder with no recipients (other than ourselves)
         let mut builder = SenderTransactionProtocol::builder(0);
