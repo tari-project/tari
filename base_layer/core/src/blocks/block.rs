@@ -197,6 +197,7 @@ impl BlockBuilder {
             self.header.kernel_mmr_size += kernels.len() as u64;
             self = self.add_kernels(kernels);
             self.header.total_kernel_offset = self.header.total_kernel_offset + tx.offset;
+            self.header.total_script_offset = self.header.total_script_offset + tx.script_offset;
         }
         self
     }

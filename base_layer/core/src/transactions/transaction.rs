@@ -517,7 +517,9 @@ impl Hashable for TransactionInput {
 
 impl Display for TransactionInput {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(fmt, "{} [{:?}]", self.commitment.to_hex(), self.features)
+        write!(fmt, "{} [{:?}], Script hash: ({}), Offset_Pubkey: ({})", self.commitment.to_hex(), self.features,
+        self.script.as_hash::<Blake256>().unwrap().to_hex(),
+        self.script_offset_public_key.to_hex())
     }
 }
 
@@ -678,9 +680,11 @@ impl Display for TransactionOutput {
         let proof = self.proof.to_hex();
         write!(
             fmt,
-            "{} [{:?}] Proof: {}..{}",
+            "{} [{:?}], Script hash: ({}), Offset Pubkey: ({}), Proof: {}..{}",
             self.commitment.to_hex(),
             self.features,
+            self.script_hash.to_hex(),
+            self.script_offset_public_key.to_hex(),
             proof[0..16].to_string(),
             proof[proof.len() - 16..proof.len()].to_string()
         )
@@ -1032,6 +1036,8 @@ impl Display for Transaction {
         fmt.write_str("-------------- Transaction --------------\n")?;
         fmt.write_str("--- Offset ---\n")?;
         fmt.write_str(&format!("{}\n", self.offset.to_hex()))?;
+        fmt.write_str("--- Script Offset ---\n")?;
+        fmt.write_str(&format!("{}\n", self.script_offset.to_hex()))?;
         fmt.write_str("---  Body  ---\n")?;
         fmt.write_str(&format!("{}\n", self.body))
     }
