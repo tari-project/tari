@@ -137,14 +137,14 @@ where DS: KeyValueStore<PeerId, Peer>
     }
 
     pub fn get_distance_sorted_results(&mut self, node_id: &NodeId) -> Result<Vec<Peer>, PeerManagerError> {
-       self.get_sorted_results(|peer| peer.node_id.distance(node_id))
+       self.get_sorted_results(|peer| peer.node_id.distance(node_id), true)
     }
 
     pub fn get_last_connected_sorted_results(&mut self) -> Result<Vec<Peer>, PeerManagerError> {
-        self.get_sorted_results(|peer| peer.connection_stats.last_connected_at.unwrap_or_else(|| NaiveDateTime::from_timestamp(0,0)))
+        self.get_sorted_results(|peer| peer.connection_stats.last_connected_at.unwrap_or_else(|| NaiveDateTime::from_timestamp(0,0)), false)
     }
 
-    fn get_sorted_results<T, F>(&mut self, sort_key: F)  -> Result<Vec<Peer>, PeerManagerError>
+    fn get_sorted_results<T, F>(&mut self, sort_key: F, sort_asc: bool)  -> Result<Vec<Peer>, PeerManagerError>
         where T: Ord, F: Fn(&Peer) -> T
     {
         let mut peer_keys = Vec::new();
@@ -174,10 +174,16 @@ where DS: KeyValueStore<PeerId, Peer>
         let mut selected_peers = Vec::with_capacity(max_available);
         for i in 0..max_available {
             for j in (i + 1)..peer_keys.len() {
-                if sort_values[i] > sort_values[j] {
-                    sort_values.swap(i, j);
-                    peer_keys.swap(i, j);
-                }
+                if sort_asc {
+                    if sort_values[i] > sort_values[j] {
+                        sort_values.swap(i, j);
+                        peer_keys.swap(i, j);
+                    }
+                } else if sort_values[i] < sort_values[j] {
+                        sort_values.swap(i, j);
+                        peer_keys.swap(i, j);
+                    }
+
             }
             let peer = self
                 .store

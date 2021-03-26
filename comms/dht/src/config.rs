@@ -114,6 +114,9 @@ pub struct DhtConfig {
     /// peers that were previously tried.
     /// Default: 24 hours
     pub offline_peer_cooldown: Duration,
+
+
+    pub num_network_buckets: u32
 }
 
 impl DhtConfig {
@@ -177,6 +180,7 @@ impl Default for DhtConfig {
             flood_ban_timespan: Duration::from_secs(100),
             offline_peer_cooldown: Duration::from_secs(24 * 60 * 60),
             saf_msg_validity: Duration::from_secs(10800),
+            num_network_buckets:25
         }
     }
 }

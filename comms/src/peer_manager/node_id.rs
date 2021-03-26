@@ -40,7 +40,7 @@ use tari_crypto::tari_utilities::{
     ByteArrayError,
 };
 use thiserror::Error;
-use crate::peer_manager::{XorDistance, NodeDistance};
+use crate::peer_manager::{NodeDistance};
 
 pub(crate) const NODE_ID_ARRAY_SIZE: usize = 13; // 104-bit as per RFC-0151
 type NodeIdArray = [u8; NODE_ID_ARRAY_SIZE];

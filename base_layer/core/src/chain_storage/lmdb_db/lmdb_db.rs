@@ -1336,7 +1336,7 @@ impl BlockchainBackend for LMDBDatabase {
                         entity: "BlockHeader".to_string(),
                         field: "height".to_string(),
                         value: (start_height - 1).to_string()
-                    })?;;
+                    })?;
                 debug!(target: LOG_TARGET, "Previous header:{}", header);
                 header.output_mmr_size
             };

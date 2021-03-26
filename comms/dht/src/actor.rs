@@ -56,6 +56,7 @@ use tari_utilities::message_format::{MessageFormat, MessageFormatError};
 use thiserror::Error;
 use tokio::task;
 use ttl_cache::TtlCache;
+use tari_comms::peer_manager::NodeDistance;
 
 const LOG_TARGET: &str = "comms::dht::actor";
 
@@ -354,8 +355,7 @@ impl DhtActor {
         outbound_requester
             .send_message_no_header(
                 SendMessageParams::new()
-                    .closest(node_identity.node_id().clone(), vec![])
-                    .with_destination(node_identity.node_id().clone().into())
+                    .random(3)
                     .with_dht_message_type(DhtMessageType::Join)
                     .force_origin()
                     .finish(),
@@ -403,10 +403,11 @@ impl DhtActor {
             CloserOnly(destination_node_id) => {
                 // Find the bucket that this node is in
 
-                let distance = node_identity.node_id().distance(&destination_node_id);
-                let num_buckets = 100;
+                let destination_distance = node_identity.node_id().distance(&destination_node_id);
+                let num_buckets = 25;
                 let k = 20;
-                let bucket = distance.get_bucket(num_buckets);
+                let bucket = destination_distance.get_bucket(num_buckets);
+
 
                 let query = PeerQuery::new().select_where(|peer|
                     {
@@ -419,12 +420,18 @@ impl DhtActor {
                         }
 
                         let distance = peer.node_id.distance(node_identity.node_id());
-                        distance > bucket.0 && distance < bucket.1
+                        // if it's in the same bucket as us, only propagate strictly closer, otherwise
+                        // we will get this message back in an endless loop
+                        if bucket.0 == NodeDistance::zero() {
+                            distance < destination_distance
+                        } else {
+                            distance >= bucket.0 && distance < bucket.1
+                        }
                     }
                 ).sort_by(PeerQuerySortBy::LastConnected).limit(k);
 
                 let peers = peer_manager.perform_query(query).await?;;
-                Ok(peers.into_iter().map(|p| p.node_id.clone()).collect())
+                Ok(peers.into_iter().map(|p| p.node_id).collect())
             },
             Closest(closest_request) => {
                 let connections = connectivity

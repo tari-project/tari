@@ -572,6 +572,7 @@ impl CommandHandler {
     pub fn list_connections(&self) {
         let mut connectivity = self.connectivity.clone();
         let peer_manager = self.peer_manager.clone();
+        let node_id = self.base_node_identity.node_id().clone();
 
         self.executor.spawn(async move {
             match connectivity.get_active_connections().await {
@@ -587,6 +588,7 @@ impl CommandHandler {
                         "Public Key",
                         "Address",
                         "Direction",
+                        "Dist Bucket",
                         "Age",
                         "Role",
                         "User Agent",
@@ -612,6 +614,7 @@ impl CommandHandler {
                             peer.public_key,
                             conn.address(),
                             conn.direction(),
+                            peer.node_id.distance(&node_id).get_bucket(25).2,
                             format_duration_basic(conn.age()),
                             {
                                 if peer.features == PeerFeatures::COMMUNICATION_CLIENT {

@@ -94,15 +94,13 @@ pub async fn network_graph_snapshot(
 
         let node_index = node_indices.get(&node_id).expect("Can't find Node Index 1");
         for peer in connected_peers.iter() {
-            let distance = node_id.distance(peer.peer_node_id());
+            let distance = node_id.distance(peer.peer_node_id()).get_bucket(25).2;
             let peer_node_index = node_indices.get(&peer.peer_node_id()).expect("Can't find Node Index 2");
 
             graph.add_edge(
                 node_index.to_owned(),
                 peer_node_index.to_owned(),
-                u128::try_from(distance)
-                    .expect("Couldn't convert XorDistance to U128")
-                    .to_string(),
+                distance.to_string()
             );
         }
         if let Some(n) = num_neighbours {
@@ -115,7 +113,7 @@ pub async fn network_graph_snapshot(
 
             let node_index = node_indices.get(&node_id).expect("Can't find Node Index 1");
             for neighbour in connected_neighbours.iter() {
-                let distance = node_id.distance(neighbour.peer_node_id());
+                let distance = node_id.distance(neighbour.peer_node_id()).get_bucket(25).2;
                 let peer_node_index = node_indices
                     .get(&neighbour.peer_node_id())
                     .expect("Can't find Node Index 2");
@@ -123,8 +121,7 @@ pub async fn network_graph_snapshot(
                 neighbour_graph.add_edge(
                     node_index.to_owned(),
                     peer_node_index.to_owned(),
-                    u128::try_from(distance)
-                        .expect("Couldn't convert XorDistance to U128")
+                    distance
                         .to_string(),
                 );
             }

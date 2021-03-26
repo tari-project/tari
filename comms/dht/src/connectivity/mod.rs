@@ -380,6 +380,7 @@ impl DhtConnectivity {
 
     async fn handle_connectivity_event(&mut self, event: &ConnectivityEvent) -> Result<(), DhtConnectivityError> {
         use ConnectivityEvent::*;
+        debug!(target: LOG_TARGET, "Handling connectivity event:{}", event);
         match event {
             PeerConnected(conn) => {
                 self.handle_new_peer_connected(conn).await?;
@@ -420,6 +421,7 @@ impl DhtConnectivity {
     }
 
     async fn replace_managed_peer(&mut self, current_peer: &NodeId) -> Result<(), DhtConnectivityError> {
+        debug!(target: LOG_TARGET, "Replacing managed peer: {}", current_peer);
         if !self.is_managed(current_peer) {
             debug!(target: LOG_TARGET, "{} is not managed. Ignoring", current_peer);
             return Ok(());
@@ -550,6 +552,7 @@ impl DhtConnectivity {
         let mut banned_count = 0;
         let mut excluded_count = 0;
         let mut filtered_out_node_count = 0;
+        let neighbourhood= NodeDistance::zero().get_bucket(self.config.num_network_buckets);
         let query = PeerQuery::new()
             .select_where(|peer| {
                 if peer.is_banned() {
@@ -577,9 +580,10 @@ impl DhtConnectivity {
                     return false;
                 }
 
-                true
+
+                peer.node_id.distance(node_id) < neighbourhood.1
             })
-            .sort_by(PeerQuerySortBy::DistanceFrom(&node_id))
+            .sort_by(PeerQuerySortBy::LastConnected)
             .limit(n);
 
         let peers = peer_manager.perform_query(query).await?;

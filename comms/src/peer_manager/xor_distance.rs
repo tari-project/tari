@@ -25,13 +25,10 @@ use std::convert::{TryInto, TryFrom};
 use crate::peer_manager::NodeId;
 use std::{fmt, cmp};
 use tari_crypto::tari_utilities::{
-    hex::{to_hex, Hex},
     ByteArray,
-    ByteArrayError,
 };
 
 const NODE_XOR_DISTANCE_ARRAY_SIZE: usize = 16;
-type NodeXorDistanceArray = [u8; NODE_XOR_DISTANCE_ARRAY_SIZE];
 
 #[derive(Clone, Debug, Eq, PartialOrd, Ord, Default)]
 pub struct XorDistance(u128);
@@ -49,7 +46,7 @@ impl XorDistance {
 
     /// Returns the maximum distance.
     pub const fn max_distance() -> Self {
-        Self(u128::MAX)
+        Self(u128::MAX >> (NODE_XOR_DISTANCE_ARRAY_SIZE - NODE_ID_ARRAY_SIZE))
     }
 
     /// Returns a zero distance.
@@ -62,25 +59,33 @@ impl XorDistance {
         NODE_XOR_DISTANCE_ARRAY_SIZE
     }
 
-    pub fn get_bucket(&self, num_buckets: u32) -> (XorDistance, XorDistance) {
-        let bits_per_bucket = cmp::max((NODE_XOR_DISTANCE_ARRAY_SIZE * 8) as u32 / num_buckets, 1);
+    pub fn get_bucket(&self, num_buckets: u32) -> (XorDistance, XorDistance, u32) {
+        // let bits_per_bucket = cmp::max((NODE_XOR_DISTANCE_ARRAY_SIZE * 8) as u32 / num_buckets, 1);
 
         let mut max:u128 = XorDistance::max_distance().0;
-        let mut min = max.checked_shr(bits_per_bucket).unwrap_or_default();
+        let mut min = max.checked_shr(1).unwrap_or_default();
         let val:u128  = self.0;
+        let mut bucket_no = num_buckets  - 1;
+        if bucket_no == 0 {
+            return (XorDistance(0), XorDistance(max), 0);
+        }
         while min > 0 && val < min {
             max = min;
-            min = max.checked_shr(bits_per_bucket).unwrap_or_default();
+            min = max.checked_shr(1).unwrap_or_default();
+            bucket_no -= 1;
+            if bucket_no == 0 {
+                return (XorDistance(0), XorDistance(max), 0)
+            }
         }
 
-        (XorDistance(min), XorDistance(max))
+        (XorDistance(min), XorDistance(max), bucket_no)
     }
 
-    fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
-        bytes
-            .try_into()
-            .map_err(|err| ByteArrayError::ConversionError(format!("{:?}", err)))
-    }
+    // fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
+    //     bytes
+    //         .try_into()
+    //         .map_err(|err| ByteArrayError::ConversionError(format!("{:?}", err)))
+    // }
 }
 
 fn xor(x: &[u8], y: &[u8]) -> XorDistance {
@@ -112,19 +117,12 @@ impl TryFrom<&[u8]> for XorDistance {
     }
 }
 
-// impl TryFrom<XorDistance> for u128 {
-//     type Error = String;
-//
-//     fn try_from(value: XorDistance) -> Result<Self, Self::Error> {
-//         if XorDistance::byte_length() > 16 {
-//             return Err("XorDistance has too many bytes to be converted to U128".to_string());
-//         }
-//         let slice = value.as_bytes();
-//         let mut bytes: [u8; 16] = [0u8; 16];
-//         bytes[..XorDistance::byte_length()].copy_from_slice(&slice[..XorDistance::byte_length()]);
-//         Ok(u128::from_be_bytes(bytes))
-//     }
-// }
+impl From<XorDistance> for u128 {
+
+    fn from(value: XorDistance) -> Self {
+       value.0
+    }
+}
 
 
 // impl ByteArray for XorDistance {
@@ -149,7 +147,6 @@ impl fmt::Display for XorDistance {
 }
 
 mod tests {
-    use super::*;
 
     #[test]
     fn get_bucket() {
@@ -162,7 +159,7 @@ mod tests {
         let x = XorDistance::new();
         let bucket =  x.get_bucket(20);
         assert_eq!(bucket.0, XorDistance::zero());
-        assert_eq!(bucket.1, XorDistance(3));
+        assert_eq!(bucket.1, XorDistance(81129638414606681695789005144063));
 
         let node_id1 = NodeId::from_bytes(
             &[
@@ -208,26 +205,31 @@ mod tests {
 
         let x = node_id1.distance(&node_id2);
         let bucket =  x.get_bucket(2);
-        assert_eq!(bucket.0, XorDistance(18446744073709551615));
-        assert_eq!(bucket.1, XorDistance::max_distance());
+        assert_eq!(bucket.0, XorDistance(0));
+        assert_eq!(bucket.1, XorDistance(21267647932558653966460912964485513215));
 
         let bucket =  x.get_bucket(8);
-        assert_eq!(bucket.0, XorDistance(79228162514264337593543950335));
-        assert_eq!(bucket.1, XorDistance(5192296858534827628530496329220095));
+        assert_eq!(bucket.0, XorDistance(0));
+        assert_eq!(bucket.1, XorDistance(332306998946228968225951765070086143));
 
         let bucket =  x.get_bucket(16);
-        assert_eq!(bucket.0, XorDistance(79228162514264337593543950335));
-        assert_eq!(bucket.1, XorDistance(20282409603651670423947251286015));
+        assert_eq!(bucket.0, XorDistance(0));
+        assert_eq!(bucket.1, XorDistance(1298074214633706907132624082305023));
+
+        let bucket =  x.get_bucket(32);
+        assert_eq!(bucket.0, XorDistance(5070602400912917605986812821503));
+        assert_eq!(bucket.1, XorDistance(10141204801825835211973625643007));
+
 
         // test an odd number
         let bucket =  x.get_bucket(33);
-        assert_eq!(bucket.0, XorDistance(2535301200456458802993406410751));
-        assert_eq!(bucket.1, XorDistance(20282409603651670423947251286015));
+        assert_eq!(bucket.0, XorDistance(5070602400912917605986812821503));
+        assert_eq!(bucket.1, XorDistance(10141204801825835211973625643007));
 
         let dist_2_3 = node_id2.distance(&node_id3);
         let bucket =  dist_2_3.get_bucket(12);
-        assert_eq!(bucket.0, XorDistance(262143));
-        assert_eq!(bucket.1,XorDistance(268435455));
+        assert_eq!(bucket.0, XorDistance(0));
+        assert_eq!(bucket.1,XorDistance(20769187434139310514121985316880383));
 
         let bucket =  dist_2_3.get_bucket(128);
         assert_eq!(bucket.0, XorDistance(2097151));
@@ -241,6 +243,7 @@ mod tests {
 
         let dist_4_4 = node_id4.distance(&node_id4);
         assert_eq!(dist_4_4, XorDistance::zero());
+        assert_eq!(dist_4_4.get_bucket(128).0, XorDistance(0));
     }
 
 

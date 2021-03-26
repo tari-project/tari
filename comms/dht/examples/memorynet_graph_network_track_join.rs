@@ -32,7 +32,7 @@
 //! 1. The first "wallet" in the list attempts to discover the last "wallet" in the list
 //!
 //! The suggested way to run this is:
-//!RUST_BACKTRACE=1 RUST_LOG=trace cargo run --example memorynet 2> /tmp/debug.log`
+//!RUST_BACKTRACE=1 RUST_LOG=trace cargo run --example memorynet_graph_network_track_join 2> /tmp/debug.log`
 
 // Size of network
 const NUM_SEED_NODES: usize = 6;
