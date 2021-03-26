@@ -373,10 +373,10 @@ mod test {
         let double_spend_input = inputs.first().unwrap().clone();
 
         let estimated_fee = Fee::calculate(20.into(), 1, 1, 1);
-        let utxo = UnblindedOutput::new(INPUT_AMOUNT - estimated_fee, test_params.spend_key, None);
+        let utxo = UnblindedOutput::new_nop(INPUT_AMOUNT - estimated_fee, test_params.spend_key, None);
         stx_builder
             .with_input(double_spend_utxo, double_spend_input)
-            .with_output(utxo);
+            .with_output(utxo, utxo.script_private_key);
 
         let factories = CryptoFactories::default();
         let mut stx_protocol = stx_builder.build::<HashDigest>(&factories).unwrap();

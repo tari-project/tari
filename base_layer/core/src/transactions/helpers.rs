@@ -50,45 +50,39 @@ use tari_crypto::{
     tari_utilities::ByteArray,
 };
 
-pub fn make_input<R: Rng + CryptoRng>(
-    rng: &mut R,
-    val: MicroTari,
+/// Create a random transaction input for the given amount and maturity period. The input ,its unblinded
+/// parameters are returned.
+pub fn create_test_input(
+    amount: MicroTari,
+    maturity: u64,
+    height: u64, 
     factory: &CommitmentFactory,
-) -> (TransactionInput, UnblindedOutput)
+) -> (TransactionInput, UnblindedOutput,PrivateKey)
 {
-    let key = PrivateKey::random(rng);
-    let v = PrivateKey::from(val);
-    let commitment = factory.commit(&key, &v);
-    // TODO: Populate script with the proper value
-    let script = TariScript::default();
-    // TODO: Populate input_data with the proper value
-    let input_data = ExecutionStack::default();
-    // TODO: Populate height with the proper value
-    let height = 0;
-    // TODO: Populate script_signature with the proper value
-    let script_signature = Signature::default();
-    // TODO: Populate offset_pub_key with the proper value
-    let offset_pub_key = PublicKey::default();
-    let input = TransactionInput::new(
-        OutputFeatures::default(),
-        commitment,
+    let spending_key = PrivateKey::random(&mut OsRng);
+    let script_key = PrivateKey::random(&mut OsRng);
+    let commitment = factory.commit(&spending_key, &PrivateKey::from(amount));
+    let features = OutputFeatures::with_maturity(maturity);
+    let script = script!(Nop);
+    let input_data = inputs!(PublicKey::from_secret_key(&script_key));
+    
+    
+    let offset_pvt_key = PrivateKey::random(&mut OsRng);
+    let offset_pub_key = PublicKey::from_secret_key(&offset_pvt_key);
+
+   
+    let unblinded_output = UnblindedOutput::new(
+        amount,
+        spending_key,
+        Some(features),
         script,
         input_data,
         height,
-        script_signature,
+        script_key,
         offset_pub_key,
     );
-    let unblinded = UnblindedOutput::new(
-        val,
-        key.clone(),
-        None,
-        TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        key.clone(),
-        PublicKey::from_secret_key(&key),
-    );
-    (input, unblinded)
+    let input = unblinded_output.as_transaction_input_with_script_signature().unwrap();
+    (input, unblinded_output,offset_pvt_key)
 }
 
 #[derive(Default)]
@@ -234,49 +228,6 @@ pub struct TransactionSchema {
     pub fee: MicroTari,
     pub lock_height: u64,
     pub features: OutputFeatures,
-}
-
-/// Create a random transaction input for the given amount and maturity period. The input and its unblinded
-/// parameters are returned.
-pub fn create_test_input(
-    amount: MicroTari,
-    maturity: u64,
-    factory: &CommitmentFactory,
-) -> (TransactionInput, UnblindedOutput)
-{
-    let spending_key = PrivateKey::random(&mut OsRng);
-    let commitment = factory.commit(&spending_key, &PrivateKey::from(amount));
-    let features = OutputFeatures::with_maturity(maturity);
-    // TODO: Populate script with the proper value
-    let script = TariScript::default();
-    // TODO: Populate input_data with the proper value
-    let input_data = ExecutionStack::default();
-    // TODO: Populate height with the proper value
-    let height = 0;
-    // TODO: Populate script_signature with the proper value
-    let script_signature = Signature::default();
-    // TODO: Populate offset_pub_key with the proper value
-    let offset_pub_key = PublicKey::default();
-    let input = TransactionInput::new(
-        features.clone(),
-        commitment,
-        script,
-        input_data,
-        height,
-        script_signature,
-        offset_pub_key,
-    );
-    let unblinded_output = UnblindedOutput::new(
-        amount,
-        spending_key.clone(),
-        Some(features),
-        TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        spending_key.clone(),
-        PublicKey::from_secret_key(&spending_key),
-    );
-    (input, unblinded_output)
 }
 
 /// Create an unconfirmed transaction for testing with a valid fee, unique access_sig, random inputs and outputs, the

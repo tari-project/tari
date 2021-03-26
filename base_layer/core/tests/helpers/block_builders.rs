@@ -66,7 +66,8 @@ pub fn create_coinbase(
 ) -> (TransactionOutput, TransactionKernel, UnblindedOutput)
 {
     let features = OutputFeatures::create_coinbase(maturity_height);
-    let (mut utxo, key) = create_utxo(value, &factories, None);
+    let script = script!(Nop);
+    let (mut utxo, key,) = create_utxo(value, &factories, None);
     utxo.features = features.clone();
     let excess = Commitment::from_public_key(&PublicKey::from_secret_key(&key));
     let sig = create_signature(key.clone(), 0.into(), 0);

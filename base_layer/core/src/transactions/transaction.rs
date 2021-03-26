@@ -62,6 +62,7 @@ use tari_crypto::{
         RewindResult as CryptoRewindResult,
         REWIND_USER_MESSAGE_LENGTH,
     },
+    script,
     script::{ExecutionStack, ScriptError, StackItem, TariScript},
     tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable},
 };
@@ -487,22 +488,11 @@ impl TransactionInput {
     }
 }
 
-impl From<TransactionOutput> for TransactionInput {
-    fn from(output: TransactionOutput) -> Self {
-        TransactionInput {
-            features: output.features,
-            commitment: output.commitment,
-            script: TariScript::default(),
-            input_data: ExecutionStack::default(),
-            height: 0,
-            script_signature: Default::default(),
-            script_offset_public_key: output.script_offset_public_key,
-        }
-    }
-}
+
 
 /// Implement the canonical hashing function for TransactionInput for use in ordering
-//Note we use the hash of an UTXO to ID it, so we need the hash of the TransactionInput to equal the hash of the TransactionOutput
+// Note we use the hash of an UTXO to ID it, so we need the hash of the TransactionInput to equal the hash of the
+// TransactionOutput
 impl Hashable for TransactionInput {
     fn hash(&self) -> Vec<u8> {
         HashDigest::new()
@@ -517,9 +507,14 @@ impl Hashable for TransactionInput {
 
 impl Display for TransactionInput {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(fmt, "{} [{:?}], Script hash: ({}), Offset_Pubkey: ({})", self.commitment.to_hex(), self.features,
-        self.script.as_hash::<Blake256>().unwrap().to_hex(),
-        self.script_offset_public_key.to_hex())
+        write!(
+            fmt,
+            "{} [{:?}], Script hash: ({}), Offset_Pubkey: ({})",
+            self.commitment.to_hex(),
+            self.features,
+            self.script.as_hash::<Blake256>().unwrap().to_hex(),
+            self.script_offset_public_key.to_hex()
+        )
     }
 }
 

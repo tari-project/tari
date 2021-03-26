@@ -422,11 +422,11 @@ impl AggregateBody {
         let mut output_keys = PublicKey::default();
         for output in &self.outputs {
             // We should not count the coinbase tx here
-            if !output.is_coinbase(){
-            output_keys = output_keys +
-                PrivateKey::from_bytes(&output.hash())
-                    .map_err(|e| TransactionError::ConversionError(e.to_string()))? *
-                    output.script_offset_public_key.clone();
+            if !output.is_coinbase() {
+                output_keys = output_keys +
+                    PrivateKey::from_bytes(&output.hash())
+                        .map_err(|e| TransactionError::ConversionError(e.to_string()))? *
+                        output.script_offset_public_key.clone();
             }
         }
         let lhs = input_keys - output_keys;
