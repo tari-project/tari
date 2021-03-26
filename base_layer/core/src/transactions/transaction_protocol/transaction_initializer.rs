@@ -210,13 +210,11 @@ impl SenderTransactionInitializer {
         script: TariScript,
         input_data: ExecutionStack,
         script_private_key: PrivateKey,
-        script_offset_private_key: PrivateKey,
     ) -> &mut Self
     {
         self.change_script = Some(script);
         self.change_input_data = Some(input_data);
         self.change_script_private_key = Some(script_private_key);
-        self.change_script_offset_private_key = Some(script_offset_private_key);
         self
     }
 
@@ -478,6 +476,7 @@ impl SenderTransactionInitializer {
             recipient_scripts: self.recipient_scripts.into_vec(),
             recipient_script_offset_private_keys: self.recipient_script_offset_private_keys.into_vec(),
             change,
+            change_script_offset_private_key: self.change_script_offset_private_key,
             metadata: TransactionMetadata {
                 fee: total_fee,
                 lock_height: self.lock_height.unwrap(),
