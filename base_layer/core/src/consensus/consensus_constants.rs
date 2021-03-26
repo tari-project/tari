@@ -338,23 +338,21 @@ impl ConsensusConstants {
             max_difficulty: u64::MAX.into(),
             target_time: 200,
         });
-        vec![
-            ConsensusConstants {
-                effective_from_height: 0,
-                coinbase_lock_height: 6,
-                blockchain_version: 1,
-                future_time_limit: 540,
-                difficulty_block_window: 90,
-                max_block_transaction_weight: 19500,
-                median_timestamp_count: 11,
-                emission_initial: 5_538_846_115 * uT,
-                emission_decay: &EMISSION_DECAY,
-                emission_tail: 100.into(),
-                max_randomx_seed_height: std::u64::MAX,
-                proof_of_work: algos,
-                faucet_value: (5000 * 4000) * T,
-            },
-        ]
+        vec![ConsensusConstants {
+            effective_from_height: 0,
+            coinbase_lock_height: 6,
+            blockchain_version: 1,
+            future_time_limit: 540,
+            difficulty_block_window: 90,
+            max_block_transaction_weight: 19500,
+            median_timestamp_count: 11,
+            emission_initial: 5_538_846_115 * uT,
+            emission_decay: &EMISSION_DECAY,
+            emission_tail: 100.into(),
+            max_randomx_seed_height: std::u64::MAX,
+            proof_of_work: algos,
+            faucet_value: (5000 * 4000) * T,
+        }]
     }
 
     pub fn mainnet() -> Vec<Self> {

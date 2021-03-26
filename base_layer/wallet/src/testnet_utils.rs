@@ -191,7 +191,16 @@ pub async fn create_wallet(
         peer_seeds: Default::default(),
     };
 
-    let config = WalletConfig::new(comms_config, factories, None, None, Network::Weatherwax, None, None, None);
+    let config = WalletConfig::new(
+        comms_config,
+        factories,
+        None,
+        None,
+        Network::Weatherwax,
+        None,
+        None,
+        None,
+    );
     let db = WalletMemoryDatabase::new();
     let (backend, _) = make_transaction_database(Some(datastore_path.to_str().unwrap().to_string()));
 

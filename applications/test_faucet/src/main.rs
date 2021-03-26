@@ -16,8 +16,8 @@ use tari_core::{
         types::{Commitment, CryptoFactories, PrivateKey},
     },
 };
+use tari_crypto::script;
 use tokio::{sync::mpsc, task};
-use tari_crypto::{script};
 
 const NUM_KEYS: usize = 4000;
 
@@ -63,7 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         task::spawn(async move {
             let result = task::spawn_blocking(move || {
                 let script = script!(Nop);
-                let (utxo, key, _) = helpers::create_utxo(value, &fc, Some(feature),&script);
+                let (utxo, key, _) = helpers::create_utxo(value, &fc, Some(feature), &script);
                 print!(".");
                 (utxo, key, value)
             })

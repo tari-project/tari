@@ -276,10 +276,12 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         &mut self,
         output: TransactionOutput,
         header_hash: HashOutput,
+        header_height: u64,
         mmr_position: u32,
     ) -> &mut Self
     {
-        self.transaction.insert_utxo(output, header_hash, mmr_position);
+        self.transaction
+            .insert_utxo(output, header_hash, header_height, mmr_position);
         self
     }
 
@@ -288,11 +290,12 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         output_hash: HashOutput,
         proof_hash: HashOutput,
         header_hash: HashOutput,
+        header_height: u64,
         mmr_position: u32,
     ) -> &mut Self
     {
         self.transaction
-            .insert_pruned_utxo(output_hash, proof_hash, header_hash, mmr_position);
+            .insert_pruned_utxo(output_hash, proof_hash, header_hash, header_height, mmr_position);
         self
     }
 

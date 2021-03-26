@@ -75,6 +75,8 @@ pub enum ValidationError {
     UnsortedOrDuplicateOutput,
     #[error("Error in merge mine data:{0}")]
     MergeMineError(#[from] MergeMineError),
+    #[error("Contains an input with an invalid mined-height in body")]
+    InvalidMinedHeight,
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in

@@ -246,8 +246,11 @@ fn set_merge_mining_defaults(cfg: &mut Config) {
     cfg.set_default("merge_mining_proxy.mainnet.wait_for_initial_sync_at_startup", true)
         .unwrap();
 
-    cfg.set_default("merge_mining_proxy.weatherwax.monerod_url", "http://18.133.55.120:38081")
-        .unwrap();
+    cfg.set_default(
+        "merge_mining_proxy.weatherwax.monerod_url",
+        "http://18.133.55.120:38081",
+    )
+    .unwrap();
     cfg.set_default("merge_mining_proxy.weatherwax.proxy_host_address", "127.0.0.1:7878")
         .unwrap();
     cfg.set_default("merge_mining_proxy.weatherwax.proxy_submit_to_origin", true)
@@ -290,7 +293,8 @@ fn set_transport_defaults(cfg: &mut Config) {
 
     cfg.set_default("base_node.weatherwax.tor_control_address", "/ip4/127.0.0.1/tcp/9051")
         .unwrap();
-    cfg.set_default("base_node.weatherwax.tor_control_auth", "none").unwrap();
+    cfg.set_default("base_node.weatherwax.tor_control_auth", "none")
+        .unwrap();
     cfg.set_default("base_node.weatherwax.tor_forward_address", "/ip4/127.0.0.1/tcp/0")
         .unwrap();
     cfg.set_default("base_node.weatherwax.tor_onion_port", "18141").unwrap();

@@ -1,4 +1,4 @@
-# A simple set of sane defaults for connecting to the weatherwax testnet
+# A simple set of sane defaults for connecting to the Stibbons testnet
 
 [base_node]
 network = "weatherwax"
@@ -22,16 +22,16 @@ peer_seeds = [
     "4a0c44d9132a8275d5ef8a969fb5d6085026b2d440350a3b238dfbbd1c068649::/onion3/fych32gn6yrvscbytm252woulv7o66q3pttirdmt7jlh7uyulcoikfad:18141"
 ]
 grpc_enabled = true
-grpc_base_node_address = "127.0.0.1:18142"
-grpc_console_wallet_address = "127.0.0.1:18143"
+grpc_base_node_address = "127.0.0.1:18162"
+grpc_console_wallet_address = "127.0.0.1:18163"
 transport = "tor"
-dns_seeds =["seeds.weatherwax.tari.com"]
+dns_seeds =["seeds.stibbons.tari.com"]
 dns_seeds_use_dnssec = false
 #pruning_horizon = 1000
 
 [merge_mining_proxy.weatherwax]
 monerod_url = "http://18.133.55.120:38081"
-proxy_host_address = "127.0.0.1:7878"
+proxy_host_address = "127.0.0.1:7868"
 proxy_submit_to_origin = true
 monerod_use_auth=false
 monerod_username=""
