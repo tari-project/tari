@@ -29,7 +29,9 @@ use tari_core::transactions::{
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
+    inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+    script,
     script::{ExecutionStack, TariScript},
 };
 
@@ -88,10 +90,11 @@ pub fn make_input<R: Rng + CryptoRng>(
     let key = PrivateKey::random(rng);
     let commitment = factory.commit_value(&key, val.into());
 
-    let script = TariScript::default();
-    let input_data = ExecutionStack::default();
+    let script = script!(Nop);
     let height = 0;
     let script_private_key = PrivateKey::random(rng);
+    let input_data = inputs!(PublicKey::from_secret_key(&script_private_key));
+
     let script_signature = Signature::default();
     let offset_pub_key = PublicKey::default();
     let input = TransactionInput::new(

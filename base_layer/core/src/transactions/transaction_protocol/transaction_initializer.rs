@@ -337,7 +337,7 @@ impl SenderTransactionInitializer {
         }
         if !self.recipient_script_offset_private_keys.is_full() {
             let size = self.recipient_script_offset_private_keys.size();
-            return self.build_err(&*format!("Missing all {} recipient script offset private keys", size));
+            return self.build_err(&*format!("Missing {} recipient script offset private key/s", size));
         }
         if !self.recipient_scripts.is_full() {
             let size = self.recipient_scripts.size();

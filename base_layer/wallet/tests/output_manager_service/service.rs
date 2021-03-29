@@ -54,7 +54,9 @@ use tari_core::{
 };
 use tari_crypto::{
     hash::blake2::Blake256,
-    keys::SecretKey,
+    inputs,
+    keys::{PublicKey as PublicKeyTrait, SecretKey},
+    script,
     script::{ExecutionStack, TariScript},
 };
 use tari_service_framework::reply_channel;
@@ -650,37 +652,39 @@ fn send_no_change<T: OutputManagerBackend + 'static>(backend: T) {
     let fee_without_change = Fee::calculate(fee_per_gram, 1, 2, 1);
     let key1 = PrivateKey::random(&mut OsRng);
     let value1 = 500;
+    let script_key1 = PrivateKey::random(&mut OsRng);
     runtime
         .block_on(oms.add_output(UnblindedOutput::new(
             MicroTari::from(value1),
             key1,
             None,
-            TariScript::default(),
-            ExecutionStack::default(),
+            script!(Nop),
+            inputs!(PublicKey::from_secret_key(&script_key1)),
             0,
-            PrivateKey::default(),
-            PublicKey::default(),
+            script_key1,
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         )))
         .unwrap();
     let key2 = PrivateKey::random(&mut OsRng);
     let value2 = 800;
+    let script_key2 = PrivateKey::random(&mut OsRng);
     runtime
         .block_on(oms.add_output(UnblindedOutput::new(
             MicroTari::from(value2),
             key2,
             None,
-            TariScript::default(),
-            ExecutionStack::default(),
+            script!(Nop),
+            inputs!(PublicKey::from_secret_key(&script_key2)),
             0,
-            PrivateKey::default(),
-            PublicKey::default(),
+            script_key2,
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         )))
         .unwrap();
 
     let mut stp = runtime
         .block_on(oms.prepare_transaction_to_send(
             MicroTari::from(value1 + value2) - fee_without_change,
-            MicroTari::from(20),
+            fee_per_gram,
             None,
             "".to_string(),
         ))
@@ -816,7 +820,10 @@ fn generate_sender_transaction_message(amount: MicroTari) -> (TxId, TransactionS
         .with_private_nonce(alice.nonce.clone())
         .with_change_secret(alice.change_key)
         .with_input(utxo, input)
-        .with_amount(0, amount);
+        .with_amount(0, amount)
+        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng))
+        .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
+
     let mut stp = builder.build::<Blake256>(&factories).unwrap();
     let tx_id = stp.get_tx_id().unwrap();
     (
