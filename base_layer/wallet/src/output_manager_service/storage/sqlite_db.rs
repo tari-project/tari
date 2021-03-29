@@ -1404,10 +1404,9 @@ mod test {
     use tari_core::transactions::{
         tari_amount::MicroTari,
         transaction::{TransactionInput, UnblindedOutput},
-        types::{CommitmentFactory, CryptoFactories, PrivateKey, PublicKey, Signature},
+        types::{CommitmentFactory, CryptoFactories, PrivateKey, PublicKey},
     };
     use tari_crypto::{
-        commitment::HomomorphicCommitmentFactory,
         inputs,
         keys::{PublicKey as PublicKeyTrait, SecretKey},
         script,
@@ -1423,7 +1422,6 @@ mod test {
         let script_key = PrivateKey::random(rng);
         let script_offset_private_key = PrivateKey::random(rng);
         let factory = CommitmentFactory::default();
-        let commitment = factory.commit_value(&key, val.into());
 
         let script = script!(Nop);
         let input_data = inputs!(PublicKey::from_secret_key(&script_key));

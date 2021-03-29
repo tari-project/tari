@@ -31,10 +31,14 @@ use rand::{rngs::OsRng, RngCore};
 use std::time::Duration;
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction::OutputFeatures,
-    types::{CryptoFactories, PrivateKey},
+    transaction::UnblindedOutput,
+    types::{CryptoFactories, PrivateKey, PublicKey},
 };
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::SecretKey,
+    script::{ExecutionStack, TariScript},
+};
 use tari_wallet::{
     output_manager_service::{
         error::OutputManagerStorageError,
@@ -233,13 +237,20 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         MicroTari::from(100 + OsRng.next_u64() % 1000),
         &factories.commitment,
     );
+    let output = UnblindedOutput::new(
+        uo_incoming.value,
+        uo_incoming.spending_key.clone(),
+        None,
+        TariScript::default(),
+        ExecutionStack::default(),
+        0,
+        PrivateKey::default(),
+        PublicKey::default(),
+    );
     runtime
         .block_on(db.accept_incoming_pending_transaction(
             5,
-            uo_incoming.value,
-            uo_incoming.spending_key.clone(),
-            OutputFeatures::default(),
-            &factories,
+            DbUnblindedOutput::from_unblinded_output(output, &factories).unwrap(),
             None,
         ))
         .unwrap();

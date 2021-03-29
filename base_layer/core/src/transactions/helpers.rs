@@ -39,7 +39,7 @@ use crate::transactions::{
 };
 use digest::Digest;
 use num::pow;
-use rand::{rngs::OsRng, CryptoRng, Rng};
+use rand::rngs::OsRng;
 use std::sync::Arc;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -63,7 +63,6 @@ pub fn create_test_input(
 {
     let spending_key = PrivateKey::random(&mut OsRng);
     let script_key = PrivateKey::random(&mut OsRng);
-    let commitment = factory.commit(&spending_key, &PrivateKey::from(amount));
     let features = OutputFeatures::with_maturity(maturity);
     let script = script!(Nop);
     let input_data = inputs!(PublicKey::from_secret_key(&script_key));

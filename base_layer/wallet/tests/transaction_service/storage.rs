@@ -35,7 +35,10 @@ use tari_core::transactions::{
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
-use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
+use tari_crypto::{
+    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+    script::{ExecutionStack, TariScript},
+};
 use tari_wallet::{
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     transaction_service::storage::{
@@ -60,7 +63,16 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let factories = CryptoFactories::default();
     let mut builder = SenderTransactionProtocol::builder(1);
     let amount = MicroTari::from(10_000);
-    let input = UnblindedOutput::new(MicroTari::from(100_000), PrivateKey::random(&mut OsRng), None);
+    let input = UnblindedOutput::new(
+        MicroTari::from(100_000),
+        PrivateKey::random(&mut OsRng),
+        None,
+        TariScript::default(),
+        ExecutionStack::default(),
+        0,
+        PrivateKey::default(),
+        PublicKey::default(),
+    );
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177))
@@ -68,10 +80,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .with_private_nonce(PrivateKey::random(&mut OsRng))
         .with_amount(0, amount)
         .with_message("Yo!".to_string())
-        .with_input(
-            input.as_transaction_input(&factories.commitment, OutputFeatures::default()),
-            input,
-        )
+        .with_input(input.as_transaction_input(&factories.commitment), input)
         .with_change_secret(PrivateKey::random(&mut OsRng));
 
     let stp = builder.build::<HashDigest>(&factories).unwrap();

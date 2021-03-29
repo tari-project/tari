@@ -82,6 +82,7 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     common::Blake256,
     keys::{PublicKey as PK, SecretKey as SK},
+    script::{ExecutionStack, TariScript},
 };
 use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
@@ -1733,7 +1734,16 @@ fn test_transaction_cancellation() {
 
     let mut builder = SenderTransactionProtocol::builder(1);
     let amount = MicroTari::from(10_000);
-    let input = UnblindedOutput::new(MicroTari::from(100_000), PrivateKey::random(&mut OsRng), None);
+    let input = UnblindedOutput::new(
+        MicroTari::from(100_000),
+        PrivateKey::random(&mut OsRng),
+        None,
+        TariScript::default(),
+        ExecutionStack::default(),
+        0,
+        PrivateKey::default(),
+        PublicKey::default(),
+    );
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177))
@@ -1741,10 +1751,7 @@ fn test_transaction_cancellation() {
         .with_private_nonce(PrivateKey::random(&mut OsRng))
         .with_amount(0, amount)
         .with_message("Yo!".to_string())
-        .with_input(
-            input.as_transaction_input(&factories.commitment, OutputFeatures::default()),
-            input,
-        )
+        .with_input(input.as_transaction_input(&factories.commitment), input)
         .with_change_secret(PrivateKey::random(&mut OsRng));
 
     let mut stp = builder.build::<HashDigest>(&factories).unwrap();
@@ -1788,7 +1795,16 @@ fn test_transaction_cancellation() {
     // Lets cancel the last one using a Comms stack message
     let mut builder = SenderTransactionProtocol::builder(1);
     let amount = MicroTari::from(10_000);
-    let input = UnblindedOutput::new(MicroTari::from(100_000), PrivateKey::random(&mut OsRng), None);
+    let input = UnblindedOutput::new(
+        MicroTari::from(100_000),
+        PrivateKey::random(&mut OsRng),
+        None,
+        TariScript::default(),
+        ExecutionStack::default(),
+        0,
+        PrivateKey::default(),
+        PublicKey::default(),
+    );
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177))
@@ -1796,10 +1812,7 @@ fn test_transaction_cancellation() {
         .with_private_nonce(PrivateKey::random(&mut OsRng))
         .with_amount(0, amount)
         .with_message("Yo!".to_string())
-        .with_input(
-            input.as_transaction_input(&factories.commitment, OutputFeatures::default()),
-            input,
-        )
+        .with_input(input.as_transaction_input(&factories.commitment), input)
         .with_change_secret(PrivateKey::random(&mut OsRng));
 
     let mut stp = builder.build::<HashDigest>(&factories).unwrap();
@@ -3441,7 +3454,16 @@ fn test_resend_on_startup() {
     // First we will check the Send Transction message
     let mut builder = SenderTransactionProtocol::builder(1);
     let amount = MicroTari::from(10_000);
-    let input = UnblindedOutput::new(MicroTari::from(100_000), PrivateKey::random(&mut OsRng), None);
+    let input = UnblindedOutput::new(
+        MicroTari::from(100_000),
+        PrivateKey::random(&mut OsRng),
+        None,
+        TariScript::default(),
+        ExecutionStack::default(),
+        0,
+        PrivateKey::default(),
+        PublicKey::default(),
+    );
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177))
@@ -3449,10 +3471,7 @@ fn test_resend_on_startup() {
         .with_private_nonce(PrivateKey::random(&mut OsRng))
         .with_amount(0, amount)
         .with_message("Yo!".to_string())
-        .with_input(
-            input.as_transaction_input(&factories.commitment, OutputFeatures::default()),
-            input,
-        )
+        .with_input(input.as_transaction_input(&factories.commitment), input)
         .with_change_secret(PrivateKey::random(&mut OsRng));
 
     let mut stp = builder.build::<HashDigest>(&factories).unwrap();
@@ -3878,7 +3897,16 @@ fn test_transaction_timeout_cancellation() {
     // First we will check the Send Transction message
     let mut builder = SenderTransactionProtocol::builder(1);
     let amount = MicroTari::from(10_000);
-    let input = UnblindedOutput::new(MicroTari::from(100_000), PrivateKey::random(&mut OsRng), None);
+    let input = UnblindedOutput::new(
+        MicroTari::from(100_000),
+        PrivateKey::random(&mut OsRng),
+        None,
+        TariScript::default(),
+        ExecutionStack::default(),
+        0,
+        PrivateKey::default(),
+        PublicKey::default(),
+    );
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177))
@@ -3886,10 +3914,7 @@ fn test_transaction_timeout_cancellation() {
         .with_private_nonce(PrivateKey::random(&mut OsRng))
         .with_amount(0, amount)
         .with_message("Yo!".to_string())
-        .with_input(
-            input.as_transaction_input(&factories.commitment, OutputFeatures::default()),
-            input,
-        )
+        .with_input(input.as_transaction_input(&factories.commitment), input)
         .with_change_secret(PrivateKey::random(&mut OsRng));
 
     let mut stp = builder.build::<HashDigest>(&factories).unwrap();

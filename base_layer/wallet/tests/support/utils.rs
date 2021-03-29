@@ -87,26 +87,35 @@ pub fn make_input<R: Rng + CryptoRng>(
 {
     let key = PrivateKey::random(rng);
     let commitment = factory.commit_value(&key, val.into());
-    // TODO: Populate script with the proper value
-    let script = TariScript::default().as_bytes();
-    // TODO: Populate input_data with the proper value
-    let input_data = ExecutionStack::default().as_bytes();
-    // TODO: Populate height with the proper value
+
+    let script = TariScript::default();
+    let input_data = ExecutionStack::default();
     let height = 0;
-    // TODO: Populate script_signature with the proper value
+    let script_private_key = PrivateKey::random(rng);
     let script_signature = Signature::default();
-    // TODO: Populate offset_pub_key with the proper value
     let offset_pub_key = PublicKey::default();
     let input = TransactionInput::new(
         OutputFeatures::default(),
         commitment,
-        script,
-        input_data,
+        script.clone(),
+        input_data.clone(),
         height,
         script_signature,
-        offset_pub_key,
+        offset_pub_key.clone(),
     );
-    (input, UnblindedOutput::new(val, key, None))
+    (
+        input,
+        UnblindedOutput::new(
+            val,
+            key,
+            None,
+            script,
+            input_data,
+            0,
+            script_private_key,
+            offset_pub_key,
+        ),
+    )
 }
 
 pub fn make_input_with_features<R: Rng + CryptoRng>(
@@ -118,26 +127,34 @@ pub fn make_input_with_features<R: Rng + CryptoRng>(
 {
     let spending_key = PrivateKey::random(rng);
     let commitment = factory.commit_value(&spending_key, value.into());
-    // TODO: Populate script with the proper value
-    let script = TariScript::default().as_bytes();
-    // TODO: Populate input_data with the proper value
-    let input_data = ExecutionStack::default().as_bytes();
-    // TODO: Populate height with the proper value
+
+    let script = TariScript::default();
+    let input_data = ExecutionStack::default();
     let height = 0;
-    // TODO: Populate script_signature with the proper value
     let script_signature = Signature::default();
-    // TODO: Populate offset_pub_key with the proper value
     let offset_pub_key = PublicKey::default();
     let input = TransactionInput::new(
         features.clone().unwrap_or_default(),
         commitment,
-        script,
-        input_data,
+        script.clone(),
+        input_data.clone(),
         height,
         script_signature,
-        offset_pub_key,
+        offset_pub_key.clone(),
     );
-    (input, UnblindedOutput::new(value, spending_key, features))
+    (
+        input,
+        UnblindedOutput::new(
+            value,
+            spending_key,
+            features,
+            script,
+            input_data,
+            height,
+            PrivateKey::default(),
+            offset_pub_key,
+        ),
+    )
 }
 
 pub fn random_string(len: usize) -> String {

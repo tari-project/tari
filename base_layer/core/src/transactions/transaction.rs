@@ -54,7 +54,6 @@ use std::{
 use tari_crypto::{
     commitment::{HomomorphicCommitment, HomomorphicCommitmentFactory},
     hash::blake2::Blake256,
-    inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     range_proof::{
         FullRewindResult as CryptoFullRewindResult,
@@ -63,7 +62,6 @@ use tari_crypto::{
         RewindResult as CryptoRewindResult,
         REWIND_USER_MESSAGE_LENGTH,
     },
-    script,
     script::{ExecutionStack, ScriptError, StackItem, TariScript},
     tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable},
 };
