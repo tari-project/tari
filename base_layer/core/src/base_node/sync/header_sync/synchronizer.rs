@@ -441,6 +441,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
         let tip_header = self.db.fetch_last_header().await?;
         let new_tip_height = tip_header.height - steps_back;
+        debug!(target: LOG_TARGET, "Rewinding to height {}", new_tip_height);
 
         let blocks = self.db.rewind_to_height(new_tip_height).await?;
         debug!(

@@ -149,14 +149,11 @@ pub fn initialize_sqlite_database_backends(
     WalletStorageError,
 >
 {
-    let cipher = match passphrase {
-        None => None,
-        Some(passphrase_str) => {
-            let passphrase_hash = Blake256::new().chain(passphrase_str.as_bytes()).result().to_vec();
-            let key = GenericArray::from_slice(passphrase_hash.as_slice());
-            Some(Aes256Gcm::new(key))
-        },
-    };
+    let cipher = passphrase.map(|passphrase_str| {
+        let passphrase_hash = Blake256::new().chain(passphrase_str.as_bytes()).result();
+        let key = GenericArray::from_slice(passphrase_hash.as_slice());
+        Aes256Gcm::new(key)
+    });
 
     let connection = run_migration_and_create_sqlite_connection(&db_path).map_err(|e| {
         error!(

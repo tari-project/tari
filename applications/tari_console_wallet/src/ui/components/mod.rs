@@ -23,6 +23,7 @@
 pub mod balance;
 pub mod base_node;
 mod component;
+pub(crate) mod menu;
 pub mod network_tab;
 pub mod receive_tab;
 pub mod send_tab;

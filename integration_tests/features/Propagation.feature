@@ -34,7 +34,7 @@ Feature: Block Propagation
   Scenario: Duplicate block is rejected
     Given I have 1 seed nodes
     And I have a base node MINER connected to all seed nodes
-    When I mine but don't submit a block BLOCKA on MINER
+    When I mine but do not submit a block BLOCKA on MINER
     When I submit block BLOCKA to MINER
     Then all nodes are at height 1
     When I submit block BLOCKA to MINER
@@ -47,8 +47,8 @@ Feature: Block Propagation
   Scenario: Submit orphan
     Given I have 1 seed nodes
     And I have a base node MINER connected to all seed nodes
-    When I mine but don't submit a block BLOCKA on MINER
-    And I update block BLOCKA's parent to be an orphan
+    When I mine but do not submit a block BLOCKA on MINER
+    And I update the parent of block BLOCKA to be an orphan
     When I submit block BLOCKA to MINER
     Then I receive an error containing 'Orphan block'
     Then all nodes are at height 1
