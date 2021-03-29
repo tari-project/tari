@@ -1,4 +1,4 @@
-const {setWorldConstructor, After, BeforeAll} = require("cucumber");
+const { setWorldConstructor, After, BeforeAll } = require("cucumber");
 
 const BaseNodeProcess = require('../../helpers/baseNodeProcess');
 const MergeMiningProxyProcess = require('../../helpers/mergeMiningProxyProcess');
@@ -22,11 +22,13 @@ class CustomWorld {
         this.transactionsMap = new Map();
         this.resultStack = [];
         this.tipHeight = 0;
-        this.logFilePath = parameters.logFilePath || "./log4rs_integration_tests.yml";
+        this.logFilePathBaseNode = parameters.logFilePathBaseNode || "./log4rs/base_node.yml";
+        this.logFilePathProxy = parameters.logFilePathProxy || "./log4rs/proxy.yml";
+        this.logFilePathWallet = parameters.logFilePathWallet || "./log4rs/wallet.yml";
     }
 
     async createSeedNode(name) {
-        let proc = new BaseNodeProcess(`seed-${name}`, null, this.logFilePath);
+        let proc = new BaseNodeProcess(`seed-${name}`, null, this.logFilePathBaseNode);
         await proc.startNew();
         this.seeds[name] = proc;
         this.clients[name] = proc.createGrpcClient();
@@ -43,7 +45,7 @@ class CustomWorld {
 
     /// Create but don't add the node
     createNode(name, options) {
-        return new BaseNodeProcess(name, options, this.logFilePath);
+        return new BaseNodeProcess(name, options, this.logFilePathBaseNode);
     }
 
     addNode(name, process) {
@@ -63,7 +65,7 @@ class CustomWorld {
         this.outputs[name] = output;
     }
 
-    async mineBlock(name, weight, beforeSubmit,  onError) {
+    async mineBlock(name, weight, beforeSubmit, onError) {
         await this.clients[name].mineBlockWithoutWallet(beforeSubmit, weight, onError);
     }
 
@@ -131,10 +133,10 @@ class CustomWorld {
 
 setWorldConstructor(CustomWorld);
 
-BeforeAll({timeout: 1200000}, async function () {
+BeforeAll({ timeout: 1200000 }, async function () {
     // Ensure the project can compile
     let proc = new BaseNodeProcess(`compile-tester`);
-    console.log("Precompiling node. This can take a while whenever the code changes...");
+    console.log("Precompiling base node. This can take a while whenever the code changes...");
     await proc.startNew()
     await proc.stop();
     let proc2 = new MergeMiningProxyProcess(`compile-tester2`, "127.0.0.1:9999", "127.0.0.1:9998");
