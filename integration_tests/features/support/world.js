@@ -10,6 +10,7 @@ class CustomWorld {
         this.seeds = {};
         this.nodes = {};
         this.proxies = {};
+        this.miners = {};
         this.wallets = {};
         this.clients = {};
         this.headers = {};
@@ -53,6 +54,10 @@ class CustomWorld {
         this.clients[name] = process.createGrpcClient();
     }
 
+    addMiningNode(name, process) {
+            this.miners[name] = process;
+    }
+
     addProxy(name, process) {
         this.proxies[name] = process;
     }
@@ -91,6 +96,10 @@ class CustomWorld {
 
     getNode(name) {
         return this.nodes[name] || this.seeds[name];
+    }
+
+    getMiningNode(name) {
+            return this.miners[name];
     }
 
     getWallet(name) {

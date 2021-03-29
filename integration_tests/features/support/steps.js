@@ -2,6 +2,7 @@
 const assert = require('assert');
 const { Given, When, Then } = require("cucumber");
 const MergeMiningProxyProcess = require('../../helpers/mergeMiningProxyProcess');
+const MiningNodeProcess = require('../../helpers/miningNodeProcess');
 const WalletProcess = require('../../helpers/walletProcess');
 const expect = require('chai').expect;
 const { waitFor, getTransactionOutputHash, sleep, consoleLogTransactionDetails, consoleLogBalance,
@@ -99,6 +100,12 @@ Given(/I have wallet (.*) connected to seed node (.*)/, { timeout: 20 * 1000 }, 
     await wallet.startNew();
     this.addWallet(walletName, wallet);
 });
+Given(/I have wallet (.*) connected to base node (.*)/, {timeout: 20*1000}, async function (walletName, nodeName) {
+    let wallet = new WalletProcess(walletName);
+    wallet.setPeerSeeds([this.nodes[nodeName].peerAddress()]);
+    await wallet.startNew();
+    this.addWallet(walletName, wallet);
+});
 
 Given(/I have wallet (.*) connected to all seed nodes/, { timeout: 20 * 1000 }, async function (name) {
     let wallet = new WalletProcess(name, {}, this.logFilePathWallet);
@@ -135,8 +142,6 @@ Given(/I have (.*) non-default wallets connected to all seed nodes using (.*)/, 
     await Promise.all(promises);
 });
 
-
-
 Given(/I have a merge mining proxy (.*) connected to (.*) and (.*) with default config/,{timeout: 20*1000}, async function (mmProxy, node, wallet) {
     let baseNode = this.getNode(node);
     let walletNode = this.getWallet(wallet);
@@ -159,6 +164,13 @@ Given(/I have a merge mining proxy (.*) connected to (.*) and (.*) with origin s
     const proxy = new MergeMiningProxyProcess(mmProxy, baseNode.getGrpcAddress(), walletNode.getGrpcAddress(), this.logFilePathProxy, true);
     await proxy.startNew();
     this.addProxy(mmProxy, proxy);
+});
+
+Given(/I have mining node (.*) connected to base node (.*) and wallet (.*)/, function (miner,node,wallet) {
+    let baseNode = this.getNode(node);
+    let walletNode = this.getWallet(wallet);
+    const miningNode = new MiningNodeProcess(miner, baseNode.getGrpcAddress(), walletNode.getGrpcAddress());
+    this.addMiningNode(miner, miningNode);
 });
 
 When(/I ask for a block height from proxy (.*)/, async function (mmProxy) {
@@ -340,8 +352,6 @@ Then(/(.*) has (.*) in (.*) state/, async  function (node ,txn, pool) {
     expect(this.lastResult.result).to.equal(pool);
 });
 
-
-
 Then(/(.*) is in the (.*) of all nodes/, {timeout: 1200*1000}, async  function (txn, pool) {
     let sig = this.transactions[txn].body.kernels[0].excess_sig;
     await this.forEachClientAsync(async (client, name) => {
@@ -386,6 +396,16 @@ When(/I mine (\d+) custom weight blocks on (.*) with weight (\d+)/, { timeout: 6
     }
 });
 
+When(/Mining node (.*) mines (\d+) blocks on (.*)/, {timeout: 600*1000}, async function (miner, numBlocks, node) {
+    let miningNode = this.getMiningNode(miner);
+    await miningNode.init(numBlocks,1,100000);
+    await miningNode.startNew();
+});
+
+When(/I update the parent of block (.*) to be an orphan/, async function (block) {
+    //TODO
+});
+
 When(/I mine (\d+) blocks on (.*)/, { timeout: 600 * 1000 }, async function (numBlocks, name) {
     for (let i = 0; i < numBlocks; i++) {
         await this.mineBlock(name, 0);
@@ -409,7 +429,7 @@ When(/I merge mine (.*) blocks via (.*)/, { timeout: 600 * 1000 }, async functio
 });
 
 
-When(/I mine but don't submit a block (.*) on (.*)/, async function (blockName, nodeName) {
+When(/I mine but do not submit a block (.*) on (.*)/, async function (blockName, nodeName) {
     await this.mineBlock(nodeName, block => {
         this.saveBlock(blockName, block);
         return false;
@@ -434,8 +454,6 @@ When(/I mine a block on (.*) based on height (\d+)/, async function (node, atHei
         return false;
     })
 });
-
-
 
 When(/I mine a block on (.*) at height (\d+) with an invalid MMR/, async function (node, atHeight) {
     let client = this.getClient(node);
