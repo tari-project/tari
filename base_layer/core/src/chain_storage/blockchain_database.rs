@@ -966,7 +966,6 @@ where B: BlockchainBackend
     ///
     /// The operation will fail if
     /// * The block height is in the future
-    /// * The block height is before the horizon block height determined by the pruning horizon
     pub fn rewind_to_height(&self, height: u64) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
         let mut db = self.db_write_access()?;
         rewind_to_height(&mut *db, height)
@@ -1426,7 +1425,11 @@ fn check_for_valid_height<T: BlockchainBackend>(db: &T, height: u64) -> Result<(
     Ok((tip_height, height < pruned_height))
 }
 
-fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
+fn rewind_to_height<T: BlockchainBackend>(
+    db: &mut T,
+    mut height: u64,
+) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError>
+{
     let last_header = db.fetch_last_header()?;
 
     let mut txn = DbTransaction::new();
@@ -1451,13 +1454,14 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
         last_header_height,
         last_header_height - steps_back
     );
+    // We might have more headers than blocks, so we first see if we need to delete the extra headers.
     (0..steps_back).for_each(|h| {
         txn.delete_header(last_header_height - h);
     });
 
     // Delete blocks
 
-    let steps_back = last_block_height.saturating_sub(height);
+    let mut steps_back = last_block_height.saturating_sub(height);
     // No blocks to remove
     if steps_back == 0 {
         db.write(txn)?;
@@ -1471,20 +1475,57 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
         last_block_height,
         last_block_height - steps_back
     );
+
+    let mut prune_past_horizon = false;
+    if steps_back > metadata.pruning_horizon() && metadata.pruning_horizon() > 0 {
+        warn!(
+            target: LOG_TARGET,
+            "WARNING, reorg past pruning horizon, rewinding back to 0"
+        );
+        steps_back = metadata.pruning_horizon();
+        prune_past_horizon = true;
+        height = 0;
+    }
+    let (last_header, header_accumulated_data) = db.fetch_header_and_accumulated_data(height)?;
+
     for h in 0..steps_back {
+        debug!(target: LOG_TARGET, "Deleting block {}", last_block_height - h,);
         let block = fetch_block(db, last_block_height - h)?;
-        if block.is_pruned() {
-            unimplemented!("Rewinding past the pruning horizon not implemented.");
-        }
         let block = Arc::new(block.clone().try_into_chain_block()?);
         txn.delete_block(block.block.hash());
         txn.delete_header(last_block_height - h);
-        txn.insert_chained_orphan(block.clone());
+        if !prune_past_horizon {
+            // Because we know we will remove blocks we can't recover, this will be a destructive rewind, so we can't
+            // recover from this apart from resync from another peer. Failure here should not be common as
+            // this chain has a valid proof of work that has been tested at this point in time.
+            txn.insert_chained_orphan(block.clone());
+        }
         removed_blocks.push(block);
     }
 
+    if prune_past_horizon {
+        // We are rewinding past pruning horizon, so we need to remove all blocks and the UTXO's from them. We do not
+        // have to delete the headers as they are still valid.
+        // We don't have these complete blocks, so we don't push them to the channel for further processing such as the
+        // mempool add reorg'ed tx.
+        for h in 0..(last_block_height - steps_back) {
+            debug!(
+                target: LOG_TARGET,
+                "Deleting blocks and utxos {}",
+                last_block_height - h - steps_back,
+            );
+            let block = fetch_block(db, last_block_height - h - steps_back)?;
+            txn.delete_block(block.block().hash());
+        }
+    }
+
     // Update metadata
-    let (last_header, header_accumulated_data) = db.fetch_header_and_accumulated_data(height)?;
+    debug!(
+        target: LOG_TARGET,
+        "Updating best block to height (#{}), total accumulated difficulty: {}",
+        last_header.height,
+        header_accumulated_data.total_accumulated_difficulty
+    );
 
     txn.set_best_block(
         last_header.height,
