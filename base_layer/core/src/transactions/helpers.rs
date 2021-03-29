@@ -37,9 +37,6 @@ use crate::transactions::{
     types::{Commitment, CommitmentFactory, CryptoFactories, PrivateKey, PublicKey, Signature},
     SenderTransactionProtocol,
 };
-use tari_crypto::{
-    inputs,
-    script};
 use digest::Digest;
 use num::pow;
 use rand::{rngs::OsRng, CryptoRng, Rng};
@@ -47,8 +44,10 @@ use std::sync::Arc;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     common::Blake256,
+    inputs,
     keys::{PublicKey as PK, SecretKey},
     range_proof::RangeProofService,
+    script,
     script::{ExecutionStack, TariScript},
     tari_utilities::ByteArray,
 };
@@ -58,9 +57,9 @@ use tari_crypto::{
 pub fn create_test_input(
     amount: MicroTari,
     maturity: u64,
-    height: u64, 
+    mined_height: u64,
     factory: &CommitmentFactory,
-) -> (TransactionInput, UnblindedOutput,PrivateKey)
+) -> (TransactionInput, UnblindedOutput, PrivateKey)
 {
     let spending_key = PrivateKey::random(&mut OsRng);
     let script_key = PrivateKey::random(&mut OsRng);
@@ -68,24 +67,23 @@ pub fn create_test_input(
     let features = OutputFeatures::with_maturity(maturity);
     let script = script!(Nop);
     let input_data = inputs!(PublicKey::from_secret_key(&script_key));
-    
-    
     let offset_pvt_key = PrivateKey::random(&mut OsRng);
     let offset_pub_key = PublicKey::from_secret_key(&offset_pvt_key);
 
-   
     let unblinded_output = UnblindedOutput::new(
         amount,
         spending_key,
         Some(features),
         script,
         input_data,
-        height,
+        mined_height,
         script_key,
         offset_pub_key,
     );
-    let input = unblinded_output.as_transaction_input_with_script_signature().unwrap();
-    (input, unblinded_output,offset_pvt_key)
+    let input = unblinded_output
+        .as_transaction_input_with_script_signature(factory)
+        .unwrap();
+    (input, unblinded_output, offset_pvt_key)
 }
 
 #[derive(Default)]
@@ -258,12 +256,12 @@ pub fn create_tx(
     let mut unblinded_outputs = Vec::with_capacity(output_count);
     let amount_per_input = amount / input_count as u64;
     for i in 0..input_count - 1 {
-        let (utxo, input) = create_test_input(amount_per_input, input_maturity, &factories.commitment);
+        let (utxo, input, _) = create_test_input(amount_per_input, input_maturity, 0, &factories.commitment);
         unblinded_inputs.resize(i + 1, input.clone());
         stx_builder.with_input(utxo, input);
     }
     let amount_for_last_input = amount - amount_per_input * (input_count as u64 - 1);
-    let (utxo, input) = create_test_input(amount_for_last_input, input_maturity, &factories.commitment);
+    let (utxo, input, _) = create_test_input(amount_for_last_input, input_maturity, 0, &factories.commitment);
     unblinded_inputs.push(input.clone());
     stx_builder.with_input(utxo, input);
 
@@ -280,8 +278,8 @@ pub fn create_tx(
             output_amount,
             test_params.spend_key.clone(),
             None,
-            TariScript::default(),
-            ExecutionStack::default(),
+            script!(Nop),
+            inputs!(PublicKey::from_secret_key(&test_params.spend_key)),
             0,
             test_params.spend_key.clone(),
             PublicKey::from_secret_key(&test_params.spend_key),

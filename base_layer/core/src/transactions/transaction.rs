@@ -54,6 +54,7 @@ use std::{
 use tari_crypto::{
     commitment::{HomomorphicCommitment, HomomorphicCommitmentFactory},
     hash::blake2::Blake256,
+    inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     range_proof::{
         FullRewindResult as CryptoFullRewindResult,
@@ -487,8 +488,6 @@ impl TransactionInput {
         Ok(key)
     }
 }
-
-
 
 /// Implement the canonical hashing function for TransactionInput for use in ordering
 // Note we use the hash of an UTXO to ID it, so we need the hash of the TransactionInput to equal the hash of the
@@ -1150,8 +1149,17 @@ mod test {
     fn unblinded_input() {
         let k = BlindingFactor::random(&mut OsRng);
         let factory = PedersenCommitmentFactory::default();
-        let i = UnblindedOutput::new(10.into(), k, None);
-        let input = i.as_transaction_input(&factory, OutputFeatures::default());
+        let i = UnblindedOutput::new(
+            10.into(),
+            k.clone(),
+            None,
+            script!(Nop),
+            inputs!(PublicKey::from_secret_key(&k)),
+            0,
+            k.clone(),
+            PublicKey::from_secret_key(&k),
+        );
+        let input = i.as_transaction_input(&factory);
         assert_eq!(input.features, OutputFeatures::default());
         assert!(input.opened_by(&i, &factory));
     }
@@ -1171,11 +1179,29 @@ mod test {
         let k2 = BlindingFactor::random(&mut OsRng);
 
         // For testing the max range has been limited to 2^32 so this value is too large.
-        let unblinded_output1 = UnblindedOutput::new((2u64.pow(32) - 1u64).into(), k1, None);
+        let unblinded_output1 = UnblindedOutput::new(
+            (2u64.pow(32) - 1u64).into(),
+            k1.clone(),
+            None,
+            script!(Nop),
+            inputs!(PublicKey::from_secret_key(&k1)),
+            0,
+            k1.clone(),
+            PublicKey::from_secret_key(&k1),
+        );
         let tx_output1 = unblinded_output1.as_transaction_output(&factories).unwrap();
         assert!(tx_output1.verify_range_proof(&factories.range_proof).unwrap());
 
-        let unblinded_output2 = UnblindedOutput::new((2u64.pow(32) + 1u64).into(), k2.clone(), None);
+        let unblinded_output2 = UnblindedOutput::new(
+            (2u64.pow(32) + 1u64).into(),
+            k2.clone(),
+            None,
+            script!(Nop),
+            inputs!(PublicKey::from_secret_key(&k2)),
+            0,
+            k2.clone(),
+            PublicKey::from_secret_key(&k2),
+        );
         let tx_output2 = unblinded_output2.as_transaction_output(&factories);
 
         match tx_output2 {

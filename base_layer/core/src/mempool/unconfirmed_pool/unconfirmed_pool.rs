@@ -27,7 +27,10 @@ use crate::{
         priority::{FeePriority, PrioritizedTransaction},
         unconfirmed_pool::UnconfirmedPoolError,
     },
-    transactions::{transaction::Transaction, types::Signature},
+    transactions::{
+        transaction::Transaction,
+        types::{PublicKey, Signature},
+    },
 };
 use log::*;
 use serde::{Deserialize, Serialize};
@@ -36,7 +39,7 @@ use std::{
     convert::TryFrom,
     sync::Arc,
 };
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_crypto::{inputs, script, tari_utilities::hex::Hex};
 
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
 
@@ -373,7 +376,16 @@ mod test {
         let double_spend_input = inputs.first().unwrap().clone();
 
         let estimated_fee = Fee::calculate(20.into(), 1, 1, 1);
-        let utxo = UnblindedOutput::new_nop(INPUT_AMOUNT - estimated_fee, test_params.spend_key, None);
+        let utxo = UnblindedOutput::new(
+            INPUT_AMOUNT - estimated_fee,
+            test_params.spend_key.clone(),
+            None,
+            script!(Nop),
+            inputs!(PublicKey::from_secret_key(&test_params.spend_key)),
+            0,
+            test_params.spend_key.clone(),
+            PublicKey::from_secret_key(&test_params.spend_key),
+        );
         stx_builder
             .with_input(double_spend_utxo, double_spend_input)
             .with_output(utxo, utxo.script_private_key);
