@@ -239,6 +239,8 @@ mod test {
             public_nonce: PublicKey::from_secret_key(&p.change_key), // any random key will do
             metadata: m.clone(),
             message: "".to_string(),
+            script_hash: vec![],
+            script_offset_public_key: Default::default(),
         };
         let sender_info = TransactionSenderMessage::Single(Box::new(msg.clone()));
         let pubkey = PublicKey::from_secret_key(&p.spend_key);
@@ -285,6 +287,8 @@ mod test {
             public_nonce: PublicKey::from_secret_key(&p.change_key), // any random key will do
             metadata: m,
             message: "".to_string(),
+            script_hash: vec![],
+            script_offset_public_key: Default::default(),
         };
         let sender_info = TransactionSenderMessage::Single(Box::new(msg));
         let rewind_data = RewindData {

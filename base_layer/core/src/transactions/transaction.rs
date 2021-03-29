@@ -1138,8 +1138,10 @@ mod test {
     };
     use rand::{self, rngs::OsRng};
     use tari_crypto::{
+        inputs,
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
         ristretto::pedersen::PedersenCommitmentFactory,
+        script,
         script::ExecutionStack,
     };
 

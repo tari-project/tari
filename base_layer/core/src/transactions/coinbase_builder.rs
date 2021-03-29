@@ -222,13 +222,16 @@ mod test {
             tari_amount::uT,
             transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionError, UnblindedOutput},
             transaction_protocol::RewindData,
-            types::{BlindingFactor, CryptoFactories, PrivateKey},
+            types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey},
             CoinbaseBuilder,
         },
     };
     use rand::rngs::OsRng;
-    use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as SecretKeyTrait};
-
+    use tari_crypto::{
+        commitment::HomomorphicCommitmentFactory,
+        keys::SecretKey as SecretKeyTrait,
+        script::{ExecutionStack, TariScript},
+    };
     fn get_builder() -> (CoinbaseBuilder, ConsensusManager, CryptoFactories) {
         let network = Network::LocalNet;
         let rules = ConsensusManagerBuilder::new(network).build();
@@ -288,7 +291,16 @@ mod test {
             .unwrap();
         let utxo = &tx.body.outputs()[0];
         let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
-        let unblinded_test = UnblindedOutput::new(block_reward, p.spend_key.clone(), Some(utxo.features.clone()));
+        let unblinded_test = UnblindedOutput::new(
+            block_reward,
+            p.spend_key.clone(),
+            Some(utxo.features.clone()),
+            TariScript::default(),
+            ExecutionStack::default(),
+            0,
+            PrivateKey::default(),
+            PublicKey::default(),
+        );
         assert_eq!(unblinded_output, unblinded_test);
         assert!(factories
             .commitment
@@ -408,8 +420,12 @@ mod test {
         );
         // testing that "block" is still valid
         assert_eq!(
-            tx.body
-                .validate_internal_consistency(&BlindingFactor::default(), block_reward, &factories),
+            tx.body.validate_internal_consistency(
+                &BlindingFactor::default(),
+                &PrivateKey::default(),
+                block_reward,
+                &factories
+            ),
             Ok(())
         );
         // lets construct a correct one now, with the correct amount.
@@ -496,8 +512,12 @@ mod test {
         );
         // testing that "block" is still valid
         assert_eq!(
-            tx.body
-                .validate_internal_consistency(&BlindingFactor::default(), block_reward, &factories),
+            tx.body.validate_internal_consistency(
+                &BlindingFactor::default(),
+                &PrivateKey::default(),
+                block_reward,
+                &factories
+            ),
             Ok(())
         );
     }

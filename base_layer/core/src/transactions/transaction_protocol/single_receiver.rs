@@ -189,6 +189,8 @@ mod test {
             public_nonce: pub_rs.clone(),
             metadata: m.clone(),
             message: "".to_string(),
+            script_hash: vec![],
+            script_offset_public_key: Default::default(),
         };
         let prot = SingleReceiverTransactionProtocol::create(&info, r, k.clone(), of, &factories, None).unwrap();
         assert_eq!(prot.tx_id, 500, "tx_id is incorrect");
