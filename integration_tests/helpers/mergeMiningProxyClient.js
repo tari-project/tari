@@ -37,6 +37,27 @@ class MergeMiningProxyClient {
         return res.data;
     }
 
+    async getLastBlockHeader() {
+        let res = await axios.post(`${this.address}/json_rpc`, {
+                    "jsonrpc": "2.0",
+                    "id": "0",
+                    "method": "get_last_block_header",
+                });
+        return res.data;
+    }
+
+    async getBlockHeaderByHash(hash) {
+        let res = await axios.post(`${this.address}/json_rpc`, {
+                    "jsonrpc": "2.0",
+                    "id": "0",
+                    "method": "get_block_header_by_hash",
+                    "params":{
+                        "hash":hash
+                        }
+                    });
+        return res.data;
+    }
+
     async mineBlock() {
         // Mines a block in the same way that xmrig would
        let template = await this.getBlockTemplate();

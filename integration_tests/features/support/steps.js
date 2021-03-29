@@ -185,7 +185,7 @@ Then('Proxy response height is valid', function () {
      assert(Number.isInteger(lastResult),true);
 });
 
-When(/I ask for a a block template from proxy (.*)/, async function (mmProxy) {
+When(/I ask for a block template from proxy (.*)/, async function (mmProxy) {
     lastResult = {};
     let proxy = this.getProxy(mmProxy)
     let proxyClient = proxy.createClient();
@@ -217,6 +217,33 @@ Then('Proxy response block submission is valid without submitting to origin', fu
      assert(lastResult['result']  !== null,true);
      assert(lastResult['status'],'OK');
 });
+
+ When(/I ask for the last block header from proxy (.*)/, async function (mmProxy) {
+      let proxy = this.getProxy(mmProxy)
+      let proxyClient = proxy.createClient();
+      let result = await proxyClient.getLastBlockHeader();
+      lastResult = result;
+ });
+
+Then('Proxy response for last block header is valid', function () {
+     assert(typeof lastResult === 'object' && lastResult !== null,true);
+     assert(typeof(lastResult["result"]['_aux']) !== 'undefined',true);
+     assert(lastResult["result"]['status'],'OK');
+     lastResult = lastResult["result"]['block_header']["hash"]
+});
+
+When(/I ask for a block header by hash using last block header from proxy (.*)/, async function (mmProxy) {
+      let proxy = this.getProxy(mmProxy)
+      let proxyClient = proxy.createClient();
+      let result = await proxyClient.getBlockHeaderByHash(lastResult);
+      lastResult = result;
+});
+
+Then('Proxy response for block header by hash is valid', function () {
+     assert(typeof lastResult === 'object' && lastResult !== null,true);
+     assert(lastResult["result"]['status'],'OK');
+});
+
 
 When(/I start (.*)/, { timeout: 20 * 1000 }, async function (name) {
     await this.startNode(name);
