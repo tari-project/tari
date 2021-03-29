@@ -54,8 +54,7 @@ pub enum CommandError {
 impl From<CommandError> for ExitCodes {
     fn from(err: CommandError) -> Self {
         error!(target: LOG_TARGET, "{}", err);
-        let msg = format!("Command error: {}", err);
-        Self::CommandError(msg)
+        Self::CommandError(err.to_string())
     }
 }
 

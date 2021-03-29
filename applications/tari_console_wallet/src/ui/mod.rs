@@ -105,6 +105,7 @@ fn crossterm_loop(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitCodes> {
                 (KeyCode::Backspace, _) => app.on_backspace(),
                 (KeyCode::Enter, _) => app.on_key('\n'),
                 (KeyCode::Tab, _) => app.on_key('\t'),
+                (KeyCode::F(10), _) => app.on_f10(),
                 _ => {},
             },
             Event::Tick => {

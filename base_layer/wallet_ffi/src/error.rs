@@ -272,6 +272,10 @@ impl From<WalletError> for LibWalletError {
                 code: 427,
                 message: format!("{:?}", w),
             },
+            WalletError::WalletStorageError(WalletStorageError::IncorrectPassword) => Self {
+                code: 428,
+                message: format!("{:?}", w),
+            },
             // This is the catch all error code. Any error that is not explicitly mapped above will be given this code
             _ => Self {
                 code: 999,

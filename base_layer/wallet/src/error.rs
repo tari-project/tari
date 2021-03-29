@@ -121,4 +121,6 @@ pub enum WalletStorageError {
     IoError(#[from] std::io::Error),
     #[error("No password provided for encrypted wallet")]
     NoPasswordError,
+    #[error("Incorrect password provided for encrypted wallet")]
+    IncorrectPassword,
 }

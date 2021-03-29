@@ -25,6 +25,7 @@ use crate::{
     ui::{
         components::{
             base_node::BaseNode,
+            menu::Menu,
             network_tab::NetworkTab,
             receive_tab::ReceiveTab,
             send_tab::SendTab,
@@ -59,6 +60,7 @@ pub struct App<B: Backend> {
     // Ui working state
     pub tabs: TabsContainer<B>,
     pub base_node_status: BaseNode,
+    pub menu: Menu,
     pub notifier: Notifier,
 }
 
@@ -89,6 +91,7 @@ impl<B: Backend> App<B> {
             .add("Network".into(), Box::new(NetworkTab::new(base_node_selected)));
 
         let base_node_status = BaseNode::new();
+        let menu = Menu::new();
 
         Self {
             title,
@@ -96,6 +99,7 @@ impl<B: Backend> App<B> {
             app_state,
             tabs,
             base_node_status,
+            menu,
             notifier,
         }
     }
@@ -126,6 +130,10 @@ impl<B: Backend> App<B> {
         self.tabs.on_down(&mut self.app_state);
     }
 
+    pub fn on_f10(&mut self) {
+        self.should_quit = true;
+    }
+
     pub fn on_right(&mut self) {
         self.tabs.next();
     }
@@ -153,7 +161,7 @@ impl<B: Backend> App<B> {
             .constraints([Constraint::Length(MAX_WIDTH), Constraint::Min(0)].as_ref())
             .split(f.size());
         let title_chunks = Layout::default()
-            .constraints([Constraint::Length(3), Constraint::Min(0)].as_ref())
+            .constraints([Constraint::Length(3), Constraint::Min(0), Constraint::Length(2)].as_ref())
             .split(max_width_layout[0]);
         let title_halves = Layout::default()
             .direction(Direction::Horizontal)
@@ -164,5 +172,6 @@ impl<B: Backend> App<B> {
 
         self.base_node_status.draw(f, title_halves[1], &self.app_state);
         self.tabs.draw_content(f, title_chunks[1], &mut self.app_state);
+        self.menu.draw(f, title_chunks[2], &self.app_state);
     }
 }

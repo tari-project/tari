@@ -40,8 +40,13 @@ fn main() {
     match main_inner() {
         Ok(_) => std::process::exit(0),
         Err(exit_code) => {
-            eprintln!("Exiting with code: {}", exit_code);
-            error!(target: LOG_TARGET, "Exiting with code: {}", exit_code);
+            eprintln!("{}", exit_code);
+            error!(
+                target: LOG_TARGET,
+                "Exiting with code ({}): {}",
+                exit_code.as_i32(),
+                exit_code
+            );
             std::process::exit(exit_code.as_i32())
         },
     }
