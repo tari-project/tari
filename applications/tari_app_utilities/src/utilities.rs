@@ -23,7 +23,7 @@
 use crate::identity_management::load_from_json;
 use futures::future::Either;
 use log::*;
-use std::{fmt, fmt::Formatter, net::SocketAddr, path::Path};
+use std::{net::SocketAddr, path::Path};
 use tari_common::{CommsTransport, GlobalConfig, SocksAuthentication, TorControlAuthentication};
 use tari_comms::{
     connectivity::ConnectivityError,
@@ -37,25 +37,45 @@ use tari_comms::{
 };
 use tari_core::tari_utilities::hex::Hex;
 use tari_p2p::transport::{TorConfig, TransportType};
-use tari_wallet::{error::WalletError, output_manager_service::error::OutputManagerError, util::emoji::EmojiId};
+use tari_wallet::{
+    error::{WalletError, WalletStorageError},
+    output_manager_service::error::OutputManagerError,
+    util::emoji::EmojiId,
+};
+use thiserror::Error;
 use tokio::{runtime, runtime::Runtime};
 
 pub const LOG_TARGET: &str = "tari::application";
 
 /// Enum to show failure information
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Error)]
 pub enum ExitCodes {
+    #[error("There is an error in the wallet configuration.")]
     ConfigError(String),
+    #[error("The wallet exited because an unknown error occurred. Check the logs for details.")]
     UnknownError,
+    #[error("The wallet exited because an interface error occurred. Check the logs for details.")]
     InterfaceError,
+    #[error("The wallet exited. {0}")]
     WalletError(String),
+    #[error("The wallet was not able to start the GRPC server. {0}")]
     GrpcError(String),
+    #[error("The wallet did not accept the command input: {0}")]
     InputError(String),
+    #[error("Invalid command: {0}")]
     CommandError(String),
+    #[error("IO error: {0}")]
     IOError(String),
+    #[error("Recovery failed: {0}")]
     RecoveryError(String),
+    #[error("The wallet exited because of an internal network error: {0}")]
     NetworkError(String),
+    #[error("The wallet exited because it received a message it could not interpret: {0}")]
     ConversionError(String),
+    #[error("Your password was incorrect.")]
+    IncorrectPassword,
+    #[error("Your wallet is encrypted but no password was provided.")]
+    NoPassword,
 }
 
 impl ExitCodes {
@@ -72,6 +92,7 @@ impl ExitCodes {
             Self::RecoveryError(_) => 109,
             Self::NetworkError(_) => 110,
             Self::ConversionError(_) => 111,
+            Self::IncorrectPassword | Self::NoPassword => 112,
         }
     }
 }
@@ -111,26 +132,20 @@ impl From<RpcError> for ExitCodes {
     }
 }
 
-impl ExitCodes {
-    pub fn grpc<M: std::fmt::Display>(err: M) -> Self {
-        ExitCodes::GrpcError(format!("GRPC connection error: {}", err))
+impl From<WalletStorageError> for ExitCodes {
+    fn from(err: WalletStorageError) -> Self {
+        use WalletStorageError::*;
+        match err {
+            NoPasswordError => ExitCodes::NoPassword,
+            IncorrectPassword => ExitCodes::IncorrectPassword,
+            e => ExitCodes::WalletError(e.to_string()),
+        }
     }
 }
 
-impl fmt::Display for ExitCodes {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            ExitCodes::ConfigError(e) => write!(f, "Config Error ({}): {}", self.as_i32(), e),
-            ExitCodes::WalletError(e) => write!(f, "Wallet Error ({}): {}", self.as_i32(), e),
-            ExitCodes::GrpcError(e) => write!(f, "GRPC Error ({}): {}", self.as_i32(), e),
-            ExitCodes::InputError(e) => write!(f, "Input Error ({}): {}", self.as_i32(), e),
-            ExitCodes::CommandError(e) => write!(f, "Command Error ({}): {}", self.as_i32(), e),
-            ExitCodes::IOError(e) => write!(f, "IO Error ({}): {}", self.as_i32(), e),
-            ExitCodes::RecoveryError(e) => write!(f, "Recovery Error ({}): {}", self.as_i32(), e),
-            ExitCodes::NetworkError(e) => write!(f, "Network Error ({}): {}", self.as_i32(), e),
-            ExitCodes::ConversionError(e) => write!(f, "Conversion Error ({}): {}", self.as_i32(), e),
-            _ => write!(f, "{}", self.as_i32()),
-        }
+impl ExitCodes {
+    pub fn grpc<M: std::fmt::Display>(err: M) -> Self {
+        ExitCodes::GrpcError(format!("GRPC connection error: {}", err))
     }
 }
 

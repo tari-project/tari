@@ -1,21 +1,24 @@
-const {getFreePort} = require("./util");
+const { getFreePort } = require("./util");
 const dateFormat = require('dateformat');
 const fs = require('fs');
-const {spawnSync, spawn, execSync} = require('child_process');
-const {expect} = require('chai');
+const path = require('path');
+const { spawnSync, spawn, execSync } = require('child_process');
+const { expect } = require('chai');
 const MergeMiningProxyClient = require('./mergeMiningProxyClient');
-const {createEnv} = require("./config");
+const { createEnv } = require("./config");
+const { setWorldConstructor } = require("cucumber");
 
 let outputProcess;
 
 class MergeMiningProxyProcess {
-    constructor(name, baseNodeAddress, walletAddress, submitOrigin=true) {
+    constructor(name, baseNodeAddress, walletAddress, logFilePath, submitOrigin=true) {
         this.name = name;
         this.nodeAddress = baseNodeAddress.split(":")[0];
         this.nodeGrpcPort = baseNodeAddress.split(":")[1];
         this.walletAddress = walletAddress.split(":")[0];
         this.walletGrpcPort = walletAddress.split(":")[1];
         this.submitOrigin = submitOrigin
+        this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath;
     }
 
     async init() {
@@ -28,8 +31,8 @@ class MergeMiningProxyProcess {
     run(cmd, args, saveFile) {
         return new Promise((resolve, reject) => {
             if (!fs.existsSync(this.baseDir)) {
-                fs.mkdirSync(this.baseDir, {recursive: true});
-                fs.mkdirSync(this.baseDir + "/log", {recursive: true});
+                fs.mkdirSync(this.baseDir, { recursive: true });
+                fs.mkdirSync(this.baseDir + "/log", { recursive: true });
             }
 
             let proxyAddress = "127.0.0.1:" + this.port;
@@ -75,7 +78,11 @@ class MergeMiningProxyProcess {
 
     async startNew() {
         await this.init();
-        return await this.run(await this.compile(), ["--base-path", ".", "--init"], true);
+        const args = ["--base-path", ".", "--init"];
+        if (this.logFilePath) {
+            args.push("--log-config", this.logFilePath);
+        }
+        return await this.run(await this.compile(), args, true);
     }
 
     async compile() {

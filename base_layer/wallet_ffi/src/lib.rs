@@ -902,7 +902,7 @@ pub unsafe extern "C" fn seed_words_get_at(
 /// word, if the push was successful and whether the push was successful and completed the full Seed Phrase
 ///     '0' -> InvalidSeedWord
 ///     '1' -> SuccessfulPush
-///     '2' -> SeedPhraseComplete     
+///     '2' -> SeedPhraseComplete
 ///     '3' -> InvalidSeedPhrase
 /// # Safety
 /// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
@@ -7085,7 +7085,7 @@ mod test {
                 saf_messages_received_callback,
                 error_ptr,
             );
-            assert_eq!(error, 423);
+            assert_eq!(error, 428);
 
             let alice_wallet = wallet_create(
                 alice_config,

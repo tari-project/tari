@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "",
   "scripts": {
-    "test": "mocha --file=hooks.js"
+    "test": "cucumber-js"
   },
   "author": "",
   "license": "ISC",

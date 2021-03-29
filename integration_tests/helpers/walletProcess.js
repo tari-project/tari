@@ -1,18 +1,20 @@
-const {getFreePort} = require("./util");
+const { getFreePort } = require("./util");
 const dateFormat = require('dateformat');
 const fs = require('fs');
-const {spawnSync, spawn, execSync} = require('child_process');
-const {expect} = require('chai');
-const {createEnv} = require("./config");
+const path = require('path');
+const { spawnSync, spawn, execSync } = require('child_process');
+const { expect } = require('chai');
+const { createEnv } = require("./config");
 const WalletClient = require('./walletClient');
 
 let outputProcess;
 
 class WalletProcess {
 
-    constructor(name, options) {
+    constructor(name, options, logFilePath) {
         this.name = name;
         this.options = options;
+        this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath;
     }
 
     async init() {
@@ -38,8 +40,8 @@ class WalletProcess {
     run(cmd, args, saveFile) {
         return new Promise((resolve, reject) => {
             if (!fs.existsSync(this.baseDir)) {
-                fs.mkdirSync(this.baseDir, {recursive: true});
-                fs.mkdirSync(this.baseDir + "/log", {recursive: true});
+                fs.mkdirSync(this.baseDir, { recursive: true });
+                fs.mkdirSync(this.baseDir + "/log", { recursive: true });
             }
 
             let envs = createEnv(this.name, true, "cwalletid.json", "127.0.0.1", this.grpcPort, this.port, "127.0.0.1",
@@ -48,7 +50,7 @@ class WalletProcess {
             var ps = spawn(cmd, args, {
                 cwd: this.baseDir,
                 // shell: true,
-                env: {...process.env, ...envs}
+                env: { ...process.env, ...envs }
             });
 
             ps.stdout.on('data', (data) => {
@@ -82,7 +84,11 @@ class WalletProcess {
 
     async startNew() {
         await this.init();
-        return await this.run(await this.compile(), ["--base-path", ".", "--init", "--create_id", "--password", "kensentme", "--daemon"], true);
+        const args = ["--base-path", ".", "--init", "--create_id", "--password", "kensentme", "--daemon"];
+        if (this.logFilePath) {
+            args.push("--log-config", this.logFilePath);
+        }
+        return await this.run(await this.compile(), args, true);
     }
 
     async compile() {
