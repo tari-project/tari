@@ -27,10 +27,7 @@ use crate::{
         priority::{FeePriority, PrioritizedTransaction},
         unconfirmed_pool::UnconfirmedPoolError,
     },
-    transactions::{
-        transaction::Transaction,
-        types::{PublicKey, Signature},
-    },
+    transactions::{transaction::Transaction, types::Signature},
 };
 use log::*;
 use serde::{Deserialize, Serialize};
@@ -286,10 +283,16 @@ mod test {
             helpers::TestParams,
             tari_amount::MicroTari,
             transaction::{KernelFeatures, UnblindedOutput},
-            types::{CryptoFactories, HashDigest},
+            types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
             SenderTransactionProtocol,
         },
         tx,
+    };
+    use rand::rngs::OsRng;
+    use tari_crypto::{
+        inputs,
+        keys::{PublicKey as PublicKeyTrait, SecretKey},
+        script,
     };
 
     #[test]
@@ -388,7 +391,7 @@ mod test {
         );
         stx_builder
             .with_input(double_spend_utxo, double_spend_input)
-            .with_output(utxo, utxo.script_private_key);
+            .with_output(utxo, PrivateKey::random(&mut OsRng));
 
         let factories = CryptoFactories::default();
         let mut stx_protocol = stx_builder.build::<HashDigest>(&factories).unwrap();

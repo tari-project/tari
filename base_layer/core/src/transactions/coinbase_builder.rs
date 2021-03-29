@@ -229,11 +229,9 @@ mod test {
     use rand::rngs::OsRng;
     use tari_crypto::{
         commitment::HomomorphicCommitmentFactory,
-        inputs,
-        keys::{PublicKey as pk, SecretKey as SecretKeyTrait},
-        script,
+        keys::SecretKey as SecretKeyTrait,
+        script::{ExecutionStack, TariScript},
     };
-
     fn get_builder() -> (CoinbaseBuilder, ConsensusManager, CryptoFactories) {
         let network = Network::LocalNet;
         let rules = ConsensusManagerBuilder::new(network).build();
@@ -297,11 +295,11 @@ mod test {
             block_reward,
             p.spend_key.clone(),
             Some(utxo.features.clone()),
-            script!(Nop),
-            inputs!(PublicKey::from_secret_key(&p.spend_key)),
+            TariScript::default(),
+            ExecutionStack::default(),
             0,
-            p.spend_key.clone(),
-            PublicKey::from_secret_key(&p.spend_key),
+            PrivateKey::default(),
+            PublicKey::default(),
         );
         assert_eq!(unblinded_output, unblinded_test);
         assert!(factories
@@ -424,7 +422,7 @@ mod test {
         assert_eq!(
             tx.body.validate_internal_consistency(
                 &BlindingFactor::default(),
-                &BlindingFactor::default(),
+                &PrivateKey::default(),
                 block_reward,
                 &factories
             ),
@@ -516,7 +514,7 @@ mod test {
         assert_eq!(
             tx.body.validate_internal_consistency(
                 &BlindingFactor::default(),
-                &BlindingFactor::default(),
+                &PrivateKey::default(),
                 block_reward,
                 &factories
             ),
