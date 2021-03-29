@@ -39,7 +39,7 @@ use std::{
     convert::TryFrom,
     sync::Arc,
 };
-use tari_crypto::{inputs, keys::PublicKey as pk, script, tari_utilities::hex::Hex};
+use tari_crypto::tari_utilities::hex::Hex;
 
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
 
