@@ -456,7 +456,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     let wallet_command_send_wait_stage = optional(cfg.get_str(key))?.unwrap_or_else(|| "Broadcast".to_string());
 
     let key = "wallet.command_send_wait_timeout";
-    let wallet_command_send_wait_timeout = optional(cfg.get_int(key))?.map(|i| i as u64).unwrap_or(300);
+    let wallet_command_send_wait_timeout = optional(cfg.get_int(key))?.map(|i| i as u64).unwrap_or(600);
 
     let key = "wallet.base_node_service_peers";
     // Wallet base node service peers can be an array or a comma separated list (e.g. in an ENVVAR)

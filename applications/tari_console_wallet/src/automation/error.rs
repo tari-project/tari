@@ -33,7 +33,7 @@ use tari_wallet::{
 use thiserror::Error;
 use tokio::task::JoinError;
 
-pub const LOG_TARGET: &str = "tari_console_wallet::error";
+pub const LOG_TARGET: &str = "wallet::automation::error";
 
 #[derive(Debug, Error)]
 pub enum CommandError {

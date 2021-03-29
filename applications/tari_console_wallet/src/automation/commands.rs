@@ -50,7 +50,7 @@ use tokio::{
 
 use super::error::CommandError;
 
-pub const LOG_TARGET: &str = "tari_console_wallet::commands";
+pub const LOG_TARGET: &str = "wallet::automation::commands";
 
 /// Enum representing commands used by the wallet
 #[derive(Clone, PartialEq, Debug, Display, EnumIter, EnumString)]
@@ -72,6 +72,7 @@ pub enum TransactionStage {
     DirectSendOrSaf,
     Negotiated,
     Broadcast,
+    MinedUnconfirmed,
     Mined,
     Timedout,
 }
@@ -306,7 +307,7 @@ pub async fn monitor_transactions(
                     TransactionEvent::TransactionDirectSendResult(id, success) if tx_ids.contains(id) => {
                         debug!(
                             target: LOG_TARGET,
-                            "direct send event for tx_id: {:?} {:?}", *id, success
+                            "tx direct send event for tx_id: {}, success: {}", *id, success
                         );
                         if wait_stage == TransactionStage::DirectSendOrSaf {
                             results.push(SentTransaction {
@@ -321,7 +322,7 @@ pub async fn monitor_transactions(
                     TransactionEvent::TransactionStoreForwardSendResult(id, success) if tx_ids.contains(id) => {
                         debug!(
                             target: LOG_TARGET,
-                            "store and forward event for tx_id: {:?} {:?}", *id, success
+                            "tx store and forward event for tx_id: {}, success: {}", *id, success
                         );
                         if wait_stage == TransactionStage::DirectSendOrSaf {
                             results.push(SentTransaction {
@@ -334,7 +335,7 @@ pub async fn monitor_transactions(
                         }
                     },
                     TransactionEvent::ReceivedTransactionReply(id) if tx_ids.contains(id) => {
-                        debug!(target: LOG_TARGET, "reply event for tx_id: {:?}", *id);
+                        debug!(target: LOG_TARGET, "tx reply event for tx_id: {}", *id);
                         if wait_stage == TransactionStage::Negotiated {
                             results.push(SentTransaction {
                                 id: *id,
@@ -346,7 +347,7 @@ pub async fn monitor_transactions(
                         }
                     },
                     TransactionEvent::TransactionBroadcast(id) if tx_ids.contains(id) => {
-                        debug!(target: LOG_TARGET, "mempool broadcast event for tx_id: {:?}", *id);
+                        debug!(target: LOG_TARGET, "tx mempool broadcast event for tx_id: {}", *id);
                         if wait_stage == TransactionStage::Broadcast {
                             results.push(SentTransaction {
                                 id: *id,
@@ -357,8 +358,23 @@ pub async fn monitor_transactions(
                             }
                         }
                     },
+                    TransactionEvent::TransactionMinedUnconfirmed(id, confirmations) if tx_ids.contains(id) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "tx mined unconfirmed event for tx_id: {}, confirmations: {}", *id, confirmations
+                        );
+                        if wait_stage == TransactionStage::MinedUnconfirmed {
+                            results.push(SentTransaction {
+                                id: *id,
+                                stage: TransactionStage::MinedUnconfirmed,
+                            });
+                            if results.len() == tx_ids.len() {
+                                break;
+                            }
+                        }
+                    },
                     TransactionEvent::TransactionMined(id) if tx_ids.contains(id) => {
-                        debug!(target: LOG_TARGET, "tx mined event for tx_id: {:?}", *id);
+                        debug!(target: LOG_TARGET, "tx mined confirmed event for tx_id: {}", *id);
                         if wait_stage == TransactionStage::Mined {
                             results.push(SentTransaction {
                                 id: *id,

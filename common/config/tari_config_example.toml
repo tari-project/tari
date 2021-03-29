@@ -123,11 +123,12 @@ saf_expiry_duration = 10800
 # - "DirectSendOrSaf" - The transaction was initiated and was accepted via Direct Send or Store And Forward.
 # - "Negotiated" - The recipient replied and the transaction was negotiated.
 # - "Broadcast" - The transaction was broadcast to the base node mempool.
-# - "Mined" - The transaction was successfully detected as mined on the blockchain.
+# - "MinedUnconfirmed" - The transaction was successfully detected as mined but unconfirmed on the blockchain.
+# - "Mined" - The transaction was successfully detected as mined and confirmed on the blockchain.
 
 # The default values are:
 #command_send_wait_stage = "Broadcast"
-#command_send_wait_timeout = 300
+#command_send_wait_timeout = 600
 
 # The base nodes that the wallet should use for service requests and tracking chain state.
 # base_node_service_peers = ["public_key::net_address", ...]
