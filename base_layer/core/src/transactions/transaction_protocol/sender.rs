@@ -67,6 +67,7 @@ pub(super) struct RawTransactionInfo {
     pub recipient_scripts: Vec<TariScript>,
     pub recipient_script_offset_private_keys: Vec<PrivateKey>,
     pub change: MicroTari,
+    pub change_script_offset_public_key: Option<PublicKey>,
     pub metadata: TransactionMetadata,
     pub inputs: Vec<TransactionInput>,
     pub outputs: Vec<TransactionOutput>,
@@ -240,6 +241,18 @@ impl SenderTransactionProtocol {
             SenderState::Finalizing(info) |
             SenderState::SingleRoundMessageReady(info) |
             SenderState::CollectingSingleSignature(info) => Ok(info.change),
+            SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
+            SenderState::Failed(_) => Err(TPE::InvalidStateError),
+        }
+    }
+
+    /// This function will return the value of the change transaction
+    pub fn get_change_script_offset_public_key(&self) -> Result<Option<PublicKey>, TPE> {
+        match &self.state {
+            SenderState::Initializing(info) |
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => Ok(info.change_script_offset_public_key.clone()),
             SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }

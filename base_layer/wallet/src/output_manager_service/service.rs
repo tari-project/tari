@@ -24,7 +24,7 @@ use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
     output_manager_service::{
         config::OutputManagerServiceConfig,
-        error::{OutputManagerError, OutputManagerProtocolError},
+        error::{OutputManagerError, OutputManagerError::OutputManagerStorageError, OutputManagerProtocolError},
         handle::{OutputManagerEventSender, OutputManagerRequest, OutputManagerResponse, PublicRewindKeys},
         protocols::txo_validation_protocol::{TxoValidationProtocol, TxoValidationType},
         storage::{
@@ -689,23 +689,17 @@ where TBackend: OutputManagerBackend + 'static
             outputs.len()
         );
         let fee_without_change = Fee::calculate(fee_per_gram, 1, outputs.len(), 1);
-        let mut change_keys: Option<(PrivateKey, PrivateKey, PrivateKey)> = None;
+        let mut change_keys: Option<(PrivateKey, PrivateKey)> = None;
         // If the input values > the amount to be sent + fee_without_change then we will need to include a change
         // output
         if total > amount + fee_without_change {
             let (spending_key, script_private_key) = self.get_next_spend_and_script_key().await?;
-            let script_offset_private_key = PrivateKey::random(&mut OsRng);
-            change_keys = Some((
-                spending_key.clone(),
-                script_private_key.clone(),
-                script_offset_private_key.clone(),
-            ));
+            change_keys = Some((spending_key.clone(), script_private_key.clone()));
             builder.with_rewindable_change_secret(spending_key, self.resources.rewind_data.clone());
             builder.with_change_script(
                 script!(Nop),
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
                 script_private_key,
-                script_offset_private_key,
             );
         }
 
@@ -715,7 +709,13 @@ where TBackend: OutputManagerBackend + 'static
 
         // If a change output was created add it to the pending_outputs list.
         let mut change_output = Vec::<DbUnblindedOutput>::new();
-        if let Some((spending_key, script_private_key, script_offset_private_key)) = change_keys {
+        if let Some((spending_key, script_private_key)) = change_keys {
+            let change_script_offset_public_key = stp.get_change_script_offset_public_key()?.ok_or_else(|| {
+                OutputManagerError::BuildError(
+                    "There should be a change script offset public key available".to_string(),
+                )
+            })?;
+
             change_output.push(DbUnblindedOutput::from_unblinded_output(
                 UnblindedOutput::new(
                     stp.get_change_amount()?,
@@ -725,7 +725,7 @@ where TBackend: OutputManagerBackend + 'static
                     inputs!(PublicKey::from_secret_key(&script_private_key)),
                     0,
                     script_private_key,
-                    PublicKey::from_secret_key(&script_offset_private_key),
+                    change_script_offset_public_key,
                 ),
                 &self.resources.factories,
             )?);
@@ -761,7 +761,6 @@ where TBackend: OutputManagerBackend + 'static
 
         let offset = PrivateKey::random(&mut OsRng);
         let nonce = PrivateKey::random(&mut OsRng);
-        let script_offset_private_key = PrivateKey::random(&mut OsRng);
 
         // Create builder with no recipients (other than ourselves)
         let mut builder = SenderTransactionProtocol::builder(0);
@@ -804,17 +803,12 @@ where TBackend: OutputManagerBackend + 'static
         let change_value = total.saturating_sub(amount).saturating_sub(fee);
         if change_value > 0.into() {
             let (spending_key, script_private_key) = self.get_next_spend_and_script_key().await?;
-            change_keys = Some((
-                spending_key.clone(),
-                script_private_key.clone(),
-                script_offset_private_key.clone(),
-            ));
+            change_keys = Some((spending_key.clone(), script_private_key.clone()));
             builder.with_rewindable_change_secret(spending_key, self.resources.rewind_data.clone());
             builder.with_change_script(
                 script!(Nop),
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
                 script_private_key,
-                script_offset_private_key,
             );
         }
 
@@ -823,7 +817,12 @@ where TBackend: OutputManagerBackend + 'static
             .build::<HashDigest>(&self.resources.factories)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
-        if let Some((spending_key, script_private_key, script_offset_private_key)) = change_keys {
+        if let Some((spending_key, script_private_key)) = change_keys {
+            let change_script_offset_public_key = stp.get_change_script_offset_public_key()?.ok_or_else(|| {
+                OutputManagerError::BuildError(
+                    "There should be a change script offset public key available".to_string(),
+                )
+            })?;
             let change_output = DbUnblindedOutput::from_unblinded_output(
                 UnblindedOutput::new(
                     stp.get_change_amount()?,
@@ -833,7 +832,7 @@ where TBackend: OutputManagerBackend + 'static
                     inputs!(PublicKey::from_secret_key(&script_private_key)),
                     0,
                     script_private_key,
-                    PublicKey::from_secret_key(&script_offset_private_key),
+                    change_script_offset_public_key,
                 ),
                 &self.resources.factories,
             )?;
