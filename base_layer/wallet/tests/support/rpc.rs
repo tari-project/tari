@@ -460,7 +460,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
 
         let tip_info_response_lock = acquire_lock!(self.state.tip_info_response);
 
-        Ok(Response::new(tip_info_response_lock.clone().into()))
+        Ok(Response::new(tip_info_response_lock.clone()))
     }
 }
 
@@ -542,7 +542,7 @@ mod test {
             is_synced: false,
         });
 
-        let resp = TipInfoResponse::try_from(client.get_tip_info().await.unwrap()).unwrap();
+        let resp = client.get_tip_info().await.unwrap();
         assert!(!resp.is_synced);
         assert_eq!(resp.metadata.unwrap().height_of_longest_chain(), 444);
     }

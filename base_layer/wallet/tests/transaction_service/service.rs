@@ -190,7 +190,7 @@ pub fn setup_transaction_service<T: TransactionBackend + 'static, P: AsRef<Path>
                 low_power_polling_timeout: Duration::from_secs(20),
                 ..Default::default()
             },
-            subscription_factory.clone(),
+            subscription_factory,
             backend,
             comms.node_identity(),
             factories,
