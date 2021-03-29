@@ -1273,15 +1273,10 @@ mod test {
         let v = PrivateKey::from(2u64.pow(32) + 1);
         let c = factories.commitment.commit(&k, &v);
 
-        // TODO: Populate script with the proper value
-        let script = TariScript::default().as_bytes();
-        // TODO: Populate input_data with the proper value
-        let input_data = ExecutionStack::default().as_bytes();
-        // TODO: Populate height with the proper value
+        let script = TariScript::default();
+        let input_data = ExecutionStack::default();
         let height = 0;
-        // TODO: Populate script_signature with the proper value
         let script_signature = Signature::default();
-        // TODO: Populate offset_pub_key with the proper value
         let offset_pub_key = PublicKey::default();
         let mut input = TransactionInput::new(
             OutputFeatures::default(),
@@ -1418,7 +1413,16 @@ mod test {
             proof_message: proof_message.to_owned(),
         };
 
-        let unblinded_output = UnblindedOutput::new(v, k.clone(), None);
+        let unblinded_output = UnblindedOutput::new(
+            v,
+            k.clone(),
+            None,
+            script!(Nop),
+            inputs!(PublicKey::from_secret_key(&k)),
+            0,
+            k.clone(),
+            PublicKey::from_secret_key(&k),
+        );
 
         let output = unblinded_output
             .as_rewindable_transaction_output(&factories, &rewind_data)

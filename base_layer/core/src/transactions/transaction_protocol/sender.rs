@@ -623,7 +623,7 @@ mod test {
     fn zero_recipients() {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let (utxo, input) = create_test_input(MicroTari(1200), 0, 0, &factories.commitment);
+        let (utxo, input, _) = create_test_input(MicroTari(1200), 0, 0, &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(0);
         builder
             .with_lock_height(0)
@@ -652,7 +652,7 @@ mod test {
         let a = TestParams::new();
         // Bob's parameters
         let b = TestParams::new();
-        let (utxo, input) = create_test_input(MicroTari(1200),0,0, &factories.commitment);
+        let (utxo, input) = create_test_input(MicroTari(1200), 0, 0, &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1);
         let fee = Fee::calculate(MicroTari(20), 1, 1, 1);
         builder
@@ -710,7 +710,7 @@ mod test {
         let a = TestParams::new();
         // Bob's parameters
         let b = TestParams::new();
-        let (utxo, input) = create_test_input(MicroTari(25000),0,0, &factories.commitment);
+        let (utxo, input) = create_test_input(MicroTari(25000), 0, 0, &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1);
         let fee = Fee::calculate(MicroTari(20), 1, 1, 2);
         builder
@@ -784,7 +784,7 @@ mod test {
         let a = TestParams::new();
         // Bob's parameters
         let b = TestParams::new();
-        let (utxo, input) = create_test_input( (2u64.pow(32) + 2001).into(),0,0, &factories.commitment);
+        let (utxo, input) = create_test_input((2u64.pow(32) + 2001).into(), 0, 0, &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1);
 
         builder
@@ -830,7 +830,7 @@ mod test {
         // Alice's parameters
         let alice = TestParams::new();
         let (utxo_amount, fee_per_gram, amount) = get_fee_larger_than_amount_values();
-        let (utxo, input) = create_test_input(utxo_amount,0,0, &factories.commitment);
+        let (utxo, input) = create_test_input(utxo_amount, 0, 0, &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1);
         builder
             .with_lock_height(0)
@@ -853,7 +853,7 @@ mod test {
         // Alice's parameters
         let alice = TestParams::new();
         let (utxo_amount, fee_per_gram, amount) = get_fee_larger_than_amount_values();
-        let (utxo, input) = create_test_input(utxo_amount,0,0, &factories.commitment);
+        let (utxo, input) = create_test_input(utxo_amount, 0, 0, &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1);
         builder
             .with_lock_height(0)
@@ -879,7 +879,7 @@ mod test {
         // Bob's parameters
         let b = TestParams::new();
         let alice_value = MicroTari(25000);
-        let (utxo, input) = create_test_input(alice_value,0,0 &factories.commitment);
+        let (utxo, input) = create_test_input(alice_value, 0, 0 & factories.commitment);
 
         // Rewind params
         let rewind_key = PrivateKey::random(&mut OsRng);
