@@ -588,7 +588,7 @@ impl fmt::Display for SenderState {
 mod test {
     use crate::transactions::{
         fee::Fee,
-        helpers::{make_input, TestParams},
+        helpers::{create_test_input, TestParams},
         tari_amount::*,
         transaction::{KernelFeatures, OutputFeatures, UnblindedOutput},
         transaction_protocol::{

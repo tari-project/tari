@@ -512,7 +512,7 @@ mod test {
         consensus::{KERNEL_WEIGHT, WEIGHT_PER_INPUT, WEIGHT_PER_OUTPUT},
         transactions::{
             fee::Fee,
-            helpers::{make_input, TestParams},
+            helpers::{create_test_input, TestParams},
             tari_amount::*,
             transaction::{UnblindedOutput, MAX_TRANSACTION_INPUTS},
             transaction_protocol::{

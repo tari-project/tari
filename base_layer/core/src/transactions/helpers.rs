@@ -37,6 +37,9 @@ use crate::transactions::{
     types::{Commitment, CommitmentFactory, CryptoFactories, PrivateKey, PublicKey, Signature},
     SenderTransactionProtocol,
 };
+use tari_crypto::{
+    inputs,
+    script};
 use digest::Digest;
 use num::pow;
 use rand::{rngs::OsRng, CryptoRng, Rng};
