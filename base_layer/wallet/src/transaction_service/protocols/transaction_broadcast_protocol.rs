@@ -490,7 +490,10 @@ where TBackend: TransactionBackend + 'static
         if response.location == TxLocation::Mined {
             self.resources
                 .output_manager_service
-                .update_mined_height(self.tx_id, response.height_of_longest_chain - response.confirmations)
+                .update_mined_height(
+                    self.tx_id,
+                    response.height_of_longest_chain.saturating_sub(response.confirmations),
+                )
                 .await
                 .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
             if response.confirmations >= self.resources.config.num_confirmations_required as u64 {

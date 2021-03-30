@@ -238,26 +238,8 @@ impl UnblindedOutput {
         }
     }
 
-    /// Commits an UnblindedOutput into a Transaction input without a script signature
-    pub fn as_transaction_input(&self, factory: &CommitmentFactory) -> TransactionInput {
-        let commitment = factory.commit(&self.spending_key, &self.value.into());
-        TransactionInput {
-            features: self.features.clone(),
-            commitment,
-            script: self.script.clone(),
-            input_data: self.input_data.clone(),
-            height: self.height,
-            script_signature: Default::default(),
-            script_offset_public_key: Default::default(),
-        }
-    }
-
     /// Commits an UnblindedOutput into a Transaction input
-    pub fn as_transaction_input_with_script_signature(
-        &self,
-        factory: &CommitmentFactory,
-    ) -> Result<TransactionInput, TransactionError>
-    {
+    pub fn as_transaction_input(&self, factory: &CommitmentFactory) -> Result<TransactionInput, TransactionError> {
         let commitment = factory.commit(&self.spending_key, &self.value.into());
         let script_nonce = PrivateKey::random(&mut OsRng);
         let public_script_nonce = PublicKey::from_secret_key(&script_nonce);

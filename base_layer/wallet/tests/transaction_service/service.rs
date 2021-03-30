@@ -1751,7 +1751,12 @@ fn test_transaction_cancellation() {
         .with_private_nonce(PrivateKey::random(&mut OsRng))
         .with_amount(0, amount)
         .with_message("Yo!".to_string())
-        .with_input(input.as_transaction_input(&factories.commitment), input)
+        .with_input(
+            input
+                .as_transaction_input(&factories.commitment)
+                .expect("Should be able to make transaction input"),
+            input,
+        )
         .with_change_secret(PrivateKey::random(&mut OsRng));
 
     let mut stp = builder.build::<HashDigest>(&factories).unwrap();
@@ -1812,7 +1817,12 @@ fn test_transaction_cancellation() {
         .with_private_nonce(PrivateKey::random(&mut OsRng))
         .with_amount(0, amount)
         .with_message("Yo!".to_string())
-        .with_input(input.as_transaction_input(&factories.commitment), input)
+        .with_input(
+            input
+                .as_transaction_input(&factories.commitment)
+                .expect("Should be able to make transaction input"),
+            input,
+        )
         .with_change_secret(PrivateKey::random(&mut OsRng));
 
     let mut stp = builder.build::<HashDigest>(&factories).unwrap();
@@ -3471,7 +3481,12 @@ fn test_resend_on_startup() {
         .with_private_nonce(PrivateKey::random(&mut OsRng))
         .with_amount(0, amount)
         .with_message("Yo!".to_string())
-        .with_input(input.as_transaction_input(&factories.commitment), input)
+        .with_input(
+            input
+                .as_transaction_input(&factories.commitment)
+                .expect("Should be able to make transaction input"),
+            input,
+        )
         .with_change_secret(PrivateKey::random(&mut OsRng));
 
     let mut stp = builder.build::<HashDigest>(&factories).unwrap();
@@ -3914,7 +3929,12 @@ fn test_transaction_timeout_cancellation() {
         .with_private_nonce(PrivateKey::random(&mut OsRng))
         .with_amount(0, amount)
         .with_message("Yo!".to_string())
-        .with_input(input.as_transaction_input(&factories.commitment), input)
+        .with_input(
+            input
+                .as_transaction_input(&factories.commitment)
+                .expect("Should be able to make transaction input"),
+            input,
+        )
         .with_change_secret(PrivateKey::random(&mut OsRng));
 
     let mut stp = builder.build::<HashDigest>(&factories).unwrap();
