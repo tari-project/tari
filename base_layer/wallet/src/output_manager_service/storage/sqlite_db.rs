@@ -1450,9 +1450,7 @@ mod test {
             PublicKey::from_secret_key(&script_offset_private_key),
         );
 
-        let input = unblinded_output
-            .as_transaction_input_with_script_signature(&factory)
-            .unwrap();
+        let input = unblinded_output.as_transaction_input(&factory).unwrap();
 
         (input, unblinded_output)
     }
