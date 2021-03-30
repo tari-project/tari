@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     transaction_service::storage::sqlite_db::TransactionServiceSqliteDatabase,
 };
@@ -33,8 +34,14 @@ pub fn random_string(len: usize) -> String {
     iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
 }
 
-/// A test helper to create a temporary transaction service database
-pub fn make_transaction_database(path: Option<String>) -> (TransactionServiceSqliteDatabase, Option<TempDir>) {
+/// A test helper to create a temporary wallet service databases
+pub fn make_wallet_databases(
+    path: Option<String>,
+) -> (
+    TransactionServiceSqliteDatabase,
+    OutputManagerSqliteDatabase,
+    Option<TempDir>,
+) {
     let (path_string, temp_dir): (String, Option<TempDir>) = if let Some(p) = path {
         (p, None)
     } else {
@@ -48,5 +55,9 @@ pub fn make_transaction_database(path: Option<String>) -> (TransactionServiceSql
 
     let connection =
         run_migration_and_create_sqlite_connection(&db_path.to_str().expect("Should be able to make path")).unwrap();
-    (TransactionServiceSqliteDatabase::new(connection, None), temp_dir)
+    (
+        TransactionServiceSqliteDatabase::new(connection.clone(), None),
+        OutputManagerSqliteDatabase::new(connection, None),
+        temp_dir,
+    )
 }

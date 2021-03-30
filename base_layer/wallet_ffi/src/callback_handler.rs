@@ -606,7 +606,7 @@ mod test {
     use tari_shutdown::Shutdown;
     use tari_wallet::{
         output_manager_service::{handle::OutputManagerEvent, protocols::txo_validation_protocol::TxoValidationType},
-        test_utils::make_transaction_database,
+        test_utils::make_wallet_databases,
         transaction_service::{
             handle::TransactionEvent,
             storage::{
@@ -778,7 +778,7 @@ mod test {
     fn test_callback_handler() {
         let mut runtime = Runtime::new().unwrap();
 
-        let (backend, _tempdir) = make_transaction_database(None);
+        let (backend, _oms_backend, _tempdir) = make_wallet_databases(None);
         let db = TransactionDatabase::new(backend);
         let rtp = ReceiverTransactionProtocol::new_placeholder();
         let inbound_tx = InboundTransaction::new(
