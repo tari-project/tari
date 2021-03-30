@@ -141,36 +141,6 @@ impl AggregateBody {
         self.kernels = vec![kernel];
     }
 
-    /// This will perform cut-through on the aggregate body. It will remove all outputs (and inputs) that are being
-    /// spent as inputs.
-    pub fn do_cut_through(&mut self) {
-        let double_inputs: Vec<TransactionInput> = self
-            .inputs
-            .iter()
-            .filter(|input| self.outputs.iter().any(|o| o.is_equal_to(input)))
-            .cloned()
-            .collect();
-
-        for input in double_inputs {
-            trace!(
-                target: LOG_TARGET,
-                "removing the following utxo for cut-through: {}",
-                input
-            );
-            self.outputs.retain(|x| !input.is_equal_to(x));
-            self.inputs.retain(|x| *x != input);
-        }
-    }
-
-    /// This will perform a check that cut-through was performed on the aggregate body. It will return true if there are
-    /// no outputs that are being spent as inputs.
-    pub fn check_cut_through(&self) -> bool {
-        !self
-            .inputs
-            .iter()
-            .any(|input| self.outputs.iter().any(|o| o.is_equal_to(input)))
-    }
-
     pub fn contains_duplicated_inputs(&self) -> bool {
         // If the body is sorted, can do a linear check instead of n^2
         if self.sorted {

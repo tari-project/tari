@@ -241,23 +241,6 @@ pub fn check_coinbase_output(
         .map_err(ValidationError::from)
 }
 
-pub fn check_cut_through(block: &Block) -> Result<(), ValidationError> {
-    trace!(
-        target: LOG_TARGET,
-        "Checking cut through on block with hash {}",
-        block.hash().to_hex()
-    );
-    if !block.body.check_cut_through() {
-        warn!(
-            target: LOG_TARGET,
-            "Block validation for {} failed: block no cut through",
-            block.hash().to_hex()
-        );
-        return Err(ValidationError::BlockError(BlockValidationError::NoCutThrough));
-    }
-    Ok(())
-}
-
 pub fn is_all_unique_and_sorted<I: AsRef<[T]>, T: PartialOrd>(items: I) -> bool {
     let items = items.as_ref();
     if items.is_empty() {

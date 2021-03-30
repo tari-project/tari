@@ -59,8 +59,6 @@ pub enum BlockValidationError {
         expected: u64,
         actual: u64,
     },
-    #[error("The block contains transactions that should have been cut through.")]
-    NoCutThrough,
     #[error("The block weight is above the maximum")]
     BlockTooLarge,
 }
@@ -233,7 +231,6 @@ impl BlockBuilder {
             header: self.header,
             body: AggregateBody::new(self.inputs, self.outputs, self.kernels),
         };
-        block.body.do_cut_through();
         block.body.sort();
         block
     }

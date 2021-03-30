@@ -30,13 +30,7 @@ use crate::{
         types::CryptoFactories,
     },
     validation::{
-        helpers::{
-            check_accounting_balance,
-            check_block_weight,
-            check_coinbase_output,
-            check_cut_through,
-            is_all_unique_and_sorted,
-        },
+        helpers::{check_accounting_balance, check_block_weight, check_coinbase_output, is_all_unique_and_sorted},
         traits::PostOrphanBodyValidation,
         CandidateBlockBodyValidation,
         OrphanValidation,
@@ -104,8 +98,6 @@ impl OrphanValidation for OrphanBlockValidator {
         // Check that the inputs are are allowed to be spent
         block.check_stxo_rules()?;
         trace!(target: LOG_TARGET, "SV - Output constraints are ok for {} ", &block_id);
-        check_cut_through(block)?;
-        trace!(target: LOG_TARGET, "SV - Cut-through is ok for {} ", &block_id);
         check_coinbase_output(block, &self.rules, &self.factories)?;
         trace!(target: LOG_TARGET, "SV - Coinbase output is ok for {} ", &block_id);
         check_accounting_balance(block, &self.rules, &self.factories)?;
@@ -306,15 +298,6 @@ impl<B: BlockchainBackend> BlockValidator<B> {
                     "Input found that has not yet matured to spending height: {}", input
                 );
                 return Err(TransactionError::InputMaturity.into());
-            }
-
-            // Check that the block body has cut-through applied
-            if outputs.iter().any(|o| o.is_equal_to(input)) {
-                warn!(
-                    target: LOG_TARGET,
-                    "Block #{} failed to validate: block no cut through", block.header.height
-                );
-                return Err(BlockValidationError::NoCutThrough.into());
             }
         }
         Ok(())
