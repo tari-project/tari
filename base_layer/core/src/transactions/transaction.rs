@@ -1340,7 +1340,7 @@ mod test {
 
     #[test]
     #[allow(clippy::identity_op)]
-    fn check_cut_through_() {
+    fn check_cut_through() {
         let (tx, _, outputs) = create_tx(50000000.into(), 15.into(), 1, 2, 1, 2);
 
         assert_eq!(tx.body.inputs().len(), 2);
@@ -1468,9 +1468,15 @@ mod test {
         let full_rewind_result = output
             .full_rewind_range_proof(&factories.range_proof, &rewind_key, &rewind_blinding_key)
             .unwrap();
-
+        let beta_hash = Blake256::new()
+            .chain(unblinded_output.script.as_hash::<Blake256>().unwrap().as_bytes())
+            .chain(unblinded_output.features.to_bytes())
+            .chain(unblinded_output.script_offset_public_key.as_bytes())
+            .result()
+            .to_vec();
+        let beta = PrivateKey::from_bytes(beta_hash.as_slice()).unwrap();
         assert_eq!(full_rewind_result.committed_value, v);
         assert_eq!(&full_rewind_result.proof_message, proof_message);
-        assert_eq!(full_rewind_result.blinding_factor, k);
+        assert_eq!(full_rewind_result.blinding_factor, k + beta);
     }
 }
