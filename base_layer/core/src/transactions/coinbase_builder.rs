@@ -162,7 +162,7 @@ impl CoinbaseBuilder {
         let nonce = self.private_nonce.ok_or_else(|| CoinbaseBuildError::MissingNonce)?;
         let public_nonce = PublicKey::from_secret_key(&nonce);
         let key = self.spend_key.ok_or_else(|| CoinbaseBuildError::MissingSpendKey)?;
-        let script_key = self.script_key.ok_or(key.clone());
+        let script_key = self.script_key.unwrap_or(key.clone());
         let output_features = OutputFeatures::create_coinbase(height + constants.coinbase_lock_height());
         let excess = self.factories.commitment.commit_value(&key, 0);
         let kernel_features = KernelFeatures::create_coinbase();
@@ -417,16 +417,6 @@ mod test {
                 42
             ),
             Err(TransactionError::InvalidCoinbase)
-        );
-        // testing that "block" is still valid
-        assert_eq!(
-            tx.body.validate_internal_consistency(
-                &BlindingFactor::default(),
-                &PrivateKey::default(),
-                block_reward,
-                &factories
-            ),
-            Ok(())
         );
         // lets construct a correct one now, with the correct amount.
         let builder = CoinbaseBuilder::new(factories.clone());

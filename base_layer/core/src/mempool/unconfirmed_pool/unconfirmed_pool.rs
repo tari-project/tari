@@ -391,7 +391,7 @@ mod test {
         );
         stx_builder
             .with_input(double_spend_utxo, double_spend_input)
-            .with_output(utxo, PrivateKey::random(&mut OsRng));
+            .with_output(utxo, test_params.spend_key);
 
         let factories = CryptoFactories::default();
         let mut stx_protocol = stx_builder.build::<HashDigest>(&factories).unwrap();

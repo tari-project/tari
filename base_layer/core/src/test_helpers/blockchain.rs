@@ -112,7 +112,7 @@ pub fn create_store_with_consensus(rules: &ConsensusManager) -> BlockchainDataba
     create_store_with_consensus_and_validators(rules, validators)
 }
 pub fn create_test_blockchain_db() -> BlockchainDatabase<TempDatabase> {
-    let network = Network::Stibbons;
+    let network = Network::Weatherwax;
     let rules = ConsensusManagerBuilder::new(network).build();
     create_store_with_consensus(&rules)
 }
