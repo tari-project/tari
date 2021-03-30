@@ -348,6 +348,7 @@ impl AggregateBody {
 
         self.verify_kernel_signatures()?;
         self.validate_kernel_sum(total_offset, &factories.commitment)?;
+
         self.validate_range_proofs(&factories.range_proof)?;
         self.validate_script_offset(script_offset_g)
     }

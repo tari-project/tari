@@ -162,7 +162,7 @@ impl CoinbaseBuilder {
         let nonce = self.private_nonce.ok_or_else(|| CoinbaseBuildError::MissingNonce)?;
         let public_nonce = PublicKey::from_secret_key(&nonce);
         let key = self.spend_key.ok_or_else(|| CoinbaseBuildError::MissingSpendKey)?;
-        let script_key = self.script_key.ok_or_else(|| CoinbaseBuildError::MissingSpendKey)?;
+        let script_key = self.script_key.unwrap_or(key.clone());
         let output_features = OutputFeatures::create_coinbase(height + constants.coinbase_lock_height());
         let excess = self.factories.commitment.commit_value(&key, 0);
         let kernel_features = KernelFeatures::create_coinbase();
@@ -226,11 +226,14 @@ mod test {
             CoinbaseBuilder,
         },
     };
+    use digest::Digest;
     use rand::rngs::OsRng;
     use tari_crypto::{
         commitment::HomomorphicCommitmentFactory,
+        hash::blake2::Blake256,
         keys::SecretKey as SecretKeyTrait,
         script::{ExecutionStack, TariScript},
+        tari_utilities::ByteArray,
     };
     fn get_builder() -> (CoinbaseBuilder, ConsensusManager, CryptoFactories) {
         let network = Network::LocalNet;
@@ -338,7 +341,7 @@ mod test {
             .with_nonce(p.nonce.clone())
             .with_spend_key(p.spend_key.clone())
             .with_rewind_data(rewind_data);
-        let (tx, _unblinded_output) = builder
+        let (tx, unblinded_output) = builder
             .build(rules.consensus_constants(42), rules.emission_schedule())
             .unwrap();
         let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
@@ -346,9 +349,16 @@ mod test {
         let rewind_result = tx.body.outputs()[0]
             .full_rewind_range_proof(&factories.range_proof, &rewind_key, &rewind_blinding_key)
             .unwrap();
+        let beta_hash = Blake256::new()
+            .chain(unblinded_output.script.as_hash::<Blake256>().unwrap().as_bytes())
+            .chain(unblinded_output.features.to_bytes())
+            .chain(unblinded_output.script_offset_public_key.as_bytes())
+            .result()
+            .to_vec();
+        let beta = PrivateKey::from_bytes(beta_hash.as_slice()).unwrap();
         assert_eq!(rewind_result.committed_value, block_reward);
         assert_eq!(&rewind_result.proof_message, proof_message);
-        assert_eq!(rewind_result.blinding_factor, p.spend_key);
+        assert_eq!(rewind_result.blinding_factor, p.spend_key + beta);
     }
 
     #[test]
@@ -417,16 +427,6 @@ mod test {
                 42
             ),
             Err(TransactionError::InvalidCoinbase)
-        );
-        // testing that "block" is still valid
-        assert_eq!(
-            tx.body.validate_internal_consistency(
-                &BlindingFactor::default(),
-                &PrivateKey::default(),
-                block_reward,
-                &factories
-            ),
-            Ok(())
         );
         // lets construct a correct one now, with the correct amount.
         let builder = CoinbaseBuilder::new(factories.clone());

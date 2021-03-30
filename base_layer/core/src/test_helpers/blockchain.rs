@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{genesis_block::get_ridcully_genesis_block, Block, BlockHeader},
+    blocks::{genesis_block::get_weatherwax_genesis_block, Block, BlockHeader},
     chain_storage::{
         create_lmdb_database,
         BlockAccumulatedData,
@@ -68,9 +68,9 @@ use tari_test_utils::paths::create_temporary_data_path;
 
 /// Create a new blockchain database containing no blocks.
 pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {
-    let network = Network::Stibbons;
+    let network = Network::Weatherwax;
     let consensus_constants = ConsensusConstantsBuilder::new(network).build();
-    let genesis = get_ridcully_genesis_block();
+    let genesis = get_weatherwax_genesis_block();
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
         .with_block(genesis)
@@ -112,7 +112,7 @@ pub fn create_store_with_consensus(rules: &ConsensusManager) -> BlockchainDataba
     create_store_with_consensus_and_validators(rules, validators)
 }
 pub fn create_test_blockchain_db() -> BlockchainDatabase<TempDatabase> {
-    let network = Network::Stibbons;
+    let network = Network::Weatherwax;
     let rules = ConsensusManagerBuilder::new(network).build();
     create_store_with_consensus(&rules)
 }

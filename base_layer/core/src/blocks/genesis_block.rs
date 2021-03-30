@@ -398,8 +398,8 @@ mod test {
     use crate::transactions::types::CryptoFactories;
 
     #[test]
-    fn ridcully_genesis_sanity_check() {
-        let block = get_ridcully_genesis_block();
+    fn weatherwax_genesis_sanity_check() {
+        let block = get_weatherwax_genesis_block();
         assert_eq!(block.block.body.outputs().len(), 4001);
 
         let factories = CryptoFactories::default();
