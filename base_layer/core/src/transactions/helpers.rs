@@ -48,7 +48,7 @@ use tari_crypto::{
     keys::{PublicKey as PK, SecretKey},
     range_proof::RangeProofService,
     script,
-    script::{ExecutionStack, TariScript},
+    script::TariScript,
     tari_utilities::ByteArray,
 };
 
@@ -79,9 +79,7 @@ pub fn create_test_input(
         script_key,
         offset_pub_key,
     );
-    let input = unblinded_output
-        .as_transaction_input_with_script_signature(factory)
-        .unwrap();
+    let input = unblinded_output.as_transaction_input(factory).unwrap();
     (input, unblinded_output, offset_pvt_key)
 }
 
@@ -92,6 +90,7 @@ pub struct TestParams {
     pub offset: PrivateKey,
     pub nonce: PrivateKey,
     pub public_nonce: PublicKey,
+    pub script_private_key: PrivateKey,
 }
 
 impl TestParams {
@@ -103,6 +102,7 @@ impl TestParams {
             offset: PrivateKey::random(&mut OsRng),
             public_nonce: PublicKey::from_secret_key(&r),
             nonce: r,
+            script_private_key: PrivateKey::random(&mut OsRng),
         }
     }
 }
@@ -312,27 +312,37 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
         .with_fee_per_gram(schema.fee)
         .with_offset(test_params.offset.clone())
         .with_private_nonce(test_params.nonce.clone())
-        .with_change_secret(test_params.change_key.clone());
+        .with_change_secret(test_params.change_key.clone())
+        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng))
+        .with_change_script(
+            script!(Nop),
+            inputs!(PublicKey::from_secret_key(&test_params.script_private_key)),
+            test_params.script_private_key.clone(),
+        );
 
     for input in &schema.from {
-        let utxo = input.as_transaction_input(&factories.commitment);
+        let utxo = input
+            .as_transaction_input(&factories.commitment)
+            .expect("Should be able to make a transaction input");
         stx_builder.with_input(utxo, input.clone());
     }
     let mut outputs = Vec::with_capacity(schema.to.len());
     for val in schema.to {
         let k = PrivateKey::random(&mut OsRng);
+        let script_private_key = PrivateKey::random(&mut OsRng);
+        let script_offset_private_key = PrivateKey::random(&mut OsRng);
         let utxo = UnblindedOutput::new(
             val,
             k.clone(),
             Some(schema.features.clone()),
-            TariScript::default(),
-            ExecutionStack::default(),
+            script!(Nop),
+            inputs!(PublicKey::from_secret_key(&script_private_key)),
             0,
-            k.clone(),
-            PublicKey::from_secret_key(&k),
+            script_private_key,
+            PublicKey::from_secret_key(&script_offset_private_key),
         );
         outputs.push(utxo.clone());
-        stx_builder.with_output(utxo, PrivateKey::default());
+        stx_builder.with_output(utxo, script_offset_private_key);
     }
 
     let mut stx_protocol = stx_builder.build::<Blake256>(&factories).unwrap();
@@ -341,10 +351,10 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
         change,
         test_params.change_key.clone(),
         Some(schema.features),
-        TariScript::default(),
-        ExecutionStack::default(),
+        script!(Nop),
+        inputs!(PublicKey::from_secret_key(&test_params.script_private_key)),
         0,
-        test_params.change_key.clone(),
+        test_params.script_private_key.clone(),
         PublicKey::from_secret_key(&test_params.change_key.clone()),
     );
     outputs.push(change_output);

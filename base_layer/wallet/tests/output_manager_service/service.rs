@@ -813,6 +813,7 @@ fn generate_sender_transaction_message(amount: MicroTari) -> (TxId, TransactionS
 
     let (utxo, input) = make_input(&mut OsRng, 2 * amount, &factories.commitment);
     let mut builder = SenderTransactionProtocol::builder(1);
+    let script_private_key = PrivateKey::random(&mut OsRng);
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari(20))
@@ -822,7 +823,11 @@ fn generate_sender_transaction_message(amount: MicroTari) -> (TxId, TransactionS
         .with_input(utxo, input)
         .with_amount(0, amount)
         .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng))
-        .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
+        .with_change_script(
+            script!(Nop),
+            inputs!(PublicKey::from_secret_key(&script_private_key)),
+            script_private_key,
+        );
 
     let mut stp = builder.build::<Blake256>(&factories).unwrap();
     let tx_id = stp.get_tx_id().unwrap();

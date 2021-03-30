@@ -32,6 +32,7 @@ use log::SetLoggerError;
 use serde_json::Error as SerdeJsonError;
 use tari_comms::{connectivity::ConnectivityError, multiaddr, peer_manager::PeerManagerError};
 use tari_comms_dht::store_forward::StoreAndForwardError;
+use tari_core::transactions::transaction::TransactionError;
 use tari_crypto::tari_utilities::{hex::HexError, ByteArrayError};
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
 use tari_service_framework::ServiceInitializationError;
@@ -65,6 +66,8 @@ pub enum WalletError {
     ServiceInitializationError(#[from] ServiceInitializationError),
     #[error("Base Node Service error: {0}")]
     BaseNodeServiceError(#[from] BaseNodeServiceError),
+    #[error("Transaction Error: {0}")]
+    TransactionError(#[from] TransactionError),
 }
 
 #[derive(Debug, Error)]

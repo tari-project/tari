@@ -590,7 +590,7 @@ where TBackend: OutputManagerBackend + 'static
 
         if pending_transaction.outputs_to_be_received[0]
             .unblinded_output
-            .as_transaction_input(&self.resources.factories.commitment)
+            .as_transaction_input(&self.resources.factories.commitment)?
             .commitment !=
             received_output.commitment
         {
@@ -678,7 +678,7 @@ where TBackend: OutputManagerBackend + 'static
         for uo in outputs.iter() {
             builder.with_input(
                 uo.unblinded_output
-                    .as_transaction_input_with_script_signature(&self.resources.factories.commitment)?,
+                    .as_transaction_input(&self.resources.factories.commitment)?,
                 uo.unblinded_output.clone(),
             );
         }
@@ -776,7 +776,7 @@ where TBackend: OutputManagerBackend + 'static
         for uo in &inputs {
             builder.with_input(
                 uo.unblinded_output
-                    .as_transaction_input_with_script_signature(&self.resources.factories.commitment)?,
+                    .as_transaction_input(&self.resources.factories.commitment)?,
                 uo.unblinded_output.clone(),
             );
         }
@@ -881,7 +881,7 @@ where TBackend: OutputManagerBackend + 'static
         for output_to_spend in pending_transaction.outputs_to_be_spent.iter() {
             let input_to_check = output_to_spend
                 .unblinded_output
-                .as_transaction_input(&self.resources.factories.commitment);
+                .as_transaction_input(&self.resources.factories.commitment)?;
 
             if inputs.iter().all(|input| input.commitment != input_to_check.commitment) {
                 return Err(OutputManagerError::IncompleteTransaction(
@@ -894,7 +894,7 @@ where TBackend: OutputManagerBackend + 'static
         for output_to_receive in pending_transaction.outputs_to_be_received.iter() {
             let output_to_check = output_to_receive
                 .unblinded_output
-                .as_transaction_input(&self.resources.factories.commitment);
+                .as_transaction_input(&self.resources.factories.commitment)?;
 
             if outputs
                 .iter()

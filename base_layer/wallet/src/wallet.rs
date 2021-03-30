@@ -332,7 +332,7 @@ where
             target: LOG_TARGET,
             "UTXO (Commitment: {}) imported into wallet",
             unblinded_output
-                .as_transaction_input(&self.factories.commitment)
+                .as_transaction_input(&self.factories.commitment)?
                 .commitment
                 .to_hex()
         );
