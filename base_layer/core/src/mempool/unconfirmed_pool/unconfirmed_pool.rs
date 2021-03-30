@@ -283,17 +283,12 @@ mod test {
             helpers::TestParams,
             tari_amount::MicroTari,
             transaction::{KernelFeatures, UnblindedOutput},
-            types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
+            types::{CryptoFactories, HashDigest, PublicKey},
             SenderTransactionProtocol,
         },
         tx,
     };
-    use rand::rngs::OsRng;
-    use tari_crypto::{
-        inputs,
-        keys::{PublicKey as PublicKeyTrait, SecretKey},
-        script,
-    };
+    use tari_crypto::{inputs, keys::PublicKey as PublicKeyTrait, script};
 
     #[test]
     fn test_find_duplicate_input() {
