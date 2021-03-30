@@ -218,10 +218,13 @@ mod test {
         types::{CryptoFactories, PrivateKey, PublicKey, Signature},
         ReceiverTransactionProtocol,
     };
+    use digest::Digest;
     use rand::rngs::OsRng;
     use tari_crypto::{
         commitment::HomomorphicCommitmentFactory,
+        common::Blake256,
         keys::{PublicKey as PK, SecretKey as SecretKeyTrait},
+        tari_utilities::ByteArray,
     };
 
     #[test]
@@ -317,9 +320,15 @@ mod test {
             .output
             .full_rewind_range_proof(&factories.range_proof, &rewind_key, &rewind_blinding_key)
             .unwrap();
-
+        let beta_hash = Blake256::new()
+            .chain(data.output.script_hash.as_bytes())
+            .chain(data.output.features.to_bytes())
+            .chain(data.output.script_offset_public_key.as_bytes())
+            .result()
+            .to_vec();
+        let beta = PrivateKey::from_bytes(beta_hash.as_slice()).unwrap();
         assert_eq!(full_rewind_result.committed_value, amount);
         assert_eq!(&full_rewind_result.proof_message, message);
-        assert_eq!(full_rewind_result.blinding_factor, p.spend_key);
+        assert_eq!(full_rewind_result.blinding_factor, p.spend_key + beta);
     }
 }

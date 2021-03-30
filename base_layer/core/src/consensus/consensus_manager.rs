@@ -80,7 +80,11 @@ impl ConsensusManager {
             Network::Ridcully => get_ridcully_genesis_block(),
             Network::Stibbons => get_stibbons_genesis_block(),
             Network::Weatherwax => get_weatherwax_genesis_block(),
-            Network::LocalNet => self.inner.gen_block.clone().unwrap_or_else(get_stibbons_genesis_block),
+            Network::LocalNet => self
+                .inner
+                .gen_block
+                .clone()
+                .unwrap_or_else(get_weatherwax_genesis_block),
         }
     }
 

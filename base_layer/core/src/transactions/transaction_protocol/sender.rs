@@ -616,6 +616,7 @@ mod test {
     use tari_crypto::{
         common::Blake256,
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+        script,
         script::{ExecutionStack, TariScript},
         tari_utilities::hex::Hex,
     };
@@ -856,6 +857,7 @@ mod test {
         let alice = TestParams::new();
         let (utxo_amount, fee_per_gram, amount) = get_fee_larger_than_amount_values();
         let (utxo, input, script_offset) = create_test_input(utxo_amount, 0, 0, &factories.commitment);
+        let script = script!(Nop);
         let mut builder = SenderTransactionProtocol::builder(1);
         builder
             .with_lock_height(0)
@@ -864,7 +866,9 @@ mod test {
             .with_private_nonce(alice.nonce.clone())
             .with_change_secret(alice.change_key)
             .with_input(utxo, input)
-            .with_amount(0, amount);
+            .with_amount(0, amount)
+            .with_recipient_script(0, script.clone(), script_offset)
+            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         // Verify that the initial 'fee greater than amount' check rejects the transaction when it is constructed
         match builder.build::<Blake256>(&factories) {
             Ok(_) => panic!("'BuildError(\"Fee is greater than amount\")' not caught"),
@@ -879,6 +883,7 @@ mod test {
         let alice = TestParams::new();
         let (utxo_amount, fee_per_gram, amount) = get_fee_larger_than_amount_values();
         let (utxo, input, script_offset) = create_test_input(utxo_amount, 0, 0, &factories.commitment);
+        let script = script!(Nop);
         let mut builder = SenderTransactionProtocol::builder(1);
         builder
             .with_lock_height(0)
@@ -888,7 +893,9 @@ mod test {
             .with_change_secret(alice.change_key)
             .with_input(utxo, input)
             .with_amount(0, amount)
-            .with_prevent_fee_gt_amount(false);
+            .with_prevent_fee_gt_amount(false)
+            .with_recipient_script(0, script.clone(), script_offset)
+            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         // Test if the transaction passes the initial 'fee greater than amount' check when it is constructed
         match builder.build::<Blake256>(&factories) {
             Ok(_) => {},
