@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::LOG_TARGET;
-use crate::command_handler::{delimit_command_string, CommandHandler, Format};
+use crate::command_handler::{CommandHandler, Format};
 use futures::future::Either;
 use log::*;
 use rustyline::{
@@ -42,6 +42,7 @@ use tari_app_utilities::utilities::{
 };
 use tari_core::{
     crypto::tari_utilities::hex::from_hex,
+    proof_of_work::PowAlgorithm,
     tari_utilities::hex::Hex,
     transactions::types::{Commitment, PrivateKey, PublicKey, Signature},
 };
@@ -59,6 +60,7 @@ pub enum BaseNodeCommand {
     ListPeers,
     DialPeer,
     ResetOfflinePeers,
+    RewindBlockchain,
     BanPeer,
     UnbanPeer,
     UnbanAllPeers,
@@ -138,16 +140,16 @@ impl Parser {
             return;
         }
 
-        let del_arg_vec = delimit_command_string(command_str);
         let mut args = command_str.split_whitespace();
-        let command = BaseNodeCommand::from_str(args.next().unwrap_or(&"help"));
-        if command.is_err() {
-            println!("{} is not a valid command, please enter a valid command", command_str);
-            println!("Enter help or press tab for available commands");
-            return;
+        match args.next().unwrap_or(&"help").parse() {
+            Ok(command) => {
+                self.process_command(command, args, shutdown);
+            },
+            Err(_) => {
+                println!("{} is not a valid command, please enter a valid command", command_str);
+                println!("Enter help or press tab for available commands");
+            },
         }
-        let command = command.unwrap();
-        self.process_command(command, args, del_arg_vec, shutdown);
     }
 
     /// Function to process commands
@@ -155,7 +157,6 @@ impl Parser {
         &mut self,
         command: BaseNodeCommand,
         mut args: I,
-        _del_arg_vec: Vec<String>,
         shutdown: &mut Shutdown,
     )
     {
@@ -194,6 +195,9 @@ impl Parser {
             },
             ResetOfflinePeers => {
                 self.command_handler.reset_offline_peers();
+            },
+            RewindBlockchain => {
+                self.process_rewind_blockchain(args);
             },
             CheckDb => {
                 self.command_handler.check_db();
@@ -293,6 +297,11 @@ impl Parser {
             ResetOfflinePeers => {
                 println!("Clear offline flag from all peers");
             },
+            RewindBlockchain => {
+                println!("Rewinds the blockchain to the given height.");
+                println!("Usage: {} [new_height]", help_for);
+                println!("new_height must be less than the current height.");
+            },
             BanPeer => {
                 println!("Bans a peer");
             },
@@ -312,7 +321,11 @@ impl Parser {
                 println!(
                     "Prints out certain stats to of the block chain in csv format for easy copy, use as follows: "
                 );
-                println!("Period-stats [start height] [end height]");
+                println!("header-stats [start height] [end height] (dump_file) (filter:monero|sha3)");
+                println!("e.g.");
+                println!("header-stats 0 1000");
+                println!("header-stats 0 1000 sample2.csv");
+                println!("header-stats 0 1000 monero-sample.csv monero");
             },
             PeriodStats => {
                 println!(
@@ -639,27 +652,40 @@ impl Parser {
         self.command_handler.period_stats(period_end, period_ticker_end, period)
     }
 
-    fn process_header_stats<'a, I: Iterator<Item = &'a str>>(&self, args: I) {
-        let command_arg = args.take(2).collect::<Vec<_>>();
-        if command_arg.len() != 2 {
-            println!("Prints out certain stats to of the block chain in csv format for easy copy, use as follows: ");
-            println!("Period-stats [start height] [end height]");
-            return;
-        }
-        let start_height = match u64::from_str(&command_arg[0]) {
-            Ok(v) => v,
-            Err(_) => {
-                println!("Not a valid number provided");
-                return;
-            },
-        };
-        let end_height = match u64::from_str(&command_arg[1]) {
-            Ok(v) => v,
-            Err(_) => {
-                println!("Not a valid number provided");
-                return;
-            },
-        };
-        self.command_handler.raw_stats(start_height, end_height)
+    fn process_header_stats<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
+        let start_height = try_or_print!(args
+            .next()
+            .ok_or_else(|| {
+                self.print_help(BaseNodeCommand::HeaderStats);
+                "No args provided".to_string()
+            })
+            .and_then(|arg| u64::from_str(arg).map_err(|err| err.to_string())));
+
+        let end_height = try_or_print!(args
+            .next()
+            .ok_or_else(|| {
+                self.print_help(BaseNodeCommand::HeaderStats);
+                "No end height provided".to_string()
+            })
+            .and_then(|arg| u64::from_str(&arg).map_err(|err| err.to_string())));
+
+        let filename = args.next().unwrap_or_else(|| "header-data.csv").to_string();
+
+        let algo = try_or_print!(Ok(args.next()).and_then(|s| match s {
+            Some("monero") => Ok(Some(PowAlgorithm::Monero)),
+            Some("sha") | Some("sha3") => Ok(Some(PowAlgorithm::Sha3)),
+            None | Some("all") => Ok(None),
+            _ => Err("Invalid pow algo"),
+        }));
+        self.command_handler
+            .save_header_stats(start_height, end_height, filename, algo)
+    }
+
+    fn process_rewind_blockchain<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
+        let new_height = try_or_print!(args
+            .next()
+            .ok_or("new_height argument required")
+            .and_then(|s| u64::from_str(s).map_err(|_| "new_height must be an integer.")));
+        self.command_handler.rewind_blockchain(new_height);
     }
 }
