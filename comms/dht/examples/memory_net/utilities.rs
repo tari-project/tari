@@ -33,7 +33,7 @@ use std::{
 };
 use tari_comms::{
     backoff::ConstantBackoff,
-    connection_manager::ConnectionDirection,
+    connection_manager::{ConnectionDirection, ConnectionManagerEvent},
     connectivity::ConnectivitySelection,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerStorage},
     pipeline,
@@ -46,7 +46,6 @@ use tari_comms::{
     types::CommsDatabase,
     CommsBuilder,
     CommsNode,
-    ConnectionManagerEvent,
     PeerConnection,
 };
 use tari_comms_dht::{

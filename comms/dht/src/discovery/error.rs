@@ -22,7 +22,7 @@
 
 use crate::outbound::{message::SendFailure, DhtOutboundError};
 use futures::channel::mpsc::SendError;
-use tari_comms::{connection_manager::ConnectionManagerError, peer_manager::PeerManagerError};
+use tari_comms::peer_manager::PeerManagerError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -47,8 +47,6 @@ pub enum DhtDiscoveryError {
     PeerManagerError(#[from] PeerManagerError),
     #[error("InvalidPeerMultiaddr: {0}")]
     InvalidPeerMultiaddr(String),
-    #[error("ConnectionManagerError: {0}")]
-    ConnectionManagerError(#[from] ConnectionManagerError),
 }
 
 impl DhtDiscoveryError {
