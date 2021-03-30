@@ -387,7 +387,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     .in_network_region(
                         &dest_node_id,
                         node_identity.node_id(),
-                        self.config.num_neighbouring_nodes,
+                        self.config.num_network_buckets,
                     )
                     .await?
                 {

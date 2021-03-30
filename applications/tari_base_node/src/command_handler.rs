@@ -614,7 +614,7 @@ impl CommandHandler {
                             peer.public_key,
                             conn.address(),
                             conn.direction(),
-                            peer.node_id.distance(&node_id).get_bucket(25).2,
+                            peer.node_id.distance(&node_id).get_bucket(4).2,
                             format_duration_basic(conn.age()),
                             {
                                 if peer.features == PeerFeatures::COMMUNICATION_CLIENT {

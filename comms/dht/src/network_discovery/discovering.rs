@@ -30,7 +30,7 @@ use log::*;
 use std::convert::TryInto;
 use tari_comms::{
     connectivity::ConnectivityError,
-    peer_manager::{NodeDistance, NodeId, Peer, PeerFeatures},
+    peer_manager::{NodeDistance, NodeId, Peer},
     validate_peer_addresses,
     PeerConnection,
 };
@@ -72,9 +72,7 @@ impl Discovering {
             .context
             .peer_manager
             .calc_region_threshold(
-                self.context.node_identity.node_id(),
-                self.config().num_neighbouring_nodes,
-                PeerFeatures::COMMUNICATION_NODE,
+                self.config().num_network_buckets,
             )
             .await?;
 

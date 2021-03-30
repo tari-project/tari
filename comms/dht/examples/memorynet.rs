@@ -55,9 +55,9 @@ use std::{iter::repeat_with, time::Duration};
 use tari_comms::peer_manager::PeerFeatures;
 
 // Size of network. Must be at least 2
-const NUM_NODES: usize = 32;
+const NUM_NODES: usize = 6;
 // Must be at least 2
-const NUM_WALLETS: usize = 24;
+const NUM_WALLETS: usize = 6;
 const QUIET_MODE: bool = true;
 /// Number of neighbouring nodes each node should include in the connection pool
 const NUM_NEIGHBOURING_NODES: usize = 8;
@@ -181,7 +181,7 @@ async fn main() {
         wallet
             .comms
             .connectivity()
-            .wait_for_connectivity(Duration::from_secs(10))
+            .wait_for_connectivity(Duration::from_secs(60))
             .await
             .unwrap();
         wallet.dht.dht_requester().send_join().await.unwrap();

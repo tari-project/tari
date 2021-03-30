@@ -45,6 +45,7 @@ impl ReceiveTab {
                     Constraint::Length(3),
                     Constraint::Length(3),
                     Constraint::Length(3),
+                    Constraint::Length(3),
                     Constraint::Min(1),
                 ]
                 .as_ref(),
@@ -87,6 +88,18 @@ impl ReceiveTab {
             .split(info_chunks[3]);
         let emoji_id = Paragraph::new(app_state.get_identity().emoji_id.as_str());
         f.render_widget(emoji_id, label_layout[0]);
+
+        // Node id
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(Span::styled("Node ID", Style::default().fg(Color::White)));
+        f.render_widget(block, info_chunks[4]);
+        let label_layout = Layout::default()
+            .constraints([Constraint::Length(1)].as_ref())
+            .margin(1)
+            .split(info_chunks[4]);
+        let node_id = Paragraph::new(app_state.get_identity().node_id.as_str());
+        f.render_widget(node_id, label_layout[0]);
     }
 }
 

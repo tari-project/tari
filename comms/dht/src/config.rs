@@ -116,7 +116,9 @@ pub struct DhtConfig {
     pub offline_peer_cooldown: Duration,
 
 
-    pub num_network_buckets: u32
+    pub num_network_buckets: u32,
+    pub connectivity_peer_buckets_refresh: Duration,
+
 }
 
 impl DhtConfig {
@@ -151,7 +153,7 @@ impl DhtConfig {
 impl Default for DhtConfig {
     fn default() -> Self {
         Self {
-            num_neighbouring_nodes: 8,
+            num_neighbouring_nodes: 30,
             num_random_nodes: 4,
             propagation_factor: 4,
             broadcast_factor: 8,
@@ -178,9 +180,10 @@ impl Default for DhtConfig {
             allow_test_addresses: false,
             flood_ban_max_msg_count: 1000,
             flood_ban_timespan: Duration::from_secs(100),
-            offline_peer_cooldown: Duration::from_secs(24 * 60 * 60),
+            offline_peer_cooldown: Duration::from_secs(20),
             saf_msg_validity: Duration::from_secs(10800),
-            num_network_buckets:25
+            num_network_buckets:4,
+            connectivity_peer_buckets_refresh: Duration::from_secs(3*60)
         }
     }
 }

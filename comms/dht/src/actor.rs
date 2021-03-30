@@ -404,8 +404,8 @@ impl DhtActor {
                 // Find the bucket that this node is in
 
                 let destination_distance = node_identity.node_id().distance(&destination_node_id);
-                let num_buckets = 25;
-                let k = 20;
+                let num_buckets = config.num_network_buckets;
+                let k = config.num_random_nodes;
                 let bucket = destination_distance.get_bucket(num_buckets);
 
 
@@ -430,7 +430,7 @@ impl DhtActor {
                     }
                 ).sort_by(PeerQuerySortBy::LastConnected).limit(k);
 
-                let peers = peer_manager.perform_query(query).await?;;
+                let peers = peer_manager.perform_query(query).await?;
                 Ok(peers.into_iter().map(|p| p.node_id).collect())
             },
             Closest(closest_request) => {

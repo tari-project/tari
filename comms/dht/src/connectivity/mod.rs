@@ -40,6 +40,7 @@ use tari_comms::{
 use tari_shutdown::ShutdownSignal;
 use thiserror::Error;
 use tokio::{sync::broadcast, task, task::JoinHandle, time};
+use tari_comms::peer_manager::XorDistance;
 
 const LOG_TARGET: &str = "comms::dht::connectivity";
 
@@ -70,18 +71,11 @@ pub struct DhtConnectivity {
     node_identity: Arc<NodeIdentity>,
     connectivity: ConnectivityRequester,
     dht_requester: DhtRequester,
-
-    /// List of neighbours managed by DhtConnectivity ordered by distance from this node
-    neighbours: Vec<NodeId>,
-    /// A randomly-selected set of peers, excluding neighbouring peers.
-    random_pool: Vec<NodeId>,
-    /// Used to track when the random peer pool was last refreshed
-    random_pool_last_refresh: Option<Instant>,
+    peer_buckets: Vec<Vec<NodeId>>,
+    peer_buckets_last_refresh: Option<Instant>,
     stats: Stats,
     dht_events: Fuse<broadcast::Receiver<Arc<DhtEvent>>>,
-
     metrics_collector: MetricsCollectorHandle,
-
     shutdown_signal: Option<ShutdownSignal>,
 }
 
@@ -98,16 +92,19 @@ impl DhtConnectivity {
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {
+        let mut peer_buckets = Vec::with_capacity(config.num_network_buckets as usize);
+        for _i in 0..(config.num_network_buckets + 1) as usize {
+            peer_buckets.push(vec![]);
+        }
         Self {
-            neighbours: Vec::with_capacity(config.num_neighbouring_nodes),
-            random_pool: Vec::with_capacity(config.num_random_nodes),
+            peer_buckets,
             config,
             peer_manager,
             node_identity,
             connectivity,
             dht_requester,
             metrics_collector,
-            random_pool_last_refresh: None,
+            peer_buckets_last_refresh: None,
             stats: Stats::new(),
             dht_events: dht_events.fuse(),
             shutdown_signal: Some(shutdown_signal),
@@ -140,7 +137,7 @@ impl DhtConnectivity {
             .expect("DhtConnectivity initialized without a shutdown_signal");
 
         debug!(target: LOG_TARGET, "DHT connectivity starting");
-        self.refresh_neighbour_pool().await?;
+        self.refresh_peer_pools().await?;
 
         let mut ticker = time::interval(self.config.connectivity_update_interval).fuse();
 
@@ -163,7 +160,7 @@ impl DhtConnectivity {
                },
 
                _ = ticker.next() => {
-                    if let Err(err) = self.refresh_random_pool_if_required().await {
+                    if let Err(err) = self.refresh_peer_pool_if_required().await {
                         debug!(target: LOG_TARGET, "Error refreshing random peer pool: {:?}", err);
                     }
                     if let Err(err) = self.check_and_ban_flooding_peers().await {
@@ -223,47 +220,38 @@ impl DhtConnectivity {
     }
 
     async fn refresh_peer_pools(&mut self) -> Result<(), DhtConnectivityError> {
-        info!(
-            target: LOG_TARGET,
-            "Reinitializing neighbour pool. Draining neighbour list (len={})",
-            self.neighbours.len(),
-        );
+        let buckets = XorDistance::get_buckets(self.config.num_network_buckets);
+        self.refresh_peer_bucket(0, buckets[0].0, buckets[0].1, self.config.num_neighbouring_nodes).await?;
+        for (i, b) in buckets.iter().enumerate().skip(1) {
+            self.refresh_peer_bucket(i, b.0, b.1,self.config.num_random_nodes).await?;
+        }
 
-        self.refresh_neighbour_pool().await?;
-        self.refresh_random_pool().await?;
+        self.peer_buckets_last_refresh = Some(Instant::now());
 
         Ok(())
     }
 
-    async fn refresh_neighbour_pool(&mut self) -> Result<(), DhtConnectivityError> {
+    async fn refresh_peer_bucket(&mut self, bucket_number: usize, min_distance: NodeDistance, max_distance: NodeDistance, num_nodes: usize) -> Result<(), DhtConnectivityError> {
+
         let mut new_neighbours = self
-            .fetch_neighbouring_peers(self.config.num_neighbouring_nodes, &[])
+            .fetch_peers_in_bucket(num_nodes, min_distance, max_distance, &[])
             .await?;
 
         let (intersection, difference) = self
-            .neighbours
+            .peer_buckets[bucket_number]
             .iter()
             .cloned()
             .partition::<Vec<_>, _>(|n| !new_neighbours.contains(n));
         // Only retain the peers that aren't already added
         new_neighbours.retain(|n| !intersection.contains(&n));
-        self.neighbours.retain(|n| intersection.contains(&n));
+        self.peer_buckets[bucket_number].retain(|n| intersection.contains(&n));
 
         info!(
             target: LOG_TARGET,
-            "Adding {} neighbouring peer(s), removing {} peers",
+            "Adding {} peer(s) to bucket {}, removing {} peers",
             new_neighbours.len(),
+            bucket_number,
             difference.len()
-        );
-        debug!(
-            target: LOG_TARGET,
-            "Adding {} peer(s) to connectivity manager: {}",
-            new_neighbours.len(),
-            new_neighbours
-                .iter()
-                .map(|n| format!("{}, ", n))
-                .collect::<Vec<_>>()
-                .join(", ")
         );
 
         for peer in difference {
@@ -271,62 +259,23 @@ impl DhtConnectivity {
         }
         self.connectivity.add_managed_peers(new_neighbours.clone()).await?;
         for peer in new_neighbours {
-            self.insert_neighbour(peer);
+            self.insert_peer_into_bucket(peer, bucket_number, num_nodes);
         }
         Ok(())
     }
 
-    async fn refresh_random_pool_if_required(&mut self) -> Result<(), DhtConnectivityError> {
-        let should_refresh = self.config.num_random_nodes > 0 &&
-            self.random_pool_last_refresh
-                .map(|instant| instant.elapsed() >= self.config.connectivity_random_pool_refresh)
+    async fn refresh_peer_pool_if_required(&mut self) -> Result<(), DhtConnectivityError> {
+        let should_refresh =
+            self.peer_buckets_last_refresh
+                .map(|instant| instant.elapsed() >= self.config.connectivity_peer_buckets_refresh)
                 .unwrap_or(true);
         if should_refresh {
-            self.refresh_random_pool().await?;
+            self.refresh_peer_pools().await?;
         }
 
         Ok(())
     }
 
-    async fn refresh_random_pool(&mut self) -> Result<(), DhtConnectivityError> {
-        let mut random_peers = self
-            .fetch_random_peers(self.config.num_random_nodes, &self.neighbours)
-            .await?;
-        if random_peers.is_empty() {
-            warn!(
-                target: LOG_TARGET,
-                "Unable to refresh random peer pool because there are insufficient known peers",
-            );
-        } else {
-            let (intersection, difference) = self
-                .random_pool
-                .drain(..)
-                .partition::<Vec<_>, _>(|n| !random_peers.contains(n));
-            // Remove the peers that we want to keep from the `random_peers` to be added
-            random_peers.retain(|n| !intersection.contains(&n));
-            self.random_pool = intersection;
-            debug!(
-                target: LOG_TARGET,
-                "Adding new peers to random peer pool (#new = {}, #keeping = {}, #removing = {})",
-                random_peers.len(),
-                self.random_pool.len(),
-                difference.len()
-            );
-            trace!(
-                target: LOG_TARGET,
-                "Random peers: Adding = {:?}, Removing = {:?}",
-                random_peers,
-                difference
-            );
-            self.connectivity.add_managed_peers(random_peers.clone()).await?;
-            for n in difference {
-                self.connectivity.remove_peer(n.clone()).await?;
-            }
-            self.random_pool.extend(random_peers);
-        }
-        self.random_pool_last_refresh = Some(Instant::now());
-        Ok(())
-    }
 
     async fn handle_new_peer_connected(&mut self, conn: &PeerConnection) -> Result<(), DhtConnectivityError> {
         if conn.peer_features().is_client() {
@@ -338,42 +287,37 @@ impl DhtConnectivity {
             return Ok(());
         }
 
-        if self.is_managed(conn.peer_node_id()) {
-            debug!(
-                target: LOG_TARGET,
-                "Node {} connected that is already managed by DhtConnectivity",
-                conn.peer_node_id()
-            );
-            return Ok(());
-        }
+        // if self.is_managed(conn.peer_node_id()) {
+        //     debug!(
+        //         target: LOG_TARGET,
+        //         "Node {} connected that is already managed by DhtConnectivity",
+        //         conn.peer_node_id()
+        //     );
+        //     return Ok(());
+        // }
 
         let current_dist = conn.peer_node_id().distance(self.node_identity.node_id());
-        let neighbour_distance = self.get_neighbour_max_distance();
-        if current_dist < neighbour_distance {
+        let bucket = current_dist.get_bucket(self.config.num_network_buckets);
             debug!(
                 target: LOG_TARGET,
-                "Peer '{}' connected that is closer than any current neighbour. Adding to neighbours.",
-                conn.peer_node_id().short_str()
+                "Peer '{}' connected. Adding to peer bucket {}.",
+                conn.peer_node_id().short_str(),
+                bucket.2
+
             );
 
-            if let Some(node_id) = self.insert_neighbour(conn.peer_node_id().clone()) {
-                // If we kicked a neighbour out of our neighbour pool but the random pool is not full.
-                // Add the neighbour to the random pool, otherwise remove it
-                if self.random_pool.len() < self.config.num_random_nodes {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Moving peer '{}' from neighbouring pool to random pool", node_id
-                    );
-                    self.random_pool.push(node_id);
-                } else {
-                    debug!(target: LOG_TARGET, "Removing peer '{}' from neighbouring pool", node_id);
+            let bucket_size = if bucket.2 == 0 {
+                self.config.num_neighbouring_nodes
+            }else {
+                self.config.num_random_nodes
+            };
+
+           if let Some(node_id) = self.insert_peer_into_bucket(conn.peer_node_id().clone(), bucket.2 as usize, bucket_size) {
                     self.connectivity.remove_peer(node_id).await?;
-                }
             }
             self.connectivity
                 .add_managed_peers(vec![conn.peer_node_id().clone()])
                 .await?;
-        }
 
         Ok(())
     }
@@ -422,60 +366,41 @@ impl DhtConnectivity {
 
     async fn replace_managed_peer(&mut self, current_peer: &NodeId) -> Result<(), DhtConnectivityError> {
         debug!(target: LOG_TARGET, "Replacing managed peer: {}", current_peer);
-        if !self.is_managed(current_peer) {
-            debug!(target: LOG_TARGET, "{} is not managed. Ignoring", current_peer);
-            return Ok(());
-        }
+        // if !self.is_managed(current_peer) {
+        //     debug!(target: LOG_TARGET, "{} is not managed. Ignoring", current_peer);
+        //     return Ok(());
+        // }
 
-        if self.random_pool.contains(current_peer) {
+        let bucket = current_peer.distance(self.node_identity.node_id()).get_bucket(
+            self.config.num_network_buckets
+        );
+
+        let bucket_num = bucket.2 as usize;
+
+        if self.peer_buckets[bucket_num].contains(current_peer) {
             debug!(
                 target: LOG_TARGET,
-                "Peer '{}' in random pool is offline. Adding a new random peer if possible", current_peer
+                "Peer '{}' in bucket {} is offline. Adding a new peer if possible", current_peer, bucket_num
             );
-            let exclude = self.get_managed_peers();
-            match self.fetch_random_peers(1, &exclude).await?.pop() {
+            let exclude = &self.peer_buckets[bucket_num];
+            match self.fetch_peers_in_bucket(1, bucket.0, bucket.1, &exclude).await?.pop() {
                 Some(node_id) => {
-                    if let Some(pos) = self.random_pool.iter().position(|n| n == current_peer) {
-                        self.random_pool.remove(pos);
+                    if let Some(pos) = self.peer_buckets[bucket_num].iter().position(|n| n == current_peer) {
+                        self.peer_buckets[bucket_num].remove(pos);
                     }
-                    self.random_pool.push(node_id.clone());
+                    self.peer_buckets[bucket_num].push(node_id.clone());
                     self.connectivity.remove_peer(current_peer.clone()).await?;
                     self.connectivity.add_managed_peers(vec![node_id]).await?;
                 },
                 None => {
                     warn!(
                         target: LOG_TARGET,
-                        "Unable to fetch new random peer to replace disconnected peer '{}' because not enough peers \
-                         are known. Random pool size is {}.",
+                        "Unable to fetch new peer to replace disconnected peer '{}' in bucket {} because not enough peers \
+                         are known. Peer bucket size is {}.",
                         current_peer,
-                        self.random_pool.len()
-                    );
-                },
-            }
-        }
+                        bucket_num,
 
-        if self.neighbours.contains(current_peer) {
-            debug!(
-                target: LOG_TARGET,
-                "Peer '{}' in neighbour pool is offline. Adding a new peer if possible", current_peer
-            );
-            let exclude = self.get_managed_peers();
-            match self.fetch_neighbouring_peers(1, &exclude).await?.pop() {
-                Some(node_id) => {
-                    if let Some(pos) = self.neighbours.iter().position(|n| n == current_peer) {
-                        self.neighbours.remove(pos);
-                    }
-                    self.insert_neighbour(node_id.clone());
-                    self.connectivity.remove_peer(current_peer.clone()).await?;
-                    self.connectivity.add_managed_peers(vec![node_id]).await?;
-                },
-                None => {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Unable to fetch new neighbouring peer to replace disconnected peer '{}'. Neighbour pool size \
-                         is {}.",
-                        current_peer,
-                        self.neighbours.len()
+                        self.peer_buckets[bucket_num].len()
                     );
                 },
             }
@@ -484,58 +409,25 @@ impl DhtConnectivity {
         Ok(())
     }
 
-    fn insert_neighbour(&mut self, node_id: NodeId) -> Option<NodeId> {
-        let dist = node_id.distance(self.node_identity.node_id());
-        let pos = self.neighbours.iter().position(|node_id| {
-            let d = node_id.distance(self.node_identity.node_id());
-            d > dist
-        });
-
-        let removed_peer = if self.neighbours.len() + 1 > self.config.num_neighbouring_nodes {
-            self.neighbours.pop()
+    fn insert_peer_into_bucket(&mut self, node_id: NodeId, bucket_number:usize, bucket_size: usize) -> Option<NodeId> {
+        // TODO: Sort by last connected
+        let removed_peer = if self.peer_buckets[bucket_number].len() + 1 > bucket_size {
+            self.peer_buckets[bucket_number].pop()
         } else {
             None
         };
 
-        match pos {
-            Some(idx) => {
-                self.neighbours.insert(idx, node_id);
-            },
-            None => {
-                self.neighbours.push(node_id);
-            },
-        }
+
+        self.peer_buckets[bucket_number].push(node_id);
 
         removed_peer
     }
 
-    fn is_managed(&self, node_id: &NodeId) -> bool {
-        self.neighbours.contains(node_id) || self.random_pool.contains(node_id)
-    }
-
-    fn get_managed_peers(&self) -> Vec<NodeId> {
-        self.neighbours.iter().chain(self.random_pool.iter()).cloned().collect()
-    }
-
-    fn get_neighbour_max_distance(&self) -> NodeDistance {
-        assert!(
-            self.config.num_neighbouring_nodes > 0,
-            "DhtConfig::num_neighbouring_nodes must be greater than zero"
-        );
-
-        if self.neighbours.len() < self.config.num_neighbouring_nodes {
-            return NodeDistance::max_distance();
-        }
-
-        self.neighbours
-            .last()
-            .map(|node_id| node_id.distance(self.node_identity.node_id()))
-            .expect("already checked")
-    }
-
-    async fn fetch_neighbouring_peers(
+    async fn fetch_peers_in_bucket(
         &self,
         n: usize,
+        min_distance: NodeDistance,
+        max_distance: NodeDistance,
         excluded: &[NodeId],
     ) -> Result<Vec<NodeId>, DhtConnectivityError>
     {
@@ -552,9 +444,16 @@ impl DhtConnectivity {
         let mut banned_count = 0;
         let mut excluded_count = 0;
         let mut filtered_out_node_count = 0;
-        let neighbourhood= NodeDistance::zero().get_bucket(self.config.num_network_buckets);
+        let mut not_in_bucket = 0;
         let query = PeerQuery::new()
             .select_where(|peer| {
+                let distance = peer.node_id.distance(node_id);
+                let is_in_bucket = distance < max_distance && distance >= min_distance;
+                if !is_in_bucket {
+                    not_in_bucket += 1;
+                    return false;
+                }
+
                 if peer.is_banned() {
                     banned_count += 1;
                     return false;
@@ -580,35 +479,31 @@ impl DhtConnectivity {
                     return false;
                 }
 
+                true
 
-                peer.node_id.distance(node_id) < neighbourhood.1
             })
             .sort_by(PeerQuerySortBy::LastConnected)
             .limit(n);
 
         let peers = peer_manager.perform_query(query).await?;
         let total_excluded = banned_count + connect_ineligable_count + excluded_count + filtered_out_node_count;
-        if total_excluded > 0 {
             debug!(
                 target: LOG_TARGET,
-                "\n====================================\n Closest Peer Selection\n\n {num_peers} peer(s) selected\n \
+                "\n====================================\n Closest Peer Selection for bucket {min_distance} - {max_distance} \n\n {num_peers} peer(s) selected\n \
                  {total} peer(s) were not selected \n\n {banned} banned\n {filtered_out} not communication node\n \
                  {not_connectable} are not connectable\n {excluded} explicitly excluded \
-                 \n====================================\n",
+                 \n {not_in_bucket} not in range\n====================================\n",
+                min_distance = min_distance,
+                max_distance = max_distance,
                 num_peers = peers.len(),
                 total = total_excluded,
                 banned = banned_count,
                 filtered_out = filtered_out_node_count,
                 not_connectable = connect_ineligable_count,
-                excluded = excluded_count
+                excluded = excluded_count,
+                not_in_bucket = not_in_bucket
             );
-        }
 
-        Ok(peers.into_iter().map(|p| p.node_id).collect())
-    }
-
-    async fn fetch_random_peers(&self, n: usize, excluded: &[NodeId]) -> Result<Vec<NodeId>, DhtConnectivityError> {
-        let peers = self.peer_manager.random_peers(n, excluded).await?;
         Ok(peers.into_iter().map(|p| p.node_id).collect())
     }
 

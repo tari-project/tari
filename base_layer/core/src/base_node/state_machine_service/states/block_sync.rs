@@ -96,7 +96,7 @@ impl BlockSync {
                 StateEvent::BlocksSynchronized
             },
             Err(err) => {
-                debug!(target: LOG_TARGET, "Block sync failed: {}", err);
+                warn!(target: LOG_TARGET, "Block sync failed: {}", err);
                 StateEvent::BlockSyncFailed
             },
         }

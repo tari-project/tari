@@ -27,10 +27,11 @@ use std::{fmt, cmp};
 use tari_crypto::tari_utilities::{
     ByteArray,
 };
+use nom::lib::std::collections::VecDeque;
 
 const NODE_XOR_DISTANCE_ARRAY_SIZE: usize = 16;
 
-#[derive(Clone, Debug, Eq, PartialOrd, Ord, Default)]
+#[derive(Clone, Debug, Eq, PartialOrd, Ord, Default, Copy)]
 pub struct XorDistance(u128);
 
 impl XorDistance {
@@ -46,7 +47,7 @@ impl XorDistance {
 
     /// Returns the maximum distance.
     pub const fn max_distance() -> Self {
-        Self(u128::MAX >> (NODE_XOR_DISTANCE_ARRAY_SIZE - NODE_ID_ARRAY_SIZE))
+        Self(u128::MAX >> ((NODE_XOR_DISTANCE_ARRAY_SIZE - NODE_ID_ARRAY_SIZE) * 8))
     }
 
     /// Returns a zero distance.
@@ -80,6 +81,25 @@ impl XorDistance {
 
         (XorDistance(min), XorDistance(max), bucket_no)
     }
+
+    pub fn get_buckets(num_buckets: u32) -> Vec<(XorDistance, XorDistance, u32)> {
+        // let bits_per_bucket = cmp::max((NODE_XOR_DISTANCE_ARRAY_SIZE * 8) as u32 / num_buckets, 1);
+
+        let mut buckets = VecDeque::new();
+        let mut max:u128 = XorDistance::max_distance().0;
+        let mut min = max.checked_shr(1).unwrap_or_default();
+        let mut bucket_no = num_buckets;
+        while min > 0 && bucket_no > 0 {
+            max = min;
+            min = max.checked_shr(1).unwrap_or_default();
+            bucket_no -= 1;
+            buckets.push_front((XorDistance(min), XorDistance(max), bucket_no));
+        }
+
+        buckets.push_front((XorDistance(0), XorDistance(min), bucket_no));
+        buckets.into()
+    }
+
 
     // fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
     //     bytes
@@ -146,7 +166,10 @@ impl fmt::Display for XorDistance {
     }
 }
 
+#[cfg(test)]
 mod tests {
+
+    // use super::*;
 
     #[test]
     fn get_bucket() {

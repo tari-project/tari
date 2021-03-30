@@ -444,7 +444,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             // Pass this check if the node id equals ours or is in this node's region
             NodeDestination::NodeId(node_id) if node_identity.node_id() == &**node_id => true,
             NodeDestination::NodeId(node_id) => peer_manager
-                .in_network_region(node_identity.node_id(), node_id, config.num_neighbouring_nodes)
+                .in_network_region(node_identity.node_id(), node_id, config.num_network_buckets)
                 .await
                 .unwrap_or(false),
         };

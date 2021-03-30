@@ -206,10 +206,10 @@ impl PeerManager {
         &self,
         node_id: &NodeId,
         region_node_id: &NodeId,
-        _n: usize,
+        num_network_buckets: u32,
     ) -> Result<bool, PeerManagerError>
     {
-        Ok(node_id.distance(region_node_id).get_bucket(25).0 == NodeDistance::zero())
+        Ok(node_id.distance(region_node_id).get_bucket(num_network_buckets).0 == NodeDistance::zero())
         // self.peer_storage
         //     .read()
         //     .await
@@ -218,13 +218,11 @@ impl PeerManager {
 
     pub async fn calc_region_threshold(
         &self,
-        _region_node_id: &NodeId,
-        _n: usize,
-        _features: PeerFeatures,
+        num_network_buckets: u32,
     ) -> Result<NodeDistance, PeerManagerError>
     {
 
-        Ok(NodeDistance::zero().get_bucket(25).1)
+        Ok(NodeDistance::zero().get_bucket(num_network_buckets).1)
          // self.peer_storage
         //     .read()
         //     .await
