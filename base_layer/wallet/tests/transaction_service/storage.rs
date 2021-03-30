@@ -37,6 +37,7 @@ use tari_core::transactions::{
 };
 use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+    script,
     script::{ExecutionStack, TariScript},
 };
 use tari_wallet::{
@@ -81,7 +82,9 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .with_amount(0, amount)
         .with_message("Yo!".to_string())
         .with_input(input.as_transaction_input(&factories.commitment), input)
-        .with_change_secret(PrivateKey::random(&mut OsRng));
+        .with_change_secret(PrivateKey::random(&mut OsRng))
+        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng))
+        .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
     let stp = builder.build::<HashDigest>(&factories).unwrap();
 
