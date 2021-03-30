@@ -1815,6 +1815,7 @@ where
                     .map(|o| {
                         o.unblinded_output
                             .as_transaction_input(&self.resources.factories.commitment)
+                            .expect("Should be able to make transaction input")
                     })
                     .collect(),
                 pending_tx
