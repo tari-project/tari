@@ -527,7 +527,9 @@ mod test {
     use rand::rngs::OsRng;
     use tari_crypto::{
         common::Blake256,
-        keys::SecretKey,
+        inputs,
+        keys::{PublicKey as pk, SecretKey},
+        script,
         script::{ExecutionStack, TariScript},
     };
 
@@ -717,12 +719,14 @@ mod test {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
         let (utxo, input, script_offset) = create_test_input(MicroTari(500), 0, 0, &factories.commitment);
+        let script = script!(Nop);
+        let script_offset = PrivateKey::default();
         let output = UnblindedOutput::new(
             MicroTari(400),
             p.spend_key,
             None,
-            TariScript::default(),
-            ExecutionStack::default(),
+            script.clone(),
+            inputs!(PublicKey::from_secret_key(&PrivateKey::default())),
             0,
             PrivateKey::default(),
             PublicKey::default(),
@@ -736,7 +740,9 @@ mod test {
             .with_input(utxo, input)
             .with_output(output, PrivateKey::random(&mut OsRng))
             .with_change_secret(p.change_key)
-            .with_fee_per_gram(MicroTari(1));
+            .with_fee_per_gram(MicroTari(1))
+            .with_recipient_script(0, script.clone(), script_offset)
+            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         let err = builder.build::<Blake256>(&factories).unwrap_err();
         assert_eq!(err.message, "Fee is less than the minimum");
     }
@@ -747,6 +753,8 @@ mod test {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
         let (utxo, input, script_offset) = create_test_input(MicroTari(400), 0, 0, &factories.commitment);
+        let script = script!(Nop);
+        let script_offset = PrivateKey::default();
         let output = UnblindedOutput::new(
             MicroTari(400),
             p.spend_key,
@@ -766,7 +774,9 @@ mod test {
             .with_input(utxo, input)
             .with_output(output, PrivateKey::random(&mut OsRng))
             .with_change_secret(p.change_key)
-            .with_fee_per_gram(MicroTari(1));
+            .with_fee_per_gram(MicroTari(1))
+            .with_recipient_script(0, script.clone(), script_offset)
+            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         let err = builder.build::<Blake256>(&factories).unwrap_err();
         assert_eq!(err.message, "You are spending more than you're providing");
     }
@@ -777,6 +787,8 @@ mod test {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
         let (utxo, input, script_offset) = create_test_input(MicroTari(100_000), 0, 0, &factories.commitment);
+        let script = script!(Nop);
+        let script_offset = PrivateKey::default();
         let output = UnblindedOutput::new(
             MicroTari(15000),
             p.spend_key,
@@ -798,7 +810,9 @@ mod test {
             .with_input(utxo, input)
             .with_output(output, PrivateKey::random(&mut OsRng))
             .with_change_secret(p.change_key)
-            .with_fee_per_gram(MicroTari(20));
+            .with_fee_per_gram(MicroTari(20))
+            .with_recipient_script(0, script.clone(), script_offset)
+            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         let result = builder.build::<Blake256>(&factories).unwrap();
         // Peek inside and check the results
         if let SenderState::Failed(TransactionProtocolError::UnsupportedError(s)) = result.state {
@@ -816,6 +830,8 @@ mod test {
         let (utxo1, input1, script_offset1) = create_test_input(MicroTari(2000), 0, 0, &factories.commitment);
         let (utxo2, input2, script_offset2) = create_test_input(MicroTari(3000), 0, 0, &factories.commitment);
         let weight = MicroTari(30);
+        let script = script!(Nop);
+        let script_offset = PrivateKey::default();
         let expected_fee = Fee::calculate(weight, 1, 2, 3);
         let output = UnblindedOutput::new(
             MicroTari(1500) - expected_fee,
@@ -838,7 +854,9 @@ mod test {
             .with_input(utxo2, input2)
             .with_amount(0, MicroTari(2500))
             .with_change_secret(p.change_key)
-            .with_fee_per_gram(weight);
+            .with_fee_per_gram(weight)
+            .with_recipient_script(0, script.clone(), script_offset)
+            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         let result = builder.build::<Blake256>(&factories).unwrap();
         // Peek inside and check the results
         if let SenderState::SingleRoundMessageReady(info) = result.state {
@@ -860,6 +878,8 @@ mod test {
         // Create some inputs
         let factories = CryptoFactories::new(32);
         let p = TestParams::new();
+        let script = script!(Nop);
+        let script_offset = PrivateKey::default();
         let (utxo1, input1, offset_private_key) =
             create_test_input((2u64.pow(32) + 10000u64).into(), 0, 0, &factories.commitment);
         let weight = MicroTari(30);
@@ -883,7 +903,9 @@ mod test {
             .with_input(utxo1, input1)
             .with_amount(0, MicroTari(100))
             .with_change_secret(p.change_key)
-            .with_fee_per_gram(weight);
+            .with_fee_per_gram(weight)
+            .with_recipient_script(0, script.clone(), script_offset)
+            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         let result = builder.build::<Blake256>(&factories);
 
         match result {

@@ -627,6 +627,8 @@ mod test {
         let p = TestParams::new();
         let (utxo, input, _) = create_test_input(MicroTari(1200), 0, 0, &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(0);
+        let output_1_offset = PrivateKey::random(&mut OsRng);
+        let output_2_offset = PrivateKey::random(&mut OsRng);
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroTari(10))
@@ -643,9 +645,9 @@ mod test {
                     ExecutionStack::default(),
                     0,
                     PrivateKey::default(),
-                    PublicKey::default(),
+                    PublicKey::from_secret_key(&output_1_offset),
                 ),
-                PrivateKey::random(&mut OsRng),
+                output_1_offset,
             )
             .with_output(
                 UnblindedOutput::new(
@@ -656,9 +658,9 @@ mod test {
                     ExecutionStack::default(),
                     0,
                     PrivateKey::default(),
-                    PublicKey::default(),
+                    PublicKey::from_secret_key(&output_2_offset),
                 ),
-                PrivateKey::random(&mut OsRng),
+                output_2_offset,
             );
         let mut sender = builder.build::<Blake256>(&factories).unwrap();
         assert_eq!(sender.is_failed(), false);
@@ -926,6 +928,8 @@ mod test {
             proof_message: proof_message.to_owned(),
         };
 
+        let script = script!(Nop);
+
         let mut builder = SenderTransactionProtocol::builder(1);
         builder
             .with_lock_height(0)
@@ -934,7 +938,9 @@ mod test {
             .with_private_nonce(a.nonce.clone())
             .with_rewindable_change_secret(a.change_key.clone(), rewind_data)
             .with_input(utxo, input)
-            .with_amount(0, MicroTari(5000));
+            .with_amount(0, MicroTari(5000))
+            .with_recipient_script(0, script.clone(), script_offset)
+            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         let mut alice = builder.build::<Blake256>(&factories).unwrap();
         assert!(alice.is_single_round_message_ready());
         let msg = alice.build_single_round_message().unwrap();
