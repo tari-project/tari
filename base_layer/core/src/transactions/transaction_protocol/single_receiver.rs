@@ -118,7 +118,7 @@ impl SingleReceiverTransactionProtocol {
         } else {
             factories
                 .range_proof
-                .construct_proof(&spending_key, sender_info.amount.into())?
+                .construct_proof(&(spending_key.clone() + beta), sender_info.amount.into())?
         };
         Ok(TransactionOutput::new(
             features,

@@ -374,6 +374,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                                 tx_id: None,
                                 spending_key: None,
                                 height: None,
+                                script_private_key: None,
                             },
                             &(*conn),
                         )?;
@@ -384,6 +385,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                                 tx_id: None,
                                 spending_key: None,
                                 height: None,
+                                script_private_key: None,
                             },
                             &(*conn),
                         )?;
@@ -430,6 +432,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     tx_id: Some(tx_id),
                     spending_key: None,
                     height: None,
+                    script_private_key: None,
                 },
                 &(*conn),
             )?;
@@ -494,6 +497,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                                 tx_id: None,
                                 spending_key: None,
                                 height: None,
+                                script_private_key: None,
                             },
                             &(*conn),
                         )?;
@@ -504,6 +508,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                                 tx_id: None,
                                 spending_key: None,
                                 height: None,
+                                script_private_key: None,
                             },
                             &(*conn),
                         )?;
@@ -560,6 +565,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 tx_id: None,
                 spending_key: None,
                 height: None,
+                script_private_key: None,
             },
             &(*conn),
         )?;
@@ -580,6 +586,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 tx_id: None,
                 spending_key: None,
                 height: None,
+                script_private_key: None,
             },
             &(*conn),
         )?;
@@ -604,6 +611,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 tx_id: None,
                 spending_key: None,
                 height: None,
+                script_private_key: None,
             },
             &(*conn),
         )?;
@@ -635,6 +643,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     tx_id: None,
                     spending_key: None,
                     height: Some(height),
+                    script_private_key: None,
                 },
                 &(*conn),
             )?;
@@ -986,6 +995,7 @@ impl OutputSql {
                 tx_id: None,
                 spending_key: Some(self.spending_key.clone()),
                 height: None,
+                script_private_key: Some(self.script_private_key.clone()),
             },
             conn,
         )?;
@@ -1102,6 +1112,7 @@ pub struct UpdateOutput {
     tx_id: Option<TxId>,
     spending_key: Option<Vec<u8>>,
     height: Option<u64>,
+    script_private_key: Option<Vec<u8>>,
 }
 
 #[derive(AsChangeset)]
@@ -1111,6 +1122,7 @@ pub struct UpdateOutputSql {
     tx_id: Option<i64>,
     spending_key: Option<Vec<u8>>,
     height: Option<i64>,
+    script_private_key: Option<Vec<u8>>,
 }
 
 #[derive(AsChangeset)]
@@ -1129,6 +1141,7 @@ impl From<UpdateOutput> for UpdateOutputSql {
             tx_id: u.tx_id.map(|t| t as i64),
             spending_key: u.spending_key,
             height: u.height.map(|t| t as i64),
+            script_private_key: u.script_private_key,
         }
     }
 }
@@ -1536,6 +1549,7 @@ mod test {
                     tx_id: Some(44u64),
                     spending_key: None,
                     height: None,
+                    script_private_key: None,
                 },
                 &conn,
             )
@@ -1549,6 +1563,7 @@ mod test {
                     tx_id: Some(44u64),
                     spending_key: None,
                     height: None,
+                    script_private_key: None,
                 },
                 &conn,
             )
