@@ -26,7 +26,6 @@ use crate::{
     chain_storage::{
         async_db::AsyncBlockchainDb,
         BlockHeaderAccumulatedData,
-        BlockHeaderAccumulatedDataBuilder,
         BlockchainBackend,
         ChainHeader,
         ChainStorageError,
@@ -121,6 +120,12 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
                 actual: header.height,
             });
         }
+        if header.prev_hash != state.previous_accum.hash {
+            return Err(BlockHeaderSyncError::ChainLinkBroken {
+                actual: header.prev_hash.to_hex(),
+                expected: state.previous_accum.hash.to_hex(),
+            });
+        }
         check_timestamp_ftl(&header, &self.consensus_rules)?;
 
         check_header_timestamp_greater_than_median(&header, &state.timestamps)?;
@@ -131,15 +136,11 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             constants.max_pow_difficulty(header.pow_algo()),
         );
         let achieved = check_target_difficulty(&header, target_difficulty, &self.randomx_factory)?;
-        let metadata = BlockHeaderAccumulatedDataBuilder::default()
-            .hash(header.hash())
-            .target_difficulty(target_difficulty)
-            .achieved_difficulty(&state.previous_accum, header.pow_algo(), achieved)
-            .total_kernel_offset(&state.previous_accum.total_kernel_offset, &header.total_kernel_offset)
-            .build()?;
+
         check_pow_data(&header, &self.consensus_rules, &*self.db.inner().db_read_access()?)?;
 
         // Header is valid, add this header onto the validation state for the next round
+        // Borrow mutably later to allow immutable borrows before this line
         let state = self.state_mut();
 
         // Ensure that timestamps are inserted in sorted order
@@ -154,6 +155,13 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         state.current_height = header.height;
         // Add a "more recent" datapoint onto the target difficulty
         state.target_difficulties.add_back(&header, target_difficulty);
+
+        let metadata = BlockHeaderAccumulatedData::builder()
+            .hash(header.hash())
+            .target_difficulty(target_difficulty)
+            .achieved_difficulty(&state.previous_accum, header.pow_algo(), achieved)
+            .total_kernel_offset(&state.previous_accum.total_kernel_offset, &header.total_kernel_offset)
+            .build()?;
         state.previous_accum = metadata.clone();
         state.valid_headers.push(ChainHeader {
             header,

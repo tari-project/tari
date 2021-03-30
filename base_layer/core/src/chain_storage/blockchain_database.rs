@@ -1574,13 +1574,14 @@ fn handle_possible_reorg<T: BlockchainBackend>(
 ) -> Result<BlockAddResult, ChainStorageError>
 {
     let db_height = db.fetch_chain_metadata()?.height_of_longest_chain();
+    let new_block_hash = new_block.hash();
 
     let new_tips = insert_orphan_and_find_new_tips(db, new_block.clone(), header_validator)?;
     debug!(
         target: LOG_TARGET,
         "Added candidate block #{} ({}) to the orphan database. Best height is {}. New tips found:{} ",
         new_block.header.height,
-        new_block.hash().to_hex(),
+        new_block_hash.to_hex(),
         db_height,
         new_tips.len()
     );
@@ -1590,23 +1591,22 @@ fn handle_possible_reorg<T: BlockchainBackend>(
             target: LOG_TARGET,
             "No reorg required, could not construct complete chain using block #{} ({}).",
             new_block.header.height,
-            new_block.hash().to_hex()
+            new_block_hash.to_hex()
         );
         return Ok(BlockAddResult::OrphanBlock);
     }
 
-    let new_block_hash = new_block.hash();
-
     // Check the accumulated difficulty of the best fork chain compared to the main chain.
-    let fork_header = find_strongest_orphan_tip(new_tips, chain_strength_comparer)?;
-    if fork_header.is_none() {
+    let fork_header = find_strongest_orphan_tip(new_tips, chain_strength_comparer)?.ok_or_else(|| {
         // This should never happen because a block is always added to the orphan pool before
         // checking, but just in case
-        return Err(ChainStorageError::InvalidOperation(
-            "No chain tips found in orphan pool".to_string(),
-        ));
-    }
-    let fork_header = fork_header.unwrap();
+        warn!(
+            target: LOG_TARGET,
+            "Unable to find strongest orphan tip when adding block `{}`. This should never happen.",
+            new_block_hash.to_hex()
+        );
+        ChainStorageError::InvalidOperation("No chain tips found in orphan pool".to_string())
+    })?;
 
     let tip_header = db.fetch_tip_header()?;
     if fork_header.accumulated_data.hash == new_block_hash {
@@ -1663,7 +1663,7 @@ fn handle_possible_reorg<T: BlockchainBackend>(
 
     // TODO: We already have the first link in this chain, can be optimized to exclude it
     let reorg_chain = get_orphan_link_main_chain(db, &fork_header.accumulated_data.hash)?;
-    // }
+
     let fork_height = reorg_chain
         .front()
         .expect("The new orphan block should be in the queue")
