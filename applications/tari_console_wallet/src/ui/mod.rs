@@ -65,8 +65,7 @@ pub fn run(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitCodes> {
     crossterm_loop(app)
 }
 /// This is the main loop of the application UI using Crossterm based events
-fn crossterm_loop(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitCodes> {
-    let mut app = app;
+fn crossterm_loop(mut app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitCodes> {
     let events = CrosstermEvents::new();
     enable_raw_mode().map_err(|e| {
         error!(target: LOG_TARGET, "Error enabling Raw Mode {}", e);
@@ -82,6 +81,11 @@ fn crossterm_loop(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitCodes> {
 
     let mut terminal = Terminal::new(backend).map_err(|e| {
         error!(target: LOG_TARGET, "Error creating Terminal context. {}", e);
+        ExitCodes::InterfaceError
+    })?;
+
+    terminal.clear().map_err(|e| {
+        error!(target: LOG_TARGET, "Error clearing interface. {}", e);
         ExitCodes::InterfaceError
     })?;
 
@@ -116,6 +120,11 @@ fn crossterm_loop(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitCodes> {
             break;
         }
     }
+
+    terminal.clear().map_err(|e| {
+        error!(target: LOG_TARGET, "Error clearing interface. {}", e);
+        ExitCodes::InterfaceError
+    })?;
 
     disable_raw_mode().map_err(|e| {
         error!(target: LOG_TARGET, "Error disabling Raw Mode {}", e);
