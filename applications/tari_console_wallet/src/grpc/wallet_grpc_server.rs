@@ -180,28 +180,26 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let queries = message.transaction_ids.into_iter().map(|tx_id| {
             let mut transaction_service = self.get_transaction_service();
-            async move { transaction_service.get_any_transaction(tx_id).await }
+            async move {
+                transaction_service
+                    .get_any_transaction(tx_id)
+                    .await
+                    .map(|tx| (tx_id, tx))
+            }
         });
 
         let transactions = future::try_join_all(queries)
             .await
-            .map_err(|err| Status::unknown(err.to_string()))
-            .and_then(|transactions| {
-                // If any of the transaction IDs are not known, this call fails
-                if let Some(pos) = transactions.iter().position(Option::is_none) {
-                    return Err(Status::not_found(format!(
-                        "Transaction ID at position {} not found",
-                        pos
-                    )));
-                }
-                Ok(transactions.into_iter().map(Option::unwrap))
-            })?;
+            .map(|tx| tx.into_iter())
+            .map_err(|err| Status::unknown(err.to_string()))?;
 
         let wallet_pk = self.wallet.comms.node_identity_ref().public_key();
 
         let transactions = transactions
-            .into_iter()
-            .map(|tx| convert_wallet_transaction_into_transaction_info(tx, wallet_pk))
+            .map(|(tx_id, tx)| match tx {
+                Some(tx) => convert_wallet_transaction_into_transaction_info(tx, wallet_pk),
+                None => TransactionInfo::not_found(tx_id),
+            })
             .collect();
 
         Ok(Response::new(GetTransactionInfoResponse { transactions }))
@@ -244,6 +242,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .to_vec(),
                         message: txn.message,
                         valid: txn.valid,
+                        is_found: true,
                     }),
                 };
                 match sender.send(Ok(response)).await {
@@ -311,6 +310,7 @@ fn convert_wallet_transaction_into_transaction_info(
             timestamp: Some(naive_datetime_to_timestamp(tx.timestamp)),
             message: tx.message,
             valid: true,
+            is_found: true,
         },
         PendingOutbound(tx) => TransactionInfo {
             tx_id: tx.tx_id,
@@ -325,6 +325,7 @@ fn convert_wallet_transaction_into_transaction_info(
             timestamp: Some(naive_datetime_to_timestamp(tx.timestamp)),
             message: tx.message,
             valid: true,
+            is_found: true,
         },
         Completed(tx) => TransactionInfo {
             tx_id: tx.tx_id,
@@ -339,11 +340,11 @@ fn convert_wallet_transaction_into_transaction_info(
             excess_sig: tx
                 .transaction
                 .first_kernel_excess_sig()
-                .expect("Complete transaction has no kernels")
-                .get_signature()
-                .to_vec(),
+                .map(|s| s.get_signature().to_vec())
+                .unwrap_or_default(),
             message: tx.message,
             valid: tx.valid,
+            is_found: true,
         },
     }
 }
