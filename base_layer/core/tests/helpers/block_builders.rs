@@ -88,7 +88,7 @@ pub fn create_coinbase(
         inputs!(PublicKey::from_secret_key(&key)),
         0,
         key.clone(),
-        PublicKey::from_secret_key(&key),
+        utxo.script_offset_public_key.clone(),
     );
     (utxo, kernel, output)
 }
