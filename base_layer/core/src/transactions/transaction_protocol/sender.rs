@@ -612,13 +612,14 @@ mod test {
         },
         types::{CryptoFactories, PrivateKey, PublicKey},
     };
+    use digest::Digest;
     use rand::rngs::OsRng;
     use tari_crypto::{
         common::Blake256,
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
         script,
         script::{ExecutionStack, TariScript},
-        tari_utilities::hex::Hex,
+        tari_utilities::{hex::Hex, ByteArray},
     };
 
     #[test]
@@ -681,6 +682,7 @@ mod test {
         // Bob's parameters
         let b = TestParams::new();
         let (utxo, input, script_offset) = create_test_input(MicroTari(1200), 0, 0, &factories.commitment);
+        let script = script!(Nop);
         let mut builder = SenderTransactionProtocol::builder(1);
         let fee = Fee::calculate(MicroTari(20), 1, 1, 1);
         builder
@@ -688,7 +690,8 @@ mod test {
             .with_fee_per_gram(MicroTari(20))
             .with_offset(a.offset.clone())
             .with_private_nonce(a.nonce.clone())
-            .with_input(utxo.clone(), input)
+            .with_input(utxo.clone(), input).with_recipient_script(0, script.clone(), script_offset)
+            .with_change_script(script, ExecutionStack::default(), PrivateKey::default())
             // A little twist: Check the case where the change is less than the cost of another output
             .with_amount(0, MicroTari(1200) - fee - MicroTari(10));
         let mut alice = builder.build::<Blake256>(&factories).unwrap();
@@ -740,6 +743,7 @@ mod test {
         let b = TestParams::new();
         let (utxo, input, script_offset) = create_test_input(MicroTari(25000), 0, 0, &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1);
+        let script = script!(Nop);
         let fee = Fee::calculate(MicroTari(20), 1, 1, 2);
         builder
             .with_lock_height(0)
@@ -748,6 +752,8 @@ mod test {
             .with_private_nonce(a.nonce.clone())
             .with_change_secret(a.change_key.clone())
             .with_input(utxo.clone(), input)
+            .with_recipient_script(0, script.clone(), script_offset)
+            .with_change_script(script, ExecutionStack::default(), PrivateKey::default())
             .with_amount(0, MicroTari(5000));
         let mut alice = builder.build::<Blake256>(&factories).unwrap();
         assert!(alice.is_single_round_message_ready());
@@ -814,6 +820,7 @@ mod test {
         let b = TestParams::new();
         let (utxo, input, script_offset) = create_test_input((2u64.pow(32) + 2001).into(), 0, 0, &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1);
+        let script = script!(Nop);
 
         builder
             .with_lock_height(0)
@@ -822,6 +829,8 @@ mod test {
             .with_private_nonce(a.nonce.clone())
             .with_change_secret(a.change_key)
             .with_input(utxo, input)
+            .with_recipient_script(0, script.clone(), script_offset)
+            .with_change_script(script, ExecutionStack::default(), PrivateKey::default())
             .with_amount(0, (2u64.pow(32) + 1).into());
         let mut alice = builder.build::<Blake256>(&factories).unwrap();
         assert!(alice.is_single_round_message_ready());
@@ -996,10 +1005,17 @@ mod test {
                 let full_rewind_result = tx.body.outputs()[0]
                     .full_rewind_range_proof(&factories.range_proof, &rewind_key, &rewind_blinding_key)
                     .unwrap();
+                let beta_hash = Blake256::new()
+                    .chain(tx.body.outputs()[0].script_hash.as_bytes())
+                    .chain(tx.body.outputs()[0].features.to_bytes())
+                    .chain(tx.body.outputs()[0].script_offset_public_key.as_bytes())
+                    .result()
+                    .to_vec();
+                let beta = PrivateKey::from_bytes(beta_hash.as_slice()).unwrap();
 
                 assert_eq!(full_rewind_result.committed_value, change);
                 assert_eq!(&full_rewind_result.proof_message, proof_message);
-                assert_eq!(full_rewind_result.blinding_factor, a.change_key);
+                assert_eq!(full_rewind_result.blinding_factor, a.change_key + beta);
             },
             Err(_) => {
                 let rr = tx.body.outputs()[1]
@@ -1014,10 +1030,16 @@ mod test {
                 let full_rewind_result = tx.body.outputs()[1]
                     .full_rewind_range_proof(&factories.range_proof, &rewind_key, &rewind_blinding_key)
                     .unwrap();
-
+                let beta_hash = Blake256::new()
+                    .chain(tx.body.outputs()[1].script_hash.as_bytes())
+                    .chain(tx.body.outputs()[1].features.to_bytes())
+                    .chain(tx.body.outputs()[1].script_offset_public_key.as_bytes())
+                    .result()
+                    .to_vec();
+                let beta = PrivateKey::from_bytes(beta_hash.as_slice()).unwrap();
                 assert_eq!(full_rewind_result.committed_value, change);
                 assert_eq!(&full_rewind_result.proof_message, proof_message);
-                assert_eq!(full_rewind_result.blinding_factor, a.change_key);
+                assert_eq!(full_rewind_result.blinding_factor, a.change_key + beta);
             },
         }
     }

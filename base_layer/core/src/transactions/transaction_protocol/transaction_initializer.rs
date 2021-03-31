@@ -542,10 +542,12 @@ mod test {
         // Start the builder
         let builder = SenderTransactionInitializer::new(0);
         let err = builder.build::<Blake256>(&factories).unwrap_err();
+        let script = script!(Nop);
         // We should have a bunch of fields missing still, but we can recover and continue
         assert_eq!(
             err.message,
-            "Missing Lock Height,Missing Fee per gram,Missing Offset,Missing Private nonce"
+            "Missing Lock Height,Missing Fee per gram,Missing Offset,Change script,Change input data,Change script \
+             private key"
         );
         let mut builder = err.builder;
         builder
@@ -567,7 +569,10 @@ mod test {
         );
         let (utxo, input, script_offset) = create_test_input(MicroTari(5_000), 0, 0, &factories.commitment);
         builder.with_input(utxo, input);
-        builder.with_fee_per_gram(MicroTari(20));
+        builder
+            .with_fee_per_gram(MicroTari(20))
+            .with_recipient_script(0, script.clone(), script_offset)
+            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         let expected_fee = Fee::calculate(MicroTari(20), 1, 1, 2);
         // We needed a change input, so this should fail
         let err = builder.build::<Blake256>(&factories).unwrap_err();
@@ -811,7 +816,8 @@ mod test {
             .with_output(output, PrivateKey::random(&mut OsRng))
             .with_change_secret(p.change_key)
             .with_fee_per_gram(MicroTari(20))
-            .with_recipient_script(0, script.clone(), script_offset)
+            .with_recipient_script(0, script.clone(), script_offset.clone())
+            .with_recipient_script(1, script.clone(), script_offset)
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         let result = builder.build::<Blake256>(&factories).unwrap();
         // Peek inside and check the results
