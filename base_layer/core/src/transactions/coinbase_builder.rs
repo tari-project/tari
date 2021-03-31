@@ -162,7 +162,7 @@ impl CoinbaseBuilder {
         let nonce = self.private_nonce.ok_or_else(|| CoinbaseBuildError::MissingNonce)?;
         let public_nonce = PublicKey::from_secret_key(&nonce);
         let key = self.spend_key.ok_or_else(|| CoinbaseBuildError::MissingSpendKey)?;
-        let script_key = self.script_key.unwrap_or(key.clone());
+        let script_key = self.script_key.unwrap_or_else(|| key.clone());
         let output_features = OutputFeatures::create_coinbase(height + constants.coinbase_lock_height());
         let excess = self.factories.commitment.commit_value(&key, 0);
         let kernel_features = KernelFeatures::create_coinbase();
