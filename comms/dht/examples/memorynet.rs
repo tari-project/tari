@@ -55,9 +55,9 @@ use std::{iter::repeat_with, time::Duration};
 use tari_comms::peer_manager::PeerFeatures;
 
 // Size of network
-const NUM_NODES: usize = 6;
+const NUM_NODES: usize = 3;
 // Must be at least 2
-const NUM_WALLETS: usize = 30;
+const NUM_WALLETS: usize = 2;
 const QUIET_MODE: bool = true;
 /// Number of neighbouring nodes each node should include in the connection pool
 const NUM_NEIGHBOURING_NODES: usize = 8;
@@ -210,14 +210,19 @@ async fn main() {
     take_a_break(NUM_NODES).await;
 
     log::info!("------------------------------- DISCOVERY -------------------------------");
-    total_messages += discovery(&wallets, &mut messaging_events_rx).await;
+    let (discovery_messages, discovery_successes, discovery_sent) = discovery(&wallets, &mut messaging_events_rx).await;
+    total_messages += discovery_messages;
 
     total_messages += drain_messaging_events(&mut messaging_events_rx, false).await;
 
     log::info!("------------------------------- SAF/DIRECTED PROPAGATION -------------------------------");
+    let mut total_saf_messages = 0;
+    let mut total_saf_succeeded = 0;
+    let mut total_saf_timeouts = 0;
+    let total_saf_done = 5;
     for _ in 0..5 {
         let random_wallet = wallets.remove(OsRng.gen_range(0, wallets.len() - 1));
-        let (num_msgs, random_wallet) = do_store_and_forward_message_propagation(
+        let (num_msgs, random_wallet, num_successes, num_attempts) = do_store_and_forward_message_propagation(
             random_wallet,
             &wallets,
             &nodes,
@@ -229,13 +234,20 @@ async fn main() {
             QUIET_MODE,
         )
         .await;
+        total_saf_messages += num_msgs;
         total_messages += num_msgs;
+        if num_successes > 0 {
+            total_saf_succeeded +=1;
+        }
+        if num_successes < num_attempts {
+            total_saf_timeouts += 1;
+        }
         // Put the wallet back
         wallets.push(random_wallet);
     }
 
     log::info!("------------------------------- PROPAGATION -------------------------------");
-    do_network_wide_propagation(&mut nodes, None).await;
+    let (num_prop_successes, num_prop_total) = do_network_wide_propagation(&mut nodes, None).await;
 
     total_messages += drain_messaging_events(&mut messaging_events_rx, false).await;
 
@@ -243,6 +255,15 @@ async fn main() {
 
     network_peer_list_stats(&nodes, &wallets).await;
     network_connectivity_stats(&nodes, &wallets, QUIET_MODE).await;
+
+    banner!("Summary");
+    println!("Total messages sent: {}", total_messages);
+    println!("Discovery messages: {}", discovery_messages);
+    println!("Total discoveries: {}/{}", discovery_successes, discovery_sent);
+    println!("SAF messages: {}", total_saf_messages);
+    println!("SAF successes: {}/{}", total_saf_succeeded, total_saf_done);
+    println!("SAF timeouts:{}/{}", total_saf_timeouts, total_saf_done);
+    println!("Prop successes: {}/{}", num_prop_successes, num_prop_total);
 
     banner!("That's it folks! Network is shutting down...");
     log::info!("------------------------------- SHUTDOWN -------------------------------");
