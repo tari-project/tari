@@ -57,7 +57,6 @@ use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_wallet::{
     contacts_service::storage::{database::Contact, memory_db::ContactsServiceMemoryDatabase},
     error::{WalletError, WalletStorageError},
-    output_manager_service::storage::memory_db::OutputManagerMemoryDatabase,
     storage::{
         database::{DbKeyValuePair, WalletBackend, WalletDatabase, WriteOperation},
         memory_db::WalletMemoryDatabase,
@@ -68,7 +67,7 @@ use tari_wallet::{
             run_migration_and_create_sqlite_connection,
         },
     },
-    test_utils::make_transaction_database,
+    test_utils::make_wallet_databases,
     transaction_service::{config::TransactionServiceConfig, handle::TransactionEvent},
     wallet::WalletConfig,
     Wallet,
@@ -582,7 +581,7 @@ async fn test_import_utxo() {
     )
     .unwrap();
     let temp_dir = tempdir().unwrap();
-    let (tx_backend, _temp_dir) = make_transaction_database(None);
+    let (tx_backend, oms_backend, _temp_dir) = make_wallet_databases(None);
     let comms_config = CommsConfig {
         node_identity: Arc::new(alice_identity.clone()),
         transport_type: TransportType::Tcp {
@@ -617,7 +616,7 @@ async fn test_import_utxo() {
         config,
         WalletMemoryDatabase::new(),
         tx_backend,
-        OutputManagerMemoryDatabase::new(),
+        oms_backend,
         ContactsServiceMemoryDatabase::new(),
         shutdown.to_signal(),
     )
@@ -682,7 +681,7 @@ async fn test_data_generation() {
         outbound_buffer_size: 100,
         dht: DhtConfig {
             discovery_request_timeout: Duration::from_millis(500),
-            network: DhtNetwork::Stibbons,
+            network: DhtNetwork::Weatherwax,
             ..Default::default()
         },
         allow_test_addresses: true,
@@ -697,7 +696,7 @@ async fn test_data_generation() {
 
     let config = WalletConfig::new(comms_config, factories, None, None, Network::Stibbons, None, None, None);
 
-    let (transaction_backend, _temp_dir) = make_transaction_database(None);
+    let (transaction_backend, oms_backend, _temp_dir) = make_wallet_databases(None);
 
     let db = WalletMemoryDatabase::new();
 
@@ -710,7 +709,7 @@ async fn test_data_generation() {
         config,
         db,
         transaction_backend.clone(),
-        OutputManagerMemoryDatabase::new(),
+        oms_backend,
         ContactsServiceMemoryDatabase::new(),
         shutdown.to_signal(),
     )

@@ -355,7 +355,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
         inputs!(PublicKey::from_secret_key(&test_params.script_private_key)),
         0,
         test_params.script_private_key.clone(),
-        PublicKey::from_secret_key(&test_params.change_key.clone()),
+        PublicKey::from_secret_key(&test_params.change_key),
     );
     outputs.push(change_output);
     match stx_protocol.finalize(KernelFeatures::empty(), &factories) {

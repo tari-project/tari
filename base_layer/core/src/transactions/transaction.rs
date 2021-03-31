@@ -215,6 +215,7 @@ pub struct UnblindedOutput {
 
 impl UnblindedOutput {
     /// Creates a new un-blinded output
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         value: MicroTari,
         spending_key: BlindingFactor,
@@ -437,7 +438,7 @@ impl TransactionInput {
         match self.script.execute(&self.input_data)? {
             StackItem::PublicKey(pubkey) => Ok(pubkey),
             _ => Err(TransactionError::ScriptExecutionError(
-                "THe script executed successfully but it did not leave a public key on the stack".to_string(),
+                "The script executed successfully but it did not leave a public key on the stack".to_string(),
             )),
         }
     }

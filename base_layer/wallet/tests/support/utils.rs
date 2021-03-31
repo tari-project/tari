@@ -88,36 +88,26 @@ pub fn make_input<R: Rng + CryptoRng>(
 ) -> (TransactionInput, UnblindedOutput)
 {
     let key = PrivateKey::random(rng);
-    let commitment = factory.commit_value(&key, val.into());
-
     let script = script!(Nop);
-    let height = 0;
     let script_private_key = PrivateKey::random(rng);
     let input_data = inputs!(PublicKey::from_secret_key(&script_private_key));
-
-    let script_signature = Signature::default();
     let offset_pub_key = PublicKey::default();
-    let input = TransactionInput::new(
-        OutputFeatures::default(),
-        commitment,
-        script.clone(),
-        input_data.clone(),
-        height,
-        script_signature,
-        offset_pub_key.clone(),
+
+    let utxo = UnblindedOutput::new(
+        val,
+        key,
+        None,
+        script,
+        input_data,
+        0,
+        script_private_key,
+        offset_pub_key,
     );
+
     (
-        input,
-        UnblindedOutput::new(
-            val,
-            key,
-            None,
-            script,
-            input_data,
-            0,
-            script_private_key,
-            offset_pub_key,
-        ),
+        utxo.as_transaction_input(&factory)
+            .expect("Should be able to make transaction input"),
+        utxo,
     )
 }
 

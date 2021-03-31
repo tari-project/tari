@@ -280,7 +280,7 @@ where TBackend: OutputManagerBackend + 'static
         trace!(target: LOG_TARGET, "Handling Service Request: {}", request);
         match request {
             OutputManagerRequest::AddOutput(uo) => {
-                self.add_output(uo).await.map(|_| OutputManagerResponse::OutputAdded)
+                self.add_output(*uo).await.map(|_| OutputManagerResponse::OutputAdded)
             },
             OutputManagerRequest::GetBalance => {
                 let current_chain_tip = match self.base_node_service.get_chain_metadata().await {

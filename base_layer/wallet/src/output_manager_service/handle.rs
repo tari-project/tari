@@ -49,7 +49,7 @@ use tower::Service;
 /// API Request enum
 pub enum OutputManagerRequest {
     GetBalance,
-    AddOutput(UnblindedOutput),
+    AddOutput(Box<UnblindedOutput>),
     GetRecipientTransaction(TransactionSenderMessage),
     GetCoinbaseTransaction((u64, MicroTari, MicroTari, u64)),
     ConfirmPendingTransaction(u64),
@@ -179,7 +179,11 @@ impl OutputManagerHandle {
     }
 
     pub async fn add_output(&mut self, output: UnblindedOutput) -> Result<(), OutputManagerError> {
-        match self.handle.call(OutputManagerRequest::AddOutput(output)).await?? {
+        match self
+            .handle
+            .call(OutputManagerRequest::AddOutput(Box::new(output)))
+            .await??
+        {
             OutputManagerResponse::OutputAdded => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
