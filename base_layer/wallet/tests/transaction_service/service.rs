@@ -513,7 +513,7 @@ fn manage_single_transaction() {
 
     let _ = runtime.block_on(
         bob_comms
-            .connection_manager()
+            .connectivity()
             .dial_peer(alice_node_identity.node_id().clone()),
     );
 
@@ -765,7 +765,7 @@ fn manage_multiple_transactions() {
 
     let _ = runtime.block_on(
         bob_comms
-            .connection_manager()
+            .connectivity()
             .dial_peer(alice_node_identity.node_id().clone()),
     );
     runtime.block_on(async { delay_for(Duration::from_secs(3)).await });
@@ -773,7 +773,7 @@ fn manage_multiple_transactions() {
     // Connect alice to carol
     let _ = runtime.block_on(
         alice_comms
-            .connection_manager()
+            .connectivity()
             .dial_peer(carol_node_identity.node_id().clone()),
     );
 
