@@ -1,8 +1,8 @@
-var net = require("net");
+const net = require("net");
 const fs = require("fs");
 const readline = require("readline");
 
-var { blake2bInit, blake2bUpdate, blake2bFinal } = require("blakejs");
+const { blake2bInit, blake2bUpdate, blake2bFinal } = require("blakejs");
 
 function getRandomInt(min, max) {
   min = Math.ceil(min);
@@ -16,6 +16,16 @@ function sleep(ms) {
   });
 }
 
+function withTimeout(ms, promise, message = "") {
+  const timeout = new Promise((_resolve, reject) => {
+    setTimeout(
+      () => reject(new Error(message || `Timed out after ${ms}ms`)),
+      ms
+    );
+  });
+  return Promise.race([timeout, promise]);
+}
+
 async function waitFor(
   asyncTestFn,
   toBe,
@@ -23,7 +33,7 @@ async function waitFor(
   timeOut = 500,
   skipLog = 50
 ) {
-  var now = new Date();
+  let now = new Date();
 
   let i = 0;
   while (new Date() - now < maxTime) {
@@ -34,7 +44,7 @@ async function waitFor(
       }
       break;
     }
-    if (i % skipLog == 0 && i > 1) {
+    if (i % skipLog === 0 && i > 1) {
       console.log("waiting for process...", timeOut, i);
     }
     await sleep(timeOut);
@@ -74,8 +84,8 @@ function hexSwitchEndianness(val) {
 }
 
 // Thanks to https://stackoverflow.com/questions/29860354/in-nodejs-how-do-i-check-if-a-port-is-listening-or-in-use
-var portInUse = function (port, callback) {
-  var server = net.createServer(function (socket) {
+let portInUse = function (port, callback) {
+  let server = net.createServer(function (socket) {
     socket.write("Echo server\r\n");
     socket.pipe(socket);
   });
@@ -90,8 +100,8 @@ var portInUse = function (port, callback) {
   });
 };
 
-var index = 0;
-var getFreePort = async function (from, to) {
+let index = 0;
+let getFreePort = async function (from, to) {
   function testPort(port) {
     return new Promise((r) => {
       portInUse(port, (v) => {
@@ -123,12 +133,12 @@ var getFreePort = async function (from, to) {
 
 // WIP  this doesn't hash properly
 const getTransactionOutputHash = function (output) {
-  var KEY = null; // optional key
-  var OUTPUT_LENGTH = 32; // bytes
-  var context = blake2bInit(OUTPUT_LENGTH, KEY);
+  let KEY = null; // optional key
+  let OUTPUT_LENGTH = 32; // bytes
+  let context = blake2bInit(OUTPUT_LENGTH, KEY);
   let flags = Buffer.alloc(1);
   flags[0] = output.features.flags;
-  var buffer = Buffer.concat([
+  let buffer = Buffer.concat([
     flags,
     toLittleEndian(parseInt(output.features.maturity), 64),
   ]);
@@ -139,8 +149,8 @@ const getTransactionOutputHash = function (output) {
 };
 
 function consoleLogTransactionDetails(txnDetails, txId) {
-  var found = txnDetails[0];
-  var status = txnDetails[1];
+  let found = txnDetails[0];
+  let status = txnDetails[1];
   if (found) {
     console.log(
       "  Transaction " +
@@ -186,7 +196,7 @@ function consoleLogCoinbaseDetails(txnDetails) {
 }
 
 function pad(str, length, padLeft = true) {
-  var padding = Array(length).join(" ");
+  let padding = Array(length).join(" ");
   if (typeof str === "undefined") return padding;
   if (padLeft) {
     return (padding + str).slice(-padding.length);
@@ -207,4 +217,5 @@ module.exports = {
   consoleLogTransactionDetails,
   consoleLogBalance,
   consoleLogCoinbaseDetails,
+  withTimeout,
 };

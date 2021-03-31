@@ -32,9 +32,37 @@ Feature: Block Sync
     Then NODE1 should have 11 peers
     Then NODE2 should have 11 peers
 
+  @critical @reorg
+  Scenario: Full block sync with small reorg
+    Given I have a base node NODE1 connected to all seed nodes
+    Given I have a base node NODE2 connected to node NODE1
+    When I mine 5 blocks on NODE1
+    Then all nodes are at height 5
+    Given I stop NODE2
+    Then I mine 5 blocks on NODE1
+    Given I stop NODE1
+    And I start NODE2
+    Then I mine 7 blocks on NODE2
+    When I start NODE1
+    Then all nodes are on the same chain at height 12
+
+  @critical @reorg @long-running
+  Scenario: Full block sync with large reorg
+    Given I have a base node NODE1 connected to all seed nodes
+    Given I have a base node NODE2 connected to node NODE1
+    When I mine 5 blocks on NODE1
+    Then all nodes are at height 5
+    Given I stop NODE2
+    Then I mine 1001 blocks on NODE1
+    Given I stop NODE1
+    And I start NODE2
+    Then I mine 1500 blocks on NODE2
+    When I start NODE1
+    Then all nodes are on the same chain at height 1505
+
   @critical
   Scenario: Pruned mode
-      #TODO: Merge steps into single lines
+    # TODO: Merge steps into single lines
     Given I have a base node NODE1 connected to all seed nodes
     When I mine a block on NODE1 with coinbase CB1
     When I mine a block on NODE1 with coinbase CB2
