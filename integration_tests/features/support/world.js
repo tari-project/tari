@@ -1,4 +1,4 @@
-const { setWorldConstructor, After, BeforeAll } = require("cucumber");
+const { setWorldConstructor, After, BeforeAll } = require('cucumber');
 
 const BaseNodeProcess = require('../../helpers/baseNodeProcess');
 const MergeMiningProxyProcess = require('../../helpers/mergeMiningProxyProcess');
@@ -23,9 +23,9 @@ class CustomWorld {
         this.transactionsMap = new Map();
         this.resultStack = [];
         this.tipHeight = 0;
-        this.logFilePathBaseNode = parameters.logFilePathBaseNode || "./log4rs/base_node.yml";
-        this.logFilePathProxy = parameters.logFilePathProxy || "./log4rs/proxy.yml";
-        this.logFilePathWallet = parameters.logFilePathWallet || "./log4rs/wallet.yml";
+        this.logFilePathBaseNode = parameters.logFilePathBaseNode || './log4rs/base_node.yml';
+        this.logFilePathProxy = parameters.logFilePathProxy || './log4rs/proxy.yml';
+        this.logFilePathWallet = parameters.logFilePathWallet || './log4rs/wallet.yml';
     }
 
     async createSeedNode(name) {
@@ -34,7 +34,6 @@ class CustomWorld {
         this.seeds[name] = proc;
         this.clients[name] = proc.createGrpcClient();
     }
-
 
     seedAddresses() {
         let res = [];
@@ -55,7 +54,7 @@ class CustomWorld {
     }
 
     addMiningNode(name, process) {
-            this.miners[name] = process;
+        this.miners[name] = process;
     }
 
     addProxy(name, process) {
@@ -84,8 +83,8 @@ class CustomWorld {
     }
 
     async submitBlock(blockName, nodeName) {
-        let result = await this.clients[nodeName].submitBlock(this.blocks[blockName].block).catch(err => {
-            console.log("submit block erro", err);
+        let result = await this.clients[nodeName].submitBlock(this.blocks[blockName].block).catch((err) => {
+            console.log('submit block erro', err);
         });
         console.log(result);
     }
@@ -99,7 +98,7 @@ class CustomWorld {
     }
 
     getMiningNode(name) {
-            return this.miners[name];
+        return this.miners[name];
     }
 
     getWallet(name) {
@@ -134,9 +133,9 @@ class CustomWorld {
 
     addTransaction(pubKey, txId) {
         if (!this.transactionsMap.has(pubKey)) {
-            this.transactionsMap.set(pubKey, [])
+            this.transactionsMap.set(pubKey, []);
         }
-        this.transactionsMap.get(pubKey).push(txId)
+        this.transactionsMap.get(pubKey).push(txId);
     }
 }
 
@@ -145,19 +144,18 @@ setWorldConstructor(CustomWorld);
 BeforeAll({ timeout: 1200000 }, async function () {
     // Ensure the project can compile
     let proc = new BaseNodeProcess(`compile-tester`);
-    console.log("Precompiling base node. This can take a while whenever the code changes...");
-    await proc.startNew()
+    console.log('Precompiling base node. This can take a while whenever the code changes...');
+    await proc.startNew();
     await proc.stop();
-    let proc2 = new MergeMiningProxyProcess(`compile-tester2`, "127.0.0.1:9999", "127.0.0.1:9998");
-    console.log("Precompiling mmproxy. This can take a while whenever the code changes...");
-    await proc2.startNew()
+    let proc2 = new MergeMiningProxyProcess(`compile-tester2`, '127.0.0.1:9999', '127.0.0.1:9998');
+    console.log('Precompiling mmproxy. This can take a while whenever the code changes...');
+    await proc2.startNew();
     await proc2.stop();
     let proc3 = new WalletProcess(`compile-tester3`);
-    console.log("Precompiling wallet. This can take a while whenever the code changes...");
-    await proc3.startNew()
+    console.log('Precompiling wallet. This can take a while whenever the code changes...');
+    await proc3.startNew();
     await proc3.stop();
-    console.log("Finished check...");
-
+    console.log('Finished check...');
 });
 
 After(async function () {
