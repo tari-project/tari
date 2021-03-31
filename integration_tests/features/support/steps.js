@@ -12,6 +12,7 @@ const {
   consoleLogTransactionDetails,
   consoleLogBalance,
   consoleLogCoinbaseDetails,
+  withTimeout,
 } = require("../../helpers/util");
 const TransactionBuilder = require("../../helpers/transactionBuilder");
 let lastResult;
