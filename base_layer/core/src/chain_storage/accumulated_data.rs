@@ -287,7 +287,7 @@ impl Display for BlockHeaderAccumulatedData {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ChainHeader {
     pub header: BlockHeader,
     pub accumulated_data: BlockHeaderAccumulatedData,

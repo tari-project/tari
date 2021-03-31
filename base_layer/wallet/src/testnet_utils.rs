@@ -319,14 +319,14 @@ pub async fn generate_wallet_test_data<
 
     wallet
         .comms
-        .connection_manager()
+        .connectivity()
         .dial_peer(wallet_alice.comms.node_identity().node_id().clone())
         .await
         .unwrap();
 
     wallet
         .comms
-        .connection_manager()
+        .connectivity()
         .dial_peer(wallet_bob.comms.node_identity().node_id().clone())
         .await
         .unwrap();

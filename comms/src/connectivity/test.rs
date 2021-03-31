@@ -27,7 +27,7 @@ use super::{
     selection::ConnectivitySelection,
 };
 use crate::{
-    connection_manager::ConnectionManagerError,
+    connection_manager::{ConnectionManagerError, ConnectionManagerEvent},
     peer_manager::{Peer, PeerFeatures},
     runtime,
     runtime::task,
@@ -36,7 +36,6 @@ use crate::{
         node_identity::{build_many_node_identities, build_node_identity},
         test_node::build_peer_manager,
     },
-    ConnectionManagerEvent,
     NodeIdentity,
     PeerManager,
 };

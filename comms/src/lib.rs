@@ -30,7 +30,7 @@ mod builder;
 pub use builder::{CommsBuilder, CommsBuilderError, CommsNode, UnspawnedCommsNode};
 
 pub mod connection_manager;
-pub use connection_manager::{validate_peer_addresses, ConnectionManagerEvent, PeerConnection, PeerConnectionError};
+pub use connection_manager::{validate_peer_addresses, PeerConnection, PeerConnectionError};
 
 pub mod connectivity;
 

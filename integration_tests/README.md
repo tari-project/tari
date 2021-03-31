@@ -55,3 +55,8 @@
 - In Windows, running the Tari executables in debug mode fails with a stack overflow, thus Windows users must
   run in release mode. See command line options in `baseNodeProcess.js`, `mergeMiningProxyProcess.js`
   and `walletProcess.js`.
+
+## Code Contribution
+
+[prettier](https://prettier.io/) is used for JS code formatting. To ensure that your code is correctly
+formatted, run `npm run fmt` to format your code in-place. Alternatively, use a prettier plugin for your favourite IDE.

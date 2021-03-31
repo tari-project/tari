@@ -971,6 +971,17 @@ where B: BlockchainBackend
         rewind_to_height(&mut *db, height)
     }
 
+    /// Rewind the blockchain state to the block hash making the block at that hash the new tip.
+    /// Returns the removed blocks.
+    ///
+    /// The operation will fail if
+    /// * The block hash does not exist
+    /// * The block hash is before the horizon block height determined by the pruning horizon
+    pub fn rewind_to_hash(&self, hash: BlockHash) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
+        let mut db = self.db_write_access()?;
+        rewind_to_hash(&mut *db, hash)
+    }
+
     pub fn fetch_horizon_data(&self) -> Result<Option<HorizonData>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_horizon_data()
@@ -1535,6 +1546,21 @@ fn rewind_to_height<T: BlockchainBackend>(
     db.write(txn)?;
 
     Ok(removed_blocks)
+}
+
+fn rewind_to_hash<T: BlockchainBackend>(
+    db: &mut T,
+    block_hash: BlockHash,
+) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError>
+{
+    let block_hash_hex = block_hash.to_hex();
+    let target_header =
+        fetch_header_by_block_hash(&*db, block_hash)?.ok_or_else(|| ChainStorageError::ValueNotFound {
+            entity: "BlockHeader".to_string(),
+            field: "block_hash".to_string(),
+            value: block_hash_hex,
+        })?;
+    rewind_to_height(db, target_header.height)
 }
 
 // Checks whether we should add the block as an orphan. If it is the case, the orphan block is added and the chain

@@ -76,7 +76,7 @@ async fn spawn_node(
     let (outbound_tx, outbound_rx) = mpsc::channel(10);
 
     let comms_node = CommsBuilder::new()
-        // These calls are just to get rid of unused function warnings. 
+        // These calls are just to get rid of unused function warnings.
         // <IrrelevantCalls>
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
         .with_shutdown_signal(shutdown_sig)
@@ -152,7 +152,7 @@ async fn peer_to_peer_custom_protocols() {
         .unwrap();
 
     let mut conn_man_events1 = comms_node1.subscribe_connection_manager_events();
-    let mut conn_man_requester1 = comms_node1.connection_manager();
+    let mut conn_man_requester1 = comms_node1.connectivity();
     let mut conn_man_events2 = comms_node2.subscribe_connection_manager_events();
 
     let mut conn1 = conn_man_requester1

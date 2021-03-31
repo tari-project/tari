@@ -103,6 +103,7 @@ message TransactionInfo {
     google.protobuf.Timestamp timestamp = 10;
     string message = 11;
     bool valid = 12;
+    bool is_found = 13;
 }
 
 enum TransactionDirection {
