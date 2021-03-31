@@ -237,7 +237,7 @@ async fn main() {
         total_saf_messages += num_msgs;
         total_messages += num_msgs;
         if num_successes > 0 {
-            total_saf_succeeded +=1;
+            total_saf_succeeded += 1;
         }
         if num_successes < num_attempts {
             total_saf_timeouts += 1;

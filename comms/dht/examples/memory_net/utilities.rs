@@ -363,7 +363,7 @@ pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_ind
         num_successes,
         nodes.len() - 1
     );
-    (num_successes, nodes.len() -1)
+    (num_successes, nodes.len() - 1)
 }
 
 #[allow(clippy::too_many_arguments)]
