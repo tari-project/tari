@@ -283,18 +283,15 @@ pub async fn init_wallet(
             // wallet is not encrypted
             (backends, false)
         },
-        Err(e) => {
-            if matches!(e, WalletStorageError::NoPasswordError) {
-                // get supplied or prompt password
-                let passphrase = get_or_prompt_password(arg_password.clone(), config.console_wallet_password.clone())?;
-                let backends = initialize_sqlite_database_backends(db_path, passphrase)
-                    .map_err(|e| ExitCodes::WalletError(format!("Error creating Wallet database backends. {}", e)))?;
+        Err(WalletStorageError::NoPasswordError) => {
+            // get supplied or prompt password
+            let passphrase = get_or_prompt_password(arg_password.clone(), config.console_wallet_password.clone())?;
+            let backends = initialize_sqlite_database_backends(db_path, passphrase)?;
 
-                (backends, true)
-            } else {
-                return Err(e)
-                    .map_err(|e| ExitCodes::WalletError(format!("Error creating Wallet database backends. {}", e)));
-            }
+            (backends, true)
+        },
+        Err(e) => {
+            return Err(e.into());
         },
     };
     let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend) = backends;
@@ -355,6 +352,7 @@ pub async fn init_wallet(
             allow_test_addresses: config.allow_test_addresses,
             network: config.network.into(),
             flood_ban_max_msg_count: config.flood_ban_max_msg_count,
+            saf_msg_validity: config.saf_expiry_duration,
             ..Default::default()
         },
         // TODO: This should be false unless testing locally - make this configurable

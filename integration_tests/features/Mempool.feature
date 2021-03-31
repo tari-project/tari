@@ -6,15 +6,11 @@ Feature: Mempool
     Given I have 10 seed nodes
     And I have a base node SENDER connected to all seed nodes
     And I have 10 base nodes connected to all seed nodes
-    #We wait for the nodes to boot up
-    When I wait 100 seconds
     When I mine a block on SENDER with coinbase CB1
     When I mine 2 blocks on SENDER
     When I create a transaction TX1 spending CB1 to UTX1
     When I submit transaction TX1 to SENDER
     Then SENDER has TX1 in MEMPOOL state
-    #We need to wait to ensure that the tx is propagated through the network
-    When I wait 100 seconds
     Then TX1 is in the MEMPOOL of all nodes
 
 
@@ -22,29 +18,21 @@ Feature: Mempool
     Given I have 2 seed nodes
     And I have a base node SENDER connected to all seed nodes
     And I have 2 base nodes connected to all seed nodes
-    #We wait for the nodes to boot up
-    When I wait 100 seconds
     When I mine a block on SENDER with coinbase CB1
     When I mine 2 blocks on SENDER
     When I create a transaction TX1 spending CB1 to UTX1
     When I submit transaction TX1 to SENDER
     Then SENDER has TX1 in MEMPOOL state
-    When I wait 20 seconds
     Then TX1 is in the MEMPOOL of all nodes
     Given I have a base node NODE1 connected to all seed nodes
-    #wait for node to boot up
-    When I wait 100 seconds
     Then NODE1 has TX1 in MEMPOOL state
     When I mine 1 blocks on SENDER 
-    When I wait 20 seconds
     Then SENDER has TX1 in MINED state
     Then TX1 is in the MINED of all nodes
 
  Scenario: Clear out mempool
     Given I have 1 seed nodes
     And I have a base node SENDER connected to all seed nodes
-    #We wait for the nodes to boot up
-    When I wait 30 seconds
     When I mine a block on SENDER with coinbase CB1
     When I mine a block on SENDER with coinbase CB2
     When I mine a block on SENDER with coinbase CB3
@@ -71,7 +59,6 @@ Feature: Mempool
 Scenario: Double spend
     Given I have 1 seed nodes
     And I have a base node SENDER connected to all seed nodes
-    When I wait 30 seconds
     When I mine a block on SENDER with coinbase CB1
     When I mine 4 blocks on SENDER
     When I create a custom fee transaction TX1 spending CB1 to UTX1 with fee 80

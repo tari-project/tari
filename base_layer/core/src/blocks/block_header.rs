@@ -37,8 +37,10 @@
 //! state = Hash(Hash(mmr_root)|| Hash(roaring_bitmap))
 //! This hash is called the UTXO merkle root, and is used as the output_mr
 
+#[cfg(feature = "base_node")]
+use crate::blocks::{BlockBuilder, NewBlockHeaderTemplate};
+
 use crate::{
-    blocks::{BlockBuilder, NewBlockHeaderTemplate},
     proof_of_work::{PowAlgorithm, PowError, ProofOfWork},
     transactions::types::{BlindingFactor, HashDigest},
 };
@@ -153,6 +155,7 @@ impl BlockHeader {
         })
     }
 
+    #[cfg(feature = "base_node")]
     pub fn into_builder(self) -> BlockBuilder {
         BlockBuilder::new(self.version).with_header(self)
     }
@@ -215,6 +218,7 @@ impl BlockHeader {
     }
 }
 
+#[cfg(feature = "base_node")]
 impl From<NewBlockHeaderTemplate> for BlockHeader {
     fn from(header_template: NewBlockHeaderTemplate) -> Self {
         Self {

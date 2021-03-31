@@ -136,15 +136,8 @@ impl MempoolInboundHandlers {
                     target: LOG_TARGET,
                     "Transaction inserted into mempool: {}, pool: {}.", kernel_excess_sig, tx_storage
                 );
-                let propagate = match tx_storage {
-                    TxStorageResponse::UnconfirmedPool => true,
-                    TxStorageResponse::ReorgPool => false,
-                    TxStorageResponse::NotStored => false,
-                    TxStorageResponse::NotStoredOrphan => false,
-                    TxStorageResponse::NotStoredTimeLocked => false,
-                    TxStorageResponse::NotStoredAlreadySpent => false,
-                };
-                if propagate {
+                // propagate the tx if it was accepted to the unconfirmed pool
+                if matches!(tx_storage, TxStorageResponse::UnconfirmedPool) {
                     debug!(
                         target: LOG_TARGET,
                         "Propagate transaction ({}) to network.", kernel_excess_sig,

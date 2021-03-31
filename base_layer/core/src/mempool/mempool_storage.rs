@@ -209,7 +209,7 @@ impl MempoolStorage {
 
     // Returns the total number of transactions in the Mempool.
     fn len(&self) -> Result<usize, MempoolError> {
-        Ok(self.unconfirmed_pool.len() + self.reorg_pool.len()?)
+        Ok(self.unconfirmed_pool.len())
     }
 
     // Returns the total weight of all transactions stored in the Mempool.

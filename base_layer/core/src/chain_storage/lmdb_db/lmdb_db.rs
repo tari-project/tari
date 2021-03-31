@@ -318,17 +318,28 @@ impl LMDBDatabase {
 
                     self.update_block_accumulated_data(&write_txn, height, &block_accum_data)?;
                 },
-
-                UpdateDeletedBlockAccumulatedData { header_hash, deleted } => {
+                UpdateDeletedBlockAccumulatedDataWithDiff {
+                    header_hash,
+                    mut deleted,
+                } => {
                     let height = self.fetch_height_from_hash(&write_txn, &header_hash).or_not_found(
                         "BlockHash",
                         "hash",
                         header_hash.to_hex(),
                     )?;
+                    let prev_block_accum_data = if height > 0 {
+                        self.fetch_block_accumulated_data(&write_txn, height - 1)?
+                            .unwrap_or_else(BlockAccumulatedData::default)
+                    } else {
+                        return Err(ChainStorageError::InvalidOperation(
+                            "Tried to update genesis block delete bitmap".to_string(),
+                        ));
+                    };
                     let mut block_accum_data = self
                         .fetch_block_accumulated_data(&write_txn, height)?
                         .unwrap_or_else(BlockAccumulatedData::default);
 
+                    deleted.or_inplace(&prev_block_accum_data.deleted.deleted);
                     block_accum_data.deleted = DeletedBitmap { deleted };
                     self.update_block_accumulated_data(&write_txn, height, &block_accum_data)?;
                 },
@@ -986,8 +997,6 @@ impl BlockchainBackend for LMDBDatabase {
     }
 
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError> {
-        let mark = Instant::now();
-
         let txn = ReadTransaction::new(&*self.env).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
         let res = match key {
             DbKey::BlockHeader(k) => {
@@ -1029,7 +1038,6 @@ impl BlockchainBackend for LMDBDatabase {
                 .fetch_orphan(&txn, k)?
                 .map(|val| DbValue::OrphanBlock(Box::new(val))),
         };
-        trace!(target: LOG_TARGET, "Fetched key {} in {:.0?}", key, mark.elapsed());
         Ok(res)
     }
 
@@ -1393,14 +1401,21 @@ impl BlockchainBackend for LMDBDatabase {
                     }),
                 );
 
-                let block_accum_data = self.fetch_block_accumulated_data(&txn, height).or_not_found(
-                    "BlockAccumulatedData",
-                    "height",
-                    height.to_string(),
-                )?;
-                // TODO: make diff
-
-                deleted_result.push(block_accum_data.deleted().clone());
+                let block_accum_data = self
+                    .fetch_block_accumulated_data(&txn, height)
+                    .or_not_found("BlockAccumulatedData", "height", height.to_string())?
+                    .deleted()
+                    .clone();
+                let prev_block_accum_data = if height == 0 {
+                    Bitmap::create()
+                } else {
+                    self.fetch_block_accumulated_data(&txn, height - 1)
+                        .or_not_found("BlockAccumulatedData", "height", height.to_string())?
+                        .deleted()
+                        .clone()
+                };
+                let diff_bitmap = block_accum_data.xor(&prev_block_accum_data);
+                deleted_result.push(diff_bitmap);
 
                 skip_amount = 0;
             }
@@ -1425,6 +1440,13 @@ impl BlockchainBackend for LMDBDatabase {
             );
             if let Some(output) = lmdb_get::<_, TransactionOutputRowData>(&txn, &self.utxos_db, key.as_str())? {
                 if output.output.is_none() {
+                    error!(
+                        target: LOG_TARGET,
+                        "Tried to fetch pruned output: {} ({}, {})",
+                        output_hash.to_hex(),
+                        index,
+                        key
+                    );
                     unimplemented!("Output has been pruned");
                 }
                 Ok(Some((output.output.unwrap(), output.mmr_position)))
@@ -1480,7 +1502,6 @@ impl BlockchainBackend for LMDBDatabase {
     }
 
     fn fetch_mmr_leaf_index(&self, tree: MmrTree, hash: &Hash) -> Result<Option<u32>, ChainStorageError> {
-        trace!(target: LOG_TARGET, "Fetch MMR leaf index");
         let txn = ReadTransaction::new(&*self.env).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
         self.fetch_mmr_leaf_index(&*txn, tree, hash)
     }

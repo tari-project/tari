@@ -694,25 +694,6 @@ impl CommandHandler {
     }
 
     /// Function to process the get-headers command
-    async fn get_headers(
-        blockchain_db: &AsyncBlockchainDb<LMDBDatabase>,
-        start: u64,
-        end: Option<u64>,
-    ) -> Result<Vec<BlockHeader>, anyhow::Error>
-    {
-        match end {
-            Some(end) => blockchain_db.fetch_headers(start..=end).await.map_err(Into::into),
-            None => {
-                let tip = blockchain_db.fetch_tip_header().await?.height();
-                blockchain_db
-                    .fetch_headers((tip.saturating_sub(start) + 1)..)
-                    .await
-                    .map_err(Into::into)
-            },
-        }
-    }
-
-    /// Function to process the get-headers command
     async fn get_chain_headers(
         blockchain_db: &AsyncBlockchainDb<LMDBDatabase>,
         start: u64,
@@ -722,9 +703,13 @@ impl CommandHandler {
         match end {
             Some(end) => blockchain_db.fetch_chain_headers(start..=end).await.map_err(Into::into),
             None => {
+                let from_tip = start;
+                if from_tip == 0 {
+                    return Ok(Vec::new());
+                }
                 let tip = blockchain_db.fetch_tip_header().await?.height();
                 blockchain_db
-                    .fetch_chain_headers((tip.saturating_sub(start) + 1)..)
+                    .fetch_chain_headers(tip.saturating_sub(from_tip - 1)..=tip)
                     .await
                     .map_err(Into::into)
             },
@@ -734,12 +719,12 @@ impl CommandHandler {
     pub fn calc_timing(&self, start: u64, end: Option<u64>) {
         let blockchain_db = self.blockchain_db.clone();
         self.executor.spawn(async move {
-            let headers = match Self::get_headers(&blockchain_db, start, end).await {
+            let headers = match Self::get_chain_headers(&blockchain_db, start, end).await {
                 Ok(h) if h.is_empty() => {
                     println!("No headers found");
                     return;
                 },
-                Ok(h) => h.into_iter().rev().collect::<Vec<_>>(),
+                Ok(h) => h.into_iter().map(|ch| ch.header).rev().collect::<Vec<_>>(),
                 Err(err) => {
                     println!("Failed to retrieve headers: {:?}", err);
                     warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);

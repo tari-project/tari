@@ -33,7 +33,7 @@ use tari_wallet::{
 use thiserror::Error;
 use tokio::task::JoinError;
 
-pub const LOG_TARGET: &str = "tari_console_wallet::error";
+pub const LOG_TARGET: &str = "wallet::automation::error";
 
 #[derive(Debug, Error)]
 pub enum CommandError {
@@ -54,8 +54,7 @@ pub enum CommandError {
 impl From<CommandError> for ExitCodes {
     fn from(err: CommandError) -> Self {
         error!(target: LOG_TARGET, "{}", err);
-        let msg = format!("Command error: {}", err);
-        Self::CommandError(msg)
+        Self::CommandError(err.to_string())
     }
 }
 

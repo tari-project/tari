@@ -22,9 +22,8 @@
 
 #![feature(type_alias_impl_trait)]
 
+pub mod contacts_service;
 pub mod output_manager_service;
 pub mod support;
-// pub mod text_message_service;
-pub mod contacts_service;
 pub mod transaction_service;
 pub mod wallet;

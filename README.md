@@ -1,4 +1,4 @@
-[![Build](https://circleci.com/gh/tari-project/tari.svg?style=svg)](https://circleci.com/gh/tari-project/tari)
+[![Build](https://circleci.com/gh/tari-project/tari/tree/development.svg?style=svg)](https://circleci.com/gh/tari-project/tari/tree/development)
 
 # The Tari protocol
 
@@ -606,8 +606,12 @@ The XMRig configuration must be prepared for either solo or pool merged mining w
 configuration file for XMRig as this offers more flexibility, otherwise, the configuration parameters can be passed 
 in via the command line upon runtime.
 
-**Note:** Monero mainnet and stagenet wallet addresses can only be used with the corresponding network. The `monerod_url` 
-configuration setting (see [Tari applications](#tari-applications)) must also correspond to the chosen network.
+**Notes:** 
+* Monero mainnet and stagenet wallet addresses can only be used with the corresponding network. The `monerod_url` 
+configuration setting (see [Tari applications](#tari-applications)) must also correspond to the chosen network. 
+* For the solo mining configuration, Monero doesn't currently support requesting templates to mine on with the address 
+being a subaddress. It is possible to do with the self-select configuration since the template is requested by the miner 
+with the wallet address of the pool.
 
 ###### Solo mining
 
@@ -625,8 +629,7 @@ in JSON format:
        addresses:
        - Public stagenet address at https://coin.fyi/news/monero/stagenet-wallet-8jyt89#!
          `55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt`
-       - Public mainnet address at https://www.getmonero.org/get-started/contributing/
-         `888tNkZrPN6JsEgekjMnABU4TBzc2Dt29EPAvkRxbANsAnjyPbb3iQ1YBRk1UXcdRsiKc9dhwMVgN5S9cQUiyoogDavup3H`
+       - Mainnet address `<Enter your own mainnet wallet address here>`
 
 - Backends -> Select `CPU` (`OpenCL` or `CUDA` also possible depending on your computer hardware).
 
@@ -669,7 +672,7 @@ be augmented with Tari specific settings. Using the wizard, create the following
     - `nicehash`: Uncheck.
     - `User`: This must be your own mainnet wallet address, or you can use this address to donate to Monero:
        - Public mainnet address at https://www.getmonero.org/get-started/contributing/
-         `888tNkZrPN6JsEgekjMnABU4TBzc2Dt29EPAvkRxbANsAnjyPbb3iQ1YBRk1UXcdRsiKc9dhwMVgN5S9cQUiyoogDavup3H`
+       `888tNkZrPN6JsEgekjMnABU4TBzc2Dt29EPAvkRxbANsAnjyPbb3iQ1YBRk1UXcdRsiKc9dhwMVgN5S9cQUiyoogDavup3H`
     - `Password`: A custom field that could be your wallet name or some other pool settings.
     - `Coin`: Monero.
     - `Algorithm`: rx/0.

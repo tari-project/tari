@@ -1,14 +1,13 @@
-const {spawnSync, spawn, execSync} = require('child_process');
-const {expect} = require('chai');
+const { spawn } = require('child_process');
+const { expect } = require('chai');
 const fs = require('fs');
 const path = require('path');
 const BaseNodeClient = require("./baseNodeClient");
-const {getFreePort} = require("./util");
+const { getFreePort } = require("./util");
 const dateFormat = require('dateformat');
-const {createEnv} = require("./config");
+const { createEnv } = require("./config");
 
 let outputProcess;
-
 class BaseNodeProcess {
     constructor(name, options, logFilePath, nodeFile) {
         this.name = name;
@@ -17,28 +16,30 @@ class BaseNodeProcess {
         this.options = options;
     }
 
-
     async init() {
         this.port = await getFreePort(19000, 25000);
         this.grpcPort = await getFreePort(19000, 25000);
         this.name = `Basenode${this.port}-${this.name}`;
         this.nodeFile = this.nodeFile || "nodeid.json";
         this.baseDir = `./temp/base_nodes/${dateFormat(new Date(), "yyyymmddHHMM")}/${this.name}`;
-        await this.run(await this.compile(),this.logFilePath ? ["--base-path", ".", "--init", "--create-id", "-l", this.logFilePath] : ["--base-path", ".", "--init", "--create-id"]);
-        // console.log("POrt:", this.port);
+        const args = ["--base-path", ".", "--init", "--create-id"];
+        if (this.logFilePath) {
+            args.push("--log-config", this.logFilePath);
+        }
+
+        await this.run(await this.compile(), args);
+        // console.log("Port:", this.port);
         // console.log("GRPC:", this.grpcPort);
         // console.log(`Starting node ${this.name}...`);
-
     }
 
     async compile() {
         if (!outputProcess) {
-            await this.run("cargo", ["build", "--release", "--bin", "tari_base_node","-Z", "unstable-options", "--out-dir", __dirname + "/../temp/out"]);
+            await this.run("cargo", ["build", "--release", "--bin", "tari_base_node", "-Z", "unstable-options", "--out-dir", __dirname + "/../temp/out"]);
             outputProcess = __dirname + "/../temp/out/tari_base_node";
         }
         return outputProcess;
     }
-
 
     ensureNodeInfo() {
         while (true) {
@@ -48,7 +49,6 @@ class BaseNodeProcess {
         }
 
         this.nodeInfo = JSON.parse(fs.readFileSync(this.baseDir + "/" + this.nodeFile, 'utf8'));
-
     }
 
     peerAddress() {
@@ -68,31 +68,11 @@ class BaseNodeProcess {
         return address;
     }
 
-
-    //
-    // runSync(cmd, args) {
-    //
-    //     if (!fs.existsSync(this.baseDir)) {
-    //         fs.mkdirSync(this.baseDir, {recursive: true});
-    //     }
-    //     var ps = spawnSync(cmd, args, {
-    //         cwd: this.baseDir,
-    //         shell: true,
-    //         env: {...process.env, ...this.createEnvs()}
-    //     });
-    //
-    //     expect(ps.error).to.be.an('undefined');
-    //
-    //     this.ps = ps;
-    //     return ps;
-    //
-    // }
-
     run(cmd, args, saveFile) {
         return new Promise((resolve, reject) => {
             if (!fs.existsSync(this.baseDir)) {
-                fs.mkdirSync(this.baseDir, {recursive: true});
-                fs.mkdirSync(this.baseDir + "/log", {recursive: true});
+                fs.mkdirSync(this.baseDir, { recursive: true });
+                fs.mkdirSync(this.baseDir + "/log", { recursive: true });
             }
 
             let envs = createEnv(this.name, false, this.nodeFile, "127.0.0.1", "8082", "8081", "127.0.0.1",
@@ -101,7 +81,7 @@ class BaseNodeProcess {
             var ps = spawn(cmd, args, {
                 cwd: this.baseDir,
                 // shell: true,
-                env: {...process.env, ...envs}
+                env: { ...process.env, ...envs }
             });
 
             ps.stdout.on('data', (data) => {
@@ -143,8 +123,11 @@ class BaseNodeProcess {
         return this.createGrpcClient();
     }
 
-    async start () {
-        const args  = this.logFilePath ? ["--base-path", ".", "-l", this.logFilePath] : ["--base-path", "."];
+    async start() {
+        const args = ["--base-path", "."];
+        if (this.logFilePath) {
+            args.push("--log-config", this.logFilePath);
+        }
         return await this.run(await this.compile(), args);
     }
 

@@ -33,7 +33,7 @@ extern crate diesel_migrations;
 extern crate lazy_static;
 
 pub mod schema;
-// pub mod text_message_service;
+pub mod tasks;
 
 pub use wallet::Wallet;
 

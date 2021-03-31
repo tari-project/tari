@@ -22,7 +22,7 @@
 
 use crate::{
     block_template_data::{BlockTemplateDataBuilder, BlockTemplateRepository},
-    common::{json_rpc, merge_mining, monero_rpc::CoreRpcErrorCode, proxy},
+    common::{json_rpc, merge_mining, monero_rpc::CoreRpcErrorCode, proxy, proxy::convert_json_to_hyper_json_response},
     error::MmProxyError,
 };
 use bytes::Bytes;
@@ -350,22 +350,26 @@ impl InnerService {
             let start = Instant::now();
             match base_node_client.submit_block(block_data.tari_block).await {
                 Ok(resp) => {
-                    json_resp = json_rpc::success_response(
-                        request["id"].as_i64(),
-                        json!({ "status": "OK", "untrusted": !self.initial_sync_achieved.load(Ordering::Relaxed) }),
-                    );
-
-                    let resp = resp.into_inner();
-                    json_resp = append_aux_chain_data(
-                        json_resp,
-                        json!({"id": TARI_CHAIN_ID, "block_hash": resp.block_hash.to_hex()}),
-                    );
-                    debug!(
-                        target: LOG_TARGET,
-                        "Submitted block #{} to Tari node in {:.0?} (SubmitBlock)",
-                        height,
-                        start.elapsed()
-                    );
+                    if !self.config.proxy_submit_to_origin {
+                        // self-select related, do not change.
+                        json_resp = json_rpc::default_block_accept_response(request["id"].as_i64());
+                    } else {
+                        json_resp = json_rpc::success_response(
+                            request["id"].as_i64(),
+                            json!({ "status": "OK", "untrusted": !self.initial_sync_achieved.load(Ordering::Relaxed) }),
+                        );
+                        let resp = resp.into_inner();
+                        json_resp = append_aux_chain_data(
+                            json_resp,
+                            json!({"id": TARI_CHAIN_ID, "block_hash": resp.block_hash.to_hex()}),
+                        );
+                        debug!(
+                            target: LOG_TARGET,
+                            "Submitted block #{} to Tari node in {:.0?} (SubmitBlock)",
+                            height,
+                            start.elapsed()
+                        );
+                    }
                     self.block_templates.remove(&hash).await;
                 },
                 Err(err) => {
@@ -775,53 +779,55 @@ impl InnerService {
             monerod_uri,
         );
 
-        let json_response = if self.config.proxy_submit_to_origin {
+        let mut submit_block = false;
+        let body: Bytes = request.body().clone();
+        let json = json::from_slice::<json::Value>(&body[..]).unwrap_or_default();
+        if let Some(method) = json["method"].as_str() {
+            match method {
+                "submitblock" | "submit_block" => {
+                    submit_block = true;
+                },
+                _ => {},
+            }
+        }
+
+        let json_response;
+
+        // If the request is a block submission and we are not submitting blocks
+        // to the origin (self-select mode, see next comment for a full explanation)
+        if submit_block && !self.config.proxy_submit_to_origin {
+            debug!(
+                target: LOG_TARGET,
+                "[monerod] skip: Proxy configured for self-select mode. Pool will submit to MoneroD, submitting to \
+                 Tari.",
+            );
+
+            // This is required for self-select configuration.
+            // We are not submitting the block to Monero here (the pool does this),
+            // we are only interested in intercepting the request for the purposes of
+            // submitting the block to Tari which will only happen if the accept response
+            // (which normally would occur for normal mining) is provided here.
+            // There is no point in trying to submit the block to Monero here since the
+            // share submitted by XMRig is only guaranteed to meet the difficulty of
+            // min(Tari,Monero) since that is what was returned with the original template.
+            // So it would otherwise be a duplicate submission of what the pool will do
+            // itself (whether the miner submits directly to monerod or the pool does,
+            // the pool is the only one being paid out here due to the nature
+            // of self-select). Furthermore, discussions with devs from Monero and XMRig are
+            // very much against spamming the nodes unnecessarily.
+            // NB!: This is by design, do not change this without understanding
+            // it's implications.
+            let accept_response = json_rpc::default_block_accept_response(json["id"].as_i64());
+            json_response =
+                convert_json_to_hyper_json_response(accept_response, StatusCode::OK, monerod_uri.clone()).await?;
+        } else {
             let resp = builder
                 // This is a cheap clone of the request body
-                .body(request.body().clone())
+                .body(body)
                 .send()
                 .await
                 .map_err(MmProxyError::MonerodRequestFailed)?;
-            convert_reqwest_response_to_hyper_json_response(resp).await?
-        } else {
-            let json = json::from_slice::<json::Value>(&request.body()[..])?;
-            match json["method"].as_str() {
-                Some("submitblock") | Some("submit_block") => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "[monerod] skip: Proxy configured for self-select mode. Pool will submit to MoneroD, \
-                         submitting to Tari.",
-                    );
-
-                    // This is required for self-select configuration.
-                    // We are not submitting the block to Monero here (the pool does this),
-                    // we are only interested in intercepting the request for the purposes of
-                    // submitting the block to Tari which will only happen if the accept response
-                    // (which normally would occur for normal mining) is provided here.
-                    // There is no point in trying to submit the block to Monero here since the
-                    // share submitted by XMRig is only guaranteed to meet the difficulty of
-                    // min(Tari,Monero) since that is what was returned with the original template.
-                    // So it would otherwise be a duplicate submission of what the pool will do
-                    // itself (whether the miner submits directly to monerod or the pool does,
-                    // the pool is the only one being paid out here due to the nature
-                    // of self-select). Furthermore, discussions with devs from Monero and XMRig are
-                    // very much against spamming the nodes unnecessarily.
-                    // NB!: This is by design, do not change this without understanding
-                    // it's implications.
-                    let accept_response = json_rpc::default_block_accept_response(json["id"].as_i64());
-                    proxy::convert_json_to_hyper_json_response(accept_response, StatusCode::OK, monerod_uri.clone())
-                        .await?
-                },
-                _ => {
-                    let resp = builder
-                        // This is a cheap clone of the request body
-                        .body(request.body().clone())
-                        .send()
-                        .await
-                        .map_err(MmProxyError::MonerodRequestFailed)?;
-                    convert_reqwest_response_to_hyper_json_response(resp).await?
-                },
-            }
+            json_response = convert_reqwest_response_to_hyper_json_response(resp).await?
         };
 
         let rpc_status = if json_response.body()["error"].is_null() {
@@ -879,13 +885,29 @@ impl InnerService {
     }
 
     async fn handle(self, mut request: Request<Body>) -> Result<Response<Body>, MmProxyError> {
+        let start = Instant::now();
         let bytes = proxy::read_body_until_end(request.body_mut()).await?;
         let request = request.map(|_| bytes.freeze());
+        let method_name;
+        match *request.method() {
+            Method::GET => {
+                let mut chars = request.uri().path().chars();
+                chars.next();
+                method_name = chars.as_str().to_string();
+            },
+            Method::POST => {
+                let json = json::from_slice::<json::Value>(request.body()).unwrap_or_default();
+                method_name = str::replace(json["method"].as_str().unwrap_or_default(), "\"", "");
+            },
+            _ => {
+                method_name = "unsupported".to_string();
+            },
+        }
 
         debug!(
             target: LOG_TARGET,
             "request: {} ({})",
-            String::from_utf8_lossy(&request.body()[..]),
+            String::from_utf8_lossy(&request.body().clone()[..]),
             request
                 .headers()
                 .iter()
@@ -896,17 +918,31 @@ impl InnerService {
 
         let (request, monerod_resp) = self.proxy_request_to_monerod(request).await?;
         // Any failed (!= 200 OK) responses from Monero are immediately returned to the requester
-        if !monerod_resp.status().is_success() {
+        let monerod_status = monerod_resp.status();
+        if !monerod_status.is_success() {
             // we dont break on xmrig returned error.
             warn!(
                 target: LOG_TARGET,
                 "Monerod returned an error: {}",
                 monerod_resp.status()
             );
+            println!(
+                "Method: {}, MoneroD Status: {}, Proxy Status: N/A, Response Time: {}ms",
+                method_name,
+                monerod_status,
+                start.elapsed().as_millis()
+            );
             return Ok(monerod_resp.map(|json| json.to_string().into()));
         }
 
         let response = self.get_proxy_response(request, monerod_resp).await?;
+        println!(
+            "Method: {}, MoneroD Status: {}, Proxy Status: {}, Response Time: {}ms",
+            method_name,
+            monerod_status,
+            response.status(),
+            start.elapsed().as_millis()
+        );
         Ok(response)
     }
 }

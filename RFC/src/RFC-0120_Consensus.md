@@ -69,6 +69,15 @@ Every [block] MUST conform to the following:
 
 If a [block] does not confirm to the above, the block should be rejected as invalid and the peer from which it was received marked as a malicious peer.
 
+#### Coinbase
+
+Every coinbase transaction contained in a block MUST conform to the following:
+
+* Be only one UTXO
+* Have only one kernel
+* Contain the exact specified emission amount
+* Contain the exact specified lock-height.
+
 ### Blockheaders
 
 Every [block header] MUST contain the following fields:

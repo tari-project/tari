@@ -225,6 +225,7 @@ where B: BlockchainBackend + 'static
                 allow_test_addresses: self.config.allow_test_addresses,
                 network: self.config.network.into(),
                 flood_ban_max_msg_count: self.config.flood_ban_max_msg_count,
+                saf_msg_validity: self.config.saf_expiry_duration,
                 ..Default::default()
             },
             allow_test_addresses: self.config.allow_test_addresses,

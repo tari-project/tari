@@ -109,7 +109,8 @@ impl WalletSqliteDatabase {
                             let nonce = GenericArray::from_slice(sk_bytes.as_slice());
 
                             let decrypted_key = cipher_inner.decrypt(nonce, data.as_ref()).map_err(|e| {
-                                WalletStorageError::AeadError(format!("Decryption Error:{}", e.to_string()))
+                                error!(target: LOG_TARGET, "Incorrect password ({})", e);
+                                WalletStorageError::IncorrectPassword
                             })?;
                             CommsSecretKey::from_bytes(decrypted_key.as_slice()).map_err(|_| {
                                 error!(

@@ -29,6 +29,8 @@ use thiserror::Error;
 pub enum BaseNodeServiceError {
     #[error("No base node peer set")]
     NoBaseNodePeer,
+    #[error("RPC Error: `{0}`")]
+    RpcError(String),
     #[error("No chain metadata from peer")]
     NoChainMetadata,
     #[error("Unexpected API Response")]
@@ -41,4 +43,6 @@ pub enum BaseNodeServiceError {
     InvalidBaseNodeResponse(String),
     #[error("Wallet storage error: `{0}`")]
     WalletStorageError(#[from] WalletStorageError),
+    #[error("Conversion error: `{0}`")]
+    ConversionError(String),
 }

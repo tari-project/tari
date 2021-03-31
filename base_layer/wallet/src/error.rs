@@ -65,6 +65,8 @@ pub enum WalletError {
     ServiceInitializationError(#[from] ServiceInitializationError),
     #[error("Base Node Service error: {0}")]
     BaseNodeServiceError(#[from] BaseNodeServiceError),
+    #[error("Error performing wallet recovery: '{0}'")]
+    WalletRecoveryError(String),
 }
 
 #[derive(Debug, Error)]
@@ -119,4 +121,6 @@ pub enum WalletStorageError {
     IoError(#[from] std::io::Error),
     #[error("No password provided for encrypted wallet")]
     NoPasswordError,
+    #[error("Incorrect password provided for encrypted wallet")]
+    IncorrectPassword,
 }
