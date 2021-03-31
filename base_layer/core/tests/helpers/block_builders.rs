@@ -60,7 +60,7 @@ use tari_crypto::{
 use tari_mmr::MutableMmr;
 
 const _MAINNET: Network = Network::MainNet;
-const _RIDCULLY: Network = Network::Ridcully;
+const _WEATHERWAX: Network = Network::Weatherwax;
 
 pub fn create_coinbase(
     factories: &CryptoFactories,
@@ -112,7 +112,7 @@ fn genesis_template(
 // This is a helper function to generate and print out a block that can be used as the genesis block.
 // #[test]
 pub fn _create_act_gen_block() {
-    let network = _RIDCULLY;
+    let network = _WEATHERWAX;
     let consensus_manager: ConsensusManager = ConsensusManagerBuilder::new(network).build();
     let factories = CryptoFactories::default();
     let mut header = BlockHeader::new(consensus_manager.consensus_constants(0).blockchain_version());

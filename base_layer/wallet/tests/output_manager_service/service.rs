@@ -113,7 +113,7 @@ pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     let (event_publisher, _) = channel(100);
     let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher);
 
-    let constants = ConsensusConstantsBuilder::new(Network::Stibbons).build();
+    let constants = ConsensusConstantsBuilder::new(Network::Weatherwax).build();
 
     let (sender, receiver_bns) = reply_channel::unbounded();
     let (event_publisher_bns, _) = broadcast::channel(100);
@@ -365,7 +365,7 @@ pub fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     let (event_publisher, _) = channel(100);
     let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher);
 
-    let constants = ConsensusConstantsBuilder::new(Network::Stibbons).build();
+    let constants = ConsensusConstantsBuilder::new(Network::Weatherwax).build();
 
     let (sender, receiver_bns) = reply_channel::unbounded();
     let (event_publisher_bns, _) = broadcast::channel(100);

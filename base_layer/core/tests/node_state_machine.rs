@@ -143,7 +143,7 @@ fn test_event_channel() {
     let temp_dir = tempdir().unwrap();
     let mut runtime = Runtime::new().unwrap();
     let (node, consensus_manager) =
-        BaseNodeBuilder::new(Network::Stibbons).start(&mut runtime, temp_dir.path().to_str().unwrap());
+        BaseNodeBuilder::new(Network::Weatherwax).start(&mut runtime, temp_dir.path().to_str().unwrap());
     // let shutdown = Shutdown::new();
     let db = create_test_blockchain_db();
     let shutdown = Shutdown::new();

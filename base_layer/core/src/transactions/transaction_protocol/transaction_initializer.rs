@@ -602,7 +602,7 @@ mod test {
         // Create some inputs
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let (utxo, input, script_offset) = create_test_input(MicroTari(500), 0, 0, &factories.commitment);
+        let (utxo, input, _) = create_test_input(MicroTari(500), 0, 0, &factories.commitment);
         let expected_fee = Fee::calculate(MicroTari(20), 1, 1, 1);
         let output = UnblindedOutput::new(
             MicroTari(500) - expected_fee,
@@ -647,7 +647,7 @@ mod test {
         // Create some inputs
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let (utxo, input, script_offset) = create_test_input(MicroTari(500), 0, 0, &factories.commitment);
+        let (utxo, input, _) = create_test_input(MicroTari(500), 0, 0, &factories.commitment);
         let expected_fee = MicroTari::from((KERNEL_WEIGHT + WEIGHT_PER_INPUT + 1 * WEIGHT_PER_OUTPUT) * 20);
         // fee == 340, output = 80
         // Pay out so that I should get change, but not enough to pay for the output
@@ -711,7 +711,7 @@ mod test {
             .with_output(output, PrivateKey::random(&mut OsRng))
             .with_fee_per_gram(MicroTari(2));
         for _ in 0..MAX_TRANSACTION_INPUTS + 1 {
-            let (utxo, input, script_offset) = create_test_input(MicroTari(50), 0, 0, &factories.commitment);
+            let (utxo, input, _) = create_test_input(MicroTari(50), 0, 0, &factories.commitment);
             builder.with_input(utxo, input);
         }
         let err = builder.build::<Blake256>(&factories).unwrap_err();
@@ -723,7 +723,7 @@ mod test {
         // Create some inputs
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let (utxo, input, script_offset) = create_test_input(MicroTari(500), 0, 0, &factories.commitment);
+        let (utxo, input, _) = create_test_input(MicroTari(500), 0, 0, &factories.commitment);
         let script = script!(Nop);
         let script_offset = PrivateKey::default();
         let output = UnblindedOutput::new(
@@ -757,7 +757,7 @@ mod test {
         // Create some inputs
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let (utxo, input, script_offset) = create_test_input(MicroTari(400), 0, 0, &factories.commitment);
+        let (utxo, input, _) = create_test_input(MicroTari(400), 0, 0, &factories.commitment);
         let script = script!(Nop);
         let script_offset = PrivateKey::default();
         let output = UnblindedOutput::new(
@@ -791,7 +791,7 @@ mod test {
         // Create some inputs
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let (utxo, input, script_offset) = create_test_input(MicroTari(100_000), 0, 0, &factories.commitment);
+        let (utxo, input, _) = create_test_input(MicroTari(100_000), 0, 0, &factories.commitment);
         let script = script!(Nop);
         let script_offset = PrivateKey::default();
         let output = UnblindedOutput::new(
@@ -833,8 +833,8 @@ mod test {
         // Create some inputs
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let (utxo1, input1, script_offset1) = create_test_input(MicroTari(2000), 0, 0, &factories.commitment);
-        let (utxo2, input2, script_offset2) = create_test_input(MicroTari(3000), 0, 0, &factories.commitment);
+        let (utxo1, input1, _) = create_test_input(MicroTari(2000), 0, 0, &factories.commitment);
+        let (utxo2, input2, _) = create_test_input(MicroTari(3000), 0, 0, &factories.commitment);
         let weight = MicroTari(30);
         let script = script!(Nop);
         let script_offset = PrivateKey::default();
@@ -886,8 +886,7 @@ mod test {
         let p = TestParams::new();
         let script = script!(Nop);
         let script_offset = PrivateKey::default();
-        let (utxo1, input1, offset_private_key) =
-            create_test_input((2u64.pow(32) + 10000u64).into(), 0, 0, &factories.commitment);
+        let (utxo1, input1, _) = create_test_input((2u64.pow(32) + 10000u64).into(), 0, 0, &factories.commitment);
         let weight = MicroTari(30);
         let output = UnblindedOutput::new(
             (1u64.pow(32) + 1u64).into(),

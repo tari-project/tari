@@ -377,7 +377,7 @@ async fn inbound_fetch_blocks() {
 async fn inbound_fetch_blocks_before_horizon_height() {
     let network = Network::LocalNet;
     let consensus_constants = network.create_consensus_constants();
-    let block0 = genesis_block::get_stibbons_genesis_block();
+    let block0 = genesis_block::get_weatherwax_genesis_block();
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants[0].clone())
         .with_block(block0.clone())

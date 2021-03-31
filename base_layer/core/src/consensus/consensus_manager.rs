@@ -96,7 +96,7 @@ impl ConsensusManager {
             Network::Ridcully => get_ridcully_block_hash(),
             Network::Stibbons => get_stibbons_block_hash(),
             Network::Weatherwax => get_weatherwax_block_hash(),
-            Network::LocalNet => get_ridcully_block_hash(),
+            Network::LocalNet => get_weatherwax_block_hash(),
         }
     }
 

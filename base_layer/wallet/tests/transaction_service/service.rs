@@ -182,7 +182,7 @@ pub fn setup_transaction_service<T: TransactionBackend + 'static, P: AsRef<Path>
             OutputManagerServiceConfig::default(),
             OutputManagerMemoryDatabase::new(),
             factories.clone(),
-            Network::Stibbons,
+            Network::Weatherwax,
         ))
         .add_initializer(TransactionServiceInitializer::new(
             TransactionServiceConfig {

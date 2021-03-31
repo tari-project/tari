@@ -284,7 +284,6 @@ impl<B: BlockchainBackend> BlockValidator<B> {
     /// This function checks that all inputs in the blocks are valid UTXO's to be spend
     fn check_inputs(&self, block: &Block) -> Result<(), ValidationError> {
         let inputs = block.body.inputs();
-        let outputs = block.body.outputs();
         for (i, input) in inputs.iter().enumerate() {
             // Check for duplicates and/or incorrect sorting
             if i > 0 && input <= &inputs[i - 1] {
