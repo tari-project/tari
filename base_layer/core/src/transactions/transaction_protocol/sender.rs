@@ -925,7 +925,8 @@ mod test {
             .with_fee_per_gram(MicroTari(20))
             .with_offset(a.offset.clone())
             .with_private_nonce(a.nonce.clone())
-            .with_rewindable_change_secret(a.change_key.clone(), rewind_data)
+            .with_change_secret(a.change_key.clone())
+            .with_rewindable_outputs(rewind_data)
             .with_input(utxo, input)
             .with_amount(0, MicroTari(5000));
         let mut alice = builder.build::<Blake256>(&factories).unwrap();

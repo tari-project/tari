@@ -65,7 +65,7 @@ pub enum OutputManagerRequest {
     GetSeedWords,
     SetBaseNodePublicKey(CommsPublicKey),
     ValidateUtxos(TxoValidationType, ValidationRetryStrategy),
-    // CreateCoinSplit((MicroTari, usize, MicroTari, Option<u64>)),
+    CreateCoinSplit((MicroTari, usize, MicroTari, Option<u64>)),
     ApplyEncryption(Box<Aes256Gcm>),
     RemoveEncryption,
     GetPublicRewindKeys,
@@ -94,7 +94,7 @@ impl fmt::Display for OutputManagerRequest {
             GetSeedWords => write!(f, "GetSeedWords"),
             SetBaseNodePublicKey(k) => write!(f, "SetBaseNodePublicKey ({})", k),
             ValidateUtxos(validation_type, retry) => write!(f, "{} ({:?})", validation_type, retry),
-            // CreateCoinSplit(v) => write!(f, "CreateCoinSplit ({})", v.0),
+            CreateCoinSplit(v) => write!(f, "CreateCoinSplit ({})", v.0),
             ApplyEncryption(_) => write!(f, "ApplyEncryption"),
             RemoveEncryption => write!(f, "RemoveEncryption"),
             GetCoinbaseTransaction(_) => write!(f, "GetCoinbaseTransaction"),
@@ -412,26 +412,25 @@ impl OutputManagerHandle {
     /// Returns (tx_id, tx, fee, utxo_total_value).
     pub async fn create_coin_split(
         &mut self,
-        _amount_per_split: MicroTari,
-        _split_count: usize,
-        _fee_per_gram: MicroTari,
-        _lock_height: Option<u64>,
+        amount_per_split: MicroTari,
+        split_count: usize,
+        fee_per_gram: MicroTari,
+        lock_height: Option<u64>,
     ) -> Result<(u64, Transaction, MicroTari, MicroTari), OutputManagerError>
     {
-        // match self
-        //     .handle
-        //     .call(OutputManagerRequest::CreateCoinSplit((
-        //         amount_per_split,
-        //         split_count,
-        //         fee_per_gram,
-        //         lock_height,
-        //     )))
-        //     .await??
-        // {
-        //     OutputManagerResponse::Transaction(ct) => Ok(ct),
-        //     _ => Err(OutputManagerError::UnexpectedApiResponse),
-        // }
-        Err(OutputManagerError::UnexpectedApiResponse)
+        match self
+            .handle
+            .call(OutputManagerRequest::CreateCoinSplit((
+                amount_per_split,
+                split_count,
+                fee_per_gram,
+                lock_height,
+            )))
+            .await??
+        {
+            OutputManagerResponse::Transaction(ct) => Ok(ct),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
     }
 
     pub async fn apply_encryption(&mut self, cipher: Aes256Gcm) -> Result<(), OutputManagerError> {
