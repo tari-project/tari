@@ -185,7 +185,7 @@ pub fn setup_transaction_service<T: TransactionBackend + 'static, K: OutputManag
             OutputManagerServiceConfig::default(),
             oms_backend,
             factories.clone(),
-            Network::Stibbons,
+            Network::Weatherwax,
         ))
         .add_initializer(TransactionServiceInitializer::new(
             TransactionServiceConfig {
@@ -309,7 +309,7 @@ pub fn setup_transaction_service_no_comms_and_oms_backend<
     });
     runtime.block_on(connectivity_mock_state.add_active_connection(connection));
 
-    let constants = ConsensusConstantsBuilder::new(Network::Stibbons).build();
+    let constants = ConsensusConstantsBuilder::new(Network::Weatherwax).build();
 
     let shutdown = Shutdown::new();
 
