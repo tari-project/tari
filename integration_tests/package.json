@@ -4,8 +4,8 @@
   "description": "",
   "scripts": {
     "test": "cucumber-js",
-    "fmt": "prettier -w **/*.js",
-    "check-fmt": "prettier -c **/*.js"
+    "fmt": "prettier -w .",
+    "check-fmt": "prettier -c ."
   },
   "author": "",
   "license": "ISC",
