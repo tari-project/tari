@@ -203,19 +203,15 @@ where T: WalletBackend + 'static
         let mut connection = self.connectivity_manager.dial_peer(peer).await.map_err(|e| {
             self.set_offline();
             error!(target: LOG_TARGET, "Error dialing base node peer: {}", e);
-            BaseNodeServiceError::RpcError("Dial error".to_string())
+            e
         })?;
 
         let mut client = connection.connect_rpc::<BaseNodeWalletRpcClient>().await.map_err(|e| {
             self.set_offline();
-            error!(target: LOG_TARGET, "Error connecting to base node peer RPC: {}", e);
-            BaseNodeServiceError::RpcError("RPC connection error".to_string())
+            e
         })?;
 
-        let latency = client
-            .get_last_request_latency()
-            .await
-            .map_err(|_| BaseNodeServiceError::RpcError("Latency request error".to_string()))?;
+        let latency = client.get_last_request_latency().await?;
 
         trace!(
             target: LOG_TARGET,
@@ -223,17 +219,15 @@ where T: WalletBackend + 'static
             latency.unwrap_or_default().as_millis()
         );
 
-        let tip_info = client
-            .get_tip_info()
-            .await
-            .map_err(|_| BaseNodeServiceError::RpcError("Tip info request error".to_string()))?;
+        let tip_info = client.get_tip_info().await?;
 
         let metadata = tip_info
             .metadata
-            .ok_or_else(|| BaseNodeServiceError::RpcError("Tip info no metadata".to_string()))?;
+            .ok_or_else(|| BaseNodeServiceError::InvalidBaseNodeResponse("Tip info no metadata".to_string()))?;
 
-        let chain_metadata = ChainMetadata::try_from(metadata)
-            .map_err(|_| BaseNodeServiceError::ConversionError("Error in chain metadata conversion".to_string()))?;
+        let chain_metadata = ChainMetadata::try_from(metadata).map_err(|details| {
+            BaseNodeServiceError::InvalidBaseNodeResponse(format!("Base node sent invalid chain metadata: {}", details))
+        })?;
 
         // store chain metadata in the wallet db
         self.db.set_chain_metadata(chain_metadata.clone()).await?;
