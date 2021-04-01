@@ -197,7 +197,6 @@ fn test_base_node_wallet_rpc() {
     for input in tx2.body.inputs_mut() {
         input.height = 1;
     }
-    dbg!(&tx2);
     // Check that subitting Tx2 will now be accepted
     let msg = TransactionProto::from(tx2);
     let req = request_mock.request_with_context(Default::default(), msg);
@@ -205,7 +204,6 @@ fn test_base_node_wallet_rpc() {
         .block_on(service.submit_transaction(req))
         .unwrap()
         .into_message();
-    dbg!(&resp);
     assert!(resp.accepted);
 
     // Query Tx2 which should now be in the mempool

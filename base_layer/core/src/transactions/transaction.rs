@@ -1362,7 +1362,6 @@ mod test {
         }
 
         // check that cut-through has been applied.
-        dbg!(&tx.validate_internal_consistency(&factories, None));
         assert!(tx.validate_internal_consistency(&factories, None).is_ok());
         assert_eq!(tx.body.inputs().len(), 3);
         assert_eq!(tx.body.outputs().len(), 5);

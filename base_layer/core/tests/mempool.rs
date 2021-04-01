@@ -89,7 +89,7 @@ fn test_insert_and_process_published_block() {
         to: vec![1*T],
         fee: 20*uT,
         lock: 4,
-        OutputFeatures::with_maturity(1)
+        features: OutputFeatures::with_maturity(1)
     );
     let tx3 = Arc::new(spend_utxos(tx3).0);
 
@@ -98,7 +98,7 @@ fn test_insert_and_process_published_block() {
         to: vec![1*T],
         fee: 20*uT,
         lock: 3,
-        OutputFeatures::with_maturity(2)
+        features: OutputFeatures::with_maturity(2)
     );
     let tx5 = Arc::new(spend_utxos(tx5).0);
     let tx6 = txn_schema!(from: vec![outputs[1][3].clone()], to: vec![1 * T]);
@@ -221,7 +221,7 @@ fn test_time_locked() {
         to: vec![1*T],
         fee: 20*uT,
         lock: 4,
-        OutputFeatures::with_maturity(1)
+        features: OutputFeatures::with_maturity(1)
     );
     tx3.lock_height = 2;
     let tx3 = Arc::new(spend_utxos(tx3).0);
@@ -257,18 +257,18 @@ fn test_retrieve() {
     mempool.process_published_block(blocks[1].block.clone().into()).unwrap();
     // 1-Block, 8 UTXOs, empty mempool
     let txs = vec![
-        txn_schema!(from: vec![outputs[1][0].clone()], to: vec![], fee: 30*uT),
-        txn_schema!(from: vec![outputs[1][1].clone()], to: vec![], fee: 20*uT),
-        txn_schema!(from: vec![outputs[1][2].clone()], to: vec![], fee: 40*uT),
-        txn_schema!(from: vec![outputs[1][3].clone()], to: vec![], fee: 50*uT),
-        txn_schema!(from: vec![outputs[1][4].clone()], to: vec![], fee: 20*uT, lock: 2, OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[1][5].clone()], to: vec![], fee: 20*uT, lock: 3, OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][0].clone()], to: vec![], fee: 30*uT, lock: 0, mined_height: 1, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][1].clone()], to: vec![], fee: 20*uT, lock: 0, mined_height: 1, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][2].clone()], to: vec![], fee: 40*uT, lock: 0, mined_height: 1, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][3].clone()], to: vec![], fee: 50*uT, lock: 0, mined_height: 1, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][4].clone()], to: vec![], fee: 20*uT, lock: 2, mined_height: 1, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][5].clone()], to: vec![], fee: 20*uT, lock: 3, mined_height: 1, features: OutputFeatures::default()),
         // Will be time locked when a tx is added to mempool with this as an input:
-        txn_schema!(from: vec![outputs[1][6].clone()], to: vec![800_000*uT], fee: 60*uT, lock: 0,
-                        OutputFeatures::with_maturity(4)),
+        txn_schema!(from: vec![outputs[1][6].clone()], to: vec![800_000*uT], fee: 60*uT, lock: 0, mined_height: 1,
+        features: OutputFeatures::with_maturity(4)),
         // Will be time locked when a tx is added to mempool with this as an input:
-        txn_schema!(from: vec![outputs[1][7].clone()], to: vec![800_000*uT], fee: 25*uT, lock: 0,
-                        OutputFeatures::with_maturity(3)),
+        txn_schema!(from: vec![outputs[1][7].clone()], to: vec![800_000*uT], fee: 25*uT, lock: 0, mined_height: 1,
+        features: OutputFeatures::with_maturity(3)),
     ];
     let (tx, utxos) = schema_to_transaction(&txs);
     tx.iter().for_each(|t| {
@@ -360,7 +360,7 @@ fn test_reorg() {
     // "Mine" block 3
     let schemas = vec![
         txn_schema!(from: vec![outputs[2][0].clone()], to: vec![]),
-        txn_schema!(from: vec![outputs[2][1].clone()], to: vec![], fee: 25*uT, lock: 5, OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[2][1].clone()], to: vec![], fee: 25*uT, lock: 5, features: OutputFeatures::default()),
         txn_schema!(from: vec![outputs[2][2].clone()], to: vec![], fee: 25*uT),
     ];
     let (txns3, utxos) = schema_to_transaction(&schemas);

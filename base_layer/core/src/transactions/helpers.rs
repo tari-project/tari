@@ -189,14 +189,26 @@ macro_rules! tx {
 /// The output of this macro is intended to be used in [spend_utxos].
 #[macro_export]
 macro_rules! txn_schema {
-    (from: $input:expr, to: $outputs:expr, fee: $fee:expr, lock: $lock:expr, $features:expr) => {{
+    (from: $input:expr, to: $outputs:expr, fee: $fee:expr, lock: $lock:expr, mined_height: $mined_height:expr, features: $features:expr) => {{
         $crate::transactions::helpers::TransactionSchema {
             from: $input.clone(),
             to: $outputs.clone(),
             fee: $fee,
+            mined_height: $mined_height,
             lock_height: $lock,
             features: $features
         }
+    }};
+
+    (from: $input:expr, to: $outputs:expr, fee: $fee:expr, lock: $lock:expr, features: $features:expr) => {{
+        txn_schema!(
+            from: $input,
+            to:$outputs,
+            fee:$fee,
+            lock:$lock,
+            mined_height: 0,
+            features: $features
+        )
     }};
 
     (from: $input:expr, to: $outputs:expr, fee: $fee:expr) => {
@@ -205,7 +217,7 @@ macro_rules! txn_schema {
             to:$outputs,
             fee:$fee,
             lock:0,
-            $crate::transactions::transaction::OutputFeatures::default()
+            features: $crate::transactions::transaction::OutputFeatures::default()
         )
     };
 
@@ -225,6 +237,7 @@ macro_rules! txn_schema {
 pub struct TransactionSchema {
     pub from: Vec<UnblindedOutput>,
     pub to: Vec<MicroTari>,
+    pub mined_height: u64,
     pub fee: MicroTari,
     pub lock_height: u64,
     pub features: OutputFeatures,
@@ -319,7 +332,9 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
             test_params.script_private_key.clone(),
         );
 
-    for input in &schema.from {
+    for tx_input in &schema.from {
+        let mut input = tx_input.clone();
+        input.height = schema.mined_height;
         let utxo = input
             .as_transaction_input(&factories.commitment)
             .expect("Should be able to make a transaction input");
