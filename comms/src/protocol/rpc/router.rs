@@ -93,13 +93,13 @@ impl<A, B> Router<A, B> {
 
     /// Sets the maximum number of sessions this node will allow before rejecting the request to connect
     pub fn with_maximum_concurrent_sessions(mut self, limit: usize) -> Self {
-        self.server = self.server.with_maximum_concurrent_sessions(limit);
+        self.server = self.server.with_maximum_simultaneous_sessions(limit);
         self
     }
 
     /// Allows unlimited (memory-bound) sessions. This should probably only be used for scalability testing.
     pub fn with_unlimited_concurrent_sessions(mut self) -> Self {
-        self.server = self.server.with_unlimited_concurrent_sessions();
+        self.server = self.server.with_unlimited_simultaneous_sessions();
         self
     }
 
