@@ -175,7 +175,7 @@ impl LMDBDatabase {
                 Delete(delete) => self.op_delete(&write_txn, delete)?,
                 InsertHeader { header } => {
                     let height = header.header.height;
-                    if !self.insert_header(&write_txn, &header.header, header.accumulated_data)? {
+                    if !self.insert_header(&write_txn, &header.header, &header.accumulated_data)? {
                         return Err(ChainStorageError::InvalidOperation(format!(
                             "Duplicate `BlockHeader` key `{}`",
                             height
@@ -184,7 +184,7 @@ impl LMDBDatabase {
                 },
                 InsertBlock { block } => {
                     // TODO: Sort out clones
-                    self.insert_header(&write_txn, &block.block.header, block.accumulated_data.clone())?;
+                    self.insert_header(&write_txn, &block.block.header, &block.accumulated_data)?;
                     self.insert_block_body(&write_txn, &block.block.header, block.block.body.clone())?;
                 },
                 InsertKernel {
@@ -628,7 +628,7 @@ impl LMDBDatabase {
         &mut self,
         txn: &WriteTransaction<'_>,
         header: &BlockHeader,
-        accum_data: BlockHeaderAccumulatedData,
+        accum_data: &BlockHeaderAccumulatedData,
     ) -> Result<bool, ChainStorageError>
     {
         if let Some(current_header_at_height) = lmdb_get::<_, BlockHeader>(txn, &self.headers_db, &header.height)? {
