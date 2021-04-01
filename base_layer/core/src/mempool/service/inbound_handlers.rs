@@ -116,6 +116,7 @@ impl MempoolInboundHandlers {
         exclude_peers: Vec<NodeId>,
     ) -> Result<TxStorageResponse, MempoolServiceError>
     {
+        dbg!();
         trace!(target: LOG_TARGET, "submit_transaction: {}.", tx);
         let tx_storage =
             async_mempool::has_tx_with_excess_sig(self.mempool.clone(), tx.body.kernels()[0].excess_sig.clone())
@@ -129,9 +130,10 @@ impl MempoolInboundHandlers {
             );
             return Ok(tx_storage);
         }
-
+        dbg!();
         match async_mempool::insert(self.mempool.clone(), Arc::new(tx.clone())).await {
             Ok(tx_storage) => {
+                dbg!(&tx_storage);
                 debug!(
                     target: LOG_TARGET,
                     "Transaction inserted into mempool: {}, pool: {}.", kernel_excess_sig, tx_storage

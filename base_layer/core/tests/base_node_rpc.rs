@@ -145,7 +145,7 @@ fn test_base_node_wallet_rpc() {
         from: vec![utxos1[0].clone()],
         to: vec![400_000 * uT, 590_000 * uT]
     )]);
-    let tx2 = (*txs2[0]).clone();
+    let mut tx2 = (*txs2[0]).clone();
     let tx2_sig = tx2.first_kernel_excess_sig().clone().unwrap().clone();
 
     // Query Tx1
@@ -193,6 +193,11 @@ fn test_base_node_wallet_rpc() {
         .block_on(base_node.local_nci.submit_block(block1.clone(), Broadcast::from(true)))
         .is_ok());
 
+    // fix tx mined height
+    for input in tx2.body.inputs_mut() {
+        input.height = 1;
+    }
+    dbg!(&tx2);
     // Check that subitting Tx2 will now be accepted
     let msg = TransactionProto::from(tx2);
     let req = request_mock.request_with_context(Default::default(), msg);
@@ -200,7 +205,7 @@ fn test_base_node_wallet_rpc() {
         .block_on(service.submit_transaction(req))
         .unwrap()
         .into_message();
-
+    dbg!(&resp);
     assert!(resp.accepted);
 
     // Query Tx2 which should now be in the mempool
