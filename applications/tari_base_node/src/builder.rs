@@ -24,7 +24,7 @@ use crate::bootstrap::BaseNodeBootstrapper;
 use log::*;
 use std::sync::Arc;
 use tari_common::{DatabaseType, GlobalConfig};
-use tari_comms::{peer_manager::NodeIdentity, CommsNode};
+use tari_comms::{peer_manager::NodeIdentity, protocol::rpc::RpcServerHandle, CommsNode};
 use tari_comms_dht::Dht;
 use tari_core::{
     base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface, StateMachineHandle},
@@ -54,6 +54,7 @@ const LOG_TARGET: &str = "c::bn::initialization";
 /// communications stack, the node state machine and handles to the various services that are registered
 /// on the comms stack.
 pub struct BaseNodeContext {
+    config: Arc<GlobalConfig>,
     blockchain_db: BlockchainDatabase<LMDBDatabase>,
     base_node_comms: CommsNode,
     base_node_dht: Dht,
@@ -75,14 +76,19 @@ impl BaseNodeContext {
         info!(target: LOG_TARGET, "Communications stack has shutdown");
     }
 
+    /// Return the node config
+    pub fn config(&self) -> Arc<GlobalConfig> {
+        self.config.clone()
+    }
+
     /// Returns the handle to the Comms Interface
     pub fn local_node(&self) -> LocalNodeCommsInterface {
-        self.base_node_handles.expect_handle::<LocalNodeCommsInterface>()
+        self.base_node_handles.expect_handle()
     }
 
     /// Returns the handle to the Mempool
     pub fn local_mempool(&self) -> LocalMempoolService {
-        self.base_node_handles.expect_handle::<LocalMempoolService>()
+        self.base_node_handles.expect_handle()
     }
 
     /// Returns the CommsNode.
@@ -92,7 +98,7 @@ impl BaseNodeContext {
 
     /// Returns the wallet CommsNode.
     pub fn state_machine(&self) -> StateMachineHandle {
-        self.base_node_handles.expect_handle::<StateMachineHandle>()
+        self.base_node_handles.expect_handle()
     }
 
     /// Returns this node's identity.
@@ -103,6 +109,11 @@ impl BaseNodeContext {
     /// Returns the base node DHT
     pub fn base_node_dht(&self) -> &Dht {
         &self.base_node_dht
+    }
+
+    /// Returns a handle to the comms RPC server
+    pub fn rpc_server(&self) -> RpcServerHandle {
+        self.base_node_handles.expect_handle()
     }
 
     /// Returns a BlockchainDatabase handle
@@ -127,7 +138,7 @@ impl BaseNodeContext {
 /// ## Returns
 /// Result containing the NodeContainer, String will contain the reason on error
 pub async fn configure_and_initialize_node(
-    config: &GlobalConfig,
+    config: Arc<GlobalConfig>,
     node_identity: Arc<NodeIdentity>,
     interrupt_signal: ShutdownSignal,
     cleanup_orphans_at_startup: bool,
@@ -176,7 +187,7 @@ pub async fn configure_and_initialize_node(
 async fn build_node_context(
     backend: LMDBDatabase,
     base_node_identity: Arc<NodeIdentity>,
-    config: &GlobalConfig,
+    config: Arc<GlobalConfig>,
     interrupt_signal: ShutdownSignal,
     cleanup_orphans_at_startup: bool,
 ) -> Result<BaseNodeContext, anyhow::Error>
@@ -208,7 +219,7 @@ async fn build_node_context(
     debug!(target: LOG_TARGET, "Creating base node state machine.");
 
     let base_node_handles = BaseNodeBootstrapper {
-        config,
+        config: &config,
         node_identity: base_node_identity,
         db: blockchain_db.clone(),
         mempool,
@@ -223,6 +234,7 @@ async fn build_node_context(
     let base_node_dht = base_node_handles.expect_handle::<Dht>();
 
     Ok(BaseNodeContext {
+        config,
         blockchain_db,
         base_node_comms,
         base_node_dht,

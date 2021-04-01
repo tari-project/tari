@@ -23,7 +23,11 @@
 use crate::{
     framing,
     memsocket::MemorySocket,
-    protocol::rpc::{error::HandshakeRejectReason, handshake::SUPPORTED_RPC_VERSIONS, Handshake, RpcError},
+    protocol::rpc::{
+        error::HandshakeRejectReason,
+        handshake::{RpcHandshakeError, SUPPORTED_RPC_VERSIONS},
+        Handshake,
+    },
     runtime,
 };
 use tari_test_utils::unpack_enum;
@@ -62,6 +66,6 @@ async fn it_rejects_the_handshake() {
         .unwrap();
 
     let err = handshake_client.perform_client_handshake().await.unwrap_err();
-    unpack_enum!(RpcError::HandshakeRejected(reason) = err);
+    unpack_enum!(RpcHandshakeError::Rejected(reason) = err);
     unpack_enum!(HandshakeRejectReason::NoSessionsAvailable = reason);
 }

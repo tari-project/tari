@@ -282,7 +282,6 @@ async fn peer_to_peer_messaging() {
 
 #[runtime::test_basic]
 async fn peer_to_peer_messaging_simultaneous() {
-    env_logger::init();
     const NUM_MSGS: usize = 10;
     let shutdown = Shutdown::new();
 

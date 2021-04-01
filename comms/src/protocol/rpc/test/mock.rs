@@ -28,7 +28,7 @@ use crate::{
             client::RpcClient,
             context::RpcCommsBackend,
             message::RpcMethod,
-            server::NamedProtocolService,
+            server::{NamedProtocolService, RpcServerError},
             Request,
             Response,
             RpcError,
@@ -73,7 +73,7 @@ impl MockRpcService {
 }
 
 impl Service<ProtocolId> for MockRpcService {
-    type Error = RpcError;
+    type Error = RpcServerError;
     type Future = future::Ready<Result<Self::Response, Self::Error>>;
 
     type Response = impl Service<
@@ -116,10 +116,6 @@ impl Default for MockRpcServiceState {
 }
 
 impl MockRpcServiceState {
-    pub fn new() -> Self {
-        Default::default()
-    }
-
     fn inc_call_count(&self) -> usize {
         self.call_count.fetch_add(1, Ordering::SeqCst)
     }

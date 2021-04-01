@@ -94,6 +94,7 @@ mod command_handler;
 mod grpc;
 mod parser;
 mod recovery;
+mod status_line;
 mod utils;
 
 use crate::command_handler::CommandHandler;
@@ -130,6 +131,7 @@ fn main() {
 /// Sets up the base node and runs the cli_loop
 fn main_inner() -> Result<(), ExitCodes> {
     let (bootstrap, node_config, _) = init_configuration(ApplicationType::BaseNode)?;
+    let node_config = Arc::new(node_config);
 
     debug!(target: LOG_TARGET, "Using configuration: {:?}", node_config);
 
@@ -174,7 +176,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     // Build, node, build!
     let ctx = rt
         .block_on(builder::configure_and_initialize_node(
-            &node_config,
+            node_config.clone(),
             node_identity,
             shutdown.to_signal(),
             bootstrap.clean_orphans_db,
@@ -190,7 +192,7 @@ fn main_inner() -> Result<(), ExitCodes> {
             rt.handle().clone(),
             ctx.local_node(),
             ctx.local_mempool(),
-            node_config.clone(),
+            node_config.network.into(),
             ctx.state_machine(),
             ctx.base_node_comms().peer_manager(),
         );
@@ -201,7 +203,10 @@ fn main_inner() -> Result<(), ExitCodes> {
     // Run, node, run!
     let base_node_handle;
     let command_handler = Arc::new(CommandHandler::new(rt.handle().clone(), &ctx));
-    if !bootstrap.daemon_mode {
+    if bootstrap.daemon_mode {
+        println!("Node has been successfully configured and initialized in daemon mode.");
+        base_node_handle = rt.spawn(ctx.run());
+    } else {
         let parser = Parser::new(command_handler.clone());
         cli::print_banner(parser.get_commands(), 3);
         base_node_handle = rt.spawn(ctx.run());
@@ -212,9 +217,6 @@ fn main_inner() -> Result<(), ExitCodes> {
         );
 
         rt.spawn(cli_loop(parser, command_handler, shutdown));
-    } else {
-        println!("Node has been successfully configured and initialized in daemon mode.");
-        base_node_handle = rt.spawn(ctx.run());
     }
     match rt.block_on(base_node_handle) {
         Ok(_) => info!(target: LOG_TARGET, "Node shutdown successfully."),
@@ -296,6 +298,7 @@ async fn cli_loop(parser: Parser, command_handler: Arc<CommandHandler>, mut shut
     rustyline.set_helper(Some(parser));
     let read_command_fut = read_command(rustyline).fuse();
     pin_mut!(read_command_fut);
+
     let mut shutdown_signal = shutdown.to_signal();
     let start_time = Instant::now();
     loop {
@@ -309,27 +312,27 @@ async fn cli_loop(parser: Parser, command_handler: Arc<CommandHandler>, mut shut
 
         let mut interval = time::delay_for(delay_time).fuse();
         futures::select! {
-                res = read_command_fut => {
-                    match res {
-                        Ok((line, mut rustyline)) => {
-                            if let Some(p) = rustyline.helper_mut().as_deref_mut() {
-                                p.handle_command(line.as_str(), &mut shutdown)
-                            }
-                            read_command_fut.set(read_command(rustyline).fuse());
-                        },
-                        Err(err) => {
-                            // This happens when the node is shutting down.
-                            debug!(target:  LOG_TARGET, "Could not read line from rustyline:{}", err);
-                            break;
+            res = read_command_fut => {
+                match res {
+                    Ok((line, mut rustyline)) => {
+                        if let Some(p) = rustyline.helper_mut().as_deref_mut() {
+                            p.handle_command(line.as_str(), &mut shutdown)
                         }
+                        read_command_fut.set(read_command(rustyline).fuse());
+                    },
+                    Err(err) => {
+                        // This happens when the node is shutting down.
+                        debug!(target:  LOG_TARGET, "Could not read line from rustyline:{}", err);
+                        break;
                     }
-                },
-                () = interval => {
-                       command_handler.status();
-               },
-                _ = shutdown_signal => {
-                    break;
                 }
+            },
+            _ = interval => {
+               command_handler.status();
+            },
+            _ = shutdown_signal => {
+                break;
+            }
         }
     }
 }

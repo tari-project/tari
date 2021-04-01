@@ -34,7 +34,6 @@ use tari_app_grpc::{
     tari_rpc,
     tari_rpc::{CalcType, Sorting},
 };
-use tari_common::GlobalConfig;
 use tari_comms::PeerManager;
 use tari_core::{
     base_node::{
@@ -77,7 +76,7 @@ pub struct BaseNodeGrpcServer {
     executor: runtime::Handle,
     node_service: LocalNodeCommsInterface,
     mempool_service: LocalMempoolService,
-    node_config: GlobalConfig,
+    network: Network,
     state_machine_handle: StateMachineHandle,
     peer_manager: Arc<PeerManager>,
     consensus_rules: ConsensusManager,
@@ -88,7 +87,7 @@ impl BaseNodeGrpcServer {
         executor: runtime::Handle,
         local_node: LocalNodeCommsInterface,
         local_mempool: LocalMempoolService,
-        node_config: GlobalConfig,
+        network: Network,
         state_machine_handle: StateMachineHandle,
         peer_manager: Arc<PeerManager>,
     ) -> Self
@@ -97,8 +96,8 @@ impl BaseNodeGrpcServer {
             executor,
             node_service: local_node,
             mempool_service: local_mempool,
-            consensus_rules: ConsensusManager::builder(node_config.network.into()).build(),
-            node_config,
+            consensus_rules: ConsensusManager::builder(network).build(),
+            network,
             state_machine_handle,
             peer_manager,
         }
@@ -884,11 +883,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<tari_rpc::ConsensusConstants>, Status>
     {
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetConstants",);
-        let network: Network = self.node_config.network.into();
         debug!(target: LOG_TARGET, "Sending GetConstants response to client");
         // TODO: Switch to request height
         Ok(Response::new(
-            network.create_consensus_constants().pop().unwrap().into(),
+            self.network.create_consensus_constants().pop().unwrap().into(),
         ))
     }
 
@@ -923,9 +921,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         heights = heights
             .drain(..cmp::min(heights.len(), GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS))
             .collect();
-        let network: Network = self.node_config.network.into();
-        let consensus_manager = ConsensusManagerBuilder::new(network).build();
-        // let constants = network.create_consensus_constants().pop().unwrap();
+        let consensus_manager = ConsensusManagerBuilder::new(self.network).build();
+
         let (mut tx, rx) = mpsc::channel(GET_TOKENS_IN_CIRCULATION_PAGE_SIZE);
         self.executor.spawn(async move {
             let mut page: Vec<u64> = heights

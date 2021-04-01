@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,62 +20,33 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// TODO: Remove once in use
-#![allow(dead_code)]
+use super::RpcServerError;
+use futures::{
+    channel::{mpsc, oneshot},
+    SinkExt,
+};
 
-#[cfg(test)]
-mod test;
+#[derive(Debug)]
+pub enum RpcServerRequest {
+    GetNumActiveSessions(oneshot::Sender<usize>),
+}
 
-mod body;
-pub use body::{Body, ClientStreaming, IntoBody, Streaming};
+#[derive(Debug, Clone)]
+pub struct RpcServerHandle {
+    sender: mpsc::Sender<RpcServerRequest>,
+}
 
-mod context;
+impl RpcServerHandle {
+    pub(super) fn new(sender: mpsc::Sender<RpcServerRequest>) -> Self {
+        Self { sender }
+    }
 
-mod server;
-pub use server::{mock, NamedProtocolService, RpcServer, RpcServerError, RpcServerHandle};
-
-mod client;
-pub use client::{RpcClient, RpcClientBuilder, RpcClientConfig};
-
-mod either;
-
-mod message;
-pub use message::{Request, Response};
-
-mod error;
-pub use error::RpcError;
-
-mod handshake;
-pub use handshake::{Handshake, RpcHandshakeError};
-
-mod status;
-pub use status::{RpcStatus, RpcStatusCode};
-
-mod not_found;
-
-/// Maximum frame size of each RPC message. This is enforced in tokio's length delimited codec.
-pub const RPC_MAX_FRAME_SIZE: usize = 4 * 1024 * 1024; // 4 MiB
-
-// Re-exports used to keep things orderly in the #[tari_rpc] proc macro
-pub mod __macro_reexports {
-    pub use crate::{
-        framing::CanonicalFraming,
-        protocol::{
-            rpc::{
-                message::{Request, Response},
-                server::{NamedProtocolService, RpcServerError},
-                Body,
-                ClientStreaming,
-                IntoBody,
-                RpcClient,
-                RpcClientBuilder,
-                RpcError,
-                RpcStatus,
-            },
-            ProtocolId,
-        },
-        Bytes,
-    };
-    pub use futures::{future, future::BoxFuture, AsyncRead, AsyncWrite};
-    pub use tower::Service;
+    pub async fn get_num_active_sessions(&mut self) -> Result<usize, RpcServerError> {
+        let (req, resp) = oneshot::channel();
+        self.sender
+            .send(RpcServerRequest::GetNumActiveSessions(req))
+            .await
+            .map_err(|_| RpcServerError::RequestCanceled)?;
+        resp.await.map_err(Into::into)
+    }
 }

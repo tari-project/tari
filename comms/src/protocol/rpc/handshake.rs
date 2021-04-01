@@ -20,16 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    framing::CanonicalFraming,
-    message::MessageExt,
-    proto,
-    protocol::rpc::{error::HandshakeRejectReason, RpcError},
-};
+use crate::{framing::CanonicalFraming, message::MessageExt, proto, protocol::rpc::error::HandshakeRejectReason};
 use bytes::BytesMut;
 use futures::{AsyncRead, AsyncWrite, SinkExt, StreamExt};
 use log::*;
-use prost::Message;
+use prost::{DecodeError, Message};
 use std::{io, time::Duration};
 use tokio::time;
 
@@ -38,6 +33,24 @@ const LOG_TARGET: &str = "comms::rpc::handshake";
 /// Supported RPC protocol versions.
 /// Currently only v0 is supported
 pub(super) const SUPPORTED_RPC_VERSIONS: &[u32] = &[0];
+
+#[derive(Debug, thiserror::Error)]
+pub enum RpcHandshakeError {
+    #[error("Failed to decode message: {0}")]
+    DecodeError(#[from] DecodeError),
+    #[error("IO Error: {0}")]
+    Io(#[from] io::Error),
+    #[error("The client does not support any RPC protocol version supported by this node")]
+    ClientNoSupportedVersion,
+    #[error("Remote peer unexpectedly closed the RPC connection")]
+    ServerClosedRequest,
+    #[error("RPC handshake timed out")]
+    TimedOut,
+    #[error("RPC handshake was explicitly rejected: {0}")]
+    Rejected(#[from] HandshakeRejectReason),
+    #[error("The client connection is closed")]
+    ClientClosed,
+}
 
 /// Handshake protocol
 pub struct Handshake<'a, T> {
@@ -60,7 +73,7 @@ where T: AsyncRead + AsyncWrite + Unpin
     }
 
     /// Server-side handshake protocol
-    pub async fn perform_server_handshake(&mut self) -> Result<u32, RpcError> {
+    pub async fn perform_server_handshake(&mut self) -> Result<u32, RpcHandshakeError> {
         match self.recv_next_frame().await {
             Ok(Some(Ok(msg))) => {
                 let msg = proto::rpc::RpcSession::decode(&mut msg.freeze())?;
@@ -79,15 +92,16 @@ where T: AsyncRead + AsyncWrite + Unpin
 
                 self.reject_with_reason(HandshakeRejectReason::UnsupportedVersion)
                     .await?;
-                Err(RpcError::HandshakeClientNoSupportedVersion)
+                Err(RpcHandshakeError::ClientNoSupportedVersion)
             },
             Ok(Some(Err(err))) => Err(err.into()),
-            Ok(None) => Err(RpcError::ClientClosed),
-            Err(_elapsed) => Err(RpcError::HandshakeTimedOut),
+            Ok(None) => Err(RpcHandshakeError::ClientClosed),
+            Err(_elapsed) => Err(RpcHandshakeError::TimedOut),
         }
     }
 
-    pub async fn reject_with_reason(&mut self, reject_reason: HandshakeRejectReason) -> Result<(), RpcError> {
+    pub async fn reject_with_reason(&mut self, reject_reason: HandshakeRejectReason) -> Result<(), RpcHandshakeError> {
+        debug!(target: LOG_TARGET, "Rejecting handshake because {}", reject_reason);
         let reply = proto::rpc::RpcSessionReply {
             session_result: Some(proto::rpc::rpc_session_reply::SessionResult::Rejected(true)),
             reject_reason: reject_reason.as_i32(),
@@ -98,14 +112,19 @@ where T: AsyncRead + AsyncWrite + Unpin
     }
 
     /// Client-side handshake protocol
-    pub async fn perform_client_handshake(&mut self) -> Result<(), RpcError> {
+    pub async fn perform_client_handshake(&mut self) -> Result<(), RpcHandshakeError> {
         let msg = proto::rpc::RpcSession {
             supported_versions: SUPPORTED_RPC_VERSIONS.to_vec(),
         };
         // It is possible that the server rejects the session and closes the substream before we've had a chance to send
         // anything. Rather than returning an IO error, let's ignore the send error and see if we can receive anything,
         // or return an IO error similarly to what send would have done.
-        let _ = self.framed.send(msg.to_encoded_bytes().into()).await;
+        if let Err(err) = self.framed.send(msg.to_encoded_bytes().into()).await {
+            debug!(
+                target: LOG_TARGET,
+                "IO error when sending new session handshake to peer: {}", err
+            );
+        }
         match self.recv_next_frame().await {
             Ok(Some(Ok(msg))) => {
                 let msg = proto::rpc::RpcSessionReply::decode(&mut msg.freeze())?;
@@ -114,8 +133,8 @@ where T: AsyncRead + AsyncWrite + Unpin
                 Ok(())
             },
             Ok(Some(Err(err))) => Err(err.into()),
-            Ok(None) => Err(RpcError::ServerClosedRequest),
-            Err(_) => Err(RpcError::HandshakeTimedOut),
+            Ok(None) => Err(RpcHandshakeError::ServerClosedRequest),
+            Err(_) => Err(RpcHandshakeError::TimedOut),
         }
     }
 

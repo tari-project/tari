@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,62 +20,34 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// TODO: Remove once in use
-#![allow(dead_code)]
+use chrono::Utc;
+use std::{fmt, fmt::Display};
 
-#[cfg(test)]
-mod test;
+#[derive(Debug, Clone, Default)]
+pub struct StatusLine {
+    fields: Vec<(&'static str, String)>,
+}
 
-mod body;
-pub use body::{Body, ClientStreaming, IntoBody, Streaming};
+impl StatusLine {
+    pub fn new() -> Self {
+        Default::default()
+    }
 
-mod context;
+    pub fn add_field<T: ToString>(&mut self, name: &'static str, value: T) -> &mut Self {
+        self.fields.push((name, value.to_string()));
+        self
+    }
+}
 
-mod server;
-pub use server::{mock, NamedProtocolService, RpcServer, RpcServerError, RpcServerHandle};
+impl Display for StatusLine {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: ", Utc::now().format("%H:%M"))?;
+        let s = self
+            .fields
+            .iter()
+            .map(|(k, v)| format!("{}: {}", k, v))
+            .collect::<Vec<_>>();
 
-mod client;
-pub use client::{RpcClient, RpcClientBuilder, RpcClientConfig};
-
-mod either;
-
-mod message;
-pub use message::{Request, Response};
-
-mod error;
-pub use error::RpcError;
-
-mod handshake;
-pub use handshake::{Handshake, RpcHandshakeError};
-
-mod status;
-pub use status::{RpcStatus, RpcStatusCode};
-
-mod not_found;
-
-/// Maximum frame size of each RPC message. This is enforced in tokio's length delimited codec.
-pub const RPC_MAX_FRAME_SIZE: usize = 4 * 1024 * 1024; // 4 MiB
-
-// Re-exports used to keep things orderly in the #[tari_rpc] proc macro
-pub mod __macro_reexports {
-    pub use crate::{
-        framing::CanonicalFraming,
-        protocol::{
-            rpc::{
-                message::{Request, Response},
-                server::{NamedProtocolService, RpcServerError},
-                Body,
-                ClientStreaming,
-                IntoBody,
-                RpcClient,
-                RpcClientBuilder,
-                RpcError,
-                RpcStatus,
-            },
-            ProtocolId,
-        },
-        Bytes,
-    };
-    pub use futures::{future, future::BoxFuture, AsyncRead, AsyncWrite};
-    pub use tower::Service;
+        write!(f, "{}", s.join(", "))
+    }
 }
