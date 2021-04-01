@@ -410,23 +410,19 @@ pub fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     )
 }
 
-#[test]
-fn test_utxo_selection_no_chain_metadata_memory_db() {
-    test_utxo_selection_no_chain_metadata(OutputManagerMemoryDatabase::new());
-}
-
-#[test]
-fn test_utxo_selection_with_chain_metadata_memory_db() {
-    test_utxo_selection_with_chain_metadata(OutputManagerMemoryDatabase::new());
-}
-
 #[allow(clippy::identity_op)]
-fn test_utxo_selection_no_chain_metadata<T: Clone + OutputManagerBackend + 'static>(backend: T) {
+#[test]
+fn test_utxo_selection_no_chain_metadata() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
-
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_tempdir = tempdir().unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_path = format!("{}/{}", db_folder, db_name);
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
     // no chain metadata
-    let (mut oms, _shutdown, _, _) = setup_oms_with_bn_state(&mut runtime, backend, None);
+    let (mut oms, _shutdown, _, _) =
+        setup_oms_with_bn_state(&mut runtime, OutputManagerSqliteDatabase::new(connection, None), None);
 
     // no utxos - not enough funds
     let amount = MicroTari::from(1000);
@@ -484,12 +480,21 @@ fn test_utxo_selection_no_chain_metadata<T: Clone + OutputManagerBackend + 'stat
 }
 
 #[allow(clippy::identity_op)]
-fn test_utxo_selection_with_chain_metadata<T: Clone + OutputManagerBackend + 'static>(backend: T) {
+#[test]
+fn test_utxo_selection_with_chain_metadata() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
-
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_tempdir = tempdir().unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_path = format!("{}/{}", db_folder, db_name);
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
     // setup with chain metadata at a height of 6
-    let (mut oms, _shutdown, _, _) = setup_oms_with_bn_state(&mut runtime, backend, Some(6));
+    let (mut oms, _shutdown, _, _) = setup_oms_with_bn_state(
+        &mut runtime,
+        OutputManagerSqliteDatabase::new(connection, None),
+        Some(6),
+    );
 
     // no utxos - not enough funds
     let amount = MicroTari::from(1000);
@@ -1183,6 +1188,12 @@ fn coin_split_with_change<T: Clone + OutputManagerBackend + 'static>(backend: T)
     assert_eq!(coin_split_tx.body.outputs().len(), split_count + 1);
     assert_eq!(fee, Fee::calculate(fee_per_gram, 1, 2, split_count + 1));
     assert_eq!(amount, val2 + val3);
+
+    // check they are rewindable
+    let uo = runtime
+        .block_on(oms.rewind_outputs(vec![coin_split_tx.body.outputs()[3].clone()]))
+        .expect("Should be able to rewind outputs");
+    assert_eq!(uo[0].value, MicroTari::from(1000))
 }
 
 #[test]

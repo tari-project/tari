@@ -366,10 +366,10 @@ where TBackend: OutputManagerBackend + 'static
                     .collect();
                 Ok(OutputManagerResponse::InvalidOutputs(outputs))
             },
-            // OutputManagerRequest::CreateCoinSplit((amount_per_split, split_count, fee_per_gram, lock_height)) =>
-            // {self     .create_coin_split(amount_per_split, split_count, fee_per_gram, lock_height)
-            //     .await
-            //     .map(OutputManagerResponse::Transaction),
+            OutputManagerRequest::CreateCoinSplit((amount_per_split, split_count, fee_per_gram, lock_height)) => self
+                .create_coin_split(amount_per_split, split_count, fee_per_gram, lock_height)
+                .await
+                .map(OutputManagerResponse::Transaction),
             OutputManagerRequest::ApplyEncryption(cipher) => self
                 .resources
                 .db
@@ -695,7 +695,8 @@ where TBackend: OutputManagerBackend + 'static
         if total > amount + fee_without_change {
             let (spending_key, script_private_key) = self.get_next_spend_and_script_key().await?;
             change_keys = Some((spending_key.clone(), script_private_key.clone()));
-            builder.with_rewindable_change_secret(spending_key, self.resources.rewind_data.clone());
+            builder.with_change_secret(spending_key);
+            builder.with_rewindable_outputs(self.resources.rewind_data.clone());
             builder.with_change_script(
                 script!(Nop),
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
@@ -805,7 +806,8 @@ where TBackend: OutputManagerBackend + 'static
         if change_value > 0.into() {
             let (spending_key, script_private_key) = self.get_next_spend_and_script_key().await?;
             change_keys = Some((spending_key.clone(), script_private_key.clone()));
-            builder.with_rewindable_change_secret(spending_key, self.resources.rewind_data.clone());
+            builder.with_change_secret(spending_key);
+            builder.with_rewindable_outputs(self.resources.rewind_data.clone());
             builder.with_change_script(
                 script!(Nop),
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
@@ -1093,108 +1095,110 @@ where TBackend: OutputManagerBackend + 'static
         Ok(self.resources.db.get_invalid_outputs().await?)
     }
 
-    // async fn create_coin_split(
-    //     &mut self,
-    //     amount_per_split: MicroTari,
-    //     split_count: usize,
-    //     fee_per_gram: MicroTari,
-    //     lock_height: Option<u64>,
-    // ) -> Result<(u64, Transaction, MicroTari, MicroTari), OutputManagerError>
-    // {
-    //     trace!(
-    //         target: LOG_TARGET,
-    //         "Select UTXOs and estimate coin split transaction fee."
-    //     );
-    //     let mut output_count = split_count;
-    //     let total_split_amount = amount_per_split * split_count as u64;
-    //     let (inputs, require_change_output) = self
-    //         .select_utxos(
-    //             total_split_amount,
-    //             fee_per_gram,
-    //             output_count,
-    //             Some(UTXOSelectionStrategy::Largest),
-    //         )
-    //         .await?;
-    //     let utxo_total_value = inputs
-    //         .iter()
-    //         .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
-    //     let input_count = inputs.len();
-    //     if require_change_output {
-    //         output_count = split_count + 1
-    //     };
-    //     let fee = Fee::calculate(fee_per_gram, 1, input_count, output_count);
-    //
-    //     trace!(target: LOG_TARGET, "Construct coin split transaction.");
-    //     let offset = PrivateKey::random(&mut OsRng);
-    //     let nonce = PrivateKey::random(&mut OsRng);
-    //     let script_offset_private_key = PrivateKey::random(&mut OsRng);
-    //
-    //     let mut builder = SenderTransactionProtocol::builder(0);
-    //     builder
-    //         .with_lock_height(lock_height.unwrap_or(0))
-    //         .with_fee_per_gram(fee_per_gram)
-    //         .with_offset(offset.clone())
-    //         .with_private_nonce(nonce.clone());
-    //     trace!(target: LOG_TARGET, "Add inputs to coin split transaction.");
-    //     for uo in inputs.iter() {
-    //         builder.with_input(
-    //             uo.unblinded_output
-    //                 .as_transaction_input(&self.resources.factories.commitment),
-    //             uo.unblinded_output.clone(),
-    //         );
-    //     }
-    //     trace!(target: LOG_TARGET, "Add outputs to coin split transaction.");
-    //     let mut outputs: Vec<DbUnblindedOutput> = Vec::with_capacity(output_count);
-    //     let change_output = utxo_total_value
-    //         .checked_sub(fee)
-    //         .ok_or(OutputManagerError::NotEnoughFunds)?
-    //         .checked_sub(total_split_amount)
-    //         .ok_or(OutputManagerError::NotEnoughFunds)?;
-    //     for i in 0..output_count {
-    //         let output_amount = if i < split_count {
-    //             amount_per_split
-    //         } else {
-    //             change_output
-    //         };
-    //
-    //         let (spending_key, script_private_key) = self.get_next_spend_and_script_key().await?;
-    //
-    //         let utxo = DbUnblindedOutput::from_unblinded_output(
-    //             UnblindedOutput::new(
-    //                 output_amount,
-    //                 spending_key.clone(),
-    //                 None,
-    //                 script!(Nop),
-    //                 inputs!(PublicKey::from_secret_key(&script_private_key)),
-    //                 0,
-    //                 script_private_key,
-    //                 PublicKey::from_secret_key(&script_offset_private_key),
-    //             ),
-    //             &self.resources.factories,
-    //         )?;
-    //         outputs.push(utxo.clone());
-    //         builder.with_output(utxo.unblinded_output);
-    //     }
-    //     trace!(target: LOG_TARGET, "Build coin split transaction.");
-    //     let factories = CryptoFactories::default();
-    //     let mut stp = builder
-    //         .build::<HashDigest>(&self.resources.factories)
-    //         .map_err(|e| OutputManagerError::BuildError(e.message))?;
-    //     // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list
-    // and     // store them until the transaction times out OR is confirmed
-    //     let tx_id = stp.get_tx_id()?;
-    //     trace!(
-    //         target: LOG_TARGET,
-    //         "Encumber coin split transaction ({}) outputs.",
-    //         tx_id
-    //     );
-    //     self.resources.db.encumber_outputs(tx_id, inputs, outputs).await?;
-    //     self.confirm_encumberance(tx_id).await?;
-    //     trace!(target: LOG_TARGET, "Finalize coin split transaction ({}).", tx_id);
-    //     stp.finalize(KernelFeatures::empty(), &factories)?;
-    //     let tx = stp.take_transaction()?;
-    //     Ok((tx_id, tx, fee, utxo_total_value))
-    // }
+    async fn create_coin_split(
+        &mut self,
+        amount_per_split: MicroTari,
+        split_count: usize,
+        fee_per_gram: MicroTari,
+        lock_height: Option<u64>,
+    ) -> Result<(u64, Transaction, MicroTari, MicroTari), OutputManagerError>
+    {
+        trace!(
+            target: LOG_TARGET,
+            "Select UTXOs and estimate coin split transaction fee."
+        );
+        let mut output_count = split_count;
+        let total_split_amount = amount_per_split * split_count as u64;
+        let (inputs, require_change_output) = self
+            .select_utxos(
+                total_split_amount,
+                fee_per_gram,
+                output_count,
+                Some(UTXOSelectionStrategy::Largest),
+            )
+            .await?;
+        let utxo_total_value = inputs
+            .iter()
+            .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
+        let input_count = inputs.len();
+        if require_change_output {
+            output_count = split_count + 1
+        };
+        let fee = Fee::calculate(fee_per_gram, 1, input_count, output_count);
+
+        trace!(target: LOG_TARGET, "Construct coin split transaction.");
+        let offset = PrivateKey::random(&mut OsRng);
+        let nonce = PrivateKey::random(&mut OsRng);
+
+        let mut builder = SenderTransactionProtocol::builder(0);
+        builder
+            .with_lock_height(lock_height.unwrap_or(0))
+            .with_fee_per_gram(fee_per_gram)
+            .with_offset(offset.clone())
+            .with_private_nonce(nonce.clone())
+            .with_rewindable_outputs(self.resources.rewind_data.clone());
+
+        trace!(target: LOG_TARGET, "Add inputs to coin split transaction.");
+        for uo in inputs.iter() {
+            builder.with_input(
+                uo.unblinded_output
+                    .as_transaction_input(&self.resources.factories.commitment)?,
+                uo.unblinded_output.clone(),
+            );
+        }
+        trace!(target: LOG_TARGET, "Add outputs to coin split transaction.");
+        let mut outputs: Vec<DbUnblindedOutput> = Vec::with_capacity(output_count);
+        let change_output = utxo_total_value
+            .checked_sub(fee)
+            .ok_or(OutputManagerError::NotEnoughFunds)?
+            .checked_sub(total_split_amount)
+            .ok_or(OutputManagerError::NotEnoughFunds)?;
+        for i in 0..output_count {
+            let output_amount = if i < split_count {
+                amount_per_split
+            } else {
+                change_output
+            };
+
+            let (spending_key, script_private_key) = self.get_next_spend_and_script_key().await?;
+            let script_offset_private_key = PrivateKey::random(&mut OsRng);
+
+            let utxo = DbUnblindedOutput::from_unblinded_output(
+                UnblindedOutput::new(
+                    output_amount,
+                    spending_key.clone(),
+                    None,
+                    script!(Nop),
+                    inputs!(PublicKey::from_secret_key(&script_private_key)),
+                    0,
+                    script_private_key,
+                    PublicKey::from_secret_key(&script_offset_private_key),
+                ),
+                &self.resources.factories,
+            )?;
+            outputs.push(utxo.clone());
+            builder.with_output(utxo.unblinded_output, script_offset_private_key);
+        }
+        trace!(target: LOG_TARGET, "Build coin split transaction.");
+        let factories = CryptoFactories::default();
+        let mut stp = builder
+            .build::<HashDigest>(&self.resources.factories)
+            .map_err(|e| OutputManagerError::BuildError(e.message))?;
+        // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
+        // store them until the transaction times out OR is confirmed
+        let tx_id = stp.get_tx_id()?;
+        trace!(
+            target: LOG_TARGET,
+            "Encumber coin split transaction ({}) outputs.",
+            tx_id
+        );
+        self.resources.db.encumber_outputs(tx_id, inputs, outputs).await?;
+        self.confirm_encumberance(tx_id).await?;
+        trace!(target: LOG_TARGET, "Finalize coin split transaction ({}).", tx_id);
+        stp.finalize(KernelFeatures::empty(), &factories)?;
+        let tx = stp.take_transaction()?;
+        Ok((tx_id, tx, fee, utxo_total_value))
+    }
 
     /// Return the Seed words for the current Master Key set in the Key Manager
     pub async fn get_seed_words(&self) -> Result<Vec<String>, OutputManagerError> {

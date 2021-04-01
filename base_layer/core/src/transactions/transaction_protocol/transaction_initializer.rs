@@ -191,19 +191,6 @@ impl SenderTransactionInitializer {
         self
     }
 
-    /// Provide a blinding factor and rewind keys and proof message for the change output. The amount of change will
-    /// automatically be calculated when the transaction is built.
-    pub fn with_rewindable_change_secret(
-        &mut self,
-        blinding_factor: BlindingFactor,
-        rewind_data: RewindData,
-    ) -> &mut Self
-    {
-        self.change_secret = Some(blinding_factor);
-        self.rewind_data = Some(rewind_data);
-        self
-    }
-
     /// Provide the script data that will be used to spend the change output
     pub fn with_change_script(
         &mut self,
@@ -215,6 +202,12 @@ impl SenderTransactionInitializer {
         self.change_script = Some(script);
         self.change_input_data = Some(input_data);
         self.change_script_private_key = Some(script_private_key);
+        self
+    }
+
+    /// Provide the rewind data required for outputs (change and manually added sender outputs) to be rewindable.
+    pub fn with_rewindable_outputs(&mut self, rewind_data: RewindData) -> &mut Self {
+        self.rewind_data = Some(rewind_data);
         self
     }
 
@@ -367,7 +360,13 @@ impl SenderTransactionInitializer {
         let mut outputs = match self
             .outputs
             .iter()
-            .map(|o| o.as_transaction_output(factories))
+            .map(|o| {
+                if let Some(rewind_data) = self.rewind_data.as_ref() {
+                    o.as_rewindable_transaction_output(factories, rewind_data)
+                } else {
+                    o.as_transaction_output(factories)
+                }
+            })
             .collect::<Result<Vec<TransactionOutput>, _>>()
         {
             Ok(o) => o,

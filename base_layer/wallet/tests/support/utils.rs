@@ -25,14 +25,12 @@ use std::{fmt::Debug, iter, thread, time::Duration};
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
-    types::{CommitmentFactory, PrivateKey, PublicKey, Signature},
+    types::{CommitmentFactory, PrivateKey, PublicKey},
 };
 use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
     inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
     script,
-    script::{ExecutionStack, TariScript},
 };
 
 pub fn assert_change<F, T>(mut func: F, to: T, poll_count: usize)
@@ -119,34 +117,26 @@ pub fn make_input_with_features<R: Rng + CryptoRng>(
 ) -> (TransactionInput, UnblindedOutput)
 {
     let spending_key = PrivateKey::random(rng);
-    let commitment = factory.commit_value(&spending_key, value.into());
-
-    let script = TariScript::default();
-    let input_data = ExecutionStack::default();
-    let height = 0;
-    let script_signature = Signature::default();
+    let script = script!(Nop);
+    let script_private_key = PrivateKey::random(rng);
+    let input_data = inputs!(PublicKey::from_secret_key(&script_private_key));
     let offset_pub_key = PublicKey::default();
-    let input = TransactionInput::new(
-        features.clone().unwrap_or_default(),
-        commitment,
-        script.clone(),
-        input_data.clone(),
-        height,
-        script_signature,
-        offset_pub_key.clone(),
+
+    let utxo = UnblindedOutput::new(
+        value,
+        spending_key,
+        features,
+        script,
+        input_data,
+        0,
+        script_private_key,
+        offset_pub_key,
     );
+
     (
-        input,
-        UnblindedOutput::new(
-            value,
-            spending_key,
-            features,
-            script,
-            input_data,
-            height,
-            PrivateKey::default(),
-            offset_pub_key,
-        ),
+        utxo.as_transaction_input(&factory)
+            .expect("Should be able to make transaction input"),
+        utxo,
     )
 }
 

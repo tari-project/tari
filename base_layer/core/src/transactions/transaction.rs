@@ -1150,7 +1150,9 @@ mod test {
             k.clone(),
             PublicKey::from_secret_key(&k),
         );
-        let input = i.as_transaction_input(&factory).unwrap();
+        let input = i
+            .as_transaction_input(&factory)
+            .expect("Should be able to create transaction input");
         assert_eq!(input.features, OutputFeatures::default());
         assert!(input.opened_by(&i, &factory));
     }
