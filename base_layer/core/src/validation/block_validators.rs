@@ -110,6 +110,9 @@ impl OrphanValidation for OrphanBlockValidator {
     }
 }
 
+/// This validator tests whether a candidate block is internally consistent.
+/// This does not check that the orphan block has the correct mined height of utxos
+
 /// This validator checks whether a block satisfies *all* consensus rules. If a block passes this validator, it is the
 /// next block on the blockchain.
 #[derive(Default)]
@@ -124,6 +127,60 @@ impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for BodyOnlyValidator {
     fn validate_body_for_valid_orphan(&self, block: &ChainBlock, backend: &B) -> Result<(), ValidationError> {
         let block_id = format!("block #{} ({})", block.block.header.height, block.hash().to_hex());
         check_inputs_are_utxos(&block.block, backend)?;
+        check_not_duplicate_txos(&block.block, backend)?;
+        trace!(
+            target: LOG_TARGET,
+            "Block validation: All inputs and outputs are valid for {}",
+            block_id
+        );
+        check_mmr_roots(&block.block, backend)?;
+        trace!(
+            target: LOG_TARGET,
+            "Block validation: MMR roots are valid for {}",
+            block_id
+        );
+        debug!(target: LOG_TARGET, "Block validation: Block is VALID for {}", block_id);
+        Ok(())
+    }
+}
+
+/// This is a test only validator as it skips the mined height rule of a input.
+#[derive(Default)]
+pub struct BodyOnlyMinusHeightValidator {}
+
+impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for BodyOnlyMinusHeightValidator {
+    /// The consensus checks that are done (in order of cheapest to verify to most expensive):
+    /// 1. Does the block satisfy the stateless checks?
+    /// 1. Are all inputs currently in the UTXO set?
+    /// 1. Are all inputs and outputs not in the STXO set?
+    /// 1. Are the block header MMR roots valid?
+    fn validate_body_for_valid_orphan(&self, block: &ChainBlock, backend: &B) -> Result<(), ValidationError> {
+        let block_id = format!("block #{} ({})", block.block.header.height, block.hash().to_hex());
+
+        {
+            let data = backend
+                .fetch_block_accumulated_data(&block.block.header.prev_hash)?
+                .ok_or_else(|| ValidationError::PreviousHashNotFound)?;
+
+            for input in block.block.body.inputs() {
+                if let Some((_, index, _)) = backend.fetch_output(&input.hash())? {
+                    if data.deleted().contains(index) {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Block validation failed due to already spent input: {}", input
+                        );
+                        return Err(ValidationError::ContainsSTxO);
+                    }
+                } else {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Block validation failed because the block has invalid input: {} which does not exist", input
+                    );
+                    return Err(ValidationError::BlockError(BlockValidationError::InvalidInput));
+                }
+            }
+        }
+
         check_not_duplicate_txos(&block.block, backend)?;
         trace!(
             target: LOG_TARGET,

@@ -70,8 +70,7 @@ pub fn create_coinbase(
 {
     let features = OutputFeatures::create_coinbase(maturity_height);
     let script = script!(Nop);
-    let (mut utxo, key, _) = create_utxo(value, &factories, None, &script);
-    utxo.features = features.clone();
+    let (utxo, key, _) = create_utxo(value, &factories, Some(features.clone()), &script);
     let excess = Commitment::from_public_key(&PublicKey::from_secret_key(&key));
     let sig = create_signature(key.clone(), 0.into(), 0);
     let kernel = KernelBuilder::new()
@@ -215,7 +214,7 @@ pub fn create_genesis_block_with_utxos(
     let script = script!(Nop);
     let outputs = values.iter().fold(vec![coinbase], |mut secrets, v| {
         let (t, k, _) = create_utxo(*v, factories, None, &script);
-        template.body.add_output(t);
+        template.body.add_output(t.clone());
         secrets.push(UnblindedOutput::new(
             *v,
             k.clone(),
@@ -224,7 +223,7 @@ pub fn create_genesis_block_with_utxos(
             inputs!(PublicKey::from_secret_key(&k)),
             0,
             k.clone(),
-            PublicKey::from_secret_key(&k),
+            t.script_offset_public_key,
         ));
         secrets
     });
