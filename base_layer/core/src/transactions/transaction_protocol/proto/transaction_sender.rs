@@ -91,6 +91,8 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
     fn try_from(data: proto::SingleRoundSenderData) -> Result<Self, Self::Error> {
         let public_excess = PublicKey::from_bytes(&data.public_excess).map_err(|err| err.to_string())?;
         let public_nonce = PublicKey::from_bytes(&data.public_nonce).map_err(|err| err.to_string())?;
+        let script_offset_public_key =
+            PublicKey::from_bytes(&data.script_offset_public_key).map_err(|err| err.to_string())?;
         let metadata = data
             .metadata
             .map(Into::into)
@@ -104,6 +106,8 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             public_nonce,
             metadata,
             message,
+            script_hash: data.script_hash,
+            script_offset_public_key,
         })
     }
 }
@@ -119,6 +123,8 @@ impl From<SingleRoundSenderData> for proto::SingleRoundSenderData {
             public_nonce: sender_data.public_nonce.to_vec(),
             metadata: Some(sender_data.metadata.into()),
             message: sender_data.message,
+            script_hash: sender_data.script_hash,
+            script_offset_public_key: sender_data.script_offset_public_key.to_vec(),
         }
     }
 }

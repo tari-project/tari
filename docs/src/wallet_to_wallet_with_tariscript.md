@@ -207,6 +207,8 @@ pub struct UnblindedOutput {
     height : u64,
     /// Script private key, k_s
     script_private_key: PrivateKey,
+    /// Public script offset, K_O
+    public_script_offset: PublicKey,
 }
 ```
 **NOTE:** The height in the previous struct will need to be updated AFTER the transaction negotiation is complete once the Receiver has detected the UTXO has been mined.

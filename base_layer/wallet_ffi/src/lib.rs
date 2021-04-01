@@ -2644,7 +2644,7 @@ pub unsafe extern "C" fn comms_config_create(
                             discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
                             database_url: DbConnectionUrl::File(dht_database_path),
                             auto_join: true,
-                            network: DhtNetwork::Stibbons,
+                            network: DhtNetwork::Weatherwax,
                             ..Default::default()
                         },
                         // TODO: This should be set to false for non-test wallets. See the `allow_test_addresses` field
@@ -2960,7 +2960,7 @@ pub unsafe extern "C" fn wallet_create(
                         ..Default::default()
                     }),
                     None,
-                    Network::Stibbons,
+                    Network::Weatherwax,
                     None,
                     None,
                     None,

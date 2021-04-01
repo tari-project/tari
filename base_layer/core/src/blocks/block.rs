@@ -59,8 +59,6 @@ pub enum BlockValidationError {
         expected: u64,
         actual: u64,
     },
-    #[error("The block contains transactions that should have been cut through.")]
-    NoCutThrough,
     #[error("The block weight is above the maximum")]
     BlockTooLarge,
 }
@@ -197,6 +195,7 @@ impl BlockBuilder {
             self.header.kernel_mmr_size += kernels.len() as u64;
             self = self.add_kernels(kernels);
             self.header.total_kernel_offset = self.header.total_kernel_offset + tx.offset;
+            self.header.total_script_offset = self.header.total_script_offset + tx.script_offset;
         }
         self
     }
@@ -232,7 +231,6 @@ impl BlockBuilder {
             header: self.header,
             body: AggregateBody::new(self.inputs, self.outputs, self.kernels),
         };
-        block.body.do_cut_through();
         block.body.sort();
         block
     }

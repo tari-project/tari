@@ -29,6 +29,8 @@ use crate::{
             get_ridcully_genesis_block,
             get_stibbons_block_hash,
             get_stibbons_genesis_block,
+            get_weatherwax_block_hash,
+            get_weatherwax_genesis_block,
         },
         Block,
     },
@@ -77,7 +79,12 @@ impl ConsensusManager {
             Network::MainNet => get_mainnet_genesis_block(),
             Network::Ridcully => get_ridcully_genesis_block(),
             Network::Stibbons => get_stibbons_genesis_block(),
-            Network::LocalNet => self.inner.gen_block.clone().unwrap_or_else(get_stibbons_genesis_block),
+            Network::Weatherwax => get_weatherwax_genesis_block(),
+            Network::LocalNet => self
+                .inner
+                .gen_block
+                .clone()
+                .unwrap_or_else(get_weatherwax_genesis_block),
         }
     }
 
@@ -88,7 +95,8 @@ impl ConsensusManager {
             Network::MainNet => get_mainnet_block_hash(),
             Network::Ridcully => get_ridcully_block_hash(),
             Network::Stibbons => get_stibbons_block_hash(),
-            Network::LocalNet => get_ridcully_block_hash(),
+            Network::Weatherwax => get_weatherwax_block_hash(),
+            Network::LocalNet => get_weatherwax_block_hash(),
         }
     }
 

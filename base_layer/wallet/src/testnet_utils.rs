@@ -26,14 +26,14 @@ use crate::{
     },
     error::{WalletError, WalletStorageError},
     output_manager_service::{
-        storage::{database::OutputManagerBackend, memory_db::OutputManagerMemoryDatabase},
+        storage::{database::OutputManagerBackend, sqlite_db::OutputManagerSqliteDatabase},
         TxId,
     },
     storage::{
         database::{DbKeyValuePair, WalletBackend, WriteOperation},
         memory_db::WalletMemoryDatabase,
     },
-    test_utils::make_transaction_database,
+    test_utils::make_wallet_databases,
     transaction_service::{
         handle::TransactionEvent,
         storage::{
@@ -67,14 +67,14 @@ use tari_core::{
     consensus::Network,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{OutputFeatures, Transaction, TransactionInput, UnblindedOutput},
-        types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey, Signature},
+        transaction::{Transaction, TransactionInput, UnblindedOutput},
+        types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey},
     },
 };
 use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
+    inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-    script::{ExecutionStack, TariScript},
+    script,
     tari_utilities::hex::Hex,
 };
 use tari_p2p::{initialization::CommsConfig, transport::TransportType};
@@ -111,27 +111,27 @@ pub fn make_input<R: Rng + CryptoRng>(
 ) -> (TransactionInput, UnblindedOutput)
 {
     let key = PrivateKey::random(rng);
-    let commitment = factories.commitment.commit_value(&key, val.into());
-    // TODO: Populate script with the proper value
-    let script = TariScript::default().as_bytes();
-    // TODO: Populate input_data with the proper value
-    let input_data = ExecutionStack::default().as_bytes();
-    // TODO: Populate height with the proper value
-    let height = 0;
-    // TODO: Populate script_signature with the proper value
-    let script_signature = Signature::default();
-    // TODO: Populate offset_pub_key with the proper value
+    let script = script!(Nop);
+    let script_private_key = PrivateKey::random(rng);
+    let input_data = inputs!(PublicKey::from_secret_key(&script_private_key));
     let offset_pub_key = PublicKey::default();
-    let input = TransactionInput::new(
-        OutputFeatures::default(),
-        commitment,
+
+    let utxo = UnblindedOutput::new(
+        val,
+        key,
+        None,
         script,
         input_data,
-        height,
-        script_signature,
+        0,
+        script_private_key,
         offset_pub_key,
     );
-    (input, UnblindedOutput::new(val, key, None))
+
+    (
+        utxo.as_transaction_input(&factories.commitment)
+            .expect("Should be able to make transaction input"),
+        utxo,
+    )
 }
 
 pub fn random_string(len: usize) -> String {
@@ -147,7 +147,7 @@ pub async fn create_wallet(
 ) -> Wallet<
     WalletMemoryDatabase,
     TransactionServiceSqliteDatabase,
-    OutputManagerMemoryDatabase,
+    OutputManagerSqliteDatabase,
     ContactsServiceMemoryDatabase,
 >
 {
@@ -169,7 +169,7 @@ pub async fn create_wallet(
         user_agent: "/tari/wallet/test".to_string(),
         dht: DhtConfig {
             discovery_request_timeout: Duration::from_secs(30),
-            network: DhtNetwork::Stibbons,
+            network: DhtNetwork::Weatherwax,
             ..Default::default()
         },
         allow_test_addresses: true,
@@ -181,9 +181,18 @@ pub async fn create_wallet(
         peer_seeds: Default::default(),
     };
 
-    let config = WalletConfig::new(comms_config, factories, None, None, Network::Stibbons, None, None, None);
+    let config = WalletConfig::new(
+        comms_config,
+        factories,
+        None,
+        None,
+        Network::Weatherwax,
+        None,
+        None,
+        None,
+    );
     let db = WalletMemoryDatabase::new();
-    let (backend, _) = make_transaction_database(Some(datastore_path.to_str().unwrap().to_string()));
+    let (backend, oms_backend, _) = make_wallet_databases(Some(datastore_path.to_str().unwrap().to_string()));
 
     let metadata = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
 
@@ -193,7 +202,7 @@ pub async fn create_wallet(
         config,
         db,
         backend,
-        OutputManagerMemoryDatabase::new(),
+        oms_backend,
         ContactsServiceMemoryDatabase::new(),
         shutdown_signal,
     )

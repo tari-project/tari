@@ -234,7 +234,7 @@ pub struct TransactionOutput {
     /// The serialised script
     script_hash: Vec<u8>,
     /// The offset pubkey, K_O
-    offset_pub_key: PublicKey
+    script_offset_public_key: PublicKey
 }
 ```
 
@@ -299,7 +299,7 @@ pub struct TransactionInput {
     /// A signature with k_s, signing the script, input data, and mined height
     script_signature: Signature,
     /// The offset pubkey, K_O
-    offset_pubkey: PublicKey
+    script_offset_public_key: PublicKey
 }
 ```
 
@@ -366,7 +366,7 @@ pub struct BlockHeader {
     
     ...
     
-    /// Sum of script offsets for all transactions in this block
+    /// Sum of script offsets for all kernels in this block.
     pub total_script_offset: BlindingFactor,
 }
 ```

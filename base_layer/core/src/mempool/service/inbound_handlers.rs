@@ -129,7 +129,6 @@ impl MempoolInboundHandlers {
             );
             return Ok(tx_storage);
         }
-
         match async_mempool::insert(self.mempool.clone(), Arc::new(tx.clone())).await {
             Ok(tx_storage) => {
                 debug!(
