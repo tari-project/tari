@@ -61,6 +61,9 @@
 # The timeout (s) for requesting other base node services (min value = 10 s, default value = 180 s).
 #service_request_timeout = 180
 
+# The maximum simultaneous comms RPC sessions allowed. Setting this to -1 will allow unlimited sessions.
+# rpc_max_simultaneous_sessions = 1000
+
 ########################################################################################################################
 #                                                                                                                      #
 #                                          Wallet Configuration Options                                                #
