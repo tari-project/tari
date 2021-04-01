@@ -5,7 +5,9 @@
   "scripts": {
     "test": "cucumber-js",
     "fmt": "prettier -w .",
-    "check-fmt": "prettier -c ."
+    "check-fmt": "prettier -c .",
+    "fmt-auto": "prettier --end-of-line auto -w .",
+    "check-fmt-auto": "prettier --end-of-line auto -c ."
   },
   "author": "",
   "license": "ISC",
