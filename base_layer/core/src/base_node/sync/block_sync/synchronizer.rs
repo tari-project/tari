@@ -214,7 +214,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
             let timer = Instant::now();
             self.db
                 .write_transaction()
-                .insert_block(block.clone())
+                .insert_block_body(block.clone())
                 .set_best_block(
                     block.height(),
                     header_hash,

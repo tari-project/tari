@@ -87,12 +87,9 @@ fn insert_and_fetch_header() {
     let store = create_test_blockchain_db();
     let genesis_block = store.fetch_tip_header().unwrap();
     let mut header1 = BlockHeader::from_previous(&genesis_block.header).unwrap();
-    let mut header2 = BlockHeader::from_previous(&header1).unwrap();
 
     header1.kernel_mmr_size += 1;
     header1.output_mmr_size += 1;
-    header2.kernel_mmr_size += 2;
-    header2.output_mmr_size += 2;
 
     let chain1 = store
         .create_chain_header_if_valid(header1.clone(), &genesis_block)
@@ -101,6 +98,9 @@ fn insert_and_fetch_header() {
     store
         .insert_valid_headers(vec![(header1.clone(), chain1.accumulated_data.clone())])
         .unwrap();
+    let mut header2 = BlockHeader::from_previous(&header1).unwrap();
+    header2.kernel_mmr_size += 2;
+    header2.output_mmr_size += 2;
     let chain2 = store.create_chain_header_if_valid(header2.clone(), &chain1).unwrap();
 
     store
