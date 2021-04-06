@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{genesis_block::get_ridcully_genesis_block, Block, BlockHeader},
+    blocks::{genesis_block::get_weatherwax_genesis_block, Block, BlockHeader},
     chain_storage::{
         create_lmdb_database,
         BlockAccumulatedData,
@@ -52,7 +52,7 @@ use crate::{
         types::{CryptoFactories, HashOutput, Signature},
     },
     validation::{
-        block_validators::{BodyOnlyValidator, OrphanBlockValidator},
+        block_validators::{BodyOnlyMinusHeightValidator, OrphanBlockValidator},
         mocks::MockValidator,
     },
 };
@@ -68,9 +68,9 @@ use tari_test_utils::paths::create_temporary_data_path;
 
 /// Create a new blockchain database containing no blocks.
 pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {
-    let network = Network::Stibbons;
+    let network = Network::Weatherwax;
     let consensus_constants = ConsensusConstantsBuilder::new(network).build();
-    let genesis = get_ridcully_genesis_block();
+    let genesis = get_weatherwax_genesis_block();
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
         .with_block(genesis)
@@ -105,14 +105,14 @@ pub fn create_store_with_consensus_and_validators_and_config(
 pub fn create_store_with_consensus(rules: &ConsensusManager) -> BlockchainDatabase<TempDatabase> {
     let factories = CryptoFactories::default();
     let validators = Validators::new(
-        BodyOnlyValidator::default(),
+        BodyOnlyMinusHeightValidator::default(),
         MockValidator::new(true),
         OrphanBlockValidator::new(rules.clone(), factories),
     );
     create_store_with_consensus_and_validators(rules, validators)
 }
 pub fn create_test_blockchain_db() -> BlockchainDatabase<TempDatabase> {
-    let network = Network::Stibbons;
+    let network = Network::Weatherwax;
     let rules = ConsensusManagerBuilder::new(network).build();
     create_store_with_consensus(&rules)
 }
@@ -250,7 +250,11 @@ impl BlockchainBackend for TempDatabase {
         self.db.fetch_utxos_by_mmr_position(start, end, deleted)
     }
 
-    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(TransactionOutput, u32)>, ChainStorageError> {
+    fn fetch_output(
+        &self,
+        output_hash: &HashOutput,
+    ) -> Result<Option<(TransactionOutput, u32, u64)>, ChainStorageError>
+    {
         self.db.fetch_output(output_hash)
     }
 

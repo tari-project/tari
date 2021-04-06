@@ -1796,8 +1796,6 @@ where
     /// the outputs
     #[cfg(feature = "test_harness")]
     pub async fn mine_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
-        use tari_core::transactions::transaction::OutputFeatures;
-
         let completed_txs = self.db.get_completed_transactions().await?;
         let _found_tx = completed_txs.get(&tx_id).ok_or_else(|| {
             TransactionServiceError::TestHarnessError("Could not find Completed TX to mine.".to_string())
@@ -1816,7 +1814,8 @@ where
                     .iter()
                     .map(|o| {
                         o.unblinded_output
-                            .as_transaction_input(&self.resources.factories.commitment, OutputFeatures::default())
+                            .as_transaction_input(&self.resources.factories.commitment)
+                            .expect("Should be able to make transaction input")
                     })
                     .collect(),
                 pending_tx
@@ -1876,7 +1875,7 @@ where
         let (ts_request_sender, _ts_request_receiver) = reply_channel::unbounded();
         let (event_publisher, _) = broadcast::channel(100);
         let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher.clone());
-        let constants = ConsensusConstantsBuilder::new(Network::Stibbons).build();
+        let constants = ConsensusConstantsBuilder::new(Network::Weatherwax).build();
         let shutdown_signal = self.resources.shutdown_signal.clone();
         let (sender, receiver_bns) = reply_channel::unbounded();
         let (event_publisher_bns, _) = broadcast::channel(100);

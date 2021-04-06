@@ -217,6 +217,7 @@ pub async fn oms_reply_channel_task(
         let response = match request {
             OutputManagerRequest::ConfirmTransaction(_) => Ok(OutputManagerResponse::TransactionConfirmed),
             OutputManagerRequest::CancelTransaction(_) => Ok(OutputManagerResponse::TransactionCancelled),
+            OutputManagerRequest::UpdateMinedHeight(_, _) => Ok(OutputManagerResponse::MinedHeightUpdated),
             _ => Err(OutputManagerError::InvalidResponseError(
                 "Unhandled request type".to_string(),
             )),

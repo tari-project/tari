@@ -112,8 +112,8 @@ pub enum TransactionProtocolError {
     InvalidStateError,
     #[error("An error occurred while performing a signature: `{0}`")]
     SigningError(#[from] SchnorrSignatureError),
-    #[error("A signature verification failed")]
-    InvalidSignatureError,
+    #[error("A signature verification failed: {0}")]
+    InvalidSignatureError(String),
     #[error("An error occurred while building the final transaction: `{0}`")]
     TransactionBuildError(#[from] TransactionError),
     #[error("The transaction construction broke down due to communication failure")]
@@ -124,6 +124,8 @@ pub enum TransactionProtocolError {
     UnsupportedError(String),
     #[error("There has been an error serializing or deserializing this structure")]
     SerializationError,
+    #[error("Conversion error: `{0}`")]
+    ConversionError(String),
 }
 
 /// Transaction metadata, including the fee and lock height

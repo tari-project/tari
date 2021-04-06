@@ -33,6 +33,8 @@ pub enum Network {
     Ridcully,
     /// Third test net
     Stibbons,
+    /// Fourth test net, includes tari script
+    Weatherwax,
     /// Local network constants used inside of unit and integration tests. Contains the genesis block to be used for
     /// that chain.
     LocalNet,
@@ -44,6 +46,7 @@ impl Network {
             Network::MainNet => ConsensusConstants::mainnet(),
             Network::Ridcully => ConsensusConstants::ridcully(),
             Network::Stibbons => ConsensusConstants::stibbons(),
+            Network::Weatherwax => ConsensusConstants::weatherwax(),
             Network::LocalNet => ConsensusConstants::localnet(),
         }
     }
@@ -55,6 +58,7 @@ impl From<GlobalNetwork> for Network {
             GlobalNetwork::MainNet => Network::MainNet,
             GlobalNetwork::Ridcully => Network::Ridcully,
             GlobalNetwork::Stibbons => Network::Stibbons,
+            GlobalNetwork::Weatherwax => Network::Weatherwax,
             GlobalNetwork::LocalNet => Network::LocalNet,
             GlobalNetwork::Rincewind => unimplemented!("Rincewind has been retired"),
         }

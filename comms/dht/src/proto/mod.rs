@@ -76,6 +76,7 @@ impl From<GlobalNetwork> for Network {
             GlobalNetwork::LocalNet => Network::LocalTest,
             GlobalNetwork::Ridcully => Network::Ridcully,
             GlobalNetwork::Stibbons => Network::Stibbons,
+            GlobalNetwork::Weatherwax => Network::Weatherwax,
         }
     }
 }

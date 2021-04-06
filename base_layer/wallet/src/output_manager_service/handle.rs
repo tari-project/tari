@@ -49,7 +49,7 @@ use tower::Service;
 /// API Request enum
 pub enum OutputManagerRequest {
     GetBalance,
-    AddOutput(UnblindedOutput),
+    AddOutput(Box<UnblindedOutput>),
     GetRecipientTransaction(TransactionSenderMessage),
     GetCoinbaseTransaction((u64, MicroTari, MicroTari, u64)),
     ConfirmPendingTransaction(u64),
@@ -71,6 +71,7 @@ pub enum OutputManagerRequest {
     GetPublicRewindKeys,
     FeeEstimate((MicroTari, MicroTari, u64, u64)),
     RewindOutputs(Vec<TransactionOutput>),
+    UpdateMinedHeight(u64, u64),
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -100,6 +101,7 @@ impl fmt::Display for OutputManagerRequest {
             GetPublicRewindKeys => write!(f, "GetPublicRewindKeys"),
             FeeEstimate(_) => write!(f, "FeeEstimate"),
             RewindOutputs(_) => write!(f, "RewindAndImportOutputs"),
+            UpdateMinedHeight(_, _) => write!(f, "UpdateMinedHeight"),
         }
     }
 }
@@ -131,6 +133,7 @@ pub enum OutputManagerResponse {
     PublicRewindKeys(Box<PublicRewindKeys>),
     FeeEstimate(MicroTari),
     RewindOutputs(Vec<UnblindedOutput>),
+    MinedHeightUpdated,
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -176,7 +179,11 @@ impl OutputManagerHandle {
     }
 
     pub async fn add_output(&mut self, output: UnblindedOutput) -> Result<(), OutputManagerError> {
-        match self.handle.call(OutputManagerRequest::AddOutput(output)).await?? {
+        match self
+            .handle
+            .call(OutputManagerRequest::AddOutput(Box::new(output)))
+            .await??
+        {
             OutputManagerResponse::OutputAdded => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
@@ -474,6 +481,17 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::PayToSelfTransaction(outputs) => Ok(outputs),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn update_mined_height(&mut self, tx_id: u64, height: u64) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::UpdateMinedHeight(tx_id, height))
+            .await??
+        {
+            OutputManagerResponse::MinedHeightUpdated => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
