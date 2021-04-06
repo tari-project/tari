@@ -37,8 +37,7 @@ use std::{
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction::{OutputFeatures, UnblindedOutput},
-    types::{BlindingFactor, Commitment, CryptoFactories, PrivateKey},
+    types::{BlindingFactor, Commitment, PrivateKey},
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database";
@@ -98,6 +97,8 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
         &self,
         commitment: &Commitment,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError>;
+    /// Update the mined height for all outputs for this tx_id
+    fn update_mined_height(&self, tx_id: u64, height: u64) -> Result<(), OutputManagerStorageError>;
 }
 
 /// Holds the outputs that have been selected for a given pending transaction waiting for confirmation
@@ -354,18 +355,12 @@ where T: OutputManagerBackend + 'static
     pub async fn accept_incoming_pending_transaction(
         &self,
         tx_id: TxId,
-        amount: MicroTari,
-        spending_key: PrivateKey,
-        output_features: OutputFeatures,
-        factory: &CryptoFactories,
+        output: DbUnblindedOutput,
         coinbase_block_height: Option<u64>,
     ) -> Result<(), OutputManagerStorageError>
     {
         let db_clone = self.db.clone();
-        let output = DbUnblindedOutput::from_unblinded_output(
-            UnblindedOutput::new(amount, spending_key.clone(), Some(output_features)),
-            factory,
-        )?;
+
         tokio::task::spawn_blocking(move || {
             db_clone.write(WriteOperation::Insert(DbKeyValuePair::PendingTransactionOutputs(
                 tx_id,
@@ -606,6 +601,14 @@ where T: OutputManagerBackend + 'static
     {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.cancel_pending_transaction_at_block_height(block_height))
+            .await
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
+            .and_then(|inner_result| inner_result)
+    }
+
+    pub async fn update_output_mined_height(&self, tx_id: u64, height: u64) -> Result<(), OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.update_mined_height(tx_id, height))
             .await
             .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)

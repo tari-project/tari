@@ -31,12 +31,16 @@ use std::convert::TryFrom;
 use tari_crypto::tari_utilities::ByteArray;
 
 //---------------------------------- BlockHeader --------------------------------------------//
+
 impl TryFrom<proto::BlockHeader> for BlockHeader {
     type Error = String;
 
     fn try_from(header: proto::BlockHeader) -> Result<Self, Self::Error> {
         let total_kernel_offset =
             BlindingFactor::from_bytes(&header.total_kernel_offset).map_err(|err| err.to_string())?;
+
+        let total_script_offset =
+            BlindingFactor::from_bytes(&header.total_script_offset).map_err(|err| err.to_string())?;
 
         let timestamp = header
             .timestamp
@@ -58,6 +62,7 @@ impl TryFrom<proto::BlockHeader> for BlockHeader {
             kernel_mr: header.kernel_mr,
             kernel_mmr_size: header.kernel_mmr_size,
             total_kernel_offset,
+            total_script_offset,
             nonce: header.nonce,
             pow,
         })
@@ -75,6 +80,7 @@ impl From<BlockHeader> for proto::BlockHeader {
             range_proof_mr: header.range_proof_mr,
             kernel_mr: header.kernel_mr,
             total_kernel_offset: header.total_kernel_offset.to_vec(),
+            total_script_offset: header.total_script_offset.to_vec(),
             nonce: header.nonce,
             pow: Some(proto::ProofOfWork::from(header.pow)),
             kernel_mmr_size: header.kernel_mmr_size,

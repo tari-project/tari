@@ -71,7 +71,6 @@ impl MempoolStorage {
                 .map(|k| k.excess_sig.get_signature().to_hex())
                 .unwrap_or_else(|| "None".into())
         );
-
         match self.validator.validate(&tx) {
             Ok(()) => {
                 self.unconfirmed_pool.insert(tx)?;

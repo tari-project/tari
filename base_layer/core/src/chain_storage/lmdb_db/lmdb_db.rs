@@ -70,7 +70,7 @@ use crate::{
         MmrTree,
         PrunedOutput,
     },
-    crypto::tari_utilities::hex::to_hex,
+    tari_utilities::hex::to_hex,
     transactions::{
         aggregated_body::AggregateBody,
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
@@ -201,6 +201,7 @@ impl LMDBDatabase {
                 },
                 InsertOutput {
                     header_hash,
+                    header_height,
                     output,
                     mmr_position,
                 } => {
@@ -209,15 +210,23 @@ impl LMDBDatabase {
                         "Inserting output `{}`",
                         to_hex(&output.commitment.as_bytes())
                     );
-                    self.insert_output(&write_txn, header_hash, *output, mmr_position)?;
+                    self.insert_output(&write_txn, header_hash, header_height, *output, mmr_position)?;
                 },
                 InsertPrunedOutput {
                     header_hash,
+                    header_height,
                     output_hash,
                     proof_hash,
                     mmr_position,
                 } => {
-                    self.insert_pruned_output(&write_txn, header_hash, output_hash, proof_hash, mmr_position)?;
+                    self.insert_pruned_output(
+                        &write_txn,
+                        header_hash,
+                        header_height,
+                        output_hash,
+                        proof_hash,
+                        mmr_position,
+                    )?;
                 },
                 InsertInput {
                     header_hash,
@@ -463,6 +472,7 @@ impl LMDBDatabase {
         &mut self,
         txn: &WriteTransaction<'_>,
         header_hash: HashOutput,
+        header_height: u64,
         output: TransactionOutput,
         mmr_position: u32,
     ) -> Result<(), ChainStorageError>
@@ -487,6 +497,7 @@ impl LMDBDatabase {
                 mmr_position,
                 hash: output_hash,
                 range_proof_hash: proof_hash,
+                mined_height: header_height,
             },
             "utxos_db",
         )
@@ -496,6 +507,7 @@ impl LMDBDatabase {
         &mut self,
         txn: &WriteTransaction<'_>,
         header_hash: HashOutput,
+        header_height: u64,
         output_hash: HashOutput,
         proof_hash: HashOutput,
         mmr_position: u32,
@@ -525,6 +537,7 @@ impl LMDBDatabase {
                 mmr_position,
                 hash: output_hash,
                 range_proof_hash: proof_hash,
+                mined_height: header_height,
             },
             "utxos_db",
         )
@@ -801,6 +814,7 @@ impl LMDBDatabase {
             self.insert_output(
                 txn,
                 block_hash.clone(),
+                header.height,
                 output,
                 (proof_mmr.get_leaf_count()? - 1) as u32,
             )?;
@@ -1417,7 +1431,11 @@ impl BlockchainBackend for LMDBDatabase {
         }
     }
 
-    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(TransactionOutput, u32)>, ChainStorageError> {
+    fn fetch_output(
+        &self,
+        output_hash: &HashOutput,
+    ) -> Result<Option<(TransactionOutput, u32, u64)>, ChainStorageError>
+    {
         debug!(target: LOG_TARGET, "Fetch output: {}", output_hash.to_hex());
         let txn = ReadTransaction::new(&*self.env)?;
         if let Some((index, key)) =
@@ -1441,7 +1459,7 @@ impl BlockchainBackend for LMDBDatabase {
                     );
                     unimplemented!("Output has been pruned");
                 }
-                Ok(Some((output.output.unwrap(), output.mmr_position)))
+                Ok(Some((output.output.unwrap(), output.mmr_position, output.mined_height)))
             } else {
                 Ok(None)
             }

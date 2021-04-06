@@ -51,13 +51,16 @@ use tari_core::{
     },
 };
 use tari_crypto::{
+    inputs,
     keys::PublicKey as PublicKeyTrait,
+    script,
+    script::TariScript,
     tari_utilities::{hash::Hashable, hex::Hex},
 };
 use tari_mmr::MutableMmr;
 
 const _MAINNET: Network = Network::MainNet;
-const _RIDCULLY: Network = Network::Ridcully;
+const _WEATHERWAX: Network = Network::Weatherwax;
 
 pub fn create_coinbase(
     factories: &CryptoFactories,
@@ -66,8 +69,8 @@ pub fn create_coinbase(
 ) -> (TransactionOutput, TransactionKernel, UnblindedOutput)
 {
     let features = OutputFeatures::create_coinbase(maturity_height);
-    let (mut utxo, key) = create_utxo(value, &factories, None);
-    utxo.features = features.clone();
+    let script = script!(Nop);
+    let (utxo, key, _) = create_utxo(value, &factories, Some(features.clone()), &script);
     let excess = Commitment::from_public_key(&PublicKey::from_secret_key(&key));
     let sig = create_signature(key.clone(), 0.into(), 0);
     let kernel = KernelBuilder::new()
@@ -76,7 +79,16 @@ pub fn create_coinbase(
         .with_features(KernelFeatures::COINBASE_KERNEL)
         .build()
         .unwrap();
-    let output = UnblindedOutput::new(value, key, Some(features));
+    let output = UnblindedOutput::new(
+        value,
+        key.clone(),
+        Some(features),
+        script!(Nop),
+        inputs!(PublicKey::from_secret_key(&key)),
+        0,
+        key,
+        utxo.script_offset_public_key.clone(),
+    );
     (utxo, kernel, output)
 }
 
@@ -99,12 +111,12 @@ fn genesis_template(
 // This is a helper function to generate and print out a block that can be used as the genesis block.
 // #[test]
 pub fn _create_act_gen_block() {
-    let network = _RIDCULLY;
+    let network = _WEATHERWAX;
     let consensus_manager: ConsensusManager = ConsensusManagerBuilder::new(network).build();
     let factories = CryptoFactories::default();
     let mut header = BlockHeader::new(consensus_manager.consensus_constants(0).blockchain_version());
     let value = consensus_manager.emission_schedule().block_reward(0);
-    let (mut utxo, key) = create_utxo(value, &factories, None);
+    let (mut utxo, key, _) = create_utxo(value, &factories, None, &TariScript::default());
     utxo.features = OutputFeatures::create_coinbase(1);
     let (pk, sig) = create_random_signature_from_s_key(key.clone(), 0.into(), 0);
     let excess = Commitment::from_public_key(&pk);
@@ -199,10 +211,20 @@ pub fn create_genesis_block_with_utxos(
 ) -> (ChainBlock, Vec<UnblindedOutput>)
 {
     let (mut template, coinbase) = genesis_template(&factories, 100_000_000.into(), consensus_constants);
+    let script = script!(Nop);
     let outputs = values.iter().fold(vec![coinbase], |mut secrets, v| {
-        let (t, k) = create_utxo(*v, factories, None);
-        template.body.add_output(t);
-        secrets.push(UnblindedOutput::new(*v, k, None));
+        let (t, k, _) = create_utxo(*v, factories, None, &script);
+        template.body.add_output(t.clone());
+        secrets.push(UnblindedOutput::new(
+            *v,
+            k.clone(),
+            None,
+            script.clone(),
+            inputs!(PublicKey::from_secret_key(&k)),
+            0,
+            k,
+            t.script_offset_public_key,
+        ));
         secrets
     });
     let mut block = update_genesis_block_mmr_roots(template).unwrap();

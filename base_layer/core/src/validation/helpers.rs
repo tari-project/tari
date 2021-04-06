@@ -209,10 +209,11 @@ pub fn check_accounting_balance(
         return Ok(());
     }
     let offset = &block.header.total_kernel_offset;
+    let script_offset = &block.header.total_script_offset;
     let total_coinbase = rules.calculate_coinbase_and_fees(block);
     block
         .body
-        .validate_internal_consistency(&offset, total_coinbase, factories)
+        .validate_internal_consistency(&offset, &script_offset, total_coinbase, factories)
         .map_err(|err| {
             warn!(
                 target: LOG_TARGET,
@@ -238,23 +239,6 @@ pub fn check_coinbase_output(
             factories,
         )
         .map_err(ValidationError::from)
-}
-
-pub fn check_cut_through(block: &Block) -> Result<(), ValidationError> {
-    trace!(
-        target: LOG_TARGET,
-        "Checking cut through on block with hash {}",
-        block.hash().to_hex()
-    );
-    if !block.body.check_cut_through() {
-        warn!(
-            target: LOG_TARGET,
-            "Block validation for {} failed: block no cut through",
-            block.hash().to_hex()
-        );
-        return Err(ValidationError::BlockError(BlockValidationError::NoCutThrough));
-    }
-    Ok(())
 }
 
 pub fn is_all_unique_and_sorted<I: AsRef<[T]>, T: PartialOrd>(items: I) -> bool {

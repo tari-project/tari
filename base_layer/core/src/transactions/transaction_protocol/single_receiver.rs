@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::transactions::{
-    crypto::{hash::blake2::Blake256, script::TariScript},
     transaction::{OutputFeatures, TransactionOutput},
     transaction_protocol::{
         build_challenge,
@@ -30,10 +29,12 @@ use crate::transactions::{
         RewindData,
         TransactionProtocolError as TPE,
     },
-    types::{CryptoFactories, PrivateKey as SK, PublicKey, RangeProof, Signature},
+    types::{CryptoFactories, PrivateKey as SK, PrivateKey, PublicKey, RangeProof, Signature},
 };
+use digest::Input;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
+    hash::blake2::Blake256,
     keys::PublicKey as PK,
     range_proof::{RangeProofError, RangeProofService as RPS},
     tari_utilities::byte_array::ByteArray,
@@ -98,9 +99,17 @@ impl SingleReceiverTransactionProtocol {
             .commitment
             .commit_value(&spending_key, sender_info.amount.into());
 
+        let beta_hash = Blake256::new()
+            .chain(sender_info.script_hash.clone())
+            .chain(features.to_bytes())
+            .chain(sender_info.script_offset_public_key.clone().as_bytes())
+            .result()
+            .to_vec();
+        let beta = PrivateKey::from_bytes(beta_hash.as_slice()).map_err(|_| TPE::SerializationError)?;
+
         let proof = if let Some(rewind_data) = rewind_data {
             factories.range_proof.construct_proof_with_rewind_key(
-                &spending_key,
+                &(spending_key.clone() + beta),
                 sender_info.amount.into(),
                 &rewind_data.rewind_key,
                 &rewind_data.rewind_blinding_key,
@@ -109,19 +118,15 @@ impl SingleReceiverTransactionProtocol {
         } else {
             factories
                 .range_proof
-                .construct_proof(&spending_key, sender_info.amount.into())?
+                .construct_proof(&(spending_key.clone() + beta), sender_info.amount.into())?
         };
-        // TODO: Populate script_hash with the proper value
-        let script_hash = TariScript::default().as_hash::<Blake256>().unwrap().to_vec();
-        // TODO: Populate offset_pub_key with the proper value
-        let offset_pub_key = PublicKey::default();
         Ok(TransactionOutput::new(
             features,
             commitment,
             RangeProof::from_bytes(&proof)
                 .map_err(|_| TPE::RangeProofError(RangeProofError::ProofConstructionError))?,
-            script_hash,
-            offset_pub_key,
+            sender_info.script_hash.clone(),
+            sender_info.script_offset_public_key.clone(),
         ))
     }
 }
@@ -184,6 +189,8 @@ mod test {
             public_nonce: pub_rs.clone(),
             metadata: m.clone(),
             message: "".to_string(),
+            script_hash: vec![],
+            script_offset_public_key: Default::default(),
         };
         let prot = SingleReceiverTransactionProtocol::create(&info, r, k.clone(), of, &factories, None).unwrap();
         assert_eq!(prot.tx_id, 500, "tx_id is incorrect");

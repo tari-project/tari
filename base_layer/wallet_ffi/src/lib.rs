@@ -2727,7 +2727,7 @@ pub unsafe extern "C" fn comms_config_create(
                             discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
                             database_url: DbConnectionUrl::File(dht_database_path),
                             auto_join: true,
-                            network: DhtNetwork::Stibbons,
+                            network: DhtNetwork::Weatherwax,
                             saf_msg_validity: Duration::from_secs(saf_message_duration_in_secs),
                             ..Default::default()
                         },
@@ -3044,7 +3044,7 @@ pub unsafe extern "C" fn wallet_create(
                         ..Default::default()
                     }),
                     None,
-                    Network::Stibbons,
+                    Network::Weatherwax,
                     None,
                     None,
                     None,

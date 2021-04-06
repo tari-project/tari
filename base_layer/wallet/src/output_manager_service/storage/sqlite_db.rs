@@ -57,11 +57,12 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         transaction::{OutputFeatures, OutputFlags, UnblindedOutput},
-        types::{Commitment, CryptoFactories, PrivateKey},
+        types::{Commitment, CryptoFactories, PrivateKey, PublicKey},
     },
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
+    script::{ExecutionStack, TariScript},
     tari_utilities::{
         hex::{from_hex, Hex},
         ByteArray,
@@ -372,6 +373,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                                 status: Some(OutputStatus::Unspent),
                                 tx_id: None,
                                 spending_key: None,
+                                height: None,
+                                script_private_key: None,
                             },
                             &(*conn),
                         )?;
@@ -381,6 +384,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                                 status: Some(OutputStatus::Spent),
                                 tx_id: None,
                                 spending_key: None,
+                                height: None,
+                                script_private_key: None,
                             },
                             &(*conn),
                         )?;
@@ -426,6 +431,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     status: Some(OutputStatus::EncumberedToBeSpent),
                     tx_id: Some(tx_id),
                     spending_key: None,
+                    height: None,
+                    script_private_key: None,
                 },
                 &(*conn),
             )?;
@@ -489,6 +496,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                                 status: Some(OutputStatus::CancelledInbound),
                                 tx_id: None,
                                 spending_key: None,
+                                height: None,
+                                script_private_key: None,
                             },
                             &(*conn),
                         )?;
@@ -498,6 +507,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                                 status: Some(OutputStatus::Unspent),
                                 tx_id: None,
                                 spending_key: None,
+                                height: None,
+                                script_private_key: None,
                             },
                             &(*conn),
                         )?;
@@ -553,6 +564,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 status: Some(OutputStatus::Invalid),
                 tx_id: None,
                 spending_key: None,
+                height: None,
+                script_private_key: None,
             },
             &(*conn),
         )?;
@@ -572,6 +585,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 status: Some(OutputStatus::Unspent),
                 tx_id: None,
                 spending_key: None,
+                height: None,
+                script_private_key: None,
             },
             &(*conn),
         )?;
@@ -595,6 +610,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 status: Some(OutputStatus::Unspent),
                 tx_id: None,
                 spending_key: None,
+                height: None,
+                script_private_key: None,
             },
             &(*conn),
         )?;
@@ -612,6 +629,26 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         for p in pending_txs {
             self.cancel_pending_transaction(p.tx_id as u64)?;
         }
+        Ok(())
+    }
+
+    fn update_mined_height(&self, tx_id: u64, height: u64) -> Result<(), OutputManagerStorageError> {
+        let conn = self.database_connection.acquire_lock();
+        let output = OutputSql::find_by_tx_id(tx_id, &conn)?;
+
+        for o in output.iter() {
+            let _ = o.update(
+                UpdateOutput {
+                    status: None,
+                    tx_id: None,
+                    spending_key: None,
+                    height: Some(height),
+                    script_private_key: None,
+                },
+                &(*conn),
+            )?;
+        }
+
         Ok(())
     }
 
@@ -755,6 +792,11 @@ struct NewOutputSql {
     status: i32,
     tx_id: Option<i64>,
     hash: Option<Vec<u8>>,
+    script: Vec<u8>,
+    input_data: Vec<u8>,
+    height: i64,
+    script_private_key: Vec<u8>,
+    script_offset_public_key: Vec<u8>,
 }
 
 impl NewOutputSql {
@@ -768,6 +810,11 @@ impl NewOutputSql {
             status: status as i32,
             tx_id: tx_id.map(|i| i as i64),
             hash: Some(output.hash),
+            script: output.unblinded_output.script.as_bytes(),
+            input_data: output.unblinded_output.input_data.as_bytes(),
+            height: output.unblinded_output.height as i64,
+            script_private_key: output.unblinded_output.script_private_key.to_vec(),
+            script_offset_public_key: output.unblinded_output.script_offset_public_key.to_vec(),
         }
     }
 
@@ -781,11 +828,13 @@ impl NewOutputSql {
 impl Encryptable<Aes256Gcm> for NewOutputSql {
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
         self.spending_key = encrypt_bytes_integral_nonce(&cipher, self.spending_key.clone())?;
+        self.script_private_key = encrypt_bytes_integral_nonce(&cipher, self.script_private_key.clone())?;
         Ok(())
     }
 
     fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
         self.spending_key = decrypt_bytes_integral_nonce(&cipher, self.spending_key.clone())?;
+        self.script_private_key = decrypt_bytes_integral_nonce(&cipher, self.script_private_key.clone())?;
         Ok(())
     }
 }
@@ -802,6 +851,11 @@ struct OutputSql {
     status: i32,
     tx_id: Option<i64>,
     hash: Option<Vec<u8>>,
+    script: Vec<u8>,
+    input_data: Vec<u8>,
+    height: i64,
+    script_private_key: Vec<u8>,
+    script_offset_public_key: Vec<u8>,
 }
 
 impl OutputSql {
@@ -845,6 +899,13 @@ impl OutputSql {
             .filter(outputs::status.ne(cancelled))
             .filter(outputs::commitment.eq(commitment))
             .first::<OutputSql>(conn)?)
+    }
+
+    /// Find outputs via tx_id
+    pub fn find_by_tx_id(tx_id: TxId, conn: &SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        Ok(outputs::table
+            .filter(outputs::tx_id.eq(Some(tx_id as i64)))
+            .load(conn)?)
     }
 
     /// Find outputs via tx_id that are encumbered. Any outputs that are encumbered cannot be marked as spent.
@@ -933,6 +994,8 @@ impl OutputSql {
                 status: None,
                 tx_id: None,
                 spending_key: Some(self.spending_key.clone()),
+                height: None,
+                script_private_key: Some(self.script_private_key.clone()),
             },
             conn,
         )?;
@@ -959,7 +1022,25 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                     .ok_or_else(|| OutputManagerStorageError::ConversionError)?,
                 maturity: o.maturity as u64,
             }),
+            TariScript::from_bytes(o.script.as_slice())?,
+            ExecutionStack::from_bytes(o.input_data.as_slice())?,
+            o.height as u64,
+            PrivateKey::from_vec(&o.script_private_key).map_err(|_| {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not create PrivateKey from stored bytes, They might be encrypted"
+                );
+                OutputManagerStorageError::ConversionError
+            })?,
+            PublicKey::from_vec(&o.script_offset_public_key).map_err(|_| {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not create PrivateKey from stored bytes, They might be encrypted"
+                );
+                OutputManagerStorageError::ConversionError
+            })?,
         );
+
         let hash = match o.hash {
             None => {
                 let factories = CryptoFactories::default();
@@ -988,11 +1069,13 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
 impl Encryptable<Aes256Gcm> for OutputSql {
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
         self.spending_key = encrypt_bytes_integral_nonce(&cipher, self.spending_key.clone())?;
+        self.script_private_key = encrypt_bytes_integral_nonce(&cipher, self.script_private_key.clone())?;
         Ok(())
     }
 
     fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
         self.spending_key = decrypt_bytes_integral_nonce(&cipher, self.spending_key.clone())?;
+        self.script_private_key = decrypt_bytes_integral_nonce(&cipher, self.script_private_key.clone())?;
         Ok(())
     }
 }
@@ -1008,6 +1091,11 @@ impl From<OutputSql> for NewOutputSql {
             status: o.status,
             tx_id: o.tx_id,
             hash: o.hash,
+            script: o.script,
+            input_data: o.input_data,
+            height: o.height,
+            script_private_key: o.script_private_key,
+            script_offset_public_key: o.script_offset_public_key,
         }
     }
 }
@@ -1023,6 +1111,8 @@ pub struct UpdateOutput {
     status: Option<OutputStatus>,
     tx_id: Option<TxId>,
     spending_key: Option<Vec<u8>>,
+    height: Option<u64>,
+    script_private_key: Option<Vec<u8>>,
 }
 
 #[derive(AsChangeset)]
@@ -1031,6 +1121,8 @@ pub struct UpdateOutputSql {
     status: Option<i32>,
     tx_id: Option<i64>,
     spending_key: Option<Vec<u8>>,
+    height: Option<i64>,
+    script_private_key: Option<Vec<u8>>,
 }
 
 #[derive(AsChangeset)]
@@ -1048,6 +1140,8 @@ impl From<UpdateOutput> for UpdateOutputSql {
             status: u.status.map(|t| t as i32),
             tx_id: u.tx_id.map(|t| t as i64),
             spending_key: u.spending_key,
+            height: u.height.map(|t| t as i64),
+            script_private_key: u.script_private_key,
         }
     }
 }
@@ -1322,13 +1416,13 @@ mod test {
     use std::{convert::TryFrom, iter, time::Duration};
     use tari_core::transactions::{
         tari_amount::MicroTari,
-        transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
-        types::{CommitmentFactory, CryptoFactories, PrivateKey, PublicKey, Signature},
+        transaction::{TransactionInput, UnblindedOutput},
+        types::{CommitmentFactory, CryptoFactories, PrivateKey, PublicKey},
     };
     use tari_crypto::{
-        commitment::HomomorphicCommitmentFactory,
-        keys::SecretKey,
-        script::{ExecutionStack, TariScript},
+        inputs,
+        keys::{PublicKey as PublicKeyTrait, SecretKey},
+        script,
     };
     use tempfile::tempdir;
 
@@ -1338,30 +1432,27 @@ mod test {
 
     pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: MicroTari) -> (TransactionInput, UnblindedOutput) {
         let key = PrivateKey::random(rng);
+        let script_key = PrivateKey::random(rng);
+        let script_offset_private_key = PrivateKey::random(rng);
         let factory = CommitmentFactory::default();
-        let commitment = factory.commit_value(&key, val.into());
 
-        // TODO: Populate script with the proper value
-        let script = TariScript::default().as_bytes();
-        // TODO: Populate input_data with the proper value
-        let input_data = ExecutionStack::default().as_bytes();
-        // TODO: Populate height with the proper value
+        let script = script!(Nop);
+        let input_data = inputs!(PublicKey::from_secret_key(&script_key));
         let height = 0;
-        // TODO: Populate script_signature with the proper value
-        let script_signature = Signature::default();
-        // TODO: Populate offset_pub_key with the proper value
-        let offset_pub_key = PublicKey::default();
-        let input = TransactionInput::new(
-            OutputFeatures::default(),
-            commitment,
+        let unblinded_output = UnblindedOutput::new(
+            val,
+            key,
+            None,
             script,
             input_data,
             height,
-            script_signature,
-            offset_pub_key,
+            script_key,
+            PublicKey::from_secret_key(&script_offset_private_key),
         );
 
-        (input, UnblindedOutput::new(val, key, None))
+        let input = unblinded_output.as_transaction_input(&factory).unwrap();
+
+        (input, unblinded_output)
     }
 
     #[test]
@@ -1455,6 +1546,8 @@ mod test {
                     status: Some(OutputStatus::Unspent),
                     tx_id: Some(44u64),
                     spending_key: None,
+                    height: None,
+                    script_private_key: None,
                 },
                 &conn,
             )
@@ -1467,6 +1560,8 @@ mod test {
                     status: Some(OutputStatus::EncumberedToBeReceived),
                     tx_id: Some(44u64),
                     spending_key: None,
+                    height: None,
+                    script_private_key: None,
                 },
                 &conn,
             )

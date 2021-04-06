@@ -370,6 +370,7 @@ pub async fn init_wallet(
         Network::Ridcully => NetworkType::Ridcully,
         Network::LocalNet => NetworkType::LocalNet,
         Network::Stibbons => NetworkType::Stibbons,
+        Network::Weatherwax => NetworkType::Weatherwax,
         Network::Rincewind => unimplemented!("Rincewind has been retired"),
     };
 
