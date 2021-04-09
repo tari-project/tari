@@ -2,14 +2,14 @@ PRAGMA foreign_keys=off;
 ALTER TABLE outputs RENAME TO outputs_old;
 CREATE TABLE outputs (
     id INTEGER NOT NULL PRIMARY KEY,
-    commitment BLOB NULL DEFAULT NULL,
+    commitment BLOB NULL,
     spending_key BLOB NOT NULL,
     value INTEGER NOT NULL,
     flags INTEGER NOT NULL,
     maturity INTEGER NOT NULL,
     status INTEGER NOT NULL,
     tx_id INTEGER NULL,
-    hash BLOB NULL DEFAULT NULL,
+    hash BLOB NULL,
     CONSTRAINT unique_commitment UNIQUE (commitment)
 );
 INSERT INTO outputs SELECT * FROM outputs_old;

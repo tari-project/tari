@@ -1430,7 +1430,7 @@ fn test_utxo_stxo_invalid_txo_validation() {
         PublicKey::default(),
     );
 
-    let spent_db_output2 = DbUnblindedOutput::from_unblinded_output(spent_output2.clone(), &factories).unwrap();
+    let spent_db_output2 = DbUnblindedOutput::from_unblinded_output(spent_output2, &factories).unwrap();
     backend
         .write(WriteOperation::Insert(DbKeyValuePair::SpentOutput(
             spent_db_output2.commitment.clone(),

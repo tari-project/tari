@@ -15,6 +15,6 @@ SELECT id, master_seed, branch_seed, primary_key_index, timestamp
 DROP TABLE key_manager_states_old;
 
 PRAGMA foreign_keys=on;
-ALTER TABLE pending_transaction_outputs ADD COLUMN coinbase_block_height INTEGER NULL DEFAULT NULL;
+ALTER TABLE pending_transaction_outputs ADD COLUMN coinbase_block_height INTEGER NULL;
 
-ALTER TABLE completed_transactions ADD COLUMN coinbase_block_height INTEGER NULL DEFAULT NULL;
+ALTER TABLE completed_transactions ADD COLUMN coinbase_block_height INTEGER NULL;

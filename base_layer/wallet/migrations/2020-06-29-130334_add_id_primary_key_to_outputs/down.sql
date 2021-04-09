@@ -7,7 +7,7 @@ CREATE TABLE outputs (
                          maturity INTEGER NOT NULL,
                          status INTEGER NOT NULL,
                          tx_id INTEGER NULL,
-                         hash BLOB NULL DEFAULT NULL
+                         hash BLOB NULL
 );
 INSERT INTO outputs (spending_key, value, flags, maturity, status, tx_id, hash) SELECT spending_key, value, flags, maturity, status, tx_id, hash FROM outputs_old;
 DROP TABLE outputs_old;
