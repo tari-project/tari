@@ -75,6 +75,7 @@ use tari_core::{
         types::{CryptoFactories, PrivateKey},
     },
 };
+use tari_crypto::script;
 use tari_p2p::domain_message::DomainMessage;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
@@ -455,7 +456,13 @@ where
     {
         trace!(target: LOG_TARGET, "Handling Service Request: {}", request);
         match request {
-            TransactionServiceRequest::SendTransaction((dest_pubkey, amount, fee_per_gram, message)) => self
+            TransactionServiceRequest::SendTransaction((
+                dest_pubkey,
+                amount,
+                fee_per_gram,
+                message,
+                one_sided_to_other,
+            )) => self
                 .send_transaction(
                     dest_pubkey,
                     amount,
@@ -463,6 +470,7 @@ where
                     message,
                     send_transaction_join_handles,
                     transaction_broadcast_join_handles,
+                    one_sided_to_other,
                 )
                 .await
                 .map(TransactionServiceResponse::TransactionSent),
@@ -610,19 +618,30 @@ where
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<u64, TransactionServiceProtocolError>>,
         >,
+        one_sided_to_other: bool,
     ) -> Result<TxId, TransactionServiceError>
     {
-        // If we're paying ourselves, let's complete and submit the transaction immediately
-        if self.node_identity.public_key() == &dest_pubkey {
-            debug!(
+        if self.node_identity.public_key() == &dest_pubkey && one_sided_to_other {
+            warn!(
                 target: LOG_TARGET,
-                "Received transaction with spend-to-self transaction"
+                "One-sided spend-to-self transactions not supported."
             );
-
-            let (tx_id, fee, transaction) = self
-                .output_manager_service
-                .create_pay_to_self_transaction(amount, fee_per_gram, None, message.clone())
-                .await?;
+            return Err(TransactionServiceError::InvalidTransaction);
+        }
+        // If we're paying ourselves or sending a one-sided transaction, let's complete and submit the transaction
+        // immediately
+        if self.node_identity.public_key() == &dest_pubkey || one_sided_to_other {
+            let (tx_id, fee, transaction) = if one_sided_to_other {
+                debug!(target: LOG_TARGET, "Received one-sided to other transaction");
+                self.output_manager_service
+                    .create_one_sided_transaction(amount, fee_per_gram, None, message.clone(), Some(dest_pubkey))
+                    .await?
+            } else {
+                debug!(target: LOG_TARGET, "Received one-sided spend-to-self transaction");
+                self.output_manager_service
+                    .create_one_sided_transaction(amount, fee_per_gram, None, message.clone(), None)
+                    .await?
+            };
 
             // Notify that the transaction was successfully resolved.
             let _ = self
@@ -642,9 +661,11 @@ where
             return Ok(tx_id);
         }
 
+        // TODO: Complete wiring of sending transactions with other tari script feature upstream
+        let recipient_script = script!(Nop);
         let sender_protocol = self
             .output_manager_service
-            .prepare_transaction_to_send(amount, fee_per_gram, None, message.clone())
+            .prepare_transaction_to_send(amount, fee_per_gram, None, message.clone(), recipient_script)
             .await?;
 
         let tx_id = sender_protocol.get_tx_id()?;
@@ -1908,7 +1929,7 @@ where
         fake_oms.add_output(uo).await?;
 
         let mut stp = fake_oms
-            .prepare_transaction_to_send(amount, MicroTari::from(25), None, "".to_string())
+            .prepare_transaction_to_send(amount, MicroTari::from(25), None, "".to_string(), script!(Nop))
             .await?;
 
         let msg = stp.build_single_round_message()?;

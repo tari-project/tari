@@ -838,8 +838,10 @@ pub async fn send_transaction_task(
     let mut event_stream = transaction_service_handle.get_event_stream_fused();
     let mut send_direct_received_result = (false, false);
     let mut send_saf_received_result = (false, false);
+    // TODO: Complete wiring of one-sided-tx-to-other feature upstream
+    let one_sided_to_other = false;
     match transaction_service_handle
-        .send_transaction(public_key, amount, fee_per_gram, message)
+        .send_transaction(public_key, amount, fee_per_gram, message, one_sided_to_other)
         .await
     {
         Err(e) => {

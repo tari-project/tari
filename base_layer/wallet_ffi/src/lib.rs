@@ -3839,6 +3839,8 @@ pub unsafe extern "C" fn wallet_send_transaction(
         CString::new("").unwrap().to_str().unwrap().to_owned()
     };
 
+    // TODO: Complete wiring of one-sided-tx-to-other feature upstream
+    let one_sided_to_other = false;
     match (*wallet)
         .runtime
         .block_on((*wallet).wallet.transaction_service.send_transaction(
@@ -3846,6 +3848,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
             MicroTari::from(amount),
             MicroTari::from(fee_per_gram),
             message_string,
+            one_sided_to_other,
         )) {
         Ok(tx_id) => tx_id,
         Err(e) => {

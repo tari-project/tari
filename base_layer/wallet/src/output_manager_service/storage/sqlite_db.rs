@@ -45,6 +45,7 @@ use aes_gcm::{aead::Error as AeadError, Aes256Gcm, Error};
 use chrono::{Duration as ChronoDuration, NaiveDateTime, Utc};
 use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
 use log::*;
+use rand::{rngs::OsRng, RngCore};
 use std::{
     collections::HashMap,
     convert::TryFrom,
@@ -254,7 +255,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     if OutputSql::find_by_commitment(&c.to_vec(), &(*conn)).is_ok() {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
-                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Spent, None);
+                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Spent, Some(OsRng.next_u64()));
 
                     self.encrypt_if_necessary(&mut new_output)?;
 
@@ -264,7 +265,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     if OutputSql::find_by_commitment(&c.to_vec(), &(*conn)).is_ok() {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
-                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, None);
+                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, Some(OsRng.next_u64()));
                     self.encrypt_if_necessary(&mut new_output)?;
                     new_output.commit(&(*conn))?
                 },
@@ -1478,7 +1479,7 @@ mod test {
         for _i in 0..2 {
             let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
             let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
-            let o = NewOutputSql::new(uo, OutputStatus::Unspent, None);
+            let o = NewOutputSql::new(uo, OutputStatus::Unspent, Some(OsRng.next_u64()));
             outputs.push(o.clone());
             outputs_unspent.push(o.clone());
             o.commit(&conn).unwrap();
@@ -1487,7 +1488,7 @@ mod test {
         for _i in 0..3 {
             let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
             let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
-            let o = NewOutputSql::new(uo, OutputStatus::Spent, None);
+            let o = NewOutputSql::new(uo, OutputStatus::Spent, Some(OsRng.next_u64()));
             outputs.push(o.clone());
             outputs_spent.push(o.clone());
             o.commit(&conn).unwrap();
@@ -1664,7 +1665,7 @@ mod test {
 
         let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
         let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
-        let output = NewOutputSql::new(uo, OutputStatus::Unspent, None);
+        let output = NewOutputSql::new(uo, OutputStatus::Unspent, Some(OsRng.next_u64()));
 
         let key = GenericArray::from_slice(b"an example very very secret key.");
         let cipher = Aes256Gcm::new(key);
@@ -1772,12 +1773,12 @@ mod test {
 
         let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
         let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
-        let output = NewOutputSql::new(uo, OutputStatus::Unspent, None);
+        let output = NewOutputSql::new(uo, OutputStatus::Unspent, Some(OsRng.next_u64()));
         output.commit(&conn).unwrap();
 
         let (_, uo2) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
         let uo2 = DbUnblindedOutput::from_unblinded_output(uo2, &factories).unwrap();
-        let output2 = NewOutputSql::new(uo2, OutputStatus::Unspent, None);
+        let output2 = NewOutputSql::new(uo2, OutputStatus::Unspent, Some(OsRng.next_u64()));
         output2.commit(&conn).unwrap();
 
         let key = GenericArray::from_slice(b"an example very very secret key.");

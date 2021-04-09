@@ -71,6 +71,7 @@ use tari_crypto::{
     inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     range_proof::REWIND_USER_MESSAGE_LENGTH,
+    ristretto::RistrettoPublicKey,
     script,
     script::{ExecutionStack, TariScript},
 };
@@ -299,12 +300,24 @@ where TBackend: OutputManagerBackend + 'static
                 .get_coinbase_transaction(tx_id, reward, fees, block_height)
                 .await
                 .map(OutputManagerResponse::CoinbaseTransaction),
-            OutputManagerRequest::PrepareToSendTransaction((amount, fee_per_gram, lock_height, message)) => self
-                .prepare_transaction_to_send(amount, fee_per_gram, lock_height, message)
+            OutputManagerRequest::PrepareToSendTransaction((
+                amount,
+                fee_per_gram,
+                lock_height,
+                message,
+                recipient_script,
+            )) => self
+                .prepare_transaction_to_send(amount, fee_per_gram, lock_height, message, recipient_script)
                 .await
                 .map(OutputManagerResponse::TransactionToSend),
-            OutputManagerRequest::CreatePayToSelfTransaction((amount, fee_per_gram, lock_height, message)) => self
-                .create_pay_to_self_transaction(amount, fee_per_gram, lock_height, message)
+            OutputManagerRequest::CreateOneSidedTransaction((
+                amount,
+                fee_per_gram,
+                lock_height,
+                message,
+                recipient_pub_key,
+            )) => self
+                .create_one_sided_transaction(amount, fee_per_gram, lock_height, message, recipient_pub_key)
                 .await
                 .map(OutputManagerResponse::PayToSelfTransaction),
             OutputManagerRequest::FeeEstimate((amount, fee_per_gram, num_kernels, num_outputs)) => self
@@ -650,6 +663,7 @@ where TBackend: OutputManagerBackend + 'static
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
+        recipient_script: TariScript,
     ) -> Result<SenderTransactionProtocol, OutputManagerError>
     {
         debug!(
@@ -668,7 +682,7 @@ where TBackend: OutputManagerBackend + 'static
             .with_offset(offset.clone())
             .with_private_nonce(nonce.clone())
             .with_amount(0, amount)
-            .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng))
+            .with_recipient_script(0, recipient_script, PrivateKey::random(&mut OsRng))
             .with_message(message)
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
 
@@ -746,12 +760,13 @@ where TBackend: OutputManagerBackend + 'static
         Ok(stp)
     }
 
-    async fn create_pay_to_self_transaction(
+    async fn create_one_sided_transaction(
         &mut self,
         amount: MicroTari,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
+        recipient_pub_key: Option<RistrettoPublicKey>,
     ) -> Result<(TxId, MicroTari, Transaction), OutputManagerError>
     {
         let (inputs, _, total) = self.select_utxos(amount, fee_per_gram, 1, None).await?;
@@ -778,13 +793,17 @@ where TBackend: OutputManagerBackend + 'static
             );
         }
 
+        let script = match recipient_pub_key {
+            None => script!(Nop),
+            Some(pk) => script!(PushPubKey(Box::new(pk))),
+        };
         let (spending_key, script_private_key) = self.get_next_spend_and_script_key().await?;
         let utxo = DbUnblindedOutput::from_unblinded_output(
             UnblindedOutput::new(
                 amount,
                 spending_key.clone(),
                 None,
-                script!(Nop),
+                script,
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
                 0,
                 script_private_key,

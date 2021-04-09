@@ -516,7 +516,8 @@ fn manage_single_transaction() {
             bob_node_identity.public_key().clone(),
             value,
             MicroTari::from(20),
-            "".to_string()
+            "".to_string(),
+            false,
         ))
         .is_err());
 
@@ -528,6 +529,7 @@ fn manage_single_transaction() {
             value,
             MicroTari::from(20),
             message,
+            false,
         ))
         .expect("Alice sending tx");
 
@@ -641,6 +643,7 @@ fn single_transaction_to_self() {
                 value,
                 20.into(),
                 message.clone(),
+                false,
             )
             .await
             .expect("Alice sending tx");
@@ -785,6 +788,7 @@ fn manage_multiple_transactions() {
             value_a_to_b_1,
             MicroTari::from(20),
             "a to b 1".to_string(),
+            false,
         ))
         .unwrap();
     log::trace!("A to B 1 TxID: {}", tx_id_a_to_b_1);
@@ -795,6 +799,7 @@ fn manage_multiple_transactions() {
             value_a_to_c_1,
             MicroTari::from(20),
             "a to c 1".to_string(),
+            false,
         ))
         .unwrap();
     let alice_completed_tx = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
@@ -807,6 +812,7 @@ fn manage_multiple_transactions() {
             value_b_to_a_1,
             MicroTari::from(20),
             "b to a 1".to_string(),
+            false,
         ))
         .unwrap();
     runtime
@@ -815,6 +821,7 @@ fn manage_multiple_transactions() {
             value_a_to_b_2,
             MicroTari::from(20),
             "a to b 2".to_string(),
+            false,
         ))
         .unwrap();
 
@@ -952,6 +959,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
             MicroTari::from(5000),
             MicroTari::from(20),
             "".to_string(),
+            false,
         ))
         .unwrap();
     alice_outbound_service
@@ -1082,6 +1090,7 @@ fn finalize_tx_with_incorrect_pubkey() {
             MicroTari::from(25),
             None,
             "".to_string(),
+            script!(Nop),
         ))
         .unwrap();
     let msg = stp.build_single_round_message().unwrap();
@@ -1207,6 +1216,7 @@ fn finalize_tx_with_missing_output() {
             MicroTari::from(20),
             None,
             "".to_string(),
+            script!(Nop),
         ))
         .unwrap();
     let msg = stp.build_single_round_message().unwrap();
@@ -1358,6 +1368,7 @@ fn discovery_async_return_test() {
             value_a_to_c_1,
             MicroTari::from(20),
             "Discovery Tx!".to_string(),
+            false,
         ))
         .unwrap();
 
@@ -1391,6 +1402,7 @@ fn discovery_async_return_test() {
             value_a_to_c_1,
             MicroTari::from(20),
             "Discovery Tx2!".to_string(),
+            false,
         ))
         .unwrap();
 
@@ -1646,6 +1658,7 @@ fn test_transaction_cancellation() {
             amount_sent,
             100 * uT,
             "Testing Message".to_string(),
+            false,
         ))
         .unwrap();
 
@@ -1936,6 +1949,7 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
             amount_sent,
             100 * uT,
             "Testing Message".to_string(),
+            false,
         ))
         .unwrap();
 
@@ -2080,6 +2094,7 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
             amount_sent,
             100 * uT,
             "Testing Message".to_string(),
+            false,
         ))
         .unwrap();
 
@@ -2187,6 +2202,7 @@ fn test_tx_direct_send_behaviour() {
             amount_sent,
             100 * uT,
             "Testing Message1".to_string(),
+            false,
         ))
         .unwrap();
 
@@ -2226,6 +2242,7 @@ fn test_tx_direct_send_behaviour() {
             amount_sent,
             100 * uT,
             "Testing Message2".to_string(),
+            false,
         ))
         .unwrap();
 
@@ -2270,6 +2287,7 @@ fn test_tx_direct_send_behaviour() {
             amount_sent,
             100 * uT,
             "Testing Message3".to_string(),
+            false,
         ))
         .unwrap();
 
@@ -2312,6 +2330,7 @@ fn test_tx_direct_send_behaviour() {
             amount_sent,
             100 * uT,
             "Testing Message4".to_string(),
+            false,
         ))
         .unwrap();
 
@@ -3304,6 +3323,7 @@ fn test_transaction_resending() {
             amount_sent,
             100 * uT,
             "Testing Message".to_string(),
+            false,
         ))
         .unwrap();
 
@@ -3742,6 +3762,7 @@ fn test_replying_to_cancelled_tx() {
             amount_sent,
             100 * uT,
             "Testing Message".to_string(),
+            false,
         ))
         .unwrap();
     alice_outbound_service
@@ -3874,6 +3895,7 @@ fn test_transaction_timeout_cancellation() {
             amount_sent,
             100 * uT,
             "Testing Message".to_string(),
+            false,
         ))
         .unwrap();
 
@@ -4117,6 +4139,7 @@ fn transaction_service_tx_broadcast() {
             amount_sent1,
             100 * uT,
             "Testing Message".to_string(),
+            false,
         ))
         .unwrap();
     alice_outbound_service
@@ -4168,6 +4191,7 @@ fn transaction_service_tx_broadcast() {
             amount_sent2,
             100 * uT,
             "Testing Message2".to_string(),
+            false,
         ))
         .unwrap();
     alice_outbound_service
@@ -4550,6 +4574,7 @@ fn transaction_service_tx_broadcast_with_base_node_change() {
             amount_sent1,
             100 * uT,
             "Testing Message".to_string(),
+            false,
         ))
         .unwrap();
     alice_outbound_service

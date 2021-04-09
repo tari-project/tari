@@ -371,6 +371,7 @@ pub async fn generate_wallet_test_data<
             MicroTari::from(1_100_000),
             MicroTari::from(100),
             messages[message_index].clone(),
+            false,
         )
         .await?;
     outbound_tx_ids.push(tx_id);
@@ -383,6 +384,7 @@ pub async fn generate_wallet_test_data<
             MicroTari::from(2_010_500),
             MicroTari::from(110),
             messages[message_index].clone(),
+            false,
         )
         .await?;
     outbound_tx_ids.push(tx_id);
@@ -420,6 +422,7 @@ pub async fn generate_wallet_test_data<
             MicroTari::from(10_000_000),
             MicroTari::from(110),
             messages[message_index].clone(),
+            false,
         )
         .await?;
     message_index = (message_index + 1) % messages.len();
@@ -431,6 +434,7 @@ pub async fn generate_wallet_test_data<
             MicroTari::from(3_441_000),
             MicroTari::from(105),
             messages[message_index].clone(),
+            false,
         )
         .await?;
     message_index = (message_index + 1) % messages.len();
@@ -442,6 +446,7 @@ pub async fn generate_wallet_test_data<
             MicroTari::from(14_100_000),
             MicroTari::from(100),
             messages[message_index].clone(),
+            false,
         )
         .await?;
     message_index = (message_index + 1) % messages.len();
@@ -452,6 +457,7 @@ pub async fn generate_wallet_test_data<
             MicroTari::from(22_010_500),
             MicroTari::from(110),
             messages[message_index].clone(),
+            false,
         )
         .await?;
     message_index = (message_index + 1) % messages.len();
@@ -463,6 +469,7 @@ pub async fn generate_wallet_test_data<
             MicroTari::from(17_000_000),
             MicroTari::from(110),
             messages[message_index].clone(),
+            false,
         )
         .await?;
     message_index = (message_index + 1) % messages.len();
@@ -474,6 +481,7 @@ pub async fn generate_wallet_test_data<
             MicroTari::from(31_441_000),
             MicroTari::from(105),
             messages[message_index].clone(),
+            false,
         )
         .await?;
     message_index = (message_index + 1) % messages.len();
@@ -485,6 +493,7 @@ pub async fn generate_wallet_test_data<
             MicroTari::from(12_100_000),
             MicroTari::from(100),
             messages[message_index].clone(),
+            false,
         )
         .await?;
     message_index = (message_index + 1) % messages.len();
@@ -495,6 +504,7 @@ pub async fn generate_wallet_test_data<
             MicroTari::from(28_010_500),
             MicroTari::from(110),
             messages[message_index].clone(),
+            false,
         )
         .await?;
     message_index = (message_index + 1) % messages.len();
@@ -507,6 +517,7 @@ pub async fn generate_wallet_test_data<
             MicroTari::from(2_500_000),
             MicroTari::from(107),
             messages[message_index].clone(),
+            false,
         )
         .await;
     message_index = (message_index + 1) % messages.len();
@@ -518,6 +529,7 @@ pub async fn generate_wallet_test_data<
             MicroTari::from(3_512_000),
             MicroTari::from(117),
             messages[message_index].clone(),
+            false,
         )
         .await;
     message_index = (message_index + 1) % messages.len();
@@ -578,6 +590,7 @@ pub async fn generate_wallet_test_data<
             MicroTari::from(1_235_000),
             MicroTari::from(117),
             messages[message_index].clone(),
+            false,
         )
         .await?;
     message_index = (message_index + 1) % messages.len();
@@ -589,6 +602,7 @@ pub async fn generate_wallet_test_data<
             MicroTari::from(3_500_000),
             MicroTari::from(117),
             messages[message_index].clone(),
+            false,
         )
         .await?;
     message_index = (message_index + 1) % messages.len();
@@ -600,6 +614,7 @@ pub async fn generate_wallet_test_data<
             MicroTari::from(2_335_000),
             MicroTari::from(117),
             messages[message_index].clone(),
+            false,
         )
         .await?;
     message_index = (message_index + 1) % messages.len();
@@ -611,6 +626,7 @@ pub async fn generate_wallet_test_data<
             MicroTari::from(8_035_000),
             MicroTari::from(117),
             messages[message_index].clone(),
+            false,
         )
         .await?;
     message_index = (message_index + 1) % messages.len();
@@ -622,6 +638,7 @@ pub async fn generate_wallet_test_data<
             MicroTari::from(5_135_000),
             MicroTari::from(117),
             messages[message_index].clone(),
+            false,
         )
         .await?;
 

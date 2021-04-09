@@ -128,6 +128,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .collect::<Result<Vec<_>, _>>()
             .map_err(Status::invalid_argument)?;
 
+        // TODO: Complete wiring of one-sided-tx-to-other feature upstream
+        let one_sided_to_other = false;
         let transfers = recipients
             .into_iter()
             .map(|(address, pk, amount, fee_per_gram, message)| {
@@ -136,7 +138,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     (
                         address,
                         transaction_service
-                            .send_transaction(pk, amount.into(), fee_per_gram.into(), message)
+                            .send_transaction(pk, amount.into(), fee_per_gram.into(), message, one_sided_to_other)
                             .await,
                     )
                 }

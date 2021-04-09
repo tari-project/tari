@@ -242,7 +242,13 @@ fn sending_transaction_and_confirmation<T: Clone + OutputManagerBackend + 'stati
     }
 
     let stp = runtime
-        .block_on(oms.prepare_transaction_to_send(MicroTari::from(1000), MicroTari::from(20), None, "".to_string()))
+        .block_on(oms.prepare_transaction_to_send(
+            MicroTari::from(1000),
+            MicroTari::from(20),
+            None,
+            "".to_string(),
+            script!(Nop),
+        ))
         .unwrap();
 
     let sender_tx_id = stp.get_tx_id().unwrap();
@@ -428,7 +434,7 @@ fn test_utxo_selection_no_chain_metadata() {
     let amount = MicroTari::from(1000);
     let fee_per_gram = MicroTari::from(10);
     let err = runtime
-        .block_on(oms.prepare_transaction_to_send(amount, fee_per_gram, None, "".to_string()))
+        .block_on(oms.prepare_transaction_to_send(amount, fee_per_gram, None, "".to_string(), script!(Nop)))
         .unwrap_err();
     assert!(matches!(err, OutputManagerError::NotEnoughFunds));
 
@@ -445,7 +451,7 @@ fn test_utxo_selection_no_chain_metadata() {
 
     // but we have no chain state so the lowest maturity should be used
     let stp = runtime
-        .block_on(oms.prepare_transaction_to_send(amount, fee_per_gram, None, "".to_string()))
+        .block_on(oms.prepare_transaction_to_send(amount, fee_per_gram, None, "".to_string(), script!(Nop)))
         .unwrap();
     assert!(stp.get_tx_id().is_ok());
 
@@ -516,7 +522,7 @@ fn test_utxo_selection_with_chain_metadata() {
     let amount = MicroTari::from(1000);
     let fee_per_gram = MicroTari::from(10);
     let err = runtime
-        .block_on(oms.prepare_transaction_to_send(amount, fee_per_gram, None, "".to_string()))
+        .block_on(oms.prepare_transaction_to_send(amount, fee_per_gram, None, "".to_string(), script!(Nop)))
         .unwrap_err();
     assert!(matches!(err, OutputManagerError::NotEnoughFunds));
 
@@ -561,7 +567,7 @@ fn test_utxo_selection_with_chain_metadata() {
 
     // test transactions
     let stp = runtime
-        .block_on(oms.prepare_transaction_to_send(amount, fee_per_gram, None, "".to_string()))
+        .block_on(oms.prepare_transaction_to_send(amount, fee_per_gram, None, "".to_string(), script!(Nop)))
         .unwrap();
     assert!(stp.get_tx_id().is_ok());
 
@@ -577,7 +583,7 @@ fn test_utxo_selection_with_chain_metadata() {
 
     // when the amount is greater than the largest utxo, then "Largest" selection strategy is used
     let stp = runtime
-        .block_on(oms.prepare_transaction_to_send(6 * amount, fee_per_gram, None, "".to_string()))
+        .block_on(oms.prepare_transaction_to_send(6 * amount, fee_per_gram, None, "".to_string(), script!(Nop)))
         .unwrap();
     assert!(stp.get_tx_id().is_ok());
 
@@ -640,6 +646,7 @@ fn send_not_enough_funds<T: OutputManagerBackend + 'static>(backend: T) {
         MicroTari::from(20),
         None,
         "".to_string(),
+        script!(Nop),
     )) {
         Err(OutputManagerError::NotEnoughFunds) => {},
         _ => panic!(),
@@ -708,6 +715,7 @@ fn send_no_change<T: OutputManagerBackend + 'static>(backend: T) {
             fee_per_gram,
             None,
             "".to_string(),
+            script!(Nop),
         ))
         .unwrap();
 
@@ -805,6 +813,7 @@ fn send_not_enough_for_change<T: OutputManagerBackend + 'static>(backend: T) {
         MicroTari::from(20),
         None,
         "".to_string(),
+        script!(Nop),
     )) {
         Err(OutputManagerError::NotEnoughFunds) => {},
         _ => panic!(),
@@ -915,7 +924,13 @@ fn cancel_transaction<T: OutputManagerBackend + 'static>(backend: T) {
         runtime.block_on(oms.add_output(uo)).unwrap();
     }
     let stp = runtime
-        .block_on(oms.prepare_transaction_to_send(MicroTari::from(1000), MicroTari::from(20), None, "".to_string()))
+        .block_on(oms.prepare_transaction_to_send(
+            MicroTari::from(1000),
+            MicroTari::from(20),
+            None,
+            "".to_string(),
+            script!(Nop),
+        ))
         .unwrap();
 
     match runtime.block_on(oms.cancel_transaction(1)) {
@@ -962,7 +977,13 @@ fn timeout_transaction<T: OutputManagerBackend + 'static>(backend: T) {
         runtime.block_on(oms.add_output(uo)).unwrap();
     }
     let _stp = runtime
-        .block_on(oms.prepare_transaction_to_send(MicroTari::from(1000), MicroTari::from(20), None, "".to_string()))
+        .block_on(oms.prepare_transaction_to_send(
+            MicroTari::from(1000),
+            MicroTari::from(20),
+            None,
+            "".to_string(),
+            script!(Nop),
+        ))
         .unwrap();
 
     let remaining_outputs = runtime.block_on(oms.get_unspent_outputs()).unwrap().len();
@@ -1023,7 +1044,7 @@ fn test_get_balance<T: OutputManagerBackend + 'static>(backend: T) {
 
     let send_value = MicroTari::from(1000);
     let stp = runtime
-        .block_on(oms.prepare_transaction_to_send(send_value, MicroTari::from(20), None, "".to_string()))
+        .block_on(oms.prepare_transaction_to_send(send_value, MicroTari::from(20), None, "".to_string(), script!(Nop)))
         .unwrap();
 
     let change_val = stp.get_change_amount().unwrap();
@@ -1115,7 +1136,13 @@ fn sending_transaction_with_short_term_clear<T: Clone + OutputManagerBackend + '
 
     // Check that funds are encumbered and then unencumbered if the pending tx is not confirmed before restart
     let _stp = runtime
-        .block_on(oms.prepare_transaction_to_send(MicroTari::from(1000), MicroTari::from(20), None, "".to_string()))
+        .block_on(oms.prepare_transaction_to_send(
+            MicroTari::from(1000),
+            MicroTari::from(20),
+            None,
+            "".to_string(),
+            script!(Nop),
+        ))
         .unwrap();
 
     let balance = runtime.block_on(oms.get_balance()).unwrap();
@@ -1130,7 +1157,13 @@ fn sending_transaction_with_short_term_clear<T: Clone + OutputManagerBackend + '
 
     // Check that a unconfirm Pending Transaction can be cancelled
     let stp = runtime
-        .block_on(oms.prepare_transaction_to_send(MicroTari::from(1000), MicroTari::from(20), None, "".to_string()))
+        .block_on(oms.prepare_transaction_to_send(
+            MicroTari::from(1000),
+            MicroTari::from(20),
+            None,
+            "".to_string(),
+            script!(Nop),
+        ))
         .unwrap();
     let sender_tx_id = stp.get_tx_id().unwrap();
 
@@ -1143,7 +1176,13 @@ fn sending_transaction_with_short_term_clear<T: Clone + OutputManagerBackend + '
 
     // Check that is the pending tx is confirmed that the encumberance persists after restart
     let stp = runtime
-        .block_on(oms.prepare_transaction_to_send(MicroTari::from(1000), MicroTari::from(20), None, "".to_string()))
+        .block_on(oms.prepare_transaction_to_send(
+            MicroTari::from(1000),
+            MicroTari::from(20),
+            None,
+            "".to_string(),
+            script!(Nop),
+        ))
         .unwrap();
     let sender_tx_id = stp.get_tx_id().unwrap();
     runtime.block_on(oms.confirm_pending_transaction(sender_tx_id)).unwrap();

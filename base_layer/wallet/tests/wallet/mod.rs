@@ -241,6 +241,7 @@ async fn test_wallet() {
             value,
             MicroTari::from(20),
             "".to_string(),
+            false,
         )
         .await
         .unwrap();
@@ -499,6 +500,7 @@ fn test_store_and_forward_send_tx() {
             value,
             MicroTari::from(20),
             "Store and Forward!".to_string(),
+            false,
         ))
         .unwrap();
 

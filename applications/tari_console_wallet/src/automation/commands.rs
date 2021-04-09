@@ -107,8 +107,10 @@ pub async fn send_tari(
         _ => Err(CommandError::Argument),
     }?;
 
+    // TODO: Complete wiring of one-sided-tx-to-other feature upstream
+    let one_sided_to_other = false;
     wallet_transaction_service
-        .send_transaction(dest_pubkey, amount, fee_per_gram, message)
+        .send_transaction(dest_pubkey, amount, fee_per_gram, message, one_sided_to_other)
         .await
         .map_err(CommandError::Transaction)
 }

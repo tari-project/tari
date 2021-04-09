@@ -42,6 +42,7 @@ use tari_core::transactions::{
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
+use tari_crypto::{ristretto::RistrettoPublicKey, script::TariScript};
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
@@ -54,8 +55,8 @@ pub enum OutputManagerRequest {
     GetCoinbaseTransaction((u64, MicroTari, MicroTari, u64)),
     ConfirmPendingTransaction(u64),
     ConfirmTransaction((u64, Vec<TransactionInput>, Vec<TransactionOutput>)),
-    PrepareToSendTransaction((MicroTari, MicroTari, Option<u64>, String)),
-    CreatePayToSelfTransaction((MicroTari, MicroTari, Option<u64>, String)),
+    PrepareToSendTransaction((MicroTari, MicroTari, Option<u64>, String, TariScript)),
+    CreateOneSidedTransaction((MicroTari, MicroTari, Option<u64>, String, Option<RistrettoPublicKey>)),
     CancelTransaction(u64),
     TimeoutTransactions(Duration),
     GetPendingTransactions,
@@ -83,8 +84,16 @@ impl fmt::Display for OutputManagerRequest {
             GetRecipientTransaction(_) => write!(f, "GetRecipientTransaction"),
             ConfirmTransaction(v) => write!(f, "ConfirmTransaction ({})", v.0),
             ConfirmPendingTransaction(v) => write!(f, "ConfirmPendingTransaction ({})", v),
-            PrepareToSendTransaction((_, _, _, msg)) => write!(f, "PrepareToSendTransaction ({})", msg),
-            CreatePayToSelfTransaction((_, _, _, msg)) => write!(f, "CreatePayToSelfTransaction ({})", msg),
+            PrepareToSendTransaction((_, _, _, msg, recipient_script)) => {
+                write!(f, "PrepareToSendTransaction ({}, {})", msg, recipient_script)
+            },
+            CreateOneSidedTransaction((_, _, _, msg, to_other)) => {
+                if to_other.is_none() {
+                    write!(f, "CreateOneSidedTransaction ({}) to self", msg)
+                } else {
+                    write!(f, "CreateOneSidedTransaction ({}) to other", msg)
+                }
+            },
             CancelTransaction(v) => write!(f, "CancelTransaction ({})", v),
             TimeoutTransactions(d) => write!(f, "TimeoutTransactions ({}s)", d.as_secs()),
             GetPendingTransactions => write!(f, "GetPendingTransactions"),
@@ -240,6 +249,7 @@ impl OutputManagerHandle {
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
+        recipient_script: TariScript,
     ) -> Result<SenderTransactionProtocol, OutputManagerError>
     {
         match self
@@ -249,6 +259,7 @@ impl OutputManagerHandle {
                 fee_per_gram,
                 lock_height,
                 message,
+                recipient_script,
             )))
             .await??
         {
@@ -462,21 +473,23 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn create_pay_to_self_transaction(
+    pub async fn create_one_sided_transaction(
         &mut self,
         amount: MicroTari,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
+        recipient_pub_key: Option<RistrettoPublicKey>,
     ) -> Result<(TxId, MicroTari, Transaction), OutputManagerError>
     {
         match self
             .handle
-            .call(OutputManagerRequest::CreatePayToSelfTransaction((
+            .call(OutputManagerRequest::CreateOneSidedTransaction((
                 amount,
                 fee_per_gram,
                 lock_height,
                 message,
+                recipient_pub_key,
             )))
             .await??
         {

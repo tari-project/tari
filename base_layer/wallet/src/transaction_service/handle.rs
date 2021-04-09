@@ -52,7 +52,7 @@ pub enum TransactionServiceRequest {
     GetCompletedTransaction(TxId),
     GetAnyTransaction(TxId),
     SetBaseNodePublicKey(CommsPublicKey),
-    SendTransaction((CommsPublicKey, MicroTari, MicroTari, String)),
+    SendTransaction((CommsPublicKey, MicroTari, MicroTari, String, bool)),
     CancelTransaction(TxId),
     ImportUtxo(MicroTari, CommsPublicKey, String),
     SubmitTransaction((TxId, Transaction, MicroTari, MicroTari, String)),
@@ -89,9 +89,10 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetCancelledCompletedTransactions => f.write_str("GetCancelledCompletedTransactions"),
             Self::GetCompletedTransaction(t) => f.write_str(&format!("GetCompletedTransaction({})", t)),
             Self::SetBaseNodePublicKey(k) => f.write_str(&format!("SetBaseNodePublicKey ({})", k)),
-            Self::SendTransaction((k, v, _, msg)) => {
-                f.write_str(&format!("SendTransaction (to {}, {}, {})", k, v, msg))
-            },
+            Self::SendTransaction((k, v, _, msg, one_sided_to_other)) => f.write_str(&format!(
+                "SendTransaction (to {}, {}, {}, one sided ({}))",
+                k, v, msg, one_sided_to_other
+            )),
             Self::CancelTransaction(t) => f.write_str(&format!("CancelTransaction ({})", t)),
             Self::ImportUtxo(v, k, msg) => f.write_str(&format!("ImportUtxo (from {}, {}, {})", k, v, msg)),
             Self::SubmitTransaction((id, _, _, _, _)) => f.write_str(&format!("SubmitTransaction ({})", id)),
@@ -217,6 +218,7 @@ impl TransactionServiceHandle {
         amount: MicroTari,
         fee_per_gram: MicroTari,
         message: String,
+        one_sided_to_other: bool,
     ) -> Result<TxId, TransactionServiceError>
     {
         match self
@@ -226,6 +228,7 @@ impl TransactionServiceHandle {
                 amount,
                 fee_per_gram,
                 message,
+                one_sided_to_other,
             )))
             .await??
         {
