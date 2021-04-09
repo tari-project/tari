@@ -40,6 +40,8 @@ use tokio::sync::broadcast::RecvError;
 pub enum TransactionServiceError {
     #[error("Transaction protocol is not in the correct state for this operation")]
     InvalidStateError,
+    #[error("One-sided transaction error: `{0}`")]
+    OneSidedTransactionError(String),
     #[error("Transaction Protocol Error: `{0}`")]
     TransactionProtocolError(#[from] TransactionProtocolError),
     #[error("The message being processed is not recognized by the Transaction Manager")]
@@ -137,6 +139,8 @@ pub enum TransactionServiceError {
     ProtobufConversionError(String),
     #[error("Maximum Attempts Exceeded")]
     MaximumAttemptsExceeded,
+    #[error("Byte array error")]
+    ByteArrayError(#[from] tari_crypto::tari_utilities::ByteArrayError),
 }
 
 #[derive(Debug, Error)]

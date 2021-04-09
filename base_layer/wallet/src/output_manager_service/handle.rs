@@ -42,6 +42,7 @@ use tari_core::transactions::{
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
+use tari_crypto::script::TariScript;
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
@@ -54,7 +55,7 @@ pub enum OutputManagerRequest {
     GetCoinbaseTransaction((u64, MicroTari, MicroTari, u64)),
     ConfirmPendingTransaction(u64),
     ConfirmTransaction((u64, Vec<TransactionInput>, Vec<TransactionOutput>)),
-    PrepareToSendTransaction((MicroTari, MicroTari, Option<u64>, String)),
+    PrepareToSendTransaction((MicroTari, MicroTari, Option<u64>, String, TariScript)),
     CreatePayToSelfTransaction((MicroTari, MicroTari, Option<u64>, String)),
     CancelTransaction(u64),
     TimeoutTransactions(Duration),
@@ -83,7 +84,7 @@ impl fmt::Display for OutputManagerRequest {
             GetRecipientTransaction(_) => write!(f, "GetRecipientTransaction"),
             ConfirmTransaction(v) => write!(f, "ConfirmTransaction ({})", v.0),
             ConfirmPendingTransaction(v) => write!(f, "ConfirmPendingTransaction ({})", v),
-            PrepareToSendTransaction((_, _, _, msg)) => write!(f, "PrepareToSendTransaction ({})", msg),
+            PrepareToSendTransaction((_, _, _, msg, _)) => write!(f, "PrepareToSendTransaction ({})", msg),
             CreatePayToSelfTransaction((_, _, _, msg)) => write!(f, "CreatePayToSelfTransaction ({})", msg),
             CancelTransaction(v) => write!(f, "CancelTransaction ({})", v),
             TimeoutTransactions(d) => write!(f, "TimeoutTransactions ({}s)", d.as_secs()),
@@ -240,6 +241,7 @@ impl OutputManagerHandle {
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
+        recipient_script: TariScript,
     ) -> Result<SenderTransactionProtocol, OutputManagerError>
     {
         match self
@@ -249,6 +251,7 @@ impl OutputManagerHandle {
                 fee_per_gram,
                 lock_height,
                 message,
+                recipient_script,
             )))
             .await??
         {

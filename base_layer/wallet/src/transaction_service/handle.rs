@@ -52,10 +52,11 @@ pub enum TransactionServiceRequest {
     GetCompletedTransaction(TxId),
     GetAnyTransaction(TxId),
     SetBaseNodePublicKey(CommsPublicKey),
-    SendTransaction((CommsPublicKey, MicroTari, MicroTari, String)),
+    SendTransaction(CommsPublicKey, MicroTari, MicroTari, String),
+    SendOneSidedTransaction(CommsPublicKey, MicroTari, MicroTari, String),
     CancelTransaction(TxId),
     ImportUtxo(MicroTari, CommsPublicKey, String),
-    SubmitTransaction((TxId, Transaction, MicroTari, MicroTari, String)),
+    SubmitCoinSplitTransaction(TxId, Transaction, MicroTari, MicroTari, String),
     SetLowPowerMode,
     SetNormalPowerMode,
     ApplyEncryption(Box<Aes256Gcm>),
@@ -89,12 +90,15 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetCancelledCompletedTransactions => f.write_str("GetCancelledCompletedTransactions"),
             Self::GetCompletedTransaction(t) => f.write_str(&format!("GetCompletedTransaction({})", t)),
             Self::SetBaseNodePublicKey(k) => f.write_str(&format!("SetBaseNodePublicKey ({})", k)),
-            Self::SendTransaction((k, v, _, msg)) => {
-                f.write_str(&format!("SendTransaction (to {}, {}, {})", k, v, msg))
+            Self::SendTransaction(k, v, _, msg) => f.write_str(&format!("SendTransaction (to {}, {}, {})", k, v, msg)),
+            Self::SendOneSidedTransaction(k, v, _, msg) => {
+                f.write_str(&format!("SendOneSidedTransaction (to {}, {}, {})", k, v, msg))
             },
             Self::CancelTransaction(t) => f.write_str(&format!("CancelTransaction ({})", t)),
             Self::ImportUtxo(v, k, msg) => f.write_str(&format!("ImportUtxo (from {}, {}, {})", k, v, msg)),
-            Self::SubmitTransaction((id, _, _, _, _)) => f.write_str(&format!("SubmitTransaction ({})", id)),
+            Self::SubmitCoinSplitTransaction(tx_id, _, _, _, _) => {
+                f.write_str(&format!("SubmitTransaction ({})", tx_id))
+            },
             Self::SetLowPowerMode => f.write_str("SetLowPowerMode "),
             Self::SetNormalPowerMode => f.write_str("SetNormalPowerMode"),
             Self::ApplyEncryption(_) => f.write_str("ApplyEncryption"),
@@ -221,12 +225,35 @@ impl TransactionServiceHandle {
     {
         match self
             .handle
-            .call(TransactionServiceRequest::SendTransaction((
+            .call(TransactionServiceRequest::SendTransaction(
                 dest_pubkey,
                 amount,
                 fee_per_gram,
                 message,
-            )))
+            ))
+            .await??
+        {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn send_one_sided_transaction(
+        &mut self,
+        dest_pubkey: CommsPublicKey,
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        message: String,
+    ) -> Result<TxId, TransactionServiceError>
+    {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SendOneSidedTransaction(
+                dest_pubkey,
+                amount,
+                fee_per_gram,
+                message,
+            ))
             .await??
         {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
@@ -391,7 +418,7 @@ impl TransactionServiceHandle {
 
     pub async fn submit_transaction(
         &mut self,
-        tx_id: u64,
+        tx_id: TxId,
         tx: Transaction,
         fee: MicroTari,
         amount: MicroTari,
@@ -400,9 +427,9 @@ impl TransactionServiceHandle {
     {
         match self
             .handle
-            .call(TransactionServiceRequest::SubmitTransaction((
+            .call(TransactionServiceRequest::SubmitCoinSplitTransaction(
                 tx_id, tx, fee, amount, message,
-            )))
+            ))
             .await??
         {
             TransactionServiceResponse::TransactionSubmitted => Ok(()),
