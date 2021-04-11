@@ -1,4 +1,4 @@
-use crate::{dir_utils::default_subdir, ConfigBootstrap, LOG_TARGET};
+use crate::{dir_utils::default_subdir, ConfigBootstrap, ConfigError, LOG_TARGET};
 use config::Config;
 use log::{debug, info};
 use multiaddr::{Multiaddr, Protocol};
@@ -6,7 +6,7 @@ use std::{fs, fs::File, io::Write, path::Path};
 
 //-------------------------------------           Main API functions         --------------------------------------//
 
-pub fn load_configuration(bootstrap: &ConfigBootstrap) -> Result<Config, String> {
+pub fn load_configuration(bootstrap: &ConfigBootstrap) -> Result<Config, ConfigError> {
     debug!(
         target: LOG_TARGET,
         "Loading configuration file from  {}",
@@ -17,18 +17,12 @@ pub fn load_configuration(bootstrap: &ConfigBootstrap) -> Result<Config, String>
     let filename = bootstrap
         .config
         .to_str()
-        .ok_or_else(|| "Invalid config file path".to_string())?;
+        .ok_or_else(|| ConfigError::new("Invalid config file path", None))?;
     let config_file = config::File::with_name(filename);
-    match cfg.merge(config_file) {
-        Ok(_) => {
-            info!(target: LOG_TARGET, "Configuration file loaded.");
-            Ok(cfg)
-        },
-        Err(e) => Err(format!(
-            "There was an error loading the configuration file. {}",
-            e.to_string()
-        )),
-    }
+    cfg.merge(config_file)
+        .map_err(|e| ConfigError::new("Failed to parse the configuration file", Some(e.to_string())))?;
+    info!(target: LOG_TARGET, "Configuration file loaded.");
+    Ok(cfg)
 }
 
 /// Installs a new configuration file template, copied from `tari_sample.toml` to the given path.
