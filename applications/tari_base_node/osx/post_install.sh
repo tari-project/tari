@@ -36,12 +36,12 @@ function display_center() {
 
 function banner() {
 #  columns="$(tput cols)"
-  for (( c=1; c<=$columns; c++ )); do
+  for (( c=1; c<=columns; c++ )); do
     echo -n "—"
   done
 
   display_center " ✨  $1 ✨ "
-  for (( c=1; c<=$columns; c++ )); do
+  for (( c=1; c<=columns; c++ )); do
     echo -n "—"
   done
 
@@ -49,12 +49,13 @@ function banner() {
 }
 
 columns="$(tput cols)"
+# shellcheck disable=SC2181
 if [ $? -eq 0 ]; then
   echo "."
 else
   # not in terminal - force colums
   echo ".."
-  colums=80
+  columns=80
 fi
 
 for line in $logo; do
@@ -68,15 +69,15 @@ if [ ! "$(uname)" == "Darwin" ]; then
   exit 1
 fi
 
-banner "Installing XCode/Brew and Tor for OSX ..."
+banner "Installing Brew and Tor for OSX ..."
 
-if !xcode-select -p 1>&2 2>/dev/null; then
-  echo "XCode not installed. Installing..."
+#if ! xcode-select -p 1>&2 2>/dev/null; then
+#  echo "XCode not installed. Installing..."
 #  xcode-select --install 1>&2
-  echo "XCode successfully installed"
-else
-  echo "XCode already installed."
-fi
+#  echo "XCode successfully installed"
+#else
+#  echo "XCode already installed."
+#fi
 
 if [[ $(command -v brew) == "" ]]; then 
   echo "Homebrew not installed. Installing now ... "
@@ -101,9 +102,9 @@ for pkg in sqlite tor torsocks wget; do
     fi
 done
 
-echo "brew serivces list ..."
+echo "brew services list ..."
 result=$(brew services list | grep -e "^tor")
-echo $result
+echo "${result}"
 
 if [[ $result =~ start ]];then
   echo "Tor is running, stopping before making changes"
@@ -182,38 +183,62 @@ echo " ... 10sec ..."
 wget -qO - https://api.ipify.org; echo
 torsocks wget -qO - https://api.ipify.org; echo
 
-DATA_DIR=${1:-"$HOME/.tari"}
-NETWORK=stibbons
+NETWORK="stibbons"
 
-banner Installing and setting up your Tari Base Node
-if [ ! -d "$DATA_DIR/$NETWORK" ]; then
+# Fix permissions for everyone, users do not have these by default in /usr/local/*
+INST_PATH="/usr/local/tari/"
+sudo chmod -R 777 "${INST_PATH}"
+
+DATA_DIR=${1:-"${INST_PATH}${NETWORK}"}
+
+banner Installing your Tari Base Node
+if [ ! -d "${DATA_DIR}/${NETWORK}" ]; then
   echo "Creating Tari data folder in $DATA_DIR"
-  mkdir -p $DATA_DIR/$NETWORK
+  mkdir -p "${DATA_DIR}/${NETWORK}"
 fi
 
-if [ ! -f "$DATA_DIR/config.toml" ]; then
-  echo "Copying configuraton files"
-#  cp tari_sample.toml $DATA_DIR/config.toml
-#  cp log4rs_sample_base_node.yml $DATA_DIR/log4rs_base_node.yml
-
-  # Configure Base Node
-  tari_base_node --init --create-id
-
-  echo "Configuration complete."
-fi
-
-banner Running Tari Base Node
-# Run Base Node
-if [ -e ~/Desktop/tari_base_node ]; then
-  echo "Desktop Link to Tari Base Node exits"
+# Shortcuts
+# All
+if [ -e ~/Desktop/tari_start_all ]; then
+  echo "Desktop Link to Tari Ecosystem exists"
 else
-  ln -s /usr/local/bin/tari_base_node ~/Desktop/tari_base_node
+  ln -s ${INST_PATH}start_all ~/Desktop/tari_start_all
 fi
-cd "$DATA_DIR"
-open /usr/local/bin/tari_base_node
 
-# Start Tari Base Node in another Terminal
-#osascript -e "tell application \"Terminal\" to do script \"sh ${PWD}/start_tor.sh\""
+# Base Node
+if [ -e ~/Desktop/tari_base_node ]; then
+  echo "Desktop Link to Tari Base Node exists"
+else
+  ln -s ${INST_PATH}start_tari_base_node ~/Desktop/tari_start_base_node
+fi
+
+# Console Wallet
+if [ -e ~/Desktop/tari_start_console_wallet ]; then
+  echo "Desktop Link to Tari Wallet exists"
+else
+  ln -s ${INST_PATH}start_tari_console_wallet ~/Desktop/tari_start_console_wallet
+fi
+
+# Mining Node
+if [ -e ~/Desktop/tari_start_mining_node ]; then
+  echo "Desktop Link to Tari Mining Node exists"
+else
+  ln -s ${INST_PATH}start_tari_mining_node ~/Desktop/tari_start_mining_node
+fi
+
+# Merge Mining Proxy
+if [ -e ~/Desktop/tari_start_merge_mining_proxy ]; then
+  echo "Desktop Link to Tari Merge Mining Proxy exists"
+else
+  ln -s ${INST_PATH}start_tari_merge_mining_proxy ~/Desktop/tari_start_merge_mining_proxy
+fi
+
+# XMRig
+if [ -e ~/Desktop/tari_start_xmrig ]; then
+   echo "Desktop Link to XMRig exists"
+else
+  ln -s ${INST_PATH}start_xmrig ~/Desktop/tari_start_xmrig
+fi
 
 banner Tari Base Node Install Done!
 exit 0

@@ -2,7 +2,9 @@
 #
 
 # Initialize
-export base_path="$( cd "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+base_path="$( cd "$(dirname "$0")" || exit >/dev/null 2>&1; pwd -P )"
+#POSIX Full Path
+export base_path
 export config_path="${base_path}/config"
 export exe_path="${base_path}/runtime"
 echo

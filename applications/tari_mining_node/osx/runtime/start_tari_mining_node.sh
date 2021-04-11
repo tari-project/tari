@@ -32,8 +32,8 @@ echo
 
 # Run
 echo Spawning Console Wallet into new terminal..
-echo "${exe_path}/tari_mining_node" ${init_flag} --config="${config_path}/config.toml" --log_config="${config_path}/log4rs_mining_node.yml" --base-path=${base_path} > $exe_path/tari_mining_node_command.sh
-chmod +x $exe_path/tari_mining_node_command.sh
+echo "${exe_path}/tari_mining_node" ${init_flag} --config="${config_path}/config.toml" --log_config="${config_path}/log4rs_mining_node.yml" --base-path=${base_path} > "$exe_path"/start_tari_mining_node.sh
+chmod +x "$exe_path"/start_tari_mining_node.sh
 
-open -a terminal $exe_path/tari_mining_node_command.sh
+open -a terminal "$exe_path"/start_tari_mining_node.sh
 echo
