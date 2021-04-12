@@ -20,6 +20,7 @@ use init::{
 };
 use log::*;
 use recovery::prompt_private_key_from_seed_words;
+use std::process;
 use tari_app_utilities::{initialization::init_configuration, utilities::ExitCodes};
 use tari_common::configuration::bootstrap::ApplicationType;
 use tari_core::transactions::types::PrivateKey;
@@ -40,7 +41,7 @@ pub mod wallet_modes;
 /// Application entry point
 fn main() {
     match main_inner() {
-        Ok(_) => std::process::exit(0),
+        Ok(_) => process::exit(0),
         Err(exit_code) => {
             eprintln!("{}", exit_code);
             error!(
@@ -49,7 +50,7 @@ fn main() {
                 exit_code.as_i32(),
                 exit_code
             );
-            std::process::exit(exit_code.as_i32())
+            process::exit(exit_code.as_i32())
         },
     }
 }

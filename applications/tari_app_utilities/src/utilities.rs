@@ -50,7 +50,7 @@ pub const LOG_TARGET: &str = "tari::application";
 /// Enum to show failure information
 #[derive(Debug, Clone, Error)]
 pub enum ExitCodes {
-    #[error("There is an error in the wallet configuration: {0}")]
+    #[error("Configuration error: {0}")]
     ConfigError(String),
     #[error("The wallet exited because an unknown error occurred. Check the logs for details.")]
     UnknownError,

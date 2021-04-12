@@ -152,6 +152,10 @@ impl Parser {
         }
     }
 
+    pub fn get_command_handler(&self) -> Arc<CommandHandler> {
+        self.command_handler.clone()
+    }
+
     /// Function to process commands
     fn process_command<'a, I: Iterator<Item = &'a str>>(
         &mut self,

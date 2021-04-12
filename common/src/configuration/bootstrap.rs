@@ -272,7 +272,7 @@ impl ConfigBootstrap {
 
     /// Load configuration from files located based on supplied CLI arguments
     pub fn load_configuration(&self) -> Result<config::Config, ConfigError> {
-        load_configuration(self).map_err(|source| ConfigError::new("failed to load configuration", Some(source)))
+        load_configuration(self)
     }
 }
 
