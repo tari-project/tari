@@ -432,10 +432,9 @@ pub async fn do_store_and_forward_message_propagation(
         let send_states = wallet
             .dht
             .outbound_requester()
-            .closest_broadcast(
+            .closer_only(
                 node_identity.node_id().clone(),
                 OutboundEncryption::EncryptFor(Box::new(node_identity.public_key().clone())),
-                vec![],
                 OutboundDomainMessage::new(123i32, secret_message.clone()),
             )
             .await

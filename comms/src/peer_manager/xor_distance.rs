@@ -82,6 +82,7 @@ impl XorDistance {
         (XorDistance(min), XorDistance(max), bucket_no)
     }
 
+    // TODO: write unit tests
     pub fn get_buckets(num_buckets: u32) -> Vec<(XorDistance, XorDistance, u32)> {
         // let bits_per_bucket = cmp::max((NODE_XOR_DISTANCE_ARRAY_SIZE * 8) as u32 / num_buckets, 1);
 
@@ -90,13 +91,13 @@ impl XorDistance {
         let mut min = max.checked_shr(1).unwrap_or_default();
         let mut bucket_no = num_buckets;
         while min > 0 && bucket_no > 0 {
+            buckets.push_front((XorDistance(min), XorDistance(max), bucket_no));
             max = min;
             min = max.checked_shr(1).unwrap_or_default();
             bucket_no -= 1;
-            buckets.push_front((XorDistance(min), XorDistance(max), bucket_no));
         }
 
-        buckets.push_front((XorDistance(0), XorDistance(min), bucket_no));
+        buckets.push_front((XorDistance(0), XorDistance(max), bucket_no));
         buckets.into()
     }
 

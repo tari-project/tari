@@ -153,7 +153,7 @@ impl DhtConfig {
 impl Default for DhtConfig {
     fn default() -> Self {
         Self {
-            num_neighbouring_nodes: 30,
+            num_neighbouring_nodes: 8,
             num_random_nodes: 4,
             propagation_factor: 4,
             broadcast_factor: 8,
@@ -166,7 +166,7 @@ impl Default for DhtConfig {
             saf_auto_request: true,
             saf_max_message_size: 512 * 1024,
             saf_minimum_request_period: Duration::from_secs(3 * 24 * 60 * 60), // 3 days
-            msg_hash_cache_capacity: 100_000,
+            msg_hash_cache_capacity: 1,
             msg_hash_cache_ttl: Duration::from_secs(5 * 60),
             database_url: DbConnectionUrl::Memory,
             discovery_request_timeout: Duration::from_secs(2 * 60),
@@ -182,7 +182,7 @@ impl Default for DhtConfig {
             flood_ban_timespan: Duration::from_secs(100),
             offline_peer_cooldown: Duration::from_secs(20),
             saf_msg_validity: Duration::from_secs(10800),
-            num_network_buckets:4,
+            num_network_buckets:3,
             connectivity_peer_buckets_refresh: Duration::from_secs(3*60)
         }
     }

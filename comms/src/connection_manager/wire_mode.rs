@@ -22,8 +22,8 @@
 
 use std::convert::TryFrom;
 
-const COMMS_WIRE_MODE: u8 = 0x08;
-const LIVENESS_WIRE_MODE: u8 = 0x48; // E
+const COMMS_WIRE_MODE: u8 = 0x06;
+const LIVENESS_WIRE_MODE: u8 = 0x46; // E
 
 #[repr(u8)]
 pub enum WireMode {
