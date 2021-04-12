@@ -59,6 +59,19 @@ pub fn prompt_private_key_from_seed_words() -> Result<PrivateKey, ExitCodes> {
     }
 }
 
+/// Return secret key matching the seed words.
+pub fn get_private_key_from_seed_words(seed_words: Vec<String>) -> Result<PrivateKey, ExitCodes> {
+    debug!(target: LOG_TARGET, "Return secret key matching the provided seed words");
+    match to_secretkey(&seed_words) {
+        Ok(key) => Ok(key),
+        Err(e) => {
+            let err_msg = format!("MnemonicError parsing seed words: {}", e);
+            debug!(target: LOG_TARGET, "{}", err_msg);
+            Err(ExitCodes::RecoveryError(err_msg))
+        },
+    }
+}
+
 /// Recovers wallet funds by connecting to a given base node peer, downloading the transaction outputs stored in the
 /// blockchain, and attempting to rewind them. Any outputs that are successfully rewound are then imported into the
 /// wallet.

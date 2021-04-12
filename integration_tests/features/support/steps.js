@@ -236,6 +236,31 @@ Given(
 );
 
 Given(
+  /I recover wallet (.*) into wallet (.*) connected to all seed nodes/,
+  { timeout: 120 * 1000 },
+  async function (walletNameA, walletNameB) {
+    let seedWords = this.getWallet(walletNameA).getSeedWords();
+    console.log(
+      "Recover " +
+        walletNameA +
+        " into " +
+        walletNameB +
+        ", seed words:\n  " +
+        seedWords
+    );
+    let walletB = new WalletProcess(
+      walletNameB,
+      {},
+      this.logFilePathWallet,
+      seedWords
+    );
+    walletB.setPeerSeeds([this.seedAddresses()]);
+    walletB.startNew(); // Do not 'await' here
+    this.addWallet(walletNameB, walletB);
+  }
+);
+
+Given(
   /I have a merge mining proxy (.*) connected to (.*) and (.*) with default config/,
   { timeout: 20 * 1000 },
   async function (mmProxy, node, wallet) {
@@ -795,7 +820,7 @@ When("I print the world", function () {
 });
 
 When(
-  /I wait for wallet (.*) to have at least (.*) tari/,
+  /I wait for wallet (.*) to have at least (.*) uT/,
   { timeout: 250 * 1000 },
   async function (wallet, amount) {
     let walletClient = this.getWallet(wallet).getClient();
@@ -818,6 +843,32 @@ When(
       }
       consoleLogBalance(await walletClient.getBalance());
     }
+  }
+);
+
+Then(
+  /wallet (.*) and wallet (.*) have the same balance/,
+  { timeout: 60 * 1000 },
+  async function (walletNameA, walletNameB) {
+    let walletClientA = this.getWallet(walletNameA).getClient();
+    let balanceA = await walletClientA.getBalance();
+    console.log("\n");
+    console.log(walletNameA, "balance:");
+    consoleLogBalance(balanceA);
+    let walletClientB = this.getWallet(walletNameB).getClient();
+    await waitFor(
+      async () => walletClientB.isBalanceAtLeast(balanceA["available_balance"]),
+      true,
+      55 * 1000,
+      5 * 1000,
+      5
+    );
+    let balanceB = await walletClientB.getBalance();
+    console.log(walletNameB, "balance:");
+    consoleLogBalance(balanceB);
+    expect(balanceA["available_balance"]).to.equal(
+      balanceB["available_balance"]
+    );
   }
 );
 

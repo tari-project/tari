@@ -13,7 +13,7 @@ Scenario: Get Transaction Info
     When I merge mine 4 blocks via PROXY
     Then all nodes are at height 4
     Then I list all coinbase transactions for wallet WALLET_A
-    When I wait for wallet WALLET_A to have at least 1002000 tari
+    When I wait for wallet WALLET_A to have at least 1002000 uT
     And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
     Then wallet WALLET_A detects all transactions are at least Pending
     Then wallet WALLET_B detects all transactions are at least Pending
