@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::LOG_TARGET;
-use crate::{builder::BaseNodeContext, table::Table, utils::format_duration_basic};
+use crate::{builder::BaseNodeContext, status_line::StatusLine, table::Table, utils::format_duration_basic};
 use chrono::{DateTime, Utc};
 use log::*;
 use std::{
@@ -32,9 +32,11 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use tari_common::GlobalConfig;
 use tari_comms::{
     connectivity::ConnectivityRequester,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerManager, PeerManagerError, PeerQuery},
+    protocol::rpc::RpcServerHandle,
     NodeIdentity,
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester, MetricsCollectorHandle};
@@ -61,9 +63,11 @@ include!(concat!(env!("OUT_DIR"), "/consts.rs"));
 
 pub struct CommandHandler {
     executor: runtime::Handle,
+    config: Arc<GlobalConfig>,
     blockchain_db: AsyncBlockchainDb<LMDBDatabase>,
     discovery_service: DhtDiscoveryRequester,
     dht_metrics_collector: MetricsCollectorHandle,
+    rpc_server: RpcServerHandle,
     base_node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
     connectivity: ConnectivityRequester,
@@ -76,9 +80,11 @@ impl CommandHandler {
     pub fn new(executor: runtime::Handle, ctx: &BaseNodeContext) -> Self {
         CommandHandler {
             executor,
+            config: ctx.config(),
             blockchain_db: ctx.blockchain_db().into(),
             discovery_service: ctx.base_node_dht().discovery_service_requester(),
             dht_metrics_collector: ctx.base_node_dht().metrics_collector(),
+            rpc_server: ctx.rpc_server(),
             base_node_identity: ctx.base_node_identity(),
             peer_manager: ctx.base_node_comms().peer_manager(),
             connectivity: ctx.base_node_comms().connectivity(),
@@ -95,44 +101,75 @@ impl CommandHandler {
         let peer_manager = self.peer_manager.clone();
         let mut connectivity = self.connectivity.clone();
         let mut metrics = self.dht_metrics_collector.clone();
+        let mut rpc_server = self.rpc_server.clone();
+        let config = self.config.clone();
 
         self.executor.spawn(async move {
+            let mut status_line = StatusLine::new();
+
             let state = state_info.recv().await.unwrap();
+            status_line.add_field("State", state.state_info.short_desc());
+
             let metadata = node.get_metadata().await.unwrap();
+
             let last_header = node
                 .get_headers(vec![metadata.height_of_longest_chain()])
                 .await
                 .unwrap()
                 .pop()
                 .unwrap();
-            let last_block_time: DateTime<Utc> = last_header.timestamp.into();
+            let last_block_time = DateTime::<Utc>::from(last_header.timestamp);
+            status_line.add_field(
+                "Tip",
+                format!(
+                    "{} ({})",
+                    metadata.height_of_longest_chain(),
+                    last_block_time.to_rfc2822()
+                ),
+            );
+
             let mempool_stats = mempool.get_mempool_stats().await.unwrap();
-            let banned_peers = banned_peers(&peer_manager).await.unwrap();
+            status_line.add_field(
+                "Mempool",
+                format!(
+                    "{}tx ({}g, +/- {}blks)",
+                    mempool_stats.total_txs,
+                    mempool_stats.total_weight,
+                    if mempool_stats.total_weight == 0 {
+                        0
+                    } else {
+                        1 + mempool_stats.total_weight / 19500
+                    },
+                ),
+            );
+
+            let banned_peers = fetch_banned_peers(&peer_manager).await.unwrap();
             let conns = connectivity.get_active_connections().await.unwrap();
-            let messages = metrics
+            status_line.add_field("Connections", conns.len());
+
+            let num_messages = metrics
                 .get_total_message_count_in_timespan(Duration::from_secs(60))
                 .await
                 .unwrap();
-            let status = format!(
-                "{}: State: {}, Tip: {} ({}), Mempool: {}tx ({}g, +/- {}blks), Connections: {}, Messages (last \
-                 60s):{}, Banned: {}",
-                Utc::now().format("%H:%M"),
-                state.state_info.short_desc(),
-                metadata.height_of_longest_chain(),
-                last_block_time.to_rfc2822(),
-                mempool_stats.total_txs,
-                mempool_stats.total_weight,
-                if mempool_stats.total_weight == 0 {
-                    0
-                } else {
-                    1 + mempool_stats.total_weight / 19500
-                },
-                conns.len(),
-                messages,
-                banned_peers.len()
+            status_line.add_field("Messages (last 60s)", num_messages);
+            status_line.add_field("Banned", banned_peers.len());
+
+            let num_active_rpc_sessions = rpc_server.get_num_active_sessions().await.unwrap();
+            status_line.add_field(
+                "Rpc",
+                format!(
+                    "{}/{} sessions",
+                    num_active_rpc_sessions,
+                    config
+                        .rpc_max_simultaneous_sessions
+                        .as_ref()
+                        .map(ToString::to_string)
+                        .unwrap_or_else(|| "∞".to_string()),
+                ),
             );
-            info!(target: "base_node::app::status", "{}", status);
-            println!("{}", status);
+
+            info!(target: "base_node::app::status", "{}", status_line);
+            println!("{}", status_line);
         });
     }
 
@@ -556,7 +593,7 @@ impl CommandHandler {
     pub fn list_banned_peers(&self) {
         let peer_manager = self.peer_manager.clone();
         self.executor.spawn(async move {
-            match banned_peers(&peer_manager).await {
+            match fetch_banned_peers(&peer_manager).await {
                 Ok(banned) => {
                     if banned.is_empty() {
                         println!("No peers banned from node.")
@@ -1000,7 +1037,7 @@ impl CommandHandler {
     }
 }
 
-async fn banned_peers(pm: &PeerManager) -> Result<Vec<Peer>, PeerManagerError> {
+async fn fetch_banned_peers(pm: &PeerManager) -> Result<Vec<Peer>, PeerManagerError> {
     let query = PeerQuery::new().select_where(|p| p.is_banned());
     pm.perform_query(query).await
 }

@@ -45,7 +45,7 @@ use std::{
 use tari_comms::{
     connectivity::{ConnectivityError, ConnectivityRequester, ConnectivitySelection},
     peer_manager::NodeId,
-    protocol::rpc::RpcError,
+    protocol::rpc::{RpcError, RpcHandshakeError},
     PeerConnection,
 };
 
@@ -114,7 +114,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     debug!(target: LOG_TARGET, "{}", err);
                 },
 
-                Err(err @ BlockHeaderSyncError::RpcError(RpcError::HandshakeTimedOut)) => {
+                Err(err @ BlockHeaderSyncError::RpcError(RpcError::HandshakeError(RpcHandshakeError::TimedOut))) => {
                     debug!(target: LOG_TARGET, "{}", err);
                     self.ban_peer_short(node_id, BanReason::RpcNegotiationTimedOut).await?;
                 },

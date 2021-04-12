@@ -85,15 +85,11 @@ impl RpcClient {
     }
 
     /// Perform a single request and single response
-    pub async fn request_response<
+    pub async fn request_response<T, R, M>(&mut self, request: T, method: M) -> Result<R, RpcError>
+    where
         T: prost::Message,
         R: prost::Message + Default + std::fmt::Debug,
         M: Into<RpcMethod>,
-    >(
-        &mut self,
-        request: T,
-        method: M,
-    ) -> Result<R, RpcError>
     {
         let req_bytes = request.to_encoded_bytes();
         let request = BaseRequest::new(method.into(), req_bytes.into());
@@ -106,11 +102,11 @@ impl RpcClient {
     }
 
     /// Perform a single request and streaming response
-    pub async fn server_streaming<T: prost::Message, R: prost::Message + Default, M: Into<RpcMethod>>(
-        &mut self,
-        request: T,
-        method: M,
-    ) -> Result<ClientStreaming<R>, RpcError>
+    pub async fn server_streaming<T, M, R>(&mut self, request: T, method: M) -> Result<ClientStreaming<R>, RpcError>
+    where
+        T: prost::Message,
+        R: prost::Message + Default,
+        M: Into<RpcMethod>,
     {
         let req_bytes = request.to_encoded_bytes();
         let request = BaseRequest::new(method.into(), req_bytes.into());
@@ -329,7 +325,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
             },
             Err(err) => {
                 if let Some(r) = self.ready_tx.take() {
-                    let _ = r.send(Err(err));
+                    let _ = r.send(Err(err.into()));
                 }
 
                 return;

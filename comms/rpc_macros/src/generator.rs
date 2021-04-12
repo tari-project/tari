@@ -134,7 +134,7 @@ impl RpcCodeGenerator {
             impl<T> #dep_mod::Service<#dep_mod::ProtocolId> for #server_struct<T>
             where T: #trait_ident
             {
-                type Error = #dep_mod::RpcError;
+                type Error = #dep_mod::RpcServerError;
                 type Response = Self;
 
                 type Future = #dep_mod::future::Ready<Result<Self::Response, Self::Error>>;

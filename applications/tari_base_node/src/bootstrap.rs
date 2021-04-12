@@ -195,16 +195,19 @@ where B: BlockchainBackend + 'static
     ) -> UnspawnedCommsNode
     {
         let dht = handles.expect_handle::<Dht>();
-        let rpc_server = match config.rpc_max_simultaneous_sessions {
-            Some(limit) => RpcServer::new().with_maximum_simultaneous_sessions(limit),
+        let builder = RpcServer::builder();
+        let builder = match config.rpc_max_simultaneous_sessions {
+            Some(limit) => builder.with_maximum_simultaneous_sessions(limit),
             None => {
                 warn!(
                     target: LOG_TARGET,
                     "Node is configured to allow unlimited RPC sessions."
                 );
-                RpcServer::new().with_unlimited_simultaneous_sessions()
+                builder.with_unlimited_simultaneous_sessions()
             },
         };
+        let rpc_server = builder.finish();
+        handles.register(rpc_server.get_handle());
 
         // Add your RPC services here ‍🏴‍☠️️☮️🌊
         let rpc_server = rpc_server

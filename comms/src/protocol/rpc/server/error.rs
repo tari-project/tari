@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,62 +20,29 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// TODO: Remove once in use
-#![allow(dead_code)]
+use crate::protocol::rpc::handshake::RpcHandshakeError;
+use futures::channel::oneshot;
+use prost::DecodeError;
+use std::io;
 
-#[cfg(test)]
-mod test;
+#[derive(Debug, thiserror::Error)]
+pub enum RpcServerError {
+    #[error("Failed to decode message: {0}")]
+    DecodeError(#[from] DecodeError),
+    #[error("IO Error: {0}")]
+    Io(#[from] io::Error),
+    #[error("Maximum number of RPC sessions reached")]
+    MaximumSessionsReached,
+    #[error("Internal service request canceled")]
+    RequestCanceled,
+    #[error("Handshake error: {0}")]
+    HandshakeError(#[from] RpcHandshakeError),
+    #[error("Service not found for protocol `{0}`")]
+    ProtocolServiceNotFound(String),
+}
 
-mod body;
-pub use body::{Body, ClientStreaming, IntoBody, Streaming};
-
-mod context;
-
-mod server;
-pub use server::{mock, NamedProtocolService, RpcServer, RpcServerError, RpcServerHandle};
-
-mod client;
-pub use client::{RpcClient, RpcClientBuilder, RpcClientConfig};
-
-mod either;
-
-mod message;
-pub use message::{Request, Response};
-
-mod error;
-pub use error::RpcError;
-
-mod handshake;
-pub use handshake::{Handshake, RpcHandshakeError};
-
-mod status;
-pub use status::{RpcStatus, RpcStatusCode};
-
-mod not_found;
-
-/// Maximum frame size of each RPC message. This is enforced in tokio's length delimited codec.
-pub const RPC_MAX_FRAME_SIZE: usize = 4 * 1024 * 1024; // 4 MiB
-
-// Re-exports used to keep things orderly in the #[tari_rpc] proc macro
-pub mod __macro_reexports {
-    pub use crate::{
-        framing::CanonicalFraming,
-        protocol::{
-            rpc::{
-                message::{Request, Response},
-                server::{NamedProtocolService, RpcServerError},
-                Body,
-                ClientStreaming,
-                IntoBody,
-                RpcClient,
-                RpcClientBuilder,
-                RpcError,
-                RpcStatus,
-            },
-            ProtocolId,
-        },
-        Bytes,
-    };
-    pub use futures::{future, future::BoxFuture, AsyncRead, AsyncWrite};
-    pub use tower::Service;
+impl From<oneshot::Canceled> for RpcServerError {
+    fn from(_: oneshot::Canceled) -> Self {
+        RpcServerError::RequestCanceled
+    }
 }
