@@ -34,6 +34,7 @@ use tari_app_utilities::utilities::ExitCodes;
 use tari_common::GlobalConfig;
 use tari_comms::peer_manager::Peer;
 
+use tari_comms::types::CommsPublicKey;
 use tari_wallet::WalletSqlite;
 use tokio::runtime::Handle;
 use tonic::transport::Server;
@@ -181,8 +182,13 @@ pub fn recovery_mode(
     notify_script: Option<PathBuf>,
 ) -> Result<(), ExitCodes>
 {
+    let peer_seed_public_keys: Vec<CommsPublicKey> = base_node_config
+        .peer_seeds
+        .iter()
+        .map(|f| f.public_key.clone())
+        .collect();
     println!("Starting recovery...");
-    match handle.block_on(wallet_recovery(&mut wallet, &base_node_selected)) {
+    match handle.block_on(wallet_recovery(&mut wallet, peer_seed_public_keys)) {
         Ok(_) => println!("Wallet recovered!"),
         Err(e) => {
             error!(target: LOG_TARGET, "Recovery failed: {}", e);

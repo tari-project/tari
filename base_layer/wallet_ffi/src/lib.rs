@@ -5468,7 +5468,8 @@ pub unsafe extern "C" fn wallet_start_recovery(
         return false;
     }
 
-    let mut recovery_task = WalletRecoveryTask::new((*wallet).wallet.clone(), (*base_node_public_key).clone());
+    let peer_seed_public_keys: Vec<TariPublicKey> = vec![(*base_node_public_key).clone()];
+    let mut recovery_task = WalletRecoveryTask::new((*wallet).wallet.clone(), peer_seed_public_keys);
 
     let event_stream = match recovery_task.get_event_receiver() {
         None => {
