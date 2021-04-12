@@ -15,7 +15,7 @@ Scenario: Wallets monitoring coinbase after a reorg
     And I have a merge mining proxy PROXY_A connected to SEED_A and WALLET_A1 with default config
     When I merge mine 10 blocks via PROXY_A
     Then all nodes are at height 10
-    And I list all coinbase transactions for wallet WALLET_A1
+    And I list all COINBASE transactions for wallet WALLET_A1
     Then wallet WALLET_A1 has 10 coinbase transactions
     Then wallet WALLET_A1 detects at least 7 coinbase transactions as Mined_Confirmed
         # Use 7 of the 10 coinbase UTXOs in transactions (others require 3 confirmations)
@@ -33,7 +33,7 @@ Scenario: Wallets monitoring coinbase after a reorg
     And I have a merge mining proxy PROXY_B connected to SEED_B and WALLET_B1 with default config
     When I merge mine 10 blocks via PROXY_B
     Then all nodes are at height 10
-    And I list all coinbase transactions for wallet WALLET_B1
+    And I list all COINBASE transactions for wallet WALLET_B1
     Then wallet WALLET_B1 has 10 coinbase transactions
     Then wallet WALLET_B1 detects at least 7 coinbase transactions as Mined_Confirmed
         # Use 7 of the 10 coinbase UTXOs in transactions (others require 3 confirmations)
@@ -53,6 +53,6 @@ Scenario: Wallets monitoring coinbase after a reorg
     Then all nodes are at height 16
         # Wait for coinbase statuses to change in the wallet
     When I wait 30 seconds
-    And I list all coinbase transactions for wallet WALLET_A1
-    And I list all coinbase transactions for wallet WALLET_B1
+    And I list all COINBASE transactions for wallet WALLET_A1
+    And I list all COINBASE transactions for wallet WALLET_B1
     Then the number of coinbase transactions for wallet WALLET_A1 and wallet WALLET_B1 are 3 less

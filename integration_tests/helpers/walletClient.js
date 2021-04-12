@@ -90,7 +90,7 @@ class WalletClient {
   }
 
   async getAllNormalTransactions() {
-    let data = this.getCompletedTransactions();
+    let data = await this.getCompletedTransactions();
     let transactions = [];
     for (var i = 0; i < data.length; i++) {
       if (

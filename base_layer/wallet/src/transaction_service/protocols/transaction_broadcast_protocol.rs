@@ -218,6 +218,17 @@ where TBackend: TransactionBackend + 'static
                 },
             };
 
+            if !completed_tx.valid {
+                info!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) is detected as being invalid and will stop being broadcast", self.tx_id
+                );
+                return Err(TransactionServiceProtocolError::new(
+                    self.tx_id,
+                    TransactionServiceError::InvalidTransaction,
+                ));
+            }
+
             if !(completed_tx.status == TransactionStatus::Completed ||
                 completed_tx.status == TransactionStatus::Broadcast ||
                 completed_tx.status == TransactionStatus::MinedUnconfirmed)
@@ -311,8 +322,9 @@ where TBackend: TransactionBackend + 'static
                                 }
                             },
                         }
-                        // Wait out the remainder of the delay before proceeding with next loop
+                        // Note: Dropping the client here reduces the number of concurrent RPC connections
                         drop(client);
+                        // Wait out the remainder of the delay before proceeding with next loop
                         delay.await;
                         break;
                     },

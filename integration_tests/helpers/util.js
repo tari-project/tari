@@ -148,28 +148,6 @@ const getTransactionOutputHash = function (output) {
   return Buffer.from(final);
 };
 
-function consoleLogTransactionDetails(txnDetails, txId) {
-  let found = txnDetails[0];
-  let status = txnDetails[1];
-  if (found) {
-    console.log(
-      "  Transaction " +
-        pad("'" + status.transactions[0]["tx_id"] + "'", 24) +
-        " has status " +
-        pad("'" + status.transactions[0]["status"] + "'", 40) +
-        " and " +
-        pad(
-          "is_cancelled(" + status.transactions[0]["is_cancelled"] + ")",
-          21
-        ) +
-        " and " +
-        pad("is_valid(" + status.transactions[0]["valid"] + ")", 16)
-    );
-  } else {
-    console.log("  Transaction '" + txId + "' " + status);
-  }
-}
-
 function consoleLogBalance(balance) {
   console.log(
     "  Available " +
@@ -182,7 +160,7 @@ function consoleLogBalance(balance) {
   );
 }
 
-function consoleLogCoinbaseDetails(txnDetails) {
+function consoleLogTransactionDetails(txnDetails) {
   console.log(
     "  Transaction " +
       pad("'" + txnDetails["tx_id"] + "'", 24) +
@@ -216,6 +194,5 @@ module.exports = {
   hexSwitchEndianness,
   consoleLogTransactionDetails,
   consoleLogBalance,
-  consoleLogCoinbaseDetails,
   withTimeout,
 };

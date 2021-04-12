@@ -10,6 +10,7 @@ class CustomWorld {
     this.seeds = {};
     this.nodes = {};
     this.proxies = {};
+    this.proxies_nodes = {};
     this.miners = {};
     this.wallets = {};
     this.clients = {};
@@ -63,8 +64,9 @@ class CustomWorld {
     this.miners[name] = process;
   }
 
-  addProxy(name, process) {
+  addProxy(name, process, node) {
     this.proxies[name] = process;
+    this.proxies_nodes[name] = node;
   }
 
   addWallet(name, process) {
@@ -111,6 +113,11 @@ class CustomWorld {
 
   getMiningNode(name) {
     return this.miners[name];
+  }
+
+  getProxyNodeClient(proxy_name) {
+    let node_name = this.proxies_nodes[proxy_name];
+    return this.getClient(node_name);
   }
 
   getWallet(name) {
