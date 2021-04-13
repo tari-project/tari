@@ -395,21 +395,20 @@ impl<B: Backend> Component<B> for TransactionsTab {
             vec![]
         } else {
             vec![
-                Span::raw(" Use "),
                 Span::styled("P/T", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to move between transaction lists, "),
+                Span::raw(" moves between transaction lists, "),
             ]
         };
 
         span_vec.push(Span::styled(
-            "Up/Down Arrow Keys",
+            "Up/Down Arrow",
             Style::default().add_modifier(Modifier::BOLD),
         ));
-        span_vec.push(Span::raw(" to select a transaction, "));
+        span_vec.push(Span::raw(" selects a transaction, "));
         span_vec.push(Span::styled("C", Style::default().add_modifier(Modifier::BOLD)));
-        span_vec.push(Span::raw(" to cancel a selected Pending Tx, "));
+        span_vec.push(Span::raw(" cancels a selected Pending Tx, "));
         span_vec.push(Span::styled("Esc", Style::default().add_modifier(Modifier::BOLD)));
-        span_vec.push(Span::raw(" to go to the top of the list."));
+        span_vec.push(Span::raw(" exits the list."));
 
         let instructions = Paragraph::new(Spans::from(span_vec)).wrap(Wrap { trim: true });
         f.render_widget(instructions, areas[1]);
