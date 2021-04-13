@@ -732,10 +732,11 @@ When(
 );
 
 When(
-  /I mine but do not submit a block (.*) on (.*)/,
+  /I mine but don't submit a block (.*) on (.*)/,
   async function (blockName, nodeName) {
     await this.mineBlock(
       nodeName,
+      null,
       (block) => {
         this.saveBlock(blockName, block);
         return false;
@@ -745,8 +746,8 @@ When(
   }
 );
 
-When(/I submit block (.*) to (.*)/, function (blockName, nodeName) {
-  this.submitBlock(blockName, nodeName);
+When(/I submit block (.*) to (.*)/, async function (blockName, nodeName) {
+  await this.submitBlock(blockName, nodeName);
 });
 
 When(
