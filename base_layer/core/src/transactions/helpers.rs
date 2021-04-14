@@ -91,11 +91,14 @@ pub struct TestParams {
     pub nonce: PrivateKey,
     pub public_nonce: PublicKey,
     pub script_private_key: PrivateKey,
+    pub script_offset: PublicKey,
+    pub script_offset_pvt: PrivateKey,
 }
 
 impl TestParams {
     pub fn new() -> TestParams {
         let r = PrivateKey::random(&mut OsRng);
+        let script_offset_pvt = PrivateKey::random(&mut OsRng);
         TestParams {
             spend_key: PrivateKey::random(&mut OsRng),
             change_key: PrivateKey::random(&mut OsRng),
@@ -103,6 +106,8 @@ impl TestParams {
             public_nonce: PublicKey::from_secret_key(&r),
             nonce: r,
             script_private_key: PrivateKey::random(&mut OsRng),
+            script_offset: PublicKey::from_secret_key(&script_offset_pvt),
+            script_offset_pvt,
         }
     }
 }

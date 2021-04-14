@@ -63,6 +63,8 @@ pub enum OutputManagerError {
     IncompleteTransaction(&'static str),
     #[error("Not enough funds to fulfil transaction")]
     NotEnoughFunds,
+    #[error("Funds are still pending. Unable to fulfil transaction right now.")]
+    FundsPending,
     #[error("Output already exists")]
     DuplicateOutput,
     #[error("Error sending a message to the public API")]

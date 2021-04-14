@@ -8,7 +8,7 @@ Scenario: Get Transaction Info
     And I have 1 base nodes connected to all seed nodes
     And I have wallet WALLET_A connected to all seed nodes
     And I have wallet WALLET_B connected to all seed nodes
-    And I have a merge mining proxy PROXY connected to NODE and WALLET_A
+    And I have a merge mining proxy PROXY connected to NODE and WALLET_A with default config
         # We need to ensure the coinbase lock heights are gone; mine enough blocks
     When I merge mine 4 blocks via PROXY
     Then all nodes are at height 4

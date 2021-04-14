@@ -88,7 +88,7 @@ async fn setup_service<T: GreetingRpc>(
     let (context, _) = create_mocked_rpc_context();
     let server_hnd = task::spawn(
         RpcServer::new()
-            .with_maximum_concurrent_sessions(num_concurrent_sessions)
+            .with_maximum_simultaneous_sessions(num_concurrent_sessions)
             .with_minimum_client_deadline(Duration::from_secs(0))
             .with_shutdown_signal(shutdown.to_signal())
             .add_service(GreetingServer::new(service))
@@ -336,7 +336,7 @@ impl GreetingRpc for GreetingService {
         task::spawn(async move {
             let iter = greetings.into_iter().map(Ok);
             let mut stream = stream::iter(iter)
-                // "Extra" Result::Ok is to satisfy send_all 
+                // "Extra" Result::Ok is to satisfy send_all
                 .map(Ok);
             match tx.send_all(&mut stream).await {
                 Ok(_) => {},

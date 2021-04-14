@@ -33,7 +33,7 @@ use std::{
 };
 use tari_comms::{
     backoff::ConstantBackoff,
-    connection_manager::ConnectionDirection,
+    connection_manager::{ConnectionDirection, ConnectionManagerEvent},
     connectivity::ConnectivitySelection,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerStorage},
     pipeline,
@@ -46,7 +46,6 @@ use tari_comms::{
     types::CommsDatabase,
     CommsBuilder,
     CommsNode,
-    ConnectionManagerEvent,
     PeerConnection,
 };
 use tari_comms_dht::{
@@ -123,7 +122,7 @@ pub async fn shutdown_all(nodes: Vec<TestNode>) {
     future::join_all(tasks).await;
 }
 
-pub async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut NodeEventRx) -> usize {
+pub async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut NodeEventRx) -> (usize, usize, usize) {
     let mut successes = 0;
     let mut total_messages = 0;
     let mut total_time = Duration::from_secs(0);
@@ -180,7 +179,7 @@ pub async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut NodeEvent
         total_time.as_secs_f32(),
         total_messages
     );
-    total_messages
+    (total_messages, successes, wallets.len() - 1)
 }
 
 pub async fn network_peer_list_stats(nodes: &[TestNode], wallets: &[TestNode]) {
@@ -247,7 +246,7 @@ pub async fn network_connectivity_stats(nodes: &[TestNode], wallets: &[TestNode]
     );
 }
 
-pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_index: Option<usize>) {
+pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_index: Option<usize>) -> (usize, usize) {
     let random_node = match origin_node_index {
         Some(n) if n < nodes.len() => &nodes[n],
         Some(_) | None => &nodes[OsRng.gen_range(0, nodes.len() - 1)],
@@ -364,6 +363,7 @@ pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_ind
         num_successes,
         nodes.len() - 1
     );
+    (num_successes, nodes.len() - 1)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -377,7 +377,7 @@ pub async fn do_store_and_forward_message_propagation(
     num_random_nodes: usize,
     propagation_factor: usize,
     quiet_mode: bool,
-) -> (usize, TestNode)
+) -> (usize, TestNode, usize, usize)
 {
     banner!(
         "{} chosen at random to be receive messages from other nodes using store and forward",
@@ -514,6 +514,7 @@ pub async fn do_store_and_forward_message_propagation(
     );
 
     let mut num_msgs = 0;
+    let mut succeeded = 0;
     loop {
         let result = time::timeout(Duration::from_secs(10), wallet.ims_rx.as_mut().unwrap().next()).await;
         num_msgs += 1;
@@ -532,6 +533,7 @@ pub async fn do_store_and_forward_message_propagation(
                     secret_msg,
                     start.elapsed()
                 );
+                succeeded += 1;
             },
             Err(err) => {
                 banner!(
@@ -549,7 +551,7 @@ pub async fn do_store_and_forward_message_propagation(
 
     total_messages += drain_messaging_events(messaging_rx, false).await;
 
-    (total_messages, wallet)
+    (total_messages, wallet, succeeded, num_msgs)
 }
 
 pub async fn drain_messaging_events(messaging_rx: &mut NodeEventRx, show_logs: bool) -> usize {

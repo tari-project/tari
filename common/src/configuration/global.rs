@@ -53,6 +53,7 @@ pub struct GlobalConfig {
     pub allow_test_addresses: bool,
     pub listnener_liveness_max_sessions: usize,
     pub listener_liveness_allowlist_cidrs: Vec<String>,
+    pub rpc_max_simultaneous_sessions: Option<usize>,
     pub data_dir: PathBuf,
     pub db_type: DatabaseType,
     pub db_config: LMDBConfig,
@@ -89,6 +90,7 @@ pub struct GlobalConfig {
     pub fetch_utxos_timeout: Duration,
     pub service_request_timeout: Duration,
     pub base_node_query_timeout: Duration,
+    pub saf_expiry_duration: Duration,
     pub transaction_broadcast_monitoring_timeout: Duration,
     pub transaction_chain_monitoring_timeout: Duration,
     pub transaction_direct_send_timeout: Duration,
@@ -412,6 +414,9 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
             .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as u64,
     );
 
+    let key = "wallet.saf_expiry_duration";
+    let saf_expiry_duration = Duration::from_secs(optional(cfg.get_int(&key))?.unwrap_or(10800) as u64);
+
     let key = "wallet.transaction_broadcast_monitoring_timeout";
     let transaction_broadcast_monitoring_timeout = Duration::from_secs(
         cfg.get_int(&key)
@@ -452,7 +457,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     let wallet_command_send_wait_stage = optional(cfg.get_str(key))?.unwrap_or_else(|| "Broadcast".to_string());
 
     let key = "wallet.command_send_wait_timeout";
-    let wallet_command_send_wait_timeout = optional(cfg.get_int(key))?.map(|i| i as u64).unwrap_or(300);
+    let wallet_command_send_wait_timeout = optional(cfg.get_int(key))?.map(|i| i as u64).unwrap_or(600);
 
     let key = "wallet.base_node_service_peers";
     // Wallet base node service peers can be an array or a comma separated list (e.g. in an ENVVAR)
@@ -496,6 +501,19 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .get_array(key)
         .map(|values| values.iter().map(ToString::to_string).collect())
         .unwrap_or_else(|_| vec!["127.0.0.1/32".to_string()]);
+
+    let key = "common.rpc_max_simultaneous_sessions";
+    let rpc_max_simultaneous_sessions = cfg
+        .get_int(key)
+        .map_err(|e| ConfigurationError::new(key, &e.to_string()))
+        .and_then(|v| match v {
+            -1 => Ok(None),
+            n if n.is_positive() => Ok(Some(n as usize)),
+            v => Err(ConfigurationError::new(
+                key,
+                &format!("invalid value {} for rpc_max_simultaneous_sessions", v),
+            )),
+        })?;
 
     let key = "common.buffer_size_base_node";
     let buffer_size_base_node = cfg
@@ -578,6 +596,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         allow_test_addresses,
         listnener_liveness_max_sessions: liveness_max_sessions,
         listener_liveness_allowlist_cidrs: liveness_allowlist_cidrs,
+        rpc_max_simultaneous_sessions,
         data_dir,
         db_type,
         db_config,
@@ -614,6 +633,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         fetch_utxos_timeout,
         service_request_timeout,
         base_node_query_timeout,
+        saf_expiry_duration,
         transaction_broadcast_monitoring_timeout,
         transaction_chain_monitoring_timeout,
         transaction_direct_send_timeout,

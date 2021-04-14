@@ -32,7 +32,7 @@ use tari_core::{
         LMDBDatabase,
         Validators,
     },
-    consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder, Network},
+    consensus::{ConsensusConstants, ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder, Network},
     test_helpers::blockchain::{create_store_with_consensus, TempDatabase},
     transactions::{
         tari_amount::{uT, T},
@@ -131,6 +131,7 @@ pub fn create_blockchain_db_no_cut_through() -> (
 }
 
 /// Create a new blockchain database containing only the Genesis block
+#[allow(dead_code)]
 pub fn create_new_blockchain(
     network: Network,
 ) -> (
@@ -147,6 +148,32 @@ pub fn create_new_blockchain(
     let (block0, output) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
+        .with_block(block0.clone())
+        .build();
+    // let db = create_lmdb_database(&consensus_manager);
+    (
+        create_store_with_consensus(&consensus_manager),
+        vec![block0],
+        vec![vec![output]],
+        consensus_manager,
+    )
+}
+
+/// Create a new blockchain database containing only the Genesis block
+pub fn create_new_blockchain_with_constants(
+    network: Network,
+    constants: ConsensusConstants,
+) -> (
+    BlockchainDatabase<TempDatabase>,
+    Vec<ChainBlock>,
+    Vec<Vec<UnblindedOutput>>,
+    ConsensusManager,
+)
+{
+    let factories = CryptoFactories::default();
+    let (block0, output) = create_genesis_block(&factories, &constants);
+    let consensus_manager = ConsensusManagerBuilder::new(network)
+        .with_consensus_constants(constants)
         .with_block(block0.clone())
         .build();
     // let db = create_lmdb_database(&consensus_manager);

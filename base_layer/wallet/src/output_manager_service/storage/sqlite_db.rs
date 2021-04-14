@@ -250,8 +250,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         match op {
             WriteOperation::Insert(kvp) => match kvp {
-                DbKeyValuePair::SpentOutput(k, o) => {
-                    if OutputSql::find(&k.to_vec(), &(*conn)).is_ok() {
+                DbKeyValuePair::SpentOutput(c, o) => {
+                    if OutputSql::find_by_commitment(&c.to_vec(), &(*conn)).is_ok() {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
                     let mut new_output = NewOutputSql::new(*o, OutputStatus::Spent, None);
@@ -260,8 +260,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
                     new_output.commit(&(*conn))?
                 },
-                DbKeyValuePair::UnspentOutput(k, o) => {
-                    if OutputSql::find(&k.to_vec(), &(*conn)).is_ok() {
+                DbKeyValuePair::UnspentOutput(c, o) => {
+                    if OutputSql::find_by_commitment(&c.to_vec(), &(*conn)).is_ok() {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
                     let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, None);

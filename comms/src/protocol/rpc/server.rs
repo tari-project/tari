@@ -76,7 +76,7 @@ pub trait NamedProtocolService {
 
 #[derive(Debug, Clone)]
 pub struct RpcServer {
-    maximum_concurrent_sessions: Option<usize>,
+    maximum_simultaneous_sessions: Option<usize>,
     minimum_client_deadline: Duration,
     handshake_timeout: Duration,
     shutdown_signal: OptionalShutdownSignal,
@@ -98,13 +98,13 @@ impl RpcServer {
         Router::new(self, service)
     }
 
-    pub fn with_maximum_concurrent_sessions(mut self, limit: usize) -> Self {
-        self.maximum_concurrent_sessions = Some(limit);
+    pub fn with_maximum_simultaneous_sessions(mut self, limit: usize) -> Self {
+        self.maximum_simultaneous_sessions = Some(limit);
         self
     }
 
-    pub fn with_unlimited_concurrent_sessions(mut self) -> Self {
-        self.maximum_concurrent_sessions = None;
+    pub fn with_unlimited_simultaneous_sessions(mut self) -> Self {
+        self.maximum_simultaneous_sessions = None;
         self
     }
 
@@ -144,7 +144,7 @@ impl RpcServer {
 impl Default for RpcServer {
     fn default() -> Self {
         Self {
-            maximum_concurrent_sessions: Some(1000),
+            maximum_simultaneous_sessions: Some(1000),
             minimum_client_deadline: Duration::from_secs(1),
             handshake_timeout: Duration::from_secs(15),
             shutdown_signal: Default::default(),
@@ -179,7 +179,7 @@ where
     ) -> Self
     {
         Self {
-            executor: OptionallyBoundedExecutor::from_current(config.maximum_concurrent_sessions),
+            executor: OptionallyBoundedExecutor::from_current(config.maximum_simultaneous_sessions),
             config,
             service,
             protocol_notifications: Some(protocol_notifications),
@@ -464,8 +464,8 @@ where
             let msg = format!(
                 "This node tried to return a message that exceeds the maximum frame size. Max = {:.4} MiB, Got = \
                  {:.4} MiB",
-                buf.len() as f32 / (1024.0 * 1024.0),
-                RPC_MAX_FRAME_SIZE as f32 / (1024.0 * 1024.0)
+                RPC_MAX_FRAME_SIZE as f32 / (1024.0 * 1024.0),
+                buf.len() as f32 / (1024.0 * 1024.0)
             );
             warn!(target: LOG_TARGET, "{}", msg);
             sink.send(

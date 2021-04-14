@@ -53,10 +53,14 @@ pub enum BlockHeaderSyncError {
     NotInSync,
     #[error("Unable to locate start hash `{0}`")]
     StartHashNotFound(String),
-    #[error("Expected header height {0} got {1}")]
-    InvalidBlockHeight(u64, u64),
+    #[error("Expected header height {expected} got {actual}")]
+    InvalidBlockHeight { expected: u64, actual: u64 },
     #[error("Unable to find chain split from peer `{0}`")]
     ChainSplitNotFound(NodeId),
     #[error("Node could not find any other node with which to sync. Silence.")]
     NetworkSilence,
+    #[error("Invalid protocol response: {0}")]
+    InvalidProtocolResponse(String),
+    #[error("Headers did not form a chain. Expected {actual} to equal the previous hash {expected}")]
+    ChainLinkBroken { actual: String, expected: String },
 }

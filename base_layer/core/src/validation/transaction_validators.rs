@@ -56,6 +56,32 @@ impl MempoolTransactionValidation for TxInternalConsistencyValidator {
     }
 }
 
+/// This validator will check the transaction against the current consensus rules.
+///
+/// 1. The transaction weight should not exceed the maximum weight for 1 block
+#[derive(Clone)]
+pub struct TxConsensusValidator<B> {
+    db: BlockchainDatabase<B>,
+}
+
+impl<B: BlockchainBackend> TxConsensusValidator<B> {
+    pub fn new(db: BlockchainDatabase<B>) -> Self {
+        Self { db }
+    }
+}
+
+impl<B: BlockchainBackend> MempoolTransactionValidation for TxConsensusValidator<B> {
+    fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
+        let consensus_constants = self.db.consensus_constants()?;
+        // validate maximum tx weight
+        if tx.calculate_weight() > consensus_constants.get_max_block_weight_excluding_coinbase() {
+            return Err(ValidationError::MaxTransactionWeightExceeded);
+        }
+
+        Ok(())
+    }
+}
+
 /// This validator assumes that the transaction was already validated and it will skip this step. It will only check, in
 /// order,: All inputs exist in the backend, All timelocks (kernel lock heights and output maturities) have passed
 #[derive(Clone)]
@@ -73,7 +99,7 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxInputAndMaturityVa
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
         let db = self.db.db_read_access()?;
         verify_not_stxos(tx, &*db)?;
-        // verify_inputs_are_utxos(tx, &*db)?;
+
         let tip_height = db.fetch_chain_metadata()?.height_of_longest_chain();
         verify_timelocks(tx, tip_height)?;
         verify_no_duplicated_inputs_outputs(tx)?;

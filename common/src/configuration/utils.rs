@@ -55,6 +55,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("common.message_cache_size", 10).unwrap();
     cfg.set_default("common.message_cache_ttl", 1440).unwrap();
     cfg.set_default("common.peer_allowlist", Vec::<String>::new()).unwrap();
+    cfg.set_default("common.rpc_max_simultaneous_sessions", 1000).unwrap();
     cfg.set_default("common.liveness_max_sessions", 0).unwrap();
     cfg.set_default(
         "common.peer_database ",
@@ -159,7 +160,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         .unwrap();
     cfg.set_default("base_node.mainnet.enable_wallet", true).unwrap();
     cfg.set_default("base_node.mainnet.num_mining_threads", 1).unwrap();
-    cfg.set_default("base_node.mainnet.flood_ban_max_msg_count", 1000)
+    cfg.set_default("base_node.mainnet.flood_ban_max_msg_count", 10000)
         .unwrap();
 
     //---------------------------------- Weatherwax Defaults --------------------------------------------//

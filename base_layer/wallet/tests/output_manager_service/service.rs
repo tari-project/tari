@@ -462,12 +462,28 @@ fn test_utxo_selection_no_chain_metadata() {
     let fee = runtime.block_on(oms.fee_estimate(amount, fee_per_gram, 1, 2)).unwrap();
     assert_eq!(fee, MicroTari::from(300));
 
+    // test if a fee estimate would be possible with pending funds included
+    // at this point 52000 uT is still spendable, with pending change incoming of 1690 uT
+    // so instead of returning "not enough funds", return "funds pending"
+    let spendable_amount = (3..=10).sum::<u64>() * amount;
+    let err = runtime
+        .block_on(oms.fee_estimate(spendable_amount, fee_per_gram, 1, 2))
+        .unwrap_err();
+    assert!(matches!(err, OutputManagerError::FundsPending));
+
+    // test not enough funds
+    let broke_amount = spendable_amount + MicroTari::from(2000);
+    let err = runtime
+        .block_on(oms.fee_estimate(broke_amount, fee_per_gram, 1, 2))
+        .unwrap_err();
+    assert!(matches!(err, OutputManagerError::NotEnoughFunds));
+
     // coin split uses the "Largest" selection strategy
-    let (_, _, fee, utxo_total_value) = runtime
+    let (_, _, fee, utxos_total_value) = runtime
         .block_on(oms.create_coin_split(amount, 5, fee_per_gram, None))
         .unwrap();
     assert_eq!(fee, MicroTari::from(820));
-    assert_eq!(utxo_total_value, MicroTari::from(10_000));
+    assert_eq!(utxos_total_value, MicroTari::from(10_000));
 
     // test that largest utxo was encumbered
     let utxos = runtime.block_on(oms.get_unspent_outputs()).unwrap();
@@ -531,10 +547,10 @@ fn test_utxo_selection_with_chain_metadata() {
     assert!(matches!(err, OutputManagerError::NotEnoughFunds));
 
     // test coin split is maturity aware
-    let (_, _, fee, utxo_total_value) = runtime
+    let (_, _, fee, utxos_total_value) = runtime
         .block_on(oms.create_coin_split(amount, 5, fee_per_gram, None))
         .unwrap();
-    assert_eq!(utxo_total_value, MicroTari::from(6_000));
+    assert_eq!(utxos_total_value, MicroTari::from(6_000));
     assert_eq!(fee, MicroTari::from(820));
 
     // test that largest spendable utxo was encumbered
@@ -554,7 +570,7 @@ fn test_utxo_selection_with_chain_metadata() {
     assert_eq!(utxos.len(), 7);
     for utxo in utxos.iter() {
         assert_ne!(utxo.features.maturity, 1);
-        assert_ne!(utxo.value, 1 * amount);
+        assert_ne!(utxo.value, amount);
         assert_ne!(utxo.features.maturity, 2);
         assert_ne!(utxo.value, 2 * amount);
     }
@@ -1366,10 +1382,11 @@ fn test_utxo_stxo_invalid_txo_validation() {
     );
     let invalid_tx_output = invalid_output.as_transaction_output(&factories).unwrap();
 
+    let invalid_db_output = DbUnblindedOutput::from_unblinded_output(invalid_output.clone(), &factories).unwrap();
     backend
         .write(WriteOperation::Insert(DbKeyValuePair::UnspentOutput(
-            invalid_output.spending_key.clone(),
-            Box::new(DbUnblindedOutput::from_unblinded_output(invalid_output.clone(), &factories).unwrap()),
+            invalid_db_output.commitment.clone(),
+            Box::new(invalid_db_output),
         )))
         .unwrap();
     backend
@@ -1391,11 +1408,12 @@ fn test_utxo_stxo_invalid_txo_validation() {
         PublicKey::default(),
     );
     let spent_tx_output1 = spent_output1.as_transaction_output(&factories).unwrap();
+    let spent_db_output1 = DbUnblindedOutput::from_unblinded_output(spent_output1.clone(), &factories).unwrap();
 
     backend
         .write(WriteOperation::Insert(DbKeyValuePair::SpentOutput(
-            spent_output1.spending_key.clone(),
-            Box::new(DbUnblindedOutput::from_unblinded_output(spent_output1.clone(), &factories).unwrap()),
+            spent_db_output1.commitment.clone(),
+            Box::new(spent_db_output1),
         )))
         .unwrap();
 
@@ -1412,10 +1430,11 @@ fn test_utxo_stxo_invalid_txo_validation() {
         PublicKey::default(),
     );
 
+    let spent_db_output2 = DbUnblindedOutput::from_unblinded_output(spent_output2.clone(), &factories).unwrap();
     backend
         .write(WriteOperation::Insert(DbKeyValuePair::SpentOutput(
-            spent_output2.spending_key.clone(),
-            Box::new(DbUnblindedOutput::from_unblinded_output(spent_output2, &factories).unwrap()),
+            spent_db_output2.commitment.clone(),
+            Box::new(spent_db_output2),
         )))
         .unwrap();
 

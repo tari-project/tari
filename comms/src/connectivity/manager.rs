@@ -28,11 +28,15 @@ use super::{
     selection::ConnectivitySelection,
 };
 use crate::{
-    connection_manager::{ConnectionDirection, ConnectionManagerError, ConnectionManagerRequester},
+    connection_manager::{
+        ConnectionDirection,
+        ConnectionManagerError,
+        ConnectionManagerEvent,
+        ConnectionManagerRequester,
+    },
     peer_manager::NodeId,
     runtime::task,
     utils::datetime::format_duration,
-    ConnectionManagerEvent,
     NodeIdentity,
     PeerConnection,
     PeerManager,

@@ -145,8 +145,8 @@ pub enum DbValue {
 }
 
 pub enum DbKeyValuePair {
-    SpentOutput(BlindingFactor, Box<DbUnblindedOutput>),
-    UnspentOutput(BlindingFactor, Box<DbUnblindedOutput>),
+    SpentOutput(Commitment, Box<DbUnblindedOutput>),
+    UnspentOutput(Commitment, Box<DbUnblindedOutput>),
     PendingTransactionOutputs(TxId, Box<PendingTransactionOutputs>),
     KeyManagerState(KeyManagerState),
 }
@@ -221,7 +221,7 @@ where T: OutputManagerBackend + 'static
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || {
             db_clone.write(WriteOperation::Insert(DbKeyValuePair::UnspentOutput(
-                output.unblinded_output.spending_key.clone(),
+                output.commitment.clone(),
                 Box::new(output),
             )))
         })

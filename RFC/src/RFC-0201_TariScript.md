@@ -370,6 +370,8 @@ pub struct BlockHeader {
     pub total_script_offset: BlindingFactor,
 }
 ```
+One important distinction to make is that the coinbase utxo does not count towards the _script offset_. This is because the coinbase UTXO already has special rules accompanying it and it has no input. Thus we cannot generate a \\( \so \\) for a coinbase transaction.
+The coinbase can allow any script and \\( k_{O} \\) as long as the range proof is validly constructed for \\( \hat{C_i} \\) and it does not break any of the rules in [RFC 120](RFC-0120_Consensus.md).
 
 In addition to the changes given above, there are consensus rule changes for transaction and block validation.
 

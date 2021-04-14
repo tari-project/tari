@@ -383,7 +383,7 @@ impl SenderTransactionProtocol {
         tx_builder.build(factories).map_err(TPE::from)
     }
 
-    /// Performs sanitary checks on the collected transaction pieces prior to building the final Transaction instance
+    /// Performs sanity checks on the collected transaction pieces prior to building the final Transaction instance
     fn validate(&self) -> Result<(), TPE> {
         if let SenderState::Finalizing(info) = &self.state {
             let fee = info.metadata.fee;

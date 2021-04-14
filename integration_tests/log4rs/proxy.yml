@@ -1,0 +1,44 @@
+# A sample log configuration file for running in release mode. By default, this configuration splits up log messages to
+# three destinations:
+#    * Console: For log messages with level INFO and higher
+#    * log/proxy/proxy.log: All proxy logs will be written to this file
+#
+#  See https://docs.rs/log4rs/0.8.3/log4rs/encode/pattern/index.html for deciphering the log pattern. The log format
+#  used in this sample configuration prints messages as:
+#  timestamp [target] LEVEL message
+refresh_rate: 30 seconds
+appenders:
+  # An appender named "proxy" that writes to a file with a custom pattern encoder
+  proxy:
+    kind: rolling_file
+    path: "log/proxy/proxy.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 200mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 50
+        pattern: "log/proxy/proxy.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
+
+# root (to proxy)
+root:
+  level: debug
+  appenders:
+    - proxy
+
+loggers:
+  h2:
+    level: info
+    appenders:
+      - proxy
+    additive: false
+  hyper:
+    level: info
+    appenders:
+      - proxy
+    additive: false

@@ -286,7 +286,7 @@ async fn dht_discover_propagation() {
     node_D.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
     node_D
         .comms
-        .connection_manager()
+        .connectivity()
         .dial_peer(node_C.comms.node_identity().node_id().clone())
         .await
         .unwrap();
@@ -449,7 +449,7 @@ async fn dht_propagate_dedup() {
     async fn connect_nodes(node1: &mut TestNode, node2: &mut TestNode) {
         node1
             .comms
-            .connection_manager()
+            .connectivity()
             .dial_peer(node2.node_identity().node_id().clone())
             .await
             .unwrap();
@@ -553,7 +553,7 @@ async fn dht_propagate_message_contents_not_malleable_ban() {
     // Connect the peers that should be connected
     node_A
         .comms
-        .connection_manager()
+        .connectivity()
         .dial_peer(node_B.node_identity().node_id().clone())
         .await
         .unwrap();

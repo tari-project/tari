@@ -24,8 +24,9 @@ use super::LOG_TARGET;
 use crate::{builder::BaseNodeContext, table::Table, utils::format_duration_basic};
 use chrono::{DateTime, Utc};
 use log::*;
-use regex::Regex;
 use std::{
+    cmp,
+    fs::File,
     io::{self, Write},
     string::ToString,
     sync::Arc,
@@ -39,11 +40,13 @@ use tari_comms::{
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester, MetricsCollectorHandle};
 use tari_core::{
     base_node::{
+        comms_interface::BlockEvent,
         state_machine_service::states::{PeerMetadata, StatusInfo},
         LocalNodeCommsInterface,
     },
     blocks::BlockHeader,
     chain_storage::{async_db::AsyncBlockchainDb, ChainHeader, LMDBDatabase},
+    consensus::{ConsensusManager, Network},
     mempool::service::LocalMempoolService,
     proof_of_work::PowAlgorithm,
     tari_utilities::{hex::Hex, message_format::MessageFormat},
@@ -55,6 +58,7 @@ use tokio::{runtime, sync::watch};
 // Import the auto-generated const values from the Manifest and Git
 
 include!(concat!(env!("OUT_DIR"), "/consts.rs"));
+
 pub struct CommandHandler {
     executor: runtime::Handle,
     blockchain_db: AsyncBlockchainDb<LMDBDatabase>,
@@ -691,25 +695,6 @@ impl CommandHandler {
     }
 
     /// Function to process the get-headers command
-    async fn get_headers(
-        blockchain_db: &AsyncBlockchainDb<LMDBDatabase>,
-        start: u64,
-        end: Option<u64>,
-    ) -> Result<Vec<BlockHeader>, anyhow::Error>
-    {
-        match end {
-            Some(end) => blockchain_db.fetch_headers(start..=end).await.map_err(Into::into),
-            None => {
-                let tip = blockchain_db.fetch_tip_header().await?.height();
-                blockchain_db
-                    .fetch_headers((tip.saturating_sub(start) + 1)..)
-                    .await
-                    .map_err(Into::into)
-            },
-        }
-    }
-
-    /// Function to process the get-headers command
     async fn get_chain_headers(
         blockchain_db: &AsyncBlockchainDb<LMDBDatabase>,
         start: u64,
@@ -719,9 +704,13 @@ impl CommandHandler {
         match end {
             Some(end) => blockchain_db.fetch_chain_headers(start..=end).await.map_err(Into::into),
             None => {
+                let from_tip = start;
+                if from_tip == 0 {
+                    return Ok(Vec::new());
+                }
                 let tip = blockchain_db.fetch_tip_header().await?.height();
                 blockchain_db
-                    .fetch_chain_headers((tip.saturating_sub(start) + 1)..)
+                    .fetch_chain_headers(tip.saturating_sub(from_tip - 1)..=tip)
                     .await
                     .map_err(Into::into)
             },
@@ -731,12 +720,12 @@ impl CommandHandler {
     pub fn calc_timing(&self, start: u64, end: Option<u64>) {
         let blockchain_db = self.blockchain_db.clone();
         self.executor.spawn(async move {
-            let headers = match Self::get_headers(&blockchain_db, start, end).await {
+            let headers = match Self::get_chain_headers(&blockchain_db, start, end).await {
                 Ok(h) if h.is_empty() => {
                     println!("No headers found");
                     return;
                 },
-                Ok(h) => h.into_iter().rev().collect::<Vec<_>>(),
+                Ok(h) => h.into_iter().map(|ch| ch.header).rev().collect::<Vec<_>>(),
                 Err(err) => {
                     println!("Failed to retrieve headers: {:?}", err);
                     warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
@@ -899,66 +888,109 @@ impl CommandHandler {
         });
     }
 
-    pub fn raw_stats(&self, start_height: u64, end_height: u64) {
-        let mut node = self.node_service.clone();
+    pub fn save_header_stats(
+        &self,
+        start_height: u64,
+        end_height: u64,
+        filename: String,
+        pow_algo: Option<PowAlgorithm>,
+    )
+    {
+        let db = self.blockchain_db.clone();
         self.executor.spawn(async move {
-            let mut results: Vec<(u64, usize, u64, u64, u64, PowAlgorithm)> = Vec::new();
+            let mut output = try_or_print!(File::create(&filename));
 
-            print!("Searching for height: ");
+            println!(
+                "Loading header from height {} to {} and dumping to file [working-dir]/{}.{}",
+                start_height,
+                end_height,
+                filename,
+                pow_algo
+                    .map(|a| format!(" PoW algo = {}", a))
+                    .unwrap_or_else(String::new)
+            );
+
+            let start_height = cmp::max(start_height, 1);
+            let mut prev_header = try_or_print!(db.fetch_chain_header(start_height - 1).await);
+            // TODO: hardcoded network #testnetreset
+            let consensus_rules = ConsensusManager::builder(Network::Stibbons).build();
+
+            writeln!(
+                output,
+                "Height,Achieved,TargetDifficulty,CalculatedDifficulty,SolveTime,NormalizedSolveTime,Algo,Timestamp,\
+                 Window,Acc.Monero,Acc.Sha3"
+            )
+            .unwrap();
+
             for height in start_height..=end_height {
-                print!("{}", height);
-                io::stdout().flush().unwrap();
+                let header = try_or_print!(db.fetch_chain_header(height).await);
 
-                let block = match node.get_blocks(vec![height]).await {
-                    Err(_err) => {
-                        println!("Error in db, could not get block");
-                        break;
-                    },
-                    Ok(mut data) => match data.pop() {
-                        // We need to check the data it self, as FetchMatchingBlocks will suppress any error, only
-                        // logging it.
-                        Some(historical_block) => historical_block,
-                        None => {
-                            println!("Error in db, could not get block");
-                            break;
-                        },
-                    },
-                };
-                let prev_block = match node.get_blocks(vec![height - 1]).await {
-                    Err(_err) => {
-                        println!("Error in db, could not get block");
-                        break;
-                    },
-                    Ok(mut data) => match data.pop() {
-                        // We need to check the data it self, as FetchMatchingBlocks will suppress any error, only
-                        // logging it.
-                        Some(historical_block) => historical_block,
-                        None => {
-                            println!("Error in db, could not get block");
-                            break;
-                        },
-                    },
-                };
-                let st = if prev_block.block().header.timestamp.as_u64() >= block.block().header.timestamp.as_u64() {
-                    1.0
-                } else {
-                    (block.block().header.timestamp.as_u64() - prev_block.block().header.timestamp.as_u64()) as f64
-                };
-                results.push((
+                // Optionally, filter out pow algos
+                if pow_algo.map(|algo| header.header.pow_algo() != algo).unwrap_or(false) {
+                    continue;
+                }
+
+                let target_diff = try_or_print!(db.fetch_target_difficulties(prev_header.hash().clone()).await);
+
+                let min = consensus_rules
+                    .consensus_constants(height)
+                    .min_pow_difficulty(header.header.pow_algo());
+                let max = consensus_rules
+                    .consensus_constants(height)
+                    .max_pow_difficulty(header.header.pow_algo());
+
+                let calculated_target_difficulty = target_diff.get(header.header.pow_algo()).calculate(min, max);
+                let existing_target_difficulty = header.accumulated_data.target_difficulty;
+                let achieved = header.accumulated_data.achieved_difficulty;
+                let solve_time = header.header.timestamp.as_u64() as i64 - prev_header.header.timestamp.as_u64() as i64;
+                let normalized_solve_time = cmp::min(
+                    cmp::max(solve_time, 1) as u64,
+                    consensus_rules
+                        .consensus_constants(height)
+                        .get_difficulty_max_block_interval(header.header.pow_algo()),
+                );
+                let acc_sha3 = header.accumulated_data.accumulated_blake_difficulty;
+                let acc_monero = header.accumulated_data.accumulated_monero_difficulty;
+
+                writeln!(
+                    output,
+                    "{},{},{},{},{},{},{},{},{},{},{}",
                     height,
-                    block.block().body.kernels().len() - 1,
-                    block.accumulated_data.target_difficulty.as_u64(),
-                    st as u64,
-                    block.block().header.timestamp.as_u64(),
-                    block.block().header.pow.pow_algo,
-                ));
+                    achieved.as_u64(),
+                    existing_target_difficulty.as_u64(),
+                    calculated_target_difficulty.as_u64(),
+                    solve_time,
+                    normalized_solve_time,
+                    header.header.pow_algo(),
+                    chrono::DateTime::from(header.header.timestamp),
+                    target_diff.get(header.header.pow_algo()).len(),
+                    acc_monero.as_u64(),
+                    acc_sha3.as_u64(),
+                )
+                .unwrap();
+
+                if existing_target_difficulty != calculated_target_difficulty {
+                    eprintln!(
+                        "Difference at {}! existing = {} and calculated = {}",
+                        height, existing_target_difficulty, calculated_target_difficulty
+                    );
+                }
+
+                print!("{}", height);
+                try_or_print!(io::stdout().flush());
                 print!("\x1B[{}D\x1B[K", (height + 1).to_string().chars().count());
+                prev_header = header;
             }
             println!("Complete");
-            println!("Result of height, tx count, target difficulty, solvetime, timestamp, algo");
-            for data in results {
-                println!("{},{},{},{},{},{}", data.0, data.1, data.2, data.3, data.4, data.5);
-            }
+        });
+    }
+
+    pub fn rewind_blockchain(&self, new_height: u64) {
+        let db = self.blockchain_db.clone();
+        let local_node_comms_interface = self.node_service.clone();
+        self.executor.spawn(async move {
+            let blocks = try_or_print!(db.rewind_to_height(new_height).await);
+            local_node_comms_interface.publish_block_event(BlockEvent::BlockSyncRewind(blocks));
         });
     }
 
@@ -978,16 +1010,17 @@ pub enum Format {
     Text,
 }
 
+// TODO: This is not currently used, but could be pretty useful (maybe as an iterator)
 // Function to delimit arguments using spaces and pairs of quotation marks, which may include spaces
-pub fn delimit_command_string(command_str: &str) -> Vec<String> {
-    // Delimit arguments using spaces and pairs of quotation marks, which may include spaces
-    let arg_temp = command_str.trim().to_string();
-    let re = Regex::new(r#"[^\s"]+|"(?:\\"|[^"])+""#).unwrap();
-    let arg_temp_vec: Vec<&str> = re.find_iter(&arg_temp).map(|mat| mat.as_str()).collect();
-    // Remove quotation marks left behind by `Regex` - it does not support look ahead and look behind
-    let mut del_arg_vec = Vec::new();
-    for arg in arg_temp_vec.iter().skip(1) {
-        del_arg_vec.push(str::replace(arg, "\"", ""));
-    }
-    del_arg_vec
-}
+// pub fn delimit_command_string(command_str: &str) -> Vec<String> {
+//     // Delimit arguments using spaces and pairs of quotation marks, which may include spaces
+//     let arg_temp = command_str.trim().to_string();
+//     let re = Regex::new(r#"[^\s"]+|"(?:\\"|[^"])+""#).unwrap();
+//     let arg_temp_vec: Vec<&str> = re.find_iter(&arg_temp).map(|mat| mat.as_str()).collect();
+//     // Remove quotation marks left behind by `Regex` - it does not support look ahead and look behind
+//     let mut del_arg_vec = Vec::new();
+//     for arg in arg_temp_vec.iter().skip(1) {
+//         del_arg_vec.push(str::replace(arg, "\"", ""));
+//     }
+//     del_arg_vec
+// }

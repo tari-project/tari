@@ -61,6 +61,9 @@
 # The timeout (s) for requesting other base node services (min value = 10 s, default value = 180 s).
 #service_request_timeout = 180
 
+# The maximum simultaneous comms RPC sessions allowed. Setting this to -1 will allow unlimited sessions.
+# rpc_max_simultaneous_sessions = 1000
+
 ########################################################################################################################
 #                                                                                                                      #
 #                                          Wallet Configuration Options                                                #
@@ -84,9 +87,20 @@
 # 3. Set the "password" key in this [wallet] section of the config
 # password = "secret"
 
+# WalletNotify
+# Allows you to execute a script or program when these transaction events are received by the console wallet:
+# - transaction received
+# - transaction sent
+# - transaction cancelled
+# - transaction mined but unconfirmed
+# - transaction mined and confirmed
+# An example script is available here: applications/tari_console_wallet/src/notifier/notify_example.sh
+# notify = "/path/to/script"
+
 # This is the timeout period that will be used to monitor TXO queries to the base node (default = 60). Larger values
 # are needed for wallets with many (>1000) TXOs to be validated.
 base_node_query_timeout = 120
+saf_expiry_duration = 10800
 # This is the number of block confirmations required for a transaction to be considered completely mined and confirmed. (default = 3)
 #transaction_num_confirmations_required = 3
 # This is the timeout period that will be used for base node broadcast monitoring tasks (default = 30)
@@ -112,11 +126,12 @@ base_node_query_timeout = 120
 # - "DirectSendOrSaf" - The transaction was initiated and was accepted via Direct Send or Store And Forward.
 # - "Negotiated" - The recipient replied and the transaction was negotiated.
 # - "Broadcast" - The transaction was broadcast to the base node mempool.
-# - "Mined" - The transaction was successfully detected as mined on the blockchain.
+# - "MinedUnconfirmed" - The transaction was successfully detected as mined but unconfirmed on the blockchain.
+# - "Mined" - The transaction was successfully detected as mined and confirmed on the blockchain.
 
 # The default values are:
 #command_send_wait_stage = "Broadcast"
-#command_send_wait_timeout = 300
+#command_send_wait_timeout = 600
 
 # The base nodes that the wallet should use for service requests and tracking chain state.
 # base_node_service_peers = ["public_key::net_address", ...]

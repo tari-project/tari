@@ -47,7 +47,6 @@ use futures::{
 use log::*;
 use std::{cmp, fmt, fmt::Display, sync::Arc};
 use tari_comms::{
-    connection_manager::ConnectionManagerError,
     connectivity::{ConnectivityError, ConnectivityRequester, ConnectivitySelection},
     peer_manager::{NodeId, NodeIdentity, PeerFeatures, PeerManager, PeerManagerError, PeerQuery, PeerQuerySortBy},
 };
@@ -79,8 +78,6 @@ pub enum DhtActorError {
     StoredValueFailedToDeserialize(MessageFormatError),
     #[error("FailedToSerializeValue: {0}")]
     FailedToSerializeValue(MessageFormatError),
-    #[error("ConnectionManagerError: {0}")]
-    ConnectionManagerError(#[from] ConnectionManagerError),
     #[error("ConnectivityError: {0}")]
     ConnectivityError(#[from] ConnectivityError),
     #[error("Connectivity event stream closed")]

@@ -41,7 +41,7 @@ use crate::{
         TargetDifficulties,
     },
     common::rolling_vec::RollingVec,
-    consensus::{chain_strength_comparer::ChainStrengthComparer, ConsensusManager},
+    consensus::{chain_strength_comparer::ChainStrengthComparer, ConsensusConstants, ConsensusManager},
     proof_of_work::{monero_rx::MoneroData, PowAlgorithm, TargetDifficultyWindow},
     tari_utilities::epoch_time::EpochTime,
     transactions::{
@@ -271,16 +271,18 @@ where B: BlockchainBackend
     ) -> Result<ChainHeader, ChainStorageError>
     {
         let db = self.db_read_access()?;
-        // let prev  = db.fetch_chain_header_in_all_chains(&header.prev_hash)?.ok_or_else(||
-        // ChainStorageError::ValueNotFound {     entity: "Header".to_string(),
-        //     field: "hash".to_string(),
-        //     value:  header.prev_hash.to_hex()
-        // })?;
         let accum_data = self.validators.header.validate(&*db, &header, &prev.accumulated_data)?;
         Ok(ChainHeader {
             header,
             accumulated_data: accum_data.build()?,
         })
+    }
+
+    /// Returns a reference to the consensus cosntants at the current height
+    pub fn consensus_constants(&self) -> Result<&ConsensusConstants, ChainStorageError> {
+        let height = self.get_height()?;
+
+        Ok(self.consensus_manager.consensus_constants(height))
     }
 
     // Be careful about making this method public. Rather use `db_and_metadata_read_access`
@@ -324,8 +326,6 @@ where B: BlockchainBackend
     /// Returns the height of the current longest chain. This method will only fail if there's a fairly serious
     /// synchronisation problem on the database. You can try calling [BlockchainDatabase::try_recover_metadata] in
     /// that case to re-sync the metadata; or else just exit the program.
-    ///
-    /// If the chain is empty (the genesis block hasn't been added yet), this function returns `None`
     pub fn get_height(&self) -> Result<u64, ChainStorageError> {
         let db = self.db_read_access()?;
         Ok(db.fetch_chain_metadata()?.height_of_longest_chain())
@@ -966,10 +966,20 @@ where B: BlockchainBackend
     ///
     /// The operation will fail if
     /// * The block height is in the future
-    /// * The block height is before the horizon block height determined by the pruning horizon
     pub fn rewind_to_height(&self, height: u64) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
         let mut db = self.db_write_access()?;
         rewind_to_height(&mut *db, height)
+    }
+
+    /// Rewind the blockchain state to the block hash making the block at that hash the new tip.
+    /// Returns the removed blocks.
+    ///
+    /// The operation will fail if
+    /// * The block hash does not exist
+    /// * The block hash is before the horizon block height determined by the pruning horizon
+    pub fn rewind_to_hash(&self, hash: BlockHash) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
+        let mut db = self.db_write_access()?;
+        rewind_to_hash(&mut *db, hash)
     }
 
     pub fn fetch_horizon_data(&self) -> Result<Option<HorizonData>, ChainStorageError> {
@@ -1426,7 +1436,11 @@ fn check_for_valid_height<T: BlockchainBackend>(db: &T, height: u64) -> Result<(
     Ok((tip_height, height < pruned_height))
 }
 
-fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
+fn rewind_to_height<T: BlockchainBackend>(
+    db: &mut T,
+    mut height: u64,
+) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError>
+{
     let last_header = db.fetch_last_header()?;
 
     let mut txn = DbTransaction::new();
@@ -1451,13 +1465,14 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
         last_header_height,
         last_header_height - steps_back
     );
+    // We might have more headers than blocks, so we first see if we need to delete the extra headers.
     (0..steps_back).for_each(|h| {
         txn.delete_header(last_header_height - h);
     });
 
     // Delete blocks
 
-    let steps_back = last_block_height.saturating_sub(height);
+    let mut steps_back = last_block_height.saturating_sub(height);
     // No blocks to remove
     if steps_back == 0 {
         db.write(txn)?;
@@ -1471,20 +1486,57 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
         last_block_height,
         last_block_height - steps_back
     );
+
+    let mut prune_past_horizon = false;
+    if steps_back > metadata.pruning_horizon() && metadata.pruning_horizon() > 0 {
+        warn!(
+            target: LOG_TARGET,
+            "WARNING, reorg past pruning horizon, rewinding back to 0"
+        );
+        steps_back = metadata.pruning_horizon();
+        prune_past_horizon = true;
+        height = 0;
+    }
+    let (last_header, header_accumulated_data) = db.fetch_header_and_accumulated_data(height)?;
+
     for h in 0..steps_back {
+        debug!(target: LOG_TARGET, "Deleting block {}", last_block_height - h,);
         let block = fetch_block(db, last_block_height - h)?;
-        if block.is_pruned() {
-            unimplemented!("Rewinding past the pruning horizon not implemented.");
-        }
         let block = Arc::new(block.clone().try_into_chain_block()?);
         txn.delete_block(block.block.hash());
         txn.delete_header(last_block_height - h);
-        txn.insert_chained_orphan(block.clone());
+        if !prune_past_horizon {
+            // Because we know we will remove blocks we can't recover, this will be a destructive rewind, so we can't
+            // recover from this apart from resync from another peer. Failure here should not be common as
+            // this chain has a valid proof of work that has been tested at this point in time.
+            txn.insert_chained_orphan(block.clone());
+        }
         removed_blocks.push(block);
     }
 
+    if prune_past_horizon {
+        // We are rewinding past pruning horizon, so we need to remove all blocks and the UTXO's from them. We do not
+        // have to delete the headers as they are still valid.
+        // We don't have these complete blocks, so we don't push them to the channel for further processing such as the
+        // mempool add reorg'ed tx.
+        for h in 0..(last_block_height - steps_back) {
+            debug!(
+                target: LOG_TARGET,
+                "Deleting blocks and utxos {}",
+                last_block_height - h - steps_back,
+            );
+            let block = fetch_block(db, last_block_height - h - steps_back)?;
+            txn.delete_block(block.block().hash());
+        }
+    }
+
     // Update metadata
-    let (last_header, header_accumulated_data) = db.fetch_header_and_accumulated_data(height)?;
+    debug!(
+        target: LOG_TARGET,
+        "Updating best block to height (#{}), total accumulated difficulty: {}",
+        last_header.height,
+        header_accumulated_data.total_accumulated_difficulty
+    );
 
     txn.set_best_block(
         last_header.height,
@@ -1494,6 +1546,21 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
     db.write(txn)?;
 
     Ok(removed_blocks)
+}
+
+fn rewind_to_hash<T: BlockchainBackend>(
+    db: &mut T,
+    block_hash: BlockHash,
+) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError>
+{
+    let block_hash_hex = block_hash.to_hex();
+    let target_header =
+        fetch_header_by_block_hash(&*db, block_hash)?.ok_or_else(|| ChainStorageError::ValueNotFound {
+            entity: "BlockHeader".to_string(),
+            field: "block_hash".to_string(),
+            value: block_hash_hex,
+        })?;
+    rewind_to_height(db, target_header.height)
 }
 
 // Checks whether we should add the block as an orphan. If it is the case, the orphan block is added and the chain
@@ -1507,13 +1574,14 @@ fn handle_possible_reorg<T: BlockchainBackend>(
 ) -> Result<BlockAddResult, ChainStorageError>
 {
     let db_height = db.fetch_chain_metadata()?.height_of_longest_chain();
+    let new_block_hash = new_block.hash();
 
     let new_tips = insert_orphan_and_find_new_tips(db, new_block.clone(), header_validator)?;
     debug!(
         target: LOG_TARGET,
         "Added candidate block #{} ({}) to the orphan database. Best height is {}. New tips found:{} ",
         new_block.header.height,
-        new_block.hash().to_hex(),
+        new_block_hash.to_hex(),
         db_height,
         new_tips.len()
     );
@@ -1523,23 +1591,22 @@ fn handle_possible_reorg<T: BlockchainBackend>(
             target: LOG_TARGET,
             "No reorg required, could not construct complete chain using block #{} ({}).",
             new_block.header.height,
-            new_block.hash().to_hex()
+            new_block_hash.to_hex()
         );
         return Ok(BlockAddResult::OrphanBlock);
     }
 
-    let new_block_hash = new_block.hash();
-
     // Check the accumulated difficulty of the best fork chain compared to the main chain.
-    let fork_header = find_strongest_orphan_tip(new_tips, chain_strength_comparer)?;
-    if fork_header.is_none() {
+    let fork_header = find_strongest_orphan_tip(new_tips, chain_strength_comparer)?.ok_or_else(|| {
         // This should never happen because a block is always added to the orphan pool before
         // checking, but just in case
-        return Err(ChainStorageError::InvalidOperation(
-            "No chain tips found in orphan pool".to_string(),
-        ));
-    }
-    let fork_header = fork_header.unwrap();
+        warn!(
+            target: LOG_TARGET,
+            "Unable to find strongest orphan tip when adding block `{}`. This should never happen.",
+            new_block_hash.to_hex()
+        );
+        ChainStorageError::InvalidOperation("No chain tips found in orphan pool".to_string())
+    })?;
 
     let tip_header = db.fetch_tip_header()?;
     if fork_header.accumulated_data.hash == new_block_hash {
@@ -1596,7 +1663,7 @@ fn handle_possible_reorg<T: BlockchainBackend>(
 
     // TODO: We already have the first link in this chain, can be optimized to exclude it
     let reorg_chain = get_orphan_link_main_chain(db, &fork_header.accumulated_data.hash)?;
-    // }
+
     let fork_height = reorg_chain
         .front()
         .expect("The new orphan block should be in the queue")

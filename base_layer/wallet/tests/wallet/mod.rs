@@ -316,8 +316,8 @@ async fn test_wallet() {
     let cipher = Aes256Gcm::new(key);
     let result = WalletSqliteDatabase::new(connection.clone(), Some(cipher));
 
-    if let Err(WalletStorageError::AeadError(s)) = result {
-        assert_eq!(s, "Decryption Error:aead::Error".to_string());
+    if let Err(err) = result {
+        assert!(matches!(err, WalletStorageError::IncorrectPassword));
     } else {
         panic!("Should not be able to instantiate encrypted wallet without cipher");
     }

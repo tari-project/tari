@@ -414,6 +414,11 @@ impl ConsensusConstantsBuilder {
         self
     }
 
+    pub fn with_max_block_transaction_weight(mut self, weight: u64) -> Self {
+        self.consensus.max_block_transaction_weight = weight;
+        self
+    }
+
     pub fn with_consensus_constants(mut self, consensus: ConsensusConstants) -> Self {
         self.consensus = consensus;
         self

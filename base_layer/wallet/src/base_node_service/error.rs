@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::error::WalletStorageError;
+use tari_comms::{connectivity::ConnectivityError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
@@ -29,6 +30,10 @@ use thiserror::Error;
 pub enum BaseNodeServiceError {
     #[error("No base node peer set")]
     NoBaseNodePeer,
+    #[error("Error connecting to base node: {0}")]
+    BaseNodeConnectivityError(#[from] ConnectivityError),
+    #[error("RPC Error: `{0}`")]
+    RpcError(#[from] RpcError),
     #[error("No chain metadata from peer")]
     NoChainMetadata,
     #[error("Unexpected API Response")]

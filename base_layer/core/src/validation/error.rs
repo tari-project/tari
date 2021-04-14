@@ -77,6 +77,8 @@ pub enum ValidationError {
     MergeMineError(#[from] MergeMineError),
     #[error("Contains an input with an invalid mined-height in body")]
     InvalidMinedHeight,
+    #[error("Maximum transaction weight exceeded")]
+    MaxTransactionWeightExceeded,
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in

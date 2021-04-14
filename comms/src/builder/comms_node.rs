@@ -337,12 +337,7 @@ impl CommsNode {
         self.hidden_service.as_ref()
     }
 
-    /// Return an owned copy of a ConnectionManagerRequester. Used to initiate connections to peers.
-    pub fn connection_manager(&self) -> ConnectionManagerRequester {
-        self.connection_manager_requester.clone()
-    }
-
-    /// Return an owned copy of a ConnectivityRequester. This is the async interface to the ConnectivityManager
+    /// Return a handle that is used to call the connectivity service.
     pub fn connectivity(&self) -> ConnectivityRequester {
         self.connectivity_requester.clone()
     }

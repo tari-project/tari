@@ -1,6 +1,6 @@
 [package]
 name = "tari_console_wallet"
-version = "0.8.6"
+version = "0.8.7"
 authors = ["Philip Robinson <simian@tari.com>"]
 edition = "2018"
 
@@ -24,15 +24,11 @@ rand = "0.7.2"
 unicode-width = "0.1"
 unicode-segmentation = "1.6.0"
 log = { version = "0.4.8", features = ["std"] }
-structopt = { version = "0.3.13", default_features = false }
-config = { version = "0.9.3" }
 qrcode = { version = "0.12" }
-dirs-next = "1.0.2"
 rpassword = "5.0"
 rustyline = "6.0"
 strum = "^0.19"
 strum_macros = "^0.19"
-time = "0.1.38"
 tokio = { version="0.2.10", features = ["signal"] }
 thiserror = "1.0.20"
 tonic = "0.2"

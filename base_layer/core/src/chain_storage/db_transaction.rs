@@ -180,14 +180,6 @@ impl DbTransaction {
         self
     }
 
-    pub fn update_kernel_sum(&mut self, header_hash: HashOutput, kernel_sum: Commitment) -> &mut Self {
-        self.operations.push(WriteOperation::UpdateKernelSum {
-            header_hash,
-            kernel_sum,
-        });
-        self
-    }
-
     pub fn prune_outputs_and_update_horizon(&mut self, output_mmr_positions: Vec<u32>, horizon: u64) -> &mut Self {
         self.operations.push(WriteOperation::PruneOutputsAndUpdateHorizon {
             output_positions: output_mmr_positions,
@@ -196,9 +188,9 @@ impl DbTransaction {
         self
     }
 
-    pub fn update_deleted(&mut self, header_hash: HashOutput, deleted: Bitmap) -> &mut Self {
+    pub fn update_deleted_with_diff(&mut self, header_hash: HashOutput, deleted: Bitmap) -> &mut Self {
         self.operations
-            .push(WriteOperation::UpdateDeletedBlockAccumulatedData { header_hash, deleted });
+            .push(WriteOperation::UpdateDeletedBlockAccumulatedDataWithDiff { header_hash, deleted });
         self
     }
 
@@ -319,7 +311,7 @@ pub enum WriteOperation {
         header_hash: HashOutput,
         pruned_hash_set: Box<PrunedHashSet>,
     },
-    UpdateDeletedBlockAccumulatedData {
+    UpdateDeletedBlockAccumulatedDataWithDiff {
         header_hash: HashOutput,
         deleted: Bitmap,
     },
@@ -426,10 +418,10 @@ impl fmt::Display for WriteOperation {
                 proof_hash: _,
                 mmr_position: _,
             } => write!(f, "Insert pruned output"),
-            UpdateDeletedBlockAccumulatedData {
+            UpdateDeletedBlockAccumulatedDataWithDiff {
                 header_hash: _,
                 deleted: _,
-            } => write!(f, "Update deleted data for block"),
+            } => write!(f, "Add deleted data for block"),
             PruneOutputsAndUpdateHorizon {
                 output_positions,
                 horizon,

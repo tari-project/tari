@@ -155,26 +155,16 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
         match op {
             WriteOperation::Insert(kvp) => match kvp {
                 DbKeyValuePair::SpentOutput(k, o) => {
-                    if db
-                        .spent_outputs
-                        .iter()
-                        .any(|v| v.output.unblinded_output.spending_key == k) ||
-                        db.unspent_outputs
-                            .iter()
-                            .any(|v| v.output.unblinded_output.spending_key == k)
+                    if db.spent_outputs.iter().any(|v| v.output.commitment == k) ||
+                        db.unspent_outputs.iter().any(|v| v.output.commitment == k)
                     {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
                     db.spent_outputs.push(DbOutput::from(*o));
                 },
                 DbKeyValuePair::UnspentOutput(k, o) => {
-                    if db
-                        .unspent_outputs
-                        .iter()
-                        .any(|v| v.output.unblinded_output.spending_key == k) ||
-                        db.spent_outputs
-                            .iter()
-                            .any(|v| v.output.unblinded_output.spending_key == k)
+                    if db.unspent_outputs.iter().any(|v| v.output.commitment == k) ||
+                        db.spent_outputs.iter().any(|v| v.output.commitment == k)
                     {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }

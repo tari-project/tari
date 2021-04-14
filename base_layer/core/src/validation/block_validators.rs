@@ -144,10 +144,11 @@ impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for BodyOnlyValidator {
     }
 }
 
+#[cfg(any(test, feature = "base_node"))]
 /// This is a test only validator as it skips the mined height rule of a input.
 #[derive(Default)]
 pub struct BodyOnlyMinusHeightValidator {}
-
+#[cfg(any(test, feature = "base_node"))]
 impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for BodyOnlyMinusHeightValidator {
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
     /// 1. Does the block satisfy the stateless checks?
