@@ -3,6 +3,7 @@ const { setWorldConstructor, After, BeforeAll } = require("cucumber");
 const BaseNodeProcess = require("../../helpers/baseNodeProcess");
 const MergeMiningProxyProcess = require("../../helpers/mergeMiningProxyProcess");
 const WalletProcess = require("../../helpers/walletProcess");
+const MiningNodeProcess = require("../../helpers/miningNodeProcess");
 
 class CustomWorld {
   constructor({ attach, log, parameters }) {
@@ -154,44 +155,52 @@ class CustomWorld {
 setWorldConstructor(CustomWorld);
 
 BeforeAll({ timeout: 1200000 }, async function () {
-  // Ensure the project can compile
-  let proc = new BaseNodeProcess(`compile-tester`);
-  console.log(
-    "Precompiling base node. This can take a while whenever the code changes..."
-  );
-  await proc.startNew();
-  await proc.stop();
-  let proc2 = new MergeMiningProxyProcess(
-    `compile-tester2`,
+  const baseNode = new BaseNodeProcess("compile");
+  console.log("Compiling base node...");
+  await baseNode.startNew();
+  await baseNode.stop();
+
+  const mmProxy = new MergeMiningProxyProcess(
+    "compile",
     "127.0.0.1:9999",
     "127.0.0.1:9998"
   );
-  console.log(
-    "Precompiling mmproxy. This can take a while whenever the code changes..."
+  console.log("Compiling mmproxy...");
+  await mmProxy.startNew();
+  await mmProxy.stop();
+
+  const wallet = new WalletProcess("compile");
+  console.log("Compiling wallet...");
+  await wallet.startNew();
+  await wallet.stop();
+
+  const miningNode = new MiningNodeProcess(
+    "compile",
+    "127.0.0.1:9999",
+    "127.0.0.1:9998"
   );
-  await proc2.startNew();
-  await proc2.stop();
-  let proc3 = new WalletProcess(`compile-tester3`);
-  console.log(
-    "Precompiling wallet. This can take a while whenever the code changes..."
-  );
-  await proc3.startNew();
-  await proc3.stop();
-  console.log("Finished check...");
+  console.log("Compiling mining node...");
+  await miningNode.startNew();
+  await miningNode.stop();
+
+  console.log("Finished compilation.");
 });
 
 After(async function () {
   console.log("Stopping nodes");
-  for (const property in this.seeds) {
-    await this.stopNode(property);
+  for (const key in this.seeds) {
+    await this.stopNode(key);
   }
-  for (const property in this.nodes) {
-    await this.stopNode(property);
+  for (const key in this.nodes) {
+    await this.stopNode(key);
   }
-  for (const property in this.proxies) {
-    await this.proxies[property].stop();
+  for (const key in this.proxies) {
+    await this.proxies[key].stop();
   }
-  for (const property in this.wallets) {
-    await this.wallets[property].stop();
+  for (const key in this.wallets) {
+    await this.wallets[key].stop();
+  }
+  for (const key in this.miners) {
+    await this.miners[key].stop();
   }
 });

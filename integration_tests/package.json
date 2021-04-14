@@ -2,6 +2,7 @@
   "name": "integration_tests",
   "version": "1.0.0",
   "description": "",
+  "repository": "https://github.com/tari-project/tari",
   "scripts": {
     "test": "cucumber-js",
     "fmt": "prettier -w .",

@@ -40,12 +40,12 @@ async function waitFor(
     const value = await asyncTestFn();
     if (value === toBe) {
       if (i > 1) {
-        console.log("waiting for process...", timeOut, i);
+        console.log("waiting for process...", timeOut, i, value);
       }
       break;
     }
     if (i % skipLog === 0 && i > 1) {
-      console.log("waiting for process...", timeOut, i);
+      console.log("waiting for process...", timeOut, i, value);
     }
     await sleep(timeOut);
     i++;

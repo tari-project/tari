@@ -40,7 +40,7 @@ Feature: Block Propagation
     When I submit block BLOCKA to MINER
     Then I receive an error containing 'Block exists'
     And all nodes are at height 1
-        # Check that the base node continues to accept blocks
+    # Check that the base node continues to accept blocks
     When I mine 1 blocks on MINER
     Then all nodes are at height 2
 
@@ -52,18 +52,18 @@ Feature: Block Propagation
     When I submit block BLOCKA to MINER
     Then I receive an error containing 'Orphan block'
     Then all nodes are at height 1
-        # Do it twice to be sure
+    # Do it twice to be sure
     When I submit block BLOCKA to MINER
     Then I receive an error containing 'Orphan block'
     And all nodes are at height 1
 
   @non-sync-propagation @long-running
-  Scenario: Nodes should never switch to block sync but keep insync via propagation
+  Scenario: Nodes should never switch to block sync but stay synced via propagation
     Given I have 1 seed nodes
     Given I have a base node MINER connected to all seed nodes
     And I have a lagging delayed node LAG1 connected to node MINER with blocks_behind_before_considered_lagging 10000
     Given I have a lagging delayed node LAG2 connected to node MINER with blocks_behind_before_considered_lagging 10000
-        # Wait for node to so start and get into listing mode
+    # Wait for node to so start and get into listening mode
     When I wait 100 seconds
     When I mine 5 blocks on MINER
     Then all nodes are at height 5
@@ -82,7 +82,7 @@ Feature: Block Propagation
     When I mine 5 blocks on MINER
     When I wait 100 seconds
     When I start LAG1
-        # Wait for node to so start and get into listing mode
+    # Wait for node to so start and get into listening mode
     When I wait 100 seconds
     Then node MINER is at height 6
     #node was shutdown, so it never received the propagation messages
