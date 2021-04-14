@@ -213,6 +213,11 @@ impl RpcClientConfig {
     pub fn timeout_with_grace_period(&self) -> Option<Duration> {
         self.deadline.map(|d| d + self.deadline_grace_period)
     }
+
+    /// Returns the handshake timeout
+    pub fn handshake_timeout(&self) -> Duration {
+        self.handshake_timeout
+    }
 }
 
 impl Default for RpcClientConfig {
@@ -220,7 +225,7 @@ impl Default for RpcClientConfig {
         Self {
             deadline: Some(Duration::from_secs(30)),
             deadline_grace_period: Duration::from_secs(10),
-            handshake_timeout: Duration::from_secs(15),
+            handshake_timeout: Duration::from_secs(30),
         }
     }
 }
@@ -310,7 +315,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
     async fn run(mut self) {
         debug!(target: LOG_TARGET, "Performing client handshake");
         let start = Instant::now();
-        let mut handshake = Handshake::new(&mut self.framed).with_timeout(self.config.handshake_timeout);
+        let mut handshake = Handshake::new(&mut self.framed).with_timeout(self.config.handshake_timeout());
         match handshake.perform_client_handshake().await {
             Ok(_) => {
                 let latency = start.elapsed();
