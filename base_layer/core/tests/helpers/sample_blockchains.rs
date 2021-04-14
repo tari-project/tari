@@ -160,6 +160,7 @@ pub fn create_new_blockchain(
 }
 
 /// Create a new blockchain database containing only the Genesis block
+#[allow(dead_code)]
 pub fn create_new_blockchain_with_constants(
     network: Network,
     constants: ConsensusConstants,

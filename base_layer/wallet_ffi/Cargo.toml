@@ -14,6 +14,7 @@ tari_p2p = { version = "^0.8", path = "../p2p" }
 tari_wallet = { version = "^0.8", path = "../wallet", features = ["test_harness", "c_integration"]}
 tari_shutdown = { version = "^0.8", path = "../../infrastructure/shutdown" }
 tari_utilities = "^0.3"
+tari_key_manager = { version = "^0.8", path = "../key_manager" }
 
 futures =  { version = "^0.3.1", features =["compat", "std"]}
 tokio = "0.2.10"
