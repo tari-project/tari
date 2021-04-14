@@ -1916,6 +1916,39 @@ pub unsafe extern "C" fn completed_transaction_is_outbound(
     false
 }
 
+/// Gets the number of confirmations of a TariCompletedTransaction
+///
+/// ## Arguments
+/// `tx` - The TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - Returns the number of confirmations of a Completed Transaction
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn completed_transaction_get_confirmations(
+    tx: *mut TariCompletedTransaction,
+    error_out: *mut c_int,
+) -> c_ulonglong
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if tx.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("tx".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    match (*tx).confirmations {
+        None => 0,
+        Some(c) => c,
+    }
+}
+
 /// Frees memory for a TariCompletedTransaction
 ///
 /// ## Arguments
@@ -6538,6 +6571,8 @@ mod test {
                 let id_completed = completed_transactions_get_at(&mut (*ffi_completed_txs), x, error_ptr);
                 let id_completed_get =
                     wallet_get_completed_transaction_by_id(&mut (*alice_wallet), (*id_completed).tx_id, error_ptr);
+                let confirmations = completed_transaction_get_confirmations(id_completed, error_ptr);
+                assert_eq!(confirmations, 0);
                 if (*id_completed).status == TransactionStatus::MinedUnconfirmed {
                     assert_eq!((*id_completed), (*id_completed_get));
                     assert_eq!((*id_completed_get).status, TransactionStatus::MinedUnconfirmed);
