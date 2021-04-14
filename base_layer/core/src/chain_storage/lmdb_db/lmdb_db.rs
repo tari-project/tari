@@ -634,8 +634,8 @@ impl LMDBDatabase {
                 return Err(ChainStorageError::InvalidOperation(format!(
                     "There is a different header stored at height {} already. New header ({}), current header: ({})",
                     header.height,
-                    hash.to_hex(),
-                    accum_data.hash.to_hex()
+                    accum_data.hash.to_hex(),
+                    current_header_at_height.hash().to_hex(),
                 )));
             }
             return Err(ChainStorageError::InvalidOperation(format!(

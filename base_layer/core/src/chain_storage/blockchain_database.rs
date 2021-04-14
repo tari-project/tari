@@ -70,7 +70,7 @@ use uint::static_assertions::_core::ops::RangeBounds;
 const LOG_TARGET: &str = "c::cs::database";
 
 /// Configuration for the BlockchainDatabase.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct BlockchainDatabaseConfig {
     pub orphan_storage_capacity: usize,
     pub pruning_horizon: u64,
@@ -226,10 +226,7 @@ where B: BlockchainBackend
         cleanup_orphans_at_startup: bool,
     ) -> Result<Self, ChainStorageError>
     {
-        debug!(
-            target: LOG_TARGET,
-            "Initializing database pruning horizon={}", config.pruning_horizon
-        );
+        debug!(target: LOG_TARGET, "BlockchainDatabase config: {:?}", config);
         let is_empty = db.is_empty()?;
         let blockchain_db = BlockchainDatabase {
             db: Arc::new(RwLock::new(db)),

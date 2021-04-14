@@ -43,9 +43,18 @@
   ```shell
   # Runs all critical tests
   npm test -- --tags "@critical"
+  ./run-tests.sh --tags "@critical"
+
+   # Runs all critical tests, but not @long-running and not @to-be-fixed-currently-failing
+   npm test --tags "@critical and not @long-running and not @to-be-fixed-currently-failing"
+  ```
 
   # Runs all @critical tests, but not @long-running
+
   npm test -- --tags "@critical and not @long-running"
+
+  ```
+
   ```
 
 - See `npm test -- --help` for more options.
