@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -26,11 +26,12 @@ use crate::{
     protocol::{
         rpc::{
             context::{RequestContext, RpcCommsBackend, RpcCommsProvider},
-            server::PeerRpcServer,
+            server::{handle::RpcServerRequest, PeerRpcServer, RpcServerError},
             Body,
             Request,
             Response,
             RpcError,
+            RpcServer,
             RpcStatus,
             Streaming,
         },
@@ -80,7 +81,7 @@ impl RpcRequestMock {
 }
 
 /// # RpcMock trait
-///    
+///
 /// Some common utilities used to mock out an Rpc service.
 ///
 /// Currently, there is a fair amount of manual boilerplate involved. The intention is to discover what the
@@ -183,12 +184,19 @@ pub struct MockRpcServer<TSvc, TSubstream> {
     inner: Option<PeerRpcServer<TSvc, TSubstream, MockCommsProvider>>,
     protocol_tx: ProtocolNotificationTx<TSubstream>,
     our_node: Arc<NodeIdentity>,
+    request_tx: mpsc::Sender<RpcServerRequest>,
 }
 
 impl<TSvc> MockRpcServer<TSvc, Substream>
 where
-    TSvc: MakeService<ProtocolId, Request<Bytes>, MakeError = RpcError, Response = Response<Body>, Error = RpcStatus>
-        + Send
+    TSvc: MakeService<
+            ProtocolId,
+            Request<Bytes>,
+            MakeError = RpcServerError,
+            Response = Response<Body>,
+            Error = RpcStatus,
+        > + Send
+        + Sync
         + 'static,
     TSvc::Service: Send + 'static,
     <TSvc::Service as Service<Request<Bytes>>>::Future: Send + 'static,
@@ -196,16 +204,19 @@ where
 {
     pub fn new(service: TSvc, our_node: Arc<NodeIdentity>) -> Self {
         let (protocol_tx, protocol_rx) = mpsc::channel(1);
+        let (request_tx, request_rx) = mpsc::channel(1);
 
         Self {
             inner: Some(PeerRpcServer::new(
-                Default::default(),
+                RpcServer::builder(),
                 service,
                 protocol_rx,
                 MockCommsProvider,
+                request_rx,
             )),
             our_node,
             protocol_tx,
+            request_tx,
         }
     }
 
@@ -228,7 +239,7 @@ where
         peer_conn
     }
 
-    pub fn serve(&mut self) -> task::JoinHandle<Result<(), RpcError>> {
+    pub fn serve(&mut self) -> task::JoinHandle<Result<(), RpcServerError>> {
         let inner = self.inner.take().expect("can only call `serve` once");
         task::spawn(inner.serve())
     }

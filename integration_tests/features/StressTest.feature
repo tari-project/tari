@@ -14,7 +14,7 @@ Feature: Stress Test
         # There need to be at least as many mature coinbase UTXOs in the wallet coin splits required for the number of transactions
         When I merge mine <NumCoinsplitsNeeded> blocks via PROXY
         Then all nodes are at current tip height
-        When I wait for wallet WALLET_A to have at least 5100000000 tari
+        When I wait for wallet WALLET_A to have at least 5100000000 uT
 
         Then I coin split tari in wallet WALLET_A to produce <NumTransactions> UTXOs of 5000 uT each with fee_per_gram 20 uT
         When I merge mine 3 blocks via PROXY
@@ -51,7 +51,7 @@ Feature: Stress Test
         # The following line is how you could mine directly on the node
         When I merge mine 8 blocks via PROXY
         Then all nodes are at current tip height
-        When I wait for wallet WALLET_A to have at least 15100000000 tari
+        When I wait for wallet WALLET_A to have at least 15100000000 uT
 
         Then I coin split tari in wallet WALLET_A to produce 2000 UTXOs of 5000 uT each with fee_per_gram 20 uT
 

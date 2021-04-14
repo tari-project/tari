@@ -41,7 +41,7 @@ use log::*;
 use std::cmp;
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
 use tari_crypto::tari_utilities::hex::Hex;
-use tokio::task;
+use tokio::{task, time::Instant};
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc";
 
@@ -415,6 +415,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let db = self.db();
 
         task::spawn(async move {
+            let timer = Instant::now();
             let end_header = match db
                 .fetch_header_by_block_hash(req.end_header_hash.clone())
                 .await
@@ -429,7 +430,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             };
 
             let iter = NonOverlappingIntegerPairIter::new(req.start, end_header.output_mmr_size, UTXOS_PER_BATCH);
+            let fetch_header_time = timer.elapsed().as_millis();
+            let mut fetch_utxos_time = 0u128;
             for (start, end) in iter {
+                let timer = Instant::now();
                 if tx.is_closed() {
                     break;
                 }
@@ -438,6 +442,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     .fetch_utxos_by_mmr_position(start, end, req.end_header_hash.clone())
                     .await
                     .map_err(RpcStatus::log_internal_error(LOG_TARGET));
+                fetch_utxos_time += timer.elapsed().as_millis();
                 match res {
                     Ok((utxos, deleted)) => {
                         if utxos.is_empty() {
@@ -476,6 +481,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     },
                 }
             }
+            let send_utxos_time = timer.elapsed().as_millis() - fetch_header_time - fetch_utxos_time;
+            trace!(
+                target: LOG_TARGET,
+                "Timings - Fetch header info from db: {} ms, Fetch UTXOs from db: {} ms, RPC send UTXO stream: {} ms",
+                fetch_header_time,
+                fetch_utxos_time,
+                send_utxos_time,
+            );
         });
         Ok(Streaming::new(rx))
     }

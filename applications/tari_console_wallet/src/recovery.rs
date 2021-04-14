@@ -25,7 +25,7 @@ use futures::{FutureExt, StreamExt};
 use log::*;
 use rustyline::Editor;
 use tari_app_utilities::utilities::ExitCodes;
-use tari_comms::peer_manager::Peer;
+use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::types::PrivateKey;
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_key_manager::mnemonic::to_secretkey;
@@ -59,11 +59,31 @@ pub fn prompt_private_key_from_seed_words() -> Result<PrivateKey, ExitCodes> {
     }
 }
 
+/// Return secret key matching the seed words.
+pub fn get_private_key_from_seed_words(seed_words: Vec<String>) -> Result<PrivateKey, ExitCodes> {
+    debug!(target: LOG_TARGET, "Return secret key matching the provided seed words");
+    match to_secretkey(&seed_words) {
+        Ok(key) => Ok(key),
+        Err(e) => {
+            let err_msg = format!("MnemonicError parsing seed words: {}", e);
+            debug!(target: LOG_TARGET, "{}", err_msg);
+            Err(ExitCodes::RecoveryError(err_msg))
+        },
+    }
+}
+
 /// Recovers wallet funds by connecting to a given base node peer, downloading the transaction outputs stored in the
 /// blockchain, and attempting to rewind them. Any outputs that are successfully rewound are then imported into the
 /// wallet.
-pub async fn wallet_recovery(wallet: &mut WalletSqlite, base_node: &Peer) -> Result<(), ExitCodes> {
-    let mut recovery_task = WalletRecoveryTask::new(wallet.clone(), base_node.public_key.clone());
+pub async fn wallet_recovery(
+    wallet: &mut WalletSqlite,
+    peer_seed_public_keys: Vec<CommsPublicKey>,
+) -> Result<(), ExitCodes>
+{
+    println!("\nPress Ctrl-C to stop the recovery process\n");
+    let mut recovery_task = WalletRecoveryTask::new(wallet.clone(), peer_seed_public_keys);
+    recovery_task.set_connection_retries_limit(250);
+    recovery_task.set_print_to_console(true);
 
     let mut event_stream = recovery_task
         .get_event_receiver()
@@ -81,7 +101,10 @@ pub async fn wallet_recovery(wallet: &mut WalletSqlite, base_node: &Peer) -> Res
                     },
                     WalletRecoveryEvent::Progress(current, total) => {
                         let percentage_progress = ((current as f32) * 100f32 / (total as f32)).round() as u32;
-                        println!("{}: Recovery process {}% complete.", Local::now(), percentage_progress);
+                        println!(
+                            "{}: Recovery process {}% complete ({} of {} blocks).",
+                            Local::now(), percentage_progress, current, total
+                        );
                     },
                     WalletRecoveryEvent::Completed(num_utxos, total_amount) => {
                         println!("Recovered {} outputs with a value of {}", num_utxos, total_amount);
@@ -89,7 +112,9 @@ pub async fn wallet_recovery(wallet: &mut WalletSqlite, base_node: &Peer) -> Res
                 }
             },
             recovery_result = recovery_join_handle => {
-               return recovery_result.map_err(|e| ExitCodes::RecoveryError(format!("{}", e)))?.map_err(|e| ExitCodes::RecoveryError(format!("{}", e)));
+                return recovery_result.map_err(|e| ExitCodes::RecoveryError(format!("{}", e)))?
+                    .map_err(|e| ExitCodes::RecoveryError(format!("{}", e))
+                );
             }
         }
     }

@@ -192,12 +192,12 @@ where T: WalletBackend + 'static
     /// Sends a request to the connected base node to retrieve chain metadata.
     async fn refresh_chain_metadata(&mut self) -> Result<(), BaseNodeServiceError> {
         trace!(target: LOG_TARGET, "Refresh chain metadata");
-        let base_node_peer = self
+        let peer = self
             .base_node_peer
-            .clone()
+            .as_ref()
+            .map(|p| p.node_id.clone())
             .ok_or_else(|| BaseNodeServiceError::NoBaseNodePeer)?;
 
-        let peer = base_node_peer.node_id;
         let now = Utc::now().naive_utc();
 
         let mut connection = self.connectivity_manager.dial_peer(peer).await.map_err(|e| {
@@ -220,6 +220,9 @@ where T: WalletBackend + 'static
         );
 
         let tip_info = client.get_tip_info().await?;
+
+        // Note: Dropping the client here reduces the number of concurrent RPC connections
+        drop(client);
 
         let metadata = tip_info
             .metadata

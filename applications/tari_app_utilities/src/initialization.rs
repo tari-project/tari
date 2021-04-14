@@ -21,9 +21,7 @@ pub fn init_configuration(
     bootstrap.initialize_logging()?;
 
     // Populate the configuration struct
-    let global_config = GlobalConfig::convert_from(cfg.clone()).map_err(|err| {
-        log::error!(target: LOG_TARGET, "The configuration file has an error. {}", err);
-        ExitCodes::ConfigError(format!("The configuration file has an error. {}", err))
-    })?;
+    let global_config =
+        GlobalConfig::convert_from(cfg.clone()).map_err(|err| ExitCodes::ConfigError(err.to_string()))?;
     Ok((bootstrap, global_config, cfg))
 }

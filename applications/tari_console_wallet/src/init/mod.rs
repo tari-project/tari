@@ -139,7 +139,7 @@ pub async fn change_password(
     shutdown_signal: ShutdownSignal,
 ) -> Result<(), ExitCodes>
 {
-    let mut wallet = init_wallet(config, arg_password, None, shutdown_signal).await?;
+    let mut wallet = init_wallet(config, arg_password, None, None, shutdown_signal).await?;
 
     let passphrase = prompt_password("New wallet password: ")?;
     let confirmed = prompt_password("Confirm new password: ")?;
@@ -259,6 +259,7 @@ pub fn get_notify_script(bootstrap: &ConfigBootstrap, config: &GlobalConfig) -> 
 pub async fn init_wallet(
     config: &GlobalConfig,
     arg_password: Option<String>,
+    seed_words_file_name: Option<PathBuf>,
     master_key: Option<PrivateKey>,
     shutdown_signal: ShutdownSignal,
 ) -> Result<WalletSqlite, ExitCodes>
@@ -458,6 +459,11 @@ pub async fn init_wallet(
         if interactive && !recovery {
             confirm_seed_words(&mut wallet).await?;
         }
+        if let Some(file_name) = seed_words_file_name {
+            let seed_words = wallet.output_manager_service.get_seed_words().await?.join(" ");
+            let _ = fs::write(file_name, seed_words)
+                .map_err(|e| ExitCodes::WalletError(format!("Problem writing seed words to file: {}", e)));
+        };
     }
 
     Ok(wallet)

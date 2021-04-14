@@ -25,13 +25,13 @@
   npm test
   ```
 
-- To run all tests and generate the reports:
+- To run all tests and generate the reports (\*nix):
 
   ```
   ./run-tests.sh
   ```
 
-- To run a specific test, add `-- --name <REGEXP>` to the command line.
+- To run a specific test, add `-- --name <REGEXP>` to the command line:
 
 ```shell
   # eg: run a specific test
@@ -67,5 +67,15 @@
 
 ## Code Contribution
 
-[prettier](https://prettier.io/) is used for JS code formatting. To ensure that your code is correctly
-formatted, run `npm run fmt` to format your code in-place. Alternatively, use a prettier plugin for your favourite IDE.
+[Prettier](https://prettier.io/) is used for JS code formatting. To ensure that your code is correctly
+formatted, run the following to format or check your code in-place:
+
+- Enforce \*nix style line endings, i.e `lf` only:
+  - `npm run fmt`
+  - `npm run check-fmt`
+- Allow prevalent line endings, i.e. `lf`, `crlf` or `cr` (_this is useful if your git is configured to correctly manage
+  all line endings_):
+  - `npm run fmt-auto`
+  - `npm run check-fmt-auto`
+
+Alternatively, use a prettier plugin for your favourite IDE.

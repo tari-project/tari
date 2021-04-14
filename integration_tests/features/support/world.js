@@ -98,7 +98,7 @@ class CustomWorld {
       .catch((err) => {
         console.log("submit block erro", err);
       });
-    console.log(result);
+    // console.log(result);
   }
 
   getClient(name) {

@@ -34,9 +34,9 @@ Feature: Reorgs
     And I mine a block on B at height 4 with an invalid MMR
     Then node B is at tip BTip1
 
-@critical @reorg
+@critical @reorg @ignore
   Scenario: Pruned mode reorg past horizon
-    Given I have a base node NODE1 connected to all seed nodes    
+    Given I have a base node NODE1 connected to all seed nodes
     When I mine a block on NODE1 with coinbase CB1
     Given I have a base node NODE2 connected to node NODE1
     When I mine but don't submit a block BLOCK2 on NODE2
@@ -57,7 +57,7 @@ Feature: Reorgs
     When I mine but don't submit a block BLOCK17 on NODE2
     When I mine but don't submit a block BLOCK18 on NODE2
     When I mine but don't submit a block BLOCK19 on NODE2
-    When I mine but don't submit a block BLOCK20 on NODE2   
+    When I mine but don't submit a block BLOCK20 on NODE2
     And I stop NODE2
     When I mine 3 blocks on NODE1
     When I create a transaction TX1 spending CB1 to UTX1

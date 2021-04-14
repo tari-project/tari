@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::RpcStatus;
+use super::{handshake::RpcHandshakeError, server::RpcServerError, RpcStatus};
 use crate::{
     connectivity::ConnectivityError,
     peer_manager::PeerManagerError,
@@ -41,22 +41,16 @@ pub enum RpcError {
     ClientClosed,
     #[error("Request failed: {0}")]
     RequestFailed(#[from] RpcStatus),
-    #[error("Maximum number of concurrent RPC sessions reached")]
-    MaximumConcurrencyReached,
-    #[error("Service not found for protocol `{0}`")]
-    ProtocolServiceNotFound(String),
     #[error("Remote peer unexpectedly closed the RPC connection")]
     ServerClosedRequest,
     #[error("Request cancelled")]
     RequestCancelled,
     #[error("Client internal error: {0}")]
     ClientInternalError(String),
-    #[error("RPC handshake timed out")]
-    HandshakeTimedOut,
-    #[error("RPC handshake failed: The client does not support any RPC protocol version supported by this node")]
-    HandshakeClientNoSupportedVersion,
-    #[error("RPC handshake was explicitly rejected: {0}")]
-    HandshakeRejected(#[from] HandshakeRejectReason),
+    #[error("Handshake error: {0}")]
+    HandshakeError(#[from] RpcHandshakeError),
+    #[error("Server error: {0}")]
+    ServerError(#[from] RpcServerError),
     #[error("Peer connection error: {0}")]
     PeerConnectionError(#[from] PeerConnectionError),
     #[error("Peer manager error: {0}")]

@@ -6,6 +6,7 @@
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
 #![recursion_limit = "1024"]
+use crate::recovery::get_private_key_from_seed_words;
 use init::{
     boot,
     change_password,
@@ -19,8 +20,10 @@ use init::{
 };
 use log::*;
 use recovery::prompt_private_key_from_seed_words;
+use std::process;
 use tari_app_utilities::{initialization::init_configuration, utilities::ExitCodes};
 use tari_common::configuration::bootstrap::ApplicationType;
+use tari_core::transactions::types::PrivateKey;
 use tari_shutdown::Shutdown;
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};
 
@@ -38,7 +41,7 @@ pub mod wallet_modes;
 /// Application entry point
 fn main() {
     match main_inner() {
-        Ok(_) => std::process::exit(0),
+        Ok(_) => process::exit(0),
         Err(exit_code) => {
             eprintln!("{}", exit_code);
             error!(
@@ -47,7 +50,7 @@ fn main() {
                 exit_code.as_i32(),
                 exit_code
             );
-            std::process::exit(exit_code.as_i32())
+            process::exit(exit_code.as_i32())
         },
     }
 }
@@ -62,6 +65,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     let (bootstrap, config, _) = init_configuration(ApplicationType::ConsoleWallet)?;
 
     debug!(target: LOG_TARGET, "Using configuration: {:?}", config);
+    debug!(target: LOG_TARGET, "Using bootstrap: {:?}", bootstrap);
 
     // get command line password if provided
     let arg_password = bootstrap.password.clone();
@@ -73,8 +77,19 @@ fn main_inner() -> Result<(), ExitCodes> {
     // check for recovery based on existence of wallet file
     let mut boot_mode = boot(&bootstrap, &config)?;
 
-    let master_key = if matches!(boot_mode, WalletBoot::Recovery) {
-        let private_key = prompt_private_key_from_seed_words()?;
+    let master_key: Option<PrivateKey> = if matches!(boot_mode, WalletBoot::Recovery) {
+        let private_key = if bootstrap.seed_words.is_some() {
+            let seed_words: Vec<String> = bootstrap
+                .seed_words
+                .clone()
+                .unwrap()
+                .split_whitespace()
+                .map(|v| v.to_string())
+                .collect();
+            get_private_key_from_seed_words(seed_words)?
+        } else {
+            prompt_private_key_from_seed_words()?
+        };
         Some(private_key)
     } else {
         None
@@ -86,6 +101,7 @@ fn main_inner() -> Result<(), ExitCodes> {
 
     // get command line password if provided
     let arg_password = bootstrap.password.clone();
+    let seed_words_file_name = bootstrap.seed_words_file_name.clone();
 
     let mut shutdown = Shutdown::new();
     let shutdown_signal = shutdown.to_signal();
@@ -96,7 +112,13 @@ fn main_inner() -> Result<(), ExitCodes> {
     }
 
     // initialize wallet
-    let mut wallet = runtime.block_on(init_wallet(&config, arg_password, master_key, shutdown_signal))?;
+    let mut wallet = runtime.block_on(init_wallet(
+        &config,
+        arg_password,
+        seed_words_file_name,
+        master_key,
+        shutdown_signal,
+    ))?;
 
     // Check if there is an in progress recovery in the wallet's database
     if runtime.block_on(wallet.is_recovery_in_progress())? {
