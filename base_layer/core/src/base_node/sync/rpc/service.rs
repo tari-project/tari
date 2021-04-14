@@ -32,6 +32,7 @@ use crate::{
         SyncHeadersRequest,
         SyncKernelsRequest,
         SyncUtxo,
+        SyncUtxos2Response,
         SyncUtxosRequest,
         SyncUtxosResponse,
     },
@@ -408,6 +409,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
     }
 
     async fn sync_utxos(&self, request: Request<SyncUtxosRequest>) -> Result<Streaming<SyncUtxosResponse>, RpcStatus> {
+        let peer = request.context().peer_node_id().clone();
         let req = request.into_message();
         const UTXOS_PER_BATCH: usize = 100;
         const BATCH_SIZE: usize = 100;
@@ -435,6 +437,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             for (start, end) in iter {
                 let timer = Instant::now();
                 if tx.is_closed() {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Exiting sync_utxos early because client ({}) has gone", peer
+                    );
                     break;
                 }
                 debug!(target: LOG_TARGET, "Streaming utxos {} to {}", start, end);
@@ -480,6 +486,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                         break;
                     },
                 }
+
+                debug!(
+                    target: LOG_TARGET,
+                    "Streamed utxos {} to {} in {:.2?}",
+                    start,
+                    end,
+                    timer.elapsed()
+                );
             }
             let send_utxos_time = timer.elapsed().as_millis() - fetch_header_time - fetch_utxos_time;
             trace!(
@@ -490,6 +504,124 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                 send_utxos_time,
             );
         });
+        Ok(Streaming::new(rx))
+    }
+
+    async fn sync_utxos2(
+        &self,
+        request: Request<SyncUtxosRequest>,
+    ) -> Result<Streaming<SyncUtxos2Response>, RpcStatus>
+    {
+        let peer = request.context().peer_node_id().clone();
+        let req = request.into_message();
+        const BATCH_SIZE: usize = 100;
+        let (mut tx, rx) = mpsc::channel(BATCH_SIZE);
+        let db = self.db();
+
+        let end_header = db
+            .fetch_header_by_block_hash(req.end_header_hash.clone())
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .ok_or_else(|| RpcStatus::not_found("end_header_hash was not found"))?;
+
+        debug!(
+            target: LOG_TARGET,
+            "Received sync_utxos request from {} (start = {}, include_pruned_utxos = {}, include_deleted_bitmaps = {})",
+            peer,
+            req.start,
+            req.include_pruned_utxos,
+            req.include_deleted_bitmaps
+        );
+
+        if req.start > end_header.output_mmr_size {
+            return Err(RpcStatus::bad_request("start index is greater than end index"));
+        }
+
+        task::spawn(async move {
+            let iter = NonOverlappingIntegerPairIter::new(req.start, end_header.output_mmr_size, BATCH_SIZE);
+            for (start, end) in iter {
+                let timer = Instant::now();
+                if tx.is_closed() {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Exiting sync_utxos early because client ({}) has gone", peer
+                    );
+                    break;
+                }
+                debug!(target: LOG_TARGET, "Streaming utxos {} to {}", start, end);
+                let res = db
+                    .fetch_utxos_by_mmr_position(start, end, req.end_header_hash.clone())
+                    .await
+                    .map_err(RpcStatus::log_internal_error(LOG_TARGET));
+
+                debug!(
+                    target: LOG_TARGET,
+                    "Fetched {} utxos in {:.2?}",
+                    end - start,
+                    timer.elapsed()
+                );
+                match res {
+                    Ok((utxos, deleted)) => {
+                        if utxos.is_empty() {
+                            break;
+                        }
+
+                        let mut utxos = stream::iter(
+                            utxos
+                                .into_iter()
+                                .enumerate()
+                                // Only include pruned UTXOs if include_pruned_utxos is true
+                                .filter(|(_, utxo)| req.include_pruned_utxos || !utxo.is_pruned())
+                                .map(|(i, utxo)| {
+                                    let utxo = proto::base_node::SyncUtxo2::from(utxo);
+                                    proto::base_node::SyncUtxos2Response {
+                                        utxo_or_deleted: Some(proto::base_node::sync_utxos2_response::UtxoOrDeleted::Utxo(
+                                            utxo,
+                                        )),
+                                        mmr_index: start.saturating_add(i as u64),
+                                    }
+                                })
+                                .map(Ok)
+                                .map(Ok),
+                        );
+
+                        // Ensure task stops if the peer prematurely stops their RPC session
+                        if tx.send_all(&mut utxos).await.is_err() {
+                            break;
+                        }
+
+                        if req.include_deleted_bitmaps {
+                            let bitmaps = deleted.into_iter().map(|b| b.serialize()).collect();
+                            let bitmaps = proto::base_node::SyncUtxos2Response {
+                                utxo_or_deleted: Some(
+                                    proto::base_node::sync_utxos2_response::UtxoOrDeleted::DeletedBitmaps(
+                                        proto::base_node::Bitmaps { bitmaps },
+                                    ),
+                                ),
+                                mmr_index: 0,
+                            };
+
+                            if tx.send(Ok(bitmaps)).await.is_err() {
+                                break;
+                            }
+                        }
+                    },
+                    Err(err) => {
+                        let _ = tx.send(Err(err)).await;
+                        break;
+                    },
+                }
+
+                debug!(
+                    target: LOG_TARGET,
+                    "Streamed utxos {} to {} in {:.2?} (including stream backpressure)",
+                    start,
+                    end,
+                    timer.elapsed()
+                );
+            }
+        });
+
         Ok(Streaming::new(rx))
     }
 }

@@ -5490,8 +5490,6 @@ pub unsafe extern "C" fn wallet_start_recovery(
     error_out: *mut c_int,
 ) -> bool
 {
-    use futures::FutureExt;
-
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -5502,21 +5500,13 @@ pub unsafe extern "C" fn wallet_start_recovery(
     }
 
     let peer_seed_public_keys: Vec<TariPublicKey> = vec![(*base_node_public_key).clone()];
-    let mut recovery_task = WalletRecoveryTask::new((*wallet).wallet.clone(), peer_seed_public_keys);
+    let mut recovery_task = WalletRecoveryTask::builder()
+        .with_peer_seeds(peer_seed_public_keys)
+        .with_retry_limit(10)
+        .build((*wallet).wallet.clone());
 
-    let event_stream = match recovery_task.get_event_receiver() {
-        None => {
-            error = LibWalletError::from(WalletError::WalletRecoveryError(
-                "No recovery event stream available".to_string(),
-            ))
-            .code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            return false;
-        },
-        Some(e) => e.fuse(),
-    };
-
-    let recovery_join_handle = (*wallet).runtime.spawn(recovery_task.run()).fuse();
+    let event_stream = recovery_task.get_event_receiver();
+    let recovery_join_handle = (*wallet).runtime.spawn(recovery_task.run());
 
     // Spawn a task to monitor the recovery process events and call the callback appropriately
     (*wallet).runtime.spawn(recovery_event_monitoring(

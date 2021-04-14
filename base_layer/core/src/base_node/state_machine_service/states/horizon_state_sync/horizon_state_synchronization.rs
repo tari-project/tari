@@ -282,6 +282,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let req = SyncUtxosRequest {
             start,
             end_header_hash: end_hash,
+            include_deleted_bitmaps: true,
+            include_pruned_utxos: true,
         };
         let mut output_stream = client.sync_utxos(req).await?;
 

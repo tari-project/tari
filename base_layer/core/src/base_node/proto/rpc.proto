@@ -52,6 +52,8 @@ message SyncKernelsRequest {
 message SyncUtxosRequest  {
   uint64 start = 1;
   bytes end_header_hash = 2;
+  bool include_pruned_utxos = 3;
+  bool include_deleted_bitmaps = 4;
 }
 
 message SyncUtxosResponse  {
@@ -65,9 +67,34 @@ message SyncUtxo {
   // The output. optional, if deleted at the time of the requested height,
   // will be empty and `hash` and `rangeproof_hash` will be populated instead
   tari.types.TransactionOutput output = 1;
-  // Only present if 'output` is empty
+  // Only present if `output` is empty
   bytes hash = 2;
   // Only present if `output` is empty
   bytes rangeproof_hash = 3;
 }
 
+message SyncUtxos2Response  {
+  oneof utxo_or_deleted {
+    SyncUtxo2 utxo = 1;
+    Bitmaps deleted_bitmaps = 2;
+  }
+  uint64 mmr_index = 3;
+}
+
+message Bitmaps {
+  repeated bytes bitmaps = 1;
+}
+
+message SyncUtxo2 {
+  oneof utxo {
+    // The unspent transaction output
+    tari.types.TransactionOutput output = 1;
+    // If the UTXO is deleted/pruned, the hashes are returned
+    PrunedOutput pruned_output = 2;
+  }
+}
+
+message PrunedOutput {
+  bytes hash = 1;
+  bytes rangeproof_hash = 2;
+}

@@ -1466,8 +1466,8 @@ impl BlockchainBackend for LMDBDatabase {
                                 range_proof_hash: row.range_proof_hash,
                             };
                         }
-                        if let Some(output) = &row.output {
-                            PrunedOutput::NotPruned { output: output.clone() }
+                        if let Some(output) = row.output {
+                            PrunedOutput::NotPruned { output }
                         } else {
                             PrunedOutput::Pruned {
                                 output_hash: row.hash,
@@ -1674,7 +1674,7 @@ impl BlockchainBackend for LMDBDatabase {
         );
         let txn = ReadTransaction::new(&*self.env).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
         let orphan_hashes: Vec<HashOutput> = lmdb_get_multiple(&txn, &self.orphan_parent_map_index, hash.as_slice())?;
-        let mut res = vec![];
+        let mut res = Vec::with_capacity(orphan_hashes.len());
         for hash in orphan_hashes {
             res.push(lmdb_get(&txn, &self.orphans_db, hash.as_slice())?.ok_or_else(|| {
                 ChainStorageError::ValueNotFound {
