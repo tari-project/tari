@@ -20,66 +20,78 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{channel::mpsc::Receiver, future::Fuse as FutureFuse, stream::Fuse, StreamExt};
+use futures::StreamExt;
 use log::*;
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_wallet::{error::WalletError, tasks::wallet_recovery::WalletRecoveryEvent};
-use tokio::task::JoinHandle;
+use tokio::{sync::broadcast, task::JoinHandle};
 
 const LOG_TARGET: &str = "wallet_ffi";
 
 pub async fn recovery_event_monitoring(
-    mut event_stream: Fuse<Receiver<WalletRecoveryEvent>>,
-    mut recovery_join_handle: FutureFuse<JoinHandle<Result<(), WalletError>>>,
+    mut event_stream: broadcast::Receiver<WalletRecoveryEvent>,
+    recovery_join_handle: JoinHandle<Result<(), WalletError>>,
     recovery_progress_callback: unsafe extern "C" fn(u64, u64),
 )
 {
-    loop {
-        futures::select! {
-            event = event_stream.select_next_some() => {
-                match event {
-                    WalletRecoveryEvent::ConnectedToBaseNode(pk) => {
-                       unsafe {
-                            (recovery_progress_callback)(0u64,1u64);
-                       }
-                       info!(target: LOG_TARGET, "Connected to base node: {}", pk.to_hex());
-                    },
-                    WalletRecoveryEvent::Progress(current, total) => {
-                           unsafe {
-                                (recovery_progress_callback)(current,total);
-                            }
-                            info!(target: LOG_TARGET, "Recovery progress: {}/{}", current, total);
-                            if current == total {
-                                info!(target: LOG_TARGET, "Recovery complete: {}/{}", current, total);
-                                break;
-                            }
-                    },
-                    WalletRecoveryEvent::Completed(num_utxos, total_amount) => {
-                        debug!(target: LOG_TARGET, "Recovery complete. Num UTXOs: {}, Amount: {}", num_utxos, total_amount);
-                        break;
-                    },
+    while let Some(event) = event_stream.next().await {
+        match event {
+            Ok(WalletRecoveryEvent::ConnectedToBaseNode(pk, elapsed)) => {
+                unsafe {
+                    (recovery_progress_callback)(0u64, 1u64);
+                }
+                info!(
+                    target: LOG_TARGET,
+                    "Connected to base node {} in {:.2?}",
+                    pk.to_hex(),
+                    elapsed
+                );
+            },
+            Ok(WalletRecoveryEvent::Progress(current, total)) => {
+                unsafe {
+                    (recovery_progress_callback)(current, total);
+                }
+                info!(target: LOG_TARGET, "Recovery progress: {}/{}", current, total);
+                if current == total {
+                    info!(target: LOG_TARGET, "Recovery complete: {}/{}", current, total);
+                    break;
                 }
             },
-            recovery_result = recovery_join_handle => {
-                match recovery_result {
-                    Err(e) => {
-                        unsafe {
-                            (recovery_progress_callback)(0u64,0u64);
-                        }
-                        error!(target: LOG_TARGET, "Recovery error: {}", e);
-                        break;
-                    },
-                    Ok(r) => {
-                        if let Err(e) = r {
-                            unsafe {
-                                (recovery_progress_callback)(0u64,0u64);
-                            }
-                            error!(target: LOG_TARGET, "Recovery error: {}", e);
-                            break;
-                        }
-                    }
-                }
-            }
+            Ok(WalletRecoveryEvent::Completed(num_scanned, num_utxos, total_amount, elapsed)) => {
+                info!(
+                    target: LOG_TARGET,
+                    "Recovery complete! Scanned = {} in {:.2?} ({} utxos/s), Recovered {} worth {}",
+                    num_scanned,
+                    elapsed,
+                    num_scanned / elapsed.as_secs(),
+                    num_utxos,
+                    total_amount
+                );
+            },
+            Ok(event) => {
+                debug!(target: LOG_TARGET, "Recovery event {:?}", event);
+            },
+            Err(e) => {
+                // Event lagging
+                warn!(target: LOG_TARGET, "{}", e);
+            },
         }
+    }
+
+    let recovery_result = recovery_join_handle.await;
+    match recovery_result {
+        Ok(Ok(_)) => {},
+        Ok(Err(e)) => {
+            unsafe {
+                (recovery_progress_callback)(0u64, 0u64);
+            }
+            error!(target: LOG_TARGET, "Recovery error: {}", e);
+        },
+        Err(e) => {
+            unsafe {
+                (recovery_progress_callback)(0u64, 0u64);
+            }
+            error!(target: LOG_TARGET, "Recovery error: {}", e);
+        },
     }
 }

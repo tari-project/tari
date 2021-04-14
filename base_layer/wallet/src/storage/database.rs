@@ -223,6 +223,31 @@ where T: WalletBackend + 'static
         Ok(c)
     }
 
+    pub async fn get_client_key_from_str<V>(&self, key: String) -> Result<Option<V>, WalletStorageError>
+    where
+        V: std::str::FromStr,
+        V::Err: ToString,
+    {
+        let db = self.db.clone();
+
+        let value = tokio::task::spawn_blocking(move || match db.fetch(&DbKey::ClientKey(key.clone())) {
+            Ok(None) => Ok(None),
+            Ok(Some(DbValue::ClientValue(k))) => Ok(Some(k)),
+            Ok(Some(other)) => unexpected_result(DbKey::ClientKey(key), other),
+            Err(e) => log_error(DbKey::ClientKey(key), e),
+        })
+        .await
+        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+
+        match value {
+            Some(c) => {
+                let a = V::from_str(&c).map_err(|err| WalletStorageError::ConversionError(err.to_string()))?;
+                Ok(Some(a))
+            },
+            None => Ok(None),
+        }
+    }
+
     pub async fn clear_client_value(&self, key: String) -> Result<bool, WalletStorageError> {
         let db_clone = self.db.clone();
 

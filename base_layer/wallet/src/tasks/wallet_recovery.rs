@@ -26,581 +26,488 @@ use crate::{
     WalletSqlite,
 };
 use chrono::Utc;
-use futures::{channel::mpsc, FutureExt, SinkExt, StreamExt};
+use futures::StreamExt;
 use log::*;
-use std::{cmp, cmp::max, convert::TryFrom, time::Instant};
-use tari_comms::{peer_manager::NodeId, protocol::rpc::ClientStreaming, types::CommsPublicKey, PeerConnection};
+use std::{
+    convert::TryFrom,
+    str::FromStr,
+    time::{Duration, Instant},
+};
+use tari_comms::{peer_manager::NodeId, types::CommsPublicKey, PeerConnection};
 use tari_core::{
     base_node::sync::rpc::BaseNodeSyncRpcClient,
     blocks::BlockHeader,
-    proto::base_node::{ChainMetadata, SyncUtxosRequest, SyncUtxosResponse},
+    crypto::tari_utilities::hex::Hex,
+    proto,
+    proto::base_node::SyncUtxosRequest,
     tari_utilities::Hashable,
     transactions::{tari_amount::MicroTari, transaction::TransactionOutput},
 };
-
-use tari_comms::protocol::rpc::RpcStatusCode;
-use tokio::time::{delay_for, Duration};
+use tokio::sync::broadcast;
 
 pub const LOG_TARGET: &str = "wallet::recovery";
 
-const RPC_RETRIES_LIMIT: usize = 10;
+pub const RECOVERY_HEIGHT_KEY: &'static str = "recovery/height-progress";
+const RECOVERY_NUM_UTXOS_KEY: &'static str = "recovery/num-utxos";
+const RECOVERY_UTXO_INDEX_KEY: &'static str = "recovery/utxos-index";
+const RECOVERY_TOTAL_AMOUNT_KEY: &'static str = "recovery/total-amount";
 
-pub const RECOVERY_HEIGHT_KEY: &str = "recovery_height_progress";
-const RECOVERY_NUM_UTXOS_KEY: &str = "recovery_num_utxos";
-const RECOVERY_TOTAL_AMOUNT_KEY: &str = "recovery_total_amount";
-const RECOVERY_BATCH_SIZE: u64 = 100;
+#[derive(Debug, Default, Clone)]
+pub struct WalletRecoveryTaskBuilder {
+    retry_limit: usize,
+    peer_seeds: Vec<CommsPublicKey>,
+}
+
+impl WalletRecoveryTaskBuilder {
+    /// Set the maximum number of times we retry recovery. A failed recovery is counted as _all_ peers have failed.
+    /// i.e. worst-case number of recovery attempts = number of sync peers * retry limit
+    pub fn with_retry_limit(&mut self, limit: usize) -> &mut Self {
+        self.retry_limit = limit;
+        self
+    }
+
+    pub fn with_peer_seeds(&mut self, peer_seeds: Vec<CommsPublicKey>) -> &mut Self {
+        self.peer_seeds = peer_seeds;
+        self
+    }
+
+    pub fn build(&mut self, wallet: WalletSqlite) -> WalletRecoveryTask {
+        WalletRecoveryTask::new(wallet, self.peer_seeds.drain(..).collect(), self.retry_limit)
+    }
+}
 
 pub struct WalletRecoveryTask {
     wallet: WalletSqlite,
-    peer_seed_public_keys: Vec<CommsPublicKey>,
-    event_sender: Option<mpsc::Sender<WalletRecoveryEvent>>,
-    event_receiver: Option<mpsc::Receiver<WalletRecoveryEvent>>,
-    connection_retries_limit: usize,
-    connection_retries: usize,
-    rpc_retries: usize,
-    print_to_console: bool,
-    base_node_connection: Option<PeerConnection>,
-    base_node_public_key: CommsPublicKey,
-    sync_client_initialized: bool,
-    sync_client: Option<BaseNodeSyncRpcClient>,
+    event_sender: broadcast::Sender<WalletRecoveryEvent>,
+    retry_limit: usize,
+    num_retries: usize,
+    peer_seeds: Vec<CommsPublicKey>,
+    peer_index: usize,
 }
 
 impl WalletRecoveryTask {
-    pub fn new(wallet: WalletSqlite, peer_seed_public_keys: Vec<CommsPublicKey>) -> Self {
-        let (event_sender, event_receiver) = mpsc::channel(1000);
+    fn new(wallet: WalletSqlite, peer_seeds: Vec<CommsPublicKey>, retry_limit: usize) -> Self {
+        let (event_sender, _) = broadcast::channel(100);
         Self {
             wallet,
-            peer_seed_public_keys,
-            event_sender: Some(event_sender),
-            event_receiver: Some(event_receiver),
-            connection_retries_limit: 1,
-            connection_retries: 0,
-            rpc_retries: 1,
-            print_to_console: false,
-            base_node_connection: None,
-            base_node_public_key: CommsPublicKey::default(),
-            sync_client_initialized: false,
-            sync_client: None,
+            peer_seeds,
+            event_sender,
+            retry_limit,
+            peer_index: 0,
+            num_retries: 0,
         }
     }
 
-    pub fn set_connection_retries_limit(&mut self, connection_retries_limit: usize) {
-        self.connection_retries_limit = max(connection_retries_limit, 1);
+    pub fn builder() -> WalletRecoveryTaskBuilder {
+        WalletRecoveryTaskBuilder::default()
     }
 
-    pub fn set_print_to_console(&mut self, print_to_console: bool) {
-        self.print_to_console = print_to_console;
+    pub fn get_event_receiver(&mut self) -> broadcast::Receiver<WalletRecoveryEvent> {
+        self.event_sender.subscribe()
     }
 
-    pub fn get_event_receiver(&mut self) -> Option<mpsc::Receiver<WalletRecoveryEvent>> {
-        self.event_receiver.take()
-    }
-
-    async fn get_connected_base_node_public_key(&mut self) -> Result<CommsPublicKey, WalletError> {
-        if !self.sync_client_initialized {
-            let _ = self.connect_sync_client().await;
-        }
-        Ok(self.base_node_public_key.clone())
-    }
-
-    async fn connect_sync_client(&mut self) -> Result<(), WalletError> {
-        let mut shutdown = self.wallet.comms.shutdown_signal().clone();
-        if !self.sync_client_initialized {
-            trace!(
-                target: LOG_TARGET,
-                "Peer seed public keys: {:?}",
-                self.peer_seed_public_keys
-            );
-            if self.peer_seed_public_keys.is_empty() {
-                return Err(WalletError::WalletRecoveryError(
-                    "No base node defined to connect to".to_string(),
-                ));
-            }
-        }
-        let mut select_new_base_node = false;
-        let mut last_base_node_public_key = if self.sync_client_initialized {
-            self.base_node_public_key.clone()
-        } else {
-            (&self.peer_seed_public_keys[self.peer_seed_public_keys.len() - 1]).clone()
-        };
-        self.rpc_retries = 1;
-        loop {
-            // Allow PRC connections to be retried N times before using up a retry
-            if self.rpc_retries > RPC_RETRIES_LIMIT {
-                self.rpc_retries = 1;
-                self.connection_retries += 1;
-            }
-            if self.connection_retries > self.connection_retries_limit {
-                return Err(WalletError::WalletRecoveryError(format!(
-                    "Could not connect to base node within the specified number of retries ({})",
-                    self.connection_retries_limit
-                )));
-            }
-
-            let mut reconnect_to_base_node = true;
-            if let Some(connection) = self.base_node_connection.clone() {
-                reconnect_to_base_node = !connection.is_connected();
-                trace!(
-                    target: LOG_TARGET,
-                    "Base node {} is connected {}",
-                    self.base_node_public_key.clone(),
-                    connection.is_connected(),
-                );
-            }
-
-            if reconnect_to_base_node {
-                // Select next base node in list to try and connect to, wrapping around
-                let mut new_base_node_public_key = last_base_node_public_key.clone();
-                if select_new_base_node {
-                    for i in 0..(self.peer_seed_public_keys.len()) {
-                        if self.peer_seed_public_keys[i] == last_base_node_public_key.clone() {
-                            if i != self.peer_seed_public_keys.len() - 1 {
-                                new_base_node_public_key = (&self.peer_seed_public_keys[i + 1]).clone();
-                            } else {
-                                new_base_node_public_key = (&self.peer_seed_public_keys[0]).clone();
-                            }
-                            last_base_node_public_key = new_base_node_public_key.clone();
-                            break;
-                        }
-                    }
-                }
-
-                // Attempt new base node connection
-                debug!(
-                    target: LOG_TARGET,
-                    "Trying to connect to {} (retries {} of {})",
-                    new_base_node_public_key,
-                    self.connection_retries,
-                    self.connection_retries_limit
-                );
-                if select_new_base_node && self.print_to_console {
-                    println!(
-                        "Trying to connect to {} (retries {} of {})",
-                        new_base_node_public_key.clone(),
-                        self.connection_retries,
-                        self.connection_retries_limit
-                    );
-                }
-                let base_node_node_id = NodeId::from_public_key(&new_base_node_public_key);
-                let mut connectivity_requester = self.wallet.comms.connectivity();
-                let delay = delay_for(Duration::from_secs(60));
-                futures::select! {
-                    dial_result = connectivity_requester.dial_peer(base_node_node_id.clone()).fuse() => {
-                        match dial_result {
-                            Ok(c) => {
-                                self.base_node_connection = Some(c);
-                                self.base_node_public_key = new_base_node_public_key.clone();
-                                select_new_base_node = false;
-                                trace!(
-                                    target: LOG_TARGET,
-                                    "New base node connection to {}",
-                                    self.base_node_public_key.clone(),
-                                );
-                            },
-                            Err(e) => {
-                                warn!(
-                                    target: LOG_TARGET,
-                                    "Base node connection error to {} (retries {} of {}): {}",
-                                    new_base_node_public_key.clone(),
-                                    self.connection_retries,
-                                    self.connection_retries_limit,
-                                    e
-                                );
-                                if self.print_to_console {
-                                    println!(
-                                        "Base node connection error to {} (retries {} of {}: {})",
-                                        new_base_node_public_key.clone(),
-                                        self.connection_retries,
-                                        self.connection_retries_limit,
-                                        e
-                                    );
-                                }
-                                select_new_base_node = true;
-                                self.connection_retries += 1;
-                                continue;
-                            },
-                        }
-                    },
-                    _ = delay.fuse() => {
-                        continue;
-                    },
-                    _ = shutdown => {
-                        info!(
-                            target: LOG_TARGET,
-                            "Wallet recovery shutting down because it received the shutdown signal",
-                        );
-                        return Err(WalletError::Shutdown)
-                    },
-                }
-            }
-
-            // Attempt new RPC connection to the connected base node
-            if let Some(mut connection) = self.base_node_connection.clone() {
-                if connection.is_connected() {
-                    self.rpc_retries += 1;
-                    self.sync_client = match connection
-                        .connect_rpc_using_builder(
-                            BaseNodeSyncRpcClient::builder().with_deadline(Duration::from_secs(60)),
-                        )
-                        .await
-                    {
-                        Ok(c) => Some(c),
-                        Err(e) => {
-                            warn!(
-                                target: LOG_TARGET,
-                                "RPC connection error to base node {}: {}", self.base_node_public_key, e
-                            );
-                            continue;
-                        },
-                    };
-                    if !self.sync_client_initialized {
-                        self.sync_client_initialized = true;
-                    }
-                    debug!(
-                        target: LOG_TARGET,
-                        "New RPC connection for base node {}",
-                        self.base_node_public_key.clone(),
-                    );
-                    return Ok(());
-                }
-            };
-        }
-    }
-
-    async fn get_chain_metadata(&mut self) -> Result<ChainMetadata, WalletError> {
-        loop {
-            if let Some(ref mut client) = self.sync_client {
-                match client
-                    .get_chain_metadata()
-                    .await
-                    .map_err(|e| WalletError::WalletRecoveryError(e.to_string()))
-                {
-                    Ok(r) => {
-                        return Ok(r);
-                    },
-                    Err(e) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Error communicating to RPC client (get_chain_metadata): {}", e
-                        );
-                        // Note: `connect_sync_client()` will err with too many connection attempts, exiting loop
-                        let _ = self.connect_sync_client().await?;
-                        continue;
-                    },
-                };
-            }
-        }
-    }
-
-    async fn get_header_by_height(&mut self, height: u64) -> Result<tari_core::proto::core::BlockHeader, WalletError> {
-        loop {
-            if let Some(ref mut client) = self.sync_client {
-                match client
-                    .get_header_by_height(height)
-                    .await
-                    .map_err(|e| WalletError::WalletRecoveryError(e.to_string()))
-                {
-                    Ok(h) => {
-                        return Ok(h);
-                    },
-                    Err(e) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Error communicating to RPC client (get_header_by_height): {}", e
-                        );
-                        // Note: `connect_sync_client()` will err with too many connection attempts, exiting loop
-                        let _ = self.connect_sync_client().await?;
-                        continue;
-                    },
-                };
-            }
-        }
-    }
-
-    async fn get_sync_utxos_stream(
-        &mut self,
-        request: SyncUtxosRequest,
-    ) -> Result<ClientStreaming<SyncUtxosResponse>, WalletError>
-    {
-        loop {
-            if let Some(ref mut client) = self.sync_client {
-                match client
-                    .sync_utxos(request.clone())
-                    .await
-                    .map_err(|e| WalletError::WalletRecoveryError(e.to_string()))
-                {
-                    Ok(s) => {
-                        return Ok(s);
-                    },
-                    Err(e) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Error communicating to RPC client (sync_utxos): {}", e
-                        );
-                        // Note: `connect_sync_client()` will err with too many connection attempts, exiting loop
-                        let _ = self.connect_sync_client().await?;
-                        continue;
-                    },
-                };
-            }
-        }
+    fn get_next_peer(&mut self) -> Option<NodeId> {
+        let peer = self.peer_seeds.get(self.peer_index).map(NodeId::from_public_key);
+        self.peer_index += 1;
+        peer
     }
 
     pub async fn run(mut self) -> Result<(), WalletError> {
-        let mut event_sender = match self.event_sender.clone() {
-            Some(sender) => sender,
-            None => {
-                return Err(WalletError::WalletRecoveryError(
-                    "No event channel provided".to_string(),
-                ))
-            },
-        };
+        loop {
+            match self.get_next_peer() {
+                Some(peer) => match self.attempt_sync(peer.clone()).await {
+                    Ok((total_scanned, final_utxo_pos, elapsed)) => {
+                        info!(target: LOG_TARGET, "Recovery successful to UTXO #{}", final_utxo_pos);
+                        self.finalize(total_scanned, final_utxo_pos, elapsed).await?;
+                        return Ok(());
+                    },
+                    Err(e) => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Failed to sync wallet from base node {}: {}", peer, e
+                        );
 
-        event_sender
-            .send(WalletRecoveryEvent::ConnectedToBaseNode(
-                self.get_connected_base_node_public_key().await?,
-            ))
-            .await
-            .map_err(|e| WalletError::WalletRecoveryError(e.to_string()))?;
-
-        let chain_metadata = &self.get_chain_metadata().await?.clone();
-        let mut chain_height = chain_metadata.height_of_longest_chain();
-
-        'main: loop {
-            let start_height = match self
-                .wallet
-                .db
-                .get_client_key_value(RECOVERY_HEIGHT_KEY.to_string())
-                .await?
-            {
+                        continue;
+                    },
+                },
                 None => {
-                    // Set a value in here so that if the recovery fails on the genesis block the client will know a
-                    // recover was started. Important on Console wallet that otherwise makes this decision based on the
-                    // presence of the data file
-                    self.wallet
-                        .db
-                        .set_client_key_value(RECOVERY_HEIGHT_KEY.to_string(), "0".to_string())
-                        .await?;
-                    0
-                },
-                Some(current_height) => match current_height.parse::<u64>() {
-                    Ok(h) => h,
-                    Err(_) => 0,
-                },
-            };
+                    self.publish_event(WalletRecoveryEvent::RecoveryRoundFailed {
+                        num_retries: self.num_retries,
+                        retry_limit: self.retry_limit,
+                    });
 
-            if start_height + RECOVERY_BATCH_SIZE >= chain_height {
-                let chain_metadata = &self.get_chain_metadata().await?;
-                chain_height = chain_metadata.height_of_longest_chain();
-            }
-            let next_height = cmp::min(start_height + RECOVERY_BATCH_SIZE, chain_height);
-
-            info!(
-                target: LOG_TARGET,
-                "Wallet recovery attempting to recover from Block {} to Block {} with current chain tip at {}",
-                start_height,
-                next_height,
-                chain_height
-            );
-            debug!(
-                target: LOG_TARGET,
-                "Percentage complete: {}%",
-                ((start_height as f32) * 100f32 / (chain_height as f32)).round() as u32
-            );
-
-            let timer = Instant::now();
-            let start_header = self.get_header_by_height(start_height).await?;
-            let start_header = BlockHeader::try_from(start_header).map_err(WalletError::WalletRecoveryError)?;
-            let start_mmr_leaf_index = if start_height == 0 {
-                0
-            } else {
-                start_header.output_mmr_size
-            };
-
-            let end_header = self.get_header_by_height(next_height).await?;
-            let end_header = BlockHeader::try_from(end_header).map_err(WalletError::WalletRecoveryError)?;
-            let end_header_hash = end_header.hash();
-            let fetch_header_info_time = timer.elapsed().as_millis();
-
-            let request = SyncUtxosRequest {
-                start: start_mmr_leaf_index,
-                end_header_hash,
-            };
-            let mut processing_time = 0u128;
-            let mut num_utxos = 0;
-            let mut total_amount = MicroTari::from(0);
-            'stream_utxos: loop {
-                let mut output_stream = self.get_sync_utxos_stream(request.clone()).await?;
-                while let Some(result) = output_stream.next().await {
-                    match result {
-                        Ok(response) => {
-                            let timer = Instant::now();
-
-                            let outputs: Vec<TransactionOutput> = response
-                                .utxos
-                                .into_iter()
-                                .filter_map(|utxo| {
-                                    if let Some(output) = utxo.output {
-                                        TransactionOutput::try_from(output).ok()
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect();
-
-                            let unblinded_outputs = self.wallet.output_manager_service.rewind_outputs(outputs).await?;
-
-                            if !unblinded_outputs.is_empty() {
-                                for uo in unblinded_outputs {
-                                    match self
-                                        .wallet
-                                        .import_utxo(
-                                            uo.value,
-                                            &uo.spending_key,
-                                            &self.wallet.comms.node_identity().public_key().clone(),
-                                            format!("Recovered on {}.", Utc::now().naive_utc()),
-                                        )
-                                        .await
-                                    {
-                                        Ok(_) => {
-                                            num_utxos += 1;
-                                            total_amount += uo.value;
-                                        },
-                                        Err(WalletError::OutputManagerError(
-                                            OutputManagerError::OutputManagerStorageError(
-                                                OutputManagerStorageError::DuplicateOutput,
-                                            ),
-                                        )) => debug!(target: LOG_TARGET, "Recovered output already in database"),
-                                        Err(e) => return Err(e),
-                                    }
-                                }
-                            }
-                            processing_time += timer.elapsed().as_millis();
-                        },
-                        Err(e) => {
-                            if e.status_code() == RpcStatusCode::Timeout {
-                                debug!(target: LOG_TARGET, "Fetch UTXOs RPC response timeout, retrying...");
-                                continue 'stream_utxos;
-                            };
-                            return Err(WalletError::WalletRecoveryError(e.to_string()));
-                        },
+                    if self.num_retries >= self.retry_limit {
+                        return Err(WalletError::WalletRecoveryError(format!(
+                            "Failed to recover wallet after {} attempt(s) using all {} sync peer(s). Aborting...",
+                            self.num_retries,
+                            self.peer_seeds.len()
+                        )));
                     }
-                }
-                break 'stream_utxos;
-            }
-            let fetch_utxos_time = timer.elapsed().as_millis() - fetch_header_info_time - processing_time;
-            trace!(
-                target: LOG_TARGET,
-                "Timings - RPC fetch header info: {} ms, RPC fetch UTXOs: {} ms, Bulletproofs rewinding: {} ms",
-                fetch_header_info_time,
-                fetch_utxos_time,
-                processing_time,
-            );
 
-            let current_num_utxos = match self
-                .wallet
-                .db
-                .get_client_key_value(RECOVERY_NUM_UTXOS_KEY.to_string())
-                .await?
-            {
-                None => 0,
-                Some(n_str) => match n_str.parse::<u64>() {
-                    Ok(n) => n,
-                    Err(_) => 0,
+                    self.num_retries += 1;
+                    // Reset peer index to try connect to the first peer again
+                    self.peer_index = 0;
                 },
-            };
-
-            let current_total_amount = match self
-                .wallet
-                .db
-                .get_client_key_value(RECOVERY_TOTAL_AMOUNT_KEY.to_string())
-                .await?
-            {
-                None => MicroTari::from(0),
-                Some(a_str) => match a_str.parse::<u64>() {
-                    Ok(a) => MicroTari::from(a),
-                    Err(_) => MicroTari::from(0),
-                },
-            };
-
-            if next_height == chain_height {
-                let _ = self
-                    .wallet
-                    .db
-                    .clear_client_value(RECOVERY_HEIGHT_KEY.to_string())
-                    .await?;
-                let _ = self
-                    .wallet
-                    .db
-                    .clear_client_value(RECOVERY_NUM_UTXOS_KEY.to_string())
-                    .await?;
-                let _ = self
-                    .wallet
-                    .db
-                    .clear_client_value(RECOVERY_TOTAL_AMOUNT_KEY.to_string())
-                    .await?;
-                info!(
-                    target: LOG_TARGET,
-                    "Wallet recovery complete. Imported {} outputs, with a total value of {} ",
-                    current_num_utxos + num_utxos,
-                    current_total_amount + total_amount
-                );
-                event_sender
-                    .send(WalletRecoveryEvent::Progress(chain_height, chain_height))
-                    .await
-                    .map_err(|e| WalletError::WalletRecoveryError(e.to_string()))?;
-                event_sender
-                    .send(WalletRecoveryEvent::Completed(
-                        current_num_utxos + num_utxos,
-                        current_total_amount + total_amount,
-                    ))
-                    .await
-                    .map_err(|e| WalletError::WalletRecoveryError(e.to_string()))?;
-
-                break 'main;
-            } else {
-                self.wallet
-                    .db
-                    .set_client_key_value(RECOVERY_HEIGHT_KEY.to_string(), next_height.to_string())
-                    .await?;
-                self.wallet
-                    .db
-                    .set_client_key_value(
-                        RECOVERY_NUM_UTXOS_KEY.to_string(),
-                        (current_num_utxos + num_utxos).to_string(),
-                    )
-                    .await?;
-                self.wallet
-                    .db
-                    .set_client_key_value(
-                        RECOVERY_TOTAL_AMOUNT_KEY.to_string(),
-                        (current_total_amount.0 + total_amount.0).to_string(),
-                    )
-                    .await?;
-
-                if num_utxos > 0 {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Recovered {} outputs with a value of {} in this batch", num_utxos, total_amount
-                    );
-                }
-
-                event_sender
-                    .send(WalletRecoveryEvent::Progress(next_height, chain_height))
-                    .await
-                    .map_err(|e| WalletError::WalletRecoveryError(e.to_string()))?;
             }
         }
+    }
+
+    async fn finalize(&self, total_scanned: u64, final_utxo_pos: u64, elapsed: Duration) -> Result<(), WalletError> {
+        let num_recovered = self.get_metadata(RecoveryMetadataKey::NumUtxos).await?.unwrap_or(0);
+        let total_amount = self
+            .wallet
+            .db
+            .get_client_key_from_str(RECOVERY_TOTAL_AMOUNT_KEY.to_string())
+            .await?
+            .unwrap_or_else(|| 0.into());
+
+        let _ = self
+            .wallet
+            .db
+            .clear_client_value(RECOVERY_HEIGHT_KEY.to_string())
+            .await?;
+        let _ = self
+            .wallet
+            .db
+            .clear_client_value(RECOVERY_NUM_UTXOS_KEY.to_string())
+            .await?;
+        let _ = self
+            .wallet
+            .db
+            .clear_client_value(RECOVERY_TOTAL_AMOUNT_KEY.to_string())
+            .await?;
+
+        self.publish_event(WalletRecoveryEvent::Progress(final_utxo_pos, final_utxo_pos));
+        self.publish_event(WalletRecoveryEvent::Completed(
+            total_scanned,
+            num_recovered,
+            total_amount,
+            elapsed,
+        ));
 
         Ok(())
     }
+
+    async fn connect_to_peer(&mut self, peer: NodeId) -> Result<PeerConnection, WalletError> {
+        self.publish_event(WalletRecoveryEvent::ConnectingToBaseNode(peer.clone()));
+        match self.wallet.comms.connectivity().dial_peer(peer.clone()).await {
+            Ok(conn) => Ok(conn),
+            Err(e) => {
+                self.publish_event(WalletRecoveryEvent::ConnectionFailedToBaseNode {
+                    peer,
+                    num_retries: self.num_retries,
+                    retry_limit: self.retry_limit,
+                    error: e.to_string(),
+                });
+
+                return Err(e.into());
+            },
+        }
+    }
+
+    async fn attempt_sync(&mut self, peer: NodeId) -> Result<(u64, u64, Duration), WalletError> {
+        let mut connection = self.connect_to_peer(peer.clone()).await?;
+
+        let mut client = connection
+            .connect_rpc_using_builder(BaseNodeSyncRpcClient::builder().with_deadline(Duration::from_secs(60)))
+            .await
+            .map_err(to_wallet_recovery_error)?;
+
+        let latency = client
+            .get_last_request_latency()
+            .await
+            .map_err(to_wallet_recovery_error)?;
+        self.publish_event(WalletRecoveryEvent::ConnectedToBaseNode(
+            peer.clone(),
+            latency.unwrap_or_default(),
+        ));
+
+        let timer = Instant::now();
+        let mut total_scanned = 0u64;
+        loop {
+            let start_index = self.get_start_utxo_mmr_pos().await?;
+            let tip_header = self.get_chain_tip_header(&mut client, &peer).await?;
+            let output_mmr_size = tip_header.output_mmr_size;
+            debug!(
+                target: LOG_TARGET,
+                "Checking if all UTXOs are synced (start_index = {}, output_mmr_size = {}, height = {}, tip_hash = {})",
+                start_index,
+                output_mmr_size,
+                tip_header.height,
+                tip_header.hash().to_hex()
+            );
+
+            // start_index could be greater than output_mmr_size if we switch to a new peer that is behind the original
+            // peer. In the common case, we wait for start index.
+            if start_index >= output_mmr_size - 1 {
+                debug!(
+                    target: LOG_TARGET,
+                    "Sync complete to UTXO #{} in {:.2?}",
+                    start_index,
+                    timer.elapsed()
+                );
+                return Ok((total_scanned, start_index, timer.elapsed()));
+            }
+
+            let num_scanned = self.recover_utxos(&mut client, start_index, tip_header).await?;
+            debug!(
+                target: LOG_TARGET,
+                "Round completed UTXO #{} in {:.2?} ({} scanned)",
+                output_mmr_size,
+                timer.elapsed(),
+                num_scanned
+            );
+            total_scanned += num_scanned;
+        }
+    }
+
+    async fn get_chain_tip_header(
+        &self,
+        client: &mut BaseNodeSyncRpcClient,
+        peer: &NodeId,
+    ) -> Result<BlockHeader, WalletError>
+    {
+        let chain_metadata = client.get_chain_metadata().await.map_err(to_wallet_recovery_error)?;
+        if chain_metadata.effective_pruned_height > 0 {
+            return Err(WalletError::WalletRecoveryError(format!(
+                "Node {} is not an archival node",
+                peer
+            )));
+        }
+        let chain_height = chain_metadata.height_of_longest_chain();
+        let end_header = client
+            .get_header_by_height(chain_height)
+            .await
+            .map_err(to_wallet_recovery_error)?;
+        let end_header = BlockHeader::try_from(end_header).map_err(to_wallet_recovery_error)?;
+
+        Ok(end_header)
+    }
+
+    async fn get_start_utxo_mmr_pos(&self) -> Result<u64, WalletError> {
+        let previous_sync_height = self
+            .get_metadata::<u64>(RecoveryMetadataKey::Height)
+            .await
+            .ok()
+            .flatten();
+        let previous_utxo_index = self
+            .get_metadata::<u64>(RecoveryMetadataKey::UtxoIndex)
+            .await
+            .ok()
+            .flatten();
+
+        if previous_sync_height.is_none() || previous_utxo_index.is_none() {
+            // Set a value in here so that if the recovery fails on the genesis block the client will know a
+            // recover was started. Important on Console wallet that otherwise makes this decision based on the
+            // presence of the data file
+            self.set_metadata(RecoveryMetadataKey::Height, 0u64).await?;
+            self.set_metadata(RecoveryMetadataKey::UtxoIndex, 0u64).await?;
+        }
+
+        Ok(previous_utxo_index.unwrap_or(0u64))
+    }
+
+    async fn recover_utxos(
+        &mut self,
+        client: &mut BaseNodeSyncRpcClient,
+        start_mmr_leaf_index: u64,
+        end_header: BlockHeader,
+    ) -> Result<u64, WalletError>
+    {
+        info!(
+            target: LOG_TARGET,
+            "Wallet recovery attempting to recover from UTXO #{} to #{} (height {})",
+            start_mmr_leaf_index,
+            end_header.output_mmr_size,
+            end_header.height
+        );
+
+        let end_header_hash = end_header.hash();
+        let end_header_size = end_header.output_mmr_size;
+
+        let mut num_recovered = 0u64;
+        let mut total_amount = MicroTari::from(0);
+        let mut total_scanned = 0;
+
+        self.publish_event(WalletRecoveryEvent::Progress(start_mmr_leaf_index, end_header_size - 1));
+        let request = SyncUtxosRequest {
+            start: start_mmr_leaf_index,
+            end_header_hash,
+            include_pruned_utxos: false,
+            include_deleted_bitmaps: false,
+        };
+
+        let utxo_stream = client.sync_utxos2(request).await.map_err(to_wallet_recovery_error)?;
+        // We download in chunks just because rewind_outputs works with multiple outputs (and could parallelized
+        // rewinding)
+        let mut utxo_stream = utxo_stream.chunks(10);
+        let mut last_utxo_index = 0u64;
+        let mut iteration_count = 0u64;
+        while let Some(response) = utxo_stream.next().await {
+            let response: Vec<proto::base_node::SyncUtxos2Response> = response
+                .into_iter()
+                .map(|v| v.map_err(to_wallet_recovery_error))
+                .collect::<Result<Vec<_>, _>>()?;
+
+            let current_utxo_index = response
+                // Assumes correct ordering which is otherwise not required for this protocol
+                .last()
+                .ok_or_else(|| {
+                    WalletError::WalletRecoveryError("Invalid response from base node: response was empty".to_string())
+                })?
+                .mmr_index;
+            if current_utxo_index < last_utxo_index {
+                return Err(WalletError::WalletRecoveryError(
+                    "Invalid response from base node: mmr index must be non-decreasing".to_string(),
+                ));
+            }
+            last_utxo_index = current_utxo_index;
+
+            let outputs = response
+                .into_iter()
+                .filter_map(|utxo| {
+                    utxo.into_utxo()
+                        .and_then(|o| o.utxo)
+                        .and_then(|utxo| utxo.into_transaction_output())
+                        .map(|output| TransactionOutput::try_from(output).map_err(to_wallet_recovery_error))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+
+            total_scanned += outputs.len();
+            // Reduce the number of db hits by only persisting progress every N iterations
+            const COMMIT_EVERY_N: u64 = 100;
+            if iteration_count % COMMIT_EVERY_N == 0 || current_utxo_index >= end_header_size - 1 {
+                self.publish_event(WalletRecoveryEvent::Progress(current_utxo_index, end_header_size - 1));
+                self.set_metadata(RecoveryMetadataKey::UtxoIndex, current_utxo_index)
+                    .await?;
+            }
+
+            iteration_count += 1;
+            let unblinded_outputs = self.wallet.output_manager_service.rewind_outputs(outputs).await?;
+            if unblinded_outputs.is_empty() {
+                continue;
+            }
+
+            let source_public_key = self.wallet.comms.node_identity_ref().public_key().clone();
+
+            for uo in unblinded_outputs {
+                match self
+                    .wallet
+                    .import_utxo(
+                        uo.value,
+                        &uo.spending_key,
+                        &source_public_key,
+                        format!("Recovered on {}.", Utc::now().naive_utc()),
+                    )
+                    .await
+                {
+                    Ok(_) => {
+                        num_recovered = num_recovered.saturating_add(1);
+                        total_amount += uo.value;
+                    },
+                    Err(WalletError::OutputManagerError(OutputManagerError::OutputManagerStorageError(
+                        OutputManagerStorageError::DuplicateOutput,
+                    ))) => warn!(target: LOG_TARGET, "Recovered output already in database"),
+                    Err(e) => return Err(e),
+                }
+            }
+        }
+
+        self.set_metadata(RecoveryMetadataKey::Height, end_header.height)
+            .await?;
+
+        let current_num_utxos = self.get_metadata(RecoveryMetadataKey::NumUtxos).await?.unwrap_or(0u64);
+        self.set_metadata(
+            RecoveryMetadataKey::NumUtxos,
+            (current_num_utxos + num_recovered).to_string(),
+        )
+        .await?;
+
+        let current_total_amount = self
+            .get_metadata::<MicroTari>(RecoveryMetadataKey::TotalAmount)
+            .await?
+            .unwrap_or_else(|| 0.into());
+
+        self.set_metadata(RecoveryMetadataKey::UtxoIndex, last_utxo_index)
+            .await?;
+        self.set_metadata(
+            RecoveryMetadataKey::TotalAmount,
+            (current_total_amount + total_amount).as_u64().to_string(),
+        )
+        .await?;
+
+        self.publish_event(WalletRecoveryEvent::Progress(end_header_size - 1, end_header_size - 1));
+
+        Ok(total_scanned as u64)
+    }
+
+    async fn set_metadata<T: ToString>(&self, key: RecoveryMetadataKey, value: T) -> Result<(), WalletError> {
+        self.wallet
+            .db
+            .set_client_key_value(key.as_key_str().to_string(), value.to_string())
+            .await?;
+        Ok(())
+    }
+
+    async fn get_metadata<T>(&self, key: RecoveryMetadataKey) -> Result<Option<T>, WalletError>
+    where
+        T: FromStr,
+        T::Err: ToString,
+    {
+        let value = self
+            .wallet
+            .db
+            .get_client_key_from_str(key.as_key_str().to_string())
+            .await?;
+        Ok(value)
+    }
+
+    fn publish_event(&self, event: WalletRecoveryEvent) {
+        let _ = self.event_sender.send(event);
+    }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+enum RecoveryMetadataKey {
+    TotalAmount,
+    NumUtxos,
+    UtxoIndex,
+    Height,
+}
+
+impl RecoveryMetadataKey {
+    pub fn as_key_str(&self) -> &'static str {
+        use RecoveryMetadataKey::*;
+        match self {
+            TotalAmount => RECOVERY_TOTAL_AMOUNT_KEY,
+            NumUtxos => RECOVERY_NUM_UTXOS_KEY,
+            UtxoIndex => RECOVERY_UTXO_INDEX_KEY,
+            Height => RECOVERY_HEIGHT_KEY,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum WalletRecoveryEvent {
-    ConnectedToBaseNode(CommsPublicKey),
+    ConnectingToBaseNode(NodeId),
+    ConnectedToBaseNode(NodeId, Duration),
+    ConnectionFailedToBaseNode {
+        peer: NodeId,
+        num_retries: usize,
+        retry_limit: usize,
+        error: String,
+    },
+    RecoveryRoundFailed {
+        num_retries: usize,
+        retry_limit: usize,
+    },
     /// Progress of the recovery process (current_block, current_chain_height)
     Progress(u64, u64),
-    /// Completed Recovery (Num of Recovered outputs, Value of recovered outputs)
-    Completed(u64, MicroTari),
+    /// Completed Recovery (Number scanned, Num of Recovered outputs, Value of recovered outputs, Time taken)
+    Completed(u64, u64, MicroTari, Duration),
+}
+
+// TODO: Replace this with WalletRecoveryError error object
+fn to_wallet_recovery_error<T: ToString>(err: T) -> WalletError {
+    WalletError::WalletRecoveryError(err.to_string())
 }
