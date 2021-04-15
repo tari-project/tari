@@ -47,10 +47,10 @@ use tokio::sync::broadcast;
 
 pub const LOG_TARGET: &str = "wallet::recovery";
 
-pub const RECOVERY_HEIGHT_KEY: &'static str = "recovery/height-progress";
-const RECOVERY_NUM_UTXOS_KEY: &'static str = "recovery/num-utxos";
-const RECOVERY_UTXO_INDEX_KEY: &'static str = "recovery/utxos-index";
-const RECOVERY_TOTAL_AMOUNT_KEY: &'static str = "recovery/total-amount";
+pub const RECOVERY_HEIGHT_KEY: &str = "recovery/height-progress";
+const RECOVERY_NUM_UTXOS_KEY: &str = "recovery/num-utxos";
+const RECOVERY_UTXO_INDEX_KEY: &str = "recovery/utxos-index";
+const RECOVERY_TOTAL_AMOUNT_KEY: &str = "recovery/total-amount";
 
 #[derive(Debug, Default, Clone)]
 pub struct WalletRecoveryTaskBuilder {
@@ -200,7 +200,7 @@ impl WalletRecoveryTask {
                     error: e.to_string(),
                 });
 
-                return Err(e.into());
+                Err(e.into())
             },
         }
     }
