@@ -25,6 +25,8 @@ mod service;
 #[cfg(feature = "base_node")]
 pub use service::BaseNodeSyncRpcService;
 
+// mod sync_utxos;
+
 // TODO: Tests need to be rewritten
 // #[cfg(test)]
 // mod tests;
@@ -40,7 +42,6 @@ use crate::{
         SyncBlocksRequest,
         SyncHeadersRequest,
         SyncKernelsRequest,
-        SyncUtxos2Response,
         SyncUtxosRequest,
         SyncUtxosResponse,
     },
@@ -86,12 +87,8 @@ pub trait BaseNodeSyncService: Send + Sync + 'static {
         request: Request<SyncKernelsRequest>,
     ) -> Result<Streaming<proto::types::TransactionKernel>, RpcStatus>;
 
-    #[rpc(method = 7)]
-    async fn sync_utxos(&self, request: Request<SyncUtxosRequest>) -> Result<Streaming<SyncUtxosResponse>, RpcStatus>;
-
     #[rpc(method = 8)]
-    async fn sync_utxos2(&self, request: Request<SyncUtxosRequest>)
-        -> Result<Streaming<SyncUtxos2Response>, RpcStatus>;
+    async fn sync_utxos(&self, request: Request<SyncUtxosRequest>) -> Result<Streaming<SyncUtxosResponse>, RpcStatus>;
 }
 
 #[cfg(feature = "base_node")]

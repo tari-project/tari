@@ -38,9 +38,12 @@ use serde::{
     Serialize,
     Serializer,
 };
-use std::{fmt, fmt::Display};
+use std::{
+    fmt,
+    fmt::{Display, Formatter},
+};
 use tari_crypto::tari_utilities::hex::Hex;
-use tari_mmr::pruned_hashset::PrunedHashSet;
+use tari_mmr::{pruned_hashset::PrunedHashSet, ArrayLike};
 
 const LOG_TARGET: &str = "c::bn::acc_data";
 
@@ -102,6 +105,19 @@ impl Default for BlockAccumulatedData {
             range_proofs: Default::default(),
             kernel_sum: Default::default(),
         }
+    }
+}
+
+impl Display for BlockAccumulatedData {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "{} output(s), {} spent, {} kernel(s), {} rangeproof(s)",
+            self.outputs.len().unwrap_or(0),
+            self.deleted.deleted.cardinality(),
+            self.kernels.len().unwrap_or(0),
+            self.range_proofs.len().unwrap_or(0)
+        )
     }
 }
 

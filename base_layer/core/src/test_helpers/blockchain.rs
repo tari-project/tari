@@ -245,7 +245,7 @@ impl BlockchainBackend for TempDatabase {
         start: u64,
         end: u64,
         deleted: &Bitmap,
-    ) -> Result<(Vec<PrunedOutput>, Vec<Bitmap>), ChainStorageError>
+    ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError>
     {
         self.db.fetch_utxos_by_mmr_position(start, end, deleted)
     }

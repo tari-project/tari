@@ -31,20 +31,20 @@ impl From<Block> for proto::BlockBodyResponse {
     }
 }
 
-impl From<PrunedOutput> for proto::SyncUtxo2 {
+impl From<PrunedOutput> for proto::SyncUtxo {
     fn from(output: PrunedOutput) -> Self {
         match output {
             PrunedOutput::Pruned {
                 output_hash,
                 range_proof_hash,
-            } => proto::SyncUtxo2 {
-                utxo: Some(proto::sync_utxo2::Utxo::PrunedOutput(proto::PrunedOutput {
+            } => proto::SyncUtxo {
+                utxo: Some(proto::sync_utxo::Utxo::PrunedOutput(proto::PrunedOutput {
                     hash: output_hash,
                     rangeproof_hash: range_proof_hash,
                 })),
             },
-            PrunedOutput::NotPruned { output } => proto::SyncUtxo2 {
-                utxo: Some(proto::sync_utxo2::Utxo::Output(output.into())),
+            PrunedOutput::NotPruned { output } => proto::SyncUtxo {
+                utxo: Some(proto::sync_utxo::Utxo::Output(output.into())),
             },
         }
     }

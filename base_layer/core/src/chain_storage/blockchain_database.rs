@@ -409,7 +409,7 @@ where B: BlockchainBackend
         start: u64,
         end: u64,
         end_header_hash: HashOutput,
-    ) -> Result<(Vec<PrunedOutput>, Vec<Bitmap>), ChainStorageError>
+    ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError>
     {
         let db = self.db_read_access()?;
         let accum_data = db.fetch_block_accumulated_data(&end_header_hash).or_not_found(
