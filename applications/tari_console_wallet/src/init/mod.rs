@@ -194,13 +194,17 @@ pub async fn get_base_node_peer_config(
 }
 
 /// Determines which mode the wallet should run in.
-pub fn wallet_mode(bootstrap: ConfigBootstrap, boot_mode: WalletBoot) -> WalletMode {
+pub fn wallet_mode(bootstrap: &ConfigBootstrap, boot_mode: WalletBoot) -> WalletMode {
     // Recovery mode
     if matches!(boot_mode, WalletBoot::Recovery) {
         return WalletMode::Recovery;
     }
 
-    match (bootstrap.daemon_mode, bootstrap.input_file, bootstrap.command) {
+    match (
+        bootstrap.daemon_mode,
+        bootstrap.input_file.clone(),
+        bootstrap.command.clone(),
+    ) {
         // TUI mode
         (false, None, None) => WalletMode::Tui,
         // GRPC daemon mode
@@ -496,7 +500,12 @@ async fn set_master_key(
 }
 
 /// Starts the wallet by setting the base node peer, and restarting the transaction and broadcast protocols.
-pub async fn start_wallet(wallet: &mut WalletSqlite, base_node: &Peer) -> Result<(), ExitCodes> {
+pub async fn start_wallet(
+    wallet: &mut WalletSqlite,
+    base_node: &Peer,
+    wallet_mode: &WalletMode,
+) -> Result<(), ExitCodes>
+{
     // TODO gRPC interfaces for setting base node
     debug!(target: LOG_TARGET, "Setting base node peer");
 
@@ -511,25 +520,27 @@ pub async fn start_wallet(wallet: &mut WalletSqlite, base_node: &Peer) -> Result
         .await
         .map_err(|e| ExitCodes::WalletError(format!("Error setting wallet base node peer. {}", e)))?;
 
-    // Restart transaction protocols
-    if let Err(e) = wallet.transaction_service.restart_transaction_protocols().await {
-        error!(target: LOG_TARGET, "Problem restarting transaction protocols: {}", e);
-    }
-    if let Err(e) = start_transaction_validation_and_broadcast_protocols(
-        wallet.transaction_service.clone(),
-        ValidationRetryStrategy::UntilSuccess,
-    )
-    .await
-    {
-        error!(
-            target: LOG_TARGET,
-            "Problem validating and restarting transaction protocols: {}", e
-        );
-    }
+    // Restart transaction protocols if not running in script or command modes
 
-    // validate transaction outputs
-    validate_txos(wallet).await?;
+    if !matches!(wallet_mode, WalletMode::Command(_)) && !matches!(wallet_mode, WalletMode::Script(_)) {
+        if let Err(e) = wallet.transaction_service.restart_transaction_protocols().await {
+            error!(target: LOG_TARGET, "Problem restarting transaction protocols: {}", e);
+        }
+        if let Err(e) = start_transaction_validation_and_broadcast_protocols(
+            wallet.transaction_service.clone(),
+            ValidationRetryStrategy::UntilSuccess,
+        )
+        .await
+        {
+            error!(
+                target: LOG_TARGET,
+                "Problem validating and restarting transaction protocols: {}", e
+            );
+        }
 
+        // validate transaction outputs
+        validate_txos(wallet).await?;
+    }
     Ok(())
 }
 
