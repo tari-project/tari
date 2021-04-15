@@ -72,6 +72,7 @@ pub use tari_crypto as crypto;
 
 #[allow(clippy::ptr_offset_with_cast)]
 #[allow(clippy::assign_op_pattern)]
+// #[allow(clippy::fallible_impl_from)]
 pub mod large_ints {
     uint::construct_uint! {
         /// 256-bit unsigned integer.

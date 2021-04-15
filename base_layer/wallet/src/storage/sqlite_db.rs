@@ -325,6 +325,72 @@ impl WalletSqliteDatabase {
             Ok(None)
         }
     }
+
+    fn insert_key_value_pair(&self, kvp: DbKeyValuePair) -> Result<Option<DbValue>, WalletStorageError> {
+        let conn = self.database_connection.acquire_lock();
+        match kvp {
+            DbKeyValuePair::CommsSecretKey(sk) => {
+                self.set_comms_private_key(&sk, &(*conn))?;
+            },
+            DbKeyValuePair::Identity(node_id) => {
+                self.set_node_id(&node_id, &(*conn))?;
+            },
+            DbKeyValuePair::TorId(node_id) => {
+                self.set_tor_id(node_id, &(*conn))?;
+            },
+            DbKeyValuePair::BaseNodeChainMetadata(metadata) => {
+                self.set_chain_metadata(metadata, &(*conn))?;
+            },
+            DbKeyValuePair::ClientKeyValue(k, v) => {
+                // First see if we will overwrite a value so we can return the old value
+                let value_to_return = if let Some(mut found_value) = ClientKeyValueSql::get(&k, &conn)? {
+                    self.decrypt_if_necessary(&mut found_value)?;
+                    Some(found_value)
+                } else {
+                    None
+                };
+
+                let mut client_key_value = ClientKeyValueSql::new(k, v);
+                self.encrypt_if_necessary(&mut client_key_value)?;
+
+                client_key_value.set(&conn)?;
+
+                return Ok(value_to_return.map(|v| DbValue::ClientValue(v.value)));
+            },
+        }
+        Ok(None)
+    }
+
+    fn remove_key(&self, k: DbKey) -> Result<Option<DbValue>, WalletStorageError> {
+        let conn = self.database_connection.acquire_lock();
+        match k {
+            DbKey::CommsSecretKey => {
+                let _ = WalletSettingSql::clear(DbKey::CommsSecretKey.to_string(), &conn)?;
+            },
+            DbKey::CommsPublicKey => return Err(WalletStorageError::OperationNotSupported),
+            DbKey::ClientKey(k) => {
+                if ClientKeyValueSql::clear(&k, &conn)? {
+                    return Ok(Some(DbValue::ValueCleared));
+                }
+            },
+            DbKey::Identity => {
+                return Err(WalletStorageError::OperationNotSupported);
+            },
+            DbKey::CommsFeatures => {
+                return Err(WalletStorageError::OperationNotSupported);
+            },
+            DbKey::CommsAddress => {
+                return Err(WalletStorageError::OperationNotSupported);
+            },
+            DbKey::BaseNodeChainMetadata => {
+                return Err(WalletStorageError::OperationNotSupported);
+            },
+            DbKey::TorId => {
+                let _ = WalletSettingSql::clear(DbKey::TorId.to_string(), &conn)?;
+            },
+        };
+        Ok(None)
+    }
 }
 
 impl WalletBackend for WalletSqliteDatabase {
@@ -375,67 +441,10 @@ impl WalletBackend for WalletSqliteDatabase {
     }
 
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, WalletStorageError> {
-        let conn = self.database_connection.acquire_lock();
         match op {
-            WriteOperation::Insert(kvp) => match kvp {
-                DbKeyValuePair::CommsSecretKey(sk) => {
-                    self.set_comms_private_key(&sk, &(*conn))?;
-                },
-                DbKeyValuePair::Identity(node_id) => {
-                    self.set_node_id(&node_id, &(*conn))?;
-                },
-                DbKeyValuePair::TorId(node_id) => {
-                    self.set_tor_id(node_id, &(*conn))?;
-                },
-                DbKeyValuePair::BaseNodeChainMetadata(metadata) => {
-                    self.set_chain_metadata(metadata, &(*conn))?;
-                },
-                DbKeyValuePair::ClientKeyValue(k, v) => {
-                    // First see if we will overwrite a value so we can return the old value
-                    let value_to_return = if let Some(mut found_value) = ClientKeyValueSql::get(&k, &conn)? {
-                        self.decrypt_if_necessary(&mut found_value)?;
-                        Some(found_value)
-                    } else {
-                        None
-                    };
-
-                    let mut client_key_value = ClientKeyValueSql::new(k, v);
-                    self.encrypt_if_necessary(&mut client_key_value)?;
-
-                    client_key_value.set(&conn)?;
-
-                    return Ok(value_to_return.map(|v| DbValue::ClientValue(v.value)));
-                },
-            },
-            WriteOperation::Remove(k) => match k {
-                DbKey::CommsSecretKey => {
-                    let _ = WalletSettingSql::clear(DbKey::CommsSecretKey.to_string(), &conn)?;
-                },
-                DbKey::CommsPublicKey => return Err(WalletStorageError::OperationNotSupported),
-                DbKey::ClientKey(k) => {
-                    if ClientKeyValueSql::clear(&k, &conn)? {
-                        return Ok(Some(DbValue::ValueCleared));
-                    }
-                },
-                DbKey::Identity => {
-                    return Err(WalletStorageError::OperationNotSupported);
-                },
-                DbKey::CommsFeatures => {
-                    return Err(WalletStorageError::OperationNotSupported);
-                },
-                DbKey::CommsAddress => {
-                    return Err(WalletStorageError::OperationNotSupported);
-                },
-                DbKey::BaseNodeChainMetadata => {
-                    return Err(WalletStorageError::OperationNotSupported);
-                },
-                DbKey::TorId => {
-                    let _ = WalletSettingSql::clear(DbKey::TorId.to_string(), &conn)?;
-                },
-            },
+            WriteOperation::Insert(kvp) => self.insert_key_value_pair(kvp),
+            WriteOperation::Remove(k) => self.remove_key(k),
         }
-
-        Ok(None)
     }
 
     fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), WalletStorageError> {
