@@ -4195,7 +4195,7 @@ dependencies = [
  "tokio",
  "tokio-macros",
  "ttl_cache",
- "uint 0.8.5",
+ "uint 0.9.0",
 ]
 
 [[package]]
@@ -5197,6 +5197,18 @@ dependencies = [
  "byteorder",
  "crunchy 0.2.2",
  "rustc-hex",
+ "static_assertions 1.1.0",
+]
+
+[[package]]
+name = "uint"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e11fe9a9348741cf134085ad57c249508345fe16411b3d7fb4ff2da2f1d6382e"
+dependencies = [
+ "byteorder",
+ "crunchy 0.2.2",
+ "hex",
  "static_assertions 1.1.0",
 ]
 

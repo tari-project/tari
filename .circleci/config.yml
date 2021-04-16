@@ -73,7 +73,10 @@ commands:
             rustup component add --toolchain $TOOLCHAIN rustfmt
             cargo fmt --all -- --check
       - run:
-          name: Run clippy
+          name: Run clippy (main source)
+          command: cargo clippy -- -D warnings -W clippy::cognitive_complexity
+      - run:
+          name: Run clippy (all targets)
           command: cargo clippy --all-targets -- -D warnings
       - save_cache:
           paths:

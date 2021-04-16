@@ -407,11 +407,11 @@ fn reset_state(state: Arc<RwLock<BaseNodeState>>, event_publisher: &mut BaseNode
 async fn wait_or_shutdown(mut delay: Fuse<Delay>, mut shutdown_signal: &mut ShutdownSignal) -> bool {
     select! {
         _ = delay => {
-            return true;
+            true
         },
          _ = shutdown_signal => {
             debug!(target: LOG_TARGET, "Wallet Base Node Service chain metadata task shutting down because the shutdown signal was received");
-            return false;
+            false
         }
     }
 }
