@@ -8,11 +8,11 @@ Feature: Reorgs
     And I have wallet WB connected to base node B
     And I have mining node BM connected to base node B and wallet WB
     When I stop SA
-    And Mining node BM mines 3 blocks on B
+    And mining node BM mines 3 blocks
     Given I have a base node C connected to seed SA
     And I have wallet WC connected to base node C
     And I have mining node CM connected to base node C and wallet WC
-    And Mining node CM mines 15 blocks on C
+    And mining node CM mines 15 blocks
     Then node B is at height 3
     And node C is at height 15
     When I start SA

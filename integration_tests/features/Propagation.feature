@@ -4,8 +4,8 @@ Feature: Block Propagation
   Scenario Outline: Blocks are propagated through the network
     Given I have <NumSeeds> seed nodes
     And I have <NumNonSeeds> base nodes connected to all seed nodes
-    And I have a base node MINER connected to all seed nodes
-    When I mine <NumBlocks> blocks on MINER
+    And I have a SHA3 miner MINER connected to all seed nodes
+    And mining node MINER mines <NumBlocks> blocks
     Then all nodes are at height <NumBlocks>
     @critical
     Examples:
@@ -26,8 +26,8 @@ Feature: Block Propagation
   Scenario: Simple propagation
     Given I have 2 seed nodes
     And I have 4 base nodes connected to all seed nodes
-    And I have a base node MINER connected to all seed nodes
-    When I mine 5 blocks on MINER
+    And I have a SHA3 miner MINER connected to all seed nodes
+    And mining node MINER mines 5 blocks
     Then node MINER is at height 5
     Then all nodes are at height 5
 
@@ -60,26 +60,26 @@ Feature: Block Propagation
   @non-sync-propagation @long-running
   Scenario: Nodes should never switch to block sync but keep insync via propagation
     Given I have 1 seed nodes
-    Given I have a base node MINER connected to all seed nodes
+    Given I have a SHA3 miner MINER connected to all seed nodes
     And I have a lagging delayed node LAG1 connected to node MINER with blocks_behind_before_considered_lagging 10000
     Given I have a lagging delayed node LAG2 connected to node MINER with blocks_behind_before_considered_lagging 10000
         # Wait for node to so start and get into listing mode
     When I wait 100 seconds
-    When I mine 5 blocks on MINER
+    When mining node MINER mines 5 blocks
     Then all nodes are at height 5
-    When I mine 15 blocks on MINER
+    Given mining node MINER mines 15 blocks
     Then all nodes are at height 20
 
   @long-running
   Scenario: Node should lag for while before syncing
     Given I have 1 seed nodes
-    Given I have a base node MINER connected to all seed nodes
+    Given I have a SHA3 miner MINER connected to all seed nodes
     And I have a lagging delayed node LAG1 connected to node MINER with blocks_behind_before_considered_lagging 6
-    When I mine 1 blocks on MINER
+    Given mining node MINER mines 1 blocks
     When I wait 100 seconds
     When I stop LAG1
     When I wait 10 seconds
-    When I mine 5 blocks on MINER
+    And mining node MINER mines 5 blocks
     When I wait 100 seconds
     When I start LAG1
         # Wait for node to so start and get into listing mode
@@ -87,7 +87,7 @@ Feature: Block Propagation
     Then node MINER is at height 6
     #node was shutdown, so it never received the propagation messages
     Then node LAG1 is at height 1
-    When I mine 1 blocks on MINER
+    Given mining node MINER mines 1 blocks
     Then node MINER is at height 7
     When I wait 20 seconds
     Then all nodes are at height 7
