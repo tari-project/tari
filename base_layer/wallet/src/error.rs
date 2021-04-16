@@ -36,6 +36,7 @@ use tari_comms::{
     peer_manager::{node_id::NodeIdError, PeerManagerError},
 };
 use tari_comms_dht::store_forward::StoreAndForwardError;
+use tari_core::transactions::transaction::TransactionError;
 use tari_crypto::tari_utilities::{hex::HexError, ByteArrayError};
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
 use tari_service_framework::ServiceInitializationError;
@@ -75,6 +76,8 @@ pub enum WalletError {
     WalletRecoveryError(String),
     #[error("Shutdown Signal Received")]
     Shutdown,
+    #[error("Transaction Error: {0}")]
+    TransactionError(#[from] TransactionError),
 }
 
 #[derive(Debug, Error)]

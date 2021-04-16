@@ -20,39 +20,43 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::utils::{make_input, random_string};
-use rand::rngs::OsRng;
-use std::{panic, sync::Arc, time::Duration};
-use tari_comms::{
-    multiaddr::Multiaddr,
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
-    types::CommsPublicKey,
+use crate::support::{
+    comms_and_services::get_next_memory_address,
+    utils::{make_input, random_string},
 };
-use tari_comms_dht::DhtConfig;
-use tari_core::transactions::{tari_amount::MicroTari, types::CryptoFactories};
-use tari_crypto::keys::PublicKey;
-use tari_p2p::initialization::CommsConfig;
-use tari_shutdown::{Shutdown, ShutdownSignal};
-
-use crate::support::comms_and_services::get_next_memory_address;
 use aes_gcm::{
     aead::{generic_array::GenericArray, NewAead},
     Aes256Gcm,
 };
 use digest::Digest;
 use futures::{FutureExt, StreamExt};
-use std::path::Path;
+use rand::rngs::OsRng;
+use std::{panic, path::Path, sync::Arc, time::Duration};
 use tari_common_types::chain_metadata::ChainMetadata;
+use tari_comms::{
+    multiaddr::Multiaddr,
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    types::CommsPublicKey,
+};
+use tari_comms_dht::DhtConfig;
 use tari_core::{
     consensus::Network,
-    transactions::{tari_amount::uT, transaction::UnblindedOutput, types::PrivateKey},
+    transactions::{
+        tari_amount::{uT, MicroTari},
+        transaction::UnblindedOutput,
+        types::{CryptoFactories, PrivateKey, PublicKey},
+    },
 };
-use tari_crypto::common::Blake256;
-use tari_p2p::{transport::TransportType, DEFAULT_DNS_SEED_RESOLVER};
+use tari_crypto::{
+    common::Blake256,
+    keys::PublicKey as PublicKeyTrait,
+    script::{ExecutionStack, TariScript},
+};
+use tari_p2p::{initialization::CommsConfig, transport::TransportType, DEFAULT_DNS_SEED_RESOLVER};
+use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_wallet::{
     contacts_service::storage::{database::Contact, memory_db::ContactsServiceMemoryDatabase},
     error::{WalletError, WalletStorageError},
-    output_manager_service::storage::memory_db::OutputManagerMemoryDatabase,
     storage::{
         database::{DbKeyValuePair, WalletBackend, WalletDatabase, WriteOperation},
         memory_db::WalletMemoryDatabase,
@@ -63,7 +67,7 @@ use tari_wallet::{
             run_migration_and_create_sqlite_connection,
         },
     },
-    test_utils::make_transaction_database,
+    test_utils::make_wallet_databases,
     transaction_service::{config::TransactionServiceConfig, handle::TransactionEvent},
     wallet::WalletConfig,
     Wallet,
@@ -137,7 +141,7 @@ async fn create_wallet(
         factories,
         Some(transaction_service_config),
         None,
-        Network::Stibbons,
+        Network::Weatherwax,
         None,
         None,
         None,
@@ -577,7 +581,7 @@ async fn test_import_utxo() {
     )
     .unwrap();
     let temp_dir = tempdir().unwrap();
-    let (tx_backend, _temp_dir) = make_transaction_database(None);
+    let (tx_backend, oms_backend, _temp_dir) = make_wallet_databases(None);
     let comms_config = CommsConfig {
         node_identity: Arc::new(alice_identity.clone()),
         transport_type: TransportType::Tcp {
@@ -603,7 +607,7 @@ async fn test_import_utxo() {
         factories.clone(),
         None,
         None,
-        Network::Stibbons,
+        Network::Weatherwax,
         None,
         None,
         None,
@@ -612,14 +616,23 @@ async fn test_import_utxo() {
         config,
         WalletMemoryDatabase::new(),
         tx_backend,
-        OutputManagerMemoryDatabase::new(),
+        oms_backend,
         ContactsServiceMemoryDatabase::new(),
         shutdown.to_signal(),
     )
     .await
     .unwrap();
 
-    let utxo = UnblindedOutput::new(20000 * uT, PrivateKey::default(), None);
+    let utxo = UnblindedOutput::new(
+        20000 * uT,
+        PrivateKey::default(),
+        None,
+        TariScript::default(),
+        ExecutionStack::default(),
+        0,
+        PrivateKey::default(),
+        PublicKey::default(),
+    );
 
     let tx_id = alice_wallet
         .import_utxo(
@@ -668,7 +681,7 @@ async fn test_data_generation() {
         outbound_buffer_size: 100,
         dht: DhtConfig {
             discovery_request_timeout: Duration::from_millis(500),
-            network: DhtNetwork::Stibbons,
+            network: DhtNetwork::Weatherwax,
             ..Default::default()
         },
         allow_test_addresses: true,
@@ -681,9 +694,18 @@ async fn test_data_generation() {
         dns_seeds_use_dnssec: false,
     };
 
-    let config = WalletConfig::new(comms_config, factories, None, None, Network::Stibbons, None, None, None);
+    let config = WalletConfig::new(
+        comms_config,
+        factories,
+        None,
+        None,
+        Network::Weatherwax,
+        None,
+        None,
+        None,
+    );
 
-    let (transaction_backend, _temp_dir) = make_transaction_database(None);
+    let (transaction_backend, oms_backend, _temp_dir) = make_wallet_databases(None);
 
     let db = WalletMemoryDatabase::new();
 
@@ -696,7 +718,7 @@ async fn test_data_generation() {
         config,
         db,
         transaction_backend.clone(),
-        OutputManagerMemoryDatabase::new(),
+        oms_backend,
         ContactsServiceMemoryDatabase::new(),
         shutdown.to_signal(),
     )

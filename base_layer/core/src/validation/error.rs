@@ -75,6 +75,8 @@ pub enum ValidationError {
     UnsortedOrDuplicateOutput,
     #[error("Error in merge mine data:{0}")]
     MergeMineError(#[from] MergeMineError),
+    #[error("Contains an input with an invalid mined-height in body")]
+    InvalidMinedHeight,
     #[error("Maximum transaction weight exceeded")]
     MaxTransactionWeightExceeded,
 }

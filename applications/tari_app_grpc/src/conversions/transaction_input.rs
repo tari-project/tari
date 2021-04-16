@@ -22,8 +22,14 @@
 
 use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
-use tari_core::transactions::{transaction::TransactionInput, types::Commitment};
-use tari_crypto::tari_utilities::{ByteArray, Hashable};
+use tari_core::transactions::{
+    transaction::TransactionInput,
+    types::{Commitment, PublicKey},
+};
+use tari_crypto::{
+    script::{ExecutionStack, TariScript},
+    tari_utilities::{ByteArray, Hashable},
+};
 
 impl TryFrom<grpc::TransactionInput> for TransactionInput {
     type Error = String;
@@ -37,7 +43,26 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
         let commitment = Commitment::from_bytes(&input.commitment)
             .map_err(|err| format!("Could not convert input commitment:{}", err))?;
 
-        Ok(Self { features, commitment })
+        let script_signature = input
+            .script_signature
+            .ok_or_else(|| "script_signature not provided".to_string())?
+            .try_into()
+            .map_err(|_| "script_signature could not be converted".to_string())?;
+
+        let script_offset_public_key =
+            PublicKey::from_bytes(input.script_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+        let script = TariScript::from_bytes(input.script.as_slice()).map_err(|err| format!("{:?}", err))?;
+        let input_data = ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?;
+
+        Ok(Self {
+            features,
+            commitment,
+            script,
+            input_data,
+            height: input.height,
+            script_signature,
+            script_offset_public_key,
+        })
     }
 }
 
@@ -51,6 +76,14 @@ impl From<TransactionInput> for grpc::TransactionInput {
             }),
             commitment: Vec::from(input.commitment.as_bytes()),
             hash,
+            script: input.script.as_bytes(),
+            input_data: input.input_data.as_bytes(),
+            height: input.height,
+            script_signature: Some(grpc::Signature {
+                public_nonce: Vec::from(input.script_signature.get_public_nonce().as_bytes()),
+                signature: Vec::from(input.script_signature.get_signature().as_bytes()),
+            }),
+            script_offset_public_key: input.script_offset_public_key.as_bytes().to_vec(),
         }
     }
 }

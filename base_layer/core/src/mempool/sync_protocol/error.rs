@@ -26,6 +26,7 @@ use tari_comms::peer_manager::NodeId;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
+#[allow(clippy::large_enum_variant)]
 pub enum MempoolProtocolError {
     #[error("Transaction from peer `{0}` did not contain a kernel excess signature")]
     ExcessSignatureMissing(NodeId),

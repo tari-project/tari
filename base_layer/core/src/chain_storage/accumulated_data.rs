@@ -323,6 +323,14 @@ pub struct ChainBlock {
     pub block: Block,
 }
 
+impl Display for ChainBlock {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{}", self.accumulated_data)?;
+        writeln!(f, "{}", self.block)?;
+        Ok(())
+    }
+}
+
 impl ChainBlock {
     pub fn height(&self) -> u64 {
         self.block.header.height

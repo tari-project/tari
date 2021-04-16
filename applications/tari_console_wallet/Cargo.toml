@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 tari_wallet = {  path = "../../base_layer/wallet" }
-tari_crypto = "^0.8"
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto/", branch = "main" }
 tari_common = {  path = "../../common" }
 tari_app_utilities = { path = "../tari_app_utilities"}
 tari_comms = {  path = "../../comms"}
@@ -14,7 +14,7 @@ tari_comms_dht = {  path = "../../comms/dht"}
 tari_p2p = {  path = "../../base_layer/p2p" }
 tari_app_grpc = {  path = "../tari_app_grpc" }
 tari_shutdown = {  path = "../../infrastructure/shutdown" }
-tari_key_manager = { version = "^0.2" }
+tari_key_manager = { path = "../../base_layer/key_manager"  }
 
 chrono = { version = "0.4.6", features = ["serde"]}
 chrono-english = "0.1"

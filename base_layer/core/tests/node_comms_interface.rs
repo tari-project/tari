@@ -41,7 +41,7 @@ use tari_core::{
     transactions::{helpers::create_utxo, tari_amount::MicroTari, types::CryptoFactories},
     validation::{mocks::MockValidator, transaction_validators::TxInputAndMaturityValidator},
 };
-use tari_crypto::tari_utilities::hash::Hashable;
+use tari_crypto::{script::TariScript, tari_utilities::hash::Hashable};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tokio::sync::broadcast;
 // use crate::helpers::database::create_test_db;
@@ -196,7 +196,7 @@ async fn outbound_fetch_utxos() {
     let (block_sender, _) = mpsc::unbounded();
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
-    let (utxo, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let (utxo, _, _) = create_utxo(MicroTari(10_000), &factories, None, &TariScript::default());
     let hash = utxo.hash();
     let utxo_response = NodeCommsResponse::TransactionOutputs(vec![utxo.clone()]);
     let (received_utxos, _) = futures::join!(
@@ -234,7 +234,7 @@ async fn inbound_fetch_utxos() {
     let utxo_1 = block.body.outputs()[0].clone();
     let hash_1 = utxo_1.hash();
 
-    let (utxo_2, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let (utxo_2, _, _) = create_utxo(MicroTari(10_000), &factories, None, &TariScript::default());
     let hash_2 = utxo_2.hash();
 
     // Only retrieve a subset of the actual hashes, including a fake hash in the list
@@ -256,8 +256,8 @@ async fn outbound_fetch_txos() {
     let (block_sender, _) = mpsc::unbounded();
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
-    let (txo1, _) = create_utxo(MicroTari(10_000), &factories, None);
-    let (txo2, _) = create_utxo(MicroTari(15_000), &factories, None);
+    let (txo1, _, _) = create_utxo(MicroTari(10_000), &factories, None, &TariScript::default());
+    let (txo2, _, _) = create_utxo(MicroTari(15_000), &factories, None, &TariScript::default());
     let hash1 = txo1.hash();
     let hash2 = txo2.hash();
     let txo_response = NodeCommsResponse::TransactionOutputs(vec![txo1.clone(), txo2.clone()]);
@@ -293,19 +293,19 @@ async fn inbound_fetch_txos() {
         outbound_nci,
     );
 
-    let (utxo, _) = create_utxo(MicroTari(10_000), &factories, None);
-    let (stxo, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let (utxo, _, _) = create_utxo(MicroTari(10_000), &factories, None, &TariScript::default());
+    let (stxo, _, _) = create_utxo(MicroTari(10_000), &factories, None, &TariScript::default());
     let utxo_hash = utxo.hash();
     let stxo_hash = stxo.hash();
     let block = store.fetch_block(0).unwrap().block().clone();
     let header_hash = block.header.hash();
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo.clone(), header_hash.clone(), 6000);
-    txn.insert_utxo(stxo.clone(), header_hash.clone(), 6001);
+    txn.insert_utxo(utxo.clone(), header_hash.clone(), block.header.height, 6000);
+    txn.insert_utxo(stxo.clone(), header_hash.clone(), block.header.height, 6001);
     assert!(store.commit(txn).is_ok());
-    let mut txn = DbTransaction::new();
-    txn.insert_input(stxo.clone().into(), header_hash.clone(), 1);
-    assert!(store.commit(txn).is_ok());
+    // let mut txn = DbTransaction::new();
+    // txn.insert_input(stxo.clone().into(), header_hash.clone(), 1);
+    // assert!(store.commit(txn).is_ok());
 
     if let Ok(NodeCommsResponse::TransactionOutputs(received_txos)) = inbound_nch
         .handle_request(NodeCommsRequest::FetchMatchingTxos(vec![utxo_hash, stxo_hash]))
@@ -377,7 +377,7 @@ async fn inbound_fetch_blocks() {
 async fn inbound_fetch_blocks_before_horizon_height() {
     let network = Network::LocalNet;
     let consensus_constants = network.create_consensus_constants();
-    let block0 = genesis_block::get_stibbons_genesis_block();
+    let block0 = genesis_block::get_weatherwax_genesis_block();
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants[0].clone())
         .with_block(block0.clone())

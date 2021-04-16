@@ -189,6 +189,8 @@ impl TryFrom<proto::NewBlockHeaderTemplate> for NewBlockHeaderTemplate {
     fn try_from(header: proto::NewBlockHeaderTemplate) -> Result<Self, Self::Error> {
         let total_kernel_offset =
             BlindingFactor::from_bytes(&header.total_kernel_offset).map_err(|err| err.to_string())?;
+        let total_script_offset =
+            BlindingFactor::from_bytes(&header.total_script_offset).map_err(|err| err.to_string())?;
         let pow = match header.pow {
             Some(p) => ProofOfWork::try_from(p)?,
             None => return Err("No proof of work provided".into()),
@@ -198,6 +200,7 @@ impl TryFrom<proto::NewBlockHeaderTemplate> for NewBlockHeaderTemplate {
             height: header.height,
             prev_hash: header.prev_hash,
             total_kernel_offset,
+            total_script_offset,
             pow,
         })
     }
@@ -210,6 +213,7 @@ impl From<NewBlockHeaderTemplate> for proto::NewBlockHeaderTemplate {
             height: header.height,
             prev_hash: header.prev_hash,
             total_kernel_offset: header.total_kernel_offset.to_vec(),
+            total_script_offset: header.total_script_offset.to_vec(),
             pow: Some(proto::ProofOfWork::from(header.pow)),
         }
     }

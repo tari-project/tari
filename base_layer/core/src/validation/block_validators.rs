@@ -30,13 +30,7 @@ use crate::{
         types::CryptoFactories,
     },
     validation::{
-        helpers::{
-            check_accounting_balance,
-            check_block_weight,
-            check_coinbase_output,
-            check_cut_through,
-            is_all_unique_and_sorted,
-        },
+        helpers::{check_accounting_balance, check_block_weight, check_coinbase_output, is_all_unique_and_sorted},
         traits::PostOrphanBodyValidation,
         CandidateBlockBodyValidation,
         OrphanValidation,
@@ -104,8 +98,6 @@ impl OrphanValidation for OrphanBlockValidator {
         // Check that the inputs are are allowed to be spent
         block.check_stxo_rules()?;
         trace!(target: LOG_TARGET, "SV - Output constraints are ok for {} ", &block_id);
-        check_cut_through(block)?;
-        trace!(target: LOG_TARGET, "SV - Cut-through is ok for {} ", &block_id);
         check_coinbase_output(block, &self.rules, &self.factories)?;
         trace!(target: LOG_TARGET, "SV - Coinbase output is ok for {} ", &block_id);
         check_accounting_balance(block, &self.rules, &self.factories)?;
@@ -117,6 +109,9 @@ impl OrphanValidation for OrphanBlockValidator {
         Ok(())
     }
 }
+
+/// This validator tests whether a candidate block is internally consistent.
+/// This does not check that the orphan block has the correct mined height of utxos
 
 /// This validator checks whether a block satisfies *all* consensus rules. If a block passes this validator, it is the
 /// next block on the blockchain.
@@ -132,6 +127,61 @@ impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for BodyOnlyValidator {
     fn validate_body_for_valid_orphan(&self, block: &ChainBlock, backend: &B) -> Result<(), ValidationError> {
         let block_id = format!("block #{} ({})", block.block.header.height, block.hash().to_hex());
         check_inputs_are_utxos(&block.block, backend)?;
+        check_not_duplicate_txos(&block.block, backend)?;
+        trace!(
+            target: LOG_TARGET,
+            "Block validation: All inputs and outputs are valid for {}",
+            block_id
+        );
+        check_mmr_roots(&block.block, backend)?;
+        trace!(
+            target: LOG_TARGET,
+            "Block validation: MMR roots are valid for {}",
+            block_id
+        );
+        debug!(target: LOG_TARGET, "Block validation: Block is VALID for {}", block_id);
+        Ok(())
+    }
+}
+
+#[cfg(any(test, feature = "base_node"))]
+/// This is a test only validator as it skips the mined height rule of a input.
+#[derive(Default)]
+pub struct BodyOnlyMinusHeightValidator {}
+#[cfg(any(test, feature = "base_node"))]
+impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for BodyOnlyMinusHeightValidator {
+    /// The consensus checks that are done (in order of cheapest to verify to most expensive):
+    /// 1. Does the block satisfy the stateless checks?
+    /// 1. Are all inputs currently in the UTXO set?
+    /// 1. Are all inputs and outputs not in the STXO set?
+    /// 1. Are the block header MMR roots valid?
+    fn validate_body_for_valid_orphan(&self, block: &ChainBlock, backend: &B) -> Result<(), ValidationError> {
+        let block_id = format!("block #{} ({})", block.block.header.height, block.hash().to_hex());
+
+        {
+            let data = backend
+                .fetch_block_accumulated_data(&block.block.header.prev_hash)?
+                .ok_or_else(|| ValidationError::PreviousHashNotFound)?;
+
+            for input in block.block.body.inputs() {
+                if let Some((_, index, _)) = backend.fetch_output(&input.hash())? {
+                    if data.deleted().contains(index) {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Block validation failed due to already spent input: {}", input
+                        );
+                        return Err(ValidationError::ContainsSTxO);
+                    }
+                } else {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Block validation failed because the block has invalid input: {} which does not exist", input
+                    );
+                    return Err(ValidationError::BlockError(BlockValidationError::InvalidInput));
+                }
+            }
+        }
+
         check_not_duplicate_txos(&block.block, backend)?;
         trace!(
             target: LOG_TARGET,
@@ -168,13 +218,20 @@ fn check_inputs_are_utxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result
         .ok_or_else(|| ValidationError::PreviousHashNotFound)?;
 
     for input in block.body.inputs() {
-        if let Some(index) = db.fetch_mmr_leaf_index(MmrTree::Utxo, &input.hash())? {
+        if let Some((_, index, height)) = db.fetch_output(&input.hash())? {
             if data.deleted().contains(index) {
                 warn!(
                     target: LOG_TARGET,
                     "Block validation failed due to already spent input: {}", input
                 );
                 return Err(ValidationError::ContainsSTxO);
+            }
+            if height != input.height {
+                warn!(
+                    target: LOG_TARGET,
+                    "Block validation failed due to input not having correct mined height({}): {}", height, input
+                );
+                return Err(ValidationError::InvalidMinedHeight);
             }
         } else {
             warn!(
@@ -285,7 +342,6 @@ impl<B: BlockchainBackend> BlockValidator<B> {
     /// This function checks that all inputs in the blocks are valid UTXO's to be spend
     fn check_inputs(&self, block: &Block) -> Result<(), ValidationError> {
         let inputs = block.body.inputs();
-        let outputs = block.body.outputs();
         for (i, input) in inputs.iter().enumerate() {
             // Check for duplicates and/or incorrect sorting
             if i > 0 && input <= &inputs[i - 1] {
@@ -299,15 +355,6 @@ impl<B: BlockchainBackend> BlockValidator<B> {
                     "Input found that has not yet matured to spending height: {}", input
                 );
                 return Err(TransactionError::InputMaturity.into());
-            }
-
-            // Check that the block body has cut-through applied
-            if outputs.iter().any(|o| o.is_equal_to(input)) {
-                warn!(
-                    target: LOG_TARGET,
-                    "Block #{} failed to validate: block no cut through", block.header.height
-                );
-                return Err(BlockValidationError::NoCutThrough.into());
             }
         }
         Ok(())

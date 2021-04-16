@@ -42,6 +42,7 @@ impl From<BlockHeader> for grpc::BlockHeader {
             kernel_mr: h.kernel_mr.clone(),
             kernel_mmr_size: h.kernel_mmr_size,
             total_kernel_offset: Vec::from(h.total_kernel_offset.as_bytes()),
+            total_script_offset: Vec::from(h.total_script_offset.as_bytes()),
             nonce: h.nonce,
             pow: Some(grpc::ProofOfWork {
                 pow_algo: h.pow_algo().as_u64(),
@@ -57,6 +58,9 @@ impl TryFrom<grpc::BlockHeader> for BlockHeader {
     fn try_from(header: grpc::BlockHeader) -> Result<Self, Self::Error> {
         let total_kernel_offset =
             BlindingFactor::from_bytes(&header.total_kernel_offset).map_err(|err| err.to_string())?;
+
+        let total_script_offset =
+            BlindingFactor::from_bytes(&header.total_script_offset).map_err(|err| err.to_string())?;
 
         let timestamp = header
             .timestamp
@@ -78,6 +82,7 @@ impl TryFrom<grpc::BlockHeader> for BlockHeader {
             kernel_mr: header.kernel_mr,
             kernel_mmr_size: header.kernel_mmr_size,
             total_kernel_offset,
+            total_script_offset,
             nonce: header.nonce,
             pow,
         })

@@ -41,12 +41,17 @@ use crate::transactions::{
 };
 use digest::Digest;
 use log::*;
+use rand::rngs::OsRng;
 use std::{
     cmp::max,
     collections::HashMap,
     fmt::{Debug, Error, Formatter},
 };
-use tari_crypto::{keys::PublicKey as PublicKeyTrait, tari_utilities::fixed_set::FixedSet};
+use tari_crypto::{
+    keys::{PublicKey as PublicKeyTrait, SecretKey},
+    script::{ExecutionStack, TariScript},
+    tari_utilities::{fixed_set::FixedSet, ByteArray, Hashable},
+};
 
 pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
 
@@ -67,13 +72,20 @@ pub struct SenderTransactionInitializer {
     inputs: Vec<TransactionInput>,
     unblinded_inputs: Vec<UnblindedOutput>,
     outputs: Vec<UnblindedOutput>,
+    script_offset_private_keys: Vec<PrivateKey>,
     change_secret: Option<BlindingFactor>,
+    change_script: Option<TariScript>,
+    change_input_data: Option<ExecutionStack>,
+    change_script_private_key: Option<PrivateKey>,
+    change_script_offset_private_key: Option<PrivateKey>,
     rewind_data: Option<RewindData>,
     offset: Option<BlindingFactor>,
     excess_blinding_factor: BlindingFactor,
     private_nonce: Option<PrivateKey>,
     message: Option<String>,
     prevent_fee_gt_amount: bool,
+    recipient_scripts: FixedSet<TariScript>,
+    recipient_script_offset_private_keys: FixedSet<PrivateKey>,
 }
 
 pub struct BuildError {
@@ -97,13 +109,20 @@ impl SenderTransactionInitializer {
             inputs: Vec::new(),
             unblinded_inputs: Vec::new(),
             outputs: Vec::new(),
+            script_offset_private_keys: vec![],
             change_secret: None,
+            change_script: None,
+            change_input_data: None,
+            change_script_private_key: None,
+            change_script_offset_private_key: None,
             rewind_data: None,
             offset: None,
             private_nonce: None,
             excess_blinding_factor: BlindingFactor::default(),
             message: None,
             prevent_fee_gt_amount: true,
+            recipient_scripts: FixedSet::new(num_recipients),
+            recipient_script_offset_private_keys: FixedSet::new(num_recipients),
         }
     }
 
@@ -117,6 +136,21 @@ impl SenderTransactionInitializer {
     /// Set the amount to pay to the ith recipient. This method will silently fail if `receiver_index` >= num_receivers.
     pub fn with_amount(&mut self, receiver_index: usize, amount: MicroTari) -> &mut Self {
         self.amounts.set_item(receiver_index, amount);
+        self
+    }
+
+    /// Set the spending script of the ith recipient's output, a script offset will be generated for this recipient at
+    /// the same time. This method will silently fail if `receiver_index` >= num_receivers.
+    pub fn with_recipient_script(
+        &mut self,
+        receiver_index: usize,
+        script: TariScript,
+        recipient_script_offset_private_key: PrivateKey,
+    ) -> &mut Self
+    {
+        self.recipient_scripts.set_item(receiver_index, script);
+        self.recipient_script_offset_private_keys
+            .set_item(receiver_index, recipient_script_offset_private_key);
         self
     }
 
@@ -141,10 +175,12 @@ impl SenderTransactionInitializer {
         self
     }
 
-    /// Adds an output to the transaction. This can be called multiple times
-    pub fn with_output(&mut self, output: UnblindedOutput) -> &mut Self {
+    /// As the Sender adds an output to the transaction. Because we are adding this output as the sender a
+    /// script_offset_private_key needs to be provided with the output. This can be called multiple times
+    pub fn with_output(&mut self, output: UnblindedOutput, script_offset_private_key: PrivateKey) -> &mut Self {
         self.excess_blinding_factor = &self.excess_blinding_factor + &output.spending_key;
         self.outputs.push(output);
+        self.script_offset_private_keys.push(script_offset_private_key);
         self
     }
 
@@ -155,15 +191,22 @@ impl SenderTransactionInitializer {
         self
     }
 
-    /// Provide a blinding factor and rewind keys and proof message for the change output. The amount of change will
-    /// automatically be calculated when the transaction is built.
-    pub fn with_rewindable_change_secret(
+    /// Provide the script data that will be used to spend the change output
+    pub fn with_change_script(
         &mut self,
-        blinding_factor: BlindingFactor,
-        rewind_data: RewindData,
+        script: TariScript,
+        input_data: ExecutionStack,
+        script_private_key: PrivateKey,
     ) -> &mut Self
     {
-        self.change_secret = Some(blinding_factor);
+        self.change_script = Some(script);
+        self.change_input_data = Some(input_data);
+        self.change_script_private_key = Some(script_private_key);
+        self
+    }
+
+    /// Provide the rewind data required for outputs (change and manually added sender outputs) to be rewindable.
+    pub fn with_rewindable_outputs(&mut self, rewind_data: RewindData) -> &mut Self {
         self.rewind_data = Some(rewind_data);
         self
     }
@@ -207,6 +250,9 @@ impl SenderTransactionInitializer {
             Some(MicroTari(0)) => Ok((fee_without_change, MicroTari(0), None)),
             Some(v) => {
                 let change_amount = v.checked_sub(extra_fee);
+                let change_script_offset_private_key = PrivateKey::random(&mut OsRng);
+                self.change_script_offset_private_key = Some(change_script_offset_private_key.clone());
+
                 match change_amount {
                     // You can't win. Just add the change to the fee (which is less than the cost of adding another
                     // output and go without a change output
@@ -217,7 +263,25 @@ impl SenderTransactionInitializer {
                             .change_secret
                             .as_ref()
                             .ok_or_else(|| "Change spending key was not provided")?;
-                        let change_unblinded_output = UnblindedOutput::new(v, change_key.clone(), None);
+                        let change_unblinded_output = UnblindedOutput::new(
+                            v,
+                            change_key.clone(),
+                            None,
+                            self.change_script
+                                .as_ref()
+                                .ok_or_else(|| "Change script was not provided")?
+                                .clone(),
+                            self.change_input_data
+                                .as_ref()
+                                .ok_or_else(|| "Change script was not provided")?
+                                .clone(),
+                            0,
+                            self.change_script_private_key
+                                .as_ref()
+                                .ok_or_else(|| "Change script private key was not provided")?
+                                .clone(),
+                            PublicKey::from_secret_key(&change_script_offset_private_key),
+                        );
                         Ok((fee_with_change, v, Some(change_unblinded_output)))
                     },
                 }
@@ -253,13 +317,24 @@ impl SenderTransactionInitializer {
         Self::check_value("Missing Lock Height", &self.lock_height, &mut message);
         Self::check_value("Missing Fee per gram", &self.fee_per_gram, &mut message);
         Self::check_value("Missing Offset", &self.offset, &mut message);
-        Self::check_value("Missing Private nonce", &self.private_nonce, &mut message);
+        Self::check_value("Change script", &self.private_nonce, &mut message);
+        Self::check_value("Change input data", &self.private_nonce, &mut message);
+        Self::check_value("Change script private key", &self.private_nonce, &mut message);
+
         if !message.is_empty() {
             return self.build_err(&message.join(","));
         }
         if !self.amounts.is_full() {
             let size = self.amounts.size();
             return self.build_err(&*format!("Missing all {} amounts", size));
+        }
+        if !self.recipient_script_offset_private_keys.is_full() {
+            let size = self.recipient_script_offset_private_keys.size();
+            return self.build_err(&*format!("Missing {} recipient script offset private key/s", size));
+        }
+        if !self.recipient_scripts.is_full() {
+            let size = self.recipient_scripts.size();
+            return self.build_err(&*format!("Missing all {} recipient scripts", size));
         }
         if self.inputs.is_empty() {
             return self.build_err("A transaction cannot have zero inputs");
@@ -285,7 +360,13 @@ impl SenderTransactionInitializer {
         let mut outputs = match self
             .outputs
             .iter()
-            .map(|o| o.as_transaction_output(factories))
+            .map(|o| {
+                if let Some(rewind_data) = self.rewind_data.as_ref() {
+                    o.as_rewindable_transaction_output(factories, rewind_data)
+                } else {
+                    o.as_transaction_output(factories)
+                }
+            })
             .collect::<Result<Vec<TransactionOutput>, _>>()
         {
             Ok(o) => o,
@@ -295,6 +376,11 @@ impl SenderTransactionInitializer {
         };
 
         if let Some(change_unblinded_output) = change_output {
+            let change_output_script_offset_private_key = match self.change_script_offset_private_key {
+                None => return self.build_err("A change output script offset was not provided"),
+                Some(ref pk) => pk.clone(),
+            };
+
             self.excess_blinding_factor = self.excess_blinding_factor + change_unblinded_output.spending_key.clone();
 
             // If rewind data is present we produce a rewindable output, else a standard output
@@ -314,12 +400,34 @@ impl SenderTransactionInitializer {
                 }
             };
             self.outputs.push(change_unblinded_output);
+            self.script_offset_private_keys
+                .push(change_output_script_offset_private_key);
             outputs.push(change_output);
         }
 
         // Prevent overflow attacks by imposing sane limits on outputs
         if outputs.len() > MAX_TRANSACTION_OUTPUTS {
             return self.build_err("Too many outputs in transaction");
+        }
+
+        // Calculate the Inputs portion of Gamma so we don't have to store the individual script private keys in
+        // RawTransactionInfo while we wait for the recipients reply
+        let mut gamma = PrivateKey::default();
+        for uo in self.unblinded_inputs.iter() {
+            gamma = gamma + uo.script_private_key.clone();
+        }
+
+        if outputs.len() != self.script_offset_private_keys.len() {
+            return self
+                .build_err("There should be the same number of sender added outputs as script offset private keys");
+        }
+
+        for (o, opk) in outputs.iter().zip(self.script_offset_private_keys.iter()) {
+            let output_hash = match PrivateKey::from_bytes(&o.hash()) {
+                Ok(h) => h,
+                Err(_e) => return self.build_err("Output hash to private key conversion error"),
+            };
+            gamma = gamma - output_hash * opk.clone();
         }
 
         let nonce = self.private_nonce.clone().unwrap();
@@ -364,7 +472,12 @@ impl SenderTransactionInitializer {
             amount_to_self,
             ids,
             amounts: self.amounts.into_vec(),
+            recipient_scripts: self.recipient_scripts.into_vec(),
+            recipient_script_offset_private_keys: self.recipient_script_offset_private_keys.into_vec(),
             change,
+            change_script_offset_public_key: self
+                .change_script_offset_private_key
+                .map(|pk| PublicKey::from_secret_key(&pk)),
             metadata: TransactionMetadata {
                 fee: total_fee,
                 lock_height: self.lock_height.unwrap(),
@@ -373,6 +486,7 @@ impl SenderTransactionInitializer {
             outputs,
             offset,
             offset_blinding_factor,
+            gamma,
             public_excess: excess,
             private_nonce: nonce,
             public_nonce: public_nonce.clone(),
@@ -398,7 +512,7 @@ mod test {
         consensus::{KERNEL_WEIGHT, WEIGHT_PER_INPUT, WEIGHT_PER_OUTPUT},
         transactions::{
             fee::Fee,
-            helpers::{make_input, TestParams},
+            helpers::{create_test_input, TestParams},
             tari_amount::*,
             transaction::{UnblindedOutput, MAX_TRANSACTION_INPUTS},
             transaction_protocol::{
@@ -406,11 +520,17 @@ mod test {
                 transaction_initializer::SenderTransactionInitializer,
                 TransactionProtocolError,
             },
-            types::CryptoFactories,
+            types::{CryptoFactories, PrivateKey, PublicKey},
         },
     };
     use rand::rngs::OsRng;
-    use tari_crypto::common::Blake256;
+    use tari_crypto::{
+        common::Blake256,
+        inputs,
+        keys::{PublicKey as pk, SecretKey},
+        script,
+        script::{ExecutionStack, TariScript},
+    };
 
     /// One input, 2 outputs
     #[test]
@@ -421,20 +541,37 @@ mod test {
         // Start the builder
         let builder = SenderTransactionInitializer::new(0);
         let err = builder.build::<Blake256>(&factories).unwrap_err();
+        let script = script!(Nop);
         // We should have a bunch of fields missing still, but we can recover and continue
         assert_eq!(
             err.message,
-            "Missing Lock Height,Missing Fee per gram,Missing Offset,Missing Private nonce"
+            "Missing Lock Height,Missing Fee per gram,Missing Offset,Change script,Change input data,Change script \
+             private key"
         );
         let mut builder = err.builder;
         builder
             .with_lock_height(100)
             .with_offset(p.offset)
             .with_private_nonce(p.nonce);
-        builder.with_output(UnblindedOutput::new(MicroTari(100), p.spend_key, None));
-        let (utxo, input) = make_input(&mut OsRng, MicroTari(5_000), &factories.commitment);
+        builder.with_output(
+            UnblindedOutput::new(
+                MicroTari(100),
+                p.spend_key,
+                None,
+                TariScript::default(),
+                ExecutionStack::default(),
+                0,
+                PrivateKey::default(),
+                PublicKey::default(),
+            ),
+            PrivateKey::random(&mut OsRng),
+        );
+        let (utxo, input, script_offset) = create_test_input(MicroTari(5_000), 0, 0, &factories.commitment);
         builder.with_input(utxo, input);
-        builder.with_fee_per_gram(MicroTari(20));
+        builder
+            .with_fee_per_gram(MicroTari(20))
+            .with_recipient_script(0, script.clone(), script_offset)
+            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         let expected_fee = Fee::calculate(MicroTari(20), 1, 1, 2);
         // We needed a change input, so this should fail
         let err = builder.build::<Blake256>(&factories).unwrap_err();
@@ -464,16 +601,25 @@ mod test {
         // Create some inputs
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let (utxo, input) = make_input(&mut OsRng, MicroTari(500), &factories.commitment);
+        let (utxo, input, _) = create_test_input(MicroTari(500), 0, 0, &factories.commitment);
         let expected_fee = Fee::calculate(MicroTari(20), 1, 1, 1);
-        let output = UnblindedOutput::new(MicroTari(500) - expected_fee, p.spend_key, None);
+        let output = UnblindedOutput::new(
+            MicroTari(500) - expected_fee,
+            p.spend_key,
+            None,
+            TariScript::default(),
+            ExecutionStack::default(),
+            0,
+            PrivateKey::default(),
+            PublicKey::default(),
+        );
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
             .with_private_nonce(p.nonce)
-            .with_output(output)
+            .with_output(output, PrivateKey::random(&mut OsRng))
             .with_input(utxo, input)
             .with_fee_per_gram(MicroTari(20))
             .with_prevent_fee_gt_amount(false);
@@ -500,18 +646,27 @@ mod test {
         // Create some inputs
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let (utxo, input) = make_input(&mut OsRng, MicroTari(500), &factories.commitment);
+        let (utxo, input, _) = create_test_input(MicroTari(500), 0, 0, &factories.commitment);
         let expected_fee = MicroTari::from((KERNEL_WEIGHT + WEIGHT_PER_INPUT + 1 * WEIGHT_PER_OUTPUT) * 20);
         // fee == 340, output = 80
         // Pay out so that I should get change, but not enough to pay for the output
-        let output = UnblindedOutput::new(MicroTari(500) - expected_fee - MicroTari(50), p.spend_key, None);
+        let output = UnblindedOutput::new(
+            MicroTari(500) - expected_fee - MicroTari(50),
+            p.spend_key,
+            None,
+            TariScript::default(),
+            ExecutionStack::default(),
+            0,
+            PrivateKey::default(),
+            PublicKey::default(),
+        );
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
             .with_private_nonce(p.nonce)
-            .with_output(output)
+            .with_output(output, PrivateKey::random(&mut OsRng))
             .with_input(utxo, input)
             .with_fee_per_gram(MicroTari(20))
             .with_prevent_fee_gt_amount(false);
@@ -536,17 +691,26 @@ mod test {
         // Create some inputs
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let output = UnblindedOutput::new(MicroTari(500), p.spend_key, None);
+        let output = UnblindedOutput::new(
+            MicroTari(500),
+            p.spend_key,
+            None,
+            TariScript::default(),
+            ExecutionStack::default(),
+            0,
+            PrivateKey::default(),
+            PublicKey::default(),
+        );
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
             .with_private_nonce(p.nonce)
-            .with_output(output)
+            .with_output(output, PrivateKey::random(&mut OsRng))
             .with_fee_per_gram(MicroTari(2));
         for _ in 0..MAX_TRANSACTION_INPUTS + 1 {
-            let (utxo, input) = make_input(&mut OsRng, MicroTari(50), &factories.commitment);
+            let (utxo, input, _) = create_test_input(MicroTari(50), 0, 0, &factories.commitment);
             builder.with_input(utxo, input);
         }
         let err = builder.build::<Blake256>(&factories).unwrap_err();
@@ -558,8 +722,19 @@ mod test {
         // Create some inputs
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let (utxo, input) = make_input(&mut OsRng, MicroTari(500), &factories.commitment);
-        let output = UnblindedOutput::new(MicroTari(400), p.spend_key, None);
+        let (utxo, input, _) = create_test_input(MicroTari(500), 0, 0, &factories.commitment);
+        let script = script!(Nop);
+        let script_offset = PrivateKey::default();
+        let output = UnblindedOutput::new(
+            MicroTari(400),
+            p.spend_key,
+            None,
+            script.clone(),
+            inputs!(PublicKey::from_secret_key(&PrivateKey::default())),
+            0,
+            PrivateKey::default(),
+            PublicKey::default(),
+        );
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0);
         builder
@@ -567,9 +742,11 @@ mod test {
             .with_offset(p.offset)
             .with_private_nonce(p.nonce)
             .with_input(utxo, input)
-            .with_output(output)
+            .with_output(output, PrivateKey::random(&mut OsRng))
             .with_change_secret(p.change_key)
-            .with_fee_per_gram(MicroTari(1));
+            .with_fee_per_gram(MicroTari(1))
+            .with_recipient_script(0, script.clone(), script_offset)
+            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         let err = builder.build::<Blake256>(&factories).unwrap_err();
         assert_eq!(err.message, "Fee is less than the minimum");
     }
@@ -579,8 +756,19 @@ mod test {
         // Create some inputs
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let (utxo, input) = make_input(&mut OsRng, MicroTari(400), &factories.commitment);
-        let output = UnblindedOutput::new(MicroTari(400), p.spend_key, None);
+        let (utxo, input, _) = create_test_input(MicroTari(400), 0, 0, &factories.commitment);
+        let script = script!(Nop);
+        let script_offset = PrivateKey::default();
+        let output = UnblindedOutput::new(
+            MicroTari(400),
+            p.spend_key,
+            None,
+            TariScript::default(),
+            ExecutionStack::default(),
+            0,
+            PrivateKey::default(),
+            PublicKey::default(),
+        );
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0);
         builder
@@ -588,9 +776,11 @@ mod test {
             .with_offset(p.offset)
             .with_private_nonce(p.nonce)
             .with_input(utxo, input)
-            .with_output(output)
+            .with_output(output, PrivateKey::random(&mut OsRng))
             .with_change_secret(p.change_key)
-            .with_fee_per_gram(MicroTari(1));
+            .with_fee_per_gram(MicroTari(1))
+            .with_recipient_script(0, script.clone(), script_offset)
+            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         let err = builder.build::<Blake256>(&factories).unwrap_err();
         assert_eq!(err.message, "You are spending more than you're providing");
     }
@@ -600,8 +790,19 @@ mod test {
         // Create some inputs
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let (utxo, input) = make_input(&mut OsRng, MicroTari(100_000), &factories.commitment);
-        let output = UnblindedOutput::new(MicroTari(15000), p.spend_key, None);
+        let (utxo, input, _) = create_test_input(MicroTari(100_000), 0, 0, &factories.commitment);
+        let script = script!(Nop);
+        let script_offset = PrivateKey::default();
+        let output = UnblindedOutput::new(
+            MicroTari(15000),
+            p.spend_key,
+            None,
+            TariScript::default(),
+            ExecutionStack::default(),
+            0,
+            PrivateKey::default(),
+            PublicKey::default(),
+        );
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(2);
         builder
@@ -611,9 +812,12 @@ mod test {
             .with_amount(1, MicroTari(1100))
             .with_private_nonce(p.nonce)
             .with_input(utxo, input)
-            .with_output(output)
+            .with_output(output, PrivateKey::random(&mut OsRng))
             .with_change_secret(p.change_key)
-            .with_fee_per_gram(MicroTari(20));
+            .with_fee_per_gram(MicroTari(20))
+            .with_recipient_script(0, script.clone(), script_offset.clone())
+            .with_recipient_script(1, script.clone(), script_offset)
+            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         let result = builder.build::<Blake256>(&factories).unwrap();
         // Peek inside and check the results
         if let SenderState::Failed(TransactionProtocolError::UnsupportedError(s)) = result.state {
@@ -628,23 +832,36 @@ mod test {
         // Create some inputs
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let (utxo1, input1) = make_input(&mut OsRng, MicroTari(2000), &factories.commitment);
-        let (utxo2, input2) = make_input(&mut OsRng, MicroTari(3000), &factories.commitment);
+        let (utxo1, input1, _) = create_test_input(MicroTari(2000), 0, 0, &factories.commitment);
+        let (utxo2, input2, _) = create_test_input(MicroTari(3000), 0, 0, &factories.commitment);
         let weight = MicroTari(30);
+        let script = script!(Nop);
+        let script_offset = PrivateKey::default();
         let expected_fee = Fee::calculate(weight, 1, 2, 3);
-        let output = UnblindedOutput::new(MicroTari(1500) - expected_fee, p.spend_key, None);
+        let output = UnblindedOutput::new(
+            MicroTari(1500) - expected_fee,
+            p.spend_key,
+            None,
+            TariScript::default(),
+            ExecutionStack::default(),
+            0,
+            PrivateKey::default(),
+            PublicKey::default(),
+        );
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(1);
         builder
             .with_lock_height(1234)
             .with_offset(p.offset)
             .with_private_nonce(p.nonce)
-            .with_output(output)
+            .with_output(output, PrivateKey::random(&mut OsRng))
             .with_input(utxo1, input1)
             .with_input(utxo2, input2)
             .with_amount(0, MicroTari(2500))
             .with_change_secret(p.change_key)
-            .with_fee_per_gram(weight);
+            .with_fee_per_gram(weight)
+            .with_recipient_script(0, script.clone(), script_offset)
+            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         let result = builder.build::<Blake256>(&factories).unwrap();
         // Peek inside and check the results
         if let SenderState::SingleRoundMessageReady(info) = result.state {
@@ -666,20 +883,33 @@ mod test {
         // Create some inputs
         let factories = CryptoFactories::new(32);
         let p = TestParams::new();
-        let (utxo1, input1) = make_input(&mut OsRng, (2u64.pow(32) + 10000u64).into(), &factories.commitment);
+        let script = script!(Nop);
+        let script_offset = PrivateKey::default();
+        let (utxo1, input1, _) = create_test_input((2u64.pow(32) + 10000u64).into(), 0, 0, &factories.commitment);
         let weight = MicroTari(30);
-        let output = UnblindedOutput::new((1u64.pow(32) + 1u64).into(), p.spend_key, None);
+        let output = UnblindedOutput::new(
+            (1u64.pow(32) + 1u64).into(),
+            p.spend_key,
+            None,
+            TariScript::default(),
+            ExecutionStack::default(),
+            0,
+            PrivateKey::default(),
+            PublicKey::default(),
+        );
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(1);
         builder
             .with_lock_height(1234)
             .with_offset(p.offset)
             .with_private_nonce(p.nonce)
-            .with_output(output)
+            .with_output(output, PrivateKey::default())
             .with_input(utxo1, input1)
             .with_amount(0, MicroTari(100))
             .with_change_secret(p.change_key)
-            .with_fee_per_gram(weight);
+            .with_fee_per_gram(weight)
+            .with_recipient_script(0, script.clone(), script_offset)
+            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         let result = builder.build::<Blake256>(&factories);
 
         match result {

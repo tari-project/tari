@@ -33,8 +33,9 @@ use helpers::{
         generate_new_block,
     },
     nodes::{create_network_with_2_base_nodes_with_config, create_network_with_3_base_nodes_with_config},
-    sample_blockchains::create_new_blockchain,
+    sample_blockchains::{create_new_blockchain, create_new_blockchain_with_constants},
 };
+use tari_core::tari_utilities::{ByteArray, Hashable};
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
 // use crate::helpers::database::create_store;
 use std::{ops::Deref, sync::Arc, time::Duration};
@@ -56,12 +57,13 @@ use tari_core::{
         tari_amount::{uT, MicroTari, T},
         transaction::{KernelBuilder, OutputFeatures, Transaction, TransactionOutput, UnblindedOutput},
         transaction_protocol::{build_challenge, TransactionMetadata},
-        types::{Commitment, CryptoFactories, PublicKey, Signature},
+        types::{Commitment, CryptoFactories, PrivateKey, PublicKey, Signature},
     },
     tx,
     txn_schema,
     validation::transaction_validators::{TxConsensusValidator, TxInputAndMaturityValidator},
 };
+use tari_crypto::{inputs, script};
 use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType};
 use tari_test_utils::async_assert_eventually;
 use tempfile::tempdir;
@@ -77,14 +79,14 @@ fn test_insert_and_process_published_block() {
     // Create a block with 4 outputs
     let txs = vec![txn_schema!(
         from: vec![outputs[0][0].clone()],
-        to: vec![2 * T, 2 * T, 2 * T, 2 * T]
+        to: vec![2 * T, 2 * T, 2 * T, 2 * T],fee: 25.into(), lock: 0,mined_height: 0, features: OutputFeatures::default()
     )];
     generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
     // Create 6 new transactions to add to the mempool
     let (orphan, _, _) = tx!(1*T, fee: 100*uT);
     let orphan = Arc::new(orphan);
 
-    let tx2 = txn_schema!(from: vec![outputs[1][0].clone()], to: vec![1*T], fee: 20*uT);
+    let tx2 = txn_schema!(from: vec![outputs[1][0].clone()], to: vec![1*T], fee: 20*uT, lock: 0,mined_height: 1, features: OutputFeatures::default());
     let tx2 = Arc::new(spend_utxos(tx2).0);
 
     let tx3 = txn_schema!(
@@ -92,7 +94,8 @@ fn test_insert_and_process_published_block() {
         to: vec![1*T],
         fee: 20*uT,
         lock: 4,
-        OutputFeatures::with_maturity(1)
+        mined_height: 1,
+        features: OutputFeatures::with_maturity(1)
     );
     let tx3 = Arc::new(spend_utxos(tx3).0);
 
@@ -101,10 +104,11 @@ fn test_insert_and_process_published_block() {
         to: vec![1*T],
         fee: 20*uT,
         lock: 3,
-        OutputFeatures::with_maturity(2)
+        mined_height: 1,
+        features: OutputFeatures::with_maturity(2)
     );
     let tx5 = Arc::new(spend_utxos(tx5).0);
-    let tx6 = txn_schema!(from: vec![outputs[1][3].clone()], to: vec![1 * T]);
+    let tx6 = txn_schema!(from: vec![outputs[1][3].clone()], to: vec![1 * T], fee: 25*uT, lock: 0,mined_height: 1, features: OutputFeatures::default());
     let tx6 = spend_utxos(tx6).0;
 
     mempool.insert(orphan.clone()).unwrap();
@@ -210,12 +214,12 @@ fn test_time_locked() {
     // Create a block with 4 outputs
     let txs = vec![txn_schema!(
         from: vec![outputs[0][0].clone()],
-        to: vec![2 * T, 2 * T, 2 * T, 2 * T]
+        to: vec![2 * T, 2 * T, 2 * T, 2 * T], fee: 25*uT, lock: 0,mined_height: 0, features: OutputFeatures::default()
     )];
     generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
     mempool.process_published_block(blocks[1].block.clone().into()).unwrap();
     // Block height should be 1
-    let mut tx2 = txn_schema!(from: vec![outputs[1][0].clone()], to: vec![1*T], fee: 20*uT);
+    let mut tx2 = txn_schema!(from: vec![outputs[1][0].clone()], to: vec![1*T], fee: 20*uT, lock: 0,mined_height: 1, features: OutputFeatures::default());
     tx2.lock_height = 3;
     let tx2 = Arc::new(spend_utxos(tx2).0);
 
@@ -224,7 +228,8 @@ fn test_time_locked() {
         to: vec![1*T],
         fee: 20*uT,
         lock: 4,
-        OutputFeatures::with_maturity(1)
+        mined_height: 1,
+        features: OutputFeatures::with_maturity(1)
     );
     tx3.lock_height = 2;
     let tx3 = Arc::new(spend_utxos(tx3).0);
@@ -260,18 +265,18 @@ fn test_retrieve() {
     mempool.process_published_block(blocks[1].block.clone().into()).unwrap();
     // 1-Block, 8 UTXOs, empty mempool
     let txs = vec![
-        txn_schema!(from: vec![outputs[1][0].clone()], to: vec![], fee: 30*uT),
-        txn_schema!(from: vec![outputs[1][1].clone()], to: vec![], fee: 20*uT),
-        txn_schema!(from: vec![outputs[1][2].clone()], to: vec![], fee: 40*uT),
-        txn_schema!(from: vec![outputs[1][3].clone()], to: vec![], fee: 50*uT),
-        txn_schema!(from: vec![outputs[1][4].clone()], to: vec![], fee: 20*uT, lock: 2, OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[1][5].clone()], to: vec![], fee: 20*uT, lock: 3, OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][0].clone()], to: vec![], fee: 30*uT, lock: 0, mined_height: 1, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][1].clone()], to: vec![], fee: 20*uT, lock: 0, mined_height: 1, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][2].clone()], to: vec![], fee: 40*uT, lock: 0, mined_height: 1, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][3].clone()], to: vec![], fee: 50*uT, lock: 0, mined_height: 1, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][4].clone()], to: vec![], fee: 20*uT, lock: 2, mined_height: 1, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][5].clone()], to: vec![], fee: 20*uT, lock: 3, mined_height: 1, features: OutputFeatures::default()),
         // Will be time locked when a tx is added to mempool with this as an input:
-        txn_schema!(from: vec![outputs[1][6].clone()], to: vec![800_000*uT], fee: 60*uT, lock: 0,
-                        OutputFeatures::with_maturity(4)),
+        txn_schema!(from: vec![outputs[1][6].clone()], to: vec![800_000*uT], fee: 60*uT, lock: 0, mined_height: 1,
+        features: OutputFeatures::with_maturity(4)),
         // Will be time locked when a tx is added to mempool with this as an input:
-        txn_schema!(from: vec![outputs[1][7].clone()], to: vec![800_000*uT], fee: 25*uT, lock: 0,
-                        OutputFeatures::with_maturity(3)),
+        txn_schema!(from: vec![outputs[1][7].clone()], to: vec![800_000*uT], fee: 25*uT, lock: 0, mined_height: 1,
+        features: OutputFeatures::with_maturity(3)),
     ];
     let (tx, utxos) = schema_to_transaction(&txs);
     tx.iter().for_each(|t| {
@@ -307,9 +312,9 @@ fn test_retrieve() {
     assert_eq!(stats.reorg_txs, 5);
     // Create transactions wih time-locked inputs
     let txs = vec![
-        txn_schema!(from: vec![outputs[2][6].clone()], to: vec![], fee: 80*uT),
+        txn_schema!(from: vec![outputs[2][6].clone()], to: vec![], fee: 80*uT, lock: 0,mined_height: 2, features: OutputFeatures::default()),
         // account for change output
-        txn_schema!(from: vec![outputs[2][8].clone()], to: vec![], fee: 40*uT),
+        txn_schema!(from: vec![outputs[2][8].clone()], to: vec![], fee: 40*uT, lock: 0,mined_height: 2, features: OutputFeatures::default()),
     ];
     let (tx2, _) = schema_to_transaction(&txs);
     tx2.iter().for_each(|t| {
@@ -339,15 +344,17 @@ fn test_reorg() {
     let mempool = Mempool::new(MempoolConfig::default(), Arc::new(mempool_validator));
 
     // "Mine" Block 1
-    let txs = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![1 * T, 1 * T])];
+    let txs = vec![
+        txn_schema!(from: vec![outputs[0][0].clone()], to: vec![1 * T, 1 * T], fee: 25*uT, lock: 0,mined_height: 0, features: OutputFeatures::default()),
+    ];
     generate_new_block(&mut db, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
     mempool.process_published_block(blocks[1].block.clone().into()).unwrap();
 
     // "Mine" block 2
     let schemas = vec![
-        txn_schema!(from: vec![outputs[1][0].clone()], to: vec![]),
-        txn_schema!(from: vec![outputs[1][1].clone()], to: vec![]),
-        txn_schema!(from: vec![outputs[1][2].clone()], to: vec![]),
+        txn_schema!(from: vec![outputs[1][0].clone()], to: vec![], fee: 25*uT, lock: 0,mined_height: 1, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][1].clone()], to: vec![], fee: 25*uT, lock: 0,mined_height: 1, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][2].clone()], to: vec![], fee: 25*uT, lock: 0,mined_height: 1, features: OutputFeatures::default()),
     ];
     let (txns2, utxos) = schema_to_transaction(&schemas);
     outputs.push(utxos);
@@ -362,9 +369,9 @@ fn test_reorg() {
 
     // "Mine" block 3
     let schemas = vec![
-        txn_schema!(from: vec![outputs[2][0].clone()], to: vec![]),
-        txn_schema!(from: vec![outputs[2][1].clone()], to: vec![], fee: 25*uT, lock: 5, OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[2][2].clone()], to: vec![], fee: 25*uT),
+        txn_schema!(from: vec![outputs[2][0].clone()], to: vec![], fee: 25*uT, lock: 0,mined_height: 2, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[2][1].clone()], to: vec![], fee: 25*uT, lock: 5, mined_height: 2, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[2][2].clone()], to: vec![], fee: 25*uT, lock: 0,mined_height: 2, features: OutputFeatures::default()),
     ];
     let (txns3, utxos) = schema_to_transaction(&schemas);
     outputs.push(utxos);
@@ -642,7 +649,14 @@ fn receive_and_propagate_transaction() {
 #[test]
 fn consensus_validation() {
     let network = Network::LocalNet;
-    let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
+    // We dont want to compute the 19500 limit of local net, so we create smaller blocks
+    let consensus_constants = ConsensusConstantsBuilder::new(network)
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
+        .with_coinbase_lockheight(1)
+        .with_max_block_transaction_weight(500)
+        .build();
+    let (mut store, mut blocks, mut outputs, consensus_manager) =
+        create_new_blockchain_with_constants(network, consensus_constants);
     let mempool_validator = TxConsensusValidator::new(store.clone());
     let mempool = Mempool::new(MempoolConfig::default(), Arc::new(mempool_validator));
     // Create a block with 1 output
@@ -651,27 +665,44 @@ fn consensus_validation() {
 
     // build huge tx manually - the TransactionBuilder already has checks for max inputs/outputs
     let factories = CryptoFactories::default();
-    let test_params = TestParams::new();
     let fee_per_gram = 15;
     let input_count = 1;
-    let output_count = 1_600; // 😵
+    let output_count = 39;
     let amount = MicroTari::from(5_000_000);
 
     let input = outputs[1][0].clone();
     let sum_inputs_blinding_factors = input.spending_key.clone();
-    let inputs = vec![input.as_transaction_input(&factories.commitment, OutputFeatures::default())];
+    let mut script_offset_pvt = outputs[1][0].script_private_key.clone();
+    let inputs = vec![input.as_transaction_input(&factories.commitment).unwrap()];
 
     let fee = Fee::calculate(fee_per_gram.into(), 1, input_count, output_count);
     let amount_per_output = (amount - fee) / output_count as u64;
     let amount_for_last_output = (amount - fee) - amount_per_output * (output_count as u64 - 1);
     let mut unblinded_outputs = Vec::with_capacity(output_count);
+    let mut nonce = PrivateKey::default();
+    let mut offset = PrivateKey::default();
+    dbg!(&output_count);
     for i in 0..output_count {
+        let test_params = TestParams::new();
+        nonce = nonce + test_params.nonce.clone();
+        offset = offset + test_params.offset;
         let output_amount = if i < output_count - 1 {
             amount_per_output
         } else {
             amount_for_last_output
         };
-        let utxo = UnblindedOutput::new(output_amount, test_params.spend_key.clone(), None);
+        let utxo = UnblindedOutput::new(
+            output_amount,
+            test_params.spend_key.clone(),
+            None,
+            script!(Nop),
+            inputs!(PublicKey::from_secret_key(&test_params.spend_key)),
+            1,
+            test_params.script_private_key,
+            test_params.script_offset,
+        );
+        let hash = utxo.as_transaction_output(&factories).unwrap().hash();
+        script_offset_pvt = script_offset_pvt - PrivateKey::from_bytes(&hash).unwrap() * test_params.script_offset_pvt;
         unblinded_outputs.push(utxo.clone());
     }
 
@@ -689,9 +720,7 @@ fn consensus_validation() {
 
     let tx_meta = TransactionMetadata { fee, lock_height: 0 };
 
-    let nonce = test_params.nonce.clone();
     let public_nonce = PublicKey::from_secret_key(&nonce);
-    let offset = test_params.offset;
     let offset_blinding_factor = &excess_blinding_factor - &offset;
     let excess = PublicKey::from_secret_key(&offset_blinding_factor);
     let e = build_challenge(&public_nonce, &tx_meta);
@@ -707,7 +736,7 @@ fn consensus_validation() {
         .build()
         .unwrap();
     let kernels = vec![kernel];
-    let tx = Transaction::new(inputs, outputs, kernels, offset);
+    let tx = Transaction::new(inputs, outputs, kernels, offset, script_offset_pvt);
     let weight = tx.calculate_weight();
 
     let height = blocks.len() as u64;

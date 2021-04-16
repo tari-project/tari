@@ -29,6 +29,7 @@ use crate::transactions::{
     transaction_protocol::{build_challenge, RewindData, TransactionMetadata},
     types::{
         BlindingFactor,
+        Challenge,
         Commitment,
         CommitmentFactory,
         CryptoFactories,
@@ -41,6 +42,7 @@ use crate::transactions::{
     },
 };
 use digest::Input;
+use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::{max, min, Ordering},
@@ -50,7 +52,9 @@ use std::{
     ops::Add,
 };
 use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
+    commitment::{HomomorphicCommitment, HomomorphicCommitmentFactory},
+    hash::blake2::Blake256,
+    keys::{PublicKey as PublicKeyTrait, SecretKey},
     range_proof::{
         FullRewindResult as CryptoFullRewindResult,
         RangeProofError,
@@ -58,6 +62,7 @@ use tari_crypto::{
         RewindResult as CryptoRewindResult,
         REWIND_USER_MESSAGE_LENGTH,
     },
+    script::{ExecutionStack, ScriptError, StackItem, TariScript},
     tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable},
 };
 use thiserror::Error;
@@ -164,8 +169,8 @@ bitflags! {
 pub enum TransactionError {
     #[error("Error validating the transaction: {0}")]
     ValidationError(String),
-    #[error("Signature is invalid")]
-    InvalidSignatureError,
+    #[error("Signature is invalid: {0}")]
+    InvalidSignatureError(String),
     #[error("Transaction kernel does not contain a signature")]
     NoSignatureError,
     #[error("A range proof construction or verification has produced an error: {0}")]
@@ -182,6 +187,14 @@ pub enum TransactionError {
     NoCoinbase,
     #[error("Input maturity not reached")]
     InputMaturity,
+    #[error("Tari script error : {0}")]
+    ScriptError(#[from] ScriptError),
+    #[error("Error performing conversion: {0}")]
+    ConversionError(String),
+    #[error("The script offset in body does not balance")]
+    ScriptOffset,
+    #[error("Error executing script: {0}")]
+    ScriptExecutionError(String),
 }
 
 //-----------------------------------------     UnblindedOutput   ----------------------------------------------------//
@@ -193,25 +206,75 @@ pub struct UnblindedOutput {
     pub value: MicroTari,
     pub spending_key: BlindingFactor,
     pub features: OutputFeatures,
+    pub script: TariScript,
+    pub input_data: ExecutionStack,
+    pub height: u64,
+    pub script_private_key: PrivateKey,
+    pub script_offset_public_key: PublicKey,
 }
 
 impl UnblindedOutput {
     /// Creates a new un-blinded output
-    pub fn new(value: MicroTari, spending_key: BlindingFactor, features: Option<OutputFeatures>) -> UnblindedOutput {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        value: MicroTari,
+        spending_key: BlindingFactor,
+        features: Option<OutputFeatures>,
+        script: TariScript,
+        input_data: ExecutionStack,
+        height: u64,
+        script_private_key: PrivateKey,
+        script_offset_public_key: PublicKey,
+    ) -> UnblindedOutput
+    {
         UnblindedOutput {
             value,
             spending_key,
             features: features.unwrap_or_default(),
+            script,
+            input_data,
+            height,
+            script_private_key,
+            script_offset_public_key,
         }
     }
 
     /// Commits an UnblindedOutput into a Transaction input
-    pub fn as_transaction_input(&self, factory: &CommitmentFactory, features: OutputFeatures) -> TransactionInput {
+    pub fn as_transaction_input(&self, factory: &CommitmentFactory) -> Result<TransactionInput, TransactionError> {
         let commitment = factory.commit(&self.spending_key, &self.value.into());
-        TransactionInput { commitment, features }
+        let script_nonce = PrivateKey::random(&mut OsRng);
+        let public_script_nonce = PublicKey::from_secret_key(&script_nonce);
+        let e = Challenge::new()
+            .chain(public_script_nonce.as_bytes())
+            .chain(self.script.as_bytes().as_slice())
+            .chain(self.input_data.as_bytes().as_slice())
+            .chain(&self.height.to_le_bytes())
+            .result()
+            .to_vec();
+
+        let script_signature = Signature::sign(self.script_private_key.clone(), script_nonce, &e)
+            .map_err(|_| TransactionError::InvalidSignatureError("Generating script signature".to_string()))?;
+
+        Ok(TransactionInput {
+            features: self.features.clone(),
+            commitment,
+            script: self.script.clone(),
+            input_data: self.input_data.clone(),
+            height: self.height,
+            script_signature,
+            script_offset_public_key: self.script_offset_public_key.clone(),
+        })
     }
 
     pub fn as_transaction_output(&self, factories: &CryptoFactories) -> Result<TransactionOutput, TransactionError> {
+        let beta_hash = Blake256::new()
+            .chain(self.script.as_hash::<Blake256>()?.as_bytes())
+            .chain(self.features.to_bytes())
+            .chain(self.script_offset_public_key.as_bytes())
+            .result()
+            .to_vec();
+        let beta = PrivateKey::from_bytes(beta_hash.as_slice())
+            .map_err(|e| TransactionError::ConversionError(e.to_string()))?;
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
         let output = TransactionOutput {
             features: self.features.clone(),
@@ -219,9 +282,11 @@ impl UnblindedOutput {
             proof: RangeProof::from_bytes(
                 &factories
                     .range_proof
-                    .construct_proof(&self.spending_key, self.value.into())?,
+                    .construct_proof(&(self.spending_key.clone() + beta), self.value.into())?,
             )
             .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?,
+            script_hash: self.script.as_hash::<Blake256>()?.to_vec(),
+            script_offset_public_key: self.script_offset_public_key.clone(),
         };
         // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
         if !output.verify_range_proof(&factories.range_proof)? {
@@ -238,10 +303,19 @@ impl UnblindedOutput {
         rewind_data: &RewindData,
     ) -> Result<TransactionOutput, TransactionError>
     {
+        let beta_hash = Blake256::new()
+            .chain(self.script.as_hash::<Blake256>()?.as_bytes())
+            .chain(self.features.to_bytes())
+            .chain(self.script_offset_public_key.as_bytes())
+            .result()
+            .to_vec();
+        let beta = PrivateKey::from_bytes(beta_hash.as_slice())
+            .map_err(|e| TransactionError::ConversionError(e.to_string()))?;
+
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
 
         let proof_bytes = factories.range_proof.construct_proof_with_rewind_key(
-            &self.spending_key,
+            &(self.spending_key.clone() + beta),
             self.value.into(),
             &rewind_data.rewind_key,
             &rewind_data.rewind_blinding_key,
@@ -255,6 +329,8 @@ impl UnblindedOutput {
             features: self.features.clone(),
             commitment,
             proof,
+            script_hash: self.script.as_hash::<Blake256>()?.to_vec(),
+            script_offset_public_key: self.script_offset_public_key.clone(),
         };
         // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
         if !output.verify_range_proof(&factories.range_proof)? {
@@ -298,19 +374,46 @@ impl Ord for UnblindedOutput {
 /// A transaction input.
 ///
 /// Primarily a reference to an output being spent by the transaction.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransactionInput {
     /// The features of the output being spent. We will check maturity for all outputs.
     pub features: OutputFeatures,
     /// The commitment referencing the output being spent.
     pub commitment: Commitment,
+    /// The serialised script
+    pub script: TariScript,
+    /// The script input data, if any
+    pub input_data: ExecutionStack,
+    /// The block height that the UTXO was mined
+    pub height: u64,
+    /// A signature with k_s, signing the script, input data, and mined height
+    pub script_signature: Signature,
+    /// The offset pubkey, K_O
+    pub script_offset_public_key: PublicKey,
 }
 
 /// An input for a transaction that spends an existing output
 impl TransactionInput {
     /// Create a new Transaction Input
-    pub fn new(features: OutputFeatures, commitment: Commitment) -> TransactionInput {
-        TransactionInput { features, commitment }
+    pub fn new(
+        features: OutputFeatures,
+        commitment: Commitment,
+        script: TariScript,
+        input_data: ExecutionStack,
+        height: u64,
+        script_signature: Signature,
+        script_offset_public_key: PublicKey,
+    ) -> TransactionInput
+    {
+        TransactionInput {
+            features,
+            commitment,
+            script,
+            input_data,
+            height,
+            script_signature,
+            script_offset_public_key,
+        }
     }
 
     /// Accessor method for the commitment contained in an input
@@ -328,23 +431,55 @@ impl TransactionInput {
     pub fn is_equal_to(&self, output: &TransactionOutput) -> bool {
         self.commitment == output.commitment && self.features == output.features
     }
-}
 
-impl From<TransactionOutput> for TransactionInput {
-    fn from(item: TransactionOutput) -> Self {
-        TransactionInput {
-            features: item.features,
-            commitment: item.commitment,
+    /// This will run the script contained in the TransactionInput, returning either a script error or the resulting
+    /// public key.
+    pub fn run_script(&self) -> Result<PublicKey, TransactionError> {
+        match self.script.execute(&self.input_data)? {
+            StackItem::PublicKey(pubkey) => Ok(pubkey),
+            _ => Err(TransactionError::ScriptExecutionError(
+                "The script executed successfully but it did not leave a public key on the stack".to_string(),
+            )),
         }
+    }
+
+    pub fn validate_script_signature(&self, key: &PublicKey) -> Result<(), TransactionError> {
+        let r = self.script_signature.get_public_nonce();
+        let m = HashDigest::new()
+            .chain(r.as_bytes())
+            .chain(self.script.as_bytes())
+            .chain(self.input_data.as_bytes())
+            .chain(self.height.to_le_bytes())
+            .result()
+            .to_vec();
+        if self.script_signature.verify_challenge(key, &m) {
+            Ok(())
+        } else {
+            Err(TransactionError::InvalidSignatureError(
+                "Verifying script signature".to_string(),
+            ))
+        }
+    }
+
+    /// This will run the script and verify the script signature. If its valid, it will return the resulting public key
+    /// from the script.
+    pub fn run_and_verify_script(&self) -> Result<PublicKey, TransactionError> {
+        let key = self.run_script()?;
+        self.validate_script_signature(&key)?;
+        Ok(key)
     }
 }
 
 /// Implement the canonical hashing function for TransactionInput for use in ordering
+// Note we use the hash of an UTXO to ID it, so we need the hash of the TransactionInput to equal the hash of the
+// TransactionOutput
 impl Hashable for TransactionInput {
     fn hash(&self) -> Vec<u8> {
         HashDigest::new()
             .chain(self.features.to_bytes())
             .chain(self.commitment.as_bytes())
+            .chain(self.script.as_hash::<Blake256>().unwrap())
+            .chain(self.script_offset_public_key.as_bytes())
             .result()
             .to_vec()
     }
@@ -352,7 +487,26 @@ impl Hashable for TransactionInput {
 
 impl Display for TransactionInput {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(fmt, "{} [{:?}]", self.commitment.to_hex(), self.features)
+        write!(
+            fmt,
+            "{} [{:?}], Script hash: ({}), Offset_Pubkey: ({})",
+            self.commitment.to_hex(),
+            self.features,
+            self.script.as_hash::<Blake256>().unwrap().to_hex(),
+            self.script_offset_public_key.to_hex()
+        )
+    }
+}
+
+impl PartialOrd for TransactionInput {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.commitment.partial_cmp(&other.commitment)
+    }
+}
+
+impl Ord for TransactionInput {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.commitment.cmp(&other.commitment)
     }
 }
 
@@ -369,16 +523,29 @@ pub struct TransactionOutput {
     pub commitment: Commitment,
     /// A proof that the commitment is in the right range
     pub proof: RangeProof,
+    /// Tari script serialised script hash
+    pub script_hash: Vec<u8>,
+    /// Tari script offset pubkey, K_O
+    pub script_offset_public_key: PublicKey,
 }
 
-/// An output for a transaction, includes a range proof
+/// An output for a transaction, includes a range proof and Tari script metadata
 impl TransactionOutput {
     /// Create new Transaction Output
-    pub fn new(features: OutputFeatures, commitment: Commitment, proof: RangeProof) -> TransactionOutput {
+    pub fn new(
+        features: OutputFeatures,
+        commitment: Commitment,
+        proof: RangeProof,
+        script_hash: Vec<u8>,
+        script_offset_public_key: PublicKey,
+    ) -> TransactionOutput
+    {
         TransactionOutput {
             features,
             commitment,
             proof,
+            script_hash,
+            script_offset_public_key,
         }
     }
 
@@ -394,7 +561,7 @@ impl TransactionOutput {
 
     /// Verify that range proof is valid
     pub fn verify_range_proof(&self, prover: &RangeProofService) -> Result<bool, TransactionError> {
-        Ok(prover.verify(&self.proof.0, &self.commitment))
+        Ok(prover.verify(&self.proof.0, &self.get_modified_script_commitment()?))
     }
 
     /// Attempt to rewind the range proof to reveal the proof message and committed value
@@ -408,7 +575,7 @@ impl TransactionOutput {
         Ok(prover
             .rewind_proof_value_only(
                 &self.proof.0,
-                &&self.commitment,
+                &self.get_modified_script_commitment()?,
                 rewind_public_key,
                 rewind_blinding_public_key,
             )?
@@ -424,7 +591,12 @@ impl TransactionOutput {
     ) -> Result<FullRewindResult, TransactionError>
     {
         Ok(prover
-            .rewind_proof_commitment_data(&self.proof.0, &&self.commitment, rewind_key, rewind_blinding_key)?
+            .rewind_proof_commitment_data(
+                &self.proof.0,
+                &self.get_modified_script_commitment()?,
+                rewind_key,
+                rewind_blinding_key,
+            )?
             .into())
     }
 
@@ -438,6 +610,20 @@ impl TransactionOutput {
     /// Returns true if the output is a coinbase, otherwise false
     pub fn is_coinbase(&self) -> bool {
         self.features.flags.contains(OutputFlags::COINBASE_OUTPUT)
+    }
+
+    /// Return this outputs commitment modified by the script Beta term for use in verifying or rewinding the rangeproof
+    fn get_modified_script_commitment(&self) -> Result<Commitment, TransactionError> {
+        let beta_hash = Blake256::new()
+            .chain(&self.script_hash)
+            .chain(self.features.to_bytes())
+            .chain(self.script_offset_public_key.as_bytes())
+            .result()
+            .to_vec();
+        let beta = PrivateKey::from_bytes(beta_hash.as_slice())
+            .map_err(|e| TransactionError::ConversionError(e.to_string()))?;
+        let public_beta = PublicKey::from_secret_key(&beta);
+        Ok(HomomorphicCommitment::from_public_key(&public_beta).add(&self.commitment))
     }
 }
 
@@ -453,6 +639,8 @@ impl Hashable for TransactionOutput {
             .chain(self.features.to_bytes())
             .chain(self.commitment.as_bytes())
             // .chain(range proof) // See docs as to why we exclude this
+            .chain(self.script_hash.as_bytes())
+            .chain(self.script_offset_public_key.as_bytes())
             .result()
             .to_vec()
     }
@@ -464,6 +652,8 @@ impl Default for TransactionOutput {
             OutputFeatures::default(),
             CommitmentFactory::default().zero(),
             RangeProof::default(),
+            TariScript::default().as_hash::<Blake256>().unwrap().to_vec(),
+            PublicKey::default(),
         )
     }
 }
@@ -473,9 +663,11 @@ impl Display for TransactionOutput {
         let proof = self.proof.to_hex();
         write!(
             fmt,
-            "{} [{:?}] Proof: {}..{}",
+            "{} [{:?}], Script hash: ({}), Offset Pubkey: ({}), Proof: {}..{}",
             self.commitment.to_hex(),
             self.features,
+            self.script_hash.to_hex(),
+            self.script_offset_public_key.to_hex(),
             proof[0..16].to_string(),
             proof[proof.len() - 16..proof.len()].to_string()
         )
@@ -650,7 +842,9 @@ impl TransactionKernel {
         if self.excess_sig.verify_challenge(excess, &c) {
             Ok(())
         } else {
-            Err(TransactionError::InvalidSignatureError)
+            Err(TransactionError::InvalidSignatureError(
+                "Verifying kernel signature".to_string(),
+            ))
         }
     }
 }
@@ -708,6 +902,9 @@ pub struct Transaction {
     pub offset: BlindingFactor,
     /// The constituents of a transaction which has the same structure as the body of a block.
     pub body: AggregateBody,
+    /// A scalar offset that links outputs and inputs to prevent cut-through, enforcing the correct application of
+    /// the output script.
+    pub script_offset: BlindingFactor,
 }
 
 impl Transaction {
@@ -717,11 +914,16 @@ impl Transaction {
         outputs: Vec<TransactionOutput>,
         kernels: Vec<TransactionKernel>,
         offset: BlindingFactor,
+        script_offset: BlindingFactor,
     ) -> Transaction
     {
         let mut body = AggregateBody::new(inputs, outputs, kernels);
         body.sort();
-        Transaction { offset, body }
+        Transaction {
+            offset,
+            body,
+            script_offset,
+        }
     }
 
     /// Validate this transaction by checking the following:
@@ -738,7 +940,8 @@ impl Transaction {
     ) -> Result<(), TransactionError>
     {
         let reward = reward.unwrap_or_else(|| 0 * uT);
-        self.body.validate_internal_consistency(&self.offset, reward, factories)
+        self.body
+            .validate_internal_consistency(&self.offset, &self.script_offset, reward, factories)
     }
 
     pub fn get_body(&self) -> &AggregateBody {
@@ -788,6 +991,7 @@ impl Transaction {
     /// vut-through being applied.
     pub fn add_no_cut_through(mut self, other: Self) -> Self {
         self.offset = self.offset + other.offset;
+        self.script_offset = self.script_offset + other.script_offset;
         let (mut inputs, mut outputs, mut kernels) = other.body.dissolve();
         self.body.add_inputs(&mut inputs);
         self.body.add_outputs(&mut outputs);
@@ -806,7 +1010,6 @@ impl Add for Transaction {
     // Note this will also do cut-through
     fn add(mut self, other: Self) -> Self {
         self = self.add_no_cut_through(other);
-        self.body.do_cut_through();
         self
     }
 }
@@ -816,6 +1019,8 @@ impl Display for Transaction {
         fmt.write_str("-------------- Transaction --------------\n")?;
         fmt.write_str("--- Offset ---\n")?;
         fmt.write_str(&format!("{}\n", self.offset.to_hex()))?;
+        fmt.write_str("--- Script Offset ---\n")?;
+        fmt.write_str(&format!("{}\n", self.script_offset.to_hex()))?;
         fmt.write_str("---  Body  ---\n")?;
         fmt.write_str(&format!("{}\n", self.body))
     }
@@ -825,6 +1030,7 @@ impl Display for Transaction {
 pub struct TransactionBuilder {
     body: AggregateBody,
     offset: Option<BlindingFactor>,
+    script_offset: Option<BlindingFactor>,
     reward: Option<MicroTari>,
 }
 
@@ -837,6 +1043,12 @@ impl TransactionBuilder {
     /// Update the offset of an existing transaction
     pub fn add_offset(&mut self, offset: BlindingFactor) -> &mut Self {
         self.offset = Some(offset);
+        self
+    }
+
+    /// Update the script offset of an existing transaction
+    pub fn add_script_offset(&mut self, script_offset: BlindingFactor) -> &mut Self {
+        self.script_offset = Some(script_offset);
         self
     }
 
@@ -877,9 +1089,9 @@ impl TransactionBuilder {
 
     /// Build the transaction.
     pub fn build(self, factories: &CryptoFactories) -> Result<Transaction, TransactionError> {
-        if let Some(offset) = self.offset {
+        if let (Some(script_offset), Some(offset)) = (self.script_offset, self.offset) {
             let (i, o, k) = self.body.dissolve();
-            let tx = Transaction::new(i, o, k, offset);
+            let tx = Transaction::new(i, o, k, offset, script_offset);
             tx.validate_internal_consistency(factories, self.reward)?;
             Ok(tx)
         } else {
@@ -896,6 +1108,7 @@ impl Default for TransactionBuilder {
             offset: None,
             body: AggregateBody::empty(),
             reward: None,
+            script_offset: None,
         }
     }
 }
@@ -916,16 +1129,30 @@ mod test {
     };
     use rand::{self, rngs::OsRng};
     use tari_crypto::{
+        inputs,
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
         ristretto::pedersen::PedersenCommitmentFactory,
+        script,
+        script::ExecutionStack,
     };
 
     #[test]
     fn unblinded_input() {
         let k = BlindingFactor::random(&mut OsRng);
         let factory = PedersenCommitmentFactory::default();
-        let i = UnblindedOutput::new(10.into(), k, None);
-        let input = i.as_transaction_input(&factory, OutputFeatures::default());
+        let i = UnblindedOutput::new(
+            10.into(),
+            k.clone(),
+            None,
+            script!(Nop),
+            inputs!(PublicKey::from_secret_key(&k)),
+            0,
+            k.clone(),
+            PublicKey::from_secret_key(&k),
+        );
+        let input = i
+            .as_transaction_input(&factory)
+            .expect("Should be able to create transaction input");
         assert_eq!(input.features, OutputFeatures::default());
         assert!(input.opened_by(&i, &factory));
     }
@@ -945,11 +1172,29 @@ mod test {
         let k2 = BlindingFactor::random(&mut OsRng);
 
         // For testing the max range has been limited to 2^32 so this value is too large.
-        let unblinded_output1 = UnblindedOutput::new((2u64.pow(32) - 1u64).into(), k1, None);
+        let unblinded_output1 = UnblindedOutput::new(
+            (2u64.pow(32) - 1u64).into(),
+            k1.clone(),
+            None,
+            script!(Nop),
+            inputs!(PublicKey::from_secret_key(&k1)),
+            0,
+            k1.clone(),
+            PublicKey::from_secret_key(&k1),
+        );
         let tx_output1 = unblinded_output1.as_transaction_output(&factories).unwrap();
         assert!(tx_output1.verify_range_proof(&factories.range_proof).unwrap());
 
-        let unblinded_output2 = UnblindedOutput::new((2u64.pow(32) + 1u64).into(), k2.clone(), None);
+        let unblinded_output2 = UnblindedOutput::new(
+            (2u64.pow(32) + 1u64).into(),
+            k2.clone(),
+            None,
+            script!(Nop),
+            inputs!(PublicKey::from_secret_key(&k2)),
+            0,
+            k2.clone(),
+            PublicKey::from_secret_key(&k2),
+        );
         let tx_output2 = unblinded_output2.as_transaction_output(&factories);
 
         match tx_output2 {
@@ -962,7 +1207,17 @@ mod test {
         let v = PrivateKey::from(2u64.pow(32) + 1);
         let c = factories.commitment.commit(&k2, &v);
         let proof = factories.range_proof.construct_proof(&k2, 2u64.pow(32) + 1).unwrap();
-        let tx_output3 = TransactionOutput::new(OutputFeatures::default(), c, RangeProof::from_bytes(&proof).unwrap());
+        // TODO: Populate script_hash with the proper value
+        let script_hash = TariScript::default().as_hash::<Blake256>().unwrap().to_vec();
+        // TODO: Populate offset_pub_key with the proper value
+        let offset_pub_key = PublicKey::default();
+        let tx_output3 = TransactionOutput::new(
+            OutputFeatures::default(),
+            c,
+            RangeProof::from_bytes(&proof).unwrap(),
+            script_hash,
+            offset_pub_key,
+        );
         assert_eq!(tx_output3.verify_range_proof(&factories.range_proof).unwrap(), false);
     }
 
@@ -1011,9 +1266,23 @@ mod test {
         let v = PrivateKey::from(2u64.pow(32) + 1);
         let c = factories.commitment.commit(&k, &v);
 
-        let mut input = TransactionInput::new(OutputFeatures::default(), c);
+        let script = TariScript::default();
+        let input_data = ExecutionStack::default();
+        let height = 0;
+        let script_signature = Signature::default();
+        let offset_pub_key = PublicKey::default();
+        let mut input = TransactionInput::new(
+            OutputFeatures::default(),
+            c,
+            script,
+            input_data,
+            height,
+            script_signature,
+            offset_pub_key,
+        );
+
         let mut kernel = create_test_kernel(0.into(), 0);
-        let mut tx = Transaction::new(Vec::new(), Vec::new(), Vec::new(), 0.into());
+        let mut tx = Transaction::new(Vec::new(), Vec::new(), Vec::new(), 0.into(), 0.into());
 
         // lets add timelocks
         input.features.maturity = 5;
@@ -1056,7 +1325,7 @@ mod test {
 
     #[test]
     #[allow(clippy::identity_op)]
-    fn check_cut_through_() {
+    fn check_cut_through() {
         let (tx, _, outputs) = create_tx(50000000.into(), 15.into(), 1, 2, 1, 2);
 
         assert_eq!(tx.body.inputs().len(), 2);
@@ -1079,24 +1348,29 @@ mod test {
         assert_eq!(tx3.body.inputs().len(), 3);
         assert_eq!(tx3.body.outputs().len(), 5);
         assert_eq!(tx3.body.kernels().len(), 2);
-        // check that cut-though has not been applied
-        assert!(!tx3.body.check_cut_through());
 
-        // apply cut-through
-        tx3.body.do_cut_through();
+        let double_inputs: Vec<TransactionInput> = tx3
+            .body
+            .inputs()
+            .clone()
+            .iter()
+            .filter(|input| tx3.body.outputs_mut().iter().any(|o| o.is_equal_to(input)))
+            .cloned()
+            .collect();
+
+        for input in double_inputs {
+            tx3.body.outputs_mut().retain(|x| !input.is_equal_to(x));
+            tx3.body.inputs_mut().retain(|x| *x != input);
+        }
 
         // check that cut-through has been applied.
-        assert!(tx.body.check_cut_through());
         assert!(tx.validate_internal_consistency(&factories, None).is_ok());
-        assert_eq!(tx.body.inputs().len(), 2);
-        assert_eq!(tx.body.outputs().len(), 4);
+        assert_eq!(tx.body.inputs().len(), 3);
+        assert_eq!(tx.body.outputs().len(), 5);
         assert_eq!(tx.body.kernels().len(), 2);
 
-        assert!(tx3.body.check_cut_through());
-        assert!(tx3.validate_internal_consistency(&factories, None).is_ok());
-        assert_eq!(tx3.body.inputs().len(), 2);
-        assert_eq!(tx3.body.outputs().len(), 4);
-        assert_eq!(tx3.body.kernels().len(), 2);
+        // tx3 has manual cut-through, it should not be possible so this should fail
+        assert!(tx3.validate_internal_consistency(&factories, None).is_err());
     }
 
     #[test]
@@ -1137,7 +1411,16 @@ mod test {
             proof_message: proof_message.to_owned(),
         };
 
-        let unblinded_output = UnblindedOutput::new(v, k.clone(), None);
+        let unblinded_output = UnblindedOutput::new(
+            v,
+            k.clone(),
+            None,
+            script!(Nop),
+            inputs!(PublicKey::from_secret_key(&k)),
+            0,
+            k.clone(),
+            PublicKey::from_secret_key(&k),
+        );
 
         let output = unblinded_output
             .as_rewindable_transaction_output(&factories, &rewind_data)
@@ -1175,9 +1458,15 @@ mod test {
         let full_rewind_result = output
             .full_rewind_range_proof(&factories.range_proof, &rewind_key, &rewind_blinding_key)
             .unwrap();
-
+        let beta_hash = Blake256::new()
+            .chain(unblinded_output.script.as_hash::<Blake256>().unwrap().as_bytes())
+            .chain(unblinded_output.features.to_bytes())
+            .chain(unblinded_output.script_offset_public_key.as_bytes())
+            .result()
+            .to_vec();
+        let beta = PrivateKey::from_bytes(beta_hash.as_slice()).unwrap();
         assert_eq!(full_rewind_result.committed_value, v);
         assert_eq!(&full_rewind_result.proof_message, proof_message);
-        assert_eq!(full_rewind_result.blinding_factor, k);
+        assert_eq!(full_rewind_result.blinding_factor, k + beta);
     }
 }

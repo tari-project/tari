@@ -59,6 +59,8 @@ message BlockHeader {
     uint64 kernel_mmr_size = 12;
     // Output MMR size
     uint64 output_mmr_size = 13;
+    // Sum of script offsets for all kernels in this block.
+    bytes total_script_offset = 14;
 }
 
 // Metadata required for validating the Proof of Work calculation
@@ -113,8 +115,9 @@ message NewBlockHeaderTemplate {
     bytes total_kernel_offset = 4;
     // Proof of work metadata
     ProofOfWork pow = 5;
-
 //    uint64 target_difficulty = 6;
+    // Sum of script offsets for all kernels in this block.
+    bytes total_script_offset = 7;
 }
 
 // The new block template is used constructing a new partial block, allowing a miner to added the coinbase utxo and as a final step the Base node to add the MMR roots to the header.
@@ -157,6 +160,16 @@ message TransactionInput {
     bytes commitment = 2;
     // Hash of the input, as it appears in the MMR
     bytes hash = 3;
+    // The serialised script
+    bytes script = 4;
+    // The script input data, if any
+    bytes input_data = 5;
+    // The block height that the UTXO was mined
+    uint64 height = 6;
+    // A signature with k_s, signing the script, input data, and mined height
+    Signature script_signature = 7;
+    // The offset pubkey, K_O
+    bytes script_offset_public_key = 8;
 }
 
 // Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
@@ -171,6 +184,10 @@ message TransactionOutput {
     bytes range_proof = 3;
     // The hash of the output, as it appears in the MMR
     bytes hash = 4;
+    // Tari script serialised script hash
+    bytes script_hash = 5;
+    // Tari script offset pubkey, K_O
+    bytes script_offset_public_key = 6;
 }
 
 // Options for UTXO's
@@ -198,6 +215,7 @@ message AggregateBody {
 message Transaction {
     bytes offset = 1;
     AggregateBody body = 2;
+    bytes script_offset = 3;
 }
 
 // Define the explicit Signature implementation for the Tari base layer. A different signature scheme can be

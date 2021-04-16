@@ -344,7 +344,7 @@ where B: BlockchainBackend
     // Fetch the utxo
     pub fn fetch_utxo(&self, hash: HashOutput) -> Result<Option<TransactionOutput>, ChainStorageError> {
         let db = self.db_read_access()?;
-        Ok(db.fetch_output(&hash)?.map(|(out, _index)| out))
+        Ok(db.fetch_output(&hash)?.map(|(out, _index, _)| out))
     }
 
     /// Return a list of matching utxos, with each being `None` if not found. If found, the transaction
@@ -371,7 +371,7 @@ where B: BlockchainBackend
         let mut result = vec![];
         for hash in hashes {
             let output = db.fetch_output(&hash)?;
-            result.push(output.map(|(out, mmr_index)| (out, data.deleted().contains(mmr_index))));
+            result.push(output.map(|(out, mmr_index, _)| (out, data.deleted().contains(mmr_index))));
         }
         Ok(result)
     }

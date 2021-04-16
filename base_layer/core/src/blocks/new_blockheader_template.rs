@@ -44,6 +44,8 @@ pub struct NewBlockHeaderTemplate {
     /// Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
     /// block from the total kernel offset of the previous block header.
     pub total_kernel_offset: BlindingFactor,
+    /// Sum of script offsets for all kernels in this block.
+    pub total_script_offset: BlindingFactor,
     /// Proof of work summary
     pub pow: ProofOfWork,
 }
@@ -55,6 +57,7 @@ impl NewBlockHeaderTemplate {
             height: header.height,
             prev_hash: header.prev_hash,
             total_kernel_offset: header.total_kernel_offset,
+            total_script_offset: header.total_script_offset,
             pow: header.pow,
         }
     }
@@ -70,8 +73,9 @@ impl Display for NewBlockHeaderTemplate {
         );
         fmt.write_str(&msg)?;
         fmt.write_str(&format!(
-            "Total offset: {}\nProof of work: {}",
+            "Total offset: {}\nTotal script offset: {}\nProof of work: {}",
             self.total_kernel_offset.to_hex(),
+            self.total_script_offset.to_hex(),
             self.pow
         ))
     }

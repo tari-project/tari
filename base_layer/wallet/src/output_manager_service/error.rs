@@ -29,7 +29,7 @@ use tari_core::transactions::{
     transaction_protocol::TransactionProtocolError,
     CoinbaseBuildError,
 };
-use tari_crypto::tari_utilities::ByteArrayError;
+use tari_crypto::{script::ScriptError, tari_utilities::ByteArrayError};
 use tari_key_manager::{key_manager::KeyManagerError, mnemonic::MnemonicError};
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
@@ -101,6 +101,10 @@ pub enum OutputManagerError {
     RpcError(#[from] RpcError),
     #[error("Node ID error: `{0}`")]
     NodeIdError(#[from] NodeIdError),
+    #[error("Script hash does not match expected script")]
+    InvalidScriptHash,
+    #[error("Tari script error : {0}")]
+    ScriptError(#[from] ScriptError),
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -143,6 +147,8 @@ pub enum OutputManagerStorageError {
     ByteArrayError(#[from] ByteArrayError),
     #[error("Aead error: `{0}`")]
     AeadError(String),
+    #[error("Tari script error : {0}")]
+    ScriptError(#[from] ScriptError),
 }
 
 /// This error type is used to return OutputManagerError from inside a Output Manager Service protocol but also

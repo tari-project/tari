@@ -11,8 +11,8 @@ CREATE TABLE completed_transactions (
     message TEXT NOT NULL,
     timestamp DATETIME NOT NULL,
     cancelled INTEGER NOT NULL DEFAULT 0,
-    direction INTEGER NULL DEFAULT NULL,
-    coinbase_block_height INTEGER NULL DEFAULT NULL
+    direction INTEGER NULL,
+    coinbase_block_height INTEGER NULL
 );
 INSERT INTO completed_transactions (tx_id, source_public_key, destination_public_key, amount, fee, transaction_protocol, status, message, timestamp, cancelled, direction, coinbase_block_height)
 SELECT tx_id, source_public_key, destination_public_key, amount, fee, transaction_protocol, status, message, timestamp, cancelled, direction, coinbase_block_height

@@ -36,6 +36,7 @@ use tokio::task::JoinError;
 pub const LOG_TARGET: &str = "wallet::automation::error";
 
 #[derive(Debug, Error)]
+#[allow(clippy::large_enum_variant)]
 pub enum CommandError {
     #[error("Argument error - were they in the right order?")]
     Argument,

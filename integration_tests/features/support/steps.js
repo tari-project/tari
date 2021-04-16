@@ -373,6 +373,110 @@ When(/I ask for a block height from proxy (.*)/, async function (mmProxy) {
   let proxyClient = proxy.createClient();
   let height = await proxyClient.getHeight();
   lastResult = height;
+  }
+);
+
+Given(
+  /I have mining node (.*) connected to base node (.*) and wallet (.*)/,
+  function (miner, node, wallet) {
+    let baseNode = this.getNode(node);
+    let walletNode = this.getWallet(wallet);
+    const miningNode = new MiningNodeProcess(
+      miner,
+      baseNode.getGrpcAddress(),
+      walletNode.getGrpcAddress()
+    );
+    this.addMiningNode(miner, miningNode);
+  }
+);
+
+Given(
+  /I have a SHA3 miner (.*) connected to seed node (.*)/,  
+  { timeout: 40 * 1000 },
+  async function (name, seed) {
+    //add the base_node
+    const node = this.createNode(name);
+    console.log(this.seeds[seed].peerAddress());
+    node.setPeerSeeds([this.seeds[seed].peerAddress()]);
+    await node.startNew();
+    this.addNode(name, node);
+
+    // Add the wallet connected to the above base node
+    let wallet = new WalletProcess(name);
+    wallet.setPeerSeeds([node.peerAddress()]);
+    await wallet.startNew();
+    this.addWallet(name, wallet);
+
+    //Now lets add a standalone miner to both
+    const miningNode = new MiningNodeProcess(
+      name,
+      node.getGrpcAddress(),
+      wallet.getGrpcAddress()
+    );
+    this.addMiningNode(name, miningNode);
+  }
+);
+
+Given(
+  /I have a SHA3 miner (.*) connected to node (.*)/,  
+  { timeout: 40 * 1000 },
+  async function (name, seed) {
+    //add the base_node
+    const node = this.createNode(name);
+    console.log(this.nodes[seed].peerAddress());
+    node.setPeerSeeds([this.nodes[seed].peerAddress()]);
+    await node.startNew();
+    this.addNode(name, node);
+
+    // Add the wallet connected to the above base node
+    let wallet = new WalletProcess(name);
+    wallet.setPeerSeeds([node.peerAddress()]);
+    await wallet.startNew();
+    this.addWallet(name, wallet);
+
+    //Now lets add a standalone miner to both
+    const miningNode = new MiningNodeProcess(
+      name,
+      node.getGrpcAddress(),
+      wallet.getGrpcAddress()
+    );
+    this.addMiningNode(name, miningNode);
+  }
+);
+
+Given(
+  /I have a SHA3 miner (.*) connected to all seed nodes/,  
+  { timeout: 40 * 1000 },
+  async function (name) {
+    //add the base_node
+    const node = this.createNode(name);
+    node.setPeerSeeds([this.seedAddresses()]);
+    await node.startNew();
+    this.addNode(name, node);
+
+    // Add the wallet connected to the above base node
+    let wallet = new WalletProcess(name);
+    wallet.setPeerSeeds([node.peerAddress()]);
+    await wallet.startNew();
+    this.addWallet(name, wallet);
+
+    //Now lets add a standalone miner to both
+    const miningNode = new MiningNodeProcess(
+      name,
+      node.getGrpcAddress(),
+      wallet.getGrpcAddress()
+    );
+    this.addMiningNode(name, miningNode);
+  }
+);
+
+
+When(/I ask for a block height from proxy (.*)/, async function (mmProxy) {
+  lastResult = "NaN";
+  let proxy = this.getProxy(mmProxy);
+  let proxyClient = proxy.createClient();
+  let height = await proxyClient.getHeight();
+  lastResult = height;
 });
 
 Then("Proxy response height is valid", function () {
@@ -763,7 +867,7 @@ When(
 );
 
 When(
-  /Mining node (.*) mines (\d+) blocks on (.*)/,
+  /mining node (.*) mines (\d+) blocks on (.*)/,
   { timeout: 600 * 1000 },
   async function (miner, numBlocks, node) {
     let miningNode = this.getMiningNode(miner);
@@ -773,7 +877,7 @@ When(
 );
 
 When(
-  /Mining node (.*) mines (\d+) blocks with min difficulty (\d+) and max difficulty (\d+)/,
+  /mining node (.*) mines (\d+) blocks with min difficulty (\d+) and max difficulty (\d+)/,
   { timeout: 600 * 1000 },
   async function (miner, numBlocks, min, max) {
     let miningNode = this.getMiningNode(miner);

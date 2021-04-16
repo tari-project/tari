@@ -782,6 +782,7 @@ pub enum Network {
     LocalNet,
     Ridcully,
     Stibbons,
+    Weatherwax,
 }
 
 impl FromStr for Network {
@@ -792,6 +793,7 @@ impl FromStr for Network {
             "rincewind" => Ok(Self::Rincewind),
             "ridcully" => Ok(Self::Ridcully),
             "stibbons" => Ok(Self::Stibbons),
+            "weatherwax" => Ok(Self::Weatherwax),
             "mainnet" => Ok(Self::MainNet),
             "localnet" => Ok(Self::LocalNet),
             invalid => Err(ConfigurationError::new(
@@ -809,6 +811,7 @@ impl Display for Network {
             Self::Rincewind => "rincewind",
             Self::Ridcully => "ridcully",
             Self::Stibbons => "stibbons",
+            Self::Weatherwax => "weatherwax",
             Self::LocalNet => "localnet",
         };
         f.write_str(msg)

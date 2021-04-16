@@ -37,7 +37,7 @@ use crate::{
         types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey, Signature},
     },
 };
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::PublicKey as PK};
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, inputs, keys::PublicKey as PK, script};
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error, PartialEq)]
@@ -50,6 +50,8 @@ pub enum CoinbaseBuildError {
     MissingNonce,
     #[error("The spend key for this coinbase transaction wasn't provided")]
     MissingSpendKey,
+    #[error("The script key for this coinbase transaction wasn't provided")]
+    MissingScriptKey,
     #[error("An error occurred building the final transaction: `{0}`")]
     BuildError(String),
     #[error("Some inconsistent data was given to the builder. This transaction is not valid")]
@@ -61,6 +63,7 @@ pub struct CoinbaseBuilder {
     block_height: Option<u64>,
     fees: Option<MicroTari>,
     spend_key: Option<PrivateKey>,
+    script_key: Option<PrivateKey>,
     private_nonce: Option<PrivateKey>,
     rewind_data: Option<RewindData>,
 }
@@ -74,6 +77,7 @@ impl CoinbaseBuilder {
             block_height: None,
             fees: None,
             spend_key: None,
+            script_key: None,
             private_nonce: None,
             rewind_data: None,
         }
@@ -94,6 +98,13 @@ impl CoinbaseBuilder {
     /// Provides the private spend key for this transaction. This will usually be provided by a miner's wallet instance.
     pub fn with_spend_key(mut self, key: PrivateKey) -> Self {
         self.spend_key = Some(key);
+        self
+    }
+
+    /// Provides the private script key for this transaction. This will usually be provided by a miner's wallet
+    /// instance.
+    pub fn with_script_key(mut self, key: PrivateKey) -> Self {
+        self.script_key = Some(key);
         self
     }
 
@@ -151,6 +162,7 @@ impl CoinbaseBuilder {
         let nonce = self.private_nonce.ok_or_else(|| CoinbaseBuildError::MissingNonce)?;
         let public_nonce = PublicKey::from_secret_key(&nonce);
         let key = self.spend_key.ok_or_else(|| CoinbaseBuildError::MissingSpendKey)?;
+        let script_key = self.script_key.unwrap_or_else(|| key.clone());
         let output_features = OutputFeatures::create_coinbase(height + constants.coinbase_lock_height());
         let excess = self.factories.commitment.commit_value(&key, 0);
         let kernel_features = KernelFeatures::create_coinbase();
@@ -158,7 +170,16 @@ impl CoinbaseBuilder {
         let challenge = build_challenge(&public_nonce, &metadata);
         let sig = Signature::sign(key.clone(), nonce, &challenge)
             .map_err(|_| CoinbaseBuildError::BuildError("Challenge could not be represented as a scalar".into()))?;
-        let unblinded_output = UnblindedOutput::new(total_reward, key, Some(output_features));
+        let unblinded_output = UnblindedOutput::new(
+            total_reward,
+            key,
+            Some(output_features),
+            script!(Nop),
+            inputs!(PublicKey::from_secret_key(&script_key)),
+            height,
+            script_key,
+            PublicKey::default(),
+        );
         let output = if let Some(rewind_data) = self.rewind_data.as_ref() {
             unblinded_output
                 .as_rewindable_transaction_output(&self.factories, rewind_data)
@@ -181,6 +202,7 @@ impl CoinbaseBuilder {
         builder
             .add_output(output)
             .add_offset(BlindingFactor::default())
+            .add_script_offset(BlindingFactor::default())
             .with_reward(total_reward)
             .with_kernel(kernel);
         let tx = builder
@@ -200,13 +222,19 @@ mod test {
             tari_amount::uT,
             transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionError, UnblindedOutput},
             transaction_protocol::RewindData,
-            types::{BlindingFactor, CryptoFactories, PrivateKey},
+            types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey},
             CoinbaseBuilder,
         },
     };
+    use digest::Digest;
     use rand::rngs::OsRng;
-    use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as SecretKeyTrait};
-
+    use tari_crypto::{
+        commitment::HomomorphicCommitmentFactory,
+        hash::blake2::Blake256,
+        keys::SecretKey as SecretKeyTrait,
+        script::{ExecutionStack, TariScript},
+        tari_utilities::ByteArray,
+    };
     fn get_builder() -> (CoinbaseBuilder, ConsensusManager, CryptoFactories) {
         let network = Network::LocalNet;
         let rules = ConsensusManagerBuilder::new(network).build();
@@ -266,7 +294,16 @@ mod test {
             .unwrap();
         let utxo = &tx.body.outputs()[0];
         let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
-        let unblinded_test = UnblindedOutput::new(block_reward, p.spend_key.clone(), Some(utxo.features.clone()));
+        let unblinded_test = UnblindedOutput::new(
+            block_reward,
+            p.spend_key.clone(),
+            Some(utxo.features.clone()),
+            TariScript::default(),
+            ExecutionStack::default(),
+            0,
+            PrivateKey::default(),
+            PublicKey::default(),
+        );
         assert_eq!(unblinded_output, unblinded_test);
         assert!(factories
             .commitment
@@ -304,7 +341,7 @@ mod test {
             .with_nonce(p.nonce.clone())
             .with_spend_key(p.spend_key.clone())
             .with_rewind_data(rewind_data);
-        let (tx, _unblinded_output) = builder
+        let (tx, unblinded_output) = builder
             .build(rules.consensus_constants(42), rules.emission_schedule())
             .unwrap();
         let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
@@ -312,9 +349,16 @@ mod test {
         let rewind_result = tx.body.outputs()[0]
             .full_rewind_range_proof(&factories.range_proof, &rewind_key, &rewind_blinding_key)
             .unwrap();
+        let beta_hash = Blake256::new()
+            .chain(unblinded_output.script.as_hash::<Blake256>().unwrap().as_bytes())
+            .chain(unblinded_output.features.to_bytes())
+            .chain(unblinded_output.script_offset_public_key.as_bytes())
+            .result()
+            .to_vec();
+        let beta = PrivateKey::from_bytes(beta_hash.as_slice()).unwrap();
         assert_eq!(rewind_result.committed_value, block_reward);
         assert_eq!(&rewind_result.proof_message, proof_message);
-        assert_eq!(rewind_result.blinding_factor, p.spend_key);
+        assert_eq!(rewind_result.blinding_factor, p.spend_key + beta);
     }
 
     #[test]
@@ -383,12 +427,6 @@ mod test {
                 42
             ),
             Err(TransactionError::InvalidCoinbase)
-        );
-        // testing that "block" is still valid
-        assert_eq!(
-            tx.body
-                .validate_internal_consistency(&BlindingFactor::default(), block_reward, &factories),
-            Ok(())
         );
         // lets construct a correct one now, with the correct amount.
         let builder = CoinbaseBuilder::new(factories.clone());
@@ -474,8 +512,12 @@ mod test {
         );
         // testing that "block" is still valid
         assert_eq!(
-            tx.body
-                .validate_internal_consistency(&BlindingFactor::default(), block_reward, &factories),
+            tx.body.validate_internal_consistency(
+                &BlindingFactor::default(),
+                &PrivateKey::default(),
+                block_reward,
+                &factories
+            ),
             Ok(())
         );
     }

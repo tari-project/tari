@@ -108,6 +108,8 @@ pub struct BlockHeader {
     pub kernel_mmr_size: u64,
     /// Sum of kernel offsets for all kernels in this block.
     pub total_kernel_offset: BlindingFactor,
+    /// Sum of script offsets for all kernels in this block.
+    pub total_script_offset: BlindingFactor,
     /// Nonce increment used to mine this block.
     pub nonce: u64,
     /// Proof of work summary
@@ -128,6 +130,7 @@ impl BlockHeader {
             kernel_mr: vec![0; BLOCK_HASH_LENGTH],
             kernel_mmr_size: 0,
             total_kernel_offset: BlindingFactor::default(),
+            total_script_offset: BlindingFactor::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
         }
@@ -150,6 +153,7 @@ impl BlockHeader {
             kernel_mr: vec![0; BLOCK_HASH_LENGTH],
             kernel_mmr_size: prev.kernel_mmr_size,
             total_kernel_offset: BlindingFactor::default(),
+            total_script_offset: BlindingFactor::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
         })
@@ -203,6 +207,7 @@ impl BlockHeader {
             .chain(self.kernel_mr.as_bytes())
             .chain(self.kernel_mmr_size.to_le_bytes())
             .chain(self.total_kernel_offset.as_bytes())
+            .chain(self.total_script_offset.as_bytes())
             .result()
             .to_vec()
     }
@@ -233,6 +238,7 @@ impl From<NewBlockHeaderTemplate> for BlockHeader {
             kernel_mr: vec![],
             kernel_mmr_size: 0,
             total_kernel_offset: header_template.total_kernel_offset,
+            total_script_offset: header_template.total_script_offset,
             nonce: 0,
             pow: header_template.pow,
         }
@@ -279,8 +285,9 @@ impl Display for BlockHeader {
         );
         fmt.write_str(&msg)?;
         fmt.write_str(&format!(
-            "Total offset: {}\nNonce: {}\nProof of work:\n{}",
+            "Total offset: {}\nTotal script offset: {}\nNonce: {}\nProof of work:\n{}",
             self.total_kernel_offset.to_hex(),
+            self.total_script_offset.to_hex(),
             self.nonce,
             self.pow
         ))

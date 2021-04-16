@@ -35,7 +35,11 @@ use tari_core::transactions::{
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
-use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
+use tari_crypto::{
+    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+    script,
+    script::{ExecutionStack, TariScript},
+};
 use tari_wallet::{
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     transaction_service::storage::{
@@ -60,7 +64,16 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let factories = CryptoFactories::default();
     let mut builder = SenderTransactionProtocol::builder(1);
     let amount = MicroTari::from(10_000);
-    let input = UnblindedOutput::new(MicroTari::from(100_000), PrivateKey::random(&mut OsRng), None);
+    let input = UnblindedOutput::new(
+        MicroTari::from(100_000),
+        PrivateKey::random(&mut OsRng),
+        None,
+        TariScript::default(),
+        ExecutionStack::default(),
+        0,
+        PrivateKey::default(),
+        PublicKey::default(),
+    );
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177))
@@ -69,10 +82,14 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .with_amount(0, amount)
         .with_message("Yo!".to_string())
         .with_input(
-            input.as_transaction_input(&factories.commitment, OutputFeatures::default()),
+            input
+                .as_transaction_input(&factories.commitment)
+                .expect("Should be able to make transaction input"),
             input,
         )
-        .with_change_secret(PrivateKey::random(&mut OsRng));
+        .with_change_secret(PrivateKey::random(&mut OsRng))
+        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng))
+        .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
     let stp = builder.build::<HashDigest>(&factories).unwrap();
 
@@ -218,7 +235,13 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     assert_eq!(outbound_pub_key, outbound_txs[0].destination_public_key);
 
     let mut completed_txs = Vec::new();
-    let tx = Transaction::new(vec![], vec![], vec![], PrivateKey::random(&mut OsRng));
+    let tx = Transaction::new(
+        vec![],
+        vec![],
+        vec![],
+        PrivateKey::random(&mut OsRng),
+        PrivateKey::random(&mut OsRng),
+    );
 
     for i in 0..messages.len() {
         completed_txs.push(CompletedTransaction {

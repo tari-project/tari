@@ -1,2 +1,2 @@
 ALTER TABLE completed_transactions
-    ADD COLUMN direction INTEGER NULL DEFAULT NULL;
+    ADD COLUMN direction INTEGER NULL;
