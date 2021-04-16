@@ -44,12 +44,12 @@ Scenario: Wallets monitoring coinbase after a reorg
         #
         # TODO: This wait is needed to stop next base node task from continuing
     When I wait 1 seconds
-    And I have a base node NODE_C connected to all seed nodes
+    And I have a SHA3 miner NODE_C connected to all seed nodes
         # Wait for the reorg to filter through
     When I wait 30 seconds
     Then all nodes are at height 10
         # When tip advances past required confirmations, invalid coinbases still being monitored will be cancelled.
-    When I mine 6 blocks on NODE_C
+    And mining node NODE_C mines 6 blocks
     Then all nodes are at height 16
         # Wait for coinbase statuses to change in the wallet
     When I wait 30 seconds

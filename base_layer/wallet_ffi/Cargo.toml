@@ -10,11 +10,11 @@ edition = "2018"
 tari_comms = { version = "^0.8", path = "../../comms" }
 tari_comms_dht = { version = "^0.8", path = "../../comms/dht" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto/", branch = "main" }
+tari_key_manager = { version = "^0.8", path = "../key_manager" }
 tari_p2p = { version = "^0.8", path = "../p2p" }
 tari_wallet = { version = "^0.8", path = "../wallet", features = ["test_harness", "c_integration"]}
 tari_shutdown = { version = "^0.8", path = "../../infrastructure/shutdown" }
 tari_utilities = "^0.3"
-tari_key_manager = { version = "^0.8", path = "../key_manager" }
 
 futures =  { version = "^0.3.1", features =["compat", "std"]}
 tokio = "0.2.10"
