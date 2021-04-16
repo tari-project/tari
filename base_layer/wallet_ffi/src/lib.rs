@@ -1916,6 +1916,39 @@ pub unsafe extern "C" fn completed_transaction_is_outbound(
     false
 }
 
+/// Gets the number of confirmations of a TariCompletedTransaction
+///
+/// ## Arguments
+/// `tx` - The TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - Returns the number of confirmations of a Completed Transaction
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn completed_transaction_get_confirmations(
+    tx: *mut TariCompletedTransaction,
+    error_out: *mut c_int,
+) -> c_ulonglong
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if tx.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("tx".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    match (*tx).confirmations {
+        None => 0,
+        Some(c) => c,
+    }
+}
+
 /// Frees memory for a TariCompletedTransaction
 ///
 /// ## Arguments
@@ -2833,6 +2866,56 @@ pub unsafe extern "C" fn comms_config_destroy(wc: *mut TariCommsConfig) {
 
 /// ------------------------------------- Wallet -------------------------------------------------///
 
+unsafe fn init_logging(log_path: *const c_char, num_rolling_log_files: c_uint, size_per_log_file_bytes: c_uint) {
+    let path = CStr::from_ptr(log_path).to_str().unwrap().to_owned();
+    let encoder = PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}");
+    let log_appender: Box<dyn Append> = if num_rolling_log_files != 0 && size_per_log_file_bytes != 0 {
+        let mut pattern;
+        let split_str: Vec<&str> = path.split('.').collect();
+        if split_str.len() <= 1 {
+            pattern = format!("{}{}", path.clone(), "{}");
+        } else {
+            pattern = split_str[0].to_string();
+            for part in split_str.iter().take(split_str.len() - 1).skip(1) {
+                pattern = format!("{}.{}", pattern, part);
+            }
+
+            pattern = format!("{}{}", pattern, ".{}.");
+            pattern = format!("{}{}", pattern, split_str[split_str.len() - 1]);
+        }
+        let roller = FixedWindowRoller::builder()
+            .build(pattern.as_str(), num_rolling_log_files)
+            .unwrap();
+        let size_trigger = SizeTrigger::new(size_per_log_file_bytes as u64);
+        let policy = CompoundPolicy::new(Box::new(size_trigger), Box::new(roller));
+
+        Box::new(
+            RollingFileAppender::builder()
+                .encoder(Box::new(encoder))
+                .append(true)
+                .build(path.as_str(), Box::new(policy))
+                .unwrap(),
+        )
+    } else {
+        Box::new(
+            FileAppender::builder()
+                .encoder(Box::new(encoder))
+                .append(true)
+                .build(path.as_str())
+                .expect("Should be able to create Appender"),
+        )
+    };
+
+    let lconfig = Config::builder()
+        .appender(Appender::builder().build("logfile", log_appender))
+        .build(Root::builder().appender("logfile").build(LevelFilter::Debug))
+        .unwrap();
+
+    match log4rs::init_config(lconfig) {
+        Ok(_) => debug!(target: LOG_TARGET, "Logging started"),
+        Err(_) => warn!(target: LOG_TARGET, "Logging has already been initialized"),
+    }
+}
 /// Creates a TariWallet
 ///
 /// ## Arguments
@@ -2917,54 +3000,7 @@ pub unsafe extern "C" fn wallet_create(
     }
 
     if !log_path.is_null() {
-        let path = CStr::from_ptr(log_path).to_str().unwrap().to_owned();
-        let encoder = PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}");
-        let log_appender: Box<dyn Append> = if num_rolling_log_files != 0 && size_per_log_file_bytes != 0 {
-            let mut pattern;
-            let split_str: Vec<&str> = path.split('.').collect();
-            if split_str.len() <= 1 {
-                pattern = format!("{}{}", path.clone(), "{}");
-            } else {
-                pattern = split_str[0].to_string();
-                for part in split_str.iter().take(split_str.len() - 1).skip(1) {
-                    pattern = format!("{}.{}", pattern, part);
-                }
-
-                pattern = format!("{}{}", pattern, ".{}.");
-                pattern = format!("{}{}", pattern, split_str[split_str.len() - 1]);
-            }
-            let roller = FixedWindowRoller::builder()
-                .build(pattern.as_str(), num_rolling_log_files)
-                .unwrap();
-            let size_trigger = SizeTrigger::new(size_per_log_file_bytes as u64);
-            let policy = CompoundPolicy::new(Box::new(size_trigger), Box::new(roller));
-
-            Box::new(
-                RollingFileAppender::builder()
-                    .encoder(Box::new(encoder))
-                    .append(true)
-                    .build(path.as_str(), Box::new(policy))
-                    .unwrap(),
-            )
-        } else {
-            Box::new(
-                FileAppender::builder()
-                    .encoder(Box::new(encoder))
-                    .append(true)
-                    .build(path.as_str())
-                    .expect("Should be able to create Appender"),
-            )
-        };
-
-        let lconfig = Config::builder()
-            .appender(Appender::builder().build("logfile", log_appender))
-            .build(Root::builder().appender("logfile").build(LevelFilter::Debug))
-            .unwrap();
-
-        match log4rs::init_config(lconfig) {
-            Ok(_) => debug!(target: LOG_TARGET, "Logging started"),
-            Err(_) => warn!(target: LOG_TARGET, "Logging has already been initialized"),
-        }
+        init_logging(log_path, num_rolling_log_files, size_per_log_file_bytes);
     }
 
     let passphrase_option = if !passphrase.is_null() {
@@ -2977,143 +3013,141 @@ pub unsafe extern "C" fn wallet_create(
         None
     };
 
-    let runtime = Runtime::new();
+    let mut runtime = match Runtime::new() {
+        Ok(r) => r,
+        Err(e) => {
+            error = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
     let factories = CryptoFactories::default();
     let w;
 
-    match runtime {
-        Ok(mut runtime) => {
-            let sql_database_path = (*config)
-                .datastore_path
-                .join((*config).peer_database_name.clone())
-                .with_extension("sqlite3");
+    let sql_database_path = (*config)
+        .datastore_path
+        .join((*config).peer_database_name.clone())
+        .with_extension("sqlite3");
 
-            debug!(target: LOG_TARGET, "Running Wallet database migrations");
-            let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend) =
-                match initialize_sqlite_database_backends(sql_database_path, passphrase_option) {
-                    Ok((w, t, o, c)) => (w, t, o, c),
-                    Err(e) => {
-                        error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
-                        ptr::swap(error_out, &mut error as *mut c_int);
-                        return ptr::null_mut();
-                    },
-                };
-            debug!(target: LOG_TARGET, "Databases Initialized");
+    debug!(target: LOG_TARGET, "Running Wallet database migrations");
+    let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend) =
+        match initialize_sqlite_database_backends(sql_database_path, passphrase_option) {
+            Ok((w, t, o, c)) => (w, t, o, c),
+            Err(e) => {
+                error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        };
+    debug!(target: LOG_TARGET, "Databases Initialized");
 
-            // Check to see if the comms private key needs to be read from the encrypted DB
-            if (*config).node_identity.secret_key() == &CommsSecretKey::default() {
-                let wallet_db = WalletDatabase::new(wallet_backend.clone());
-                let secret_key = match runtime.block_on(wallet_db.get_comms_secret_key()) {
-                    Ok(sk_option) => match sk_option {
-                        None => {
-                            error = LibWalletError::from(InterfaceError::MissingCommsPrivateKey).code;
-                            ptr::swap(error_out, &mut error as *mut c_int);
-                            return ptr::null_mut();
-                        },
-                        Some(sk) => sk,
-                    },
-                    Err(e) => {
-                        error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
-                        ptr::swap(error_out, &mut error as *mut c_int);
-                        return ptr::null_mut();
-                    },
-                };
-                let ni = match NodeIdentity::new(
-                    secret_key,
-                    (*config).node_identity.public_address(),
-                    PeerFeatures::COMMUNICATION_CLIENT,
-                ) {
-                    Ok(n) => n,
-                    Err(e) => {
-                        error = LibWalletError::from(e).code;
-                        ptr::swap(error_out, &mut error as *mut c_int);
-                        return ptr::null_mut();
-                    },
-                };
-                (*config).node_identity = Arc::new(ni);
-            }
-
-            let shutdown = Shutdown::new();
-
-            w = runtime.block_on(Wallet::new(
-                WalletConfig::new(
-                    (*config).clone(),
-                    factories,
-                    Some(TransactionServiceConfig {
-                        direct_send_timeout: (*config).dht.discovery_request_timeout,
-                        ..Default::default()
-                    }),
-                    None,
-                    Network::Stibbons,
-                    None,
-                    None,
-                    None,
-                ),
-                wallet_backend,
-                transaction_backend.clone(),
-                output_manager_backend,
-                contacts_backend,
-                shutdown.to_signal(),
-            ));
-
-            match w {
-                Ok(mut w) => {
-                    // lets ensure the wallet tor_id is saved
-                    if let Some(hs) = w.comms.hidden_service() {
-                        if let Err(e) = runtime.block_on(w.db.set_tor_identity(hs.tor_identity().clone())) {
-                            warn!(target: LOG_TARGET, "Could not save tor identity to db: {}", e);
-                        }
-                    }
-                    // Start Callback Handler
-                    let callback_handler = CallbackHandler::new(
-                        TransactionDatabase::new(transaction_backend),
-                        w.transaction_service.get_event_stream_fused(),
-                        w.output_manager_service.get_event_stream_fused(),
-                        w.dht_service.subscribe_dht_events().fuse(),
-                        w.comms.shutdown_signal(),
-                        w.comms.node_identity().public_key().clone(),
-                        callback_received_transaction,
-                        callback_received_transaction_reply,
-                        callback_received_finalized_transaction,
-                        callback_transaction_broadcast,
-                        callback_transaction_mined,
-                        callback_transaction_mined_unconfirmed,
-                        callback_direct_send_result,
-                        callback_store_and_forward_send_result,
-                        callback_transaction_cancellation,
-                        callback_utxo_validation_complete,
-                        callback_stxo_validation_complete,
-                        callback_invalid_txo_validation_complete,
-                        callback_transaction_validation_complete,
-                        callback_saf_messages_received,
-                    );
-
-                    runtime.spawn(callback_handler.start());
-
-                    if let Err(e) = runtime.block_on(w.transaction_service.restart_transaction_protocols()) {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Could not restart transaction negotiation protocols: {:?}", e
-                        );
-                    }
-
-                    let tari_wallet = TariWallet {
-                        wallet: w,
-                        runtime,
-                        shutdown,
-                    };
-
-                    Box::into_raw(Box::new(tari_wallet))
-                },
-                Err(e) => {
-                    error = LibWalletError::from(e).code;
+    // Check to see if the comms private key needs to be read from the encrypted DB
+    if (*config).node_identity.secret_key() == &CommsSecretKey::default() {
+        let wallet_db = WalletDatabase::new(wallet_backend.clone());
+        let secret_key = match runtime.block_on(wallet_db.get_comms_secret_key()) {
+            Ok(sk_option) => match sk_option {
+                None => {
+                    error = LibWalletError::from(InterfaceError::MissingCommsPrivateKey).code;
                     ptr::swap(error_out, &mut error as *mut c_int);
-                    ptr::null_mut()
+                    return ptr::null_mut();
                 },
+                Some(sk) => sk,
+            },
+            Err(e) => {
+                error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        };
+        let ni = match NodeIdentity::new(
+            secret_key,
+            (*config).node_identity.public_address(),
+            PeerFeatures::COMMUNICATION_CLIENT,
+        ) {
+            Ok(n) => n,
+            Err(e) => {
+                error = LibWalletError::from(e).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        };
+        (*config).node_identity = Arc::new(ni);
+    }
+
+    let shutdown = Shutdown::new();
+
+    w = runtime.block_on(Wallet::new(
+        WalletConfig::new(
+            (*config).clone(),
+            factories,
+            Some(TransactionServiceConfig {
+                direct_send_timeout: (*config).dht.discovery_request_timeout,
+                ..Default::default()
+            }),
+            None,
+            Network::Stibbons,
+            None,
+            None,
+            None,
+        ),
+        wallet_backend,
+        transaction_backend.clone(),
+        output_manager_backend,
+        contacts_backend,
+        shutdown.to_signal(),
+    ));
+
+    match w {
+        Ok(mut w) => {
+            // lets ensure the wallet tor_id is saved
+            if let Some(hs) = w.comms.hidden_service() {
+                if let Err(e) = runtime.block_on(w.db.set_tor_identity(hs.tor_identity().clone())) {
+                    warn!(target: LOG_TARGET, "Could not save tor identity to db: {}", e);
+                }
             }
+            // Start Callback Handler
+            let callback_handler = CallbackHandler::new(
+                TransactionDatabase::new(transaction_backend),
+                w.transaction_service.get_event_stream_fused(),
+                w.output_manager_service.get_event_stream_fused(),
+                w.dht_service.subscribe_dht_events().fuse(),
+                w.comms.shutdown_signal(),
+                w.comms.node_identity().public_key().clone(),
+                callback_received_transaction,
+                callback_received_transaction_reply,
+                callback_received_finalized_transaction,
+                callback_transaction_broadcast,
+                callback_transaction_mined,
+                callback_transaction_mined_unconfirmed,
+                callback_direct_send_result,
+                callback_store_and_forward_send_result,
+                callback_transaction_cancellation,
+                callback_utxo_validation_complete,
+                callback_stxo_validation_complete,
+                callback_invalid_txo_validation_complete,
+                callback_transaction_validation_complete,
+                callback_saf_messages_received,
+            );
+
+            runtime.spawn(callback_handler.start());
+
+            if let Err(e) = runtime.block_on(w.transaction_service.restart_transaction_protocols()) {
+                warn!(
+                    target: LOG_TARGET,
+                    "Could not restart transaction negotiation protocols: {:?}", e
+                );
+            }
+
+            let tari_wallet = TariWallet {
+                wallet: w,
+                runtime,
+                shutdown,
+            };
+
+            Box::into_raw(Box::new(tari_wallet))
         },
         Err(e) => {
-            error = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
+            error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             ptr::null_mut()
         },
@@ -5457,8 +5491,6 @@ pub unsafe extern "C" fn wallet_start_recovery(
     error_out: *mut c_int,
 ) -> bool
 {
-    use futures::FutureExt;
-
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -5468,21 +5500,14 @@ pub unsafe extern "C" fn wallet_start_recovery(
         return false;
     }
 
-    let mut recovery_task = WalletRecoveryTask::new((*wallet).wallet.clone(), (*base_node_public_key).clone());
+    let peer_seed_public_keys: Vec<TariPublicKey> = vec![(*base_node_public_key).clone()];
+    let mut recovery_task = WalletRecoveryTask::builder()
+        .with_peer_seeds(peer_seed_public_keys)
+        .with_retry_limit(10)
+        .build((*wallet).wallet.clone());
 
-    let event_stream = match recovery_task.get_event_receiver() {
-        None => {
-            error = LibWalletError::from(WalletError::WalletRecoveryError(
-                "No recovery event stream available".to_string(),
-            ))
-            .code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            return false;
-        },
-        Some(e) => e.fuse(),
-    };
-
-    let recovery_join_handle = (*wallet).runtime.spawn(recovery_task.run()).fuse();
+    let event_stream = recovery_task.get_event_receiver();
+    let recovery_join_handle = (*wallet).runtime.spawn(recovery_task.run());
 
     // Spawn a task to monitor the recovery process events and call the callback appropriately
     (*wallet).runtime.spawn(recovery_event_monitoring(
@@ -6537,6 +6562,8 @@ mod test {
                 let id_completed = completed_transactions_get_at(&mut (*ffi_completed_txs), x, error_ptr);
                 let id_completed_get =
                     wallet_get_completed_transaction_by_id(&mut (*alice_wallet), (*id_completed).tx_id, error_ptr);
+                let confirmations = completed_transaction_get_confirmations(id_completed, error_ptr);
+                assert_eq!(confirmations, 0);
                 if (*id_completed).status == TransactionStatus::MinedUnconfirmed {
                     assert_eq!((*id_completed), (*id_completed_get));
                     assert_eq!((*id_completed_get).status, TransactionStatus::MinedUnconfirmed);

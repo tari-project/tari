@@ -186,6 +186,10 @@ impl RpcStatusCode {
     pub fn is_not_found(self) -> bool {
         self == Self::NotFound
     }
+
+    pub fn is_timeout(self) -> bool {
+        self == Self::Timeout
+    }
 }
 
 impl From<u32> for RpcStatusCode {

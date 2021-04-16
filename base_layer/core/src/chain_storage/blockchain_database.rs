@@ -70,7 +70,7 @@ use uint::static_assertions::_core::ops::RangeBounds;
 const LOG_TARGET: &str = "c::cs::database";
 
 /// Configuration for the BlockchainDatabase.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct BlockchainDatabaseConfig {
     pub orphan_storage_capacity: usize,
     pub pruning_horizon: u64,
@@ -226,10 +226,7 @@ where B: BlockchainBackend
         cleanup_orphans_at_startup: bool,
     ) -> Result<Self, ChainStorageError>
     {
-        debug!(
-            target: LOG_TARGET,
-            "Initializing database pruning horizon={}", config.pruning_horizon
-        );
+        debug!(target: LOG_TARGET, "BlockchainDatabase config: {:?}", config);
         let is_empty = db.is_empty()?;
         let blockchain_db = BlockchainDatabase {
             db: Arc::new(RwLock::new(db)),
@@ -1184,10 +1181,11 @@ fn insert_block(txn: &mut DbTransaction, block: Arc<ChainBlock>) -> Result<(), C
         txn.insert_monero_seed_height(&monero_seed, block.block.header.height);
     }
 
-    // Update metadata
+    let height = block.height();
     let accumulated_difficulty = block.accumulated_data.total_accumulated_difficulty;
-    txn.set_best_block(block.block.header.height, block_hash, accumulated_difficulty)
-        .insert_block(block);
+    txn.insert_header(block.block.header.clone(), block.accumulated_data.clone())
+        .insert_block_body(block)
+        .set_best_block(height, block_hash, accumulated_difficulty);
 
     Ok(())
 }
@@ -1459,7 +1457,7 @@ fn rewind_to_height<T: BlockchainBackend>(
             ))
         })?;
 
-    debug!(
+    info!(
         target: LOG_TARGET,
         "Rewinding headers from height {} to {}",
         last_header_height,
@@ -1480,7 +1478,7 @@ fn rewind_to_height<T: BlockchainBackend>(
     }
 
     let mut removed_blocks = Vec::with_capacity(steps_back as usize);
-    debug!(
+    info!(
         target: LOG_TARGET,
         "Rewinding blocks from height {} to {}",
         last_block_height,
@@ -1500,7 +1498,7 @@ fn rewind_to_height<T: BlockchainBackend>(
     let (last_header, header_accumulated_data) = db.fetch_header_and_accumulated_data(height)?;
 
     for h in 0..steps_back {
-        debug!(target: LOG_TARGET, "Deleting block {}", last_block_height - h,);
+        info!(target: LOG_TARGET, "Deleting block {}", last_block_height - h,);
         let block = fetch_block(db, last_block_height - h)?;
         let block = Arc::new(block.clone().try_into_chain_block()?);
         txn.delete_block(block.block.hash());
@@ -1574,13 +1572,14 @@ fn handle_possible_reorg<T: BlockchainBackend>(
 ) -> Result<BlockAddResult, ChainStorageError>
 {
     let db_height = db.fetch_chain_metadata()?.height_of_longest_chain();
+    let new_block_hash = new_block.hash();
 
     let new_tips = insert_orphan_and_find_new_tips(db, new_block.clone(), header_validator)?;
     debug!(
         target: LOG_TARGET,
         "Added candidate block #{} ({}) to the orphan database. Best height is {}. New tips found:{} ",
         new_block.header.height,
-        new_block.hash().to_hex(),
+        new_block_hash.to_hex(),
         db_height,
         new_tips.len()
     );
@@ -1590,23 +1589,22 @@ fn handle_possible_reorg<T: BlockchainBackend>(
             target: LOG_TARGET,
             "No reorg required, could not construct complete chain using block #{} ({}).",
             new_block.header.height,
-            new_block.hash().to_hex()
+            new_block_hash.to_hex()
         );
         return Ok(BlockAddResult::OrphanBlock);
     }
 
-    let new_block_hash = new_block.hash();
-
     // Check the accumulated difficulty of the best fork chain compared to the main chain.
-    let fork_header = find_strongest_orphan_tip(new_tips, chain_strength_comparer)?;
-    if fork_header.is_none() {
+    let fork_header = find_strongest_orphan_tip(new_tips, chain_strength_comparer)?.ok_or_else(|| {
         // This should never happen because a block is always added to the orphan pool before
         // checking, but just in case
-        return Err(ChainStorageError::InvalidOperation(
-            "No chain tips found in orphan pool".to_string(),
-        ));
-    }
-    let fork_header = fork_header.unwrap();
+        warn!(
+            target: LOG_TARGET,
+            "Unable to find strongest orphan tip when adding block `{}`. This should never happen.",
+            new_block_hash.to_hex()
+        );
+        ChainStorageError::InvalidOperation("No chain tips found in orphan pool".to_string())
+    })?;
 
     let tip_header = db.fetch_tip_header()?;
     if fork_header.accumulated_data.hash == new_block_hash {
@@ -1663,7 +1661,7 @@ fn handle_possible_reorg<T: BlockchainBackend>(
 
     // TODO: We already have the first link in this chain, can be optimized to exclude it
     let reorg_chain = get_orphan_link_main_chain(db, &fork_header.accumulated_data.hash)?;
-    // }
+
     let fork_height = reorg_chain
         .front()
         .expect("The new orphan block should be in the queue")
@@ -1735,7 +1733,7 @@ fn reorganize_chain<T: BlockchainBackend>(
     for block in chain {
         let mut txn = DbTransaction::new();
         let block_hash_hex = block.accumulated_data.hash.to_hex();
-        txn.delete(DbKey::OrphanBlock(block.accumulated_data.hash.clone()));
+        txn.delete_orphan(block.accumulated_data.hash.clone());
         if let Err(e) = block_validator.validate_body_for_valid_orphan(&block, backend) {
             warn!(
                 target: LOG_TARGET,
@@ -1789,7 +1787,7 @@ fn restore_reorged_chain<T: BlockchainBackend>(
     // Add removed blocks in the reverse order that they were removed
     // See: https://github.com/tari-project/tari/issues/2182
     for block in previous_chain.into_iter().rev() {
-        txn.delete(DbKey::OrphanBlock(block.accumulated_data.hash.clone()));
+        txn.delete_orphan(block.accumulated_data.hash.clone());
         insert_block(&mut txn, block)?;
     }
     db.write(txn)?;
@@ -1923,7 +1921,7 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
 // Discard the the orphan block from the orphan pool that corresponds to the provided block hash.
 fn remove_orphan<T: BlockchainBackend>(db: &mut T, hash: HashOutput) -> Result<(), ChainStorageError> {
     let mut txn = DbTransaction::new();
-    txn.delete(DbKey::OrphanBlock(hash));
+    txn.delete_orphan(hash);
     db.write(txn)
 }
 

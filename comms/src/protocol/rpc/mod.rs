@@ -32,7 +32,7 @@ pub use body::{Body, ClientStreaming, IntoBody, Streaming};
 mod context;
 
 mod server;
-pub use server::{NamedProtocolService, RpcServer};
+pub use server::{mock, NamedProtocolService, RpcServer, RpcServerError, RpcServerHandle};
 
 mod client;
 pub use client::{RpcClient, RpcClientBuilder, RpcClientConfig};
@@ -45,17 +45,13 @@ pub use message::{Request, Response};
 mod error;
 pub use error::RpcError;
 
-mod router;
-
 mod handshake;
-pub use handshake::Handshake;
+pub use handshake::{Handshake, RpcHandshakeError};
 
 mod status;
 pub use status::{RpcStatus, RpcStatusCode};
 
 mod not_found;
-
-pub mod mock;
 
 /// Maximum frame size of each RPC message. This is enforced in tokio's length delimited codec.
 pub const RPC_MAX_FRAME_SIZE: usize = 4 * 1024 * 1024; // 4 MiB
@@ -67,7 +63,7 @@ pub mod __macro_reexports {
         protocol::{
             rpc::{
                 message::{Request, Response},
-                server::NamedProtocolService,
+                server::{NamedProtocolService, RpcServerError},
                 Body,
                 ClientStreaming,
                 IntoBody,

@@ -123,6 +123,12 @@ pub struct ConfigBootstrap {
     /// Force wallet recovery
     #[structopt(long, alias("recover"))]
     pub recovery: bool,
+    /// Supply the optional wallet seed words for recovery on the command line
+    #[structopt(long, alias("seed_words"))]
+    pub seed_words: Option<String>,
+    /// Supply the optional file name to save the wallet seed words into
+    #[structopt(long, alias("seed_words_file_name"), parse(from_os_str))]
+    pub seed_words_file_name: Option<PathBuf>,
     /// Wallet notify script
     #[structopt(long, alias("notify"))]
     pub wallet_notify: Option<PathBuf>,
@@ -150,6 +156,8 @@ impl Default for ConfigBootstrap {
             password: None,
             change_password: false,
             recovery: false,
+            seed_words: None,
+            seed_words_file_name: None,
             wallet_notify: None,
             miner_max_blocks: None,
             miner_min_diff: None,
@@ -264,7 +272,7 @@ impl ConfigBootstrap {
 
     /// Load configuration from files located based on supplied CLI arguments
     pub fn load_configuration(&self) -> Result<config::Config, ConfigError> {
-        load_configuration(self).map_err(|source| ConfigError::new("failed to load configuration", Some(source)))
+        load_configuration(self)
     }
 }
 
@@ -326,6 +334,10 @@ mod test {
             "no-config-file-created",
             "--command",
             "no-command-provided",
+            "--seed-words-file-name",
+            "no-seed-words-file-name-provided",
+            "--seed-words",
+            "purse soup tornado success arch expose submit",
         ])
         .expect("failed to process arguments");
         assert!(bootstrap.init);
@@ -336,6 +348,14 @@ mod test {
         assert_eq!(bootstrap.log_config.to_str(), Some("no-log-config-file-created"));
         assert_eq!(bootstrap.config.to_str(), Some("no-config-file-created"));
         assert_eq!(bootstrap.command.unwrap(), "no-command-provided");
+        assert_eq!(
+            bootstrap.seed_words_file_name.unwrap().to_str(),
+            Some("no-seed-words-file-name-provided")
+        );
+        assert_eq!(
+            bootstrap.seed_words.unwrap().as_str(),
+            "purse soup tornado success arch expose submit"
+        );
 
         // Test command line argument aliases
         let bootstrap = ConfigBootstrap::from_iter_safe(vec![
@@ -344,16 +364,28 @@ mod test {
             "no-temp-path-created",
             "--log_config",
             "no-log-config-file-created",
+            "--seed_words_file_name",
+            "no-seed-words-file-name-provided",
+            "--seed_words",
+            "crunch zone nasty work zoo december three",
         ])
         .expect("failed to process arguments");
         assert_eq!(bootstrap.base_path.to_str(), Some("no-temp-path-created"));
         assert_eq!(bootstrap.log_config.to_str(), Some("no-log-config-file-created"));
+        assert_eq!(
+            bootstrap.seed_words_file_name.unwrap().to_str(),
+            Some("no-seed-words-file-name-provided")
+        );
+        assert_eq!(
+            bootstrap.seed_words.unwrap().as_str(),
+            "crunch zone nasty work zoo december three"
+        );
         let bootstrap = ConfigBootstrap::from_iter_safe(vec!["", "--base-dir", "no-temp-path-created"])
             .expect("failed to process arguments");
         assert_eq!(bootstrap.base_path.to_str(), Some("no-temp-path-created"));
-        let bootstrap = ConfigBootstrap::from_iter_safe(vec!["", "--base_dir", "no-temp-path-created"])
+        let bootstrap = ConfigBootstrap::from_iter_safe(vec!["", "--base_dir", "no-temp-path-created-again"])
             .expect("failed to process arguments");
-        assert_eq!(bootstrap.base_path.to_str(), Some("no-temp-path-created"));
+        assert_eq!(bootstrap.base_path.to_str(), Some("no-temp-path-created-again"));
 
         // Check if log configuration file environment variable is recognized in the bootstrap
         // Note: This cannot be tested in parallel with any other `ConfigBootstrap::from_iter_safe` command

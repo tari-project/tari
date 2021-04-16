@@ -45,8 +45,8 @@ pub enum MnemonicError {
     IndexOutOfBounds,
     #[error("A problem encountered constructing a secret key from bytes or mnemonic sequence: `{0}`")]
     ByteArrayError(#[from] ByteArrayError),
-    #[error("Encoding and decoding a mnemonic sequence from bytes require exactly 32 bytes or 24 mnemonic words")]
-    ConversionProblem,
+    #[error("Encoding a mnemonic sequence to bytes requires exactly 24 mnemonic words")]
+    EncodeInvalidLength,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -169,7 +169,8 @@ pub fn from_secret_key<K: SecretKey>(k: &K, language: &MnemonicLanguage) -> Resu
 /// Generates a vector of bytes that represent the provided mnemonic sequence of words, the language of the mnemonic
 /// sequence is autodetected
 pub fn to_bytes(mnemonic_seq: &[String]) -> Result<Vec<u8>, MnemonicError> {
-    let language = MnemonicLanguage::from(&mnemonic_seq[0])?; // Autodetect language
+    let first_word = mnemonic_seq.get(0).ok_or_else(|| MnemonicError::EncodeInvalidLength)?;
+    let language = MnemonicLanguage::from(first_word)?; // Autodetect language
     to_bytes_with_language(mnemonic_seq, &language)
 }
 
@@ -194,7 +195,7 @@ pub fn to_bytes_with_language(mnemonic_seq: &[String], language: &MnemonicLangua
     if bytes.len() == 32 {
         Ok(bytes)
     } else {
-        Err(MnemonicError::ConversionProblem)
+        Err(MnemonicError::EncodeInvalidLength)
     }
 }
 
@@ -266,6 +267,12 @@ mod test {
                 panic!();
             }
         }
+    }
+
+    #[test]
+    fn test_to_secret_key_no_words() {
+        let err = to_secretkey::<RistrettoSecretKey>(&[]).unwrap_err();
+        assert!(matches!(err, MnemonicError::EncodeInvalidLength));
     }
 
     #[test]

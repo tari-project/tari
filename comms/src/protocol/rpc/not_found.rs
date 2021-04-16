@@ -20,15 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::RpcStatus;
-use crate::protocol::{
-    rpc::{
-        body::Body,
-        message::{Request, Response},
-        RpcError,
-    },
-    ProtocolId,
+use super::{
+    body::Body,
+    message::{Request, Response},
+    server::RpcServerError,
+    RpcStatus,
 };
+use crate::protocol::ProtocolId;
 use bytes::Bytes;
 use futures::future;
 use std::task::{Context, Poll};
@@ -38,7 +36,7 @@ use tower::Service;
 pub struct ProtocolServiceNotFound;
 
 impl Service<ProtocolId> for ProtocolServiceNotFound {
-    type Error = RpcError;
+    type Error = RpcServerError;
     type Future = future::Ready<Result<Self::Response, Self::Error>>;
     type Response = NeverService;
 
@@ -47,7 +45,7 @@ impl Service<ProtocolId> for ProtocolServiceNotFound {
     }
 
     fn call(&mut self, protocol: ProtocolId) -> Self::Future {
-        future::ready(Err(RpcError::ProtocolServiceNotFound(
+        future::ready(Err(RpcServerError::ProtocolServiceNotFound(
             String::from_utf8_lossy(&protocol).to_string(),
         )))
     }

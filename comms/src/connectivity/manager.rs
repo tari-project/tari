@@ -222,7 +222,7 @@ impl ConnectivityManagerActor {
                 _ => {
                     debug!(
                         target: LOG_TARGET,
-                        "Existing connection not found for peer `{}`",
+                        "No existing connection found for peer `{}`. Dialling...",
                         node_id.short_str()
                     );
                     if let Err(err) = self.connection_manager.send_dial_peer(node_id, reply).await {

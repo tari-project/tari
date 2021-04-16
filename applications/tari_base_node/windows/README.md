@@ -27,46 +27,47 @@ Notes:
 - Run the installation file and select all the default options.
 - Installation artefacts for a default installation will be:
   ```
-  `%USERPROFILE%\.tari-testnet`
-  |   LICENSE.md
-  |   LICENSE.txt
-  |   README.md
-  |   README.txt
-  |   start_all.lnk
-  |   start_tari_base_node.lnk
-  |   start_tari_console_wallet.lnk
-  |   start_tari_merge_mining_proxy.lnk
-  |   start_tari_mining_node.lnk
-  |   start_xmrig.lnk
-  |   start_tor.lnk
-  |   unins000.dat
-  |   unins000.exe
-  |---config
-  |       config.toml
-  |---runtime
-          get_openssl_win.ps1
-          get_xmrig_win.ps1
-          install_openssl.bat
-          install_sqlite.bat
-          install_tor_services.bat
-          install_vs2019_redist.bat
-          install_xmrig.bat
-          source_base_node_env.bat
-          source_console_wallet_env.bat
-          source_merge_mining_proxy_env.bat
-          source_mining_node_env.bat
-          source_xmrig_env.bat
-          start_all.bat
-          start_tari_base_node.bat
-          start_tari_console_wallet.bat
-          start_tari_merge_mining_proxy.bat
-          start_tari_mining_node.bat
-          start_tor.bat
-          start_xmrig.bat
-          tari_base_node.exe
-          tari_console_wallet.exe
-          tari_merge_mining_proxy.exe
-          tari_mining_node.exe
+  %USERPROFILE%
+  |---.tari-testnet
+      |   LICENSE.md
+      |   LICENSE.txt
+      |   README.md
+      |   README.txt
+      |   start_all.lnk
+      |   start_tari_base_node.lnk
+      |   start_tari_console_wallet.lnk
+      |   start_tari_merge_mining_proxy.lnk
+      |   start_tari_mining_node.lnk
+      |   start_xmrig.lnk
+      |   start_tor.lnk
+      |   unins000.dat
+      |   unins000.exe
+      |---config
+      |       config.toml
+      |---runtime
+              get_openssl_win.ps1
+              get_xmrig_win.ps1
+              install_openssl.bat
+              install_sqlite.bat
+              install_tor_services.bat
+              install_vs2019_redist.bat
+              install_xmrig.bat
+              source_base_node_env.bat
+              source_console_wallet_env.bat
+              source_merge_mining_proxy_env.bat
+              source_mining_node_env.bat
+              source_xmrig_env.bat
+              start_all.bat
+              start_tari_base_node.bat
+              start_tari_console_wallet.bat
+              start_tari_merge_mining_proxy.bat
+              start_tari_mining_node.bat
+              start_tor.bat
+              start_xmrig.bat
+              tari_base_node.exe
+              tari_console_wallet.exe
+              tari_merge_mining_proxy.exe
+              tari_mining_node.exe
   ```
   - The following environment variables are created with a default installation:
     - `TARI_TOR_SERVICES_DIR = %USERPROFILE%\.tor_services\Tor`

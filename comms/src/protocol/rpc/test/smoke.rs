@@ -28,7 +28,9 @@ use crate::{
             body::Streaming,
             context::RpcCommsBackend,
             error::HandshakeRejectReason,
+            handshake::RpcHandshakeError,
             message::Request,
+            server::RpcServerError,
             test::mock::create_mocked_rpc_context,
             Response,
             RpcError,
@@ -87,10 +89,11 @@ async fn setup_service<T: GreetingRpc>(
     let shutdown = Shutdown::new();
     let (context, _) = create_mocked_rpc_context();
     let server_hnd = task::spawn(
-        RpcServer::new()
-            .with_maximum_concurrent_sessions(num_concurrent_sessions)
+        RpcServer::builder()
+            .with_maximum_simultaneous_sessions(num_concurrent_sessions)
             .with_minimum_client_deadline(Duration::from_secs(0))
             .with_shutdown_signal(shutdown.to_signal())
+            .finish()
             .add_service(GreetingServer::new(service))
             .serve(notif_rx, context.clone()),
     );
@@ -238,7 +241,10 @@ async fn server_shutdown_before_connect() {
     shutdown.trigger().unwrap();
 
     let err = GreetingClient::connect(framed).await.unwrap_err();
-    unpack_enum!(RpcError::ServerClosedRequest = err);
+    assert!(matches!(
+        err,
+        RpcError::HandshakeError(RpcHandshakeError::ServerClosedRequest)
+    ));
 }
 
 #[runtime::test_basic]
@@ -285,8 +291,10 @@ async fn unknown_protocol() {
 
     let framed = framing::canonical(socket, 1024);
     let err = GreetingClient::connect(framed).await.unwrap_err();
-    unpack_enum!(RpcError::HandshakeRejected(reason) = err);
-    unpack_enum!(HandshakeRejectReason::ProtocolNotSupported = reason);
+    assert!(matches!(
+        err,
+        RpcError::HandshakeError(RpcHandshakeError::Rejected(HandshakeRejectReason::ProtocolNotSupported))
+    ));
 }
 
 #[runtime::test_basic]
@@ -294,8 +302,10 @@ async fn rejected_no_sessions_available() {
     let (socket, _, _, _shutdown) = setup(GreetingService::new(&[]), 0).await;
     let framed = framing::canonical(socket, 1024);
     let err = GreetingClient::builder().connect(framed).await.unwrap_err();
-    unpack_enum!(RpcError::HandshakeRejected(reason) = err);
-    unpack_enum!(HandshakeRejectReason::NoSessionsAvailable = reason);
+    assert!(matches!(
+        err,
+        RpcError::HandshakeError(RpcHandshakeError::Rejected(HandshakeRejectReason::NoSessionsAvailable))
+    ));
 }
 
 //---------------------------------- Greeting Service --------------------------------------------//
@@ -336,7 +346,7 @@ impl GreetingRpc for GreetingService {
         task::spawn(async move {
             let iter = greetings.into_iter().map(Ok);
             let mut stream = stream::iter(iter)
-                // "Extra" Result::Ok is to satisfy send_all 
+                // "Extra" Result::Ok is to satisfy send_all
                 .map(Ok);
             match tx.send_all(&mut stream).await {
                 Ok(_) => {},
@@ -546,7 +556,7 @@ impl<T> __rpc_deps::NamedProtocolService for GreetingServer<T> {
 impl<T> __rpc_deps::Service<ProtocolId> for GreetingServer<T>
 where T: GreetingRpc
 {
-    type Error = RpcError;
+    type Error = RpcServerError;
     type Future = __rpc_deps::future::Ready<Result<Self::Response, Self::Error>>;
     type Response = Self;
 

@@ -53,6 +53,7 @@ pub struct GlobalConfig {
     pub allow_test_addresses: bool,
     pub listnener_liveness_max_sessions: usize,
     pub listener_liveness_allowlist_cidrs: Vec<String>,
+    pub rpc_max_simultaneous_sessions: Option<usize>,
     pub data_dir: PathBuf,
     pub db_type: DatabaseType,
     pub db_config: LMDBConfig,
@@ -116,14 +117,17 @@ pub struct GlobalConfig {
     pub auto_ping_interval: u64,
     pub blocks_behind_before_considered_lagging: u64,
     pub flood_ban_max_msg_count: usize,
+    pub mine_on_tip_only: bool,
 }
 
 impl GlobalConfig {
     pub fn convert_from(mut cfg: Config) -> Result<Self, ConfigurationError> {
         // Add in settings from the environment (with a prefix of TARI_NODE)
         // Eg.. `TARI_NODE_DEBUG=1 ./target/app` would set the `debug` key
-        cfg.merge(Environment::with_prefix("tari").separator("__"))
+        let env = Environment::with_prefix("tari").separator("__");
+        cfg.merge(env)
             .map_err(|e| ConfigurationError::new("environment variable", &e.to_string()))?;
+
         let network = cfg
             .get_str("base_node.network")
             .map_err(|e| ConfigurationError::new("base_node.network", &e.to_string()))?
@@ -501,6 +505,19 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .map(|values| values.iter().map(ToString::to_string).collect())
         .unwrap_or_else(|_| vec!["127.0.0.1/32".to_string()]);
 
+    let key = "common.rpc_max_simultaneous_sessions";
+    let rpc_max_simultaneous_sessions = cfg
+        .get_int(key)
+        .map_err(|e| ConfigurationError::new(key, &e.to_string()))
+        .and_then(|v| match v {
+            -1 => Ok(None),
+            n if n.is_positive() => Ok(Some(n as usize)),
+            v => Err(ConfigurationError::new(
+                key,
+                &format!("invalid value {} for rpc_max_simultaneous_sessions", v),
+            )),
+        })?;
+
     let key = "common.buffer_size_base_node";
     let buffer_size_base_node = cfg
         .get_int(&key)
@@ -576,12 +593,16 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     let key = config_string("merge_mining_proxy", &net_str, "proxy_submit_to_origin");
     let proxy_submit_to_origin = cfg.get_bool(&key).unwrap_or_else(|_| true);
 
+    let key = "mining_node.mine_on_tip_only";
+    let mine_on_tip_only = cfg.get_bool(key).unwrap_or(true);
+
     Ok(GlobalConfig {
         network,
         comms_transport,
         allow_test_addresses,
         listnener_liveness_max_sessions: liveness_max_sessions,
         listener_liveness_allowlist_cidrs: liveness_allowlist_cidrs,
+        rpc_max_simultaneous_sessions,
         data_dir,
         db_type,
         db_config,
@@ -645,6 +666,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         auto_ping_interval,
         blocks_behind_before_considered_lagging,
         flood_ban_max_msg_count,
+        mine_on_tip_only,
     })
 }
 

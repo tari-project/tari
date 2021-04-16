@@ -12,7 +12,7 @@ Scenario: Wallets monitoring coinbase after a reorg
     And I have a base node NODE_A1 connected to seed SEED_A
     And I have wallet WALLET_A1 connected to seed node SEED_A
     And I have wallet WALLET_A2 connected to seed node SEED_A
-    And I have a merge mining proxy PROXY_A connected to SEED_A and WALLET_A1
+    And I have a merge mining proxy PROXY_A connected to SEED_A and WALLET_A1 with default config
     When I merge mine 10 blocks via PROXY_A
     Then all nodes are at height 10
     And I list all coinbase transactions for wallet WALLET_A1
@@ -30,7 +30,7 @@ Scenario: Wallets monitoring coinbase after a reorg
     And I have a base node NODE_B1 connected to seed SEED_B
     And I have wallet WALLET_B1 connected to seed node SEED_B
     And I have wallet WALLET_B2 connected to seed node SEED_B
-    And I have a merge mining proxy PROXY_B connected to SEED_B and WALLET_B1
+    And I have a merge mining proxy PROXY_B connected to SEED_B and WALLET_B1 with default config
     When I merge mine 10 blocks via PROXY_B
     Then all nodes are at height 10
     And I list all coinbase transactions for wallet WALLET_B1

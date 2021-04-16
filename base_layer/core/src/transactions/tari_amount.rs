@@ -92,6 +92,10 @@ impl MicroTari {
         Self(0)
     }
 
+    pub fn as_u64(&self) -> u64 {
+        self.0
+    }
+
     pub fn formatted(self) -> FormattedMicroTari {
         self.into()
     }

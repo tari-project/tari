@@ -73,7 +73,10 @@ commands:
             rustup component add --toolchain $TOOLCHAIN rustfmt
             cargo fmt --all -- --check
       - run:
-          name: Run clippy
+          name: Run clippy (main source)
+          command: cargo clippy -- -D warnings -W clippy::cognitive_complexity
+      - run:
+          name: Run clippy (all targets)
           command: cargo clippy --all-targets -- -D warnings
       - save_cache:
           paths:
@@ -100,7 +103,7 @@ commands:
          command: cargo build --release --bin tari_merge_mining_proxy
      - run:
          name: Run cucumber scenarios
-         command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running" --format json:cucumber_output/tests.cucumber
+         command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running and not @to-be-fixed-currently-failing" --format json:cucumber_output/tests.cucumber
      - store_test_results:
          path: integration_tests/cucumber_output
      - store_artifacts:

@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,19 +20,20 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{
-    body::Body,
-    either::Either,
-    message::{Request, Response},
-    not_found::ProtocolServiceNotFound,
-    server::NamedProtocolService,
-    RpcError,
-    RpcServer,
-    RpcStatus,
-};
+use super::RpcServerError;
 use crate::{
     protocol::{
-        rpc::context::{RpcCommsBackend, RpcCommsProvider},
+        rpc::{
+            body::Body,
+            context::{RpcCommsBackend, RpcCommsProvider},
+            either::Either,
+            message::{Request, Response},
+            not_found::ProtocolServiceNotFound,
+            server::{NamedProtocolService, RpcServerHandle},
+            RpcError,
+            RpcServer,
+            RpcStatus,
+        },
         ProtocolExtension,
         ProtocolExtensionContext,
         ProtocolExtensionError,
@@ -91,16 +92,8 @@ impl<A, B> Router<A, B> {
         }
     }
 
-    /// Sets the maximum number of sessions this node will allow before rejecting the request to connect
-    pub fn with_maximum_concurrent_sessions(mut self, limit: usize) -> Self {
-        self.server = self.server.with_maximum_concurrent_sessions(limit);
-        self
-    }
-
-    /// Allows unlimited (memory-bound) sessions. This should probably only be used for scalability testing.
-    pub fn with_unlimited_concurrent_sessions(mut self) -> Self {
-        self.server = self.server.with_unlimited_concurrent_sessions();
-        self
+    pub fn get_handle(&self) -> RpcServerHandle {
+        self.server.get_handle()
     }
 
     pub fn into_boxed(self) -> Box<Self>
@@ -115,14 +108,24 @@ impl<A, B> Router<A, B> {
 
 impl<A, B> Router<A, B>
 where
-    A: MakeService<ProtocolId, Request<Bytes>, Response = Response<Body>, Error = RpcStatus, MakeError = RpcError>
-        + Send
+    A: MakeService<
+            ProtocolId,
+            Request<Bytes>,
+            Response = Response<Body>,
+            Error = RpcStatus,
+            MakeError = RpcServerError,
+        > + Send
         + 'static,
     A::Service: Send + 'static,
     A::Future: Send + 'static,
     <A::Service as Service<Request<Bytes>>>::Future: Send + 'static,
-    B: MakeService<ProtocolId, Request<Bytes>, Response = Response<Body>, Error = RpcStatus, MakeError = RpcError>
-        + Send
+    B: MakeService<
+            ProtocolId,
+            Request<Bytes>,
+            Response = Response<Body>,
+            Error = RpcStatus,
+            MakeError = RpcServerError,
+        > + Send
         + 'static,
     B::Service: Send + 'static,
     B::Future: Send + 'static,
@@ -141,13 +144,26 @@ where
         self.server
             .serve(self.routes, protocol_notifications, comms_provider)
             .await
+            .map_err(Into::into)
     }
 }
 
 impl<A, B> Service<ProtocolId> for Router<A, B>
 where
-    A: MakeService<ProtocolId, Request<Bytes>, Response = Response<Body>, Error = RpcStatus, MakeError = RpcError>,
-    B: MakeService<ProtocolId, Request<Bytes>, Response = Response<Body>, Error = RpcStatus, MakeError = RpcError>,
+    A: MakeService<
+        ProtocolId,
+        Request<Bytes>,
+        Response = Response<Body>,
+        Error = RpcStatus,
+        MakeError = RpcServerError,
+    >,
+    B: MakeService<
+        ProtocolId,
+        Request<Bytes>,
+        Response = Response<Body>,
+        Error = RpcStatus,
+        MakeError = RpcServerError,
+    >,
 {
     type Error = A::MakeError;
     type Response = Either<A::Service, B::Service>;
@@ -165,15 +181,25 @@ where
 
 impl<A, B> ProtocolExtension for Router<A, B>
 where
-    A: MakeService<ProtocolId, Request<Bytes>, Response = Response<Body>, Error = RpcStatus, MakeError = RpcError>
-        + Send
+    A: MakeService<
+            ProtocolId,
+            Request<Bytes>,
+            Response = Response<Body>,
+            Error = RpcStatus,
+            MakeError = RpcServerError,
+        > + Send
         + Sync
         + 'static,
     A::Service: Send + 'static,
     A::Future: Send + 'static,
     <A::Service as Service<Request<Bytes>>>::Future: Send + 'static,
-    B: MakeService<ProtocolId, Request<Bytes>, Response = Response<Body>, Error = RpcStatus, MakeError = RpcError>
-        + Send
+    B: MakeService<
+            ProtocolId,
+            Request<Bytes>,
+            Response = Response<Body>,
+            Error = RpcStatus,
+            MakeError = RpcServerError,
+        > + Send
         + Sync
         + 'static,
     B::Service: Send + 'static,
@@ -208,8 +234,20 @@ impl<A, B> Or<A, B> {
 
 impl<A, B> Service<ProtocolId> for Or<A, B>
 where
-    A: MakeService<ProtocolId, Request<Bytes>, Response = Response<Body>, Error = RpcStatus, MakeError = RpcError>,
-    B: MakeService<ProtocolId, Request<Bytes>, Response = Response<Body>, Error = RpcStatus, MakeError = RpcError>,
+    A: MakeService<
+        ProtocolId,
+        Request<Bytes>,
+        Response = Response<Body>,
+        Error = RpcStatus,
+        MakeError = RpcServerError,
+    >,
+    B: MakeService<
+        ProtocolId,
+        Request<Bytes>,
+        Response = Response<Body>,
+        Error = RpcStatus,
+        MakeError = RpcServerError,
+    >,
 {
     type Error = A::MakeError;
     type Response = Either<A::Service, B::Service>;
@@ -243,7 +281,7 @@ mod test {
         const PROTOCOL_NAME: &'static [u8] = b"hello";
     }
     impl Service<ProtocolId> for HelloService {
-        type Error = RpcError;
+        type Error = RpcServerError;
 
         type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
         type Response = impl Service<Request<Bytes>, Response = Response<Body>, Error = RpcStatus>;
@@ -269,7 +307,7 @@ mod test {
         const PROTOCOL_NAME: &'static [u8] = b"goodbye";
     }
     impl Service<ProtocolId> for GoodbyeService {
-        type Error = RpcError;
+        type Error = RpcServerError;
 
         type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
         type Response = impl Service<Request<Bytes>, Response = Response<Body>, Error = RpcStatus>;
@@ -318,7 +356,7 @@ mod test {
             Ok(_) => panic!("Unexpected success for non-existent route"),
             Err(err) => err,
         };
-        unpack_enum!(RpcError::ProtocolServiceNotFound(proto_str) = err);
+        unpack_enum!(RpcServerError::ProtocolServiceNotFound(proto_str) = err);
         assert_eq!(proto_str, "/totally/real/protocol");
     }
 }

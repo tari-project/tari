@@ -41,7 +41,7 @@ use std::time::Duration;
 use tari_app_grpc::tari_rpc::{pow_algo::PowAlgos, NewBlockTemplateRequest, PowAlgo};
 use tari_common::{GlobalConfig, NetworkConfigPath};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct MinerConfig {
     pub base_node_grpc_address: Option<String>,
     pub wallet_grpc_address: Option<String>,
@@ -51,7 +51,7 @@ pub struct MinerConfig {
     pub validate_tip_timeout_sec: u64,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum ProofOfWork {
     Sha3,
 }

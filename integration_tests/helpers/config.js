@@ -24,6 +24,9 @@ function mapEnvs(options) {
   } else {
     res.TARI_WALLET__TRANSACTION_BROADCAST_MONITORING_TIMEOUT = 3;
   }
+  if ("mineOnTipOnly" in options) {
+    res.TARI_MINING_NODE__MINE_ON_TIP_ONLY = options.mineOnTipOnly;
+  }
   return res;
 }
 
@@ -64,6 +67,7 @@ function baseEnvs(peerSeeds = []) {
     TARI_BASE_NODE__LOCALNET__DB_RESIZE_THRESHOLD_MB: 10,
     TARI_BASE_NODE__LOCALNET__DB_GROW_SIZE_MB: 20,
     TARI_MERGE_MINING_PROXY__LOCALNET__WAIT_FOR_INITIAL_SYNC_AT_STARTUP: false,
+    TARI_MINING_NODE__MINE_ON_TIP_ONLY: true,
   };
   if (peerSeeds.length != 0) {
     envs.TARI_BASE_NODE__LOCALNET__PEER_SEEDS = peerSeeds;
@@ -92,8 +96,9 @@ function createEnv(
   peerSeeds = [],
   txnSendingMechanism = "DirectAndStoreAndForward"
 ) {
-  var envs = baseEnvs(peerSeeds);
-  var configEnvs = {
+  const envs = baseEnvs(peerSeeds);
+
+  const configEnvs = {
     TARI_BASE_NODE__LOCALNET__GRPC_BASE_NODE_ADDRESS: `${baseNodeGrpcAddress}:${baseNodeGrpcPort}`,
     TARI_BASE_NODE__LOCALNET__GRPC_CONSOLE_WALLET_ADDRESS: `${walletGrpcAddress}:${walletGrpcPort}`,
     TARI_BASE_NODE__LOCALNET__BASE_NODE_IDENTITY_FILE: `${nodeFile}`,
@@ -104,12 +109,8 @@ function createEnv(
     TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_HOST_ADDRESS: `${proxyFullAddress}`,
     TARI_BASE_NODE__LOCALNET__TRANSPORT: "tcp",
   };
-  //console.log(configEnvs);
-  var fullEnvs = { ...envs, ...configEnvs };
-  //if (isWallet) {
-  //console.log(name, mapEnvs(options || {}));
-  //}
-  return { ...fullEnvs, ...mapEnvs(options || {}) };
+
+  return { ...envs, ...configEnvs, ...mapEnvs(options || {}) };
 }
 
 module.exports = {

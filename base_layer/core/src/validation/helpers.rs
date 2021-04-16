@@ -167,7 +167,7 @@ pub fn check_target_difficulty(
     if achieved < target {
         warn!(
             target: LOG_TARGET,
-            "Proof of work for {} was below the target difficulty. Achieved: {}, Target:{}",
+            "Proof of work for {} was below the target difficulty. Achieved: {}, Target: {}",
             block_header.hash().to_hex(),
             achieved,
             target

@@ -10,10 +10,12 @@ const WalletClient = require("./walletClient");
 let outputProcess;
 
 class WalletProcess {
-  constructor(name, options, logFilePath) {
+  constructor(name, options, logFilePath, seedWords) {
     this.name = name;
     this.options = options;
     this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath;
+    this.recoverWallet = seedWords ? true : false;
+    this.seedWords = seedWords;
   }
 
   async init() {
@@ -24,6 +26,7 @@ class WalletProcess {
       new Date(),
       "yyyymmddHHMM"
     )}/${this.name}`;
+    this.seedWordsFile = path.resolve(this.baseDir + "/config/seed_words.log");
   }
 
   getGrpcAddress() {
@@ -33,6 +36,14 @@ class WalletProcess {
 
   getClient() {
     return new WalletClient(this.getGrpcAddress(), this.name);
+  }
+
+  getSeedWords() {
+    try {
+      return fs.readFileSync(this.seedWordsFile, "utf8");
+    } catch (err) {
+      console.error("\n", this.name, ": Seed words file not found!\n", err);
+    }
   }
 
   setPeerSeeds(addresses) {
@@ -98,15 +109,21 @@ class WalletProcess {
 
   async startNew() {
     await this.init();
-    const args = [
+    var args;
+    args = [
       "--base-path",
       ".",
       "--init",
       "--create_id",
       "--password",
       "kensentme",
+      "--seed-words-file-name",
+      this.seedWordsFile,
       "--daemon",
     ];
+    if (this.recoverWallet) {
+      args.push("--recover", "--seed-words", this.seedWords);
+    }
     if (this.logFilePath) {
       args.push("--log-config", this.logFilePath);
     }

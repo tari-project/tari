@@ -109,7 +109,7 @@ fn lmdb_insert_contains_delete_and_fetch_orphan() {
     }
 
     let mut txn = DbTransaction::new();
-    txn.delete(DbKey::OrphanBlock(hash.clone()));
+    txn.delete_orphan(hash.clone());
     assert!(db.write(txn).is_ok());
     assert_eq!(db.contains(&DbKey::OrphanBlock(hash)).unwrap(), false);
 }

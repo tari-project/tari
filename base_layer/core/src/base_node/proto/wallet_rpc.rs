@@ -20,7 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{crypto::tari_utilities::ByteArrayError, proto::base_node as proto, transactions::types::Signature};
+use crate::{
+    crypto::tari_utilities::ByteArrayError,
+    proto::{base_node as proto, types},
+    transactions::types::Signature,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom,
@@ -221,5 +225,33 @@ impl TryFrom<proto::TxQueryBatchResponse> for TxQueryBatchResponse {
             block_hash: proto_response.block_hash,
             confirmations: proto_response.confirmations,
         })
+    }
+}
+
+impl proto::SyncUtxos2Response {
+    pub fn into_utxo(self) -> Option<proto::SyncUtxo2> {
+        use proto::sync_utxos2_response::UtxoOrDeleted::*;
+        match self.utxo_or_deleted? {
+            Utxo(utxo) => Some(utxo),
+            DeletedBitmaps(_) => None,
+        }
+    }
+
+    pub fn into_bitmaps(self) -> Option<proto::Bitmaps> {
+        use proto::sync_utxos2_response::UtxoOrDeleted::*;
+        match self.utxo_or_deleted? {
+            Utxo(_) => None,
+            DeletedBitmaps(bitmaps) => Some(bitmaps),
+        }
+    }
+}
+
+impl proto::sync_utxo2::Utxo {
+    pub fn into_transaction_output(self) -> Option<types::TransactionOutput> {
+        use proto::sync_utxo2::Utxo::*;
+        match self {
+            Output(output) => Some(output),
+            PrunedOutput(_) => None,
+        }
     }
 }

@@ -28,7 +28,7 @@ impl<B: Backend> Component<B> for Menu {
             Span::styled("LeftArrow", Style::default().fg(Color::Green)),
             Span::styled(":", Style::default().fg(Color::White)),
             Span::styled(
-                "PrevTab ",
+                " PrevTab ",
                 Style::default()
                     .fg(Color::Magenta)
                     .bg(Color::LightGreen)
@@ -38,7 +38,7 @@ impl<B: Backend> Component<B> for Menu {
             Span::styled("Tab/RightArrow", Style::default().fg(Color::Green)),
             Span::styled(":", Style::default().fg(Color::White)),
             Span::styled(
-                "NextTab ",
+                " NextTab ",
                 Style::default()
                     .fg(Color::Magenta)
                     .bg(Color::LightGreen)
@@ -46,10 +46,10 @@ impl<B: Backend> Component<B> for Menu {
             ),
         ]);
         let quit = Spans::from(vec![
-            Span::styled("F10/Ctrl-Q/Ctrl-C", Style::default().fg(Color::Green)),
+            Span::styled("F10/Ctrl-Q", Style::default().fg(Color::Green)),
             Span::styled(":", Style::default().fg(Color::White)),
             Span::styled(
-                "Quit    ",
+                " Quit    ",
                 Style::default()
                     .fg(Color::Magenta)
                     .bg(Color::LightGreen)

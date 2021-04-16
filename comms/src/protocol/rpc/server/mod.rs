@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,38 +20,40 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+mod error;
+pub use error::RpcServerError;
+
+mod handle;
+pub use handle::RpcServerHandle;
+use handle::RpcServerRequest;
+
+pub mod mock;
+
+mod router;
+use router::Router;
+
 use super::{
     body::Body,
-    message::{Request, Response},
+    context::{RequestContext, RpcCommsProvider},
+    error::HandshakeRejectReason,
+    message::{Request, Response, RpcMessageFlags},
     not_found::ProtocolServiceNotFound,
-    router::Router,
     status::RpcStatus,
-    RpcError,
+    Handshake,
+    RpcStatusCode,
+    RPC_MAX_FRAME_SIZE,
 };
 use crate::{
-    bounded_executor::OptionallyBoundedExecutor,
+    bounded_executor::BoundedExecutor,
     framing,
     framing::CanonicalFraming,
     message::MessageExt,
     peer_manager::NodeId,
     proto,
-    protocol::{
-        rpc::{
-            context::{RequestContext, RpcCommsProvider},
-            error::HandshakeRejectReason,
-            message::RpcMessageFlags,
-            Handshake,
-            RpcStatusCode,
-            RPC_MAX_FRAME_SIZE,
-        },
-        ProtocolEvent,
-        ProtocolId,
-        ProtocolNotification,
-        ProtocolNotificationRx,
-    },
+    protocol::{ProtocolEvent, ProtocolId, ProtocolNotification, ProtocolNotificationRx},
     Bytes,
 };
-use futures::{AsyncRead, AsyncWrite, Sink, SinkExt, StreamExt};
+use futures::{channel::mpsc, AsyncRead, AsyncWrite, Sink, SinkExt, StreamExt};
 use log::*;
 use prost::Message;
 use std::{
@@ -74,23 +76,30 @@ pub trait NamedProtocolService {
     }
 }
 
-#[derive(Debug, Clone)]
 pub struct RpcServer {
-    maximum_concurrent_sessions: Option<usize>,
-    minimum_client_deadline: Duration,
-    handshake_timeout: Duration,
-    shutdown_signal: OptionalShutdownSignal,
+    builder: RpcServerBuilder,
+    request_tx: mpsc::Sender<RpcServerRequest>,
+    request_rx: mpsc::Receiver<RpcServerRequest>,
 }
 
 impl RpcServer {
     pub fn new() -> Self {
-        Default::default()
+        Self::builder().finish()
+    }
+
+    pub fn builder() -> RpcServerBuilder {
+        RpcServerBuilder::new()
     }
 
     pub fn add_service<S>(self, service: S) -> Router<S, ProtocolServiceNotFound>
     where
-        S: MakeService<ProtocolId, Request<Bytes>, MakeError = RpcError, Response = Response<Body>, Error = RpcStatus>
-            + NamedProtocolService
+        S: MakeService<
+                ProtocolId,
+                Request<Bytes>,
+                MakeError = RpcServerError,
+                Response = Response<Body>,
+                Error = RpcStatus,
+            > + NamedProtocolService
             + Send
             + 'static,
         S::Future: Send + 'static,
@@ -98,13 +107,64 @@ impl RpcServer {
         Router::new(self, service)
     }
 
-    pub fn with_maximum_concurrent_sessions(mut self, limit: usize) -> Self {
-        self.maximum_concurrent_sessions = Some(limit);
+    pub fn get_handle(&self) -> RpcServerHandle {
+        RpcServerHandle::new(self.request_tx.clone())
+    }
+
+    pub(super) async fn serve<S, TSubstream, TCommsProvider>(
+        self,
+        service: S,
+        notifications: ProtocolNotificationRx<TSubstream>,
+        comms_provider: TCommsProvider,
+    ) -> Result<(), RpcServerError>
+    where
+        TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+        S: MakeService<
+                ProtocolId,
+                Request<Bytes>,
+                MakeError = RpcServerError,
+                Response = Response<Body>,
+                Error = RpcStatus,
+            > + Send
+            + 'static,
+        S::Service: Send + 'static,
+        S::Future: Send + 'static,
+        S::Service: Send + 'static,
+        <S::Service as Service<Request<Bytes>>>::Future: Send + 'static,
+        TCommsProvider: RpcCommsProvider + Clone + Send + 'static,
+    {
+        PeerRpcServer::new(self.builder, service, notifications, comms_provider, self.request_rx)
+            .serve()
+            .await
+    }
+}
+
+impl Default for RpcServer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Clone)]
+pub struct RpcServerBuilder {
+    maximum_simultaneous_sessions: Option<usize>,
+    minimum_client_deadline: Duration,
+    handshake_timeout: Duration,
+    shutdown_signal: OptionalShutdownSignal,
+}
+
+impl RpcServerBuilder {
+    fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn with_maximum_simultaneous_sessions(mut self, limit: usize) -> Self {
+        self.maximum_simultaneous_sessions = Some(limit);
         self
     }
 
-    pub fn with_unlimited_concurrent_sessions(mut self) -> Self {
-        self.maximum_concurrent_sessions = None;
+    pub fn with_unlimited_simultaneous_sessions(mut self) -> Self {
+        self.maximum_simultaneous_sessions = None;
         self
     }
 
@@ -118,33 +178,20 @@ impl RpcServer {
         self
     }
 
-    pub(super) async fn serve<S, TSubstream, TCommsProvider>(
-        self,
-        service: S,
-        notifications: ProtocolNotificationRx<TSubstream>,
-        comms_provider: TCommsProvider,
-    ) -> Result<(), RpcError>
-    where
-        TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static,
-        S: MakeService<ProtocolId, Request<Bytes>, MakeError = RpcError, Response = Response<Body>, Error = RpcStatus>
-            + Send
-            + 'static,
-        S::Service: Send + 'static,
-        S::Future: Send + 'static,
-        S::Service: Send + 'static,
-        <S::Service as Service<Request<Bytes>>>::Future: Send + 'static,
-        TCommsProvider: RpcCommsProvider + Clone + Send + 'static,
-    {
-        PeerRpcServer::new(self, service, notifications, comms_provider)
-            .serve()
-            .await
+    pub fn finish(self) -> RpcServer {
+        let (request_tx, request_rx) = mpsc::channel(10);
+        RpcServer {
+            builder: self,
+            request_tx,
+            request_rx,
+        }
     }
 }
 
-impl Default for RpcServer {
+impl Default for RpcServerBuilder {
     fn default() -> Self {
         Self {
-            maximum_concurrent_sessions: Some(1000),
+            maximum_simultaneous_sessions: Some(1000),
             minimum_client_deadline: Duration::from_secs(1),
             handshake_timeout: Duration::from_secs(15),
             shutdown_signal: Default::default(),
@@ -153,49 +200,77 @@ impl Default for RpcServer {
 }
 
 pub(super) struct PeerRpcServer<TSvc, TSubstream, TCommsProvider> {
-    executor: OptionallyBoundedExecutor,
-    config: RpcServer,
+    executor: BoundedExecutor,
+    config: RpcServerBuilder,
     service: TSvc,
     protocol_notifications: Option<ProtocolNotificationRx<TSubstream>>,
     comms_provider: TCommsProvider,
+    request_rx: Option<mpsc::Receiver<RpcServerRequest>>,
 }
 
 impl<TSvc, TSubstream, TCommsProvider> PeerRpcServer<TSvc, TSubstream, TCommsProvider>
 where
     TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static,
-    TSvc: MakeService<ProtocolId, Request<Bytes>, MakeError = RpcError, Response = Response<Body>, Error = RpcStatus>
-        + Send
+    TSvc: MakeService<
+            ProtocolId,
+            Request<Bytes>,
+            MakeError = RpcServerError,
+            Response = Response<Body>,
+            Error = RpcStatus,
+        > + Send
         + 'static,
     TSvc::Service: Send + 'static,
     <TSvc::Service as Service<Request<Bytes>>>::Future: Send + 'static,
     TSvc::Future: Send + 'static,
     TCommsProvider: RpcCommsProvider + Clone + Send + 'static,
 {
-    pub fn new(
-        config: RpcServer,
+    fn new(
+        config: RpcServerBuilder,
         service: TSvc,
         protocol_notifications: ProtocolNotificationRx<TSubstream>,
         comms_provider: TCommsProvider,
+        request_rx: mpsc::Receiver<RpcServerRequest>,
     ) -> Self
     {
         Self {
-            executor: OptionallyBoundedExecutor::from_current(config.maximum_concurrent_sessions),
+            executor: match config.maximum_simultaneous_sessions {
+                Some(num) => BoundedExecutor::from_current(num),
+                None => BoundedExecutor::allow_maximum(),
+            },
             config,
             service,
             protocol_notifications: Some(protocol_notifications),
             comms_provider,
+            request_rx: Some(request_rx),
         }
     }
 
-    pub async fn serve(mut self) -> Result<(), RpcError> {
+    pub async fn serve(mut self) -> Result<(), RpcServerError> {
         let mut protocol_notifs = self
             .protocol_notifications
             .take()
-            .unwrap()
+            .expect("PeerRpcServer initialized without protocol_notifications")
             .take_until(self.config.shutdown_signal.clone());
 
-        while let Some(notif) = protocol_notifs.next().await {
-            self.handle_protocol_notification(notif).await?;
+        let mut requests = self
+            .request_rx
+            .take()
+            .expect("PeerRpcServer initialized without request_rx");
+
+        loop {
+            futures::select! {
+                 maybe_notif = protocol_notifs.next() => {
+                     match maybe_notif {
+                         Some(notif) => self.handle_protocol_notification(notif).await?,
+                         // No more protocol notifications to come, so we're done
+                         None => break,
+                     }
+                 }
+
+                 req = requests.select_next_some() => {
+                     self.handle_request(req).await;
+                 },
+            }
         }
 
         debug!(
@@ -207,10 +282,24 @@ where
         Ok(())
     }
 
+    async fn handle_request(&self, req: RpcServerRequest) {
+        use RpcServerRequest::*;
+        match req {
+            GetNumActiveSessions(reply) => {
+                let max_sessions = self
+                    .config
+                    .maximum_simultaneous_sessions
+                    .unwrap_or_else(BoundedExecutor::max_theoretical_tasks);
+                let num_active = max_sessions.saturating_sub(self.executor.num_available());
+                let _ = reply.send(num_active);
+            },
+        }
+    }
+
     async fn handle_protocol_notification(
         &mut self,
         notification: ProtocolNotification<TSubstream>,
-    ) -> Result<(), RpcError>
+    ) -> Result<(), RpcServerError>
     {
         match notification.event {
             ProtocolEvent::NewInboundSubstream(node_id, substream) => {
@@ -239,26 +328,32 @@ where
         protocol: ProtocolId,
         node_id: NodeId,
         mut framed: CanonicalFraming<TSubstream>,
-    ) -> Result<(), RpcError>
+    ) -> Result<(), RpcServerError>
     {
         let mut handshake = Handshake::new(&mut framed).with_timeout(self.config.handshake_timeout);
 
         if !self.executor.can_spawn() {
             debug!(
                 target: LOG_TARGET,
-                "Rejecting RPC session request for peer `{}` because maximum number of concurrent services has been \
-                 reached",
-                node_id
+                "Rejecting RPC session request for peer `{}` because {}",
+                node_id,
+                HandshakeRejectReason::NoSessionsAvailable
             );
             handshake
                 .reject_with_reason(HandshakeRejectReason::NoSessionsAvailable)
                 .await?;
-            return Err(RpcError::MaximumConcurrencyReached);
+            return Err(RpcServerError::MaximumSessionsReached);
         }
 
-        let service = match self.service.make_service(protocol).await {
+        let service = match self.service.make_service(protocol.clone()).await {
             Ok(s) => s,
             Err(err) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Rejecting RPC session request for peer `{}` because {}",
+                    node_id,
+                    HandshakeRejectReason::ProtocolNotSupported
+                );
                 handshake
                     .reject_with_reason(HandshakeRejectReason::ProtocolNotSupported)
                     .await?;
@@ -274,7 +369,7 @@ where
 
         let service = ActivePeerRpcService {
             config: self.config.clone(),
-            node_id,
+            node_id: node_id.clone(),
             framed: Some(framed),
             service,
             comms_provider: self.comms_provider.clone(),
@@ -283,14 +378,14 @@ where
 
         self.executor
             .try_spawn(service.start())
-            .map_err(|_| RpcError::MaximumConcurrencyReached)?;
+            .map_err(|_| RpcServerError::MaximumSessionsReached)?;
 
         Ok(())
     }
 }
 
 struct ActivePeerRpcService<TSvc, TSubstream, TCommsProvider> {
-    config: RpcServer,
+    config: RpcServerBuilder,
     node_id: NodeId,
     service: TSvc,
     framed: Option<CanonicalFraming<TSubstream>>,
@@ -315,7 +410,7 @@ where
         debug!(target: LOG_TARGET, "(Peer = {}) Rpc service shutdown", self.node_id);
     }
 
-    async fn run(&mut self) -> Result<(), RpcError> {
+    async fn run(&mut self) -> Result<(), RpcServerError> {
         let (mut sink, stream) = self.framed.take().unwrap().split();
         let mut stream = stream.fuse().take_until(self.shutdown_signal.clone());
 
@@ -336,7 +431,7 @@ where
         RequestContext::new(self.node_id.clone(), Box::new(self.comms_provider.clone()))
     }
 
-    async fn handle<W>(&mut self, sink: &mut W, mut request: Bytes) -> Result<(), RpcError>
+    async fn handle<W>(&mut self, sink: &mut W, mut request: Bytes) -> Result<(), RpcServerError>
     where W: Sink<Bytes, Error = io::Error> + Unpin {
         let decoded_msg = proto::rpc::RpcRequest::decode(&mut request)?;
 

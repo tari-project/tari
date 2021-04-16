@@ -70,19 +70,14 @@ impl DbTransaction {
         DbTransaction::default()
     }
 
-    /// A general insert request. There are convenience functions for specific delete queries.
-    pub fn delete(&mut self, delete: DbKey) -> &mut Self {
-        self.operations.push(WriteOperation::Delete(delete));
-        self
-    }
-
     pub fn delete_orphan(&mut self, hash: HashOutput) -> &mut Self {
-        self.delete(DbKey::OrphanBlock(hash))
+        self.operations.push(WriteOperation::DeleteOrphan(hash));
+        self
     }
 
     /// Delete a block header at the given height
     pub fn delete_header(&mut self, height: u64) -> &mut Self {
-        self.operations.push(WriteOperation::Delete(DbKey::BlockHeader(height)));
+        self.operations.push(WriteOperation::DeleteHeader(height));
         self
     }
 
@@ -187,8 +182,8 @@ impl DbTransaction {
     /// Add the BlockHeader and contents of a `Block` (i.e. inputs, outputs and kernels) to the database.
     /// If the `BlockHeader` already exists, then just the contents are updated along with the relevant accumulated
     /// data.
-    pub fn insert_block(&mut self, block: Arc<ChainBlock>) -> &mut Self {
-        self.operations.push(WriteOperation::InsertBlock { block });
+    pub fn insert_block_body(&mut self, block: Arc<ChainBlock>) -> &mut Self {
+        self.operations.push(WriteOperation::InsertBlockBody { block });
         self
     }
 
@@ -251,9 +246,8 @@ impl DbTransaction {
     /// This will store the seed key with the height. This is called when a block is accepted into the main chain.
     /// This will only update the hieght of the seed, if its lower then currently stored.
     pub fn insert_monero_seed_height(&mut self, monero_seed: &str, height: u64) {
-        let monero_seed_boxed = Box::new(monero_seed.to_string());
         self.operations
-            .push(WriteOperation::InsertMoneroSeedHeight(monero_seed_boxed, height));
+            .push(WriteOperation::InsertMoneroSeedHeight(monero_seed.to_string(), height));
     }
 }
 
@@ -265,7 +259,7 @@ pub enum WriteOperation {
     InsertHeader {
         header: Box<ChainHeader>,
     },
-    InsertBlock {
+    InsertBlockBody {
         block: Arc<ChainBlock>,
     },
     InsertInput {
@@ -289,11 +283,12 @@ pub enum WriteOperation {
         proof_hash: HashOutput,
         mmr_position: u32,
     },
-    Delete(DbKey),
+    DeleteHeader(u64),
+    DeleteOrphan(HashOutput),
     DeleteBlock(HashOutput),
     DeleteOrphanChainTip(HashOutput),
     InsertOrphanChainTip(HashOutput),
-    InsertMoneroSeedHeight(Box<String>, u64),
+    InsertMoneroSeedHeight(String, u64),
     UpdatePrunedHashSet {
         mmr_tree: MmrTree,
         header_hash: HashOutput,
@@ -340,9 +335,9 @@ impl fmt::Display for WriteOperation {
                 header.header.height,
                 header.accumulated_data.hash.to_hex()
             ),
-            InsertBlock { block } => write!(
+            InsertBlockBody { block } => write!(
                 f,
-                "InsertBlock({}, {})",
+                "InsertBlockBody({}, {})",
                 block.accumulated_data.hash.to_hex(),
                 block.block.body.to_counts_string(),
             ),
@@ -379,7 +374,6 @@ impl fmt::Display for WriteOperation {
                 header_hash.to_hex(),
                 mmr_position
             ),
-            Delete(key) => write!(f, "Delete({})", key),
             DeleteOrphanChainTip(hash) => write!(f, "DeleteOrphanChainTip({})", hash.to_hex()),
             InsertOrphanChainTip(hash) => write!(f, "InsertOrphanChainTip({})", hash.to_hex()),
             DeleteBlock(hash) => write!(f, "DeleteBlock({})", hash.to_hex()),
@@ -430,6 +424,8 @@ impl fmt::Display for WriteOperation {
             ),
             SetPruningHorizonConfig(pruning_horizon) => write!(f, "Set config: pruning horizon to {}", pruning_horizon),
             SetPrunedHeight { height, .. } => write!(f, "Set pruned height to {}", height),
+            DeleteHeader(height) => write!(f, "Delete header at height: {}", height),
+            DeleteOrphan(hash) => write!(f, "Delete orphan with hash: {}", hash.to_hex()),
         }
     }
 }

@@ -31,3 +31,9 @@ pub mod tabs_container;
 pub mod transactions_tab;
 
 pub use self::component::*;
+
+#[derive(PartialEq, Eq)]
+pub enum KeyHandled {
+    Handled = 1,
+    NotHandled,
+}

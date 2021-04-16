@@ -91,7 +91,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         );
         self.attempt_block_sync(peer_conn).await?;
 
-        self.db.cleanup_all_orphans().await?;
+        self.db.cleanup_orphans().await?;
         Ok(())
     }
 
@@ -214,7 +214,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
             let timer = Instant::now();
             self.db
                 .write_transaction()
-                .insert_block(block.clone())
+                .insert_block_body(block.clone())
                 .set_best_block(
                     block.height(),
                     header_hash,

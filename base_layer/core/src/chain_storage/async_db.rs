@@ -320,11 +320,8 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
-    /// Add the BlockHeader and contents of a `Block` (i.e. inputs, outputs and kernels) to the database.
-    /// If the `BlockHeader` already exists, then just the contents are updated along with the relevant accumulated
-    /// data.
-    pub fn insert_block(&mut self, block: Arc<ChainBlock>) -> &mut Self {
-        self.transaction.insert_block(block);
+    pub fn insert_block_body(&mut self, block: Arc<ChainBlock>) -> &mut Self {
+        self.transaction.insert_block_body(block);
         self
     }
 

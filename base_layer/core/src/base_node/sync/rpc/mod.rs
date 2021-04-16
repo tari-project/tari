@@ -40,6 +40,7 @@ use crate::{
         SyncBlocksRequest,
         SyncHeadersRequest,
         SyncKernelsRequest,
+        SyncUtxos2Response,
         SyncUtxosRequest,
         SyncUtxosResponse,
     },
@@ -87,6 +88,10 @@ pub trait BaseNodeSyncService: Send + Sync + 'static {
 
     #[rpc(method = 7)]
     async fn sync_utxos(&self, request: Request<SyncUtxosRequest>) -> Result<Streaming<SyncUtxosResponse>, RpcStatus>;
+
+    #[rpc(method = 8)]
+    async fn sync_utxos2(&self, request: Request<SyncUtxosRequest>)
+        -> Result<Streaming<SyncUtxos2Response>, RpcStatus>;
 }
 
 #[cfg(feature = "base_node")]

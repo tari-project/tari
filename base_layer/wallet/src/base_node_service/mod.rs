@@ -92,7 +92,7 @@ where T: WalletBackend + 'static
             )
             .start();
             futures::pin_mut!(service);
-            future::select(service, handles.get_shutdown_signal()).await;
+            let _ = service.await;
             info!(target: LOG_TARGET, "Wallet Base Node Service shutdown");
         });
 

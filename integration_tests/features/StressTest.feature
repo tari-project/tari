@@ -5,7 +5,7 @@ Feature: Stress Test
     Scenario Outline: Ramped Stress Test
         Given I have a seed node NODE1
         And I have stress-test wallet WALLET_A connected to the seed node NODE1 with broadcast monitoring timeout <MonitoringTimeout>
-        And I have a merge mining proxy PROXY connected to NODE1 and WALLET_A
+        And I have a merge mining proxy PROXY connected to NODE1 and WALLET_A with default config
         # We mine some blocks before starting the other nodes to avoid a spinning sync state when all the nodes are at height 0
         When I merge mine 6 blocks via PROXY
         And I have a seed node NODE2
@@ -14,7 +14,7 @@ Feature: Stress Test
         # There need to be at least as many mature coinbase UTXOs in the wallet coin splits required for the number of transactions
         When I merge mine <NumCoinsplitsNeeded> blocks via PROXY
         Then all nodes are at current tip height
-        When I wait for wallet WALLET_A to have at least 5100000000 tari
+        When I wait for wallet WALLET_A to have at least 5100000000 uT
 
         Then I coin split tari in wallet WALLET_A to produce <NumTransactions> UTXOs of 5000 uT each with fee_per_gram 20 uT
         When I merge mine 3 blocks via PROXY
@@ -42,7 +42,7 @@ Feature: Stress Test
     Scenario: Simple Stress Test
         Given I have a seed node NODE1
         And I have stress-test wallet WALLET_A connected to the seed node NODE1 with broadcast monitoring timeout 60
-        And I have a merge mining proxy PROXY connected to NODE1 and WALLET_A
+        And I have a merge mining proxy PROXY connected to NODE1 and WALLET_A with default config
         When I merge mine 1 blocks via PROXY
         And I have a seed node NODE2
         And I have 1 base nodes connected to all seed nodes
@@ -51,7 +51,7 @@ Feature: Stress Test
         # The following line is how you could mine directly on the node
         When I merge mine 8 blocks via PROXY
         Then all nodes are at current tip height
-        When I wait for wallet WALLET_A to have at least 15100000000 tari
+        When I wait for wallet WALLET_A to have at least 15100000000 uT
 
         Then I coin split tari in wallet WALLET_A to produce 2000 UTXOs of 5000 uT each with fee_per_gram 20 uT
 

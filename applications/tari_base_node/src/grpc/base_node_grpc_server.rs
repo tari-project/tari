@@ -34,7 +34,6 @@ use tari_app_grpc::{
     tari_rpc,
     tari_rpc::{CalcType, Sorting},
 };
-use tari_common::GlobalConfig;
 use tari_comms::PeerManager;
 use tari_core::{
     base_node::{
@@ -51,7 +50,7 @@ use tari_core::{
     transactions::{transaction::Transaction, types::Signature},
 };
 use tari_crypto::tari_utilities::{message_format::MessageFormat, Hashable};
-use tokio::{runtime, sync::mpsc};
+use tokio::{sync::mpsc, task};
 use tonic::{Request, Response, Status};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -74,10 +73,9 @@ const LIST_HEADERS_PAGE_SIZE: usize = 10;
 const LIST_HEADERS_DEFAULT_NUM_HEADERS: u64 = 10;
 
 pub struct BaseNodeGrpcServer {
-    executor: runtime::Handle,
     node_service: LocalNodeCommsInterface,
     mempool_service: LocalMempoolService,
-    node_config: GlobalConfig,
+    network: Network,
     state_machine_handle: StateMachineHandle,
     peer_manager: Arc<PeerManager>,
     consensus_rules: ConsensusManager,
@@ -85,20 +83,18 @@ pub struct BaseNodeGrpcServer {
 
 impl BaseNodeGrpcServer {
     pub fn new(
-        executor: runtime::Handle,
         local_node: LocalNodeCommsInterface,
         local_mempool: LocalMempoolService,
-        node_config: GlobalConfig,
+        network: Network,
         state_machine_handle: StateMachineHandle,
         peer_manager: Arc<PeerManager>,
     ) -> Self
     {
         Self {
-            executor,
             node_service: local_node,
             mempool_service: local_mempool,
-            consensus_rules: ConsensusManager::builder(node_config.network.into()).build(),
-            node_config,
+            consensus_rules: ConsensusManager::builder(network).build(),
+            network,
             state_machine_handle,
             peer_manager,
         }
@@ -144,7 +140,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .collect();
         let (mut tx, rx) = mpsc::channel(GET_DIFFICULTY_MAX_HEIGHTS);
 
-        self.executor.spawn(async move {
+        task::spawn(async move {
             let mut page: Vec<u64> = heights
                 .drain(..cmp::min(heights.len(), GET_DIFFICULTY_PAGE_SIZE))
                 .collect();
@@ -264,7 +260,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut mempool = self.mempool_service.clone();
         let (mut tx, rx) = mpsc::channel(1000);
 
-        self.executor.spawn(async move {
+        task::spawn(async move {
             let transactions = match mempool.get_mempool_state().await {
                 Err(err) => {
                     warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
@@ -349,7 +345,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             }
         };
 
-        self.executor.spawn(async move {
+        task::spawn(async move {
             trace!(target: LOG_TARGET, "Starting base node request");
             let mut headers = headers;
             trace!(target: LOG_TARGET, "Headers:{:?}", headers);
@@ -625,7 +621,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .map_err(|e| Status::unknown(e.to_string()))?;
         let peers: Vec<tari_rpc::Peer> = peers.into_iter().map(|p| p.into()).collect();
         let (mut tx, rx) = mpsc::channel(peers.len());
-        self.executor.spawn(async move {
+        task::spawn(async move {
             for peer in peers {
                 let response = tari_rpc::GetPeersResponse { peer: Some(peer) };
                 match tx.send(Ok(response)).await {
@@ -665,7 +661,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let mut handler = self.node_service.clone();
         let (mut tx, rx) = mpsc::channel(GET_BLOCKS_PAGE_SIZE);
-        self.executor.spawn(async move {
+        task::spawn(async move {
             let mut page: Vec<u64> = heights.drain(..cmp::min(heights.len(), GET_BLOCKS_PAGE_SIZE)).collect();
 
             while !page.is_empty() {
@@ -752,7 +748,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut handler = self.node_service.clone();
 
         let (mut tx, rx) = mpsc::channel(GET_BLOCKS_PAGE_SIZE);
-        self.executor.spawn(async move {
+        task::spawn(async move {
             let blocks = match handler.get_blocks_with_kernels(kernels).await {
                 Err(err) => {
                     warn!(
@@ -806,7 +802,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut handler = self.node_service.clone();
 
         let (mut tx, rx) = mpsc::channel(GET_BLOCKS_PAGE_SIZE);
-        self.executor.spawn(async move {
+        task::spawn(async move {
             let outputs = match handler.fetch_matching_utxos(hashes).await {
                 Err(err) => {
                     warn!(
@@ -884,11 +880,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<tari_rpc::ConsensusConstants>, Status>
     {
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetConstants",);
-        let network: Network = self.node_config.network.into();
         debug!(target: LOG_TARGET, "Sending GetConstants response to client");
         // TODO: Switch to request height
         Ok(Response::new(
-            network.create_consensus_constants().pop().unwrap().into(),
+            self.network.create_consensus_constants().pop().unwrap().into(),
         ))
     }
 
@@ -923,11 +918,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         heights = heights
             .drain(..cmp::min(heights.len(), GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS))
             .collect();
-        let network: Network = self.node_config.network.into();
-        let consensus_manager = ConsensusManagerBuilder::new(network).build();
-        // let constants = network.create_consensus_constants().pop().unwrap();
+        let consensus_manager = ConsensusManagerBuilder::new(self.network).build();
+
         let (mut tx, rx) = mpsc::channel(GET_TOKENS_IN_CIRCULATION_PAGE_SIZE);
-        self.executor.spawn(async move {
+        task::spawn(async move {
             let mut page: Vec<u64> = heights
                 .drain(..cmp::min(heights.len(), GET_TOKENS_IN_CIRCULATION_PAGE_SIZE))
                 .collect();

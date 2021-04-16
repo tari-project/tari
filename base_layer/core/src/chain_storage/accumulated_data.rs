@@ -271,6 +271,12 @@ pub struct BlockHeaderAccumulatedData {
     pub target_difficulty: Difficulty,
 }
 
+impl BlockHeaderAccumulatedData {
+    pub fn builder() -> BlockHeaderAccumulatedDataBuilder {
+        BlockHeaderAccumulatedDataBuilder::default()
+    }
+}
+
 impl Display for BlockHeaderAccumulatedData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Hash: {}", self.hash.to_hex())?;
