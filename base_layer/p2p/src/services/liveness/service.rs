@@ -97,7 +97,7 @@ where
         let ping_stream = self.ping_stream.take().expect("ping_stream cannot be None").fuse();
         pin_mut!(ping_stream);
 
-        let request_stream = self.request_rx.take().expect("ping_stream cannot be None").fuse();
+        let request_stream = self.request_rx.take().expect("request_stream cannot be None").fuse();
         pin_mut!(request_stream);
 
         let mut ping_tick = match self.config.auto_ping_interval {

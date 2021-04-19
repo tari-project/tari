@@ -216,10 +216,9 @@ async fn send_transaction_finalized_message_store_and_forward(
 ) -> Result<bool, TransactionServiceError>
 {
     match outbound_message_service
-        .closest_broadcast(
+        .closer_only(
             NodeId::from_public_key(&destination_pubkey),
             OutboundEncryption::EncryptFor(Box::new(destination_pubkey.clone())),
-            vec![],
             OutboundDomainMessage::new(TariMessageType::TransactionFinalized, msg.clone()),
         )
         .await

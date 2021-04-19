@@ -128,7 +128,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         let tip_header = self.db.fetch_last_header().await?;
         let local_metadata = self.db.get_chain_metadata().await?;
         if tip_header.height <= local_metadata.height_of_longest_chain() {
-            debug!(
+            info!(
                 target: LOG_TARGET,
                 "Blocks already synchronized to height {}.", tip_header.height
             );
@@ -141,7 +141,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         let (_best_block, accumulated_data) = self.db.fetch_header_and_accumulated_data(best_height).await?;
 
         let best_full_block_hash = accumulated_data.hash;
-        debug!(
+        info!(
             target: LOG_TARGET,
             "Starting block sync from peer `{}`. Current best block is #{} `{}`. Syncing to #{} ({}).",
             peer,

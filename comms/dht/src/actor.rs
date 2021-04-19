@@ -55,6 +55,7 @@ use tari_utilities::message_format::{MessageFormat, MessageFormatError};
 use thiserror::Error;
 use tokio::task;
 use ttl_cache::TtlCache;
+use tari_comms::peer_manager::NodeDistance;
 
 const LOG_TARGET: &str = "comms::dht::actor";
 
@@ -342,13 +343,16 @@ impl DhtActor {
     {
         let message = JoinMessage::from(&node_identity);
 
-        debug!(target: LOG_TARGET, "Sending Join message to closest peers");
+        debug!(
+            target: LOG_TARGET,
+            "[ThisNode={}] Sending Join message to closest peers",
+            node_identity.node_id()
+        );
 
         outbound_requester
             .send_message_no_header(
                 SendMessageParams::new()
-                    .closest(node_identity.node_id().clone(), vec![])
-                    .with_destination(node_identity.node_id().clone().into())
+                    .random(3)
                     .with_dht_message_type(DhtMessageType::Join)
                     .force_origin()
                     .finish(),
@@ -391,6 +395,40 @@ impl DhtActor {
                     .select_connections(ConnectivitySelection::all_nodes(exclude))
                     .await?;
                 Ok(peers.into_iter().map(|p| p.peer_node_id().clone()).collect())
+            },
+
+            CloserOnly(destination_node_id) => {
+                // Find the bucket that this node is in
+
+                let destination_distance = node_identity.node_id().distance(&destination_node_id);
+                let num_buckets = config.num_network_buckets;
+                let k = config.num_random_nodes;
+                let bucket = destination_distance.get_bucket(num_buckets);
+
+
+                let query = PeerQuery::new().select_where(|peer|
+                    {
+                        if peer.node_id == destination_node_id {
+                            return true;
+                        }
+
+                        if !peer.has_features(PeerFeatures::MESSAGE_PROPAGATION) {
+                            return false;
+                        }
+
+                        let distance = peer.node_id.distance(node_identity.node_id());
+                        // if it's in the same bucket as us, only propagate strictly closer, otherwise
+                        // we will get this message back in an endless loop
+                        if bucket.0 == NodeDistance::zero() {
+                            distance < destination_distance
+                        } else {
+                            distance >= bucket.0 && distance < bucket.1
+                        }
+                    }
+                ).sort_by(PeerQuerySortBy::LastConnected).limit(k);
+
+                let peers = peer_manager.perform_query(query).await?;
+                Ok(peers.into_iter().map(|p| p.node_id).collect())
             },
             Closest(closest_request) => {
                 let connections = connectivity
@@ -461,7 +499,8 @@ impl DhtActor {
                 }
                 debug!(
                     target: LOG_TARGET,
-                    "{} candidate(s) selected for broadcast",
+                    "[ThisNode={}] {} candidate(s) selected for broadcast",
+                    node_identity.node_id(),
                     candidates.len()
                 );
 
@@ -619,20 +658,18 @@ impl DhtActor {
 
         let peers = peer_manager.perform_query(query).await?;
         let total_excluded = banned_count + connect_ineligable_count + excluded_count + filtered_out_node_count;
-        if total_excluded > 0 {
-            debug!(
-                target: LOG_TARGET,
-                "👨‍👧‍👦 Closest Peer Selection: {num_peers} peer(s) selected, {total} peer(s) not selected, {banned} \
-                 banned, {filtered_out} not communication node, {not_connectable} are not connectable, {excluded} \
-                 explicitly excluded",
-                num_peers = peers.len(),
-                total = total_excluded,
-                banned = banned_count,
-                filtered_out = filtered_out_node_count,
-                not_connectable = connect_ineligable_count,
-                excluded = excluded_count
-            );
-        }
+        debug!(
+            target: LOG_TARGET,
+            "👨‍👧‍👦 Closest Peer Selection: {num_peers} peer(s) selected, {total} peer(s) not selected, {banned} \
+             banned, {filtered_out} not communication node, {not_connectable} are not connectable, {excluded} \
+             explicitly excluded",
+            num_peers = peers.len(),
+            total = total_excluded,
+            banned = banned_count,
+            filtered_out = filtered_out_node_count,
+            not_connectable = connect_ineligable_count,
+            excluded = excluded_count
+        );
 
         Ok(peers.into_iter().map(|p| p.node_id).collect())
     }

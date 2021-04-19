@@ -23,7 +23,8 @@
 use crate::{
     peer_manager::{
         migrations,
-        node_id::{NodeDistance, NodeId},
+        NodeDistance,
+        node_id::{NodeId},
         peer::{Peer, PeerFlags},
         peer_id::PeerId,
         peer_storage::PeerStorage,
@@ -205,26 +206,27 @@ impl PeerManager {
         &self,
         node_id: &NodeId,
         region_node_id: &NodeId,
-        n: usize,
+        num_network_buckets: u32,
     ) -> Result<bool, PeerManagerError>
     {
-        self.peer_storage
-            .read()
-            .await
-            .in_network_region(node_id, region_node_id, n)
+        Ok(node_id.distance(region_node_id).get_bucket(num_network_buckets).0 == NodeDistance::zero())
+        // self.peer_storage
+        //     .read()
+        //     .await
+        //     .in_network_region(node_id, region_node_id, n)
     }
 
     pub async fn calc_region_threshold(
         &self,
-        region_node_id: &NodeId,
-        n: usize,
-        features: PeerFeatures,
+        num_network_buckets: u32,
     ) -> Result<NodeDistance, PeerManagerError>
     {
-        self.peer_storage
-            .read()
-            .await
-            .calc_region_threshold(region_node_id, n, features)
+
+        Ok(NodeDistance::zero().get_bucket(num_network_buckets).1)
+         // self.peer_storage
+        //     .read()
+        //     .await
+        //     .calc_region_threshold(region_node_id, n, features)
     }
 
     /// Unbans the peer if it is banned. This function is idempotent.

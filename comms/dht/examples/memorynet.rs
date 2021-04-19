@@ -44,8 +44,8 @@ use crate::memory_net::utilities::{
     drain_messaging_events,
     get_name,
     make_node,
-    network_connectivity_stats,
-    network_peer_list_stats,
+    print_network_connectivity_stats,
+    print_network_peer_list_stats,
     shutdown_all,
     take_a_break,
 };
@@ -54,10 +54,10 @@ use rand::{rngs::OsRng, Rng};
 use std::{iter::repeat_with, time::Duration};
 use tari_comms::peer_manager::PeerFeatures;
 
-// Size of network
-const NUM_NODES: usize = 3;
+// Size of network. Must be at least 2
+const NUM_NODES: usize = 16;
 // Must be at least 2
-const NUM_WALLETS: usize = 2;
+const NUM_WALLETS: usize = 4;
 const QUIET_MODE: bool = true;
 /// Number of neighbouring nodes each node should include in the connection pool
 const NUM_NEIGHBOURING_NODES: usize = 8;
@@ -112,7 +112,7 @@ async fn main() {
         repeat_with(|| {
             make_node(
                 PeerFeatures::COMMUNICATION_CLIENT,
-                vec![nodes[OsRng.gen_range(0, NUM_NODES - 1)].node_identity()],
+                vec![nodes[OsRng.gen_range(0, NUM_NODES)].node_identity()],
                 node_message_tx.clone(),
                 NUM_NEIGHBOURING_NODES,
                 NUM_RANDOM_NODES,
@@ -171,8 +171,8 @@ async fn main() {
 
     // peer_list_summary(&nodes).await;
 
-    log::info!("------------------------------- WALLET JOIN -------------------------------");
     for wallet in wallets.iter_mut() {
+        log::info!("------------------------------- WALLET JOIN -------------------------------");
         println!(
             "Wallet '{}' is joining the network via node '{}'",
             wallet,
@@ -181,7 +181,7 @@ async fn main() {
         wallet
             .comms
             .connectivity()
-            .wait_for_connectivity(Duration::from_secs(10))
+            .wait_for_connectivity(Duration::from_secs(60))
             .await
             .unwrap();
         wallet.dht.dht_requester().send_join().await.unwrap();
@@ -191,9 +191,9 @@ async fn main() {
     let mut total_messages = 0;
     total_messages += drain_messaging_events(&mut messaging_events_rx, false).await;
 
-    network_peer_list_stats(&nodes, &nodes).await;
-    network_peer_list_stats(&nodes, &wallets).await;
-    network_connectivity_stats(&nodes, &wallets, QUIET_MODE).await;
+    print_network_peer_list_stats(&nodes, &nodes).await;
+    print_network_peer_list_stats(&nodes, &wallets).await;
+    print_network_connectivity_stats(&nodes, &wallets, QUIET_MODE).await;
 
     {
         let count = seed_node[0].comms.peer_manager().count().await;
@@ -253,8 +253,8 @@ async fn main() {
 
     println!("{} messages sent in total across the network", total_messages);
 
-    network_peer_list_stats(&nodes, &wallets).await;
-    network_connectivity_stats(&nodes, &wallets, QUIET_MODE).await;
+    print_network_peer_list_stats(&nodes, &wallets).await;
+    print_network_connectivity_stats(&nodes, &wallets, QUIET_MODE).await;
 
     banner!("Summary");
     println!("Total messages sent: {}", total_messages);

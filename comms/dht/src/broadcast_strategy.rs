@@ -61,6 +61,8 @@ pub enum BroadcastStrategy {
     Broadcast(Vec<NodeId>),
     /// Propagate to a set of closest neighbours and random peers
     Propagate(NodeDestination, Vec<NodeId>),
+    /// Send to nodes between the current node and the destination
+    CloserOnly(NodeId)
 }
 
 impl fmt::Display for BroadcastStrategy {
@@ -70,6 +72,7 @@ impl fmt::Display for BroadcastStrategy {
             DirectPublicKey(pk) => write!(f, "DirectPublicKey({})", pk),
             DirectNodeId(node_id) => write!(f, "DirectNodeId({})", node_id),
             Flood(excluded) => write!(f, "Flood({} excluded)", excluded.len()),
+            CloserOnly(node_id) => write!(f, "Closer only({})", node_id),
             Closest(request) => write!(f, "Closest({})", request),
             Random(n, excluded) => write!(f, "Random({}, {} excluded)", n, excluded.len()),
             Broadcast(excluded) => write!(f, "Broadcast({} excluded)", excluded.len()),

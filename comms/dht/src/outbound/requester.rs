@@ -155,11 +155,10 @@ impl OutboundMessageRequester {
     /// Send to peers closer to the given `NodeId`. This strategy will attempt to establish new some closer connections.
     ///
     /// Use this strategy to broadcast a message destined for a particular peer.
-    pub async fn closest_broadcast<T>(
+    pub async fn closer_only<T>(
         &mut self,
         destination_node_id: NodeId,
         encryption: OutboundEncryption,
-        exclude_peers: Vec<NodeId>,
         message: OutboundDomainMessage<T>,
     ) -> Result<MessageSendStates, DhtOutboundError>
     where
@@ -167,7 +166,7 @@ impl OutboundMessageRequester {
     {
         self.send_message(
             SendMessageParams::new()
-                .closest(destination_node_id.clone(), exclude_peers)
+                .closer_only(destination_node_id.clone())
                 .with_encryption(encryption)
                 .with_destination(destination_node_id.into())
                 .finish(),

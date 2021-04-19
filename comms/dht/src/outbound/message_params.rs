@@ -135,6 +135,12 @@ impl SendMessageParams {
         self
     }
 
+    pub fn closer_only(&mut self, destination: NodeId) -> &mut Self {
+        self.params_mut().broadcast_strategy = BroadcastStrategy::CloserOnly(destination);
+        self
+    }
+
+
     /// Set broadcast_strategy to Neighbours. `excluded_peers` are excluded. Only Peers that have
     /// `PeerFeatures::MESSAGE_PROPAGATION` are included.
     pub fn broadcast(&mut self, excluded_peers: Vec<NodeId>) -> &mut Self {

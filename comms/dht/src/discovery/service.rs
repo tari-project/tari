@@ -340,14 +340,18 @@ impl DhtDiscoveryService {
         };
         debug!(
             target: LOG_TARGET,
-            "Sending Discovery message for peer public key '{}' with destination {}", dest_public_key, destination
+            "[ThisNode={}] Sending Discovery message for peer public key '{}' with destination {}",
+            self.node_identity.node_id(),
+            dest_public_key,
+            destination
         );
 
         let send_states = self
             .outbound_requester
             .send_message_no_header(
                 SendMessageParams::new()
-                    .broadcast(Vec::new())
+                    .closer_only(destination.to_derived_node_id().ok_or_else(|| DhtDiscoveryError::InvalidNodeId)?)
+                    // .closest(destination.to_derived_node_id().ok_or_else(|| DhtDiscoveryError::InvalidNodeId)?, Vec::new())
                     .with_destination(destination)
                     .with_encryption(OutboundEncryption::EncryptFor(dest_public_key))
                     .with_dht_message_type(DhtMessageType::Discovery)

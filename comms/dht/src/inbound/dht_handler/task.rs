@@ -134,7 +134,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let DecryptedDhtMessage {
             decryption_result,
             dht_header,
-            source_peer,
+            source_peer: _,
             authenticated_origin,
             is_saf_message,
             ..
@@ -156,7 +156,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         debug!(
             target: LOG_TARGET,
-            "Received join Message from '{}' {}", authenticated_pk, join_msg
+            "[ThisNode={}] Received join Message from '{}' {}",
+            self.node_identity.node_id(),
+            authenticated_pk,
+            join_msg
         );
 
         let addresses = join_msg
@@ -213,10 +216,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             self.outbound_service
                 .send_raw(
                     SendMessageParams::new()
-                        .propagate(origin_node_id.clone().into(), vec![
-                            origin_node_id,
-                            source_peer.node_id.clone(),
-                        ])
+                        .closer_only(origin_node_id.clone())
                         .with_dht_header(dht_header)
                         .finish(),
                     body.to_encoded_bytes(),

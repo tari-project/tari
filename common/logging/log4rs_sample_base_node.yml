@@ -70,7 +70,7 @@ appenders:
 
 # Set the default logging level to "info"
 root:
-  level: info
+  level: debug
   appenders:
     - base_layer
 
@@ -95,13 +95,13 @@ loggers:
     additive: false
   # Route log events sent to the "comms" logger to the "network" appender
   comms:
-    level: info
+    level: debug
     appenders:
       - network
     additive: false
   # Route log events sent to the "p2p" logger to the "network" appender
   p2p:
-    level: info
+    level: debug
     appenders:
       - network
     additive: false

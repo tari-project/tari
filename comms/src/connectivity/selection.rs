@@ -132,7 +132,7 @@ mod test {
     use super::*;
     use crate::{
         connection_manager::PeerConnectionRequest,
-        peer_manager::node_id::NodeDistance,
+        peer_manager::NodeDistance,
         test_utils::{mocks::create_dummy_peer_connection, node_id, node_identity::build_node_identity},
     };
     use futures::channel::mpsc;
