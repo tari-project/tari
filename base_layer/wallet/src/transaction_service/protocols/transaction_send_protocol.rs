@@ -632,10 +632,9 @@ where TBackend: TransactionBackend + 'static
         match self
             .resources
             .outbound_message_service
-            .closest_broadcast(
+            .closer_only(
                 NodeId::from_public_key(&self.dest_pubkey),
                 OutboundEncryption::EncryptFor(Box::new(self.dest_pubkey.clone())),
-                vec![],
                 OutboundDomainMessage::new(TariMessageType::SenderPartialTransaction, proto_message),
             )
             .await
