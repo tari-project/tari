@@ -1472,6 +1472,7 @@ fn test_power_mode_updates() {
         last_send_timestamp: None,
         valid: true,
         confirmations: None,
+        mined_height: None,
     };
 
     let completed_tx2 = CompletedTransaction {
@@ -1491,6 +1492,7 @@ fn test_power_mode_updates() {
         last_send_timestamp: None,
         valid: true,
         confirmations: None,
+        mined_height: None,
     };
 
     backend
@@ -4339,6 +4341,7 @@ fn broadcast_all_completed_transactions_on_startup() {
         last_send_timestamp: None,
         valid: true,
         confirmations: None,
+        mined_height: None,
     };
 
     let completed_tx2 = CompletedTransaction {
@@ -4669,6 +4672,7 @@ fn only_start_one_tx_broadcast_protocol_at_a_time() {
         last_send_timestamp: None,
         valid: true,
         confirmations: None,
+        mined_height: None,
     };
 
     backend
@@ -4729,6 +4733,7 @@ fn dont_broadcast_invalid_transactions() {
         last_send_timestamp: None,
         valid: false,
         confirmations: None,
+        mined_height: None,
     };
 
     backend
