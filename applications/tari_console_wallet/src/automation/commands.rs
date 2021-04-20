@@ -49,6 +49,7 @@ use tokio::{
 };
 
 use super::error::CommandError;
+use tari_core::transactions::types::PublicKey;
 
 pub const LOG_TARGET: &str = "wallet::automation::commands";
 
@@ -58,6 +59,7 @@ pub const LOG_TARGET: &str = "wallet::automation::commands";
 pub enum WalletCommand {
     GetBalance,
     SendTari,
+    SendOneSided,
     MakeItRain,
     CoinSplit,
     DiscoverPeer,
@@ -83,12 +85,10 @@ pub struct SentTransaction {
     stage: TransactionStage,
 }
 
-pub async fn send_tari(
-    mut wallet_transaction_service: TransactionServiceHandle,
+fn get_transaction_parameters(
     args: Vec<ParsedArgument>,
-) -> Result<TxId, CommandError>
-{
-    // todo: consolidate "fee per gram" in codebase
+) -> Result<(MicroTari, MicroTari, PublicKey, String), CommandError> {
+    // TODO: Consolidate "fee per gram" in codebase
     let fee_per_gram = 25 * uT;
 
     use ParsedArgument::*;
@@ -107,8 +107,31 @@ pub async fn send_tari(
         _ => Err(CommandError::Argument),
     }?;
 
+    Ok((fee_per_gram, amount, dest_pubkey, message))
+}
+
+/// Send a normal negotiated transaction to a recipient
+pub async fn send_tari(
+    mut wallet_transaction_service: TransactionServiceHandle,
+    args: Vec<ParsedArgument>,
+) -> Result<TxId, CommandError>
+{
+    let (fee_per_gram, amount, dest_pubkey, message) = get_transaction_parameters(args)?;
     wallet_transaction_service
         .send_transaction(dest_pubkey, amount, fee_per_gram, message)
+        .await
+        .map_err(CommandError::Transaction)
+}
+
+/// Send a one-sided transaction to a recipient
+pub async fn send_one_sided(
+    mut wallet_transaction_service: TransactionServiceHandle,
+    args: Vec<ParsedArgument>,
+) -> Result<TxId, CommandError>
+{
+    let (fee_per_gram, amount, dest_pubkey, message) = get_transaction_parameters(args)?;
+    wallet_transaction_service
+        .send_one_sided_transaction(dest_pubkey, amount, fee_per_gram, message)
         .await
         .map_err(CommandError::Transaction)
 }
@@ -446,6 +469,11 @@ pub async fn command_runner(
             SendTari => {
                 let tx_id = send_tari(transaction_service.clone(), parsed.args).await?;
                 debug!(target: LOG_TARGET, "send-tari tx_id {}", tx_id);
+                tx_ids.push(tx_id);
+            },
+            SendOneSided => {
+                let tx_id = send_one_sided(transaction_service.clone(), parsed.args).await?;
+                debug!(target: LOG_TARGET, "send-one-sided tx_id {}", tx_id);
                 tx_ids.push(tx_id);
             },
             MakeItRain => {
