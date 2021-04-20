@@ -540,6 +540,12 @@ where TBackend: TransactionBackend + 'static
                 self.tx_id,
                 response.confirmations
             );
+
+            self.resources
+                .db
+                .set_transaction_mined_height(self.tx_id, self.block_height)
+                .await
+                .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
             self.resources
                 .db
                 .mine_completed_transaction(self.tx_id)

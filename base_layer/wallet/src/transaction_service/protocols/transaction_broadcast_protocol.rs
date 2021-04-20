@@ -494,6 +494,15 @@ where TBackend: TransactionBackend + 'static
                 .await
                 .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
 
+            self.resources
+                .db
+                .set_transaction_mined_height(
+                    self.tx_id,
+                    response.height_of_longest_chain.saturating_sub(response.confirmations),
+                )
+                .await
+                .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
+
             if response.confirmations >= self.resources.config.num_confirmations_required as u64 {
                 info!(
                     target: LOG_TARGET,
@@ -514,7 +523,6 @@ where TBackend: TransactionBackend + 'static
                 .mine_completed_transaction(self.tx_id)
                 .await
                 .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
-
             let _ = self
                 .resources
                 .event_publisher

@@ -237,6 +237,7 @@ impl TransactionsTab {
                     Constraint::Length(1),
                     Constraint::Length(1),
                     Constraint::Length(1),
+                    Constraint::Length(1),
                 ]
                 .as_ref(),
             )
@@ -253,6 +254,7 @@ impl TransactionsTab {
         let timestamp = Span::styled("Timestamp:", Style::default().fg(Color::Magenta));
         let excess = Span::styled("Excess:", Style::default().fg(Color::Magenta));
         let confirmations = Span::styled("Confirmations:", Style::default().fg(Color::Magenta));
+        let mined_height = Span::styled("Mined Height:", Style::default().fg(Color::Magenta));
         let paragraph = Paragraph::new(tx_id).wrap(Wrap { trim: true });
         f.render_widget(paragraph, label_layout[0]);
         let paragraph = Paragraph::new(source_public_key).wrap(Wrap { trim: true });
@@ -275,12 +277,15 @@ impl TransactionsTab {
         f.render_widget(paragraph, label_layout[9]);
         let paragraph = Paragraph::new(confirmations).wrap(Wrap { trim: true });
         f.render_widget(paragraph, label_layout[10]);
+        let paragraph = Paragraph::new(mined_height).wrap(Wrap { trim: true });
+        f.render_widget(paragraph, label_layout[11]);
         // Content:
         let required_confirmations = app_state.get_required_confirmations();
         if let Some(tx) = self.detailed_transaction.as_ref() {
             let content_layout = Layout::default()
                 .constraints(
                     [
+                        Constraint::Length(1),
                         Constraint::Length(1),
                         Constraint::Length(1),
                         Constraint::Length(1),
@@ -349,6 +354,13 @@ impl TransactionsTab {
                 "N/A".to_string()
             };
             let confirmations = Span::styled(confirmations_msg.as_str(), Style::default().fg(Color::White));
+            let mined_height = Span::styled(
+                tx.mined_height
+                    .map(|m| m.to_string())
+                    .unwrap_or_else(|| "N/A".to_string()),
+                Style::default().fg(Color::White),
+            );
+
             let paragraph = Paragraph::new(tx_id).wrap(Wrap { trim: true });
             f.render_widget(paragraph, content_layout[0]);
             let paragraph = Paragraph::new(source_public_key).wrap(Wrap { trim: true });
@@ -371,6 +383,8 @@ impl TransactionsTab {
             f.render_widget(paragraph, content_layout[9]);
             let paragraph = Paragraph::new(confirmations).wrap(Wrap { trim: true });
             f.render_widget(paragraph, content_layout[10]);
+            let paragraph = Paragraph::new(mined_height).wrap(Wrap { trim: true });
+            f.render_widget(paragraph, content_layout[11]);
         }
     }
 }
@@ -383,7 +397,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
                     Constraint::Length(3),
                     Constraint::Length(1),
                     Constraint::Min(10),
-                    Constraint::Length(13),
+                    Constraint::Length(14),
                 ]
                 .as_ref(),
             )
