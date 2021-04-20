@@ -126,6 +126,8 @@ pub enum TransactionProtocolError {
     SerializationError,
     #[error("Conversion error: `{0}`")]
     ConversionError(String),
+    #[error("The script offset private key could not be found")]
+    ScriptOffsetPrivateKeyNotFound,
 }
 
 /// Transaction metadata, including the fee and lock height

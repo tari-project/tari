@@ -299,8 +299,14 @@ where TBackend: OutputManagerBackend + 'static
                 .get_coinbase_transaction(tx_id, reward, fees, block_height)
                 .await
                 .map(OutputManagerResponse::CoinbaseTransaction),
-            OutputManagerRequest::PrepareToSendTransaction((amount, fee_per_gram, lock_height, message)) => self
-                .prepare_transaction_to_send(amount, fee_per_gram, lock_height, message)
+            OutputManagerRequest::PrepareToSendTransaction((
+                amount,
+                fee_per_gram,
+                lock_height,
+                message,
+                recipient_script,
+            )) => self
+                .prepare_transaction_to_send(amount, fee_per_gram, lock_height, message, recipient_script)
                 .await
                 .map(OutputManagerResponse::TransactionToSend),
             OutputManagerRequest::CreatePayToSelfTransaction((amount, fee_per_gram, lock_height, message)) => self
@@ -650,6 +656,7 @@ where TBackend: OutputManagerBackend + 'static
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
+        recipient_script: TariScript,
     ) -> Result<SenderTransactionProtocol, OutputManagerError>
     {
         debug!(
@@ -668,7 +675,7 @@ where TBackend: OutputManagerBackend + 'static
             .with_offset(offset.clone())
             .with_private_nonce(nonce.clone())
             .with_amount(0, amount)
-            .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng))
+            .with_recipient_script(0, recipient_script, PrivateKey::random(&mut OsRng))
             .with_message(message)
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
 

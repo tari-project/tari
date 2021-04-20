@@ -258,6 +258,23 @@ impl SenderTransactionProtocol {
         }
     }
 
+    /// This function will return the script offset private keys for a single recipient
+    pub fn get_recipient_script_offset_private_key(&self, recipient_index: usize) -> Result<PrivateKey, TPE> {
+        match &self.state {
+            SenderState::Initializing(info) |
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => Ok({
+                info.recipient_script_offset_private_keys
+                    .get(recipient_index)
+                    .ok_or_else(|| TPE::ScriptOffsetPrivateKeyNotFound)?
+                    .clone()
+            }),
+            SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
+            SenderState::Failed(_) => Err(TPE::InvalidStateError),
+        }
+    }
+
     /// This function will return the value of the fee of this transaction
     pub fn get_fee_amount(&self) -> Result<MicroTari, TPE> {
         match &self.state {
@@ -265,7 +282,9 @@ impl SenderTransactionProtocol {
             SenderState::Finalizing(info) |
             SenderState::SingleRoundMessageReady(info) |
             SenderState::CollectingSingleSignature(info) => Ok(info.metadata.fee),
-            SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
+            SenderState::FinalizedTransaction(info) => {
+                Ok(info.body.kernels().first().ok_or_else(|| TPE::InvalidStateError)?.fee)
+            },
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }
     }

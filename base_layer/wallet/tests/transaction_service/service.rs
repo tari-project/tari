@@ -114,6 +114,7 @@ use tari_wallet::{
     test_utils::make_wallet_databases,
     transaction_service::{
         config::TransactionServiceConfig,
+        error::TransactionServiceError,
         handle::{TransactionEvent, TransactionServiceHandle},
         service::TransactionService,
         storage::{
@@ -664,6 +665,186 @@ fn single_transaction_to_self() {
 }
 
 #[test]
+fn send_one_sided_transaction_to_other() {
+    let mut runtime = create_runtime();
+
+    let factories = CryptoFactories::default();
+    // Alice's parameters
+    let alice_node_identity = Arc::new(
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
+    );
+
+    // Bob's parameters
+    let bob_node_identity = Arc::new(
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
+    );
+
+    let base_node_identity = Arc::new(
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
+    );
+
+    log::info!(
+        "manage_single_transaction: Alice: '{}', Bob: '{}', Base: '{}'",
+        alice_node_identity.node_id().short_str(),
+        bob_node_identity.node_id().short_str(),
+        base_node_identity.node_id().short_str()
+    );
+
+    let temp_dir = tempdir().unwrap();
+    let database_path = temp_dir.path().to_str().unwrap().to_string();
+
+    let (alice_backend, alice_oms_backend, _tempdir) = make_wallet_databases(Some(database_path.clone()));
+
+    let shutdown = Shutdown::new();
+    let (mut alice_ts, mut alice_oms, _alice_comms) = setup_transaction_service(
+        &mut runtime,
+        alice_node_identity,
+        vec![],
+        factories.clone(),
+        alice_backend,
+        alice_oms_backend,
+        database_path,
+        Duration::from_secs(0),
+        shutdown.to_signal(),
+    );
+
+    let mut alice_event_stream = alice_ts.get_event_stream_fused();
+
+    runtime
+        .block_on(alice_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
+        .unwrap();
+
+    let initial_wallet_value = 2500.into();
+    let (utxo, uo1) = make_input(&mut OsRng, initial_wallet_value, &factories.commitment);
+    let mut alice_oms_clone = alice_oms.clone();
+    runtime.block_on(async move { alice_oms_clone.add_output(uo1).await.unwrap() });
+
+    let message = "SEE IF YOU CAN CATCH THIS ONE..... SIDED TX!".to_string();
+    let value = 1000.into();
+    let mut alice_ts_clone = alice_ts.clone();
+    let tx_id = runtime.block_on(async move {
+        alice_ts_clone
+            .send_one_sided_transaction(
+                bob_node_identity.public_key().clone(),
+                value,
+                20.into(),
+                message.clone(),
+            )
+            .await
+            .expect("Alice sending one-sided tx to Bob")
+    });
+
+    runtime.block_on(async move {
+        let completed_tx = alice_ts
+            .get_completed_transaction(tx_id)
+            .await
+            .expect("Could not find completed one-sided tx");
+
+        alice_oms
+            .confirm_transaction(tx_id, vec![utxo], completed_tx.transaction.body.outputs().clone())
+            .await
+            .unwrap();
+        let fees = completed_tx.fee;
+
+        assert_eq!(
+            alice_oms.get_balance().await.unwrap().available_balance,
+            initial_wallet_value - value - fees
+        );
+    });
+
+    runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(30)).fuse();
+        let mut found = false;
+        loop {
+            futures::select! {
+                event = alice_event_stream.select_next_some() => {
+                    if let TransactionEvent::TransactionCompletedImmediately(id) = &*event.unwrap() {
+                        if id == &tx_id {
+                            found = true;
+                            break;
+                        }
+                    }
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+        assert_eq!(found, true, "'TransactionCompletedImmediately(_)' event not found");
+    });
+}
+
+#[test]
+fn send_one_sided_transaction_to_self() {
+    let mut runtime = create_runtime();
+
+    let factories = CryptoFactories::default();
+    // Alice's parameters
+    let alice_node_identity = Arc::new(
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
+    );
+
+    let base_node_identity = Arc::new(
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
+    );
+
+    log::info!(
+        "manage_single_transaction: Alice: '{}', Base: '{}'",
+        alice_node_identity.node_id().short_str(),
+        base_node_identity.node_id().short_str()
+    );
+
+    let temp_dir = tempdir().unwrap();
+    let database_path = temp_dir.path().to_str().unwrap().to_string();
+
+    let (alice_backend, alice_oms_backend, _tempdir) = make_wallet_databases(Some(database_path.clone()));
+
+    let shutdown = Shutdown::new();
+    let (mut alice_ts, alice_oms, _alice_comms) = setup_transaction_service(
+        &mut runtime,
+        alice_node_identity.clone(),
+        vec![],
+        factories.clone(),
+        alice_backend,
+        alice_oms_backend,
+        database_path,
+        Duration::from_secs(0),
+        shutdown.to_signal(),
+    );
+
+    runtime
+        .block_on(alice_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
+        .unwrap();
+
+    let initial_wallet_value = 2500.into();
+    let (_utxo, uo1) = make_input(&mut OsRng, initial_wallet_value, &factories.commitment);
+    let mut alice_oms_clone = alice_oms;
+    runtime.block_on(async move { alice_oms_clone.add_output(uo1).await.unwrap() });
+
+    let message = "SEE IF YOU CAN CATCH THIS ONE..... SIDED TX!".to_string();
+    let value = 1000.into();
+    let mut alice_ts_clone = alice_ts;
+    let _tx_id = runtime.block_on(async move {
+        match alice_ts_clone
+            .send_one_sided_transaction(
+                alice_node_identity.public_key().clone(),
+                value,
+                20.into(),
+                message.clone(),
+            )
+            .await
+        {
+            Err(TransactionServiceError::OneSidedTransactionError(e)) => {
+                assert_eq!(e.as_str(), "One-sided spend-to-self transactions not supported");
+            },
+            _ => {
+                panic!("Expected: OneSidedTransactionError(\"One-sided spend-to-self transactions not supported\")");
+            },
+        };
+    });
+}
+
+#[test]
 fn manage_multiple_transactions() {
     let mut runtime = create_runtime();
     let factories = CryptoFactories::default();
@@ -1082,6 +1263,7 @@ fn finalize_tx_with_incorrect_pubkey() {
             MicroTari::from(25),
             None,
             "".to_string(),
+            script!(Nop),
         ))
         .unwrap();
     let msg = stp.build_single_round_message().unwrap();
@@ -1207,6 +1389,7 @@ fn finalize_tx_with_missing_output() {
             MicroTari::from(20),
             None,
             "".to_string(),
+            script!(Nop),
         ))
         .unwrap();
     let msg = stp.build_single_round_message().unwrap();
