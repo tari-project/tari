@@ -69,6 +69,11 @@ message PaymentRecipient {
     uint64 amount = 2;
     uint64 fee_per_gram = 3;
     string message = 4;
+    enum PaymentType {
+        STANDARD_MIMBLEWIMBLE = 0;
+        ONE_SIDED = 1;
+    }
+    PaymentType payment_type = 5;
 }
 
 message TransferResponse {
