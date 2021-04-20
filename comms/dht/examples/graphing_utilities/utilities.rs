@@ -30,7 +30,7 @@ use petgraph::{
     stable_graph::{NodeIndex, StableGraph},
     visit::{Bfs, IntoNodeReferences},
 };
-use std::{collections::HashMap, convert::TryFrom, fs, fs::File, io::Write, path::Path, process::Command, sync::Mutex};
+use std::{collections::HashMap, fs, fs::File, io::Write, path::Path, process::Command, sync::Mutex};
 use tari_comms::{connectivity::ConnectivitySelection, peer_manager::NodeId};
 
 const TEMP_GRAPH_OUTPUT_DIR: &str = "/tmp/memorynet_temp";
@@ -97,11 +97,7 @@ pub async fn network_graph_snapshot(
             let distance = node_id.distance(peer.peer_node_id()).get_bucket(4).2;
             let peer_node_index = node_indices.get(&peer.peer_node_id()).expect("Can't find Node Index 2");
 
-            graph.add_edge(
-                node_index.to_owned(),
-                peer_node_index.to_owned(),
-                distance.to_string()
-            );
+            graph.add_edge(node_index.to_owned(), peer_node_index.to_owned(), distance.to_string());
         }
         if let Some(n) = num_neighbours {
             let connected_neighbours = node
@@ -118,12 +114,7 @@ pub async fn network_graph_snapshot(
                     .get(&neighbour.peer_node_id())
                     .expect("Can't find Node Index 2");
 
-                neighbour_graph.add_edge(
-                    node_index.to_owned(),
-                    peer_node_index.to_owned(),
-                    distance
-                        .to_string(),
-                );
+                neighbour_graph.add_edge(node_index.to_owned(), peer_node_index.to_owned(), distance.to_string());
             }
         }
     }

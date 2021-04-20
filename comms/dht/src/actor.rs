@@ -48,14 +48,22 @@ use log::*;
 use std::{cmp, fmt, fmt::Display, sync::Arc};
 use tari_comms::{
     connectivity::{ConnectivityError, ConnectivityRequester, ConnectivitySelection},
-    peer_manager::{NodeId, NodeIdentity, PeerFeatures, PeerManager, PeerManagerError, PeerQuery, PeerQuerySortBy},
+    peer_manager::{
+        NodeDistance,
+        NodeId,
+        NodeIdentity,
+        PeerFeatures,
+        PeerManager,
+        PeerManagerError,
+        PeerQuery,
+        PeerQuerySortBy,
+    },
 };
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::message_format::{MessageFormat, MessageFormatError};
 use thiserror::Error;
 use tokio::task;
 use ttl_cache::TtlCache;
-use tari_comms::peer_manager::NodeDistance;
 
 const LOG_TARGET: &str = "comms::dht::actor";
 
@@ -402,12 +410,11 @@ impl DhtActor {
 
                 let destination_distance = node_identity.node_id().distance(&destination_node_id);
                 let num_buckets = config.num_network_buckets;
-                let k = config.num_random_nodes;
+                let propagation_factor = config.propagation_factor;
                 let bucket = destination_distance.get_bucket(num_buckets);
 
-
-                let query = PeerQuery::new().select_where(|peer|
-                    {
+                let query = PeerQuery::new()
+                    .select_where(|peer| {
                         if peer.node_id == destination_node_id {
                             return true;
                         }
@@ -424,8 +431,9 @@ impl DhtActor {
                         } else {
                             distance >= bucket.0 && distance < bucket.1
                         }
-                    }
-                ).sort_by(PeerQuerySortBy::LastConnected).limit(k);
+                    })
+                    .sort_by(PeerQuerySortBy::LastConnected)
+                    .limit(propagation_factor);
 
                 let peers = peer_manager.perform_query(query).await?;
                 Ok(peers.into_iter().map(|p| p.node_id).collect())
@@ -502,99 +510,6 @@ impl DhtActor {
                     "[ThisNode={}] {} candidate(s) selected for broadcast",
                     node_identity.node_id(),
                     candidates.len()
-                );
-
-                Ok(candidates)
-            },
-            Propagate(destination, exclude) => {
-                let dest_node_id = destination
-                    .node_id()
-                    .cloned()
-                    .or_else(|| destination.public_key().map(|pk| NodeId::from_public_key(pk)));
-
-                let connections = match dest_node_id {
-                    Some(node_id) => {
-                        let dest_connection = connectivity.get_connection(node_id.clone()).await?;
-                        // If the peer was added to the exclude list, we don't want to send directly to the peer.
-                        // This ensures that we don't just send a message back to the peer that sent it.
-                        let dest_connection = dest_connection.filter(|c| !exclude.contains(c.peer_node_id()));
-                        match dest_connection {
-                            Some(conn) => {
-                                // We're connected to the destination, so send the message directly
-                                vec![conn]
-                            },
-                            None => {
-                                // Select connections closer to the destination
-                                let mut connections = connectivity
-                                    .select_connections(ConnectivitySelection::closest_to(
-                                        node_id.clone(),
-                                        config.num_neighbouring_nodes,
-                                        exclude.clone(),
-                                    ))
-                                    .await?;
-
-                                // Exclude candidates that are further away from the destination than this node
-                                // unless this node has not selected a big enough sample i.e. this node is not well
-                                // connected
-                                if connections.len() >= config.propagation_factor {
-                                    let dist_from_dest = node_identity.node_id().distance(&node_id);
-                                    let before_len = connections.len();
-                                    connections = connections
-                                        .into_iter()
-                                        .filter(|conn| conn.peer_node_id().distance(&node_id) <= dist_from_dest)
-                                        .collect::<Vec<_>>();
-
-                                    debug!(
-                                        target: LOG_TARGET,
-                                        "Filtered out {} node(s) that are further away than this node.",
-                                        before_len - connections.len()
-                                    );
-                                }
-
-                                connections.truncate(config.propagation_factor);
-                                connections
-                            },
-                        }
-                    },
-                    None => {
-                        debug!(
-                            target: LOG_TARGET,
-                            "No destination for propagation, sending to {} random peers", config.propagation_factor
-                        );
-                        connectivity
-                            .select_connections(ConnectivitySelection::random_nodes(
-                                config.propagation_factor,
-                                exclude.clone(),
-                            ))
-                            .await?
-                    },
-                };
-
-                if connections.is_empty() {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Propagation requested but there are no node peer connections available"
-                    );
-                }
-
-                let candidates = connections
-                    .iter()
-                    .map(|c| c.peer_node_id())
-                    .cloned()
-                    .collect::<Vec<_>>();
-
-                debug!(
-                    target: LOG_TARGET,
-                    "{} candidate(s) selected for propagation to {}",
-                    candidates.len(),
-                    destination
-                );
-
-                trace!(
-                    target: LOG_TARGET,
-                    "(ThisNode = {}) Candidates are {}",
-                    node_identity.node_id().short_str(),
-                    candidates.iter().map(|n| n.short_str()).collect::<Vec<_>>().join(", ")
                 );
 
                 Ok(candidates)

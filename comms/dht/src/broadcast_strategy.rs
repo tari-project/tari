@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::envelope::NodeDestination;
 use std::{
     fmt,
     fmt::{Display, Formatter},
@@ -59,10 +58,8 @@ pub enum BroadcastStrategy {
     /// Send to all n nearest Communication Nodes according to the given BroadcastClosestRequest
     Closest(Box<BroadcastClosestRequest>),
     Broadcast(Vec<NodeId>),
-    /// Propagate to a set of closest neighbours and random peers
-    Propagate(NodeDestination, Vec<NodeId>),
     /// Send to nodes between the current node and the destination
-    CloserOnly(NodeId)
+    CloserOnly(NodeId),
 }
 
 impl fmt::Display for BroadcastStrategy {
@@ -76,7 +73,6 @@ impl fmt::Display for BroadcastStrategy {
             Closest(request) => write!(f, "Closest({})", request),
             Random(n, excluded) => write!(f, "Random({}, {} excluded)", n, excluded.len()),
             Broadcast(excluded) => write!(f, "Broadcast({} excluded)", excluded.len()),
-            Propagate(destination, excluded) => write!(f, "Propagate({}, {} excluded)", destination, excluded.len(),),
         }
     }
 }
@@ -85,7 +81,7 @@ impl BroadcastStrategy {
     /// Returns true if this strategy will send multiple messages, otherwise false
     pub fn is_multi_message(&self) -> bool {
         use BroadcastStrategy::*;
-        matches!(self, Closest(_) | Flood(_) | Broadcast(_) | Random(_, _) | Propagate(_, _))
+        matches!(self, Closest(_) | Flood(_) | Broadcast(_) | Random(_, _) | CloserOnly(_))
     }
 
     pub fn is_direct(&self) -> bool {

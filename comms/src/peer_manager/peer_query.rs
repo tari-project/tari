@@ -21,9 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::peer_manager::{peer_id::PeerId, NodeId, Peer, PeerManagerError};
+use chrono::NaiveDateTime;
 use std::cmp::min;
 use tari_storage::{IterationResult, KeyValueStore};
-use chrono::NaiveDateTime;
 
 type Predicate<'a, A> = Box<dyn FnMut(&A) -> bool + Send + 'a>;
 
@@ -35,7 +35,7 @@ pub enum PeerQuerySortBy<'a> {
     /// Sort by distance from a given node id
     DistanceFrom(&'a NodeId),
     /// Sort by last connected
-    LastConnected
+    LastConnected,
 }
 
 impl Default for PeerQuerySortBy<'_> {
@@ -132,20 +132,29 @@ where DS: KeyValueStore<PeerId, Peer>
         match self.query.sort_by {
             PeerQuerySortBy::None => self.get_query_results(),
             PeerQuerySortBy::DistanceFrom(node_id) => self.get_distance_sorted_results(node_id),
-            PeerQuerySortBy::LastConnected => self.get_last_connected_sorted_results()
+            PeerQuerySortBy::LastConnected => self.get_last_connected_sorted_results(),
         }
     }
 
     pub fn get_distance_sorted_results(&mut self, node_id: &NodeId) -> Result<Vec<Peer>, PeerManagerError> {
-       self.get_sorted_results(|peer| peer.node_id.distance(node_id), true)
+        self.get_sorted_results(|peer| peer.node_id.distance(node_id), true)
     }
 
     pub fn get_last_connected_sorted_results(&mut self) -> Result<Vec<Peer>, PeerManagerError> {
-        self.get_sorted_results(|peer| peer.connection_stats.last_connected_at.unwrap_or_else(|| NaiveDateTime::from_timestamp(0,0)), false)
+        self.get_sorted_results(
+            |peer| {
+                peer.connection_stats
+                    .last_connected_at
+                    .unwrap_or_else(|| NaiveDateTime::from_timestamp(0, 0))
+            },
+            false,
+        )
     }
 
-    fn get_sorted_results<T, F>(&mut self, sort_key: F, sort_asc: bool)  -> Result<Vec<Peer>, PeerManagerError>
-        where T: Ord, F: Fn(&Peer) -> T
+    fn get_sorted_results<T, F>(&mut self, sort_key: F, sort_asc: bool) -> Result<Vec<Peer>, PeerManagerError>
+    where
+        T: Ord,
+        F: Fn(&Peer) -> T,
     {
         let mut peer_keys = Vec::new();
         let mut sort_values = Vec::new();
@@ -180,10 +189,9 @@ where DS: KeyValueStore<PeerId, Peer>
                         peer_keys.swap(i, j);
                     }
                 } else if sort_values[i] < sort_values[j] {
-                        sort_values.swap(i, j);
-                        peer_keys.swap(i, j);
-                    }
-
+                    sort_values.swap(i, j);
+                    peer_keys.swap(i, j);
+                }
             }
             let peer = self
                 .store

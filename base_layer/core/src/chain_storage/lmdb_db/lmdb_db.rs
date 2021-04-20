@@ -739,8 +739,10 @@ impl LMDBDatabase {
                 })?
         };
 
-        let mut total_kernel_sum = Commitment::from_bytes(&[0u8; 32]).expect("We are using a static input, so this can never fail");
-        let mut total_utxo_sum = Commitment::from_bytes(&[0u8; 32]).expect("We are using a static input, so this can never fail");
+        let mut total_kernel_sum =
+            Commitment::from_bytes(&[0u8; 32]).expect("We are using a static input, so this can never fail");
+        let mut total_utxo_sum =
+            Commitment::from_bytes(&[0u8; 32]).expect("We are using a static input, so this can never fail");
         let BlockAccumulatedData {
             kernels: pruned_kernel_set,
             outputs: pruned_output_set,
@@ -1380,12 +1382,13 @@ impl BlockchainBackend for LMDBDatabase {
             let previous_mmr_count = if start_height == 0 {
                 0
             } else {
-                let header: BlockHeader =
-                    lmdb_get(&txn, &self.headers_db, &(start_height - 1))?.ok_or_else(|| ChainStorageError::ValueNotFound {
+                let header: BlockHeader = lmdb_get(&txn, &self.headers_db, &(start_height - 1))?.ok_or_else(|| {
+                    ChainStorageError::ValueNotFound {
                         entity: "BlockHeader".to_string(),
                         field: "height".to_string(),
-                        value: (start_height - 1).to_string()
-                    })?;
+                        value: (start_height - 1).to_string(),
+                    }
+                })?;
                 debug!(target: LOG_TARGET, "Previous header:{}", header);
                 header.kernel_mmr_size
             };
@@ -1450,12 +1453,13 @@ impl BlockchainBackend for LMDBDatabase {
             let previous_mmr_count = if start_height == 0 {
                 0
             } else {
-                let header: BlockHeader =
-                    lmdb_get(&txn, &self.headers_db, &(start_height - 1))?.ok_or_else(|| ChainStorageError::ValueNotFound {
+                let header: BlockHeader = lmdb_get(&txn, &self.headers_db, &(start_height - 1))?.ok_or_else(|| {
+                    ChainStorageError::ValueNotFound {
                         entity: "BlockHeader".to_string(),
                         field: "height".to_string(),
-                        value: (start_height - 1).to_string()
-                    })?;
+                        value: (start_height - 1).to_string(),
+                    }
+                })?;
                 debug!(target: LOG_TARGET, "Previous header:{}", header);
                 header.output_mmr_size
             };

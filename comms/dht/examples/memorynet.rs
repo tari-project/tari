@@ -39,7 +39,7 @@ mod memory_net;
 
 use crate::memory_net::utilities::{
     discovery,
-    do_network_wide_propagation,
+    do_network_wide_broadcast,
     do_store_and_forward_message_propagation,
     drain_messaging_events,
     get_name,
@@ -55,9 +55,9 @@ use std::{iter::repeat_with, time::Duration};
 use tari_comms::peer_manager::PeerFeatures;
 
 // Size of network. Must be at least 2
-const NUM_NODES: usize = 16;
+const NUM_NODES: usize = 6;
 // Must be at least 2
-const NUM_WALLETS: usize = 4;
+const NUM_WALLETS: usize = 50;
 const QUIET_MODE: bool = true;
 /// Number of neighbouring nodes each node should include in the connection pool
 const NUM_NEIGHBOURING_NODES: usize = 8;
@@ -65,6 +65,8 @@ const NUM_NEIGHBOURING_NODES: usize = 8;
 const NUM_RANDOM_NODES: usize = 4;
 /// The number of messages that should be propagated out
 const PROPAGATION_FACTOR: usize = 4;
+
+const NUM_NETWORK_BUCKETS: u32 = 4;
 
 #[tokio_macros::main]
 #[allow(clippy::same_item_push)]
@@ -87,6 +89,7 @@ async fn main() {
             NUM_NEIGHBOURING_NODES,
             NUM_RANDOM_NODES,
             PROPAGATION_FACTOR,
+            NUM_NETWORK_BUCKETS,
             QUIET_MODE,
         )
         .await,
@@ -101,6 +104,7 @@ async fn main() {
                 NUM_NEIGHBOURING_NODES,
                 NUM_RANDOM_NODES,
                 PROPAGATION_FACTOR,
+                NUM_NETWORK_BUCKETS,
                 QUIET_MODE,
             )
         })
@@ -117,6 +121,7 @@ async fn main() {
                 NUM_NEIGHBOURING_NODES,
                 NUM_RANDOM_NODES,
                 PROPAGATION_FACTOR,
+                NUM_NETWORK_BUCKETS,
                 QUIET_MODE,
             )
         })
@@ -231,6 +236,7 @@ async fn main() {
             NUM_NEIGHBOURING_NODES,
             NUM_RANDOM_NODES,
             PROPAGATION_FACTOR,
+            NUM_NETWORK_BUCKETS,
             QUIET_MODE,
         )
         .await;
@@ -247,7 +253,7 @@ async fn main() {
     }
 
     log::info!("------------------------------- PROPAGATION -------------------------------");
-    let (num_prop_successes, num_prop_total) = do_network_wide_propagation(&mut nodes, None).await;
+    let (num_prop_successes, num_prop_total) = do_network_wide_broadcast(&mut nodes, None).await;
 
     total_messages += drain_messaging_events(&mut messaging_events_rx, false).await;
 

@@ -23,8 +23,7 @@
 use crate::{
     consts::PEER_MANAGER_MAX_FLOOD_PEERS,
     peer_manager::{
-        NodeDistance,
-        node_id::{ NodeId},
+        node_id::NodeId,
         peer::{Peer, PeerFlags},
         peer_id::{generate_peer_key, PeerId},
         PeerFeatures,
@@ -358,62 +357,6 @@ where DS: KeyValueStore<PeerId, Peer>
         Ok(peers)
     }
 
-    /// Check if a specific node_id is in the network region of the N nearest neighbours of the region specified by
-    /// region_node_id. If there are less than N known peers, this will _always_ return true
-    pub fn in_network_region(
-        &self,
-        node_id: &NodeId,
-        region_node_id: &NodeId,
-        n: usize,
-    ) -> Result<bool, PeerManagerError>
-    {
-        let region_node_distance = region_node_id.distance(node_id);
-        let node_threshold = self.calc_region_threshold(region_node_id, n, PeerFeatures::COMMUNICATION_NODE)?;
-        // Is node ID in the base node threshold?
-        if region_node_distance <= node_threshold {
-            return Ok(true);
-        }
-        let client_threshold = self.calc_region_threshold(region_node_id, n, PeerFeatures::COMMUNICATION_CLIENT)?;
-        // Is node ID in the base client threshold?
-        Ok(region_node_distance <= client_threshold)
-    }
-
-    pub fn calc_region_threshold(
-        &self,
-        region_node_id: &NodeId,
-        n: usize,
-        features: PeerFeatures,
-    ) -> Result<NodeDistance, PeerManagerError>
-    {
-        if n == 0 {
-            return Ok(NodeDistance::max_distance());
-        }
-
-        let mut dists = Vec::new();
-        self.peer_db
-            .for_each_ok(|(_, peer)| {
-                if peer.features != features || peer.is_banned() || peer.is_offline() {
-                    return IterationResult::Continue;
-                }
-                dists.push(region_node_id.distance(&peer.node_id));
-                IterationResult::Continue
-            })
-            .map_err(PeerManagerError::DatabaseError)?;
-
-        if dists.is_empty() {
-            return Ok(NodeDistance::max_distance());
-        }
-
-        // If we have less than `n` matching peers in our threshold group, the threshold should be max
-        if dists.len() < n {
-            return Ok(NodeDistance::max_distance());
-        }
-
-        dists.sort();
-        dists.truncate(n);
-        Ok(dists.pop().expect("dists cannot be empty at this point"))
-    }
-
     /// Unban the peer
     pub fn unban_peer(&mut self, node_id: &NodeId) -> Result<(), PeerManagerError> {
         let peer_key = *self
@@ -552,7 +495,6 @@ mod test {
         net_address::MultiaddressesWithStats,
         peer_manager::{peer::PeerFlags, PeerFeatures},
     };
-    use std::iter::repeat_with;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_storage::HashmapDatabase;
 
@@ -803,46 +745,5 @@ mod test {
         }
         peer.set_offline(offline);
         peer
-    }
-
-    #[test]
-    fn test_in_network_region() {
-        let mut peer_storage = PeerStorage::new_indexed(HashmapDatabase::new()).unwrap();
-
-        let mut nodes = repeat_with(|| create_test_peer(PeerFeatures::COMMUNICATION_NODE, false, false))
-            .take(5)
-            .chain(repeat_with(|| create_test_peer(PeerFeatures::COMMUNICATION_CLIENT, false, false)).take(4))
-            .collect::<Vec<_>>();
-
-        for p in &nodes {
-            peer_storage.add_peer(p.clone()).unwrap();
-        }
-
-        let main_peer_node_id = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false, false).node_id;
-
-        nodes.sort_by(|a, b| {
-            a.node_id
-                .distance(&main_peer_node_id)
-                .cmp(&b.node_id.distance(&main_peer_node_id))
-        });
-
-        let close_node = &nodes.first().unwrap().node_id;
-        let far_node = &nodes.last().unwrap().node_id;
-
-        let is_in_region = peer_storage
-            .in_network_region(&main_peer_node_id, &main_peer_node_id, 1)
-            .unwrap();
-        assert_eq!(is_in_region, true);
-
-        let is_in_region = peer_storage
-            .in_network_region(close_node, &main_peer_node_id, 1)
-            .unwrap();
-        assert_eq!(is_in_region, true);
-
-        let is_in_region = peer_storage.in_network_region(far_node, &main_peer_node_id, 9).unwrap();
-        assert_eq!(is_in_region, true);
-
-        let is_in_region = peer_storage.in_network_region(far_node, &main_peer_node_id, 3).unwrap();
-        assert_eq!(is_in_region, false);
     }
 }

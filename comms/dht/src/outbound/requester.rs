@@ -94,33 +94,6 @@ impl OutboundMessageRequester {
             .expect("MessageSendStates::inner is empty!"))
     }
 
-    /// Send to a pre-configured number of peers, for further message propagation.
-    ///
-    /// If the node destination is set, the message will be propagated to peers that are closer to the destination (if
-    /// available). Otherwise, random peers are selected (gossip).
-    pub async fn propagate<T>(
-        &mut self,
-        destination: NodeDestination,
-        encryption: OutboundEncryption,
-        exclude_peers: Vec<NodeId>,
-        message: OutboundDomainMessage<T>,
-    ) -> Result<MessageSendStates, DhtOutboundError>
-    where
-        T: prost::Message,
-    {
-        self.send_message(
-            SendMessageParams::new()
-                .propagate(destination.clone(), exclude_peers)
-                .with_encryption(encryption)
-                .with_destination(destination)
-                .finish(),
-            message,
-        )
-        .await?
-        .resolve()
-        .await
-        .map_err(Into::into)
-    }
 
     /// Send to a pre-configured number of random peers, for further message propagation.
     ///

@@ -221,7 +221,7 @@ async fn reinitialize_pools_when_offline() {
 }
 
 #[tokio_macros::test_basic]
-async fn insert_neighbour() {
+async fn insert_peer_into_bucket() {
     let node_identity = make_node_identity();
     let node_identities =
         ordered_node_identities_by_distance(node_identity.node_id(), 10, PeerFeatures::COMMUNICATION_NODE);
@@ -237,12 +237,18 @@ async fn insert_neighbour() {
 
     // First 8 inserts should not remove a peer (because num_neighbouring_nodes == 8)
     for ni in shuffled.iter().take(8) {
-        assert!(dht_connectivity.insert_neighbour(ni.node_id().clone()).is_none());
+        dht_connectivity
+            .insert_peer_into_bucket(ni.node_id().clone(), 0, 8)
+            .await
+            .unwrap();
     }
 
     // Next 2 inserts will always remove a node id
     for ni in shuffled.iter().skip(8) {
-        assert!(dht_connectivity.insert_neighbour(ni.node_id().clone()).is_some())
+        dht_connectivity
+            .insert_peer_into_bucket(ni.node_id().clone(), 0, 8)
+            .await
+            .unwrap();
     }
 
     // Check the first 7 node ids match our neighbours, the last element depends on distance and ordering of inserts
@@ -255,7 +261,7 @@ async fn insert_neighbour() {
         .map(|ni| ni.node_id())
         .cloned()
         .collect::<Vec<_>>();
-    assert_eq!(&dht_connectivity.neighbours[..7], ordered_node_ids.as_slice());
+    assert_eq!(&dht_connectivity.peer_buckets[0][..7], ordered_node_ids.as_slice());
 }
 
 mod metrics {

@@ -499,7 +499,7 @@ async fn handle_outbound_tx(
 ) -> Result<(), MempoolServiceError>
 {
     let result = outbound_message_service
-        .propagate(
+        .broadcast(
             NodeDestination::Unknown,
             OutboundEncryption::ClearText,
             exclude_peers,

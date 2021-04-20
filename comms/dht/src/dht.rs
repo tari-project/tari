@@ -147,7 +147,8 @@ impl Dht {
         )
         .spawn();
         dht.create_actor(conn, dht_receiver, shutdown_signal.clone()).spawn();
-        dht.create_discovery_service(discovery_receiver, shutdown_signal).spawn();
+        dht.create_discovery_service(discovery_receiver, shutdown_signal)
+            .spawn();
 
         debug!(target: LOG_TARGET, "Dht initialization complete.");
 

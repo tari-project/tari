@@ -384,11 +384,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             },
             Some(dest_node_id) => {
                 if !peer_manager
-                    .in_network_region(
-                        &dest_node_id,
-                        node_identity.node_id(),
-                        self.config.num_network_buckets,
-                    )
+                    .in_network_region(&dest_node_id, node_identity.node_id(), self.config.num_network_buckets)
                     .await?
                 {
                     return Ok(None);

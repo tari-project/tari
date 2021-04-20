@@ -28,7 +28,7 @@ use crate::{
 use futures::StreamExt;
 use std::{convert::TryInto, sync::Arc};
 use tari_comms::{
-    peer_manager::{node_id::NodeDistance, PeerFeatures},
+    peer_manager::{NodeDistance, PeerFeatures},
     protocol::rpc::{mock::RpcRequestMock, RpcStatusCode},
     test_utils::node_identity::{build_node_identity, ordered_node_identities_by_distance},
     PeerManager,

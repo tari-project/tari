@@ -71,9 +71,7 @@ impl Discovering {
         self.neighbourhood_threshold = self
             .context
             .peer_manager
-            .calc_region_threshold(
-                self.config().num_network_buckets,
-            )
+            .calc_region_threshold(self.config().num_network_buckets)
             .await?;
 
         Ok(())

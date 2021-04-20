@@ -34,15 +34,10 @@ use crate::{
 use futures::{
     channel::{mpsc, oneshot},
     SinkExt,
-    // StreamExt,
 };
 // use log::*;
-use std::{
-    fmt,
-    sync::Arc,
-    time::{Duration},
-};
-use tokio::{sync::broadcast};
+use std::{fmt, sync::Arc, time::Duration};
+use tokio::sync::broadcast;
 // const LOG_TARGET: &str = "comms::connectivity::requester";
 
 pub type ConnectivityEventRx = broadcast::Receiver<Arc<ConnectivityEvent>>;

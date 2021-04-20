@@ -247,7 +247,7 @@ pub async fn print_network_connectivity_stats(nodes: &[TestNode], wallets: &[Tes
     );
 }
 
-pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_index: Option<usize>) -> (usize, usize) {
+pub async fn do_network_wide_broadcast(nodes: &mut [TestNode], origin_node_index: Option<usize>) -> (usize, usize) {
     let random_node = match origin_node_index {
         Some(n) if n < nodes.len() => &nodes[n],
         Some(_) | None => &nodes[OsRng.gen_range(0, nodes.len() - 1)],
@@ -317,7 +317,7 @@ pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_ind
                         );
                         is_success = true;
                         let send_states = outbound_req
-                            .propagate(
+                            .broadcast(
                                 NodeDestination::Unknown,
                                 OutboundEncryption::ClearText,
                                 vec![msg.source_peer.node_id.clone()],
@@ -377,6 +377,7 @@ pub async fn do_store_and_forward_message_propagation(
     num_neighbouring_nodes: usize,
     num_random_nodes: usize,
     propagation_factor: usize,
+    num_buckets: u32,
     quiet_mode: bool,
 ) -> (usize, TestNode, usize, usize)
 {
@@ -479,6 +480,7 @@ pub async fn do_store_and_forward_message_propagation(
         num_neighbouring_nodes,
         num_random_nodes,
         propagation_factor,
+        num_buckets,
         wallets_peers,
         true,
         shutdown.to_signal(),
@@ -817,6 +819,7 @@ pub async fn make_node(
     num_neighbouring_nodes: usize,
     num_random_nodes: usize,
     propagation_factor: usize,
+    num_buckets: u32,
     quiet_mode: bool,
 ) -> TestNode
 {
@@ -828,6 +831,7 @@ pub async fn make_node(
         num_neighbouring_nodes,
         num_random_nodes,
         propagation_factor,
+        num_buckets,
         quiet_mode,
     )
     .await
@@ -840,6 +844,7 @@ pub async fn make_node_from_node_identities(
     num_neighbouring_nodes: usize,
     num_random_nodes: usize,
     propagation_factor: usize,
+    num_buckets: u32,
     quiet_mode: bool,
 ) -> TestNode
 {
@@ -853,6 +858,7 @@ pub async fn make_node_from_node_identities(
         num_neighbouring_nodes,
         num_random_nodes,
         propagation_factor,
+        num_buckets,
         seed_peers.clone(),
         false,
         shutdown.to_signal(),
@@ -876,9 +882,10 @@ async fn setup_comms_dht(
     node_identity: Arc<NodeIdentity>,
     storage: CommsDatabase,
     inbound_tx: mpsc::Sender<DecryptedDhtMessage>,
-    num_neighbouring_nodes: usize,
-    num_random_nodes: usize,
+    num_nodes_in_home_bucket: usize,
+    num_nodes_in_other_buckets: usize,
     propagation_factor: usize,
+    num_buckets: u32,
     seed_peers: Vec<Peer>,
     saf_auto_request: bool,
     shutdown_signal: ShutdownSignal,
@@ -913,10 +920,11 @@ async fn setup_comms_dht(
         saf_auto_request,
         auto_join: false,
         discovery_request_timeout: Duration::from_secs(15),
-        num_neighbouring_nodes,
-        num_random_nodes,
+        num_nodes_in_home_bucket,
+        num_nodes_in_other_buckets,
         propagation_factor,
         network_discovery: Default::default(),
+        num_network_buckets: num_buckets,
         ..DhtConfig::default_local_test()
     })
     .build()

@@ -23,12 +23,12 @@
 use crate::{
     peer_manager::{
         migrations,
-        NodeDistance,
-        node_id::{NodeId},
+        node_id::NodeId,
         peer::{Peer, PeerFlags},
         peer_id::PeerId,
         peer_storage::PeerStorage,
         wrapper::KeyValueWrapper,
+        NodeDistance,
         PeerFeatures,
         PeerManagerError,
         PeerQuery,
@@ -210,23 +210,10 @@ impl PeerManager {
     ) -> Result<bool, PeerManagerError>
     {
         Ok(node_id.distance(region_node_id).get_bucket(num_network_buckets).0 == NodeDistance::zero())
-        // self.peer_storage
-        //     .read()
-        //     .await
-        //     .in_network_region(node_id, region_node_id, n)
     }
 
-    pub async fn calc_region_threshold(
-        &self,
-        num_network_buckets: u32,
-    ) -> Result<NodeDistance, PeerManagerError>
-    {
-
+    pub async fn calc_region_threshold(&self, num_network_buckets: u32) -> Result<NodeDistance, PeerManagerError> {
         Ok(NodeDistance::zero().get_bucket(num_network_buckets).1)
-         // self.peer_storage
-        //     .read()
-        //     .await
-        //     .calc_region_threshold(region_node_id, n, features)
     }
 
     /// Unbans the peer if it is banned. This function is idempotent.
@@ -461,74 +448,6 @@ mod test {
     }
 
     #[runtime::test_basic]
-    async fn calc_region_threshold() {
-        let n = 5;
-        // Create peer manager with random peers
-        let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
-        let network_region_node_id = create_test_peer(false, Default::default()).node_id;
-        let mut test_peers = (0..10)
-            .map(|_| create_test_peer(false, PeerFeatures::COMMUNICATION_NODE))
-            .chain((0..10).map(|_| create_test_peer(false, PeerFeatures::COMMUNICATION_CLIENT)))
-            .collect::<Vec<_>>();
-
-        for p in &test_peers {
-            peer_manager.add_peer(p.clone()).await.unwrap();
-        }
-
-        test_peers.sort_by(|a, b| {
-            let a_dist = network_region_node_id.distance(&a.node_id);
-            let b_dist = network_region_node_id.distance(&b.node_id);
-            a_dist.partial_cmp(&b_dist).unwrap()
-        });
-
-        let node_region_threshold = peer_manager
-            .calc_region_threshold(&network_region_node_id, n, PeerFeatures::COMMUNICATION_NODE)
-            .await
-            .unwrap();
-
-        // First 5 base nodes should be within the region
-        for peer in test_peers
-            .iter()
-            .filter(|p| p.features == PeerFeatures::COMMUNICATION_NODE)
-            .take(n)
-        {
-            assert!(peer.node_id.distance(&network_region_node_id) <= node_region_threshold);
-        }
-
-        // Next 5 should not be in the region
-        for peer in test_peers
-            .iter()
-            .filter(|p| p.features == PeerFeatures::COMMUNICATION_NODE)
-            .skip(n)
-        {
-            assert!(peer.node_id.distance(&network_region_node_id) >= node_region_threshold);
-        }
-
-        let node_region_threshold = peer_manager
-            .calc_region_threshold(&network_region_node_id, n, PeerFeatures::COMMUNICATION_CLIENT)
-            .await
-            .unwrap();
-
-        // First 5 clients should be in region
-        for peer in test_peers
-            .iter()
-            .filter(|p| p.features == PeerFeatures::COMMUNICATION_CLIENT)
-            .take(5)
-        {
-            assert!(peer.node_id.distance(&network_region_node_id) <= node_region_threshold);
-        }
-
-        // Next 5 should not be in the region
-        for peer in test_peers
-            .iter()
-            .filter(|p| p.features == PeerFeatures::COMMUNICATION_CLIENT)
-            .skip(5)
-        {
-            assert!(peer.node_id.distance(&network_region_node_id) >= node_region_threshold);
-        }
-    }
-
-    #[runtime::test_basic]
     async fn closest_peers() {
         let n = 5;
         // Create peer manager with random peers
@@ -544,21 +463,21 @@ mod test {
         }
 
         for features in &[PeerFeatures::COMMUNICATION_NODE, PeerFeatures::COMMUNICATION_CLIENT] {
-            let node_threshold = peer_manager
-                .peer_storage
-                .read()
-                .await
-                .calc_region_threshold(&network_region_node_id, n, *features)
-                .unwrap();
-
             let closest = peer_manager
                 .closest_peers(&network_region_node_id, n, &[], Some(*features))
                 .await
                 .unwrap();
 
-            assert!(closest
-                .iter()
-                .all(|p| network_region_node_id.distance(&p.node_id) <= node_threshold));
+            assert_eq!(closest.len(), 5);
+            for peer in test_peers.iter().filter(|p| p.has_features(*features)) {
+                let peer_distance = peer.node_id.distance(&network_region_node_id);
+                assert!(
+                    closest.contains(peer) ||
+                        closest
+                            .iter()
+                            .all(|c| c.node_id.distance(&network_region_node_id) < peer_distance)
+                );
+            }
         }
     }
 

@@ -209,7 +209,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .expect("previous check that decryption failed");
 
         let excluded_peers = vec![source_peer.node_id.clone()];
-        let dest_node_id = dht_header.destination.node_id();
+        let dest_node_id = dht_header.destination.to_derived_node_id();
 
         let mut send_params = SendMessageParams::new();
         match (dest_node_id, is_saf_stored) {
@@ -220,7 +220,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 );
                 send_params.closer_only(node_id.clone());
             },
-            (Some(node_id), _)  => {
+            (Some(node_id), _) => {
                 debug!(
                     target: LOG_TARGET,
                     "Not storing this message for {}, propagating it closer. {}",
@@ -233,10 +233,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             _ => {
                 debug!(
                     target: LOG_TARGET,
-                    "Not storing this message with no destination, propagating it. {}",
-                    dht_header.message_tag
+                    "Not storing this message with no destination, propagating it. {}", dht_header.message_tag
                 );
-                send_params.propagate(dht_header.destination.clone(), excluded_peers);
+                send_params.broadcast(excluded_peers);
             },
         };
 

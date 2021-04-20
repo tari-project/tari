@@ -270,6 +270,7 @@ impl NodeDestination {
         }
     }
 
+    #[deprecated ="Should use to_derived_node_id instead" ]
     pub fn node_id(&self) -> Option<&NodeId> {
         use NodeDestination::*;
         match self {

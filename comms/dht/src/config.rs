@@ -31,11 +31,9 @@ pub struct DhtConfig {
     /// Default: 20
     pub outbound_buffer_size: usize,
     /// The maximum number of peer nodes that a message has to be closer to, to be considered a neighbour
-    /// Default: [DEFAULT_NUM_NEIGHBOURING_NODES](self::DEFAULT_NUM_NEIGHBOURING_NODES)
-    pub num_neighbouring_nodes: usize,
-    /// Number of random peers to include
-    /// Default: [DEFAULT_NUM_RANDOM_NODES](self::DEFAULT_NUM_RANDOM_NODES)
-    pub num_random_nodes: usize,
+    pub num_nodes_in_home_bucket: usize,
+    /// Number of peers to include in each non-home bucket
+    pub num_nodes_in_other_buckets: usize,
     /// Send to this many peers when using the broadcast strategy
     /// Default: 8
     pub broadcast_factor: usize,
@@ -115,10 +113,8 @@ pub struct DhtConfig {
     /// Default: 24 hours
     pub offline_peer_cooldown: Duration,
 
-
     pub num_network_buckets: u32,
     pub connectivity_peer_buckets_refresh: Duration,
-
 }
 
 impl DhtConfig {
@@ -153,8 +149,8 @@ impl DhtConfig {
 impl Default for DhtConfig {
     fn default() -> Self {
         Self {
-            num_neighbouring_nodes: 8,
-            num_random_nodes: 4,
+            num_nodes_in_home_bucket: 8,
+            num_nodes_in_other_buckets: 4,
             propagation_factor: 4,
             broadcast_factor: 8,
             outbound_buffer_size: 20,
@@ -182,8 +178,8 @@ impl Default for DhtConfig {
             flood_ban_timespan: Duration::from_secs(100),
             offline_peer_cooldown: Duration::from_secs(20),
             saf_msg_validity: Duration::from_secs(10800),
-            num_network_buckets:3,
-            connectivity_peer_buckets_refresh: Duration::from_secs(3*60)
+            num_network_buckets: 3,
+            connectivity_peer_buckets_refresh: Duration::from_secs(3 * 60),
         }
     }
 }

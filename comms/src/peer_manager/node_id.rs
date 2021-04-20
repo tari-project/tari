@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::types::CommsPublicKey;
+use crate::{peer_manager::NodeDistance, types::CommsPublicKey};
 use blake2::{
     digest::{Input, VariableOutput},
     VarBlake2b,
@@ -40,7 +40,6 @@ use tari_crypto::tari_utilities::{
     ByteArrayError,
 };
 use thiserror::Error;
-use crate::peer_manager::{NodeDistance};
 
 pub(crate) const NODE_ID_ARRAY_SIZE: usize = 13; // 104-bit as per RFC-0151
 type NodeIdArray = [u8; NODE_ID_ARRAY_SIZE];
@@ -390,8 +389,4 @@ mod test {
 
         assert_eq!(nid1, nid2);
     }
-
-
-
-
 }

@@ -83,12 +83,20 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             .await
             .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
 
-        info!(target: LOG_TARGET,"Request for blocks for sync from {} to hash:{}", start_header.height, message.end_hash.to_hex());
+        info!(
+            target: LOG_TARGET,
+            "Request for blocks for sync from {} to hash:{}",
+            start_header.height,
+            message.end_hash.to_hex()
+        );
         let start = start_header.height + 1;
         if start < metadata.pruned_height() {
-            warn!(target: LOG_TARGET, "Requested full block body at height {}, however this node has an effective pruned height of {}",
-                  start,
-                  metadata.pruned_height());
+            warn!(
+                target: LOG_TARGET,
+                "Requested full block body at height {}, however this node has an effective pruned height of {}",
+                start,
+                metadata.pruned_height()
+            );
             return Err(RpcStatus::bad_request(format!(
                 "Requested full block body at height {}, however this node has an effective pruned height of {}",
                 start,
@@ -108,8 +116,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
 
         let end = end_header.height;
         if start > end {
-            warn!(target: LOG_TARGET,  "Start block #{} is higher than end block #{}",
-                  start, end );
+            warn!(
+                target: LOG_TARGET,
+                "Start block #{} is higher than end block #{}", start, end
+            );
             return Err(RpcStatus::bad_request(format!(
                 "Start block #{} is higher than end block #{}",
                 start, end
@@ -140,7 +150,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
 
                 match blocks {
                     Ok(blocks) if blocks.is_empty() => {
-
                         info!(target: LOG_TARGET, "No blocks to send");
                         break;
                     },
@@ -191,7 +200,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             .await
             .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
             .ok_or_else(|| RpcStatus::not_found("Header not found with given hash"))?;
-
 
         let tip_header = db
             .fetch_tip_header()
@@ -328,9 +336,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     .await
                     .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
 
-
                 // Only send up to the tip, otherwise we will not be able to provide the blocks
-                let headers = headers.into_iter().filter(|h| h.height <= metadata.height_of_longest_chain()).map(Into::into).collect();
+                let headers = headers
+                    .into_iter()
+                    .filter(|h| h.height <= metadata.height_of_longest_chain())
+                    .map(Into::into)
+                    .collect();
 
                 Ok(Response::new(FindChainSplitResponse {
                     fork_hash_index: idx as u32,
