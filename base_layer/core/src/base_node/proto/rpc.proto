@@ -55,37 +55,15 @@ message SyncUtxosRequest  {
   bool include_pruned_utxos = 3;
   bool include_deleted_bitmaps = 4;
 }
-
 message SyncUtxosResponse  {
-  repeated SyncUtxo utxos = 1;
-  // present if a utxo in utxos is the last in a block so that the merkle root can be
-  // checked
-  repeated bytes deleted_bitmaps = 2;
-}
-
-message SyncUtxo {
-  // The output. optional, if deleted at the time of the requested height,
-  // will be empty and `hash` and `rangeproof_hash` will be populated instead
-  tari.types.TransactionOutput output = 1;
-  // Only present if `output` is empty
-  bytes hash = 2;
-  // Only present if `output` is empty
-  bytes rangeproof_hash = 3;
-}
-
-message SyncUtxos2Response  {
   oneof utxo_or_deleted {
-    SyncUtxo2 utxo = 1;
-    Bitmaps deleted_bitmaps = 2;
+    SyncUtxo utxo = 1;
+    bytes deleted_diff = 2;
   }
   uint64 mmr_index = 3;
 }
 
-message Bitmaps {
-  repeated bytes bitmaps = 1;
-}
-
-message SyncUtxo2 {
+message SyncUtxo {
   oneof utxo {
     // The unspent transaction output
     tari.types.TransactionOutput output = 1;

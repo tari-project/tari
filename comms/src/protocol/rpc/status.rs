@@ -63,6 +63,8 @@ impl RpcStatus {
         }
     }
 
+    /// Returns a general error. As with all other errors care should be taken not to leak sensitive data to remote
+    /// peers through error messages.
     pub fn general<T: ToString>(details: T) -> Self {
         Self {
             code: RpcStatusCode::General,
@@ -88,10 +90,12 @@ impl RpcStatus {
         }
     }
 
+    /// Returns a closure that logs the given error and returns a generic general error that does not leak any
+    /// potentially sensitive error information. Use this function with map_err to catch "miscellaneous" errors.
     pub fn log_internal_error<'a, E: std::error::Error + 'a>(target: &'a str) -> impl Fn(E) -> Self + 'a {
         move |err| {
             log::error!(target: target, "Internal error: {}", err);
-            Self::general(err.to_string())
+            Self::general_default()
         }
     }
 

@@ -228,27 +228,27 @@ impl TryFrom<proto::TxQueryBatchResponse> for TxQueryBatchResponse {
     }
 }
 
-impl proto::SyncUtxos2Response {
-    pub fn into_utxo(self) -> Option<proto::SyncUtxo2> {
-        use proto::sync_utxos2_response::UtxoOrDeleted::*;
+impl proto::SyncUtxosResponse {
+    pub fn into_utxo(self) -> Option<proto::SyncUtxo> {
+        use proto::sync_utxos_response::UtxoOrDeleted::*;
         match self.utxo_or_deleted? {
             Utxo(utxo) => Some(utxo),
-            DeletedBitmaps(_) => None,
+            DeletedDiff(_) => None,
         }
     }
 
-    pub fn into_bitmaps(self) -> Option<proto::Bitmaps> {
-        use proto::sync_utxos2_response::UtxoOrDeleted::*;
+    pub fn into_bitmap(self) -> Option<Vec<u8>> {
+        use proto::sync_utxos_response::UtxoOrDeleted::*;
         match self.utxo_or_deleted? {
             Utxo(_) => None,
-            DeletedBitmaps(bitmaps) => Some(bitmaps),
+            DeletedDiff(bitmap) => Some(bitmap),
         }
     }
 }
 
-impl proto::sync_utxo2::Utxo {
+impl proto::sync_utxo::Utxo {
     pub fn into_transaction_output(self) -> Option<types::TransactionOutput> {
-        use proto::sync_utxo2::Utxo::*;
+        use proto::sync_utxo::Utxo::*;
         match self {
             Output(output) => Some(output),
             PrunedOutput(_) => None,

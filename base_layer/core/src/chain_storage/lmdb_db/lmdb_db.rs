@@ -83,6 +83,7 @@ use lmdb_zero::{ConstTransaction, Database, Environment, ReadTransaction, WriteT
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::{
+    convert::TryFrom,
     fmt,
     fs,
     fs::File,
@@ -222,7 +223,7 @@ impl LMDBDatabase {
                 DeleteBlock(hash) => {
                     self.delete_block_body(&write_txn, hash)?;
                 },
-                WriteOperation::InsertMoneroSeedHeight(data, height) => {
+                InsertMoneroSeedHeight(data, height) => {
                     self.insert_monero_seed_height(&write_txn, data, height)?;
                 },
                 InsertChainOrphanBlock(chain_block) => {
@@ -1436,96 +1437,107 @@ impl BlockchainBackend for LMDBDatabase {
         start: u64,
         end: u64,
         deleted: &Bitmap,
-    ) -> Result<(Vec<PrunedOutput>, Vec<Bitmap>), ChainStorageError>
+    ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError>
     {
         let txn = ReadTransaction::new(&*self.env)?;
-        if let Some(start_height) = lmdb_first_after(&txn, &self.output_mmr_size_index, &(start + 1).to_be_bytes())? {
-            let end_height: u64 =
-                lmdb_first_after(&txn, &self.output_mmr_size_index, &(end + 1).to_be_bytes())?.unwrap_or(start_height);
+        let start_height = lmdb_first_after(&txn, &self.output_mmr_size_index, &(start + 1).to_be_bytes())?
+            .ok_or_else(|| {
+                ChainStorageError::InvalidQuery(format!(
+                    "Unable to find block height from start output MMR index {}",
+                    start
+                ))
+            })?;
+        let end_height: u64 =
+            lmdb_first_after(&txn, &self.output_mmr_size_index, &(end + 1).to_be_bytes())?.unwrap_or(start_height);
 
-            let previous_mmr_count = if start_height == 0 {
-                0
-            } else {
-                let header: BlockHeader =
-                    lmdb_get(&txn, &self.headers_db, &(start_height - 1))?.expect("Header should exist");
-                debug!(target: LOG_TARGET, "Previous header:{}", header);
-                header.output_mmr_size
-            };
+        let previous_mmr_count = if start_height == 0 {
+            0
+        } else {
+            let header: BlockHeader =
+                lmdb_get(&txn, &self.headers_db, &(start_height - 1))?.expect("Header should exist");
+            debug!(target: LOG_TARGET, "Previous header:{}", header);
+            header.output_mmr_size
+        };
 
-            let total_size = (end - start) as usize + 1;
-            let mut result = Vec::with_capacity(total_size);
-            let mut deleted_result = vec![];
+        let total_size = end
+            .checked_sub(start)
+            .and_then(|v| v.checked_add(1))
+            .and_then(|v| usize::try_from(v).ok())
+            .ok_or_else(|| {
+                ChainStorageError::InvalidQuery("fetch_utxos_by_mmr_position: end is less than start".to_string())
+            })?;
+        let mut result = Vec::with_capacity(total_size);
 
-            let mut skip_amount = (start - previous_mmr_count) as usize;
-            debug!(
-                target: LOG_TARGET,
-                "Fetching outputs by MMR position. Start {}, end {}, starting in header at height {},  prev mmr \
-                 count: {}, skipping the first:{}",
-                start,
-                end,
-                start_height,
-                previous_mmr_count,
-                skip_amount
+        let mut skip_amount = (start - previous_mmr_count) as usize;
+        debug!(
+            target: LOG_TARGET,
+            "Fetching outputs by MMR position. Start {}, end {}, starting in header at height {},  prev mmr count: \
+             {}, skipping the first:{}",
+            start,
+            end,
+            start_height,
+            previous_mmr_count,
+            skip_amount
+        );
+        let mut difference_bitmap = Bitmap::create();
+
+        for height in start_height..=end_height {
+            let accum_data =
+                lmdb_get::<_, BlockHeaderAccumulatedData>(&txn, &self.header_accumulated_data_db, &height)?
+                    .ok_or_else(|| ChainStorageError::ValueNotFound {
+                        entity: "BlockHeader".to_string(),
+                        field: "height".to_string(),
+                        value: height.to_string(),
+                    })?;
+
+            result.extend(
+                lmdb_fetch_keys_starting_with::<TransactionOutputRowData>(
+                    accum_data.hash.to_hex().as_str(),
+                    &txn,
+                    &self.utxos_db,
+                )?
+                .into_iter()
+                .skip(skip_amount)
+                .take(total_size - result.len())
+                .map(|row| {
+                    if deleted.contains(row.mmr_position) {
+                        return PrunedOutput::Pruned {
+                            output_hash: row.hash,
+                            range_proof_hash: row.range_proof_hash,
+                        };
+                    }
+                    if let Some(output) = row.output {
+                        PrunedOutput::NotPruned { output }
+                    } else {
+                        PrunedOutput::Pruned {
+                            output_hash: row.hash,
+                            range_proof_hash: row.range_proof_hash,
+                        }
+                    }
+                }),
             );
 
-            for height in start_height..=end_height {
-                let accum_data =
-                    lmdb_get::<_, BlockHeaderAccumulatedData>(&txn, &self.header_accumulated_data_db, &height)?
-                        .ok_or_else(|| ChainStorageError::ValueNotFound {
-                            entity: "BlockHeader".to_string(),
-                            field: "height".to_string(),
-                            value: height.to_string(),
-                        })?;
-
-                result.extend(
-                    lmdb_fetch_keys_starting_with::<TransactionOutputRowData>(
-                        accum_data.hash.to_hex().as_str(),
-                        &txn,
-                        &self.utxos_db,
-                    )?
-                    .into_iter()
-                    .skip(skip_amount)
-                    .take(total_size - result.len())
-                    .map(|row| {
-                        if deleted.contains(row.mmr_position) {
-                            return PrunedOutput::Pruned {
-                                output_hash: row.hash,
-                                range_proof_hash: row.range_proof_hash,
-                            };
-                        }
-                        if let Some(output) = row.output {
-                            PrunedOutput::NotPruned { output }
-                        } else {
-                            PrunedOutput::Pruned {
-                                output_hash: row.hash,
-                                range_proof_hash: row.range_proof_hash,
-                            }
-                        }
-                    }),
-                );
-
-                let block_accum_data = self
-                    .fetch_block_accumulated_data(&txn, height)
-                    .or_not_found("BlockAccumulatedData", "height", height.to_string())?
-                    .deleted()
-                    .clone();
-                let prev_block_accum_data = if height == 0 {
-                    Bitmap::create()
-                } else {
-                    self.fetch_block_accumulated_data(&txn, height - 1)
-                        .or_not_found("BlockAccumulatedData", "height", height.to_string())?
-                        .deleted()
-                        .clone()
-                };
-                let diff_bitmap = block_accum_data.xor(&prev_block_accum_data);
-                deleted_result.push(diff_bitmap);
-
-                skip_amount = 0;
+            // Builds a BitMap of the deleted UTXO MMR indexes that occurred at the current height
+            let mut diff_bitmap = self
+                .fetch_block_accumulated_data(&txn, height)
+                .or_not_found("BlockAccumulatedData", "height", height.to_string())?
+                .deleted()
+                .clone();
+            if height > 0 {
+                let prev_accum = self.fetch_block_accumulated_data(&txn, height - 1).or_not_found(
+                    "BlockAccumulatedData",
+                    "height",
+                    height.to_string(),
+                )?;
+                diff_bitmap.xor_inplace(prev_accum.deleted());
             }
-            Ok((result, deleted_result))
-        } else {
-            Ok((vec![], vec![]))
+            difference_bitmap.or_inplace(&diff_bitmap);
+
+            skip_amount = 0;
         }
+
+        difference_bitmap.run_optimize();
+        Ok((result, difference_bitmap))
     }
 
     fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(TransactionOutput, u32)>, ChainStorageError> {
