@@ -150,7 +150,7 @@ fn main_inner() -> Result<(), ExitCodes> {
         )),
     };
 
-    print!("Shutting down wallet... ");
+    print!("\nShutting down wallet... ");
     if shutdown.trigger().is_ok() {
         runtime.block_on(wallet.wait_until_shutdown());
     } else {
