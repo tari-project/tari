@@ -174,15 +174,15 @@ pub fn create_genesis_block_with_coinbase_value(
     find_header_with_achieved_difficulty(&mut block.header, Difficulty::from(1));
     (
         ChainBlock {
-            accumulated_data: BlockHeaderAccumulatedData {
-                hash: block.hash(),
-                total_kernel_offset: Default::default(),
-                achieved_difficulty: 1.into(),
-                total_accumulated_difficulty: 1,
-                accumulated_monero_difficulty: 1.into(),
-                accumulated_blake_difficulty: 1.into(),
-                target_difficulty: 1.into(),
-            },
+            accumulated_data: BlockHeaderAccumulatedData::new(
+                block.hash(),
+                Default::default(),
+                1.into(),
+                1,
+                1.into(),
+                1.into(),
+                1.into(),
+    ),
             block,
         },
         output,
@@ -209,15 +209,15 @@ pub fn create_genesis_block_with_utxos(
     find_header_with_achieved_difficulty(&mut block.header, Difficulty::from(1));
     (
         ChainBlock {
-            accumulated_data: BlockHeaderAccumulatedData {
-                hash: block.hash(),
-                total_kernel_offset: Default::default(),
-                achieved_difficulty: 1.into(),
-                total_accumulated_difficulty: 1,
-                accumulated_monero_difficulty: 1.into(),
-                accumulated_blake_difficulty: 1.into(),
-                target_difficulty: 1.into(),
-            },
+            accumulated_data: BlockHeaderAccumulatedData::new(
+                block.hash(),
+                Default::default(),
+                1.into(),
+                1,
+                1.into(),
+                1.into(),
+                1.into(),
+            ),
             block,
         },
         outputs,

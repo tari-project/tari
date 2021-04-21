@@ -716,7 +716,7 @@ where B: BlockchainBackend
                     value: start_hash.to_hex(),
                 })?;
         // Add start header since we have it on hand
-        targets.add_front(&start_header, accum_data.target_difficulty);
+        targets.add_front(&start_header, accum_data.target_difficulty());
 
         for h in (0..start_height).rev() {
             // TODO: this can be optimized by retrieving the accumulated data and header at the same time, or even
@@ -731,7 +731,7 @@ where B: BlockchainBackend
                     }
                 })?;
 
-                targets.add_front(&header, accum_data.target_difficulty);
+                targets.add_front(&header, accum_data.target_difficulty());
             }
             if targets.is_full() {
                 break;
@@ -1218,7 +1218,7 @@ pub fn fetch_target_difficulty<T: BlockchainBackend>(
                         value: header.hash().to_hex(),
                     })?;
 
-            target_difficulties.add_front(header.timestamp(), accum_data.target_difficulty);
+            target_difficulties.add_front(header.timestamp(), accum_data.target_difficulty());
             if target_difficulties.is_full() {
                 break;
             }
@@ -1807,23 +1807,23 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
 
     let mut new_tips_found = vec![];
     let parent;
-    if let Some(curr_parent) = db.fetch_orphan_chain_tip_by_hash(&block.hash())? {
+    if let Some(curr_parent) = db.fetch_orphan_chain_tip_by_hash(&block.header.prev_hash)? {
         parent = curr_parent;
         txn.remove_orphan_chain_tip(block.header.prev_hash.clone());
-        debug!(
+        info!(
             target: LOG_TARGET,
             "New orphan extends a chain in the current candidate tip set"
         );
     } else {
-        let best_chain_connection = db.fetch_chain_header_in_all_chains(&block.header.prev_hash.clone())?;
+        let best_chain_connection = db.fetch_chain_header_in_all_chains(&block.header.prev_hash)?;
         if let Some(curr_parent) = best_chain_connection {
-            debug!(
+            info!(
                 target: LOG_TARGET,
                 "New orphan does not have a parent in the current tip set"
             );
             parent = curr_parent;
         } else {
-            debug!(
+            info!(
                 target: LOG_TARGET,
                 "Orphan {} was not connected to any previous headers. Inserting as true orphan",
                 hash.to_hex()
@@ -1837,6 +1837,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
 
     let accum_builder = validator.validate(db, &block.header, &parent.accumulated_data)?;
     let accumulated_data = accum_builder
+        .hash(hash)
         .total_kernel_offset(
             &parent.accumulated_data.total_kernel_offset,
             &block.header.total_kernel_offset,
@@ -1883,6 +1884,7 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
         match validator.validate(db, &child.header, prev_accumulated_data) {
             Ok(builder) => {
                 let accum_data = builder
+                    .hash(child.hash())
                     .total_kernel_offset(
                         &prev_accumulated_data.total_kernel_offset,
                         &child.header.total_kernel_offset,

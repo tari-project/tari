@@ -118,7 +118,7 @@ pub fn calculate_accumulated_difficulty(
     );
     for height in heights {
         let (header, accum) = db.fetch_header_and_accumulated_data(height).unwrap();
-        lwma.add(header.timestamp, accum.target_difficulty).unwrap();
+        lwma.add(header.timestamp, accum.target_difficulty()).unwrap();
     }
     lwma.get_difficulty().unwrap()
 }

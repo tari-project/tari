@@ -114,7 +114,7 @@ impl From<BlockHeaderAccumulatedData> for proto::BlockHeaderAccumulatedData {
             achieved_difficulty: source.achieved_difficulty.into(),
             accumulated_monero_difficulty: source.accumulated_monero_difficulty.into(),
             accumulated_blake_difficulty: source.accumulated_blake_difficulty.into(),
-            target_difficulty: source.target_difficulty.into(),
+            target_difficulty: source.target_difficulty().into(),
             total_kernel_offset: source.total_kernel_offset.to_vec(),
             hash: source.hash,
             total_accumulated_difficulty: Vec::from(source.total_accumulated_difficulty.to_le_bytes()),
@@ -130,16 +130,16 @@ impl TryFrom<proto::BlockHeaderAccumulatedData> for BlockHeaderAccumulatedData {
         acc_diff.copy_from_slice(&source.total_accumulated_difficulty[0..16]);
         let accumulated_difficulty = u128::from_le_bytes(acc_diff);
 
-        Ok(Self {
-            hash: source.hash,
-            achieved_difficulty: source.achieved_difficulty.into(),
-            total_accumulated_difficulty: accumulated_difficulty,
-            accumulated_monero_difficulty: source.accumulated_monero_difficulty.into(),
-            accumulated_blake_difficulty: source.accumulated_blake_difficulty.into(),
-            target_difficulty: source.target_difficulty.into(),
-            total_kernel_offset: BlindingFactor::from_bytes(source.total_kernel_offset.as_slice())
+        Ok(Self::new(
+            source.hash,
+            BlindingFactor::from_bytes(source.total_kernel_offset.as_slice())
                 .map_err(|err| format!("Invalid value for total_kernel_offset: {}", err))?,
-        })
+            source.achieved_difficulty.into(),
+            accumulated_difficulty,
+            source.accumulated_monero_difficulty.into(),
+            source.accumulated_blake_difficulty.into(),
+            source.target_difficulty.into(),
+        ))
     }
 }
 

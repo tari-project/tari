@@ -688,8 +688,10 @@ impl LMDBDatabase {
                     )?;
                 }
                 lmdb_delete(&txn, &self.orphan_chain_tips_db, hash.as_slice())?;
+                lmdb_delete(&txn, &self.orphan_header_accumulated_data_db, hash.as_slice())?;
             }
             lmdb_delete(&txn, &self.orphans_db, hash.as_slice())?;
+
         }
         Ok(())
     }

@@ -76,15 +76,15 @@ pub fn get_stibbons_genesis_block() -> ChainBlock {
     block.header.kernel_mmr_size += 1;
     block.body.add_outputs(&mut utxos);
     block.body.add_kernels(&mut vec![kernel.unwrap()]);
-    let accumulated_data = BlockHeaderAccumulatedData {
-        hash: block.hash(),
-        total_kernel_offset: block.header.total_kernel_offset.clone(),
-        achieved_difficulty: 1.into(),
-        total_accumulated_difficulty: 1,
-        accumulated_monero_difficulty: 1.into(),
-        accumulated_blake_difficulty: 1.into(),
-        target_difficulty: 1.into(),
-    };
+    let accumulated_data = BlockHeaderAccumulatedData::new(
+        block.hash(),
+        block.header.total_kernel_offset.clone(),
+        1.into(),
+        1,
+        1.into(),
+        1.into(),
+        1.into(),
+    );
     ChainBlock {
         block,
         accumulated_data,
@@ -176,15 +176,15 @@ pub fn get_ridcully_genesis_block() -> ChainBlock {
     block.header.kernel_mmr_size += 1;
     block.body.add_outputs(&mut utxos);
     block.body.add_kernels(&mut vec![kernel.unwrap()]);
-    let accumulated_data = BlockHeaderAccumulatedData {
-        hash: block.hash(),
-        total_kernel_offset: block.header.total_kernel_offset.clone(),
-        achieved_difficulty: 1.into(),
-        total_accumulated_difficulty: 1,
-        accumulated_monero_difficulty: 1.into(),
-        accumulated_blake_difficulty: 1.into(),
-        target_difficulty: 1.into(),
-    };
+    let accumulated_data = BlockHeaderAccumulatedData::new(
+        block.hash(),
+        block.header.total_kernel_offset.clone(),
+        1.into(),
+        1,
+        1.into(),
+        1.into(),
+        1.into(),
+    );
     ChainBlock {
         block,
         accumulated_data,

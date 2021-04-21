@@ -44,6 +44,7 @@ use tari_core::{
 use tari_crypto::tari_utilities::hash::Hashable;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tokio::sync::broadcast;
+use tari_core::chain_storage::BlockHeaderAccumulatedData;
 // use crate::helpers::database::create_test_db;
 
 async fn test_request_responder(
@@ -327,7 +328,8 @@ async fn outbound_fetch_blocks() {
     let network = Network::LocalNet;
     let consensus_constants = network.create_consensus_constants();
     let gb = BlockBuilder::new(consensus_constants[0].blockchain_version()).build();
-    let block = HistoricalBlock::new(gb, 0, Default::default(), vec![], 0);
+    let hash = gb.hash().clone();
+    let block = HistoricalBlock::new(gb, 0, BlockHeaderAccumulatedData::new(hash, Default::default(), 1.into(), 1, 1.into(), 1.into(), 1.into()), vec![], 0);
     let block_response = NodeCommsResponse::HistoricalBlocks(vec![block.clone()]);
     let (received_blocks, _) = futures::join!(
         outbound_nci.fetch_blocks(vec![0]),

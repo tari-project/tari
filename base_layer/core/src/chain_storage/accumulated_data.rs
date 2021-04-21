@@ -187,9 +187,9 @@ pub struct BlockHeaderAccumulatedDataBuilder {
     hash: Option<HashOutput>,
     total_kernel_offset: Option<BlindingFactor>,
     achieved_difficulty: Option<Difficulty>,
-    pub accumulated_monero_difficulty: Option<Difficulty>,
-    pub accumulated_blake_difficulty: Option<Difficulty>,
-    pub target_difficulty: Option<Difficulty>,
+    accumulated_monero_difficulty: Option<Difficulty>,
+    accumulated_blake_difficulty: Option<Difficulty>,
+    target_difficulty: Option<Difficulty>,
 }
 
 impl BlockHeaderAccumulatedDataBuilder {
@@ -273,7 +273,7 @@ impl BlockHeaderAccumulatedDataBuilder {
 }
 
 // TODO: Find a better name and move into `core::blocks` mod
-#[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct BlockHeaderAccumulatedData {
     pub hash: HashOutput,
     pub total_kernel_offset: BlindingFactor,
@@ -284,12 +284,37 @@ pub struct BlockHeaderAccumulatedData {
     pub accumulated_monero_difficulty: Difficulty,
     pub accumulated_blake_difficulty: Difficulty,
     /// The target difficulty for solving the current block using the specified proof of work algorithm.
-    pub target_difficulty: Difficulty,
+    target_difficulty: Difficulty,
 }
 
 impl BlockHeaderAccumulatedData {
+    pub fn new(
+        hash: HashOutput,
+        total_kernel_offset: BlindingFactor,
+        achieved_difficulty: Difficulty,
+        total_accumulated_difficulty: u128,
+        accumulated_monero_difficulty: Difficulty,
+        accumulated_blake_difficulty: Difficulty,
+        target_difficulty: Difficulty,
+    ) -> Self
+    {
+        BlockHeaderAccumulatedData {
+            hash,
+            total_kernel_offset,
+            achieved_difficulty,
+            total_accumulated_difficulty,
+            accumulated_monero_difficulty,
+            accumulated_blake_difficulty,
+            target_difficulty,
+        }
+    }
+
     pub fn builder() -> BlockHeaderAccumulatedDataBuilder {
         BlockHeaderAccumulatedDataBuilder::default()
+    }
+
+    pub fn target_difficulty(&self) -> Difficulty {
+        self.target_difficulty
     }
 }
 

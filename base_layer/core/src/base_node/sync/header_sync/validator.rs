@@ -262,10 +262,15 @@ mod test {
             // Needed to have unique keys for the blockchain db mmr count indexes (MDB_KEY_EXIST error)
             header.kernel_mmr_size += 1;
             header.output_mmr_size += 1;
-            let acc_data = BlockHeaderAccumulatedData {
-                hash: header.hash(),
-                ..Default::default()
-            };
+            let acc_data = BlockHeaderAccumulatedData::new(
+                header.hash(),
+                Default::default(),
+                1.into(),
+                1,
+                1.into(),
+                1.into(),
+                1.into(),
+            );
 
             db.insert_valid_headers(vec![(header.clone(), acc_data.clone())])
                 .await

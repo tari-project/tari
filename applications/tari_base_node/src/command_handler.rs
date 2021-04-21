@@ -915,7 +915,7 @@ impl CommandHandler {
                 } else {
                     (block.block().header.timestamp.as_u64() - prev_block.block().header.timestamp.as_u64()) as f64
                 };
-                let diff = block.accumulated_data.target_difficulty.as_u64();
+                let diff = block.accumulated_data.target_difficulty().as_u64();
                 period_difficulty += diff;
                 period_solvetime += st as u64;
                 period_hash += diff as f64 / st / 1_000_000.0;
@@ -984,7 +984,7 @@ impl CommandHandler {
                     .max_pow_difficulty(header.header.pow_algo());
 
                 let calculated_target_difficulty = target_diff.get(header.header.pow_algo()).calculate(min, max);
-                let existing_target_difficulty = header.accumulated_data.target_difficulty;
+                let existing_target_difficulty = header.accumulated_data.target_difficulty();
                 let achieved = header.accumulated_data.achieved_difficulty;
                 let solve_time = header.header.timestamp.as_u64() as i64 - prev_header.header.timestamp.as_u64() as i64;
                 let normalized_solve_time = cmp::min(

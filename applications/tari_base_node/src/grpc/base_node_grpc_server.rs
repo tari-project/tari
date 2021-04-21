@@ -170,7 +170,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                                     match blocks.first() {
                                         Some(block) => {
                                             let current_difficulty: u64 =
-                                                block.accumulated_data.target_difficulty.as_u64();
+                                                block.accumulated_data.target_difficulty().as_u64();
                                             let current_timestamp = next.timestamp.as_u64();
                                             let current_height = next.height;
                                             let pow_algo = next.pow.pow_algo.as_u64();
