@@ -48,8 +48,8 @@ pub enum ChainStorageError {
     InvalidOperation(String),
     #[error("There appears to be a critical error on the back end: {0}. Check the logs for more information.")]
     CriticalError(String),
-    #[error("Cannot return data for requests older than the current pruning horizon")]
-    BeyondPruningHorizon,
+    #[error("A full block cannot be constructed from the historical block because it contains pruned TXOs")]
+    HistoricalBlockContainsPrunedTxos,
     #[error("Could not insert {table}: {error}")]
     InsertError { table: &'static str, error: String },
     #[error("An invalid query was attempted: {0}")]

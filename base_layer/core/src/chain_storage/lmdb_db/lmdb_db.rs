@@ -320,8 +320,8 @@ impl LMDBDatabase {
     {
         let mut output: TransactionOutputRowData =
             lmdb_get(txn, &self.utxos_db, key).or_not_found("TransactionOutput", "key", key.to_string())?;
-        let result = output.output.clone();
-        output.output = None;
+        let result = output.output.take();
+        // output.output is None
         lmdb_replace(txn, &self.utxos_db, key, &output)?;
         Ok(result)
     }
@@ -889,14 +889,13 @@ impl LMDBDatabase {
     fn insert_monero_seed_height(
         &mut self,
         write_txn: &WriteTransaction<'_>,
-        data: String,
+        seed: String,
         height: u64,
     ) -> Result<(), ChainStorageError>
     {
-        let current_height =
-            lmdb_get(&write_txn, &self.monero_seed_height_db, &*data.as_str())?.unwrap_or(std::u64::MAX);
+        let current_height = lmdb_get(&write_txn, &self.monero_seed_height_db, seed.as_str())?.unwrap_or(std::u64::MAX);
         if height < current_height {
-            lmdb_replace(&write_txn, &self.monero_seed_height_db, &*data.as_str(), &height)?;
+            lmdb_replace(&write_txn, &self.monero_seed_height_db, seed.as_str(), &height)?;
         };
         Ok(())
     }
@@ -934,17 +933,13 @@ impl LMDBDatabase {
         horizon: u64,
     ) -> Result<(), ChainStorageError>
     {
-        let horizon_data = self
-            .fetch_horizon_data()
-            .or_not_found("HorizonData", "", "".to_string())?;
-        let utxo_sum = horizon_data.utxo_sum().clone();
         for pos in output_positions {
             let (_height, hash) =
                 lmdb_first_after::<_, (u64, Vec<u8>)>(&write_txn, &self.output_mmr_size_index, &pos.to_be_bytes())
                     .or_not_found("BlockHeader", "mmr_position", pos.to_string())?;
-            let key = format!("{}-{:010}", hash.to_hex(), pos,);
-            info!(target: LOG_TARGET, "Pruning output: {}", key);
-            self.prune_output(&write_txn, key.as_str())?;
+            let key = format!("{}-{:010}", hash.to_hex(), pos);
+            debug!(target: LOG_TARGET, "Pruning output: {}", key);
+            self.prune_output(&write_txn, &key)?;
         }
 
         self.set_metadata(
@@ -952,11 +947,7 @@ impl LMDBDatabase {
             MetadataKey::PrunedHeight,
             MetadataValue::PrunedHeight(horizon),
         )?;
-        self.set_metadata(
-            &write_txn,
-            MetadataKey::HorizonData,
-            MetadataValue::HorizonData(HorizonData::new(horizon_data.kernel_sum().clone(), utxo_sum)),
-        )?;
+
         Ok(())
     }
 

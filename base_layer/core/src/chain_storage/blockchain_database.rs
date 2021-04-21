@@ -97,8 +97,9 @@ pub enum BlockAddResult {
 }
 
 impl BlockAddResult {
-    pub fn is_added(&self) -> bool {
-        matches!(self, BlockAddResult::Ok(_))
+    /// Returns true if the chain was changed (i.e block added or reorged), otherwise false
+    pub fn was_chain_modified(&self) -> bool {
+        matches!(self, BlockAddResult::Ok(_) | BlockAddResult::ChainReorg(_, _))
     }
 
     pub fn assert_added(&self) -> ChainBlock {
@@ -827,12 +828,9 @@ where B: BlockchainBackend
             block,
         )?;
 
-        // Cleanup of backend when in pruned mode.
-        match block_add_result {
-            BlockAddResult::Ok(_) | BlockAddResult::ChainReorg(_, _) => {
-                prune_database_if_needed(&mut *db, self.config.pruning_interval, self.config.pruning_horizon)?
-            },
-            _ => {},
+        if block_add_result.was_chain_modified() {
+            // If blocks were added and the node is in pruned mode, perform pruning
+            prune_database_if_needed(&mut *db, self.config.pruning_horizon, self.config.pruning_interval)?
         }
 
         trace!(
@@ -1500,7 +1498,7 @@ fn rewind_to_height<T: BlockchainBackend>(
     for h in 0..steps_back {
         info!(target: LOG_TARGET, "Deleting block {}", last_block_height - h,);
         let block = fetch_block(db, last_block_height - h)?;
-        let block = Arc::new(block.clone().try_into_chain_block()?);
+        let block = Arc::new(block.try_into_chain_block()?);
         txn.delete_block(block.block.hash());
         txn.delete_header(last_block_height - h);
         if !prune_past_horizon {
@@ -1987,29 +1985,19 @@ fn prune_database_if_needed<T: BlockchainBackend>(
 ) -> Result<(), ChainStorageError>
 {
     let metadata = db.fetch_chain_metadata()?;
-    if metadata.is_pruned_node() &&
-        metadata.pruned_height() <
-            metadata
-                .height_of_longest_chain()
-                .saturating_sub(pruning_horizon + pruning_interval)
-    {
-        prune_database(db, pruning_horizon, metadata)
-    } else {
-        Ok(())
+    if !metadata.is_pruned_node() {
+        return Ok(());
     }
-}
 
-fn prune_database<T: BlockchainBackend>(
-    db: &mut T,
-    pruning_horizon: u64,
-    metadata: ChainMetadata,
-) -> Result<(), ChainStorageError>
-{
-    if metadata.is_pruned_node() {
-        let db_height = metadata.height_of_longest_chain();
-        let abs_pruning_horizon = db_height.saturating_sub(pruning_horizon);
+    let db_height = metadata.height_of_longest_chain();
+    let abs_pruning_horizon = db_height.saturating_sub(pruning_horizon);
 
+    if metadata.pruned_height() < abs_pruning_horizon.saturating_sub(pruning_interval) {
         let last_pruned = metadata.pruned_height();
+        debug!(
+            target: LOG_TARGET,
+            "Pruning blockchain database at height {} (was={})", abs_pruning_horizon, last_pruned,
+        );
         let mut last_block = db.fetch_block_accumulated_data_by_height(last_pruned).or_not_found(
             "BlockAccumulatedData",
             "height",
@@ -2026,6 +2014,7 @@ fn prune_database<T: BlockchainBackend>(
             // accumulated
             let inputs_to_prune = curr_block.deleted.deleted.clone() - last_block.deleted.deleted;
             last_block = curr_block;
+
             txn.prune_outputs_and_update_horizon(inputs_to_prune.to_vec(), block_to_prune);
         }
 
