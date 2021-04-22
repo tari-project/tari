@@ -1916,6 +1916,39 @@ pub unsafe extern "C" fn completed_transaction_is_outbound(
     false
 }
 
+/// Gets the number of confirmations of a TariCompletedTransaction
+///
+/// ## Arguments
+/// `tx` - The TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - Returns the number of confirmations of a Completed Transaction
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn completed_transaction_get_confirmations(
+    tx: *mut TariCompletedTransaction,
+    error_out: *mut c_int,
+) -> c_ulonglong
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if tx.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("tx".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    match (*tx).confirmations {
+        None => 0,
+        Some(c) => c,
+    }
+}
+
 /// Frees memory for a TariCompletedTransaction
 ///
 /// ## Arguments
@@ -5457,8 +5490,6 @@ pub unsafe extern "C" fn wallet_start_recovery(
     error_out: *mut c_int,
 ) -> bool
 {
-    use futures::FutureExt;
-
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -5468,21 +5499,14 @@ pub unsafe extern "C" fn wallet_start_recovery(
         return false;
     }
 
-    let mut recovery_task = WalletRecoveryTask::new((*wallet).wallet.clone(), (*base_node_public_key).clone());
+    let peer_seed_public_keys: Vec<TariPublicKey> = vec![(*base_node_public_key).clone()];
+    let mut recovery_task = WalletRecoveryTask::builder()
+        .with_peer_seeds(peer_seed_public_keys)
+        .with_retry_limit(10)
+        .build((*wallet).wallet.clone());
 
-    let event_stream = match recovery_task.get_event_receiver() {
-        None => {
-            error = LibWalletError::from(WalletError::WalletRecoveryError(
-                "No recovery event stream available".to_string(),
-            ))
-            .code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            return false;
-        },
-        Some(e) => e.fuse(),
-    };
-
-    let recovery_join_handle = (*wallet).runtime.spawn(recovery_task.run()).fuse();
+    let event_stream = recovery_task.get_event_receiver();
+    let recovery_join_handle = (*wallet).runtime.spawn(recovery_task.run());
 
     // Spawn a task to monitor the recovery process events and call the callback appropriately
     (*wallet).runtime.spawn(recovery_event_monitoring(
@@ -6537,6 +6561,8 @@ mod test {
                 let id_completed = completed_transactions_get_at(&mut (*ffi_completed_txs), x, error_ptr);
                 let id_completed_get =
                     wallet_get_completed_transaction_by_id(&mut (*alice_wallet), (*id_completed).tx_id, error_ptr);
+                let confirmations = completed_transaction_get_confirmations(id_completed, error_ptr);
+                assert_eq!(confirmations, 0);
                 if (*id_completed).status == TransactionStatus::MinedUnconfirmed {
                     assert_eq!((*id_completed), (*id_completed_get));
                     assert_eq!((*id_completed_get).status, TransactionStatus::MinedUnconfirmed);

@@ -517,6 +517,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                             send_count: None,
                             last_send_timestamp: None,
                             valid: None,
+                            confirmations: None,
                         }),
                         &(*conn),
                     )?;
@@ -546,6 +547,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                         send_count: None,
                         last_send_timestamp: None,
                         valid: None,
+                        confirmations: None,
                     }),
                     &(*conn),
                 )?;
@@ -655,6 +657,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                     send_count: None,
                     last_send_timestamp: None,
                     valid: None,
+                    confirmations: None,
                 }),
                 &(*conn),
             )?;
@@ -811,6 +814,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 send_count: Some(tx.send_count + 1),
                 last_send_timestamp: Some(Some(Utc::now().naive_utc())),
                 valid: None,
+                confirmations: None,
             };
             tx.update(update, &conn)?;
         } else if let Ok(tx) = OutboundTransactionSql::find(tx_id, &conn) {
@@ -889,6 +893,22 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         match CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
             Ok(v) => {
                 v.set_validity(valid, &(*conn))?;
+            },
+            Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
+                return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
+                    tx_id,
+                )));
+            },
+            Err(e) => return Err(e),
+        };
+        Ok(())
+    }
+
+    fn update_confirmations(&self, tx_id: u64, confirmations: u64) -> Result<(), TransactionStorageError> {
+        let conn = self.database_connection.acquire_lock();
+        match CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
+            Ok(v) => {
+                v.update_confirmations(confirmations, &(*conn))?;
             },
             Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
                 return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
@@ -1292,6 +1312,7 @@ struct CompletedTransactionSql {
     send_count: i32,
     last_send_timestamp: Option<NaiveDateTime>,
     valid: i32,
+    confirmations: Option<i64>,
 }
 
 impl CompletedTransactionSql {
@@ -1388,6 +1409,7 @@ impl CompletedTransactionSql {
                 send_count: None,
                 last_send_timestamp: None,
                 valid: None,
+                confirmations: None,
             },
             conn,
         )?;
@@ -1406,6 +1428,7 @@ impl CompletedTransactionSql {
                 send_count: None,
                 last_send_timestamp: None,
                 valid: None,
+                confirmations: None,
             },
             conn,
         )?;
@@ -1424,6 +1447,7 @@ impl CompletedTransactionSql {
                 send_count: None,
                 last_send_timestamp: None,
                 valid: None,
+                confirmations: None,
             },
             conn,
         )?;
@@ -1442,6 +1466,7 @@ impl CompletedTransactionSql {
                 send_count: None,
                 last_send_timestamp: None,
                 valid: Some(valid as i32),
+                confirmations: None,
             },
             conn,
         )?;
@@ -1460,6 +1485,31 @@ impl CompletedTransactionSql {
                 send_count: None,
                 last_send_timestamp: None,
                 valid: None,
+                confirmations: None,
+            },
+            conn,
+        )?;
+
+        Ok(())
+    }
+
+    pub fn update_confirmations(
+        &self,
+        confirmations: u64,
+        conn: &SqliteConnection,
+    ) -> Result<(), TransactionStorageError>
+    {
+        self.update(
+            UpdateCompletedTransactionSql {
+                status: None,
+                timestamp: None,
+                cancelled: None,
+                direction: None,
+                transaction_protocol: Some(self.transaction_protocol.clone()),
+                send_count: None,
+                last_send_timestamp: None,
+                valid: None,
+                confirmations: Some(Some(confirmations as i64)),
             },
             conn,
         )?;
@@ -1508,6 +1558,7 @@ impl TryFrom<CompletedTransaction> for CompletedTransactionSql {
             send_count: c.send_count as i32,
             last_send_timestamp: c.last_send_timestamp,
             valid: c.valid as i32,
+            confirmations: c.confirmations.map(|ic| ic as i64),
         })
     }
 }
@@ -1534,6 +1585,7 @@ impl TryFrom<CompletedTransactionSql> for CompletedTransaction {
             send_count: c.send_count as u32,
             last_send_timestamp: c.last_send_timestamp,
             valid: c.valid != 0,
+            confirmations: c.confirmations.map(|ic| ic as u64),
         })
     }
 }
@@ -1547,6 +1599,7 @@ pub struct UpdateCompletedTransaction {
     send_count: Option<u32>,
     last_send_timestamp: Option<Option<NaiveDateTime>>,
     valid: Option<bool>,
+    confirmations: Option<Option<u64>>,
 }
 
 #[derive(AsChangeset)]
@@ -1560,6 +1613,7 @@ pub struct UpdateCompletedTransactionSql {
     send_count: Option<i32>,
     last_send_timestamp: Option<Option<NaiveDateTime>>,
     valid: Option<i32>,
+    confirmations: Option<Option<i64>>,
 }
 
 /// Map a Rust friendly UpdateCompletedTransaction to the Sql data type form
@@ -1574,6 +1628,7 @@ impl From<UpdateCompletedTransaction> for UpdateCompletedTransactionSql {
             send_count: u.send_count.map(|c| c as i32),
             last_send_timestamp: u.last_send_timestamp,
             valid: u.valid.map(|c| c as i32),
+            confirmations: u.confirmations.map(|c| c.map(|ic| ic as i64)),
         }
     }
 }
@@ -1799,6 +1854,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            confirmations: None,
         };
         let completed_tx2 = CompletedTransaction {
             tx_id: 3,
@@ -1816,6 +1872,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            confirmations: None,
         };
 
         CompletedTransactionSql::try_from(completed_tx1.clone())
@@ -1931,6 +1988,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            confirmations: None,
         };
 
         let coinbase_tx2 = CompletedTransaction {
@@ -1949,6 +2007,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            confirmations: None,
         };
 
         let coinbase_tx3 = CompletedTransaction {
@@ -1967,6 +2026,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            confirmations: None,
         };
 
         CompletedTransactionSql::try_from(coinbase_tx1)
@@ -2002,6 +2062,7 @@ mod test {
                     send_count: None,
                     last_send_timestamp: None,
                     valid: None,
+                    confirmations: None,
                 },
                 &conn,
             )
@@ -2093,6 +2154,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            confirmations: None,
         };
 
         let mut completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone()).unwrap();
@@ -2172,6 +2234,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            confirmations: None,
         };
         let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx).unwrap();
         completed_tx_sql.commit(&conn).unwrap();

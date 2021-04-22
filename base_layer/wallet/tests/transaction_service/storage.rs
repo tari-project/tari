@@ -264,6 +264,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            confirmations: None,
         });
         runtime
             .block_on(db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone()))
@@ -306,6 +307,15 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .unwrap();
     assert_eq!(retrieved_completed_tx.send_count, 2);
     assert!(retrieved_completed_tx.last_send_timestamp.is_some());
+    assert!(retrieved_completed_tx.confirmations.is_none());
+
+    runtime
+        .block_on(db.set_transaction_confirmations(retrieved_completed_tx.tx_id, 1))
+        .unwrap();
+    let retrieved_completed_tx = runtime
+        .block_on(db.get_completed_transaction(completed_txs[0].tx_id))
+        .unwrap();
+    assert_eq!(retrieved_completed_tx.confirmations, Some(1));
 
     let any_completed_tx = runtime
         .block_on(db.get_any_transaction(completed_txs[0].tx_id))

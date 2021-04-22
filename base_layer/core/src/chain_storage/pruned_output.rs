@@ -31,3 +31,8 @@ pub enum PrunedOutput {
         output: TransactionOutput,
     },
 }
+impl PrunedOutput {
+    pub fn is_pruned(&self) -> bool {
+        matches!(self, PrunedOutput::Pruned {..})
+    }
+}

@@ -36,6 +36,8 @@ pub enum MinerError {
     EmptyObject(String),
     #[error("Invalid block header {0}")]
     BlockHeader(String),
+    #[error("Conversion error: {0}")]
+    Conversion(String),
 }
 
 pub fn err_empty(name: &str) -> MinerError {

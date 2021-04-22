@@ -1660,6 +1660,7 @@ fn test_power_mode_updates() {
         send_count: 0,
         last_send_timestamp: None,
         valid: true,
+        confirmations: None,
     };
 
     let completed_tx2 = CompletedTransaction {
@@ -1678,6 +1679,7 @@ fn test_power_mode_updates() {
         send_count: 0,
         last_send_timestamp: None,
         valid: true,
+        confirmations: None,
     };
 
     tx_backend
@@ -4590,6 +4592,7 @@ fn broadcast_all_completed_transactions_on_startup() {
         send_count: 0,
         last_send_timestamp: None,
         valid: true,
+        confirmations: None,
     };
 
     let completed_tx2 = CompletedTransaction {
@@ -4926,6 +4929,7 @@ fn only_start_one_tx_broadcast_protocol_at_a_time() {
         send_count: 0,
         last_send_timestamp: None,
         valid: true,
+        confirmations: None,
     };
 
     backend
@@ -4992,6 +4996,7 @@ fn dont_broadcast_invalid_transactions() {
         send_count: 0,
         last_send_timestamp: None,
         valid: false,
+        confirmations: None,
     };
 
     backend

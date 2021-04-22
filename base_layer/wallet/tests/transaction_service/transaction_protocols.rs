@@ -260,6 +260,9 @@ async fn tx_broadcast_protocol_submit_success() {
 
     add_transaction_to_database(1, 1 * T, true, None, resources.db.clone()).await;
 
+    let db_completed_tx = resources.db.get_completed_transaction(1).await.unwrap();
+    assert!(db_completed_tx.confirmations.is_none());
+
     let protocol = TransactionBroadcastProtocol::new(
         1,
         resources.clone(),
@@ -331,6 +334,7 @@ async fn tx_broadcast_protocol_submit_success() {
     // Check transaction status is updated
     let db_completed_tx = resources.db.get_completed_transaction(1).await.unwrap();
     assert_eq!(db_completed_tx.status, TransactionStatus::MinedUnconfirmed);
+    assert_eq!(db_completed_tx.confirmations, Some(1));
 
     // Set base node response to mined and confirmed but not synced
     rpc_service_state.set_transaction_query_response(TxQueryResponse {
@@ -366,6 +370,10 @@ async fn tx_broadcast_protocol_submit_success() {
     // Check transaction status is updated
     let db_completed_tx = resources.db.get_completed_transaction(1).await.unwrap();
     assert_eq!(db_completed_tx.status, TransactionStatus::MinedConfirmed);
+    assert_eq!(
+        db_completed_tx.confirmations,
+        Some(resources.config.num_confirmations_required)
+    );
 
     // Check that the appropriate events were emitted
     let mut delay = delay_for(Duration::from_secs(1)).fuse();

@@ -94,6 +94,7 @@ mod command_handler;
 mod grpc;
 mod parser;
 mod recovery;
+mod status_line;
 mod utils;
 
 use crate::command_handler::CommandHandler;
@@ -103,6 +104,7 @@ use parser::Parser;
 use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
 use std::{
     net::SocketAddr,
+    process,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -111,34 +113,45 @@ use tari_app_utilities::{
     initialization::init_configuration,
     utilities::{setup_runtime, ExitCodes},
 };
-use tari_common::configuration::bootstrap::ApplicationType;
+use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
 use tari_comms::peer_manager::PeerFeatures;
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::{task, time};
+use tokio::{runtime, task, time};
 use tonic::transport::Server;
 
 pub const LOG_TARGET: &str = "base_node::app";
-
 /// Application entry point
 fn main() {
-    match main_inner() {
-        Ok(_) => std::process::exit(0),
-        Err(exit_code) => std::process::exit(exit_code.as_i32()),
+    if let Err(exit_code) = main_inner() {
+        eprintln!("{}", exit_code);
+        error!(
+            target: LOG_TARGET,
+            "Exiting with code ({}): {}",
+            exit_code.as_i32(),
+            exit_code
+        );
+        process::exit(exit_code.as_i32());
     }
 }
 
-/// Sets up the base node and runs the cli_loop
 fn main_inner() -> Result<(), ExitCodes> {
     let (bootstrap, node_config, _) = init_configuration(ApplicationType::BaseNode)?;
 
     debug!(target: LOG_TARGET, "Using configuration: {:?}", node_config);
 
     // Set up the Tokio runtime
-    let mut rt = setup_runtime(&node_config).map_err(|err| {
-        error!(target: LOG_TARGET, "{}", err);
+    let mut rt = setup_runtime(&node_config).map_err(|e| {
+        error!(target: LOG_TARGET, "{}", e);
         ExitCodes::UnknownError
     })?;
 
+    rt.block_on(run_node(node_config.into(), bootstrap))?;
+
+    Ok(())
+}
+
+/// Sets up the base node and runs the cli_loop
+async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) -> Result<(), ExitCodes> {
     // Load or create the Node identity
     let node_identity = setup_node_identity(
         &node_config.base_node_identity_file,
@@ -162,7 +175,9 @@ fn main_inner() -> Result<(), ExitCodes> {
     if bootstrap.rebuild_db {
         info!(target: LOG_TARGET, "Node is in recovery mode, entering recovery");
         recovery::initiate_recover_db(&node_config)?;
-        let _ = rt.block_on(recovery::run_recovery(&node_config));
+        recovery::run_recovery(&node_config)
+            .await
+            .map_err(|e| ExitCodes::RecoveryError(e.to_string()))?;
         return Ok(());
     };
 
@@ -172,57 +187,50 @@ fn main_inner() -> Result<(), ExitCodes> {
     }
 
     // Build, node, build!
-    let ctx = rt
-        .block_on(builder::configure_and_initialize_node(
-            &node_config,
-            node_identity,
-            shutdown.to_signal(),
-            bootstrap.clean_orphans_db,
-        ))
-        .map_err(|err| {
-            error!(target: LOG_TARGET, "{}", err);
-            ExitCodes::UnknownError
-        })?;
+    let ctx = builder::configure_and_initialize_node(
+        node_config.clone(),
+        node_identity,
+        shutdown.to_signal(),
+        bootstrap.clean_orphans_db,
+    )
+    .await
+    .map_err(|err| {
+        error!(target: LOG_TARGET, "{}", err);
+        ExitCodes::UnknownError
+    })?;
 
     if node_config.grpc_enabled {
-        // Go, GRPC , go go
+        // Go, GRPC, go go
         let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::new(
-            rt.handle().clone(),
             ctx.local_node(),
             ctx.local_mempool(),
-            node_config.clone(),
+            node_config.network.into(),
             ctx.state_machine(),
             ctx.base_node_comms().peer_manager(),
         );
 
-        rt.spawn(run_grpc(grpc, node_config.grpc_base_node_address, shutdown.to_signal()));
+        task::spawn(run_grpc(grpc, node_config.grpc_base_node_address, shutdown.to_signal()));
     }
 
     // Run, node, run!
-    let base_node_handle;
-    let command_handler = Arc::new(CommandHandler::new(rt.handle().clone(), &ctx));
-    if !bootstrap.daemon_mode {
-        let parser = Parser::new(command_handler.clone());
+    // TODO: We are not starting a background process/daemon. Either we should do that or call this mode
+    //       `--non-interactive`
+    if bootstrap.daemon_mode {
+        println!("Node started in daemon mode (pid = {})", process::id());
+    } else {
+        let command_handler = Arc::new(CommandHandler::new(runtime::Handle::current(), &ctx));
+        let parser = Parser::new(command_handler);
         cli::print_banner(parser.get_commands(), 3);
-        base_node_handle = rt.spawn(ctx.run());
 
         info!(
             target: LOG_TARGET,
             "Node has been successfully configured and initialized. Starting CLI loop."
         );
 
-        rt.spawn(cli_loop(parser, command_handler, shutdown));
-    } else {
-        println!("Node has been successfully configured and initialized in daemon mode.");
-        base_node_handle = rt.spawn(ctx.run());
-    }
-    match rt.block_on(base_node_handle) {
-        Ok(_) => info!(target: LOG_TARGET, "Node shutdown successfully."),
-        Err(e) => error!(target: LOG_TARGET, "Node has crashed: {}", e),
+        task::spawn(cli_loop(parser, shutdown));
     }
 
-    // Wait until tasks have shut down
-    drop(rt);
+    ctx.run().await;
 
     println!("Goodbye!");
     Ok(())
@@ -285,7 +293,7 @@ async fn read_command(mut rustyline: Editor<Parser>) -> Result<(String, Editor<P
 ///
 /// ## Returns
 /// Doesn't return anything
-async fn cli_loop(parser: Parser, command_handler: Arc<CommandHandler>, mut shutdown: Shutdown) {
+async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
     let cli_config = Config::builder()
         .history_ignore_space(true)
         .completion_type(CompletionType::List)
@@ -293,9 +301,11 @@ async fn cli_loop(parser: Parser, command_handler: Arc<CommandHandler>, mut shut
         .output_stream(OutputStreamType::Stdout)
         .build();
     let mut rustyline = Editor::with_config(cli_config);
+    let command_handler = parser.get_command_handler();
     rustyline.set_helper(Some(parser));
     let read_command_fut = read_command(rustyline).fuse();
     pin_mut!(read_command_fut);
+
     let mut shutdown_signal = shutdown.to_signal();
     let start_time = Instant::now();
     loop {
@@ -309,27 +319,27 @@ async fn cli_loop(parser: Parser, command_handler: Arc<CommandHandler>, mut shut
 
         let mut interval = time::delay_for(delay_time).fuse();
         futures::select! {
-                res = read_command_fut => {
-                    match res {
-                        Ok((line, mut rustyline)) => {
-                            if let Some(p) = rustyline.helper_mut().as_deref_mut() {
-                                p.handle_command(line.as_str(), &mut shutdown)
-                            }
-                            read_command_fut.set(read_command(rustyline).fuse());
-                        },
-                        Err(err) => {
-                            // This happens when the node is shutting down.
-                            debug!(target:  LOG_TARGET, "Could not read line from rustyline:{}", err);
-                            break;
+            res = read_command_fut => {
+                match res {
+                    Ok((line, mut rustyline)) => {
+                        if let Some(p) = rustyline.helper_mut().as_deref_mut() {
+                            p.handle_command(line.as_str(), &mut shutdown)
                         }
+                        read_command_fut.set(read_command(rustyline).fuse());
+                    },
+                    Err(err) => {
+                        // This happens when the node is shutting down.
+                        debug!(target:  LOG_TARGET, "Could not read line from rustyline:{}", err);
+                        break;
                     }
-                },
-                () = interval => {
-                       command_handler.status();
-               },
-                _ = shutdown_signal => {
-                    break;
                 }
+            },
+            _ = interval => {
+               command_handler.status();
+            },
+            _ = shutdown_signal => {
+                break;
+            }
         }
     }
 }

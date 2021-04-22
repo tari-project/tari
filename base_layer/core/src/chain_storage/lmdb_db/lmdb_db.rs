@@ -172,19 +172,10 @@ impl LMDBDatabase {
             trace!(target: LOG_TARGET, "[apply_db_transaction] WriteOperation: {}", op);
             match op {
                 InsertOrphanBlock(block) => self.insert_orphan_block(&write_txn, &block)?,
-                Delete(delete) => self.op_delete(&write_txn, delete)?,
                 InsertHeader { header } => {
-                    let height = header.header.height;
-                    if !self.insert_header(&write_txn, &header.header, &header.accumulated_data)? {
-                        return Err(ChainStorageError::InvalidOperation(format!(
-                            "Duplicate `BlockHeader` key `{}`",
-                            height
-                        )));
-                    }
+                    self.insert_header(&write_txn, &header.header, &header.accumulated_data)?;
                 },
-                InsertBlock { block } => {
-                    // TODO: Sort out clones
-                    self.insert_header(&write_txn, &block.block.header, &block.accumulated_data)?;
+                InsertBlockBody { block } => {
                     self.insert_block_body(&write_txn, &block.block.header, block.block.body.clone())?;
                 },
                 InsertKernel {
@@ -240,6 +231,12 @@ impl LMDBDatabase {
                     );
                     self.insert_input(&write_txn, header_hash, *input, mmr_position)?;
                 },
+                DeleteHeader(height) => {
+                    self.delete_header(&write_txn, height)?;
+                },
+                DeleteOrphan(hash) => {
+                    self.delete_orphan(&write_txn, hash)?;
+                },
                 DeleteOrphanChainTip(hash) => {
                     lmdb_delete(&write_txn, &self.orphan_chain_tips_db, &hash)?;
                 },
@@ -250,9 +247,10 @@ impl LMDBDatabase {
                     let hash_hex = hash.to_hex();
                     debug!(target: LOG_TARGET, "Deleting block `{}`", hash_hex);
                     debug!(target: LOG_TARGET, "Deleting UTXOs...");
-                    if let Some(height) = self.fetch_height_from_hash(&write_txn, &hash)? {
-                        lmdb_delete(&write_txn, &self.block_accumulated_data_db, &height)?;
-                    }
+                    let height =
+                        self.fetch_height_from_hash(&write_txn, &hash)
+                            .or_not_found("Block", "hash", hash.to_hex())?;
+                    lmdb_delete(&write_txn, &self.block_accumulated_data_db, &height)?;
                     let rows = lmdb_delete_keys_starting_with::<TransactionOutputRowData>(
                         &write_txn,
                         &self.utxos_db,
@@ -630,34 +628,72 @@ impl LMDBDatabase {
         }
 
         lmdb_insert_dup(txn, &self.orphan_parent_map_index, &block.header.prev_hash, &k)?;
-        lmdb_replace(txn, &self.orphans_db, k.as_slice(), &block)?;
+        lmdb_insert(txn, &self.orphans_db, k.as_slice(), &block, "orphans_db")?;
 
         Ok(())
     }
 
-    /// Inserts the header and header accumulated data. True is returned if a new header is inserted, otherwise false if
-    /// the header already exists
+    /// Inserts the header and header accumulated data.
     fn insert_header(
         &mut self,
         txn: &WriteTransaction<'_>,
         header: &BlockHeader,
         accum_data: &BlockHeaderAccumulatedData,
-    ) -> Result<bool, ChainStorageError>
+    ) -> Result<(), ChainStorageError>
     {
         if let Some(current_header_at_height) = lmdb_get::<_, BlockHeader>(txn, &self.headers_db, &header.height)? {
             let hash = current_header_at_height.hash();
-            if current_header_at_height.hash() != accum_data.hash {
+            if hash != accum_data.hash {
                 return Err(ChainStorageError::InvalidOperation(format!(
                     "There is a different header stored at height {} already. New header ({}), current header: ({})",
                     header.height,
-                    hash.to_hex(),
-                    accum_data.hash.to_hex()
+                    accum_data.hash.to_hex(),
+                    current_header_at_height.hash().to_hex(),
                 )));
             }
-            return Ok(false);
+            return Err(ChainStorageError::InvalidOperation(format!(
+                "The header at height {} already exists. Existing header hash: {}",
+                header.height,
+                hash.to_hex()
+            )));
         }
 
-        lmdb_replace(&txn, &self.header_accumulated_data_db, &header.height, &accum_data)?;
+        // Check that the current height is still header.height - 1 and that no other threads have inserted
+        if let Some(ref last_header) = self.fetch_last_header_in_txn(&txn)? {
+            if last_header.height != header.height.saturating_sub(1) {
+                return Err(ChainStorageError::InvalidOperation(format!(
+                    "Attempted to insert a header out of order. Was expecting chain height to be {} but current last \
+                     header height is {}",
+                    header.height - 1,
+                    last_header.height
+                )));
+            }
+
+            // Possibly remove this check later
+            let hash = last_header.hash();
+            if hash != header.prev_hash {
+                return Err(ChainStorageError::InvalidOperation(format!(
+                    "Attempted to insert a block header at height {} that didn't form a chain. Previous block \
+                     hash:{}, new block's previous hash:{}",
+                    header.height,
+                    hash.to_hex(),
+                    header.prev_hash.to_hex()
+                )));
+            }
+        } else if header.height != 0 {
+            return Err(ChainStorageError::InvalidOperation(format!(
+                "The first header inserted must have height 0. Height provided: {}",
+                header.height
+            )));
+        }
+
+        lmdb_insert(
+            &txn,
+            &self.header_accumulated_data_db,
+            &header.height,
+            &accum_data,
+            "header_accumulated_data_db",
+        )?;
         lmdb_insert(
             txn,
             &self.block_hashes_db,
@@ -680,72 +716,81 @@ impl LMDBDatabase {
             &(header.height, header.hash().as_slice()),
             "output_mmr_size_index",
         )?;
-        Ok(true)
+        Ok(())
     }
 
-    fn op_delete(&mut self, txn: &WriteTransaction<'_>, key: DbKey) -> Result<(), ChainStorageError> {
-        match key {
-            DbKey::BlockHeader(k) => {
-                let val: Option<BlockHeader> = lmdb_get(txn, &self.headers_db, &k)?;
-                if let Some(v) = val {
-                    let hash = v.hash();
-                    // Check that there are no utxos or kernels linked to this.
-
-                    if !lmdb_fetch_keys_starting_with::<TransactionKernelRowData>(
-                        hash.to_hex().as_str(),
-                        &txn,
-                        &self.kernels_db,
-                    )?
-                    .is_empty()
-                    {
-                        return Err(ChainStorageError::InvalidOperation(
-                            "Cannot delete header because there are kernels linked to it".to_string(),
-                        ));
-                    }
-                    if !lmdb_fetch_keys_starting_with::<TransactionOutputRowData>(
-                        hash.to_hex().as_str(),
-                        &txn,
-                        &self.utxos_db,
-                    )?
-                    .is_empty()
-                    {
-                        return Err(ChainStorageError::InvalidOperation(
-                            "Cannot delete header because there are utxos linked to it".to_string(),
-                        ));
-                    }
-
-                    lmdb_delete(&txn, &self.block_hashes_db, &hash)?;
-                    lmdb_delete(&txn, &self.headers_db, &k)?;
-                    lmdb_delete(&txn, &self.header_accumulated_data_db, &k)?;
-                    lmdb_delete(&txn, &self.kernel_mmr_size_index, &v.kernel_mmr_size.to_be_bytes())?;
-                    lmdb_delete(&txn, &self.output_mmr_size_index, &v.output_mmr_size.to_be_bytes())?;
-                }
-            },
-            DbKey::BlockHash(_) => {
-                unimplemented!("Not supported. Use delete by height");
-            },
-            DbKey::OrphanBlock(k) => {
-                if let Some(orphan) = lmdb_get::<_, Block>(&txn, &self.orphans_db, &k)? {
-                    let parent_hash = orphan.header.prev_hash;
-                    lmdb_delete_key_value(&txn, &self.orphan_parent_map_index, parent_hash.as_slice(), &k)?;
-                    let tip: Option<Vec<u8>> = lmdb_get(&txn, &self.orphan_chain_tips_db, &k)?;
-                    if tip.is_some() {
-                        if lmdb_get::<_, Block>(&txn, &self.orphans_db, parent_hash.as_slice())?.is_some() {
-                            lmdb_insert(
-                                &txn,
-                                &self.orphan_chain_tips_db,
-                                parent_hash.as_slice(),
-                                &parent_hash,
-                                "orphan_chain_tips_db",
-                            )?;
-                        }
-                        lmdb_delete(&txn, &self.orphan_chain_tips_db, &k)?;
-                    }
-                    lmdb_delete(&txn, &self.orphans_db, k.as_slice())?;
-                }
-            },
+    fn delete_header(&mut self, txn: &WriteTransaction<'_>, height: u64) -> Result<(), ChainStorageError> {
+        if self.fetch_block_accumulated_data(&txn, height)?.is_some() {
+            return Err(ChainStorageError::InvalidOperation(format!(
+                "Attempted to delete header at height {} while block accumulated data still exists",
+                height
+            )));
         }
 
+        let header =
+            self.fetch_last_header_in_txn(&txn)
+                .or_not_found("BlockHeader", "height", "last_header".to_string())?;
+        if header.height != height {
+            return Err(ChainStorageError::InvalidOperation(format!(
+                "Attempted to delete a header at height {} that was not the last header (which is at height {}). \
+                 Headers must be deleted in reverse order.",
+                height, header.height
+            )));
+        }
+
+        // TODO: This can maybe be removed for performance if the check for block_accumulated_data existing is
+        // sufficient
+
+        let hash = header.hash();
+        // Check that there are no utxos or kernels linked to this.
+
+        if !lmdb_fetch_keys_starting_with::<TransactionKernelRowData>(hash.to_hex().as_str(), &txn, &self.kernels_db)?
+            .is_empty()
+        {
+            return Err(ChainStorageError::InvalidOperation(format!(
+                "Cannot delete header {} ({}) because there are kernels linked to it",
+                header.height,
+                hash.to_hex()
+            )));
+        }
+        if !lmdb_fetch_keys_starting_with::<TransactionOutputRowData>(hash.to_hex().as_str(), &txn, &self.utxos_db)?
+            .is_empty()
+        {
+            return Err(ChainStorageError::InvalidOperation(format!(
+                "Cannot delete header at height {} ({}) because there are UTXOs linked to it",
+                height,
+                hash.to_hex()
+            )));
+        }
+
+        lmdb_delete(&txn, &self.block_hashes_db, &hash)?;
+        lmdb_delete(&txn, &self.headers_db, &height)?;
+        lmdb_delete(&txn, &self.header_accumulated_data_db, &height)?;
+        lmdb_delete(&txn, &self.kernel_mmr_size_index, &header.kernel_mmr_size.to_be_bytes())?;
+        lmdb_delete(&txn, &self.output_mmr_size_index, &header.output_mmr_size.to_be_bytes())?;
+
+        Ok(())
+    }
+
+    fn delete_orphan(&mut self, txn: &WriteTransaction<'_>, hash: HashOutput) -> Result<(), ChainStorageError> {
+        if let Some(orphan) = lmdb_get::<_, Block>(&txn, &self.orphans_db, hash.as_slice())? {
+            let parent_hash = orphan.header.prev_hash;
+            lmdb_delete_key_value(&txn, &self.orphan_parent_map_index, parent_hash.as_slice(), &hash)?;
+            let tip: Option<Vec<u8>> = lmdb_get(&txn, &self.orphan_chain_tips_db, hash.as_slice())?;
+            if tip.is_some() {
+                if lmdb_get::<_, Block>(&txn, &self.orphans_db, parent_hash.as_slice())?.is_some() {
+                    lmdb_insert(
+                        &txn,
+                        &self.orphan_chain_tips_db,
+                        parent_hash.as_slice(),
+                        &parent_hash,
+                        "orphan_chain_tips_db",
+                    )?;
+                }
+                lmdb_delete(&txn, &self.orphan_chain_tips_db, hash.as_slice())?;
+            }
+            lmdb_delete(&txn, &self.orphans_db, hash.as_slice())?;
+        }
         Ok(())
     }
 
@@ -763,6 +808,24 @@ impl LMDBDatabase {
             block_hash.to_hex(),
             body.to_counts_string()
         );
+
+        // Check that the database has not been changed by another thread
+        // 1. The header we are inserting for matches the header at that height
+        let current_header_at_height = lmdb_get::<_, BlockHeader>(txn, &self.headers_db, &header.height).or_not_found(
+            "BlockHeader",
+            "height",
+            header.height.to_string(),
+        )?;
+        let hash = current_header_at_height.hash();
+        if hash != block_hash {
+            return Err(ChainStorageError::InvalidOperation(format!(
+                "Could not insert this block body because there is a different header stored at height {}. New header \
+                 ({}), current header: ({})",
+                header.height,
+                hash.to_hex(),
+                block_hash.to_hex()
+            )));
+        }
 
         let (inputs, outputs, kernels) = body.dissolve();
 
@@ -840,7 +903,7 @@ impl LMDBDatabase {
         }
         output_mmr.compress();
 
-        self.update_block_accumulated_data(
+        self.insert_block_accumulated_data(
             txn,
             header.height,
             &BlockAccumulatedData::new(
@@ -853,6 +916,23 @@ impl LMDBDatabase {
         )?;
 
         Ok(())
+    }
+
+    #[allow(clippy::ptr_arg)]
+    fn insert_block_accumulated_data(
+        &mut self,
+        txn: &WriteTransaction<'_>,
+        header_height: u64,
+        data: &BlockAccumulatedData,
+    ) -> Result<(), ChainStorageError>
+    {
+        lmdb_insert(
+            &txn,
+            &self.block_accumulated_data_db,
+            &header_height,
+            data,
+            "block_accumulated_data_db",
+        )
     }
 
     #[allow(clippy::ptr_arg)]
@@ -915,6 +995,10 @@ impl LMDBDatabase {
     ) -> Result<Option<BlockHeaderAccumulatedData>, ChainStorageError>
     {
         lmdb_get(&txn, &self.header_accumulated_data_db, &height)
+    }
+
+    fn fetch_last_header_in_txn(&self, txn: &ConstTransaction<'_>) -> Result<Option<BlockHeader>, ChainStorageError> {
+        lmdb_last(&txn, &self.headers_db)
     }
 }
 
@@ -1396,8 +1480,8 @@ impl BlockchainBackend for LMDBDatabase {
                                 range_proof_hash: row.range_proof_hash,
                             };
                         }
-                        if let Some(output) = &row.output {
-                            PrunedOutput::NotPruned { output: output.clone() }
+                        if let Some(output) = row.output {
+                            PrunedOutput::NotPruned { output }
                         } else {
                             PrunedOutput::Pruned {
                                 output_hash: row.hash,
@@ -1526,7 +1610,7 @@ impl BlockchainBackend for LMDBDatabase {
     /// Finds and returns the last stored header.
     fn fetch_last_header(&self) -> Result<BlockHeader, ChainStorageError> {
         let txn = ReadTransaction::new(&*self.env).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-        lmdb_last(&txn, &self.headers_db)?.ok_or_else(|| {
+        self.fetch_last_header_in_txn(&txn)?.ok_or_else(|| {
             ChainStorageError::InvalidOperation("Cannot fetch last header because database is empty".to_string())
         })
     }
@@ -1608,7 +1692,7 @@ impl BlockchainBackend for LMDBDatabase {
         );
         let txn = ReadTransaction::new(&*self.env).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
         let orphan_hashes: Vec<HashOutput> = lmdb_get_multiple(&txn, &self.orphan_parent_map_index, hash.as_slice())?;
-        let mut res = vec![];
+        let mut res = Vec::with_capacity(orphan_hashes.len());
         for hash in orphan_hashes {
             res.push(lmdb_get(&txn, &self.orphans_db, hash.as_slice())?.ok_or_else(|| {
                 ChainStorageError::ValueNotFound {
@@ -1676,7 +1760,7 @@ impl BlockchainBackend for LMDBDatabase {
                 height,
                 block_hash.to_hex()
             );
-            txn.delete(DbKey::OrphanBlock(block_hash.clone()));
+            txn.delete_orphan(block_hash.clone());
         }
         self.write(txn)?;
 

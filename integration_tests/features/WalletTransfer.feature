@@ -14,6 +14,9 @@ Feature: Wallet Transfer
       # Ensure the coinbase lock heights have expired
     And mining node MINER mines 3 blocks
     Then all nodes are at height 5
+      # Ensure the coinbase lock heights have expired
+    When I mine 5 blocks on NODE
+    Then all nodes are at height 10
     When I transfer 50000 uT from Wallet_A to Wallet_B and Wallet_C at fee 100
     And mining node MINER mines 5 blocks
     Then all nodes are at height 10

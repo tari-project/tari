@@ -85,15 +85,11 @@ impl RpcClient {
     }
 
     /// Perform a single request and single response
-    pub async fn request_response<
+    pub async fn request_response<T, R, M>(&mut self, request: T, method: M) -> Result<R, RpcError>
+    where
         T: prost::Message,
         R: prost::Message + Default + std::fmt::Debug,
         M: Into<RpcMethod>,
-    >(
-        &mut self,
-        request: T,
-        method: M,
-    ) -> Result<R, RpcError>
     {
         let req_bytes = request.to_encoded_bytes();
         let request = BaseRequest::new(method.into(), req_bytes.into());
@@ -106,11 +102,11 @@ impl RpcClient {
     }
 
     /// Perform a single request and streaming response
-    pub async fn server_streaming<T: prost::Message, R: prost::Message + Default, M: Into<RpcMethod>>(
-        &mut self,
-        request: T,
-        method: M,
-    ) -> Result<ClientStreaming<R>, RpcError>
+    pub async fn server_streaming<T, M, R>(&mut self, request: T, method: M) -> Result<ClientStreaming<R>, RpcError>
+    where
+        T: prost::Message,
+        R: prost::Message + Default,
+        M: Into<RpcMethod>,
     {
         let req_bytes = request.to_encoded_bytes();
         let request = BaseRequest::new(method.into(), req_bytes.into());
@@ -217,6 +213,11 @@ impl RpcClientConfig {
     pub fn timeout_with_grace_period(&self) -> Option<Duration> {
         self.deadline.map(|d| d + self.deadline_grace_period)
     }
+
+    /// Returns the handshake timeout
+    pub fn handshake_timeout(&self) -> Duration {
+        self.handshake_timeout
+    }
 }
 
 impl Default for RpcClientConfig {
@@ -224,7 +225,7 @@ impl Default for RpcClientConfig {
         Self {
             deadline: Some(Duration::from_secs(30)),
             deadline_grace_period: Duration::from_secs(10),
-            handshake_timeout: Duration::from_secs(15),
+            handshake_timeout: Duration::from_secs(30),
         }
     }
 }
@@ -314,7 +315,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
     async fn run(mut self) {
         debug!(target: LOG_TARGET, "Performing client handshake");
         let start = Instant::now();
-        let mut handshake = Handshake::new(&mut self.framed).with_timeout(self.config.handshake_timeout);
+        let mut handshake = Handshake::new(&mut self.framed).with_timeout(self.config.handshake_timeout());
         match handshake.perform_client_handshake().await {
             Ok(_) => {
                 let latency = start.elapsed();
@@ -329,7 +330,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
             },
             Err(err) => {
                 if let Some(r) = self.ready_tx.take() {
-                    let _ = r.send(Err(err));
+                    let _ = r.send(Err(err.into()));
                 }
 
                 return;

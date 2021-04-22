@@ -120,6 +120,8 @@ pub trait TransactionBackend: Send + Sync + Clone {
     fn remove_encryption(&self) -> Result<(), TransactionStorageError>;
     /// Increment the send counter and timestamp of a transaction
     fn increment_send_count(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
+    /// Update a tranasctions number of confirmations
+    fn update_confirmations(&self, tx_id: TxId, confirmations: u64) -> Result<(), TransactionStorageError>;
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -728,6 +730,19 @@ where T: TransactionBackend + 'static
     {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.set_completed_transaction_validity(tx_id, valid))
+            .await
+            .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(())
+    }
+
+    pub async fn set_transaction_confirmations(
+        &self,
+        tx_id: TxId,
+        confirmations: u64,
+    ) -> Result<(), TransactionStorageError>
+    {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.update_confirmations(tx_id, confirmations))
             .await
             .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())

@@ -258,6 +258,7 @@ impl SenderTransactionProtocol {
         }
     }
 
+
     /// This function will return the script offset private keys for a single recipient
     pub fn get_recipient_script_offset_private_key(&self, recipient_index: usize) -> Result<PrivateKey, TPE> {
         match &self.state {
@@ -274,6 +275,7 @@ impl SenderTransactionProtocol {
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }
     }
+
 
     /// This function will return the value of the fee of this transaction
     pub fn get_fee_amount(&self) -> Result<MicroTari, TPE> {

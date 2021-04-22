@@ -54,8 +54,26 @@ impl BoundedExecutor {
         Self::new(current(), num_permits)
     }
 
+    pub fn allow_maximum() -> Self {
+        Self::new(current(), Self::max_theoretical_tasks())
+    }
+
+    pub const fn max_theoretical_tasks() -> usize {
+        // Maximum from here: https://github.com/tokio-rs/tokio/blob/ce9eabfdd12a14efb74f5e6d507f2acbe7a814c9/tokio/src/sync/batch_semaphore.rs#L101
+        // NOTE: usize::MAX >> 3 does not work. The reason is not clear, however 1152921504606846975 tasks seems
+        // sufficient
+        usize::MAX >> 4
+    }
+
+    #[inline]
     pub fn can_spawn(&self) -> bool {
-        self.semaphore.available_permits() > 0
+        self.num_available() > 0
+    }
+
+    /// Returns the number tasks that can be spawned on this executor without blocking.
+    #[inline]
+    pub fn num_available(&self) -> usize {
+        self.semaphore.available_permits()
     }
 
     pub fn try_spawn<F>(&self, future: F) -> Result<JoinHandle<F::Output>, TrySpawnError>
@@ -178,6 +196,14 @@ impl OptionallyBoundedExecutor {
         match &self.inner {
             Either::Left(exec) => exec.spawn(future),
             Either::Right(exec) => exec.spawn(future).await,
+        }
+    }
+
+    /// Returns the number tasks that can be spawned on this executor without blocking.
+    pub fn num_available(&self) -> usize {
+        match &self.inner {
+            Either::Left(_) => usize::MAX,
+            Either::Right(exec) => exec.num_available(),
         }
     }
 }

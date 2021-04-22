@@ -75,14 +75,14 @@ Feature: Block Sync
     When I mine a block on NODE1 with coinbase CB5
     Then all nodes are at height 5
     When I spend outputs CB1 via NODE1
-#      When I spend outputs CB2 via NODE1
-#      When I spend outputs CB3 via NODE1
+    #      When I spend outputs CB2 via NODE1
+    #      When I spend outputs CB3 via NODE1
     And I mine 3 blocks on NODE1
     Given I have a pruned node PNODE2 connected to node NODE1 with pruning horizon set to 5
     Then all nodes are at height 8
-      # Spend txns so that they are pruned when tip moves
-#      When I spend outputs CB4 via PNODE2
-#      When I spend outputs CB5 via PNODE2
+    # Spend txns so that they are pruned when tip moves
+    #      When I spend outputs CB4 via PNODE2
+    #      When I spend outputs CB5 via PNODE2
     When I mine 15 blocks on PNODE2
     Then all nodes are at height 23
 
@@ -104,3 +104,20 @@ Feature: Block Sync
     And I mine 6 blocks on PNODE2
     When I start NODE1
     Then all nodes are at height 20
+
+  @long-running
+  Scenario: Syncing node while also mining before tip sync
+    Given I have a seed node SEED
+    And I have wallet WALLET1 connected to seed node SEED
+    And I have wallet WALLET2 connected to seed node SEED
+    And I have mining node MINER connected to base node SEED and wallet WALLET1
+    And I have a base node SYNCER connected to all seed nodes
+    And I have mine-before-tip mining node MINER2 connected to base node SYNCER and wallet WALLET2
+    And I stop SYNCER
+    When I mine 1 blocks on SEED
+    Then node SEED is at height 1
+    When Mining node MINER mines 99 blocks with min difficulty 2 and max difficulty 100000
+    Then node SEED is at height 100
+    When I start SYNCER
+    And Mining node MINER2 mines 5 blocks with min difficulty 1 and max difficulty 100000
+    Then node SYNCER is at height 100

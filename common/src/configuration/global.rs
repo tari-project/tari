@@ -117,14 +117,17 @@ pub struct GlobalConfig {
     pub auto_ping_interval: u64,
     pub blocks_behind_before_considered_lagging: u64,
     pub flood_ban_max_msg_count: usize,
+    pub mine_on_tip_only: bool,
 }
 
 impl GlobalConfig {
     pub fn convert_from(mut cfg: Config) -> Result<Self, ConfigurationError> {
         // Add in settings from the environment (with a prefix of TARI_NODE)
         // Eg.. `TARI_NODE_DEBUG=1 ./target/app` would set the `debug` key
-        cfg.merge(Environment::with_prefix("tari").separator("__"))
+        let env = Environment::with_prefix("tari").separator("__");
+        cfg.merge(env)
             .map_err(|e| ConfigurationError::new("environment variable", &e.to_string()))?;
+
         let network = cfg
             .get_str("base_node.network")
             .map_err(|e| ConfigurationError::new("base_node.network", &e.to_string()))?
@@ -590,6 +593,9 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     let key = config_string("merge_mining_proxy", &net_str, "proxy_submit_to_origin");
     let proxy_submit_to_origin = cfg.get_bool(&key).unwrap_or_else(|_| true);
 
+    let key = "mining_node.mine_on_tip_only";
+    let mine_on_tip_only = cfg.get_bool(key).unwrap_or(true);
+
     Ok(GlobalConfig {
         network,
         comms_transport,
@@ -660,6 +666,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         auto_ping_interval,
         blocks_behind_before_considered_lagging,
         flood_ban_max_msg_count,
+        mine_on_tip_only,
     })
 }
 

@@ -26,6 +26,7 @@ use log::*;
 use tari_app_grpc::tari_rpc::{base_node_client::BaseNodeClient, wallet_client::WalletClient};
 use tari_app_utilities::{initialization::init_configuration, utilities::ExitCodes};
 use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, DefaultConfigLoader, GlobalConfig};
+use tari_core::blocks::BlockHeader;
 use tokio::{runtime::Runtime, time::delay_for};
 use tonic::transport::Channel;
 use utils::{coinbase_request, extract_outputs_and_kernels};
@@ -39,7 +40,7 @@ mod utils;
 use crate::miner::MiningReport;
 use errors::{err_empty, MinerError};
 use miner::Miner;
-use std::time::Instant;
+use std::{convert::TryFrom, time::Instant};
 
 /// Application entry point
 fn main() {
@@ -56,8 +57,10 @@ fn main() {
 
 async fn main_inner() -> Result<(), ExitCodes> {
     let (bootstrap, global, cfg) = init_configuration(ApplicationType::MiningNode)?;
-    println!("{:?}", bootstrap);
-    let config = <MinerConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
+    let mut config = <MinerConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
+    config.mine_on_tip_only = global.mine_on_tip_only;
+    debug!("mine_on_tip_only is {}", config.mine_on_tip_only);
+
     let (mut node_conn, mut wallet_conn) = connect(&config, &global).await.map_err(ExitCodes::grpc)?;
 
     let mut blocks_found: u64 = 0;
@@ -91,8 +94,10 @@ async fn main_inner() -> Result<(), ExitCodes> {
                 debug!("Holding for {:?}", config.wait_timeout());
                 delay_for(config.wait_timeout()).await;
             },
-            _ => {
-                blocks_found += 1;
+            Ok(submitted) => {
+                if submitted {
+                    blocks_found += 1;
+                }
                 if let Some(max_blocks) = bootstrap.miner_max_blocks {
                     if blocks_found >= max_blocks {
                         return Ok(());
@@ -123,7 +128,7 @@ async fn mining_cycle(
     wallet_conn: &mut WalletClient<Channel>,
     config: &MinerConfig,
     bootstrap: &ConfigBootstrap,
-) -> Result<(), MinerError>
+) -> Result<bool, MinerError>
 {
     // 1. Receive new block template
     let template = node_conn
@@ -169,29 +174,40 @@ async fn mining_cycle(
     let mut reports = Miner::init_mining(header.clone(), target_difficulty, config.num_mining_threads);
     let template_time = Instant::now();
     let mut reporting_timeout = Instant::now();
+    let mut block_submitted = false;
     while let Some(report) = reports.next().await {
         if let Some(header) = report.header.clone() {
             let mut submit = true;
             if let Some(min_diff) = bootstrap.miner_min_diff {
                 if report.difficulty < min_diff {
                     submit = false;
+                    debug!(
+                        "Mined difficulty {} below minimum difficulty {}. Not submitting.",
+                        report.difficulty, min_diff
+                    );
                 }
             }
             if let Some(max_diff) = bootstrap.miner_max_diff {
                 if report.difficulty > max_diff {
                     submit = false;
+                    debug!(
+                        "Mined difficulty {} greater than maximum difficulty {}. Not submitting.",
+                        report.difficulty, max_diff
+                    );
                 }
             }
             if submit {
                 // Mined a block fitting the difficulty
+                let block_header = BlockHeader::try_from(header.clone()).map_err(MinerError::Conversion)?;
                 info!(
-                    "Miner {} found block header {:?} with difficulty {:?}",
-                    report.miner, header, report.difficulty,
+                    "Miner {} found block header {} with difficulty {:?}",
+                    report.miner, block_header, report.difficulty,
                 );
                 let mut mined_block = block.clone();
                 mined_block.header = Some(header);
                 // 5. Sending block to the node
                 node_conn.submit_block(mined_block).await?;
+                block_submitted = true;
                 break;
             } else {
                 display_report(&report, config, template_time).await;
@@ -204,8 +220,9 @@ async fn mining_cycle(
             reporting_timeout = Instant::now();
         }
     }
+
     // Not waiting for threads to stop, they should stop in a short while after `reports` dropped
-    Ok(())
+    Ok(block_submitted)
 }
 
 async fn display_report(report: &MiningReport, config: &MinerConfig, template_time: Instant) {

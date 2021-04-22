@@ -22,6 +22,7 @@ table! {
         send_count -> Integer,
         last_send_timestamp -> Nullable<Timestamp>,
         valid -> Integer,
+        confirmations -> Nullable<BigInt>,
     }
 }
 

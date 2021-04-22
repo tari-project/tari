@@ -30,7 +30,11 @@ use crate::{
 use diesel::result::Error as DieselError;
 use log::SetLoggerError;
 use serde_json::Error as SerdeJsonError;
-use tari_comms::{connectivity::ConnectivityError, multiaddr, peer_manager::PeerManagerError};
+use tari_comms::{
+    connectivity::ConnectivityError,
+    multiaddr,
+    peer_manager::{node_id::NodeIdError, PeerManagerError},
+};
 use tari_comms_dht::store_forward::StoreAndForwardError;
 use tari_core::transactions::transaction::TransactionError;
 use tari_crypto::tari_utilities::{hex::HexError, ByteArrayError};
@@ -66,8 +70,12 @@ pub enum WalletError {
     ServiceInitializationError(#[from] ServiceInitializationError),
     #[error("Base Node Service error: {0}")]
     BaseNodeServiceError(#[from] BaseNodeServiceError),
+    #[error("Node ID error: `{0}`")]
+    NodeIdError(#[from] NodeIdError),
     #[error("Error performing wallet recovery: '{0}'")]
     WalletRecoveryError(String),
+    #[error("Shutdown Signal Received")]
+    Shutdown,
     #[error("Transaction Error: {0}")]
     TransactionError(#[from] TransactionError),
 }

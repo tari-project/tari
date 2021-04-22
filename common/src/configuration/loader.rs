@@ -118,7 +118,7 @@ impl<C: NetworkConfigPath> ConfigPath for C {
     /// For example, in the following TOML file, options for `main_key_prefix` would be `MainKeyOne` or `MainKeyTwo`:
     /// ```toml
     /// [MainKeyOne]
-    ///   subkey1=1  
+    ///   subkey1=1
     /// [MainKeyTwo]
     ///   subkey2=1
     /// ```
@@ -132,7 +132,7 @@ impl<C: NetworkConfigPath> ConfigPath for C {
     ///
     /// ```toml
     /// [SectionA]
-    ///   network=foo  
+    ///   network=foo
     ///   subkey=1
     /// [SectionA.foo]
     ///   subkey=2
@@ -275,7 +275,7 @@ impl ConfigurationError {
 
 impl Display for ConfigurationError {
     fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
-        f.write_str(&format!("Invalid value for {}: {}", self.field, self.message))
+        write!(f, "Invalid value for {}: {}", self.field, self.message)
     }
 }
 

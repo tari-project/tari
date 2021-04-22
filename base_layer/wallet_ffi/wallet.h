@@ -261,6 +261,9 @@ bool completed_transaction_is_valid(struct TariCompletedTransaction *tx,int* err
 // i.e the transaction was originally sent from the wallet
 bool completed_transaction_is_outbound(struct TariCompletedTransaction *tx,int* error_out);
 
+/// Gets the number of confirmations of a TariCompletedTransaction
+unsigned long long completed_transaction_get_confirmations(struct TariCompletedTransaction *transaction,int* error_out);
+
 // Frees memory for a TariCompletedTransaction
 void completed_transaction_destroy(struct TariCompletedTransaction *transaction);
 

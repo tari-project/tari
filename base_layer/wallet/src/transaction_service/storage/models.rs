@@ -201,6 +201,7 @@ pub struct CompletedTransaction {
     pub send_count: u32,
     pub last_send_timestamp: Option<NaiveDateTime>,
     pub valid: bool,
+    pub confirmations: Option<u64>,
 }
 
 impl CompletedTransaction {
@@ -235,6 +236,7 @@ impl CompletedTransaction {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            confirmations: None,
         }
     }
 }
@@ -327,6 +329,7 @@ impl From<OutboundTransaction> for CompletedTransaction {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            confirmations: None,
         }
     }
 }
@@ -349,11 +352,13 @@ impl From<InboundTransaction> for CompletedTransaction {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            confirmations: None,
         }
     }
 }
 
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum WalletTransaction {
     PendingInbound(InboundTransaction),
     PendingOutbound(OutboundTransaction),
