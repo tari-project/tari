@@ -489,11 +489,11 @@ where TBackend: TransactionBackend + 'static
         // Mined?
         if response.location == TxLocation::Mined {
             self.resources
+
                 .db
                 .set_transaction_confirmations(self.tx_id, response.confirmations)
                 .await
                 .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
-
             if response.confirmations >= self.resources.config.num_confirmations_required as u64 {
                 info!(
                     target: LOG_TARGET,

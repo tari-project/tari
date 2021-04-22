@@ -869,12 +869,13 @@ When(
 When(
   /mining node (.*) mines (\d+) blocks on (.*)/,
   { timeout: 600 * 1000 },
-  async function (miner, numBlocks, node) {
+  async function (miner, numBlocks) {
     let miningNode = this.getMiningNode(miner);
     await miningNode.init(numBlocks, 1, 100000);
     await miningNode.startNew();
   }
 );
+
 
 When(
   /mining node (.*) mines (\d+) blocks with min difficulty (\d+) and max difficulty (\d+)/,

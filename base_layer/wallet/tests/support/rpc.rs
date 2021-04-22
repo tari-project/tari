@@ -446,7 +446,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
     }
 
     async fn get_tip_info(&self, _request: Request<()>) -> Result<Response<TipInfoResponse>, RpcStatus> {
-        let delay_lock = (*acquire_lock!(self.state.response_delay));
+        let delay_lock = *acquire_lock!(self.state.response_delay);
         if let Some(delay) = delay_lock {
             delay_for(delay).await;
         }
