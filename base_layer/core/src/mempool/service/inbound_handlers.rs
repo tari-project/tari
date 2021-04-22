@@ -160,11 +160,11 @@ impl MempoolInboundHandlers {
                     let _ = self.event_publisher.send(MempoolStateEvent::Updated);
                 }
             },
-            ValidBlockAdded(_, BlockAddResult::ChainReorg(removed_blocks, added_blocks), broadcast) => {
+            ValidBlockAdded(_, BlockAddResult::ChainReorg { added, removed }, broadcast) => {
                 async_mempool::process_reorg(
                     self.mempool.clone(),
-                    removed_blocks.iter().map(|b| b.block.clone().into()).collect(),
-                    added_blocks.iter().map(|b| b.block.clone().into()).collect(),
+                    removed.iter().map(|b| b.block.clone().into()).collect(),
+                    added.iter().map(|b| b.block.clone().into()).collect(),
                 )
                 .await?;
                 if broadcast.is_true() {

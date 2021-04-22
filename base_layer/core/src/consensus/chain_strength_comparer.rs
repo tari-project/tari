@@ -54,9 +54,9 @@ impl ChainStrengthComparer for MoneroDifficultyComparer {
 }
 
 #[derive(Default, Debug)]
-pub struct BlakeDifficultyComparer {}
+pub struct Sha3DifficultyComparer {}
 
-impl ChainStrengthComparer for BlakeDifficultyComparer {
+impl ChainStrengthComparer for Sha3DifficultyComparer {
     fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
         a.accumulated_data
             .accumulated_blake_difficulty
@@ -98,8 +98,8 @@ impl ChainStrengthComparerBuilder {
         self.add_comparer_as_then(Box::new(MoneroDifficultyComparer::default()))
     }
 
-    pub fn by_blake_difficulty(self) -> Self {
-        self.add_comparer_as_then(Box::new(BlakeDifficultyComparer::default()))
+    pub fn by_sha3_difficulty(self) -> Self {
+        self.add_comparer_as_then(Box::new(Sha3DifficultyComparer::default()))
     }
 
     pub fn by_height(self) -> Self {

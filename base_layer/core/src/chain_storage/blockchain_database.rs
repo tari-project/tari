@@ -31,6 +31,7 @@ use crate::{
         db_transaction::{DbKey, DbTransaction, DbValue},
         error::ChainStorageError,
         pruned_output::PrunedOutput,
+        BlockAddResult,
         BlockchainBackend,
         ChainBlock,
         ChainHeader,
@@ -61,7 +62,6 @@ use std::{
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
     time::Instant,
 };
-use strum_macros::Display;
 use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tari_mmr::{MerkleMountainRange, MutableMmr};
@@ -83,54 +83,6 @@ impl Default for BlockchainDatabaseConfig {
             orphan_storage_capacity: BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY,
             pruning_horizon: BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
             pruning_interval: BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Display)]
-pub enum BlockAddResult {
-    Ok(Arc<ChainBlock>),
-    BlockExists,
-    OrphanBlock,
-    /// Indicates the new block caused a chain reorg. This contains removed blocks followed by added blocks.
-    ChainReorg(Vec<Arc<ChainBlock>>, Vec<Arc<ChainBlock>>),
-}
-
-impl BlockAddResult {
-    /// Returns true if the chain was changed (i.e block added or reorged), otherwise false
-    pub fn was_chain_modified(&self) -> bool {
-        matches!(self, BlockAddResult::Ok(_) | BlockAddResult::ChainReorg(_, _))
-    }
-
-    pub fn assert_added(&self) -> ChainBlock {
-        match self {
-            BlockAddResult::ChainReorg(added, removed) => panic!(
-                "Expected added result, but was reorg ({} added, {} removed)",
-                added.len(),
-                removed.len()
-            ),
-            BlockAddResult::Ok(b) => b.as_ref().clone(),
-            BlockAddResult::BlockExists => panic!("Expected added result, but was BlockExists"),
-            BlockAddResult::OrphanBlock => panic!("Expected added result, but was OrphanBlock"),
-        }
-    }
-
-    pub fn assert_orphaned(&self) {
-        match self {
-            BlockAddResult::OrphanBlock => (),
-            _ => panic!("Result was not orphaned"),
-        }
-    }
-
-    pub fn assert_reorg(&self, num_added: usize, num_removed: usize) {
-        match self {
-            BlockAddResult::ChainReorg(a, r) => {
-                assert_eq!(num_added, a.len(), "Number of added reorged blocks was different");
-                assert_eq!(num_removed, r.len(), "Number of removed reorged blocks was different");
-            },
-            BlockAddResult::Ok(_) => panic!("Expected reorg result, but was Ok()"),
-            BlockAddResult::BlockExists => panic!("Expected reorg result, but was BlockExists"),
-            BlockAddResult::OrphanBlock => panic!("Expected reorg result, but was OrphanBlock"),
         }
     }
 }
@@ -1690,7 +1642,10 @@ fn handle_possible_reorg<T: BlockchainBackend>(
             num_removed_blocks,
             num_added_blocks,
         );
-        Ok(BlockAddResult::ChainReorg(removed_blocks, reorg_chain.into()))
+        Ok(BlockAddResult::ChainReorg {
+            removed: removed_blocks,
+            added: reorg_chain.into(),
+        })
     } else {
         trace!(
             target: LOG_TARGET,
@@ -1805,7 +1760,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
 
     let mut new_tips_found = vec![];
     let parent;
-    if let Some(curr_parent) = db.fetch_orphan_chain_tip_by_hash(&block.hash())? {
+    if let Some(curr_parent) = db.fetch_orphan_chain_tip_by_hash(&block.header.prev_hash)? {
         parent = curr_parent;
         txn.remove_orphan_chain_tip(block.header.prev_hash.clone());
         debug!(
@@ -2067,7 +2022,16 @@ fn convert_to_option_bounds<T: RangeBounds<u64>>(bounds: T) -> (Option<u64>, Opt
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_helpers::blockchain::create_test_blockchain_db;
+    use crate::{
+        consensus::chain_strength_comparer::strongest_chain,
+        test_helpers::{
+            blockchain::{create_new_blockchain, create_test_blockchain_db},
+            create_block,
+            mine_to_difficulty,
+        },
+        validation::mocks::MockValidator,
+    };
+    use std::collections::HashMap;
 
     #[test]
     fn lmdb_fetch_monero_seeds() {
@@ -2101,5 +2065,166 @@ mod test {
                 assert_eq!(db_read.fetch_monero_seed_first_seen_height(&seed).unwrap(), 2);
             }
         }
+    }
+
+    #[test]
+    fn test_handle_possible_reorg_case1() {
+        // Normal chain
+        let (result, _blocks) = test_case_handle_possible_reorg(vec![("A->GB", 1), ("B->A", 1)]).unwrap();
+        result[0].assert_added();
+        result[1].assert_added();
+    }
+
+    #[test]
+    fn test_handle_possible_reorg_case2() {
+        let (result, blocks) = test_case_handle_possible_reorg(vec![("A->GB", 1), ("B->A", 1), ("A2->GB", 3)]).unwrap();
+        result[0].assert_added();
+        result[1].assert_added();
+        result[2].assert_reorg(1, 2);
+        let added_blocks: Vec<Block> = result[2].added_blocks().iter().map(|cb| cb.block.clone()).collect();
+        assert_eq!(added_blocks, vec![blocks.get(&"A2".to_string()).unwrap().clone()]);
+
+        let added_accum_hashes: Vec<HashOutput> = result[2]
+            .added_blocks()
+            .iter()
+            .map(|cb| cb.accumulated_data.hash.clone())
+            .collect();
+        assert_eq!(added_accum_hashes, vec![blocks.get(&"A2".to_string()).unwrap().hash()]);
+    }
+    #[test]
+    fn test_handle_possible_reorg_case3() {
+        // Switch to new chain and then reorg back
+        let (result, blocks) = test_case_handle_possible_reorg(vec![("A->GB", 1), ("A2->GB", 2), ("B->A", 2)]).unwrap();
+        result[0].assert_added();
+        result[1].assert_reorg(1, 1);
+        result[2].assert_reorg(2, 1);
+        let added_blocks: Vec<Block> = result[2].added_blocks().iter().map(|cb| cb.block.clone()).collect();
+        assert_eq!(added_blocks, vec![
+            blocks.get(&"A".to_string()).unwrap().clone(),
+            blocks.get(&"B".to_string()).unwrap().clone()
+        ]);
+
+        let added_accum_hashes: Vec<HashOutput> = result[2]
+            .added_blocks()
+            .iter()
+            .map(|cb| cb.accumulated_data.hash.clone())
+            .collect();
+        assert_eq!(added_accum_hashes, vec![
+            blocks.get(&"A".to_string()).unwrap().hash(),
+            blocks.get(&"B".to_string()).unwrap().hash()
+        ]);
+    }
+    #[test]
+    fn test_handle_possible_reorg_case4() {
+        let (result, blocks) = test_case_handle_possible_reorg(vec![
+            ("A->GB", 1),
+            ("A2->GB", 2),
+            ("B->A", 2),
+            ("A3->GB", 4),
+            ("C->B", 2),
+        ])
+        .unwrap();
+        result[0].assert_added();
+        result[1].assert_reorg(1, 1);
+        result[2].assert_reorg(2, 1);
+        result[3].assert_reorg(1, 2);
+        result[4].assert_reorg(3, 1);
+
+        assert_added_hashes_eq(&result[4], vec!["A", "B", "C"], &blocks);
+    }
+
+    #[test]
+    fn test_handle_possible_reorg_case5() {
+        let (result, blocks) = test_case_handle_possible_reorg(vec![
+            ("A->GB", 1),
+            ("B->A", 1),
+            ("A2->GB", 3),
+            ("C->B", 1),
+            ("D->C", 2),
+            ("B2->A", 5),
+            ("D2->C", 6),
+            ("D3->C", 7),
+            ("D4->C", 8),
+        ])
+        .unwrap();
+        result[0].assert_added();
+        result[1].assert_added();
+        result[2].assert_reorg(1, 2);
+        result[3].assert_orphaned();
+        result[4].assert_reorg(4, 1);
+        result[5].assert_reorg(1, 3);
+        result[6].assert_reorg(3, 1);
+        result[7].assert_reorg(1, 1);
+        result[8].assert_reorg(1, 1);
+
+        assert_added_hashes_eq(&result[5], vec!["B2"], &blocks);
+        assert_difficulty_eq(&result[5], vec![7]);
+
+        assert_added_hashes_eq(&result[6], vec!["B", "C", "D2"], &blocks);
+        assert_difficulty_eq(&result[6], vec![3, 4, 10]);
+
+        assert_added_hashes_eq(&result[7], vec!["D3"], &blocks);
+        assert_difficulty_eq(&result[7], vec![11]);
+
+        assert_added_hashes_eq(&result[8], vec!["D4"], &blocks);
+        assert_difficulty_eq(&result[8], vec![12]);
+    }
+
+    fn assert_added_hashes_eq(result: &BlockAddResult, block_names: Vec<&str>, blocks: &HashMap<String, Block>) {
+        let added_accum_hashes: Vec<HashOutput> = result
+            .added_blocks()
+            .iter()
+            .map(|cb| cb.accumulated_data.hash.clone())
+            .collect();
+        assert_eq!(
+            added_accum_hashes,
+            block_names
+                .iter()
+                .map(|b| blocks.get(&b.to_string()).unwrap().hash())
+                .collect::<Vec<HashOutput>>()
+        );
+    }
+
+    fn assert_difficulty_eq(result: &BlockAddResult, values: Vec<u128>) {
+        let accum_difficulty: Vec<u128> = result
+            .added_blocks()
+            .iter()
+            .map(|cb| cb.accumulated_data.total_accumulated_difficulty)
+            .collect();
+        assert_eq!(accum_difficulty, values);
+    }
+
+    fn test_case_handle_possible_reorg(
+        blocks: Vec<(&str, u64)>,
+    ) -> Result<(Vec<BlockAddResult>, HashMap<String, Block>), ChainStorageError> {
+        let db = create_new_blockchain();
+        let mut block_hashes = HashMap::<String, Block>::new();
+        block_hashes.insert("GB".to_string(), db.fetch_block(0).unwrap().try_into_block()?);
+        let mock_validator = Box::new(MockValidator::new(true));
+        let chain_strength_comparer = strongest_chain().by_sha3_difficulty().build();
+        let mut results = vec![];
+        for block_spec in blocks {
+            let split: Vec<&str> = block_spec.0.split("->").collect();
+            let to = split[0].to_string();
+            let from = split[1].to_string();
+            let difficulty = block_spec.1.into();
+
+            let prev_block = block_hashes.get(&from).unwrap();
+            let mut block = create_block(1, prev_block.header.height + 1, vec![]);
+            block.header.prev_hash = prev_block.hash().clone();
+
+            block.header.output_mmr_size = prev_block.header.output_mmr_size + block.body.outputs().len() as u64;
+            block.header.kernel_mmr_size = prev_block.header.kernel_mmr_size + block.body.kernels().len() as u64;
+            let block = mine_to_difficulty(block, difficulty).unwrap();
+            block_hashes.insert(to, block.clone());
+            results.push(handle_possible_reorg(
+                &mut *db.db_write_access()?,
+                &*mock_validator,
+                &*mock_validator,
+                &*chain_strength_comparer,
+                Arc::new(block),
+            )?);
+        }
+        Ok((results, block_hashes))
     }
 }
