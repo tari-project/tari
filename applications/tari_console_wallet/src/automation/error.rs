@@ -49,6 +49,8 @@ pub enum CommandError {
     Config(String),
     #[error("Comms error `{0}`")]
     Comms(String),
+    #[error("CSV file error `{0}`")]
+    CSVFile(String),
 }
 
 impl From<CommandError> for ExitCodes {
@@ -66,7 +68,7 @@ pub enum ParseError {
     MicroTariAmount(#[from] MicroTariError),
     #[error("Failed to parse public key or emoji id.")]
     PublicKey,
-    #[error("Failed to parse a missing {0}.")]
+    #[error("Failed to parse a missing {0}")]
     Empty(String),
     #[error("Failed to parse float.")]
     Float(#[from] ParseFloatError),
