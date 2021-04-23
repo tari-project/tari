@@ -18,8 +18,8 @@ Feature: Block Sync
   @critical
   Scenario: Simple block sync
     Given I have 1 seed nodes
-    And I have a base node MINER connected to all seed nodes
-    When I mine 20 blocks on MINER
+    Given I have a SHA3 miner MINER connected to all seed nodes
+    Given mining node MINER mines 20 blocks
     Given I have 2 base nodes connected to all seed nodes
     # All nodes should sync to tip
     Then all nodes are at height 20
@@ -34,29 +34,33 @@ Feature: Block Sync
 
   @critical @reorg
   Scenario: Full block sync with small reorg
-    Given I have a base node NODE1 connected to all seed nodes
-    Given I have a base node NODE2 connected to node NODE1
-    When I mine 5 blocks on NODE1
+    Given I have a SHA3 miner NODE1 connected to all seed nodes
+    Given I have a SHA3 miner NODE2 connected to node NODE1
+    Given mining node NODE1 mines 5 blocks
     Then all nodes are at height 5
     Given I stop NODE2
-    Then I mine 5 blocks on NODE1
+    Given mining node NODE1 mines 5 blocks
+    Then node NODE1 is at height 10
     Given I stop NODE1
     And I start NODE2
-    Then I mine 7 blocks on NODE2
+    Given mining node NODE2 mines 7 blocks
+    Then node NODE2 is at height 12
     When I start NODE1
     Then all nodes are on the same chain at height 12
 
   @critical @reorg @long-running
   Scenario: Full block sync with large reorg
-    Given I have a base node NODE1 connected to all seed nodes
-    Given I have a base node NODE2 connected to node NODE1
-    When I mine 5 blocks on NODE1
+    Given I have a SHA3 miner NODE1 connected to all seed nodes
+    Given I have a SHA3 miner NODE2 connected to node NODE1
+    Given mining node NODE1 mines 5 blocks
     Then all nodes are at height 5
     Given I stop NODE2
-    Then I mine 1001 blocks on NODE1
+    Given mining node NODE1 mines 1001 blocks
+    Then node NODE1 is at height 1006
     Given I stop NODE1
     And I start NODE2
-    Then I mine 1500 blocks on NODE2
+    Given mining node NODE2 mines 1500 blocks
+    Then node NODE2 is at height 1505
     When I start NODE1
     Then all nodes are on the same chain at height 1505
 
