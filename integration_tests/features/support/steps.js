@@ -50,12 +50,12 @@ Given(
   /I have a base node (.*) connected to node (.*)/,
   { timeout: 20 * 1000 },
   async function (name, node) {
-       await create_node(name, this.nodes[node].peerAddress(), this);
+    await create_node(name, this.nodes[node].peerAddress(), this);
   }
 );
 
 Given(
-  /I have a SHA3 miner (.*) connected to seed node (.*)/,  
+  /I have a SHA3 miner (.*) connected to seed node (.*)/,
   { timeout: 40 * 1000 },
   async function (name, seed) {
     //add the base_node
@@ -77,7 +77,7 @@ Given(
 );
 
 Given(
-  /I have a SHA3 miner (.*) connected to node (.*)/,  
+  /I have a SHA3 miner (.*) connected to node (.*)/,
   { timeout: 40 * 1000 },
   async function (name, basenode) {
     //add the base_node
@@ -99,7 +99,7 @@ Given(
 );
 
 Given(
-  /I have a SHA3 miner (.*) connected to all seed nodes/,  
+  /I have a SHA3 miner (.*) connected to all seed nodes/,
   { timeout: 40 * 1000 },
   async function (name) {
     //add the base_node
@@ -109,7 +109,7 @@ Given(
     await create_wallet(name, node.peerAddress(), this);
 
     //Now lets add a standalone miner to both
-    
+
     let wallet = this.getWallet(name);
     const miningNode = new MiningNodeProcess(
       name,
@@ -120,12 +120,12 @@ Given(
   }
 );
 
-async function create_node(name, addresses, ctx){
+async function create_node(name, addresses, ctx) {
   const node = ctx.createNode(name);
   node.setPeerSeeds([addresses]);
-    await node.startNew();
-    ctx.addNode(name, node);
-    await sleep(1000);
+  await node.startNew();
+  ctx.addNode(name, node);
+  await sleep(1000);
 }
 
 Given(
@@ -257,7 +257,7 @@ Given(
   }
 );
 
-async function create_wallet(name, node_addresses, ctx){
+async function create_wallet(name, node_addresses, ctx) {
   let wallet = new WalletProcess(name, {}, ctx.logFilePathWallet);
   wallet.setPeerSeeds([node_addresses]);
   await wallet.startNew();
