@@ -498,6 +498,7 @@ $$
 $$
 
 Next Alice next uses Bulletproof rewinding to encrypt the value \\( v_b \\) into the the Bulletproof for the commitment \\( C_b \\). For this she uses (\\( k_{rewind} =  Hash(k_{b}) \\) as the rewind_key and (\\( k_{blinding} =  Hash(Hash(k_{b})) \\) as the blinding key.
+*Note, deriving the keys here should be secure, but should be confirmed before mainnet.
 
 Alice knows the script-redeeming private key \\( k_{Sa}\\) for the transaction input.
 
