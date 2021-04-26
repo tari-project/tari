@@ -482,10 +482,23 @@ Once again, transaction fees are ignored to simplify the illustration.
 Alice owns \\( C_a \\) and provides the required script to spend the UTXO as was described in the previous cases.
 
 Alice needs a public key from Bob, \\( K_{Sb} \\) to complete the one-sided transaction. This key can be obtained
-out-of-band, and will typically be Bob's wallet public key on the Tari network.
+out-of-band, and might typically be Bob's wallet public key on the Tari network.
+
+Bob requires the value \\( v_b \\) and blinding factor \\( k_b \\) to claim his payment, but he needs to be able to claim it without asking Alice for them.
+
+This information can be obtained by using Diffie-Hellman and Bulletproof rewinding. If the blinding factor \\( k_b \\) was calculated with Diffie-Hellman using the offset public keypair, (\\( k_{Ob} \\),\\( K_{Ob} \\)) as sender keypair and
+the keypair, (\\( k_{Sb} \\),\\( K_{Sb} \\)) as the receiver keypair, the blinding factor \\( k_b \\) can be securely calculated without communication.
 
 Alice uses Bob's public key to create a shared secret, \\( k_b \\) for the output commitment, \\( C_b \\), using
 Diffie-Hellman key exchange.
+
+Alice calculates \\( k_b \\) as
+$$
+    k_b = k_{Ob} * {K_Sb}
+$$
+
+Next Alice next uses Bulletproof rewinding to encrypt the value \\( v_b \\) into the the Bulletproof for the commitment \\( C_b \\). For this she uses (\\( k_{rewind} =  Hash(k_{b}) \\) as the rewind_key and (\\( k_{blinding} =  Hash(Hash(k_{b})) \\) as the blinding key.
+*Note, deriving the keys here should be secure, but should be confirmed before mainnet.
 
 Alice knows the script-redeeming private key \\( k_{Sa}\\) for the transaction input.
 
@@ -495,7 +508,6 @@ $$
     \so = k_{Sa} - k_{Ob} \cdot \HU_b
 $$
 
-
 For the script hash, she provides the hash of a script that locks the output to Bob's public key, `PushPubkey(K_Sb)`.
 This script will only resolve successfully if the spender can provide a valid signature as input that demonstrates proof
 of knowledge of \\( k_{Sb} \\) which only Bob knows.
@@ -503,12 +515,20 @@ of knowledge of \\( k_{Sb} \\) which only Bob knows.
 Any base node can now verify that the transaction is complete, verify the signature on the script, and verify the script
 offset.
 
-For Bob to claim his commitment, \\( C_b \\) he requires the blinding factor, \\( k_b \\), and his private key for the script.
-
-In this case, the script hash is analogous to an address in Bitcoin or Monero. Bob's wallet can scan the blockchain
+For Bob to claim his commitment he will scan the blockchain for a known script hash because he knowns that the script will be `PushPubkey(K_Sb)` he can scan for that hash. In this case, the script hash is analogous to an address in Bitcoin or Monero. Bob's wallet can scan the blockchain
 looking for hashes that he would know how to resolve. For all outputs that he discovers this way, Bob would need to know
-who the sender is so that he can derive the shared secret.  This information can be obtained without needing to communicate
-with the sender, if she uses the offset public key, \\( K_{Ob} \\) as the key in deriving the Diffie-Hellman exchange.
+who the sender is so that he can derive the shared secret.
+
+When Bob's wallet spots a known hash he requires he requires the blinding factor, \\( k_b \\) and the value \\( v_b \\). First he uses Diffie-Hellman to calculate \\( k_b \\). 
+
+Bob calculates \\( k_b \\) as
+$$
+    k_b = K_{Ob} * {k_Sb}
+$$
+
+Next Bob's wallet calculates \\( k_{rewind} \\), using \\( k_{rewind} =  Hash(k_{b})\\) and (\\( k_{blinding} =  Hash(Hash(k_{b})) \\), using those to rewind the Bulletproof to get the value \\( v_b \\). 
+
+Because Bob's wallet already knowns \\( k_Sb \\), he now knows all the values required to spend the commitment \\( C_b \\)
 
 For Bob's part, when he discovers one-sided payments to himself, he should spend them to new outputs using a traditional
 transaction to thwart any potential horizon attacks in the future.
