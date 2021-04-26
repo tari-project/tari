@@ -22,14 +22,7 @@
 
 use crate::{
     blocks::{
-        genesis_block::{
-            get_mainnet_block_hash,
-            get_mainnet_genesis_block,
-            get_ridcully_block_hash,
-            get_ridcully_genesis_block,
-            get_stibbons_block_hash,
-            get_stibbons_genesis_block,
-        },
+        genesis_block::{get_mainnet_genesis_block, get_ridcully_genesis_block, get_stibbons_genesis_block},
         Block,
     },
     chain_storage::{ChainBlock, ChainStorageError},
@@ -77,17 +70,6 @@ impl ConsensusManager {
             Network::Ridcully => get_ridcully_genesis_block(),
             Network::Stibbons => get_stibbons_genesis_block(),
             Network::LocalNet => self.inner.gen_block.clone().unwrap_or_else(get_stibbons_genesis_block),
-        }
-    }
-
-    /// Returns the genesis block hash for the selected network.
-    #[deprecated]
-    pub fn get_genesis_block_hash(&self) -> Vec<u8> {
-        match self.inner.network {
-            Network::MainNet => get_mainnet_block_hash(),
-            Network::Ridcully => get_ridcully_block_hash(),
-            Network::Stibbons => get_stibbons_block_hash(),
-            Network::LocalNet => get_ridcully_block_hash(),
         }
     }
 

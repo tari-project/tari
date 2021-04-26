@@ -130,15 +130,15 @@ impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for BodyOnlyValidator {
     /// 1. Are all inputs and outputs not in the STXO set?
     /// 1. Are the block header MMR roots valid?
     fn validate_body_for_valid_orphan(&self, block: &ChainBlock, backend: &B) -> Result<(), ValidationError> {
-        let block_id = format!("block #{} ({})", block.block.header.height, block.hash().to_hex());
-        check_inputs_are_utxos(&block.block, backend)?;
-        check_not_duplicate_txos(&block.block, backend)?;
+        let block_id = format!("block #{} ({})", block.header().height, block.hash().to_hex());
+        check_inputs_are_utxos(&block.block(), backend)?;
+        check_not_duplicate_txos(&block.block(), backend)?;
         trace!(
             target: LOG_TARGET,
             "Block validation: All inputs and outputs are valid for {}",
             block_id
         );
-        check_mmr_roots(&block.block, backend)?;
+        check_mmr_roots(block.block(), backend)?;
         trace!(
             target: LOG_TARGET,
             "Block validation: MMR roots are valid for {}",
@@ -439,25 +439,25 @@ impl<B: BlockchainBackend> CandidateBlockBodyValidation<B> for BlockValidator<B>
     /// The following consensus checks are done:
     /// 1. Does the block satisfy the stateless checks?
     /// 1. Are the block header MMR roots valid?
-    fn validate_body(&self, block: &ChainBlock, backend: &B) -> Result<(), ValidationError> {
-        let block_id = format!("block #{}", block.block.header.height);
+    fn validate_body(&self, block: &Block, backend: &B) -> Result<(), ValidationError> {
+        let block_id = format!("block #{}", block.header.height);
         trace!(target: LOG_TARGET, "Validating {}", block_id);
 
-        let constants = self.rules.consensus_constants(block.block.header.height);
-        check_block_weight(&block.block, &constants)?;
+        let constants = self.rules.consensus_constants(block.header.height);
+        check_block_weight(block, &constants)?;
         trace!(target: LOG_TARGET, "SV - Block weight is ok for {} ", &block_id);
 
-        self.check_inputs(&block.block)?;
-        self.check_outputs(&block.block)?;
+        self.check_inputs(block)?;
+        self.check_outputs(block)?;
 
-        check_accounting_balance(&block.block, &self.rules, &self.factories)?;
+        check_accounting_balance(block, &self.rules, &self.factories)?;
         trace!(target: LOG_TARGET, "SV - accounting balance correct for {}", &block_id);
         debug!(
             target: LOG_TARGET,
             "{} has PASSED stateless VALIDATION check.", &block_id
         );
 
-        self.check_mmr_roots(backend, &block.block)?;
+        self.check_mmr_roots(backend, &block)?;
         trace!(
             target: LOG_TARGET,
             "Block validation: MMR roots are valid for {}",

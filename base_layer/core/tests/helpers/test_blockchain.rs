@@ -113,7 +113,7 @@ impl TestBlockchain {
 
     pub fn chain(&self) -> Vec<&str> {
         let mut result = vec![];
-        let mut tip = self.store.fetch_tip_header().unwrap().header;
+        let (mut tip, _) = self.store.fetch_tip_header().unwrap().into_parts();
 
         while tip.height > 0 {
             result.push(self.get_block_by_hash(&tip.hash()).unwrap().name.as_str());

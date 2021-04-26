@@ -357,14 +357,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                 .map_err(RpcStatus::log_internal_error(LOG_TARGET))
             {
                 Ok(header) => {
-                    if header.header.kernel_mmr_size < req.start {
+                    if header.header().kernel_mmr_size < req.start {
                         let _ = tx
                             .send(Err(RpcStatus::bad_request("Start mmr position after requested header")))
                             .await;
                         return;
                     }
 
-                    header.header.kernel_mmr_size
+                    header.header().kernel_mmr_size
                 },
                 Err(err) => {
                     let _ = tx.send(Err(err)).await;
@@ -468,7 +468,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     .fetch_header_containing_utxo_mmr(self.request.start)
                     .await
                     .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
-                let mut prev_header = prev_header.header;
+                let (mut prev_header, _) = prev_header.into_parts();
 
                 if prev_header.height > end_header.height {
                     return Err(RpcStatus::bad_request("start index is greater than end index"));

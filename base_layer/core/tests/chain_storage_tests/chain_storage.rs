@@ -26,6 +26,7 @@ use crate::helpers::{
     block_builders::{
         append_block,
         chain_block,
+        create_chain_header,
         create_genesis_block,
         find_header_with_achieved_difficulty,
         generate_new_block,
@@ -86,26 +87,28 @@ fn insert_and_fetch_header() {
     let _consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_test_blockchain_db();
     let genesis_block = store.fetch_tip_header().unwrap();
-    let mut header1 = BlockHeader::from_previous(&genesis_block.header).unwrap();
+    let mut header1 = BlockHeader::from_previous(&genesis_block.header());
 
     header1.kernel_mmr_size += 1;
     header1.output_mmr_size += 1;
 
-    let chain1 = store
-        .create_chain_header_if_valid(header1.clone(), &genesis_block)
-        .unwrap();
+    let chain1 = create_chain_header(
+        &*store.db_read_access().unwrap(),
+        header1.clone(),
+        &genesis_block.accumulated_data(),
+    );
 
-    store
-        .insert_valid_headers(vec![(header1.clone(), chain1.accumulated_data.clone())])
-        .unwrap();
-    let mut header2 = BlockHeader::from_previous(&header1).unwrap();
+    store.insert_valid_headers(vec![chain1.clone()]).unwrap();
+    let mut header2 = BlockHeader::from_previous(&header1);
     header2.kernel_mmr_size += 2;
     header2.output_mmr_size += 2;
-    let chain2 = store.create_chain_header_if_valid(header2.clone(), &chain1).unwrap();
+    let chain2 = create_chain_header(
+        &*store.db_read_access().unwrap(),
+        header2.clone(),
+        chain1.accumulated_data(),
+    );
 
-    store
-        .insert_valid_headers(vec![(header2.clone(), chain2.accumulated_data)])
-        .unwrap();
+    store.insert_valid_headers(vec![chain2]).unwrap();
     store.fetch_header(0).unwrap();
 
     assert_eq!(store.fetch_header(1).unwrap().unwrap(), header1);
@@ -143,7 +146,7 @@ fn store_and_retrieve_block() {
     assert_eq!(block0.confirmations(), 1);
     // Compare the blocks
     let block0 = Block::from(block0);
-    assert_eq!(blocks[0].block, block0);
+    assert_eq!(blocks[0].block(), &block0);
 }
 
 #[test]
@@ -171,7 +174,7 @@ fn add_multiple_blocks() {
     assert_eq!(metadata.best_block(), hash);
     // Adding blocks is idempotent
     assert_eq!(
-        store.add_block(block1.block.clone().into()).unwrap(),
+        store.add_block(block1.to_arc_block()).unwrap(),
         BlockAddResult::BlockExists
     );
     // Check the metadata
@@ -194,10 +197,10 @@ fn test_checkpoints() {
     // Get the checkpoint
     let block_a = db.fetch_block(0).unwrap();
     assert_eq!(block_a.confirmations(), 2);
-    assert_eq!(&blocks[0].block, block_a.block());
+    assert_eq!(blocks[0].block(), block_a.block());
     let block_b = db.fetch_block(1).unwrap();
     assert_eq!(block_b.confirmations(), 1);
-    let block1 = serde_json::to_string(&block1.block).unwrap();
+    let block1 = serde_json::to_string(block1.block()).unwrap();
     let block_b = serde_json::to_string(&Block::from(block_b)).unwrap();
     assert_eq!(block1, block_b);
 }
@@ -313,7 +316,7 @@ fn handle_tip_reorg() {
     // Create Forked Chain
 
     let mut orphan_store = create_store_with_consensus(&consensus_manager);
-    orphan_store.add_block(blocks[1].block.clone().into()).unwrap();
+    orphan_store.add_block(blocks[1].to_arc_block()).unwrap();
     let mut orphan_blocks = vec![blocks[0].clone(), blocks[1].clone()];
     let mut orphan_outputs = vec![outputs[0].clone(), outputs[1].clone()];
     // Block B2
@@ -329,14 +332,11 @@ fn handle_tip_reorg() {
     .unwrap();
 
     // Adding B2 to the main chain will produce a reorg to GB->A1->B2.
-    if let Ok(BlockAddResult::ChainReorg { .. }) = store.add_block(orphan_blocks[2].block.clone().into()) {
+    if let Ok(BlockAddResult::ChainReorg { .. }) = store.add_block(orphan_blocks[2].to_arc_block()) {
     } else {
         panic!();
     }
-    assert_eq!(
-        store.fetch_tip_header().unwrap().header,
-        orphan_blocks[2].block.header.clone()
-    );
+    assert_eq!(store.fetch_tip_header().unwrap().header(), orphan_blocks[2].header());
 
     // Check that B2 was removed from the block orphans and A2 has been orphaned.
     assert!(store.fetch_orphan(orphan_blocks[2].hash().clone()).is_err());
@@ -376,6 +376,7 @@ fn blockchain_reorgs_to_stronger_chain() {
 #[test]
 #[allow(clippy::identity_op)]
 fn handle_reorg() {
+    env_logger::init();
     // GB --> A1 --> A2 --> A3 -----> A4(Low PoW)     [Main Chain]
     //          \--> B2 --> B3(?) --> B4(Medium PoW)  [Forked Chain 1]
     //                        \-----> C4(Highest PoW) [Forked Chain 2]
@@ -436,7 +437,7 @@ fn handle_reorg() {
     // Create Forked Chain 1
     let mut orphan1_store = create_store_with_consensus(&consensus_manager);
     orphan1_store
-        .add_block(blocks[1].block.clone().into())
+        .add_block(blocks[1].to_arc_block())
         .unwrap()
         .assert_added(); // A1
     let mut orphan1_blocks = vec![blocks[0].clone(), blocks[1].clone()];
@@ -481,15 +482,15 @@ fn handle_reorg() {
     // Create Forked Chain 2
     let mut orphan2_store = create_store_with_consensus(&consensus_manager);
     orphan2_store
-        .add_block(blocks[1].block.clone().into())
+        .add_block(blocks[1].to_arc_block())
         .unwrap()
         .assert_added(); // A1
     orphan2_store
-        .add_block(orphan1_blocks[2].block.clone().into())
+        .add_block(orphan1_blocks[2].to_arc_block())
         .unwrap()
         .assert_added(); // B2
     orphan2_store
-        .add_block(orphan1_blocks[3].block.clone().into())
+        .add_block(orphan1_blocks[3].to_arc_block())
         .unwrap()
         .assert_added(); // B3
     let mut orphan2_blocks = vec![
@@ -519,22 +520,22 @@ fn handle_reorg() {
     // Now add the fork blocks C4, B2, B4 and B3 (out of order) to the first DB and observe a reorg. Blocks are added
     // out of order to test the forward and reverse chaining.
     store
-        .add_block(orphan2_blocks[4].block.clone().into())
+        .add_block(orphan2_blocks[4].to_arc_block())
         .unwrap()
         .assert_orphaned(); // C4
     store
-        .add_block(orphan1_blocks[2].block.clone().into())
+        .add_block(orphan1_blocks[2].to_arc_block())
         .unwrap()
         .assert_orphaned(); // B2
     store
-        .add_block(orphan1_blocks[4].block.clone().into())
+        .add_block(orphan1_blocks[4].to_arc_block())
         .unwrap()
         .assert_orphaned(); // B4
     store
-        .add_block(orphan1_blocks[3].block.clone().into())
+        .add_block(orphan1_blocks[3].to_arc_block())
         .unwrap()
         .assert_reorg(3, 3); // B3
-    assert_eq!(store.fetch_tip_header().unwrap().header, orphan2_blocks[4].block.header);
+    assert_eq!(store.fetch_tip_header().unwrap().header(), orphan2_blocks[4].header());
 
     // Check that B2,B3 and C4 were removed from the block orphans and A2,A3,A4 and B4 has been orphaned.
     assert!(store.fetch_orphan(orphan1_blocks[2].hash().clone()).is_err()); // B2
@@ -574,7 +575,7 @@ fn handle_reorg_with_no_removed_blocks() {
 
     // Create Forked Chain 1
     let mut orphan1_store = create_store_with_consensus(&consensus_manager);
-    orphan1_store.add_block(blocks[1].block.clone().into()).unwrap(); // A1
+    orphan1_store.add_block(blocks[1].to_arc_block()).unwrap(); // A1
     let mut orphan1_blocks = vec![blocks[0].clone(), blocks[1].clone()];
     let mut orphan1_outputs = vec![outputs[0].clone(), outputs[1].clone()];
     // Block B2
@@ -605,8 +606,8 @@ fn handle_reorg_with_no_removed_blocks() {
 
     // Now add the fork blocks B3 and B2 (out of order) to the first DB and ensure a reorg.
     // see https://github.com/tari-project/tari/issues/2101#issuecomment-679188619
-    store.add_block(orphan1_blocks[3].block.clone().into()).unwrap(); // B3
-    let result = store.add_block(orphan1_blocks[2].block.clone().into()).unwrap(); // B2
+    store.add_block(orphan1_blocks[3].to_arc_block()).unwrap(); // B3
+    let result = store.add_block(orphan1_blocks[2].to_arc_block()).unwrap(); // B2
     match result {
         BlockAddResult::Ok(_) => panic!("Adding multiple blocks without removing any failed to cause a reorg!"),
         BlockAddResult::ChainReorg { removed, added } => {
@@ -616,7 +617,7 @@ fn handle_reorg_with_no_removed_blocks() {
         _ => panic!(),
     }
 
-    assert_eq!(store.fetch_tip_header().unwrap().header, orphan1_blocks[3].block.header);
+    assert_eq!(store.fetch_tip_header().unwrap().header(), orphan1_blocks[3].header());
 }
 
 #[test]
@@ -686,7 +687,7 @@ fn handle_reorg_failure_recovery() {
 
         // Create Forked Chain 1
         let mut orphan1_store = create_store_with_consensus(&consensus_manager);
-        orphan1_store.add_block(blocks[1].block.clone().into()).unwrap(); // A1
+        orphan1_store.add_block(blocks[1].to_arc_block()).unwrap(); // A1
         let mut orphan1_blocks = vec![blocks[0].clone(), blocks[1].clone()];
         let mut orphan1_outputs = vec![outputs[0].clone(), outputs[1].clone()];
         // Block B2
@@ -716,7 +717,7 @@ fn handle_reorg_failure_recovery() {
             }
             orphan1_outputs.push(block_utxos);
 
-            let template = chain_block(&orphan1_blocks.last().unwrap().block, txns, &consensus_manager);
+            let template = chain_block(&orphan1_blocks.last().unwrap().block(), txns, &consensus_manager);
             let mut block = orphan1_store.prepare_block_merkle_roots(template).unwrap();
             block.header.nonce = OsRng.next_u64();
             block.header.height += 1;
@@ -725,7 +726,7 @@ fn handle_reorg_failure_recovery() {
         };
 
         // Add an orphaned B2
-        let result = store.add_block(orphan1_blocks[2].block.clone().into()).unwrap(); // B2
+        let result = store.add_block(orphan1_blocks[2].to_arc_block()).unwrap(); // B2
         unpack_enum!(BlockAddResult::OrphanBlock = result);
 
         // Add invalid block B3. Our database should recover
@@ -733,7 +734,7 @@ fn handle_reorg_failure_recovery() {
         unpack_enum!(BlockAddResult::OrphanBlock = res);
         let tip_header = store.fetch_tip_header().unwrap();
         assert_eq!(tip_header.height(), 4);
-        assert_eq!(tip_header.header, blocks[4].block.header);
+        assert_eq!(tip_header.header(), blocks[4].header());
 
         assert!(store.fetch_orphan(blocks[2].hash().clone()).is_err()); // A2
         assert!(store.fetch_orphan(blocks[3].hash().clone()).is_err()); // A3
@@ -805,9 +806,9 @@ fn store_and_retrieve_blocks_from_contents() {
         BlockAddResult::Ok(b2) =
             generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap()
     );
-    let kernel_sig = blocks[1].block.body.kernels()[0].clone().excess_sig;
-    let stxo_commit = blocks[1].block.body.inputs()[0].clone().commitment;
-    let utxo_commit = blocks[1].block.body.outputs()[0].clone().commitment;
+    let kernel_sig = blocks[1].block().body.kernels()[0].clone().excess_sig;
+    let stxo_commit = blocks[1].block().body.inputs()[0].clone().commitment;
+    let utxo_commit = blocks[1].block().body.outputs()[0].clone().commitment;
     assert_eq!(
         db.fetch_block_with_kernel(kernel_sig)
             .unwrap()
@@ -859,7 +860,7 @@ fn restore_metadata_and_pruning_horizon_update() {
             let db = BlockchainDatabase::new(db, &rules, validators.clone(), config, false).unwrap();
 
             let block1 = append_block(&db, &block0, vec![], &rules, 1.into()).unwrap();
-            db.add_block(block1.block.clone().into()).unwrap();
+            db.add_block(block1.to_arc_block()).unwrap();
             block_hash = block1.hash().clone();
             let metadata = db.get_chain_metadata().unwrap();
             assert_eq!(metadata.height_of_longest_chain(), 1);
@@ -1220,11 +1221,11 @@ fn orphan_cleanup_on_reorg() {
 
     // Adding B1 and B2 to the main chain will produce a reorg from GB->A1->A2->A3->A4 to GB->B1->B2->B3.
     assert_eq!(
-        store.add_block(orphan_blocks[1].block.clone().into()).unwrap(),
+        store.add_block(orphan_blocks[1].to_arc_block()).unwrap(),
         BlockAddResult::OrphanBlock
     );
 
-    if let Ok(BlockAddResult::ChainReorg { .. }) = store.add_block(orphan_blocks[2].block.clone().into()) {
+    if let Ok(BlockAddResult::ChainReorg { .. }) = store.add_block(orphan_blocks[2].to_arc_block()) {
     } else {
         panic!();
     }
@@ -1233,9 +1234,18 @@ fn orphan_cleanup_on_reorg() {
     // cleanup.
     store.cleanup_orphans().unwrap();
     assert_eq!(store.db_read_access().unwrap().orphan_count().unwrap(), 3);
-    assert_eq!(store.fetch_orphan(blocks[2].hash().clone()).unwrap(), blocks[2].block);
-    assert_eq!(store.fetch_orphan(blocks[3].hash().clone()).unwrap(), blocks[3].block);
-    assert_eq!(store.fetch_orphan(blocks[4].hash().clone()).unwrap(), blocks[4].block);
+    assert_eq!(
+        store.fetch_orphan(blocks[2].hash().clone()).unwrap(),
+        *blocks[2].block()
+    );
+    assert_eq!(
+        store.fetch_orphan(blocks[3].hash().clone()).unwrap(),
+        *blocks[3].block()
+    );
+    assert_eq!(
+        store.fetch_orphan(blocks[4].hash().clone()).unwrap(),
+        *blocks[4].block()
+    );
 }
 
 #[test]

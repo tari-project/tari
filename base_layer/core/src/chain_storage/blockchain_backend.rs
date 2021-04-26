@@ -4,6 +4,7 @@ use crate::{
         pruned_output::PrunedOutput,
         BlockAccumulatedData,
         BlockHeaderAccumulatedData,
+        ChainBlock,
         ChainHeader,
         ChainStorageError,
         DbKey,
@@ -44,10 +45,7 @@ pub trait BlockchainBackend: Send + Sync {
 
     /// Fetches data that is calculated and accumulated for blocks that have been
     /// added to a chain of headers
-    fn fetch_header_and_accumulated_data(
-        &self,
-        height: u64,
-    ) -> Result<(BlockHeader, BlockHeaderAccumulatedData), ChainStorageError>;
+    fn fetch_chain_header_by_height(&self, height: u64) -> Result<ChainHeader, ChainStorageError>;
 
     /// Fetches data that is calculated and accumulated for blocks that have been
     /// added to a chain of headers
@@ -131,15 +129,13 @@ pub trait BlockchainBackend: Send + Sync {
     /// Returns the kernel count
     fn kernel_count(&self) -> Result<usize, ChainStorageError>;
 
-    /// Fetches all of the orphans (hash) that are currently at the tip of an alternate chain
+    /// Fetches an current tip orphan by hash or returns None if the prohan is not found or is not a tip of any
+    /// alternate chain
     fn fetch_orphan_chain_tip_by_hash(&self, hash: &HashOutput) -> Result<Option<ChainHeader>, ChainStorageError>;
     /// Fetch all orphans that have `hash` as a previous hash
     fn fetch_orphan_children_of(&self, hash: HashOutput) -> Result<Vec<Block>, ChainStorageError>;
 
-    fn fetch_orphan_header_accumulated_data(
-        &self,
-        hash: HashOutput,
-    ) -> Result<BlockHeaderAccumulatedData, ChainStorageError>;
+    fn fetch_orphan_chain_block(&self, hash: HashOutput) -> Result<Option<ChainBlock>, ChainStorageError>;
 
     /// Delete orphans according to age. Used to keep the orphan pool at a certain capacity
     fn delete_oldest_orphans(

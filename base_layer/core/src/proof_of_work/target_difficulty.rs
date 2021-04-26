@@ -20,7 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::proof_of_work::{difficulty::DifficultyAdjustment, lwma_diff::LinearWeightedMovingAverage, Difficulty};
+use crate::proof_of_work::{
+    difficulty::DifficultyAdjustment,
+    lwma_diff::LinearWeightedMovingAverage,
+    Difficulty,
+    PowAlgorithm,
+};
 use std::cmp;
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
@@ -75,6 +80,40 @@ impl TargetDifficultyWindow {
     /// Calculates the target difficulty for the current set of target difficulties.
     pub fn calculate(&self, min: Difficulty, max: Difficulty) -> Difficulty {
         cmp::max(min, cmp::min(max, self.lwma.get_difficulty().unwrap_or(min)))
+    }
+}
+
+/// Immutable struct that is guaranteed to have achieved the target difficulty
+pub struct AchievedTargetDifficulty {
+    pow_algo: PowAlgorithm,
+    achieved: Difficulty,
+    target: Difficulty,
+}
+
+impl AchievedTargetDifficulty {
+    /// Checks if the achieved difficulty is higher than the target difficulty. If not, None is returned because a valid
+    /// AchievedTargetDifficulty cannot be constructed.
+    pub(crate) fn try_construct(pow_algo: PowAlgorithm, target: Difficulty, achieved: Difficulty) -> Option<Self> {
+        if achieved < target {
+            return None;
+        }
+        Some(Self {
+            pow_algo,
+            achieved,
+            target,
+        })
+    }
+
+    pub fn achieved(&self) -> Difficulty {
+        self.achieved
+    }
+
+    pub fn target(&self) -> Difficulty {
+        self.target
+    }
+
+    pub fn pow_algo(&self) -> PowAlgorithm {
+        self.pow_algo
     }
 }
 

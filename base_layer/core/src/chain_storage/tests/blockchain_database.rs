@@ -37,16 +37,15 @@ fn setup() -> BlockchainDatabase<TempDatabase> {
 }
 
 fn add_many_chained_blocks(size: usize, db: &BlockchainDatabase<TempDatabase>) -> Vec<Arc<Block>> {
-    let mut prev_block = db.fetch_block(0).unwrap().block().clone();
+    let mut prev_block = Arc::new(db.fetch_block(0).unwrap().try_into_block().unwrap());
     let mut blocks = Vec::with_capacity(size);
     for i in 1..=size as u64 {
         let mut block = create_block(1, i, vec![]);
         block.header.prev_hash = prev_block.hash().clone();
-
         block.header.output_mmr_size = prev_block.header.output_mmr_size + block.body.outputs().len() as u64;
         block.header.kernel_mmr_size = prev_block.header.kernel_mmr_size + block.body.kernels().len() as u64;
-        prev_block = block.clone();
         let block = Arc::new(block);
+        prev_block = block.clone();
         db.add_block(block.clone()).unwrap().assert_added();
         blocks.push(block);
     }
@@ -70,7 +69,7 @@ mod fetch_blocks {
         let blocks = db.fetch_blocks(..).unwrap();
         assert_eq!(blocks.len(), 5);
         for (i, item) in blocks.iter().enumerate().take(4 + 1) {
-            assert_eq!(item.block().header.height, i as u64);
+            assert_eq!(item.header().height, i as u64);
         }
     }
 
@@ -97,8 +96,8 @@ mod fetch_blocks {
         add_many_chained_blocks(5, &db);
         let blocks = db.fetch_blocks(3..5).unwrap();
         assert_eq!(blocks.len(), 2);
-        assert_eq!(blocks[0].block().header.height, 3);
-        assert_eq!(blocks[1].block().header.height, 4);
+        assert_eq!(blocks[0].header().height, 3);
+        assert_eq!(blocks[1].header().height, 4);
     }
 
     #[test]
@@ -107,9 +106,9 @@ mod fetch_blocks {
         add_many_chained_blocks(5, &db);
         let blocks = db.fetch_blocks(3..=5).unwrap();
         assert_eq!(blocks.len(), 3);
-        assert_eq!(blocks[0].block().header.height, 3);
-        assert_eq!(blocks[1].block().header.height, 4);
-        assert_eq!(blocks[2].block().header.height, 5);
+        assert_eq!(blocks[0].header().height, 3);
+        assert_eq!(blocks[1].header().height, 4);
+        assert_eq!(blocks[2].header().height, 5);
     }
 
     #[test]
@@ -118,9 +117,9 @@ mod fetch_blocks {
         add_many_chained_blocks(5, &db);
         let blocks = db.fetch_blocks(3..).unwrap();
         assert_eq!(blocks.len(), 3);
-        assert_eq!(blocks[0].block().header.height, 3);
-        assert_eq!(blocks[1].block().header.height, 4);
-        assert_eq!(blocks[2].block().header.height, 5);
+        assert_eq!(blocks[0].header().height, 3);
+        assert_eq!(blocks[1].header().height, 4);
+        assert_eq!(blocks[2].header().height, 5);
     }
 
     #[test]
@@ -129,10 +128,10 @@ mod fetch_blocks {
         add_many_chained_blocks(5, &db);
         let blocks = db.fetch_blocks(..=3).unwrap();
         assert_eq!(blocks.len(), 4);
-        assert_eq!(blocks[0].block().header.height, 0);
-        assert_eq!(blocks[1].block().header.height, 1);
-        assert_eq!(blocks[2].block().header.height, 2);
-        assert_eq!(blocks[3].block().header.height, 3);
+        assert_eq!(blocks[0].header().height, 0);
+        assert_eq!(blocks[1].header().height, 1);
+        assert_eq!(blocks[2].header().height, 2);
+        assert_eq!(blocks[3].header().height, 3);
     }
 }
 
@@ -244,7 +243,7 @@ mod find_headers_after_hash {
         let (index, headers) = db.find_headers_after_hash(hashes, 10).unwrap().unwrap();
         assert_eq!(index, 0);
         assert_eq!(headers.len(), 2);
-        assert_eq!(headers[0], db.fetch_block(4).unwrap().block().header);
+        assert_eq!(&headers[0], db.fetch_block(4).unwrap().header());
     }
 
     #[test]
@@ -258,7 +257,7 @@ mod find_headers_after_hash {
         let (index, headers) = db.find_headers_after_hash(hashes, 1).unwrap().unwrap();
         assert_eq!(index, 2);
         assert_eq!(headers.len(), 1);
-        assert_eq!(headers[0], db.fetch_block(5).unwrap().block().header);
+        assert_eq!(&headers[0], db.fetch_block(5).unwrap().header());
     }
 
     #[test]

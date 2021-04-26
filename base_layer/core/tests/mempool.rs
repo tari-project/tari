@@ -111,7 +111,7 @@ fn test_insert_and_process_published_block() {
     mempool.insert(tx2.clone()).unwrap();
     mempool.insert(tx3.clone()).unwrap();
     mempool.insert(tx5.clone()).unwrap();
-    mempool.process_published_block(blocks[1].block.clone().into()).unwrap();
+    mempool.process_published_block(blocks[1].to_arc_block()).unwrap();
 
     assert_eq!(
         mempool
@@ -157,7 +157,7 @@ fn test_insert_and_process_published_block() {
 
     // Spend tx2, so it goes in Reorg pool
     generate_block(&store, &mut blocks, vec![tx2.deref().clone()], &consensus_manager).unwrap();
-    mempool.process_published_block(blocks[2].block.clone().into()).unwrap();
+    mempool.process_published_block(blocks[2].to_arc_block()).unwrap();
 
     assert_eq!(
         mempool
@@ -213,7 +213,7 @@ fn test_time_locked() {
         to: vec![2 * T, 2 * T, 2 * T, 2 * T]
     )];
     generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
-    mempool.process_published_block(blocks[1].block.clone().into()).unwrap();
+    mempool.process_published_block(blocks[1].to_arc_block()).unwrap();
     // Block height should be 1
     let mut tx2 = txn_schema!(from: vec![outputs[1][0].clone()], to: vec![1*T], fee: 20*uT);
     tx2.lock_height = 3;
@@ -238,7 +238,7 @@ fn test_time_locked() {
 
     // Spend tx3, so that the height of the chain will increase
     generate_block(&store, &mut blocks, vec![tx3.deref().clone()], &consensus_manager).unwrap();
-    mempool.process_published_block(blocks[2].block.clone().into()).unwrap();
+    mempool.process_published_block(blocks[2].to_arc_block()).unwrap();
 
     // Block height increased, so tx2 should no go in.
     assert_eq!(mempool.insert(tx2).unwrap(), TxStorageResponse::UnconfirmedPool);
@@ -257,7 +257,7 @@ fn test_retrieve() {
     )];
     // "Mine" Block 1
     generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
-    mempool.process_published_block(blocks[1].block.clone().into()).unwrap();
+    mempool.process_published_block(blocks[1].to_arc_block()).unwrap();
     // 1-Block, 8 UTXOs, empty mempool
     let txs = vec![
         txn_schema!(from: vec![outputs[1][0].clone()], to: vec![], fee: 30*uT),
@@ -299,7 +299,7 @@ fn test_retrieve() {
     // "Mine" block 2
     generate_block(&store, &mut blocks, block2_txns, &consensus_manager).unwrap();
     outputs.push(utxos);
-    mempool.process_published_block(blocks[2].block.clone().into()).unwrap();
+    mempool.process_published_block(blocks[2].to_arc_block()).unwrap();
     // 2-blocks, 2 unconfirmed txs in mempool
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.unconfirmed_txs, 2);
@@ -341,7 +341,7 @@ fn test_reorg() {
     // "Mine" Block 1
     let txs = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![1 * T, 1 * T])];
     generate_new_block(&mut db, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
-    mempool.process_published_block(blocks[1].block.clone().into()).unwrap();
+    mempool.process_published_block(blocks[1].to_arc_block()).unwrap();
 
     // "Mine" block 2
     let schemas = vec![
@@ -358,7 +358,7 @@ fn test_reorg() {
     assert_eq!(stats.unconfirmed_txs, 3);
     let txns2 = txns2.iter().map(|t| t.deref().clone()).collect();
     generate_block(&db, &mut blocks, txns2, &consensus_manager).unwrap();
-    mempool.process_published_block(blocks[2].block.clone().into()).unwrap();
+    mempool.process_published_block(blocks[2].to_arc_block()).unwrap();
 
     // "Mine" block 3
     let schemas = vec![
@@ -380,7 +380,7 @@ fn test_reorg() {
         &consensus_manager,
     )
     .unwrap();
-    mempool.process_published_block(blocks[3].block.clone().into()).unwrap();
+    mempool.process_published_block(blocks[3].to_arc_block()).unwrap();
 
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.unconfirmed_txs, 0);
@@ -389,11 +389,11 @@ fn test_reorg() {
 
     db.rewind_to_height(2).unwrap();
 
-    let template = chain_block(&blocks[2].block, vec![], &consensus_manager);
+    let template = chain_block(blocks[2].block(), vec![], &consensus_manager);
     let reorg_block3 = db.prepare_block_merkle_roots(template).unwrap();
 
     mempool
-        .process_reorg(vec![blocks[3].block.clone().into()], vec![reorg_block3.into()])
+        .process_reorg(vec![blocks[3].to_arc_block()], vec![reorg_block3.into()])
         .unwrap();
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.unconfirmed_txs, 2);
@@ -401,7 +401,7 @@ fn test_reorg() {
     assert_eq!(stats.reorg_txs, 3);
 
     // "Mine" block 4
-    let template = chain_block(&blocks[2].block, vec![], &consensus_manager);
+    let template = chain_block(blocks[2].block(), vec![], &consensus_manager);
     let reorg_block4 = db.prepare_block_merkle_roots(template).unwrap();
 
     // test that process_reorg can handle the case when removed_blocks is empty
@@ -825,7 +825,7 @@ fn block_event_and_reorg_event_handling() {
     // These blocks are manually constructed to allow the block event system to be used.
     let mut block1 = bob
         .blockchain_db
-        .prepare_block_merkle_roots(chain_block(&block0.block, vec![tx1], &consensus_manager))
+        .prepare_block_merkle_roots(chain_block(block0.block(), vec![tx1], &consensus_manager))
         .unwrap();
     find_header_with_achieved_difficulty(&mut block1.header, Difficulty::from(1));
 

@@ -69,10 +69,10 @@ impl BlockSync {
         let local_nci = shared.local_node_interface.clone();
         let bootstrapped = shared.is_bootstrapped();
         synchronizer.on_progress(move |block, remote_tip_height, sync_peers| {
-            let local_height = block.block.header.height;
+            let local_height = block.height();
             local_nci.publish_block_event(BlockEvent::ValidBlockAdded(
-                block.block.clone().into(),
-                BlockAddResult::Ok(block.clone()),
+                block.block().clone().into(),
+                BlockAddResult::Ok(block),
                 false.into(),
             ));
 

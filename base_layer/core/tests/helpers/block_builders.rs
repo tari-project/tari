@@ -31,6 +31,7 @@ use tari_core::{
         BlockchainBackend,
         BlockchainDatabase,
         ChainBlock,
+        ChainHeader,
         ChainStorageError,
     },
     consensus::{ConsensusConstants, ConsensusManager, ConsensusManagerBuilder, Network},
@@ -49,6 +50,7 @@ use tari_core::{
         },
         types::{Commitment, CryptoFactories, HashDigest, HashOutput, PublicKey},
     },
+    validation::{mocks::MockValidator, HeaderValidation},
 };
 use tari_crypto::{
     keys::PublicKey as PublicKeyTrait,
@@ -172,19 +174,18 @@ pub fn create_genesis_block_with_coinbase_value(
     let (template, output) = genesis_template(&factories, coinbase_value, consensus_constants);
     let mut block = update_genesis_block_mmr_roots(template).unwrap();
     find_header_with_achieved_difficulty(&mut block.header, Difficulty::from(1));
+    let hash = block.hash();
     (
-        ChainBlock {
-            accumulated_data: BlockHeaderAccumulatedData {
-                hash: block.hash(),
-                total_kernel_offset: Default::default(),
-                achieved_difficulty: 1.into(),
-                total_accumulated_difficulty: 1,
-                accumulated_monero_difficulty: 1.into(),
-                accumulated_blake_difficulty: 1.into(),
-                target_difficulty: 1.into(),
-            },
-            block,
-        },
+        ChainBlock::try_construct(block.into(), BlockHeaderAccumulatedData {
+            hash,
+            total_kernel_offset: Default::default(),
+            achieved_difficulty: 1.into(),
+            total_accumulated_difficulty: 1,
+            accumulated_monero_difficulty: 1.into(),
+            accumulated_blake_difficulty: 1.into(),
+            target_difficulty: 1.into(),
+        })
+        .unwrap(),
         output,
     )
 }
@@ -207,19 +208,18 @@ pub fn create_genesis_block_with_utxos(
     });
     let mut block = update_genesis_block_mmr_roots(template).unwrap();
     find_header_with_achieved_difficulty(&mut block.header, Difficulty::from(1));
+    let hash = block.hash();
     (
-        ChainBlock {
-            accumulated_data: BlockHeaderAccumulatedData {
-                hash: block.hash(),
-                total_kernel_offset: Default::default(),
-                achieved_difficulty: 1.into(),
-                total_accumulated_difficulty: 1,
-                accumulated_monero_difficulty: 1.into(),
-                accumulated_blake_difficulty: 1.into(),
-                target_difficulty: 1.into(),
-            },
-            block,
-        },
+        ChainBlock::try_construct(block.into(), BlockHeaderAccumulatedData {
+            hash,
+            total_kernel_offset: Default::default(),
+            achieved_difficulty: 1.into(),
+            total_accumulated_difficulty: 1,
+            accumulated_monero_difficulty: 1.into(),
+            accumulated_blake_difficulty: 1.into(),
+            target_difficulty: 1.into(),
+        })
+        .unwrap(),
         outputs,
     )
 }
@@ -231,7 +231,7 @@ pub fn chain_block(
     consensus: &ConsensusManager,
 ) -> NewBlockTemplate
 {
-    let mut header = BlockHeader::from_previous(&prev_block.header).unwrap();
+    let mut header = BlockHeader::from_previous(&prev_block.header);
     header.version = consensus.consensus_constants(header.height).blockchain_version();
     let height = header.height;
     NewBlockTemplate::from_block(
@@ -250,7 +250,7 @@ pub fn chain_block_with_coinbase(
     consensus: &ConsensusManager,
 ) -> NewBlockTemplate
 {
-    let mut header = BlockHeader::from_previous(&prev_block.block.header).unwrap();
+    let mut header = BlockHeader::from_previous(&prev_block.header());
     header.version = consensus.consensus_constants(header.height).blockchain_version();
     let height = header.height;
     NewBlockTemplate::from_block(
@@ -272,7 +272,7 @@ pub fn chain_block_with_new_coinbase(
     factories: &CryptoFactories,
 ) -> (NewBlockTemplate, UnblindedOutput)
 {
-    let height = prev_block.block.header.height + 1;
+    let height = prev_block.height() + 1;
     let mut coinbase_value = consensus_manager.emission_schedule().block_reward(height);
     coinbase_value += transactions
         .iter()
@@ -282,7 +282,7 @@ pub fn chain_block_with_new_coinbase(
         coinbase_value,
         height + consensus_manager.consensus_constants(0).coinbase_lock_height(),
     );
-    let mut header = BlockHeader::from_previous(&prev_block.block.header).unwrap();
+    let mut header = BlockHeader::from_previous(&prev_block.header());
     header.version = consensus_manager
         .consensus_constants(header.height)
         .blockchain_version();
@@ -331,7 +331,7 @@ pub fn append_block_with_coinbase<B: BlockchainBackend>(
     achieved_difficulty: Difficulty,
 ) -> Result<(ChainBlock, UnblindedOutput), ChainStorageError>
 {
-    let height = prev_block.block.header.height + 1;
+    let height = prev_block.height() + 1;
     let mut coinbase_value = consensus_manager.emission_schedule().block_reward(height);
     coinbase_value += txns.iter().fold(MicroTari(0), |acc, x| acc + x.body.get_total_fee());
     let (coinbase_utxo, coinbase_kernel, coinbase_output) = create_coinbase(
@@ -532,4 +532,22 @@ pub fn construct_chained_blocks<B: BlockchainBackend>(
     })
     .take(n)
     .collect()
+}
+
+#[allow(dead_code)]
+pub fn create_chain_header<B: BlockchainBackend>(
+    db: &B,
+    header: BlockHeader,
+    prev_accum: &BlockHeaderAccumulatedData,
+) -> ChainHeader
+{
+    let validator = MockValidator::new(true);
+    let achieved_target_diff = validator.validate(db, &header).unwrap();
+    let accumulated_data = BlockHeaderAccumulatedData::builder(prev_accum)
+        .with_hash(header.hash())
+        .with_achieved_target_difficulty(achieved_target_diff)
+        .with_total_kernel_offset(header.total_kernel_offset.clone())
+        .build()
+        .unwrap();
+    ChainHeader::try_construct(header, accumulated_data).unwrap()
 }

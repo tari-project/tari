@@ -243,7 +243,6 @@ impl Hashable for Block {
     /// The block hash is just the header hash, since the inputs, outputs and range proofs are captured by their
     /// respective MMR roots in the header itself.
     fn hash(&self) -> Vec<u8> {
-        // Note. If this changes, there will be a bug in chain_database::add_block_modifying_header
         self.header.hash()
     }
 }

@@ -10,8 +10,8 @@ pub struct AccumulatedDifficultySquaredComparer {}
 
 impl ChainStrengthComparer for AccumulatedDifficultySquaredComparer {
     fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
-        let a_val = a.accumulated_data.total_accumulated_difficulty;
-        let b_val = b.accumulated_data.total_accumulated_difficulty;
+        let a_val = a.accumulated_data().total_accumulated_difficulty;
+        let b_val = b.accumulated_data().total_accumulated_difficulty;
         a_val.cmp(&b_val)
     }
 }
@@ -47,9 +47,9 @@ pub struct MoneroDifficultyComparer {}
 
 impl ChainStrengthComparer for MoneroDifficultyComparer {
     fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
-        a.accumulated_data
+        a.accumulated_data()
             .accumulated_monero_difficulty
-            .cmp(&b.accumulated_data.accumulated_monero_difficulty)
+            .cmp(&b.accumulated_data().accumulated_monero_difficulty)
     }
 }
 
@@ -58,9 +58,9 @@ pub struct Sha3DifficultyComparer {}
 
 impl ChainStrengthComparer for Sha3DifficultyComparer {
     fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
-        a.accumulated_data
+        a.accumulated_data()
             .accumulated_blake_difficulty
-            .cmp(&b.accumulated_data.accumulated_blake_difficulty)
+            .cmp(&b.accumulated_data().accumulated_blake_difficulty)
     }
 }
 
@@ -69,7 +69,7 @@ pub struct HeightComparer {}
 
 impl ChainStrengthComparer for HeightComparer {
     fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
-        a.header.height.cmp(&b.header.height)
+        a.height().cmp(&b.height())
     }
 }
 

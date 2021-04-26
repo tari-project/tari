@@ -32,9 +32,13 @@ use crate::{
 };
 
 use crate::{
+    chain_storage::{BlockHeaderAccumulatedData, ChainHeader},
     consensus::{ConsensusManagerBuilder, Network},
+    crypto::tari_utilities::Hashable,
     proof_of_work::{sha3_difficulty, Difficulty},
+    test_helpers::blockchain::TempDatabase,
     transactions::{types::CryptoFactories, CoinbaseBuilder},
+    validation::{mocks::MockValidator, HeaderValidation},
 };
 use rand::{distributions::Alphanumeric, Rng};
 use std::{iter, path::Path, sync::Arc};
@@ -70,6 +74,9 @@ pub fn create_block(block_version: u16, block_height: u64, transactions: Vec<Tra
 }
 
 pub fn mine_to_difficulty(mut block: Block, difficulty: Difficulty) -> Result<Block, String> {
+    // When starting from the same nonce, in tests it becomes common to mine the same block more than once without the
+    // hash changing. This introduces the required entropy
+    block.header.nonce = rand::thread_rng().gen();
     for _i in 0..10000 {
         if sha3_difficulty(&block.header) == difficulty {
             return Ok(block);
@@ -97,4 +104,21 @@ pub fn create_peer_manager<P: AsRef<Path>>(data_path: P) -> Arc<PeerManager> {
         .unwrap();
     let peer_database = datastore.get_handle(&peer_database_name).unwrap();
     Arc::new(PeerManager::new(LMDBWrapper::new(Arc::new(peer_database)), None).unwrap())
+}
+
+pub fn create_chain_header(
+    db: &TempDatabase,
+    header: BlockHeader,
+    prev_accum: &BlockHeaderAccumulatedData,
+) -> ChainHeader
+{
+    let validator = MockValidator::new(true);
+    let achieved_target_diff = validator.validate(db, &header).unwrap();
+    let accumulated_data = BlockHeaderAccumulatedData::builder(prev_accum)
+        .with_hash(header.hash())
+        .with_achieved_target_difficulty(achieved_target_diff)
+        .with_total_kernel_offset(header.total_kernel_offset.clone())
+        .build()
+        .unwrap();
+    ChainHeader::try_construct(header, accumulated_data).unwrap()
 }
