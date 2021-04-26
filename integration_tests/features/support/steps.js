@@ -825,9 +825,9 @@ When(
 );
 
 When(
-  /Mining node (.*) mines (\d+) blocks on (.*)/,
+  /mining node (.*) mines (\d+) blocks/,
   { timeout: 600 * 1000 },
-  async function (miner, numBlocks, node) {
+  async function (miner, numBlocks) {
     let miningNode = this.getMiningNode(miner);
     await miningNode.init(numBlocks, 1, 100000);
     await miningNode.startNew();
@@ -835,7 +835,7 @@ When(
 );
 
 When(
-  /Mining node (.*) mines (\d+) blocks with min difficulty (\d+) and max difficulty (\d+)/,
+  /mining node (.*) mines (\d+) blocks with min difficulty (\d+) and max difficulty (\d+)/,
   { timeout: 600 * 1000 },
   async function (miner, numBlocks, min, max) {
     let miningNode = this.getMiningNode(miner);

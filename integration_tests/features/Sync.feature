@@ -116,8 +116,8 @@ Feature: Block Sync
     And I stop SYNCER
     When I mine 1 blocks on SEED
     Then node SEED is at height 1
-    When Mining node MINER mines 99 blocks with min difficulty 2 and max difficulty 100000
+    When mining node MINER mines 99 blocks with min difficulty 2 and max difficulty 100000
     Then node SEED is at height 100
     When I start SYNCER
-    And Mining node MINER2 mines 5 blocks with min difficulty 1 and max difficulty 100000
+    And mining node MINER2 mines 5 blocks with min difficulty 1 and max difficulty 100000
     Then node SYNCER is at height 100
