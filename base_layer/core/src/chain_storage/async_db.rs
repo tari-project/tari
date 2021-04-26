@@ -24,8 +24,8 @@ use crate::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{
         accumulated_data::BlockHeaderAccumulatedData,
-        blockchain_database::BlockAddResult,
         BlockAccumulatedData,
+        BlockAddResult,
         BlockchainBackend,
         BlockchainDatabase,
         ChainBlock,

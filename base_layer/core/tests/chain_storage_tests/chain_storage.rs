@@ -329,7 +329,7 @@ fn handle_tip_reorg() {
     .unwrap();
 
     // Adding B2 to the main chain will produce a reorg to GB->A1->B2.
-    if let Ok(BlockAddResult::ChainReorg(_, _)) = store.add_block(orphan_blocks[2].block.clone().into()) {
+    if let Ok(BlockAddResult::ChainReorg { .. }) = store.add_block(orphan_blocks[2].block.clone().into()) {
     } else {
         panic!();
     }
@@ -609,7 +609,7 @@ fn handle_reorg_with_no_removed_blocks() {
     let result = store.add_block(orphan1_blocks[2].block.clone().into()).unwrap(); // B2
     match result {
         BlockAddResult::Ok(_) => panic!("Adding multiple blocks without removing any failed to cause a reorg!"),
-        BlockAddResult::ChainReorg(removed, added) => {
+        BlockAddResult::ChainReorg { removed, added } => {
             assert_eq!(added.len(), 2);
             assert_eq!(removed.len(), 0);
         },
@@ -1224,7 +1224,7 @@ fn orphan_cleanup_on_reorg() {
         BlockAddResult::OrphanBlock
     );
 
-    if let Ok(BlockAddResult::ChainReorg(_, _)) = store.add_block(orphan_blocks[2].block.clone().into()) {
+    if let Ok(BlockAddResult::ChainReorg { .. }) = store.add_block(orphan_blocks[2].block.clone().into()) {
     } else {
         panic!();
     }

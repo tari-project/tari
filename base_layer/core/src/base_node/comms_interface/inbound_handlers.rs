@@ -520,7 +520,7 @@ where T: BlockchainBackend + 'static
                     BlockAddResult::Ok(_) => true,
                     BlockAddResult::BlockExists => false,
                     BlockAddResult::OrphanBlock => false,
-                    BlockAddResult::ChainReorg(_, _) => true,
+                    BlockAddResult::ChainReorg { .. } => true,
                 };
 
                 self.blockchain_db.cleanup_orphans().await?;

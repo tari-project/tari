@@ -218,7 +218,13 @@ impl LMDBDatabase {
                     lmdb_delete(&write_txn, &self.orphan_chain_tips_db, &hash)?;
                 },
                 InsertOrphanChainTip(hash) => {
-                    lmdb_replace(&write_txn, &self.orphan_chain_tips_db, &hash, &hash)?;
+                    lmdb_insert(
+                        &write_txn,
+                        &self.orphan_chain_tips_db,
+                        &hash,
+                        &hash,
+                        "orphan_chain_tips",
+                    )?;
                 },
                 DeleteBlock(hash) => {
                     self.delete_block_body(&write_txn, hash)?;
@@ -228,11 +234,12 @@ impl LMDBDatabase {
                 },
                 InsertChainOrphanBlock(chain_block) => {
                     self.insert_orphan_block(&write_txn, &chain_block.block)?;
-                    lmdb_replace(
+                    lmdb_insert(
                         &write_txn,
                         &self.orphan_header_accumulated_data_db,
                         chain_block.accumulated_data.hash.as_slice(),
                         &chain_block.accumulated_data,
+                        "orphan_header_accumulated_data",
                     )?;
                 },
                 UpdatePrunedHashSet {
@@ -688,6 +695,16 @@ impl LMDBDatabase {
                     )?;
                 }
                 lmdb_delete(&txn, &self.orphan_chain_tips_db, hash.as_slice())?;
+            }
+
+            if lmdb_get::<_, BlockHeaderAccumulatedData>(
+                &txn,
+                &self.orphan_header_accumulated_data_db,
+                hash.as_slice(),
+            )?
+            .is_some()
+            {
+                lmdb_delete(&txn, &self.orphan_header_accumulated_data_db, hash.as_slice())?;
             }
             lmdb_delete(&txn, &self.orphans_db, hash.as_slice())?;
         }
