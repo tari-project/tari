@@ -3,6 +3,7 @@ use log::*;
 use tari_app_grpc::{
     conversions::naive_datetime_to_timestamp,
     tari_rpc::{
+        payment_recipient::PaymentType,
         wallet_server,
         CoinSplitRequest,
         CoinSplitResponse,
@@ -123,29 +124,49 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map(|(idx, dest)| -> Result<_, String> {
                 let pk = CommsPublicKey::from_hex(&dest.address)
                     .map_err(|_| format!("Destination address at index {} is malformed", idx))?;
-                Ok((dest.address, pk, dest.amount, dest.fee_per_gram, dest.message))
+                Ok((
+                    dest.address,
+                    pk,
+                    dest.amount,
+                    dest.fee_per_gram,
+                    dest.message,
+                    dest.payment_type,
+                ))
             })
             .collect::<Result<Vec<_>, _>>()
             .map_err(Status::invalid_argument)?;
 
-        let transfers = recipients
-            .into_iter()
-            .map(|(address, pk, amount, fee_per_gram, message)| {
-                let mut transaction_service = self.get_transaction_service();
-                async move {
+        let mut standard_transfers = Vec::new();
+        let mut one_sided_transfers = Vec::new();
+        for (address, pk, amount, fee_per_gram, message, payment_type) in recipients.into_iter() {
+            let mut transaction_service = self.get_transaction_service();
+            if payment_type == PaymentType::StandardMimblewimble as i32 {
+                standard_transfers.push(async move {
                     (
                         address,
                         transaction_service
                             .send_transaction(pk, amount.into(), fee_per_gram.into(), message)
                             .await,
                     )
-                }
-            });
+                });
+            } else if payment_type == PaymentType::OneSided as i32 {
+                one_sided_transfers.push(async move {
+                    (
+                        address,
+                        transaction_service
+                            .send_one_sided_transaction(pk, amount.into(), fee_per_gram.into(), message)
+                            .await,
+                    )
+                });
+            }
+        }
 
-        let results = future::join_all(transfers).await;
+        let standard_results = future::join_all(standard_transfers).await;
+        let one_sided_results = future::join_all(one_sided_transfers).await;
 
-        let results = results
+        let results = standard_results
             .into_iter()
+            .chain(one_sided_results.into_iter())
             .map(|(address, result)| match result {
                 Ok(tx_id) => TransferResult {
                     address,
