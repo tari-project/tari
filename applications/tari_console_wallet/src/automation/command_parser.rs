@@ -44,6 +44,7 @@ impl Display for ParsedCommand {
         let command = match self.command {
             WalletCommand::GetBalance => "get-balance",
             WalletCommand::SendTari => "send-tari",
+            WalletCommand::SendOneSided => "send-one-sided",
             WalletCommand::MakeItRain => "make-it-rain",
             WalletCommand::CoinSplit => "coin-split",
             WalletCommand::DiscoverPeer => "discover-peer",
@@ -97,6 +98,7 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, ParseError> {
     let args = match command {
         GetBalance => Vec::new(),
         SendTari => parse_send_tari(args)?,
+        SendOneSided => parse_send_tari(args)?,
         MakeItRain => parse_make_it_rain(args)?,
         CoinSplit => parse_coin_split(args)?,
         DiscoverPeer => parse_discover_peer(args)?,
