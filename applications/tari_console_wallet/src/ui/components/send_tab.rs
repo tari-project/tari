@@ -70,7 +70,7 @@ impl SendTab {
         let vert_chunks = Layout::default()
             .constraints(
                 [
-                    Constraint::Length(2),
+                    Constraint::Length(3),
                     Constraint::Length(3),
                     Constraint::Length(3),
                     Constraint::Length(3),
@@ -79,25 +79,33 @@ impl SendTab {
             )
             .margin(1)
             .split(area);
-        let instructions = Paragraph::new(Spans::from(vec![
-            Span::raw("Press "),
-            Span::styled("T", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" to edit "),
-            Span::styled("To", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" field, "),
-            Span::styled("A", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" to edit "),
-            Span::styled("Amount", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(", "),
-            Span::styled("F", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" to edit "),
-            Span::styled("Fee-Per-Gram", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" field, "),
-            Span::styled("C", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" to select a contact, "),
-            Span::styled("S", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" to send transaction."),
-        ]))
+        let instructions = Paragraph::new(vec![
+            Spans::from(vec![
+                Span::raw("Press "),
+                Span::styled("T", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(" to edit "),
+                Span::styled("To", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(" field, "),
+                Span::styled("A", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(" to edit "),
+                Span::styled("Amount", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(", "),
+                Span::styled("F", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(" to edit "),
+                Span::styled("Fee-Per-Gram", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(" field, "),
+                Span::styled("C", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(" to select a contact."),
+            ]),
+            Spans::from(vec![
+                Span::raw("Press "),
+                Span::styled("S", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(" to send normal a transaction, "),
+                Span::styled("O", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(" to send a one-sided transaction."),
+            ]),
+        ])
+        .wrap(Wrap { trim: false })
         .block(Block::default());
         f.render_widget(instructions, vert_chunks[0]);
 
@@ -299,7 +307,7 @@ impl<B: Backend> Component<B> for SendTab {
             .constraints(
                 [
                     Constraint::Length(3),
-                    Constraint::Length(13),
+                    Constraint::Length(14),
                     Constraint::Min(42),
                     Constraint::Length(1),
                 ]
@@ -359,12 +367,23 @@ impl<B: Backend> Component<B> for SendTab {
 
         match self.confirmation_dialog {
             None => (),
-            Some(ConfirmationDialogType::ConfirmSend) => {
+            Some(ConfirmationDialogType::ConfirmNormalSend) => {
                 draw_dialog(
                     f,
                     area,
                     "Confirm Sending Transaction".to_string(),
-                    "Are you sure you want to send this transaction?\n(Y)es / (N)o".to_string(),
+                    "Are you sure you want to send this normal transaction?\n(Y)es / (N)o".to_string(),
+                    Color::Red,
+                    120,
+                    9,
+                );
+            },
+            Some(ConfirmationDialogType::ConfirmOneSidedSend) => {
+                draw_dialog(
+                    f,
+                    area,
+                    "Confirm Sending Transaction".to_string(),
+                    "Are you sure you want to send this one-sided transaction?\n(Y)es / (N)o".to_string(),
                     Color::Red,
                     120,
                     9,
@@ -404,9 +423,14 @@ impl<B: Backend> Component<B> for SendTab {
                 self.confirmation_dialog = None;
                 return;
             } else if 'y' == c {
+                let one_sided_transaction = matches!(
+                    self.confirmation_dialog,
+                    Some(ConfirmationDialogType::ConfirmOneSidedSend)
+                );
                 match self.confirmation_dialog {
                     None => (),
-                    Some(ConfirmationDialogType::ConfirmSend) => {
+                    Some(ConfirmationDialogType::ConfirmNormalSend) |
+                    Some(ConfirmationDialogType::ConfirmOneSidedSend) => {
                         if 'y' == c {
                             let amount = if let Ok(v) = self.amount_field.parse::<u64>() {
                                 v
@@ -426,25 +450,47 @@ impl<B: Backend> Component<B> for SendTab {
 
                             let (tx, rx) = watch::channel(UiTransactionSendStatus::Initiated);
 
-                            match Handle::current().block_on(app_state.send_transaction(
-                                self.to_field.clone(),
-                                amount,
-                                fee_per_gram,
-                                self.message_field.clone(),
-                                tx,
-                            )) {
-                                Err(e) => {
-                                    self.error_message =
-                                        Some(format!("Error sending transaction:\n{}\nPress Enter to continue.", e))
-                                },
-                                Ok(_) => {
-                                    self.to_field = "".to_string();
-                                    self.amount_field = "".to_string();
-                                    self.fee_field = u64::from(DEFAULT_FEE_PER_GRAM).to_string();
-                                    self.message_field = "".to_string();
-                                    self.send_input_mode = SendInputMode::None;
-                                    self.send_result_watch = Some(rx);
-                                },
+                            let mut reset_fields = false;
+                            if one_sided_transaction {
+                                match Handle::current().block_on(app_state.send_one_sided_transaction(
+                                    self.to_field.clone(),
+                                    amount,
+                                    fee_per_gram,
+                                    self.message_field.clone(),
+                                    tx,
+                                )) {
+                                    Err(e) => {
+                                        self.error_message = Some(format!(
+                                            "Error sending one-sided transaction:\n{}\nPress Enter to continue.",
+                                            e
+                                        ))
+                                    },
+                                    Ok(_) => reset_fields = true,
+                                }
+                            } else {
+                                match Handle::current().block_on(app_state.send_transaction(
+                                    self.to_field.clone(),
+                                    amount,
+                                    fee_per_gram,
+                                    self.message_field.clone(),
+                                    tx,
+                                )) {
+                                    Err(e) => {
+                                        self.error_message = Some(format!(
+                                            "Error sending normal transaction:\n{}\nPress Enter to continue.",
+                                            e
+                                        ))
+                                    },
+                                    Ok(_) => reset_fields = true,
+                                }
+                            }
+                            if reset_fields {
+                                self.to_field = "".to_string();
+                                self.amount_field = "".to_string();
+                                self.fee_field = u64::from(DEFAULT_FEE_PER_GRAM).to_string();
+                                self.message_field = "".to_string();
+                                self.send_input_mode = SendInputMode::None;
+                                self.send_result_watch = Some(rx);
                             }
                             self.confirmation_dialog = None;
                             return;
@@ -576,6 +622,7 @@ impl<B: Backend> Component<B> for SendTab {
             }
         }
 
+        let one_sided_transaction = matches!(c, 'o');
         match c {
             'c' => {
                 self.show_contacts = !self.show_contacts;
@@ -607,7 +654,7 @@ impl<B: Backend> Component<B> for SendTab {
             'a' => self.send_input_mode = SendInputMode::Amount,
             'f' => self.send_input_mode = SendInputMode::Fee,
             'm' => self.send_input_mode = SendInputMode::Message,
-            's' => {
+            's' | 'o' => {
                 if self.amount_field.is_empty() || self.to_field.is_empty() {
                     self.error_message = Some(
                         "Destination Public Key/Emoji ID and Amount required\nPress Enter to continue.".to_string(),
@@ -619,7 +666,11 @@ impl<B: Backend> Component<B> for SendTab {
                     return;
                 };
 
-                self.confirmation_dialog = Some(ConfirmationDialogType::ConfirmSend);
+                if one_sided_transaction {
+                    self.confirmation_dialog = Some(ConfirmationDialogType::ConfirmOneSidedSend);
+                } else {
+                    self.confirmation_dialog = Some(ConfirmationDialogType::ConfirmNormalSend);
+                }
             },
             _ => {},
         }
@@ -687,6 +738,7 @@ pub enum ContactInputMode {
 
 #[derive(PartialEq, Debug)]
 pub enum ConfirmationDialogType {
-    ConfirmSend,
+    ConfirmNormalSend,
+    ConfirmOneSidedSend,
     ConfirmDeleteContact,
 }
