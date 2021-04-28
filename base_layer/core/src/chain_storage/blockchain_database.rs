@@ -1133,9 +1133,10 @@ fn insert_block(txn: &mut DbTransaction, block: Arc<ChainBlock>) -> Result<(), C
 
     let height = block.height();
     let accumulated_difficulty = block.accumulated_data.total_accumulated_difficulty;
+    let prev_hash = block.block.header.prev_hash.clone();
     txn.insert_header(block.block.header.clone(), block.accumulated_data.clone())
         .insert_block_body(block)
-        .set_best_block(height, block_hash, accumulated_difficulty);
+        .set_best_block(height, block_hash, accumulated_difficulty, prev_hash);
 
     Ok(())
 }
@@ -1490,6 +1491,7 @@ fn rewind_to_height<T: BlockchainBackend>(
         last_header.height,
         header_accumulated_data.hash.clone(),
         header_accumulated_data.total_accumulated_difficulty,
+        metadata.best_block().clone(),
     );
     db.write(txn)?;
 

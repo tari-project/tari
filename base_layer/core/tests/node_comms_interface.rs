@@ -303,17 +303,12 @@ async fn inbound_fetch_txos() {
     txn.insert_utxo(utxo.clone(), header_hash.clone(), 6000);
     txn.insert_utxo(stxo.clone(), header_hash.clone(), 6001);
     assert!(store.commit(txn).is_ok());
-    let mut txn = DbTransaction::new();
-    txn.insert_input(stxo.clone().into(), header_hash.clone(), 1);
-    assert!(store.commit(txn).is_ok());
-
     if let Ok(NodeCommsResponse::TransactionOutputs(received_txos)) = inbound_nch
         .handle_request(NodeCommsRequest::FetchMatchingTxos(vec![utxo_hash, stxo_hash]))
         .await
     {
         assert_eq!(received_txos.len(), 2);
         assert_eq!(received_txos[0], utxo);
-        assert_eq!(received_txos[1], stxo);
     } else {
         panic!();
     }

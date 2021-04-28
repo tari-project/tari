@@ -510,6 +510,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
         let mut prev_mmr = 0;
         let mut prev_kernel_mmr = 0;
+        let prev_chain_meta = self.shared.db.get_chain_metadata().await?;
         for h in 0..=header.height() {
             let curr_header = self.db().fetch_chain_header(h).await?;
 
@@ -594,6 +595,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 header.height(),
                 header.hash().clone(),
                 header.accumulated_data.total_accumulated_difficulty,
+                prev_chain_meta.best_block().clone(),
             )
             .set_pruned_height(header.height(), pruned_kernel_sum, pruned_utxo_sum)
             .commit()
