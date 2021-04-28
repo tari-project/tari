@@ -212,7 +212,7 @@ async fn reinitialize_pools_when_offline() {
         interval = Duration::from_millis(10),
     );
     let calls = connectivity.take_calls().await;
-    assert_eq!(count_string_occurrences(&calls, &["RemovePeer"]), 5);
+    assert_eq!(count_string_occurrences(&calls, &["RemovePeer"]), 0);
     assert_eq!(count_string_occurrences(&calls, &["AddManagedPeers"]), 1);
 
     // Check that the closer neighbour was added to managed peers
