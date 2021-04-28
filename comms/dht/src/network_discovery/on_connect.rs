@@ -113,7 +113,7 @@ impl OnConnect {
         let peer_stream = client
             .get_peers(GetPeersRequest {
                 n: NUM_FETCH_PEERS,
-                include_clients: false,
+                include_clients: true,
             })
             .await?;
 

@@ -316,24 +316,24 @@ pub async fn do_network_wide_broadcast(nodes: &mut [TestNode], origin_node_index
                             start_global.elapsed(),
                         );
                         is_success = true;
-                        let send_states = outbound_req
-                            .broadcast(
-                                NodeDestination::Unknown,
-                                OutboundEncryption::ClearText,
-                                vec![msg.source_peer.node_id.clone()],
-                                OutboundDomainMessage::new(0i32, public_msg),
-                            )
-                            .await
-                            .unwrap();
-                        let num_connections = connectivity.get_active_connections().await.unwrap().len();
-                        let (success, failed) = send_states.wait_all().await;
-                        println!(
-                            "🦠 {} propagated to {}/{} peer(s) ({} connection(s))",
-                            node_name,
-                            success.len(),
-                            success.len() + failed.len(),
-                            num_connections
-                        );
+                        // let send_states = outbound_req
+                        //     .broadcast(
+                        //         NodeDestination::Unknown,
+                        //         OutboundEncryption::ClearText,
+                        //         vec![msg.source_peer.node_id.clone()],
+                        //         OutboundDomainMessage::new(0i32, public_msg),
+                        //     )
+                        //     .await
+                        //     .unwrap();
+                        // let num_connections = connectivity.get_active_connections().await.unwrap().len();
+                        // let (success, failed) = send_states.wait_all().await;
+                        // println!(
+                        //     "🦠 {} propagated to {}/{} peer(s) ({} connection(s))",
+                        //     node_name,
+                        //     success.len(),
+                        //     success.len() + failed.len(),
+                        //     num_connections
+                        // );
                     },
                     Err(_) | Ok(None) => {
                         banner!(
@@ -925,6 +925,8 @@ async fn setup_comms_dht(
         propagation_factor,
         network_discovery: Default::default(),
         num_network_buckets: num_buckets,
+        // Don't refresh buckets during test
+        connectivity_peer_buckets_refresh: Duration::from_secs(9999 * 60),
         ..DhtConfig::default_local_test()
     })
     .build()

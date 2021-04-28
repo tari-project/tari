@@ -127,7 +127,7 @@ impl ConnectivityRequester {
                 .await
                 .map_err(|_| ConnectivityError::ActorDisconnected)?;
 
-            match reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)? {
+          match reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)? {
                 Ok(c) => return Ok(c),
                 Err(err @ ConnectionManagerError::DialCancelled) => {
                     num_cancels += 1;

@@ -206,7 +206,7 @@ where
                     .await
             },
             Err(err) => {
-                debug!(
+                warn!(
                     target: LOG_TARGET,
                     "Failed to dial peer '{}' because '{:?}'", peer_id_short_str, err
                 );
@@ -243,13 +243,27 @@ where
             .remove(peer_node_id)
             .and_then(|reply_oneshots| {
                 reply_oneshots.into_iter().for_each(|tx| {
-                    log_if_error_fmt!(
-                        target: LOG_TARGET,
-                        tx.send(result.clone()),
-                        "Failed to send dial result for peer '{}'",
-                        peer_node_id.short_str()
-                    );
+                    match tx.send(result.clone()) {
+                        Ok(()) => (),
+                        Err(res) =>
+                            match res {
+                                Ok(_) => warn!(
+                                    target: LOG_TARGET,
+                                    "[ThisNode={}] Peer {} was dialed successfully, but the receiver for pending dial dropped before receiving it.",
+                                    self.node_identity.node_id(),
+                                    peer_node_id.short_str(),
+                                ),
+                                Err(err) => error!(
+                                    target: LOG_TARGET,
+                                    "[ThisNode={}] Receiver for failed dial to peer {} dropped before receiving the error. Error '{}'.",
+                                    self.node_identity.node_id(),
+                                    peer_node_id.short_str(),
+                                    err
+                                )
+                            }
+                    }
                 });
+
                 Option::<()>::None
             });
     }

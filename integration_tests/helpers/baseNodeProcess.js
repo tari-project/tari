@@ -16,25 +16,6 @@ class BaseNodeProcess {
     this.options = options;
   }
 
-  async init() {
-    this.port = await getFreePort(19000, 25000);
-    this.grpcPort = await getFreePort(19000, 25000);
-    this.name = `Basenode${this.port}-${this.name}`;
-    this.nodeFile = this.nodeFile || "nodeid.json";
-    this.baseDir = `./temp/base_nodes/${dateFormat(
-      new Date(),
-      "yyyymmddHHMM"
-    )}/${this.name}`;
-    const args = ["--base-path", ".", "--init", "--create-id"];
-    if (this.logFilePath) {
-      args.push("--log-config", this.logFilePath);
-    }
-
-    await this.run(await this.compile(), args);
-    // console.log("Port:", this.port);
-    // console.log("GRPC:", this.grpcPort);
-    // console.log(`Starting node ${this.name}...`);
-  }
 
   async compile() {
     if (!outputProcess) {

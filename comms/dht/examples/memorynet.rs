@@ -37,36 +37,30 @@
 
 mod memory_net;
 
-use crate::memory_net::utilities::{
-    discovery,
-    do_network_wide_broadcast,
-    do_store_and_forward_message_propagation,
-    drain_messaging_events,
-    get_name,
-    make_node,
-    print_network_connectivity_stats,
-    print_network_peer_list_stats,
-    shutdown_all,
-    take_a_break,
-};
+use crate::memory_net::utilities::{discovery, do_network_wide_broadcast, do_store_and_forward_message_propagation, drain_messaging_events, get_name, make_node, print_network_connectivity_stats, print_network_peer_list_stats, shutdown_all, take_a_break, make_node_identity, make_node_from_node_identities};
 use futures::{channel::mpsc, future};
 use rand::{rngs::OsRng, Rng};
 use std::{iter::repeat_with, time::Duration};
 use tari_comms::peer_manager::PeerFeatures;
+use tari_comms::NodeIdentity;
+use std::sync::Arc;
 
+
+// Seed nodes
+const NUM_SEED_NODES: usize = 6;
 // Size of network. Must be at least 2
-const NUM_NODES: usize = 6;
+const NUM_NODES: usize = 4;
 // Must be at least 2
-const NUM_WALLETS: usize = 50;
+const NUM_WALLETS: usize = 14;
 const QUIET_MODE: bool = true;
 /// Number of neighbouring nodes each node should include in the connection pool
-const NUM_NEIGHBOURING_NODES: usize = 8;
+const NUM_NEIGHBOURING_NODES: usize = 100;
 /// Number of randomly-selected nodes each node should include in the connection pool
-const NUM_RANDOM_NODES: usize = 4;
+const NUM_RANDOM_NODES: usize = 20;
 /// The number of messages that should be propagated out
 const PROPAGATION_FACTOR: usize = 4;
 
-const NUM_NETWORK_BUCKETS: u32 = 4;
+const NUM_NETWORK_BUCKETS: u32 = 1;
 
 #[tokio_macros::main]
 #[allow(clippy::same_item_push)]
@@ -81,25 +75,38 @@ async fn main() {
 
     let (node_message_tx, mut messaging_events_rx) = mpsc::unbounded();
 
-    let seed_node = vec![
-        make_node(
-            PeerFeatures::COMMUNICATION_NODE,
-            vec![],
-            node_message_tx.clone(),
-            NUM_NEIGHBOURING_NODES,
-            NUM_RANDOM_NODES,
-            PROPAGATION_FACTOR,
-            NUM_NETWORK_BUCKETS,
-            QUIET_MODE,
-        )
-        .await,
-    ];
+    let mut seed_identities = Vec::new();
+    for _ in 0..NUM_SEED_NODES {
+        seed_identities.push(make_node_identity(PeerFeatures::COMMUNICATION_NODE));
+    }
+    let mut seed_nodes = Vec::new();
+    for i in 0..NUM_SEED_NODES {
+        seed_nodes.push(
+            make_node_from_node_identities(
+                seed_identities[i].clone(),
+                seed_identities
+                    .iter()
+                    .filter(|s| s.node_id() != seed_identities[i].node_id())
+                    .cloned()
+                    .collect(),
+                node_message_tx.clone(),
+                NUM_NEIGHBOURING_NODES,
+                NUM_RANDOM_NODES,
+                PROPAGATION_FACTOR,
+                NUM_NETWORK_BUCKETS,
+                QUIET_MODE,
+            )
+                .await,
+        );
+    }
+
+    let seed_node_identities: Vec<Arc<NodeIdentity>> = seed_nodes.iter().map(|s|s.node_identity().clone()).collect();
 
     let mut nodes = future::join_all(
         repeat_with(|| {
             make_node(
                 PeerFeatures::COMMUNICATION_NODE,
-                vec![seed_node[0].node_identity()],
+                seed_node_identities.clone(),
                 node_message_tx.clone(),
                 NUM_NEIGHBOURING_NODES,
                 NUM_RANDOM_NODES,
@@ -116,7 +123,7 @@ async fn main() {
         repeat_with(|| {
             make_node(
                 PeerFeatures::COMMUNICATION_CLIENT,
-                vec![nodes[OsRng.gen_range(0, NUM_NODES)].node_identity()],
+                seed_node_identities.clone(),
                 node_message_tx.clone(),
                 NUM_NEIGHBOURING_NODES,
                 NUM_RANDOM_NODES,
@@ -176,21 +183,21 @@ async fn main() {
 
     // peer_list_summary(&nodes).await;
 
-    for wallet in wallets.iter_mut() {
-        log::info!("------------------------------- WALLET JOIN -------------------------------");
-        println!(
-            "Wallet '{}' is joining the network via node '{}'",
-            wallet,
-            get_name(&wallet.seed_peers[0].node_id)
-        );
-        wallet
-            .comms
-            .connectivity()
-            .wait_for_connectivity(Duration::from_secs(60))
-            .await
-            .unwrap();
-        wallet.dht.dht_requester().send_join().await.unwrap();
-    }
+    // for wallet in wallets.iter_mut() {
+    //     log::info!("------------------------------- WALLET JOIN -------------------------------");
+    //     println!(
+    //         "Wallet '{}' is joining the network via node '{}'",
+    //         wallet,
+    //         get_name(&wallet.seed_peers[0].node_id)
+    //     );
+    //     wallet
+    //         .comms
+    //         .connectivity()
+    //         .wait_for_connectivity(Duration::from_secs(60))
+    //         .await
+    //         .unwrap();
+    //     wallet.dht.dht_requester().send_join().await.unwrap();
+    // }
 
     take_a_break(NUM_NODES).await;
     let mut total_messages = 0;
@@ -200,16 +207,16 @@ async fn main() {
     print_network_peer_list_stats(&nodes, &wallets).await;
     print_network_connectivity_stats(&nodes, &wallets, QUIET_MODE).await;
 
-    {
-        let count = seed_node[0].comms.peer_manager().count().await;
-        let num_connections = seed_node[0]
+    for s in seed_nodes.iter() {
+        let count = s.comms.peer_manager().count().await;
+        let num_connections = s
             .comms
             .connectivity()
             .get_active_connections()
             .await
             .unwrap()
             .len();
-        println!("Seed node knows {} peers ({} connections)", count, num_connections);
+        println!("Seed node {} knows {} peers ({} connections)", s.node_identity(), count, num_connections);
     }
 
     take_a_break(NUM_NODES).await;

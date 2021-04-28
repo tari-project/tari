@@ -248,7 +248,7 @@ impl DhtConnectivity {
         let (intersection, difference) = self.peer_buckets[bucket_number]
             .iter()
             .cloned()
-            .partition::<Vec<_>, _>(|n| !new_neighbours.contains(n));
+            .partition::<Vec<_>, _>(|n| new_neighbours.contains(n));
         // Only retain the peers that aren't already added
         new_neighbours.retain(|n| !intersection.contains(&n));
         self.peer_buckets[bucket_number].retain(|n| intersection.contains(&n));
@@ -419,9 +419,11 @@ impl DhtConnectivity {
 
             if let Some((removed_index, removed_peer)) = peer_last_connected.pop() {
                 self.peer_buckets[bucket_number].remove(removed_index);
+                info!(target:LOG_TARGET,"Removing peer {} from bucket {} because it is full ({} slots used)", removed_peer.node_id, bucket_number, bucket_size);
                 self.connectivity.remove_peer(removed_peer.node_id).await?;
             }
         };
+        info!(target:LOG_TARGET,"Adding peer {} to bucket {} ({}/{} slots used)", node_id, bucket_number, self.peer_buckets[bucket_number].len() + 1, bucket_size);
         self.peer_buckets[bucket_number].push(node_id.clone());
         self.connectivity.add_managed_peers(vec![node_id]).await?;
         Ok(())
