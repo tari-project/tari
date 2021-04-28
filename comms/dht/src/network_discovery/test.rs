@@ -103,7 +103,7 @@ mod state_machine {
     async fn it_fetches_peers() {
         const NUM_PEERS: usize = 3;
         let config = DhtConfig {
-            num_neighbouring_nodes: 4,
+            num_nodes_in_home_bucket: 4,
             network_discovery: NetworkDiscoveryConfig {
                 min_desired_peers: NUM_PEERS,
                 ..Default::default()

@@ -33,7 +33,6 @@ use crate::{
 use log::*;
 use std::sync::Arc;
 use tari_comms::{
-    message::MessageExt,
     peer_manager::{NodeId, NodeIdentity, PeerFeatures, PeerManager},
     pipeline::PipelineError,
     types::CommsPublicKey,
@@ -133,10 +132,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     async fn handle_join(&mut self, message: DecryptedDhtMessage) -> Result<(), DhtInboundError> {
         let DecryptedDhtMessage {
             decryption_result,
-            dht_header,
             source_peer: _,
             authenticated_origin,
-            is_saf_message,
             ..
         } = message;
 
@@ -174,8 +171,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         let node_id = self.validate_raw_node_id(&authenticated_pk, &join_msg.node_id)?;
 
-        let origin_peer = self
-            .peer_manager
+        self.peer_manager
             .add_or_update_online_peer(
                 &authenticated_pk,
                 node_id,
@@ -183,46 +179,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 PeerFeatures::from_bits_truncate(join_msg.peer_features),
             )
             .await?;
-
-        // DO NOT propagate this peer if this node has banned them
-        if origin_peer.is_banned() {
-            debug!(
-                target: LOG_TARGET,
-                "Received Join request for banned peer. This join request will not be propagated."
-            );
-            return Ok(());
-        }
-
-        if is_saf_message {
-            debug!(
-                target: LOG_TARGET,
-                "Not re-propagating join message received from store and forward"
-            );
-            return Ok(());
-        }
-
-        let origin_node_id = origin_peer.node_id;
-
-        // Only propagate a join that was not directly sent to this node
-        if dht_header.destination != self.node_identity.public_key() &&
-            dht_header.destination != self.node_identity.node_id()
-        {
-            debug!(
-                target: LOG_TARGET,
-                "Propagating Join message from peer '{}'",
-                origin_node_id.short_str()
-            );
-            // Propagate message to closer peers
-            self.outbound_service
-                .send_raw(
-                    SendMessageParams::new()
-                        .closer_only(origin_node_id.clone())
-                        .with_dht_header(dht_header)
-                        .finish(),
-                    body.to_encoded_bytes(),
-                )
-                .await?;
-        }
 
         Ok(())
     }

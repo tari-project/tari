@@ -724,26 +724,4 @@ mod test {
         assert!(peer_storage.find_by_public_key(&peer2.public_key).is_err());
         assert!(peer_storage.find_by_public_key(&peer3.public_key).is_ok());
     }
-
-    fn create_test_peer(features: PeerFeatures, ban: bool, offline: bool) -> Peer {
-        let mut rng = rand::rngs::OsRng;
-        let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
-        let node_id = NodeId::from_key(&pk).unwrap();
-        let net_address = "/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap();
-        let net_addresses = MultiaddressesWithStats::from(net_address);
-        let mut peer = Peer::new(
-            pk,
-            node_id,
-            net_addresses,
-            PeerFlags::default(),
-            features,
-            Default::default(),
-            Default::default(),
-        );
-        if ban {
-            peer.ban_for(Duration::from_secs(600), "".to_string());
-        }
-        peer.set_offline(offline);
-        peer
-    }
 }

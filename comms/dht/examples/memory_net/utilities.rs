@@ -138,7 +138,7 @@ pub async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut NodeEvent
             .dht
             .discovery_service_requester()
             .discover_peer(
-                Box::new(wallet2.node_identity().public_key().clone()),
+                wallet2.node_identity().public_key().clone(),
                 wallet2.node_identity().node_id().clone().into(),
             )
             .await;

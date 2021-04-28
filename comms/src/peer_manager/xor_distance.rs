@@ -129,6 +129,7 @@ impl TryFrom<&[u8]> for XorDistance {
     type Error = NodeIdError;
 
     /// Construct a node distance from a set of bytes
+    #[allow(clippy::manual_memcpy)]
     fn try_from(elements: &[u8]) -> Result<Self, Self::Error> {
         let mut bytes = [0; NODE_XOR_DISTANCE_ARRAY_SIZE];
         let start = cmp::max(NODE_XOR_DISTANCE_ARRAY_SIZE - elements.len(), 0);

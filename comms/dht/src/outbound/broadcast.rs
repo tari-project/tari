@@ -377,7 +377,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
 
     async fn initiate_peer_discovery(
         &mut self,
-        dest_public_key: Box<CommsPublicKey>,
+        dest_public_key: CommsPublicKey,
     ) -> Result<Option<Peer>, DhtOutboundError>
     {
         trace!(
@@ -389,7 +389,10 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         // Peer not found, let's try and discover it
         match self
             .dht_discovery_requester
-            .discover_peer(dest_public_key.clone(), NodeDestination::PublicKey(dest_public_key))
+            .discover_peer(
+                dest_public_key.clone(),
+                NodeDestination::PublicKey(Box::new(dest_public_key)),
+            )
             .await
         {
             // Peer found!

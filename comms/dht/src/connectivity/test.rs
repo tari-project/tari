@@ -94,8 +94,6 @@ async fn setup(
 #[allow(clippy::redundant_closure)]
 async fn initialize() {
     let config = DhtConfig {
-        num_neighbouring_nodes: 4,
-        num_random_nodes: 2,
         ..Default::default()
     };
     let peers = repeat_with(|| make_node_identity().to_peer()).take(10).collect();
@@ -142,8 +140,8 @@ async fn added_neighbours() {
     let peers = node_identities.iter().map(|ni| ni.to_peer()).collect::<Vec<_>>();
 
     let config = DhtConfig {
-        num_neighbouring_nodes: 5,
-        num_random_nodes: 0,
+        num_nodes_in_home_bucket: 5,
+        num_nodes_in_other_buckets: 0,
         ..Default::default()
     };
     let (dht_connectivity, _, connectivity, _, _, _shutdown) = setup(config, node_identity, peers).await;
@@ -187,8 +185,8 @@ async fn reinitialize_pools_when_offline() {
     let peers = node_identities.iter().map(|ni| ni.to_peer()).collect::<Vec<_>>();
 
     let config = DhtConfig {
-        num_neighbouring_nodes: 5,
-        num_random_nodes: 0,
+        num_nodes_in_home_bucket: 5,
+        num_nodes_in_other_buckets: 0,
         ..Default::default()
     };
     let (dht_connectivity, _, connectivity, _, _, _shutdown) = setup(config, node_identity, peers).await;
@@ -227,7 +225,7 @@ async fn insert_peer_into_bucket() {
         ordered_node_identities_by_distance(node_identity.node_id(), 10, PeerFeatures::COMMUNICATION_NODE);
 
     let (mut dht_connectivity, _, _, _, _, _) = setup(Default::default(), node_identity.clone(), vec![]).await;
-    dht_connectivity.config.num_neighbouring_nodes = 8;
+    dht_connectivity.config.num_nodes_in_home_bucket = 8;
 
     let shuffled = {
         let mut v = node_identities.clone();

@@ -48,6 +48,7 @@ const NUM_NEIGHBOURING_NODES: usize = 8;
 const NUM_RANDOM_NODES: usize = 4;
 /// The number of messages that should be propagated out
 const PROPAGATION_FACTOR: usize = 4;
+const NUM_NETWORK_BUCKETS: u32  = 3;
 
 const DEFAULT_GRAPH_OUTPUT_DIR: &str = "/tmp/memorynet";
 
@@ -63,7 +64,7 @@ use crate::{
         PythonRenderType,
     },
     memory_net::utilities::{
-        do_network_wide_propagation,
+        do_network_wide_broadcast,
         drain_messaging_events,
         make_node,
         make_node_from_node_identities,
@@ -126,6 +127,7 @@ async fn main() {
                 NUM_NEIGHBOURING_NODES,
                 NUM_RANDOM_NODES,
                 PROPAGATION_FACTOR,
+                NUM_NETWORK_BUCKETS,
                 QUIET_MODE,
             )
             .await,
@@ -144,6 +146,7 @@ async fn main() {
                 NUM_NEIGHBOURING_NODES,
                 NUM_RANDOM_NODES,
                 PROPAGATION_FACTOR,
+                NUM_NETWORK_BUCKETS,
                 QUIET_MODE,
             )
             .await,
@@ -182,7 +185,7 @@ async fn main() {
     let (_, neighbour_graph) =
         network_graph_snapshot("join_propagation", &seed_nodes, &nodes, Some(NUM_NEIGHBOURING_NODES)).await;
 
-    do_network_wide_propagation(&mut nodes, Some(NUM_NODES / 2 + 1)).await;
+    do_network_wide_broadcast(&mut nodes, Some(NUM_NODES / 2 + 1)).await;
 
     take_a_break(NUM_NODES).await;
 

@@ -515,7 +515,7 @@ impl Parser {
     /// Function to process the discover-peer command
     fn process_discover_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
         let dest_pubkey = match args.next().and_then(parse_emoji_id_or_public_key) {
-            Some(v) => Box::new(v),
+            Some(v) => v,
             None => {
                 println!("Please enter a valid destination public key or emoji id");
                 println!("discover-peer [hex public key or emoji id]");

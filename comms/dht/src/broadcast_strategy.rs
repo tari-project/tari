@@ -105,10 +105,10 @@ impl BroadcastStrategy {
         }
     }
 
-    pub fn into_direct_public_key(self) -> Option<Box<CommsPublicKey>> {
+    pub fn into_direct_public_key(self) -> Option<CommsPublicKey> {
         use BroadcastStrategy::*;
         match self {
-            DirectPublicKey(pk) => Some(pk),
+            DirectPublicKey(pk) => Some(*pk),
             _ => None,
         }
     }
@@ -124,7 +124,7 @@ mod test {
         assert!(BroadcastStrategy::DirectNodeId(Box::new(NodeId::default())).is_direct());
         assert_eq!(BroadcastStrategy::Broadcast(Default::default()).is_direct(), false);
         assert_eq!(
-            BroadcastStrategy::Propagate(Default::default(), Default::default()).is_direct(),
+            BroadcastStrategy::CloserOnly(Default::default()).is_direct(),
             false
         );
         assert_eq!(BroadcastStrategy::Flood(Default::default()).is_direct(), false);

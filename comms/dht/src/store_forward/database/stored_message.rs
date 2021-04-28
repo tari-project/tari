@@ -67,7 +67,7 @@ impl NewStoredMessage {
             origin_pubkey: authenticated_origin.as_ref().map(|pk| pk.to_hex()),
             message_type: dht_header.message_type as i32,
             destination_pubkey: dht_header.destination.public_key().map(|pk| pk.to_hex()),
-            destination_node_id: dht_header.destination.node_id().map(|node_id| node_id.to_hex()),
+            destination_node_id: dht_header.destination.raw_node_id().map(|node_id| node_id.to_hex()),
             is_encrypted: dht_header.flags.is_encrypted(),
             priority: priority as i32,
             header: {

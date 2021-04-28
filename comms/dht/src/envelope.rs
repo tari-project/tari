@@ -270,8 +270,7 @@ impl NodeDestination {
         }
     }
 
-    #[deprecated ="Should use to_derived_node_id instead" ]
-    pub fn node_id(&self) -> Option<&NodeId> {
+    pub fn raw_node_id(&self) -> Option<&NodeId> {
         use NodeDestination::*;
         match self {
             Unknown => None,
@@ -281,9 +280,11 @@ impl NodeDestination {
     }
 
     pub fn to_derived_node_id(&self) -> Option<NodeId> {
-        self.node_id()
-            .cloned()
-            .or_else(|| self.public_key().map(NodeId::from_public_key))
+        match self {
+            NodeDestination::Unknown => None,
+            NodeDestination::PublicKey(pub_key) => Some(NodeId::from_public_key(pub_key)),
+            NodeDestination::NodeId(node_id) => Some(node_id.as_ref().clone()),
+        }
     }
 
     pub fn is_unknown(&self) -> bool {
@@ -304,19 +305,15 @@ impl PartialEq<CommsPublicKey> for NodeDestination {
 
 impl PartialEq<NodeId> for NodeDestination {
     fn eq(&self, other: &NodeId) -> bool {
-        self.node_id().map(|node_id| node_id == other).unwrap_or(false)
+        self.to_derived_node_id()
+            .map(|node_id| &node_id == other)
+            .unwrap_or(false)
     }
 }
 
 impl PartialEq<&CommsPublicKey> for NodeDestination {
     fn eq(&self, other: &&CommsPublicKey) -> bool {
         self.public_key().map(|pk| pk == *other).unwrap_or(false)
-    }
-}
-
-impl PartialEq<&NodeId> for NodeDestination {
-    fn eq(&self, other: &&NodeId) -> bool {
-        self.node_id().map(|node_id| node_id == *other).unwrap_or(false)
     }
 }
 

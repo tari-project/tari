@@ -37,14 +37,24 @@
 
 mod memory_net;
 
-use crate::memory_net::utilities::{discovery, do_network_wide_broadcast, do_store_and_forward_message_propagation, drain_messaging_events, get_name, make_node, print_network_connectivity_stats, print_network_peer_list_stats, shutdown_all, take_a_break, make_node_identity, make_node_from_node_identities};
+use crate::memory_net::utilities::{
+    discovery,
+    do_network_wide_broadcast,
+    do_store_and_forward_message_propagation,
+    drain_messaging_events,
+    get_name,
+    make_node,
+    make_node_from_node_identities,
+    make_node_identity,
+    print_network_connectivity_stats,
+    print_network_peer_list_stats,
+    shutdown_all,
+    take_a_break,
+};
 use futures::{channel::mpsc, future};
 use rand::{rngs::OsRng, Rng};
-use std::{iter::repeat_with, time::Duration};
-use tari_comms::peer_manager::PeerFeatures;
-use tari_comms::NodeIdentity;
-use std::sync::Arc;
-
+use std::{iter::repeat_with, sync::Arc, time::Duration};
+use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
 
 // Seed nodes
 const NUM_SEED_NODES: usize = 6;
@@ -60,7 +70,7 @@ const NUM_RANDOM_NODES: usize = 20;
 /// The number of messages that should be propagated out
 const PROPAGATION_FACTOR: usize = 4;
 
-const NUM_NETWORK_BUCKETS: u32 = 1;
+const NUM_NETWORK_BUCKETS: u32 = 3;
 
 #[tokio_macros::main]
 #[allow(clippy::same_item_push)]
@@ -96,11 +106,11 @@ async fn main() {
                 NUM_NETWORK_BUCKETS,
                 QUIET_MODE,
             )
-                .await,
+            .await,
         );
     }
 
-    let seed_node_identities: Vec<Arc<NodeIdentity>> = seed_nodes.iter().map(|s|s.node_identity().clone()).collect();
+    let seed_node_identities: Vec<Arc<NodeIdentity>> = seed_nodes.iter().map(|s| s.node_identity().clone()).collect();
 
     let mut nodes = future::join_all(
         repeat_with(|| {
@@ -209,14 +219,13 @@ async fn main() {
 
     for s in seed_nodes.iter() {
         let count = s.comms.peer_manager().count().await;
-        let num_connections = s
-            .comms
-            .connectivity()
-            .get_active_connections()
-            .await
-            .unwrap()
-            .len();
-        println!("Seed node {} knows {} peers ({} connections)", s.node_identity(), count, num_connections);
+        let num_connections = s.comms.connectivity().get_active_connections().await.unwrap().len();
+        println!(
+            "Seed node {} knows {} peers ({} connections)",
+            s.node_identity(),
+            count,
+            num_connections
+        );
     }
 
     take_a_break(NUM_NODES).await;

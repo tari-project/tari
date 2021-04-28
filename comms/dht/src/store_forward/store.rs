@@ -356,7 +356,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let node_identity = &self.node_identity;
 
         if message.dht_header.destination == node_identity.public_key() ||
-            message.dht_header.destination == node_identity.node_id()
+            &message.dht_header.destination == node_identity.node_id()
         {
             log_not_eligible("the message is destined for this node");
             return Ok(None);

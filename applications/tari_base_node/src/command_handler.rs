@@ -352,7 +352,7 @@ impl CommandHandler {
         });
     }
 
-    pub fn discover_peer(&self, dest_pubkey: Box<RistrettoPublicKey>) {
+    pub fn discover_peer(&self, dest_pubkey: RistrettoPublicKey) {
         let mut dht = self.discovery_service.clone();
 
         self.executor.spawn(async move {
@@ -360,7 +360,7 @@ impl CommandHandler {
             println!("🌎 Peer discovery started.");
 
             match dht
-                .discover_peer(dest_pubkey.clone(), NodeDestination::PublicKey(dest_pubkey))
+                .discover_peer(dest_pubkey.clone(), NodeDestination::PublicKey(Box::new(dest_pubkey)))
                 .await
             {
                 Ok(p) => {

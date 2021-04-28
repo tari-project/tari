@@ -49,6 +49,8 @@ const NUM_RANDOM_NODES: usize = 4;
 /// The number of messages that should be propagated out
 const PROPAGATION_FACTOR: usize = 4;
 
+const NUM_NETWORK_BUCKETS: u32 = 3;
+
 const DEFAULT_GRAPH_OUTPUT_DIR: &str = "/tmp/memorynet";
 
 mod graphing_utilities;
@@ -117,6 +119,7 @@ async fn main() {
                 NUM_NEIGHBOURING_NODES,
                 NUM_RANDOM_NODES,
                 PROPAGATION_FACTOR,
+                NUM_NETWORK_BUCKETS,
                 QUIET_MODE,
             )
             .await,
@@ -134,6 +137,7 @@ async fn main() {
                 NUM_NEIGHBOURING_NODES,
                 NUM_RANDOM_NODES,
                 PROPAGATION_FACTOR,
+                NUM_NETWORK_BUCKETS,
                 QUIET_MODE,
             )
             .await,

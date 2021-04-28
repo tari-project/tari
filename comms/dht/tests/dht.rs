@@ -169,7 +169,6 @@ async fn setup_comms_dht(
     .set_auto_store_and_forward_requests(false)
     .with_database_url(DbConnectionUrl::MemoryShared(random::string(8)))
     .with_discovery_timeout(Duration::from_secs(60))
-    .with_num_neighbouring_nodes(8)
     .build()
     .await
     .unwrap();
@@ -298,7 +297,7 @@ async fn dht_discover_propagation() {
         .dht
         .discovery_service_requester()
         .discover_peer(
-            Box::new(node_D.node_identity().public_key().clone()),
+            node_D.node_identity().public_key().clone(),
             node_D.node_identity().node_id().clone().into(),
         )
         .await
@@ -480,7 +479,7 @@ async fn dht_propagate_dedup() {
     node_A
         .dht
         .outbound_requester()
-        .propagate(
+        .broadcast(
             // Node D is a client node, so an destination is required for domain messages
             NodeDestination::Unknown, // NodeId(Box::new(node_D.node_identity().node_id().clone())),
             OutboundEncryption::EncryptFor(Box::new(node_D.node_identity().public_key().clone())),
@@ -599,10 +598,8 @@ async fn dht_propagate_message_contents_not_malleable_ban() {
         .outbound_requester()
         .send_raw(
             SendMessageParams::new()
-                .propagate(node_B.node_identity().node_id().clone().into(), vec![msg
-                    .source_peer
-                    .node_id
-                    .clone()])
+                .closer_only(node_B.node_identity().node_id().clone().into()
+                    )
                 .with_dht_header(msg.dht_header)
                 .finish(),
             bytes,

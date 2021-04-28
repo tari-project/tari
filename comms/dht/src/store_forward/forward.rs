@@ -218,7 +218,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     target: LOG_TARGET,
                     "Forwarding SAF message closer to node: {}, {}", node_id, dht_header.message_tag
                 );
-                send_params.closer_only(node_id.clone());
+                send_params.closer_only(node_id);
             },
             (Some(node_id), _) => {
                 debug!(
@@ -228,7 +228,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     dht_header.message_tag
                 );
 
-                send_params.closer_only(node_id.clone());
+                send_params.closer_only(node_id);
             },
             _ => {
                 debug!(
@@ -252,8 +252,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return pk == &source.public_key;
         }
 
-        if let Some(node_id) = destination.node_id() {
-            return node_id == &source.node_id;
+        if let Some(node_id) = destination.to_derived_node_id() {
+            return node_id == source.node_id;
         }
 
         false

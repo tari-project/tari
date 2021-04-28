@@ -84,7 +84,7 @@ impl DhtDiscoveryRequester {
     ///      quicker discovery times.
     pub async fn discover_peer(
         &mut self,
-        dest_public_key: Box<CommsPublicKey>,
+        dest_public_key: CommsPublicKey,
         destination: NodeDestination,
     ) -> Result<Peer, DhtDiscoveryError>
     {
@@ -92,7 +92,7 @@ impl DhtDiscoveryRequester {
 
         self.sender
             .send(DhtDiscoveryRequest::DiscoverPeer(
-                dest_public_key,
+                Box::new(dest_public_key),
                 destination,
                 reply_tx,
             ))

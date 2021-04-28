@@ -27,6 +27,7 @@ mod metrics;
 pub use metrics::{MetricsCollector, MetricsCollectorHandle};
 
 use crate::{connectivity::metrics::MetricsError, event::DhtEvent, DhtActorError, DhtConfig, DhtRequester};
+use chrono::MIN_DATETIME;
 use futures::{stream::Fuse, StreamExt};
 use log::*;
 use std::{sync::Arc, time::Instant};
@@ -40,7 +41,6 @@ use tari_comms::{
 use tari_shutdown::ShutdownSignal;
 use thiserror::Error;
 use tokio::{sync::broadcast, task, task::JoinHandle, time};
-use chrono::{MIN_DATETIME};
 
 const LOG_TARGET: &str = "comms::dht::connectivity";
 
@@ -333,7 +333,7 @@ impl DhtConnectivity {
                 self.replace_managed_peer(node_id).await?;
             },
             ConnectivityStateOnline(n) => {
-                if self.config.auto_join && self.should_send_join() {
+                if self.should_send_join() {
                     debug!(
                         target: LOG_TARGET,
                         "Node is online ({} peer(s) connected). Sending announce.", n
@@ -403,9 +403,7 @@ impl DhtConnectivity {
         if self.peer_buckets[bucket_number].len() + 1 > bucket_size {
             // Sort by last seed to remove the least connected peer
             let mut peer_last_connected: Vec<(usize, Peer)> = vec![];
-            for (index, p) in self.peer_buckets[bucket_number]
-                .iter()
-                .enumerate() {
+            for (index, p) in self.peer_buckets[bucket_number].iter().enumerate() {
                 peer_last_connected.push((index, self.peer_manager.find_by_node_id(p).await?));
             }
 
@@ -419,11 +417,24 @@ impl DhtConnectivity {
 
             if let Some((removed_index, removed_peer)) = peer_last_connected.pop() {
                 self.peer_buckets[bucket_number].remove(removed_index);
-                info!(target:LOG_TARGET,"Removing peer {} from bucket {} because it is full ({} slots used)", removed_peer.node_id, bucket_number, bucket_size);
+                info!(
+                    target: LOG_TARGET,
+                    "Removing peer {} from bucket {} because it is full ({} slots used)",
+                    removed_peer.node_id,
+                    bucket_number,
+                    bucket_size
+                );
                 self.connectivity.remove_peer(removed_peer.node_id).await?;
             }
         };
-        info!(target:LOG_TARGET,"Adding peer {} to bucket {} ({}/{} slots used)", node_id, bucket_number, self.peer_buckets[bucket_number].len() + 1, bucket_size);
+        info!(
+            target: LOG_TARGET,
+            "Adding peer {} to bucket {} ({}/{} slots used)",
+            node_id,
+            bucket_number,
+            self.peer_buckets[bucket_number].len() + 1,
+            bucket_size
+        );
         self.peer_buckets[bucket_number].push(node_id.clone());
         self.connectivity.add_managed_peers(vec![node_id]).await?;
         Ok(())
@@ -513,6 +524,9 @@ impl DhtConnectivity {
     }
 
     fn should_send_join(&self) -> bool {
+        if !self.config.auto_join {
+            return false;
+        }
         let cooldown = self.config.join_cooldown_interval;
         self.stats
             .join_last_sent_at()

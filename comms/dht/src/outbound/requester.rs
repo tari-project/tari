@@ -94,7 +94,6 @@ impl OutboundMessageRequester {
             .expect("MessageSendStates::inner is empty!"))
     }
 
-
     /// Send to a pre-configured number of random peers, for further message propagation.
     ///
     /// Optionally, the NodeDestination can be set to propagate to a particular peer, or network region

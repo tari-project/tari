@@ -357,10 +357,11 @@ impl DhtActor {
             node_identity.node_id()
         );
 
+        // TODO: This actually should be sent to more nodes than the usual closer_only propagation
         outbound_requester
             .send_message_no_header(
                 SendMessageParams::new()
-                    .random(3)
+                    .closer_only(node_identity.node_id().clone())
                     .with_dht_message_type(DhtMessageType::Join)
                     .force_origin()
                     .finish(),
@@ -594,8 +595,6 @@ impl DhtActor {
 mod test {
     use super::*;
     use crate::{
-        broadcast_strategy::BroadcastClosestRequest,
-        envelope::NodeDestination,
         test_utils::{build_peer_manager, make_client_identity, make_node_identity},
     };
     use chrono::{DateTime, Utc};
@@ -723,31 +722,15 @@ mod test {
             .unwrap();
         assert_eq!(peers.len(), 1);
 
-        let peers = requester
-            .select_peers(BroadcastStrategy::Propagate(NodeDestination::Unknown, Vec::new()))
-            .await
-            .unwrap();
-        assert_eq!(peers.len(), 1);
+
 
         let peers = requester
-            .select_peers(BroadcastStrategy::Propagate(
+            .select_peers(BroadcastStrategy::CloserOnly(
                 conn_out.peer_node_id().clone().into(),
-                Vec::new(),
             ))
             .await
             .unwrap();
         assert_eq!(peers.len(), 1);
-
-        let send_request = Box::new(BroadcastClosestRequest {
-            node_id: node_identity.node_id().clone(),
-            excluded_peers: vec![],
-            connected_only: false,
-        });
-        let peers = requester
-            .select_peers(BroadcastStrategy::Closest(send_request))
-            .await
-            .unwrap();
-        assert_eq!(peers.len(), 2);
 
         let peers = requester
             .select_peers(BroadcastStrategy::DirectNodeId(Box::new(
