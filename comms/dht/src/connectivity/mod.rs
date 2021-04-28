@@ -244,7 +244,7 @@ impl DhtConnectivity {
             .neighbours
             .iter()
             .cloned()
-            .partition::<Vec<_>, _>(|n| !new_neighbours.contains(n));
+            .partition::<Vec<_>, _>(|n| new_neighbours.contains(n));
         // Only retain the peers that aren't already added
         new_neighbours.retain(|n| !intersection.contains(&n));
         self.neighbours.retain(|n| intersection.contains(&n));
@@ -301,7 +301,7 @@ impl DhtConnectivity {
             let (intersection, difference) = self
                 .random_pool
                 .drain(..)
-                .partition::<Vec<_>, _>(|n| !random_peers.contains(n));
+                .partition::<Vec<_>, _>(|n| random_peers.contains(n));
             // Remove the peers that we want to keep from the `random_peers` to be added
             random_peers.retain(|n| !intersection.contains(&n));
             self.random_pool = intersection;
