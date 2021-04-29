@@ -141,15 +141,6 @@ impl DbTransaction {
         self
     }
 
-    pub fn insert_input(&mut self, input: TransactionInput, header_hash: HashOutput, mmr_leaf_index: u32) -> &mut Self {
-        self.operations.push(WriteOperation::InsertInput {
-            header_hash,
-            input: Box::new(input),
-            mmr_position: mmr_leaf_index,
-        });
-        self
-    }
-
     pub fn update_pruned_hash_set(
         &mut self,
         mmr_tree: MmrTree,
@@ -211,11 +202,22 @@ impl DbTransaction {
         self
     }
 
-    pub fn set_best_block(&mut self, height: u64, hash: HashOutput, accumulated_difficulty: u128) -> &mut Self {
+    /// Sets the best block metadata.
+    /// This operation will fail if the header hash was not previously added and if the `expected_prev_best_block` hash
+    /// does not match the current best block. This ensures that a data race results in an error and is rolled back.
+    pub fn set_best_block(
+        &mut self,
+        height: u64,
+        hash: HashOutput,
+        accumulated_difficulty: u128,
+        expected_prev_best_block: HashOutput,
+    ) -> &mut Self
+    {
         self.operations.push(WriteOperation::SetBestBlock {
             height,
             hash,
             accumulated_difficulty,
+            expected_prev_best_block,
         });
         self
     }
@@ -310,6 +312,7 @@ pub enum WriteOperation {
         height: u64,
         hash: HashOutput,
         accumulated_difficulty: u128,
+        expected_prev_best_block: HashOutput,
     },
     SetPruningHorizonConfig(u64),
     SetPrunedHeight {
@@ -415,6 +418,7 @@ impl fmt::Display for WriteOperation {
                 height,
                 hash,
                 accumulated_difficulty,
+                expected_prev_best_block: _,
             } => write!(
                 f,
                 "Update best block to height:{} ({}) with difficulty: {}",
