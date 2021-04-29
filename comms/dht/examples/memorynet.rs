@@ -61,7 +61,7 @@ const NUM_SEED_NODES: usize = 6;
 // Size of network. Must be at least 2
 const NUM_NODES: usize = 4;
 // Must be at least 2
-const NUM_WALLETS: usize = 14;
+const NUM_WALLETS: usize = 50;
 const QUIET_MODE: bool = true;
 /// Number of neighbouring nodes each node should include in the connection pool
 const NUM_NEIGHBOURING_NODES: usize = 100;

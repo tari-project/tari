@@ -149,14 +149,14 @@ impl DhtConfig {
 impl Default for DhtConfig {
     fn default() -> Self {
         Self {
-            num_nodes_in_home_bucket: 8,
-            num_nodes_in_other_buckets: 4,
+            num_nodes_in_home_bucket: 100,
+            num_nodes_in_other_buckets: 20,
             propagation_factor: 4,
             broadcast_factor: 8,
             outbound_buffer_size: 20,
             saf_num_closest_nodes: 10,
             saf_max_returned_messages: 50,
-            saf_msg_storage_capacity: 100_000,
+            saf_msg_storage_capacity: 1,
             saf_low_priority_msg_storage_ttl: Duration::from_secs(6 * 60 * 60), // 6 hours
             saf_high_priority_msg_storage_ttl: Duration::from_secs(3 * 24 * 60 * 60), // 3 days
             saf_auto_request: true,
