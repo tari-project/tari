@@ -218,7 +218,7 @@ fn check_inputs_are_utxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result
         .ok_or_else(|| ValidationError::PreviousHashNotFound)?;
 
     for input in block.body.inputs() {
-        if let Some((_, index, height)) = db.fetch_output(&input.hash())? {
+        if let Some((_, index, _height)) = db.fetch_output(&input.hash())? {
             if data.deleted().contains(index) {
                 warn!(
                     target: LOG_TARGET,
@@ -226,13 +226,14 @@ fn check_inputs_are_utxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result
                 );
                 return Err(ValidationError::ContainsSTxO);
             }
-            if height != input.height {
-                warn!(
-                    target: LOG_TARGET,
-                    "Block validation failed due to input not having correct mined height({}): {}", height, input
-                );
-                return Err(ValidationError::InvalidMinedHeight);
-            }
+        // TODO Do we keep the height validation?
+        // if height != input.height {
+        //     warn!(
+        //         target: LOG_TARGET,
+        //         "Block validation failed due to input not having correct mined height({}): {}", height, input
+        //     );
+        //     return Err(ValidationError::InvalidMinedHeight);
+        // }
         } else {
             warn!(
                 target: LOG_TARGET,

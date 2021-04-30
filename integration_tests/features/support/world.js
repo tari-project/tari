@@ -97,7 +97,7 @@ class CustomWorld {
     let result = await this.clients[nodeName]
       .submitBlock(this.blocks[blockName].block)
       .catch((err) => {
-        console.log("submit block erro", err);
+        console.log("submit block error", err);
       });
     // console.log(result);
   }
