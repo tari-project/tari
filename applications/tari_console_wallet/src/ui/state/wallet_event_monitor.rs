@@ -109,14 +109,14 @@ impl WalletEventMonitor {
                         match result {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet event {:?}", msg);
-                                match (*msg).clone() {
+                                match &*msg {
                                     ConnectivityEvent::PeerDisconnected(_) |
                                     ConnectivityEvent::ManagedPeerDisconnected(_) |
                                     ConnectivityEvent::PeerConnected(_) |
                                     ConnectivityEvent::PeerBanned(_) |
                                     ConnectivityEvent::PeerOffline(_) |
                                     ConnectivityEvent::PeerConnectionWillClose(_, _) => {
-                                    self.trigger_peer_state_refresh().await;
+                                        self.trigger_peer_state_refresh().await;
                                     },
                                     // Only the above variants trigger state refresh
                                     _ => (),
@@ -130,7 +130,7 @@ impl WalletEventMonitor {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Wallet Event Monitor received base node event {:?}", msg);
                                 match (*msg).clone() {
-                                    BaseNodeEvent::BaseNodeState(state) => {
+                                    BaseNodeEvent::BaseNodeStateChanged(state) => {
                                         self.trigger_base_node_state_refresh(state).await;
                                     }
                                     BaseNodeEvent::BaseNodePeerSet(peer) => {
@@ -145,8 +145,8 @@ impl WalletEventMonitor {
                         match result {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {:?}", msg);
-                                if let OutputManagerEvent::TxoValidationSuccess(_,_) = *msg.clone() {
-                                        self.trigger_balance_refresh().await;
+                                if let OutputManagerEvent::TxoValidationSuccess(_,_) = &*msg {
+                                    self.trigger_balance_refresh().await;
                                 }
                             },
                             Err(_e) => error!(target: LOG_TARGET, "Error reading from Output Manager Service event broadcast channel"),

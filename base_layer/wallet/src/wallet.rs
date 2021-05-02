@@ -291,7 +291,7 @@ where
             .set_base_node_public_key(peer.public_key.clone())
             .await?;
 
-        self.base_node_service.clone().set_base_node_peer(peer).await?;
+        self.base_node_service.set_base_node_peer(peer).await?;
 
         Ok(())
     }

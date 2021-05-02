@@ -816,8 +816,18 @@ where
             Ok(id) => {
                 let _ = self.pending_transaction_reply_senders.remove(&id);
                 let _ = self.send_transaction_cancellation_senders.remove(&id);
+                let completed_tx = match self.db.get_completed_transaction(id).await {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "Error starting Broadcast Protocol after completed Send Transaction Protocol : {:?}", e
+                        );
+                        return;
+                    },
+                };
                 let _ = self
-                    .broadcast_completed_transaction(id, transaction_broadcast_join_handles)
+                    .broadcast_completed_transaction(completed_tx, transaction_broadcast_join_handles)
                     .await
                     .map_err(|resp| {
                         error!(
@@ -1114,8 +1124,18 @@ where
                 let _ = self.finalized_transaction_senders.remove(&id);
                 let _ = self.receiver_transaction_cancellation_senders.remove(&id);
 
+                let completed_tx = match self.db.get_completed_transaction(id).await {
+                    Ok(v) => v,
+                    Err(e) => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Error broadcasting completed transaction TxId: {} to mempool: {:?}", id, e
+                        );
+                        return;
+                    },
+                };
                 let _ = self
-                    .broadcast_completed_transaction(id, transaction_broadcast_join_handles)
+                    .broadcast_completed_transaction(completed_tx, transaction_broadcast_join_handles)
                     .await
                     .map_err(|e| {
                         warn!(
@@ -1343,14 +1363,13 @@ where
     }
 
     /// Start to protocol to Broadcast the specified Completed Transaction to the Base Node.
-    pub async fn broadcast_completed_transaction(
+    async fn broadcast_completed_transaction(
         &mut self,
-        tx_id: TxId,
+        completed_tx: CompletedTransaction,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
     ) -> Result<(), TransactionServiceError>
     {
-        let completed_tx = self.db.get_completed_transaction(tx_id).await?;
-
+        let tx_id = completed_tx.tx_id;
         if !(completed_tx.status == TransactionStatus::Completed ||
             completed_tx.status == TransactionStatus::Broadcast ||
             completed_tx.status == TransactionStatus::MinedUnconfirmed) ||
@@ -1398,14 +1417,13 @@ where
     {
         trace!(target: LOG_TARGET, "Attempting to Broadcast all Completed Transactions");
         let completed_txs = self.db.get_completed_transactions().await?;
-        for completed_tx in completed_txs.values() {
+        for (_, completed_tx) in completed_txs {
             if completed_tx.valid &&
                 (completed_tx.status == TransactionStatus::Completed ||
                     completed_tx.status == TransactionStatus::Broadcast ||
                     completed_tx.status == TransactionStatus::MinedUnconfirmed)
             {
-                self.broadcast_completed_transaction(completed_tx.tx_id, join_handles)
-                    .await?;
+                self.broadcast_completed_transaction(completed_tx, join_handles).await?;
             }
         }
 

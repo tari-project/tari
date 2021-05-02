@@ -24,17 +24,15 @@ use crate::{
     grpc::WalletGrpcServer,
     notifier::Notifier,
     recovery::wallet_recovery,
-    ui::{run, App},
+    ui,
+    ui::App,
 };
-
 use log::*;
 use rand::{rngs::OsRng, seq::SliceRandom};
 use std::{fs, io::Stdout, net::SocketAddr, path::PathBuf};
 use tari_app_utilities::utilities::ExitCodes;
 use tari_common::GlobalConfig;
-use tari_comms::peer_manager::Peer;
-
-use tari_comms::types::CommsPublicKey;
+use tari_comms::{peer_manager::Peer, types::CommsPublicKey};
 use tari_wallet::WalletSqlite;
 use tokio::runtime::Handle;
 use tonic::transport::Server;
@@ -154,7 +152,7 @@ pub fn tui_mode(
 
     let notifier = Notifier::new(notify_script, handle.clone(), wallet.clone());
 
-    let app = handle.block_on(App::<CrosstermBackend<Stdout>>::new(
+    let app = App::<CrosstermBackend<Stdout>>::new(
         "Tari Console Wallet".into(),
         wallet,
         node_config.network,
@@ -162,8 +160,11 @@ pub fn tui_mode(
         base_node_config,
         node_config,
         notifier,
-    ));
-    handle.enter(|| run(app))?;
+    );
+
+    info!(target: LOG_TARGET, "Starting app");
+
+    handle.enter(|| ui::run(app))?;
 
     info!(
         target: LOG_TARGET,
