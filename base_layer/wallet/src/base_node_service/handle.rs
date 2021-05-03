@@ -46,7 +46,7 @@ pub enum BaseNodeServiceResponse {
 }
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum BaseNodeEvent {
-    BaseNodeState(BaseNodeState),
+    BaseNodeStateChanged(BaseNodeState),
     BaseNodePeerSet(Box<Peer>),
 }
 

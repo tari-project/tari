@@ -34,7 +34,6 @@ mod ui_contact;
 mod ui_error;
 
 pub use app::*;
-
 pub use ui_contact::*;
 pub use ui_error::*;
 
@@ -44,6 +43,7 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use log::*;
 use std::io::{stdout, Stdout, Write};
 use tokio::runtime::Handle;
 use tui::{backend::CrosstermBackend, Terminal};
@@ -53,15 +53,17 @@ pub const MAX_WIDTH: u16 = 133;
 pub fn run(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitCodes> {
     let mut app = app;
     Handle::current()
-        .block_on(app.app_state.refresh_transaction_state())
+        .block_on(async {
+            trace!(target: LOG_TARGET, "Refreshing transaction state");
+            app.app_state.refresh_transaction_state().await?;
+            trace!(target: LOG_TARGET, "Refreshing contacts state");
+            app.app_state.refresh_contacts_state().await?;
+            trace!(target: LOG_TARGET, "Refreshing connected peers state");
+            app.app_state.refresh_connected_peers_state().await?;
+            app.app_state.start_event_monitor(app.notifier.clone()).await;
+            Result::<_, UiError>::Ok(())
+        })
         .map_err(|e| ExitCodes::WalletError(e.to_string()))?;
-    Handle::current()
-        .block_on(app.app_state.refresh_contacts_state())
-        .map_err(|e| ExitCodes::WalletError(e.to_string()))?;
-    Handle::current()
-        .block_on(app.app_state.refresh_connected_peers_state())
-        .map_err(|e| ExitCodes::WalletError(e.to_string()))?;
-    Handle::current().block_on(app.app_state.start_event_monitor(app.notifier.clone()));
     crossterm_loop(app)
 }
 /// This is the main loop of the application UI using Crossterm based events

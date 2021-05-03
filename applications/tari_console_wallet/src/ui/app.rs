@@ -65,7 +65,7 @@ pub struct App<B: Backend> {
 }
 
 impl<B: Backend> App<B> {
-    pub async fn new(
+    pub fn new(
         title: String,
         wallet: WalletSqlite,
         network: Network,

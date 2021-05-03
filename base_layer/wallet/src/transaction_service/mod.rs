@@ -194,7 +194,7 @@ where T: TransactionBackend + 'static
             let output_manager_service = handles.expect_handle::<OutputManagerHandle>();
             let connectivity_manager = handles.expect_handle::<ConnectivityRequester>();
 
-            let service = TransactionService::new(
+            let result = TransactionService::new(
                 config,
                 TransactionDatabase::new(backend),
                 receiver,
@@ -211,9 +211,12 @@ where T: TransactionBackend + 'static
                 factories,
                 handles.get_shutdown_signal(),
             )
-            .start();
-            futures::pin_mut!(service);
-            future::select(service, handles.get_shutdown_signal()).await;
+            .start()
+            .await;
+
+            if let Err(e) = result {
+                error!(target: LOG_TARGET, "Transaction Service error: {}", e);
+            }
             info!(target: LOG_TARGET, "Transaction Service shutdown");
         });
 
