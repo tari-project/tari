@@ -37,8 +37,8 @@ use lmdb_zero::{
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
 use std::fmt::Debug;
-
 use tari_crypto::tari_utilities::hex::to_hex;
+
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb";
 
 // TODO: Calling `access` for every lmdb operation has some overhead (an atomic read and set). Check if is possible to
@@ -74,7 +74,7 @@ pub fn lmdb_insert<K, V>(
 ) -> Result<(), ChainStorageError>
 where
     K: AsLmdbBytes + ?Sized + Debug,
-    V: Serialize + std::fmt::Debug,
+    V: Serialize + Debug,
 {
     let val_buf = serialize(val)?;
     txn.access().put(&db, key, &val_buf, put::NOOVERWRITE).map_err(|e| {
@@ -318,7 +318,7 @@ pub fn lmdb_first_after<K, V>(
     key: &K,
 ) -> Result<Option<V>, ChainStorageError>
 where
-    K: AsLmdbBytes + ?Sized + FromLmdbBytes,
+    K: AsLmdbBytes + FromLmdbBytes + ?Sized,
     V: DeserializeOwned,
 {
     let access = txn.access();
@@ -328,8 +328,8 @@ where
     })?;
 
     match cursor.seek_range_k(&access, key) {
-        Ok(r) => {
-            let val = deserialize::<V>(r.1)?;
+        Ok((_, v)) => {
+            let val = deserialize::<V>(v)?;
             Ok(Some(val))
         },
         Err(_) => Ok(None),

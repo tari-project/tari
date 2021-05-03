@@ -163,8 +163,8 @@ impl MempoolInboundHandlers {
             ValidBlockAdded(_, BlockAddResult::ChainReorg { added, removed }, broadcast) => {
                 async_mempool::process_reorg(
                     self.mempool.clone(),
-                    removed.iter().map(|b| b.block.clone().into()).collect(),
-                    added.iter().map(|b| b.block.clone().into()).collect(),
+                    removed.iter().map(|b| b.to_arc_block()).collect(),
+                    added.iter().map(|b| b.to_arc_block()).collect(),
                 )
                 .await?;
                 if broadcast.is_true() {
@@ -174,14 +174,14 @@ impl MempoolInboundHandlers {
             BlockSyncRewind(removed_blocks) if !removed_blocks.is_empty() => {
                 async_mempool::process_reorg(
                     self.mempool.clone(),
-                    removed_blocks.iter().map(|b| b.block.clone().into()).collect(),
+                    removed_blocks.iter().map(|b| b.to_arc_block()).collect(),
                     vec![],
                 )
                 .await?;
                 let _ = self.event_publisher.send(MempoolStateEvent::Updated);
             },
             BlockSyncComplete(tip_block) => {
-                async_mempool::process_published_block(self.mempool.clone(), tip_block.block.clone().into()).await?;
+                async_mempool::process_published_block(self.mempool.clone(), tip_block.to_arc_block()).await?;
                 let _ = self.event_publisher.send(MempoolStateEvent::Updated);
             },
             _ => {},

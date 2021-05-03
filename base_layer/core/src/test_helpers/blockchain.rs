@@ -29,6 +29,7 @@ use crate::{
         BlockchainBackend,
         BlockchainDatabase,
         BlockchainDatabaseConfig,
+        ChainBlock,
         ChainHeader,
         ChainStorageError,
         DbKey,
@@ -168,12 +169,8 @@ impl BlockchainBackend for TempDatabase {
         self.db.contains(key)
     }
 
-    fn fetch_header_and_accumulated_data(
-        &self,
-        height: u64,
-    ) -> Result<(BlockHeader, BlockHeaderAccumulatedData), ChainStorageError>
-    {
-        self.db.fetch_header_and_accumulated_data(height)
+    fn fetch_chain_header_by_height(&self, height: u64) -> Result<ChainHeader, ChainStorageError> {
+        self.db.fetch_chain_header_by_height(height)
     }
 
     fn fetch_header_accumulated_data(
@@ -302,12 +299,8 @@ impl BlockchainBackend for TempDatabase {
         self.db.fetch_orphan_children_of(hash)
     }
 
-    fn fetch_orphan_header_accumulated_data(
-        &self,
-        hash: HashOutput,
-    ) -> Result<BlockHeaderAccumulatedData, ChainStorageError>
-    {
-        self.db.fetch_orphan_header_accumulated_data(hash)
+    fn fetch_orphan_chain_block(&self, hash: HashOutput) -> Result<Option<ChainBlock>, ChainStorageError> {
+        self.db.fetch_orphan_chain_block(hash)
     }
 
     fn delete_oldest_orphans(

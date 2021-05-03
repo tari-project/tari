@@ -33,6 +33,7 @@ use crate::{
         monero_rx::MoneroData,
         randomx_factory::RandomXFactory,
         sha3_difficulty,
+        AchievedTargetDifficulty,
         Difficulty,
         PowAlgorithm,
         PowError,
@@ -157,27 +158,29 @@ pub fn check_target_difficulty(
     block_header: &BlockHeader,
     target: Difficulty,
     randomx_factory: &RandomXFactory,
-) -> Result<Difficulty, ValidationError>
+) -> Result<AchievedTargetDifficulty, ValidationError>
 {
     let achieved = match block_header.pow_algo() {
         PowAlgorithm::Monero => monero_difficulty(block_header, randomx_factory)?,
         PowAlgorithm::Blake => unimplemented!(),
         PowAlgorithm::Sha3 => sha3_difficulty(block_header),
     };
-    if achieved < target {
-        warn!(
-            target: LOG_TARGET,
-            "Proof of work for {} was below the target difficulty. Achieved: {}, Target: {}",
-            block_header.hash().to_hex(),
-            achieved,
-            target
-        );
-        return Err(ValidationError::BlockHeaderError(
-            BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyTooLow { achieved, target }),
-        ));
-    }
 
-    Ok(achieved)
+    match AchievedTargetDifficulty::try_construct(block_header.pow_algo(), target, achieved) {
+        Some(achieved_target) => Ok(achieved_target),
+        None => {
+            warn!(
+                target: LOG_TARGET,
+                "Proof of work for {} was below the target difficulty. Achieved: {}, Target: {}",
+                block_header.hash().to_hex(),
+                achieved,
+                target
+            );
+            Err(ValidationError::BlockHeaderError(
+                BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyTooLow { achieved, target }),
+            ))
+        },
+    }
 }
 
 pub fn check_block_weight(block: &Block, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {

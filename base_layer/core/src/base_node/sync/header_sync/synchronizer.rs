@@ -402,11 +402,11 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             .map_err(BlockHeaderSyncError::ReceivedInvalidHeader)?;
         let num_new_headers = headers.len();
 
-        // We can trust that the header associated with this hash exists because block_hashes is data this node
-        // supplied. usize conversion overflow has already been checked above
-        let chain_split_hash = block_hashes[fork_hash_index as usize].clone();
+        // NOTE: We can trust that the header associated with this hash exists because `block_hashes` was supplied by
+        // this node. usize conversion overflow has already been checked above
+        let chain_split_hash = block_hashes.get(fork_hash_index as usize).unwrap();
 
-        self.header_validator.initialize_state(chain_split_hash.clone()).await?;
+        self.header_validator.initialize_state(&chain_split_hash).await?;
         for header in headers {
             debug!(
                 target: LOG_TARGET,
@@ -440,7 +440,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             local_tip_header,
             remote_tip_height,
             reorg_steps_back: steps_back,
-            chain_split_hash,
+            chain_split_hash: chain_split_hash.clone(),
         };
         Ok(SyncStatus::Lagging(Box::new(chain_split_info)))
     }
@@ -496,10 +496,12 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
         debug!(
             target: LOG_TARGET,
-            "Download remaining headers starting from header #{} from peer `{}`", start_header.header.height, peer
+            "Download remaining headers starting from header #{} from peer `{}`",
+            start_header.height(),
+            peer
         );
         let request = SyncHeadersRequest {
-            start_hash: start_header.header.hash(),
+            start_hash: start_header.hash().clone(),
             // To the tip!
             count: 0,
         };
@@ -571,7 +573,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         let new_tip = chain_headers.last().cloned().unwrap();
         let mut txn = self.db.write_transaction();
         chain_headers.into_iter().for_each(|chain_header| {
-            txn.insert_header(chain_header.header, chain_header.accumulated_data);
+            txn.insert_chain_header(chain_header);
         });
 
         txn.commit().await?;

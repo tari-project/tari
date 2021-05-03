@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
     blocks::{Block, BlockHeader},
-    chain_storage::{error::ChainStorageError, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, MmrTree},
+    chain_storage::{error::ChainStorageError, ChainBlock, ChainHeader, MmrTree},
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
         types::{Commitment, HashOutput},
@@ -104,12 +104,9 @@ impl DbTransaction {
     }
 
     /// Inserts a block header into the current transaction.
-    pub fn insert_header(&mut self, header: BlockHeader, accum_data: BlockHeaderAccumulatedData) -> &mut Self {
-        self.operations.push(WriteOperation::InsertHeader {
-            header: Box::new(ChainHeader {
-                header,
-                accumulated_data: accum_data,
-            }),
+    pub fn insert_chain_header(&mut self, chain_header: ChainHeader) -> &mut Self {
+        self.operations.push(WriteOperation::InsertChainHeader {
+            header: Box::new(chain_header),
         });
         self
     }
@@ -189,11 +186,14 @@ impl DbTransaction {
 
     /// Stores an orphan block. No checks are made as to whether this is actually an orphan. That responsibility lies
     /// with the calling function.
+    /// The transaction will rollback and write will return an error if the orphan already exists.
     pub fn insert_orphan(&mut self, orphan: Arc<Block>) -> &mut Self {
         self.operations.push(WriteOperation::InsertOrphanBlock(orphan));
         self
     }
 
+    /// Insert a "chained" orphan block.
+    /// The transaction will rollback and write will return an error if the orphan already exists.
     pub fn insert_chained_orphan(&mut self, orphan: Arc<ChainBlock>) -> &mut Self {
         self.operations.push(WriteOperation::InsertChainOrphanBlock(orphan));
         self
@@ -208,6 +208,15 @@ impl DbTransaction {
     /// Add an orphan to the orphan tip set
     pub fn insert_orphan_chain_tip(&mut self, hash: HashOutput) -> &mut Self {
         self.operations.push(WriteOperation::InsertOrphanChainTip(hash));
+        self
+    }
+
+    /// Sets accumulated data for the orphan block, "upgrading" the orphan block to a chained orphan.
+    /// Any existing accumulated data is overwritten.
+    /// The transaction will rollback and write will return an error if the orphan block does not exist.
+    pub fn set_accumulated_data_for_orphan(&mut self, chain_header: ChainHeader) -> &mut Self {
+        self.operations
+            .push(WriteOperation::SetAccumulatedDataForOrphan(chain_header));
         self
     }
 
@@ -256,7 +265,7 @@ impl DbTransaction {
 pub enum WriteOperation {
     InsertOrphanBlock(Arc<Block>),
     InsertChainOrphanBlock(Arc<ChainBlock>),
-    InsertHeader {
+    InsertChainHeader {
         header: Box<ChainHeader>,
     },
     InsertBlockBody {
@@ -306,6 +315,7 @@ pub enum WriteOperation {
         header_hash: HashOutput,
         kernel_sum: Commitment,
     },
+    SetAccumulatedDataForOrphan(ChainHeader),
     SetBestBlock {
         height: u64,
         hash: HashOutput,
@@ -325,21 +335,18 @@ impl fmt::Display for WriteOperation {
         match self {
             InsertOrphanBlock(block) => write!(
                 f,
-                "InsertBlock({}, {})",
+                "InsertOrphanBlock({}, {})",
                 block.hash().to_hex(),
                 block.body.to_counts_string()
             ),
-            InsertHeader { header } => write!(
-                f,
-                "InsertHeader(#{} {})",
-                header.header.height,
-                header.accumulated_data.hash.to_hex()
-            ),
+            InsertChainHeader { header } => {
+                write!(f, "InsertChainHeader(#{} {})", header.height(), header.hash().to_hex())
+            },
             InsertBlockBody { block } => write!(
                 f,
                 "InsertBlockBody({}, {})",
-                block.accumulated_data.hash.to_hex(),
-                block.block.body.to_counts_string(),
+                block.accumulated_data().hash.to_hex(),
+                block.block().body.to_counts_string(),
             ),
             InsertKernel {
                 header_hash,
@@ -380,9 +387,7 @@ impl fmt::Display for WriteOperation {
             InsertMoneroSeedHeight(data, height) => {
                 write!(f, "Insert Monero seed string {} for height: {}", data, height)
             },
-            InsertChainOrphanBlock(block) => {
-                write!(f, "InsertChainOrphanBlock({})", block.accumulated_data.hash.to_hex())
-            },
+            InsertChainOrphanBlock(block) => write!(f, "InsertChainOrphanBlock({})", block.hash().to_hex()),
             UpdatePrunedHashSet {
                 mmr_tree, header_hash, ..
             } => write!(
@@ -411,6 +416,9 @@ impl fmt::Display for WriteOperation {
                 horizon
             ),
             UpdateKernelSum { header_hash, .. } => write!(f, "Update kernel sum for block: {}", header_hash.to_hex()),
+            SetAccumulatedDataForOrphan(chain_header) => {
+                write!(f, "Set accumulated data for orphan {}", chain_header.hash().to_hex())
+            },
             SetBestBlock {
                 height,
                 hash,

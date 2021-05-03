@@ -370,7 +370,7 @@ where T: BlockchainBackend + 'static
             NodeCommsRequest::GetNewBlockTemplate(request) => {
                 let best_block_header = self.blockchain_db.fetch_tip_header().await?;
 
-                let mut header = BlockHeader::from_previous(&best_block_header.header)?;
+                let mut header = BlockHeader::from_previous(best_block_header.header());
                 let constants = self.consensus_manager.consensus_constants(header.height);
                 header.version = constants.blockchain_version();
                 header.pow.pow_algo = request.algo;
@@ -384,8 +384,8 @@ where T: BlockchainBackend + 'static
 
                 let transactions = async_mempool::retrieve(self.mempool.clone(), asking_weight)
                     .await?
-                    .iter()
-                    .map(|tx| (**tx).clone())
+                    .into_iter()
+                    .map(|tx| Arc::try_unwrap(tx).unwrap_or_else(|tx| (*tx).clone()))
                     .collect();
 
                 let height = header.height;

@@ -134,12 +134,11 @@ impl BlockHeader {
     }
 
     /// Create a new block header using relevant data from the previous block. The height is incremented by one, the
-    /// previous block hash is set, and the timestamp is set to the current time and the proof of work is partially
-    /// initialized, although the `accumulated_difficulty_<algo>` stats are updated using the previous block's proof
-    /// of work information.
-    pub fn from_previous(prev: &BlockHeader) -> Result<BlockHeader, BlockHeaderValidationError> {
+    /// previous block hash is set, the timestamp is set to the current time, and the kernel/output mmr sizes are set to
+    /// the previous block. All other fields, including proof of work are set to defaults.
+    pub fn from_previous(prev: &BlockHeader) -> BlockHeader {
         let prev_hash = prev.hash();
-        Ok(BlockHeader {
+        BlockHeader {
             version: prev.version,
             height: prev.height + 1,
             prev_hash,
@@ -152,7 +151,7 @@ impl BlockHeader {
             total_kernel_offset: BlindingFactor::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
-        })
+        }
     }
 
     #[cfg(feature = "base_node")]
@@ -337,7 +336,7 @@ mod test {
         h1.nonce = 7600;
         assert_eq!(h1.height, 0, "Default block height");
         let hash1 = h1.hash();
-        let h2 = BlockHeader::from_previous(&h1).unwrap();
+        let h2 = BlockHeader::from_previous(&h1);
         assert_eq!(h2.height, h1.height + 1, "Incrementing block height");
         assert!(h2.timestamp > h1.timestamp, "Timestamp");
         assert_eq!(h2.prev_hash, hash1, "Previous hash");

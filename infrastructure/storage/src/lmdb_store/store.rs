@@ -324,8 +324,8 @@ impl LMDBBuilder {
 pub struct LMDBStore {
     path: String,
     env_config: LMDBConfig,
-    pub(crate) env: Arc<Environment>,
-    pub(crate) databases: HashMap<String, LMDBDatabase>,
+    env: Arc<Environment>,
+    databases: HashMap<String, LMDBDatabase>,
 }
 
 impl LMDBStore {

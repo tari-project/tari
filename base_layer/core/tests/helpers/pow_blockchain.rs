@@ -117,7 +117,7 @@ pub fn calculate_accumulated_difficulty(
         consensus_constants.get_difficulty_max_block_interval(pow_algo),
     );
     for height in heights {
-        let (header, accum) = db.fetch_header_and_accumulated_data(height).unwrap();
+        let (header, accum) = db.fetch_chain_header(height).unwrap().into_parts();
         lwma.add(header.timestamp, accum.target_difficulty).unwrap();
     }
     lwma.get_difficulty().unwrap()

@@ -23,7 +23,6 @@
 use super::error::BlockSyncError;
 use crate::{
     base_node::sync::{hooks::Hooks, rpc},
-    blocks::Block,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainBlock},
     proto::base_node::SyncBlocksRequest,
     tari_utilities::{hex::Hex, Hashable},
@@ -138,9 +137,9 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         let tip_hash = tip_header.hash();
         let tip_height = tip_header.height;
         let best_height = local_metadata.height_of_longest_chain();
-        let (_best_block, accumulated_data) = self.db.fetch_header_and_accumulated_data(best_height).await?;
+        let chain_header = self.db.fetch_chain_header(best_height).await?;
 
-        let best_full_block_hash = accumulated_data.hash;
+        let best_full_block_hash = chain_header.accumulated_data().hash.clone();
         debug!(
             target: LOG_TARGET,
             "Starting block sync from peer `{}`. Current best block is #{} `{}`. Syncing to #{} ({}).",
@@ -172,10 +171,10 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
 
             let header_hash = header.hash().clone();
 
-            if header.header.prev_hash != prev_hash {
+            if header.header().prev_hash != prev_hash {
                 return Err(BlockSyncError::PeerSentBlockThatDidNotFormAChain {
                     expected: prev_hash.to_hex(),
-                    got: header.header.prev_hash.to_hex(),
+                    got: header.header().prev_hash.to_hex(),
                 });
             }
 
@@ -190,25 +189,22 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
             debug!(
                 target: LOG_TARGET,
                 "Validating block body #{} (PoW = {}, {})",
-                header.header.height,
-                header.header.pow_algo(),
+                header.height(),
+                header.header().pow_algo(),
                 body.to_counts_string(),
             );
 
             let timer = Instant::now();
-            let block = Arc::new(ChainBlock {
-                accumulated_data: header.accumulated_data.clone(),
-                block: Block::new(header.header, body),
-            });
+            let block = Arc::new(header.upgrade_to_chain_block(body));
             self.validate_block(block.clone()).await?;
 
             debug!(
                 target: LOG_TARGET,
                 "Validated in {:.0?}. Storing block body #{} (PoW = {}, {})",
                 timer.elapsed(),
-                block.block.header.height,
-                block.block.header.pow_algo(),
-                block.block.body.to_counts_string(),
+                block.header().height,
+                block.header().pow_algo(),
+                block.block().body.to_counts_string(),
             );
 
             let timer = Instant::now();
@@ -218,7 +214,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                 .set_best_block(
                     block.height(),
                     header_hash,
-                    block.accumulated_data.total_accumulated_difficulty,
+                    block.accumulated_data().total_accumulated_difficulty,
                 )
                 .commit()
                 .await?;
@@ -229,24 +225,24 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
             debug!(
                 target: LOG_TARGET,
                 "Block body #{} added in {:.0?}, Tot_acc_diff {}, Monero {}, SHA3 {}",
-                block.block.header.height,
+                block.height(),
                 timer.elapsed(),
                 block
-                    .accumulated_data
+                    .accumulated_data()
                     .total_accumulated_difficulty
                     .to_formatted_string(&Locale::en),
-                block.accumulated_data.accumulated_monero_difficulty,
-                block.accumulated_data.accumulated_blake_difficulty,
+                block.accumulated_data().accumulated_monero_difficulty,
+                block.accumulated_data().accumulated_blake_difficulty,
             );
             current_block = Some(block);
         }
 
         if let Some(block) = current_block {
             // Update metadata to last tip header
-            let header = &block.block.header;
+            let header = &block.header();
             let height = header.height;
             let best_block = header.hash();
-            let accumulated_difficulty = block.accumulated_data.total_accumulated_difficulty;
+            let accumulated_difficulty = block.accumulated_data().total_accumulated_difficulty;
             self.db
                 .write_transaction()
                 .set_best_block(height, best_block.to_vec(), accumulated_difficulty)
@@ -267,7 +263,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         let db = self.db.clone();
         task::spawn_blocking(move || {
             let db = db.inner().db_read_access()?;
-            validator.validate_body(&block, &*db)?;
+            validator.validate_body(block.block(), &*db)?;
             Result::<_, BlockSyncError>::Ok(())
         })
         .await

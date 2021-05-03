@@ -36,18 +36,11 @@ use crate::{
         types::{Commitment, PrivateKey, PublicKey, Signature},
     },
 };
+use std::sync::Arc;
 use tari_crypto::tari_utilities::{hash::Hashable, hex::*};
 
 pub fn get_mainnet_genesis_block() -> ChainBlock {
     unimplemented!()
-}
-
-pub fn get_mainnet_block_hash() -> Vec<u8> {
-    get_mainnet_genesis_block().accumulated_data.hash
-}
-
-pub fn get_mainnet_gen_header() -> BlockHeader {
-    get_mainnet_genesis_block().block.header
 }
 
 pub fn get_stibbons_genesis_block() -> ChainBlock {
@@ -85,10 +78,8 @@ pub fn get_stibbons_genesis_block() -> ChainBlock {
         accumulated_blake_difficulty: 1.into(),
         target_difficulty: 1.into(),
     };
-    ChainBlock {
-        block,
-        accumulated_data,
-    }
+    // NOTE: Panic is impossible, accumulated_data is created from the block
+    ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
 }
 
 #[allow(deprecated)]
@@ -185,10 +176,8 @@ pub fn get_ridcully_genesis_block() -> ChainBlock {
         accumulated_blake_difficulty: 1.into(),
         target_difficulty: 1.into(),
     };
-    ChainBlock {
-        block,
-        accumulated_data,
-    }
+    // NOTE: Panic is impossible, accumulated_data hash is set from block
+    ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
 }
 
 #[allow(deprecated)]
@@ -249,18 +238,6 @@ pub fn get_ridcully_genesis_block_raw() -> Block {
     }
 }
 
-pub fn get_ridcully_block_hash() -> Vec<u8> {
-    get_ridcully_genesis_block().accumulated_data.hash
-}
-
-pub fn get_stibbons_block_hash() -> Vec<u8> {
-    get_stibbons_genesis_block().accumulated_data.hash
-}
-
-pub fn get_ridcully_gen_header() -> BlockHeader {
-    get_ridcully_genesis_block().block.header
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -269,18 +246,18 @@ mod test {
     #[test]
     fn ridcully_genesis_sanity_check() {
         let block = get_ridcully_genesis_block();
-        assert_eq!(block.block.body.outputs().len(), 4001);
+        assert_eq!(block.block().body.outputs().len(), 4001);
 
         let factories = CryptoFactories::default();
-        let coinbase = block.block.body.outputs().first().unwrap();
+        let coinbase = block.block().body.outputs().first().unwrap();
         assert!(coinbase.is_coinbase());
         coinbase.verify_range_proof(&factories.range_proof).unwrap();
-        assert_eq!(block.block.body.kernels().len(), 2);
-        for kernel in block.block.body.kernels() {
+        assert_eq!(block.block().body.kernels().len(), 2);
+        for kernel in block.block().body.kernels() {
             kernel.verify_signature().unwrap();
         }
 
-        let coinbase_kernel = block.block.body.kernels().first().unwrap();
+        let coinbase_kernel = block.block().body.kernels().first().unwrap();
         assert!(coinbase_kernel.features.contains(KernelFeatures::COINBASE_KERNEL));
     }
 }

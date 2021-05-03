@@ -176,7 +176,7 @@ async fn inbound_fetch_headers() {
         consensus_manager,
         outbound_nci,
     );
-    let header = store.fetch_block(0).unwrap().block().header.clone();
+    let header = store.fetch_block(0).unwrap().header().clone();
 
     if let Ok(NodeCommsResponse::BlockHeaders(received_headers)) = inbound_nch
         .handle_request(NodeCommsRequest::FetchHeaders(vec![0]))
@@ -427,7 +427,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         .await
     {
         assert_eq!(received_blocks.len(), 1);
-        assert_eq!(*received_blocks[0].block(), block2.block);
+        assert_eq!(received_blocks[0].block(), block2.block());
     } else {
         panic!();
     }
