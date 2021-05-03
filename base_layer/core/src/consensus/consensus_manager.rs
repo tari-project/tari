@@ -233,7 +233,7 @@ impl ConsensusManagerBuilder {
                     .then()
                     .by_monero_difficulty()
                     .then()
-                    .by_blake_difficulty()
+                    .by_sha3_difficulty()
                     .build()
             }),
         };

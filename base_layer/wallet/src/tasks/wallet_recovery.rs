@@ -155,27 +155,14 @@ impl WalletRecoveryTask {
     async fn finalize(&self, total_scanned: u64, final_utxo_pos: u64, elapsed: Duration) -> Result<(), WalletError> {
         let num_recovered = self.get_metadata(RecoveryMetadataKey::NumUtxos).await?.unwrap_or(0);
         let total_amount = self
-            .wallet
-            .db
-            .get_client_key_from_str(RECOVERY_TOTAL_AMOUNT_KEY.to_string())
+            .get_metadata(RecoveryMetadataKey::TotalAmount)
             .await?
             .unwrap_or_else(|| 0.into());
 
-        let _ = self
-            .wallet
-            .db
-            .clear_client_value(RECOVERY_HEIGHT_KEY.to_string())
-            .await?;
-        let _ = self
-            .wallet
-            .db
-            .clear_client_value(RECOVERY_NUM_UTXOS_KEY.to_string())
-            .await?;
-        let _ = self
-            .wallet
-            .db
-            .clear_client_value(RECOVERY_TOTAL_AMOUNT_KEY.to_string())
-            .await?;
+        self.clear_metadata(RecoveryMetadataKey::Height).await?;
+        self.clear_metadata(RecoveryMetadataKey::NumUtxos).await?;
+        self.clear_metadata(RecoveryMetadataKey::TotalAmount).await?;
+        self.clear_metadata(RecoveryMetadataKey::UtxoIndex).await?;
 
         self.publish_event(WalletRecoveryEvent::Progress(final_utxo_pos, final_utxo_pos));
         self.publish_event(WalletRecoveryEvent::Completed(
@@ -337,14 +324,14 @@ impl WalletRecoveryTask {
             include_deleted_bitmaps: false,
         };
 
-        let utxo_stream = client.sync_utxos2(request).await.map_err(to_wallet_recovery_error)?;
+        let utxo_stream = client.sync_utxos(request).await.map_err(to_wallet_recovery_error)?;
         // We download in chunks just because rewind_outputs works with multiple outputs (and could parallelized
         // rewinding)
         let mut utxo_stream = utxo_stream.chunks(10);
         let mut last_utxo_index = 0u64;
         let mut iteration_count = 0u64;
         while let Some(response) = utxo_stream.next().await {
-            let response: Vec<proto::base_node::SyncUtxos2Response> = response
+            let response: Vec<proto::base_node::SyncUtxosResponse> = response
                 .into_iter()
                 .map(|v| v.map_err(to_wallet_recovery_error))
                 .collect::<Result<Vec<_>, _>>()?;
@@ -417,11 +404,8 @@ impl WalletRecoveryTask {
             .await?;
 
         let current_num_utxos = self.get_metadata(RecoveryMetadataKey::NumUtxos).await?.unwrap_or(0u64);
-        self.set_metadata(
-            RecoveryMetadataKey::NumUtxos,
-            (current_num_utxos + num_recovered).to_string(),
-        )
-        .await?;
+        self.set_metadata(RecoveryMetadataKey::NumUtxos, current_num_utxos + num_recovered)
+            .await?;
 
         let current_total_amount = self
             .get_metadata::<MicroTari>(RecoveryMetadataKey::TotalAmount)
@@ -432,7 +416,7 @@ impl WalletRecoveryTask {
             .await?;
         self.set_metadata(
             RecoveryMetadataKey::TotalAmount,
-            (current_total_amount + total_amount).as_u64().to_string(),
+            (current_total_amount + total_amount).as_u64(),
         )
         .await?;
 
@@ -460,6 +444,11 @@ impl WalletRecoveryTask {
             .get_client_key_from_str(key.as_key_str().to_string())
             .await?;
         Ok(value)
+    }
+
+    async fn clear_metadata(&self, key: RecoveryMetadataKey) -> Result<(), WalletError> {
+        self.wallet.db.clear_client_value(key.as_key_str().to_string()).await?;
+        Ok(())
     }
 
     fn publish_event(&self, event: WalletRecoveryEvent) {

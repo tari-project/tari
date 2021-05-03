@@ -370,7 +370,7 @@ pub fn append_block_with_coinbase<B: BlockchainBackend>(
         BlockAddResult::Ok(b) => Ok((b.as_ref().clone(), coinbase_output)),
         BlockAddResult::BlockExists => Err(ChainStorageError::InvalidOperation("Block already exists".to_string())),
         BlockAddResult::OrphanBlock => Err(ChainStorageError::InvalidOperation("Block added as orphan".to_string())),
-        BlockAddResult::ChainReorg(_, _) => Err(ChainStorageError::InvalidOperation(
+        BlockAddResult::ChainReorg { .. } => Err(ChainStorageError::InvalidOperation(
             "Chain reorged unexpectedly".to_string(),
         )),
     }

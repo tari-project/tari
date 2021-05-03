@@ -329,7 +329,7 @@ fn handle_tip_reorg() {
     .unwrap();
 
     // Adding B2 to the main chain will produce a reorg to GB->A1->B2.
-    if let Ok(BlockAddResult::ChainReorg(_, _)) = store.add_block(orphan_blocks[2].block.clone().into()) {
+    if let Ok(BlockAddResult::ChainReorg { .. }) = store.add_block(orphan_blocks[2].block.clone().into()) {
     } else {
         panic!();
     }
@@ -609,7 +609,7 @@ fn handle_reorg_with_no_removed_blocks() {
     let result = store.add_block(orphan1_blocks[2].block.clone().into()).unwrap(); // B2
     match result {
         BlockAddResult::Ok(_) => panic!("Adding multiple blocks without removing any failed to cause a reorg!"),
-        BlockAddResult::ChainReorg(removed, added) => {
+        BlockAddResult::ChainReorg { removed, added } => {
             assert_eq!(added.len(), 2);
             assert_eq!(removed.len(), 0);
         },
@@ -1224,7 +1224,7 @@ fn orphan_cleanup_on_reorg() {
         BlockAddResult::OrphanBlock
     );
 
-    if let Ok(BlockAddResult::ChainReorg(_, _)) = store.add_block(orphan_blocks[2].block.clone().into()) {
+    if let Ok(BlockAddResult::ChainReorg { .. }) = store.add_block(orphan_blocks[2].block.clone().into()) {
     } else {
         panic!();
     }
@@ -1364,10 +1364,9 @@ fn fails_validation() {
 }
 
 #[test]
-#[ignore = "To be completed with pruned mode"]
 fn pruned_mode_cleanup_and_fetch_block() {
     let network = Network::LocalNet;
-    let block0 = genesis_block::get_ridcully_genesis_block();
+    let block0 = genesis_block::get_weatherwax_genesis_block();
     let consensus_manager = ConsensusManagerBuilder::new(network).with_block(block0.clone()).build();
     let validators = Validators::new(
         MockValidator::new(true),
@@ -1377,26 +1376,24 @@ fn pruned_mode_cleanup_and_fetch_block() {
     let db = create_test_db();
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
-        pruning_horizon: 2,
-        pruning_interval: 2,
+        pruning_horizon: 3,
+        pruning_interval: 1,
     };
     let store = BlockchainDatabase::new(db, &consensus_manager, validators, config, false).unwrap();
     let block1 = append_block(&store, &block0, vec![], &consensus_manager, 1.into()).unwrap();
     let block2 = append_block(&store, &block1, vec![], &consensus_manager, 1.into()).unwrap();
     let block3 = append_block(&store, &block2, vec![], &consensus_manager, 1.into()).unwrap();
 
-    assert!(store.fetch_block(0).is_err()); // Genesis block cant be retrieved in pruned mode
-    assert_eq!(store.fetch_block(1).unwrap().try_into_chain_block().unwrap(), block1);
-    assert_eq!(store.fetch_block(2).unwrap().try_into_chain_block().unwrap(), block2);
+    let metadata = store.get_chain_metadata().unwrap();
+    assert_eq!(metadata.pruned_height(), 0);
 
     let block4 = append_block(&store, &block3, vec![], &consensus_manager, 1.into()).unwrap();
+    let _block5 = append_block(&store, &block4, vec![], &consensus_manager, 1.into()).unwrap();
 
-    // Adding block 4 will trigger the pruned mode cleanup, first block after horizon block height is retrievable.
-    assert!(store.fetch_block(0).is_err());
-    assert!(store.fetch_block(1).is_err());
-    assert!(store.fetch_block(2).is_err());
-    assert_eq!(store.fetch_block(3).unwrap().try_into_chain_block().unwrap(), block3);
-    assert_eq!(store.fetch_block(4).unwrap().try_into_chain_block().unwrap(), block4);
+    let metadata = store.get_chain_metadata().unwrap();
+    assert_eq!(metadata.pruned_height(), 1);
+    assert_eq!(metadata.height_of_longest_chain(), 5);
+    assert_eq!(metadata.pruning_horizon(), 3);
 }
 
 #[test]

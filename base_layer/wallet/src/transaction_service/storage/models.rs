@@ -202,6 +202,7 @@ pub struct CompletedTransaction {
     pub last_send_timestamp: Option<NaiveDateTime>,
     pub valid: bool,
     pub confirmations: Option<u64>,
+    pub mined_height: Option<u64>,
 }
 
 impl CompletedTransaction {
@@ -237,6 +238,7 @@ impl CompletedTransaction {
             last_send_timestamp: None,
             valid: true,
             confirmations: None,
+            mined_height: None,
         }
     }
 }
@@ -330,6 +332,7 @@ impl From<OutboundTransaction> for CompletedTransaction {
             last_send_timestamp: None,
             valid: true,
             confirmations: None,
+            mined_height: None,
         }
     }
 }
@@ -353,6 +356,7 @@ impl From<InboundTransaction> for CompletedTransaction {
             last_send_timestamp: None,
             valid: true,
             confirmations: None,
+            mined_height: None,
         }
     }
 }

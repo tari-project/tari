@@ -83,6 +83,7 @@ pub const LOG_TARGET: &str = "wallet::console_wallet::init";
 const BASE_NODE_BUFFER_MIN_SIZE: usize = 30;
 const TARI_WALLET_PASSWORD: &str = "TARI_WALLET_PASSWORD";
 
+#[derive(Clone, Copy)]
 pub enum WalletBoot {
     New,
     Existing,

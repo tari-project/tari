@@ -23,6 +23,7 @@ table! {
         last_send_timestamp -> Nullable<Timestamp>,
         valid -> Integer,
         confirmations -> Nullable<BigInt>,
+        mined_height -> Nullable<BigInt>,
     }
 }
 

@@ -25,7 +25,7 @@ use std::num::{ParseFloatError, ParseIntError};
 use chrono_english::DateError;
 use log::*;
 use tari_app_utilities::utilities::ExitCodes;
-use tari_core::transactions::tari_amount::MicroTariError;
+use tari_core::transactions::{tari_amount::MicroTariError, transaction::TransactionError};
 use tari_wallet::{
     output_manager_service::error::OutputManagerError,
     transaction_service::error::TransactionServiceError,
@@ -41,7 +41,9 @@ pub enum CommandError {
     #[error("Argument error - were they in the right order?")]
     Argument,
     #[error("Transaction service error `{0}`")]
-    Transaction(#[from] TransactionServiceError),
+    TransactionError(#[from] TransactionError),
+    #[error("Transaction service error `{0}`")]
+    TransactionServiceError(#[from] TransactionServiceError),
     #[error("Output manager error: `{0}`")]
     OutputManagerError(#[from] OutputManagerError),
     #[error("Tokio join error `{0}`")]
@@ -50,6 +52,8 @@ pub enum CommandError {
     Config(String),
     #[error("Comms error `{0}`")]
     Comms(String),
+    #[error("CSV file error `{0}`")]
+    CSVFile(String),
 }
 
 impl From<CommandError> for ExitCodes {
@@ -67,7 +71,7 @@ pub enum ParseError {
     MicroTariAmount(#[from] MicroTariError),
     #[error("Failed to parse public key or emoji id.")]
     PublicKey,
-    #[error("Failed to parse a missing {0}.")]
+    #[error("Failed to parse a missing {0}")]
     Empty(String),
     #[error("Failed to parse float.")]
     Float(#[from] ParseFloatError),

@@ -22,7 +22,7 @@ use log::*;
 use recovery::prompt_private_key_from_seed_words;
 use std::process;
 use tari_app_utilities::{initialization::init_configuration, utilities::ExitCodes};
-use tari_common::configuration::bootstrap::ApplicationType;
+use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap};
 use tari_core::transactions::types::PrivateKey;
 use tari_shutdown::Shutdown;
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};
@@ -77,23 +77,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     // check for recovery based on existence of wallet file
     let mut boot_mode = boot(&bootstrap, &config)?;
 
-    let master_key: Option<PrivateKey> = if matches!(boot_mode, WalletBoot::Recovery) {
-        let private_key = if bootstrap.seed_words.is_some() {
-            let seed_words: Vec<String> = bootstrap
-                .seed_words
-                .clone()
-                .unwrap()
-                .split_whitespace()
-                .map(|v| v.to_string())
-                .collect();
-            get_private_key_from_seed_words(seed_words)?
-        } else {
-            prompt_private_key_from_seed_words()?
-        };
-        Some(private_key)
-    } else {
-        None
-    };
+    let master_key: Option<PrivateKey> = get_master_key(boot_mode, &bootstrap)?;
 
     if bootstrap.init {
         info!(target: LOG_TARGET, "Default configuration created. Done.");
@@ -166,7 +150,7 @@ fn main_inner() -> Result<(), ExitCodes> {
         )),
     };
 
-    print!("Shutting down wallet... ");
+    print!("\nShutting down wallet... ");
     if shutdown.trigger().is_ok() {
         runtime.block_on(wallet.wait_until_shutdown());
     } else {
@@ -175,4 +159,24 @@ fn main_inner() -> Result<(), ExitCodes> {
     println!("Done.");
 
     result
+}
+
+fn get_master_key(boot_mode: WalletBoot, bootstrap: &ConfigBootstrap) -> Result<Option<PrivateKey>, ExitCodes> {
+    if matches!(boot_mode, WalletBoot::Recovery) {
+        let private_key = if bootstrap.seed_words.is_some() {
+            let seed_words: Vec<String> = bootstrap
+                .seed_words
+                .clone()
+                .unwrap()
+                .split_whitespace()
+                .map(|v| v.to_string())
+                .collect();
+            get_private_key_from_seed_words(seed_words)?
+        } else {
+            prompt_private_key_from_seed_words()?
+        };
+        Ok(Some(private_key))
+    } else {
+        Ok(None)
+    }
 }

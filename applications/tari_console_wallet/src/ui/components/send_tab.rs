@@ -1,6 +1,6 @@
 use crate::{
     ui::{
-        components::{balance::Balance, Component},
+        components::{balance::Balance, Component, KeyHandled},
         state::{AppState, UiTransactionSendStatus},
         widgets::{centered_rect_absolute, draw_dialog, MultiColumnList, WindowedListState},
         MAX_WIDTH,
@@ -299,6 +299,226 @@ impl SendTab {
             ),
         }
     }
+
+    fn on_key_confirmation_dialog(&mut self, c: char, app_state: &mut AppState) -> KeyHandled {
+        if self.confirmation_dialog.is_some() {
+            if 'n' == c {
+                self.confirmation_dialog = None;
+                return KeyHandled::Handled;
+            } else if 'y' == c {
+                let one_sided_transaction = matches!(
+                    self.confirmation_dialog,
+                    Some(ConfirmationDialogType::ConfirmOneSidedSend)
+                );
+                match self.confirmation_dialog {
+                    None => (),
+                    Some(ConfirmationDialogType::ConfirmNormalSend) |
+                    Some(ConfirmationDialogType::ConfirmOneSidedSend) => {
+                        if 'y' == c {
+                            let amount = if let Ok(v) = self.amount_field.parse::<u64>() {
+                                v
+                            } else {
+                                self.error_message =
+                                    Some("Amount should be an integer\nPress Enter to continue.".to_string());
+                                return KeyHandled::Handled;
+                            };
+
+                            let fee_per_gram = if let Ok(v) = self.fee_field.parse::<u64>() {
+                                v
+                            } else {
+                                self.error_message =
+                                    Some("Fee-per-gram should be an integer\nPress Enter to continue.".to_string());
+                                return KeyHandled::Handled;
+                            };
+
+                            let (tx, rx) = watch::channel(UiTransactionSendStatus::Initiated);
+
+                            let mut reset_fields = false;
+                            if one_sided_transaction {
+                                match Handle::current().block_on(app_state.send_one_sided_transaction(
+                                    self.to_field.clone(),
+                                    amount,
+                                    fee_per_gram,
+                                    self.message_field.clone(),
+                                    tx,
+                                )) {
+                                    Err(e) => {
+                                        self.error_message = Some(format!(
+                                            "Error sending one-sided transaction:\n{}\nPress Enter to continue.",
+                                            e
+                                        ))
+                                    },
+                                    Ok(_) => reset_fields = true,
+                                }
+                            } else {
+                                match Handle::current().block_on(app_state.send_transaction(
+                                    self.to_field.clone(),
+                                    amount,
+                                    fee_per_gram,
+                                    self.message_field.clone(),
+                                    tx,
+                                )) {
+                                    Err(e) => {
+                                        self.error_message = Some(format!(
+                                            "Error sending normal transaction:\n{}\nPress Enter to continue.",
+                                            e
+                                        ))
+                                    },
+                                    Ok(_) => reset_fields = true,
+                                }
+                            }
+                            if reset_fields {
+                                self.to_field = "".to_string();
+                                self.amount_field = "".to_string();
+                                self.fee_field = u64::from(DEFAULT_FEE_PER_GRAM).to_string();
+                                self.message_field = "".to_string();
+                                self.send_input_mode = SendInputMode::None;
+                                self.send_result_watch = Some(rx);
+                            }
+                            self.confirmation_dialog = None;
+                            return KeyHandled::Handled;
+                        }
+                    },
+                    Some(ConfirmationDialogType::ConfirmDeleteContact) => {
+                        if 'y' == c {
+                            if let Some(c) = self
+                                .contacts_list_state
+                                .selected()
+                                .and_then(|i| app_state.get_contact(i))
+                                .cloned()
+                            {
+                                if let Err(_e) = Handle::current().block_on(app_state.delete_contact(c.public_key)) {
+                                    self.error_message =
+                                        Some("Could not delete selected contact\nPress Enter to continue.".to_string());
+                                }
+                            }
+                            self.confirmation_dialog = None;
+                            return KeyHandled::Handled;
+                        }
+                    },
+                }
+            }
+        }
+
+        KeyHandled::NotHandled
+    }
+
+    fn on_key_send_input(&mut self, c: char) -> KeyHandled {
+        if self.send_input_mode != SendInputMode::None {
+            match self.send_input_mode {
+                SendInputMode::None => (),
+                SendInputMode::To => match c {
+                    '\n' | '\t' => {
+                        self.send_input_mode = SendInputMode::Amount;
+                    },
+                    c => {
+                        self.to_field.push(c);
+                        return KeyHandled::Handled;
+                    },
+                },
+                SendInputMode::Amount => match c {
+                    '\n' => self.send_input_mode = SendInputMode::Message,
+                    c => {
+                        if c.is_numeric() {
+                            self.amount_field.push(c);
+                        }
+                        return KeyHandled::Handled;
+                    },
+                },
+                SendInputMode::Fee => match c {
+                    '\n' => self.send_input_mode = SendInputMode::None,
+                    c => {
+                        if c.is_numeric() {
+                            self.fee_field.push(c);
+                        }
+                        return KeyHandled::Handled;
+                    },
+                },
+                SendInputMode::Message => match c {
+                    '\n' => self.send_input_mode = SendInputMode::None,
+                    c => {
+                        self.message_field.push(c);
+                        return KeyHandled::Handled;
+                    },
+                },
+            }
+        }
+
+        KeyHandled::NotHandled
+    }
+
+    fn on_key_edit_contact(&mut self, c: char, app_state: &mut AppState) -> KeyHandled {
+        if self.show_edit_contact && self.edit_contact_mode != ContactInputMode::None {
+            match self.edit_contact_mode {
+                ContactInputMode::None => return KeyHandled::Handled,
+                ContactInputMode::Alias => match c {
+                    '\n' | '\t' => {
+                        self.edit_contact_mode = ContactInputMode::PubkeyEmojiId;
+                        return KeyHandled::Handled;
+                    },
+                    c => {
+                        self.alias_field.push(c);
+                        return KeyHandled::Handled;
+                    },
+                },
+                ContactInputMode::PubkeyEmojiId => match c {
+                    '\n' => {
+                        self.edit_contact_mode = ContactInputMode::None;
+                        self.show_edit_contact = false;
+
+                        if let Err(_e) = Handle::current()
+                            .block_on(app_state.upsert_contact(self.alias_field.clone(), self.public_key_field.clone()))
+                        {
+                            self.error_message =
+                                Some("Invalid Public key or Emoji ID provided\n Press Enter to continue.".to_string());
+                        }
+
+                        self.alias_field = "".to_string();
+                        self.public_key_field = "".to_string();
+                        return KeyHandled::Handled;
+                    },
+                    c => {
+                        self.public_key_field.push(c);
+                        return KeyHandled::Handled;
+                    },
+                },
+            }
+        }
+
+        KeyHandled::NotHandled
+    }
+
+    fn on_key_show_contacts(&mut self, c: char, app_state: &mut AppState) -> KeyHandled {
+        if self.show_contacts {
+            match c {
+                'd' => {
+                    self.confirmation_dialog = Some(ConfirmationDialogType::ConfirmDeleteContact);
+                    return KeyHandled::Handled;
+                },
+                '\n' => {
+                    if let Some(c) = self
+                        .contacts_list_state
+                        .selected()
+                        .and_then(|i| app_state.get_contact(i))
+                        .cloned()
+                    {
+                        self.to_field = c.public_key;
+                        self.send_input_mode = SendInputMode::Amount;
+                        self.show_contacts = false;
+                    }
+                    return KeyHandled::Handled;
+                },
+                'n' => {
+                    self.show_edit_contact = true;
+                    self.edit_contact_mode = ContactInputMode::Alias;
+                    return KeyHandled::Handled;
+                },
+                _ => (),
+            }
+        }
+
+        KeyHandled::NotHandled
+    }
 }
 
 impl<B: Backend> Component<B> for SendTab {
@@ -307,7 +527,7 @@ impl<B: Backend> Component<B> for SendTab {
             .constraints(
                 [
                     Constraint::Length(3),
-                    Constraint::Length(14),
+                    Constraint::Length(13),
                     Constraint::Min(42),
                     Constraint::Length(1),
                 ]
@@ -418,211 +638,22 @@ impl<B: Backend> Component<B> for SendTab {
             return;
         }
 
-        if self.confirmation_dialog.is_some() {
-            if 'n' == c {
-                self.confirmation_dialog = None;
-                return;
-            } else if 'y' == c {
-                let one_sided_transaction = matches!(
-                    self.confirmation_dialog,
-                    Some(ConfirmationDialogType::ConfirmOneSidedSend)
-                );
-                match self.confirmation_dialog {
-                    None => (),
-                    Some(ConfirmationDialogType::ConfirmNormalSend) |
-                    Some(ConfirmationDialogType::ConfirmOneSidedSend) => {
-                        if 'y' == c {
-                            let amount = if let Ok(v) = self.amount_field.parse::<u64>() {
-                                v
-                            } else {
-                                self.error_message =
-                                    Some("Amount should be an integer\nPress Enter to continue.".to_string());
-                                return;
-                            };
-
-                            let fee_per_gram = if let Ok(v) = self.fee_field.parse::<u64>() {
-                                v
-                            } else {
-                                self.error_message =
-                                    Some("Fee-per-gram should be an integer\nPress Enter to continue.".to_string());
-                                return;
-                            };
-
-                            let (tx, rx) = watch::channel(UiTransactionSendStatus::Initiated);
-
-                            let mut reset_fields = false;
-                            if one_sided_transaction {
-                                match Handle::current().block_on(app_state.send_one_sided_transaction(
-                                    self.to_field.clone(),
-                                    amount,
-                                    fee_per_gram,
-                                    self.message_field.clone(),
-                                    tx,
-                                )) {
-                                    Err(e) => {
-                                        self.error_message = Some(format!(
-                                            "Error sending one-sided transaction:\n{}\nPress Enter to continue.",
-                                            e
-                                        ))
-                                    },
-                                    Ok(_) => reset_fields = true,
-                                }
-                            } else {
-                                match Handle::current().block_on(app_state.send_transaction(
-                                    self.to_field.clone(),
-                                    amount,
-                                    fee_per_gram,
-                                    self.message_field.clone(),
-                                    tx,
-                                )) {
-                                    Err(e) => {
-                                        self.error_message = Some(format!(
-                                            "Error sending normal transaction:\n{}\nPress Enter to continue.",
-                                            e
-                                        ))
-                                    },
-                                    Ok(_) => reset_fields = true,
-                                }
-                            }
-                            if reset_fields {
-                                self.to_field = "".to_string();
-                                self.amount_field = "".to_string();
-                                self.fee_field = u64::from(DEFAULT_FEE_PER_GRAM).to_string();
-                                self.message_field = "".to_string();
-                                self.send_input_mode = SendInputMode::None;
-                                self.send_result_watch = Some(rx);
-                            }
-                            self.confirmation_dialog = None;
-                            return;
-                        }
-                    },
-                    Some(ConfirmationDialogType::ConfirmDeleteContact) => {
-                        if 'y' == c {
-                            if let Some(c) = self
-                                .contacts_list_state
-                                .selected()
-                                .and_then(|i| app_state.get_contact(i))
-                                .cloned()
-                            {
-                                if let Err(_e) = Handle::current().block_on(app_state.delete_contact(c.public_key)) {
-                                    self.error_message =
-                                        Some("Could not delete selected contact\nPress Enter to continue.".to_string());
-                                }
-                            }
-                            self.confirmation_dialog = None;
-                            return;
-                        }
-                    },
-                }
-            }
+        if self.on_key_confirmation_dialog(c, app_state) == KeyHandled::Handled {
+            return;
         }
 
-        if self.send_input_mode != SendInputMode::None {
-            match self.send_input_mode {
-                SendInputMode::None => (),
-                SendInputMode::To => match c {
-                    '\n' | '\t' => {
-                        self.send_input_mode = SendInputMode::Amount;
-                    },
-                    c => {
-                        self.to_field.push(c);
-                        return;
-                    },
-                },
-                SendInputMode::Amount => match c {
-                    '\n' => self.send_input_mode = SendInputMode::Message,
-                    c => {
-                        if c.is_numeric() {
-                            self.amount_field.push(c);
-                        }
-                        return;
-                    },
-                },
-                SendInputMode::Fee => match c {
-                    '\n' => self.send_input_mode = SendInputMode::None,
-                    c => {
-                        if c.is_numeric() {
-                            self.fee_field.push(c);
-                        }
-                        return;
-                    },
-                },
-                SendInputMode::Message => match c {
-                    '\n' => self.send_input_mode = SendInputMode::None,
-                    c => {
-                        self.message_field.push(c);
-                        return;
-                    },
-                },
-            }
+        if self.on_key_send_input(c) == KeyHandled::Handled {
+            return;
         }
 
-        if self.show_edit_contact && self.edit_contact_mode != ContactInputMode::None {
-            match self.edit_contact_mode {
-                ContactInputMode::None => return,
-                ContactInputMode::Alias => match c {
-                    '\n' | '\t' => {
-                        self.edit_contact_mode = ContactInputMode::PubkeyEmojiId;
-                        return;
-                    },
-                    c => {
-                        self.alias_field.push(c);
-                        return;
-                    },
-                },
-                ContactInputMode::PubkeyEmojiId => match c {
-                    '\n' => {
-                        self.edit_contact_mode = ContactInputMode::None;
-                        self.show_edit_contact = false;
-
-                        if let Err(_e) = Handle::current()
-                            .block_on(app_state.upsert_contact(self.alias_field.clone(), self.public_key_field.clone()))
-                        {
-                            self.error_message =
-                                Some("Invalid Public key or Emoji ID provided\n Press Enter to continue.".to_string());
-                        }
-
-                        self.alias_field = "".to_string();
-                        self.public_key_field = "".to_string();
-                        return;
-                    },
-                    c => {
-                        self.public_key_field.push(c);
-                        return;
-                    },
-                },
-            }
+        if self.on_key_edit_contact(c, app_state) == KeyHandled::Handled {
+            return;
         }
 
-        if self.show_contacts {
-            match c {
-                'd' => {
-                    self.confirmation_dialog = Some(ConfirmationDialogType::ConfirmDeleteContact);
-                    return;
-                },
-                '\n' => {
-                    if let Some(c) = self
-                        .contacts_list_state
-                        .selected()
-                        .and_then(|i| app_state.get_contact(i))
-                        .cloned()
-                    {
-                        self.to_field = c.public_key;
-                        self.send_input_mode = SendInputMode::Amount;
-                        self.show_contacts = false;
-                    }
-                    return;
-                },
-                'n' => {
-                    self.show_edit_contact = true;
-                    self.edit_contact_mode = ContactInputMode::Alias;
-                    return;
-                },
-                _ => (),
-            }
+        if self.on_key_show_contacts(c, app_state) == KeyHandled::Handled {
+            return;
         }
 
-        let one_sided_transaction = matches!(c, 'o');
         match c {
             'c' => {
                 self.show_contacts = !self.show_contacts;
@@ -666,7 +697,7 @@ impl<B: Backend> Component<B> for SendTab {
                     return;
                 };
 
-                if one_sided_transaction {
+                if matches!(c, 'o') {
                     self.confirmation_dialog = Some(ConfirmationDialogType::ConfirmOneSidedSend);
                 } else {
                     self.confirmation_dialog = Some(ConfirmationDialogType::ConfirmNormalSend);

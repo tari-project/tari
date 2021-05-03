@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     ui::{
-        components::{balance::Balance, Component},
+        components::{balance::Balance, Component, KeyHandled},
         state::AppState,
         widgets::{draw_dialog, MultiColumnList, WindowedListState},
         MAX_WIDTH,
@@ -258,6 +258,99 @@ impl NetworkTab {
             .block(Block::default().borders(Borders::ALL).title("Address:"));
         f.render_widget(address_input, base_node_layout[2]);
     }
+
+    fn on_key_confirm_dialog(&mut self, c: char, app_state: &mut AppState) -> KeyHandled {
+        if self.confirmation_dialog {
+            if 'n' == c {
+                self.confirmation_dialog = false;
+                return KeyHandled::Handled;
+            } else if 'y' == c {
+                match Handle::current().block_on(app_state.clear_custom_base_node()) {
+                    Ok(_) => info!(
+                        target: LOG_TARGET,
+                        "Cleared custom base node and reverted to Config base node"
+                    ),
+                    Err(e) => warn!(target: LOG_TARGET, "Error clearing custom base node data: {}", e),
+                }
+
+                self.previous_public_key_field = self.public_key_field.clone();
+                self.previous_address_field = self.address_field.clone();
+                let base_node_previous = app_state.get_previous_base_node().clone();
+                let public_key = base_node_previous.public_key.to_hex();
+                let public_address = display_address(&base_node_previous);
+                self.public_key_field = public_key;
+                self.address_field = public_address;
+                self.confirmation_dialog = false;
+                self.base_node_edit_mode = BaseNodeInputMode::Selection;
+                return KeyHandled::Handled;
+            }
+        }
+        KeyHandled::NotHandled
+    }
+
+    fn on_key_base_node_edit(&mut self, c: char, app_state: &mut AppState) -> KeyHandled {
+        if self.base_node_edit_mode != BaseNodeInputMode::None {
+            match self.base_node_edit_mode {
+                BaseNodeInputMode::PublicKey => match c {
+                    '\n' => {
+                        self.previous_address_field = self.address_field.clone();
+                        self.address_field = "".to_string();
+                        self.base_node_edit_mode = BaseNodeInputMode::Address;
+                        return KeyHandled::Handled;
+                    },
+                    c => {
+                        self.public_key_field.push(c);
+                        return KeyHandled::Handled;
+                    },
+                },
+                BaseNodeInputMode::Address => match c {
+                    '\n' => {
+                        match Handle::current().block_on(
+                            app_state.set_custom_base_node(self.public_key_field.clone(), self.address_field.clone()),
+                        ) {
+                            Ok(peer) => {
+                                self.previous_address_field = self.address_field.clone();
+                                self.previous_public_key_field = self.public_key_field.clone();
+                                self.detailed_base_node = Some(peer);
+                            },
+                            Err(e) => {
+                                warn!(target: LOG_TARGET, "Could not set custom base node peer: {}", e);
+                                self.error_message =
+                                    Some(format!("Error setting new Base Node Address:\n{}", e.to_string()));
+                                self.address_field = self.previous_address_field.clone();
+                                self.public_key_field = self.previous_public_key_field.clone();
+                            },
+                        }
+
+                        self.base_node_edit_mode = BaseNodeInputMode::None;
+                        return KeyHandled::Handled;
+                    },
+                    c => {
+                        self.address_field.push(c);
+                        return KeyHandled::Handled;
+                    },
+                },
+                BaseNodeInputMode::Selection => match c {
+                    '\n' => {
+                        if let Some(peer) = self.detailed_base_node.clone() {
+                            if let Err(e) = Handle::current().block_on(app_state.set_base_node_peer(peer)) {
+                                warn!(target: LOG_TARGET, "Could not set new base node peer: {}", e);
+                                self.error_message =
+                                    Some(format!("Error setting new Base Node Address:\n{}", e.to_string()));
+                            }
+                        }
+
+                        self.base_node_list_state.select(None);
+                        self.base_node_edit_mode = BaseNodeInputMode::None;
+                        return KeyHandled::Handled;
+                    },
+                    _ => return KeyHandled::Handled,
+                },
+                BaseNodeInputMode::None => (),
+            }
+        }
+        KeyHandled::NotHandled
+    }
 }
 
 impl<B: Backend> Component<B> for NetworkTab {
@@ -304,91 +397,11 @@ impl<B: Backend> Component<B> for NetworkTab {
             return;
         }
 
-        if self.confirmation_dialog {
-            if 'n' == c {
-                self.confirmation_dialog = false;
-                return;
-            } else if 'y' == c {
-                match Handle::current().block_on(app_state.clear_custom_base_node()) {
-                    Ok(_) => info!(
-                        target: LOG_TARGET,
-                        "Cleared custom base node and reverted to Config base node"
-                    ),
-                    Err(e) => warn!(target: LOG_TARGET, "Error clearing custom base node data: {}", e),
-                }
-
-                self.previous_public_key_field = self.public_key_field.clone();
-                self.previous_address_field = self.address_field.clone();
-                let base_node_previous = app_state.get_previous_base_node().clone();
-                let public_key = base_node_previous.public_key.to_hex();
-                let public_address = display_address(&base_node_previous);
-                self.public_key_field = public_key;
-                self.address_field = public_address;
-                self.confirmation_dialog = false;
-                self.base_node_edit_mode = BaseNodeInputMode::Selection;
-                return;
-            }
+        if self.on_key_confirm_dialog(c, app_state) == KeyHandled::Handled {
+            return;
         }
-
-        if self.base_node_edit_mode != BaseNodeInputMode::None {
-            match self.base_node_edit_mode {
-                BaseNodeInputMode::PublicKey => match c {
-                    '\n' => {
-                        self.previous_address_field = self.address_field.clone();
-                        self.address_field = "".to_string();
-                        self.base_node_edit_mode = BaseNodeInputMode::Address;
-                        return;
-                    },
-                    c => {
-                        self.public_key_field.push(c);
-                        return;
-                    },
-                },
-                BaseNodeInputMode::Address => match c {
-                    '\n' => {
-                        match Handle::current().block_on(
-                            app_state.set_custom_base_node(self.public_key_field.clone(), self.address_field.clone()),
-                        ) {
-                            Ok(peer) => {
-                                self.previous_address_field = self.address_field.clone();
-                                self.previous_public_key_field = self.public_key_field.clone();
-                                self.detailed_base_node = Some(peer);
-                            },
-                            Err(e) => {
-                                warn!(target: LOG_TARGET, "Could not set custom base node peer: {}", e);
-                                self.error_message =
-                                    Some(format!("Error setting new Base Node Address:\n{}", e.to_string()));
-                                self.address_field = self.previous_address_field.clone();
-                                self.public_key_field = self.previous_public_key_field.clone();
-                            },
-                        }
-
-                        self.base_node_edit_mode = BaseNodeInputMode::None;
-                        return;
-                    },
-                    c => {
-                        self.address_field.push(c);
-                        return;
-                    },
-                },
-                BaseNodeInputMode::Selection => match c {
-                    '\n' => {
-                        if let Some(peer) = self.detailed_base_node.clone() {
-                            if let Err(e) = Handle::current().block_on(app_state.set_base_node_peer(peer)) {
-                                warn!(target: LOG_TARGET, "Could not set new base node peer: {}", e);
-                                self.error_message =
-                                    Some(format!("Error setting new Base Node Address:\n{}", e.to_string()));
-                            }
-                        }
-
-                        self.base_node_list_state.select(None);
-                        self.base_node_edit_mode = BaseNodeInputMode::None;
-                        return;
-                    },
-                    _ => return,
-                },
-                BaseNodeInputMode::None => (),
-            }
+        if self.on_key_base_node_edit(c, app_state) == KeyHandled::Handled {
+            return;
         }
 
         match c {

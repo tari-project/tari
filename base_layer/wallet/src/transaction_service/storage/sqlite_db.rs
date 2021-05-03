@@ -518,6 +518,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                             last_send_timestamp: None,
                             valid: None,
                             confirmations: None,
+                            mined_height: None,
                         }),
                         &(*conn),
                     )?;
@@ -548,6 +549,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                         last_send_timestamp: None,
                         valid: None,
                         confirmations: None,
+                        mined_height: None,
                     }),
                     &(*conn),
                 )?;
@@ -658,6 +660,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                     last_send_timestamp: None,
                     valid: None,
                     confirmations: None,
+                    mined_height: None,
                 }),
                 &(*conn),
             )?;
@@ -815,6 +818,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 last_send_timestamp: Some(Some(Utc::now().naive_utc())),
                 valid: None,
                 confirmations: None,
+                mined_height: None,
             };
             tx.update(update, &conn)?;
         } else if let Ok(tx) = OutboundTransactionSql::find(tx_id, &conn) {
@@ -909,6 +913,22 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         match CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
             Ok(v) => {
                 v.update_confirmations(confirmations, &(*conn))?;
+            },
+            Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
+                return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
+                    tx_id,
+                )));
+            },
+            Err(e) => return Err(e),
+        };
+        Ok(())
+    }
+
+    fn update_mined_height(&self, tx_id: u64, mined_height: u64) -> Result<(), TransactionStorageError> {
+        let conn = self.database_connection.acquire_lock();
+        match CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
+            Ok(v) => {
+                v.update_mined_height(mined_height, &(*conn))?;
             },
             Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
                 return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
@@ -1313,6 +1333,7 @@ struct CompletedTransactionSql {
     last_send_timestamp: Option<NaiveDateTime>,
     valid: i32,
     confirmations: Option<i64>,
+    mined_height: Option<i64>,
 }
 
 impl CompletedTransactionSql {
@@ -1410,6 +1431,7 @@ impl CompletedTransactionSql {
                 last_send_timestamp: None,
                 valid: None,
                 confirmations: None,
+                mined_height: None,
             },
             conn,
         )?;
@@ -1429,6 +1451,7 @@ impl CompletedTransactionSql {
                 last_send_timestamp: None,
                 valid: None,
                 confirmations: None,
+                mined_height: None,
             },
             conn,
         )?;
@@ -1448,6 +1471,7 @@ impl CompletedTransactionSql {
                 last_send_timestamp: None,
                 valid: None,
                 confirmations: None,
+                mined_height: None,
             },
             conn,
         )?;
@@ -1467,6 +1491,7 @@ impl CompletedTransactionSql {
                 last_send_timestamp: None,
                 valid: Some(valid as i32),
                 confirmations: None,
+                mined_height: None,
             },
             conn,
         )?;
@@ -1486,6 +1511,7 @@ impl CompletedTransactionSql {
                 last_send_timestamp: None,
                 valid: None,
                 confirmations: None,
+                mined_height: None,
             },
             conn,
         )?;
@@ -1510,6 +1536,32 @@ impl CompletedTransactionSql {
                 last_send_timestamp: None,
                 valid: None,
                 confirmations: Some(Some(confirmations as i64)),
+                mined_height: None,
+            },
+            conn,
+        )?;
+
+        Ok(())
+    }
+
+    pub fn update_mined_height(
+        &self,
+        mined_height: u64,
+        conn: &SqliteConnection,
+    ) -> Result<(), TransactionStorageError>
+    {
+        self.update(
+            UpdateCompletedTransactionSql {
+                status: None,
+                timestamp: None,
+                cancelled: None,
+                direction: None,
+                transaction_protocol: None,
+                send_count: None,
+                last_send_timestamp: None,
+                valid: None,
+                confirmations: None,
+                mined_height: Some(Some(mined_height as i64)),
             },
             conn,
         )?;
@@ -1559,6 +1611,7 @@ impl TryFrom<CompletedTransaction> for CompletedTransactionSql {
             last_send_timestamp: c.last_send_timestamp,
             valid: c.valid as i32,
             confirmations: c.confirmations.map(|ic| ic as i64),
+            mined_height: c.mined_height.map(|ic| ic as i64),
         })
     }
 }
@@ -1586,6 +1639,7 @@ impl TryFrom<CompletedTransactionSql> for CompletedTransaction {
             last_send_timestamp: c.last_send_timestamp,
             valid: c.valid != 0,
             confirmations: c.confirmations.map(|ic| ic as u64),
+            mined_height: c.mined_height.map(|ic| ic as u64),
         })
     }
 }
@@ -1600,6 +1654,7 @@ pub struct UpdateCompletedTransaction {
     last_send_timestamp: Option<Option<NaiveDateTime>>,
     valid: Option<bool>,
     confirmations: Option<Option<u64>>,
+    mined_height: Option<Option<u64>>,
 }
 
 #[derive(AsChangeset)]
@@ -1614,6 +1669,7 @@ pub struct UpdateCompletedTransactionSql {
     last_send_timestamp: Option<Option<NaiveDateTime>>,
     valid: Option<i32>,
     confirmations: Option<Option<i64>>,
+    mined_height: Option<Option<i64>>,
 }
 
 /// Map a Rust friendly UpdateCompletedTransaction to the Sql data type form
@@ -1629,6 +1685,7 @@ impl From<UpdateCompletedTransaction> for UpdateCompletedTransactionSql {
             last_send_timestamp: u.last_send_timestamp,
             valid: u.valid.map(|c| c as i32),
             confirmations: u.confirmations.map(|c| c.map(|ic| ic as i64)),
+            mined_height: u.mined_height.map(|c| c.map(|ic| ic as i64)),
         }
     }
 }
@@ -1855,6 +1912,7 @@ mod test {
             last_send_timestamp: None,
             valid: true,
             confirmations: None,
+            mined_height: None,
         };
         let completed_tx2 = CompletedTransaction {
             tx_id: 3,
@@ -1873,6 +1931,7 @@ mod test {
             last_send_timestamp: None,
             valid: true,
             confirmations: None,
+            mined_height: None,
         };
 
         CompletedTransactionSql::try_from(completed_tx1.clone())
@@ -1989,6 +2048,7 @@ mod test {
             last_send_timestamp: None,
             valid: true,
             confirmations: None,
+            mined_height: None,
         };
 
         let coinbase_tx2 = CompletedTransaction {
@@ -2008,6 +2068,7 @@ mod test {
             last_send_timestamp: None,
             valid: true,
             confirmations: None,
+            mined_height: None,
         };
 
         let coinbase_tx3 = CompletedTransaction {
@@ -2027,6 +2088,7 @@ mod test {
             last_send_timestamp: None,
             valid: true,
             confirmations: None,
+            mined_height: None,
         };
 
         CompletedTransactionSql::try_from(coinbase_tx1)
@@ -2063,6 +2125,7 @@ mod test {
                     last_send_timestamp: None,
                     valid: None,
                     confirmations: None,
+                    mined_height: None,
                 },
                 &conn,
             )
@@ -2155,6 +2218,7 @@ mod test {
             last_send_timestamp: None,
             valid: true,
             confirmations: None,
+            mined_height: None,
         };
 
         let mut completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone()).unwrap();
@@ -2235,6 +2299,7 @@ mod test {
             last_send_timestamp: None,
             valid: true,
             confirmations: None,
+            mined_height: None,
         };
         let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx).unwrap();
         completed_tx_sql.commit(&conn).unwrap();

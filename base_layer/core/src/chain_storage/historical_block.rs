@@ -75,21 +75,21 @@ impl HistoricalBlock {
         &self.accumulated_data.hash
     }
 
-    pub fn is_pruned(&self) -> bool {
+    pub fn contains_pruned_txos(&self) -> bool {
         !self.pruned_outputs.is_empty() || self.pruned_input_count > 0
     }
 
     pub fn try_into_block(self) -> Result<Block, ChainStorageError> {
-        if self.is_pruned() {
-            Err(ChainStorageError::BeyondPruningHorizon)
+        if self.contains_pruned_txos() {
+            Err(ChainStorageError::HistoricalBlockContainsPrunedTxos)
         } else {
             Ok(self.block)
         }
     }
 
     pub fn try_into_chain_block(self) -> Result<ChainBlock, ChainStorageError> {
-        if self.is_pruned() {
-            Err(ChainStorageError::BeyondPruningHorizon)
+        if self.contains_pruned_txos() {
+            Err(ChainStorageError::HistoricalBlockContainsPrunedTxos)
         } else {
             Ok(ChainBlock {
                 accumulated_data: self.accumulated_data,
@@ -116,7 +116,7 @@ impl Display for HistoricalBlock {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}", self.block())?;
 
-        if self.is_pruned() {
+        if !self.pruned_outputs.is_empty() {
             writeln!(f, "Pruned outputs: ")?;
             for (output, proof) in &self.pruned_outputs {
                 writeln!(f, "Output hash: {} Proof:{}", output.to_hex(), proof.to_hex())?;
