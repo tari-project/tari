@@ -373,25 +373,10 @@ When(/I ask for a block height from proxy (.*)/, async function (mmProxy) {
   let proxyClient = proxy.createClient();
   let height = await proxyClient.getHeight();
   lastResult = height;
-  }
-);
+});
 
 Given(
-  /I have mining node (.*) connected to base node (.*) and wallet (.*)/,
-  function (miner, node, wallet) {
-    let baseNode = this.getNode(node);
-    let walletNode = this.getWallet(wallet);
-    const miningNode = new MiningNodeProcess(
-      miner,
-      baseNode.getGrpcAddress(),
-      walletNode.getGrpcAddress()
-    );
-    this.addMiningNode(miner, miningNode);
-  }
-);
-
-Given(
-  /I have a SHA3 miner (.*) connected to seed node (.*)/,  
+  /I have a SHA3 miner (.*) connected to seed node (.*)/,
   { timeout: 40 * 1000 },
   async function (name, seed) {
     //add the base_node
@@ -418,7 +403,7 @@ Given(
 );
 
 Given(
-  /I have a SHA3 miner (.*) connected to node (.*)/,  
+  /I have a SHA3 miner (.*) connected to node (.*)/,
   { timeout: 40 * 1000 },
   async function (name, seed) {
     //add the base_node
@@ -445,7 +430,7 @@ Given(
 );
 
 Given(
-  /I have a SHA3 miner (.*) connected to all seed nodes/,  
+  /I have a SHA3 miner (.*) connected to all seed nodes/,
   { timeout: 40 * 1000 },
   async function (name) {
     //add the base_node
@@ -469,15 +454,6 @@ Given(
     this.addMiningNode(name, miningNode);
   }
 );
-
-
-When(/I ask for a block height from proxy (.*)/, async function (mmProxy) {
-  lastResult = "NaN";
-  let proxy = this.getProxy(mmProxy);
-  let proxyClient = proxy.createClient();
-  let height = await proxyClient.getHeight();
-  lastResult = height;
-});
 
 Then("Proxy response height is valid", function () {
   assert(Number.isInteger(lastResult), true);
@@ -875,7 +851,6 @@ When(
     await miningNode.startNew();
   }
 );
-
 
 When(
   /mining node (.*) mines (\d+) blocks with min difficulty (\d+) and max difficulty (\d+)/,

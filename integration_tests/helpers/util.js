@@ -131,7 +131,6 @@ let getFreePort = async function (from, to) {
   }
 };
 
-// WIP  this doesn't hash properly
 const getTransactionOutputHash = function (output) {
   let KEY = null; // optional key
   let OUTPUT_LENGTH = 32; // bytes
@@ -142,11 +141,33 @@ const getTransactionOutputHash = function (output) {
     flags,
     toLittleEndian(parseInt(output.features.maturity), 64),
   ]);
+  let nop_script_hash =
+    "2682c826cae74c92c0620c9ab73c7e577a37870b4ce42465a4e63b58ee4d2408";
   blake2bUpdate(context, buffer);
   blake2bUpdate(context, output.commitment);
+  blake2bUpdate(context, Buffer.from(nop_script_hash, "hex"));
+  blake2bUpdate(context, output.script_offset_public_key);
   let final = blake2bFinal(context);
   return Buffer.from(final);
 };
+
+function calculateBeta(script_hash, features, script_offset_public_key) {
+  let KEY = null; // optional key
+  let OUTPUT_LENGTH = 32; // bytes
+  let context = blake2bInit(OUTPUT_LENGTH, KEY);
+  let flags = Buffer.alloc(1);
+  flags[0] = features.flags;
+  let features_buffer = Buffer.concat([
+    flags,
+    toLittleEndian(parseInt(features.maturity), 64),
+  ]);
+
+  blake2bUpdate(context, Buffer.from(script_hash, "hex"));
+  blake2bUpdate(context, features_buffer);
+  blake2bUpdate(context, Buffer.from(script_offset_public_key, "hex"));
+  let final = blake2bFinal(context);
+  return Buffer.from(final);
+}
 
 function consoleLogTransactionDetails(txnDetails, txId) {
   let found = txnDetails[0];
@@ -218,4 +239,5 @@ module.exports = {
   consoleLogBalance,
   consoleLogCoinbaseDetails,
   withTimeout,
+  calculateBeta,
 };

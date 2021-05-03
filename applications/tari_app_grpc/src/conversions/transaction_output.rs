@@ -40,8 +40,8 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
 
         let commitment = Commitment::from_bytes(&output.commitment)
             .map_err(|err| format!("Invalid output commitment: {}", err.to_string()))?;
-        let script_offset_public_key =
-            PublicKey::from_bytes(output.script_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+        let script_offset_public_key = PublicKey::from_bytes(output.script_offset_public_key.as_bytes())
+            .map_err(|err| format!("script_offset_public_key {:?}", err))?;
         Ok(Self {
             features,
             commitment,

@@ -248,7 +248,7 @@ impl UnblindedOutput {
             .chain(public_script_nonce.as_bytes())
             .chain(self.script.as_bytes().as_slice())
             .chain(self.input_data.as_bytes().as_slice())
-            .chain(&self.height.to_le_bytes())
+            //.chain(&self.height.to_le_bytes()) //TODO decide if the height should remain in this signature
             .result()
             .to_vec();
 
@@ -449,7 +449,7 @@ impl TransactionInput {
             .chain(r.as_bytes())
             .chain(self.script.as_bytes())
             .chain(self.input_data.as_bytes())
-            .chain(self.height.to_le_bytes())
+            //.chain(self.height.to_le_bytes()) //TODO decide if the height should remain in the script signature
             .result()
             .to_vec();
         if self.script_signature.verify_challenge(key, &m) {
@@ -661,15 +661,23 @@ impl Default for TransactionOutput {
 impl Display for TransactionOutput {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         let proof = self.proof.to_hex();
+        let proof = if proof.len() > 32 {
+            format!(
+                "{}..{}",
+                proof[0..16].to_string(),
+                proof[proof.len() - 16..proof.len()].to_string()
+            )
+        } else {
+            proof
+        };
         write!(
             fmt,
-            "{} [{:?}], Script hash: ({}), Offset Pubkey: ({}), Proof: {}..{}",
+            "{} [{:?}], Script hash: ({}), Offset Pubkey: ({}), Proof: {}",
             self.commitment.to_hex(),
             self.features,
             self.script_hash.to_hex(),
             self.script_offset_public_key.to_hex(),
-            proof[0..16].to_string(),
-            proof[proof.len() - 16..proof.len()].to_string()
+            proof
         )
     }
 }
