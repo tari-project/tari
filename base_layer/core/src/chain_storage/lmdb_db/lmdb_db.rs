@@ -375,6 +375,13 @@ impl LMDBDatabase {
         mmr_position: u32,
     ) -> Result<(), ChainStorageError>
     {
+        if !lmdb_exists(txn, &self.headers_db, header_hash.as_slice())? {
+            return Err(ChainStorageError::InvalidOperation(format!(
+                "Unable to insert pruned output because header {} does not exist",
+                header_hash.to_hex()
+            )));
+        }
+
         let key = format!(
             "{}-{:010}-{}-{}",
             header_hash.to_hex(),
