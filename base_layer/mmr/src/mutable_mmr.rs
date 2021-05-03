@@ -22,7 +22,7 @@
 
 use crate::{
     backend::ArrayLike,
-    common::{n_leaves, node_index},
+    common::node_index,
     error::MerkleMountainRangeError,
     mutable_mmr_leaf_nodes::MutableMmrLeafNodes,
     Hash,
@@ -255,20 +255,5 @@ where
 {
     fn eq(&self, other: &MutableMmr<D, B2>) -> bool {
         self.get_merkle_root() == other.get_merkle_root()
-    }
-}
-
-impl<D, B> From<MerkleMountainRange<D, B>> for MutableMmr<D, B>
-where
-    D: Digest,
-    B: ArrayLike<Value = Hash>,
-{
-    fn from(mmr: MerkleMountainRange<D, B>) -> Self {
-        let size = n_leaves(mmr.len().unwrap()) as u32; // TODO: fix unwrap
-        MutableMmr {
-            mmr,
-            deleted: Bitmap::create(),
-            size,
-        }
     }
 }

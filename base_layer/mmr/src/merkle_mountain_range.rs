@@ -22,7 +22,16 @@
 
 use crate::{
     backend::ArrayLike,
-    common::{bintree_height, find_peaks, hash_together, is_leaf, leaf_index, n_leaves, node_index, peak_map_height},
+    common::{
+        bintree_height,
+        checked_n_leaves,
+        find_peaks,
+        hash_together,
+        is_leaf,
+        leaf_index,
+        node_index,
+        peak_map_height,
+    },
     error::MerkleMountainRangeError,
     pruned_hashset::PrunedHashSet,
     Hash,
@@ -95,7 +104,8 @@ where
 
     /// Returns the number of leaf nodes in the MMR.
     pub fn get_leaf_count(&self) -> Result<usize, MerkleMountainRangeError> {
-        Ok(n_leaves(self.len()?))
+        let nleaves = checked_n_leaves(self.len()?).ok_or_else(|| MerkleMountainRangeError::MaximumSizeReached)?;
+        Ok(nleaves)
     }
 
     /// This function returns the hash of the leaf index provided, indexed from 0
@@ -230,6 +240,9 @@ where
         Ok(match self.find_node_index(hash)? {
             Some(node_index) => {
                 if is_leaf(node_index) {
+                    let node_index = node_index
+                        .try_into()
+                        .map_err(|_| MerkleMountainRangeError::MaximumSizeReached)?;
                     Some(leaf_index(node_index))
                 } else {
                     None
