@@ -22,7 +22,8 @@
 
 use crate::{
     base_node::sync::rpc::BaseNodeSyncService,
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, OrNotFound, PrunedOutput},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, OrNotFound},
+    crypto::tari_utilities::Hashable,
     iterators::NonOverlappingIntegerPairIter,
     proto,
     proto::base_node::{
@@ -32,17 +33,16 @@ use crate::{
         SyncHeadersRequest,
         SyncKernelsRequest,
         SyncUtxo,
-        SyncUtxos2Response,
         SyncUtxosRequest,
         SyncUtxosResponse,
     },
 };
 use futures::{channel::mpsc, stream, SinkExt};
 use log::*;
-use std::cmp;
+use std::{cmp, time::Instant};
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
 use tari_crypto::tari_utilities::hex::Hex;
-use tokio::{task, time::Instant};
+use tokio::task;
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc";
 
@@ -409,121 +409,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
     }
 
     async fn sync_utxos(&self, request: Request<SyncUtxosRequest>) -> Result<Streaming<SyncUtxosResponse>, RpcStatus> {
-        let peer = request.context().peer_node_id().clone();
-        let req = request.into_message();
-        const UTXOS_PER_BATCH: usize = 100;
-        const BATCH_SIZE: usize = 100;
-        let (mut tx, rx) = mpsc::channel(BATCH_SIZE);
-        let db = self.db();
-
-        task::spawn(async move {
-            let timer = Instant::now();
-            let end_header = match db
-                .fetch_header_by_block_hash(req.end_header_hash.clone())
-                .await
-                .or_not_found("BlockHeader", "hash", req.end_header_hash.to_hex())
-                .map_err(RpcStatus::log_internal_error(LOG_TARGET))
-            {
-                Ok(header) => header,
-                Err(err) => {
-                    let _ = tx.send(Err(err)).await;
-                    return;
-                },
-            };
-
-            let iter = NonOverlappingIntegerPairIter::new(req.start, end_header.output_mmr_size, UTXOS_PER_BATCH);
-            let fetch_header_time = timer.elapsed().as_millis();
-            let mut fetch_utxos_time = 0u128;
-            for (start, end) in iter {
-                let timer = Instant::now();
-                if tx.is_closed() {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Exiting sync_utxos early because client ({}) has gone", peer
-                    );
-                    break;
-                }
-                debug!(target: LOG_TARGET, "Streaming utxos {} to {}", start, end);
-                let res = db
-                    .fetch_utxos_by_mmr_position(start, end, req.end_header_hash.clone())
-                    .await
-                    .map_err(RpcStatus::log_internal_error(LOG_TARGET));
-                fetch_utxos_time += timer.elapsed().as_millis();
-                match res {
-                    Ok((utxos, deleted)) => {
-                        if utxos.is_empty() {
-                            break;
-                        }
-                        let response = SyncUtxosResponse {
-                            utxos: utxos
-                                .into_iter()
-                                .map(|pruned_output| match pruned_output {
-                                    PrunedOutput::Pruned {
-                                        output_hash,
-                                        range_proof_hash,
-                                    } => SyncUtxo {
-                                        output: None,
-                                        hash: output_hash,
-                                        rangeproof_hash: range_proof_hash,
-                                    },
-                                    PrunedOutput::NotPruned { output } => SyncUtxo {
-                                        output: Some(output.into()),
-                                        hash: vec![],
-                                        rangeproof_hash: vec![],
-                                    },
-                                })
-                                .collect(),
-                            deleted_bitmaps: deleted.into_iter().map(|d| d.serialize()).collect(),
-                        };
-
-                        // Ensure task stops if the peer prematurely stops their RPC session
-                        if tx.send(Ok(response)).await.is_err() {
-                            break;
-                        }
-                    },
-                    Err(err) => {
-                        let _ = tx.send(Err(err)).await;
-                        break;
-                    },
-                }
-
-                debug!(
-                    target: LOG_TARGET,
-                    "Streamed utxos {} to {} in {:.2?}",
-                    start,
-                    end,
-                    timer.elapsed()
-                );
-            }
-            let send_utxos_time = timer.elapsed().as_millis() - fetch_header_time - fetch_utxos_time;
-            trace!(
-                target: LOG_TARGET,
-                "Timings - Fetch header info from db: {} ms, Fetch UTXOs from db: {} ms, RPC send UTXO stream: {} ms",
-                fetch_header_time,
-                fetch_utxos_time,
-                send_utxos_time,
-            );
-        });
-        Ok(Streaming::new(rx))
-    }
-
-    async fn sync_utxos2(
-        &self,
-        request: Request<SyncUtxosRequest>,
-    ) -> Result<Streaming<SyncUtxos2Response>, RpcStatus>
-    {
-        let peer = request.context().peer_node_id().clone();
-        let req = request.into_message();
-        const BATCH_SIZE: usize = 100;
-        let (mut tx, rx) = mpsc::channel(BATCH_SIZE);
-        let db = self.db();
-
-        let end_header = db
-            .fetch_header_by_block_hash(req.end_header_hash.clone())
-            .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
-            .ok_or_else(|| RpcStatus::not_found("end_header_hash was not found"))?;
-
+        let req = request.message();
+        let peer = request.context().peer_node_id();
         debug!(
             target: LOG_TARGET,
             "Received sync_utxos request from {} (start = {}, include_pruned_utxos = {}, include_deleted_bitmaps = {})",
@@ -533,94 +420,173 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             req.include_deleted_bitmaps
         );
 
-        if req.start > end_header.output_mmr_size {
-            return Err(RpcStatus::bad_request("start index is greater than end index"));
+        struct SyncUtxosTask<B> {
+            db: AsyncBlockchainDb<B>,
+            request: SyncUtxosRequest,
         }
 
-        task::spawn(async move {
-            let iter = NonOverlappingIntegerPairIter::new(req.start, end_header.output_mmr_size, BATCH_SIZE);
-            for (start, end) in iter {
-                let timer = Instant::now();
-                if tx.is_closed() {
+        impl<B> SyncUtxosTask<B>
+        where B: BlockchainBackend + 'static
+        {
+            pub fn new(db: AsyncBlockchainDb<B>, request: SyncUtxosRequest) -> Self {
+                Self { db, request }
+            }
+
+            pub async fn run(self, mut tx: mpsc::Sender<Result<SyncUtxosResponse, RpcStatus>>) {
+                if let Err(err) = self.start_streaming(&mut tx).await {
+                    let _ = tx.send(Err(err)).await;
+                }
+            }
+
+            async fn start_streaming(
+                &self,
+                tx: &mut mpsc::Sender<Result<SyncUtxosResponse, RpcStatus>>,
+            ) -> Result<(), RpcStatus>
+            {
+                let end_header = self
+                    .db
+                    .fetch_header_by_block_hash(self.request.end_header_hash.clone())
+                    .await
+                    .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+                    .ok_or_else(|| {
+                        RpcStatus::not_found(format!(
+                            "End header hash {} is was not found",
+                            self.request.end_header_hash.to_hex()
+                        ))
+                    })?;
+                let end_header_hash = end_header.hash();
+
+                if self.request.start > end_header.output_mmr_size - 1 {
+                    return Err(RpcStatus::bad_request(format!(
+                        "start index {} cannot be greater than the end header's output MMR size ({})",
+                        self.request.start, end_header.output_mmr_size
+                    )));
+                }
+
+                let prev_header = self
+                    .db
+                    .fetch_header_containing_utxo_mmr(self.request.start)
+                    .await
+                    .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+                let mut prev_header = prev_header.header;
+
+                if prev_header.height > end_header.height {
+                    return Err(RpcStatus::bad_request("start index is greater than end index"));
+                }
+
+                loop {
+                    let timer = Instant::now();
+                    if prev_header.height == end_header.height {
+                        break;
+                    }
+
+                    let current_header = self
+                        .db
+                        .fetch_header(prev_header.height + 1)
+                        .await
+                        .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+                        .ok_or_else(|| {
+                            RpcStatus::general(format!(
+                                "Potential data consistency issue: header {} not found",
+                                prev_header.height + 1
+                            ))
+                        })?;
+
                     debug!(
                         target: LOG_TARGET,
-                        "Exiting sync_utxos early because client ({}) has gone", peer
+                        "previous header = {} ({}) current header = {} ({})",
+                        prev_header.height,
+                        prev_header.hash().to_hex(),
+                        current_header.height,
+                        current_header.hash().to_hex()
                     );
-                    break;
-                }
-                debug!(target: LOG_TARGET, "Streaming utxos {} to {}", start, end);
-                let res = db
-                    .fetch_utxos_by_mmr_position(start, end, req.end_header_hash.clone())
-                    .await
-                    .map_err(RpcStatus::log_internal_error(LOG_TARGET));
 
-                debug!(
-                    target: LOG_TARGET,
-                    "Fetched {} utxos in {:.2?}",
-                    end - start,
-                    timer.elapsed()
-                );
-                match res {
-                    Ok((utxos, deleted)) => {
-                        if utxos.is_empty() {
-                            break;
-                        }
+                    let start = cmp::max(self.request.start, prev_header.output_mmr_size);
+                    let end = current_header.output_mmr_size - 1;
 
-                        let mut utxos = stream::iter(
-                            utxos
-                                .into_iter()
-                                .enumerate()
-                                // Only include pruned UTXOs if include_pruned_utxos is true
-                                .filter(|(_, utxo)| req.include_pruned_utxos || !utxo.is_pruned())
-                                .map(|(i, utxo)| {
-                                    let utxo = proto::base_node::SyncUtxo2::from(utxo);
-                                    proto::base_node::SyncUtxos2Response {
-                                        utxo_or_deleted: Some(proto::base_node::sync_utxos2_response::UtxoOrDeleted::Utxo(
-                                            utxo,
-                                        )),
-                                        mmr_index: start.saturating_add(i as u64),
-                                    }
-                                })
-                                .map(Ok)
-                                .map(Ok),
-                        );
-
-                        // Ensure task stops if the peer prematurely stops their RPC session
-                        if tx.send_all(&mut utxos).await.is_err() {
-                            break;
-                        }
-
-                        if req.include_deleted_bitmaps {
-                            let bitmaps = deleted.into_iter().map(|b| b.serialize()).collect();
-                            let bitmaps = proto::base_node::SyncUtxos2Response {
-                                utxo_or_deleted: Some(
-                                    proto::base_node::sync_utxos2_response::UtxoOrDeleted::DeletedBitmaps(
-                                        proto::base_node::Bitmaps { bitmaps },
-                                    ),
-                                ),
-                                mmr_index: 0,
-                            };
-
-                            if tx.send(Ok(bitmaps)).await.is_err() {
-                                break;
-                            }
-                        }
-                    },
-                    Err(err) => {
-                        let _ = tx.send(Err(err)).await;
+                    if tx.is_closed() {
+                        debug!(target: LOG_TARGET, "Exiting sync_utxos early because client has gone",);
                         break;
-                    },
+                    }
+
+                    debug!(
+                        target: LOG_TARGET,
+                        "Streaming UTXOs {}-{} ({}) for block #{}",
+                        start,
+                        end,
+                        end.saturating_sub(start).saturating_add(1),
+                        current_header.height
+                    );
+                    let (utxos, deleted_diff) = self
+                        .db
+                        .fetch_utxos_by_mmr_position(start, end, end_header_hash.clone())
+                        .await
+                        .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+                    trace!(
+                        target: LOG_TARGET,
+                        "Loaded {} UTXO(s) and |deleted_diff| = {}",
+                        utxos.len(),
+                        deleted_diff.cardinality(),
+                    );
+                    let mut utxos = stream::iter(
+                        utxos
+                            .into_iter()
+                            .enumerate()
+                            // Only include pruned UTXOs if include_pruned_utxos is true
+                            .filter(|(_, utxo)| self.request.include_pruned_utxos || !utxo.is_pruned())
+                            .map(|(i, utxo)| {
+                                SyncUtxosResponse {
+                                    utxo_or_deleted: Some(proto::base_node::sync_utxos_response::UtxoOrDeleted::Utxo(
+                                        SyncUtxo::from(utxo)
+                                    )),
+                                    mmr_index: start + i  as u64,
+                                }
+                            })
+                            .map(Ok)
+                            .map(Ok),
+                    );
+
+                    // Ensure task stops if the peer prematurely stops their RPC session
+                    if tx.send_all(&mut utxos).await.is_err() {
+                        break;
+                    }
+
+                    if self.request.include_deleted_bitmaps {
+                        let bitmaps = SyncUtxosResponse {
+                            utxo_or_deleted: Some(proto::base_node::sync_utxos_response::UtxoOrDeleted::DeletedDiff(
+                                deleted_diff.serialize(),
+                            )),
+                            mmr_index: 0,
+                        };
+
+                        if tx.send(Ok(bitmaps)).await.is_err() {
+                            break;
+                        }
+                    }
+                    debug!(
+                        target: LOG_TARGET,
+                        "Streamed utxos {} to {} in {:.2?} (including stream backpressure)",
+                        start,
+                        end,
+                        timer.elapsed()
+                    );
+
+                    prev_header = current_header;
                 }
 
                 debug!(
                     target: LOG_TARGET,
-                    "Streamed utxos {} to {} in {:.2?} (including stream backpressure)",
-                    start,
-                    end,
-                    timer.elapsed()
+                    "UTXO sync completed to UTXO {} (Header hash = {})",
+                    prev_header.output_mmr_size,
+                    prev_header.hash().to_hex()
                 );
+
+                Ok(())
             }
-        });
+        }
+
+        let (tx, rx) = mpsc::channel(200);
+        task::spawn(SyncUtxosTask::new(self.db(), request.into_message()).run(tx));
 
         Ok(Streaming::new(rx))
     }

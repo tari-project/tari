@@ -40,13 +40,14 @@ pub use accumulated_data::{
 
 pub mod async_db;
 
+mod block_add_result;
+pub use block_add_result::BlockAddResult;
 mod blockchain_database;
 pub use blockchain_database::{
     calculate_mmr_roots,
     fetch_header,
     fetch_headers,
     fetch_target_difficulty,
-    BlockAddResult,
     BlockchainDatabase,
     BlockchainDatabaseConfig,
     Validators,

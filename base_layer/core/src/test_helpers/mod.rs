@@ -33,6 +33,7 @@ use crate::{
 
 use crate::{
     consensus::{ConsensusManagerBuilder, Network},
+    proof_of_work::{sha3_difficulty, Difficulty},
     transactions::{types::CryptoFactories, CoinbaseBuilder},
 };
 use rand::{distributions::Alphanumeric, Rng};
@@ -66,6 +67,16 @@ pub fn create_block(block_version: u16, block_height: u64, transactions: Vec<Tra
     } else {
         header.into_builder().with_transactions(transactions).build()
     }
+}
+
+pub fn mine_to_difficulty(mut block: Block, difficulty: Difficulty) -> Result<Block, String> {
+    for _i in 0..10000 {
+        if sha3_difficulty(&block.header) == difficulty {
+            return Ok(block);
+        }
+        block.header.nonce += 1;
+    }
+    Err("Could not mine to difficulty in 10000 iterations".to_string())
 }
 
 pub fn create_peer_manager<P: AsRef<Path>>(data_path: P) -> Arc<PeerManager> {

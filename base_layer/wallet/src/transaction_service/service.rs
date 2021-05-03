@@ -35,7 +35,7 @@ use crate::{
         },
         storage::{
             database::{TransactionBackend, TransactionDatabase},
-            models::{CompletedTransaction, InboundTransaction, TransactionDirection, TransactionStatus},
+            models::{CompletedTransaction, TransactionDirection, TransactionStatus},
         },
         tasks::{
             send_finalized_transaction::send_finalized_transaction_message,
@@ -2028,7 +2028,7 @@ where
                 service::OutputManagerService,
                 storage::{database::OutputManagerDatabase, memory_db::OutputManagerMemoryDatabase},
             },
-            transaction_service::handle::TransactionServiceHandle,
+            transaction_service::{handle::TransactionServiceHandle, storage::models::InboundTransaction},
         };
         use tari_core::consensus::{ConsensusConstantsBuilder, Network};
 

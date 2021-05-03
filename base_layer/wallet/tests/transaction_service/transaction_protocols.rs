@@ -305,7 +305,7 @@ async fn tx_broadcast_protocol_submit_success() {
         block_hash: None,
         confirmations: 1,
         is_synced: false,
-        height_of_longest_chain: 0,
+        height_of_longest_chain: 10,
     });
     // Wait for 1 query
     let _ = rpc_service_state
@@ -323,7 +323,7 @@ async fn tx_broadcast_protocol_submit_success() {
         block_hash: None,
         confirmations: 1,
         is_synced: true,
-        height_of_longest_chain: 0,
+        height_of_longest_chain: 10,
     });
     // Wait for 1 query
     let _ = rpc_service_state
@@ -342,7 +342,7 @@ async fn tx_broadcast_protocol_submit_success() {
         block_hash: None,
         confirmations: resources.config.num_confirmations_required,
         is_synced: false,
-        height_of_longest_chain: 0,
+        height_of_longest_chain: 10,
     });
 
     let _ = rpc_service_state
@@ -360,7 +360,7 @@ async fn tx_broadcast_protocol_submit_success() {
         block_hash: None,
         confirmations: resources.config.num_confirmations_required,
         is_synced: true,
-        height_of_longest_chain: 0,
+        height_of_longest_chain: 10,
     });
 
     // Check that the protocol ends with success
@@ -373,6 +373,10 @@ async fn tx_broadcast_protocol_submit_success() {
     assert_eq!(
         db_completed_tx.confirmations,
         Some(resources.config.num_confirmations_required)
+    );
+    assert_eq!(
+        db_completed_tx.mined_height,
+        Some(10 - resources.config.num_confirmations_required)
     );
 
     // Check that the appropriate events were emitted
@@ -883,7 +887,7 @@ async fn tx_broadcast_protocol_submit_already_mined() {
         block_hash: None,
         confirmations: resources.config.num_confirmations_required,
         is_synced: true,
-        height_of_longest_chain: 0,
+        height_of_longest_chain: 10,
     });
 
     // Check that the protocol ends with success
@@ -893,6 +897,10 @@ async fn tx_broadcast_protocol_submit_already_mined() {
     // Check transaction status is updated
     let db_completed_tx = resources.db.get_completed_transaction(1).await.unwrap();
     assert_eq!(db_completed_tx.status, TransactionStatus::MinedConfirmed);
+    assert_eq!(
+        db_completed_tx.mined_height,
+        Some(10 - resources.config.num_confirmations_required)
+    );
 }
 
 /// A test to see that the broadcast protocol can handle a change to the base node address while it runs.

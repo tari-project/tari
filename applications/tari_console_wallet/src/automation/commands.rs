@@ -20,12 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use super::error::CommandError;
 use crate::automation::command_parser::{ParsedArgument, ParsedCommand};
 use chrono::{DateTime, Utc};
-
 use futures::{FutureExt, StreamExt};
 use log::*;
 use std::{
+    fs::File,
+    io::{LineWriter, Write},
     str::FromStr,
     time::{Duration, Instant},
 };
@@ -35,8 +37,12 @@ use tari_comms::connectivity::{ConnectivityEvent, ConnectivityRequester};
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::{
     tari_utilities::hex::Hex,
-    transactions::tari_amount::{uT, MicroTari, Tari},
+    transactions::{
+        tari_amount::{uT, MicroTari, Tari},
+        types::PublicKey,
+    },
 };
+use tari_crypto::ristretto::pedersen::PedersenCommitmentFactory;
 use tari_wallet::{
     output_manager_service::{handle::OutputManagerHandle, TxId},
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
@@ -47,9 +53,6 @@ use tokio::{
     runtime::Handle,
     time::{delay_for, timeout},
 };
-
-use super::error::CommandError;
-use tari_core::transactions::types::PublicKey;
 
 pub const LOG_TARGET: &str = "wallet::automation::commands";
 
@@ -64,7 +67,7 @@ pub enum WalletCommand {
     CoinSplit,
     DiscoverPeer,
     Whois,
-    ListUtxos,
+    ExportUtxos,
     CountUtxos,
 }
 
@@ -120,7 +123,7 @@ pub async fn send_tari(
     wallet_transaction_service
         .send_transaction(dest_pubkey, amount, fee_per_gram, message)
         .await
-        .map_err(CommandError::Transaction)
+        .map_err(CommandError::TransactionServiceError)
 }
 
 /// Send a one-sided transaction to a recipient
@@ -133,7 +136,7 @@ pub async fn send_one_sided(
     wallet_transaction_service
         .send_one_sided_transaction(dest_pubkey, amount, fee_per_gram, message)
         .await
-        .map_err(CommandError::Transaction)
+        .map_err(CommandError::TransactionServiceError)
 }
 
 pub async fn coin_split(
@@ -451,7 +454,7 @@ pub async fn command_runner(
     println!("==============");
     use WalletCommand::*;
     for (idx, parsed) in commands.into_iter().enumerate() {
-        println!("{}. {}", idx + 1, parsed);
+        println!("\n{}. {}\n", idx + 1, parsed);
 
         match parsed.command {
             GetBalance => match output_service.clone().get_balance().await {
@@ -495,12 +498,36 @@ pub async fn command_runner(
                 println!("Public Key: {}", public_key.to_hex());
                 println!("Emoji ID  : {}", emoji_id);
             },
-            ListUtxos => {
+            ExportUtxos => {
                 let utxos = output_service.get_unspent_outputs().await?;
                 let count = utxos.len();
                 let sum: MicroTari = utxos.iter().map(|utxo| utxo.value).sum();
-                for (i, utxo) in utxos.iter().enumerate() {
-                    println!("{}. Value: {} {}", i + 1, utxo.value, utxo.features);
+                if parsed.args.is_empty() {
+                    for (i, utxo) in utxos.iter().enumerate() {
+                        println!("{}. Value: {} {}", i + 1, utxo.value, utxo.features);
+                    }
+                } else if let ParsedArgument::CSVFileName(file) = parsed.args[1].clone() {
+                    let factory = PedersenCommitmentFactory::default();
+                    let file = File::create(file).map_err(|e| CommandError::CSVFile(e.to_string()))?;
+                    let mut csv_file = LineWriter::new(file);
+                    writeln!(
+                        csv_file,
+                        r##""#","Value (uT)","Spending Key","Commitment","Flags","Maturity""##
+                    )
+                    .map_err(|e| CommandError::CSVFile(e.to_string()))?;
+                    for (i, utxo) in utxos.iter().enumerate() {
+                        writeln!(
+                            csv_file,
+                            r##""{}","{}","{}","{}","{:?}","{}""##,
+                            i + 1,
+                            utxo.value.0,
+                            utxo.spending_key.to_hex(),
+                            utxo.as_transaction_input(&factory)?.commitment.to_hex(),
+                            utxo.features.flags,
+                            utxo.features.maturity,
+                        )
+                        .map_err(|e| CommandError::CSVFile(e.to_string()))?;
+                    }
                 }
                 println!("Total number of UTXOs: {}", count);
                 println!("Total value of UTXOs: {}", sum);

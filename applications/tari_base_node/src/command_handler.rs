@@ -214,18 +214,25 @@ impl CommandHandler {
         let blockchain = self.blockchain_db.clone();
         self.executor.spawn(async move {
             match blockchain.fetch_blocks(height..=height).await {
-                Err(err) => {
-                    println!("Failed to retrieve blocks: {}", err);
-                    warn!(target: LOG_TARGET, "{}", err);
-                    return;
-                },
                 Ok(mut data) => match (data.pop(), format) {
-                    (Some(block), Format::Text) => println!("{}", block),
+                    (Some(block), Format::Text) => {
+                        let block_data =
+                            try_or_print!(blockchain.fetch_block_accumulated_data(block.hash().clone()).await);
+
+                        println!("{}", block);
+                        println!("-- Accumulated data --");
+                        println!("{}", block_data);
+                    },
                     (Some(block), Format::Json) => println!(
                         "{}",
                         block.to_json().unwrap_or_else(|_| "Error deserializing block".into())
                     ),
                     (None, _) => println!("Block not found at height {}", height),
+                },
+                Err(err) => {
+                    println!("Failed to retrieve blocks: {}", err);
+                    warn!(target: LOG_TARGET, "{}", err);
+                    return;
                 },
             };
         });

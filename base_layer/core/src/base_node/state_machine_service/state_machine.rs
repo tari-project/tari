@@ -153,7 +153,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     }
 
     /// This function will publish the current StatusInfo to the channel
-    pub fn publish_event_info(&mut self) {
+    pub fn publish_event_info(&self) {
         let status = StatusInfo {
             bootstrapped: self.is_bootstrapped(),
             state_info: self.info.clone(),

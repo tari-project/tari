@@ -49,7 +49,7 @@ impl Display for ParsedCommand {
             WalletCommand::CoinSplit => "coin-split",
             WalletCommand::DiscoverPeer => "discover-peer",
             WalletCommand::Whois => "whois",
-            WalletCommand::ListUtxos => "list-utxos",
+            WalletCommand::ExportUtxos => "export-utxos",
             WalletCommand::CountUtxos => "count-utxos",
         };
 
@@ -72,6 +72,8 @@ pub enum ParsedArgument {
     Float(f64),
     Int(u64),
     Date(DateTime<Utc>),
+    OutputToCSVFile(String),
+    CSVFileName(String),
 }
 
 impl Display for ParsedArgument {
@@ -83,6 +85,8 @@ impl Display for ParsedArgument {
             ParsedArgument::Float(v) => write!(f, "{}", v.to_string()),
             ParsedArgument::Int(v) => write!(f, "{}", v.to_string()),
             ParsedArgument::Date(v) => write!(f, "{}", v.to_string()),
+            ParsedArgument::OutputToCSVFile(v) => write!(f, "{}", v.to_string()),
+            ParsedArgument::CSVFileName(v) => write!(f, "{}", v.to_string()),
         }
     }
 }
@@ -103,7 +107,7 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, ParseError> {
         CoinSplit => parse_coin_split(args)?,
         DiscoverPeer => parse_discover_peer(args)?,
         Whois => parse_whois(args)?,
-        ListUtxos => Vec::new(), // todo: only show X number of utxos
+        ExportUtxos => parse_export_utxos(args)?, // todo: only show X number of utxos
         CountUtxos => Vec::new(),
     };
 
@@ -218,6 +222,29 @@ fn parse_send_tari(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, Par
     Ok(parsed_args)
 }
 
+fn parse_export_utxos(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
+    let mut parsed_args = Vec::new();
+
+    if let Some(v) = args.next() {
+        if v == "--csv-file" {
+            let file_name = args.next().ok_or_else(|| {
+                ParseError::Empty(
+                    "file name\n  Usage:\n    export-utxos\n    export-utxos --csv-file <file name>".to_string(),
+                )
+            })?;
+            parsed_args.push(ParsedArgument::OutputToCSVFile("--csv-file".to_string()));
+            parsed_args.push(ParsedArgument::CSVFileName(file_name.to_string()));
+        } else {
+            return Err(ParseError::Empty(
+                "'--csv-file' qualifier\n  Usage:\n    export-utxos\n    export-utxos --csv-file <file name>"
+                    .to_string(),
+            ));
+        }
+    };
+
+    Ok(parsed_args)
+}
+
 fn parse_coin_split(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
     let mut parsed_args = vec![];
 
@@ -235,73 +262,87 @@ fn parse_coin_split(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, Pa
     Ok(parsed_args)
 }
 
-#[test]
-fn test_parse_command() {
+#[cfg(test)]
+mod test {
+    use crate::automation::command_parser::{parse_command, ParsedArgument};
     use rand::rngs::OsRng;
-    use tari_core::transactions::types::PublicKey;
+    use std::str::FromStr;
+    use tari_core::transactions::{tari_amount::MicroTari, types::PublicKey};
     use tari_crypto::keys::PublicKey as PublicKeyTrait;
 
-    let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
+    #[test]
+    fn test_parse_command() {
+        let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
 
-    let command_str = "";
-    let parsed = parse_command(command_str);
-    assert!(parsed.is_err());
+        let command_str = "";
+        let parsed = parse_command(command_str);
+        assert!(parsed.is_err());
 
-    let command_str = "send-tari asdf";
-    let parsed = parse_command(command_str);
-    assert!(parsed.is_err());
+        let command_str = "send-tari asdf";
+        let parsed = parse_command(command_str);
+        assert!(parsed.is_err());
 
-    let command_str = "send-tari 999T";
-    let parsed = parse_command(command_str);
-    assert!(parsed.is_err());
+        let command_str = "send-tari 999T";
+        let parsed = parse_command(command_str);
+        assert!(parsed.is_err());
 
-    let command_str = "send-tari 999T asdf";
-    let parsed = parse_command(command_str);
-    assert!(parsed.is_err());
+        let command_str = "send-tari 999T asdf";
+        let parsed = parse_command(command_str);
+        assert!(parsed.is_err());
 
-    let command_str = format!("send-tari 999T {} msg text", public_key);
-    let parsed = parse_command(&command_str).unwrap();
+        let command_str = format!("send-tari 999T {} msg text", public_key);
+        let parsed = parse_command(&command_str).unwrap();
 
-    if let ParsedArgument::Amount(amount) = parsed.args[0].clone() {
-        assert_eq!(amount, MicroTari::from_str("999T").unwrap());
-    } else {
-        panic!("Parsed MicroTari amount not the same as provided.");
-    }
-    if let ParsedArgument::PublicKey(pk) = parsed.args[1].clone() {
-        assert_eq!(pk, public_key);
-    } else {
-        panic!("Parsed public key is not the same as provided.");
-    }
-    if let ParsedArgument::Text(msg) = parsed.args[2].clone() {
-        assert_eq!(msg, "msg text");
-    } else {
-        panic!("Parsed message is not the same as provided.");
-    }
+        if let ParsedArgument::Amount(amount) = parsed.args[0].clone() {
+            assert_eq!(amount, MicroTari::from_str("999T").unwrap());
+        } else {
+            panic!("Parsed MicroTari amount not the same as provided.");
+        }
+        if let ParsedArgument::PublicKey(pk) = parsed.args[1].clone() {
+            assert_eq!(pk, public_key);
+        } else {
+            panic!("Parsed public key is not the same as provided.");
+        }
+        if let ParsedArgument::Text(msg) = parsed.args[2].clone() {
+            assert_eq!(msg, "msg text");
+        } else {
+            panic!("Parsed message is not the same as provided.");
+        }
 
-    let command_str = format!("send-tari 999ut {}", public_key);
-    let parsed = parse_command(&command_str).unwrap();
+        let command_str = format!("send-tari 999ut {}", public_key);
+        let parsed = parse_command(&command_str).unwrap();
 
-    if let ParsedArgument::Amount(amount) = parsed.args[0].clone() {
-        assert_eq!(amount, MicroTari::from_str("999ut").unwrap());
-    } else {
-        panic!("Parsed MicroTari amount not the same as provided.");
-    }
+        if let ParsedArgument::Amount(amount) = parsed.args[0].clone() {
+            assert_eq!(amount, MicroTari::from_str("999ut").unwrap());
+        } else {
+            panic!("Parsed MicroTari amount not the same as provided.");
+        }
 
-    let command_str = format!("send-tari 999 {}", public_key);
-    let parsed = parse_command(&command_str).unwrap();
+        let command_str = format!("send-tari 999 {}", public_key);
+        let parsed = parse_command(&command_str).unwrap();
 
-    if let ParsedArgument::Amount(amount) = parsed.args[0].clone() {
-        assert_eq!(amount, MicroTari::from_str("999").unwrap());
-    } else {
-        panic!("Parsed MicroTari amount not the same as provided.");
-    }
+        if let ParsedArgument::Amount(amount) = parsed.args[0].clone() {
+            assert_eq!(amount, MicroTari::from_str("999").unwrap());
+        } else {
+            panic!("Parsed MicroTari amount not the same as provided.");
+        }
 
-    let command_str = format!("discover-peer {}", public_key);
-    let parsed = parse_command(&command_str).unwrap();
+        let command_str = format!("discover-peer {}", public_key);
+        let parsed = parse_command(&command_str).unwrap();
 
-    if let ParsedArgument::PublicKey(pk) = parsed.args[0].clone() {
-        assert_eq!(pk, public_key);
-    } else {
-        panic!("Parsed public key is not the same as provided.");
+        if let ParsedArgument::PublicKey(pk) = parsed.args[0].clone() {
+            assert_eq!(pk, public_key);
+        } else {
+            panic!("Parsed public key is not the same as provided.");
+        }
+
+        let command_str = "export-utxos --csv-file utxo_list.csv".to_string();
+        let parsed = parse_command(&command_str).unwrap();
+
+        if let ParsedArgument::CSVFileName(file) = parsed.args[1].clone() {
+            assert_eq!(file, "utxo_list.csv".to_string());
+        } else {
+            panic!("Parsed csv file name is not the same as provided.");
+        }
     }
 }

@@ -5,7 +5,7 @@ Feature: Wallet Transfer
       # Add a 2nd node otherwise initial sync will not succeed
     And I have 1 base nodes connected to all seed nodes
     And I have wallet Wallet_A connected to all seed nodes
-    And I have a merge mining proxy PROXY connected to NODE and Wallet_A with default config    
+    And I have a merge mining proxy PROXY connected to NODE and Wallet_A with default config
     And I have mining node MINER connected to base node NODE and wallet Wallet_A
     And I have wallet Wallet_B connected to all seed nodes
     And I have wallet Wallet_C connected to all seed nodes
@@ -15,7 +15,7 @@ Feature: Wallet Transfer
     And mining node MINER mines 3 blocks
     Then all nodes are at height 5
       # Ensure the coinbase lock heights have expired
-    When I mine 5 blocks on NODE
+    And mining node MINER mines 5 blocks
     Then all nodes are at height 10
     When I transfer 50000 uT from Wallet_A to Wallet_B and Wallet_C at fee 100
     And mining node MINER mines 5 blocks
