@@ -28,7 +28,7 @@ use crate::{
     chain_storage::{ChainBlock, ChainStorageError},
     consensus::{
         chain_strength_comparer::{strongest_chain, ChainStrengthComparer},
-        emission::{Emission, EmissionSchedule},
+        emission::EmissionSchedule,
         network::Network,
         ConsensusConstants,
     },
@@ -76,7 +76,7 @@ impl ConsensusManager {
     /// Get a pointer to the emission schedule
     /// The height provided here, decides the emission curve to use. It swaps to the integer curve upon reaching
     /// 1_000_000_000
-    pub fn emission_schedule(&self) -> &dyn Emission {
+    pub fn emission_schedule(&self) -> &EmissionSchedule {
         &self.inner.emission
     }
 
@@ -84,8 +84,9 @@ impl ConsensusManager {
         self.emission_schedule().block_reward(height)
     }
 
-    // Get the emission reward at height
-    pub fn get_total_emission_at(&self, height: u64) -> MicroTari {
+    /// Get the emission reward at height
+    /// Returns None if the total supply > u64::MAX
+    pub fn get_total_emission_at(&self, height: u64) -> Option<MicroTari> {
         self.inner.emission.supply_at_block(height)
     }
 

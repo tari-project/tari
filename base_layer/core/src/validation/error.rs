@@ -77,6 +77,8 @@ pub enum ValidationError {
     MergeMineError(#[from] MergeMineError),
     #[error("Maximum transaction weight exceeded")]
     MaxTransactionWeightExceeded,
+    #[error("End of time: {0}")]
+    EndOfTimeError(String),
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in
