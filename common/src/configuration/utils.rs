@@ -25,9 +25,9 @@ pub fn load_configuration(bootstrap: &ConfigBootstrap) -> Result<Config, ConfigE
     Ok(cfg)
 }
 
-/// Installs a new configuration file template, copied from `tari_sample.toml` to the given path.
+/// Installs a new configuration file template, copied from `tari_config_example.toml` to the given path.
 pub fn install_default_config_file(path: &Path) -> Result<(), std::io::Error> {
-    let source = include_str!("../../config/presets/tari_sample.toml");
+    let source = include_str!("../../config/presets/tari_config_example.toml");
     if let Some(d) = path.parent() {
         fs::create_dir_all(d)?
     };
@@ -51,11 +51,6 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("common.peer_allowlist", Vec::<String>::new()).unwrap();
     cfg.set_default("common.rpc_max_simultaneous_sessions", 1000).unwrap();
     cfg.set_default("common.liveness_max_sessions", 0).unwrap();
-    cfg.set_default(
-        "common.peer_database ",
-        default_subdir("peers", Some(&bootstrap.base_path)),
-    )
-    .unwrap();
     cfg.set_default("common.denylist_ban_period", 1440).unwrap();
     cfg.set_default("common.buffer_size_base_node", 1_500).unwrap();
     cfg.set_default("common.buffer_size_base_node_wallet", 50_000).unwrap();

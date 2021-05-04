@@ -26,9 +26,6 @@
 # minutes = or 24 hrs.
 #message_cache_ttl = 1440
 
-# The peer database list is stored in a database file at this location
-#peer_database = "~/.tari/peers" # or "%USERPROFILE%\\.tari\peers"
-
 # If peer nodes spam you with messages, or are otherwise badly behaved, they will be added to your denylist and banned
 # You can set a time limit to release that ban (in minutes), or otherwise ban them for life (-1). The default is to
 # ban them for 10 days.
@@ -77,8 +74,8 @@
 # The relative folder to store your local key data and transaction history. DO NOT EVER DELETE THIS FILE unless you
 #  a) have backed up your seed phrase and
 #  b) know what you are doing!
-#wallet_db_file = "wallet/wallet.dat" # or "wallet\\wallet.dat"
-#console_wallet_db_file = "wallet/console-wallet.dat" # or "wallet\\console-wallet.dat"
+wallet_db_file = "wallet/wallet.dat"
+console_wallet_db_file = "wallet/console-wallet.dat"
 
 # Console wallet password
 # Should you wish to start your console wallet without typing in your password, the following options are available:
@@ -100,17 +97,19 @@
 # This is the timeout period that will be used to monitor TXO queries to the base node (default = 60). Larger values
 # are needed for wallets with many (>1000) TXOs to be validated.
 base_node_query_timeout = 120
-saf_expiry_duration = 10800
+# The amount of seconds added to the current time (Utc) which will then be used to check if the message has
+# expired or not when processing the message (default = 10800).
+#saf_expiry_duration = 10800
 # This is the number of block confirmations required for a transaction to be considered completely mined and confirmed. (default = 3)
 #transaction_num_confirmations_required = 3
-# This is the timeout period that will be used for base node broadcast monitoring tasks (default = 30)
-#transaction_broadcast_monitoring_timeout = 30
-# This is the timeout period that will be used for chain monitoring tasks (default = 30)
-#transaction_chain_monitoring_timeout = 30
+# This is the timeout period that will be used for base node broadcast monitoring tasks (default = 60)
+#transaction_broadcast_monitoring_timeout = 60
+# This is the timeout period that will be used for chain monitoring tasks (default = 60)
+#transaction_chain_monitoring_timeout = 60
 # This is the timeout period that will be used for sending transactions directly (default = 20)
 #transaction_direct_send_timeout = 20
-# This is the timeout period that will be used for sending transactions via broadcast mode (default = 30)
-#transaction_broadcast_send_timeout = 30
+# This is the timeout period that will be used for sending transactions via broadcast mode (default = 60)
+#transaction_broadcast_send_timeout = 60
 # If a large amount of tiny valued uT UTXOs are used as inputs to a transaction, the fee may be larger than
 # the transaction amount. Set this value to `false` to allow spending of "dust" UTXOs for small valued
 # transactions (default = true).
@@ -187,8 +186,6 @@ db_type = "lmdb"
 # is "0", which indicates an archival node without any pruning.
 #pruning_horizon = 0
 
-#num_mining_threads = 1
-
 # The relative path to store persistent data
 data_dir = "stibbons"
 
@@ -199,14 +196,22 @@ data_dir = "stibbons"
 # new nodes can use to introduce themselves to the network.
 # peer_seeds = ["public_key1::address1", "public_key2::address2",... ]
 peer_seeds = [
-    #tbn-nvir
-    "30c9e74dcf2a3f967457cf10f09b0cb2d0b112b6e98fc76bf64cf27597a6961f::/onion3/zyjmhhwj572dnizdbe672vzzyqfmlzjs4k4mp4bmso6wysn2megndzad:18141",
-    #tbn-oregon
-    "e856839057aac496b9e25f10821116d02b58f20129e9b9ba681b830568e47c4d::/onion3/exe2zgehnw3tvrbef3ep6taiacr6sdyeb54be2s25fpru357r4skhtad:18141",
-    #tbn-stockholm
-    "106ca872ec83bc2522bce7e4b35b86c4a598297312cf46ce38caf0b497cf6748::/onion3/hf3n3btfh4tfh2n6afvxs5m6lqkyjlqlj3bm4todjjdcngapa4phhoyd:18141",
-    #tbn-sydney
-    "ac7fba427913a653a27b69c05549e14d9e87cb7849ea0c740d6c8a5855a3882a::/onion3/avteohvrvvfy4fff7ona2wy6yhb7i4ss4aklp74v64knofvev3vd5yyd:18141",
+    # t-tbn-nvir
+    "b60d073e2f2337fdd95a58065e1d0182cca1d36c20ed10b27bc1232bc2836a17::/onion3/ssiz76b33emcerusblo6wba3ejqsub6ihkabjilem6ygoldodf6aenid:18141",
+    # t-tbn-ncal
+    "e2cef0473117da34108dd85d4425536b8a1f317478686a6d7a0bbb5c800a747d::/onion3/3eiacmnozk7rcvrx7brhlssnpueqsjdsfbfmq63d2bk7h3vtah35tcyd:18141",
+    # t-tbn-oregon
+    "f606c82d23b2a2eda65156cef9efcaf77031d16a681fca99af7c08e98035f21d::/onion3/i7nsgt2p7tkvpnhygnvihpuaqlunbtw3zti3qvi3eur7obkjkwgla4id:18141",
+    # t-tbn-london
+    "d23cfeb05674d25c5b970b6bffefdc1e7c2c1f1f9c32fde04688d1b94c81705a::/onion3/obfjpoon2hm4uqerirhp4sf26bvq5ztokxhq274c2fg2uadrsu5drnqd:18141",
+    # t-tbn-stockholm
+    "9cedfc16708f857e070e32d9cc1939fd6a57b5945ee97fdc707aa2f034ba6507::/onion3/ryfa3iufgmvwmghyhamkjz5rfygde6kmy7e5jn5oc2n44cpbvey654ad:18141",
+    # t-tbn-seoul
+    "50ee725e2c6ca8282ab62bb7aef52a9c4df283ec99e00497a358dbaf4112ff0c::/onion3/yrzdnyayg2jqym7rmeoc3lwixylasokqwkrtqyvutobllz27jdznuoyd:18141",
+    # t-tbn-sydney
+    "f0515584db420849a6c149517e4b326616d2d0b346f6f887adbf2c3937a87b5a::/onion3/n4kq54sjyghe4mvopk5gtmep5etblrdpqcx65o44stdb33od3tksmfqd:18141",
+    # backup-node
+    #"4a0c44d9132a8275d5ef8a969fb5d6085026b2d440350a3b238dfbbd1c068649::/onion3/fych32gn6yrvscbytm252woulv7o66q3pttirdmt7jlh7uyulcoikfad:18141"
 ]
 
 # This allowlist provides a method to force syncing from any known nodes you may choose, for example if you have a
@@ -223,6 +228,9 @@ force_sync_peers = [
 # The DNS records in these hostnames should provide TXT records as per https://github.com/tari-project/tari/pull/2319
 # Enter a domain name for the TXT records: seeds.tari.com
 dns_seeds =["seeds.stibbons.tari.com"]
+# The name server used to resolve DNS seeds  (Default: "1.1.1.1:53")
+# dns_seeds_name_server = "1.1.1.1:53"
+# Set to true to only accept DNS records that pass DNSSEC validation (Default: true)
 dns_seeds_use_dnssec = false
 
 # Determines the method of syncing blocks when the node is lagging. If you are not struggling with syncing, then
@@ -255,10 +263,10 @@ grpc_base_node_address = "127.0.0.1:18142"
 grpc_console_wallet_address = "127.0.0.1:18143"
 
 # A path to the file that stores your node identity and secret key
-base_node_identity_file = "./config/base_node_id.json" # or ".\\config\\base_node_id.json"
+base_node_identity_file = "./config/base_node_id.json"
 
 # A path to the file that stores your console wallet's node identity and secret key
-console_wallet_identity_file = "./config/console_wallet_id.json" # or ".\\config\\console_wallet_id.json"
+console_wallet_identity_file = "./config/console_wallet_id.json"
 
 # -------------- Transport configuration --------------
 # Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
@@ -296,10 +304,10 @@ tor_control_auth = "none" # or "password=xxxxxx"
 #socks5_auth = "none" # or "username_password=username:xxxxxxx"
 
 # A path to the file that stores the tor hidden service private key, if using the tor transport.
-base_node_tor_identity_file = "./base_node_tor.json" # or ".\\base_node_tor.json"
+base_node_tor_identity_file = "./config/base_node_tor.json"
 
 # A path to the file that stores the console wallet's tor hidden service private key, if using the tor transport.
-console_wallet_tor_identity_file = "./cosole_wallet_tor.json" # or ".\\cosole_wallet_tor.json"
+console_wallet_tor_identity_file = "./config/cosole_wallet_tor.json"
 
 ########################################################################################################################
 #                                                                                                                      #
@@ -377,11 +385,11 @@ console_wallet_tor_identity_file = "./cosole_wallet_tor.json" # or ".\\cosole_wa
 #                                                                                                                      #
 ########################################################################################################################
 
-
 [merge_mining_proxy.stibbons]
 
 # URL to monerod
 monerod_url = "http://18.133.55.120:38081" # stagenet
+#monerod_url = "http://18.133.59.45:28081"  # testnet
 #monerod_url = "http://18.132.124.81:18081" # mainnet
 
 # Address of the tari_merge_mining_proxy application

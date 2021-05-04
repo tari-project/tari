@@ -44,7 +44,7 @@ RUN apt update && apt -y install \
 FROM base
 
 COPY --from=builder /tari_base_node/target/release/tari_base_node /usr/bin/
-COPY --from=builder /tari_base_node/common/config/tari_config_example.toml /root/.tari/tari_config_example.toml
+COPY --from=builder /tari_base_node/common/config/presets/tari_config_example.toml /root/.tari/tari_config_example.toml
 COPY --from=builder /tari_base_node/common/logging/log4rs_sample_base_node.yml /root/.tari/log4rs_base_node.yml
 COPY --from=builder /tari_base_node/buildtools/docker/torrc /etc/tor/torrc
 COPY --from=builder /tari_base_node/buildtools/docker/start.sh /usr/bin/start.sh
