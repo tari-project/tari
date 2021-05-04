@@ -486,7 +486,7 @@ out-of-band, and might typically be Bob's wallet public key on the Tari network.
 
 Bob requires the value \\( v_b \\) and blinding factor \\( k_b \\) to claim his payment, but he needs to be able to claim it without asking Alice for them.
 
-This information can be obtained by using Diffie-Hellman and Bulletproof rewinding. If the blinding factor \\( k_b \\) was calculated with Diffie-Hellman using the offset public keypair, (\\( k_{Ob} \\),\\( K_{Ob} \\)) as sender keypair and
+This information can be obtained by using Diffie-Hellman and [Bulletproof rewinding](RFC-0180_BulletproofRewinding.md). If the blinding factor \\( k_b \\) was calculated with Diffie-Hellman using the offset public keypair, (\\( k_{Ob} \\),\\( K_{Ob} \\)) as sender keypair and
 the keypair, (\\( k_{Sb} \\),\\( K_{Sb} \\)) as the receiver keypair, the blinding factor \\( k_b \\) can be securely calculated without communication.
 
 Alice uses Bob's public key to create a shared secret, \\( k_b \\) for the output commitment, \\( C_b \\), using
@@ -497,7 +497,7 @@ $$
     k_b = k_{Ob} * {K_Sb}
 $$
 
-Next Alice next uses Bulletproof rewinding to encrypt the value \\( v_b \\) into the the Bulletproof for the commitment \\( C_b \\). For this she uses (\\( k_{rewind} =  Hash(k_{b}) \\) as the rewind_key and (\\( k_{blinding} =  Hash(Hash(k_{b})) \\) as the blinding key.
+Next Alice next uses [Bulletproof rewinding](RFC-0180_BulletproofRewinding.md) to encrypt the value \\( v_b \\) into the the Bulletproof for the commitment \\( C_b \\). For this she uses (\\( k_{rewind} =  Hash(k_{b}) \\) as the rewind_key and (\\( k_{blinding} =  Hash(Hash(k_{b})) \\) as the blinding key.
 *Note, deriving the keys here should be secure, but should be confirmed before mainnet.
 
 Alice knows the script-redeeming private key \\( k_{Sa}\\) for the transaction input.
@@ -526,7 +526,7 @@ $$
     k_b = K_{Ob} * {k_Sb}
 $$
 
-Next Bob's wallet calculates \\( k_{rewind} \\), using \\( k_{rewind} =  Hash(k_{b})\\) and (\\( k_{blinding} =  Hash(Hash(k_{b})) \\), using those to rewind the Bulletproof to get the value \\( v_b \\). 
+Next Bob's wallet calculates \\( k_{rewind} \\), using \\( k_{rewind} =  Hash(k_{b})\\) and (\\( k_{blinding} =  Hash(Hash(k_{b})) \\), using those to [rewind the Bulletproof](RFC-0180_BulletproofRewinding.md) to get the value \\( v_b \\). 
 
 Because Bob's wallet already knowns \\( k_Sb \\), he now knows all the values required to spend the commitment \\( C_b \\)
 
