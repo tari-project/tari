@@ -30,3 +30,6 @@ path = "../../base_layer/core"
 version = "^0.8"
 default-features = false
 features = ["transactions"]
+
+[build-dependencies]
+tari_common = {  path = "../../common", features = ["build"] }

@@ -70,4 +70,4 @@ tempfile = "3.1.0"
 tokio-macros = "0.2.4"
 
 [build-dependencies]
-tari_common = { version = "^0.8", path="../../common"}
+tari_common = { version = "^0.8", path="../../common", features = ["build"]}

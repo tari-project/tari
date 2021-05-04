@@ -104,9 +104,9 @@ checksum = "34fde25430d87a9388dadbe6e34d7f72a462c8b43ac8d309b42b0a8505d7e2a5"
 
 [[package]]
 name = "anyhow"
-version = "1.0.38"
+version = "1.0.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "afddf7f520a80dbf76e6f50a35bca42a2331ef227a28b3b6dc5c2e2338d114b1"
+checksum = "28b2cd92db5cbd74e8e5028f7e27dd7aa3090e89e4f2a197cc7c8dfb69c7063b"
 
 [[package]]
 name = "arc-swap"
@@ -3928,13 +3928,11 @@ dependencies = [
  "chrono",
  "config",
  "futures 0.3.12",
- "git2",
  "log 0.4.14",
  "log4rs",
  "regex",
  "rustyline",
  "rustyline-derive",
- "serde 1.0.123",
  "strum",
  "strum_macros 0.18.0",
  "tari_app_grpc",
@@ -3951,9 +3949,7 @@ dependencies = [
  "tari_wallet",
  "thiserror",
  "tokio",
- "toml 0.5.8",
  "tonic",
- "tonic-build",
 ]
 
 [[package]]
@@ -3984,6 +3980,7 @@ dependencies = [
  "config",
  "dirs-next",
  "get_if_addrs",
+ "git2",
  "log 0.4.14",
  "log4rs",
  "parity-multiaddr",
@@ -4252,6 +4249,7 @@ dependencies = [
 name = "tari_merge_mining_proxy"
 version = "0.8.9"
 dependencies = [
+ "anyhow",
  "bincode",
  "bytes 0.5.6",
  "chrono",
@@ -4271,6 +4269,7 @@ dependencies = [
  "serde_json",
  "structopt",
  "tari_app_grpc",
+ "tari_app_utilities",
  "tari_common",
  "tari_core",
  "tari_crypto",
@@ -4279,7 +4278,6 @@ dependencies = [
  "tokio",
  "tokio-macros",
  "tonic",
- "tonic-build",
  "tracing",
  "tracing-futures",
  "tracing-subscriber",

@@ -8,18 +8,18 @@ version = "0.8.9"
 edition = "2018"
 
 [dependencies]
-tari_common = {  path = "../../common" }
+tari_app_grpc = { path = "../tari_app_grpc" }
+tari_app_utilities = { path = "../tari_app_utilities" }
+tari_common = { path = "../../common" }
 tari_comms = { path = "../../comms", features = ["rpc"]}
-tari_comms_dht = {  path = "../../comms/dht"}
-tari_core = {  path = "../../base_layer/core", default-features = false, features = ["transactions"]}
-tari_p2p = {  path = "../../base_layer/p2p" }
+tari_comms_dht = { path = "../../comms/dht"}
+tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions"]}
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto/", branch = "main" }
+tari_mmr = { path = "../../base_layer/mmr" }
+tari_p2p = { path = "../../base_layer/p2p" }
 tari_service_framework = {  path = "../../base_layer/service_framework"}
 tari_shutdown = { path = "../../infrastructure/shutdown"}
-tari_mmr = {  path = "../../base_layer/mmr" }
 tari_wallet = { path = "../../base_layer/wallet" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto/", branch = "main" }
-tari_app_grpc = {  path = "../tari_app_grpc" }
-tari_app_utilities = { path = "../tari_app_utilities"}
 
 anyhow = "1.0.32"
 bincode = "1.3.1"
@@ -36,12 +36,6 @@ strum = "^0.19"
 strum_macros = "0.18.0"
 thiserror = "^1.0.20"
 tonic = "0.2"
-
-[build-dependencies]
-tonic-build = "0.2"
-serde = "1.0.90"
-toml = "0.5"
-git2 = "0.8"
 
 [features]
 avx2 = ["tari_core/avx2", "tari_crypto/avx2", "tari_p2p/avx2", "tari_wallet/avx2", "tari_comms/avx2", "tari_comms_dht/avx2"]

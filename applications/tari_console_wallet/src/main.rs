@@ -38,6 +38,11 @@ mod ui;
 mod utils;
 pub mod wallet_modes;
 
+mod consts {
+    // Include generated consts
+    include!(concat!(env!("OUT_DIR"), "/consts.rs"));
+}
+
 /// Application entry point
 fn main() {
     match main_inner() {
@@ -63,6 +68,13 @@ fn main_inner() -> Result<(), ExitCodes> {
         .expect("Failed to build a runtime!");
 
     let (bootstrap, config, _) = init_configuration(ApplicationType::ConsoleWallet)?;
+
+    info!(
+        target: LOG_TARGET,
+        "== {} ({}) ==",
+        ApplicationType::ConsoleWallet,
+        consts::APP_VERSION
+    );
 
     debug!(target: LOG_TARGET, "Using configuration: {:?}", config);
     debug!(target: LOG_TARGET, "Using bootstrap: {:?}", bootstrap);
