@@ -45,7 +45,10 @@ use std::{
     fmt::{self, Display},
     time::Duration,
 };
-use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
+use tari_comms::{
+    connectivity::ConnectivityRequester,
+    types::{CommsPublicKey, CommsSecretKey},
+};
 use tari_core::{
     consensus::ConsensusConstants,
     transactions::{
@@ -130,20 +133,26 @@ where TBackend: OutputManagerBackend + 'static
         shutdown_signal: ShutdownSignal,
         base_node_service: BaseNodeServiceHandle,
         connectivity_manager: ConnectivityRequester,
+        master_secret_key: CommsSecretKey,
     ) -> Result<OutputManagerService<TBackend>, OutputManagerError>
     {
-        // Check to see if there is any persisted state, otherwise start fresh
+        // Check to see if there is any persisted state. If there is confirm that the provided master secret key matches
         let key_manager_state = match db.get_key_manager_state().await? {
             None => {
                 let starting_state = KeyManagerState {
-                    master_key: PrivateKey::random(&mut OsRng),
+                    master_key: master_secret_key,
                     branch_seed: "".to_string(),
                     primary_key_index: 0,
                 };
                 db.set_key_manager_state(starting_state.clone()).await?;
                 starting_state
             },
-            Some(km) => km,
+            Some(km) => {
+                if km.master_key != master_secret_key {
+                    return Err(OutputManagerError::MasterSecretKeyMismatch);
+                }
+                km
+            },
         };
 
         let coinbase_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(

@@ -197,8 +197,8 @@ use tari_wallet::{
         },
     },
     util::emoji::{emoji_set, EmojiId},
-    wallet::WalletConfig,
     Wallet,
+    WalletConfig,
 };
 
 use crate::{enums::SeedWordPushResult, tasks::recovery_event_monitoring};
@@ -2676,37 +2676,6 @@ pub unsafe extern "C" fn comms_config_create(
         })
         .expect("Could not open Sqlite db");
 
-    // Try create a Wallet Sqlite backend without a Cipher, if it fails then the DB is encrypted and we will have to
-    // extract the Comms Secret Key in wallet_create(...) with the supplied passphrase
-    let comms_secret_key = match WalletSqliteDatabase::new(connection.clone(), None) {
-        Ok(wallet_sqlite_db) => {
-            let wallet_backend = WalletDatabase::new(wallet_sqlite_db);
-
-            match Runtime::new() {
-                Ok(mut rt) => {
-                    let secret_key = match rt.block_on(wallet_backend.get_comms_secret_key()) {
-                        Ok(sk) => sk,
-                        Err(e) => {
-                            error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
-                            ptr::swap(error_out, &mut error as *mut c_int);
-                            return ptr::null_mut();
-                        },
-                    };
-                    match secret_key {
-                        None => CommsSecretKey::random(&mut OsRng),
-                        Some(sk) => sk,
-                    }
-                },
-                Err(e) => {
-                    error = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
-                    ptr::swap(error_out, &mut error as *mut c_int);
-                    return ptr::null_mut();
-                },
-            }
-        },
-        Err(_) => CommsSecretKey::default(),
-    };
-
     let transport_type = (*transport_type).clone();
     let transport_type = match transport_type {
         Tor(mut tor_config) => {
@@ -2746,7 +2715,11 @@ pub unsafe extern "C" fn comms_config_create(
 
     match public_address {
         Ok(public_address) => {
-            let ni = NodeIdentity::new(comms_secret_key, public_address, PeerFeatures::COMMUNICATION_CLIENT);
+            let ni = NodeIdentity::new(
+                CommsSecretKey::default(),
+                public_address,
+                PeerFeatures::COMMUNICATION_CLIENT,
+            );
             match ni {
                 Ok(ni) => {
                     let config = TariCommsConfig {
@@ -3041,42 +3014,9 @@ pub unsafe extern "C" fn wallet_create(
         };
     debug!(target: LOG_TARGET, "Databases Initialized");
 
-    // Check to see if the comms private key needs to be read from the encrypted DB
-    if (*config).node_identity.secret_key() == &CommsSecretKey::default() {
-        let wallet_db = WalletDatabase::new(wallet_backend.clone());
-        let secret_key = match runtime.block_on(wallet_db.get_comms_secret_key()) {
-            Ok(sk_option) => match sk_option {
-                None => {
-                    error = LibWalletError::from(InterfaceError::MissingCommsPrivateKey).code;
-                    ptr::swap(error_out, &mut error as *mut c_int);
-                    return ptr::null_mut();
-                },
-                Some(sk) => sk,
-            },
-            Err(e) => {
-                error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
-                ptr::swap(error_out, &mut error as *mut c_int);
-                return ptr::null_mut();
-            },
-        };
-        let ni = match NodeIdentity::new(
-            secret_key,
-            (*config).node_identity.public_address(),
-            PeerFeatures::COMMUNICATION_CLIENT,
-        ) {
-            Ok(n) => n,
-            Err(e) => {
-                error = LibWalletError::from(e).code;
-                ptr::swap(error_out, &mut error as *mut c_int);
-                return ptr::null_mut();
-            },
-        };
-        (*config).node_identity = Arc::new(ni);
-    }
-
     let shutdown = Shutdown::new();
 
-    w = runtime.block_on(Wallet::new(
+    w = runtime.block_on(Wallet::start(
         WalletConfig::new(
             (*config).clone(),
             factories,
@@ -3090,7 +3030,7 @@ pub unsafe extern "C" fn wallet_create(
             None,
             None,
         ),
-        wallet_backend,
+        WalletDatabase::new(wallet_backend),
         transaction_backend.clone(),
         output_manager_backend,
         contacts_backend,
@@ -5521,7 +5461,7 @@ pub unsafe extern "C" fn wallet_start_recovery(
 
 /// This function will produce a partial backup of the specified wallet database file. This backup will be written to
 /// the provided file (full path must include the filename and extension) and will include the full wallet db but will
-/// clear the sensitive Comms Private Key
+/// clear the sensitive Master Private Key
 ///
 /// ## Arguments
 /// `original_file_path` - The full path of the original database file to be backed up, including the file name and
@@ -5728,7 +5668,6 @@ mod test {
         sync::Mutex,
         thread,
     };
-    use tari_comms::types::CommsPublicKey;
     use tari_core::transactions::{fee::Fee, tari_amount::uT, types::PrivateKey};
     use tari_key_manager::mnemonic::Mnemonic;
     use tari_wallet::{
@@ -6844,7 +6783,7 @@ mod test {
     }
 
     #[test]
-    fn test_comms_private_key_persistence() {
+    fn test_master_private_key_persistence() {
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
@@ -6876,33 +6815,15 @@ mod test {
                 error_ptr,
             );
 
-            let alice_config2 = comms_config_create(
-                address_alice_str,
-                transport_type_alice,
-                db_name_alice_str,
-                db_path_alice_str,
-                20,
-                10800,
-                error_ptr,
-            );
-
             let mut runtime = Runtime::new().unwrap();
 
             let connection =
                 run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
 
-            let stored_key = runtime.block_on(wallet_backend.get_comms_secret_key()).unwrap();
+            let stored_key = runtime.block_on(wallet_backend.get_master_secret_key()).unwrap();
             drop(wallet_backend);
             assert!(stored_key.is_none(), "No key should be stored yet");
-            let generated_public_key1 = (*alice_config).node_identity.public_key().clone();
-
-            comms_config_set_secret_key(alice_config, secret_key_alice, error_ptr);
-            assert_eq!(*error_ptr, 0, "No error expected");
-
-            assert_eq!(&(*public_key_alice), (*alice_config).node_identity.public_key());
-
-            assert_ne!(&generated_public_key1, (*alice_config2).node_identity.public_key());
 
             let alice_wallet = wallet_create(
                 alice_config,
@@ -6934,12 +6855,51 @@ mod test {
                 run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
 
-            let stored_key = runtime
-                .block_on(wallet_backend.get_comms_secret_key())
+            let stored_key1 = runtime
+                .block_on(wallet_backend.get_master_secret_key())
                 .unwrap()
                 .unwrap();
-            let public_stored_key = CommsPublicKey::from_secret_key(&stored_key);
-            assert_eq!(public_stored_key, (*public_key_alice));
+
+            drop(wallet_backend);
+
+            // Check that the same key is returned when the wallet is started a second time
+            let alice_wallet2 = wallet_create(
+                alice_config,
+                ptr::null(),
+                0,
+                0,
+                ptr::null(),
+                received_tx_callback,
+                received_tx_reply_callback,
+                received_tx_finalized_callback,
+                broadcast_callback,
+                mined_callback,
+                mined_unconfirmed_callback,
+                direct_send_callback,
+                store_and_forward_send_callback,
+                tx_cancellation_callback,
+                utxo_validation_complete_callback,
+                stxo_validation_complete_callback,
+                invalid_txo_validation_complete_callback,
+                transaction_validation_complete_callback,
+                saf_messages_received_callback,
+                error_ptr,
+            );
+
+            assert_eq!(*error_ptr, 0, "No error expected");
+            wallet_destroy(alice_wallet2);
+
+            let connection =
+                run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
+            let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
+
+            let stored_key2 = runtime
+                .block_on(wallet_backend.get_master_secret_key())
+                .unwrap()
+                .unwrap();
+
+            assert_eq!(stored_key1, stored_key2);
+
             drop(wallet_backend);
 
             // Test the file path based version
@@ -6955,21 +6915,10 @@ mod test {
                 run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
 
-            let stored_key = runtime.block_on(wallet_backend.get_comms_secret_key()).unwrap();
+            let stored_key = runtime.block_on(wallet_backend.get_master_secret_key()).unwrap();
 
             assert!(stored_key.is_none(), "key should be cleared");
             drop(wallet_backend);
-
-            let alice_config3 = comms_config_create(
-                address_alice_str,
-                transport_type_alice,
-                db_name_alice_str,
-                db_path_alice_str,
-                20,
-                10800,
-                error_ptr,
-            );
-            assert_eq!((*alice_config3).node_identity.public_key(), &(*public_key_alice));
 
             string_destroy(db_name_alice_str as *mut c_char);
             string_destroy(db_path_alice_str as *mut c_char);
@@ -6980,8 +6929,6 @@ mod test {
             public_key_destroy(public_key_alice);
             transport_type_destroy(transport_type_alice);
             comms_config_destroy(alice_config);
-            comms_config_destroy(alice_config2);
-            comms_config_destroy(alice_config3);
         }
     }
 

@@ -2030,6 +2030,7 @@ where
             },
             transaction_service::{handle::TransactionServiceHandle, storage::models::InboundTransaction},
         };
+        use tari_comms::types::CommsSecretKey;
         use tari_core::consensus::{ConsensusConstantsBuilder, Network};
 
         let (_sender, receiver) = reply_channel::unbounded();
@@ -2061,6 +2062,7 @@ where
             shutdown_signal,
             basenode_service_handle,
             connectivity_manager,
+            CommsSecretKey::default(),
         )
         .await?;
 

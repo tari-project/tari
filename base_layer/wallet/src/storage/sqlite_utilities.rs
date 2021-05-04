@@ -82,7 +82,8 @@ pub fn run_migration_and_create_sqlite_connection<P: AsRef<Path>>(
     Ok(WalletDbConnection::new(connection, Some(file_lock)))
 }
 
-/// This function will copy a wallet database to the provided path and then clear the CommsPrivateKey from the database.
+/// This function will copy a wallet database to the provided path and then clear the Master Private Key from the
+/// database.
 pub async fn partial_wallet_backup<P: AsRef<Path>>(current_db: P, backup_path: P) -> Result<(), WalletStorageError> {
     // Copy the current db to the backup path
     let db_path = current_db
@@ -96,10 +97,10 @@ pub async fn partial_wallet_backup<P: AsRef<Path>>(current_db: P, backup_path: P
     std::fs::copy(db_path, backup_path)
         .map_err(|_| WalletStorageError::FileError("Could not copy database file for backup".to_string()))?;
 
-    // open a connection and clear the Comms Private Key
+    // open a connection and clear the Master Secret Key
     let connection = run_migration_and_create_sqlite_connection(backup_path)?;
     let db = WalletDatabase::new(WalletSqliteDatabase::new(connection, None)?);
-    db.clear_comms_secret_key().await?;
+    db.clear_master_secret_key().await?;
 
     Ok(())
 }

@@ -25,7 +25,6 @@ use crate::{
     wallet_modes::{PeerConfig, WalletMode},
 };
 use log::*;
-use rand::rngs::OsRng;
 use rpassword::prompt_password_stdout;
 use rustyline::Editor;
 use std::{fs, path::PathBuf, str::FromStr, sync::Arc};
@@ -33,6 +32,7 @@ use tari_app_utilities::utilities::{setup_wallet_transport_type, ExitCodes};
 use tari_common::{ConfigBootstrap, GlobalConfig, Network};
 use tari_comms::{
     peer_manager::{Peer, PeerFeatures},
+    types::CommsSecretKey,
     NodeIdentity,
 };
 use tari_comms_dht::{DbConnectionUrl, DhtConfig};
@@ -40,7 +40,6 @@ use tari_core::{
     consensus::Network as NetworkType,
     transactions::types::{CryptoFactories, PrivateKey},
 };
-use tari_crypto::keys::SecretKey;
 use tari_p2p::{
     initialization::CommsConfig,
     seed_peer::SeedPeer,
@@ -64,17 +63,14 @@ use tari_wallet::{
             sqlite_db::OutputManagerSqliteDatabase,
         },
     },
-    storage::{
-        database::{DbKey, DbKeyValuePair, DbValue, WalletBackend, WriteOperation},
-        sqlite_utilities::initialize_sqlite_database_backends,
-    },
+    storage::{database::WalletDatabase, sqlite_utilities::initialize_sqlite_database_backends},
     transaction_service::{
         config::{TransactionRoutingMechanism, TransactionServiceConfig},
         tasks::start_transaction_validation_and_broadcast_protocols::start_transaction_validation_and_broadcast_protocols,
     },
     types::ValidationRetryStrategy,
-    wallet::WalletConfig,
     Wallet,
+    WalletConfig,
     WalletSqlite,
 };
 
@@ -301,43 +297,32 @@ pub async fn init_wallet(
         },
     };
     let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend) = backends;
+    let wallet_db = WalletDatabase::new(wallet_backend);
 
     debug!(
         target: LOG_TARGET,
         "Databases Initialized. Wallet encrypted? {}.", wallet_encrypted
     );
-    let node_identity = match wallet_backend
-        .fetch(&DbKey::Identity)
-        .map_err(|e| ExitCodes::WalletError(format!("Error creating Wallet database backends. {}", e)))?
-    {
-        Some(DbValue::Identity(v)) => Arc::new(v),
-        _ => {
-            let private_key = PrivateKey::random(&mut OsRng);
-            let node_id = NodeIdentity::new(
-                private_key,
-                config.public_address.clone(),
-                PeerFeatures::COMMUNICATION_CLIENT,
-            )
-            .map_err(|e| ExitCodes::WalletError(format!("We were unable to construct a node identity. {}", e)))?;
-            wallet_backend
-                .write(WriteOperation::Insert(DbKeyValuePair::Identity(Box::new(
-                    node_id.clone(),
-                ))))
-                .map_err(|e| ExitCodes::WalletError(format!("Error creating Wallet database backends. {}", e)))?;
-            Arc::new(node_id)
-        },
+
+    let node_address = match wallet_db.get_node_address().await? {
+        None => config.public_address.clone(),
+        Some(a) => a,
     };
+
+    let node_features = match wallet_db.get_node_features().await? {
+        None => PeerFeatures::COMMUNICATION_CLIENT,
+        Some(nf) => nf,
+    };
+
+    let node_identity = Arc::new(
+        NodeIdentity::new(CommsSecretKey::default(), node_address, node_features)
+            .map_err(|e| ExitCodes::NetworkError(e.to_string()))?,
+    );
 
     let transport_type = setup_wallet_transport_type(&config);
     let transport_type = match transport_type {
         Tor(mut tor_config) => {
-            tor_config.identity = match wallet_backend
-                .fetch(&DbKey::TorId)
-                .map_err(|e| ExitCodes::WalletError(format!("Error creating Wallet database backends. {}", e)))?
-            {
-                Some(DbValue::TorId(v)) => Some(Box::new(v)),
-                _ => None,
-            };
+            tor_config.identity = wallet_db.get_tor_id().await?.map(Box::new);
             Tor(tor_config)
         },
         _ => transport_type,
@@ -414,9 +399,9 @@ pub async fn init_wallet(
 
     let recovery = set_master_key(&output_manager_backend, master_key).await?;
 
-    let mut wallet = Wallet::new(
+    let mut wallet = Wallet::start(
         wallet_config,
-        wallet_backend,
+        wallet_db,
         transaction_backend,
         output_manager_backend,
         contacts_backend,

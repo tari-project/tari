@@ -32,9 +32,11 @@ extern crate diesel_migrations;
 #[macro_use]
 extern crate lazy_static;
 
+mod config;
 pub mod schema;
 pub mod tasks;
 
+pub use config::WalletConfig;
 pub use wallet::Wallet;
 
 use crate::{

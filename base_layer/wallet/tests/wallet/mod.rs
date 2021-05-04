@@ -59,7 +59,6 @@ use tari_wallet::{
     error::{WalletError, WalletStorageError},
     storage::{
         database::{DbKeyValuePair, WalletBackend, WalletDatabase, WriteOperation},
-        memory_db::WalletMemoryDatabase,
         sqlite_db::WalletSqliteDatabase,
         sqlite_utilities::{
             initialize_sqlite_database_backends,
@@ -69,8 +68,8 @@ use tari_wallet::{
     },
     test_utils::make_wallet_databases,
     transaction_service::{config::TransactionServiceConfig, handle::TransactionEvent},
-    wallet::WalletConfig,
     Wallet,
+    WalletConfig,
     WalletSqlite,
 };
 use tempfile::tempdir;
@@ -150,9 +149,9 @@ async fn create_wallet(
 
     let _ = wallet_backend.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(meta_data)));
 
-    let wallet = Wallet::new(
+    let wallet = Wallet::start(
         config,
-        wallet_backend,
+        WalletDatabase::new(wallet_backend),
         transaction_backend,
         output_manager_backend,
         contacts_backend,
@@ -375,7 +374,7 @@ async fn test_wallet() {
 
     alice_wallet
         .db
-        .set_comms_secret_key(alice_identity.secret_key().clone())
+        .set_master_secret_key(alice_identity.secret_key().clone())
         .await
         .unwrap();
 
@@ -389,16 +388,16 @@ async fn test_wallet() {
     let connection =
         run_migration_and_create_sqlite_connection(&current_wallet_path).expect("Could not open Sqlite db");
     let wallet_db = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap());
-    let comms_private_key = wallet_db.get_comms_secret_key().await.unwrap();
-    assert!(comms_private_key.is_some());
+    let master_private_key = wallet_db.get_master_secret_key().await.unwrap();
+    assert!(master_private_key.is_some());
     // Checking that the backup has had its Comms Private Key is cleared.
     let connection = run_migration_and_create_sqlite_connection(&backup_wallet_path).expect(
         "Could not open Sqlite
     db",
     );
     let backup_wallet_db = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap());
-    let comms_private_key = backup_wallet_db.get_comms_secret_key().await.unwrap();
-    assert!(comms_private_key.is_none());
+    let master_secret_key = backup_wallet_db.get_master_secret_key().await.unwrap();
+    assert!(master_secret_key.is_none());
 
     shutdown_b.trigger().unwrap();
 
@@ -581,7 +580,7 @@ async fn test_import_utxo() {
     )
     .unwrap();
     let temp_dir = tempdir().unwrap();
-    let (tx_backend, oms_backend, _temp_dir) = make_wallet_databases(None);
+    let (wallet_backend, tx_backend, oms_backend, _temp_dir) = make_wallet_databases(None);
     let comms_config = CommsConfig {
         node_identity: Arc::new(alice_identity.clone()),
         transport_type: TransportType::Tcp {
@@ -612,9 +611,9 @@ async fn test_import_utxo() {
         None,
         None,
     );
-    let mut alice_wallet = Wallet::new(
+    let mut alice_wallet = Wallet::start(
         config,
-        WalletMemoryDatabase::new(),
+        WalletDatabase::new(wallet_backend),
         tx_backend,
         oms_backend,
         ContactsServiceMemoryDatabase::new(),
@@ -705,18 +704,16 @@ async fn test_data_generation() {
         None,
     );
 
-    let (transaction_backend, oms_backend, _temp_dir) = make_wallet_databases(None);
-
-    let db = WalletMemoryDatabase::new();
+    let (db, transaction_backend, oms_backend, _temp_dir) = make_wallet_databases(None);
 
     let meta_data = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
 
     db.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(meta_data)))
         .unwrap();
 
-    let mut wallet = Wallet::new(
+    let mut wallet = Wallet::start(
         config,
-        db,
+        WalletDatabase::new(db),
         transaction_backend.clone(),
         oms_backend,
         ContactsServiceMemoryDatabase::new(),

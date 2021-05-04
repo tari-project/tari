@@ -30,8 +30,8 @@ use crate::{
         TxId,
     },
     storage::{
-        database::{DbKeyValuePair, WalletBackend, WriteOperation},
-        memory_db::WalletMemoryDatabase,
+        database::{DbKeyValuePair, WalletBackend, WalletDatabase, WriteOperation},
+        sqlite_db::WalletSqliteDatabase,
     },
     test_utils::make_wallet_databases,
     transaction_service::{
@@ -42,8 +42,8 @@ use crate::{
             sqlite_db::TransactionServiceSqliteDatabase,
         },
     },
-    wallet::WalletConfig,
     Wallet,
+    WalletConfig,
 };
 use chrono::{Duration as ChronoDuration, Utc};
 use futures::{FutureExt, StreamExt};
@@ -145,7 +145,7 @@ pub async fn create_wallet(
     datastore_path: PathBuf,
     shutdown_signal: ShutdownSignal,
 ) -> Wallet<
-    WalletMemoryDatabase,
+    WalletSqliteDatabase,
     TransactionServiceSqliteDatabase,
     OutputManagerSqliteDatabase,
     ContactsServiceMemoryDatabase,
@@ -191,16 +191,16 @@ pub async fn create_wallet(
         None,
         None,
     );
-    let db = WalletMemoryDatabase::new();
-    let (backend, oms_backend, _) = make_wallet_databases(Some(datastore_path.to_str().unwrap().to_string()));
+
+    let (db, backend, oms_backend, _) = make_wallet_databases(Some(datastore_path.to_str().unwrap().to_string()));
 
     let metadata = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
 
     db.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(metadata)))
         .unwrap();
-    Wallet::new(
+    Wallet::start(
         config,
-        db,
+        WalletDatabase::new(db),
         backend,
         oms_backend,
         ContactsServiceMemoryDatabase::new(),

@@ -34,6 +34,7 @@ use tari_comms::{
         mocks::{create_connectivity_mock, ConnectivityManagerMockState},
         node_identity::build_node_identity,
     },
+    types::CommsSecretKey,
     Substream,
 };
 use tari_core::{
@@ -165,6 +166,7 @@ pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
             shutdown.to_signal(),
             basenode_service_handle,
             connectivity_manager,
+            CommsSecretKey::default(),
         ))
         .unwrap();
     let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender, oms_event_publisher);
@@ -402,6 +404,7 @@ pub fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
             shutdown.to_signal(),
             base_node_service_handle.clone(),
             connectivity_manager,
+            CommsSecretKey::default(),
         ))
         .unwrap();
     let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender, oms_event_publisher);
@@ -2108,4 +2111,93 @@ fn test_txo_validation_base_node_not_synced() {
 
     assert_eq!(outputs.len(), 1);
     assert!(outputs.iter().any(|o| o == &unspent_output1));
+}
+
+#[test]
+fn test_oms_key_manager_discrepancy() {
+    let shutdown = Shutdown::new();
+    let factories = CryptoFactories::default();
+    let mut runtime = Runtime::new().unwrap();
+    let (_oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
+
+    let (oms_event_publisher, _) = broadcast::channel(200);
+    let (ts_request_sender, _ts_request_receiver) = reply_channel::unbounded();
+    let (event_publisher, _) = channel(100);
+    let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher);
+    let constants = ConsensusConstantsBuilder::new(Network::Weatherwax).build();
+    let (sender, receiver_bns) = reply_channel::unbounded();
+    let (event_publisher_bns, _) = broadcast::channel(100);
+
+    let basenode_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns);
+    let mut mock_base_node_service = MockBaseNodeService::new(receiver_bns, shutdown.to_signal());
+    mock_base_node_service.set_default_base_node_state();
+    runtime.spawn(mock_base_node_service.run());
+
+    let (connectivity_manager, _connectivity_mock) = create_connectivity_mock();
+
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_tempdir = tempdir().unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_path = format!("{}/{}", db_folder, db_name);
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection, None));
+
+    let master_key1 = CommsSecretKey::random(&mut OsRng);
+
+    let output_manager_service = runtime
+        .block_on(OutputManagerService::new(
+            OutputManagerServiceConfig::default(),
+            ts_handle.clone(),
+            oms_request_receiver,
+            db.clone(),
+            oms_event_publisher.clone(),
+            factories.clone(),
+            constants.clone(),
+            shutdown.to_signal(),
+            basenode_service_handle.clone(),
+            connectivity_manager.clone(),
+            master_key1.clone(),
+        ))
+        .unwrap();
+
+    drop(output_manager_service);
+
+    let (_oms_request_sender2, oms_request_receiver2) = reply_channel::unbounded();
+    let output_manager_service2 = runtime
+        .block_on(OutputManagerService::new(
+            OutputManagerServiceConfig::default(),
+            ts_handle.clone(),
+            oms_request_receiver2,
+            db.clone(),
+            oms_event_publisher.clone(),
+            factories.clone(),
+            constants.clone(),
+            shutdown.to_signal(),
+            basenode_service_handle.clone(),
+            connectivity_manager.clone(),
+            master_key1,
+        ))
+        .expect("Should be able to make a new OMS with same master key");
+    drop(output_manager_service2);
+
+    let (_oms_request_sender3, oms_request_receiver3) = reply_channel::unbounded();
+    let master_key2 = CommsSecretKey::random(&mut OsRng);
+    let output_manager_service3 = runtime.block_on(OutputManagerService::new(
+        OutputManagerServiceConfig::default(),
+        ts_handle,
+        oms_request_receiver3,
+        db,
+        oms_event_publisher,
+        factories,
+        constants,
+        shutdown.to_signal(),
+        basenode_service_handle,
+        connectivity_manager,
+        master_key2,
+    ));
+
+    assert!(matches!(
+        output_manager_service3,
+        Err(OutputManagerError::MasterSecretKeyMismatch)
+    ));
 }

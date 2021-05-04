@@ -33,7 +33,7 @@ use serde_json::Error as SerdeJsonError;
 use tari_comms::{
     connectivity::ConnectivityError,
     multiaddr,
-    peer_manager::{node_id::NodeIdError, PeerManagerError},
+    peer_manager::{node_id::NodeIdError, NodeIdentityError, PeerManagerError},
 };
 use tari_comms_dht::store_forward::StoreAndForwardError;
 use tari_core::transactions::transaction::TransactionError;
@@ -72,12 +72,16 @@ pub enum WalletError {
     BaseNodeServiceError(#[from] BaseNodeServiceError),
     #[error("Node ID error: `{0}`")]
     NodeIdError(#[from] NodeIdError),
+    #[error("Node Identity error: `{0}`")]
+    NodeIdentityError(#[from] NodeIdentityError),
     #[error("Error performing wallet recovery: '{0}'")]
     WalletRecoveryError(String),
     #[error("Shutdown Signal Received")]
     Shutdown,
     #[error("Transaction Error: {0}")]
     TransactionError(#[from] TransactionError),
+    #[error("Byte array error")]
+    ByteArrayError(#[from] tari_crypto::tari_utilities::ByteArrayError),
 }
 
 #[derive(Debug, Error)]
@@ -134,4 +138,6 @@ pub enum WalletStorageError {
     NoPasswordError,
     #[error("Incorrect password provided for encrypted wallet")]
     IncorrectPassword,
+    #[error("Deprecated operation error")]
+    DeprecatedOperation,
 }

@@ -28,6 +28,5 @@
 // After running this, make sure that the diesel update did not change BigInt to Integer
 
 pub mod database;
-pub mod memory_db;
 pub mod sqlite_db;
 pub mod sqlite_utilities;
