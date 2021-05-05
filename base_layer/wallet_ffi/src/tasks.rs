@@ -23,20 +23,20 @@
 use futures::StreamExt;
 use log::*;
 use tari_crypto::tari_utilities::hex::Hex;
-use tari_wallet::{error::WalletError, tasks::wallet_recovery::WalletRecoveryEvent};
+use tari_wallet::{error::WalletError, utxo_scanner_service::utxo_scanning::UtxoScannerEvent};
 use tokio::{sync::broadcast, task::JoinHandle};
 
 const LOG_TARGET: &str = "wallet_ffi";
 
 pub async fn recovery_event_monitoring(
-    mut event_stream: broadcast::Receiver<WalletRecoveryEvent>,
+    mut event_stream: broadcast::Receiver<UtxoScannerEvent>,
     recovery_join_handle: JoinHandle<Result<(), WalletError>>,
     recovery_progress_callback: unsafe extern "C" fn(u64, u64),
 )
 {
     while let Some(event) = event_stream.next().await {
         match event {
-            Ok(WalletRecoveryEvent::ConnectedToBaseNode(pk, elapsed)) => {
+            Ok(UtxoScannerEvent::ConnectedToBaseNode(pk, elapsed)) => {
                 unsafe {
                     (recovery_progress_callback)(0u64, 1u64);
                 }
@@ -47,7 +47,10 @@ pub async fn recovery_event_monitoring(
                     elapsed
                 );
             },
-            Ok(WalletRecoveryEvent::Progress(current, total)) => {
+            Ok(UtxoScannerEvent::Progress {
+                current_block: current,
+                current_chain_height: total,
+            }) => {
                 unsafe {
                     (recovery_progress_callback)(current, total);
                 }
@@ -57,7 +60,12 @@ pub async fn recovery_event_monitoring(
                     break;
                 }
             },
-            Ok(WalletRecoveryEvent::Completed(num_scanned, num_utxos, total_amount, elapsed)) => {
+            Ok(UtxoScannerEvent::Completed {
+                number_scanned: num_scanned,
+                number_received: num_utxos,
+                value_received: total_amount,
+                time_taken: elapsed,
+            }) => {
                 info!(
                     target: LOG_TARGET,
                     "Recovery complete! Scanned = {} in {:.2?} ({} utxos/s), Recovered {} worth {}",

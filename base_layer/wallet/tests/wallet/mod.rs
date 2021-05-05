@@ -145,6 +145,7 @@ async fn create_wallet(
         None,
         None,
         None,
+        None,
     );
     let meta_data = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
 
@@ -611,6 +612,7 @@ async fn test_import_utxo() {
         None,
         None,
         None,
+        None,
     );
     let mut alice_wallet = Wallet::new(
         config,
@@ -700,6 +702,7 @@ async fn test_data_generation() {
         None,
         None,
         Network::Weatherwax,
+        None,
         None,
         None,
         None,

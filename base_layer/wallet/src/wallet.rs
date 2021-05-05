@@ -38,6 +38,7 @@ use crate::{
         storage::database::TransactionBackend,
         TransactionServiceInitializer,
     },
+    utxo_scanner_service::UtxoScannerServiceInitializer,
 };
 use aes_gcm::{
     aead::{generic_array::GenericArray, NewAead},
@@ -45,7 +46,7 @@ use aes_gcm::{
 };
 use digest::Digest;
 use log::*;
-use std::{marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData, sync::Arc, time::Duration};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
@@ -91,6 +92,7 @@ pub struct WalletConfig {
     pub rate_limit: usize,
     pub network: Network,
     pub base_node_service_config: BaseNodeServiceConfig,
+    pub scan_for_utxo_interval: Duration,
 }
 
 impl WalletConfig {
@@ -104,6 +106,7 @@ impl WalletConfig {
         base_node_service_config: Option<BaseNodeServiceConfig>,
         buffer_size: Option<usize>,
         rate_limit: Option<usize>,
+        scan_for_utxo_interval: Option<Duration>,
     ) -> Self
     {
         Self {
@@ -115,6 +118,7 @@ impl WalletConfig {
             rate_limit: rate_limit.unwrap_or_else(|| 50),
             network,
             base_node_service_config: base_node_service_config.unwrap_or_default(),
+            scan_for_utxo_interval: scan_for_utxo_interval.unwrap_or_else(|| Duration::from_secs(43200)),
         }
     }
 }
@@ -214,6 +218,12 @@ where
             .add_initializer(BaseNodeServiceInitializer::new(
                 config.base_node_service_config,
                 bn_service_db,
+            ))
+            .add_initializer(UtxoScannerServiceInitializer::new(
+                config.scan_for_utxo_interval,
+                db.clone(),
+                factories.clone(),
+                node_identity.clone(),
             ));
 
         let mut handles = stack.build().await?;
@@ -339,6 +349,35 @@ where
         Ok(tx_id)
     }
 
+    /// Import an external spendable UTXO into the wallet. The output will be added to the Output Manager and made
+    /// spendable. A faux incoming transaction will be created to provide a record of the event. The TxId of the
+    /// generated transaction is returned.
+    pub async fn import_unblinded_utxo(
+        &mut self,
+        unblinded_output: UnblindedOutput,
+        source_public_key: &CommsPublicKey,
+        message: String,
+    ) -> Result<TxId, WalletError>
+    {
+        self.output_manager_service.add_output(unblinded_output.clone()).await?;
+
+        let tx_id = self
+            .transaction_service
+            .import_utxo(unblinded_output.value, source_public_key.clone(), message)
+            .await?;
+
+        info!(
+            target: LOG_TARGET,
+            "UTXO (Commitment: {}) imported into wallet",
+            unblinded_output
+                .as_transaction_input(&self.factories.commitment)?
+                .commitment
+                .to_hex()
+        );
+
+        Ok(tx_id)
+    }
+
     pub fn sign_message(
         &mut self,
         secret: RistrettoSecretKey,
@@ -419,7 +458,7 @@ where
     /// Utility function to find out if there is data in the database indicating that there is an incomplete recovery
     /// process in progress
     pub async fn is_recovery_in_progress(&self) -> Result<bool, WalletError> {
-        use crate::tasks::wallet_recovery::RECOVERY_HEIGHT_KEY;
+        use crate::utxo_scanner_service::utxo_scanning::RECOVERY_HEIGHT_KEY;
         Ok(self
             .db
             .get_client_key_value(RECOVERY_HEIGHT_KEY.to_string())

@@ -32,7 +32,7 @@ use crate::output_manager_service::{
             PendingTransactionOutputs,
             WriteOperation,
         },
-        models::DbUnblindedOutput,
+        models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
     },
     TxId,
 };
@@ -55,6 +55,7 @@ pub struct InnerDatabase {
     pending_transactions: HashMap<TxId, PendingTransactionOutputs>,
     short_term_pending_transactions: HashMap<TxId, PendingTransactionOutputs>,
     key_manager_state: Option<KeyManagerState>,
+    known_one_sided_payment_scripts: Vec<KnownOneSidedPaymentScript>,
 }
 
 impl InnerDatabase {
@@ -66,6 +67,7 @@ impl InnerDatabase {
             pending_transactions: HashMap::new(),
             short_term_pending_transactions: Default::default(),
             key_manager_state: None,
+            known_one_sided_payment_scripts: Vec::new(),
         }
     }
 }
@@ -145,6 +147,9 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
                     .map(|o| DbUnblindedOutput::from((*o).clone()))
                     .collect(),
             )),
+            DbKey::KnownOneSidedPaymentScripts => Some(DbValue::KnownOneSidedPaymentScripts(
+                db.known_one_sided_payment_scripts.clone(),
+            )),
         };
 
         Ok(result)
@@ -174,6 +179,9 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
                     db.short_term_pending_transactions.insert(t, *p);
                 },
                 DbKeyValuePair::KeyManagerState(km) => db.key_manager_state = Some(km),
+                DbKeyValuePair::KnownOneSidedPaymentScripts(known_script) => {
+                    db.known_one_sided_payment_scripts.push(known_script)
+                },
             },
             WriteOperation::Remove(k) => match k {
                 DbKey::SpentOutput(k) => match db
@@ -215,6 +223,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
                 DbKey::KeyManagerState => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::InvalidOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::TimeLockedUnspentOutputs(_) => return Err(OutputManagerStorageError::OperationNotSupported),
+                DbKey::KnownOneSidedPaymentScripts => return Err(OutputManagerStorageError::OperationNotSupported),
             },
         }
         Ok(None)
