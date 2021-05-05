@@ -8,7 +8,7 @@
 # Debugging enabled
 #set -x
 
-if [ ! "$(uname)" == "Darwin" ]; then
+if [ ! "$(uname)" = "Darwin" ]; then
   echo "Helper script meant for OSX"
   echo "Please visit https://tari.com/downloads/"
   echo " and download the binary distro for your platform"
@@ -18,10 +18,11 @@ fi
 tsstamp=$(date +'%Y%m%d_%Hh%Mm%Ss')
 logging_file=/tmp/tari_base_node_preinstall-$tsstamp.log
 
-echo "Running preinstall - $(date +'%Y-%m-%d %Hh%M:%S')" > $logging_file
-echo "Envs " >> $logging_file
-env >> $logging_file
-echo "Positional arguments" $@ >> $logging_file
-echo "Done preinstall - $(date +'%Y-%m-%d %Hh%M:%S')" >> $logging_file
+echo "Running preinstall - $(date +'%Y-%m-%d %Hh%M:%S')" > "${logging_file}"
+# shellcheck disable=SC2129
+echo "Envs " >> "${logging_file}"
+env >> "${logging_file}"
+echo "Positional arguments" "$@" >> "${logging_file}"
+echo "Done preinstall - $(date +'%Y-%m-%d %Hh%M:%S')" >> "${logging_file}"
 
 exit 0 # all good

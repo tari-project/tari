@@ -9,7 +9,8 @@ uname -a
 # CPU details
 cat /proc/cpuinfo
 
-if [ "$(expr substr $(uname -s) 1 5)" == "Linux" ]; then
+# shellcheck disable=SC2003
+if [ "$(expr substr "$(uname -s)" 1 5)" == "Linux" ]; then
   osname="ubuntu"
   osversion="18.04"
   osarch="x64"
@@ -44,7 +45,7 @@ if [ "$(expr substr $(uname -s) 1 5)" == "Linux" ]; then
     osversion=$(uname -r)
   fi
 
-  osname=$(echo $osname | tr '[:upper:]' '[:lower:]' )
+  osname=$(echo "$osname" | tr '[:upper:]' '[:lower:]' )
 
   case $(uname -m) in
     x86_64)
@@ -61,6 +62,6 @@ else
   echo "Not a Linux system?"
 fi
 
-echo $osname
-echo $osversion
+echo "$osname"
+echo "$osversion"
 echo $osarch

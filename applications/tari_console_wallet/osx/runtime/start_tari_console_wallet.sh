@@ -32,8 +32,8 @@ echo
 
 # Run
 echo Spawning Console Wallet into new terminal..
-echo "${exe_path}/tari_console_wallet" ${init_flag} --config="${config_path}/config.toml" --log_config="${config_path}/log4rs_console_wallet.yml" --base-path=${base_path} > $exe_path/tari_console_wallet_command.sh
-chmod +x $exe_path/tari_console_wallet_command.sh
+echo "${exe_path}/tari_console_wallet" ${init_flag} --config="${config_path}/config.toml" --log_config="${config_path}/log4rs_console_wallet.yml" --base-path="${base_path}" > "${exe_path}"/start_tari_console_wallet.sh
+chmod +x "${exe_path}"/start_tari_console_wallet.sh
 
-open -a terminal $exe_path/tari_console_wallet_command.sh
+open -a terminal "${exe_path}"/start_tari_console_wallet.sh
 echo

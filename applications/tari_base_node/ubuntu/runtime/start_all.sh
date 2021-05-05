@@ -1,7 +1,8 @@
 #!/bin/bash
 #
 # Initialize
-export base_path="$( cd "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+base_path="$( cd "$(dirname "$0")" >/dev/null 2>&1 || exit; pwd -P )"
+export base_path
 export config_path="${base_path}/config"
 export exe_path="${base_path}/runtime"
 echo
@@ -41,7 +42,7 @@ merged_mining() {
 mining() {
     echo "Merged mining?"
     while true; do
-        read yn
+        read -r yn
         case $yn in
             [Yy]* ) merged_mining; break;;
             [Nn]* ) call_base_node; call_console_wallet; call_mining; exit;;
@@ -53,7 +54,7 @@ mining() {
 echo
 echo "Do you want to enable mining?"
     while true; do
-        read yn
+        read -r yn
         case $yn in
             [Yy]* )  mining; break;;
             [Nn]* )  call_base_node; call_console_wallet; exit;;
