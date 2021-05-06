@@ -29,7 +29,7 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_comms_dht::DhtConfig;
-use tari_core::transactions::{tari_amount::MicroTari, types::CryptoFactories};
+use tari_core::transactions::{tari_amount::MicroTari, transaction::OutputFeatures, types::CryptoFactories};
 use tari_crypto::keys::PublicKey;
 use tari_p2p::initialization::CommsConfig;
 use tari_shutdown::{Shutdown, ShutdownSignal};
@@ -626,6 +626,7 @@ async fn test_import_utxo() {
             utxo.value,
             &utxo.spending_key,
             base_node_identity.public_key(),
+            OutputFeatures::default(),
             "Testing".to_string(),
         )
         .await

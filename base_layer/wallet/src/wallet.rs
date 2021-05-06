@@ -304,10 +304,11 @@ where
         amount: MicroTari,
         spending_key: &PrivateKey,
         source_public_key: &CommsPublicKey,
+        features: OutputFeatures,
         message: String,
     ) -> Result<TxId, WalletError>
     {
-        let unblinded_output = UnblindedOutput::new(amount, spending_key.clone(), None);
+        let unblinded_output = UnblindedOutput::new(amount, spending_key.clone(), Some(features));
 
         self.output_manager_service.add_output(unblinded_output.clone()).await?;
 

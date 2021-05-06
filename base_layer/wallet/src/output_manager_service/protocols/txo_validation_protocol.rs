@@ -464,6 +464,12 @@ where TBackend: OutputManagerBackend + 'static
                         "Output with value {} not returned from Base Node query and is thus being invalidated",
                         v.unblinded_output.value,
                     );
+                    trace!(
+                        target: LOG_TARGET,
+                        "Output {} with features {} not returned from Base Node query and is thus being invalidated",
+                        v.commitment.to_hex(),
+                        v.unblinded_output.features,
+                    );
                     // If the output that is being invalidated has an associated TxId then get the kernel signature of
                     // the transaction and display for easier debugging
                     if let Some(tx_id) = self.resources.db.invalidate_output(v).await.map_err(|e| {
