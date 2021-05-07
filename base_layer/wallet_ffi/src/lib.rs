@@ -2662,55 +2662,6 @@ pub unsafe extern "C" fn comms_config_create(
 
     let dht_database_path = datastore_path.join("dht.db");
 
-    // Check to see if we have a comms private key stored in the Sqlite database. If not generate a new one.
-    let sql_database_path = datastore_path
-        .join(database_name_string.clone())
-        .with_extension("sqlite3");
-    let connection = run_migration_and_create_sqlite_connection(&sql_database_path)
-        .map_err(|e| {
-            error!(
-                target: LOG_TARGET,
-                "Error creating Sqlite Connection in Wallet: {:?}", e
-            );
-            e
-        })
-        .expect("Could not open Sqlite db");
-
-    let transport_type = (*transport_type).clone();
-    let transport_type = match transport_type {
-        Tor(mut tor_config) => {
-            match WalletSqliteDatabase::new(connection, None) {
-                Ok(database) => {
-                    let db = WalletDatabase::new(database);
-
-                    match Runtime::new() {
-                        Ok(mut rt) => {
-                            tor_config.identity = match tor_config.identity {
-                                Some(v) => {
-                                    // This is temp code and should be removed after testnet
-                                    let _ = rt.block_on(db.set_tor_identity((*v).clone()));
-                                    Some(v)
-                                },
-                                _ => match rt.block_on(db.get_tor_id()) {
-                                    Ok(Some(v)) => Some(Box::new(v)),
-                                    _ => None,
-                                },
-                            };
-                            Tor(tor_config)
-                        },
-                        Err(e) => {
-                            error = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
-                            ptr::swap(error_out, &mut error as *mut c_int);
-                            return ptr::null_mut();
-                        },
-                    }
-                },
-                _ => Tor(tor_config),
-            }
-        },
-        _ => transport_type,
-    };
-
     let public_address = public_address_str.parse::<Multiaddr>();
 
     match public_address {
@@ -2724,7 +2675,7 @@ pub unsafe extern "C" fn comms_config_create(
                 Ok(ni) => {
                     let config = TariCommsConfig {
                         node_identity: Arc::new(ni),
-                        transport_type,
+                        transport_type: (*transport_type).clone(),
                         datastore_path,
                         peer_database_name: database_name_string,
                         max_concurrent_inbound_tasks: 100,
@@ -2762,58 +2713,6 @@ pub unsafe extern "C" fn comms_config_create(
             error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             ptr::null_mut()
-        },
-    }
-}
-
-/// Set the Comms Secret Key for an existing TariCommsConfig. Usually this key is maintained by the backend but if it is
-/// required to set a specific new one this function can be used.
-///
-/// ## Arguments
-/// `comms_config` - TariCommsConfig to be updated
-/// `secret_key` - The TariSecretKey pointer. This is the secret key corresponding to the Public key that represents
-/// this node on the Tari comms network
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// None
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn comms_config_set_secret_key(
-    comms_config: *mut TariCommsConfig,
-    secret_key: *const TariPrivateKey,
-    error_out: *mut c_int,
-)
-{
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-
-    if comms_config.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("comms_config".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return;
-    }
-
-    if secret_key.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("secret_key".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return;
-    }
-
-    match NodeIdentity::new(
-        (*secret_key).clone(),
-        (*comms_config).node_identity.public_address(),
-        PeerFeatures::COMMUNICATION_CLIENT,
-    ) {
-        Ok(ni) => {
-            (*comms_config).node_identity = Arc::new(ni);
-        },
-        Err(e) => {
-            error = LibWalletError::from(e).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
         },
     }
 }
@@ -3012,13 +2911,28 @@ pub unsafe extern "C" fn wallet_create(
                 return ptr::null_mut();
             },
         };
+    let wallet_db = WalletDatabase::new(wallet_backend);
+
     debug!(target: LOG_TARGET, "Databases Initialized");
+
+    // If the transport type is Tor then check if there is a stored TorID, if there is update the Transport Type
+    let mut comms_config = (*config).clone().clone();
+    comms_config.transport_type = match comms_config.transport_type {
+        Tor(mut tor_config) => {
+            tor_config.identity = match runtime.block_on(wallet_db.get_tor_id()) {
+                Ok(Some(v)) => Some(Box::new(v)),
+                _ => None,
+            };
+            Tor(tor_config)
+        },
+        _ => comms_config.transport_type,
+    };
 
     let shutdown = Shutdown::new();
 
     w = runtime.block_on(Wallet::start(
         WalletConfig::new(
-            (*config).clone(),
+            comms_config,
             factories,
             Some(TransactionServiceConfig {
                 direct_send_timeout: (*config).dht.discovery_request_timeout,
@@ -3030,7 +2944,7 @@ pub unsafe extern "C" fn wallet_create(
             None,
             None,
         ),
-        WalletDatabase::new(wallet_backend),
+        wallet_db,
         transaction_backend.clone(),
         output_manager_backend,
         contacts_backend,
@@ -3039,7 +2953,7 @@ pub unsafe extern "C" fn wallet_create(
 
     match w {
         Ok(mut w) => {
-            // lets ensure the wallet tor_id is saved
+            // lets ensure the wallet tor_id is saved, this could have been changed during wallet startup
             if let Some(hs) = w.comms.hidden_service() {
                 if let Err(e) = runtime.block_on(w.db.set_tor_identity(hs.tor_identity().clone())) {
                     warn!(target: LOG_TARGET, "Could not save tor identity to db: {}", e);
@@ -6244,7 +6158,7 @@ mod test {
                 10800,
                 error_ptr,
             );
-            comms_config_set_secret_key(alice_config, secret_key_alice, error_ptr);
+
             let alice_wallet = wallet_create(
                 alice_config,
                 alice_log_path_str,
@@ -6287,7 +6201,6 @@ mod test {
                 10800,
                 error_ptr,
             );
-            comms_config_set_secret_key(bob_config, secret_key_bob, error_ptr);
 
             let bob_log_path =
                 CString::new(format!("{}{}", bob_temp_dir.path().to_str().unwrap(), "/test.log")).unwrap();
@@ -6959,7 +6872,7 @@ mod test {
                 10800,
                 error_ptr,
             );
-            comms_config_set_secret_key(alice_config, secret_key_alice, error_ptr);
+
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
@@ -7005,7 +6918,6 @@ mod test {
                 10800,
                 error_ptr,
             );
-            comms_config_set_secret_key(alice_config, secret_key_alice, error_ptr);
 
             // no passphrase
             let _alice_wallet = wallet_create(
@@ -7104,7 +7016,7 @@ mod test {
                 10800,
                 error_ptr,
             );
-            comms_config_set_secret_key(alice_config, secret_key_alice, error_ptr);
+
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
@@ -7171,7 +7083,7 @@ mod test {
                 10800,
                 error_ptr,
             );
-            comms_config_set_secret_key(alice_config, secret_key_alice, error_ptr);
+
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),

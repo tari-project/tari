@@ -88,7 +88,6 @@ fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
 }
 
 async fn create_wallet(
-    node_identity: NodeIdentity,
     data_path: &Path,
     database_name: &str,
     factories: CryptoFactories,
@@ -96,6 +95,8 @@ async fn create_wallet(
     passphrase: Option<String>,
 ) -> WalletSqlite
 {
+    let node_identity =
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
     let comms_config = CommsConfig {
         node_identity: Arc::new(node_identity.clone()),
         transport_type: TransportType::Memory {
@@ -170,16 +171,11 @@ async fn test_wallet() {
     let bob_db_tempdir = tempdir().unwrap();
 
     let factories = CryptoFactories::default();
-    let alice_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
-    let bob_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
 
     let base_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
 
     let mut alice_wallet = create_wallet(
-        alice_identity.clone(),
         &alice_db_tempdir.path(),
         "alice_db",
         factories.clone(),
@@ -187,9 +183,9 @@ async fn test_wallet() {
         None,
     )
     .await;
+    let alice_identity = (*alice_wallet.comms.node_identity()).clone();
 
     let bob_wallet = create_wallet(
-        bob_identity.clone(),
         &bob_db_tempdir.path(),
         "bob_db",
         factories.clone(),
@@ -197,6 +193,7 @@ async fn test_wallet() {
         None,
     )
     .await;
+    let bob_identity = (*bob_wallet.comms.node_identity()).clone();
 
     alice_wallet
         .comms
@@ -332,7 +329,6 @@ async fn test_wallet() {
 
     let mut shutdown_a = Shutdown::new();
     let mut alice_wallet = create_wallet(
-        alice_identity.clone(),
         &alice_db_tempdir.path(),
         "alice_db",
         factories.clone(),
@@ -357,7 +353,6 @@ async fn test_wallet() {
     // Test the partial db backup in this test so that we can work with the data generated during the test
     let mut shutdown_a = Shutdown::new();
     let alice_wallet = create_wallet(
-        alice_identity.clone(),
         &alice_db_tempdir.path(),
         "alice_db",
         factories.clone(),
@@ -429,6 +424,7 @@ fn test_store_and_forward_send_tx() {
     let mut shutdown_a = Shutdown::new();
     let mut shutdown_b = Shutdown::new();
     let mut shutdown_c = Shutdown::new();
+    let mut shutdown_c2 = Shutdown::new();
     let factories = CryptoFactories::default();
     let alice_db_tempdir = tempdir().unwrap();
     let bob_db_tempdir = tempdir().unwrap();
@@ -438,35 +434,33 @@ fn test_store_and_forward_send_tx() {
     let mut bob_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
     let mut carol_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
 
-    let alice_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
-    let bob_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
-    let carol_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
-    log::info!(
-        "Alice = {}, Bob = {}, Carol = {}",
-        alice_identity.node_id(),
-        bob_identity.node_id(),
-        carol_identity.node_id()
-    );
-
     let mut alice_wallet = alice_runtime.block_on(create_wallet(
-        alice_identity,
         &alice_db_tempdir.path(),
         "alice_db",
         factories.clone(),
         shutdown_a.to_signal(),
         None,
     ));
+
     let bob_wallet = bob_runtime.block_on(create_wallet(
-        bob_identity.clone(),
         &bob_db_tempdir.path(),
         "bob_db",
         factories.clone(),
         shutdown_b.to_signal(),
         None,
     ));
+    let bob_identity = (*bob_wallet.comms.node_identity()).clone();
+
+    let carol_wallet = carol_runtime.block_on(create_wallet(
+        &carol_db_tempdir.path(),
+        "carol_db",
+        factories.clone(),
+        shutdown_c.to_signal(),
+        None,
+    ));
+    let carol_identity = (*carol_wallet.comms.node_identity()).clone();
+    shutdown_c.trigger().unwrap();
+    carol_runtime.block_on(carol_wallet.wait_until_shutdown());
 
     alice_runtime
         .block_on(alice_wallet.comms.peer_manager().add_peer(bob_identity.to_peer()))
@@ -511,15 +505,15 @@ fn test_store_and_forward_send_tx() {
     alice_runtime.block_on(async { delay_for(Duration::from_secs(60)).await });
 
     let carol_wallet = carol_runtime.block_on(create_wallet(
-        carol_identity,
         &carol_db_tempdir.path(),
         "carol_db",
         factories,
-        shutdown_c.to_signal(),
+        shutdown_c2.to_signal(),
         None,
     ));
 
     let mut carol_event_stream = carol_wallet.transaction_service.get_event_stream_fused();
+
     carol_runtime
         .block_on(carol_wallet.comms.peer_manager().add_peer(create_peer(
             bob_identity.public_key().clone(),
@@ -557,7 +551,7 @@ fn test_store_and_forward_send_tx() {
     });
     shutdown_a.trigger().unwrap();
     shutdown_b.trigger().unwrap();
-    shutdown_c.trigger().unwrap();
+    shutdown_c2.trigger().unwrap();
     alice_runtime.block_on(alice_wallet.wait_until_shutdown());
     bob_runtime.block_on(bob_wallet.wait_until_shutdown());
     carol_runtime.block_on(carol_wallet.wait_until_shutdown());
@@ -672,7 +666,7 @@ async fn test_data_generation() {
     let comms_config = CommsConfig {
         node_identity: Arc::new(node_id.clone()),
         transport_type: TransportType::Memory {
-            listener_address: "/memory/0".parse().unwrap(),
+            listener_address: node_id.public_address(),
         },
         datastore_path: temp_dir.path().to_path_buf(),
         peer_database_name: random_string(8),
@@ -681,6 +675,7 @@ async fn test_data_generation() {
         dht: DhtConfig {
             discovery_request_timeout: Duration::from_millis(500),
             network: DhtNetwork::Weatherwax,
+            allow_test_addresses: true,
             ..Default::default()
         },
         allow_test_addresses: true,

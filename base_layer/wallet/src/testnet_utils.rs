@@ -140,7 +140,6 @@ pub fn random_string(len: usize) -> String {
 
 /// Create a wallet for testing purposes
 pub async fn create_wallet(
-    secret_key: CommsSecretKey,
     public_address: Multiaddr,
     datastore_path: PathBuf,
     shutdown_signal: ShutdownSignal,
@@ -154,8 +153,12 @@ pub async fn create_wallet(
     let factories = CryptoFactories::default();
 
     let node_identity = Arc::new(
-        NodeIdentity::new(secret_key, public_address.clone(), PeerFeatures::COMMUNICATION_NODE)
-            .expect("Could not construct Node Identity"),
+        NodeIdentity::new(
+            CommsSecretKey::random(&mut OsRng),
+            public_address.clone(),
+            PeerFeatures::COMMUNICATION_NODE,
+        )
+        .expect("Could not construct Node Identity"),
     );
     let comms_config = CommsConfig {
         transport_type: TransportType::Memory {
@@ -170,6 +173,7 @@ pub async fn create_wallet(
         dht: DhtConfig {
             discovery_request_timeout: Duration::from_secs(30),
             network: DhtNetwork::Weatherwax,
+            allow_test_addresses: true,
             ..Default::default()
         },
         allow_test_addresses: true,
@@ -277,7 +281,7 @@ pub async fn generate_wallet_test_data<
         let addr = get_next_memory_address();
         generated_contacts.push((secret_key, addr));
     }
-    let contacts = wallet.contacts_service.get_contacts().await?;
+    let mut contacts = wallet.contacts_service.get_contacts().await?;
     assert_eq!(contacts.len(), names.len());
     info!(target: LOG_TARGET, "Added test contacts to wallet");
 
@@ -299,13 +303,14 @@ pub async fn generate_wallet_test_data<
     let mut shutdown_a = Shutdown::new();
     let mut shutdown_b = Shutdown::new();
     let mut wallet_alice = create_wallet(
-        generated_contacts[0].0.clone(),
         generated_contacts[0].1.clone(),
         alice_temp_dir.clone(),
         shutdown_a.to_signal(),
     )
     .await;
     let mut alice_event_stream = wallet_alice.transaction_service.get_event_stream_fused();
+    contacts[0].public_key = wallet_alice.comms.node_identity().public_key().clone();
+
     for i in 0..20 {
         let (_ti, uo) = make_input(&mut OsRng.clone(), MicroTari::from(1_500_000 + i * 530_500), &factories);
         wallet_alice.output_manager_service.add_output(uo).await?;
@@ -319,13 +324,13 @@ pub async fn generate_wallet_test_data<
     let _ = std::fs::create_dir(&bob_temp_dir);
 
     let mut wallet_bob = create_wallet(
-        generated_contacts[1].0.clone(),
         generated_contacts[1].1.clone(),
         bob_temp_dir.clone(),
         shutdown_b.to_signal(),
     )
     .await;
     let mut bob_event_stream = wallet_bob.transaction_service.get_event_stream_fused();
+    contacts[1].public_key = wallet_bob.comms.node_identity().public_key().clone();
 
     for i in 0..20 {
         let (_ti, uo) = make_input(

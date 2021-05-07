@@ -482,7 +482,7 @@ fn check_db_encryption_status(
                     );
                     return Err(WalletStorageError::InvalidEncryptionCipher);
                 } else {
-                    // If the db is not encypted then update the stored public key to keep it in sync.
+                    // If the db is not encrypted then update the stored public key to keep it in sync.
                     WalletSettingSql::new(DbKey::MasterPublicKey.to_string(), public_key.to_hex()).set(&conn)?;
                 }
             }
