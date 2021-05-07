@@ -1,275 +1,275 @@
-const { Client } = require("wallet-grpc-client");
-const { sleep } = require("./util");
+const { Client } = require('wallet-grpc-client')
+const { sleep } = require('./util')
 
-function transactionStatus() {
+function transactionStatus () {
   return [
-    "TRANSACTION_STATUS_IMPORTED",
-    "TRANSACTION_STATUS_COINBASE",
-    "TRANSACTION_STATUS_PENDING",
-    "TRANSACTION_STATUS_COMPLETED",
-    "TRANSACTION_STATUS_BROADCAST",
-    "TRANSACTION_STATUS_MINED_UNCONFIRMED",
-    "TRANSACTION_STATUS_MINED_CONFIRMED",
-  ];
+    'TRANSACTION_STATUS_IMPORTED',
+    'TRANSACTION_STATUS_COINBASE',
+    'TRANSACTION_STATUS_PENDING',
+    'TRANSACTION_STATUS_COMPLETED',
+    'TRANSACTION_STATUS_BROADCAST',
+    'TRANSACTION_STATUS_MINED_UNCONFIRMED',
+    'TRANSACTION_STATUS_MINED_CONFIRMED'
+  ]
 }
 
 class WalletClient {
-  constructor(walletAddress, name) {
-    this.client = Client.connect(walletAddress);
-    this.name = name;
+  constructor (walletAddress, name) {
+    this.client = Client.connect(walletAddress)
+    this.name = name
   }
 
-  async getVersion() {
-    return await this.client.getVersion();
+  async getVersion () {
+    return await this.client.getVersion()
   }
 
-  async getBalance() {
-    return await this.client.getBalance();
+  async getBalance () {
+    return await this.client.getBalance()
   }
 
-  async getCompletedTransactions() {
-    let data = await this.client.getCompletedTransactions();
-    let transactions = [];
-    let myDate = new Date();
-    for (var i = 0; i < data.length; i++) {
+  async getCompletedTransactions () {
+    const data = await this.client.getCompletedTransactions()
+    const transactions = []
+    const myDate = new Date()
+    for (let i = 0; i < data.length; i++) {
       transactions.push({
-        tx_id: data[i].transaction["tx_id"],
-        source_pk: data[i].transaction["source_pk"].toString("hex"),
-        dest_pk: data[i].transaction["dest_pk"].toString("hex"),
-        status: data[i].transaction["status"],
-        direction: data[i].transaction["direction"],
-        amount: data[i].transaction["amount"],
-        fee: data[i].transaction["fee"],
-        is_cancelled: data[i].transaction["is_cancelled"],
-        excess_sig: data[i].transaction["excess_sig"].toString("hex"),
+        tx_id: data[i].transaction.tx_id,
+        source_pk: data[i].transaction.source_pk.toString('hex'),
+        dest_pk: data[i].transaction.dest_pk.toString('hex'),
+        status: data[i].transaction.status,
+        direction: data[i].transaction.direction,
+        amount: data[i].transaction.amount,
+        fee: data[i].transaction.fee,
+        is_cancelled: data[i].transaction.is_cancelled,
+        excess_sig: data[i].transaction.excess_sig.toString('hex'),
         timestamp: new Date(
-          Number(data[i].transaction["timestamp"]["seconds"]) * 1000
+          Number(data[i].transaction.timestamp.seconds) * 1000
         ),
-        message: data[i].transaction["message"],
-        valid: data[i].transaction["valid"],
-      });
+        message: data[i].transaction.message,
+        valid: data[i].transaction.valid
+      })
     }
-    return transactions;
+    return transactions
   }
 
-  async getAllCoinbaseTransactions() {
-    let data = await this.getCompletedTransactions();
-    let transactions = [];
-    for (var i = 0; i < data.length; i++) {
+  async getAllCoinbaseTransactions () {
+    const data = await this.getCompletedTransactions()
+    const transactions = []
+    for (let i = 0; i < data.length; i++) {
       if (
-        data[i]["message"].includes("Coinbase Transaction for Block ") &&
-        data[i]["fee"] == 0
+        data[i].message.includes('Coinbase Transaction for Block ') &&
+        data[i].fee == 0
       ) {
-        transactions.push(data[i]);
+        transactions.push(data[i])
       }
     }
-    return transactions;
+    return transactions
   }
 
-  async getAllSpendableCoinbaseTransactions() {
-    let data = await this.getAllCoinbaseTransactions();
-    let transactions = [];
-    for (var i = 0; i < data.length; i++) {
+  async getAllSpendableCoinbaseTransactions () {
+    const data = await this.getAllCoinbaseTransactions()
+    const transactions = []
+    for (let i = 0; i < data.length; i++) {
       if (
-        transactionStatus().indexOf(data[i]["status"]) == 6 &&
-        data[i]["valid"] == true
+        transactionStatus().indexOf(data[i].status) == 6 &&
+        data[i].valid == true
       ) {
-        transactions.push(data[i]);
+        transactions.push(data[i])
       }
     }
-    return transactions;
+    return transactions
   }
 
-  async areCoinbasesConfirmedAtLeast(number) {
-    let data = await this.getAllSpendableCoinbaseTransactions();
+  async areCoinbasesConfirmedAtLeast (number) {
+    const data = await this.getAllSpendableCoinbaseTransactions()
     if (data.length >= number) {
-      return true;
+      return true
     } else {
-      return false;
+      return false
     }
   }
 
-  async getAllNormalTransactions() {
-    let data = this.getCompletedTransactions();
-    let transactions = [];
-    for (var i = 0; i < data.length; i++) {
+  async getAllNormalTransactions () {
+    const data = this.getCompletedTransactions()
+    const transactions = []
+    for (let i = 0; i < data.length; i++) {
       if (
         !(
-          data[i]["message"].includes("Coinbase Transaction for Block ") &&
-          data[i]["fee"] == 0
+          data[i].message.includes('Coinbase Transaction for Block ') &&
+          data[i].fee == 0
         )
       ) {
-        transactions.push(data[i]);
+        transactions.push(data[i])
       }
     }
-    return transactions;
+    return transactions
   }
 
-  async transfer(args) {
-    return await this.client.transfer(args);
+  async transfer (args) {
+    return await this.client.transfer(args)
   }
 
-  async getTransactionInfo(args) {
-    return await this.client.getTransactionInfo(args);
+  async getTransactionInfo (args) {
+    return await this.client.getTransactionInfo(args)
   }
 
-  async identify(args) {
-    let info = await this.client.identify(args);
+  async identify (args) {
+    const info = await this.client.identify(args)
     return {
-      public_key: info["public_key"].toString("utf8"),
-      public_address: info["public_address"],
-      node_id: info["node_id"].toString("utf8"),
-    };
+      public_key: info.public_key.toString('utf8'),
+      public_address: info.public_address,
+      node_id: info.node_id.toString('utf8')
+    }
   }
 
-  async isTransactionRegistered(tx_id) {
+  async isTransactionRegistered (tx_id) {
     try {
       await this.getTransactionInfo({
-        transaction_ids: [tx_id.toString()],
-      });
-      return true;
+        transaction_ids: [tx_id.toString()]
+      })
+      return true
     } catch (err) {
       // Any error here must be treated as if the required status was not achieved
-      return false;
+      return false
     }
   }
 
-  async isBalanceAtLeast(amount) {
+  async isBalanceAtLeast (amount) {
     try {
-      let balance = await this.getBalance();
-      if (balance["available_balance"] >= amount) {
-        return true;
+      const balance = await this.getBalance()
+      if (balance.available_balance >= amount) {
+        return true
       } else {
-        return false;
+        return false
       }
     } catch (err) {
       // Any error here must be treated as if the required status was not achieved
-      return false;
+      return false
     }
   }
 
-  async isTransactionAtLeastPending(tx_id) {
+  async isTransactionAtLeastPending (tx_id) {
     try {
-      let txnDetails = await this.getTransactionInfo({
-        transaction_ids: [tx_id.toString()],
-      });
+      const txnDetails = await this.getTransactionInfo({
+        transaction_ids: [tx_id.toString()]
+      })
       if (
-        transactionStatus().indexOf(txnDetails.transactions[0]["status"]) >= 2
+        transactionStatus().indexOf(txnDetails.transactions[0].status) >= 2
       ) {
-        return true;
+        return true
       } else {
-        return false;
+        return false
       }
     } catch (err) {
       // Any error here must be treated as if the required status was not achieved
-      return false;
+      return false
     }
   }
 
-  async isTransactionAtLeastCompleted(tx_id) {
+  async isTransactionAtLeastCompleted (tx_id) {
     try {
-      let txnDetails = await this.getTransactionInfo({
-        transaction_ids: [tx_id.toString()],
-      });
+      const txnDetails = await this.getTransactionInfo({
+        transaction_ids: [tx_id.toString()]
+      })
       if (
-        transactionStatus().indexOf(txnDetails.transactions[0]["status"]) >= 3
+        transactionStatus().indexOf(txnDetails.transactions[0].status) >= 3
       ) {
-        return true;
+        return true
       } else {
-        return false;
+        return false
       }
     } catch (err) {
       // Any error here must be treated as if the required status was not achieved
-      return false;
+      return false
     }
   }
 
-  async isTransactionAtLeastBroadcast(tx_id) {
+  async isTransactionAtLeastBroadcast (tx_id) {
     try {
-      let txnDetails = await this.getTransactionInfo({
-        transaction_ids: [tx_id.toString()],
-      });
+      const txnDetails = await this.getTransactionInfo({
+        transaction_ids: [tx_id.toString()]
+      })
       if (
-        transactionStatus().indexOf(txnDetails.transactions[0]["status"]) >= 4
+        transactionStatus().indexOf(txnDetails.transactions[0].status) >= 4
       ) {
-        return true;
+        return true
       } else {
-        return false;
+        return false
       }
     } catch (err) {
       // Any error here must be treated as if the required status was not achieved
-      return false;
+      return false
     }
   }
 
-  async isTransactionAtLeastMinedUnconfirmed(tx_id) {
+  async isTransactionAtLeastMinedUnconfirmed (tx_id) {
     try {
-      let txnDetails = await this.getTransactionInfo({
-        transaction_ids: [tx_id.toString()],
-      });
+      const txnDetails = await this.getTransactionInfo({
+        transaction_ids: [tx_id.toString()]
+      })
       if (
-        transactionStatus().indexOf(txnDetails.transactions[0]["status"]) >= 5
+        transactionStatus().indexOf(txnDetails.transactions[0].status) >= 5
       ) {
-        return true;
+        return true
       } else {
-        return false;
+        return false
       }
     } catch (err) {
       // Any error here must be treated as if the required status was not achieved
-      return false;
+      return false
     }
   }
 
-  async isTransactionMinedUnconfirmed(tx_id) {
+  async isTransactionMinedUnconfirmed (tx_id) {
     try {
-      let txnDetails = await this.getTransactionInfo({
-        transaction_ids: [tx_id.toString()],
-      });
+      const txnDetails = await this.getTransactionInfo({
+        transaction_ids: [tx_id.toString()]
+      })
       if (
-        transactionStatus().indexOf(txnDetails.transactions[0]["status"]) == 5
+        transactionStatus().indexOf(txnDetails.transactions[0].status) == 5
       ) {
-        return true;
+        return true
       } else {
-        return false;
+        return false
       }
     } catch (err) {
       // Any error here must be treated as if the required status was not achieved
-      return false;
+      return false
     }
   }
 
-  async isTransactionMinedConfirmed(tx_id) {
+  async isTransactionMinedConfirmed (tx_id) {
     try {
-      let txnDetails = await this.getTransactionInfo({
-        transaction_ids: [tx_id.toString()],
-      });
+      const txnDetails = await this.getTransactionInfo({
+        transaction_ids: [tx_id.toString()]
+      })
       if (
-        transactionStatus().indexOf(txnDetails.transactions[0]["status"]) == 6
+        transactionStatus().indexOf(txnDetails.transactions[0].status) == 6
       ) {
-        return true;
+        return true
       } else {
-        return false;
+        return false
       }
     } catch (err) {
       // Any error here must be treated as if the required status was not achieved
-      return false;
+      return false
     }
   }
 
-  async getTransactionDetails(tx_id) {
+  async getTransactionDetails (tx_id) {
     try {
-      let txnDetails = await this.getTransactionInfo({
-        transaction_ids: [tx_id.toString()],
-      });
-      return [true, txnDetails];
+      const txnDetails = await this.getTransactionInfo({
+        transaction_ids: [tx_id.toString()]
+      })
+      return [true, txnDetails]
     } catch (err) {
-      return [false, err];
+      return [false, err]
     }
   }
 
-  async coin_split(args) {
-    return await this.client.coinSplit(args);
+  async coin_split (args) {
+    return await this.client.coinSplit(args)
   }
 }
 
-module.exports = WalletClient;
+module.exports = WalletClient

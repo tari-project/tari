@@ -1,12 +1,12 @@
-var reporter = require("cucumber-html-reporter");
+const reporter = require('cucumber-html-reporter')
 
-var options = {
-  theme: "bootstrap",
-  jsonFile: "temp/output.json",
-  output: "temp/reports/cucumber_report.html",
+const options = {
+  theme: 'bootstrap',
+  jsonFile: 'temp/output.json',
+  output: 'temp/reports/cucumber_report.html',
   reportSuiteAsScenarios: true,
   scenarioTimestamp: true,
-  launchReport: true,
+  launchReport: true
   // metadata: {
   //     "App Version":"0.3.2",
   //     "Test Environment": "STAGING",
@@ -15,6 +15,6 @@ var options = {
   //     "Parallel": "Scenarios",
   //     "Executed": "Remote"
   // }
-};
+}
 
-reporter.generate(options);
+reporter.generate(options)
