@@ -1,0 +1,13 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+# run prettier and lint check before commit if any files in integration_tests have been staged
+CHECK=$(git diff --name-only --staged | grep -i integration_tests || true)
+
+if [ -z "${CHECK}" ]; then
+    exit 0
+else
+    echo "Files staged for commit in integration_tests/"
+    echo "Running pre-commit hook"
+    cd integration_tests && npm run check-fmt && npm run lint
+fi

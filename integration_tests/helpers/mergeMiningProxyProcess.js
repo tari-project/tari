@@ -1,54 +1,53 @@
-const { getFreePort } = require('./util')
-const dateFormat = require('dateformat')
-const fs = require('fs')
-const path = require('path')
-const { spawnSync, spawn, execSync } = require('child_process')
-const { expect } = require('chai')
-const MergeMiningProxyClient = require('./mergeMiningProxyClient')
-const { createEnv } = require('./config')
-const { setWorldConstructor } = require('cucumber')
+const { getFreePort } = require("./util");
+const dateFormat = require("dateformat");
+const fs = require("fs");
+const path = require("path");
+const { spawn } = require("child_process");
+const { expect } = require("chai");
+const MergeMiningProxyClient = require("./mergeMiningProxyClient");
+const { createEnv } = require("./config");
 
-let outputProcess
+let outputProcess;
 
 class MergeMiningProxyProcess {
-  constructor (
+  constructor(
     name,
     baseNodeAddress,
     walletAddress,
     logFilePath,
     submitOrigin = true
   ) {
-    this.name = name
-    this.nodeAddress = baseNodeAddress.split(':')[0]
-    this.nodeGrpcPort = baseNodeAddress.split(':')[1]
-    this.walletAddress = walletAddress.split(':')[0]
-    this.walletGrpcPort = walletAddress.split(':')[1]
-    this.submitOrigin = submitOrigin
-    this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath
+    this.name = name;
+    this.nodeAddress = baseNodeAddress.split(":")[0];
+    this.nodeGrpcPort = baseNodeAddress.split(":")[1];
+    this.walletAddress = walletAddress.split(":")[0];
+    this.walletGrpcPort = walletAddress.split(":")[1];
+    this.submitOrigin = submitOrigin;
+    this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath;
   }
 
-  async init () {
-    this.port = await getFreePort(19000, 25000)
-    this.name = `MMProxy${this.port}-${this.name}`
+  async init() {
+    this.port = await getFreePort(19000, 25000);
+    this.name = `MMProxy${this.port}-${this.name}`;
     this.baseDir = `./temp/base_nodes/${dateFormat(
       new Date(),
-      'yyyymmddHHMM'
-    )}/${this.name}`
+      "yyyymmddHHMM"
+    )}/${this.name}`;
     // console.log("MergeMiningProxyProcess init - assign server GRPC:", this.grpcPort);
   }
 
-  run (cmd, args, saveFile) {
+  run(cmd, args) {
     return new Promise((resolve, reject) => {
       if (!fs.existsSync(this.baseDir)) {
-        fs.mkdirSync(this.baseDir, { recursive: true })
-        fs.mkdirSync(this.baseDir + '/log', { recursive: true })
+        fs.mkdirSync(this.baseDir, { recursive: true });
+        fs.mkdirSync(this.baseDir + "/log", { recursive: true });
       }
 
-      const proxyAddress = '127.0.0.1:' + this.port
+      const proxyAddress = "127.0.0.1:" + this.port;
       const envs = createEnv(
         this.name,
         false,
-        'nodeid.json',
+        "nodeid.json",
         this.walletAddress,
         this.walletGrpcPort,
         this.port,
@@ -58,93 +57,93 @@ class MergeMiningProxyProcess {
         proxyAddress,
         [],
         []
-      )
+      );
       const extraEnvs = {
         TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_SUBMIT_TO_ORIGIN: this
-          .submitOrigin
-      }
-      const completeEnvs = { ...envs, ...extraEnvs }
+          .submitOrigin,
+      };
+      const completeEnvs = { ...envs, ...extraEnvs };
       const ps = spawn(cmd, args, {
         cwd: this.baseDir,
         // shell: true,
-        env: { ...process.env, ...completeEnvs }
-      })
+        env: { ...process.env, ...completeEnvs },
+      });
 
-      ps.stdout.on('data', (data) => {
+      ps.stdout.on("data", (data) => {
         // console.log(`stdout: ${data}`);
-        fs.appendFileSync(`${this.baseDir}/log/stdout.log`, data.toString())
+        fs.appendFileSync(`${this.baseDir}/log/stdout.log`, data.toString());
         if (data.toString().match(/Listening on/)) {
-          resolve(ps)
+          resolve(ps);
         }
-      })
+      });
 
-      ps.stderr.on('data', (data) => {
-        console.error(`stderr: ${data}`)
-        fs.appendFileSync(`${this.baseDir}/log/stderr.log`, data.toString())
-      })
+      ps.stderr.on("data", (data) => {
+        console.error(`stderr: ${data}`);
+        fs.appendFileSync(`${this.baseDir}/log/stderr.log`, data.toString());
+      });
 
-      ps.on('close', (code) => {
-        const ps = this.ps
-        this.ps = null
+      ps.on("close", (code) => {
+        const ps = this.ps;
+        this.ps = null;
         if (code) {
-          console.log(`child process exited with code ${code}`)
-          reject(`child process exited with code ${code}`)
+          console.log(`child process exited with code ${code}`);
+          reject(`child process exited with code ${code}`);
         } else {
-          resolve(ps)
+          resolve(ps);
         }
-      })
+      });
 
-      expect(ps.error).to.be.an('undefined')
-      this.ps = ps
-    })
+      expect(ps.error).to.be.an("undefined");
+      this.ps = ps;
+    });
   }
 
-  async startNew () {
-    await this.init()
-    const args = ['--base-path', '.', '--init']
+  async startNew() {
+    await this.init();
+    const args = ["--base-path", ".", "--init"];
     if (this.logFilePath) {
-      args.push('--log-config', this.logFilePath)
+      args.push("--log-config", this.logFilePath);
     }
-    return await this.run(await this.compile(), args, true)
+    return await this.run(await this.compile(), args, true);
   }
 
-  async compile () {
+  async compile() {
     if (!outputProcess) {
-      await this.run('cargo', [
-        'build',
-        '--release',
-        '--bin',
-        'tari_merge_mining_proxy',
-        '-Z',
-        'unstable-options',
-        '--out-dir',
-        __dirname + '/../temp/out'
-      ])
-      outputProcess = __dirname + '/../temp/out/tari_merge_mining_proxy'
+      await this.run("cargo", [
+        "build",
+        "--release",
+        "--bin",
+        "tari_merge_mining_proxy",
+        "-Z",
+        "unstable-options",
+        "--out-dir",
+        __dirname + "/../temp/out",
+      ]);
+      outputProcess = __dirname + "/../temp/out/tari_merge_mining_proxy";
     }
-    return outputProcess
+    return outputProcess;
   }
 
-  stop () {
+  stop() {
     return new Promise((resolve) => {
       if (!this.ps) {
-        return resolve()
+        return resolve();
       }
-      this.ps.on('close', (code) => {
+      this.ps.on("close", (code) => {
         if (code) {
-          console.log(`child process exited with code ${code}`)
+          console.log(`child process exited with code ${code}`);
         }
-        resolve()
-      })
-      this.ps.kill('SIGINT')
-    })
+        resolve();
+      });
+      this.ps.kill("SIGINT");
+    });
   }
 
-  createClient () {
-    const address = 'http://127.0.0.1:' + this.port
+  createClient() {
+    const address = "http://127.0.0.1:" + this.port;
     // console.log("MergeMiningProxyProcess createClient - client address:", address);
-    return new MergeMiningProxyClient(address)
+    return new MergeMiningProxyClient(address);
   }
 }
 
-module.exports = MergeMiningProxyProcess
+module.exports = MergeMiningProxyProcess;
