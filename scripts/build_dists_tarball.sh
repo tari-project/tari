@@ -213,8 +213,7 @@ COPY_FILES=(
   "target/release/tari_console_wallet"
   "target/release/tari_merge_mining_proxy"
   "target/release/tari_mining_node"
-  "common/config/presets/tari_sample.toml"
-  "common/config/tari_config_example.toml"
+  "common/config/presets/tari_config_example.toml"
   "common/logging/log4rs_sample_base_node.yml"
   "applications/tari_base_node/README.md"
   applications/tari_base_node/$osname/*
