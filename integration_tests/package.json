@@ -1,16 +1,17 @@
 {
   "name": "integration_tests",
   "version": "1.0.0",
-  "description": "",
+  "description": "Tari Integration Tests",
   "repository": "https://github.com/tari-project/tari",
   "scripts": {
     "test": "cucumber-js",
     "fmt": "prettier -w .",
     "check-fmt": "prettier -c .",
-    "fmt-auto": "prettier --end-of-line auto -w .",
-    "check-fmt-auto": "prettier --end-of-line auto -c ."
+    "lint": "eslint .",
+    "lint-fix": "eslint --fix .",
+    "prepare": "cd .. && husky install integration_tests/.husky"
   },
-  "author": "",
+  "author": "The Tari Project",
   "license": "ISC",
   "devDependencies": {
     "@grpc/proto-loader": "^0.5.5",
@@ -20,12 +21,15 @@
     "cucumber-html-reporter": "^5.3.0",
     "cucumber-pretty": "^6.0.0",
     "eslint": "^7.25.0",
+    "eslint-config-prettier": "^8.3.0",
     "eslint-config-standard": "^16.0.2",
-    "eslint-plugin-import": "^2.22.1",
+    "eslint-plugin-import": "^2.2.0",
     "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-prettier": "^3.4.0",
     "eslint-plugin-promise": "^4.3.1",
     "grpc": "^1.24.3",
     "grpc-promise": "^1.4.0",
+    "husky": "^6.0.0",
     "prettier": "^2.2.1"
   },
   "dependencies": {
