@@ -99,7 +99,9 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
                     );
 
                     self.set_offline().await;
-                    time::delay_for(self.interval).await;
+                    if self.sleep_or_shutdown().await.is_err() {
+                        break;
+                    }
                     continue;
                 },
                 Err(BaseNodeMonitorError::BaseNodeChanged) => {
@@ -114,11 +116,17 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
                 Err(e @ BaseNodeMonitorError::InvalidBaseNodeResponse(_)) |
                 Err(e @ BaseNodeMonitorError::WalletStorageError(_)) => {
                     error!(target: LOG_TARGET, "{}", e);
-                    time::delay_for(self.interval).await;
+                    if self.sleep_or_shutdown().await.is_err() {
+                        break;
+                    }
                     continue;
                 },
             }
         }
+        debug!(
+            target: LOG_TARGET,
+            "Base Node Service Monitor shutting down because it received the shutdown signal"
+        );
     }
 
     async fn process(&mut self) -> Result<(), BaseNodeMonitorError> {
