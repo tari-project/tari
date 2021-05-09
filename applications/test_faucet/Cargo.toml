@@ -1,6 +1,6 @@
 [package]
 name = "test_faucet"
-version = "0.8.9"
+version = "0.8.10"
 authors = ["The Tari Development Community"]
 edition = "2018"
 
