@@ -93,6 +93,9 @@ commands:
          name: Check formatting
          command: cd integration_tests && npm run check-fmt
      - run:
+         name: Check eslint
+         command: cd integration_tests && npm run lint
+     - run:
          name: Pre-build base node
          command: cargo build --release --bin tari_base_node
      - run:

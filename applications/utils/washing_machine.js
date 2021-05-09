@@ -53,7 +53,17 @@ async function doSend(senderClient, receiverClient, amount) {
             });
             console.log("Split:", split_result);
         }
-        // TODO wait for split to be mined
+
+        // wait for balance to become available
+        for (let i = 0; i< 20*60; i++) {
+
+            let newBalance = await senderClient.getBalance();
+            console.log(`Waiting for new balance (spender) ${newBalance.available_balance} to be more than required amount: ${amount}. Pending ${newBalance.pending_balance}`);
+            if (parseInt(newBalance.available_balance) >= amount) {
+                break;
+            }
+            await sleep(1000);
+        }
         let senderBalance = await senderClient.getBalance();
         console.log("Sender: ", senderBalance);
         let balance = await receiverClient.getBalance();

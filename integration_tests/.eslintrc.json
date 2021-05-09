@@ -1,0 +1,25 @@
+{
+  "extends": ["eslint:recommended", "plugin:prettier/recommended"],
+  "plugins": ["prettier"],
+  "env": {
+    "browser": true,
+    "commonjs": true,
+    "node": true,
+    "es2021": true
+  },
+  "rules": {
+    "no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_"
+      }
+    ],
+    "prettier/prettier": [
+      "error",
+      {
+        "doubleQuote": true,
+        "endOfLine": "auto"
+      }
+    ]
+  }
+}

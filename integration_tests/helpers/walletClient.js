@@ -1,5 +1,4 @@
 const { Client } = require("wallet-grpc-client");
-const { sleep } = require("./util");
 
 function transactionStatus() {
   return [
@@ -28,37 +27,36 @@ class WalletClient {
   }
 
   async getCompletedTransactions() {
-    let data = await this.client.getCompletedTransactions();
-    let transactions = [];
-    let myDate = new Date();
-    for (var i = 0; i < data.length; i++) {
+    const data = await this.client.getCompletedTransactions();
+    const transactions = [];
+    for (let i = 0; i < data.length; i++) {
       transactions.push({
-        tx_id: data[i].transaction["tx_id"],
-        source_pk: data[i].transaction["source_pk"].toString("hex"),
-        dest_pk: data[i].transaction["dest_pk"].toString("hex"),
-        status: data[i].transaction["status"],
-        direction: data[i].transaction["direction"],
-        amount: data[i].transaction["amount"],
-        fee: data[i].transaction["fee"],
-        is_cancelled: data[i].transaction["is_cancelled"],
-        excess_sig: data[i].transaction["excess_sig"].toString("hex"),
+        tx_id: data[i].transaction.tx_id,
+        source_pk: data[i].transaction.source_pk.toString("hex"),
+        dest_pk: data[i].transaction.dest_pk.toString("hex"),
+        status: data[i].transaction.status,
+        direction: data[i].transaction.direction,
+        amount: data[i].transaction.amount,
+        fee: data[i].transaction.fee,
+        is_cancelled: data[i].transaction.is_cancelled,
+        excess_sig: data[i].transaction.excess_sig.toString("hex"),
         timestamp: new Date(
-          Number(data[i].transaction["timestamp"]["seconds"]) * 1000
+          Number(data[i].transaction.timestamp.seconds) * 1000
         ),
-        message: data[i].transaction["message"],
-        valid: data[i].transaction["valid"],
+        message: data[i].transaction.message,
+        valid: data[i].transaction.valid,
       });
     }
     return transactions;
   }
 
   async getAllCoinbaseTransactions() {
-    let data = await this.getCompletedTransactions();
-    let transactions = [];
-    for (var i = 0; i < data.length; i++) {
+    const data = await this.getCompletedTransactions();
+    const transactions = [];
+    for (let i = 0; i < data.length; i++) {
       if (
-        data[i]["message"].includes("Coinbase Transaction for Block ") &&
-        data[i]["fee"] == 0
+        data[i].message.includes("Coinbase Transaction for Block ") &&
+        data[i].fee == 0
       ) {
         transactions.push(data[i]);
       }
@@ -67,12 +65,12 @@ class WalletClient {
   }
 
   async getAllSpendableCoinbaseTransactions() {
-    let data = await this.getAllCoinbaseTransactions();
-    let transactions = [];
-    for (var i = 0; i < data.length; i++) {
+    const data = await this.getAllCoinbaseTransactions();
+    const transactions = [];
+    for (let i = 0; i < data.length; i++) {
       if (
-        transactionStatus().indexOf(data[i]["status"]) == 6 &&
-        data[i]["valid"] == true
+        transactionStatus().indexOf(data[i].status) == 6 &&
+        data[i].valid == true
       ) {
         transactions.push(data[i]);
       }
@@ -81,7 +79,7 @@ class WalletClient {
   }
 
   async areCoinbasesConfirmedAtLeast(number) {
-    let data = await this.getAllSpendableCoinbaseTransactions();
+    const data = await this.getAllSpendableCoinbaseTransactions();
     if (data.length >= number) {
       return true;
     } else {
@@ -90,13 +88,13 @@ class WalletClient {
   }
 
   async getAllNormalTransactions() {
-    let data = this.getCompletedTransactions();
-    let transactions = [];
-    for (var i = 0; i < data.length; i++) {
+    const data = this.getCompletedTransactions();
+    const transactions = [];
+    for (let i = 0; i < data.length; i++) {
       if (
         !(
-          data[i]["message"].includes("Coinbase Transaction for Block ") &&
-          data[i]["fee"] == 0
+          data[i].message.includes("Coinbase Transaction for Block ") &&
+          data[i].fee == 0
         )
       ) {
         transactions.push(data[i]);
@@ -114,11 +112,11 @@ class WalletClient {
   }
 
   async identify(args) {
-    let info = await this.client.identify(args);
+    const info = await this.client.identify(args);
     return {
-      public_key: info["public_key"].toString("utf8"),
-      public_address: info["public_address"],
-      node_id: info["node_id"].toString("utf8"),
+      public_key: info.public_key.toString("utf8"),
+      public_address: info.public_address,
+      node_id: info.node_id.toString("utf8"),
     };
   }
 
@@ -136,8 +134,8 @@ class WalletClient {
 
   async isBalanceAtLeast(amount) {
     try {
-      let balance = await this.getBalance();
-      if (balance["available_balance"] >= amount) {
+      const balance = await this.getBalance();
+      if (balance.available_balance >= amount) {
         return true;
       } else {
         return false;
@@ -150,12 +148,10 @@ class WalletClient {
 
   async isTransactionAtLeastPending(tx_id) {
     try {
-      let txnDetails = await this.getTransactionInfo({
+      const txnDetails = await this.getTransactionInfo({
         transaction_ids: [tx_id.toString()],
       });
-      if (
-        transactionStatus().indexOf(txnDetails.transactions[0]["status"]) >= 2
-      ) {
+      if (transactionStatus().indexOf(txnDetails.transactions[0].status) >= 2) {
         return true;
       } else {
         return false;
@@ -168,12 +164,10 @@ class WalletClient {
 
   async isTransactionAtLeastCompleted(tx_id) {
     try {
-      let txnDetails = await this.getTransactionInfo({
+      const txnDetails = await this.getTransactionInfo({
         transaction_ids: [tx_id.toString()],
       });
-      if (
-        transactionStatus().indexOf(txnDetails.transactions[0]["status"]) >= 3
-      ) {
+      if (transactionStatus().indexOf(txnDetails.transactions[0].status) >= 3) {
         return true;
       } else {
         return false;
@@ -186,12 +180,10 @@ class WalletClient {
 
   async isTransactionAtLeastBroadcast(tx_id) {
     try {
-      let txnDetails = await this.getTransactionInfo({
+      const txnDetails = await this.getTransactionInfo({
         transaction_ids: [tx_id.toString()],
       });
-      if (
-        transactionStatus().indexOf(txnDetails.transactions[0]["status"]) >= 4
-      ) {
+      if (transactionStatus().indexOf(txnDetails.transactions[0].status) >= 4) {
         return true;
       } else {
         return false;
@@ -204,12 +196,10 @@ class WalletClient {
 
   async isTransactionAtLeastMinedUnconfirmed(tx_id) {
     try {
-      let txnDetails = await this.getTransactionInfo({
+      const txnDetails = await this.getTransactionInfo({
         transaction_ids: [tx_id.toString()],
       });
-      if (
-        transactionStatus().indexOf(txnDetails.transactions[0]["status"]) >= 5
-      ) {
+      if (transactionStatus().indexOf(txnDetails.transactions[0].status) >= 5) {
         return true;
       } else {
         return false;
@@ -222,12 +212,10 @@ class WalletClient {
 
   async isTransactionMinedUnconfirmed(tx_id) {
     try {
-      let txnDetails = await this.getTransactionInfo({
+      const txnDetails = await this.getTransactionInfo({
         transaction_ids: [tx_id.toString()],
       });
-      if (
-        transactionStatus().indexOf(txnDetails.transactions[0]["status"]) == 5
-      ) {
+      if (transactionStatus().indexOf(txnDetails.transactions[0].status) == 5) {
         return true;
       } else {
         return false;
@@ -240,12 +228,10 @@ class WalletClient {
 
   async isTransactionMinedConfirmed(tx_id) {
     try {
-      let txnDetails = await this.getTransactionInfo({
+      const txnDetails = await this.getTransactionInfo({
         transaction_ids: [tx_id.toString()],
       });
-      if (
-        transactionStatus().indexOf(txnDetails.transactions[0]["status"]) == 6
-      ) {
+      if (transactionStatus().indexOf(txnDetails.transactions[0].status) == 6) {
         return true;
       } else {
         return false;
@@ -258,7 +244,7 @@ class WalletClient {
 
   async getTransactionDetails(tx_id) {
     try {
-      let txnDetails = await this.getTransactionInfo({
+      const txnDetails = await this.getTransactionInfo({
         transaction_ids: [tx_id.toString()],
       });
       return [true, txnDetails];

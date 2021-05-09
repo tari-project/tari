@@ -29,7 +29,7 @@ class BaseNodeClient {
     });
     const protoDescriptor = grpc.loadPackageDefinition(packageDefinition);
     const tari = protoDescriptor.tari.rpc;
-    let client = new tari.BaseNode(
+    const client = new tari.BaseNode(
       "127.0.0.1:" + port,
       grpc.credentials.createInsecure()
     );
@@ -91,7 +91,7 @@ class BaseNodeClient {
       .getNewBlockTemplate()
       .sendMessage({ algo: { pow_algo: 2 }, max_weight: weight })
       .then((template) => {
-        let res = {
+        const res = {
           minerData: template.miner_data,
           block: template.new_block_template,
         };
@@ -119,7 +119,7 @@ class BaseNodeClient {
       .getNewBlock()
       .sendMessage(template.template)
       .then((b) => {
-        //console.log("Sha3 diff", this.getSha3Difficulty(b.block.header));
+        // console.log("Sha3 diff", this.getSha3Difficulty(b.block.header));
         if (beforeSubmit) {
           b = beforeSubmit({ block: b, originalTemplate: template });
           if (!b) {
@@ -173,29 +173,31 @@ class BaseNodeClient {
 
   async mineBlockBeforeSubmit(walletClient, weight) {
     // Empty template from base node
-    let emptyTemplate = await this.client
+    const emptyTemplate = await this.client
       .getNewBlockTemplate()
       .sendMessage({ algo: { pow_algo: 2 }, max_weight: weight });
     // Coinbase from wallet
-    let coinbase = await walletClient.client.inner.getCoinbase().sendMessage({
+    const coinbase = await walletClient.client.inner.getCoinbase().sendMessage({
       reward: emptyTemplate.miner_data.reward,
       fee: emptyTemplate.miner_data.total_fees,
       height: emptyTemplate.new_block_template.header.height,
     });
     // New block from base node including coinbase
-    let block = emptyTemplate.new_block_template;
+    const block = emptyTemplate.new_block_template;
     block.body.outputs = block.body.outputs.concat(
       coinbase.transaction.body.outputs
     );
     block.body.kernels = block.body.kernels.concat(
       coinbase.transaction.body.kernels
     );
-    let newBlock = await this.client.getNewBlock().sendMessage(block);
+    const newBlock = await this.client.getNewBlock().sendMessage(block);
     return newBlock;
   }
 
   async submitMinedBlock(newBlock) {
-    let response = await this.client.submitBlock().sendMessage(newBlock.block);
+    const response = await this.client
+      .submitBlock()
+      .sendMessage(newBlock.block);
     return response;
   }
 
@@ -216,7 +218,7 @@ class BaseNodeClient {
       })
       .then((template) => {
         block = template.new_block_template;
-        let height = block.header.height;
+        const height = block.header.height;
         return walletClient.client.inner.getCoinbase().sendMessage({
           reward: template.miner_data.reward,
           fee: template.miner_data.total_fees,
@@ -232,7 +234,7 @@ class BaseNodeClient {
       .then((b) => {
         return this.client.submitBlock().sendMessage(b.block);
       })
-      .then((empty) => {
+      .then(() => {
         return this.client.getTipInfo().sendMessage({});
       })
       .then((tipInfo) => {
@@ -243,19 +245,19 @@ class BaseNodeClient {
   }
 
   async getMinedCandidateBlock(weight, existingBlockTemplate) {
-    let builder = new TransactionBuilder();
-    let blockTemplate =
+    const builder = new TransactionBuilder();
+    const blockTemplate =
       existingBlockTemplate || (await this.getBlockTemplate(weight));
     const privateKey = Buffer.from(
       toLittleEndian(blockTemplate.block.header.height, 256)
     ).toString("hex");
-    let cb = builder.generateCoinbase(
+    const cb = builder.generateCoinbase(
       parseInt(blockTemplate.minerData.reward),
       privateKey,
       parseInt(blockTemplate.minerData.total_fees),
       parseInt(blockTemplate.block.header.height) + 2
     );
-    let template = blockTemplate.block;
+    const template = blockTemplate.block;
     template.body.outputs = template.body.outputs.concat(cb.outputs);
     template.body.kernels = template.body.kernels.concat(cb.kernels);
     return {
@@ -271,7 +273,7 @@ class BaseNodeClient {
   }
 
   async mineBlockWithoutWallet(beforeSubmit, weight, onError) {
-    let template = await this.getMinedCandidateBlock(weight);
+    const template = await this.getMinedCandidateBlock(weight);
     return this.submitTemplate(template, beforeSubmit).then(
       async () => {
         // let tip = await this.getTipHeight();
@@ -296,7 +298,7 @@ class BaseNodeClient {
     hash.update(toLittleEndian(header.version, 16));
     hash.update(toLittleEndian(parseInt(header.height), 64));
     hash.update(header.prev_hash);
-    let timestamp = parseInt(header.timestamp.seconds);
+    const timestamp = parseInt(header.timestamp.seconds);
     hash.update(toLittleEndian(timestamp, 64));
     hash.update(header.output_mr);
     hash.update(header.range_proof_mr);
@@ -311,10 +313,10 @@ class BaseNodeClient {
       toLittleEndian(parseInt(header.pow.accumulated_blake_difficulty), 64)
     );
     hash.update(header.pow.pow_data);
-    let first_round = hash.digest();
-    let hash2 = new SHA3(256);
+    const first_round = hash.digest();
+    const hash2 = new SHA3(256);
     hash2.update(first_round);
-    let res = hash2.digest("hex");
+    const res = hash2.digest("hex");
     return res;
   }
 }

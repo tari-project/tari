@@ -1,6 +1,6 @@
-var tari_crypto = require("tari_crypto");
-var { blake2bInit, blake2bUpdate, blake2bFinal } = require("blakejs");
-const { toLittleEndian, hexSwitchEndianness } = require("../helpers/util");
+const tari_crypto = require("tari_crypto");
+const { blake2bInit, blake2bUpdate, blake2bFinal } = require("blakejs");
+const { toLittleEndian } = require("../helpers/util");
 
 class TransactionBuilder {
   constructor() {
@@ -17,14 +17,14 @@ class TransactionBuilder {
   }
 
   buildChallenge(publicNonce, fee, lockHeight) {
-    var KEY = null; // optional key
-    var OUTPUT_LENGTH = 32; // bytes
-    var context = blake2bInit(OUTPUT_LENGTH, KEY);
-    let buff = Buffer.from(publicNonce, "hex");
+    const KEY = null; // optional key
+    const OUTPUT_LENGTH = 32; // bytes
+    const context = blake2bInit(OUTPUT_LENGTH, KEY);
+    const buff = Buffer.from(publicNonce, "hex");
     blake2bUpdate(context, buff);
     blake2bUpdate(context, toLittleEndian(fee, 64));
     blake2bUpdate(context, toLittleEndian(lockHeight, 64));
-    let final = blake2bFinal(context);
+    const final = blake2bFinal(context);
     return Buffer.from(final).toString("hex");
   }
 
@@ -41,16 +41,18 @@ class TransactionBuilder {
   }
 
   addOutput(amount) {
-    let outputFeatures = {
+    const outputFeatures = {
       flags: 0,
       maturity: 0,
     };
-    let key = Math.floor(Math.random() * 500 + 1);
-    let privateKey = Buffer.from(toLittleEndian(key, 256)).toString("hex");
-    let rangeproofFactory = tari_crypto.RangeProofFactory.new();
-    let rangeproof = rangeproofFactory.create_proof(privateKey, BigInt(amount))
-      .proof;
-    let output = {
+    const key = Math.floor(Math.random() * 500 + 1);
+    const privateKey = Buffer.from(toLittleEndian(key, 256)).toString("hex");
+    const rangeproofFactory = tari_crypto.RangeProofFactory.new();
+    const rangeproof = rangeproofFactory.create_proof(
+      privateKey,
+      BigInt(amount)
+    ).proof;
+    const output = {
       amount: amount,
       privateKey: privateKey,
       output: {
@@ -89,16 +91,15 @@ class TransactionBuilder {
     while (PrivateKey.length < 64) {
       PrivateKey = "0" + PrivateKey;
     }
-    let excess = tari_crypto.commit(PrivateKey, BigInt(0));
-    let nonce = this.kv.new_key("common_nonce");
-    let public_nonce = this.kv.public_key("common_nonce");
-    let challenge = this.buildChallenge(
+    const excess = tari_crypto.commit(PrivateKey, BigInt(0));
+    const public_nonce = this.kv.public_key("common_nonce");
+    const challenge = this.buildChallenge(
       public_nonce,
       this.fee,
       this.lockHeight
     );
-    let private_nonce = this.kv.private_key("common_nonce");
-    let sig = tari_crypto.sign_challenge_with_nonce(
+    const private_nonce = this.kv.private_key("common_nonce");
+    const sig = tari_crypto.sign_challenge_with_nonce(
       PrivateKey,
       private_nonce,
       challenge
@@ -126,23 +127,23 @@ class TransactionBuilder {
   }
 
   generateCoinbase(value, privateKey, fee, lockHeight) {
-    let coinbase = tari_crypto.commit(privateKey, BigInt(value + fee));
-    let rangeproofFactory = tari_crypto.RangeProofFactory.new();
-    let rangeproof = rangeproofFactory.create_proof(
+    const coinbase = tari_crypto.commit(privateKey, BigInt(value + fee));
+    const rangeproofFactory = tari_crypto.RangeProofFactory.new();
+    const rangeproof = rangeproofFactory.create_proof(
       privateKey,
       BigInt(value + fee)
     ).proof;
-    let excess = tari_crypto.commit(privateKey, BigInt(0));
+    const excess = tari_crypto.commit(privateKey, BigInt(0));
     this.kv.new_key("nonce");
-    let public_nonce = this.kv.public_key("nonce");
-    let challenge = this.buildChallenge(public_nonce, 0, lockHeight);
-    let private_nonce = this.kv.private_key("nonce");
-    let sig = tari_crypto.sign_challenge_with_nonce(
+    const public_nonce = this.kv.public_key("nonce");
+    const challenge = this.buildChallenge(public_nonce, 0, lockHeight);
+    const private_nonce = this.kv.private_key("nonce");
+    const sig = tari_crypto.sign_challenge_with_nonce(
       privateKey,
       private_nonce,
       challenge
     );
-    let outputFeatures = {
+    const outputFeatures = {
       flags: 1,
       maturity: lockHeight,
     };

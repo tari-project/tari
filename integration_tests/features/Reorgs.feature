@@ -3,22 +3,20 @@ Feature: Reorgs
 
   @critical
   Scenario: Simple reorg to stronger chain
-    Given I have a seed node SA
-    And I have a base node B connected to seed SA
+    Given I have a base node B
     And I have wallet WB connected to base node B
     And I have mining node BM connected to base node B and wallet WB
-    When I stop SA
-    And mining node BM mines 3 blocks
-    Given I have a base node C connected to seed SA
+    And mining node BM mines 3 blocks with min difficulty 1 and max difficulty 1
+    Given I have a base node C
     And I have wallet WC connected to base node C
     And I have mining node CM connected to base node C and wallet WC
-    And mining node CM mines 15 blocks
+    And mining node CM mines 10 blocks with min difficulty 1 and max difficulty 9999999999
     Then node B is at height 3
-    And node C is at height 15
-    When I start SA
-    Then node B is at height 15
-    And node C is at height 15
-    And node SA is at height 15
+    And node C is at height 10
+    Given I have a base node SA connected to nodes B,C
+    Then node SA is at height 10
+    And node B is at height 10
+    And node C is at height 10
 
   @critical
   Scenario: Node rolls back reorg on invalid block
@@ -39,6 +37,7 @@ Feature: Reorgs
     Given I have a base node NODE1 connected to all seed nodes
     When I mine a block on NODE1 with coinbase CB1
     Given I have a base node NODE2 connected to node NODE1
+    Then all nodes are at height 1
     And I stop NODE1
     When I mine 19 blocks on NODE2
     And node NODE2 is at height 20

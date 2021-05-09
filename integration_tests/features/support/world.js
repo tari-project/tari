@@ -6,8 +6,8 @@ const WalletProcess = require("../../helpers/walletProcess");
 const MiningNodeProcess = require("../../helpers/miningNodeProcess");
 
 class CustomWorld {
-  constructor({ attach, log, parameters }) {
-    //this.variable = 0;
+  constructor({ parameters }) {
+    // this.variable = 0;
     this.seeds = {};
     this.nodes = {};
     this.proxies = {};
@@ -32,7 +32,7 @@ class CustomWorld {
   }
 
   async createSeedNode(name) {
-    let proc = new BaseNodeProcess(
+    const proc = new BaseNodeProcess(
       `seed-${name}`,
       null,
       this.logFilePathBaseNode
@@ -43,7 +43,7 @@ class CustomWorld {
   }
 
   seedAddresses() {
-    let res = [];
+    const res = [];
     for (const property in this.seeds) {
       res.push(this.seeds[property].peerAddress());
     }
@@ -53,6 +53,17 @@ class CustomWorld {
   /// Create but don't add the node
   createNode(name, options) {
     return new BaseNodeProcess(name, options, this.logFilePathBaseNode);
+  }
+
+  async createAndAddNode(name, addresses) {
+    const node = this.createNode(name);
+    if (Array.isArray(addresses)) {
+      node.setPeerSeeds(addresses);
+    } else {
+      node.setPeerSeeds([addresses]);
+    }
+    await node.startNew();
+    this.addNode(name, node);
   }
 
   addNode(name, process) {
@@ -66,6 +77,13 @@ class CustomWorld {
 
   addProxy(name, process) {
     this.proxies[name] = process;
+  }
+
+  async createAndAddWallet(name, nodeAddresses) {
+    const wallet = new WalletProcess(name, {}, this.logFilePathWallet);
+    wallet.setPeerSeeds([nodeAddresses]);
+    await wallet.startNew();
+    this.addWallet(name, wallet);
   }
 
   addWallet(name, process) {
@@ -85,7 +103,7 @@ class CustomWorld {
   }
 
   async mergeMineBlock(name, weight) {
-    let client = this.proxies[name].createClient();
+    const client = this.proxies[name].createClient();
     await client.mineBlock(weight);
   }
 
@@ -94,7 +112,7 @@ class CustomWorld {
   }
 
   async submitBlock(blockName, nodeName) {
-    let result = await this.clients[nodeName]
+    await this.clients[nodeName]
       .submitBlock(this.blocks[blockName].block)
       .catch((err) => {
         console.log("submit block erro", err);
@@ -118,12 +136,21 @@ class CustomWorld {
     return this.wallets[name];
   }
 
+  async getOrCreateWallet(name) {
+    const wallet = this.getWallet(name);
+    if (wallet) {
+      return wallet;
+    }
+    await this.createAndAddWallet(name, this.seedAddresses());
+    return this.getWallet(name);
+  }
+
   getProxy(name) {
     return this.proxies[name];
   }
 
   async forEachClientAsync(f) {
-    let promises = [];
+    const promises = [];
 
     for (const property in this.seeds) {
       promises.push(f(this.getClient(property), property));
@@ -180,8 +207,8 @@ BeforeAll({ timeout: 1200000 }, async function () {
     "127.0.0.1:9998"
   );
   console.log("Compiling mining node...");
-  await miningNode.startNew();
-  await miningNode.stop();
+  await miningNode.init(1, 1, 1, true);
+  await miningNode.compile();
 
   console.log("Finished compilation.");
 });
