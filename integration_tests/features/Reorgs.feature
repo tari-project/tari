@@ -146,11 +146,7 @@ Scenario Outline: Massive multiple reorg
     Examples:
         | X1     | Y1     | X2    | Y2   | SYNC_TIME |
         | 100    | 125    | 150   | 175  | 30        |
-
-    @long-running @to-be-fixed-currently-failing
-    Examples:
-        | X1     | Y1     | X2    | Y2   | SYNC_TIME |
-        | 500    | 550    | 600   | 650  | 60        |
+        | 1010   | 1110   | 1210  | 1310 | 60        |
 
 Scenario Outline: Massive reorg simple case
         #
@@ -195,8 +191,4 @@ Scenario Outline: Massive reorg simple case
     Examples:
         | X1     | Y1     | SYNC_TIME |
         | 100    | 125    | 30        |
-
-    @long-running @to-be-fixed-currently-failing
-    Examples:
-        | X1     | Y1     | SYNC_TIME |
-        | 500    | 550    | 60        |
+        | 1010   | 1110   | 60        |
