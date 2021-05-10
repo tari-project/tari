@@ -31,7 +31,7 @@ use log::*;
 use rand::{rngs::OsRng, seq::SliceRandom};
 use std::{fs, io::Stdout, net::SocketAddr, path::PathBuf};
 use tari_app_utilities::utilities::ExitCodes;
-use tari_common::GlobalConfig;
+use tari_common::{ConfigBootstrap, GlobalConfig};
 use tari_comms::{peer_manager::Peer, types::CommsPublicKey};
 use tari_wallet::WalletSqlite;
 use tokio::runtime::Handle;
@@ -181,6 +181,7 @@ pub fn recovery_mode(
     base_node_selected: Peer,
     base_node_config: PeerConfig,
     notify_script: Option<PathBuf>,
+    bootstrap: &ConfigBootstrap,
 ) -> Result<(), ExitCodes>
 {
     let peer_seed_public_keys: Vec<CommsPublicKey> = base_node_config
@@ -202,15 +203,19 @@ pub fn recovery_mode(
         },
     }
 
-    println!("Starting TUI.");
-    tui_mode(
-        handle,
-        config,
-        wallet,
-        base_node_selected,
-        base_node_config,
-        notify_script,
-    )
+    if bootstrap.daemon_mode {
+        grpc_mode(handle, wallet, config)
+    } else {
+        println!("Starting TUI.");
+        tui_mode(
+            handle,
+            config,
+            wallet,
+            base_node_selected,
+            base_node_config,
+            notify_script,
+        )
+    }
 }
 
 pub fn grpc_mode(handle: Handle, wallet: WalletSqlite, node_config: GlobalConfig) -> Result<(), ExitCodes> {
