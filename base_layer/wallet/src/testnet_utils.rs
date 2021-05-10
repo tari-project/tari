@@ -190,6 +190,7 @@ pub async fn create_wallet(
         None,
         None,
         None,
+        None,
     );
     let db = WalletMemoryDatabase::new();
     let (backend, oms_backend, _) = make_wallet_databases(Some(datastore_path.to_str().unwrap().to_string()));

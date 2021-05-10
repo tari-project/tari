@@ -27,9 +27,10 @@ use tari_core::{
     transactions::{
         transaction::UnblindedOutput,
         transaction_protocol::RewindData,
-        types::{Commitment, CryptoFactories, HashOutput},
+        types::{Commitment, CryptoFactories, HashOutput, PrivateKey},
     },
 };
+use tari_crypto::script::{ExecutionStack, TariScript};
 
 #[derive(Debug, Clone)]
 pub struct DbUnblindedOutput {
@@ -92,3 +93,17 @@ impl Ord for DbUnblindedOutput {
 }
 
 impl Eq for DbUnblindedOutput {}
+
+#[derive(Debug, Clone)]
+pub struct KnownOneSidedPaymentScript {
+    pub script_hash: Vec<u8>,
+    pub private_key: PrivateKey,
+    pub script: TariScript,
+    pub input: ExecutionStack,
+}
+
+impl PartialEq for KnownOneSidedPaymentScript {
+    fn eq(&self, other: &KnownOneSidedPaymentScript) -> bool {
+        self.script_hash == other.script_hash
+    }
+}

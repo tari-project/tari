@@ -188,7 +188,7 @@ pub fn recovery_mode(
         .map(|f| f.public_key.clone())
         .collect();
     println!("Starting recovery...");
-    match handle.block_on(wallet_recovery(wallet.clone(), peer_seed_public_keys)) {
+    match handle.block_on(wallet_recovery(&wallet, peer_seed_public_keys)) {
         Ok(_) => println!("Wallet recovered!"),
         Err(e) => {
             error!(target: LOG_TARGET, "Recovery failed: {}", e);

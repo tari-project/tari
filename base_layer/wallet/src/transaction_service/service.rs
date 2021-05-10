@@ -43,9 +43,10 @@ use crate::{
             send_transaction_reply::send_transaction_reply,
         },
     },
-    types::ValidationRetryStrategy,
+    types::{HashDigest, ValidationRetryStrategy},
 };
 use chrono::{NaiveDateTime, Utc};
+use digest::Digest;
 use futures::{
     channel::{mpsc, mpsc::Sender, oneshot},
     pin_mut,
@@ -72,7 +73,12 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         transaction::{KernelFeatures, OutputFeatures, Transaction},
-        transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage},
+        transaction_protocol::{
+            proto,
+            recipient::RecipientSignedMessage,
+            sender::TransactionSenderMessage,
+            RewindData,
+        },
         types::{CryptoFactories, PrivateKey},
         ReceiverTransactionProtocol,
     },
@@ -757,12 +763,20 @@ where
         .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
-        let rtp = ReceiverTransactionProtocol::new(
+        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
+        let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_key))?;
+        let rewind_data = RewindData {
+            rewind_key: rewind_key.clone(),
+            rewind_blinding_key: blinding_key.clone(),
+            proof_message: [0u8; 21],
+        };
+        let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(
             sender_message,
             PrivateKey::random(&mut OsRng),
             spending_key,
             OutputFeatures::default(),
             &self.resources.factories,
+            &rewind_data,
         );
 
         let recipient_reply = rtp.get_signed_data()?.clone();
@@ -2208,4 +2222,8 @@ enum PowerMode {
 pub struct PendingCoinbaseSpendingKey {
     pub tx_id: TxId,
     pub spending_key: PrivateKey,
+}
+
+fn hash_secret_key(key: &PrivateKey) -> Vec<u8> {
+    HashDigest::new().chain(key.as_bytes()).result().to_vec()
 }

@@ -33,7 +33,7 @@ extern crate diesel_migrations;
 extern crate lazy_static;
 
 pub mod schema;
-pub mod tasks;
+pub mod utxo_scanner_service;
 
 pub use wallet::Wallet;
 

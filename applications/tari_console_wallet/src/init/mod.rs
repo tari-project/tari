@@ -409,6 +409,7 @@ pub async fn init_wallet(
         Some(base_node_service_config),
         Some(config.buffer_size_base_node_wallet),
         Some(config.buffer_rate_limit_base_node_wallet),
+        Some(config.scan_for_utxo_interval),
     );
     wallet_config.buffer_size = std::cmp::max(BASE_NODE_BUFFER_MIN_SIZE, config.buffer_size_base_node);
 

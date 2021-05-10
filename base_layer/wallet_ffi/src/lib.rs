@@ -216,8 +216,8 @@ use tari_p2p::transport::TransportType::Tor;
 use tari_wallet::{
     error::WalletStorageError,
     output_manager_service::protocols::txo_validation_protocol::TxoValidationType,
-    tasks::wallet_recovery::WalletRecoveryTask,
     types::ValidationRetryStrategy,
+    utxo_scanner_service::utxo_scanning::UtxoScannerService,
     WalletSqlite,
 };
 use tokio::runtime::Runtime;
@@ -3089,6 +3089,7 @@ pub unsafe extern "C" fn wallet_create(
             None,
             None,
             None,
+            None,
         ),
         wallet_backend,
         transaction_backend.clone(),
@@ -5500,11 +5501,12 @@ pub unsafe extern "C" fn wallet_start_recovery(
         return false;
     }
 
+    let shutdown_signal = (*wallet).shutdown.to_signal();
     let peer_seed_public_keys: Vec<TariPublicKey> = vec![(*base_node_public_key).clone()];
-    let mut recovery_task = WalletRecoveryTask::builder()
+    let mut recovery_task = UtxoScannerService::<WalletSqliteDatabase>::builder()
         .with_peer_seeds(peer_seed_public_keys)
         .with_retry_limit(10)
-        .build((*wallet).wallet.clone());
+        .build_with_wallet(&(*wallet).wallet, shutdown_signal);
 
     let event_stream = recovery_task.get_event_receiver();
     let recovery_join_handle = (*wallet).runtime.spawn(recovery_task.run());

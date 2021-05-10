@@ -90,6 +90,7 @@ pub struct GlobalConfig {
     pub fetch_utxos_timeout: Duration,
     pub service_request_timeout: Duration,
     pub base_node_query_timeout: Duration,
+    pub scan_for_utxo_interval: Duration,
     pub saf_expiry_duration: Duration,
     pub transaction_broadcast_monitoring_timeout: Duration,
     pub transaction_chain_monitoring_timeout: Duration,
@@ -416,6 +417,11 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         cfg.get_int(&key)
             .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as u64,
     );
+    let key = "wallet.scan_for_utxo_interval";
+    let scan_for_utxo_interval = Duration::from_secs(
+        cfg.get_int(&key)
+            .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as u64,
+    );
 
     let key = "wallet.saf_expiry_duration";
     let saf_expiry_duration = Duration::from_secs(optional(cfg.get_int(&key))?.unwrap_or(10800) as u64);
@@ -639,6 +645,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         fetch_utxos_timeout,
         service_request_timeout,
         base_node_query_timeout,
+        scan_for_utxo_interval,
         saf_expiry_duration,
         transaction_broadcast_monitoring_timeout,
         transaction_chain_monitoring_timeout,

@@ -33,11 +33,11 @@ use crate::{
                 PendingTransactionOutputs,
                 WriteOperation,
             },
-            models::DbUnblindedOutput,
+            models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
         },
         TxId,
     },
-    schema::{key_manager_states, outputs, pending_transaction_outputs},
+    schema::{key_manager_states, known_one_sided_payment_scripts, outputs, pending_transaction_outputs},
     storage::sqlite_utilities::WalletDbConnection,
     util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
 };
@@ -240,6 +240,19 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             },
+            DbKey::KnownOneSidedPaymentScripts => {
+                let mut known_one_sided_payment_scripts = KnownOneSidedPaymentScriptSql::index(&(*conn))?;
+                for script in known_one_sided_payment_scripts.iter_mut() {
+                    self.decrypt_if_necessary(script)?;
+                }
+
+                Some(DbValue::KnownOneSidedPaymentScripts(
+                    known_one_sided_payment_scripts
+                        .iter()
+                        .map(|script| KnownOneSidedPaymentScript::try_from(script.clone()))
+                        .collect::<Result<Vec<_>, _>>()?,
+                ))
+            },
         };
 
         Ok(result)
@@ -295,6 +308,11 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     let mut km_sql = KeyManagerStateSql::from(km);
                     self.encrypt_if_necessary(&mut km_sql)?;
                     km_sql.set_state(&(*conn))?
+                },
+                DbKeyValuePair::KnownOneSidedPaymentScripts(script) => {
+                    let mut script_sql = KnownOneSidedPaymentScriptSql::from(script);
+                    self.encrypt_if_necessary(&mut script_sql)?;
+                    script_sql.commit(&(*conn))?
                 },
             },
             WriteOperation::Remove(k) => match k {
@@ -353,6 +371,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 DbKey::KeyManagerState => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::InvalidOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::TimeLockedUnspentOutputs(_) => return Err(OutputManagerStorageError::OperationNotSupported),
+                DbKey::KnownOneSidedPaymentScripts => return Err(OutputManagerStorageError::OperationNotSupported),
             },
         }
 
@@ -692,6 +711,22 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
         key_manager_state.set_state(&conn)?;
 
+        let mut known_one_sided_payment_scripts = KnownOneSidedPaymentScriptSql::index(&conn)?;
+
+        for script in known_one_sided_payment_scripts.iter_mut() {
+            let _ = PrivateKey::from_vec(&script.private_key).map_err(|_| {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not create PrivateKey from stored bytes, They might already be encrypted"
+                );
+                OutputManagerStorageError::AlreadyEncrypted
+            })?;
+            script
+                .encrypt(&cipher)
+                .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
+            script.update_encryption(&conn)?;
+        }
+
         (*current_cipher) = Some(cipher);
 
         Ok(())
@@ -718,6 +753,15 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .decrypt(&cipher)
             .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
         key_manager_state.set_state(&conn)?;
+
+        let mut known_one_sided_payment_scripts = KnownOneSidedPaymentScriptSql::index(&conn)?;
+
+        for script in known_one_sided_payment_scripts.iter_mut() {
+            script
+                .decrypt(&cipher)
+                .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
+            script.update_encryption(&conn)?;
+        }
 
         // Now that all the decryption has been completed we can safely remove the cipher fully
         let _ = (*current_cipher).take();
@@ -1383,6 +1427,159 @@ impl Encryptable<Aes256Gcm> for KeyManagerStateSql {
         self.branch_seed = from_utf8(decrypted_branch_seed.as_slice())
             .map_err(|_| Error)?
             .to_string();
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Queryable, Insertable, Identifiable, PartialEq, AsChangeset)]
+#[table_name = "known_one_sided_payment_scripts"]
+#[primary_key(script_hash)]
+// #[identifiable_options(primary_key(hash))]
+pub struct KnownOneSidedPaymentScriptSql {
+    pub script_hash: Vec<u8>,
+    pub private_key: Vec<u8>,
+    pub script: Vec<u8>,
+    pub input: Vec<u8>,
+}
+
+/// These are the fields that can be updated for an Output
+#[derive(AsChangeset)]
+#[table_name = "known_one_sided_payment_scripts"]
+pub struct UpdateKnownOneSidedPaymentScript {
+    private_key: Option<Vec<u8>>,
+    script: Option<Vec<u8>>,
+    input: Option<Vec<u8>>,
+}
+
+impl KnownOneSidedPaymentScriptSql {
+    /// Write this struct to the database
+    pub fn commit(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
+        diesel::insert_into(known_one_sided_payment_scripts::table)
+            .values(self.clone())
+            .execute(conn)?;
+        Ok(())
+    }
+
+    /// Find a particular Output, if it exists
+    pub fn find(
+        hash: &[u8],
+        conn: &SqliteConnection,
+    ) -> Result<KnownOneSidedPaymentScriptSql, OutputManagerStorageError>
+    {
+        Ok(known_one_sided_payment_scripts::table
+            .filter(known_one_sided_payment_scripts::script_hash.eq(hash))
+            .first::<KnownOneSidedPaymentScriptSql>(conn)?)
+    }
+
+    /// Return all known scripts
+    pub fn index(conn: &SqliteConnection) -> Result<Vec<KnownOneSidedPaymentScriptSql>, OutputManagerStorageError> {
+        Ok(known_one_sided_payment_scripts::table.load::<KnownOneSidedPaymentScriptSql>(conn)?)
+    }
+
+    pub fn delete(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
+        let num_deleted = diesel::delete(
+            known_one_sided_payment_scripts::table
+                .filter(known_one_sided_payment_scripts::script_hash.eq(&self.script_hash)),
+        )
+        .execute(conn)?;
+
+        if num_deleted == 0 {
+            return Err(OutputManagerStorageError::ValuesNotFound);
+        }
+
+        Ok(())
+    }
+
+    pub fn update(
+        &self,
+        updated_known_script: UpdateKnownOneSidedPaymentScript,
+        conn: &SqliteConnection,
+    ) -> Result<KnownOneSidedPaymentScriptSql, OutputManagerStorageError>
+    {
+        let num_updated = diesel::update(
+            known_one_sided_payment_scripts::table
+                .filter(known_one_sided_payment_scripts::script_hash.eq(&self.script_hash)),
+        )
+        .set(updated_known_script)
+        .execute(conn)?;
+
+        if num_updated == 0 {
+            return Err(OutputManagerStorageError::UnexpectedResult(
+                "Database update error".to_string(),
+            ));
+        }
+
+        Ok(KnownOneSidedPaymentScriptSql::find(&self.script_hash, conn)?)
+    }
+
+    /// Update the changed fields of this record after encryption/decryption is performed
+    pub fn update_encryption(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
+        let _ = self.update(
+            UpdateKnownOneSidedPaymentScript {
+                private_key: Some(self.private_key.clone()),
+                script: None,
+                input: None,
+            },
+            conn,
+        )?;
+        Ok(())
+    }
+}
+
+/// Conversion from an KnownOneSidedPaymentScript to the Sql datatype form
+impl TryFrom<KnownOneSidedPaymentScriptSql> for KnownOneSidedPaymentScript {
+    type Error = OutputManagerStorageError;
+
+    fn try_from(o: KnownOneSidedPaymentScriptSql) -> Result<Self, Self::Error> {
+        let script_hash = o.script_hash;
+        let private_key = PrivateKey::from_bytes(&o.private_key).map_err(|_| {
+            error!(
+                target: LOG_TARGET,
+                "Could not create PrivateKey from stored bytes, They might be encrypted"
+            );
+            OutputManagerStorageError::ConversionError
+        })?;
+        let script = TariScript::from_bytes(&o.script).map_err(|_| {
+            error!(target: LOG_TARGET, "Could not create tari script from stored bytes");
+            OutputManagerStorageError::ConversionError
+        })?;
+        let input = ExecutionStack::from_bytes(&o.input).map_err(|_| {
+            error!(target: LOG_TARGET, "Could not create execution stack from stored bytes");
+            OutputManagerStorageError::ConversionError
+        })?;
+        Ok(KnownOneSidedPaymentScript {
+            script_hash,
+            private_key,
+            script,
+            input,
+        })
+    }
+}
+
+/// Conversion from an KnownOneSidedPaymentScriptSQL to the datatype form
+impl From<KnownOneSidedPaymentScript> for KnownOneSidedPaymentScriptSql {
+    fn from(known_script: KnownOneSidedPaymentScript) -> Self {
+        let script_hash = known_script.script_hash;
+        let private_key = known_script.private_key.as_bytes().to_vec();
+        let script = known_script.script.as_bytes().to_vec();
+        let input = known_script.input.as_bytes().to_vec();
+        KnownOneSidedPaymentScriptSql {
+            script_hash,
+            private_key,
+            script,
+            input,
+        }
+    }
+}
+
+impl Encryptable<Aes256Gcm> for KnownOneSidedPaymentScriptSql {
+    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
+        self.private_key = encrypt_bytes_integral_nonce(&cipher, self.private_key.clone())?;
+        Ok(())
+    }
+
+    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
+        self.private_key = decrypt_bytes_integral_nonce(&cipher, self.private_key.clone())?;
         Ok(())
     }
 }

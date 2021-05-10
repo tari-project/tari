@@ -25,7 +25,7 @@ use crate::{
         error::OutputManagerError,
         protocols::txo_validation_protocol::TxoValidationType,
         service::Balance,
-        storage::database::PendingTransactionOutputs,
+        storage::{database::PendingTransactionOutputs, models::KnownOneSidedPaymentScript},
         TxId,
     },
     types::ValidationRetryStrategy,
@@ -71,8 +71,10 @@ pub enum OutputManagerRequest {
     RemoveEncryption,
     GetPublicRewindKeys,
     FeeEstimate((MicroTari, MicroTari, u64, u64)),
-    RewindOutputs(Vec<TransactionOutput>),
+    RewindOutputs(Vec<TransactionOutput>, u64),
+    ScanOutputs(Vec<TransactionOutput>, u64),
     UpdateMinedHeight(u64, u64),
+    AddKnownOneSidedPaymentScript(KnownOneSidedPaymentScript),
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -101,8 +103,10 @@ impl fmt::Display for OutputManagerRequest {
             GetCoinbaseTransaction(_) => write!(f, "GetCoinbaseTransaction"),
             GetPublicRewindKeys => write!(f, "GetPublicRewindKeys"),
             FeeEstimate(_) => write!(f, "FeeEstimate"),
-            RewindOutputs(_) => write!(f, "RewindAndImportOutputs"),
+            RewindOutputs(_, _) => write!(f, "RewindAndImportOutputs"),
+            ScanOutputs(_, _) => write!(f, "ScanRewindAndImportOutputs"),
             UpdateMinedHeight(_, _) => write!(f, "UpdateMinedHeight"),
+            AddKnownOneSidedPaymentScript(_) => write!(f, "AddKnownOneSidedPaymentScript"),
         }
     }
 }
@@ -134,7 +138,9 @@ pub enum OutputManagerResponse {
     PublicRewindKeys(Box<PublicRewindKeys>),
     FeeEstimate(MicroTari),
     RewindOutputs(Vec<UnblindedOutput>),
+    ScanOutputs(Vec<UnblindedOutput>),
     MinedHeightUpdated,
+    AddKnownOneSidedPaymentScript,
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -457,10 +463,42 @@ impl OutputManagerHandle {
     pub async fn rewind_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
+        height: u64,
     ) -> Result<Vec<UnblindedOutput>, OutputManagerError>
     {
-        match self.handle.call(OutputManagerRequest::RewindOutputs(outputs)).await?? {
+        match self
+            .handle
+            .call(OutputManagerRequest::RewindOutputs(outputs, height))
+            .await??
+        {
             OutputManagerResponse::RewindOutputs(outputs) => Ok(outputs),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn scan_outputs_for_one_sided_payments(
+        &mut self,
+        outputs: Vec<TransactionOutput>,
+        height: u64,
+    ) -> Result<Vec<UnblindedOutput>, OutputManagerError>
+    {
+        match self
+            .handle
+            .call(OutputManagerRequest::ScanOutputs(outputs, height))
+            .await??
+        {
+            OutputManagerResponse::ScanOutputs(outputs) => Ok(outputs),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn add_known_script(&mut self, script: KnownOneSidedPaymentScript) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::AddKnownOneSidedPaymentScript(script))
+            .await??
+        {
+            OutputManagerResponse::AddKnownOneSidedPaymentScript => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

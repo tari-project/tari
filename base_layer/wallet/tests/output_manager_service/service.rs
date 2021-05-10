@@ -1246,7 +1246,7 @@ fn coin_split_with_change<T: Clone + OutputManagerBackend + 'static>(backend: T)
 
     // check they are rewindable
     let uo = runtime
-        .block_on(oms.rewind_outputs(vec![coin_split_tx.body.outputs()[3].clone()]))
+        .block_on(oms.rewind_outputs(vec![coin_split_tx.body.outputs()[3].clone()], 0))
         .expect("Should be able to rewind outputs");
     assert_eq!(uo[0].value, MicroTari::from(1000))
 }

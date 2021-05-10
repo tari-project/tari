@@ -60,6 +60,15 @@ table! {
 }
 
 table! {
+    known_one_sided_payment_scripts (script_hash) {
+        script_hash -> Binary,
+        private_key -> Binary,
+        script -> Binary,
+        input -> Binary,
+    }
+}
+
+table! {
     outbound_transactions (tx_id) {
         tx_id -> BigInt,
         destination_public_key -> Binary,
@@ -116,6 +125,7 @@ allow_tables_to_appear_in_same_query!(
     contacts,
     inbound_transactions,
     key_manager_states,
+    known_one_sided_payment_scripts,
     outbound_transactions,
     outputs,
     pending_transaction_outputs,

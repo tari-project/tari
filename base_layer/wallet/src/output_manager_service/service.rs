@@ -29,13 +29,14 @@ use crate::{
         protocols::txo_validation_protocol::{TxoValidationProtocol, TxoValidationType},
         storage::{
             database::{KeyManagerState, OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
-            models::DbUnblindedOutput,
+            models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
         },
         TxId,
     },
     transaction_service::handle::TransactionServiceHandle,
     types::{HashDigest, KeyDigest, ValidationRetryStrategy},
 };
+use digest::Digest;
 use futures::{pin_mut, stream::FuturesUnordered, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
@@ -69,10 +70,11 @@ use tari_core::{
 use tari_crypto::{
     hash::blake2::Blake256,
     inputs,
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
+    keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
     range_proof::REWIND_USER_MESSAGE_LENGTH,
     script,
     script::{ExecutionStack, TariScript},
+    tari_utilities::ByteArray,
 };
 use tari_key_manager::{
     key_manager::KeyManager,
@@ -394,10 +396,18 @@ where TBackend: OutputManagerBackend + 'static
             OutputManagerRequest::GetPublicRewindKeys => Ok(OutputManagerResponse::PublicRewindKeys(Box::new(
                 self.get_rewind_public_keys(),
             ))),
-            OutputManagerRequest::RewindOutputs(outputs) => self
-                .rewind_outputs(outputs)
+            OutputManagerRequest::RewindOutputs(outputs, height) => self
+                .rewind_outputs(outputs, height)
                 .await
                 .map(OutputManagerResponse::RewindOutputs),
+            OutputManagerRequest::ScanOutputs(outputs, height) => self
+                .scan_outputs_for_one_sided_payments(outputs, height)
+                .await
+                .map(OutputManagerResponse::ScanOutputs),
+            OutputManagerRequest::AddKnownOneSidedPaymentScript(known_script) => self
+                .add_known_script(known_script)
+                .await
+                .map(|_| OutputManagerResponse::AddKnownOneSidedPaymentScript),
             OutputManagerRequest::UpdateMinedHeight(tx_id, height) => self
                 .resources
                 .db
@@ -1232,6 +1242,7 @@ where TBackend: OutputManagerBackend + 'static
     async fn rewind_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
+        height: u64,
     ) -> Result<Vec<UnblindedOutput>, OutputManagerError>
     {
         let rewind_data = &self.resources.rewind_data;
@@ -1246,20 +1257,72 @@ where TBackend: OutputManagerBackend + 'static
                         &rewind_data.rewind_blinding_key,
                     )
                     .ok()
+                    .map(|v| (v, output.features))
             })
-            .map(|output| {
+            .map(|(output, features)| {
                 UnblindedOutput::new(
                     output.committed_value,
                     output.blinding_factor.clone(),
-                    None,
+                    Some(features),
                     TariScript::default(),
                     ExecutionStack::default(),
-                    0,
+                    height,
                     output.blinding_factor.clone(),
                     PublicKey::from_secret_key(&output.blinding_factor),
                 )
             })
             .collect();
+
+        Ok(rewound_outputs)
+    }
+
+    async fn add_known_script(&mut self, known_script: KnownOneSidedPaymentScript) -> Result<(), OutputManagerError> {
+        debug!(target: LOG_TARGET, "Adding new script to output manager service");
+        Ok(self.resources.db.add_known_script(known_script).await?)
+    }
+
+    /// Attempt to scan and then rewind all of the given transaction outputs into unblinded outputs based on known
+    /// pubkeys
+    async fn scan_outputs_for_one_sided_payments(
+        &mut self,
+        outputs: Vec<TransactionOutput>,
+        height: u64,
+    ) -> Result<Vec<UnblindedOutput>, OutputManagerError>
+    {
+        let known_one_sided_payment_scripts: Vec<KnownOneSidedPaymentScript> =
+            self.resources.db.get_all_known_one_sided_payment_scripts().await?;
+        let mut rewound_outputs: Vec<UnblindedOutput> = Vec::new();
+        for output in outputs {
+            let position = known_one_sided_payment_scripts
+                .iter()
+                .position(|hash| hash.script_hash == output.script_hash);
+            if let Some(i) = position {
+                let spending_key = PrivateKey::from_bytes(
+                    CommsPublicKey::shared_secret(
+                        &known_one_sided_payment_scripts[i].private_key,
+                        &output.script_offset_public_key,
+                    )
+                    .as_bytes(),
+                )?;
+                let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
+                let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_key))?;
+                let rewound =
+                    output.full_rewind_range_proof(&self.resources.factories.range_proof, &rewind_key, &blinding_key);
+                if rewound.is_ok() {
+                    let rewound_output = rewound.unwrap();
+                    rewound_outputs.push(UnblindedOutput::new(
+                        rewound_output.committed_value,
+                        rewound_output.blinding_factor.clone(),
+                        Some(output.features),
+                        known_one_sided_payment_scripts[i].script.clone(),
+                        known_one_sided_payment_scripts[i].input.clone(),
+                        height,
+                        known_one_sided_payment_scripts[i].private_key.clone(),
+                        output.script_offset_public_key,
+                    ))
+                }
+            }
+        }
 
         Ok(rewound_outputs)
     }
@@ -1362,4 +1425,8 @@ where TBackend: OutputManagerBackend + 'static
     pub consensus_constants: ConsensusConstants,
     pub connectivity_manager: ConnectivityRequester,
     pub shutdown_signal: ShutdownSignal,
+}
+
+fn hash_secret_key(key: &PrivateKey) -> Vec<u8> {
+    HashDigest::new().chain(key.as_bytes()).result().to_vec()
 }
