@@ -95,6 +95,15 @@ root:
     - base_layer_extra
 
 loggers:
+  # Route log events common to every application to all appenders
+  tari::application:
+    level: info
+    appenders:
+      - base_layer
+      - base_layer_extra
+      - network
+      - other
+    additive: false
   c:
     level: info
     appenders:

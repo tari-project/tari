@@ -3937,9 +3937,7 @@ dependencies = [
  "tari_wallet",
  "thiserror",
  "tokio",
- "toml 0.5.8",
  "tonic",
- "tonic-build",
 ]
 
 [[package]]
@@ -3970,6 +3968,7 @@ dependencies = [
  "config",
  "dirs-next",
  "get_if_addrs",
+ "git2",
  "log 0.4.14",
  "log4rs",
  "parity-multiaddr",
@@ -4238,6 +4237,7 @@ dependencies = [
 name = "tari_merge_mining_proxy"
 version = "0.8.9"
 dependencies = [
+ "anyhow",
  "bincode",
  "bytes 0.5.6",
  "chrono",
@@ -4257,6 +4257,7 @@ dependencies = [
  "serde_json",
  "structopt",
  "tari_app_grpc",
+ "tari_app_utilities",
  "tari_common",
  "tari_core",
  "tari_crypto",
@@ -4265,7 +4266,6 @@ dependencies = [
  "tokio",
  "tokio-macros",
  "tonic",
- "tonic-build",
  "tracing",
  "tracing-futures",
  "tracing-subscriber",

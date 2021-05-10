@@ -20,11 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod identity_management;
-pub mod initialization;
-pub mod utilities;
+use tari_common::build::StaticApplicationInfo;
 
-pub mod consts {
-    // Import the auto-generated const values from the Manifest and Git
-    include!(concat!(env!("OUT_DIR"), "/consts.rs"));
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let gen = StaticApplicationInfo::initialize()?;
+    gen.write_consts_to_outdir("consts.rs")?;
+    Ok(())
 }

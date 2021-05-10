@@ -62,6 +62,8 @@ use crate::{
     DEFAULT_WALLET_LOG_CONFIG,
 };
 use std::{
+    fmt,
+    fmt::{Display, Formatter},
     io,
     path::{Path, PathBuf},
 };
@@ -295,11 +297,31 @@ where F: Fn(&Path) -> Result<(), std::io::Error> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum ApplicationType {
     BaseNode,
     ConsoleWallet,
     MergeMiningProxy,
     MiningNode,
+}
+
+impl ApplicationType {
+    pub const fn as_str(&self) -> &'static str {
+        use ApplicationType::*;
+        match self {
+            BaseNode => "Tari Base Node",
+            ConsoleWallet => "Tari Console Wallet",
+            MergeMiningProxy => "Tari Merge Mining Proxy",
+            MiningNode => "Tari Mining Node",
+        }
+    }
+}
+
+impl Display for ApplicationType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
