@@ -23,7 +23,7 @@
 use crate::output_manager_service::{
     error::OutputManagerStorageError,
     service::Balance,
-    storage::models::DbUnblindedOutput,
+    storage::models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
     TxId,
 };
 use aes_gcm::Aes256Gcm;
@@ -130,6 +130,7 @@ pub enum DbKey {
     AllPendingTransactionOutputs,
     KeyManagerState,
     InvalidOutputs,
+    KnownOneSidedPaymentScripts,
 }
 
 #[derive(Debug)]
@@ -142,6 +143,7 @@ pub enum DbValue {
     InvalidOutputs(Vec<DbUnblindedOutput>),
     AllPendingTransactionOutputs(HashMap<TxId, PendingTransactionOutputs>),
     KeyManagerState(KeyManagerState),
+    KnownOneSidedPaymentScripts(Vec<KnownOneSidedPaymentScript>),
 }
 
 pub enum DbKeyValuePair {
@@ -149,6 +151,7 @@ pub enum DbKeyValuePair {
     UnspentOutput(Commitment, Box<DbUnblindedOutput>),
     PendingTransactionOutputs(TxId, Box<PendingTransactionOutputs>),
     KeyManagerState(KeyManagerState),
+    KnownOneSidedPaymentScripts(KnownOneSidedPaymentScript),
 }
 
 pub enum WriteOperation {
@@ -629,6 +632,42 @@ where T: OutputManagerBackend + 'static
             .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)
     }
+
+    pub async fn get_all_known_one_sided_payment_scripts(
+        &self,
+    ) -> Result<Vec<KnownOneSidedPaymentScript>, OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+
+        let scripts = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::KnownOneSidedPaymentScripts) {
+            Ok(None) => log_error(
+                DbKey::KnownOneSidedPaymentScripts,
+                OutputManagerStorageError::UnexpectedResult("Could not retrieve known scripts".to_string()),
+            ),
+            Ok(Some(DbValue::KnownOneSidedPaymentScripts(scripts))) => Ok(scripts),
+            Ok(Some(other)) => unexpected_result(DbKey::KnownOneSidedPaymentScripts, other),
+            Err(e) => log_error(DbKey::KnownOneSidedPaymentScripts, e),
+        })
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(scripts)
+    }
+
+    pub async fn add_known_script(
+        &self,
+        known_script: KnownOneSidedPaymentScript,
+    ) -> Result<(), OutputManagerStorageError>
+    {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || {
+            db_clone.write(WriteOperation::Insert(DbKeyValuePair::KnownOneSidedPaymentScripts(
+                known_script,
+            )))
+        })
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+
+        Ok(())
+    }
 }
 
 fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, OutputManagerStorageError> {
@@ -651,6 +690,7 @@ impl Display for DbKey {
             DbKey::KeyManagerState => f.write_str(&"Key Manager State".to_string()),
             DbKey::InvalidOutputs => f.write_str(&"Invalid Outputs Key"),
             DbKey::TimeLockedUnspentOutputs(_t) => f.write_str(&"Timelocked Outputs"),
+            DbKey::KnownOneSidedPaymentScripts => f.write_str(&"Known claiming scripts"),
         }
     }
 }
@@ -666,6 +706,7 @@ impl Display for DbValue {
             DbValue::AllPendingTransactionOutputs(_) => f.write_str("All Pending Transaction Outputs"),
             DbValue::KeyManagerState(_) => f.write_str("Key Manager State"),
             DbValue::InvalidOutputs(_) => f.write_str("Invalid Outputs"),
+            DbValue::KnownOneSidedPaymentScripts(_) => f.write_str(&"Known claiming scripts"),
         }
     }
 }

@@ -51,9 +51,9 @@ impl TryFrom<grpc::AggregateBody> for AggregateBody {
     type Error = String;
 
     fn try_from(body: grpc::AggregateBody) -> Result<Self, Self::Error> {
-        let inputs = try_convert_all(body.inputs).map_err(|err: String| format!("inputs {}", err.to_string()))?;
-        let outputs = try_convert_all(body.outputs).map_err(|err: String| format!("outputs {}", err.to_string()))?;
-        let kernels = try_convert_all(body.kernels).map_err(|err: String| format!("kernels {}", err.to_string()))?;
+        let inputs = try_convert_all(body.inputs).map_err(|err: String| format!("inputs {}", err))?;
+        let outputs = try_convert_all(body.outputs).map_err(|err: String| format!("outputs {}", err))?;
+        let kernels = try_convert_all(body.kernels).map_err(|err: String| format!("kernels {}", err))?;
         let body = AggregateBody::new(inputs, outputs, kernels);
         Ok(body)
     }

@@ -102,6 +102,7 @@ use tari_wallet::{
         service::OutputManagerService,
         storage::{
             database::{OutputManagerBackend, OutputManagerDatabase},
+            models::KnownOneSidedPaymentScript,
             sqlite_db::OutputManagerSqliteDatabase,
         },
         OutputManagerServiceInitializer,
@@ -193,6 +194,7 @@ pub fn setup_transaction_service<T: TransactionBackend + 'static, K: OutputManag
                 broadcast_monitoring_timeout: Duration::from_secs(5),
                 chain_monitoring_timeout: Duration::from_secs(5),
                 low_power_polling_timeout: Duration::from_secs(20),
+                num_confirmations_required: 0,
                 ..Default::default()
             },
             subscription_factory,
@@ -771,6 +773,114 @@ fn send_one_sided_transaction_to_other() {
             }
         }
         assert_eq!(found, true, "'TransactionCompletedImmediately(_)' event not found");
+    });
+}
+
+#[test]
+fn recover_one_sided_transaction() {
+    let mut runtime = create_runtime();
+
+    let factories = CryptoFactories::default();
+    // Alice's parameters
+    let alice_node_identity = Arc::new(
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
+    );
+
+    // Bob's parameters
+    let bob_node_identity = Arc::new(
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
+    );
+
+    let base_node_identity = Arc::new(
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
+    );
+
+    log::info!(
+        "manage_single_transaction: Alice: '{}', Bob: '{}', Base: '{}'",
+        alice_node_identity.node_id().short_str(),
+        bob_node_identity.node_id().short_str(),
+        base_node_identity.node_id().short_str()
+    );
+
+    let temp_dir = tempdir().unwrap();
+    let temp_dir2 = tempdir().unwrap();
+    let database_path = temp_dir.path().to_str().unwrap().to_string();
+    let database_path2 = temp_dir2.path().to_str().unwrap().to_string();
+
+    let (alice_backend, alice_oms_backend, _tempdir) = make_wallet_databases(Some(database_path.clone()));
+    let (bob_backend, bob_oms_backend, _tempdir) = make_wallet_databases(Some(database_path2.clone()));
+
+    let shutdown = Shutdown::new();
+    let (mut alice_ts, alice_oms, _alice_comms) = setup_transaction_service(
+        &mut runtime,
+        alice_node_identity,
+        vec![],
+        factories.clone(),
+        alice_backend,
+        alice_oms_backend,
+        database_path,
+        Duration::from_secs(0),
+        shutdown.to_signal(),
+    );
+
+    let (_bob_ts, mut bob_oms, _bob_comms) = setup_transaction_service(
+        &mut runtime,
+        bob_node_identity.clone(),
+        vec![],
+        factories.clone(),
+        bob_backend,
+        bob_oms_backend,
+        database_path2,
+        Duration::from_secs(0),
+        shutdown.to_signal(),
+    );
+    let script = script!(PushPubKey(Box::new(bob_node_identity.public_key().clone())));
+    let known_script = KnownOneSidedPaymentScript {
+        script_hash: script.as_hash::<Blake256>().unwrap().to_vec(),
+        private_key: bob_node_identity.secret_key().clone(),
+        script,
+        input: ExecutionStack::default(),
+    };
+    let mut cloned_bob_oms = bob_oms.clone();
+    runtime.block_on(async move {
+        cloned_bob_oms.add_known_script(known_script).await.unwrap();
+    });
+
+    runtime
+        .block_on(alice_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
+        .unwrap();
+
+    let initial_wallet_value = 2500.into();
+    let (_utxo, uo1) = make_input(&mut OsRng, initial_wallet_value, &factories.commitment);
+    let mut alice_oms_clone = alice_oms;
+    runtime.block_on(async move { alice_oms_clone.add_output(uo1).await.unwrap() });
+
+    let message = "".to_string();
+    let value = 1000.into();
+    let mut alice_ts_clone = alice_ts.clone();
+    let tx_id = runtime.block_on(async move {
+        alice_ts_clone
+            .send_one_sided_transaction(
+                bob_node_identity.public_key().clone(),
+                value,
+                20.into(),
+                message.clone(),
+            )
+            .await
+            .expect("Alice sending one-sided tx to Bob")
+    });
+
+    runtime.block_on(async move {
+        let completed_tx = alice_ts
+            .get_completed_transaction(tx_id)
+            .await
+            .expect("Could not find completed one-sided tx");
+        let outputs = completed_tx.transaction.body.outputs().clone();
+
+        let unblinded = bob_oms.scan_outputs_for_one_sided_payments(outputs, 0).await.unwrap();
+        // Bob should be able to claim 1 output.
+        assert_eq!(1, unblinded.len());
+        assert_eq!(value, unblinded[0].value);
     });
 }
 

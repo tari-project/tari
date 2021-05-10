@@ -22,7 +22,7 @@
 //
 
 use crate::{
-    consensus::{emission::Emission, ConsensusConstants},
+    consensus::{emission::EmissionSchedule, ConsensusConstants},
     transactions::{
         tari_amount::{uT, MicroTari},
         transaction::{
@@ -131,7 +131,7 @@ impl CoinbaseBuilder {
     pub fn build(
         self,
         constants: &ConsensusConstants,
-        emission_schedule: &dyn Emission,
+        emission_schedule: &EmissionSchedule,
     ) -> Result<(Transaction, UnblindedOutput), CoinbaseBuildError>
     {
         let height = self
