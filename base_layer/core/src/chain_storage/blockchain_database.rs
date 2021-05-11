@@ -63,7 +63,7 @@ use std::{
     time::Instant,
 };
 use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
-use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+use tari_crypto::tari_utilities::{hex::Hex, ByteArray, Hashable};
 use tari_mmr::{MerkleMountainRange, MutableMmr};
 use uint::static_assertions::_core::ops::RangeBounds;
 
@@ -198,7 +198,7 @@ where B: BlockchainBackend
                 Ok(_) => info!(target: LOG_TARGET, "Orphan database cleaned out at startup.",),
                 Err(e) => warn!(
                     target: LOG_TARGET,
-                    "Orphan database could not be cleaned out at startup: ({}).", e
+                    "Orphan database could not be cleaned out at startup: ({:?}).", e
                 ),
             }
         }
@@ -859,18 +859,18 @@ where B: BlockchainBackend
         fetch_block_with_kernel(&*db, excess_sig)
     }
 
-    /// Attempt to fetch the block corresponding to the provided stxo hash from the main chain, if the block is past
-    /// pruning horizon, it will return Ok<None>
-    pub fn fetch_block_with_stxo(&self, commitment: Commitment) -> Result<Option<HistoricalBlock>, ChainStorageError> {
-        let db = self.db_read_access()?;
-        fetch_block_with_stxo(&*db, commitment)
-    }
-
     /// Attempt to fetch the block corresponding to the provided utxo hash from the main chain, if the block is past
     /// pruning horizon, it will return Ok<None>
     pub fn fetch_block_with_utxo(&self, commitment: Commitment) -> Result<Option<HistoricalBlock>, ChainStorageError> {
         let db = self.db_read_access()?;
         fetch_block_with_utxo(&*db, commitment)
+    }
+
+    /// Attempt to fetch the block corresponding to the provided stxo hash from the main chain, if the block is past
+    /// pruning horizon, it will return Ok<None>
+    pub fn fetch_block_with_stxo(&self, commitment: Commitment) -> Result<Option<HistoricalBlock>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        fetch_block_with_stxo(&*db, commitment)
     }
 
     /// Returns true if this block exists in the chain, or is orphaned.
@@ -1212,87 +1212,42 @@ fn fetch_blocks<T: BlockchainBackend>(
 }
 
 fn fetch_block_with_kernel<T: BlockchainBackend>(
-    _db: &T,
-    _excess_sig: Signature,
+    db: &T,
+    excess_sig: Signature,
 ) -> Result<Option<HistoricalBlock>, ChainStorageError>
 {
-    unimplemented!()
-    // let metadata = db.fetch_chain_metadata()?;
-    // let db_height = metadata.height_of_longest_chain.unwrap_or(0);
-    // let horizon_height = metadata.horizon_block(db_height);
-    // for i in (horizon_height..db_height).rev() {
-    //     let kernel_cp = fetch_checkpoint(db, MmrTree::Kernel, i)?;
-    //     let (kernel_hashes, _) = kernel_cp.into_parts();
-    //     let kernels = fetch_kernels(db, kernel_hashes)?;
-    //     for kernel in kernels {
-    //         if kernel.excess_sig == excess_sig {
-    //             return Ok(Some(fetch_block(db, i)?));
-    //         }
-    //     }
-    // }
-    // // data is not in the pruning horizon, let's check behind that but only if there is a pruning horizon
-    // if horizon_height > 0 {
-    //     let kernel_cp = fetch_checkpoint(db, MmrTree::Kernel, horizon_height - 1)?;
-    //     let (kernel_hashes, _) = kernel_cp.into_parts();
-    //     let kernels = fetch_kernels(db, kernel_hashes)?;
-    //     for kernel in kernels {
-    //         if kernel.excess_sig == excess_sig {
-    //             return Ok(None);
-    //         }
-    //     }
-    // }
-    // Err(ChainStorageError::ValueNotFound {
-    //     entity: "Kernel".to_string(),
-    //     field: "Excess sig".to_string(),
-    //     value: excess_sig.get_signature().to_hex(),
-    // })
+    match db.fetch_kernel_by_excess_sig(&excess_sig) {
+        Ok(kernel) => match kernel {
+            Some((_kernel, hash)) => fetch_block_by_hash(db, hash),
+            None => Ok(None),
+        },
+        Err(_) => Err(ChainStorageError::ValueNotFound {
+            entity: "Kernel".to_string(),
+            field: "Excess sig".to_string(),
+            value: excess_sig.get_signature().to_hex(),
+        }),
+    }
 }
 
 fn fetch_block_with_utxo<T: BlockchainBackend>(
-    _db: &T,
-    _commitment: Commitment,
+    db: &T,
+    commitment: Commitment,
 ) -> Result<Option<HistoricalBlock>, ChainStorageError>
 {
-    unimplemented!()
-    // let metadata = db.fetch_chain_metadata()?;
-    // let db_height = metadata.height_of_longest_chain.unwrap_or(0);
-    // let horizon_height = metadata.horizon_block(db_height);
-    // for i in (horizon_height..db_height).rev() {
-    //     let utxo_cp = fetch_checkpoint(db, MmrTree::Utxo, i)?;
-    //     let (utxo_hashes, _) = utxo_cp.into_parts();
-    //     let utxos = fetch_outputs(db, utxo_hashes)?;
-    //     for utxo in utxos.0 {
-    //         if utxo.commitment == commitment {
-    //             return Ok(Some(fetch_block(db, i)?));
-    //         }
-    //     }
-    //     for comm in utxos.1 {
-    //         if comm == commitment {
-    //             return Ok(Some(fetch_block(db, i)?));
-    //         }
-    //     }
-    // }
-    // // data is not in the pruning horizon, let's check behind that but only if there is a pruning horizon
-    // if horizon_height > 0 {
-    //     let utxo_cp = fetch_checkpoint(db, MmrTree::Utxo, horizon_height - 1)?;
-    //     let (utxo_hashes, _) = utxo_cp.into_parts();
-    //     let utxos = fetch_outputs(db, utxo_hashes)?;
-    //     for utxo in utxos.0 {
-    //         if utxo.commitment == commitment {
-    //             return Ok(None);
-    //         }
-    //     }
-    //     for comm in utxos.1 {
-    //         if comm == commitment {
-    //             return Ok(None);
-    //         }
-    //     }
-    // }
-    // Err(ChainStorageError::ValueNotFound {
-    //     entity: "Utxo".to_string(),
-    //     field: "Commitment".to_string(),
-    //     value: commitment.to_hex(),
-    // })
+    match db.fetch_output(&commitment.to_vec()) {
+        Ok(output) => match output {
+            Some((_output, leaf)) => {
+                let header = db.fetch_header_containing_utxo_mmr(leaf as u64)?;
+                fetch_block_by_hash(db, header.hash().to_owned())
+            },
+            None => Ok(None),
+        },
+        Err(_) => Err(ChainStorageError::ValueNotFound {
+            entity: "Output".to_string(),
+            field: "Commitment".to_string(),
+            value: commitment.to_hex(),
+        }),
+    }
 }
 
 fn fetch_block_with_stxo<T: BlockchainBackend>(
@@ -1649,7 +1604,7 @@ fn reorganize_chain<T: BlockchainBackend>(
         if let Err(e) = block_validator.validate_body_for_valid_orphan(&block, backend) {
             warn!(
                 target: LOG_TARGET,
-                "Orphan block {} ({}) failed validation during chain reorg: {}",
+                "Orphan block {} ({}) failed validation during chain reorg: {:?}",
                 block.header().height,
                 block_hash_hex,
                 e
@@ -1668,7 +1623,7 @@ fn reorganize_chain<T: BlockchainBackend>(
         if let Err(e) = backend.write(txn) {
             warn!(
                 target: LOG_TARGET,
-                "Failed to commit reorg chain: {}. Restoring last chain.", e
+                "Failed to commit reorg chain: {:?}. Restoring last chain.", e
             );
 
             restore_reorged_chain(backend, fork_height, removed_blocks)?;
@@ -1827,7 +1782,7 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
                 // Warn for now, idk might lower to debug later.
                 warn!(
                     target: LOG_TARGET,
-                    "Discarding orphan {} because it has an invalid header: {}",
+                    "Discarding orphan {} because it has an invalid header: {:?}",
                     child.hash().to_hex(),
                     e
                 );
