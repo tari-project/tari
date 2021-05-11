@@ -62,13 +62,6 @@ impl TryInto<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
                 }
                 ci::NodeCommsRequest::FetchBlocksWithKernels(sigs)
             },
-            FetchBlocksWithStxos(commitments) => {
-                let mut commits = Vec::new();
-                for stxo in commitments.commitments {
-                    commits.push(Commitment::try_from(stxo).map_err(|err: ByteArrayError| err.to_string())?)
-                }
-                ci::NodeCommsRequest::FetchBlocksWithStxos(commits)
-            },
             FetchBlocksWithUtxos(commitments) => {
                 let mut commits = Vec::new();
                 for stxo in commitments.commitments {
@@ -111,10 +104,6 @@ impl From<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
             FetchBlocksWithKernels(signatures) => {
                 let sigs = signatures.into_iter().map(Into::into).collect();
                 ProtoNodeCommsRequest::FetchBlocksWithKernels(proto::Signatures { sigs })
-            },
-            FetchBlocksWithStxos(commitments) => {
-                let commits = commitments.into_iter().map(Into::into).collect();
-                ProtoNodeCommsRequest::FetchBlocksWithStxos(proto::Commitments { commitments: commits })
             },
             FetchBlocksWithUtxos(commitments) => {
                 let commits = commitments.into_iter().map(Into::into).collect();

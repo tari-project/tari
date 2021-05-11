@@ -33,8 +33,6 @@ message BaseNodeServiceRequest {
         // Indicates a Fetch block with kernels request
         Signatures fetch_blocks_with_kernels = 16;
         // Indicates a Fetch block with kernels request
-        Commitments fetch_blocks_with_stxos = 17;
-        // Indicates a Fetch block with kernels request
         Commitments fetch_blocks_with_utxos = 18;
         // Indicates a Fetch kernel by excess signature request
         tari.types.Signature fetch_kernel_by_excess_sig = 19;

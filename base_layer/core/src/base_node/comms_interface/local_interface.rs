@@ -191,22 +191,6 @@ impl LocalNodeCommsInterface {
         }
     }
 
-    /// Fetches the blocks with the specified stxo commitments
-    pub async fn get_blocks_with_stxos(
-        &mut self,
-        commitments: Vec<Commitment>,
-    ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError>
-    {
-        match self
-            .request_sender
-            .call(NodeCommsRequest::FetchBlocksWithStxos(commitments))
-            .await??
-        {
-            NodeCommsResponse::HistoricalBlocks(blocks) => Ok(blocks),
-            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
-        }
-    }
-
     /// Fetches the blocks with the specified kernel signatures commitments
     pub async fn get_blocks_with_kernels(
         &mut self,

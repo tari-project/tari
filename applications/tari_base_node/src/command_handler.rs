@@ -282,29 +282,6 @@ impl CommandHandler {
         });
     }
 
-    pub fn search_stxo(&self, commitment: Commitment) {
-        let mut handler = self.node_service.clone();
-        self.executor.spawn(async move {
-            match handler.get_blocks_with_stxos(vec![commitment.clone()]).await {
-                Err(err) => {
-                    println!("Failed to retrieve blocks: {:?}", err);
-                    warn!(
-                        target: LOG_TARGET,
-                        "Error communicating with local base node: {:?}", err,
-                    );
-                    return;
-                },
-                Ok(mut data) => match data.pop() {
-                    Some(v) => println!("{}", v.block()),
-                    _ => println!(
-                        "Pruned node: stxo found, but block not found for stxo commitment {}",
-                        commitment.to_hex()
-                    ),
-                },
-            };
-        });
-    }
-
     pub fn search_kernel(&self, excess_sig: Signature) {
         let mut handler = self.node_service.clone();
         let hex_sig = excess_sig.get_signature().to_hex();

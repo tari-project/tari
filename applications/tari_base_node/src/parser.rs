@@ -75,7 +75,6 @@ pub enum BaseNodeCommand {
     GetBlock,
     SearchUtxo,
     SearchKernel,
-    SearchStxo,
     GetMempoolStats,
     GetMempoolState,
     Whoami,
@@ -242,9 +241,6 @@ impl Parser {
             SearchKernel => {
                 self.process_search_kernel(args);
             },
-            SearchStxo => {
-                self.process_search_stxo(args);
-            },
             GetMempoolStats => {
                 self.command_handler.get_mempool_stats();
             },
@@ -378,13 +374,6 @@ impl Parser {
                 println!("This searches for the kernel via the excess signature");
                 println!("search-kernel [hex of nonce] [Hex of signature]");
             },
-            SearchStxo => {
-                println!(
-                    "This will search the main chain for the stxo. If the stxo is found, it will print out the block \
-                     it was found in."
-                );
-                println!("search-stxo [hex of commitment of the stxo]");
-            },
             GetMempoolStats => {
                 println!("Retrieves your mempools stats");
             },
@@ -455,26 +444,6 @@ impl Parser {
             },
         };
         self.command_handler.search_utxo(commitment)
-    }
-
-    /// Function to process the search stxo command
-    fn process_search_stxo<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
-        // let command_arg = args.take(4).collect::<Vec<&str>>();
-        let hex = args.next();
-        if hex.is_none() {
-            self.print_help(BaseNodeCommand::SearchStxo);
-            return;
-        }
-        let commitment = match Commitment::from_hex(&hex.unwrap().to_string()) {
-            Ok(v) => v,
-            _ => {
-                println!("Invalid commitment provided.");
-                self.print_help(BaseNodeCommand::SearchStxo);
-                return;
-            },
-        };
-
-        self.command_handler.search_stxo(commitment)
     }
 
     /// Function to process the search kernel command

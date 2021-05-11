@@ -866,13 +866,6 @@ where B: BlockchainBackend
         fetch_block_with_utxo(&*db, commitment)
     }
 
-    /// Attempt to fetch the block corresponding to the provided stxo hash from the main chain, if the block is past
-    /// pruning horizon, it will return Ok<None>
-    pub fn fetch_block_with_stxo(&self, commitment: Commitment) -> Result<Option<HistoricalBlock>, ChainStorageError> {
-        let db = self.db_read_access()?;
-        fetch_block_with_stxo(&*db, commitment)
-    }
-
     /// Returns true if this block exists in the chain, or is orphaned.
     pub fn block_exists(&self, hash: BlockHash) -> Result<bool, ChainStorageError> {
         let db = self.db_read_access()?;
@@ -1248,33 +1241,6 @@ fn fetch_block_with_utxo<T: BlockchainBackend>(
             value: commitment.to_hex(),
         }),
     }
-}
-
-fn fetch_block_with_stxo<T: BlockchainBackend>(
-    _db: &T,
-    _commitment: Commitment,
-) -> Result<Option<HistoricalBlock>, ChainStorageError>
-{
-    unimplemented!()
-    // let metadata = db.fetch_chain_metadata()?;
-    // let db_height = metadata.height_of_longest_chain.unwrap_or(0);
-    // let horizon_height = metadata.horizon_block(db_height);
-    // for i in (horizon_height..db_height).rev() {
-    //     let utxo_cp = fetch_checkpoint(db, MmrTree::Utxo, i)?;
-    //     let (_, deleted) = utxo_cp.into_parts();
-    //     let inputs = fetch_inputs(db, deleted)?;
-    //     for input in inputs {
-    //         if input.commitment == commitment {
-    //             return Ok(Some(fetch_block(db, i)?));
-    //         }
-    //     }
-    // }
-    // // data is not in the pruning horizon, we cannot check stxo's behind pruning horizon
-    // Err(ChainStorageError::ValueNotFound {
-    //     entity: "Utxo".to_string(),
-    //     field: "Commitment".to_string(),
-    //     value: commitment.to_hex(),
-    // })
 }
 
 fn fetch_block_by_hash<T: BlockchainBackend>(

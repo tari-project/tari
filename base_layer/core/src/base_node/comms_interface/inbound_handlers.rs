@@ -311,30 +311,6 @@ where T: BlockchainBackend + 'static
                 }
                 Ok(NodeCommsResponse::HistoricalBlocks(blocks))
             },
-            NodeCommsRequest::FetchBlocksWithStxos(hashes) => {
-                let mut blocks = Vec::with_capacity(hashes.len());
-                for hash in hashes {
-                    let hash_hex = hash.to_hex();
-                    debug!(
-                        target: LOG_TARGET,
-                        "A peer has requested a block with hash {}", hash_hex
-                    );
-                    match self.blockchain_db.fetch_block_with_stxo(hash).await {
-                        Ok(Some(block)) => blocks.push(block),
-                        Ok(None) => warn!(
-                            target: LOG_TARGET,
-                            "Could not provide requested block {} to peer because not stored", hash_hex
-                        ),
-                        Err(e) => warn!(
-                            target: LOG_TARGET,
-                            "Could not provide requested block {} to peer because: {}",
-                            hash_hex,
-                            e.to_string()
-                        ),
-                    }
-                }
-                Ok(NodeCommsResponse::HistoricalBlocks(blocks))
-            },
             NodeCommsRequest::FetchBlocksWithUtxos(hashes) => {
                 let mut blocks = Vec::with_capacity(hashes.len());
                 for hash in hashes {
