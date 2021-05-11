@@ -75,6 +75,15 @@ root:
     - base_layer
 
 loggers:
+  # Route log events common to every application to all appenders
+  tari::application:
+    level: info
+    appenders:
+      - base_layer
+      - network
+      - other
+    additive: false
+
   # Route log events sent to the "core" logger to the "base_layer" appender
   c:
     level: info

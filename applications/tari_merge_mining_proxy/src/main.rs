@@ -36,17 +36,17 @@ mod proxy;
 #[cfg(test)]
 mod test;
 
-use crate::{block_template_data::BlockTemplateRepository, error::MmProxyError};
+use crate::block_template_data::BlockTemplateRepository;
 use futures::future;
 use hyper::{service::make_service_fn, Server};
 use proxy::{MergeMiningProxyConfig, MergeMiningProxyService};
 use std::{convert::Infallible, io};
-use structopt::StructOpt;
-use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
+use tari_app_utilities::initialization::init_configuration;
+use tari_common::configuration::bootstrap::ApplicationType;
 
 #[tokio_macros::main]
-async fn main() -> Result<(), MmProxyError> {
-    let config = initialize()?;
+async fn main() -> Result<(), anyhow::Error> {
+    let (_, config, _) = init_configuration(ApplicationType::MergeMiningProxy)?;
 
     let config = MergeMiningProxyConfig::from(config);
     let addr = config.proxy_host_address;
@@ -76,24 +76,4 @@ async fn main() -> Result<(), MmProxyError> {
             Err(err.into())
         },
     }
-}
-
-/// Loads the configuration and sets up logging
-fn initialize() -> Result<GlobalConfig, MmProxyError> {
-    // Parse and validate command-line arguments
-    let mut bootstrap = ConfigBootstrap::from_args();
-    // Check and initialize configuration files
-    bootstrap.init_dirs(ApplicationType::MergeMiningProxy)?;
-
-    // Load and apply configuration file
-    let cfg = bootstrap.load_configuration()?;
-
-    #[cfg(feature = "envlog")]
-    let _ = env_logger::try_init();
-    // Initialise the logger
-    #[cfg(not(feature = "envlog"))]
-    bootstrap.initialize_logging()?;
-
-    let cfg = GlobalConfig::convert_from(cfg)?;
-    Ok(cfg)
 }

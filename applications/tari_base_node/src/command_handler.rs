@@ -32,6 +32,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use tari_app_utilities::consts;
 use tari_common::GlobalConfig;
 use tari_comms::{
     connectivity::ConnectivityRequester,
@@ -57,9 +58,6 @@ use tari_core::{
 use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_wallet::util::emoji::EmojiId;
 use tokio::{runtime, sync::watch};
-// Import the auto-generated const values from the Manifest and Git
-
-include!(concat!(env!("OUT_DIR"), "/consts.rs"));
 
 pub struct CommandHandler {
     executor: runtime::Handle,
@@ -192,8 +190,8 @@ impl CommandHandler {
 
     /// Function process the version command
     pub fn print_version(&self) {
-        println!("Version: {}", VERSION);
-        println!("Author: {}", AUTHOR);
+        println!("Version: {}", consts::APP_VERSION);
+        println!("Author: {}", consts::APP_AUTHOR);
     }
 
     pub fn get_chain_meta(&self) {

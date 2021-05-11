@@ -76,11 +76,12 @@
 //! # std::fs::remove_dir_all(temp_dir).unwrap();
 //! ```
 
+#[cfg(feature = "build")]
+pub mod build;
 pub mod configuration;
 #[macro_use]
 mod logging;
 
-pub mod protobuf_build;
 pub use configuration::error::ConfigError;
 
 pub mod dir_utils;

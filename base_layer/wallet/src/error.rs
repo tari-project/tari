@@ -76,6 +76,8 @@ pub enum WalletError {
     NodeIdentityError(#[from] NodeIdentityError),
     #[error("Error performing wallet recovery: '{0}'")]
     WalletRecoveryError(String),
+    #[error("Error performing wallet scanning: '{0}'")]
+    UtxoScannerError(String),
     #[error("Shutdown Signal Received")]
     Shutdown,
     #[error("Transaction Error: {0}")]

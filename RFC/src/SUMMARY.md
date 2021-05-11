@@ -22,6 +22,7 @@
       - [RFC-0230: Hash time locked contracts](RFC-0230_HTLC.md)
       - [RFC-0322: Validator Node Registration](RFC-0322_VNRegistration.md)
       - [RFC-0341: Asset registration](RFC-0341_AssetRegistration.md)
+    - [RFC-0180: Bulletproof range proof rewinding](RFC-0180_BulletproofRewinding.md)
 - [RFC-0300: The Digital Assets Network](RFC-0300_DAN.md)
     - [RFC-0301: Namespace Registration](RFC-0301_NamespaceRegistration.md)
     - [RFC-0302: Validator Nodes](RFC-0302_ValidatorNodes.md)

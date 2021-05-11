@@ -51,7 +51,7 @@ fn walk_files<P: AsRef<Path>>(search_path: P, search_ext: &str) -> Vec<PathBuf> 
 }
 
 #[derive(Default)]
-pub struct ProtoCompiler {
+pub struct ProtobufCompiler {
     out_dir: Option<PathBuf>,
     type_attributes: HashMap<&'static str, &'static str>,
     field_attributes: HashMap<&'static str, &'static str>,
@@ -61,7 +61,7 @@ pub struct ProtoCompiler {
     do_rustfmt: bool,
 }
 
-impl ProtoCompiler {
+impl ProtobufCompiler {
     pub fn new() -> Self {
         Self {
             out_dir: None,

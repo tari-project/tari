@@ -54,10 +54,10 @@
 /// ```
 ///
 /// For the first run
-/// ```cargo run tari_base_node -- --create-id```
-/// 
+/// `cargo run tari_base_node -- --create-id`
+///
 /// Subsequent runs
-/// ```cargo run tari_base_node```
+/// `cargo run tari_base_node`
 ///
 /// ## Commands
 ///
@@ -119,7 +119,7 @@ use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{runtime, task, time};
 use tonic::transport::Server;
 
-pub const LOG_TARGET: &str = "base_node::app";
+const LOG_TARGET: &str = "base_node::app";
 /// Application entry point
 fn main() {
     if let Err(exit_code) = main_inner() {

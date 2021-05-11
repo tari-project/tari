@@ -115,7 +115,6 @@ where T: OutputManagerBackend + 'static
         let config = self.config.clone();
         let constants = ConsensusConstantsBuilder::new(self.network).build();
         let master_secret_key = self.master_secret_key.clone();
-
         context.spawn_when_ready(move |handles| async move {
             let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();

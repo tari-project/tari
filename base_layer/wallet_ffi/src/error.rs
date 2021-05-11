@@ -262,7 +262,7 @@ impl From<WalletError> for LibWalletError {
                 code: 426,
                 message: format!("{:?}", w),
             },
-            WalletError::WalletRecoveryError(_) => Self {
+            WalletError::UtxoScannerError(_) => Self {
                 code: 427,
                 message: format!("{:?}", w),
             },
