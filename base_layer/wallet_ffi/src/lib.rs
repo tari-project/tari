@@ -167,10 +167,7 @@ use tari_wallet::{
     storage::{
         database::WalletDatabase,
         sqlite_db::WalletSqliteDatabase,
-        sqlite_utilities::{
-            initialize_sqlite_database_backends,
-            partial_wallet_backup,
-        },
+        sqlite_utilities::{initialize_sqlite_database_backends, partial_wallet_backup},
     },
     testnet_utils::{
         broadcast_transaction,
