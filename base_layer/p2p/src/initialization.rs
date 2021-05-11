@@ -97,15 +97,12 @@ impl CommsInitializationError {
     pub fn to_friendly_string(&self) -> String {
         // Add any helpful user-facing messages here
         match self {
-            CommsInitializationError::HiddenServiceBuilderError(
-                tor::HiddenServiceBuilderError::HiddenServiceControllerError(
-                    tor::HiddenServiceControllerError::TorControlPortOffline,
-                ),
-            ) => r#"Unable to connect to the Tor control port.
-Please check that you have the Tor proxy running and that access to the Tor control port is turned on.
-If you are unsure of what to do, use the following command to start the Tor proxy:
-tor --allow-missing-torrc --ignore-missing-torrc --clientonly 1 --socksport 9050 --controlport 127.0.0.1:9051 --log "notice stdout" --clientuseipv6 1"#
-                .to_string(),
+            CommsInitializationError::HiddenServiceControllerError(HiddenServiceControllerError::TorControlPortOffline)
+                 => r#"Unable to connect to the Tor control port.
+    Please check that you have the Tor proxy running and that access to the Tor control port is turned on.
+    If you are unsure of what to do, use the following command to start the Tor proxy:
+    tor --allow-missing-torrc --ignore-missing-torrc --clientonly 1 --socksport 9050 --controlport 127.0.0.1:9051 --log "notice stdout" --clientuseipv6 1"#
+                    .to_string(),
             err => format!("Failed to initialize comms: {:?}", err),
         }
     }
