@@ -384,6 +384,7 @@ impl WalletRecoveryTask {
                         uo.value,
                         &uo.spending_key,
                         &source_public_key,
+                        uo.features,
                         format!("Recovered on {}.", Utc::now().naive_utc()),
                     )
                     .await

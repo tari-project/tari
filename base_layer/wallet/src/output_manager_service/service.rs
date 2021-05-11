@@ -69,6 +69,7 @@ use tari_core::{
 use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
     range_proof::REWIND_USER_MESSAGE_LENGTH,
+    tari_utilities::hex::Hex,
 };
 use tari_key_manager::{
     key_manager::KeyManager,
@@ -1132,9 +1133,24 @@ where TBackend: OutputManagerBackend + 'static
                         &rewind_data.rewind_blinding_key,
                     )
                     .ok()
+                    .map(|v| (v, output.features))
             })
-            .map(|output| UnblindedOutput::new(output.committed_value, output.blinding_factor, None))
+            .map(|(output, features)| {
+                UnblindedOutput::new(output.committed_value, output.blinding_factor, Some(features))
+            })
             .collect();
+        for output in &rewound_outputs {
+            trace!(
+                target: LOG_TARGET,
+                "Output {} with value {} with {} recovered",
+                output
+                    .as_transaction_input(&self.resources.factories.commitment, output.features.clone())
+                    .commitment
+                    .to_hex(),
+                output.value,
+                output.features,
+            );
+        }
 
         Ok(rewound_outputs)
     }
