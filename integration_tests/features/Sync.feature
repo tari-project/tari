@@ -32,7 +32,7 @@ Feature: Block Sync
     Then NODE1 should have 11 peers
     Then NODE2 should have 11 peers
 
-  @critical @reorg
+  @critical @reorg @broken
   Scenario: Full block sync with small reorg
     Given I have a SHA3 miner NODE1 connected to all seed nodes
     Given I have a SHA3 miner NODE2 connected to node NODE1

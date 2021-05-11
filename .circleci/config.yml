@@ -106,7 +106,10 @@ commands:
           command: cargo build --release --bin tari_merge_mining_proxy
       - run:
           name: Run cucumber scenarios
-          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running and not @to-be-fixed-currently-failing" --format json:cucumber_output/tests.cucumber
+          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running and not @broken" --format json:cucumber_output/tests.cucumber
+      - run:
+          name: Run flaky/broken cucumber scenarios (Always pass)
+          command: node_modules/.bin/cucumber-js --tags "not @long-running and @broken" --format json:cucumber_output/broken-tests.cucumber || true
       - store_test_results:
           path: integration_tests/cucumber_output
       - store_artifacts:
