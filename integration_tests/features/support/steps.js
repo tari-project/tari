@@ -1882,7 +1882,7 @@ Then(
 
 Then(
   /wallet (.*) detects all transactions as Mined_Confirmed/,
-  { timeout: 1200 * 1000 },
+  { timeout: 6000 * 1000 },
   async function (walletName) {
     // Pending -> Completed -> Broadcast -> Mined Unconfirmed -> Mined Confirmed
     const wallet = this.getWallet(walletName);
@@ -2047,7 +2047,7 @@ Then(
 
 Then(
   /all wallets detect all transactions as Mined_Confirmed/,
-  { timeout: 1200 * 1000 },
+  { timeout: 6000 * 1000 },
   async function () {
     // Pending -> Completed -> Broadcast -> Mined Unconfirmed -> Mined Confirmed
     for (const walletName in this.wallets) {
