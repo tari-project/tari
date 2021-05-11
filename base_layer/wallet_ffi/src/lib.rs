@@ -170,7 +170,6 @@ use tari_wallet::{
         sqlite_utilities::{
             initialize_sqlite_database_backends,
             partial_wallet_backup,
-            run_migration_and_create_sqlite_connection,
         },
     },
     testnet_utils::{
@@ -2916,7 +2915,7 @@ pub unsafe extern "C" fn wallet_create(
     debug!(target: LOG_TARGET, "Databases Initialized");
 
     // If the transport type is Tor then check if there is a stored TorID, if there is update the Transport Type
-    let mut comms_config = (*config).clone().clone();
+    let mut comms_config = (*config).clone();
     comms_config.transport_type = match comms_config.transport_type {
         Tor(mut tor_config) => {
             tor_config.identity = match runtime.block_on(wallet_db.get_tor_id()) {

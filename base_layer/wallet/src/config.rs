@@ -25,9 +25,9 @@ use crate::{
     output_manager_service::config::OutputManagerServiceConfig,
     transaction_service::config::TransactionServiceConfig,
 };
+use std::time::Duration;
 use tari_core::{consensus::Network, transactions::types::CryptoFactories};
 use tari_p2p::initialization::CommsConfig;
-use std::time::Duration;
 
 pub const KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY: &str = "comms";
 
