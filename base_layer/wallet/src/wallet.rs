@@ -47,7 +47,7 @@ use aes_gcm::{
 use digest::Digest;
 use log::*;
 use rand::rngs::OsRng;
-use std::{marker::PhantomData, sync::Arc, time::Duration};
+use std::{marker::PhantomData, sync::Arc};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
