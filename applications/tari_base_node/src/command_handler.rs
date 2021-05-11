@@ -58,6 +58,7 @@ use tari_core::{
 use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_wallet::util::emoji::EmojiId;
 use tokio::{runtime, sync::watch};
+use tari_crypto::tari_utilities::Hashable;
 
 pub struct CommandHandler {
     executor: runtime::Handle,
@@ -939,6 +940,7 @@ impl CommandHandler {
     )
     {
         let db = self.blockchain_db.clone();
+        let network = self.config.network;
         self.executor.spawn(async move {
             let mut output = try_or_print!(File::create(&filename));
 
@@ -954,8 +956,7 @@ impl CommandHandler {
 
             let start_height = cmp::max(start_height, 1);
             let mut prev_header = try_or_print!(db.fetch_chain_header(start_height - 1).await);
-            // TODO: hardcoded network #testnetreset
-            let consensus_rules = ConsensusManager::builder(Network::Stibbons).build();
+            let consensus_rules = ConsensusManager::builder(Network::from(network)).build();
 
             writeln!(
                 output,
@@ -1010,6 +1011,15 @@ impl CommandHandler {
                     acc_sha3.as_u64(),
                 )
                 .unwrap();
+
+                if header.header.hash() != header.accumulated_data.hash {
+                    eprintln!(
+                        "Difference in hash at {}! header = {} and accum hash = {}",
+                        height,
+                        header.header.hash().to_hex(),
+                        header.accumulated_data.hash.to_hex()
+                    );
+                }
 
                 if existing_target_difficulty != calculated_target_difficulty {
                     eprintln!(
