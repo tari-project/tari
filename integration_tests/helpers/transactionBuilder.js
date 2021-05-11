@@ -86,22 +86,23 @@ class TransactionBuilder {
     );
     // Assume low numbers....
 
-    let PrivateKey = totalPrivateKey.toString(16);
+    let privateKey = totalPrivateKey.toString(16);
     // we need to pad 0's in front
-    while (PrivateKey.length < 64) {
-      PrivateKey = "0" + PrivateKey;
+    while (privateKey.length < 64) {
+      privateKey = "0" + privateKey;
     }
-    const excess = tari_crypto.commit(PrivateKey, BigInt(0));
-    const public_nonce = this.kv.public_key("common_nonce");
+    const excess = tari_crypto.commit(privateKey, BigInt(0));
+    this.kv.new_key("common_nonce");
+    const publicNonce = this.kv.public_key("common_nonce");
     const challenge = this.buildChallenge(
-      public_nonce,
+      publicNonce,
       this.fee,
       this.lockHeight
     );
-    const private_nonce = this.kv.private_key("common_nonce");
+    const privateNonce = this.kv.private_key("common_nonce");
     const sig = tari_crypto.sign_challenge_with_nonce(
-      PrivateKey,
-      private_nonce,
+      privateKey,
+      privateNonce,
       challenge
     );
 

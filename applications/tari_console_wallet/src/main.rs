@@ -144,6 +144,7 @@ fn main_inner() -> Result<(), ExitCodes> {
             base_node,
             base_node_config,
             notify_script,
+            &bootstrap,
         ),
         WalletMode::Invalid => Err(ExitCodes::InputError(
             "Invalid wallet mode - are you trying too many command options at once?".to_string(),

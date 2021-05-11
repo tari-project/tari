@@ -2,6 +2,8 @@ const net = require("net");
 
 const { blake2bInit, blake2bUpdate, blake2bFinal } = require("blakejs");
 
+const NO_CONNECTION = 14;
+
 function getRandomInt(min, max) {
   min = Math.ceil(min);
   max = Math.floor(max);
@@ -35,18 +37,26 @@ async function waitFor(
 
   let i = 0;
   while (new Date() - now < maxTime) {
-    const value = await asyncTestFn();
-    if (value === toBe) {
-      if (i > 1) {
+    try {
+      const value = await asyncTestFn();
+      if (value === toBe) {
+        if (i > 1) {
+          console.log("waiting for process...", timeOut, i, value);
+        }
+        break;
+      }
+      if (i % skipLog === 0 && i > 1) {
         console.log("waiting for process...", timeOut, i, value);
       }
-      break;
+      await sleep(timeOut);
+      i++;
+    } catch (e) {
+      if (e && e.code && e.code === NO_CONNECTION) {
+        console.log("No connection yet (waitFor)...");
+      } else {
+        console.error("Error in waitFor: ", e);
+      }
     }
-    if (i % skipLog === 0 && i > 1) {
-      console.log("waiting for process...", timeOut, i, value);
-    }
-    await sleep(timeOut);
-    i++;
   }
 }
 
@@ -213,4 +223,5 @@ module.exports = {
   consoleLogBalance,
   consoleLogCoinbaseDetails,
   withTimeout,
+  NO_CONNECTION,
 };
