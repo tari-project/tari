@@ -21,7 +21,7 @@ use init::{
 use log::*;
 use recovery::prompt_private_key_from_seed_words;
 use std::process;
-use tari_app_utilities::{initialization::init_configuration, utilities::ExitCodes};
+use tari_app_utilities::{consts, initialization::init_configuration, utilities::ExitCodes};
 use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap};
 use tari_core::transactions::types::PrivateKey;
 use tari_shutdown::Shutdown;
@@ -37,11 +37,6 @@ mod recovery;
 mod ui;
 mod utils;
 pub mod wallet_modes;
-
-mod consts {
-    // Include generated consts
-    include!(concat!(env!("OUT_DIR"), "/consts.rs"));
-}
 
 /// Application entry point
 fn main() {
