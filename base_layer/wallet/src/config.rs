@@ -27,6 +27,7 @@ use crate::{
 };
 use tari_core::{consensus::Network, transactions::types::CryptoFactories};
 use tari_p2p::initialization::CommsConfig;
+use std::time::Duration;
 
 pub const KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY: &str = "comms";
 
@@ -40,6 +41,7 @@ pub struct WalletConfig {
     pub rate_limit: usize,
     pub network: Network,
     pub base_node_service_config: BaseNodeServiceConfig,
+    pub scan_for_utxo_interval: Duration,
 }
 
 impl WalletConfig {
@@ -53,6 +55,7 @@ impl WalletConfig {
         base_node_service_config: Option<BaseNodeServiceConfig>,
         buffer_size: Option<usize>,
         rate_limit: Option<usize>,
+        scan_for_utxo_interval: Option<Duration>,
     ) -> Self
     {
         Self {
@@ -64,6 +67,7 @@ impl WalletConfig {
             rate_limit: rate_limit.unwrap_or_else(|| 50),
             network,
             base_node_service_config: base_node_service_config.unwrap_or_default(),
+            scan_for_utxo_interval: scan_for_utxo_interval.unwrap_or_else(|| Duration::from_secs(43200)),
         }
     }
 }

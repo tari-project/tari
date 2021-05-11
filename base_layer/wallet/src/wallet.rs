@@ -78,46 +78,6 @@ use tokio::runtime;
 
 const LOG_TARGET: &str = "wallet";
 
-#[derive(Clone)]
-pub struct WalletConfig {
-    pub comms_config: CommsConfig,
-    pub factories: CryptoFactories,
-    pub transaction_service_config: Option<TransactionServiceConfig>,
-    pub output_manager_service_config: Option<OutputManagerServiceConfig>,
-    pub buffer_size: usize,
-    pub rate_limit: usize,
-    pub network: Network,
-    pub base_node_service_config: BaseNodeServiceConfig,
-    pub scan_for_utxo_interval: Duration,
-}
-
-impl WalletConfig {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        comms_config: CommsConfig,
-        factories: CryptoFactories,
-        transaction_service_config: Option<TransactionServiceConfig>,
-        output_manager_service_config: Option<OutputManagerServiceConfig>,
-        network: Network,
-        base_node_service_config: Option<BaseNodeServiceConfig>,
-        buffer_size: Option<usize>,
-        rate_limit: Option<usize>,
-        scan_for_utxo_interval: Option<Duration>,
-    ) -> Self
-    {
-        Self {
-            comms_config,
-            factories,
-            transaction_service_config,
-            output_manager_service_config,
-            buffer_size: buffer_size.unwrap_or_else(|| 1500),
-            rate_limit: rate_limit.unwrap_or_else(|| 50),
-            network,
-            base_node_service_config: base_node_service_config.unwrap_or_default(),
-            scan_for_utxo_interval: scan_for_utxo_interval.unwrap_or_else(|| Duration::from_secs(43200)),
-        }
-    }
-}
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
 #[derive(Clone)]
@@ -224,7 +184,7 @@ where
             ))
             .add_initializer(UtxoScannerServiceInitializer::new(
                 config.scan_for_utxo_interval,
-                db.clone(),
+                wallet_database.clone(),
                 factories.clone(),
                 node_identity.clone(),
             ));
