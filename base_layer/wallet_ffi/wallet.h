@@ -393,10 +393,6 @@ struct TariCommsConfig *comms_config_create(const char *public_address,
                                      unsigned long long saf_message_duration_in_secs,
                                      int* error_out);
 
-// Set the Comms Secret Key for an existing TariCommsConfig. Usually this key is maintained by the backend but if it is required to set a specific
-// new one this function can be used.
-void comms_config_set_secret_key(struct TariCommsConfig *comms_config, struct TariPrivateKey *secret_key, int* error_out);
-
 // Frees memory for a TariCommsConfig
 void comms_config_destroy(struct TariCommsConfig *wc);
 

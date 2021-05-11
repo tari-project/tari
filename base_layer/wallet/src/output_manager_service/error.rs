@@ -105,6 +105,8 @@ pub enum OutputManagerError {
     InvalidScriptHash,
     #[error("Tari script error : {0}")]
     ScriptError(#[from] ScriptError),
+    #[error("Master secret key does not match persisted key manager state")]
+    MasterSecretKeyMismatch,
 }
 
 #[derive(Debug, Error, PartialEq)]

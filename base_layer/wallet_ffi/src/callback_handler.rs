@@ -778,7 +778,7 @@ mod test {
     fn test_callback_handler() {
         let mut runtime = Runtime::new().unwrap();
 
-        let (backend, _oms_backend, _tempdir) = make_wallet_databases(None);
+        let (_wallet_backend, backend, _oms_backend, _tempdir) = make_wallet_databases(None);
         let db = TransactionDatabase::new(backend);
         let rtp = ReceiverTransactionProtocol::new_placeholder();
         let inbound_tx = InboundTransaction::new(

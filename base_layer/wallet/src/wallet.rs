@@ -21,11 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
+    base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
+    config::{WalletConfig, KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY},
     contacts_service::{handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer},
     error::WalletError,
     output_manager_service::{
-        config::OutputManagerServiceConfig,
         handle::OutputManagerHandle,
         storage::database::OutputManagerBackend,
         OutputManagerServiceInitializer,
@@ -33,11 +33,11 @@ use crate::{
     },
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
-        config::TransactionServiceConfig,
         handle::TransactionServiceHandle,
         storage::database::TransactionBackend,
         TransactionServiceInitializer,
     },
+    types::KeyDigest,
     utxo_scanner_service::UtxoScannerServiceInitializer,
 };
 use aes_gcm::{
@@ -46,36 +46,32 @@ use aes_gcm::{
 };
 use digest::Digest;
 use log::*;
+use rand::rngs::OsRng;
 use std::{marker::PhantomData, sync::Arc, time::Duration};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
-    types::CommsPublicKey,
+    types::{CommsPublicKey, CommsSecretKey},
     CommsNode,
+    NodeIdentity,
     UnspawnedCommsNode,
 };
 use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
-use tari_core::{
-    consensus::Network,
-    transactions::{
-        tari_amount::MicroTari,
-        transaction::UnblindedOutput,
-        types::{CryptoFactories, PrivateKey, PublicKey},
-    },
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction::UnblindedOutput,
+    types::{CryptoFactories, PrivateKey, PublicKey},
 };
 use tari_crypto::{
     common::Blake256,
-    keys::PublicKey as sk,
+    keys::{PublicKey as sk, SecretKey},
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
     script::{ExecutionStack, TariScript},
     signatures::{SchnorrSignature, SchnorrSignatureError},
     tari_utilities::hex::Hex,
 };
-use tari_p2p::{
-    comms_connector::pubsub_connector,
-    initialization,
-    initialization::{CommsConfig, P2pInitializer},
-};
+use tari_key_manager::key_manager::KeyManager;
+use tari_p2p::{comms_connector::pubsub_connector, initialization, initialization::P2pInitializer};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 use tokio::runtime;
@@ -122,7 +118,6 @@ impl WalletConfig {
         }
     }
 }
-
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
 #[derive(Clone)]
@@ -156,20 +151,28 @@ where
     V: OutputManagerBackend + 'static,
     W: ContactsBackend + 'static,
 {
-    pub async fn new(
+    pub async fn start(
         config: WalletConfig,
-        wallet_backend: T,
+        wallet_database: WalletDatabase<T>,
         transaction_backend: U,
         output_manager_backend: V,
         contacts_backend: W,
         shutdown_signal: ShutdownSignal,
     ) -> Result<Wallet<T, U, V, W>, WalletError>
     {
-        let db = WalletDatabase::new(wallet_backend);
-        // Persist the Comms Private Key provided to this function
-        db.set_comms_secret_key(config.comms_config.node_identity.secret_key().clone())
-            .await?;
-        let bn_service_db = db.clone();
+        let master_secret_key = read_or_create_master_secret_key(&mut wallet_database.clone()).await?;
+        let comms_secret_key = derive_comms_secret_key(&master_secret_key)?;
+
+        let node_identity = Arc::new(NodeIdentity::new(
+            comms_secret_key,
+            config.comms_config.node_identity.public_address(),
+            config.comms_config.node_identity.features(),
+        )?);
+
+        let mut comms_config = config.comms_config.clone();
+        comms_config.node_identity = node_identity.clone();
+
+        let bn_service_db = wallet_database.clone();
         #[cfg(feature = "test_harness")]
         let transaction_backend_handle = transaction_backend.clone();
 
@@ -178,7 +181,6 @@ where
             pubsub_connector(runtime::Handle::current(), config.buffer_size, config.rate_limit);
         let peer_message_subscription_factory = Arc::new(subscription_factory);
         let transport_type = config.comms_config.transport_type.clone();
-        let node_identity = config.comms_config.node_identity.clone();
 
         debug!(target: LOG_TARGET, "Wallet Initializing");
         info!(
@@ -200,12 +202,13 @@ where
             config.rate_limit
         );
         let stack = StackBuilder::new(shutdown_signal)
-            .add_initializer(P2pInitializer::new(config.comms_config, publisher))
+            .add_initializer(P2pInitializer::new(comms_config, publisher))
             .add_initializer(OutputManagerServiceInitializer::new(
                 config.output_manager_service_config.unwrap_or_default(),
                 output_manager_backend,
                 factories.clone(),
                 config.network,
+                master_secret_key,
             ))
             .add_initializer(TransactionServiceInitializer::new(
                 config.transaction_service_config.unwrap_or_default(),
@@ -241,6 +244,15 @@ where
 
         let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
 
+        // Persist the comms node address and features after it has been spawned to capture any modifications made
+        // during comms startup. In the case of a Tor Transport the public address could have been generated
+        wallet_database
+            .set_node_address(comms.node_identity().public_address())
+            .await?;
+        wallet_database
+            .set_node_features(comms.node_identity().features())
+            .await?;
+
         Ok(Wallet {
             comms,
             dht_service: dht,
@@ -249,7 +261,7 @@ where
             transaction_service: transaction_service_handle,
             contacts_service: contacts_handle,
             base_node_service: base_node_service_handle,
-            db,
+            db: wallet_database,
             factories,
             #[cfg(feature = "test_harness")]
             transaction_backend: transaction_backend_handle,
@@ -465,4 +477,28 @@ where
             .await?
             .is_some())
     }
+}
+
+async fn read_or_create_master_secret_key<T: WalletBackend + 'static>(
+    db: &mut WalletDatabase<T>,
+) -> Result<CommsSecretKey, WalletError> {
+    let master_secret_key = match db.get_master_secret_key().await? {
+        None => {
+            let sk = CommsSecretKey::random(&mut OsRng);
+            db.set_master_secret_key(sk.clone()).await?;
+            sk
+        },
+        Some(sk) => sk,
+    };
+
+    Ok(master_secret_key)
+}
+
+fn derive_comms_secret_key(master_secret_key: &CommsSecretKey) -> Result<CommsSecretKey, WalletError> {
+    let comms_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
+        master_secret_key.clone(),
+        KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY.to_string(),
+        0,
+    );
+    Ok(comms_key_manager.derive_key(0)?.k)
 }

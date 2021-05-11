@@ -22,7 +22,7 @@
 
 use crate::{
     output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
-    storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
+    storage::{sqlite_db::WalletSqliteDatabase, sqlite_utilities::run_migration_and_create_sqlite_connection},
     transaction_service::storage::sqlite_db::TransactionServiceSqliteDatabase,
 };
 use core::iter;
@@ -38,6 +38,7 @@ pub fn random_string(len: usize) -> String {
 pub fn make_wallet_databases(
     path: Option<String>,
 ) -> (
+    WalletSqliteDatabase,
     TransactionServiceSqliteDatabase,
     OutputManagerSqliteDatabase,
     Option<TempDir>,
@@ -56,6 +57,7 @@ pub fn make_wallet_databases(
     let connection =
         run_migration_and_create_sqlite_connection(&db_path.to_str().expect("Should be able to make path")).unwrap();
     (
+        WalletSqliteDatabase::new(connection.clone(), None).expect("Should be able to create wallet database"),
         TransactionServiceSqliteDatabase::new(connection.clone(), None),
         OutputManagerSqliteDatabase::new(connection, None),
         temp_dir,
