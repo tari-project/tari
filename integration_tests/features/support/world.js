@@ -184,8 +184,13 @@ setWorldConstructor(CustomWorld);
 BeforeAll({ timeout: 1200000 }, async function () {
   const baseNode = new BaseNodeProcess("compile");
   console.log("Compiling base node...");
-  await baseNode.startNew();
-  await baseNode.stop();
+  await baseNode.init();
+  await baseNode.compile();
+
+  const wallet = new WalletProcess("compile");
+  console.log("Compiling wallet...");
+  await wallet.init();
+  await wallet.compile();
 
   const mmProxy = new MergeMiningProxyProcess(
     "compile",
@@ -193,13 +198,8 @@ BeforeAll({ timeout: 1200000 }, async function () {
     "127.0.0.1:9998"
   );
   console.log("Compiling mmproxy...");
-  await mmProxy.startNew();
-  await mmProxy.stop();
-
-  const wallet = new WalletProcess("compile");
-  console.log("Compiling wallet...");
-  await wallet.startNew();
-  await wallet.stop();
+  await mmProxy.init();
+  await mmProxy.compile();
 
   const miningNode = new MiningNodeProcess(
     "compile",
