@@ -55,10 +55,9 @@ use tari_core::{
     tari_utilities::{hex::Hex, message_format::MessageFormat},
     transactions::types::{Commitment, HashOutput, Signature},
 };
-use tari_crypto::ristretto::RistrettoPublicKey;
+use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::Hashable};
 use tari_wallet::util::emoji::EmojiId;
 use tokio::{runtime, sync::watch};
-use tari_crypto::tari_utilities::Hashable;
 
 pub struct CommandHandler {
     executor: runtime::Handle,

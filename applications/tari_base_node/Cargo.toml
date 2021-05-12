@@ -14,7 +14,7 @@ tari_common = { path = "../../common" }
 tari_comms = { path = "../../comms", features = ["rpc"]}
 tari_comms_dht = { path = "../../comms/dht"}
 tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions"]}
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto/", branch = "main" }
+tari_crypto = { git = "ssh://git@github.com/tari-project/tari-crypto.git", branch = "main" }
 tari_mmr = { path = "../../base_layer/mmr" }
 tari_p2p = { path = "../../base_layer/p2p" }
 tari_service_framework = {  path = "../../base_layer/service_framework"}
