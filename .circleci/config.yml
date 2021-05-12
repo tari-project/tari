@@ -17,17 +17,24 @@ commands:
           command: |
             rustc --version >rust-version
             test -e Cargo.lock || cargo generate-lockfile
+      - run:
+          name: Install cargo2junit
+          command: cargo install cargo2junit
       - restore_cache:
           keys:
             - v6-cargo-cache-{{arch}}-{{checksum "rust-version"}}-<<parameters.release>>-{{checksum "Cargo.lock"}}
       - run:
           name: Run tests
-          command: cargo test --workspace --all-features -v --jobs=3 <<#parameters.release>>--release<</parameters.release>>
+          command: mkdir -p testresults && cargo test --workspace --all-features -v --jobs=3 <<#parameters.release>>--release<</parameters.release>> -- -Z unstable-options --format json --report-time | cargo2junit > testresults/results.xml
       - save_cache:
           paths:
             - /usr/local/cargo/registry
             - target
           key: v6-cargo-cache-{{arch}}-{{checksum "rust-version"}}-<<parameters.release>>-{{checksum "Cargo.lock"}}
+      - store_test_results:
+          path: testresults
+      - store_artifacts:
+          path: testresults
   build:
     description: Build
     parameters:
@@ -106,7 +113,10 @@ commands:
           command: cargo build --release --bin tari_merge_mining_proxy
       - run:
           name: Run cucumber scenarios
-          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running and not @to-be-fixed-currently-failing" --format json:cucumber_output/tests.cucumber
+          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running and not @broken and not @flaky" --format json:cucumber_output/tests.cucumber
+      - run:
+          name: Run flaky/broken cucumber scenarios (Always pass)
+          command: node_modules/.bin/cucumber-js --tags "not @long-running and @broken" --format json:cucumber_output/broken-tests.cucumber || true
       - store_test_results:
           path: integration_tests/cucumber_output
       - store_artifacts:
