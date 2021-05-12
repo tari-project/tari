@@ -86,25 +86,6 @@ Feature: Block Sync
     When I mine 15 blocks on PNODE2
     Then all nodes are at height 23
 
-
-  @critical @reorg
-  Scenario: Pruned mode reorg
-    Given I have a base node NODE1 connected to all seed nodes
-    When I mine 5 blocks on NODE1
-    Then all nodes are at height 5
-    Given I have a pruned node PNODE2 connected to node NODE1 with pruning horizon set to 5
-    When I mine 4 blocks on NODE1
-    Then all nodes are at height 9
-    When I mine 5 blocks on PNODE2
-    Then all nodes are at height 14
-    When I stop PNODE2
-    And I mine 3 blocks on NODE1
-    And I stop NODE1
-    And I start PNODE2
-    And I mine 6 blocks on PNODE2
-    When I start NODE1
-    Then all nodes are at height 20
-
   @long-running
   Scenario: Syncing node while also mining before tip sync
     Given I have a seed node SEED

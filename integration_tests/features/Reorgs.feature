@@ -32,7 +32,27 @@ Feature: Reorgs
     And I mine a block on B at height 4 with an invalid MMR
     Then node B is at tip BTip1
 
-@critical @reorg @broken
+
+
+  @critical @reorg @flaky
+  Scenario: Pruned mode reorg
+    Given I have a base node NODE1 connected to all seed nodes
+    When I mine 5 blocks on NODE1
+    Then all nodes are at height 5
+    Given I have a pruned node PNODE2 connected to node NODE1 with pruning horizon set to 5
+    When I mine 4 blocks on NODE1
+    Then all nodes are at height 9
+    When I mine 5 blocks on PNODE2
+    Then all nodes are at height 14
+    When I stop PNODE2
+    And I mine 3 blocks on NODE1
+    And I stop NODE1
+    And I start PNODE2
+    And I mine 6 blocks on PNODE2
+    When I start NODE1
+    Then all nodes are at height 20
+
+@critical @reorg @flaky
   Scenario: Pruned mode reorg past horizon
     Given I have a base node NODE1 connected to all seed nodes
     When I mine a block on NODE1 with coinbase CB1
@@ -182,7 +202,7 @@ Scenario Outline: Massive reorg simple case
     Then node SEED_A1 is at the same height as node SEED_A2
     When I mine 10 blocks on SEED_A1
     Then all nodes are at the same height as node SEED_A1
-    @critical
+    @critical @broken
     Examples:
         | X1     | Y1     | SYNC_TIME |
         | 5      | 10     | 20        |
