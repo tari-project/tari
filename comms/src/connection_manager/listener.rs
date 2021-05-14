@@ -67,7 +67,6 @@ pub struct PeerListener<TTransport> {
     noise_config: NoiseConfig,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
-    listening_address: Option<Multiaddr>,
     our_supported_protocols: Vec<ProtocolId>,
     liveness_session_count: Arc<AtomicUsize>,
 }
@@ -94,7 +93,6 @@ where
             peer_manager,
             node_identity,
             shutdown_signal,
-            listening_address: None,
             our_supported_protocols: Vec::new(),
             bounded_executor: BoundedExecutor::from_current(config.max_simultaneous_inbound_connects),
             liveness_session_count: Arc::new(AtomicUsize::new(config.liveness_max_sessions)),
@@ -117,7 +115,6 @@ where
                 futures::pin_mut!(inbound);
 
                 info!(target: LOG_TARGET, "Listening for peer connections on '{}'", address);
-                self.listening_address = Some(address.clone());
 
                 self.send_event(ConnectionManagerEvent::Listening(address)).await;
 
