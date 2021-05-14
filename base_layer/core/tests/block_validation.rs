@@ -64,7 +64,7 @@ fn test_genesis_block() {
     );
     let db = BlockchainDatabase::new(backend, &rules, validators, BlockchainDatabaseConfig::default(), false).unwrap();
     let block = rules.get_genesis_block();
-    match db.add_block(block.block.into()).unwrap_err() {
+    match db.add_block(block.to_arc_block()).unwrap_err() {
         ChainStorageError::ValidationError { source } => match source {
             ValidationError::ValidatingGenesis => (),
             _ => panic!("Failed because incorrect validation error was received"),

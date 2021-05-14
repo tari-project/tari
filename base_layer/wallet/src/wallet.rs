@@ -273,7 +273,7 @@ where
             .set_base_node_public_key(peer.public_key.clone())
             .await?;
 
-        self.base_node_service.clone().set_base_node_peer(peer).await?;
+        self.base_node_service.set_base_node_peer(peer).await?;
 
         Ok(())
     }
@@ -286,6 +286,7 @@ where
         amount: MicroTari,
         spending_key: &PrivateKey,
         source_public_key: &CommsPublicKey,
+        features: OutputFeatures,
         message: String,
     ) -> Result<TxId, WalletError> {
         let unblinded_output = UnblindedOutput::new(

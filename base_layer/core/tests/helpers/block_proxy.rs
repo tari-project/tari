@@ -31,7 +31,7 @@ pub struct BlockProxy {
 
 impl PartialEq for BlockProxy {
     fn eq(&self, other: &Self) -> bool {
-        self.block.block.eq(&other.block.block)
+        self.block.block().eq(other.block.block())
     }
 }
 

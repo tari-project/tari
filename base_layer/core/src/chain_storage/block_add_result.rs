@@ -39,7 +39,7 @@ pub enum BlockAddResult {
 impl BlockAddResult {
     /// Returns true if the chain was changed (i.e block added or reorged), otherwise false
     pub fn was_chain_modified(&self) -> bool {
-        matches!(self, BlockAddResult::Ok(_) | BlockAddResult::ChainReorg { .. })
+        matches!(self, BlockAddResult::Ok(_) | BlockAddResult::ChainReorg{..})
     }
 
     pub fn is_added(&self) -> bool {

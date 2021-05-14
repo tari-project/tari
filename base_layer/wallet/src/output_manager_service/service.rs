@@ -1267,6 +1267,18 @@ where TBackend: OutputManagerBackend + 'static
                 )
             })
             .collect();
+        for output in &rewound_outputs {
+            trace!(
+                target: LOG_TARGET,
+                "Output {} with value {} with {} recovered",
+                output
+                    .as_transaction_input(&self.resources.factories.commitment, output.features.clone())
+                    .commitment
+                    .to_hex(),
+                output.value,
+                output.features,
+            );
+        }
 
         Ok(rewound_outputs)
     }

@@ -1,7 +1,6 @@
-const { getFreePort } = require("./util");
 const dateFormat = require("dateformat");
 const fs = require("fs");
-const { spawnSync, spawn, execSync } = require("child_process");
+const { spawn } = require("child_process");
 const { expect } = require("chai");
 const { createEnv } = require("./config");
 
@@ -31,14 +30,14 @@ class MiningNodeProcess {
     this.mineOnTipOnly = mineOnTipOnly || this.mineOnTipOnly;
   }
 
-  run(cmd, args, saveFile) {
+  run(cmd, args) {
     return new Promise((resolve, reject) => {
       if (!fs.existsSync(this.baseDir)) {
         fs.mkdirSync(this.baseDir, { recursive: true });
         fs.mkdirSync(this.baseDir + "/log", { recursive: true });
       }
 
-      let envs = createEnv(
+      const envs = createEnv(
         this.name,
         false,
         "nodeid.json",
@@ -53,16 +52,16 @@ class MiningNodeProcess {
         []
       );
 
-      var ps = spawn(cmd, args, {
+      const ps = spawn(cmd, args, {
         cwd: this.baseDir,
         // shell: true,
         env: { ...process.env, ...envs },
       });
 
       ps.stdout.on("data", (data) => {
-        //console.log(`stdout: ${data}`);
+        // console.log(`stdout: ${data}`);
         fs.appendFileSync(`${this.baseDir}/log/stdout.log`, data.toString());
-        resolve(ps);
+        // resolve(ps);
       });
 
       ps.stderr.on("data", (data) => {
@@ -71,7 +70,7 @@ class MiningNodeProcess {
       });
 
       ps.on("close", (code) => {
-        let ps = this.ps;
+        const ps = this.ps;
         this.ps = null;
         if (code) {
           console.log(`child process exited with code ${code}`);

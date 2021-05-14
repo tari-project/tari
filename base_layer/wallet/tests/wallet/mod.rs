@@ -24,6 +24,13 @@ use crate::support::{
     comms_and_services::get_next_memory_address,
     utils::{make_input, random_string},
 };
+use tari_comms_dht::DhtConfig;
+use tari_core::transactions::{tari_amount::MicroTari, transaction::OutputFeatures, types::CryptoFactories};
+use tari_crypto::keys::PublicKey;
+use tari_p2p::initialization::CommsConfig;
+use tari_shutdown::{Shutdown, ShutdownSignal};
+
+use crate::support::comms_and_services::get_next_memory_address;
 use aes_gcm::{
     aead::{generic_array::GenericArray, NewAead},
     Aes256Gcm,
@@ -633,6 +640,7 @@ async fn test_import_utxo() {
             utxo.value,
             &utxo.spending_key,
             base_node_identity.public_key(),
+            OutputFeatures::default(),
             "Testing".to_string(),
         )
         .await

@@ -587,6 +587,132 @@ impl<B: Backend> Component<B> for SendTab {
 
         match self.confirmation_dialog {
             None => (),
+            Some(ConfirmationDialogType::ConfirmSend) => {
+                draw_dialog(
+                    f,
+                    area,
+                    "Confirm Sending Transaction".to_string(),
+                    "Are you sure you want to send this transaction?\n(Y)es / (N)o".to_string(),
+                    Color::Red,
+                    120,
+                    9,
+                );
+            },
+            Some(ConfirmationDialogType::ConfirmDeleteContact) => {
+                draw_dialog(
+                    f,
+                    area,
+                    "Confirm Delete".to_string(),
+                    "Are you sure you want to delete this contact?\n(Y)es / (N)o".to_string(),
+                    Color::Red,
+                    120,
+                    9,
+                );
+            },
+        }
+    }
+
+    fn on_key(&mut self, app_state: &mut AppState, c: char) {
+        if self.error_message.is_some() && '\n' == c {
+            self.error_message = None;
+            return;
+        }
+
+        if self.success_message.is_some() && '\n' == c {
+            self.success_message = None;
+            return;
+        }
+
+        if self.send_result_watch.is_some() {
+            return;
+        }
+
+        if self.on_key_confirmation_dialog(c, app_state) == KeyHandled::Handled {
+            return;
+        }
+
+        if self.on_key_send_input(c) == KeyHandled::Handled {
+            return;
+        }
+
+        if self.on_key_edit_contact(c, app_state) == KeyHandled::Handled {
+            return;
+        }
+
+        if self.on_key_show_contacts(c, app_state) == KeyHandled::Handled {
+            return;
+        }
+
+        KeyHandled::NotHandled
+    }
+}
+
+impl<B: Backend> Component<B> for SendTab {
+    fn draw(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState) {
+        let areas = Layout::default()
+            .constraints(
+                [
+                    Constraint::Length(3),
+                    Constraint::Length(13),
+                    Constraint::Min(42),
+                    Constraint::Length(1),
+                ]
+                .as_ref(),
+            )
+            .split(area);
+
+        self.balance.draw(f, areas[0], app_state);
+        self.draw_send_form(f, areas[1], app_state);
+
+        if self.show_contacts {
+            self.draw_contacts(f, areas[2], app_state);
+            if self.show_edit_contact {
+                self.draw_edit_contact(f, area, app_state);
+            }
+        };
+
+        let rx_option = self.send_result_watch.take();
+        if let Some(rx) = rx_option {
+            let status = match (*rx.borrow()).clone() {
+                UiTransactionSendStatus::Initiated => "Initiated",
+                UiTransactionSendStatus::DiscoveryInProgress => "Discovery In Progress",
+                UiTransactionSendStatus::Error(e) => {
+                    self.error_message = Some(format!("Error sending transaction: {}, Press Enter to continue.", e));
+                    return;
+                },
+                UiTransactionSendStatus::SentDirect | UiTransactionSendStatus::SentViaSaf => {
+                    self.success_message =
+                        Some("Transaction successfully sent!\nPlease press Enter to continue".to_string());
+                    return;
+                },
+                UiTransactionSendStatus::TransactionComplete => {
+                    self.success_message =
+                        Some("Transaction completed successfully!\nPlease press Enter to continue".to_string());
+                    return;
+                },
+            };
+            draw_dialog(
+                f,
+                area,
+                "Please Wait".to_string(),
+                format!("Transaction Send Status: {}", status),
+                Color::Green,
+                120,
+                10,
+            );
+            self.send_result_watch = Some(rx);
+        }
+
+        if let Some(msg) = self.success_message.clone() {
+            draw_dialog(f, area, "Success!".to_string(), msg, Color::Green, 120, 9);
+        }
+
+        if let Some(msg) = self.error_message.clone() {
+            draw_dialog(f, area, "Error!".to_string(), msg, Color::Red, 120, 9);
+        }
+
+        match self.confirmation_dialog {
+            None => (),
             Some(ConfirmationDialogType::ConfirmNormalSend) => {
                 draw_dialog(
                     f,

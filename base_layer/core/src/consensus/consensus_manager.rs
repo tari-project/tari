@@ -88,18 +88,6 @@ impl ConsensusManager {
         }
     }
 
-    /// Returns the genesis block hash for the selected network.
-    #[deprecated]
-    pub fn get_genesis_block_hash(&self) -> Vec<u8> {
-        match self.inner.network {
-            Network::MainNet => get_mainnet_block_hash(),
-            Network::Ridcully => get_ridcully_block_hash(),
-            Network::Stibbons => get_stibbons_block_hash(),
-            Network::Weatherwax => get_weatherwax_block_hash(),
-            Network::LocalNet => get_weatherwax_block_hash(),
-        }
-    }
-
     /// Get a pointer to the emission schedule
     /// The height provided here, decides the emission curve to use. It swaps to the integer curve upon reaching
     /// 1_000_000_000
