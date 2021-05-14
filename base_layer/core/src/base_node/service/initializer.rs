@@ -73,8 +73,7 @@ where T: BlockchainBackend
         mempool: Mempool,
         consensus_manager: ConsensusManager,
         config: BaseNodeServiceConfig,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             inbound_message_subscription_factory,
             blockchain_db,

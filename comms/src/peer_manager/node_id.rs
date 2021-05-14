@@ -383,7 +383,7 @@ pub fn deserialize_node_id_from_hex<'de, D>(des: D) -> Result<NodeId, D::Error>
 where D: Deserializer<'de> {
     struct KeyStringVisitor<K> {
         marker: PhantomData<K>,
-    };
+    }
 
     impl<'de> de::Visitor<'de> for KeyStringVisitor<NodeId> {
         type Value = NodeId;
@@ -502,6 +502,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::vec_init_then_push)]
     fn test_closest() {
         let mut node_ids: Vec<NodeId> = Vec::new();
         node_ids.push(NodeId::try_from(&[144, 28, 106, 112, 220, 197, 216, 119, 9, 217, 42, 77, 159][..]).unwrap());

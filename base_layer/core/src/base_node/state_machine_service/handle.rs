@@ -37,8 +37,7 @@ impl StateMachineHandle {
         state_change_event_subscriber: broadcast::Sender<Arc<StateEvent>>,
         status_event_receiver: watch::Receiver<StatusInfo>,
         shutdown_signal: ShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             state_change_event_subscriber,
             status_event_receiver,

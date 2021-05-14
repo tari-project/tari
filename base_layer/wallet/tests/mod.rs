@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #![feature(type_alias_impl_trait)]
+#![feature(min_type_alias_impl_trait)]
 
 pub mod contacts_service;
 pub mod output_manager_service;

@@ -40,8 +40,7 @@ impl HeaderValidator {
         &self,
         db: &B,
         block_header: &BlockHeader,
-    ) -> Result<(Difficulty, Difficulty), ValidationError>
-    {
+    ) -> Result<(Difficulty, Difficulty), ValidationError> {
         let difficulty_window = fetch_target_difficulty(db, &self.rules, block_header.pow_algo(), block_header.height)?;
 
         let constants = self.rules.consensus_constants(block_header.height);
@@ -61,8 +60,7 @@ impl HeaderValidator {
         &self,
         db: &B,
         block_header: &BlockHeader,
-    ) -> Result<(), ValidationError>
-    {
+    ) -> Result<(), ValidationError> {
         if block_header.height == 0 {
             return Ok(()); // Its the genesis block, so we dont have to check median
         }
@@ -95,8 +93,7 @@ impl<B: BlockchainBackend> HeaderValidation<B> for HeaderValidator {
         backend: &B,
         header: &BlockHeader,
         previous_data: &BlockHeaderAccumulatedData,
-    ) -> Result<BlockHeaderAccumulatedDataBuilder, ValidationError>
-    {
+    ) -> Result<BlockHeaderAccumulatedDataBuilder, ValidationError> {
         check_timestamp_ftl(&header, &self.rules)?;
         let hash = header.hash();
         let header_id = format!("header #{} ({})", header.height, header.hash().to_hex());

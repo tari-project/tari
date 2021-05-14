@@ -91,8 +91,7 @@ pub enum WalletBoot {
 pub fn get_or_prompt_password(
     arg_password: Option<String>,
     config_password: Option<String>,
-) -> Result<Option<String>, ExitCodes>
-{
+) -> Result<Option<String>, ExitCodes> {
     if arg_password.is_some() {
         return Ok(arg_password);
     }
@@ -134,8 +133,7 @@ pub async fn change_password(
     config: &GlobalConfig,
     arg_password: Option<String>,
     shutdown_signal: ShutdownSignal,
-) -> Result<(), ExitCodes>
-{
+) -> Result<(), ExitCodes> {
     let mut wallet = init_wallet(config, arg_password, None, None, shutdown_signal).await?;
 
     let passphrase = prompt_password("New wallet password: ")?;
@@ -161,8 +159,7 @@ pub async fn change_password(
 pub async fn get_base_node_peer_config(
     config: &GlobalConfig,
     wallet: &mut WalletSqlite,
-) -> Result<PeerConfig, ExitCodes>
-{
+) -> Result<PeerConfig, ExitCodes> {
     // custom
     let base_node_custom = get_custom_base_node_peer_from_db(wallet).await;
 
@@ -263,8 +260,7 @@ pub async fn init_wallet(
     seed_words_file_name: Option<PathBuf>,
     master_key: Option<PrivateKey>,
     shutdown_signal: ShutdownSignal,
-) -> Result<WalletSqlite, ExitCodes>
-{
+) -> Result<WalletSqlite, ExitCodes> {
     fs::create_dir_all(
         &config
             .console_wallet_db_file
@@ -466,8 +462,7 @@ pub async fn init_wallet(
 async fn set_master_key(
     output_manager_backend: &OutputManagerSqliteDatabase,
     master_key: Option<PrivateKey>,
-) -> Result<bool, ExitCodes>
-{
+) -> Result<bool, ExitCodes> {
     if let Some(master_key) = master_key {
         let state = KeyManagerState {
             master_key,
@@ -492,8 +487,7 @@ pub async fn start_wallet(
     wallet: &mut WalletSqlite,
     base_node: &Peer,
     wallet_mode: &WalletMode,
-) -> Result<(), ExitCodes>
-{
+) -> Result<(), ExitCodes> {
     // TODO gRPC interfaces for setting base node
     debug!(target: LOG_TARGET, "Setting base node peer");
 

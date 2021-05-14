@@ -45,8 +45,7 @@ pub fn create_test_pow_blockchain<T: BlockchainBackend>(
     db: &BlockchainDatabase<T>,
     mut pow_algos: Vec<PowAlgorithm>,
     consensus_manager: &ConsensusManager,
-)
-{
+) {
     // Remove the first as it will be replaced by the genesis block
     pow_algos.remove(0);
     let block0 = db.fetch_block(0).unwrap().block().clone();
@@ -59,8 +58,7 @@ pub fn append_to_pow_blockchain<T: BlockchainBackend>(
     chain_tip: Block,
     pow_algos: Vec<PowAlgorithm>,
     consensus_manager: &ConsensusManager,
-)
-{
+) {
     let mut prev_block = chain_tip;
     for pow_algo in pow_algos {
         let new_block = chain_block(&prev_block, Vec::new(), consensus_manager);
@@ -109,8 +107,7 @@ pub fn calculate_accumulated_difficulty(
     pow_algo: PowAlgorithm,
     heights: Vec<u64>,
     consensus_constants: &ConsensusConstants,
-) -> Difficulty
-{
+) -> Difficulty {
     let mut lwma = LinearWeightedMovingAverage::new(
         consensus_constants.get_difficulty_block_window() as usize,
         consensus_constants.get_diff_target_block_interval(pow_algo),

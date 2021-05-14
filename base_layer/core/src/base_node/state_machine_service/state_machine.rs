@@ -96,8 +96,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         randomx_factory: RandomXFactory,
         consensus_rules: ConsensusManager,
         interrupt_signal: ShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             db,
             local_node_interface,

@@ -102,8 +102,7 @@ pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     Arc<NodeIdentity>,
     BaseNodeWalletRpcMockState,
     ConnectivityManagerMockState,
-)
-{
+) {
     let shutdown = Shutdown::new();
     let factories = CryptoFactories::default();
 
@@ -361,8 +360,7 @@ pub fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     Shutdown,
     TransactionServiceHandle,
     BaseNodeServiceHandle,
-)
-{
+) {
     let shutdown = Shutdown::new();
     let factories = CryptoFactories::default();
 

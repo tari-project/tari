@@ -21,6 +21,7 @@ tari_storage  = { version = "^0.8", path = "../../infrastructure/storage"}
 anyhow = "1.0.32"
 bitflags = "1.2.0"
 bytes = "0.4.12"
+chacha20 = "0.7.1"
 chrono = "0.4.9"
 diesel = {version="1.4", features = ["sqlite", "serde_json", "chrono", "numeric"]}
 diesel_migrations =  "1.4"

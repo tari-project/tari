@@ -476,8 +476,7 @@ mod test {
             88, 176, 48, 182, 128, 13, 67, 59, 188, 178, 181, 96, 175, 226, 160, 142, 77, 193, 82, 250, 119, 234, 217,
             109, 55, 170, 241, 72, 151, 211, 192, 150,
         ];
-        let mut hashes = Vec::new();
-        hashes.push(Hash::from(tx_hash));
+        let mut hashes = vec![Hash::from(tx_hash)];
         let mut root = tree_hash(&hashes).unwrap();
         assert_eq!(root.as_bytes(), tx_hash);
         hashes.push(Hash::from(tx_hash));

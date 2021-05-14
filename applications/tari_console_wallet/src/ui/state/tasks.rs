@@ -36,8 +36,7 @@ pub async fn send_transaction_task(
     fee_per_gram: MicroTari,
     mut transaction_service_handle: TransactionServiceHandle,
     result_tx: watch::Sender<UiTransactionSendStatus>,
-)
-{
+) {
     let _ = result_tx.broadcast(UiTransactionSendStatus::Initiated);
     let mut event_stream = transaction_service_handle.get_event_stream_fused();
     let mut send_direct_received_result = (false, false);
@@ -109,8 +108,7 @@ pub async fn send_one_sided_transaction_task(
     fee_per_gram: MicroTari,
     mut transaction_service_handle: TransactionServiceHandle,
     result_tx: watch::Sender<UiTransactionSendStatus>,
-)
-{
+) {
     let _ = result_tx.broadcast(UiTransactionSendStatus::Initiated);
     let mut event_stream = transaction_service_handle.get_event_stream_fused();
     match transaction_service_handle

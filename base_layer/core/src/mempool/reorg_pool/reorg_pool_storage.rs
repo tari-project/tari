@@ -102,8 +102,7 @@ impl ReorgPoolStorage {
         &mut self,
         removed_blocks: Vec<Arc<Block>>,
         new_blocks: &[Arc<Block>],
-    ) -> Vec<Arc<Transaction>>
-    {
+    ) -> Vec<Arc<Transaction>> {
         for block in new_blocks {
             self.discard_double_spends(block);
         }

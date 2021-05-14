@@ -268,8 +268,7 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         kernel: TransactionKernel,
         header_hash: HashOutput,
         mmr_position: u32,
-    ) -> &mut Self
-    {
+    ) -> &mut Self {
         self.transaction.insert_kernel(kernel, header_hash, mmr_position);
         self
     }
@@ -280,8 +279,7 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         header_hash: HashOutput,
         header_height: u64,
         mmr_position: u32,
-    ) -> &mut Self
-    {
+    ) -> &mut Self {
         self.transaction
             .insert_utxo(output, header_hash, header_height, mmr_position);
         self
@@ -294,8 +292,7 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         header_hash: HashOutput,
         header_height: u64,
         mmr_position: u32,
-    ) -> &mut Self
-    {
+    ) -> &mut Self {
         self.transaction
             .insert_pruned_utxo(output_hash, proof_hash, header_hash, header_height, mmr_position);
         self
@@ -306,8 +303,7 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         mmr_tree: MmrTree,
         header_hash: HashOutput,
         pruned_hash_set: PrunedHashSet,
-    ) -> &mut Self
-    {
+    ) -> &mut Self {
         self.transaction
             .update_pruned_hash_set(mmr_tree, header_hash, pruned_hash_set);
         self

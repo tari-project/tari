@@ -51,8 +51,9 @@ where
     pub fn new(executor: BoundedExecutor, stream: TStream, service: TSvc, shutdown_signal: ShutdownSignal) -> Self {
         Self {
             executor,
-            stream,
             service,
+            stream,
+
             shutdown_signal,
         }
     }

@@ -50,8 +50,7 @@ impl InboundMessaging {
         rate_limit_capacity: usize,
         rate_limit_restock_interval: Duration,
         inactivity_timeout: Option<Duration>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             peer,
             inbound_message_tx,

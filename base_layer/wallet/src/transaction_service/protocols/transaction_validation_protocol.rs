@@ -76,8 +76,7 @@ where TBackend: TransactionBackend + 'static
         base_node_update_receiver: broadcast::Receiver<CommsPublicKey>,
         timeout_update_receiver: broadcast::Receiver<Duration>,
         retry_strategy: ValidationRetryStrategy,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             id,
             resources,
@@ -423,14 +422,13 @@ where TBackend: TransactionBackend + 'static
         &mut self,
         batch: Vec<CompletedTransaction>,
         client: &mut BaseNodeWalletRpcClient,
-    ) -> Result<bool, TransactionServiceError>
-    {
+    ) -> Result<bool, TransactionServiceError> {
         let mut batch_signatures = Vec::new();
         for tx in batch.iter() {
             let signature = tx
                 .transaction
                 .first_kernel_excess_sig()
-                .ok_or_else(|| TransactionServiceError::InvalidTransaction)?;
+                .ok_or(TransactionServiceError::InvalidTransaction)?;
             batch_signatures.push(SignatureProto::from(signature.clone()));
         }
 

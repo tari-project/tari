@@ -167,18 +167,14 @@ impl LMDBBuilder {
         if !self.path.exists() {
             return Err(LMDBError::InvalidPath);
         }
-        let path = self
-            .path
-            .to_str()
-            .map(String::from)
-            .ok_or_else(|| LMDBError::InvalidPath)?;
+        let path = self.path.to_str().map(String::from).ok_or(LMDBError::InvalidPath)?;
 
         let env = unsafe {
             let mut builder = EnvBuilder::new()?;
             builder.set_mapsize(self.env_config.init_size_bytes)?;
             builder.set_maxdbs(max_dbs)?;
             // Using open::Flags::NOTLS does not compile!?! NOTLS=0x200000
-            let flags = open::Flags::from_bits(0x200_000).expect("LMDB open::Flag is correct");
+            let flags = open::Flags::from_bits(0x0020_0000).expect("LMDB open::Flag is correct");
             builder.open(&path, flags, 0o600)?
         };
         let env = Arc::new(env);
@@ -386,10 +382,7 @@ impl LMDBStore {
 
     /// Returns a handle to the database given in `db_name`, if it exists, otherwise return None.
     pub fn get_handle(&self, db_name: &str) -> Option<LMDBDatabase> {
-        match self.databases.get(db_name) {
-            Some(db) => Some(db.clone()),
-            None => None,
-        }
+        self.databases.get(db_name).cloned()
     }
 
     pub fn env_config(&self) -> LMDBConfig {

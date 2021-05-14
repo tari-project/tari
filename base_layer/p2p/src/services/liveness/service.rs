@@ -77,8 +77,7 @@ where
         outbound_messaging: OutboundMessageRequester,
         event_publisher: LivenessEventSender,
         shutdown_signal: ShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             request_rx: Some(request_rx),
             ping_stream: Some(ping_stream),
@@ -150,7 +149,7 @@ where
         let node_id = source_peer.node_id;
         let public_key = source_peer.public_key;
 
-        match ping_pong_msg.kind().ok_or_else(|| LivenessError::InvalidPingPongType)? {
+        match ping_pong_msg.kind().ok_or(LivenessError::InvalidPingPongType)? {
             PingPong::Ping => {
                 self.state.inc_pings_received();
                 self.send_pong(ping_pong_msg.nonce, public_key).await.unwrap();
@@ -533,6 +532,6 @@ mod test {
         let mut subscriber = publisher.subscribe().fuse();
         drop(publisher);
         let msg = subscriber.next().await;
-        assert_eq!(msg.is_none(), true);
+        assert!(msg.is_none());
     }
 }

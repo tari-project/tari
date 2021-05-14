@@ -95,7 +95,7 @@ where
         pruned_mmr.delete(index);
     }
     pruned_mmr.compress();
-    Ok(pruned_mmr.get_merkle_root()?)
+    pruned_mmr.get_merkle_root()
 }
 
 pub fn calculate_mmr_root<D, B>(
@@ -110,5 +110,5 @@ where
     for hash in additions {
         mmr.push(hash)?;
     }
-    Ok(mmr.get_merkle_root()?)
+    mmr.get_merkle_root()
 }

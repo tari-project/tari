@@ -44,8 +44,7 @@ pub fn pubsub_connector(
     executor: Handle,
     buf_size: usize,
     rate_limit: usize,
-) -> (PubsubDomainConnector, SubscriptionFactory)
-{
+) -> (PubsubDomainConnector, SubscriptionFactory) {
     let (publisher, subscription_factory) = pubsub_channel(buf_size);
     let (sender, receiver) = mpsc::channel(buf_size);
     trace!(

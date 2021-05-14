@@ -63,8 +63,8 @@ impl TestBlockchain {
         Self {
             store,
             blocks,
-            consensus_manager,
             hash_to_block,
+            consensus_manager,
         }
     }
 

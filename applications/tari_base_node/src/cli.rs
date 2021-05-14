@@ -65,8 +65,7 @@ fn box_tabular_data_rows(
     sizes: Vec<usize>,
     target_length: usize,
     spacing: usize,
-) -> Vec<String>
-{
+) -> Vec<String> {
     let max_cell_length = sizes.iter().max().unwrap();
     let mut result = Vec::new();
     for items in data {

@@ -122,8 +122,7 @@ where
 async fn read_until<E: fmt::Debug, S: Stream<Item = Result<String, E>> + Unpin>(
     stream: &mut S,
     pat: &str,
-) -> Vec<String>
-{
+) -> Vec<String> {
     let mut items = Vec::new();
     loop {
         match stream.next().await {

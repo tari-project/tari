@@ -72,8 +72,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         sync_peer: PeerConnection,
         horizon_sync_height: u64,
         prover: &'a RangeProofService,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             shared,
             sync_peer,
@@ -118,8 +117,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         &mut self,
         client: &mut rpc::BaseNodeSyncRpcClient,
         to_header: &BlockHeader,
-    ) -> Result<(), HorizonSyncError>
-    {
+    ) -> Result<(), HorizonSyncError> {
         debug!(target: LOG_TARGET, "Synchronizing kernels");
         self.synchronize_kernels(client, to_header).await?;
         debug!(target: LOG_TARGET, "Synchronizing outputs");
@@ -131,8 +129,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         &mut self,
         client: &mut rpc::BaseNodeSyncRpcClient,
         to_header: &BlockHeader,
-    ) -> Result<(), HorizonSyncError>
-    {
+    ) -> Result<(), HorizonSyncError> {
         let local_num_kernels = self.db().fetch_mmr_size(MmrTree::Kernel).await?;
 
         let remote_num_kernels = to_header.kernel_mmr_size;
@@ -259,8 +256,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         &mut self,
         client: &mut rpc::BaseNodeSyncRpcClient,
         to_header: &BlockHeader,
-    ) -> Result<(), HorizonSyncError>
-    {
+    ) -> Result<(), HorizonSyncError> {
         let local_num_outputs = self.db().fetch_mmr_size(MmrTree::Utxo).await?;
 
         let remote_num_outputs = to_header.output_mmr_size;

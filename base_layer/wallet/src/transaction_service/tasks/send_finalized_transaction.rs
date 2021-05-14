@@ -47,8 +47,7 @@ pub async fn send_finalized_transaction_message(
     mut outbound_message_service: OutboundMessageRequester,
     direct_send_timeout: Duration,
     transaction_routing_mechanism: TransactionRoutingMechanism,
-) -> Result<(), TransactionServiceError>
-{
+) -> Result<(), TransactionServiceError> {
     match transaction_routing_mechanism {
         TransactionRoutingMechanism::DirectOnly | TransactionRoutingMechanism::DirectAndStoreAndForward => {
             send_finalized_transaction_message_direct(
@@ -89,8 +88,7 @@ pub async fn send_finalized_transaction_message_direct(
     mut outbound_message_service: OutboundMessageRequester,
     direct_send_timeout: Duration,
     transaction_routing_mechanism: TransactionRoutingMechanism,
-) -> Result<(), TransactionServiceError>
-{
+) -> Result<(), TransactionServiceError> {
     let finalized_transaction_message = proto::TransactionFinalizedMessage {
         tx_id,
         transaction: Some(transaction.clone().into()),
@@ -213,8 +211,7 @@ async fn send_transaction_finalized_message_store_and_forward(
     destination_pubkey: CommsPublicKey,
     msg: proto::TransactionFinalizedMessage,
     outbound_message_service: &mut OutboundMessageRequester,
-) -> Result<bool, TransactionServiceError>
-{
+) -> Result<bool, TransactionServiceError> {
     match outbound_message_service
         .closest_broadcast(
             NodeId::from_public_key(&destination_pubkey),

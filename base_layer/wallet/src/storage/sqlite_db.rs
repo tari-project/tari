@@ -78,8 +78,7 @@ impl WalletSqliteDatabase {
         &self,
         secret_key: &CommsSecretKey,
         conn: &SqliteConnection,
-    ) -> Result<(), WalletStorageError>
-    {
+    ) -> Result<(), WalletStorageError> {
         let cipher = acquire_read_lock!(self.cipher);
 
         match cipher.as_ref() {
@@ -411,8 +410,7 @@ impl WalletBackend for WalletSqliteDatabase {
 fn check_db_encryption_status(
     database_connection: &WalletDbConnection,
     cipher: Option<Aes256Gcm>,
-) -> Result<(), WalletStorageError>
-{
+) -> Result<(), WalletStorageError> {
     let conn = database_connection.acquire_lock();
     let secret_key = WalletSettingSql::get(DbKey::MasterSecretKey.to_string(), &conn)?;
     let db_public_key = WalletSettingSql::get(DbKey::MasterPublicKey.to_string(), &conn)?;
@@ -742,11 +740,11 @@ mod test {
         let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
 
         let secret_key = CommsSecretKey::random(&mut OsRng);
-        let mut key_values = vec![];
-        key_values.push(ClientKeyValueSql::new("key1".to_string(), "value1".to_string()));
-        key_values.push(ClientKeyValueSql::new("key2".to_string(), "value2".to_string()));
-        key_values.push(ClientKeyValueSql::new("key3".to_string(), "value3".to_string()));
-
+        let key_values = vec![
+            ClientKeyValueSql::new("key1".to_string(), "value1".to_string()),
+            ClientKeyValueSql::new("key2".to_string(), "value2".to_string()),
+            ClientKeyValueSql::new("key3".to_string(), "value3".to_string()),
+        ];
         let db = WalletSqliteDatabase::new(connection.clone(), None).unwrap();
         {
             let conn = connection.acquire_lock();

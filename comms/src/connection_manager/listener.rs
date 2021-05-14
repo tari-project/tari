@@ -86,8 +86,7 @@ where
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
         shutdown_signal: ShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             transport,
             noise_config,
@@ -182,8 +181,7 @@ where
         socket: TTransport::Output,
         permit: Arc<AtomicUsize>,
         shutdown_signal: ShutdownSignal,
-    )
-    {
+    ) {
         permit.fetch_sub(1, Ordering::SeqCst);
         let liveness = LivenessSession::new(socket);
         debug!(target: LOG_TARGET, "Started liveness session");
@@ -300,8 +298,7 @@ where
         our_supported_protocols: Vec<ProtocolId>,
         user_agent: String,
         allow_test_addresses: bool,
-    ) -> Result<PeerConnection, ConnectionManagerError>
-    {
+    ) -> Result<PeerConnection, ConnectionManagerError> {
         static CONNECTION_DIRECTION: ConnectionDirection = ConnectionDirection::Inbound;
         debug!(
             target: LOG_TARGET,
@@ -317,7 +314,7 @@ where
 
         let authenticated_public_key = noise_socket
             .get_remote_public_key()
-            .ok_or_else(|| ConnectionManagerError::InvalidStaticPublicKey)?;
+            .ok_or(ConnectionManagerError::InvalidStaticPublicKey)?;
 
         // Check if we know the peer and if it is banned
         let known_peer = common::find_unbanned_peer(&peer_manager, &authenticated_public_key).await?;

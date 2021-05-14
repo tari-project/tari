@@ -51,8 +51,7 @@ pub fn standard_error_response(
     req_id: Option<i64>,
     err: jsonrpc::error::StandardError,
     data: Option<json::Value>,
-) -> json::Value
-{
+) -> json::Value {
     let err = jsonrpc::error::standard_error(err, data);
     json!({
         "id":  req_id.unwrap_or(-1),
@@ -68,8 +67,7 @@ pub fn error_response(
     err_code: i32,
     err_message: &str,
     err_data: Option<json::Value>,
-) -> json::Value
-{
+) -> json::Value {
     let mut err = json!({
         "code": err_code,
         "message": err_message,

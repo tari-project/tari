@@ -93,8 +93,7 @@ impl DecryptedDhtMessage {
         message_body: EnvelopeBody,
         authenticated_origin: Option<CommsPublicKey>,
         message: DhtInboundMessage,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             tag: message.tag,
             version: message.version,

@@ -96,8 +96,7 @@ impl LivenessMock {
     pub fn new(
         receiver: reply_channel::TryReceiver<LivenessRequest, LivenessResponse, LivenessError>,
         mock_state: LivenessMockState,
-    ) -> Self
-    {
+    ) -> Self {
         Self { receiver, mock_state }
     }
 

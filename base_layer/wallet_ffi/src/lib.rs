@@ -213,6 +213,7 @@ use tari_wallet::{
     error::WalletStorageError,
     output_manager_service::protocols::txo_validation_protocol::TxoValidationType,
     types::ValidationRetryStrategy,
+    util::emoji::EmojiIdError,
     utxo_scanner_service::utxo_scanning::UtxoScannerService,
     WalletSqlite,
 };
@@ -299,8 +300,7 @@ pub unsafe extern "C" fn byte_vector_create(
     byte_array: *const c_uchar,
     element_count: c_uint,
     error_out: *mut c_int,
-) -> *mut ByteVector
-{
+) -> *mut ByteVector {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let mut bytes = ByteVector(Vec::new());
@@ -358,13 +358,13 @@ pub unsafe extern "C" fn byte_vector_get_at(ptr: *mut ByteVector, position: c_ui
     if ptr.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("ptr".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
-        return 0 as c_uchar;
+        return 0u8;
     }
     let len = byte_vector_get_length(ptr, error_out) as c_int - 1; // clamp to length
     if len < 0 || position > len as c_uint {
         error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
         ptr::swap(error_out, &mut error as *mut c_int);
-        return 0 as c_uchar;
+        return 0u8;
     }
     (*ptr).0[position as usize]
 }
@@ -545,8 +545,7 @@ pub unsafe extern "C" fn public_key_get_bytes(pk: *mut TariPublicKey, error_out:
 pub unsafe extern "C" fn public_key_from_private_key(
     secret_key: *mut TariPrivateKey,
     error_out: *mut c_int,
-) -> *mut TariPublicKey
-{
+) -> *mut TariPublicKey {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if secret_key.is_null() {
@@ -649,7 +648,7 @@ pub unsafe extern "C" fn emoji_id_to_public_key(emoji: *const c_char, error_out:
 
     match CStr::from_ptr(emoji)
         .to_str()
-        .map_err(|_| ())
+        .map_err(|_| EmojiIdError)
         .and_then(EmojiId::str_to_pubkey)
     {
         Ok(pk) => Box::into_raw(Box::new(pk)),
@@ -865,8 +864,7 @@ pub unsafe extern "C" fn seed_words_get_at(
     seed_words: *mut TariSeedWords,
     position: c_uint,
     error_out: *mut c_int,
-) -> *mut c_char
-{
+) -> *mut c_char {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let mut word = CString::new("").unwrap();
@@ -907,8 +905,7 @@ pub unsafe extern "C" fn seed_words_push_word(
     seed_words: *mut TariSeedWords,
     word: *const c_char,
     error_out: *mut c_int,
-) -> c_uchar
-{
+) -> c_uchar {
     use tari_key_manager::mnemonic::{Mnemonic, MnemonicLanguage};
 
     let mut error = 0;
@@ -986,8 +983,7 @@ pub unsafe extern "C" fn contact_create(
     alias: *const c_char,
     public_key: *mut TariPublicKey,
     error_out: *mut c_int,
-) -> *mut TariContact
-{
+) -> *mut TariContact {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let alias_string;
@@ -1056,8 +1052,7 @@ pub unsafe extern "C" fn contact_get_alias(contact: *mut TariContact, error_out:
 pub unsafe extern "C" fn contact_get_public_key(
     contact: *mut TariContact,
     error_out: *mut c_int,
-) -> *mut TariPublicKey
-{
+) -> *mut TariPublicKey {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if contact.is_null() {
@@ -1132,8 +1127,7 @@ pub unsafe extern "C" fn contacts_get_at(
     contacts: *mut TariContacts,
     position: c_uint,
     error_out: *mut c_int,
-) -> *mut TariContact
-{
+) -> *mut TariContact {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if contacts.is_null() {
@@ -1188,8 +1182,7 @@ pub unsafe extern "C" fn contacts_destroy(contacts: *mut TariContacts) {
 pub unsafe extern "C" fn completed_transactions_get_length(
     transactions: *mut TariCompletedTransactions,
     error_out: *mut c_int,
-) -> c_uint
-{
+) -> c_uint {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let mut len = 0;
@@ -1222,8 +1215,7 @@ pub unsafe extern "C" fn completed_transactions_get_at(
     transactions: *mut TariCompletedTransactions,
     position: c_uint,
     error_out: *mut c_int,
-) -> *mut TariCompletedTransaction
-{
+) -> *mut TariCompletedTransaction {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transactions.is_null() {
@@ -1278,8 +1270,7 @@ pub unsafe extern "C" fn completed_transactions_destroy(transactions: *mut TariC
 pub unsafe extern "C" fn pending_outbound_transactions_get_length(
     transactions: *mut TariPendingOutboundTransactions,
     error_out: *mut c_int,
-) -> c_uint
-{
+) -> c_uint {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let mut len = 0;
@@ -1313,8 +1304,7 @@ pub unsafe extern "C" fn pending_outbound_transactions_get_at(
     transactions: *mut TariPendingOutboundTransactions,
     position: c_uint,
     error_out: *mut c_int,
-) -> *mut TariPendingOutboundTransaction
-{
+) -> *mut TariPendingOutboundTransaction {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transactions.is_null() {
@@ -1369,8 +1359,7 @@ pub unsafe extern "C" fn pending_outbound_transactions_destroy(transactions: *mu
 pub unsafe extern "C" fn pending_inbound_transactions_get_length(
     transactions: *mut TariPendingInboundTransactions,
     error_out: *mut c_int,
-) -> c_uint
-{
+) -> c_uint {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let mut len = 0;
@@ -1403,8 +1392,7 @@ pub unsafe extern "C" fn pending_inbound_transactions_get_at(
     transactions: *mut TariPendingInboundTransactions,
     position: c_uint,
     error_out: *mut c_int,
-) -> *mut TariPendingInboundTransaction
-{
+) -> *mut TariPendingInboundTransaction {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transactions.is_null() {
@@ -1458,8 +1446,7 @@ pub unsafe extern "C" fn pending_inbound_transactions_destroy(transactions: *mut
 pub unsafe extern "C" fn completed_transaction_get_transaction_id(
     transaction: *mut TariCompletedTransaction,
     error_out: *mut c_int,
-) -> c_ulonglong
-{
+) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -1487,8 +1474,7 @@ pub unsafe extern "C" fn completed_transaction_get_transaction_id(
 pub unsafe extern "C" fn completed_transaction_get_destination_public_key(
     transaction: *mut TariCompletedTransaction,
     error_out: *mut c_int,
-) -> *mut TariPublicKey
-{
+) -> *mut TariPublicKey {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -1518,8 +1504,7 @@ pub unsafe extern "C" fn completed_transaction_get_destination_public_key(
 pub unsafe extern "C" fn completed_transaction_get_excess(
     transaction: *mut TariCompletedTransaction,
     error_out: *mut c_int,
-) -> *mut TariExcess
-{
+) -> *mut TariExcess {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -1572,8 +1557,7 @@ pub unsafe extern "C" fn completed_transaction_get_excess(
 pub unsafe extern "C" fn completed_transaction_get_public_nonce(
     transaction: *mut TariCompletedTransaction,
     error_out: *mut c_int,
-) -> *mut TariExcessPublicNonce
-{
+) -> *mut TariExcessPublicNonce {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -1626,8 +1610,7 @@ pub unsafe extern "C" fn completed_transaction_get_public_nonce(
 pub unsafe extern "C" fn completed_transaction_get_signature(
     transaction: *mut TariCompletedTransaction,
     error_out: *mut c_int,
-) -> *mut TariExcessSignature
-{
+) -> *mut TariExcessSignature {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -1679,8 +1662,7 @@ pub unsafe extern "C" fn completed_transaction_get_signature(
 pub unsafe extern "C" fn completed_transaction_get_source_public_key(
     transaction: *mut TariCompletedTransaction,
     error_out: *mut c_int,
-) -> *mut TariPublicKey
-{
+) -> *mut TariPublicKey {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -1718,8 +1700,7 @@ pub unsafe extern "C" fn completed_transaction_get_source_public_key(
 pub unsafe extern "C" fn completed_transaction_get_status(
     transaction: *mut TariCompletedTransaction,
     error_out: *mut c_int,
-) -> c_int
-{
+) -> c_int {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -1747,8 +1728,7 @@ pub unsafe extern "C" fn completed_transaction_get_status(
 pub unsafe extern "C" fn completed_transaction_get_amount(
     transaction: *mut TariCompletedTransaction,
     error_out: *mut c_int,
-) -> c_ulonglong
-{
+) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -1775,8 +1755,7 @@ pub unsafe extern "C" fn completed_transaction_get_amount(
 pub unsafe extern "C" fn completed_transaction_get_fee(
     transaction: *mut TariCompletedTransaction,
     error_out: *mut c_int,
-) -> c_ulonglong
-{
+) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -1803,8 +1782,7 @@ pub unsafe extern "C" fn completed_transaction_get_fee(
 pub unsafe extern "C" fn completed_transaction_get_timestamp(
     transaction: *mut TariCompletedTransaction,
     error_out: *mut c_int,
-) -> c_longlong
-{
+) -> c_longlong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -1832,8 +1810,7 @@ pub unsafe extern "C" fn completed_transaction_get_timestamp(
 pub unsafe extern "C" fn completed_transaction_get_message(
     transaction: *mut TariCompletedTransaction,
     error_out: *mut c_int,
-) -> *const c_char
-{
+) -> *const c_char {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let message = (*transaction).message.clone();
@@ -1864,8 +1841,7 @@ pub unsafe extern "C" fn completed_transaction_get_message(
 pub unsafe extern "C" fn completed_transaction_is_valid(
     transaction: *mut TariCompletedTransaction,
     error_out: *mut c_int,
-) -> bool
-{
+) -> bool {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -1894,8 +1870,7 @@ pub unsafe extern "C" fn completed_transaction_is_valid(
 pub unsafe extern "C" fn completed_transaction_is_outbound(
     tx: *mut TariCompletedTransaction,
     error_out: *mut c_int,
-) -> bool
-{
+) -> bool {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -1928,8 +1903,7 @@ pub unsafe extern "C" fn completed_transaction_is_outbound(
 pub unsafe extern "C" fn completed_transaction_get_confirmations(
     tx: *mut TariCompletedTransaction,
     error_out: *mut c_int,
-) -> c_ulonglong
-{
+) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -1939,10 +1913,7 @@ pub unsafe extern "C" fn completed_transaction_get_confirmations(
         return 0;
     }
 
-    match (*tx).confirmations {
-        None => 0,
-        Some(c) => c,
-    }
+    (*tx).confirmations.unwrap_or(0)
 }
 
 /// Frees memory for a TariCompletedTransaction
@@ -1982,8 +1953,7 @@ pub unsafe extern "C" fn completed_transaction_destroy(transaction: *mut TariCom
 pub unsafe extern "C" fn pending_outbound_transaction_get_transaction_id(
     transaction: *mut TariPendingOutboundTransaction,
     error_out: *mut c_int,
-) -> c_ulonglong
-{
+) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -2011,8 +1981,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_transaction_id(
 pub unsafe extern "C" fn pending_outbound_transaction_get_destination_public_key(
     transaction: *mut TariPendingOutboundTransaction,
     error_out: *mut c_int,
-) -> *mut TariPublicKey
-{
+) -> *mut TariPublicKey {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -2040,8 +2009,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_destination_public_key
 pub unsafe extern "C" fn pending_outbound_transaction_get_amount(
     transaction: *mut TariPendingOutboundTransaction,
     error_out: *mut c_int,
-) -> c_ulonglong
-{
+) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -2068,8 +2036,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_amount(
 pub unsafe extern "C" fn pending_outbound_transaction_get_fee(
     transaction: *mut TariPendingOutboundTransaction,
     error_out: *mut c_int,
-) -> c_ulonglong
-{
+) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -2096,8 +2063,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_fee(
 pub unsafe extern "C" fn pending_outbound_transaction_get_timestamp(
     transaction: *mut TariPendingOutboundTransaction,
     error_out: *mut c_int,
-) -> c_longlong
-{
+) -> c_longlong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -2126,8 +2092,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_timestamp(
 pub unsafe extern "C" fn pending_outbound_transaction_get_message(
     transaction: *mut TariPendingOutboundTransaction,
     error_out: *mut c_int,
-) -> *const c_char
-{
+) -> *const c_char {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let message = (*transaction).message.clone();
@@ -2166,8 +2131,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_message(
 pub unsafe extern "C" fn pending_outbound_transaction_get_status(
     transaction: *mut TariPendingOutboundTransaction,
     error_out: *mut c_int,
-) -> c_int
-{
+) -> c_int {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -2216,8 +2180,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_destroy(transaction: *mut 
 pub unsafe extern "C" fn pending_inbound_transaction_get_transaction_id(
     transaction: *mut TariPendingInboundTransaction,
     error_out: *mut c_int,
-) -> c_ulonglong
-{
+) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -2245,8 +2208,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_transaction_id(
 pub unsafe extern "C" fn pending_inbound_transaction_get_source_public_key(
     transaction: *mut TariPendingInboundTransaction,
     error_out: *mut c_int,
-) -> *mut TariPublicKey
-{
+) -> *mut TariPublicKey {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -2274,8 +2236,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_source_public_key(
 pub unsafe extern "C" fn pending_inbound_transaction_get_amount(
     transaction: *mut TariPendingInboundTransaction,
     error_out: *mut c_int,
-) -> c_ulonglong
-{
+) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -2302,8 +2263,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_amount(
 pub unsafe extern "C" fn pending_inbound_transaction_get_timestamp(
     transaction: *mut TariPendingInboundTransaction,
     error_out: *mut c_int,
-) -> c_longlong
-{
+) -> c_longlong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -2332,8 +2292,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_timestamp(
 pub unsafe extern "C" fn pending_inbound_transaction_get_message(
     transaction: *mut TariPendingInboundTransaction,
     error_out: *mut c_int,
-) -> *const c_char
-{
+) -> *const c_char {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let message = (*transaction).message.clone();
@@ -2372,8 +2331,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_message(
 pub unsafe extern "C" fn pending_inbound_transaction_get_status(
     transaction: *mut TariPendingInboundTransaction,
     error_out: *mut c_int,
-) -> c_int
-{
+) -> c_int {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -2442,8 +2400,7 @@ pub unsafe extern "C" fn transport_memory_create() -> *mut TariTransportType {
 pub unsafe extern "C" fn transport_tcp_create(
     listener_address: *const c_char,
     error_out: *mut c_int,
-) -> *mut TariTransportType
-{
+) -> *mut TariTransportType {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -2487,8 +2444,7 @@ pub unsafe extern "C" fn transport_tor_create(
     socks_username: *const c_char,
     socks_password: *const c_char,
     error_out: *mut c_int,
-) -> *mut TariTransportType
-{
+) -> *mut TariTransportType {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -2550,8 +2506,7 @@ pub unsafe extern "C" fn transport_tor_create(
 pub unsafe extern "C" fn transport_memory_get_address(
     transport: *const TariTransportType,
     error_out: *mut c_int,
-) -> *mut c_char
-{
+) -> *mut c_char {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let mut address = CString::new("").unwrap();
@@ -2624,8 +2579,7 @@ pub unsafe extern "C" fn comms_config_create(
     discovery_timeout_in_secs: c_ulonglong,
     saf_message_duration_in_secs: c_ulonglong,
     error_out: *mut c_int,
-) -> *mut TariCommsConfig
-{
+) -> *mut TariCommsConfig {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let public_address_str;
@@ -2857,8 +2811,7 @@ pub unsafe extern "C" fn wallet_create(
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, u8),
     callback_saf_messages_received: unsafe extern "C" fn(),
     error_out: *mut c_int,
-) -> *mut TariWallet
-{
+) -> *mut TariWallet {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if config.is_null() {
@@ -3023,8 +2976,7 @@ pub unsafe extern "C" fn wallet_sign_message(
     wallet: *mut TariWallet,
     msg: *const c_char,
     error_out: *mut c_int,
-) -> *mut c_char
-{
+) -> *mut c_char {
     let mut error = 0;
     let mut result = CString::new("").unwrap();
 
@@ -3084,8 +3036,7 @@ pub unsafe extern "C" fn wallet_verify_message_signature(
     hex_sig_nonce: *const c_char,
     msg: *const c_char,
     error_out: *mut c_int,
-) -> bool
-{
+) -> bool {
     let mut error = 0;
     let mut result = false;
     ptr::swap(error_out, &mut error as *mut c_int);
@@ -3168,8 +3119,7 @@ pub unsafe extern "C" fn wallet_test_generate_data(
     wallet: *mut TariWallet,
     datastore_path: *const c_char,
     error_out: *mut c_int,
-) -> bool
-{
+) -> bool {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -3256,8 +3206,7 @@ pub unsafe extern "C" fn wallet_test_complete_sent_transaction(
     wallet: *mut TariWallet,
     tx: *mut TariPendingOutboundTransaction,
     error_out: *mut c_int,
-) -> bool
-{
+) -> bool {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -3302,8 +3251,7 @@ pub unsafe extern "C" fn wallet_test_finalize_received_transaction(
     wallet: *mut TariWallet,
     tx: *mut TariPendingInboundTransaction,
     error_out: *mut c_int,
-) -> bool
-{
+) -> bool {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -3344,8 +3292,7 @@ pub unsafe extern "C" fn wallet_test_broadcast_transaction(
     wallet: *mut TariWallet,
     tx_id: c_ulonglong,
     error_out: *mut c_int,
-) -> bool
-{
+) -> bool {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -3387,8 +3334,7 @@ pub unsafe extern "C" fn wallet_test_mine_transaction(
     wallet: *mut TariWallet,
     tx_id: c_ulonglong,
     error_out: *mut c_int,
-) -> bool
-{
+) -> bool {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -3429,8 +3375,7 @@ pub unsafe extern "C" fn wallet_add_base_node_peer(
     public_key: *mut TariPublicKey,
     address: *const c_char,
     error_out: *mut c_int,
-) -> bool
-{
+) -> bool {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -3485,8 +3430,7 @@ pub unsafe extern "C" fn wallet_upsert_contact(
     wallet: *mut TariWallet,
     contact: *mut TariContact,
     error_out: *mut c_int,
-) -> bool
-{
+) -> bool {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -3531,8 +3475,7 @@ pub unsafe extern "C" fn wallet_remove_contact(
     wallet: *mut TariWallet,
     contact: *mut TariContact,
     error_out: *mut c_int,
-) -> bool
-{
+) -> bool {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -3613,8 +3556,7 @@ pub unsafe extern "C" fn wallet_get_available_balance(wallet: *mut TariWallet, e
 pub unsafe extern "C" fn wallet_get_pending_incoming_balance(
     wallet: *mut TariWallet,
     error_out: *mut c_int,
-) -> c_ulonglong
-{
+) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -3653,8 +3595,7 @@ pub unsafe extern "C" fn wallet_get_pending_incoming_balance(
 pub unsafe extern "C" fn wallet_get_pending_outgoing_balance(
     wallet: *mut TariWallet,
     error_out: *mut c_int,
-) -> c_ulonglong
-{
+) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -3700,8 +3641,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
     fee_per_gram: c_ulonglong,
     message: *const c_char,
     error_out: *mut c_int,
-) -> c_ulonglong
-{
+) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -3765,8 +3705,7 @@ pub unsafe extern "C" fn wallet_get_fee_estimate(
     num_kernels: c_ulonglong,
     num_outputs: c_ulonglong,
     error_out: *mut c_int,
-) -> c_ulonglong
-{
+) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -3808,8 +3747,7 @@ pub unsafe extern "C" fn wallet_get_fee_estimate(
 pub unsafe extern "C" fn wallet_get_num_confirmations_required(
     wallet: *mut TariWallet,
     error_out: *mut c_int,
-) -> c_ulonglong
-{
+) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -3849,8 +3787,7 @@ pub unsafe extern "C" fn wallet_set_num_confirmations_required(
     wallet: *mut TariWallet,
     num: c_ulonglong,
     error_out: *mut c_int,
-)
-{
+) {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -3928,8 +3865,7 @@ pub unsafe extern "C" fn wallet_get_contacts(wallet: *mut TariWallet, error_out:
 pub unsafe extern "C" fn wallet_get_completed_transactions(
     wallet: *mut TariWallet,
     error_out: *mut c_int,
-) -> *mut TariCompletedTransactions
-{
+) -> *mut TariCompletedTransactions {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let mut completed = Vec::new();
@@ -3985,8 +3921,7 @@ pub unsafe extern "C" fn wallet_get_completed_transactions(
 pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
     wallet: *mut TariWallet,
     error_out: *mut c_int,
-) -> *mut TariPendingInboundTransactions
-{
+) -> *mut TariPendingInboundTransactions {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let mut pending = Vec::new();
@@ -4053,8 +3988,7 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
 pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
     wallet: *mut TariWallet,
     error_out: *mut c_int,
-) -> *mut TariPendingOutboundTransactions
-{
+) -> *mut TariPendingOutboundTransactions {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let mut pending = Vec::new();
@@ -4117,8 +4051,7 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
 pub unsafe extern "C" fn wallet_get_cancelled_transactions(
     wallet: *mut TariWallet,
     error_out: *mut c_int,
-) -> *mut TariCompletedTransactions
-{
+) -> *mut TariCompletedTransactions {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -4206,8 +4139,7 @@ pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
     wallet: *mut TariWallet,
     transaction_id: c_ulonglong,
     error_out: *mut c_int,
-) -> *mut TariCompletedTransaction
-{
+) -> *mut TariCompletedTransaction {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -4260,8 +4192,7 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
     wallet: *mut TariWallet,
     transaction_id: c_ulonglong,
     error_out: *mut c_int,
-) -> *mut TariPendingInboundTransaction
-{
+) -> *mut TariPendingInboundTransaction {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -4334,8 +4265,7 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
     wallet: *mut TariWallet,
     transaction_id: c_ulonglong,
     error_out: *mut c_int,
-) -> *mut TariPendingOutboundTransaction
-{
+) -> *mut TariPendingOutboundTransaction {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -4409,8 +4339,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
     wallet: *mut TariWallet,
     transaction_id: c_ulonglong,
     error_out: *mut c_int,
-) -> *mut TariCompletedTransaction
-{
+) -> *mut TariCompletedTransaction {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -4546,8 +4475,7 @@ pub unsafe extern "C" fn wallet_import_utxo(
     source_public_key: *mut TariPublicKey,
     message: *const c_char,
     error_out: *mut c_int,
-) -> c_ulonglong
-{
+) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -4609,8 +4537,7 @@ pub unsafe extern "C" fn wallet_cancel_pending_transaction(
     wallet: *mut TariWallet,
     transaction_id: c_ulonglong,
     error_out: *mut c_int,
-) -> bool
-{
+) -> bool {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -4749,8 +4676,7 @@ pub unsafe extern "C" fn wallet_start_stxo_validation(wallet: *mut TariWallet, e
 pub unsafe extern "C" fn wallet_start_invalid_txo_validation(
     wallet: *mut TariWallet,
     error_out: *mut c_int,
-) -> c_ulonglong
-{
+) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -4802,8 +4728,7 @@ pub unsafe extern "C" fn wallet_start_invalid_txo_validation(
 pub unsafe extern "C" fn wallet_start_transaction_validation(
     wallet: *mut TariWallet,
     error_out: *mut c_int,
-) -> c_ulonglong
-{
+) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -4911,8 +4836,7 @@ pub unsafe extern "C" fn wallet_coin_split(
     msg: *const c_char,
     lock_height: c_ulonglong,
     error_out: *mut c_int,
-) -> c_ulonglong
-{
+) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -5049,8 +4973,7 @@ pub unsafe extern "C" fn wallet_apply_encryption(
     wallet: *mut TariWallet,
     passphrase: *const c_char,
     error_out: *mut c_int,
-)
-{
+) {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -5122,8 +5045,7 @@ pub unsafe extern "C" fn wallet_set_key_value(
     key: *const c_char,
     value: *const c_char,
     error_out: *mut c_int,
-) -> bool
-{
+) -> bool {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -5183,8 +5105,7 @@ pub unsafe extern "C" fn wallet_get_value(
     wallet: *mut TariWallet,
     key: *const c_char,
     error_out: *mut c_int,
-) -> *mut c_char
-{
+) -> *mut c_char {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -5245,8 +5166,7 @@ pub unsafe extern "C" fn wallet_clear_value(
     wallet: *mut TariWallet,
     key: *const c_char,
     error_out: *mut c_int,
-) -> bool
-{
+) -> bool {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -5340,8 +5260,7 @@ pub unsafe extern "C" fn wallet_start_recovery(
     base_node_public_key: *mut TariPublicKey,
     recovery_progress_callback: unsafe extern "C" fn(u64, u64),
     error_out: *mut c_int,
-) -> bool
-{
+) -> bool {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -5390,8 +5309,7 @@ pub unsafe extern "C" fn file_partial_backup(
     original_file_path: *const c_char,
     backup_file_path: *const c_char,
     error_out: *mut c_int,
-)
-{
+) {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -5495,8 +5413,7 @@ pub unsafe extern "C" fn emoji_set_get_at(
     emoji_set: *const EmojiSet,
     position: c_uint,
     error_out: *mut c_int,
-) -> *mut ByteVector
-{
+) -> *mut ByteVector {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if emoji_set.is_null() {
@@ -5583,6 +5500,7 @@ mod test {
     use tari_core::transactions::{fee::Fee, tari_amount::uT, types::PrivateKey};
     use tari_key_manager::mnemonic::Mnemonic;
     use tari_wallet::{
+        storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
         testnet_utils::random_string,
         transaction_service::{config::TransactionServiceConfig, storage::models::TransactionStatus},
         util::emoji,
@@ -5651,7 +5569,7 @@ mod test {
     }
 
     unsafe extern "C" fn received_tx_callback(tx: *mut TariPendingInboundTransaction) {
-        assert_eq!(tx.is_null(), false);
+        assert!(!tx.is_null());
         assert_eq!(
             type_of((*tx).clone()),
             std::any::type_name::<TariPendingInboundTransaction>()
@@ -5663,7 +5581,7 @@ mod test {
     }
 
     unsafe extern "C" fn received_tx_reply_callback(tx: *mut TariCompletedTransaction) {
-        assert_eq!(tx.is_null(), false);
+        assert!(!tx.is_null());
         assert_eq!(
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
@@ -5676,7 +5594,7 @@ mod test {
     }
 
     unsafe extern "C" fn received_tx_finalized_callback(tx: *mut TariCompletedTransaction) {
-        assert_eq!(tx.is_null(), false);
+        assert!(!tx.is_null());
         assert_eq!(
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
@@ -5689,7 +5607,7 @@ mod test {
     }
 
     unsafe extern "C" fn broadcast_callback(tx: *mut TariCompletedTransaction) {
-        assert_eq!(tx.is_null(), false);
+        assert!(!tx.is_null());
         assert_eq!(
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
@@ -5702,7 +5620,7 @@ mod test {
     }
 
     unsafe extern "C" fn mined_callback(tx: *mut TariCompletedTransaction) {
-        assert_eq!(tx.is_null(), false);
+        assert!(!tx.is_null());
         assert_eq!(
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
@@ -5715,7 +5633,7 @@ mod test {
     }
 
     unsafe extern "C" fn mined_unconfirmed_callback(tx: *mut TariCompletedTransaction, _confirmations: u64) {
-        assert_eq!(tx.is_null(), false);
+        assert!(!tx.is_null());
         assert_eq!(
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
@@ -5736,7 +5654,7 @@ mod test {
     }
 
     unsafe extern "C" fn tx_cancellation_callback(tx: *mut TariCompletedTransaction) {
-        assert_eq!(tx.is_null(), false);
+        assert!(!tx.is_null());
         assert_eq!(
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
@@ -5765,7 +5683,7 @@ mod test {
     }
 
     unsafe extern "C" fn received_tx_callback_bob(tx: *mut TariPendingInboundTransaction) {
-        assert_eq!(tx.is_null(), false);
+        assert!(!tx.is_null());
         assert_eq!(
             type_of((*tx).clone()),
             std::any::type_name::<TariPendingInboundTransaction>()
@@ -5774,7 +5692,7 @@ mod test {
     }
 
     unsafe extern "C" fn received_tx_reply_callback_bob(tx: *mut TariCompletedTransaction) {
-        assert_eq!(tx.is_null(), false);
+        assert!(!tx.is_null());
         assert_eq!(
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
@@ -5784,7 +5702,7 @@ mod test {
     }
 
     unsafe extern "C" fn received_tx_finalized_callback_bob(tx: *mut TariCompletedTransaction) {
-        assert_eq!(tx.is_null(), false);
+        assert!(!tx.is_null());
         assert_eq!(
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
@@ -5794,7 +5712,7 @@ mod test {
     }
 
     unsafe extern "C" fn broadcast_callback_bob(tx: *mut TariCompletedTransaction) {
-        assert_eq!(tx.is_null(), false);
+        assert!(!tx.is_null());
         assert_eq!(
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
@@ -5804,7 +5722,7 @@ mod test {
     }
 
     unsafe extern "C" fn mined_callback_bob(tx: *mut TariCompletedTransaction) {
-        assert_eq!(tx.is_null(), false);
+        assert!(!tx.is_null());
         assert_eq!(
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
@@ -5814,7 +5732,7 @@ mod test {
     }
 
     unsafe extern "C" fn mined_unconfirmed_callback_bob(tx: *mut TariCompletedTransaction, _confirmations: u64) {
-        assert_eq!(tx.is_null(), false);
+        assert!(!tx.is_null());
         assert_eq!(
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
@@ -5835,7 +5753,7 @@ mod test {
     }
 
     unsafe extern "C" fn tx_cancellation_callback_bob(tx: *mut TariCompletedTransaction) {
-        assert_eq!(tx.is_null(), false);
+        assert!(!tx.is_null());
         assert_eq!(
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
@@ -5886,7 +5804,7 @@ mod test {
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
-            let bytes_ptr = byte_vector_create(ptr::null_mut(), 20 as c_uint, error_ptr);
+            let bytes_ptr = byte_vector_create(ptr::null_mut(), 20u32, error_ptr);
             assert_eq!(
                 error,
                 LibWalletError::from(InterfaceError::NullError("bytes_ptr".to_string())).code
@@ -5923,7 +5841,7 @@ mod test {
                 let emoji = char::from_str(from_utf8(emoji_bytes.as_slice()).unwrap()).unwrap();
                 let compare = compare_emoji_set[i as usize] == emoji;
                 byte_vector_destroy(emoji_byte_vector);
-                assert_eq!(compare, true);
+                assert!(compare);
             }
             emoji_set_destroy(emoji_set);
         }
@@ -6240,7 +6158,7 @@ mod test {
                 sig_msg_compare_str,
                 error_ptr,
             );
-            assert_eq!(verify_msg, true);
+            assert!(verify_msg);
 
             let test_contact_private_key = private_key_generate();
             let test_contact_public_key = public_key_from_private_key(test_contact_private_key, error_ptr);
@@ -6248,9 +6166,9 @@ mod test {
             let test_contact_alias: *const c_char = CString::into_raw(test_contact_str) as *const c_char;
             let test_contact = contact_create(test_contact_alias, test_contact_public_key, error_ptr);
             let contact_added = wallet_upsert_contact(alice_wallet, test_contact, error_ptr);
-            assert_eq!(contact_added, true);
+            assert!(contact_added);
             let contact_removed = wallet_remove_contact(alice_wallet, test_contact, error_ptr);
-            assert_eq!(contact_removed, true);
+            assert!(contact_removed);
             contact_destroy(test_contact);
             public_key_destroy(test_contact_public_key);
             private_key_destroy(test_contact_private_key);
@@ -6279,7 +6197,7 @@ mod test {
             assert_eq!(error, 101);
 
             let generated = wallet_test_generate_data(alice_wallet, db_path_alice_str, error_ptr);
-            assert_eq!(generated, true);
+            assert!(generated);
 
             // minimum fee
             let fee = wallet_get_fee_estimate(alice_wallet, 100, 1, 1, 1, error_ptr);
@@ -6300,18 +6218,9 @@ mod test {
             assert_eq!(fee, 0);
             assert_eq!(error, 101);
 
-            assert_eq!(
-                (wallet_get_completed_transactions(&mut (*alice_wallet), error_ptr)).is_null(),
-                false
-            );
-            assert_eq!(
-                (wallet_get_pending_inbound_transactions(&mut (*alice_wallet), error_ptr)).is_null(),
-                false
-            );
-            assert_eq!(
-                (wallet_get_pending_outbound_transactions(&mut (*alice_wallet), error_ptr)).is_null(),
-                false
-            );
+            assert!(!(wallet_get_completed_transactions(&mut (*alice_wallet), error_ptr)).is_null(),);
+            assert!(!(wallet_get_pending_inbound_transactions(&mut (*alice_wallet), error_ptr)).is_null(),);
+            assert!(!(wallet_get_pending_outbound_transactions(&mut (*alice_wallet), error_ptr)).is_null(),);
 
             let inbound_transactions: std::collections::HashMap<
                 u64,
@@ -6544,9 +6453,9 @@ mod test {
             assert_eq!(wallet_start_invalid_txo_validation(alice_wallet, error_ptr), 0);
             assert_eq!(wallet_start_transaction_validation(alice_wallet, error_ptr), 0);
             let mut peer_added = wallet_add_base_node_peer(alice_wallet, public_key_bob, address_bob_str, error_ptr);
-            assert_eq!(peer_added, true);
+            assert!(peer_added,);
             peer_added = wallet_add_base_node_peer(bob_wallet, public_key_alice, address_alice_str, error_ptr);
-            assert_eq!(peer_added, true);
+            assert!(peer_added);
             assert!(wallet_start_utxo_validation(alice_wallet, error_ptr) > 0);
             assert!(wallet_start_stxo_validation(alice_wallet, error_ptr) > 0);
             assert!(wallet_start_invalid_txo_validation(alice_wallet, error_ptr) > 0);
@@ -6638,7 +6547,7 @@ mod test {
                     .transaction_service
                     .get_completed_transaction(split_tx_id),
             );
-            assert_eq!(split_tx.is_ok(), true);
+            assert!(split_tx.is_ok());
             string_destroy(split_msg_str as *mut c_char);
 
             wallet_set_low_power_mode(alice_wallet, error_ptr);

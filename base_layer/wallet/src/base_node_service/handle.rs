@@ -62,8 +62,7 @@ impl BaseNodeServiceHandle {
     pub fn new(
         handle: SenderService<BaseNodeServiceRequest, Result<BaseNodeServiceResponse, BaseNodeServiceError>>,
         event_stream_sender: BaseNodeEventSender,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             handle,
             event_stream_sender,

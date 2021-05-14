@@ -60,8 +60,7 @@ pub async fn create(
         mpsc::Sender<OutboundMessage>,
     ),
     Error,
->
-{
+> {
     let datastore = LMDBBuilder::new()
         .set_path(database_path.to_str().unwrap())
         .set_env_config(LMDBConfig::default())

@@ -59,8 +59,7 @@ mod state_machine {
         Arc<NodeIdentity>,
         broadcast::Receiver<Arc<DhtEvent>>,
         Shutdown,
-    )
-    {
+    ) {
         // Every test needs these to be enabled
         config.network_discovery.enabled = true;
 
@@ -142,7 +141,7 @@ mod state_machine {
 
         let event = event_rx.next().await.unwrap().unwrap();
         unpack_enum!(DhtEvent::NetworkDiscoveryPeersAdded(info) = &*event);
-        assert_eq!(info.has_new_neighbours(), true);
+        assert!(info.has_new_neighbours());
         assert_eq!(info.num_new_neighbours, NUM_PEERS);
         assert_eq!(info.num_new_peers, NUM_PEERS);
         assert_eq!(info.num_duplicate_peers, 0);

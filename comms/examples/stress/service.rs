@@ -55,8 +55,7 @@ pub fn start_service(
     protocol_notif: mpsc::Receiver<ProtocolNotification<Substream>>,
     inbound_rx: mpsc::Receiver<InboundMessage>,
     outbound_tx: mpsc::Sender<OutboundMessage>,
-) -> (JoinHandle<Result<(), Error>>, mpsc::Sender<StressTestServiceRequest>)
-{
+) -> (JoinHandle<Result<(), Error>>, mpsc::Sender<StressTestServiceRequest>) {
     let node_identity = comms_node.node_identity();
     let (request_tx, request_rx) = mpsc::channel(1);
 
@@ -152,8 +151,7 @@ impl StressTestService {
         protocol_notif: mpsc::Receiver<ProtocolNotification<Substream>>,
         inbound_rx: mpsc::Receiver<InboundMessage>,
         outbound_tx: mpsc::Sender<OutboundMessage>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             request_rx: request_rx.fuse(),
             comms_node,
@@ -213,8 +211,7 @@ impl StressTestService {
         peer: Peer,
         protocol: StressProtocol,
         reply: oneshot::Sender<Result<(), Error>>,
-    ) -> Result<(), Error>
-    {
+    ) -> Result<(), Error> {
         let node_id = peer.node_id.clone();
         self.comms_node.peer_manager().add_peer(peer).await?;
         println!("Dialing peer `{}`...", node_id.short_str());
@@ -257,8 +254,7 @@ async fn start_initiator_protocol(
 
     inbound_rx: Arc<RwLock<mpsc::Receiver<InboundMessage>>>,
     outbound_tx: mpsc::Sender<OutboundMessage>,
-) -> Result<(), Error>
-{
+) -> Result<(), Error> {
     println!("Negotiating {:?} protocol...", protocol);
     let start = Instant::now();
     let substream = conn.open_substream(&STRESS_PROTOCOL_NAME).await?;
@@ -315,7 +311,7 @@ async fn start_initiator_protocol(
                 // Read 100
                 for _ in 0..100usize {
                     counter += 1;
-                    let msg = framed.next().await.ok_or_else(|| Error::UnexpectedEof)??;
+                    let msg = framed.next().await.ok_or(Error::UnexpectedEof)??;
                     received.push(decode_msg(msg));
                 }
             }
@@ -341,11 +337,10 @@ async fn start_responder_protocol(
 
     inbound_rx: Arc<RwLock<mpsc::Receiver<InboundMessage>>>,
     outbound_tx: mpsc::Sender<OutboundMessage>,
-) -> Result<(), Error>
-{
+) -> Result<(), Error> {
     let mut buf = [0u8; 9];
     substream.read_exact(&mut buf).await?;
-    let protocol = StressProtocol::decode(&buf).ok_or_else(|| Error::InvalidProtocolFrame)?;
+    let protocol = StressProtocol::decode(&buf).ok_or(Error::InvalidProtocolFrame)?;
 
     let framed = framing::canonical(substream, MAX_FRAME_SIZE);
     let (mut sink, mut stream) = framed.split();
@@ -397,7 +392,7 @@ async fn start_responder_protocol(
                 // Read 100
                 for _ in 0..100usize {
                     counter += 1;
-                    let msg = stream.next().await.ok_or_else(|| Error::UnexpectedEof)??;
+                    let msg = stream.next().await.ok_or(Error::UnexpectedEof)??;
                     received.push(decode_msg(msg));
                 }
 
@@ -437,8 +432,7 @@ async fn messaging_flood(
     protocol: StressProtocol,
     inbound_rx: Arc<RwLock<mpsc::Receiver<InboundMessage>>>,
     mut outbound_tx: mpsc::Sender<OutboundMessage>,
-) -> Result<(), Error>
-{
+) -> Result<(), Error> {
     let start = Instant::now();
     let mut counter = 1u32;
     println!(

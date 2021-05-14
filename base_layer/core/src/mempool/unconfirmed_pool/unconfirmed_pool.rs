@@ -101,7 +101,7 @@ impl UnconfirmedPool {
     pub fn insert(&mut self, tx: Arc<Transaction>) -> Result<(), UnconfirmedPoolError> {
         let tx_key = tx
             .first_kernel_excess_sig()
-            .ok_or_else(|| UnconfirmedPoolError::TransactionNoKernels)?;
+            .ok_or(UnconfirmedPoolError::TransactionNoKernels)?;
         if !self.txs_by_signature.contains_key(tx_key) {
             debug!(
                 target: LOG_TARGET,
@@ -146,7 +146,7 @@ impl UnconfirmedPool {
             let ptx = self
                 .txs_by_signature
                 .get(tx_key)
-                .ok_or_else(|| UnconfirmedPoolError::StorageOutofSync)?;
+                .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
 
             if curr_weight + ptx.weight <= total_weight {
                 if !UnconfirmedPool::find_duplicate_input(&selected_txs, &ptx.transaction) {
@@ -320,26 +320,11 @@ mod test {
             .insert_txs(vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone(), tx5.clone()])
             .unwrap();
         // Check that lowest priority tx was removed to make room for new incoming transactions
-        assert_eq!(
-            unconfirmed_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig),
-            true
-        );
-        assert_eq!(
-            unconfirmed_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig),
-            false
-        );
-        assert_eq!(
-            unconfirmed_pool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig),
-            true
-        );
-        assert_eq!(
-            unconfirmed_pool.has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig),
-            true
-        );
-        assert_eq!(
-            unconfirmed_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig),
-            true
-        );
+        assert!(unconfirmed_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig),);
+        assert!(!unconfirmed_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig),);
+        assert!(unconfirmed_pool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig),);
+        assert!(unconfirmed_pool.has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig),);
+        assert!(unconfirmed_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig),);
         // Retrieve the set of highest priority unspent transactions
         let desired_weight = tx1.calculate_weight() + tx3.calculate_weight() + tx5.calculate_weight();
         let selected_txs = unconfirmed_pool.highest_priority_txs(desired_weight).unwrap();
@@ -448,30 +433,12 @@ mod test {
         let published_block = create_orphan_block(0, vec![(*tx1).clone(), (*tx3).clone(), (*tx5).clone()], &consensus);
         let _ = unconfirmed_pool.remove_published_and_discard_double_spends(&published_block);
 
-        assert_eq!(
-            unconfirmed_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig),
-            false
-        );
-        assert_eq!(
-            unconfirmed_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig),
-            true
-        );
-        assert_eq!(
-            unconfirmed_pool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig),
-            false
-        );
-        assert_eq!(
-            unconfirmed_pool.has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig),
-            true
-        );
-        assert_eq!(
-            unconfirmed_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig),
-            false
-        );
-        assert_eq!(
-            unconfirmed_pool.has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig),
-            false
-        );
+        assert!(!unconfirmed_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig),);
+        assert!(unconfirmed_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig),);
+        assert!(!unconfirmed_pool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig),);
+        assert!(unconfirmed_pool.has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig),);
+        assert!(!unconfirmed_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig),);
+        assert!(!unconfirmed_pool.has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig),);
 
         assert!(unconfirmed_pool.check_status());
     }
@@ -512,30 +479,12 @@ mod test {
 
         let _ = unconfirmed_pool.remove_published_and_discard_double_spends(&published_block); // Double spends are discarded
 
-        assert_eq!(
-            unconfirmed_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig),
-            false
-        );
-        assert_eq!(
-            unconfirmed_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig),
-            false
-        );
-        assert_eq!(
-            unconfirmed_pool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig),
-            false
-        );
-        assert_eq!(
-            unconfirmed_pool.has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig),
-            true
-        );
-        assert_eq!(
-            unconfirmed_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig),
-            false
-        );
-        assert_eq!(
-            unconfirmed_pool.has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig),
-            false
-        );
+        assert!(!unconfirmed_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig),);
+        assert!(!unconfirmed_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig),);
+        assert!(!unconfirmed_pool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig),);
+        assert!(unconfirmed_pool.has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig),);
+        assert!(!unconfirmed_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig),);
+        assert!(!unconfirmed_pool.has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig),);
 
         assert!(unconfirmed_pool.check_status());
     }

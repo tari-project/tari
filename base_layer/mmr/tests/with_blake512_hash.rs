@@ -25,7 +25,7 @@ use digest::Digest;
 use std::string::ToString;
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_mmr::MerkleMountainRange;
-
+#[allow(clippy::vec_init_then_push)]
 pub fn hash_values() -> Vec<String> {
     let mut hashvalues = Vec::new();
     // list of hex values of blake2b hashes

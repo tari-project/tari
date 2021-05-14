@@ -61,8 +61,7 @@ where B: BlockchainBackend + 'static
         config: BaseNodeStateMachineConfig,
         rules: ConsensusManager,
         factories: CryptoFactories,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             db,
             config,

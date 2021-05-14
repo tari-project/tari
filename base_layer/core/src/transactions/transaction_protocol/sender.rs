@@ -267,7 +267,7 @@ impl SenderTransactionProtocol {
             SenderState::CollectingSingleSignature(info) => Ok({
                 info.recipient_script_offset_private_keys
                     .get(recipient_index)
-                    .ok_or_else(|| TPE::ScriptOffsetPrivateKeyNotFound)?
+                    .ok_or(TPE::ScriptOffsetPrivateKeyNotFound)?
                     .clone()
             }),
             SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
@@ -283,7 +283,7 @@ impl SenderTransactionProtocol {
             SenderState::SingleRoundMessageReady(info) |
             SenderState::CollectingSingleSignature(info) => Ok(info.metadata.fee),
             SenderState::FinalizedTransaction(info) => {
-                Ok(info.body.kernels().first().ok_or_else(|| TPE::InvalidStateError)?.fee)
+                Ok(info.body.kernels().first().ok_or(TPE::InvalidStateError)?.fee)
             },
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }
@@ -337,8 +337,7 @@ impl SenderTransactionProtocol {
         &mut self,
         rec: RecipientSignedMessage,
         prover: &RangeProofService,
-    ) -> Result<(), TPE>
-    {
+    ) -> Result<(), TPE> {
         match &mut self.state {
             SenderState::CollectingSingleSignature(info) => {
                 if !rec.output.verify_range_proof(prover)? {
@@ -376,8 +375,7 @@ impl SenderTransactionProtocol {
         info: &RawTransactionInfo,
         features: KernelFeatures,
         factories: &CryptoFactories,
-    ) -> Result<Transaction, TPE>
-    {
+    ) -> Result<Transaction, TPE> {
         let mut tx_builder = TransactionBuilder::new();
         for i in &info.inputs {
             tx_builder.add_input(i.clone());
@@ -683,7 +681,7 @@ mod test {
                 output_2_offset,
             );
         let mut sender = builder.build::<Blake256>(&factories).unwrap();
-        assert_eq!(sender.is_failed(), false);
+        assert!(!sender.is_failed());
         assert!(sender.is_finalizing());
         match sender.finalize(KernelFeatures::empty(), &factories) {
             Ok(_) => (),

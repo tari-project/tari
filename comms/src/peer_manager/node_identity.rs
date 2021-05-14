@@ -64,8 +64,7 @@ impl NodeIdentity {
         secret_key: CommsSecretKey,
         public_address: Multiaddr,
         features: PeerFeatures,
-    ) -> Result<Self, NodeIdentityError>
-    {
+    ) -> Result<Self, NodeIdentityError> {
         let public_key = CommsPublicKey::from_secret_key(&secret_key);
         let node_id = NodeId::from_key(&public_key).map_err(NodeIdentityError::NodeIdError)?;
 

@@ -60,8 +60,7 @@ impl LocalNodeCommsInterface {
         request_sender: SenderService<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>,
         block_sender: SenderService<(Block, Broadcast), Result<BlockHash, CommsInterfaceError>>,
         block_event_sender: BlockEventSender,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             request_sender,
             block_sender,
@@ -110,8 +109,7 @@ impl LocalNodeCommsInterface {
         &mut self,
         pow_algorithm: PowAlgorithm,
         max_weight: u64,
-    ) -> Result<NewBlockTemplate, CommsInterfaceError>
-    {
+    ) -> Result<NewBlockTemplate, CommsInterfaceError> {
         let request = GetNewBlockTemplateRequest {
             algo: pow_algorithm,
             max_weight,
@@ -163,8 +161,7 @@ impl LocalNodeCommsInterface {
     pub async fn fetch_matching_utxos(
         &mut self,
         hashes: Vec<HashOutput>,
-    ) -> Result<Vec<TransactionOutput>, CommsInterfaceError>
-    {
+    ) -> Result<Vec<TransactionOutput>, CommsInterfaceError> {
         match self
             .request_sender
             .call(NodeCommsRequest::FetchMatchingUtxos(hashes))
@@ -179,8 +176,7 @@ impl LocalNodeCommsInterface {
     pub async fn fetch_blocks_with_utxos(
         &mut self,
         commitments: Vec<Commitment>,
-    ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError>
-    {
+    ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError> {
         match self
             .request_sender
             .call(NodeCommsRequest::FetchBlocksWithUtxos(commitments))
@@ -195,8 +191,7 @@ impl LocalNodeCommsInterface {
     pub async fn get_blocks_with_stxos(
         &mut self,
         commitments: Vec<Commitment>,
-    ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError>
-    {
+    ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError> {
         match self
             .request_sender
             .call(NodeCommsRequest::FetchBlocksWithStxos(commitments))
@@ -211,8 +206,7 @@ impl LocalNodeCommsInterface {
     pub async fn get_blocks_with_kernels(
         &mut self,
         kernels: Vec<Signature>,
-    ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError>
-    {
+    ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError> {
         match self
             .request_sender
             .call(NodeCommsRequest::FetchBlocksWithKernels(kernels))
@@ -239,8 +233,7 @@ impl LocalNodeCommsInterface {
     pub async fn get_block_by_hash(
         &mut self,
         hash: HashOutput,
-    ) -> Result<Option<HistoricalBlock>, CommsInterfaceError>
-    {
+    ) -> Result<Option<HistoricalBlock>, CommsInterfaceError> {
         match self
             .request_sender
             .call(NodeCommsRequest::GetBlockByHash(hash))
@@ -255,8 +248,7 @@ impl LocalNodeCommsInterface {
     pub async fn get_kernel_by_excess_sig(
         &mut self,
         kernel: Signature,
-    ) -> Result<Vec<TransactionKernel>, CommsInterfaceError>
-    {
+    ) -> Result<Vec<TransactionKernel>, CommsInterfaceError> {
         match self
             .request_sender
             .call(NodeCommsRequest::FetchKernelByExcessSig(kernel))

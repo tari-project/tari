@@ -93,8 +93,7 @@ impl DbTransaction {
         kernel: TransactionKernel,
         header_hash: HashOutput,
         mmr_position: u32,
-    ) -> &mut Self
-    {
+    ) -> &mut Self {
         self.operations.push(WriteOperation::InsertKernel {
             header_hash,
             kernel: Box::new(kernel),
@@ -121,8 +120,7 @@ impl DbTransaction {
         header_hash: HashOutput,
         header_height: u64,
         mmr_leaf_index: u32,
-    ) -> &mut Self
-    {
+    ) -> &mut Self {
         self.operations.push(WriteOperation::InsertOutput {
             header_hash,
             header_height,
@@ -139,8 +137,7 @@ impl DbTransaction {
         header_hash: HashOutput,
         header_height: u64,
         mmr_leaf_index: u32,
-    ) -> &mut Self
-    {
+    ) -> &mut Self {
         self.operations.push(WriteOperation::InsertPrunedOutput {
             header_hash,
             header_height,
@@ -165,8 +162,7 @@ impl DbTransaction {
         mmr_tree: MmrTree,
         header_hash: HashOutput,
         pruned_hash_set: PrunedHashSet,
-    ) -> &mut Self
-    {
+    ) -> &mut Self {
         self.operations.push(WriteOperation::UpdatePrunedHashSet {
             mmr_tree,
             header_hash,

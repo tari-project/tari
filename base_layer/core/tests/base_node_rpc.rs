@@ -139,14 +139,14 @@ fn test_base_node_wallet_rpc() {
 
     let (txs1, utxos1) = schema_to_transaction(&[txn_schema!(from: vec![utxo0.clone()], to: vec![1 * T, 1 * T])]);
     let tx1 = (*txs1[0]).clone();
-    let tx1_sig = tx1.first_kernel_excess_sig().clone().unwrap().clone();
+    let tx1_sig = tx1.first_kernel_excess_sig().unwrap().clone();
 
     let (txs2, utxos2) = schema_to_transaction(&[txn_schema!(
         from: vec![utxos1[0].clone()],
         to: vec![400_000 * uT, 590_000 * uT]
     )]);
     let mut tx2 = (*txs2[0]).clone();
-    let tx2_sig = tx2.first_kernel_excess_sig().clone().unwrap().clone();
+    let tx2_sig = tx2.first_kernel_excess_sig().unwrap().clone();
 
     // Query Tx1
     let msg = SignatureProto::from(tx1_sig.clone());

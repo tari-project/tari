@@ -107,25 +107,22 @@ where
         let in_receiver = self
             .outbound_rx
             .take()
-            .ok_or_else(|| PipelineBuilderError::OutboundPipelineNotProvided)?;
+            .ok_or(PipelineBuilderError::OutboundPipelineNotProvided)?;
         let factory = self
             .outbound_pipeline_factory
             .take()
-            .ok_or_else(|| PipelineBuilderError::OutboundPipelineNotProvided)?;
+            .ok_or(PipelineBuilderError::OutboundPipelineNotProvided)?;
         let sink_service = SinkService::new(out_sender);
         let pipeline = (factory)(sink_service);
         Ok(OutboundPipelineConfig {
             in_receiver,
-            pipeline,
             out_receiver,
+            pipeline,
         })
     }
 
     pub fn try_finish(mut self) -> Result<Config<TInSvc, TOutSvc, TOutReq>, PipelineBuilderError> {
-        let inbound = self
-            .inbound
-            .take()
-            .ok_or_else(|| PipelineBuilderError::InboundNotProvided)?;
+        let inbound = self.inbound.take().ok_or(PipelineBuilderError::InboundNotProvided)?;
         let outbound = self.build_outbound()?;
 
         Ok(Config {

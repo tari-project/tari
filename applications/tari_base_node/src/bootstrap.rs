@@ -192,8 +192,7 @@ where B: BlockchainBackend + 'static
         handles: &ServiceHandles,
         db: AsyncBlockchainDb<B>,
         config: &GlobalConfig,
-    ) -> UnspawnedCommsNode
-    {
+    ) -> UnspawnedCommsNode {
         let dht = handles.expect_handle::<Dht>();
         let builder = RpcServer::builder();
         let builder = match config.rpc_max_simultaneous_sessions {

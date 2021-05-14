@@ -168,8 +168,7 @@ pub fn setup_transaction_service<
     database_path: P,
     discovery_request_timeout: Duration,
     shutdown_signal: ShutdownSignal,
-) -> (TransactionServiceHandle, OutputManagerHandle, CommsNode)
-{
+) -> (TransactionServiceHandle, OutputManagerHandle, CommsNode) {
     let (publisher, subscription_factory) = pubsub_connector(runtime.handle().clone(), 100, 20);
     let subscription_factory = Arc::new(subscription_factory);
     let (comms, dht) = runtime.block_on(setup_comms_services(
@@ -243,8 +242,7 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + 'static, K: Ou
     MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>, Substream>,
     Arc<NodeIdentity>,
     BaseNodeWalletRpcMockState,
-)
-{
+) {
     setup_transaction_service_no_comms_and_oms_backend(runtime, factories, tx_backend, oms_backend, config)
 }
 
@@ -272,8 +270,7 @@ pub fn setup_transaction_service_no_comms_and_oms_backend<
     MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>, Substream>,
     Arc<NodeIdentity>,
     BaseNodeWalletRpcMockState,
-)
-{
+) {
     let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
 
     let (oms_event_publisher, _) = broadcast::channel(200);
@@ -788,7 +785,7 @@ fn send_one_sided_transaction_to_other() {
                 },
             }
         }
-        assert_eq!(found, true, "'TransactionCompletedImmediately(_)' event not found");
+        assert!(found, "'TransactionCompletedImmediately(_)' event not found");
     });
 }
 
@@ -823,8 +820,10 @@ fn recover_one_sided_transaction() {
     let database_path = temp_dir.path().to_str().unwrap().to_string();
     let database_path2 = temp_dir2.path().to_str().unwrap().to_string();
 
-    let (alice_backend, alice_oms_backend, _tempdir) = make_wallet_databases(Some(database_path.clone()));
-    let (bob_backend, bob_oms_backend, _tempdir) = make_wallet_databases(Some(database_path2.clone()));
+    let (alice_wallet_backend, alice_backend, alice_oms_backend, _tempdir) =
+        make_wallet_databases(Some(database_path.clone()));
+    let (bob_wallet_backend, bob_backend, bob_oms_backend, _tempdir) =
+        make_wallet_databases(Some(database_path2.clone()));
 
     let shutdown = Shutdown::new();
     let (mut alice_ts, alice_oms, _alice_comms) = setup_transaction_service(
@@ -832,6 +831,7 @@ fn recover_one_sided_transaction() {
         alice_node_identity,
         vec![],
         factories.clone(),
+        alice_wallet_backend,
         alice_backend,
         alice_oms_backend,
         database_path,
@@ -844,6 +844,7 @@ fn recover_one_sided_transaction() {
         bob_node_identity.clone(),
         vec![],
         factories.clone(),
+        bob_wallet_backend,
         bob_backend,
         bob_oms_backend,
         database_path2,
@@ -1702,7 +1703,7 @@ fn discovery_async_return_test() {
         }
     });
     assert_eq!(txid, tx_id);
-    assert_eq!(is_success, false);
+    assert!(!is_success);
 
     let tx_id2 = runtime
         .block_on(alice_ts.send_transaction(
@@ -2896,7 +2897,6 @@ fn test_coinbase_transactions_rejection_same_height() {
     let _tx_id1 = transactions
         .values()
         .find(|tx| tx.amount == fees1 + reward1)
-        .clone()
         .unwrap()
         .tx_id;
     assert_eq!(
@@ -2917,7 +2917,6 @@ fn test_coinbase_transactions_rejection_same_height() {
     let _tx_id2 = transactions
         .values()
         .find(|tx| tx.amount == fees2 + reward2)
-        .clone()
         .unwrap()
         .tx_id;
     assert_eq!(
@@ -2937,7 +2936,6 @@ fn test_coinbase_transactions_rejection_same_height() {
     let _tx_id3 = transactions
         .values()
         .find(|tx| tx.amount == fees3 + reward3)
-        .clone()
         .unwrap()
         .tx_id;
     assert_eq!(
@@ -2996,7 +2994,6 @@ fn test_coinbase_monitoring_stuck_in_mempool() {
     let tx_id1 = transactions
         .values()
         .find(|tx| tx.amount == fees1 + reward1)
-        .clone()
         .unwrap()
         .tx_id;
     assert_eq!(
@@ -3016,7 +3013,6 @@ fn test_coinbase_monitoring_stuck_in_mempool() {
     let tx_id2 = transactions
         .values()
         .find(|tx| tx.amount == fees2 + reward2)
-        .clone()
         .unwrap()
         .tx_id;
     assert_eq!(
@@ -3167,7 +3163,6 @@ fn test_coinbase_monitoring_with_base_node_change_and_mined() {
     let tx_id1 = transactions
         .values()
         .find(|tx| tx.amount == fees1 + reward1)
-        .clone()
         .unwrap()
         .tx_id;
     assert_eq!(
@@ -3187,7 +3182,6 @@ fn test_coinbase_monitoring_with_base_node_change_and_mined() {
     let tx_id2 = transactions
         .values()
         .find(|tx| tx.amount == fees2 + reward2)
-        .clone()
         .unwrap()
         .tx_id;
     assert_eq!(
@@ -3367,7 +3361,6 @@ fn test_coinbase_monitoring_mined_not_synced() {
     let tx_id1 = transactions
         .values()
         .find(|tx| tx.amount == fees1 + reward1)
-        .clone()
         .unwrap()
         .tx_id;
     assert_eq!(
@@ -3387,7 +3380,6 @@ fn test_coinbase_monitoring_mined_not_synced() {
     let tx_id2 = transactions
         .values()
         .find(|tx| tx.amount == fees2 + reward2)
-        .clone()
         .unwrap()
         .tx_id;
     assert_eq!(

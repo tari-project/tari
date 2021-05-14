@@ -131,9 +131,9 @@ mod test {
     #[test]
     fn it_is_full_if_n_elements_are_added() {
         let mut subject = RollingVec::new(1);
-        assert_eq!(subject.is_full(), false);
+        assert!(!subject.is_full());
         subject.push(1);
-        assert_eq!(subject.is_full(), true);
+        assert!(subject.is_full());
     }
 
     #[test]
@@ -153,7 +153,7 @@ mod test {
         subject.extend(vec);
 
         assert_eq!(subject.len(), 2);
-        assert_eq!(subject.is_full(), false);
+        assert!(!subject.is_full());
 
         assert_eq!(subject[0], 0);
         assert_eq!(subject[1], 1);

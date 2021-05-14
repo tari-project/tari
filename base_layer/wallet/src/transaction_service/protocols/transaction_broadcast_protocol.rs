@@ -71,8 +71,7 @@ where TBackend: TransactionBackend + 'static
         base_node_public_key: CommsPublicKey,
         timeout_update_receiver: broadcast::Receiver<Duration>,
         base_node_update_receiver: broadcast::Receiver<CommsPublicKey>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             tx_id,
             mode: TxBroadcastMode::TransactionSubmission,
@@ -351,8 +350,7 @@ where TBackend: TransactionBackend + 'static
         &mut self,
         tx: Transaction,
         client: &mut BaseNodeWalletRpcClient,
-    ) -> Result<bool, TransactionServiceProtocolError>
-    {
+    ) -> Result<bool, TransactionServiceProtocolError> {
         let response = match client.submit_transaction(tx.into()).await {
             Ok(r) => match TxSubmissionResponse::try_from(r) {
                 Ok(r) => r,
@@ -456,8 +454,7 @@ where TBackend: TransactionBackend + 'static
         &mut self,
         signature: Signature,
         client: &mut BaseNodeWalletRpcClient,
-    ) -> Result<bool, TransactionServiceProtocolError>
-    {
+    ) -> Result<bool, TransactionServiceProtocolError> {
         let response = match client.transaction_query(signature.into()).await {
             Ok(r) => match TxQueryResponse::try_from(r) {
                 Ok(r) => r,
@@ -586,8 +583,7 @@ where TBackend: TransactionBackend + 'static
         &mut self,
         completed_transaction: CompletedTransaction,
         client: &mut BaseNodeWalletRpcClient,
-    ) -> Result<bool, TransactionServiceProtocolError>
-    {
+    ) -> Result<bool, TransactionServiceProtocolError> {
         let signature = completed_transaction
             .transaction
             .first_kernel_excess_sig()

@@ -124,8 +124,7 @@ impl MerkleProof {
         B: ArrayLike<Value = Hash>,
     {
         // check we actually have a hash in the MMR at this pos
-        mmr.get_node_hash(pos)?
-            .ok_or_else(|| MerkleProofError::HashNotFound(pos))?;
+        mmr.get_node_hash(pos)?.ok_or(MerkleProofError::HashNotFound(pos))?;
         let mmr_size = mmr.len()?;
         let family_branch = family_branch(pos, mmr_size);
 
@@ -134,7 +133,7 @@ impl MerkleProof {
             .iter()
             .map(|(_, sibling)| {
                 mmr.get_node_hash(*sibling)?
-                    .ok_or_else(|| MerkleProofError::HashNotFound(*sibling))
+                    .ok_or(MerkleProofError::HashNotFound(*sibling))
             })
             .collect::<Result<_, _>>()?;
 
@@ -151,7 +150,7 @@ impl MerkleProof {
             if peak_index != peak_pos {
                 let hash = mmr
                     .get_node_hash(peak_index)?
-                    .ok_or_else(|| MerkleProofError::HashNotFound(peak_index))?
+                    .ok_or(MerkleProofError::HashNotFound(peak_index))?
                     .clone();
                 peak_hashes.push(hash);
             }
@@ -168,8 +167,7 @@ impl MerkleProof {
         root: &HashSlice,
         hash: &HashSlice,
         leaf_index: usize,
-    ) -> Result<(), MerkleProofError>
-    {
+    ) -> Result<(), MerkleProofError> {
         let pos = node_index(leaf_index);
         self.verify::<D>(root, hash, pos)
     }
@@ -235,8 +233,7 @@ impl MerkleProof {
         hash: &HashSlice,
         pos: usize,
         peaks: &[usize],
-    ) -> Result<(), MerkleProofError>
-    {
+    ) -> Result<(), MerkleProofError> {
         // If path is empty, we've got the hash of a local peak, so now we need to hash all the peaks together to
         // calculate the merkle root
         if self.path.is_empty() {

@@ -71,7 +71,7 @@ pub fn run_migration_and_create_sqlite_connection<P: AsRef<Path>>(
     let path_str = db_path
         .as_ref()
         .to_str()
-        .ok_or_else(|| WalletStorageError::InvalidUnicodePath)?;
+        .ok_or(WalletStorageError::InvalidUnicodePath)?;
     let connection = SqliteConnection::establish(path_str)?;
     connection.execute("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 60000;")?;
 
@@ -89,11 +89,11 @@ pub async fn partial_wallet_backup<P: AsRef<Path>>(current_db: P, backup_path: P
     let db_path = current_db
         .as_ref()
         .to_str()
-        .ok_or_else(|| WalletStorageError::InvalidUnicodePath)?;
+        .ok_or(WalletStorageError::InvalidUnicodePath)?;
     let backup_path = backup_path
         .as_ref()
         .to_str()
-        .ok_or_else(|| WalletStorageError::InvalidUnicodePath)?;
+        .ok_or(WalletStorageError::InvalidUnicodePath)?;
     std::fs::copy(db_path, backup_path)
         .map_err(|_| WalletStorageError::FileError("Could not copy database file for backup".to_string()))?;
 
@@ -105,7 +105,7 @@ pub async fn partial_wallet_backup<P: AsRef<Path>>(current_db: P, backup_path: P
     Ok(())
 }
 
-pub fn acquire_exclusive_file_lock(db_path: &PathBuf) -> Result<File, WalletStorageError> {
+pub fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, WalletStorageError> {
     let lock_file_path = match db_path.file_name() {
         None => {
             return Err(WalletStorageError::FileError(
@@ -148,8 +148,7 @@ pub fn initialize_sqlite_database_backends(
         ContactsServiceSqliteDatabase,
     ),
     WalletStorageError,
->
-{
+> {
     let cipher = passphrase.map(|passphrase_str| {
         let passphrase_hash = Blake256::new().chain(passphrase_str.as_bytes()).result();
         let key = GenericArray::from_slice(passphrase_hash.as_slice());

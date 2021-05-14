@@ -58,7 +58,6 @@ where TBackend: TransactionBackend + 'static
     base_node_public_key: CommsPublicKey,
     base_node_update_receiver: Option<broadcast::Receiver<CommsPublicKey>>,
     timeout_update_receiver: Option<broadcast::Receiver<Duration>>,
-    first_rejection: bool,
 }
 
 impl<TBackend> TransactionCoinbaseMonitoringProtocol<TBackend>
@@ -73,8 +72,7 @@ where TBackend: TransactionBackend + 'static
         base_node_public_key: CommsPublicKey,
         base_node_update_receiver: broadcast::Receiver<CommsPublicKey>,
         timeout_update_receiver: broadcast::Receiver<Duration>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             tx_id,
             block_height,
@@ -83,7 +81,6 @@ where TBackend: TransactionBackend + 'static
             base_node_public_key,
             base_node_update_receiver: Some(base_node_update_receiver),
             timeout_update_receiver: Some(timeout_update_receiver),
-            first_rejection: false,
         }
     }
 
@@ -233,7 +230,6 @@ where TBackend: TransactionBackend + 'static
                                 self.tx_id,
                                 self.base_node_public_key
                             );
-                            self.first_rejection = false;
                             continue;
                         },
                         Err(e) => {
@@ -324,7 +320,6 @@ where TBackend: TransactionBackend + 'static
                                     self.tx_id,
                                     self.base_node_public_key
                                 );
-                                self.first_rejection = false;
                                 continue;
                             },
                             Err(e) => {
@@ -454,8 +449,7 @@ where TBackend: TransactionBackend + 'static
         signature: Signature,
         completed_tx: CompletedTransaction,
         client: &mut BaseNodeWalletRpcClient,
-    ) -> Result<(bool, Option<u64>), TransactionServiceProtocolError>
-    {
+    ) -> Result<(bool, Option<u64>), TransactionServiceProtocolError> {
         trace!(
             target: LOG_TARGET,
             "Querying status for coinbase transaction (TxId: {})",

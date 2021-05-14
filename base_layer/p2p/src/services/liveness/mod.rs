@@ -96,8 +96,7 @@ impl LivenessInitializer {
     pub fn new(
         config: LivenessConfig,
         inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             config: Some(config),
             inbound_message_subscription_factory,

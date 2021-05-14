@@ -25,6 +25,7 @@
 // Used to eliminate the need for boxing futures in many cases.
 // Tracking issue: https://github.com/rust-lang/rust/issues/63063
 #![feature(type_alias_impl_trait)]
+#![feature(min_type_alias_impl_trait)]
 #![feature(shrink_to)]
 // #![cfg_attr(not(debug_assertions), deny(unused_variables))]
 // #![cfg_attr(not(debug_assertions), deny(unused_imports))]
@@ -72,6 +73,7 @@ pub use tari_crypto as crypto;
 
 #[allow(clippy::ptr_offset_with_cast)]
 #[allow(clippy::assign_op_pattern)]
+#[allow(clippy::manual_range_contains)]
 // #[allow(clippy::fallible_impl_from)]
 pub mod large_ints {
     uint::construct_uint! {

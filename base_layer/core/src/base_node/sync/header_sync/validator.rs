@@ -193,8 +193,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         &self,
         our_header: &ChainHeader,
         their_header: &ChainHeader,
-    ) -> Result<(), BlockHeaderSyncError>
-    {
+    ) -> Result<(), BlockHeaderSyncError> {
         debug!(
             target: LOG_TARGET,
             "Comparing PoW on remote header #{} and local header #{}",

@@ -70,8 +70,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         connectivity: ConnectivityRequester,
         sync_peers: &'a [NodeId],
         randomx_factory: RandomXFactory,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             config,
             header_validator: BlockHeaderSyncValidator::new(db.clone(), consensus_rules, randomx_factory),
@@ -234,8 +233,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         node_id: NodeId,
         reason: BanReason,
         duration: Duration,
-    ) -> Result<(), BlockHeaderSyncError>
-    {
+    ) -> Result<(), BlockHeaderSyncError> {
         if self.config.sync_peers.contains(&node_id) {
             debug!(
                 target: LOG_TARGET,
@@ -279,8 +277,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         peer: &NodeId,
         client: &mut rpc::BaseNodeSyncRpcClient,
         header_count: u64,
-    ) -> Result<(proto::FindChainSplitResponse, Vec<HashOutput>, u64), BlockHeaderSyncError>
-    {
+    ) -> Result<(proto::FindChainSplitResponse, Vec<HashOutput>, u64), BlockHeaderSyncError> {
         const NUM_CHAIN_SPLIT_HEADERS: usize = 500;
         // Limit how far back we're willing to go. A peer might just say it does not have a chain split
         // and keep us busy going back until the genesis.
@@ -339,8 +336,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         &mut self,
         peer: &NodeId,
         client: &mut rpc::BaseNodeSyncRpcClient,
-    ) -> Result<SyncStatus, BlockHeaderSyncError>
-    {
+    ) -> Result<SyncStatus, BlockHeaderSyncError> {
         // Fetch the local tip header at the beginning of the sync process
         let local_tip_header = self.db.fetch_tip_header().await?;
 
@@ -466,8 +462,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         peer: &NodeId,
         client: &mut rpc::BaseNodeSyncRpcClient,
         split_info: ChainSplitInfo,
-    ) -> Result<(), BlockHeaderSyncError>
-    {
+    ) -> Result<(), BlockHeaderSyncError> {
         const COMMIT_EVERY_N_HEADERS: usize = 1000;
 
         // Peer returned less than the max headers. This indicates that there are no further headers to request.

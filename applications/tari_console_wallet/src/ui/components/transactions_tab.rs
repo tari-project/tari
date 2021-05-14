@@ -506,7 +506,6 @@ impl<B: Backend> Component<B> for TransactionsTab {
             'c' => {
                 if self.selected_tx_list == SelectedTransactionList::PendingTxs {
                     self.confirmation_dialog = true;
-                    return;
                 }
             },
             '\n' => match self.selected_tx_list {

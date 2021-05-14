@@ -66,7 +66,7 @@ impl TestFactory for PeerFactory {
     type Object = Peer;
 
     fn build(self) -> Result<Self::Object, TestFactoryError> {
-        let flags = self.flags.clone().or_else(|| Some(PeerFlags::empty())).unwrap();
+        let flags = self.flags.or_else(|| Some(PeerFlags::empty())).unwrap();
         let public_key = self
             .public_key
             .clone()
@@ -85,7 +85,7 @@ impl TestFactory for PeerFactory {
         let default = self.net_addresses_factory.build().ok();
         let addresses = self
             .net_addresses
-            .or_else(|| default)
+            .or(default)
             .ok_or_else(|| TestFactoryError::BuildFailed("Failed to build net addresses for peer".to_string()))?;
 
         Ok(Peer::new(

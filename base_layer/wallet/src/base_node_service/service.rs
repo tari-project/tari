@@ -98,8 +98,7 @@ where T: WalletBackend + 'static
         event_publisher: BaseNodeEventSender,
         shutdown_signal: ShutdownSignal,
         db: WalletDatabase<T>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             config,
             request_stream: Some(request_stream),
@@ -184,8 +183,7 @@ where T: WalletBackend + 'static
     async fn handle_request(
         &mut self,
         request: BaseNodeServiceRequest,
-    ) -> Result<BaseNodeServiceResponse, BaseNodeServiceError>
-    {
+    ) -> Result<BaseNodeServiceResponse, BaseNodeServiceError> {
         debug!(
             target: LOG_TARGET,
             "Handling Wallet Base Node Service Request: {:?}", request
@@ -214,8 +212,7 @@ async fn monitor_chain_metadata_task<T: WalletBackend + 'static>(
     mut connectivity_manager: ConnectivityRequester,
     mut event_publisher: BaseNodeEventSender,
     mut shutdown_signal: ShutdownSignal,
-)
-{
+) {
     // RPC connectivity loop
     loop {
         let base_node_peer = {

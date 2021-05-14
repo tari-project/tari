@@ -169,8 +169,7 @@ pub fn create_new_blockchain_with_constants(
     Vec<ChainBlock>,
     Vec<Vec<UnblindedOutput>>,
     ConsensusManager,
-)
-{
+) {
     let factories = CryptoFactories::default();
     let (block0, output) = create_genesis_block(&factories, &constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -198,8 +197,7 @@ pub fn create_new_blockchain_lmdb<P: AsRef<std::path::Path>>(
     Vec<ChainBlock>,
     Vec<Vec<UnblindedOutput>>,
     ConsensusManager,
-)
-{
+) {
     let factories = CryptoFactories::default();
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())

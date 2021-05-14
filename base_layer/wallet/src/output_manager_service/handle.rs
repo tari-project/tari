@@ -173,8 +173,7 @@ impl OutputManagerHandle {
     pub fn new(
         handle: SenderService<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>,
         event_stream_sender: OutputManagerEventSender,
-    ) -> Self
-    {
+    ) -> Self {
         OutputManagerHandle {
             handle,
             event_stream_sender,
@@ -206,8 +205,7 @@ impl OutputManagerHandle {
     pub async fn get_recipient_transaction(
         &mut self,
         sender_message: TransactionSenderMessage,
-    ) -> Result<ReceiverTransactionProtocol, OutputManagerError>
-    {
+    ) -> Result<ReceiverTransactionProtocol, OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::GetRecipientTransaction(sender_message))
@@ -224,8 +222,7 @@ impl OutputManagerHandle {
         reward: MicroTari,
         fees: MicroTari,
         block_height: u64,
-    ) -> Result<Transaction, OutputManagerError>
-    {
+    ) -> Result<Transaction, OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::GetCoinbaseTransaction((
@@ -248,8 +245,7 @@ impl OutputManagerHandle {
         lock_height: Option<u64>,
         message: String,
         recipient_script: TariScript,
-    ) -> Result<SenderTransactionProtocol, OutputManagerError>
-    {
+    ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::PrepareToSendTransaction((
@@ -274,8 +270,7 @@ impl OutputManagerHandle {
         fee_per_gram: MicroTari,
         num_kernels: u64,
         num_outputs: u64,
-    ) -> Result<MicroTari, OutputManagerError>
-    {
+    ) -> Result<MicroTari, OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::FeeEstimate((
@@ -307,8 +302,7 @@ impl OutputManagerHandle {
         tx_id: u64,
         spent_outputs: Vec<TransactionInput>,
         received_outputs: Vec<TransactionOutput>,
-    ) -> Result<(), OutputManagerError>
-    {
+    ) -> Result<(), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::ConfirmTransaction((
@@ -405,8 +399,7 @@ impl OutputManagerHandle {
         &mut self,
         validation_type: TxoValidationType,
         retries: ValidationRetryStrategy,
-    ) -> Result<u64, OutputManagerError>
-    {
+    ) -> Result<u64, OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::ValidateUtxos(validation_type, retries))
@@ -425,8 +418,7 @@ impl OutputManagerHandle {
         split_count: usize,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
-    ) -> Result<(u64, Transaction, MicroTari, MicroTari), OutputManagerError>
-    {
+    ) -> Result<(u64, Transaction, MicroTari, MicroTari), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::CreateCoinSplit((
@@ -464,8 +456,7 @@ impl OutputManagerHandle {
         &mut self,
         outputs: Vec<TransactionOutput>,
         height: u64,
-    ) -> Result<Vec<UnblindedOutput>, OutputManagerError>
-    {
+    ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::RewindOutputs(outputs, height))
@@ -480,8 +471,7 @@ impl OutputManagerHandle {
         &mut self,
         outputs: Vec<TransactionOutput>,
         height: u64,
-    ) -> Result<Vec<UnblindedOutput>, OutputManagerError>
-    {
+    ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::ScanOutputs(outputs, height))
@@ -509,8 +499,7 @@ impl OutputManagerHandle {
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
-    ) -> Result<(TxId, MicroTari, Transaction), OutputManagerError>
-    {
+    ) -> Result<(TxId, MicroTari, Transaction), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::CreatePayToSelfTransaction((

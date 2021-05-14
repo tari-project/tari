@@ -79,12 +79,11 @@ impl BroadcastLayer {
         dht_discovery_requester: DhtDiscoveryRequester,
         target_network: Network,
         message_validity_window: chrono::Duration,
-    ) -> Self
-    {
+    ) -> Self {
         BroadcastLayer {
-            node_identity,
             dht_requester,
             dht_discovery_requester,
+            node_identity,
             target_network,
             message_validity_window,
         }
@@ -126,8 +125,7 @@ impl<S> BroadcastMiddleware<S> {
         dht_discovery_requester: DhtDiscoveryRequester,
         target_network: Network,
         message_validity_window: chrono::Duration,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             next: service,
             dht_requester,
@@ -187,8 +185,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         target_network: Network,
         request: DhtOutboundRequest,
         message_validity_window: chrono::Duration,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             service,
             node_identity,
@@ -226,8 +223,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
     pub async fn generate_outbound_messages(
         &mut self,
         msg: DhtOutboundRequest,
-    ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError>
-    {
+    ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError> {
         match msg {
             DhtOutboundRequest::SendMessage(params, body, reply_tx) => {
                 self.handle_send_message(*params, body, reply_tx).await
@@ -240,8 +236,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         params: FinalSendMessageParams,
         body: Bytes,
         reply_tx: oneshot::Sender<SendMessageResponse>,
-    ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError>
-    {
+    ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError> {
         trace!(target: LOG_TARGET, "Send params: {:?}", params);
         if params
             .broadcast_strategy
@@ -372,8 +367,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
     async fn initiate_peer_discovery(
         &mut self,
         dest_public_key: Box<CommsPublicKey>,
-    ) -> Result<Option<Peer>, DhtOutboundError>
-    {
+    ) -> Result<Option<Peer>, DhtOutboundError> {
         trace!(
             target: LOG_TARGET,
             "Initiating peer discovery for public key '{}'",
@@ -424,8 +418,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         is_broadcast: bool,
         body: Bytes,
         expires: Option<DateTime<Utc>>,
-    ) -> Result<(Vec<DhtOutboundMessage>, Vec<MessageSendState>), DhtOutboundError>
-    {
+    ) -> Result<(Vec<DhtOutboundMessage>, Vec<MessageSendState>), DhtOutboundError> {
         let dht_flags = encryption.flags() | extra_flags;
 
         let (ephemeral_public_key, origin_mac, body) = self.process_encryption(&encryption, force_origin, body)?;
@@ -481,8 +474,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         encryption: &OutboundEncryption,
         include_origin: bool,
         body: Bytes,
-    ) -> Result<FinalMessageParts, DhtOutboundError>
-    {
+    ) -> Result<FinalMessageParts, DhtOutboundError> {
         match encryption {
             OutboundEncryption::EncryptFor(public_key) => {
                 trace!(target: LOG_TARGET, "Encrypting message for {}", public_key);

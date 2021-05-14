@@ -195,14 +195,11 @@ impl CommsBuilder {
 
     /// Build comms services and handles. Services will not be started.
     pub fn build(mut self) -> Result<UnspawnedCommsNode, CommsBuilderError> {
-        let node_identity = self
-            .node_identity
-            .take()
-            .ok_or_else(|| CommsBuilderError::NodeIdentityNotSet)?;
+        let node_identity = self.node_identity.take().ok_or(CommsBuilderError::NodeIdentityNotSet)?;
         let shutdown_signal = self
             .shutdown_signal
             .take()
-            .ok_or_else(|| CommsBuilderError::ShutdownSignalNotSet)?;
+            .ok_or(CommsBuilderError::ShutdownSignalNotSet)?;
 
         let peer_manager = self.make_peer_manager()?;
 

@@ -64,8 +64,7 @@ impl ChainMetadataService {
         base_node: LocalNodeCommsInterface,
         connectivity: ConnectivityRequester,
         event_publisher: broadcast::Sender<Arc<ChainMetadataEvent>>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             liveness,
             base_node,
@@ -238,8 +237,7 @@ impl ChainMetadataService {
         &mut self,
         node_id: &NodeId,
         metadata: &Metadata,
-    ) -> Result<(), ChainMetadataSyncError>
-    {
+    ) -> Result<(), ChainMetadataSyncError> {
         if let Some(chain_metadata_bytes) = metadata.get(MetadataKey::ChainMetadata) {
             let chain_metadata = proto::ChainMetadata::decode(chain_metadata_bytes.as_slice())?;
             let chain_metadata = ChainMetadata::try_from(chain_metadata)
@@ -270,11 +268,10 @@ impl ChainMetadataService {
         &mut self,
         node_id: &NodeId,
         metadata: &Metadata,
-    ) -> Result<(), ChainMetadataSyncError>
-    {
+    ) -> Result<(), ChainMetadataSyncError> {
         let chain_metadata_bytes = metadata
             .get(MetadataKey::ChainMetadata)
-            .ok_or_else(|| ChainMetadataSyncError::NoChainMetadata)?;
+            .ok_or(ChainMetadataSyncError::NoChainMetadata)?;
 
         let chain_metadata = ChainMetadata::try_from(proto::ChainMetadata::decode(chain_metadata_bytes.as_slice())?)
             .map_err(|err| ChainMetadataSyncError::ReceivedInvalidChainMetadata(node_id.clone(), err))?;

@@ -63,7 +63,7 @@ fn delete() {
         "7b7ddec2af4f3d0b9b165750cf2ff15813e965d29ecd5318e0c8fea901ceaef4"
     );
     // Can't delete past bounds
-    assert_eq!(mmr.delete(5), false);
+    assert!(!mmr.delete(5));
     assert_eq!(mmr.len(), 5);
     assert_eq!(mmr.is_empty(), Ok(false));
     assert_eq!(mmr.get_merkle_root(), Ok(root));

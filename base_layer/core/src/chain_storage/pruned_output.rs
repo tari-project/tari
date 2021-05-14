@@ -33,6 +33,6 @@ pub enum PrunedOutput {
 }
 impl PrunedOutput {
     pub fn is_pruned(&self) -> bool {
-        matches!(self, PrunedOutput::Pruned {..})
+        matches!(self, PrunedOutput::Pruned { .. })
     }
 }

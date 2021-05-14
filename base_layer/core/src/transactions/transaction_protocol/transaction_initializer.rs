@@ -146,8 +146,7 @@ impl SenderTransactionInitializer {
         receiver_index: usize,
         script: TariScript,
         recipient_script_offset_private_key: PrivateKey,
-    ) -> &mut Self
-    {
+    ) -> &mut Self {
         self.recipient_scripts.set_item(receiver_index, script);
         self.recipient_script_offset_private_keys
             .set_item(receiver_index, recipient_script_offset_private_key);
@@ -197,8 +196,7 @@ impl SenderTransactionInitializer {
         script: TariScript,
         input_data: ExecutionStack,
         script_private_key: PrivateKey,
-    ) -> &mut Self
-    {
+    ) -> &mut Self {
         self.change_script = Some(script);
         self.change_input_data = Some(input_data);
         self.change_script_private_key = Some(script_private_key);
@@ -238,8 +236,8 @@ impl SenderTransactionInitializer {
         let num_inputs = self.inputs.len();
         let total_being_spent = self.unblinded_inputs.iter().map(|i| i.value).sum::<MicroTari>();
         let total_to_self = self.outputs.iter().map(|o| o.value).sum::<MicroTari>();
-        let total_amount = self.amounts.sum().ok_or_else(|| "Not all amounts have been provided")?;
-        let fee_per_gram = self.fee_per_gram.ok_or_else(|| "Fee per gram was not provided")?;
+        let total_amount = self.amounts.sum().ok_or("Not all amounts have been provided")?;
+        let fee_per_gram = self.fee_per_gram.ok_or("Fee per gram was not provided")?;
         let fee_without_change = Fee::calculate(fee_per_gram, 1, num_inputs, num_outputs);
         let fee_with_change = Fee::calculate(fee_per_gram, 1, num_inputs, num_outputs + 1);
         let extra_fee = fee_with_change - fee_without_change;
@@ -262,23 +260,23 @@ impl SenderTransactionInitializer {
                         let change_key = self
                             .change_secret
                             .as_ref()
-                            .ok_or_else(|| "Change spending key was not provided")?;
+                            .ok_or("Change spending key was not provided")?;
                         let change_unblinded_output = UnblindedOutput::new(
                             v,
                             change_key.clone(),
                             None,
                             self.change_script
                                 .as_ref()
-                                .ok_or_else(|| "Change script was not provided")?
+                                .ok_or("Change script was not provided")?
                                 .clone(),
                             self.change_input_data
                                 .as_ref()
-                                .ok_or_else(|| "Change script was not provided")?
+                                .ok_or("Change script was not provided")?
                                 .clone(),
                             0,
                             self.change_script_private_key
                                 .as_ref()
-                                .ok_or_else(|| "Change script private key was not provided")?
+                                .ok_or("Change script private key was not provided")?
                                 .clone(),
                             PublicKey::from_secret_key(&change_script_offset_private_key),
                         );

@@ -49,8 +49,7 @@ use tokio::sync::broadcast;
 async fn test_request_responder(
     receiver: &mut Receiver<(NodeCommsRequest, Option<NodeId>), Result<NodeCommsResponse, CommsInterfaceError>>,
     response: NodeCommsResponse,
-)
-{
+) {
     let req_context = receiver.next().await.unwrap();
     req_context.reply(Ok(response)).unwrap()
 }

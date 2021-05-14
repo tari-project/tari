@@ -43,8 +43,7 @@ impl MockBaseNodeService {
     pub fn new(
         request_stream: Receiver<BaseNodeServiceRequest, Result<BaseNodeServiceResponse, BaseNodeServiceError>>,
         shutdown_signal: ShutdownSignal,
-    ) -> MockBaseNodeService
-    {
+    ) -> MockBaseNodeService {
         let base_node_peer = None;
         let state = Default::default();
         MockBaseNodeService {
@@ -124,8 +123,7 @@ impl MockBaseNodeService {
     async fn handle_request(
         &mut self,
         request: BaseNodeServiceRequest,
-    ) -> Result<BaseNodeServiceResponse, BaseNodeServiceError>
-    {
+    ) -> Result<BaseNodeServiceResponse, BaseNodeServiceError> {
         match request {
             BaseNodeServiceRequest::SetBaseNodePeer(peer) => {
                 self.set_base_node_peer(*peer);

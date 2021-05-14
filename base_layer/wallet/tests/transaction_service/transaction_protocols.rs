@@ -184,8 +184,7 @@ pub async fn add_transaction_to_database(
     valid: bool,
     status: Option<TransactionStatus>,
     db: TransactionDatabase<TransactionServiceSqliteDatabase>,
-)
-{
+) {
     let factories = CryptoFactories::default();
     let (_utxo, uo0) = make_input(&mut OsRng, 10 * amount, &factories.commitment);
     let (txs1, _uou1) = schema_to_transaction(&[txn_schema!(from: vec![uo0.clone()], to: vec![amount])]);

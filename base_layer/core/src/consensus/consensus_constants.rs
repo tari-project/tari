@@ -439,8 +439,7 @@ impl ConsensusConstantsBuilder {
         intial_amount: MicroTari,
         decay: &'static [u64],
         tail_amount: MicroTari,
-    ) -> Self
-    {
+    ) -> Self {
         self.consensus.emission_initial = intial_amount;
         self.consensus.emission_decay = decay;
         self.consensus.emission_tail = tail_amount;

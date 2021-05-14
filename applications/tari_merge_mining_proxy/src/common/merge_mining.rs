@@ -64,8 +64,7 @@ pub fn construct_monero_data(block: Block, seed: String) -> Result<MoneroData, M
 pub fn add_coinbase(
     coinbase: Option<grpc::Transaction>,
     mut block: NewBlockTemplate,
-) -> Result<grpc::NewBlockTemplate, MmProxyError>
-{
+) -> Result<grpc::NewBlockTemplate, MmProxyError> {
     if let Some(tx) = coinbase {
         let output = TransactionOutput::try_from(tx.clone().body.unwrap().outputs[0].clone())
             .map_err(MmProxyError::MissingDataError)?;

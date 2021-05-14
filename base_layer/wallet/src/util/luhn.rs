@@ -54,7 +54,7 @@ mod test {
             let valid = is_valid(&[0, 1, 2, 3, 4, 5, i], 6);
             match i {
                 4 => assert!(valid),
-                _ => assert_eq!(valid, false),
+                _ => assert!(!valid),
             }
         }
     }
@@ -66,7 +66,7 @@ mod test {
             let valid = is_valid(&[7, 9, 9, 2, 7, 3, 9, 8, 7, 1, i], 10);
             match i {
                 3 => assert!(valid),
-                _ => assert_eq!(valid, false),
+                _ => assert!(!valid),
             }
         }
         assert_eq!(checksum(&[1, 0, 4], 10), 0);

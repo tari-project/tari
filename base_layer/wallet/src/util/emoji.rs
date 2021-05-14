@@ -110,20 +110,20 @@ impl EmojiId {
         EmojiId::str_to_pubkey(s).is_ok()
     }
 
-    pub fn str_to_pubkey(s: &str) -> Result<PublicKey, ()> {
+    pub fn str_to_pubkey(s: &str) -> Result<PublicKey, EmojiIdError> {
         let mut indices = Vec::with_capacity(33);
         for c in s.chars() {
             if let Some(i) = REVERSE_EMOJI.get(&c) {
                 indices.push(*i);
             } else {
-                return Err(());
+                return Err(EmojiIdError);
             }
         }
         if !is_valid(&indices, 256) {
-            return Err(());
+            return Err(EmojiIdError);
         }
         let bytes = EmojiId::byte_vec(s)?;
-        PublicKey::from_bytes(&bytes).map_err(|_| ())
+        PublicKey::from_bytes(&bytes).map_err(|_| EmojiIdError)
     }
 
     /// Return the 33 character emoji string for this emoji ID
@@ -146,13 +146,13 @@ impl EmojiId {
         Self(id)
     }
 
-    fn byte_vec(s: &str) -> Result<Vec<u8>, ()> {
+    fn byte_vec(s: &str) -> Result<Vec<u8>, EmojiIdError> {
         let mut v = Vec::with_capacity(32);
         for c in s.chars().take(32) {
             if let Some(index) = REVERSE_EMOJI.get(&c) {
                 v.push(*index as u8);
             } else {
-                return Err(());
+                return Err(EmojiIdError);
             }
         }
         Ok(v)
@@ -164,6 +164,9 @@ impl Display for EmojiId {
         fmt.write_str(self.as_str())
     }
 }
+
+#[derive(Debug)]
+pub struct EmojiIdError;
 
 #[cfg(test)]
 mod test {
@@ -195,26 +198,22 @@ mod test {
         let eid = EmojiId::from_hex("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a").unwrap();
         // Valid emojiID
         assert!(EmojiId::is_valid(eid.as_str()));
-        assert_eq!(EmojiId::is_valid(""), false, "Emoji ID too short");
-        assert_eq!(EmojiId::is_valid("🌂"), false, "Emoji ID too short");
-        assert_eq!(
-            EmojiId::is_valid("🌟💻🐖🐩🐾🌟🐬🎧🐌🏦🐳🐎🐝🐢🔋👕🎸👿🍒🐓🎉💔🌹🏆🐬💡🎳🚦🍹🎒"),
-            false,
+        assert!(!EmojiId::is_valid(""), "Emoji ID too short");
+        assert!(!EmojiId::is_valid("🌂"), "Emoji ID too short");
+        assert!(
+            !EmojiId::is_valid("🌟💻🐖🐩🐾🌟🐬🎧🐌🏦🐳🐎🐝🐢🔋👕🎸👿🍒🐓🎉💔🌹🏆🐬💡🎳🚦🍹🎒"),
             "Emoji ID too short"
         );
-        assert_eq!(
-            EmojiId::is_valid("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a"),
-            false,
+        assert!(
+            !EmojiId::is_valid("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a"),
             "Not emoji string"
         );
-        assert_eq!(
-            EmojiId::is_valid("🐎🍴🌷🌟💻🐖🐩🐾🌟🐬🎧🐌🏦🐳🐎🐝🐢🔋👕🎸👿🍒🐓🎉💔🌹🏆🐬💡🎳🚦🍹"),
-            false,
+        assert!(
+            !EmojiId::is_valid("🐎🍴🌷🌟💻🐖🐩🐾🌟🐬🎧🐌🏦🐳🐎🐝🐢🔋👕🎸👿🍒🐓🎉💔🌹🏆🐬💡🎳🚦🍹"),
             "No checksum"
         );
-        assert_eq!(
-            EmojiId::is_valid("🐎🍴🌷🌟💻🐖🐩🐾🌟🐬🎧🐌🏦🐳🐎🐝🐢🔋👕🎸👿🍒🐓🎉💔🌹🏆🐬💡🎳🚦🍹📝"),
-            false,
+        assert!(
+            !EmojiId::is_valid("🐎🍴🌷🌟💻🐖🐩🐾🌟🐬🎧🐌🏦🐳🐎🐝🐢🔋👕🎸👿🍒🐓🎉💔🌹🏆🐬💡🎳🚦🍹📝"),
             "Wrong checksum"
         );
     }

@@ -118,8 +118,7 @@ where
         output_manager_backend: V,
         contacts_backend: W,
         shutdown_signal: ShutdownSignal,
-    ) -> Result<Wallet<T, U, V, W>, WalletError>
-    {
+    ) -> Result<Wallet<T, U, V, W>, WalletError> {
         let master_secret_key = read_or_create_master_secret_key(&mut wallet_database.clone()).await?;
         let comms_secret_key = derive_comms_secret_key(&master_secret_key)?;
 
@@ -243,8 +242,7 @@ where
         &mut self,
         public_key: CommsPublicKey,
         net_address: String,
-    ) -> Result<(), WalletError>
-    {
+    ) -> Result<(), WalletError> {
         info!(
             "Wallet setting base node peer, public key: {}, net address: {}.",
             public_key, net_address
@@ -289,8 +287,7 @@ where
         spending_key: &PrivateKey,
         source_public_key: &CommsPublicKey,
         message: String,
-    ) -> Result<TxId, WalletError>
-    {
+    ) -> Result<TxId, WalletError> {
         let unblinded_output = UnblindedOutput::new(
             amount,
             spending_key.clone(),
@@ -329,8 +326,7 @@ where
         unblinded_output: UnblindedOutput,
         source_public_key: &CommsPublicKey,
         message: String,
-    ) -> Result<TxId, WalletError>
-    {
+    ) -> Result<TxId, WalletError> {
         self.output_manager_service.add_output(unblinded_output.clone()).await?;
 
         let tx_id = self
@@ -355,8 +351,7 @@ where
         secret: RistrettoSecretKey,
         nonce: RistrettoSecretKey,
         message: &str,
-    ) -> Result<SchnorrSignature<RistrettoPublicKey, RistrettoSecretKey>, SchnorrSignatureError>
-    {
+    ) -> Result<SchnorrSignature<RistrettoPublicKey, RistrettoSecretKey>, SchnorrSignatureError> {
         let challenge = Blake256::digest(message.as_bytes());
         RistrettoSchnorr::sign(secret, nonce, challenge.clone().as_slice())
     }
@@ -367,8 +362,7 @@ where
         public_nonce: RistrettoPublicKey,
         signature: RistrettoSecretKey,
         message: String,
-    ) -> bool
-    {
+    ) -> bool {
         let signature = RistrettoSchnorr::new(public_nonce, signature);
         let challenge = Blake256::digest(message.as_bytes());
         signature.verify_challenge(&public_key, challenge.clone().as_slice())
@@ -382,8 +376,7 @@ where
         fee_per_gram: MicroTari,
         message: String,
         lock_height: Option<u64>,
-    ) -> Result<TxId, WalletError>
-    {
+    ) -> Result<TxId, WalletError> {
         let coin_split_tx = self
             .output_manager_service
             .create_coin_split(amount_per_split, split_count, fee_per_gram, lock_height)

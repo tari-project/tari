@@ -59,8 +59,7 @@ impl MempoolHandle {
     pub async fn get_tx_state_by_excess_sig(
         &mut self,
         sig: Signature,
-    ) -> Result<TxStorageResponse, MempoolServiceError>
-    {
+    ) -> Result<TxStorageResponse, MempoolServiceError> {
         match self.inner.call(MempoolRequest::GetTxStateByExcessSig(sig)).await?? {
             MempoolResponse::TxStorage(resp) => Ok(resp),
             _ => panic!("Incorrect response"),
@@ -70,8 +69,7 @@ impl MempoolHandle {
     pub async fn submit_transaction(
         &mut self,
         transaction: Transaction,
-    ) -> Result<TxStorageResponse, MempoolServiceError>
-    {
+    ) -> Result<TxStorageResponse, MempoolServiceError> {
         match self
             .inner
             .call(MempoolRequest::SubmitTransaction(transaction))

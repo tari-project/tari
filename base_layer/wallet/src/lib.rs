@@ -8,6 +8,7 @@
 #![recursion_limit = "2048"]
 #![feature(drain_filter)]
 #![feature(type_alias_impl_trait)]
+#![feature(min_type_alias_impl_trait)]
 
 #[macro_use]
 mod macros;

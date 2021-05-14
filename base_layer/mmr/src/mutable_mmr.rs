@@ -80,6 +80,7 @@ where
     /// NB: This is semantically different to `MerkleMountainRange::len()`. The latter returns the total number of
     /// nodes in the MMR, while this function returns the number of leaf nodes minus the number of nodes marked for
     /// deletion.
+    #[allow(clippy::len_without_is_empty)]
     #[inline(always)]
     pub fn len(&self) -> u32 {
         self.size - self.deleted.cardinality() as u32
@@ -221,8 +222,7 @@ where
         &self,
         leaf_index: usize,
         count: usize,
-    ) -> Result<MutableMmrLeafNodes, MerkleMountainRangeError>
-    {
+    ) -> Result<MutableMmrLeafNodes, MerkleMountainRangeError> {
         Ok(MutableMmrLeafNodes {
             leaf_hashes: self.mmr.get_leaf_hashes(leaf_index, count)?,
             deleted: self.get_sub_bitmap(leaf_index, count)?,

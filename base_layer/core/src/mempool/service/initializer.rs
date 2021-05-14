@@ -71,8 +71,7 @@ impl MempoolServiceInitializer {
         config: MempoolServiceConfig,
         mempool: Mempool,
         inbound_message_subscription_factory: Arc<SubscriptionFactory>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             inbound_message_subscription_factory,
             mempool,

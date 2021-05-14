@@ -99,8 +99,7 @@ impl UnspawnedCommsNode {
         mut self,
         protocol: I,
         notifier: ProtocolNotificationTx<Substream>,
-    ) -> Self
-    {
+    ) -> Self {
         self.protocols.add(protocol, notifier);
         self
     }

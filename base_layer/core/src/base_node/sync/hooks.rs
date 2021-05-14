@@ -56,8 +56,7 @@ impl Hooks {
         block: Arc<ChainBlock>,
         remote_tip_height: u64,
         sync_peers: &[NodeId],
-    )
-    {
+    ) {
         self.on_progress_block
             .iter_mut()
             .for_each(|f| (*f)(block.clone(), remote_tip_height, sync_peers));

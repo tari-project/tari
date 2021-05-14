@@ -66,8 +66,7 @@ pub async fn create_peer_connection_mock_pair(
     PeerConnectionMockState,
     PeerConnection,
     PeerConnectionMockState,
-)
-{
+) {
     let rt_handle = Handle::current();
     let (tx1, rx1) = mpsc::channel(buf_size);
     let (tx2, rx2) = mpsc::channel(buf_size);

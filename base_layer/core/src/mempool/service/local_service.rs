@@ -58,8 +58,7 @@ impl LocalMempoolService {
     pub fn new(
         request_sender: LocalMempoolRequester,
         mempool_state_event_stream: broadcast::Sender<MempoolStateEvent>,
-    ) -> Self
-    {
+    ) -> Self {
         LocalMempoolService {
             request_sender,
             mempool_state_event_stream,
@@ -88,8 +87,7 @@ impl LocalMempoolService {
     pub async fn submit_transaction(
         &mut self,
         transaction: Transaction,
-    ) -> Result<TxStorageResponse, MempoolServiceError>
-    {
+    ) -> Result<TxStorageResponse, MempoolServiceError> {
         match self
             .request_sender
             .call(MempoolRequest::SubmitTransaction(transaction))
@@ -103,8 +101,7 @@ impl LocalMempoolService {
     pub async fn get_transaction_state_by_excess_sig(
         &mut self,
         sig: Signature,
-    ) -> Result<TxStorageResponse, MempoolServiceError>
-    {
+    ) -> Result<TxStorageResponse, MempoolServiceError> {
         match self
             .request_sender
             .call(MempoolRequest::GetTxStateByExcessSig(sig))

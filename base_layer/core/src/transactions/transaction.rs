@@ -225,8 +225,7 @@ impl UnblindedOutput {
         height: u64,
         script_private_key: PrivateKey,
         script_offset_public_key: PublicKey,
-    ) -> UnblindedOutput
-    {
+    ) -> UnblindedOutput {
         UnblindedOutput {
             value,
             spending_key,
@@ -301,8 +300,7 @@ impl UnblindedOutput {
         &self,
         factories: &CryptoFactories,
         rewind_data: &RewindData,
-    ) -> Result<TransactionOutput, TransactionError>
-    {
+    ) -> Result<TransactionOutput, TransactionError> {
         let beta_hash = Blake256::new()
             .chain(self.script.as_hash::<Blake256>()?.as_bytes())
             .chain(self.features.to_bytes())
@@ -403,8 +401,7 @@ impl TransactionInput {
         height: u64,
         script_signature: Signature,
         script_offset_public_key: PublicKey,
-    ) -> TransactionInput
-    {
+    ) -> TransactionInput {
         TransactionInput {
             features,
             commitment,
@@ -538,8 +535,7 @@ impl TransactionOutput {
         proof: RangeProof,
         script_hash: Vec<u8>,
         script_offset_public_key: PublicKey,
-    ) -> TransactionOutput
-    {
+    ) -> TransactionOutput {
         TransactionOutput {
             features,
             commitment,
@@ -570,8 +566,7 @@ impl TransactionOutput {
         prover: &RangeProofService,
         rewind_public_key: &PublicKey,
         rewind_blinding_public_key: &PublicKey,
-    ) -> Result<RewindResult, TransactionError>
-    {
+    ) -> Result<RewindResult, TransactionError> {
         Ok(prover
             .rewind_proof_value_only(
                 &self.proof.0,
@@ -588,8 +583,7 @@ impl TransactionOutput {
         prover: &RangeProofService,
         rewind_key: &PrivateKey,
         rewind_blinding_key: &PrivateKey,
-    ) -> Result<FullRewindResult, TransactionError>
-    {
+    ) -> Result<FullRewindResult, TransactionError> {
         Ok(prover
             .rewind_proof_commitment_data(
                 &self.proof.0,
@@ -722,8 +716,7 @@ impl FullRewindResult {
         committed_value: MicroTari,
         proof_message: [u8; REWIND_USER_MESSAGE_LENGTH],
         blinding_factor: BlindingFactor,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             committed_value,
             proof_message,
@@ -923,8 +916,7 @@ impl Transaction {
         kernels: Vec<TransactionKernel>,
         offset: BlindingFactor,
         script_offset: BlindingFactor,
-    ) -> Transaction
-    {
+    ) -> Transaction {
         let mut body = AggregateBody::new(inputs, outputs, kernels);
         body.sort();
         Transaction {
@@ -945,8 +937,7 @@ impl Transaction {
         &self,
         factories: &CryptoFactories,
         reward: Option<MicroTari>,
-    ) -> Result<(), TransactionError>
-    {
+    ) -> Result<(), TransactionError> {
         let reward = reward.unwrap_or_else(|| 0 * uT);
         self.body
             .validate_internal_consistency(&self.offset, &self.script_offset, reward, factories)
@@ -1226,7 +1217,7 @@ mod test {
             script_hash,
             offset_pub_key,
         );
-        assert_eq!(tx_output3.verify_range_proof(&factories.range_proof).unwrap(), false);
+        assert!(!tx_output3.verify_range_proof(&factories.range_proof).unwrap());
     }
 
     #[test]

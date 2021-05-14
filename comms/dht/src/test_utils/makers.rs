@@ -75,8 +75,7 @@ pub fn make_dht_header(
     flags: DhtMessageFlags,
     include_origin: bool,
     trace: MessageTag,
-) -> DhtMessageHeader
-{
+) -> DhtMessageHeader {
     DhtMessageHeader {
         version: 0,
         destination: NodeDestination::Unknown,
@@ -99,8 +98,7 @@ pub fn make_valid_origin_mac(
     e_sk: &CommsSecretKey,
     body: &[u8],
     flags: DhtMessageFlags,
-) -> Vec<u8>
-{
+) -> Vec<u8> {
     let mac = OriginMac {
         public_key: node_identity.public_key().to_vec(),
         signature: signature::sign(&mut OsRng, node_identity.secret_key().clone(), body)
@@ -122,8 +120,7 @@ pub fn make_dht_inbound_message(
     body: Vec<u8>,
     flags: DhtMessageFlags,
     include_origin: bool,
-) -> DhtInboundMessage
-{
+) -> DhtInboundMessage {
     let msg_tag = MessageTag::new();
     let envelope = make_dht_envelope(node_identity, body, flags, include_origin, msg_tag);
     DhtInboundMessage::new(
@@ -152,8 +149,7 @@ pub fn make_dht_envelope(
     flags: DhtMessageFlags,
     include_origin: bool,
     trace: MessageTag,
-) -> DhtEnvelope
-{
+) -> DhtEnvelope {
     let (e_sk, e_pk) = make_keypair();
     if flags.is_encrypted() {
         let shared_secret = crypt::generate_ecdh_secret(&e_sk, node_identity.public_key());

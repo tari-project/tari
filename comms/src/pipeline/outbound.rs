@@ -54,8 +54,7 @@ where
         executor: runtime::Handle,
         config: OutboundPipelineConfig<TStream, TPipeline>,
         messaging_request_tx: mpsc::Sender<MessagingRequest>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             executor,
             config,

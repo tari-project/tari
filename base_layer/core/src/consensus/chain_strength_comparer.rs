@@ -26,8 +26,7 @@ impl ThenComparer {
     pub fn new(
         before: Box<dyn ChainStrengthComparer + Send + Sync>,
         after: Box<dyn ChainStrengthComparer + Send + Sync>,
-    ) -> Self
-    {
+    ) -> Self {
         ThenComparer { before, after }
     }
 }

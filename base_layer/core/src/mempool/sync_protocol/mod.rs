@@ -127,8 +127,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
         connectivity_events: ConnectivityEventRx,
         mempool: Mempool,
         state_machine: Option<StateMachineHandle>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             config,
             protocol_notifier,
@@ -288,13 +287,12 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
         framed: CanonicalFraming<TSubstream>,
         peer_node_id: NodeId,
         mempool: Mempool,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             config,
             framed,
-            peer_node_id,
             mempool,
+            peer_node_id,
         }
     }
 
@@ -506,8 +504,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
     async fn validate_and_insert_transaction(
         &mut self,
         txn: shared_proto::types::Transaction,
-    ) -> Result<(), MempoolProtocolError>
-    {
+    ) -> Result<(), MempoolProtocolError> {
         let txn = Transaction::try_from(txn).map_err(|err| MempoolProtocolError::MessageConversionFailed {
             peer: self.peer_node_id.clone(),
             message: err,

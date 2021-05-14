@@ -52,8 +52,7 @@ impl ConnectionManagerRequester {
     pub fn new(
         sender: mpsc::Sender<ConnectionManagerRequest>,
         event_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
-    ) -> Self
-    {
+    ) -> Self {
         Self { sender, event_tx }
     }
 }
@@ -94,8 +93,7 @@ impl ConnectionManagerRequester {
         &mut self,
         node_id: NodeId,
         reply_tx: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
-    ) -> Result<(), ConnectionManagerError>
-    {
+    ) -> Result<(), ConnectionManagerError> {
         self.sender
             .send(ConnectionManagerRequest::DialPeer(node_id, reply_tx))
             .await

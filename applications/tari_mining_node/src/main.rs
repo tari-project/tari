@@ -111,8 +111,7 @@ async fn main_inner() -> Result<(), ExitCodes> {
 async fn connect(
     config: &MinerConfig,
     global: &GlobalConfig,
-) -> Result<(BaseNodeClient<Channel>, WalletClient<Channel>), MinerError>
-{
+) -> Result<(BaseNodeClient<Channel>, WalletClient<Channel>), MinerError> {
     let base_node_addr = config.base_node_addr(&global);
     info!("Connecting to base node at {}", base_node_addr);
     let node_conn = BaseNodeClient::connect(base_node_addr.clone()).await?;
@@ -128,8 +127,7 @@ async fn mining_cycle(
     wallet_conn: &mut WalletClient<Channel>,
     config: &MinerConfig,
     bootstrap: &ConfigBootstrap,
-) -> Result<bool, MinerError>
-{
+) -> Result<bool, MinerError> {
     // 1. Receive new block template
     let template = node_conn
         .get_new_block_template(config.pow_algo_request())

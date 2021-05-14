@@ -142,8 +142,7 @@ async fn setup_comms_dht(
     inbound_tx: mpsc::Sender<DecryptedDhtMessage>,
     peers: Vec<Peer>,
     shutdown_signal: ShutdownSignal,
-) -> (CommsNode, Dht, MessagingEventSender)
-{
+) -> (CommsNode, Dht, MessagingEventSender) {
     // Create inbound and outbound channels
     let (outbound_tx, outbound_rx) = mpsc::channel(10);
 
@@ -523,7 +522,7 @@ async fn dht_propagate_dedup() {
     let received = filter_received(collect_stream!(node_B_messaging, timeout = Duration::from_secs(20)));
     let recv_count = count_messages_received(&received, &[&node_A_id, &node_C_id]);
     // Expected race condition: If A->B->C before A->C then C->B does not happen
-    assert!(recv_count >= 1 && recv_count <= 2);
+    assert!((1..=2).contains(&recv_count));
 
     let received = filter_received(collect_stream!(node_C_messaging, timeout = Duration::from_secs(20)));
     let recv_count = count_messages_received(&received, &[&node_A_id, &node_B_id]);

@@ -57,8 +57,7 @@ impl StoreLayer {
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
         saf_requester: StoreAndForwardRequester,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             peer_manager,
             config,
@@ -98,8 +97,7 @@ impl<S> StoreMiddleware<S> {
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
         saf_requester: StoreAndForwardRequester,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             next_service,
             config,
@@ -151,14 +149,14 @@ impl<S> StoreTask<S> {
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
         saf_requester: StoreAndForwardRequester,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
-            config,
+            next_service,
+
             peer_manager,
+            config,
             node_identity,
             saf_requester,
-            next_service,
         }
     }
 }
@@ -339,8 +337,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     async fn get_priority_by_destination(
         &self,
         message: &DecryptedDhtMessage,
-    ) -> SafResult<Option<StoredMessagePriority>>
-    {
+    ) -> SafResult<Option<StoredMessagePriority>> {
         let log_not_eligible = |reason: &str| {
             debug!(
                 target: LOG_TARGET,
@@ -427,8 +424,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             }
         }
 
-        let stored_message = NewStoredMessage::try_construct(message, priority)
-            .ok_or_else(|| StoreAndForwardError::InvalidStoreMessage)?;
+        let stored_message =
+            NewStoredMessage::try_construct(message, priority).ok_or(StoreAndForwardError::InvalidStoreMessage)?;
         self.saf_requester.insert_message(stored_message).await
     }
 }
@@ -520,7 +517,7 @@ mod test {
             NodeDestination::PublicKey(Box::new(origin_node_identity.public_key().clone()));
         let msg = DecryptedDhtMessage::failed(inbound_msg.clone());
         service.call(msg).await.unwrap();
-        assert_eq!(spy.is_called(), true);
+        assert!(spy.is_called());
 
         async_assert_eventually!(
             mock_state.call_count(),
@@ -561,7 +558,7 @@ mod test {
             NodeDestination::PublicKey(Box::new(origin_node_identity.public_key().clone()));
         let msg_banned = DecryptedDhtMessage::failed(inbound_msg.clone());
         service.call(msg_banned).await.unwrap();
-        assert_eq!(spy.is_called(), true);
+        assert!(spy.is_called());
 
         assert_eq!(mock_state.call_count(), 0);
         let messages = mock_state.get_messages().await;

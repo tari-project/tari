@@ -56,15 +56,14 @@ impl WalletConfig {
         buffer_size: Option<usize>,
         rate_limit: Option<usize>,
         scan_for_utxo_interval: Option<Duration>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             comms_config,
             factories,
             transaction_service_config,
             output_manager_service_config,
-            buffer_size: buffer_size.unwrap_or_else(|| 1500),
-            rate_limit: rate_limit.unwrap_or_else(|| 50),
+            buffer_size: buffer_size.unwrap_or(1500),
+            rate_limit: rate_limit.unwrap_or(50),
             network,
             base_node_service_config: base_node_service_config.unwrap_or_default(),
             scan_for_utxo_interval: scan_for_utxo_interval.unwrap_or_else(|| Duration::from_secs(43200)),

@@ -429,8 +429,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         tx_id: u64,
         outputs_to_send: &[DbUnblindedOutput],
         outputs_to_receive: &[DbUnblindedOutput],
-    ) -> Result<(), OutputManagerStorageError>
-    {
+    ) -> Result<(), OutputManagerStorageError> {
         let conn = self.database_connection.acquire_lock();
 
         let mut outputs_to_be_spent = Vec::with_capacity(outputs_to_send.len());
@@ -577,7 +576,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     fn invalidate_unspent_output(&self, output: &DbUnblindedOutput) -> Result<Option<TxId>, OutputManagerStorageError> {
         let conn = self.database_connection.acquire_lock();
         let output = OutputSql::find_by_commitment(&output.commitment.to_vec(), &conn)?;
-        let tx_id = output.tx_id.clone().map(|id| id as u64);
+        let tx_id = output.tx_id.map(|id| id as u64);
         let _ = output.update(
             UpdateOutput {
                 status: Some(OutputStatus::Invalid),
@@ -615,8 +614,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     fn update_spent_output_to_unspent(
         &self,
         commitment: &Commitment,
-    ) -> Result<DbUnblindedOutput, OutputManagerStorageError>
-    {
+    ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
         let conn = self.database_connection.acquire_lock();
         let output = OutputSql::find_by_commitment(&commitment.to_vec(), &conn)?;
 
@@ -636,7 +634,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         )?;
         self.decrypt_if_necessary(&mut o)?;
 
-        Ok(DbUnblindedOutput::try_from(o)?)
+        DbUnblindedOutput::try_from(o)
     }
 
     fn cancel_pending_transaction_at_block_height(&self, block_height: u64) -> Result<(), OutputManagerStorageError> {
@@ -775,8 +773,7 @@ fn pending_transaction_outputs_from_sql_outputs(
     timestamp: &NaiveDateTime,
     outputs: Vec<OutputSql>,
     coinbase_block_height: Option<u64>,
-) -> Result<PendingTransactionOutputs, OutputManagerStorageError>
-{
+) -> Result<PendingTransactionOutputs, OutputManagerStorageError> {
     let mut outputs_to_be_spent = Vec::new();
     let mut outputs_to_be_received = Vec::new();
     for o in outputs {
@@ -912,8 +909,7 @@ impl OutputSql {
     pub fn index_status(
         status: OutputStatus,
         conn: &SqliteConnection,
-    ) -> Result<Vec<OutputSql>, OutputManagerStorageError>
-    {
+    ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table.filter(outputs::status.eq(status as i32)).load(conn)?)
     }
 
@@ -936,8 +932,7 @@ impl OutputSql {
     pub fn find_by_commitment(
         commitment: &[u8],
         conn: &SqliteConnection,
-    ) -> Result<OutputSql, OutputManagerStorageError>
-    {
+    ) -> Result<OutputSql, OutputManagerStorageError> {
         let cancelled = OutputStatus::CancelledInbound as i32;
         Ok(outputs::table
             .filter(outputs::status.ne(cancelled))
@@ -956,8 +951,7 @@ impl OutputSql {
     pub fn find_by_tx_id_and_encumbered(
         tx_id: TxId,
         conn: &SqliteConnection,
-    ) -> Result<Vec<OutputSql>, OutputManagerStorageError>
-    {
+    ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table
             .filter(outputs::tx_id.eq(Some(tx_id as i64)))
             .filter(
@@ -973,8 +967,7 @@ impl OutputSql {
         spending_key: &[u8],
         status: OutputStatus,
         conn: &SqliteConnection,
-    ) -> Result<OutputSql, OutputManagerStorageError>
-    {
+    ) -> Result<OutputSql, OutputManagerStorageError> {
         Ok(outputs::table
             .filter(outputs::status.eq(status as i32))
             .filter(outputs::spending_key.eq(spending_key))
@@ -996,8 +989,7 @@ impl OutputSql {
         &self,
         updated_output: UpdateOutput,
         conn: &SqliteConnection,
-    ) -> Result<OutputSql, OutputManagerStorageError>
-    {
+    ) -> Result<OutputSql, OutputManagerStorageError> {
         let num_updated = diesel::update(outputs::table.filter(outputs::id.eq(&self.id)))
             .set(UpdateOutputSql::from(updated_output))
             .execute(conn)?;
@@ -1008,7 +1000,7 @@ impl OutputSql {
             ));
         }
 
-        Ok(OutputSql::find(&self.spending_key, conn)?)
+        OutputSql::find(&self.spending_key, conn)
     }
 
     /// This function is used to update an existing record to set fields to null
@@ -1016,8 +1008,7 @@ impl OutputSql {
         &self,
         updated_null: NullOutputSql,
         conn: &SqliteConnection,
-    ) -> Result<OutputSql, OutputManagerStorageError>
-    {
+    ) -> Result<OutputSql, OutputManagerStorageError> {
         let num_updated = diesel::update(outputs::table.filter(outputs::spending_key.eq(&self.spending_key)))
             .set(updated_null)
             .execute(conn)?;
@@ -1028,7 +1019,7 @@ impl OutputSql {
             ));
         }
 
-        Ok(OutputSql::find(&self.spending_key, conn)?)
+        OutputSql::find(&self.spending_key, conn)
     }
 
     /// Update the changed fields of this record after encryption/decryption is performed
@@ -1062,8 +1053,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 OutputManagerStorageError::ConversionError
             })?,
             Some(OutputFeatures {
-                flags: OutputFlags::from_bits(o.flags as u8)
-                    .ok_or_else(|| OutputManagerStorageError::ConversionError)?,
+                flags: OutputFlags::from_bits(o.flags as u8).ok_or(OutputManagerStorageError::ConversionError)?,
                 maturity: o.maturity as u64,
             }),
             TariScript::from_bytes(o.script.as_slice())?,
@@ -1220,8 +1210,7 @@ impl PendingTransactionOutputSql {
     pub fn find(
         tx_id: TxId,
         conn: &SqliteConnection,
-    ) -> Result<PendingTransactionOutputSql, OutputManagerStorageError>
-    {
+    ) -> Result<PendingTransactionOutputSql, OutputManagerStorageError> {
         Ok(pending_transaction_outputs::table
             .filter(pending_transaction_outputs::tx_id.eq(tx_id as i64))
             .first::<PendingTransactionOutputSql>(conn)?)
@@ -1242,8 +1231,7 @@ impl PendingTransactionOutputSql {
     pub fn index_older(
         timestamp: NaiveDateTime,
         conn: &SqliteConnection,
-    ) -> Result<Vec<PendingTransactionOutputSql>, OutputManagerStorageError>
-    {
+    ) -> Result<Vec<PendingTransactionOutputSql>, OutputManagerStorageError> {
         Ok(pending_transaction_outputs::table
             .filter(pending_transaction_outputs::timestamp.lt(timestamp))
             .load::<PendingTransactionOutputSql>(conn)?)
@@ -1253,8 +1241,7 @@ impl PendingTransactionOutputSql {
     pub fn index_block_height(
         block_height: i64,
         conn: &SqliteConnection,
-    ) -> Result<Vec<PendingTransactionOutputSql>, OutputManagerStorageError>
-    {
+    ) -> Result<Vec<PendingTransactionOutputSql>, OutputManagerStorageError> {
         Ok(pending_transaction_outputs::table
             .filter(pending_transaction_outputs::coinbase_block_height.eq(block_height))
             .load::<PendingTransactionOutputSql>(conn)?)
@@ -1282,8 +1269,7 @@ impl PendingTransactionOutputSql {
     pub fn clear_short_term(
         &self,
         conn: &SqliteConnection,
-    ) -> Result<PendingTransactionOutputSql, OutputManagerStorageError>
-    {
+    ) -> Result<PendingTransactionOutputSql, OutputManagerStorageError> {
         let num_updated = diesel::update(
             pending_transaction_outputs::table.filter(pending_transaction_outputs::tx_id.eq(&self.tx_id)),
         )
@@ -1296,7 +1282,7 @@ impl PendingTransactionOutputSql {
             ));
         }
 
-        Ok(PendingTransactionOutputSql::find(self.tx_id as u64, conn)?)
+        PendingTransactionOutputSql::find(self.tx_id as u64, conn)
     }
 }
 
@@ -1349,9 +1335,9 @@ impl KeyManagerStateSql {
     }
 
     pub fn get_state(conn: &SqliteConnection) -> Result<KeyManagerStateSql, OutputManagerStorageError> {
-        Ok(key_manager_states::table
+        key_manager_states::table
             .first::<KeyManagerStateSql>(conn)
-            .map_err(|_| OutputManagerStorageError::KeyManagerNotInitialized)?)
+            .map_err(|_| OutputManagerStorageError::KeyManagerNotInitialized)
     }
 
     pub fn set_state(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
@@ -1464,8 +1450,7 @@ impl KnownOneSidedPaymentScriptSql {
     pub fn find(
         hash: &[u8],
         conn: &SqliteConnection,
-    ) -> Result<KnownOneSidedPaymentScriptSql, OutputManagerStorageError>
-    {
+    ) -> Result<KnownOneSidedPaymentScriptSql, OutputManagerStorageError> {
         Ok(known_one_sided_payment_scripts::table
             .filter(known_one_sided_payment_scripts::script_hash.eq(hash))
             .first::<KnownOneSidedPaymentScriptSql>(conn)?)
@@ -1494,8 +1479,7 @@ impl KnownOneSidedPaymentScriptSql {
         &self,
         updated_known_script: UpdateKnownOneSidedPaymentScript,
         conn: &SqliteConnection,
-    ) -> Result<KnownOneSidedPaymentScriptSql, OutputManagerStorageError>
-    {
+    ) -> Result<KnownOneSidedPaymentScriptSql, OutputManagerStorageError> {
         let num_updated = diesel::update(
             known_one_sided_payment_scripts::table
                 .filter(known_one_sided_payment_scripts::script_hash.eq(&self.script_hash)),
@@ -1509,7 +1493,7 @@ impl KnownOneSidedPaymentScriptSql {
             ));
         }
 
-        Ok(KnownOneSidedPaymentScriptSql::find(&self.script_hash, conn)?)
+        KnownOneSidedPaymentScriptSql::find(&self.script_hash, conn)
     }
 
     /// Update the changed fields of this record after encryption/decryption is performed

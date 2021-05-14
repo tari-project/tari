@@ -243,10 +243,7 @@ mod test {
 
     #[test]
     fn limit_query() {
-        // Create peer manager with random peers
-        let mut sample_peers = Vec::new();
         // Create 20 peers were the 1st and last one is bad
-        sample_peers.push(create_test_peer(true));
         let db = HashmapDatabase::new();
         let mut id_counter = 0;
 

@@ -597,7 +597,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
     let key = config_string("merge_mining_proxy", &net_str, "proxy_submit_to_origin");
-    let proxy_submit_to_origin = cfg.get_bool(&key).unwrap_or_else(|_| true);
+    let proxy_submit_to_origin = cfg.get_bool(&key).unwrap_or(true);
 
     let key = "mining_node.mine_on_tip_only";
     let mine_on_tip_only = cfg.get_bool(key).unwrap_or(true);

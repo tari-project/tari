@@ -73,8 +73,7 @@ impl<B: Backend> App<B> {
         base_node_config: PeerConfig,
         node_config: GlobalConfig,
         notifier: Notifier,
-    ) -> Self
-    {
+    ) -> Self {
         let app_state = AppState::new(
             wallet.comms.node_identity().as_ref(),
             network,

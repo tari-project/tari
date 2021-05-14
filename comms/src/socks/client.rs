@@ -130,13 +130,13 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             Authentication::None => {},
             Authentication::Password(username, password) => {
                 let username_len = username.as_bytes().len();
-                if username_len < 1 || username_len > 255 {
+                if !(1..=255).contains(&username_len) {
                     return Err(SocksError::InvalidAuthValues(
                         "username length should between 1 to 255".to_string(),
                     ));
                 }
                 let password_len = password.as_bytes().len();
-                if password_len < 1 || password_len > 255 {
+                if !(1..=255).contains(&password_len) {
                     return Err(SocksError::InvalidAuthValues(
                         "password length should between 1 to 255".to_string(),
                     ));
@@ -367,7 +367,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
         let mut addr_iter = address.iter();
         let part1 = addr_iter
             .next()
-            .ok_or_else(|| SocksError::InvalidTargetAddress("Address contained no components"))?;
+            .ok_or(SocksError::InvalidTargetAddress("Address contained no components"))?;
 
         let part2 = addr_iter.next();
 

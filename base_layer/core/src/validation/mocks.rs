@@ -108,8 +108,7 @@ impl<B: BlockchainBackend> HeaderValidation<B> for MockValidator {
         _db: &B,
         header: &BlockHeader,
         previous_data: &BlockHeaderAccumulatedData,
-    ) -> Result<BlockHeaderAccumulatedDataBuilder, ValidationError>
-    {
+    ) -> Result<BlockHeaderAccumulatedDataBuilder, ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             let achieved = sha3_difficulty(header);
             let accum_data = BlockHeaderAccumulatedDataBuilder::default()
@@ -150,8 +149,7 @@ impl<B: BlockchainBackend> FinalHorizonStateValidation<B> for MockValidator {
         _total_utxo_sum: &Commitment,
         _total_kernel_sum: &Commitment,
         _backend: &B,
-    ) -> Result<(), ValidationError>
-    {
+    ) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
         } else {

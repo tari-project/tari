@@ -237,8 +237,9 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
             pending_tx = db.short_term_pending_transactions.remove(&tx_id);
         }
 
-        let mut pending_tx = pending_tx
-            .ok_or_else(|| OutputManagerStorageError::ValueNotFound(DbKey::PendingTransactionOutputs(tx_id)))?;
+        let mut pending_tx = pending_tx.ok_or(OutputManagerStorageError::ValueNotFound(
+            DbKey::PendingTransactionOutputs(tx_id),
+        ))?;
 
         // Add Spent outputs
         for o in pending_tx.outputs_to_be_spent.drain(..) {
@@ -264,8 +265,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
         tx_id: TxId,
         outputs_to_send: &[DbUnblindedOutput],
         outputs_to_receive: &[DbUnblindedOutput],
-    ) -> Result<(), OutputManagerStorageError>
-    {
+    ) -> Result<(), OutputManagerStorageError> {
         let mut db = acquire_write_lock!(self.db);
         let mut outputs_to_be_spent = Vec::new();
         for i in outputs_to_send {
@@ -300,10 +300,12 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
     fn confirm_encumbered_outputs(&self, tx_id: u64) -> Result<(), OutputManagerStorageError> {
         let mut db = acquire_write_lock!(self.db);
 
-        let pending_tx = db
-            .short_term_pending_transactions
-            .remove(&tx_id)
-            .ok_or_else(|| OutputManagerStorageError::ValueNotFound(DbKey::PendingTransactionOutputs(tx_id)))?;
+        let pending_tx =
+            db.short_term_pending_transactions
+                .remove(&tx_id)
+                .ok_or(OutputManagerStorageError::ValueNotFound(
+                    DbKey::PendingTransactionOutputs(tx_id),
+                ))?;
 
         let _ = db.pending_transactions.insert(pending_tx.tx_id, pending_tx);
 
@@ -331,8 +333,9 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
             pending_tx = db.short_term_pending_transactions.remove(&tx_id);
         }
 
-        let mut pending_tx = pending_tx
-            .ok_or_else(|| OutputManagerStorageError::ValueNotFound(DbKey::PendingTransactionOutputs(tx_id)))?;
+        let mut pending_tx = pending_tx.ok_or(OutputManagerStorageError::ValueNotFound(
+            DbKey::PendingTransactionOutputs(tx_id),
+        ))?;
 
         for o in pending_tx.outputs_to_be_spent.drain(..) {
             db.unspent_outputs.push(DbOutput::new(tx_id, o));
@@ -413,8 +416,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
     fn update_spent_output_to_unspent(
         &self,
         commitment: &Commitment,
-    ) -> Result<DbUnblindedOutput, OutputManagerStorageError>
-    {
+    ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
         let mut db = acquire_write_lock!(self.db);
         match db.spent_outputs.iter().position(|v| v.output.commitment == *commitment) {
             Some(pos) => {

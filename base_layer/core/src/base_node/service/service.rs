@@ -133,8 +133,7 @@ where B: BlockchainBackend + 'static
         inbound_nch: InboundNodeCommsHandlers<B>,
         config: BaseNodeServiceConfig,
         state_machine_handle: StateMachineHandle,
-    ) -> Self
-    {
+    ) -> Self {
         let (timeout_sender, timeout_receiver) = channel(100);
         Self {
             outbound_message_service,
@@ -238,8 +237,7 @@ where B: BlockchainBackend + 'static
             (NodeCommsRequest, Option<NodeId>),
             Result<NodeCommsResponse, CommsInterfaceError>,
         >,
-    )
-    {
+    ) {
         let outbound_message_service = self.outbound_message_service.clone();
         let waiting_requests = self.waiting_requests.clone();
         let timeout_sender = self.timeout_sender.clone();
@@ -339,8 +337,7 @@ where B: BlockchainBackend + 'static
     fn spawn_handle_local_request(
         &self,
         request_context: RequestContext<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>,
-    )
-    {
+    ) {
         let inbound_nch = self.inbound_nch.clone();
         task::spawn(async move {
             let (request, reply_tx) = request_context.split();
@@ -364,8 +361,7 @@ where B: BlockchainBackend + 'static
     fn spawn_handle_local_block(
         &self,
         block_context: RequestContext<(Block, Broadcast), Result<BlockHash, CommsInterfaceError>>,
-    )
-    {
+    ) {
         let inbound_nch = self.inbound_nch.clone();
         task::spawn(async move {
             let ((block, broadcast), reply_tx) = block_context.split();
@@ -386,8 +382,7 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
     mut outbound_message_service: OutboundMessageRequester,
     state_machine_handle: StateMachineHandle,
     domain_request_msg: DomainMessage<proto::BaseNodeServiceRequest>,
-) -> Result<(), BaseNodeServiceError>
-{
+) -> Result<(), BaseNodeServiceError> {
     let (origin_public_key, inner_msg) = domain_request_msg.into_origin_and_inner();
 
     // Convert proto::BaseNodeServiceRequest to a BaseNodeServiceRequest
@@ -466,8 +461,7 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
 async fn handle_incoming_response(
     waiting_requests: WaitingRequests<Result<NodeCommsResponse, CommsInterfaceError>>,
     incoming_response: proto::BaseNodeServiceResponse,
-) -> Result<(), BaseNodeServiceError>
-{
+) -> Result<(), BaseNodeServiceError> {
     let proto::BaseNodeServiceResponse {
         request_key,
         response,
@@ -506,8 +500,7 @@ async fn handle_outbound_request(
     request: NodeCommsRequest,
     node_id: Option<NodeId>,
     config: BaseNodeServiceConfig,
-) -> Result<(), CommsInterfaceError>
-{
+) -> Result<(), CommsInterfaceError> {
     let request_key = generate_request_key(&mut OsRng);
     let service_request = proto::BaseNodeServiceRequest {
         request_key,
@@ -616,8 +609,7 @@ async fn handle_outbound_block(
     mut outbound_message_service: OutboundMessageRequester,
     new_block: NewBlock,
     exclude_peers: Vec<NodeId>,
-) -> Result<(), CommsInterfaceError>
-{
+) -> Result<(), CommsInterfaceError> {
     outbound_message_service
         .flood(
             NodeDestination::Unknown,
@@ -635,8 +627,7 @@ async fn handle_outbound_block(
 async fn handle_request_timeout(
     waiting_requests: WaitingRequests<Result<NodeCommsResponse, CommsInterfaceError>>,
     request_key: RequestKey,
-) -> Result<(), CommsInterfaceError>
-{
+) -> Result<(), CommsInterfaceError> {
     if let Some((reply_tx, started)) = waiting_requests.remove(request_key).await {
         warn!(
             target: LOG_TARGET,
@@ -666,8 +657,7 @@ fn spawn_request_timeout(mut timeout_sender: Sender<RequestKey>, request_key: Re
 async fn handle_incoming_block<B: BlockchainBackend + 'static>(
     mut inbound_nch: InboundNodeCommsHandlers<B>,
     domain_block_msg: DomainMessage<NewBlock>,
-) -> Result<(), BaseNodeServiceError>
-{
+) -> Result<(), BaseNodeServiceError> {
     let DomainMessage::<_> {
         source_peer,
         inner: new_block,

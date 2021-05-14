@@ -80,11 +80,9 @@ fn handle_fields_for_hashable(item: &Data) -> proc_macro2::TokenStream {
                                     if val.ident == "Hashable" {
                                         // we have a hash command here, lets search for the sub command
                                         for nestedmeta in val.nested.iter() {
-                                            if let syn::NestedMeta::Meta(meta) = nestedmeta {
-                                                if let syn::Meta::Word(ref val) = meta {
-                                                    if val == "Ignore" {
-                                                        do_we_ignore_field = true;
-                                                    }
+                                            if let syn::NestedMeta::Meta(syn::Meta::Word(ref val)) = nestedmeta {
+                                                if val == "Ignore" {
+                                                    do_we_ignore_field = true;
                                                 }
                                             }
                                         }

@@ -69,8 +69,7 @@ pub async fn network_graph_snapshot(
     seed_nodes: &[TestNode],
     network: &[TestNode],
     num_neighbours: Option<usize>,
-) -> (StableGraph<NodeId, String>, StableGraph<NodeId, String>)
-{
+) -> (StableGraph<NodeId, String>, StableGraph<NodeId, String>) {
     let mut graph = StableGraph::new();
     let mut node_indices = HashMap::new();
 
@@ -162,8 +161,7 @@ pub fn run_python_network_graph_render(
     name: &str,
     output_dir: &str,
     graph_type: PythonRenderType,
-) -> Result<(), String>
-{
+) -> Result<(), String> {
     let temp_path = Path::new(TEMP_GRAPH_OUTPUT_DIR).join(name);
     let tmp_file_path = match temp_path.to_str() {
         None => return Err("Could not parse temp file directory".to_string()),
@@ -224,8 +222,7 @@ pub async fn create_message_propagation_graphs(
     name: &str,
     mut network_graph: StableGraph<NodeId, String>,
     message_tree: StableGraph<NodeId, String>,
-)
-{
+) {
     let mut bfs = Bfs::new(&message_tree, NodeIndex::new(0));
 
     network_graph.clear_edges();
