@@ -47,10 +47,7 @@ impl Difficulty {
     }
 
     pub fn checked_sub(self, other: Difficulty) -> Option<Difficulty> {
-        match self.0.checked_sub(other.0) {
-            None => None,
-            Some(v) => Some(Difficulty(v)),
-        }
+        self.0.checked_sub(other.0).map(Difficulty)
     }
 }
 

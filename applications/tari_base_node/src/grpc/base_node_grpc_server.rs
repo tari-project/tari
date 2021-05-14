@@ -88,8 +88,7 @@ impl BaseNodeGrpcServer {
         network: Network,
         state_machine_handle: StateMachineHandle,
         peer_manager: Arc<PeerManager>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             node_service: local_node,
             mempool_service: local_mempool,
@@ -104,8 +103,7 @@ impl BaseNodeGrpcServer {
 pub async fn get_heights(
     request: &tari_rpc::HeightRequest,
     handler: LocalNodeCommsInterface,
-) -> Result<Vec<u64>, Status>
-{
+) -> Result<Vec<u64>, Status> {
     block_heights(handler, request.start_height, request.end_height, request.from_tip).await
 }
 
@@ -123,8 +121,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn get_network_difficulty(
         &self,
         request: Request<tari_rpc::HeightRequest>,
-    ) -> Result<Response<Self::GetNetworkDifficultyStream>, Status>
-    {
+    ) -> Result<Response<Self::GetNetworkDifficultyStream>, Status> {
         let request = request.into_inner();
         debug!(
             target: LOG_TARGET,
@@ -252,8 +249,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn get_mempool_transactions(
         &self,
         request: Request<tari_rpc::GetMempoolTransactionsRequest>,
-    ) -> Result<Response<Self::GetMempoolTransactionsStream>, Status>
-    {
+    ) -> Result<Response<Self::GetMempoolTransactionsStream>, Status> {
         let _request = request.into_inner();
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetMempoolTransactions",);
 
@@ -299,8 +295,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn list_headers(
         &self,
         request: Request<tari_rpc::ListHeadersRequest>,
-    ) -> Result<Response<Self::ListHeadersStream>, Status>
-    {
+    ) -> Result<Response<Self::ListHeadersStream>, Status> {
         let request = request.into_inner();
         debug!(
             target: LOG_TARGET,
@@ -396,8 +391,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn get_new_block_template(
         &self,
         request: Request<tari_rpc::NewBlockTemplateRequest>,
-    ) -> Result<Response<tari_rpc::NewBlockTemplateResponse>, Status>
-    {
+    ) -> Result<Response<tari_rpc::NewBlockTemplateResponse>, Status> {
         let request = request.into_inner();
         debug!(target: LOG_TARGET, "Incoming GRPC request for get new block template");
         trace!(target: LOG_TARGET, "Request {:?}", request);
@@ -441,8 +435,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn get_new_block(
         &self,
         request: Request<tari_rpc::NewBlockTemplate>,
-    ) -> Result<Response<tari_rpc::GetNewBlockResult>, Status>
-    {
+    ) -> Result<Response<tari_rpc::GetNewBlockResult>, Status> {
         let request = request.into_inner();
         debug!(target: LOG_TARGET, "Incoming GRPC request for get new block");
         let block_template: NewBlockTemplate = request
@@ -472,8 +465,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn submit_block(
         &self,
         request: Request<tari_rpc::Block>,
-    ) -> Result<Response<tari_rpc::SubmitBlockResponse>, Status>
-    {
+    ) -> Result<Response<tari_rpc::SubmitBlockResponse>, Status> {
         let request = request.into_inner();
         let block = Block::try_from(request)
             .map_err(|e| Status::invalid_argument(format!("Failed to convert arguments. Invalid block: {:?}", e)))?;
@@ -499,8 +491,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn submit_transaction(
         &self,
         request: Request<tari_rpc::SubmitTransactionRequest>,
-    ) -> Result<Response<tari_rpc::SubmitTransactionResponse>, Status>
-    {
+    ) -> Result<Response<tari_rpc::SubmitTransactionResponse>, Status> {
         let request = request.into_inner();
         let txn: Transaction = request
             .transaction
@@ -543,8 +534,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn transaction_state(
         &self,
         request: Request<tari_rpc::TransactionStateRequest>,
-    ) -> Result<Response<tari_rpc::TransactionStateResponse>, Status>
-    {
+    ) -> Result<Response<tari_rpc::TransactionStateResponse>, Status> {
         let request = request.into_inner();
         let excess_sig: Signature = request
             .excess_sig
@@ -610,8 +600,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn get_peers(
         &self,
         _request: Request<tari_rpc::GetPeersRequest>,
-    ) -> Result<Response<Self::GetPeersStream>, Status>
-    {
+    ) -> Result<Response<Self::GetPeersStream>, Status> {
         debug!(target: LOG_TARGET, "Incoming GRPC request for get all peers");
 
         let peers = self
@@ -647,8 +636,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn get_blocks(
         &self,
         request: Request<tari_rpc::GetBlocksRequest>,
-    ) -> Result<Response<Self::GetBlocksStream>, Status>
-    {
+    ) -> Result<Response<Self::GetBlocksStream>, Status> {
         let request = request.into_inner();
         debug!(
             target: LOG_TARGET,
@@ -712,8 +700,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn get_tip_info(
         &self,
         _request: Request<tari_rpc::Empty>,
-    ) -> Result<Response<tari_rpc::TipInfoResponse>, Status>
-    {
+    ) -> Result<Response<tari_rpc::TipInfoResponse>, Status> {
         debug!(target: LOG_TARGET, "Incoming GRPC request for BN tip data");
 
         let mut handler = self.node_service.clone();
@@ -737,8 +724,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn search_kernels(
         &self,
         request: Request<tari_rpc::SearchKernelsRequest>,
-    ) -> Result<Response<Self::SearchKernelsStream>, Status>
-    {
+    ) -> Result<Response<Self::SearchKernelsStream>, Status> {
         debug!(target: LOG_TARGET, "Incoming GRPC request for SearchKernels");
         let request = request.into_inner();
 
@@ -791,8 +777,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn fetch_matching_utxos(
         &self,
         request: Request<tari_rpc::FetchMatchingUtxosRequest>,
-    ) -> Result<Response<Self::FetchMatchingUtxosStream>, Status>
-    {
+    ) -> Result<Response<Self::FetchMatchingUtxosStream>, Status> {
         debug!(target: LOG_TARGET, "Incoming GRPC request for FetchMatchingUtxos");
         let request = request.into_inner();
 
@@ -846,8 +831,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn get_calc_timing(
         &self,
         request: Request<tari_rpc::HeightRequest>,
-    ) -> Result<Response<tari_rpc::CalcTimingResponse>, Status>
-    {
+    ) -> Result<Response<tari_rpc::CalcTimingResponse>, Status> {
         let request = request.into_inner();
         debug!(
             target: LOG_TARGET,
@@ -877,8 +861,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn get_constants(
         &self,
         _request: Request<tari_rpc::Empty>,
-    ) -> Result<Response<tari_rpc::ConsensusConstants>, Status>
-    {
+    ) -> Result<Response<tari_rpc::ConsensusConstants>, Status> {
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetConstants",);
         debug!(target: LOG_TARGET, "Sending GetConstants response to client");
         // TODO: Switch to request height
@@ -890,16 +873,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn get_block_size(
         &self,
         request: Request<tari_rpc::BlockGroupRequest>,
-    ) -> Result<Response<tari_rpc::BlockGroupResponse>, Status>
-    {
+    ) -> Result<Response<tari_rpc::BlockGroupResponse>, Status> {
         get_block_group(self.node_service.clone(), request, BlockGroupType::BlockSize).await
     }
 
     async fn get_block_fees(
         &self,
         request: Request<tari_rpc::BlockGroupRequest>,
-    ) -> Result<Response<tari_rpc::BlockGroupResponse>, Status>
-    {
+    ) -> Result<Response<tari_rpc::BlockGroupResponse>, Status> {
         get_block_group(self.node_service.clone(), request, BlockGroupType::BlockFees).await
     }
 
@@ -910,8 +891,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn get_tokens_in_circulation(
         &self,
         request: Request<tari_rpc::GetBlocksRequest>,
-    ) -> Result<Response<Self::GetTokensInCirculationStream>, Status>
-    {
+    ) -> Result<Response<Self::GetTokensInCirculationStream>, Status> {
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetTokensInCirculation",);
         let request = request.into_inner();
         let mut heights = request.heights;
@@ -975,8 +955,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn get_sync_info(
         &self,
         _request: Request<tari_rpc::Empty>,
-    ) -> Result<Response<tari_rpc::SyncInfoResponse>, Status>
-    {
+    ) -> Result<Response<tari_rpc::SyncInfoResponse>, Status> {
         debug!(target: LOG_TARGET, "Incoming GRPC request for BN sync data");
 
         let mut channel = self.state_machine_handle.get_status_info_watch();
@@ -1013,8 +992,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn get_header_by_hash(
         &self,
         request: Request<tari_rpc::GetHeaderByHashRequest>,
-    ) -> Result<Response<tari_rpc::BlockHeaderResponse>, Status>
-    {
+    ) -> Result<Response<tari_rpc::BlockHeaderResponse>, Status> {
         let tari_rpc::GetHeaderByHashRequest { hash } = request.into_inner();
         let mut node_service = self.node_service.clone();
         let hash_hex = hash.to_hex();
@@ -1051,8 +1029,7 @@ async fn get_block_group(
     mut handler: LocalNodeCommsInterface,
     request: Request<tari_rpc::BlockGroupRequest>,
     block_group_type: BlockGroupType,
-) -> Result<Response<tari_rpc::BlockGroupResponse>, Status>
-{
+) -> Result<Response<tari_rpc::BlockGroupResponse>, Status> {
     let request = request.into_inner();
     let calc_type_response = request.calc_type;
     let calc_type: CalcType = request.calc_type();

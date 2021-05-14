@@ -105,8 +105,7 @@ impl ReceiverTransactionProtocol {
         spending_key: PrivateKey,
         features: OutputFeatures,
         factories: &CryptoFactories,
-    ) -> ReceiverTransactionProtocol
-    {
+    ) -> ReceiverTransactionProtocol {
         let state = match info {
             TransactionSenderMessage::None => RecipientState::Failed(TransactionProtocolError::InvalidStateError),
             TransactionSenderMessage::Single(v) => {
@@ -126,8 +125,7 @@ impl ReceiverTransactionProtocol {
         features: OutputFeatures,
         factories: &CryptoFactories,
         rewind_data: &RewindData,
-    ) -> ReceiverTransactionProtocol
-    {
+    ) -> ReceiverTransactionProtocol {
         let state = match info {
             TransactionSenderMessage::None => RecipientState::Failed(TransactionProtocolError::InvalidStateError),
             TransactionSenderMessage::Single(v) => ReceiverTransactionProtocol::single_round(
@@ -177,8 +175,7 @@ impl ReceiverTransactionProtocol {
         data: &SD,
         factories: &CryptoFactories,
         rewind_data: Option<&RewindData>,
-    ) -> RecipientState
-    {
+    ) -> RecipientState {
         let signer = SingleReceiverTransactionProtocol::create(data, nonce, key, features, factories, rewind_data);
         match signer {
             Ok(signed_data) => RecipientState::Finalized(Box::new(signed_data)),

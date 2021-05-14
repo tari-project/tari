@@ -102,8 +102,7 @@ pub fn command_mode(
     command: String,
     wallet: WalletSqlite,
     config: GlobalConfig,
-) -> Result<(), ExitCodes>
-{
+) -> Result<(), ExitCodes> {
     let commands = vec![parse_command(&command)?];
     info!("Starting wallet command mode");
     handle.block_on(command_runner(handle.clone(), commands, wallet, config))?;
@@ -147,8 +146,7 @@ pub fn tui_mode(
     base_node_selected: Peer,
     base_node_config: PeerConfig,
     notify_script: Option<PathBuf>,
-) -> Result<(), ExitCodes>
-{
+) -> Result<(), ExitCodes> {
     let grpc = WalletGrpcServer::new(wallet.clone());
     handle.spawn(run_grpc(grpc, node_config.grpc_console_wallet_address));
 
@@ -180,8 +178,7 @@ pub fn recovery_mode(
     base_node_selected: Peer,
     base_node_config: PeerConfig,
     notify_script: Option<PathBuf>,
-) -> Result<(), ExitCodes>
-{
+) -> Result<(), ExitCodes> {
     let peer_seed_public_keys: Vec<CommsPublicKey> = base_node_config
         .peer_seeds
         .iter()

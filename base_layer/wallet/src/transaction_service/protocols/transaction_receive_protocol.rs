@@ -81,8 +81,7 @@ where TBackend: TransactionBackend + 'static
         resources: TransactionServiceResources<TBackend>,
         transaction_finalize_receiver: mpsc::Receiver<(CommsPublicKey, TxId, Transaction)>,
         cancellation_receiver: oneshot::Receiver<()>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             id,
             source_pubkey,
@@ -396,7 +395,7 @@ where TBackend: TransactionBackend + 'static
 
             let finalized_outputs = finalized_transaction.body.outputs();
 
-            if finalized_outputs.iter().find(|o| o == &&rtp_output).is_none() {
+            if !finalized_outputs.iter().any(|o| o == &rtp_output) {
                 warn!(
                     target: LOG_TARGET,
                     "Finalized Transaction does not contain the Receiver's output"

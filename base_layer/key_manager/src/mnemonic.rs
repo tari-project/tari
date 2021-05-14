@@ -169,7 +169,7 @@ pub fn from_secret_key<K: SecretKey>(k: &K, language: &MnemonicLanguage) -> Resu
 /// Generates a vector of bytes that represent the provided mnemonic sequence of words, the language of the mnemonic
 /// sequence is autodetected
 pub fn to_bytes(mnemonic_seq: &[String]) -> Result<Vec<u8>, MnemonicError> {
-    let first_word = mnemonic_seq.get(0).ok_or_else(|| MnemonicError::EncodeInvalidLength)?;
+    let first_word = mnemonic_seq.get(0).ok_or(MnemonicError::EncodeInvalidLength)?;
     let language = MnemonicLanguage::from(first_word)?; // Autodetect language
     to_bytes_with_language(mnemonic_seq, &language)
 }
@@ -213,8 +213,7 @@ pub fn to_secretkey<K: SecretKey>(mnemonic_seq: &[String]) -> Result<K, Mnemonic
 pub fn to_secretkey_with_language<K: SecretKey>(
     mnemonic_seq: &[String],
     language: &MnemonicLanguage,
-) -> Result<K, MnemonicError>
-{
+) -> Result<K, MnemonicError> {
     let bytes = to_bytes_with_language(mnemonic_seq, language)?;
     match K::from_bytes(&bytes) {
         Ok(k) => Ok(k),

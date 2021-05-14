@@ -181,7 +181,6 @@ impl CommandHandler {
                         target: LOG_TARGET,
                         "Error communicating with state machine, channel could have been closed"
                     );
-                    return;
                 },
                 Some(data) => println!("Current state machine state:\n{}", data),
             };
@@ -201,7 +200,6 @@ impl CommandHandler {
                 Err(err) => {
                     println!("Failed to retrieve chain metadata: {:?}", err);
                     warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err);
-                    return;
                 },
                 Ok(data) => println!("{}", data),
             };
@@ -230,7 +228,6 @@ impl CommandHandler {
                 Err(err) => {
                     println!("Failed to retrieve blocks: {}", err);
                     warn!(target: LOG_TARGET, "{}", err);
-                    return;
                 },
             };
         });
@@ -243,7 +240,6 @@ impl CommandHandler {
                 Err(err) => {
                     println!("Failed to retrieve blocks: {}", err);
                     warn!(target: LOG_TARGET, "{}", err);
-                    return;
                 },
                 Ok(data) => match (data, format) {
                     (Some(block), Format::Text) => println!("{}", block),
@@ -267,7 +263,6 @@ impl CommandHandler {
                         target: LOG_TARGET,
                         "Error communicating with local base node: {:?}", err,
                     );
-                    return;
                 },
                 Ok(mut data) => match data.pop() {
                     Some(v) => println!("{}", v.block()),
@@ -290,7 +285,6 @@ impl CommandHandler {
                         target: LOG_TARGET,
                         "Error communicating with local base node: {:?}", err,
                     );
-                    return;
                 },
                 Ok(mut data) => match data.pop() {
                     Some(v) => println!("{}", v.block()),
@@ -314,7 +308,6 @@ impl CommandHandler {
                         target: LOG_TARGET,
                         "Error communicating with local base node: {:?}", err,
                     );
-                    return;
                 },
                 Ok(mut data) => match data.pop() {
                     Some(v) => println!("{}", v.block()),
@@ -336,7 +329,6 @@ impl CommandHandler {
                 Err(err) => {
                     println!("Failed to retrieve mempool stats: {:?}", err);
                     warn!(target: LOG_TARGET, "Error communicating with local mempool: {:?}", err,);
-                    return;
                 },
             };
         });
@@ -351,7 +343,6 @@ impl CommandHandler {
                 Err(err) => {
                     println!("Failed to retrieve mempool state: {:?}", err);
                     warn!(target: LOG_TARGET, "Error communicating with local mempool: {:?}", err,);
-                    return;
                 },
             };
         });
@@ -505,7 +496,6 @@ impl CommandHandler {
                 Err(err) => {
                     println!("Failed to list peers: {:?}", err);
                     error!(target: LOG_TARGET, "Could not list peers: {:?}", err);
-                    return;
                 },
             }
         });
@@ -680,7 +670,6 @@ impl CommandHandler {
                 Err(err) => {
                     println!("Failed to list connections: {:?}", err);
                     error!(target: LOG_TARGET, "Could not list connections: {:?}", err);
-                    return;
                 },
             }
         });
@@ -707,7 +696,6 @@ impl CommandHandler {
                 Err(err) => {
                     println!("Failed to clear offline peer states: {:?}", err);
                     error!(target: LOG_TARGET, "{:?}", err);
-                    return;
                 },
             }
         });
@@ -741,8 +729,7 @@ impl CommandHandler {
         blockchain_db: &AsyncBlockchainDb<LMDBDatabase>,
         start: u64,
         end: Option<u64>,
-    ) -> Result<Vec<ChainHeader>, anyhow::Error>
-    {
+    ) -> Result<Vec<ChainHeader>, anyhow::Error> {
         match end {
             Some(end) => blockchain_db.fetch_chain_headers(start..=end).await.map_err(Into::into),
             None => {
@@ -936,8 +923,7 @@ impl CommandHandler {
         end_height: u64,
         filename: String,
         pow_algo: Option<PowAlgorithm>,
-    )
-    {
+    ) {
         let db = self.blockchain_db.clone();
         let network = self.config.network;
         self.executor.spawn(async move {

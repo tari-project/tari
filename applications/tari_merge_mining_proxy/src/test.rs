@@ -66,7 +66,7 @@ mod merge_mining_proxy_service {
         let mut service = MergeMiningProxyService::new(default_test_config(), BlockTemplateRepository::new());
         let req = Request::new(Body::empty());
         let mut resp = service.call(req).await.unwrap();
-        assert_eq!(resp.status().is_success(), false);
+        assert!(!resp.status().is_success());
         let json = read_body_as_json(resp.body_mut()).await;
         assert_eq!(json["error"]["message"], "Internal error");
     }

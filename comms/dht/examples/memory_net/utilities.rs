@@ -377,8 +377,7 @@ pub async fn do_store_and_forward_message_propagation(
     num_random_nodes: usize,
     propagation_factor: usize,
     quiet_mode: bool,
-) -> (usize, TestNode, usize, usize)
-{
+) -> (usize, TestNode, usize, usize) {
     banner!(
         "{} chosen at random to be receive messages from other nodes using store and forward",
         wallet,
@@ -595,8 +594,7 @@ pub async fn drain_messaging_events(messaging_rx: &mut NodeEventRx, show_logs: b
 fn connection_manager_logger(
     node_id: NodeId,
     quiet_mode: bool,
-) -> impl FnMut(Arc<ConnectionManagerEvent>) -> Arc<ConnectionManagerEvent>
-{
+) -> impl FnMut(Arc<ConnectionManagerEvent>) -> Arc<ConnectionManagerEvent> {
     let node_name = get_name(&node_id);
     move |event| {
         if quiet_mode {
@@ -670,8 +668,7 @@ impl TestNode {
         messaging_events: MessagingEventSender,
         quiet_mode: bool,
         shutdown: Shutdown,
-    ) -> Self
-    {
+    ) -> Self {
         let name = get_next_name();
         register_name(comms.node_identity().node_id().clone(), name.clone());
 
@@ -702,8 +699,7 @@ impl TestNode {
         events_tx: mpsc::Sender<Arc<ConnectionManagerEvent>>,
         messaging_events_tx: NodeEventTx,
         quiet_mode: bool,
-    )
-    {
+    ) {
         let conn_man_event_sub = comms.subscribe_connection_manager_events();
         let executor = runtime::Handle::current();
 
@@ -818,8 +814,7 @@ pub async fn make_node(
     num_random_nodes: usize,
     propagation_factor: usize,
     quiet_mode: bool,
-) -> TestNode
-{
+) -> TestNode {
     let node_identity = make_node_identity(features);
     make_node_from_node_identities(
         node_identity,
@@ -841,8 +836,7 @@ pub async fn make_node_from_node_identities(
     num_random_nodes: usize,
     propagation_factor: usize,
     quiet_mode: bool,
-) -> TestNode
-{
+) -> TestNode {
     let (tx, ims_rx) = mpsc::channel(1);
     let seed_peers = peer_identities.iter().map(|n| n.to_peer()).collect::<Vec<_>>();
     let shutdown = Shutdown::new();
@@ -882,8 +876,7 @@ async fn setup_comms_dht(
     seed_peers: Vec<Peer>,
     saf_auto_request: bool,
     shutdown_signal: ShutdownSignal,
-) -> (CommsNode, Dht, MessagingEventSender)
-{
+) -> (CommsNode, Dht, MessagingEventSender) {
     // Create inbound and outbound channels
     let (outbound_tx, outbound_rx) = mpsc::channel(10);
 

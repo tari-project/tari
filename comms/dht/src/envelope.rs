@@ -168,9 +168,8 @@ impl TryFrom<DhtHeader> for DhtMessageHeader {
         let destination = header
             .destination
             .map(|destination| destination.try_into().ok())
-            .filter(Option::is_some)
-            .map(Option::unwrap)
-            .ok_or_else(|| DhtMessageError::InvalidDestination)?;
+            .flatten()
+            .ok_or(DhtMessageError::InvalidDestination)?;
 
         let ephemeral_public_key = if header.ephemeral_public_key.is_empty() {
             None
@@ -188,10 +187,9 @@ impl TryFrom<DhtHeader> for DhtMessageHeader {
             destination,
             origin_mac: header.origin_mac,
             ephemeral_public_key,
-            message_type: DhtMessageType::from_i32(header.message_type)
-                .ok_or_else(|| DhtMessageError::InvalidMessageType)?,
-            network: Network::from_i32(header.network).ok_or_else(|| DhtMessageError::InvalidNetwork)?,
-            flags: DhtMessageFlags::from_bits(header.flags).ok_or_else(|| DhtMessageError::InvalidMessageFlags)?,
+            message_type: DhtMessageType::from_i32(header.message_type).ok_or(DhtMessageError::InvalidMessageType)?,
+            network: Network::from_i32(header.network).ok_or(DhtMessageError::InvalidNetwork)?,
+            flags: DhtMessageFlags::from_bits(header.flags).ok_or(DhtMessageError::InvalidMessageFlags)?,
             message_tag: MessageTag::from(header.message_tag),
             expires: expires.map(datetime_to_epochtime),
         })

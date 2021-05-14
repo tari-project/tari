@@ -99,7 +99,7 @@ where
     // Receive the connecting nodes identity
     let msg_bytes = time::timeout(Duration::from_secs(10), stream.next())
         .await?
-        .ok_or_else(|| IdentityProtocolError::PeerUnexpectedCloseConnection)??;
+        .ok_or(IdentityProtocolError::PeerUnexpectedCloseConnection)??;
     let identity_msg = PeerIdentityMsg::decode(msg_bytes)?;
 
     Ok(identity_msg)

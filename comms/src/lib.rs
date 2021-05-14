@@ -17,6 +17,7 @@
 #![recursion_limit = "512"]
 // Allow `type Future = impl Future`
 #![feature(type_alias_impl_trait)]
+#![feature(min_type_alias_impl_trait)]
 // Required to use `Ip4Addr::is_global`. Stabilisation imminent https://github.com/rust-lang/rust/issues/27709
 #![feature(ip)]
 

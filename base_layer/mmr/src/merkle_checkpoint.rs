@@ -41,8 +41,7 @@ impl MerkleCheckPoint {
         nodes_added: Vec<Hash>,
         nodes_deleted: Bitmap,
         prev_accumulated_nodes_added_count: u32,
-    ) -> MerkleCheckPoint
-    {
+    ) -> MerkleCheckPoint {
         MerkleCheckPoint {
             nodes_added,
             nodes_deleted,
@@ -159,7 +158,7 @@ impl<'de> Deserialize<'de> for MerkleCheckPoint {
             NodesAdded,
             NodesDeleted,
             PrevAccumulatedNodesAddedCount,
-        };
+        }
 
         impl<'de> Deserialize<'de> for Field {
             fn deserialize<D>(deserializer: D) -> Result<Field, D::Error>

@@ -100,8 +100,10 @@ mod test {
 
     #[test]
     fn to_bytes() {
-        let mut pow = ProofOfWork::default();
-        pow.pow_algo = PowAlgorithm::Sha3;
+        let pow = ProofOfWork {
+            pow_algo: PowAlgorithm::Sha3,
+            ..Default::default()
+        };
         assert_eq!(pow.to_bytes(), vec![2]);
     }
 }

@@ -130,8 +130,7 @@ pub async fn run_recovery(node_config: &GlobalConfig) -> Result<(), anyhow::Erro
 async fn do_recovery<D: BlockchainBackend + 'static>(
     db: AsyncBlockchainDb<D>,
     temp_db: D,
-) -> Result<(), anyhow::Error>
-{
+) -> Result<(), anyhow::Error> {
     // We dont care about the values, here, so we just use mock validators, and a mainnet CM.
     let rules = ConsensusManagerBuilder::new(NetworkType::LocalNet).build();
     let validators = Validators::new(

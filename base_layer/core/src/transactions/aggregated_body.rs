@@ -66,8 +66,7 @@ impl AggregateBody {
         inputs: Vec<TransactionInput>,
         outputs: Vec<TransactionOutput>,
         kernels: Vec<TransactionKernel>,
-    ) -> AggregateBody
-    {
+    ) -> AggregateBody {
         AggregateBody {
             sorted: false,
             inputs,
@@ -234,8 +233,7 @@ impl AggregateBody {
         coinbase_lock_height: u64,
         factories: &CryptoFactories,
         height: u64,
-    ) -> Result<(), TransactionError>
-    {
+    ) -> Result<(), TransactionError> {
         let mut coinbase_utxo = None;
         let mut coinbase_kernel = None;
         let mut coinbase_counter = 0; // there should be exactly 1 coinbase
@@ -311,8 +309,7 @@ impl AggregateBody {
         script_offset: &BlindingFactor,
         total_reward: MicroTari,
         factories: &CryptoFactories,
-    ) -> Result<(), TransactionError>
-    {
+    ) -> Result<(), TransactionError> {
         let total_offset = factories.commitment.commit_value(&tx_offset, total_reward.0);
         let script_offset_g = PublicKey::from_secret_key(&script_offset);
 
@@ -357,8 +354,7 @@ impl AggregateBody {
         &self,
         offset_and_reward: Commitment,
         factory: &CommitmentFactory,
-    ) -> Result<(), TransactionError>
-    {
+    ) -> Result<(), TransactionError> {
         trace!(target: LOG_TARGET, "Checking kernel total");
         let KernelSum { sum: excess, fees } = self.sum_kernels(offset_and_reward);
         let sum_io = self.sum_commitments();

@@ -96,8 +96,7 @@ impl Block {
         reward: MicroTari,
         consensus_constants: &ConsensusConstants,
         factories: &CryptoFactories,
-    ) -> Result<(), BlockValidationError>
-    {
+    ) -> Result<(), BlockValidationError> {
         self.body.check_coinbase_output(
             reward,
             consensus_constants.coinbase_lock_height(),

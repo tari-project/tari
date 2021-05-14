@@ -241,22 +241,22 @@ mod test {
     }
     #[test]
     fn is_sibling_left() {
-        assert_eq!(is_left_sibling(0), true);
-        assert_eq!(is_left_sibling(1), false);
-        assert_eq!(is_left_sibling(2), true);
-        assert_eq!(is_left_sibling(3), true);
-        assert_eq!(is_left_sibling(4), false);
-        assert_eq!(is_left_sibling(5), false);
-        assert_eq!(is_left_sibling(6), true);
-        assert_eq!(is_left_sibling(7), true);
-        assert_eq!(is_left_sibling(8), false);
-        assert_eq!(is_left_sibling(9), true);
-        assert_eq!(is_left_sibling(10), true);
-        assert_eq!(is_left_sibling(11), false);
-        assert_eq!(is_left_sibling(12), false);
-        assert_eq!(is_left_sibling(13), false);
-        assert_eq!(is_left_sibling(14), true);
-        assert_eq!(is_left_sibling(15), true);
+        assert!(is_left_sibling(0));
+        assert!(!is_left_sibling(1));
+        assert!(is_left_sibling(2));
+        assert!(is_left_sibling(3));
+        assert!(!is_left_sibling(4));
+        assert!(!is_left_sibling(5));
+        assert!(is_left_sibling(6));
+        assert!(is_left_sibling(7));
+        assert!(!is_left_sibling(8));
+        assert!(is_left_sibling(9));
+        assert!(is_left_sibling(10));
+        assert!(!is_left_sibling(11));
+        assert!(!is_left_sibling(12));
+        assert!(!is_left_sibling(13));
+        assert!(is_left_sibling(14));
+        assert!(is_left_sibling(15));
     }
 
     #[test]

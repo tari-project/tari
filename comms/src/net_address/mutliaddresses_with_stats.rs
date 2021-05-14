@@ -353,10 +353,11 @@ mod test {
         let net_address1 = "/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address2 = "/ip4/125.1.54.254/tcp/7999".parse::<Multiaddr>().unwrap();
         let net_address3 = "/ip4/175.6.3.145/tcp/8000".parse::<Multiaddr>().unwrap();
-        let mut addresses: Vec<MutliaddrWithStats> = Vec::new();
-        addresses.push(MutliaddrWithStats::from(net_address1.clone()));
-        addresses.push(MutliaddrWithStats::from(net_address2.clone()));
-        addresses.push(MutliaddrWithStats::from(net_address3.clone()));
+        let addresses: Vec<MutliaddrWithStats> = vec![
+            MutliaddrWithStats::from(net_address1.clone()),
+            MutliaddrWithStats::from(net_address2.clone()),
+            MutliaddrWithStats::from(net_address3.clone()),
+        ];
         let mut net_addresses = MultiaddressesWithStats::new(addresses);
         assert!(net_addresses.mark_failed_connection_attempt(&net_address1));
         assert!(net_addresses.mark_failed_connection_attempt(&net_address2));

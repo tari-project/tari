@@ -82,8 +82,7 @@ where T: TransactionBackend
         backend: T,
         node_identity: Arc<NodeIdentity>,
         factories: CryptoFactories,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             config,
             subscription_factory,

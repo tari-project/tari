@@ -63,8 +63,7 @@ impl SocksTransport {
         tcp: TcpTransport,
         socks_config: SocksConfig,
         dest_addr: Multiaddr,
-    ) -> io::Result<TcpSocket>
-    {
+    ) -> io::Result<TcpSocket> {
         // Create a new connection to the SOCKS proxy
         let socks_conn = tcp.dial(socks_config.proxy_address)?.await?;
         let mut client = Socks5Client::new(socks_conn);

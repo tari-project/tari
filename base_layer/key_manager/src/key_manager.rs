@@ -86,8 +86,7 @@ where
         seed_phrase: String,
         branch_seed: String,
         primary_key_index: u64,
-    ) -> Result<KeyManager<K, D>, KeyManagerError>
-    {
+    ) -> Result<KeyManager<K, D>, KeyManagerError> {
         match K::from_bytes(D::digest(&seed_phrase.into_bytes()).as_slice()) {
             Ok(master_key) => Ok(KeyManager {
                 master_key,
@@ -105,8 +104,7 @@ where
         mnemonic_seq: &[String],
         branch_seed: String,
         primary_key_index: u64,
-    ) -> Result<KeyManager<K, D>, KeyManagerError>
-    {
+    ) -> Result<KeyManager<K, D>, KeyManagerError> {
         match K::from_mnemonic(mnemonic_seq) {
             Ok(master_key) => Ok(KeyManager {
                 master_key,

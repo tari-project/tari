@@ -129,8 +129,7 @@ where DS: KeyValueStore<PeerId, Peer>
         is_offline: Option<bool>,
         peer_features: Option<PeerFeatures>,
         supported_protocols: Option<Vec<ProtocolId>>,
-    ) -> Result<(), PeerManagerError>
-    {
+    ) -> Result<(), PeerManagerError> {
         match self.public_key_index.get(public_key).copied() {
             Some(peer_key) => {
                 let mut stored_peer = self
@@ -173,7 +172,7 @@ where DS: KeyValueStore<PeerId, Peer>
         let peer_key = *self
             .node_id_index
             .get(&node_id)
-            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
         self.peer_db
             .delete(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?;
@@ -203,9 +202,8 @@ where DS: KeyValueStore<PeerId, Peer>
         let peer_key = self
             .node_id_index
             .get(node_id)
-            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
-        Ok(self
-            .peer_db
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
+        self.peer_db
             .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or_else(|| {
@@ -214,7 +212,7 @@ where DS: KeyValueStore<PeerId, Peer>
                     "node_id_index and peer database are out of sync! (key={}, node_id={})", peer_key, node_id
                 );
                 PeerManagerError::PeerNotFoundError
-            })?)
+            })
     }
 
     /// Find the peer with the provided PublicKey
@@ -222,9 +220,8 @@ where DS: KeyValueStore<PeerId, Peer>
         let peer_key = self
             .public_key_index
             .get(public_key)
-            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
-        Ok(self
-            .peer_db
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
+        self.peer_db
             .get(peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or_else(|| {
@@ -235,7 +232,7 @@ where DS: KeyValueStore<PeerId, Peer>
                     public_key
                 );
                 PeerManagerError::PeerNotFoundError
-            })?)
+            })
     }
 
     /// Check if a peer exist using the specified public_key
@@ -304,8 +301,7 @@ where DS: KeyValueStore<PeerId, Peer>
         n: usize,
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
-    ) -> Result<Vec<Peer>, PeerManagerError>
-    {
+    ) -> Result<Vec<Peer>, PeerManagerError> {
         if n == 0 {
             return Ok(Vec::new());
         }
@@ -364,8 +360,7 @@ where DS: KeyValueStore<PeerId, Peer>
         node_id: &NodeId,
         region_node_id: &NodeId,
         n: usize,
-    ) -> Result<bool, PeerManagerError>
-    {
+    ) -> Result<bool, PeerManagerError> {
         let region_node_distance = region_node_id.distance(node_id);
         let node_threshold = self.calc_region_threshold(region_node_id, n, PeerFeatures::COMMUNICATION_NODE)?;
         // Is node ID in the base node threshold?
@@ -382,8 +377,7 @@ where DS: KeyValueStore<PeerId, Peer>
         region_node_id: &NodeId,
         n: usize,
         features: PeerFeatures,
-    ) -> Result<NodeDistance, PeerManagerError>
-    {
+    ) -> Result<NodeDistance, PeerManagerError> {
         if n == 0 {
             return Ok(NodeDistance::max_distance());
         }
@@ -418,7 +412,7 @@ where DS: KeyValueStore<PeerId, Peer>
         let peer_key = *self
             .node_id_index
             .get(&node_id)
-            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer = self
             .peer_db
             .get(&peer_key)
@@ -440,12 +434,11 @@ where DS: KeyValueStore<PeerId, Peer>
         public_key: &CommsPublicKey,
         duration: Duration,
         reason: String,
-    ) -> Result<NodeId, PeerManagerError>
-    {
+    ) -> Result<NodeId, PeerManagerError> {
         let id = *self
             .public_key_index
             .get(public_key)
-            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
         self.ban_peer_by_id(id, duration, reason)
     }
 
@@ -455,12 +448,11 @@ where DS: KeyValueStore<PeerId, Peer>
         node_id: &NodeId,
         duration: Duration,
         reason: String,
-    ) -> Result<NodeId, PeerManagerError>
-    {
+    ) -> Result<NodeId, PeerManagerError> {
         let id = *self
             .node_id_index
             .get(node_id)
-            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
         self.ban_peer_by_id(id, duration, reason)
     }
 
@@ -481,7 +473,7 @@ where DS: KeyValueStore<PeerId, Peer>
         let peer_key = *self
             .node_id_index
             .get(&node_id)
-            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peer_db
             .get(&peer_key)
@@ -500,7 +492,7 @@ where DS: KeyValueStore<PeerId, Peer>
         let peer_key = *self
             .node_id_index
             .get(&node_id)
-            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peer_db
             .get(&peer_key)
@@ -519,12 +511,11 @@ where DS: KeyValueStore<PeerId, Peer>
         node_id: &NodeId,
         key: u8,
         data: Vec<u8>,
-    ) -> Result<Option<Vec<u8>>, PeerManagerError>
-    {
+    ) -> Result<Option<Vec<u8>>, PeerManagerError> {
         let peer_key = *self
             .node_id_index
             .get(&node_id)
-            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peer_db
             .get(&peer_key)
@@ -538,6 +529,7 @@ where DS: KeyValueStore<PeerId, Peer>
     }
 }
 
+#[allow(clippy::from_over_into)]
 impl Into<CommsDatabase> for PeerStorage<CommsDatabase> {
     fn into(self) -> CommsDatabase {
         self.peer_db
@@ -831,17 +823,17 @@ mod test {
         let is_in_region = peer_storage
             .in_network_region(&main_peer_node_id, &main_peer_node_id, 1)
             .unwrap();
-        assert_eq!(is_in_region, true);
+        assert!(is_in_region);
 
         let is_in_region = peer_storage
             .in_network_region(close_node, &main_peer_node_id, 1)
             .unwrap();
-        assert_eq!(is_in_region, true);
+        assert!(is_in_region);
 
         let is_in_region = peer_storage.in_network_region(far_node, &main_peer_node_id, 9).unwrap();
-        assert_eq!(is_in_region, true);
+        assert!(is_in_region);
 
         let is_in_region = peer_storage.in_network_region(far_node, &main_peer_node_id, 3).unwrap();
-        assert_eq!(is_in_region, false);
+        assert!(!is_in_region);
     }
 }

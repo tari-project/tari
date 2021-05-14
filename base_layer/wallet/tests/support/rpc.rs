@@ -199,8 +199,7 @@ impl BaseNodeWalletRpcMockState {
         &self,
         num_calls: usize,
         timeout: Duration,
-    ) -> Result<Vec<Signature>, String>
-    {
+    ) -> Result<Vec<Signature>, String> {
         let now = Instant::now();
         let mut count = 0usize;
         while now.elapsed() < timeout {
@@ -222,8 +221,7 @@ impl BaseNodeWalletRpcMockState {
         &self,
         num_calls: usize,
         timeout: Duration,
-    ) -> Result<Vec<Vec<Signature>>, String>
-    {
+    ) -> Result<Vec<Vec<Signature>>, String> {
         let now = Instant::now();
         let mut count = 0usize;
         while now.elapsed() < timeout {
@@ -245,8 +243,7 @@ impl BaseNodeWalletRpcMockState {
         &self,
         num_calls: usize,
         timeout: Duration,
-    ) -> Result<Vec<Transaction>, String>
-    {
+    ) -> Result<Vec<Transaction>, String> {
         let now = Instant::now();
         while now.elapsed() < timeout {
             let mut lock = acquire_lock!(self.submit_transaction_calls);
@@ -263,8 +260,7 @@ impl BaseNodeWalletRpcMockState {
         &self,
         num_calls: usize,
         timeout: Duration,
-    ) -> Result<Vec<Vec<Vec<u8>>>, String>
-    {
+    ) -> Result<Vec<Vec<Vec<u8>>>, String> {
         let now = Instant::now();
         while now.elapsed() < timeout {
             let mut lock = acquire_lock!(self.fetch_utxos_calls);
@@ -311,8 +307,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
     async fn submit_transaction(
         &self,
         request: Request<TransactionProto>,
-    ) -> Result<Response<TxSubmissionResponseProto>, RpcStatus>
-    {
+    ) -> Result<Response<TxSubmissionResponseProto>, RpcStatus> {
         let delay_lock = *acquire_lock!(self.state.response_delay);
         if let Some(delay) = delay_lock {
             delay_for(delay).await;
@@ -339,8 +334,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
     async fn transaction_query(
         &self,
         request: Request<SignatureProto>,
-    ) -> Result<Response<TxQueryResponseProto>, RpcStatus>
-    {
+    ) -> Result<Response<TxQueryResponseProto>, RpcStatus> {
         let delay_lock = *acquire_lock!(self.state.response_delay);
         if let Some(delay) = delay_lock {
             delay_for(delay).await;
@@ -366,8 +360,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
     async fn transaction_batch_query(
         &self,
         request: Request<SignaturesProto>,
-    ) -> Result<Response<TxQueryBatchResponsesProto>, RpcStatus>
-    {
+    ) -> Result<Response<TxQueryBatchResponsesProto>, RpcStatus> {
         let delay_lock = *acquire_lock!(self.state.response_delay);
         if let Some(delay) = delay_lock {
             delay_for(delay).await;
@@ -411,8 +404,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
     async fn fetch_matching_utxos(
         &self,
         request: Request<FetchMatchingUtxos>,
-    ) -> Result<Response<FetchUtxosResponse>, RpcStatus>
-    {
+    ) -> Result<Response<FetchUtxosResponse>, RpcStatus> {
         let delay_lock = *acquire_lock!(self.state.response_delay);
         if let Some(delay) = delay_lock {
             delay_for(delay).await;

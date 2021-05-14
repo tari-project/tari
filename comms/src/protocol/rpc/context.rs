@@ -48,8 +48,8 @@ pub(crate) struct RpcCommsBackend {
 impl RpcCommsBackend {
     pub(super) fn new(peer_manager: Arc<PeerManager>, connectivity: ConnectivityRequester) -> Self {
         Self {
-            peer_manager,
             connectivity,
+            peer_manager,
         }
     }
 
@@ -83,7 +83,7 @@ pub struct RequestContext {
 
 impl RequestContext {
     pub(super) fn new(node_id: NodeId, backend: Box<dyn RpcCommsProvider>) -> Self {
-        Self { node_id, backend }
+        Self { backend, node_id }
     }
 
     pub fn peer_node_id(&self) -> &NodeId {

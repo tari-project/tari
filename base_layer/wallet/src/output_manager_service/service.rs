@@ -136,8 +136,7 @@ where TBackend: OutputManagerBackend + 'static
         base_node_service: BaseNodeServiceHandle,
         connectivity_manager: ConnectivityRequester,
         master_secret_key: CommsSecretKey,
-    ) -> Result<OutputManagerService<TBackend>, OutputManagerError>
-    {
+    ) -> Result<OutputManagerService<TBackend>, OutputManagerError> {
         // Check to see if there is any persisted state. If there is confirm that the provided master secret key matches
         let key_manager_state = match db.get_key_manager_state().await? {
             None => {
@@ -286,8 +285,7 @@ where TBackend: OutputManagerBackend + 'static
         &mut self,
         request: OutputManagerRequest,
         txo_validation_handles: &mut FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>>,
-    ) -> Result<OutputManagerResponse, OutputManagerError>
-    {
+    ) -> Result<OutputManagerResponse, OutputManagerError> {
         trace!(target: LOG_TARGET, "Handling Service Request: {}", request);
         match request {
             OutputManagerRequest::AddOutput(uo) => {
@@ -432,8 +430,7 @@ where TBackend: OutputManagerBackend + 'static
         validation_type: TxoValidationType,
         retry_strategy: ValidationRetryStrategy,
         txo_validation_handles: &mut FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>>,
-    ) -> Result<u64, OutputManagerError>
-    {
+    ) -> Result<u64, OutputManagerError> {
         match self.resources.base_node_public_key.as_ref() {
             None => Err(OutputManagerError::NoBaseNodeKeysProvided),
             Some(pk) => {
@@ -493,8 +490,7 @@ where TBackend: OutputManagerBackend + 'static
     async fn get_recipient_transaction(
         &mut self,
         sender_message: TransactionSenderMessage,
-    ) -> Result<ReceiverTransactionProtocol, OutputManagerError>
-    {
+    ) -> Result<ReceiverTransactionProtocol, OutputManagerError> {
         let single_round_sender_data = match sender_message.single() {
             Some(data) => data,
             _ => return Err(OutputManagerError::InvalidSenderMessage),
@@ -552,8 +548,7 @@ where TBackend: OutputManagerBackend + 'static
         reward: MicroTari,
         fees: MicroTari,
         block_height: u64,
-    ) -> Result<Transaction, OutputManagerError>
-    {
+    ) -> Result<Transaction, OutputManagerError> {
         self.resources
             .db
             .cancel_pending_transaction_at_block_height(block_height)
@@ -602,8 +597,7 @@ where TBackend: OutputManagerBackend + 'static
         &mut self,
         tx_id: u64,
         received_output: &TransactionOutput,
-    ) -> Result<(), OutputManagerError>
-    {
+    ) -> Result<(), OutputManagerError> {
         let pending_transaction = self.resources.db.fetch_pending_transaction_outputs(tx_id).await?;
 
         // Assumption: We are only allowing a single output per receiver in the current transaction protocols.
@@ -645,8 +639,7 @@ where TBackend: OutputManagerBackend + 'static
         fee_per_gram: MicroTari,
         num_kernels: u64,
         num_outputs: u64,
-    ) -> Result<MicroTari, OutputManagerError>
-    {
+    ) -> Result<MicroTari, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
             "Getting fee estimate. Amount: {}. Fee per gram: {}. Num kernels: {}. Num outputs: {}",
@@ -676,8 +669,7 @@ where TBackend: OutputManagerBackend + 'static
         lock_height: Option<u64>,
         message: String,
         recipient_script: TariScript,
-    ) -> Result<SenderTransactionProtocol, OutputManagerError>
-    {
+    ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
             "Preparing to send transaction. Amount: {}. Fee per gram: {}. ", amount, fee_per_gram,
@@ -778,8 +770,7 @@ where TBackend: OutputManagerBackend + 'static
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
-    ) -> Result<(TxId, MicroTari, Transaction), OutputManagerError>
-    {
+    ) -> Result<(TxId, MicroTari, Transaction), OutputManagerError> {
         let (inputs, _, total) = self.select_utxos(amount, fee_per_gram, 1, None).await?;
 
         let offset = PrivateKey::random(&mut OsRng);
@@ -897,8 +888,7 @@ where TBackend: OutputManagerBackend + 'static
         tx_id: u64,
         inputs: &[TransactionInput],
         outputs: &[TransactionOutput],
-    ) -> Result<(), OutputManagerError>
-    {
+    ) -> Result<(), OutputManagerError> {
         let pending_transaction = self.resources.db.fetch_pending_transaction_outputs(tx_id).await?;
 
         // Check that outputs to be spent can all be found in the provided transaction inputs
@@ -962,8 +952,7 @@ where TBackend: OutputManagerBackend + 'static
         fee_per_gram: MicroTari,
         output_count: usize,
         strategy: Option<UTXOSelectionStrategy>,
-    ) -> Result<(Vec<DbUnblindedOutput>, bool, MicroTari), OutputManagerError>
-    {
+    ) -> Result<(Vec<DbUnblindedOutput>, bool, MicroTari), OutputManagerError> {
         debug!(
             target: LOG_TARGET,
             "select_utxos amount: {}, fee_per_gram: {}, output_count: {}, strategy: {:?}",
@@ -1091,8 +1080,7 @@ where TBackend: OutputManagerBackend + 'static
     async fn set_base_node_public_key(
         &mut self,
         base_node_public_key: CommsPublicKey,
-    ) -> Result<(), OutputManagerError>
-    {
+    ) -> Result<(), OutputManagerError> {
         info!(
             target: LOG_TARGET,
             "Setting base node public key {} for service", base_node_public_key
@@ -1135,8 +1123,7 @@ where TBackend: OutputManagerBackend + 'static
         split_count: usize,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
-    ) -> Result<(u64, Transaction, MicroTari, MicroTari), OutputManagerError>
-    {
+    ) -> Result<(u64, Transaction, MicroTari, MicroTari), OutputManagerError> {
         trace!(
             target: LOG_TARGET,
             "Select UTXOs and estimate coin split transaction fee."
@@ -1252,8 +1239,7 @@ where TBackend: OutputManagerBackend + 'static
         &mut self,
         outputs: Vec<TransactionOutput>,
         height: u64,
-    ) -> Result<Vec<UnblindedOutput>, OutputManagerError>
-    {
+    ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         let rewind_data = &self.resources.rewind_data;
 
         let rewound_outputs: Vec<UnblindedOutput> = outputs
@@ -1296,8 +1282,7 @@ where TBackend: OutputManagerBackend + 'static
         &mut self,
         outputs: Vec<TransactionOutput>,
         height: u64,
-    ) -> Result<Vec<UnblindedOutput>, OutputManagerError>
-    {
+    ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         let known_one_sided_payment_scripts: Vec<KnownOneSidedPaymentScript> =
             self.resources.db.get_all_known_one_sided_payment_scripts().await?;
         let mut rewound_outputs: Vec<UnblindedOutput> = Vec::new();
@@ -1352,8 +1337,7 @@ where TBackend: OutputManagerBackend + 'static
     async fn get_coinbase_spend_and_script_key_for_height(
         &self,
         height: u64,
-    ) -> Result<(PrivateKey, PrivateKey), OutputManagerError>
-    {
+    ) -> Result<(PrivateKey, PrivateKey), OutputManagerError> {
         let km = self.coinbase_key_manager.lock().await;
         let spending_key = km.derive_key(height)?;
 

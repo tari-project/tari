@@ -128,8 +128,7 @@ where TBackend: TransactionBackend + 'static
         callback_invalid_txo_validation_complete: unsafe extern "C" fn(TxId, u8),
         callback_transaction_validation_complete: unsafe extern "C" fn(TxId, u8),
         callback_saf_messages_received: unsafe extern "C" fn(),
-    ) -> Self
-    {
+    ) -> Self {
         info!(
             target: LOG_TARGET,
             "ReceivedTransactionCallback -> Assigning Fn: {:?}", callback_received_transaction
@@ -501,8 +500,7 @@ where TBackend: TransactionBackend + 'static
         request_key: u64,
         validation_type: TxoValidationType,
         result: CallbackValidationResults,
-    )
-    {
+    ) {
         debug!(
             target: LOG_TARGET,
             "Calling Output Validation Complete callback function for Request Key: {} with with type {} result {:?}",

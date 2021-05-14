@@ -119,8 +119,7 @@ impl InboundTransaction {
         status: TransactionStatus,
         message: String,
         timestamp: NaiveDateTime,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             tx_id,
             source_public_key,
@@ -165,8 +164,7 @@ impl OutboundTransaction {
         message: String,
         timestamp: NaiveDateTime,
         direct_send_success: bool,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             tx_id,
             destination_public_key,
@@ -219,8 +217,7 @@ impl CompletedTransaction {
         timestamp: NaiveDateTime,
         direction: TransactionDirection,
         coinbase_block_height: Option<u64>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             tx_id,
             source_public_key,

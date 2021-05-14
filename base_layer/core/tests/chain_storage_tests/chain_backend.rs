@@ -95,13 +95,13 @@ fn lmdb_insert_contains_delete_and_fetch_orphan() {
     ];
     let orphan = create_orphan_block(10, txs, &consensus);
     let hash = orphan.hash();
-    assert_eq!(db.contains(&DbKey::OrphanBlock(hash.clone())).unwrap(), false);
+    assert!(!db.contains(&DbKey::OrphanBlock(hash.clone())).unwrap());
 
     let mut txn = DbTransaction::new();
     txn.insert_orphan(orphan.clone().into());
     db.write(txn).unwrap();
 
-    assert_eq!(db.contains(&DbKey::OrphanBlock(hash.clone())).unwrap(), true);
+    assert!(db.contains(&DbKey::OrphanBlock(hash.clone())).unwrap());
     if let Some(DbValue::OrphanBlock(retrieved_orphan)) = db.fetch(&DbKey::OrphanBlock(hash.clone())).unwrap() {
         assert_eq!(*retrieved_orphan, orphan);
     } else {
@@ -111,7 +111,7 @@ fn lmdb_insert_contains_delete_and_fetch_orphan() {
     let mut txn = DbTransaction::new();
     txn.delete_orphan(hash.clone());
     assert!(db.write(txn).is_ok());
-    assert_eq!(db.contains(&DbKey::OrphanBlock(hash)).unwrap(), false);
+    assert!(!db.contains(&DbKey::OrphanBlock(hash)).unwrap());
 }
 
 #[test]

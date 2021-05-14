@@ -120,7 +120,7 @@ mod test {
     #[test]
     fn multiaddr_from_components() {
         let ip: Ipv4Addr = "127.0.0.1".parse().unwrap();
-        let addr = multiaddr!(Ip4(ip.clone()), Tcp(1456u16));
+        let addr = multiaddr!(Ip4(ip), Tcp(1456u16));
         let mut addr_iter = addr.iter();
         assert_eq!(addr_iter.next(), Some(Protocol::Ip4(ip)));
         assert_eq!(addr_iter.next(), Some(Protocol::Tcp(1456)));

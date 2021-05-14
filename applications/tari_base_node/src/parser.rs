@@ -162,8 +162,7 @@ impl Parser {
         command: BaseNodeCommand,
         mut args: I,
         shutdown: &mut Shutdown,
-    )
-    {
+    ) {
         use BaseNodeCommand::*;
         match command {
             Help => {
@@ -673,7 +672,7 @@ impl Parser {
             })
             .and_then(|arg| u64::from_str(&arg).map_err(|err| err.to_string())));
 
-        let filename = args.next().unwrap_or_else(|| "header-data.csv").to_string();
+        let filename = args.next().unwrap_or("header-data.csv").to_string();
 
         let algo = try_or_print!(Ok(args.next()).and_then(|s| match s {
             Some("monero") => Ok(Some(PowAlgorithm::Monero)),

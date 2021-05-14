@@ -268,7 +268,7 @@ impl InnerService {
             .metadata
             .as_ref()
             .map(|meta| meta.height_of_longest_chain)
-            .ok_or_else(|| MmProxyError::GrpcResponseMissingField("metadata"))?;
+            .ok_or(MmProxyError::GrpcResponseMissingField("metadata"))?;
         if result.get_ref().initial_sync_achieved != self.initial_sync_achieved.load(Ordering::Relaxed) {
             self.initial_sync_achieved
                 .store(result.get_ref().initial_sync_achieved, Ordering::Relaxed);
@@ -293,8 +293,7 @@ impl InnerService {
         &self,
         request: Request<json::Value>,
         monerod_resp: Response<json::Value>,
-    ) -> Result<Response<Body>, MmProxyError>
-    {
+    ) -> Result<Response<Body>, MmProxyError> {
         let request = request.body();
         let (parts, mut json_resp) = monerod_resp.into_parts();
 
@@ -404,8 +403,7 @@ impl InnerService {
     async fn handle_get_block_template(
         &self,
         monerod_resp: Response<json::Value>,
-    ) -> Result<Response<Body>, MmProxyError>
-    {
+    ) -> Result<Response<Body>, MmProxyError> {
         let (parts, mut monerod_resp) = monerod_resp.into_parts();
         debug!(
             target: LOG_TARGET,
@@ -464,9 +462,9 @@ impl InnerService {
             })?
             .into_inner();
 
-        let miner_data = miner_data.ok_or_else(|| MmProxyError::GrpcResponseMissingField("miner_data"))?;
+        let miner_data = miner_data.ok_or(MmProxyError::GrpcResponseMissingField("miner_data"))?;
         let new_block_template =
-            new_block_template.ok_or_else(|| MmProxyError::GrpcResponseMissingField("new_block_template"))?;
+            new_block_template.ok_or(MmProxyError::GrpcResponseMissingField("new_block_template"))?;
 
         let block_reward = miner_data.reward;
         let total_fees = miner_data.total_fees;
@@ -545,11 +543,7 @@ impl InnerService {
 
         let block_data = BlockTemplateDataBuilder::default();
         let block_data = block_data
-            .tari_block(
-                block
-                    .block
-                    .ok_or_else(|| MmProxyError::GrpcResponseMissingField("block"))?,
-            )
+            .tari_block(block.block.ok_or(MmProxyError::GrpcResponseMissingField("block"))?)
             .tari_miner_data(miner_data);
 
         // Deserialize the block template blob
@@ -614,8 +608,7 @@ impl InnerService {
         &self,
         request: Request<json::Value>,
         monero_resp: Response<json::Value>,
-    ) -> Result<Response<Body>, MmProxyError>
-    {
+    ) -> Result<Response<Body>, MmProxyError> {
         let (parts, monero_resp) = monero_resp.into_parts();
         // If monero succeeded, we're done here
         if !monero_resp["result"].is_null() {
@@ -625,7 +618,7 @@ impl InnerService {
         let request = request.into_body();
         let hash = request["params"]["hash"]
             .as_str()
-            .ok_or_else(|| "hash parameter is not a string")
+            .ok_or("hash parameter is not a string")
             .and_then(|hash| hex::decode(hash).map_err(|_| "hash parameter is not a valid hex value"));
         let hash = match hash {
             Ok(hash) => hash,
@@ -689,8 +682,7 @@ impl InnerService {
     async fn handle_get_last_block_header(
         &self,
         monero_resp: Response<json::Value>,
-    ) -> Result<Response<Body>, MmProxyError>
-    {
+    ) -> Result<Response<Body>, MmProxyError> {
         let (parts, monero_resp) = monero_resp.into_parts();
         if !monero_resp["error"].is_null() {
             return Ok(proxy::into_response(parts, &monero_resp));
@@ -749,8 +741,7 @@ impl InnerService {
     async fn proxy_request_to_monerod(
         &self,
         request: Request<Bytes>,
-    ) -> Result<(Request<Bytes>, Response<json::Value>), MmProxyError>
-    {
+    ) -> Result<(Request<Bytes>, Response<json::Value>), MmProxyError> {
         let monerod_uri = self.get_fully_qualified_monerod_url(request.uri())?;
 
         let mut builder = self
@@ -850,8 +841,7 @@ impl InnerService {
         &self,
         request: Request<Bytes>,
         monerod_resp: Response<json::Value>,
-    ) -> Result<Response<Body>, MmProxyError>
-    {
+    ) -> Result<Response<Body>, MmProxyError> {
         match request.method().clone() {
             Method::GET => {
                 // All get requests go to /request_name, methods do not have a body, optionally could have query params

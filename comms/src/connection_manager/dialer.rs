@@ -104,8 +104,7 @@ where
         request_rx: mpsc::Receiver<DialerRequest>,
         conn_man_notifier: mpsc::Sender<ConnectionManagerEvent>,
         shutdown: ShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             config,
             node_identity,
@@ -189,8 +188,7 @@ where
         &mut self,
         dial_state: DialState,
         dial_result: Result<PeerConnection, ConnectionManagerError>,
-    )
-    {
+    ) {
         let DialState { peer, reply_tx, .. } = dial_state;
 
         let node_id = peer.node_id.clone();
@@ -237,8 +235,7 @@ where
         &mut self,
         peer_node_id: &NodeId,
         result: Result<PeerConnection, ConnectionManagerError>,
-    )
-    {
+    ) {
         self.pending_dial_requests
             .remove(peer_node_id)
             .and_then(|reply_oneshots| {
@@ -259,8 +256,7 @@ where
         pending_dials: &mut DialFuturesUnordered,
         peer: Box<Peer>,
         reply_tx: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
-    )
-    {
+    ) {
         if self.is_pending_dial(&peer.node_id) {
             let entry = self.pending_dial_requests.entry(peer.node_id).or_insert_with(Vec::new);
             entry.push(reply_tx);
@@ -326,11 +322,10 @@ where
     fn check_authenticated_public_key(
         socket: &NoiseSocket<TTransport::Output>,
         expected_public_key: &CommsPublicKey,
-    ) -> Result<CommsPublicKey, ConnectionManagerError>
-    {
+    ) -> Result<CommsPublicKey, ConnectionManagerError> {
         let authenticated_public_key = socket
             .get_remote_public_key()
-            .ok_or_else(|| ConnectionManagerError::InvalidStaticPublicKey)?;
+            .ok_or(ConnectionManagerError::InvalidStaticPublicKey)?;
 
         if &authenticated_public_key != expected_public_key {
             return Err(ConnectionManagerError::DialedPublicKeyMismatch);
@@ -351,8 +346,7 @@ where
         user_agent: String,
         allow_test_addresses: bool,
         cancel_signal: ShutdownSignal,
-    ) -> Result<PeerConnection, ConnectionManagerError>
-    {
+    ) -> Result<PeerConnection, ConnectionManagerError> {
         static CONNECTION_DIRECTION: ConnectionDirection = ConnectionDirection::Outbound;
 
         let mut muxer = Yamux::upgrade_connection(socket, CONNECTION_DIRECTION)
@@ -432,8 +426,7 @@ where
         transport: TTransport,
         backoff: Arc<TBackoff>,
         max_attempts: usize,
-    ) -> (DialState, DialResult<TTransport::Output>)
-    {
+    ) -> (DialState, DialResult<TTransport::Output>) {
         // Container for dial state
         let mut dial_state = Some(dial_state);
         let mut transport = Some(transport);
@@ -492,8 +485,7 @@ where
     ) -> (
         DialState,
         Result<(NoiseSocket<TTransport::Output>, Multiaddr), ConnectionManagerError>,
-    )
-    {
+    ) {
         let mut addr_iter = dial_state.peer.addresses.iter();
         let cancel_signal = dial_state.get_cancel_signal();
         loop {

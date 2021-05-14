@@ -170,8 +170,7 @@ where
         peer_manager: Arc<PeerManager>,
         connection_manager_events_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
         shutdown_signal: ShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         let (internal_event_tx, internal_event_rx) = mpsc::channel(EVENT_CHANNEL_SIZE);
 
         let (dialer_tx, dialer_rx) = mpsc::channel(DIALER_REQUEST_CHANNEL_SIZE);
@@ -360,8 +359,7 @@ where
         &mut self,
         node_id: NodeId,
         reply: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
-    )
-    {
+    ) {
         match self.peer_manager.find_by_node_id(&node_id).await {
             Ok(peer) => {
                 self.send_dialer_request(DialerRequest::Dial(Box::new(peer), reply))

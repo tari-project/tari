@@ -276,8 +276,7 @@ impl OutboundMessageRequester {
         &mut self,
         params: FinalSendMessageParams,
         body: Vec<u8>,
-    ) -> Result<SendMessageResponse, DhtOutboundError>
-    {
+    ) -> Result<SendMessageResponse, DhtOutboundError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
             .send(DhtOutboundRequest::SendMessage(Box::new(params), body.into(), reply_tx))

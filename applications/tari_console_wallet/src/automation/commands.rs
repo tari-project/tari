@@ -117,8 +117,7 @@ fn get_transaction_parameters(
 pub async fn send_tari(
     mut wallet_transaction_service: TransactionServiceHandle,
     args: Vec<ParsedArgument>,
-) -> Result<TxId, CommandError>
-{
+) -> Result<TxId, CommandError> {
     let (fee_per_gram, amount, dest_pubkey, message) = get_transaction_parameters(args)?;
     wallet_transaction_service
         .send_transaction(dest_pubkey, amount, fee_per_gram, message)
@@ -130,8 +129,7 @@ pub async fn send_tari(
 pub async fn send_one_sided(
     mut wallet_transaction_service: TransactionServiceHandle,
     args: Vec<ParsedArgument>,
-) -> Result<TxId, CommandError>
-{
+) -> Result<TxId, CommandError> {
     let (fee_per_gram, amount, dest_pubkey, message) = get_transaction_parameters(args)?;
     wallet_transaction_service
         .send_one_sided_transaction(dest_pubkey, amount, fee_per_gram, message)
@@ -143,8 +141,7 @@ pub async fn coin_split(
     args: &[ParsedArgument],
     output_service: &mut OutputManagerHandle,
     transaction_service: &mut TransactionServiceHandle,
-) -> Result<TxId, CommandError>
-{
+) -> Result<TxId, CommandError> {
     use ParsedArgument::*;
     let amount_per_split = match args[0] {
         Amount(s) => Ok(s),
@@ -191,8 +188,7 @@ async fn wait_for_comms(connectivity_requester: &ConnectivityRequester) -> Resul
 pub async fn discover_peer(
     mut dht_service: DhtDiscoveryRequester,
     args: Vec<ParsedArgument>,
-) -> Result<(), CommandError>
-{
+) -> Result<(), CommandError> {
     use ParsedArgument::*;
     let dest_public_key = match args[0].clone() {
         PublicKey(key) => Ok(Box::new(key)),
@@ -221,8 +217,7 @@ pub async fn make_it_rain(
     handle: Handle,
     wallet_transaction_service: TransactionServiceHandle,
     args: Vec<ParsedArgument>,
-) -> Result<Vec<TxId>, CommandError>
-{
+) -> Result<Vec<TxId>, CommandError> {
     use ParsedArgument::*;
 
     let txps = match args[0].clone() {
@@ -315,8 +310,7 @@ pub async fn monitor_transactions(
     transaction_service: TransactionServiceHandle,
     tx_ids: Vec<TxId>,
     wait_stage: TransactionStage,
-) -> Vec<SentTransaction>
-{
+) -> Vec<SentTransaction> {
     let mut event_stream = transaction_service.get_event_stream_fused();
     let mut results = Vec::new();
     debug!(target: LOG_TARGET, "monitor transactions wait_stage: {:?}", wait_stage);
@@ -436,8 +430,7 @@ pub async fn command_runner(
     commands: Vec<ParsedCommand>,
     wallet: WalletSqlite,
     config: GlobalConfig,
-) -> Result<(), CommandError>
-{
+) -> Result<(), CommandError> {
     let wait_stage = TransactionStage::from_str(&config.wallet_command_send_wait_stage)
         .map_err(|e| CommandError::Config(e.to_string()))?;
 

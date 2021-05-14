@@ -32,8 +32,7 @@ pub async fn recovery_event_monitoring(
     mut event_stream: broadcast::Receiver<UtxoScannerEvent>,
     recovery_join_handle: JoinHandle<Result<(), WalletError>>,
     recovery_progress_callback: unsafe extern "C" fn(u64, u64),
-)
-{
+) {
     while let Some(event) = event_stream.next().await {
         match event {
             Ok(UtxoScannerEvent::ConnectedToBaseNode(pk, elapsed)) => {

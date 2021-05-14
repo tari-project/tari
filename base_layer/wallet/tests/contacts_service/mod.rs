@@ -45,8 +45,7 @@ use tokio::runtime::Runtime;
 pub fn setup_contacts_service<T: ContactsBackend + 'static>(
     runtime: &mut Runtime,
     backend: T,
-) -> (ContactsServiceHandle, Shutdown)
-{
+) -> (ContactsServiceHandle, Shutdown) {
     let shutdown = Shutdown::new();
     let fut = StackBuilder::new(shutdown.to_signal())
         .add_initializer(ContactsServiceInitializer::new(backend))

@@ -142,8 +142,7 @@ pub async fn configure_and_initialize_node(
     node_identity: Arc<NodeIdentity>,
     interrupt_signal: ShutdownSignal,
     cleanup_orphans_at_startup: bool,
-) -> Result<BaseNodeContext, anyhow::Error>
-{
+) -> Result<BaseNodeContext, anyhow::Error> {
     let result = match &config.db_type {
         DatabaseType::Memory => {
             // let backend = MemoryDatabase::<HashDigest>::default();
@@ -190,8 +189,7 @@ async fn build_node_context(
     config: Arc<GlobalConfig>,
     interrupt_signal: ShutdownSignal,
     cleanup_orphans_at_startup: bool,
-) -> Result<BaseNodeContext, anyhow::Error>
-{
+) -> Result<BaseNodeContext, anyhow::Error> {
     //---------------------------------- Blockchain --------------------------------------------//
 
     let rules = ConsensusManagerBuilder::new(config.network.into()).build();

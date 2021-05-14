@@ -161,7 +161,7 @@ impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for BodyOnlyMinusHeightVa
         {
             let data = backend
                 .fetch_block_accumulated_data(&block.block.header.prev_hash)?
-                .ok_or_else(|| ValidationError::PreviousHashNotFound)?;
+                .ok_or(ValidationError::PreviousHashNotFound)?;
 
             for input in block.block.body.inputs() {
                 if let Some((_, index, _)) = backend.fetch_output(&input.hash())? {
@@ -215,7 +215,7 @@ fn check_sorting_and_duplicates(body: &AggregateBody) -> Result<(), ValidationEr
 fn check_inputs_are_utxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), ValidationError> {
     let data = db
         .fetch_block_accumulated_data(&block.header.prev_hash)?
-        .ok_or_else(|| ValidationError::PreviousHashNotFound)?;
+        .ok_or(ValidationError::PreviousHashNotFound)?;
 
     for input in block.body.inputs() {
         if let Some((_, index, _height)) = db.fetch_output(&input.hash())? {

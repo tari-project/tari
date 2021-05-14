@@ -339,10 +339,9 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     // test revalidating output
     let unspent_outputs = runtime.block_on(db.get_unspent_outputs()).unwrap();
     assert!(
-        unspent_outputs
+        !unspent_outputs
             .iter()
-            .find(|o| o.unblinded_output == invalid_outputs[0].unblinded_output)
-            .is_none(),
+            .any(|o| o.unblinded_output == invalid_outputs[0].unblinded_output),
         "Should not find output"
     );
 

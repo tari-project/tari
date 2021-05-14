@@ -79,8 +79,7 @@ impl StoreAndForwardDatabase {
         node_id: &NodeId,
         since: Option<DateTime<Utc>>,
         limit: i64,
-    ) -> Result<Vec<StoredMessage>, StorageError>
-    {
+    ) -> Result<Vec<StoredMessage>, StorageError> {
         let pk_hex = public_key.to_hex();
         let node_id_hex = node_id.to_hex();
         self.connection
@@ -112,8 +111,7 @@ impl StoreAndForwardDatabase {
         &self,
         since: Option<DateTime<Utc>>,
         limit: i64,
-    ) -> Result<Vec<StoredMessage>, StorageError>
-    {
+    ) -> Result<Vec<StoredMessage>, StorageError> {
         self.connection
             .with_connection_async(move |conn| {
                 let mut query = stored_messages::table
@@ -141,8 +139,7 @@ impl StoreAndForwardDatabase {
         &self,
         since: Option<DateTime<Utc>>,
         limit: i64,
-    ) -> Result<Vec<StoredMessage>, StorageError>
-    {
+    ) -> Result<Vec<StoredMessage>, StorageError> {
         self.connection
             .with_connection_async(move |conn| {
                 let mut query = stored_messages::table
@@ -169,8 +166,7 @@ impl StoreAndForwardDatabase {
         message_type: DhtMessageType,
         since: Option<DateTime<Utc>>,
         limit: i64,
-    ) -> Result<Vec<StoredMessage>, StorageError>
-    {
+    ) -> Result<Vec<StoredMessage>, StorageError> {
         let pk_hex = public_key.to_hex();
         self.connection
             .with_connection_async(move |conn| {
@@ -209,8 +205,7 @@ impl StoreAndForwardDatabase {
         &self,
         priority: StoredMessagePriority,
         since: NaiveDateTime,
-    ) -> Result<usize, StorageError>
-    {
+    ) -> Result<usize, StorageError> {
         self.connection
             .with_connection_async(move |conn| {
                 diesel::delete(stored_messages::table)

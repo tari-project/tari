@@ -74,9 +74,8 @@ where T: Into<Vec<ListItem<'a>>>
     }
 
     pub fn render<B: Backend>(mut self, f: &mut Frame<B>, area: Rect, state: &mut ListState) {
-        let mut constraints = Vec::new();
         // This accounts for the box border
-        constraints.push(Constraint::Length(1));
+        let mut constraints = vec![Constraint::Length(1)];
         let mut sum_width = 0;
         for i in 0..self.columns.len() - 1 {
             if let Some(w) = self.columns[i].width {

@@ -70,8 +70,7 @@ where TBackend: OutputManagerBackend + 'static
         resources: OutputManagerResources<TBackend>,
         base_node_public_key: CommsPublicKey,
         base_node_update_receiver: broadcast::Receiver<CommsPublicKey>,
-    ) -> Self
-    {
+    ) -> Self {
         let retry_delay = resources.config.base_node_query_timeout;
         Self {
             id,
@@ -403,8 +402,7 @@ where TBackend: OutputManagerBackend + 'static
         &mut self,
         batch: Vec<Vec<u8>>,
         client: &mut BaseNodeWalletRpcClient,
-    ) -> Result<bool, OutputManagerProtocolError>
-    {
+    ) -> Result<bool, OutputManagerProtocolError> {
         let request = FetchMatchingUtxos {
             output_hashes: batch.clone(),
         };

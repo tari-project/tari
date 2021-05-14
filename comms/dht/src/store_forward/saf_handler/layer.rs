@@ -51,14 +51,14 @@ impl MessageHandlerLayer {
         peer_manager: Arc<PeerManager>,
         outbound_service: OutboundMessageRequester,
         saf_response_signal_sender: mpsc::Sender<()>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             config,
             saf_requester,
             dht_requester,
-            node_identity,
             peer_manager,
+            node_identity,
+
             outbound_service,
             saf_response_signal_sender,
         }

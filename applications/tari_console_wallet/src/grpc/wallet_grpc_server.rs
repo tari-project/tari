@@ -98,8 +98,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     async fn get_coinbase(
         &self,
         request: Request<GetCoinbaseRequest>,
-    ) -> Result<Response<GetCoinbaseResponse>, Status>
-    {
+    ) -> Result<Response<GetCoinbaseResponse>, Status> {
         let request = request.into_inner();
 
         let mut tx_service = self.get_transaction_service();
@@ -195,8 +194,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     async fn get_transaction_info(
         &self,
         request: Request<GetTransactionInfoRequest>,
-    ) -> Result<Response<GetTransactionInfoResponse>, Status>
-    {
+    ) -> Result<Response<GetTransactionInfoResponse>, Status> {
         let message = request.into_inner();
 
         let queries = message.transaction_ids.into_iter().map(|tx_id| {
@@ -229,8 +227,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     async fn get_completed_transactions(
         &self,
         _request: Request<GetCompletedTransactionsRequest>,
-    ) -> Result<Response<Self::GetCompletedTransactionsStream>, Status>
-    {
+    ) -> Result<Response<Self::GetCompletedTransactionsStream>, Status> {
         debug!(
             target: LOG_TARGET,
             "Incoming GRPC request for GetAllCompletedTransactions"
@@ -314,8 +311,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 fn convert_wallet_transaction_into_transaction_info(
     tx: models::WalletTransaction,
     wallet_pk: &CommsPublicKey,
-) -> TransactionInfo
-{
+) -> TransactionInfo {
     use models::WalletTransaction::*;
     match tx {
         PendingInbound(tx) => TransactionInfo {

@@ -56,8 +56,7 @@ impl BlockSync {
     pub async fn next_event<B: BlockchainBackend + 'static>(
         &mut self,
         shared: &mut BaseNodeStateMachine<B>,
-    ) -> StateEvent
-    {
+    ) -> StateEvent {
         let mut synchronizer = BlockSynchronizer::new(
             shared.db.clone(),
             shared.connectivity.clone(),

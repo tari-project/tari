@@ -79,7 +79,6 @@ pub fn create_base_node_wallet_rpc_service<B: BlockchainBackend + 'static>(
     db: AsyncBlockchainDb<B>,
     mempool: MempoolHandle,
     state_machine: StateMachineHandle,
-) -> BaseNodeWalletRpcServer<BaseNodeWalletRpcService<B>>
-{
+) -> BaseNodeWalletRpcServer<BaseNodeWalletRpcService<B>> {
     BaseNodeWalletRpcServer::new(BaseNodeWalletRpcService::new(db, mempool, state_machine))
 }

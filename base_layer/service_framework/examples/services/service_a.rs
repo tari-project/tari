@@ -45,8 +45,7 @@ impl ServiceA {
         request_stream: reply_channel::Receiver<String, String>,
         service_b_handle: ServiceBHandle,
         shutdown_signal: ShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             response_msg,
             request_stream: Some(request_stream),

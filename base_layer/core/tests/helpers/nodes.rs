@@ -175,8 +175,7 @@ impl BaseNodeBuilder {
         block: impl PostOrphanBodyValidation<TempDatabase> + 'static,
         header: impl HeaderValidation<TempDatabase> + 'static,
         orphan: impl OrphanValidation + 'static,
-    ) -> Self
-    {
+    ) -> Self {
         let validators = Validators::new(block, header, orphan);
         self.validators = Some(validators);
         self
@@ -238,8 +237,7 @@ pub fn wait_until_online(runtime: &mut Runtime, nodes: &[&NodeInterfaces]) {
 pub fn create_network_with_2_base_nodes(
     runtime: &mut Runtime,
     data_path: &str,
-) -> (NodeInterfaces, NodeInterfaces, ConsensusManager)
-{
+) -> (NodeInterfaces, NodeInterfaces, ConsensusManager) {
     let alice_node_identity = random_node_identity();
     let bob_node_identity = random_node_identity();
 
@@ -269,8 +267,7 @@ pub fn create_network_with_2_base_nodes_with_config<P: AsRef<Path>>(
     liveness_service_config: LivenessConfig,
     consensus_manager: ConsensusManager,
     data_path: P,
-) -> (NodeInterfaces, NodeInterfaces, ConsensusManager)
-{
+) -> (NodeInterfaces, NodeInterfaces, ConsensusManager) {
     let alice_node_identity = random_node_identity();
     let bob_node_identity = random_node_identity();
     let network = Network::LocalNet;
@@ -302,8 +299,7 @@ pub fn create_network_with_2_base_nodes_with_config<P: AsRef<Path>>(
 pub fn create_network_with_3_base_nodes(
     runtime: &mut Runtime,
     data_path: &str,
-) -> (NodeInterfaces, NodeInterfaces, NodeInterfaces, ConsensusManager)
-{
+) -> (NodeInterfaces, NodeInterfaces, NodeInterfaces, ConsensusManager) {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     create_network_with_3_base_nodes_with_config(
@@ -327,8 +323,7 @@ pub fn create_network_with_3_base_nodes_with_config<P: AsRef<Path>>(
     liveness_service_config: LivenessConfig,
     consensus_manager: ConsensusManager,
     data_path: P,
-) -> (NodeInterfaces, NodeInterfaces, NodeInterfaces, ConsensusManager)
-{
+) -> (NodeInterfaces, NodeInterfaces, NodeInterfaces, ConsensusManager) {
     let alice_node_identity = random_node_identity();
     let bob_node_identity = random_node_identity();
     let carol_node_identity = random_node_identity();
@@ -432,8 +427,7 @@ fn setup_base_node_services(
     mempool_service_config: MempoolServiceConfig,
     liveness_service_config: LivenessConfig,
     data_path: &str,
-) -> NodeInterfaces
-{
+) -> NodeInterfaces {
     let (publisher, subscription_factory) = pubsub_connector(runtime.handle().clone(), 100, 20);
     let subscription_factory = Arc::new(subscription_factory);
     let (comms, dht, messaging_events, shutdown) =

@@ -101,8 +101,7 @@ impl LivenessHandle {
     pub fn new(
         handle: SenderService<LivenessRequest, Result<LivenessResponse, LivenessError>>,
         event_stream_sender: LivenessEventSender,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             handle,
             event_stream_sender,

@@ -132,11 +132,8 @@ impl CoinbaseBuilder {
         self,
         constants: &ConsensusConstants,
         emission_schedule: &EmissionSchedule,
-    ) -> Result<(Transaction, UnblindedOutput), CoinbaseBuildError>
-    {
-        let height = self
-            .block_height
-            .ok_or_else(|| CoinbaseBuildError::MissingBlockHeight)?;
+    ) -> Result<(Transaction, UnblindedOutput), CoinbaseBuildError> {
+        let height = self.block_height.ok_or(CoinbaseBuildError::MissingBlockHeight)?;
         let reward = emission_schedule.block_reward(height);
         self.build_with_reward(constants, reward)
     }
@@ -153,15 +150,12 @@ impl CoinbaseBuilder {
         self,
         constants: &ConsensusConstants,
         block_reward: MicroTari,
-    ) -> Result<(Transaction, UnblindedOutput), CoinbaseBuildError>
-    {
-        let height = self
-            .block_height
-            .ok_or_else(|| CoinbaseBuildError::MissingBlockHeight)?;
-        let total_reward = block_reward + self.fees.ok_or_else(|| CoinbaseBuildError::MissingFees)?;
-        let nonce = self.private_nonce.ok_or_else(|| CoinbaseBuildError::MissingNonce)?;
+    ) -> Result<(Transaction, UnblindedOutput), CoinbaseBuildError> {
+        let height = self.block_height.ok_or(CoinbaseBuildError::MissingBlockHeight)?;
+        let total_reward = block_reward + self.fees.ok_or(CoinbaseBuildError::MissingFees)?;
+        let nonce = self.private_nonce.ok_or(CoinbaseBuildError::MissingNonce)?;
         let public_nonce = PublicKey::from_secret_key(&nonce);
-        let key = self.spend_key.ok_or_else(|| CoinbaseBuildError::MissingSpendKey)?;
+        let key = self.spend_key.ok_or(CoinbaseBuildError::MissingSpendKey)?;
         let script_key = self.script_key.unwrap_or_else(|| key.clone());
         let output_features = OutputFeatures::create_coinbase(height + constants.coinbase_lock_height());
         let excess = self.factories.commitment.commit_value(&key, 0);

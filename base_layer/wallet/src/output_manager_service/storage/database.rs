@@ -315,8 +315,7 @@ where T: OutputManagerBackend + 'static
     pub async fn add_pending_transaction_outputs(
         &self,
         pending_transaction_outputs: PendingTransactionOutputs,
-    ) -> Result<(), OutputManagerStorageError>
-    {
+    ) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || {
             db_clone.write(WriteOperation::Insert(DbKeyValuePair::PendingTransactionOutputs(
@@ -333,8 +332,7 @@ where T: OutputManagerBackend + 'static
     pub async fn fetch_pending_transaction_outputs(
         &self,
         tx_id: TxId,
-    ) -> Result<PendingTransactionOutputs, OutputManagerStorageError>
-    {
+    ) -> Result<PendingTransactionOutputs, OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || fetch!(db_clone, tx_id, PendingTransactionOutputs))
             .await
@@ -360,8 +358,7 @@ where T: OutputManagerBackend + 'static
         tx_id: TxId,
         output: DbUnblindedOutput,
         coinbase_block_height: Option<u64>,
-    ) -> Result<(), OutputManagerStorageError>
-    {
+    ) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
 
         tokio::task::spawn_blocking(move || {
@@ -388,8 +385,7 @@ where T: OutputManagerBackend + 'static
         tx_id: TxId,
         outputs_to_send: Vec<DbUnblindedOutput>,
         outputs_to_receive: Vec<DbUnblindedOutput>,
-    ) -> Result<(), OutputManagerStorageError>
-    {
+    ) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || {
             db_clone.short_term_encumber_outputs(tx_id, &outputs_to_send, &outputs_to_receive)
@@ -568,8 +564,7 @@ where T: OutputManagerBackend + 'static
     pub async fn invalidate_output(
         &self,
         output: DbUnblindedOutput,
-    ) -> Result<Option<TxId>, OutputManagerStorageError>
-    {
+    ) -> Result<Option<TxId>, OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.invalidate_unspent_output(&output))
             .await
@@ -588,8 +583,7 @@ where T: OutputManagerBackend + 'static
     pub async fn update_spent_output_to_unspent(
         &self,
         commitment: Commitment,
-    ) -> Result<DbUnblindedOutput, OutputManagerStorageError>
-    {
+    ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.update_spent_output_to_unspent(&commitment))
             .await
@@ -600,8 +594,7 @@ where T: OutputManagerBackend + 'static
     pub async fn cancel_pending_transaction_at_block_height(
         &self,
         block_height: u64,
-    ) -> Result<(), OutputManagerStorageError>
-    {
+    ) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.cancel_pending_transaction_at_block_height(block_height))
             .await

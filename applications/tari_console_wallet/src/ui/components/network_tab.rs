@@ -423,10 +423,7 @@ impl<B: Backend> Component<B> for NetworkTab {
                         .set_num_items(app_state.get_base_node_list().len());
                     self.base_node_edit_mode = BaseNodeInputMode::Selection;
                     self.base_node_list_state.select(Some(0));
-                    self.detailed_base_node = match app_state.get_base_node_list().get(0) {
-                        None => None,
-                        Some((_, peer)) => Some(peer.clone()),
-                    };
+                    self.detailed_base_node = app_state.get_base_node_list().get(0).map(|(_, peer)| peer.clone());
                 }
             },
             _ => {},

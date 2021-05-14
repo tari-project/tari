@@ -81,8 +81,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         node_identity: Arc<NodeIdentity>,
         message: DecryptedDhtMessage,
         saf_response_signal_sender: mpsc::Sender<()>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             config,
             saf_requester,
@@ -151,8 +150,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     async fn handle_stored_messages_request(
         &mut self,
         message: DecryptedDhtMessage,
-    ) -> Result<(), StoreAndForwardError>
-    {
+    ) -> Result<(), StoreAndForwardError> {
         trace!(
             target: LOG_TARGET,
             "Received request for stored message {} from {} (Trace: {})",
@@ -166,7 +164,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         let retrieve_msgs = msg
             .decode_part::<StoredMessagesRequest>(0)?
-            .ok_or_else(|| StoreAndForwardError::InvalidEnvelopeBody)?;
+            .ok_or(StoreAndForwardError::InvalidEnvelopeBody)?;
 
         let source_pubkey = Box::new(message.source_peer.public_key.clone());
         let source_node_id = Box::new(message.source_peer.node_id.clone());
@@ -254,7 +252,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .expect("already checked that this message decrypted successfully");
         let response = msg
             .decode_part::<StoredMessagesResponse>(0)?
-            .ok_or_else(|| StoreAndForwardError::InvalidEnvelopeBody)?;
+            .ok_or(StoreAndForwardError::InvalidEnvelopeBody)?;
         let source_peer = Arc::new(message.source_peer);
 
         debug!(
@@ -358,8 +356,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         &self,
         source_peer: Arc<Peer>,
         message: ProtoStoredMessage,
-    ) -> impl Future<Output = Result<DecryptedDhtMessage, StoreAndForwardError>>
-    {
+    ) -> impl Future<Output = Result<DecryptedDhtMessage, StoreAndForwardError>> {
         let node_identity = Arc::clone(&self.node_identity);
         let peer_manager = Arc::clone(&self.peer_manager);
         let config = self.config.clone();
@@ -436,8 +433,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         peer_manager: &PeerManager,
         node_identity: &NodeIdentity,
         dht_header: &DhtMessageHeader,
-    ) -> Result<(), StoreAndForwardError>
-    {
+    ) -> Result<(), StoreAndForwardError> {
         let is_valid_destination = match &dht_header.destination {
             NodeDestination::Unknown => true,
             NodeDestination::PublicKey(pk) => node_identity.public_key() == &**pk,
@@ -460,8 +456,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         node_identity: &NodeIdentity,
         header: &DhtMessageHeader,
         body: &[u8],
-    ) -> Result<(Option<CommsPublicKey>, EnvelopeBody), StoreAndForwardError>
-    {
+    ) -> Result<(Option<CommsPublicKey>, EnvelopeBody), StoreAndForwardError> {
         if header.flags.contains(DhtMessageFlags::ENCRYPTED) {
             let ephemeral_public_key = header.ephemeral_public_key.as_ref().expect(
                 "[store and forward] DHT header is invalid after validity check because it did not contain an \

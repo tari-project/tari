@@ -35,8 +35,7 @@ const LOG_TARGET: &str = "wallet::transaction_service::tasks::start_tx_validatio
 pub async fn start_transaction_validation_and_broadcast_protocols(
     mut handle: TransactionServiceHandle,
     retry_strategy: ValidationRetryStrategy,
-) -> Result<(), TransactionServiceError>
-{
+) -> Result<(), TransactionServiceError> {
     let mut event_stream = handle.get_event_stream_fused();
     let our_id = handle.validate_transactions(retry_strategy).await?;
 

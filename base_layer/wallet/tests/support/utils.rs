@@ -83,8 +83,7 @@ pub fn make_input<R: Rng + CryptoRng>(
     rng: &mut R,
     val: MicroTari,
     factory: &CommitmentFactory,
-) -> (TransactionInput, UnblindedOutput)
-{
+) -> (TransactionInput, UnblindedOutput) {
     let key = PrivateKey::random(rng);
     let script = script!(Nop);
     let script_private_key = PrivateKey::random(rng);
@@ -114,8 +113,7 @@ pub fn make_input_with_features<R: Rng + CryptoRng>(
     value: MicroTari,
     factory: &CommitmentFactory,
     features: Option<OutputFeatures>,
-) -> (TransactionInput, UnblindedOutput)
-{
+) -> (TransactionInput, UnblindedOutput) {
     let spending_key = PrivateKey::random(rng);
     let script = script!(Nop);
     let script_private_key = PrivateKey::random(rng);

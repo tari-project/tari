@@ -63,7 +63,7 @@ mod get_closer_peers {
         let mut peers_stream = service.get_closer_peers(req).await.unwrap();
         let next = peers_stream.next().await;
         // Empty stream
-        assert_eq!(next.is_none(), true);
+        assert!(next.is_none());
     }
 
     #[tokio_macros::test_basic]
@@ -180,7 +180,7 @@ mod get_peers {
         let mut peers_stream = service.get_peers(req).await.unwrap();
         let next = peers_stream.next().await;
         // Empty stream
-        assert_eq!(next.is_none(), true);
+        assert!(next.is_none());
     }
 
     #[tokio_macros::test_basic]

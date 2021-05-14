@@ -43,8 +43,7 @@ pub async fn block_heights(
     start_height: u64,
     end_height: u64,
     from_tip: u64,
-) -> Result<Vec<u64>, Status>
-{
+) -> Result<Vec<u64>, Status> {
     if end_height > 0 {
         Ok(BlockHeader::get_height_range(start_height, end_height))
     } else if from_tip > 0 {

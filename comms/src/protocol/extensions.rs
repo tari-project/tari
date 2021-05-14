@@ -111,8 +111,7 @@ impl ProtocolExtensionContext {
         connectivity: ConnectivityRequester,
         peer_manager: Arc<PeerManager>,
         shutdown_signal: ShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             connectivity,
             peer_manager,
@@ -126,8 +125,7 @@ impl ProtocolExtensionContext {
         &mut self,
         protocols: I,
         notifier: ProtocolNotificationTx<Substream>,
-    ) -> &mut Self
-    {
+    ) -> &mut Self {
         self.protocols
             .as_mut()
             .expect("CommsContext::protocols taken!")

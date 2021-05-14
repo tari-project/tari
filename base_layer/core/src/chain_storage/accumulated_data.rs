@@ -69,8 +69,7 @@ impl BlockAccumulatedData {
         range_proofs: PrunedHashSet,
         deleted: Bitmap,
         total_kernel_sum: Commitment,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             kernels,
             outputs,
@@ -162,7 +161,7 @@ impl<'de> Visitor<'de> for DeletedBitmapVisitor {
         #[serde(field_identifier, rename_all = "lowercase")]
         enum Field {
             Deleted,
-        };
+        }
         let mut deleted = None;
         while let Some(key) = map.next_key()? {
             match key {
@@ -202,8 +201,7 @@ impl BlockHeaderAccumulatedDataBuilder {
         mut self,
         previous_kernel_offset: &BlindingFactor,
         current_offset: &BlindingFactor,
-    ) -> Self
-    {
+    ) -> Self {
         self.total_kernel_offset = Some(previous_kernel_offset + current_offset);
         self
     }
@@ -218,8 +216,7 @@ impl BlockHeaderAccumulatedDataBuilder {
         previous: &BlockHeaderAccumulatedData,
         algo: PowAlgorithm,
         achieved: Difficulty,
-    ) -> Self
-    {
+    ) -> Self {
         match algo {
             PowAlgorithm::Monero => {
                 self.accumulated_monero_difficulty = Some(previous.accumulated_monero_difficulty + achieved);

@@ -48,8 +48,7 @@ impl OutboundMempoolServiceInterface {
     pub fn new(
         request_sender: SenderService<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>,
         tx_sender: UnboundedSender<(Transaction, Vec<NodeId>)>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             request_sender,
             tx_sender,
@@ -71,8 +70,7 @@ impl OutboundMempoolServiceInterface {
         &mut self,
         transaction: Transaction,
         exclude_peers: Vec<NodeId>,
-    ) -> Result<(), MempoolServiceError>
-    {
+    ) -> Result<(), MempoolServiceError> {
         self.tx_sender
             .unbounded_send((transaction, exclude_peers))
             .or_else(|e| {
@@ -88,8 +86,7 @@ impl OutboundMempoolServiceInterface {
     pub async fn get_tx_state_by_excess_sig(
         &mut self,
         excess_sig: Signature,
-    ) -> Result<TxStorageResponse, MempoolServiceError>
-    {
+    ) -> Result<TxStorageResponse, MempoolServiceError> {
         if let MempoolResponse::TxStorage(tx_storage_response) = self
             .request_sender
             .call(MempoolRequest::GetTxStateByExcessSig(excess_sig))

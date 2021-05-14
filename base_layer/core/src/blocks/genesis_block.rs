@@ -90,8 +90,8 @@ pub fn get_stibbons_genesis_block() -> ChainBlock {
         target_difficulty: 1.into(),
     };
     ChainBlock {
-        block,
         accumulated_data,
+        block,
     }
 }
 
@@ -131,8 +131,8 @@ pub fn get_weatherwax_genesis_block() -> ChainBlock {
         target_difficulty: 1.into(),
     };
     ChainBlock {
-        block,
         accumulated_data,
+        block,
     }
 }
 
@@ -305,8 +305,8 @@ pub fn get_ridcully_genesis_block() -> ChainBlock {
         target_difficulty: 1.into(),
     };
     ChainBlock {
-        block,
         accumulated_data,
+        block,
     }
 }
 

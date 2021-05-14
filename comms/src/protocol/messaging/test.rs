@@ -230,8 +230,7 @@ async fn send_message_substream_bulk_failure() {
     async fn send_msg(
         request_tx: &mut mpsc::Sender<MessagingRequest>,
         node_id: NodeId,
-    ) -> (MessageTag, MessagingReplyRx)
-    {
+    ) -> (MessageTag, MessagingReplyRx) {
         let (reply_tx, reply_rx) = oneshot::channel();
         let out_msg = OutboundMessage::with_reply(node_id, TEST_MSG1.clone(), reply_tx.into());
         let msg_tag = out_msg.tag;
@@ -353,7 +352,7 @@ async fn many_concurrent_send_message_requests_that_fail() {
 
     let unordered = reply_rxs.into_iter().collect::<FuturesUnordered<_>>();
     let results = unordered.collect::<Vec<_>>().await;
-    assert_eq!(results.into_iter().map(|r| r.unwrap()).all(|r| r.is_err()), true);
+    assert!(results.into_iter().map(|r| r.unwrap()).all(|r| r.is_err()));
 
     assert_eq!(msg_tags.len(), 0);
 }

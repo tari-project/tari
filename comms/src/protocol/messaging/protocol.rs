@@ -127,8 +127,7 @@ impl MessagingProtocol {
         messaging_events_tx: MessagingEventSender,
         inbound_message_tx: mpsc::Sender<InboundMessage>,
         shutdown_signal: ShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         let (internal_messaging_event_tx, internal_messaging_event_rx) =
             mpsc::channel(INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE);
         Self {
@@ -293,8 +292,7 @@ impl MessagingProtocol {
         events_tx: mpsc::Sender<MessagingEvent>,
         peer_node_id: NodeId,
         inactivity_timeout: Option<Duration>,
-    ) -> mpsc::UnboundedSender<OutboundMessage>
-    {
+    ) -> mpsc::UnboundedSender<OutboundMessage> {
         let (msg_tx, msg_rx) = mpsc::unbounded();
         let outbound_messaging =
             OutboundMessaging::new(connectivity, events_tx, msg_rx, peer_node_id, inactivity_timeout);

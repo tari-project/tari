@@ -74,8 +74,7 @@ impl Mempool {
         &self,
         removed_blocks: Vec<Arc<Block>>,
         new_blocks: Vec<Arc<Block>>,
-    ) -> Result<(), MempoolError>
-    {
+    ) -> Result<(), MempoolError> {
         self.pool_storage
             .write()
             .map_err(|e| MempoolError::BackendError(e.to_string()))?

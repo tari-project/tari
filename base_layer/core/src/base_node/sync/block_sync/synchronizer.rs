@@ -61,8 +61,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         connectivity: ConnectivityRequester,
         sync_peer: Option<PeerConnection>,
         block_validator: Arc<dyn CandidateBlockBodyValidation<B>>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             db,
             connectivity,
@@ -123,8 +122,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         &mut self,
         peer: &NodeId,
         client: &mut rpc::BaseNodeSyncRpcClient,
-    ) -> Result<(), BlockSyncError>
-    {
+    ) -> Result<(), BlockSyncError> {
         let tip_header = self.db.fetch_last_header().await?;
         let local_metadata = self.db.get_chain_metadata().await?;
         if tip_header.height <= local_metadata.height_of_longest_chain() {

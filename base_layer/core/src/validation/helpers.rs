@@ -49,8 +49,7 @@ pub const LOG_TARGET: &str = "c::val::helpers";
 pub fn check_timestamp_ftl(
     block_header: &BlockHeader,
     consensus_manager: &ConsensusManager,
-) -> Result<(), ValidationError>
-{
+) -> Result<(), ValidationError> {
     if block_header.timestamp > consensus_manager.consensus_constants(block_header.height).ftl() {
         warn!(
             target: LOG_TARGET,
@@ -66,9 +65,8 @@ pub fn check_timestamp_ftl(
 
 /// Returns the median timestamp for the provided timestamps.
 pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> EpochTime {
-    assert_eq!(
-        timestamps.is_empty(),
-        false,
+    assert!(
+        !timestamps.is_empty(),
         "calc_median_timestamp: timestamps cannot be empty"
     );
     trace!(
@@ -90,8 +88,7 @@ pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> EpochTime {
 pub fn check_header_timestamp_greater_than_median(
     block_header: &BlockHeader,
     timestamps: &[EpochTime],
-) -> Result<(), ValidationError>
-{
+) -> Result<(), ValidationError> {
     if timestamps.is_empty() {
         return Err(ValidationError::BlockHeaderError(
             BlockHeaderValidationError::InvalidTimestamp("The timestamp is empty".to_string()),
@@ -123,8 +120,7 @@ pub fn check_pow_data<B: BlockchainBackend>(
     block_header: &BlockHeader,
     rules: &ConsensusManager,
     db: &B,
-) -> Result<(), ValidationError>
-{
+) -> Result<(), ValidationError> {
     use PowAlgorithm::*;
     match block_header.pow.pow_algo {
         Monero => {
@@ -157,8 +153,7 @@ pub fn check_target_difficulty(
     block_header: &BlockHeader,
     target: Difficulty,
     randomx_factory: &RandomXFactory,
-) -> Result<Difficulty, ValidationError>
-{
+) -> Result<Difficulty, ValidationError> {
     let achieved = match block_header.pow_algo() {
         PowAlgorithm::Monero => monero_difficulty(block_header, randomx_factory)?,
         PowAlgorithm::Blake => unimplemented!(),
@@ -202,8 +197,7 @@ pub fn check_accounting_balance(
     block: &Block,
     rules: &ConsensusManager,
     factories: &CryptoFactories,
-) -> Result<(), ValidationError>
-{
+) -> Result<(), ValidationError> {
     if block.header.height == 0 {
         // Gen block does not need to be checked for this.
         return Ok(());
@@ -229,8 +223,7 @@ pub fn check_coinbase_output(
     block: &Block,
     rules: &ConsensusManager,
     factories: &CryptoFactories,
-) -> Result<(), ValidationError>
-{
+) -> Result<(), ValidationError> {
     let total_coinbase = rules.calculate_coinbase_and_fees(block);
     block
         .check_coinbase_output(
@@ -268,29 +261,29 @@ mod test {
 
         #[test]
         fn it_returns_true_when_nothing_to_compare() {
-            assert_eq!(is_all_unique_and_sorted::<_, usize>(&[]), true);
-            assert_eq!(is_all_unique_and_sorted(&[1]), true);
+            assert!(is_all_unique_and_sorted::<_, usize>(&[]));
+            assert!(is_all_unique_and_sorted(&[1]));
         }
         #[test]
         fn it_returns_true_when_unique_and_sorted() {
             let v = [1, 2, 3, 4, 5];
-            assert_eq!(is_all_unique_and_sorted(&v), true);
+            assert!(is_all_unique_and_sorted(&v));
         }
 
         #[test]
         fn it_returns_false_when_unsorted() {
             let v = [2, 1, 3, 4, 5];
-            assert_eq!(is_all_unique_and_sorted(&v), false);
+            assert!(!is_all_unique_and_sorted(&v));
         }
         #[test]
         fn it_returns_false_when_duplicate() {
             let v = [1, 2, 3, 4, 4];
-            assert_eq!(is_all_unique_and_sorted(&v), false);
+            assert!(!is_all_unique_and_sorted(&v));
         }
         #[test]
         fn it_returns_false_when_duplicate_and_unsorted() {
             let v = [4, 2, 3, 0, 4];
-            assert_eq!(is_all_unique_and_sorted(&v), false);
+            assert!(!is_all_unique_and_sorted(&v));
         }
     }
 

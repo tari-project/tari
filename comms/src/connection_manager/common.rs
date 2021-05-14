@@ -47,15 +47,14 @@ pub async fn perform_identity_exchange<'p, P: IntoIterator<Item = &'p ProtocolId
     direction: ConnectionDirection,
     our_supported_protocols: P,
     user_agent: String,
-) -> Result<PeerIdentityMsg, ConnectionManagerError>
-{
+) -> Result<PeerIdentityMsg, ConnectionManagerError> {
     let mut control = muxer.get_yamux_control();
     let stream = match direction {
         ConnectionDirection::Inbound => muxer
             .incoming_mut()
             .next()
             .await
-            .ok_or_else(|| ConnectionManagerError::IncomingListenerStreamClosed)?,
+            .ok_or(ConnectionManagerError::IncomingListenerStreamClosed)?,
         ConnectionDirection::Outbound => control.open_stream().await?,
     };
 
@@ -96,8 +95,7 @@ pub async fn validate_and_add_peer_from_peer_identity(
     mut peer_identity: PeerIdentityMsg,
     dialed_addr: Option<&Multiaddr>,
     allow_test_addrs: bool,
-) -> Result<(NodeId, Vec<ProtocolId>), ConnectionManagerError>
-{
+) -> Result<(NodeId, Vec<ProtocolId>), ConnectionManagerError> {
     // let peer_manager = peer_manager.inner();
     // Validate the given node id for base nodes
     // TODO: This is technically a domain-level rule
@@ -178,8 +176,7 @@ pub async fn validate_and_add_peer_from_peer_identity(
 pub async fn find_unbanned_peer(
     peer_manager: &PeerManager,
     authenticated_public_key: &CommsPublicKey,
-) -> Result<Option<Peer>, ConnectionManagerError>
-{
+) -> Result<Option<Peer>, ConnectionManagerError> {
     match peer_manager.find_by_public_key(&authenticated_public_key).await {
         Ok(peer) if peer.is_banned() => Err(ConnectionManagerError::PeerBanned),
         Ok(peer) => Ok(Some(peer)),
@@ -191,8 +188,7 @@ pub async fn find_unbanned_peer(
 pub fn validate_peer_addresses<'a, A: IntoIterator<Item = &'a Multiaddr>>(
     addresses: A,
     allow_test_addrs: bool,
-) -> Result<(), ConnectionManagerError>
-{
+) -> Result<(), ConnectionManagerError> {
     for addr in addresses.into_iter() {
         validate_address(addr, allow_test_addrs)?;
     }

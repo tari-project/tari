@@ -40,8 +40,7 @@ impl Fee {
         num_kernels: usize,
         num_inputs: usize,
         num_outputs: usize,
-    ) -> MicroTari
-    {
+    ) -> MicroTari {
         let fee = Fee::calculate(fee_per_gram, num_kernels, num_inputs, num_outputs);
         if fee < MINIMUM_TRANSACTION_FEE {
             MINIMUM_TRANSACTION_FEE

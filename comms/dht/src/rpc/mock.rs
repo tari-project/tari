@@ -49,8 +49,7 @@ impl DhtRpcService for DhtRpcServiceMock {
     async fn get_closer_peers(
         &self,
         request: Request<GetCloserPeersRequest>,
-    ) -> Result<Streaming<GetPeersResponse>, RpcStatus>
-    {
+    ) -> Result<Streaming<GetPeersResponse>, RpcStatus> {
         self.server_streaming(request, &self.get_closer_peers).await
     }
 

@@ -60,8 +60,7 @@ impl MockChainMetadata {
         &mut self,
         id: &NodeId,
         metadata: &ChainMetadata,
-    ) -> Result<usize, Arc<ChainMetadataEvent>>
-    {
+    ) -> Result<usize, Arc<ChainMetadataEvent>> {
         let data = PeerChainMetadata::new(id.clone(), metadata.clone());
         self.publish_event(ChainMetadataEvent::PeerChainMetadataReceived(vec![data]))
     }

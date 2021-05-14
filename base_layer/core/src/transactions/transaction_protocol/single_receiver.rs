@@ -56,8 +56,7 @@ impl SingleReceiverTransactionProtocol {
         features: OutputFeatures,
         factories: &CryptoFactories,
         rewind_data: Option<&RewindData>,
-    ) -> Result<RD, TPE>
-    {
+    ) -> Result<RD, TPE> {
         SingleReceiverTransactionProtocol::validate_sender_data(sender_info)?;
         let output = SingleReceiverTransactionProtocol::build_output(
             sender_info,
@@ -93,8 +92,7 @@ impl SingleReceiverTransactionProtocol {
         features: OutputFeatures,
         factories: &CryptoFactories,
         rewind_data: Option<&RewindData>,
-    ) -> Result<TransactionOutput, TPE>
-    {
+    ) -> Result<TransactionOutput, TPE> {
         let commitment = factories
             .commitment
             .commit_value(&spending_key, sender_info.amount.into());

@@ -36,7 +36,7 @@ use std::{
     future::Future,
     iter,
     net::SocketAddr,
-    path::PathBuf,
+    path::{Path, PathBuf},
     str::FromStr,
     sync::Arc,
     time::{Duration, Instant},
@@ -239,8 +239,7 @@ where
 pub async fn spawn_comms_using_transport(
     comms: UnspawnedCommsNode,
     transport_type: TransportType,
-) -> Result<CommsNode, CommsInitializationError>
-{
+) -> Result<CommsNode, CommsInitializationError> {
     let comms = match transport_type {
         TransportType::Memory { listener_address } => {
             debug!(target: LOG_TARGET, "Building in-memory comms stack");
@@ -399,7 +398,7 @@ where
 ///
 /// ## Returns
 /// Returns a File handle that must be retained to keep the file lock active.
-pub fn acquire_exclusive_file_lock(db_path: &PathBuf) -> Result<File, CommsInitializationError> {
+pub fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, CommsInitializationError> {
     let lock_file_path = db_path.join(".p2p_file.lock");
 
     let file = File::create(lock_file_path)?;
@@ -427,8 +426,7 @@ async fn add_all_peers(
     peer_manager: &PeerManager,
     node_identity: &NodeIdentity,
     peers: Vec<Peer>,
-) -> Result<(), CommsInitializationError>
-{
+) -> Result<(), CommsInitializationError> {
     for peer in peers {
         if &peer.public_key == node_identity.public_key() {
             debug!(
@@ -476,8 +474,7 @@ impl P2pInitializer {
         resolver_addr: SocketAddr,
         dns_seeds: &[String],
         use_dnssec: bool,
-    ) -> Result<Vec<Peer>, ServiceInitializationError>
-    {
+    ) -> Result<Vec<Peer>, ServiceInitializationError> {
         if dns_seeds.is_empty() {
             return Ok(Vec::new());
         }

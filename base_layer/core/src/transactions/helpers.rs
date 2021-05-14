@@ -59,8 +59,7 @@ pub fn create_test_input(
     maturity: u64,
     mined_height: u64,
     factory: &CommitmentFactory,
-) -> (TransactionInput, UnblindedOutput, PrivateKey)
-{
+) -> (TransactionInput, UnblindedOutput, PrivateKey) {
     let spending_key = PrivateKey::random(&mut OsRng);
     let script_key = PrivateKey::random(&mut OsRng);
     let features = OutputFeatures::with_maturity(maturity);
@@ -149,8 +148,7 @@ pub fn create_random_signature_from_s_key(
     s_key: PrivateKey,
     fee: MicroTari,
     lock_height: u64,
-) -> (PublicKey, Signature)
-{
+) -> (PublicKey, Signature) {
     let _rng = rand::thread_rng();
     let r = PrivateKey::random(&mut OsRng);
     let p = PK::from_secret_key(&s_key);
@@ -257,8 +255,7 @@ pub fn create_tx(
     input_count: usize,
     input_maturity: u64,
     output_count: usize,
-) -> (Transaction, Vec<UnblindedOutput>, Vec<UnblindedOutput>)
-{
+) -> (Transaction, Vec<UnblindedOutput>, Vec<UnblindedOutput>) {
     let factories = CryptoFactories::default();
     let test_params = TestParams::new();
     let mut stx_builder = SenderTransactionProtocol::builder(0);
@@ -404,8 +401,7 @@ pub fn create_utxo(
     factories: &CryptoFactories,
     features: Option<OutputFeatures>,
     script: &TariScript,
-) -> (TransactionOutput, PrivateKey, PrivateKey)
-{
+) -> (TransactionOutput, PrivateKey, PrivateKey) {
     let keys = generate_keys();
     let offset_private_key = generate_keys();
     let features = features.unwrap_or_default();

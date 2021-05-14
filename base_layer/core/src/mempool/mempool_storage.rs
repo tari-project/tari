@@ -129,8 +129,7 @@ impl MempoolStorage {
         &mut self,
         removed_blocks: Vec<Arc<Block>>,
         new_blocks: Vec<Arc<Block>>,
-    ) -> Result<(), MempoolError>
-    {
+    ) -> Result<(), MempoolError> {
         debug!(target: LOG_TARGET, "Mempool processing reorg");
         for block in &removed_blocks {
             debug!(

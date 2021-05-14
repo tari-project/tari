@@ -93,8 +93,7 @@ async fn create_wallet(
     factories: CryptoFactories,
     shutdown_signal: ShutdownSignal,
     passphrase: Option<String>,
-) -> WalletSqlite
-{
+) -> WalletSqlite {
     let node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
     let comms_config = CommsConfig {

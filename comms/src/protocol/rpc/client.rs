@@ -95,7 +95,7 @@ impl RpcClient {
         let request = BaseRequest::new(method.into(), req_bytes.into());
 
         let mut resp = self.call_inner(request).await?;
-        let resp = resp.next().await.ok_or_else(|| RpcError::ServerClosedRequest)??;
+        let resp = resp.next().await.ok_or(RpcError::ServerClosedRequest)??;
         let resp = R::decode(resp.into_message())?;
 
         Ok(resp)
@@ -129,8 +129,7 @@ impl RpcClient {
     async fn call_inner(
         &mut self,
         request: BaseRequest<Bytes>,
-    ) -> Result<mpsc::Receiver<Result<Response<Bytes>, RpcStatus>>, RpcError>
-    {
+    ) -> Result<mpsc::Receiver<Result<Response<Bytes>, RpcStatus>>, RpcError> {
         let svc = self.connector.ready_and().await?;
         let resp = svc.call(request).await?;
         Ok(resp)
@@ -300,8 +299,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
         request_rx: mpsc::Receiver<ClientRequest>,
         framed: CanonicalFraming<TSubstream>,
         ready_tx: oneshot::Sender<Result<(), RpcError>>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             config,
             request_rx,
@@ -362,8 +360,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
         &mut self,
         request: BaseRequest<Bytes>,
         reply: oneshot::Sender<mpsc::Receiver<Result<Response<Bytes>, RpcStatus>>>,
-    ) -> Result<(), RpcError>
-    {
+    ) -> Result<(), RpcError> {
         let request_id = self.next_request_id();
         let method = request.method.into();
         let req = proto::rpc::RpcRequest {

@@ -104,8 +104,7 @@ impl Peer {
         features: PeerFeatures,
         supported_protocols: Vec<ProtocolId>,
         user_agent: String,
-    ) -> Peer
-    {
+    ) -> Peer {
         Peer {
             id: None,
             public_key,
@@ -191,8 +190,7 @@ impl Peer {
         is_offline: Option<bool>,
         features: Option<PeerFeatures>,
         supported_protocols: Option<Vec<ProtocolId>>,
-    )
-    {
+    ) {
         if let Some(new_net_addresses) = net_addresses {
             self.addresses.update_net_addresses(new_net_addresses)
         }
@@ -383,12 +381,12 @@ mod test {
             Default::default(),
             Default::default(),
         );
-        assert_eq!(peer.is_banned(), false);
+        assert!(!peer.is_banned());
         peer.ban_for(Duration::from_millis(std::u64::MAX), "Very long manual ban".to_string());
         assert_eq!(peer.reason_banned(), &"Very long manual ban".to_string());
-        assert_eq!(peer.is_banned(), true);
+        assert!(peer.is_banned());
         peer.ban_for(Duration::from_millis(0), "".to_string());
-        assert_eq!(peer.is_banned(), false);
+        assert!(!peer.is_banned());
     }
 
     #[test]
@@ -402,9 +400,9 @@ mod test {
     #[test]
     fn test_is_offline() {
         let mut peer = build_node_identity(Default::default()).to_peer();
-        assert_eq!(peer.is_offline(), false);
+        assert!(!peer.is_offline());
         peer.set_offline(true);
-        assert_eq!(peer.is_offline(), true);
+        assert!(peer.is_offline());
     }
 
     #[test]
@@ -454,7 +452,7 @@ mod test {
             .iter()
             .any(|net_address_with_stats| net_address_with_stats.address == net_address3));
         assert!(peer.is_banned());
-        assert_eq!(peer.has_features(PeerFeatures::MESSAGE_PROPAGATION), true);
+        assert!(peer.has_features(PeerFeatures::MESSAGE_PROPAGATION));
         assert_eq!(peer.supported_protocols, vec![protocol::IDENTITY_PROTOCOL.clone()]);
     }
 

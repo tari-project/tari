@@ -88,8 +88,7 @@ impl AppState {
         base_node_selected: Peer,
         base_node_config: PeerConfig,
         node_config: GlobalConfig,
-    ) -> Self
-    {
+    ) -> Self {
         let inner = AppStateInner::new(node_identity, network, wallet, base_node_selected, base_node_config);
         let cached_data = inner.data.clone();
         Self {
@@ -181,8 +180,7 @@ impl AppState {
         fee_per_gram: u64,
         message: String,
         result_tx: watch::Sender<UiTransactionSendStatus>,
-    ) -> Result<(), UiError>
-    {
+    ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
         let public_key = match CommsPublicKey::from_hex(public_key.as_str()) {
             Ok(pk) => pk,
@@ -210,8 +208,7 @@ impl AppState {
         fee_per_gram: u64,
         message: String,
         result_tx: watch::Sender<UiTransactionSendStatus>,
-    ) -> Result<(), UiError>
-    {
+    ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
         let public_key = match CommsPublicKey::from_hex(public_key.as_str()) {
             Ok(pk) => pk,
@@ -387,8 +384,7 @@ impl AppStateInner {
         wallet: WalletSqlite,
         base_node_selected: Peer,
         base_node_config: PeerConfig,
-    ) -> Self
-    {
+    ) -> Self {
         let data = AppStateData::new(node_identity, network, base_node_selected, base_node_config);
 
         AppStateInner {
@@ -628,7 +624,7 @@ impl AppStateInner {
                 peer.clone()
                     .addresses
                     .first()
-                    .ok_or_else(|| UiError::NoAddressError)?
+                    .ok_or(UiError::NoAddressError)?
                     .to_string(),
             )
             .await?;
@@ -651,10 +647,7 @@ impl AppStateInner {
             target: LOG_TARGET,
             "Setting new base node peer for wallet: {}::{}",
             peer.public_key,
-            peer.addresses
-                .first()
-                .ok_or_else(|| UiError::NoAddressError)?
-                .to_string(),
+            peer.addresses.first().ok_or(UiError::NoAddressError)?.to_string(),
         );
 
         Ok(())
@@ -667,7 +660,7 @@ impl AppStateInner {
                 peer.clone()
                     .addresses
                     .first()
-                    .ok_or_else(|| UiError::NoAddressError)?
+                    .ok_or(UiError::NoAddressError)?
                     .to_string(),
             )
             .await?;
@@ -699,10 +692,7 @@ impl AppStateInner {
             .db
             .set_client_key_value(
                 CUSTOM_BASE_NODE_ADDRESS_KEY.to_string(),
-                peer.addresses
-                    .first()
-                    .ok_or_else(|| UiError::NoAddressError)?
-                    .to_string(),
+                peer.addresses.first().ok_or(UiError::NoAddressError)?.to_string(),
             )
             .await?;
 
@@ -710,10 +700,7 @@ impl AppStateInner {
             target: LOG_TARGET,
             "Setting custom base node peer for wallet: {}::{}",
             peer.public_key,
-            peer.addresses
-                .first()
-                .ok_or_else(|| UiError::NoAddressError)?
-                .to_string(),
+            peer.addresses.first().ok_or(UiError::NoAddressError)?.to_string(),
         );
 
         Ok(())
@@ -724,11 +711,7 @@ impl AppStateInner {
         self.wallet
             .set_base_node_peer(
                 previous.public_key.clone(),
-                previous
-                    .addresses
-                    .first()
-                    .ok_or_else(|| UiError::NoAddressError)?
-                    .to_string(),
+                previous.addresses.first().ok_or(UiError::NoAddressError)?.to_string(),
             )
             .await?;
 
@@ -811,8 +794,7 @@ impl AppStateData {
         network: Network,
         base_node_selected: Peer,
         base_node_config: PeerConfig,
-    ) -> Self
-    {
+    ) -> Self {
         let eid = EmojiId::from_pubkey(node_identity.public_key()).to_string();
         let qr_link = format!("tari://{}/pubkey/{}", network, &node_identity.public_key().to_hex());
         let code = QrCode::new(qr_link).unwrap();

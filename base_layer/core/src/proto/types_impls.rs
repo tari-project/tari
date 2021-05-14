@@ -85,7 +85,7 @@ impl TryFrom<proto::BlindingFactor> for BlindingFactor {
     type Error = ByteArrayError;
 
     fn try_from(offset: proto::BlindingFactor) -> Result<Self, Self::Error> {
-        Ok(BlindingFactor::from_bytes(&offset.data)?)
+        BlindingFactor::from_bytes(&offset.data)
     }
 }
 

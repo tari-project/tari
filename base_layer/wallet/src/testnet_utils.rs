@@ -108,8 +108,7 @@ pub fn make_input<R: Rng + CryptoRng>(
     rng: &mut R,
     val: MicroTari,
     factories: &CryptoFactories,
-) -> (TransactionInput, UnblindedOutput)
-{
+) -> (TransactionInput, UnblindedOutput) {
     let key = PrivateKey::random(rng);
     let script = script!(Nop);
     let script_private_key = PrivateKey::random(rng);
@@ -148,8 +147,7 @@ pub async fn create_wallet(
     TransactionServiceSqliteDatabase,
     OutputManagerSqliteDatabase,
     ContactsServiceMemoryDatabase,
->
-{
+> {
     let factories = CryptoFactories::default();
 
     let node_identity = Arc::new(
@@ -231,8 +229,7 @@ pub async fn generate_wallet_test_data<
     wallet: &mut Wallet<T, U, V, W>,
     data_path: P,
     transaction_service_backend: U,
-) -> Result<(), WalletError>
-{
+) -> Result<(), WalletError> {
     let factories = CryptoFactories::default();
     let names = ["Alice", "Bob", "Carol", "Dave"];
     let private_keys = [
@@ -772,8 +769,7 @@ pub async fn complete_sent_transaction<
 >(
     wallet: &mut Wallet<T, U, V, W>,
     tx_id: TxId,
-) -> Result<(), WalletError>
-{
+) -> Result<(), WalletError> {
     let pending_outbound_tx = wallet.transaction_service.get_pending_outbound_transactions().await?;
     match pending_outbound_tx.get(&tx_id) {
         Some(p) => {
@@ -822,8 +818,7 @@ pub async fn receive_test_transaction<
 >(
     wallet: &mut Wallet<T, U, V, W>,
     handle: &Handle,
-) -> Result<(), WalletError>
-{
+) -> Result<(), WalletError> {
     let contacts = wallet.contacts_service.get_contacts().await.unwrap();
     let (_secret_key, mut public_key): (CommsSecretKey, CommsPublicKey) = PublicKey::random_keypair(&mut OsRng);
 
@@ -856,8 +851,7 @@ pub async fn finalize_received_transaction<
 >(
     wallet: &mut Wallet<T, U, V, W>,
     tx_id: TxId,
-) -> Result<(), WalletError>
-{
+) -> Result<(), WalletError> {
     wallet.transaction_service.test_finalize_transaction(tx_id).await?;
 
     Ok(())
@@ -875,8 +869,7 @@ pub async fn broadcast_transaction<
 >(
     wallet: &mut Wallet<T, U, V, W>,
     tx_id: TxId,
-) -> Result<(), WalletError>
-{
+) -> Result<(), WalletError> {
     wallet.transaction_service.test_broadcast_transaction(tx_id).await?;
 
     Ok(())
@@ -889,8 +882,7 @@ pub async fn broadcast_transaction<
 pub async fn mine_transaction<T: WalletBackend, U: TransactionBackend, V: OutputManagerBackend, W: ContactsBackend>(
     wallet: &mut Wallet<T, U, V, W>,
     tx_id: TxId,
-) -> Result<(), WalletError>
-{
+) -> Result<(), WalletError> {
     wallet.transaction_service.test_mine_transaction(tx_id).await?;
 
     Ok(())

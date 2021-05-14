@@ -47,12 +47,12 @@ impl<S> DhtHandlerMiddleware<S> {
         outbound_service: OutboundMessageRequester,
 
         discovery_requester: DhtDiscoveryRequester,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             next_service,
-            node_identity,
             peer_manager,
+            node_identity,
+
             outbound_service,
             discovery_requester,
         }

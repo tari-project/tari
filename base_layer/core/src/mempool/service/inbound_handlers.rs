@@ -55,8 +55,7 @@ impl MempoolInboundHandlers {
         event_publisher: broadcast::Sender<MempoolStateEvent>,
         mempool: Mempool,
         outbound_nmi: OutboundMempoolServiceInterface,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             event_publisher,
             mempool,
@@ -94,8 +93,7 @@ impl MempoolInboundHandlers {
         &mut self,
         tx: Transaction,
         source_peer: Option<NodeId>,
-    ) -> Result<(), MempoolServiceError>
-    {
+    ) -> Result<(), MempoolServiceError> {
         debug!(
             target: LOG_TARGET,
             "Transaction ({}) received from {}.",
@@ -114,8 +112,7 @@ impl MempoolInboundHandlers {
         &mut self,
         tx: Transaction,
         exclude_peers: Vec<NodeId>,
-    ) -> Result<TxStorageResponse, MempoolServiceError>
-    {
+    ) -> Result<TxStorageResponse, MempoolServiceError> {
         trace!(target: LOG_TARGET, "submit_transaction: {}.", tx);
         let tx_storage =
             async_mempool::has_tx_with_excess_sig(self.mempool.clone(), tx.body.kernels()[0].excess_sig.clone())

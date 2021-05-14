@@ -49,8 +49,7 @@ impl OutboundNodeCommsInterface {
             Result<NodeCommsResponse, CommsInterfaceError>,
         >,
         block_sender: UnboundedSender<(NewBlock, Vec<NodeId>)>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             request_sender,
             block_sender,
@@ -67,8 +66,7 @@ impl OutboundNodeCommsInterface {
     pub async fn request_metadata_from_peer(
         &mut self,
         node_id: Option<NodeId>,
-    ) -> Result<ChainMetadata, CommsInterfaceError>
-    {
+    ) -> Result<ChainMetadata, CommsInterfaceError> {
         if let NodeCommsResponse::ChainMetadata(metadata) = self
             .request_sender
             .call((NodeCommsRequest::GetChainMetadata, node_id))
@@ -93,8 +91,7 @@ impl OutboundNodeCommsInterface {
         &mut self,
         block_nums: Vec<u64>,
         node_id: Option<NodeId>,
-    ) -> Result<Vec<BlockHeader>, CommsInterfaceError>
-    {
+    ) -> Result<Vec<BlockHeader>, CommsInterfaceError> {
         if let NodeCommsResponse::BlockHeaders(headers) = self
             .request_sender
             .call((NodeCommsRequest::FetchHeaders(block_nums), node_id))
@@ -110,8 +107,7 @@ impl OutboundNodeCommsInterface {
     pub async fn fetch_headers_with_hashes(
         &mut self,
         block_hashes: Vec<HashOutput>,
-    ) -> Result<Vec<BlockHeader>, CommsInterfaceError>
-    {
+    ) -> Result<Vec<BlockHeader>, CommsInterfaceError> {
         self.request_headers_with_hashes_from_peer(block_hashes, None).await
     }
 
@@ -121,8 +117,7 @@ impl OutboundNodeCommsInterface {
         &mut self,
         block_hashes: Vec<HashOutput>,
         node_id: Option<NodeId>,
-    ) -> Result<Vec<BlockHeader>, CommsInterfaceError>
-    {
+    ) -> Result<Vec<BlockHeader>, CommsInterfaceError> {
         if let NodeCommsResponse::BlockHeaders(headers) = self
             .request_sender
             .call((NodeCommsRequest::FetchHeadersWithHashes(block_hashes), node_id))
@@ -138,8 +133,7 @@ impl OutboundNodeCommsInterface {
     pub async fn fetch_utxos(
         &mut self,
         hashes: Vec<HashOutput>,
-    ) -> Result<Vec<TransactionOutput>, CommsInterfaceError>
-    {
+    ) -> Result<Vec<TransactionOutput>, CommsInterfaceError> {
         self.request_utxos_from_peer(hashes, None).await
     }
 
@@ -149,8 +143,7 @@ impl OutboundNodeCommsInterface {
         &mut self,
         hashes: Vec<HashOutput>,
         node_id: Option<NodeId>,
-    ) -> Result<Vec<TransactionOutput>, CommsInterfaceError>
-    {
+    ) -> Result<Vec<TransactionOutput>, CommsInterfaceError> {
         if let NodeCommsResponse::TransactionOutputs(utxos) = self
             .request_sender
             .call((NodeCommsRequest::FetchMatchingUtxos(hashes), node_id))
@@ -173,8 +166,7 @@ impl OutboundNodeCommsInterface {
         &mut self,
         hashes: Vec<HashOutput>,
         node_id: Option<NodeId>,
-    ) -> Result<Vec<TransactionOutput>, CommsInterfaceError>
-    {
+    ) -> Result<Vec<TransactionOutput>, CommsInterfaceError> {
         if let NodeCommsResponse::TransactionOutputs(txos) = self
             .request_sender
             .call((NodeCommsRequest::FetchMatchingTxos(hashes), node_id))
@@ -197,8 +189,7 @@ impl OutboundNodeCommsInterface {
         &mut self,
         block_nums: Vec<u64>,
         node_id: Option<NodeId>,
-    ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError>
-    {
+    ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError> {
         if let NodeCommsResponse::HistoricalBlocks(blocks) = self
             .request_sender
             .call((NodeCommsRequest::FetchMatchingBlocks(block_nums), node_id))
@@ -215,8 +206,7 @@ impl OutboundNodeCommsInterface {
     pub async fn fetch_blocks_with_hashes(
         &mut self,
         block_hashes: Vec<HashOutput>,
-    ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError>
-    {
+    ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError> {
         self.request_blocks_with_hashes_from_peer(block_hashes, None).await
     }
 
@@ -226,8 +216,7 @@ impl OutboundNodeCommsInterface {
         &mut self,
         block_hashes: Vec<BlockHash>,
         node_id: Option<NodeId>,
-    ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError>
-    {
+    ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError> {
         if let NodeCommsResponse::HistoricalBlocks(blocks) = self
             .request_sender
             .call((NodeCommsRequest::FetchBlocksWithHashes(block_hashes), node_id))
@@ -244,8 +233,7 @@ impl OutboundNodeCommsInterface {
         &self,
         new_block: NewBlock,
         exclude_peers: Vec<NodeId>,
-    ) -> Result<(), CommsInterfaceError>
-    {
+    ) -> Result<(), CommsInterfaceError> {
         self.block_sender
             .unbounded_send((new_block, exclude_peers))
             .map_err(|err| {
