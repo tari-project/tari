@@ -144,60 +144,6 @@ impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for BodyOnlyValidator {
     }
 }
 
-#[cfg(any(test, feature = "base_node"))]
-/// This is a test only validator as it skips the mined height rule of a input.
-#[derive(Default)]
-pub struct BodyOnlyMinusHeightValidator {}
-#[cfg(any(test, feature = "base_node"))]
-impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for BodyOnlyMinusHeightValidator {
-    /// The consensus checks that are done (in order of cheapest to verify to most expensive):
-    /// 1. Does the block satisfy the stateless checks?
-    /// 1. Are all inputs currently in the UTXO set?
-    /// 1. Are all inputs and outputs not in the STXO set?
-    /// 1. Are the block header MMR roots valid?
-    fn validate_body_for_valid_orphan(&self, block: &ChainBlock, backend: &B) -> Result<(), ValidationError> {
-        let block_id = format!("block #{} ({})", block.block.header.height, block.hash().to_hex());
-
-        {
-            let data = backend
-                .fetch_block_accumulated_data(&block.block.header.prev_hash)?
-                .ok_or(ValidationError::PreviousHashNotFound)?;
-
-            for input in block.block.body.inputs() {
-                if let Some((_, index, _)) = backend.fetch_output(&input.hash())? {
-                    if data.deleted().contains(index) {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Block validation failed due to already spent input: {}", input
-                        );
-                        return Err(ValidationError::ContainsSTxO);
-                    }
-                } else {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Block validation failed because the block has invalid input: {} which does not exist", input
-                    );
-                    return Err(ValidationError::BlockError(BlockValidationError::InvalidInput));
-                }
-            }
-        }
-
-        check_not_duplicate_txos(&block.block, backend)?;
-        trace!(
-            target: LOG_TARGET,
-            "Block validation: All inputs and outputs are valid for {}",
-            block_id
-        );
-        check_mmr_roots(&block.block, backend)?;
-        trace!(
-            target: LOG_TARGET,
-            "Block validation: MMR roots are valid for {}",
-            block_id
-        );
-        debug!(target: LOG_TARGET, "Block validation: Block is VALID for {}", block_id);
-        Ok(())
-    }
-}
 
 // This function checks for duplicate inputs and outputs. There should be no duplicate inputs or outputs in a block
 fn check_sorting_and_duplicates(body: &AggregateBody) -> Result<(), ValidationError> {

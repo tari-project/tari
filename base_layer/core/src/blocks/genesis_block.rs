@@ -122,10 +122,7 @@ pub fn get_weatherwax_genesis_block() -> ChainBlock {
         accumulated_blake_difficulty: 1.into(),
         target_difficulty: 1.into(),
     };
-    ChainBlock {
-        accumulated_data,
-        block,
-    }
+    ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
 }
 
 #[allow(deprecated)]

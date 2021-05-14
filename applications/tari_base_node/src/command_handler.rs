@@ -974,12 +974,12 @@ impl CommandHandler {
                 )
                 .unwrap();
 
-                if header.header.hash() != header.accumulated_data.hash {
+                if header.header().hash() != header.accumulated_data().hash {
                     eprintln!(
                         "Difference in hash at {}! header = {} and accum hash = {}",
                         height,
-                        header.header.hash().to_hex(),
-                        header.accumulated_data.hash.to_hex()
+                        header.header().hash().to_hex(),
+                        header.accumulated_data().hash.to_hex()
                     );
                 }
 

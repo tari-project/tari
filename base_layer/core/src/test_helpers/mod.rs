@@ -34,7 +34,6 @@ use crate::{
 use crate::{
     chain_storage::{BlockHeaderAccumulatedData, ChainHeader},
     consensus::{ConsensusManagerBuilder, Network},
-    proof_of_work::{sha3_difficulty, Difficulty},
     crypto::tari_utilities::Hashable,
     proof_of_work::{sha3_difficulty, Difficulty},
     test_helpers::blockchain::TempDatabase,

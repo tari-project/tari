@@ -71,6 +71,7 @@ use tari_core::{
 use tari_crypto::tari_utilities::Hashable;
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
+use tari_core::consensus::emission::Emission;
 
 #[test]
 fn fetch_nonexistent_header() {

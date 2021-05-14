@@ -24,13 +24,8 @@ use crate::support::{
     comms_and_services::get_next_memory_address,
     utils::{make_input, random_string},
 };
-use tari_comms_dht::DhtConfig;
-use tari_core::transactions::{tari_amount::MicroTari, transaction::OutputFeatures, types::CryptoFactories};
-use tari_crypto::keys::PublicKey;
-use tari_p2p::initialization::CommsConfig;
-use tari_shutdown::{Shutdown, ShutdownSignal};
+use tari_core::transactions::{transaction::OutputFeatures};
 
-use crate::support::comms_and_services::get_next_memory_address;
 use aes_gcm::{
     aead::{generic_array::GenericArray, NewAead},
     Aes256Gcm,
@@ -81,6 +76,7 @@ use tari_wallet::{
 };
 use tempfile::tempdir;
 use tokio::{runtime::Runtime, time::delay_for};
+use tari_crypto::ristretto::RistrettoPublicKey;
 
 fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
     Peer::new(
@@ -632,7 +628,7 @@ async fn test_import_utxo() {
         ExecutionStack::default(),
         0,
         PrivateKey::default(),
-        PublicKey::default(),
+        RistrettoPublicKey::default(),
     );
 
     let tx_id = alice_wallet

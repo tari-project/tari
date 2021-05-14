@@ -174,46 +174,34 @@ use tari_crypto::{
 use tari_p2p::transport::{TorConfig, TransportType, TransportType::Tor};
 use tari_shutdown::Shutdown;
 use tari_utilities::{hex, hex::Hex};
-use tari_wallet::{
-    contacts_service::storage::database::Contact,
-    error::{WalletError, WalletStorageError},
-    output_manager_service::protocols::txo_validation_protocol::TxoValidationType,
+use tari_wallet::{contacts_service::storage::database::Contact, error::{WalletError, WalletStorageError}, output_manager_service::protocols::txo_validation_protocol::TxoValidationType, storage::{
+    database::WalletDatabase,
+    sqlite_db::WalletSqliteDatabase,
+    sqlite_utilities::{initialize_sqlite_database_backends, partial_wallet_backup},
+}, testnet_utils::{
+    broadcast_transaction,
+    complete_sent_transaction,
+    finalize_received_transaction,
+    generate_wallet_test_data,
+    get_next_memory_address,
+    mine_transaction,
+    receive_test_transaction,
+}, transaction_service::{
+    config::TransactionServiceConfig,
+    error::TransactionServiceError,
     storage::{
-        database::WalletDatabase,
-        sqlite_db::WalletSqliteDatabase,
-        sqlite_utilities::{initialize_sqlite_database_backends, partial_wallet_backup},
-    },
-    tasks::wallet_recovery::WalletRecoveryTask,
-    testnet_utils::{
-        broadcast_transaction,
-        complete_sent_transaction,
-        finalize_received_transaction,
-        generate_wallet_test_data,
-        get_next_memory_address,
-        mine_transaction,
-        receive_test_transaction,
-    },
-    transaction_service::{
-        config::TransactionServiceConfig,
-        error::TransactionServiceError,
-        storage::{
-            database::TransactionDatabase,
-            models::{
-                CompletedTransaction,
-                InboundTransaction,
-                OutboundTransaction,
-                TransactionDirection,
-                TransactionStatus,
-            },
+        database::TransactionDatabase,
+        models::{
+            CompletedTransaction,
+            InboundTransaction,
+            OutboundTransaction,
+            TransactionDirection,
+            TransactionStatus,
         },
     },
-    types::ValidationRetryStrategy,
-    util::emoji::{emoji_set, EmojiId},
-    Wallet,
-    WalletSqlite,
-    utxo_scanner_service::utxo_scanning::UtxoScannerService,
-};
+}, types::ValidationRetryStrategy, util::emoji::{emoji_set, EmojiId}, Wallet, WalletSqlite, utxo_scanner_service::utxo_scanning::UtxoScannerService, WalletConfig};
 use tokio::runtime::Runtime;
+use tari_wallet::util::emoji::EmojiIdError;
 
 const LOG_TARGET: &str = "wallet_ffi";
 

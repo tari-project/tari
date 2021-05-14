@@ -363,6 +363,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     txn.insert_output_via_horizon_sync(
                         output,
                         current_header.hash().clone(),
+                        current_header.height(),
                         u32::try_from(mmr_position)?,
                     );
                     mmr_position += 1;
@@ -383,6 +384,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         utxo.hash,
                         utxo.rangeproof_hash,
                         current_header.hash().clone(),
+                        current_header.height(),
                         u32::try_from(mmr_position)?,
                     );
                     mmr_position += 1;
@@ -399,7 +401,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     debug!(
                         target: LOG_TARGET,
                         "UTXO: {} (Header #{}), added {} utxos, added {} txos",
-                        mmr_position,
                         mmr_position,
                         current_header.height(),
                         height_utxo_counter,

@@ -39,6 +39,7 @@ use crate::{
 };
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, inputs, keys::PublicKey as PK, script};
 use thiserror::Error;
+use crate::consensus::emission::Emission;
 
 #[derive(Debug, Clone, Error, PartialEq)]
 pub enum CoinbaseBuildError {
@@ -229,6 +230,8 @@ mod test {
         script::{ExecutionStack, TariScript},
         tari_utilities::ByteArray,
     };
+    use crate::consensus::emission::Emission;
+
     fn get_builder() -> (CoinbaseBuilder, ConsensusManager, CryptoFactories) {
         let network = Network::LocalNet;
         let rules = ConsensusManagerBuilder::new(network).build();

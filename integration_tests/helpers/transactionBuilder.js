@@ -279,10 +279,7 @@ class TransactionBuilder {
       private_nonce,
       challenge
     );
-    const outputFeatures = {
-      flags: 1,
-      maturity: lockHeight,
-    };
+
     return {
       outputs: [
         {

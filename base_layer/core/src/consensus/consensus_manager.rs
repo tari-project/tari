@@ -23,13 +23,9 @@
 use crate::{
     blocks::{
         genesis_block::{
-            get_mainnet_block_hash,
             get_mainnet_genesis_block,
-            get_ridcully_block_hash,
             get_ridcully_genesis_block,
-            get_stibbons_block_hash,
             get_stibbons_genesis_block,
-            get_weatherwax_block_hash,
             get_weatherwax_genesis_block,
         },
         Block,
@@ -46,6 +42,7 @@ use crate::{
 };
 use std::{convert::TryFrom, sync::Arc};
 use thiserror::Error;
+use crate::consensus::emission::Emission;
 
 #[derive(Debug, Error)]
 #[allow(clippy::large_enum_variant)]
@@ -101,7 +98,7 @@ impl ConsensusManager {
 
     /// Get the emission reward at height
     /// Returns None if the total supply > u64::MAX
-    pub fn get_total_emission_at(&self, height: u64) -> Option<MicroTari> {
+    pub fn get_total_emission_at(&self, height: u64) ->  MicroTari {
         self.inner.emission.supply_at_block(height)
     }
 

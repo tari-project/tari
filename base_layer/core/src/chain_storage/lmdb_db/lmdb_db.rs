@@ -252,7 +252,6 @@ impl LMDBDatabase {
                         &write_txn,
                         chain_block.hash(),
                         chain_block.accumulated_data(),
-                        "orphan_header_accumulated_data",
                     )?;
                 },
                 UpdatePrunedHashSet {
@@ -662,49 +661,10 @@ impl LMDBDatabase {
     }
 
     fn delete_block_body(
-        &mut self,
+        &self,
         write_txn: &WriteTransaction<'_>,
         hash: HashOutput,
     ) -> Result<(), ChainStorageError> {
-        let hash_hex = hash.to_hex();
-        debug!(target: LOG_TARGET, "Deleting block `{}`", hash_hex);
-        debug!(target: LOG_TARGET, "Deleting UTXOs...");
-        let height = self
-            .fetch_height_from_hash(&write_txn, &hash)
-            .or_not_found("Block", "hash", hash.to_hex())?;
-        lmdb_delete(&write_txn, &self.block_accumulated_data_db, &height)?;
-        let rows = lmdb_delete_keys_starting_with::<TransactionOutputRowData>(&write_txn, &self.utxos_db, &hash_hex)?;
-
-        for utxo in rows {
-            trace!(target: LOG_TARGET, "Deleting UTXO `{}`", to_hex(&utxo.hash));
-            lmdb_delete(&write_txn, &self.txos_hash_to_index_db, utxo.hash.as_slice())?;
-        }
-        debug!(target: LOG_TARGET, "Deleting kernels...");
-        let kernels =
-            lmdb_delete_keys_starting_with::<TransactionKernelRowData>(&write_txn, &self.kernels_db, &hash_hex)?;
-        for kernel in kernels {
-            trace!(
-                target: LOG_TARGET,
-                "Deleting excess `{}`",
-                to_hex(kernel.kernel.excess.as_bytes())
-            );
-            lmdb_delete(&write_txn, &self.kernel_excess_index, kernel.kernel.excess.as_bytes())?;
-            let mut excess_sig_key = Vec::<u8>::new();
-            excess_sig_key.extend(kernel.kernel.excess_sig.get_public_nonce().as_bytes());
-            excess_sig_key.extend(kernel.kernel.excess_sig.get_signature().as_bytes());
-            trace!(
-                target: LOG_TARGET,
-                "Deleting excess signature `{}`",
-                to_hex(&excess_sig_key)
-            );
-            lmdb_delete(&write_txn, &self.kernel_excess_sig_index, excess_sig_key.as_slice())?;
-        }
-        debug!(target: LOG_TARGET, "Deleting Inputs...");
-        lmdb_delete_keys_starting_with::<TransactionInputRowData>(&write_txn, &self.inputs_db, &hash_hex)?;
-        Ok(())
-    }
-
-    fn delete_block_body(&self, write_txn: &WriteTransaction<'_>, hash: HashOutput) -> Result<(), ChainStorageError> {
         let hash_hex = hash.to_hex();
         debug!(target: LOG_TARGET, "Deleting block `{}`", hash_hex);
         debug!(target: LOG_TARGET, "Deleting UTXOs...");

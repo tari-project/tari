@@ -75,6 +75,7 @@ use tari_p2p::{comms_connector::pubsub_connector, initialization, initialization
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 use tokio::runtime;
+use tari_core::transactions::transaction::OutputFeatures;
 
 const LOG_TARGET: &str = "wallet";
 
@@ -292,7 +293,7 @@ where
         let unblinded_output = UnblindedOutput::new(
             amount,
             spending_key.clone(),
-            None,
+            Some(features),
             TariScript::default(),
             ExecutionStack::default(),
             0,

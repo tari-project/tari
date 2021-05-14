@@ -60,6 +60,7 @@ use tari_crypto::{
     tari_utilities::{hash::Hashable, hex::Hex},
 };
 use tari_mmr::MutableMmr;
+use tari_core::consensus::emission::Emission;
 
 const _MAINNET: Network = Network::MainNet;
 const _WEATHERWAX: Network = Network::Weatherwax;

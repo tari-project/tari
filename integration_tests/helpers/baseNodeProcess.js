@@ -116,7 +116,7 @@ class BaseNodeProcess {
         if (
           data
             .toString()
-            .match(/Copyright 2019-2020. The Tari Development Community/)
+            .match(/State: Starting up/)
         ) {
           resolve(ps);
         }

@@ -89,6 +89,7 @@ use tokio::{
     sync::{broadcast, Mutex},
     task::JoinHandle,
 };
+use tari_crypto::tari_utilities::hex::Hex;
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
 const LOG_TARGET_STRESS: &str = "stress_test::output_manager_service";
@@ -1272,7 +1273,7 @@ where TBackend: OutputManagerBackend + 'static
                 target: LOG_TARGET,
                 "Output {} with value {} with {} recovered",
                 output
-                    .as_transaction_input(&self.resources.factories.commitment, output.features.clone())
+                    .as_transaction_input(&self.resources.factories.commitment)?
                     .commitment
                     .to_hex(),
                 output.value,

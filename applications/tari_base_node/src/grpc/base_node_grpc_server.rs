@@ -52,6 +52,7 @@ use tari_core::{
 use tari_crypto::tari_utilities::{message_format::MessageFormat, Hashable};
 use tokio::{sync::mpsc, task};
 use tonic::{Request, Response, Status};
+use tari_core::consensus::emission::Emission;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -918,9 +919,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         height,
                         value: consensus_manager
                             .emission_schedule()
-                            .supply_at_block(height)
-                            .map(Into::into)
-                            .unwrap_or(0),
+                            .supply_at_block(height).into()
                     })
                     .collect();
                 let result_size = values.len();
