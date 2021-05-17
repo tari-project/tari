@@ -604,6 +604,7 @@ where T: TransactionBackend + 'static
         source_public_key: CommsPublicKey,
         comms_public_key: CommsPublicKey,
         message: String,
+        maturity: Option<u64>,
     ) -> Result<(), TransactionStorageError> {
         let transaction = CompletedTransaction::new(
             tx_id,
@@ -622,7 +623,7 @@ where T: TransactionBackend + 'static
             message,
             Utc::now().naive_utc(),
             TransactionDirection::Inbound,
-            None,
+            maturity,
         );
 
         let db_clone = self.db.clone();

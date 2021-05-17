@@ -140,8 +140,7 @@ impl UtxoScannerServiceBuilder {
         &mut self,
         wallet: &WalletSqlite,
         shutdown_signal: ShutdownSignal,
-    ) -> UtxoScannerService<WalletSqliteDatabase>
-    {
+    ) -> UtxoScannerService<WalletSqliteDatabase> {
         let resources = UtxoScannerResources {
             db: wallet.db.clone(),
             connectivity: wallet.comms.connectivity(),
@@ -173,8 +172,7 @@ impl UtxoScannerServiceBuilder {
         node_identity: Arc<NodeIdentity>,
         factories: CryptoFactories,
         shutdown_signal: ShutdownSignal,
-    ) -> UtxoScannerService<TBackend>
-    {
+    ) -> UtxoScannerService<TBackend> {
         let resources = UtxoScannerResources {
             db,
             connectivity,
@@ -428,8 +426,7 @@ where TBackend: WalletBackend + 'static
         client: &mut BaseNodeSyncRpcClient,
         start_mmr_leaf_index: u64,
         end_header: BlockHeader,
-    ) -> Result<u64, WalletError>
-    {
+    ) -> Result<u64, WalletError> {
         debug!(
             target: LOG_TARGET,
             "Scanning UTXO's from #{} to #{} (height {})",
@@ -665,8 +662,7 @@ where TBackend: WalletBackend + 'static
         unblinded_output: UnblindedOutput,
         source_public_key: &CommsPublicKey,
         message: String,
-    ) -> Result<TxId, WalletError>
-    {
+    ) -> Result<TxId, WalletError> {
         self.resources
             .output_manager_service
             .add_output(unblinded_output.clone())
@@ -675,7 +671,12 @@ where TBackend: WalletBackend + 'static
         let tx_id = self
             .resources
             .transaction_service
-            .import_utxo(unblinded_output.value, source_public_key.clone(), message)
+            .import_utxo(
+                unblinded_output.value,
+                source_public_key.clone(),
+                message,
+                Some(unblinded_output.features.maturity),
+            )
             .await?;
 
         info!(
@@ -765,8 +766,7 @@ where TBackend: WalletBackend + 'static
         resources: UtxoScannerResources<TBackend>,
         scan_for_utxo_interval: Duration,
         shutdown_signal: ShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         let (event_sender, _) = broadcast::channel(100);
         Self {
             resources,
