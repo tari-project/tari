@@ -51,7 +51,7 @@ use tari_core::{
         DbTransaction,
         Validators,
     },
-    consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
+    consensus::{emission::Emission, ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     proof_of_work::Difficulty,
     test_helpers::blockchain::{
         create_store_with_consensus,
@@ -71,7 +71,6 @@ use tari_core::{
 use tari_crypto::tari_utilities::Hashable;
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
-use tari_core::consensus::emission::Emission;
 
 #[test]
 fn fetch_nonexistent_header() {

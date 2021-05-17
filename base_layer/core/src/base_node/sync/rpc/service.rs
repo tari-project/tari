@@ -436,8 +436,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             async fn start_streaming(
                 &self,
                 tx: &mut mpsc::Sender<Result<SyncUtxosResponse, RpcStatus>>,
-            ) -> Result<(), RpcStatus>
-            {
+            ) -> Result<(), RpcStatus> {
                 let end_header = self
                     .db
                     .fetch_header_by_block_hash(self.request.end_header_hash.clone())

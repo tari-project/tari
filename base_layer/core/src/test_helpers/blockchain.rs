@@ -53,7 +53,7 @@ use crate::{
         types::{CryptoFactories, HashOutput, Signature},
     },
     validation::{
-        block_validators::{OrphanBlockValidator},
+        block_validators::{BodyOnlyValidator, OrphanBlockValidator},
         mocks::MockValidator,
     },
 };
@@ -66,7 +66,6 @@ use std::{
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
-use crate::validation::block_validators::BodyOnlyValidator;
 
 /// Create a new blockchain database containing no blocks.
 pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {

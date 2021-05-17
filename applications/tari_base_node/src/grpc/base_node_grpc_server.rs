@@ -43,7 +43,7 @@ use tari_core::{
         StateMachineHandle,
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
-    consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
+    consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder, Network},
     crypto::tari_utilities::hex::Hex,
     mempool::{service::LocalMempoolService, TxStorageResponse},
     proof_of_work::PowAlgorithm,
@@ -52,7 +52,6 @@ use tari_core::{
 use tari_crypto::tari_utilities::{message_format::MessageFormat, Hashable};
 use tokio::{sync::mpsc, task};
 use tonic::{Request, Response, Status};
-use tari_core::consensus::emission::Emission;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -917,9 +916,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     .into_iter()
                     .map(|height| tari_rpc::ValueAtHeightResponse {
                         height,
-                        value: consensus_manager
-                            .emission_schedule()
-                            .supply_at_block(height).into()
+                        value: consensus_manager.emission_schedule().supply_at_block(height).into(),
                     })
                     .collect();
                 let result_size = values.len();

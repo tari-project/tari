@@ -84,7 +84,6 @@ pub fn get_stibbons_genesis_block() -> ChainBlock {
     };
     // NOTE: Panic is impossible, accumulated_data is created from the block
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
-
 }
 
 pub fn get_weatherwax_genesis_block() -> ChainBlock {

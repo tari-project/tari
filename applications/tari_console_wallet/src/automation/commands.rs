@@ -39,7 +39,7 @@ use tari_core::{
     tari_utilities::hex::Hex,
     transactions::{
         tari_amount::{uT, MicroTari, Tari},
-        types::PublicKey
+        types::PublicKey,
     },
 };
 use tari_crypto::ristretto::pedersen::PedersenCommitmentFactory;
@@ -515,9 +515,7 @@ pub async fn command_runner(
                             i + 1,
                             utxo.value.0,
                             utxo.spending_key.to_hex(),
-                            utxo.as_transaction_input(&factory)?
-                                .commitment
-                                .to_hex(),
+                            utxo.as_transaction_input(&factory)?.commitment.to_hex(),
                             utxo.features.flags,
                             utxo.features.maturity,
                         )

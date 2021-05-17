@@ -34,7 +34,7 @@ use tari_core::{
         ChainHeader,
         ChainStorageError,
     },
-    consensus::{ConsensusConstants, ConsensusManager, ConsensusManagerBuilder, Network},
+    consensus::{emission::Emission, ConsensusConstants, ConsensusManager, ConsensusManagerBuilder, Network},
     proof_of_work::{sha3_difficulty, Difficulty},
     transactions::{
         helpers::{create_random_signature_from_s_key, create_signature, create_utxo, spend_utxos, TransactionSchema},
@@ -60,7 +60,6 @@ use tari_crypto::{
     tari_utilities::{hash::Hashable, hex::Hex},
 };
 use tari_mmr::MutableMmr;
-use tari_core::consensus::emission::Emission;
 
 const _MAINNET: Network = Network::MainNet;
 const _WEATHERWAX: Network = Network::Weatherwax;
@@ -545,8 +544,7 @@ pub fn create_chain_header<B: BlockchainBackend>(
     db: &B,
     header: BlockHeader,
     prev_accum: &BlockHeaderAccumulatedData,
-) -> ChainHeader
-{
+) -> ChainHeader {
     let validator = MockValidator::new(true);
     let achieved_target_diff = validator.validate(db, &header).unwrap();
     let accumulated_data = BlockHeaderAccumulatedData::builder(prev_accum)

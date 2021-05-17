@@ -33,7 +33,7 @@ use crate::{
     chain_storage::{ChainBlock, ChainStorageError},
     consensus::{
         chain_strength_comparer::{strongest_chain, ChainStrengthComparer},
-        emission::EmissionSchedule,
+        emission::{Emission, EmissionSchedule},
         network::Network,
         ConsensusConstants,
     },
@@ -42,7 +42,6 @@ use crate::{
 };
 use std::{convert::TryFrom, sync::Arc};
 use thiserror::Error;
-use crate::consensus::emission::Emission;
 
 #[derive(Debug, Error)]
 #[allow(clippy::large_enum_variant)]
@@ -98,7 +97,7 @@ impl ConsensusManager {
 
     /// Get the emission reward at height
     /// Returns None if the total supply > u64::MAX
-    pub fn get_total_emission_at(&self, height: u64) ->  MicroTari {
+    pub fn get_total_emission_at(&self, height: u64) -> MicroTari {
         self.inner.emission.supply_at_block(height)
     }
 

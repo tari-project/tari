@@ -81,7 +81,10 @@ commands:
             cargo fmt --all -- --check
       - run:
           name: Run clippy (main source)
-          command: cargo clippy -- -D warnings -W clippy::cognitive_complexity
+          command: |
+            TOOLCHAIN=$(cat rust-toolchain)
+            rustup component add --toolchain $TOOLCHAIN clippy
+            cargo clippy -- -D warnings -W clippy::cognitive_complexity
       - run:
           name: Run clippy (all targets)
           command: cargo clippy --all-targets -- -D warnings

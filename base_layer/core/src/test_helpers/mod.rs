@@ -110,8 +110,7 @@ pub fn create_chain_header(
     db: &TempDatabase,
     header: BlockHeader,
     prev_accum: &BlockHeaderAccumulatedData,
-) -> ChainHeader
-{
+) -> ChainHeader {
     let validator = MockValidator::new(true);
     let achieved_target_diff = validator.validate(db, &header).unwrap();
     let accumulated_data = BlockHeaderAccumulatedData::builder(prev_accum)

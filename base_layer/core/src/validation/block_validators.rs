@@ -144,7 +144,6 @@ impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for BodyOnlyValidator {
     }
 }
 
-
 // This function checks for duplicate inputs and outputs. There should be no duplicate inputs or outputs in a block
 fn check_sorting_and_duplicates(body: &AggregateBody) -> Result<(), ValidationError> {
     if !is_all_unique_and_sorted(body.inputs()) {

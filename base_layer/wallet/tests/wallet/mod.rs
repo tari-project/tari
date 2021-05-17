@@ -24,7 +24,7 @@ use crate::support::{
     comms_and_services::get_next_memory_address,
     utils::{make_input, random_string},
 };
-use tari_core::transactions::{transaction::OutputFeatures};
+use tari_core::transactions::transaction::OutputFeatures;
 
 use aes_gcm::{
     aead::{generic_array::GenericArray, NewAead},
@@ -53,6 +53,7 @@ use tari_crypto::{
     common::Blake256,
     inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
+    ristretto::RistrettoPublicKey,
     script,
 };
 use tari_p2p::{initialization::CommsConfig, transport::TransportType, DEFAULT_DNS_SEED_RESOLVER};
@@ -77,7 +78,6 @@ use tari_wallet::{
 };
 use tempfile::tempdir;
 use tokio::{runtime::Runtime, time::delay_for};
-use tari_crypto::ristretto::RistrettoPublicKey;
 
 fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
     Peer::new(

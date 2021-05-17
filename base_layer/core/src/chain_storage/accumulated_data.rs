@@ -215,8 +215,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
         self
     }
 
-    pub fn with_achieved_target_difficulty(mut self, achieved_target: AchievedTargetDifficulty
-    ) -> Self  {
+    pub fn with_achieved_target_difficulty(mut self, achieved_target: AchievedTargetDifficulty) -> Self {
         self.current_achieved_target = Some(achieved_target);
         self
     }

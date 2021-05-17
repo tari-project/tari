@@ -77,7 +77,7 @@ use tari_crypto::{
     range_proof::REWIND_USER_MESSAGE_LENGTH,
     script,
     script::{ExecutionStack, TariScript},
-    tari_utilities::ByteArray,
+    tari_utilities::{hex::Hex, ByteArray},
 };
 use tari_key_manager::{
     key_manager::KeyManager,
@@ -89,7 +89,6 @@ use tokio::{
     sync::{broadcast, Mutex},
     task::JoinHandle,
 };
-use tari_crypto::tari_utilities::hex::Hex;
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
 const LOG_TARGET_STRESS: &str = "stress_test::output_manager_service";

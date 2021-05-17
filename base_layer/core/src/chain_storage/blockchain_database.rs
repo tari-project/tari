@@ -1008,8 +1008,7 @@ pub fn fetch_chain_headers<T: BlockchainBackend>(
     db: &T,
     start: u64,
     end_inclusive: u64,
-) -> Result<Vec<ChainHeader>, ChainStorageError>
-{
+) -> Result<Vec<ChainHeader>, ChainStorageError> {
     if start > end_inclusive {
         return Err(ChainStorageError::InvalidQuery(
             "end_inclusive must be greater than start".to_string(),
@@ -1190,8 +1189,7 @@ fn fetch_blocks<T: BlockchainBackend>(
 fn fetch_block_with_kernel<T: BlockchainBackend>(
     db: &T,
     excess_sig: Signature,
-) -> Result<Option<HistoricalBlock>, ChainStorageError>
-{
+) -> Result<Option<HistoricalBlock>, ChainStorageError> {
     match db.fetch_kernel_by_excess_sig(&excess_sig) {
         Ok(kernel) => match kernel {
             Some((_kernel, hash)) => fetch_block_by_hash(db, hash),
@@ -1208,11 +1206,10 @@ fn fetch_block_with_kernel<T: BlockchainBackend>(
 fn fetch_block_with_utxo<T: BlockchainBackend>(
     db: &T,
     commitment: Commitment,
-) -> Result<Option<HistoricalBlock>, ChainStorageError>
-{
+) -> Result<Option<HistoricalBlock>, ChainStorageError> {
     match db.fetch_output(&commitment.to_vec()) {
         Ok(output) => match output {
-            Some((_output, leaf,_height)) => {
+            Some((_output, leaf, _height)) => {
                 let header = db.fetch_header_containing_utxo_mmr(leaf as u64)?;
                 fetch_block_by_hash(db, header.hash().to_owned())
             },
@@ -1887,16 +1884,15 @@ mod test {
     use super::*;
     use crate::{
         consensus::chain_strength_comparer::strongest_chain,
+        proof_of_work::AchievedTargetDifficulty,
         test_helpers::{
-            blockchain::{create_new_blockchain, create_test_blockchain_db},
+            blockchain::{create_new_blockchain, create_test_blockchain_db, TempDatabase},
             create_block,
             mine_to_difficulty,
         },
         validation::mocks::MockValidator,
     };
     use std::collections::HashMap;
-    use crate::test_helpers::blockchain::TempDatabase;
-    use crate::proof_of_work::AchievedTargetDifficulty;
 
     #[test]
     fn lmdb_fetch_monero_seeds() {
@@ -2238,8 +2234,7 @@ mod test {
         result: &BlockAddResult,
         block_names: Vec<&str>,
         blocks: &HashMap<String, Arc<ChainBlock>>,
-    )
-    {
+    ) {
         let added = result.added_blocks();
         assert_eq!(
             added,
@@ -2291,8 +2286,7 @@ mod test {
     fn create_main_chain(
         db: &BlockchainDatabase<TempDatabase>,
         blocks: &[(&str, u64)],
-    ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>)
-    {
+    ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
         let genesis_block = db.fetch_block(0).unwrap().try_into_chain_block().map(Arc::new).unwrap();
         let (names, chain) = create_chained_blocks(blocks, genesis_block);
         names.iter().for_each(|name| {
@@ -2307,8 +2301,7 @@ mod test {
         db: &BlockchainDatabase<TempDatabase>,
         blocks: &[(&str, u64)],
         root_block: Arc<ChainBlock>,
-    ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>)
-    {
+    ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
         let (names, chain) = create_chained_blocks(blocks, root_block);
         let mut access = db.db_write_access().unwrap();
         let mut txn = DbTransaction::new();
@@ -2324,8 +2317,7 @@ mod test {
     fn create_chained_blocks(
         blocks: &[(&str, u64)],
         genesis_block: Arc<ChainBlock>,
-    ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>)
-    {
+    ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
         let mut block_hashes = HashMap::new();
         block_hashes.insert("GB".to_string(), genesis_block);
 

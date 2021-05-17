@@ -731,8 +731,7 @@ where T: TransactionBackend + 'static
         &self,
         tx_id: TxId,
         mined_height: u64,
-    ) -> Result<(), TransactionStorageError>
-    {
+    ) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.update_mined_height(tx_id, mined_height))
             .await

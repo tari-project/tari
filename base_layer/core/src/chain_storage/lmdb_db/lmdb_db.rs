@@ -502,8 +502,7 @@ impl LMDBDatabase {
         txn: &WriteTransaction<'_>,
         header_hash: &HashOutput,
         accumulated_data: &BlockHeaderAccumulatedData,
-    ) -> Result<(), ChainStorageError>
-    {
+    ) -> Result<(), ChainStorageError> {
         if !lmdb_exists(txn, &self.orphans_db, header_hash.as_slice())? {
             return Err(ChainStorageError::InvalidOperation(format!(
                 "set_accumulated_data_for_orphan: orphan {} does not exist",
@@ -660,11 +659,7 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    fn delete_block_body(
-        &self,
-        write_txn: &WriteTransaction<'_>,
-        hash: HashOutput,
-    ) -> Result<(), ChainStorageError> {
+    fn delete_block_body(&self, write_txn: &WriteTransaction<'_>, hash: HashOutput) -> Result<(), ChainStorageError> {
         let hash_hex = hash.to_hex();
         debug!(target: LOG_TARGET, "Deleting block `{}`", hash_hex);
         debug!(target: LOG_TARGET, "Deleting UTXOs...");
@@ -886,8 +881,7 @@ impl LMDBDatabase {
         write_txn: &WriteTransaction<'_>,
         header_hash: HashOutput,
         kernel_sum: Commitment,
-    ) -> Result<(), ChainStorageError>
-    {
+    ) -> Result<(), ChainStorageError> {
         let height = self.fetch_height_from_hash(&write_txn, &header_hash).or_not_found(
             "BlockHash",
             "hash",
@@ -907,8 +901,7 @@ impl LMDBDatabase {
         write_txn: &WriteTransaction<'_>,
         header_hash: HashOutput,
         deleted: Bitmap,
-    ) -> Result<(), ChainStorageError>
-    {
+    ) -> Result<(), ChainStorageError> {
         let height = self.fetch_height_from_hash(&write_txn, &header_hash).or_not_found(
             "BlockHash",
             "hash",
@@ -938,8 +931,7 @@ impl LMDBDatabase {
         write_txn: &WriteTransaction<'_>,
         seed: String,
         height: u64,
-    ) -> Result<(), ChainStorageError>
-    {
+    ) -> Result<(), ChainStorageError> {
         let current_height = lmdb_get(&write_txn, &self.monero_seed_height_db, seed.as_str())?.unwrap_or(std::u64::MAX);
         if height < current_height {
             lmdb_replace(&write_txn, &self.monero_seed_height_db, seed.as_str(), &height)?;
@@ -953,8 +945,7 @@ impl LMDBDatabase {
         mmr_tree: MmrTree,
         header_hash: HashOutput,
         pruned_hash_set: PrunedHashSet,
-    ) -> Result<(), ChainStorageError>
-    {
+    ) -> Result<(), ChainStorageError> {
         let height = self.fetch_height_from_hash(&write_txn, &header_hash).or_not_found(
             "BlockHash",
             "hash",
@@ -978,8 +969,7 @@ impl LMDBDatabase {
         write_txn: &WriteTransaction<'_>,
         output_positions: Vec<u32>,
         horizon: u64,
-    ) -> Result<(), ChainStorageError>
-    {
+    ) -> Result<(), ChainStorageError> {
         for pos in output_positions {
             let (_height, hash) =
                 lmdb_first_after::<_, (u64, Vec<u8>)>(&write_txn, &self.output_mmr_size_index, &pos.to_be_bytes())

@@ -160,9 +160,10 @@ impl Emission for EmissionSchedule {
         }
         iterator.block_reward()
     }
+
     /// Calculate the exact emitted supply after the given block, in µTari. The value is calculated by summing up the
-      /// block reward for each block, making this a very inefficient function if you wanted to call it from a loop for
-      /// example. For those cases, use the `iter` function instead.
+    /// block reward for each block, making this a very inefficient function if you wanted to call it from a loop for
+    /// example. For those cases, use the `iter` function instead.
     fn supply_at_block(&self, height: u64) -> MicroTari {
         let mut iterator = self.iter();
         while iterator.block_height() < height {
@@ -170,7 +171,6 @@ impl Emission for EmissionSchedule {
         }
         iterator.supply()
     }
-
 }
 
 #[cfg(test)]

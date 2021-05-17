@@ -28,7 +28,7 @@ class TransactionBuilder {
     return Buffer.from(final).toString("hex");
   }
 
-  buildScriptChallenge(publicNonce, script, input_data, height) {
+  buildScriptChallenge(publicNonce, script, input_data) {
     var KEY = null; // optional key
     var OUTPUT_LENGTH = 32; // bytes
     var context = blake2bInit(OUTPUT_LENGTH, KEY);
@@ -73,7 +73,7 @@ class TransactionBuilder {
       Buffer.from([0x04]),
       Buffer.from(scriptPublicKey, "hex"),
     ]);
-    let nonce = this.kv.new_key("common_nonce");
+    this.kv.new_key("common_nonce");
     let public_nonce = this.kv.public_key("common_nonce");
     let challenge = this.buildScriptChallenge(
       public_nonce,

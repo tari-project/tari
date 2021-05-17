@@ -66,8 +66,7 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
         connectivity_manager: ConnectivityRequester,
         event_publisher: BaseNodeEventSender,
         shutdown_signal: ShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             interval,
             state,
@@ -191,8 +190,7 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
         &self,
         peer_node_id: NodeId,
         mut client: BaseNodeWalletRpcClient,
-    ) -> Result<(), BaseNodeMonitorError>
-    {
+    ) -> Result<(), BaseNodeMonitorError> {
         loop {
             let latency = client.get_last_request_latency().await?;
             trace!(

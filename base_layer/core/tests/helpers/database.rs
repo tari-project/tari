@@ -23,10 +23,9 @@
 use crate::helpers::block_builders::create_coinbase;
 use tari_core::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
-    consensus::ConsensusManager,
+    consensus::{emission::Emission, ConsensusManager},
     transactions::{tari_amount::MicroTari, transaction::Transaction, types::CryptoFactories},
 };
-use tari_core::consensus::emission::Emission;
 
 // use tari_test_utils::paths::create_temporary_data_path;
 

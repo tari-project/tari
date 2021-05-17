@@ -113,11 +113,7 @@ class BaseNodeProcess {
       ps.stdout.on("data", (data) => {
         // console.log(`stdout: ${data}`);
         fs.appendFileSync(`${this.baseDir}/log/stdout.log`, data.toString());
-        if (
-          data
-            .toString()
-            .match(/State: Starting up/)
-        ) {
+        if (data.toString().match(/State: Starting up/)) {
           resolve(ps);
         }
       });

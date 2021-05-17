@@ -175,29 +175,36 @@ use tari_crypto::{
 use tari_p2p::transport::{TorConfig, TransportType, TransportType::Tor};
 use tari_shutdown::Shutdown;
 use tari_utilities::{hex, hex::Hex};
-use tari_wallet::{contacts_service::storage::database::Contact, error::{WalletError, WalletStorageError}, output_manager_service::protocols::txo_validation_protocol::TxoValidationType, storage::{
-    database::WalletDatabase,
-    sqlite_db::WalletSqliteDatabase,
-    sqlite_utilities::{initialize_sqlite_database_backends, partial_wallet_backup},
-}, testnet_utils::{
-    broadcast_transaction,
-    complete_sent_transaction,
-    finalize_received_transaction,
-    generate_wallet_test_data,
-    get_next_memory_address,
-    mine_transaction,
-    receive_test_transaction,
-}, transaction_service::{
-    config::TransactionServiceConfig,
-    error::TransactionServiceError,
+use tari_wallet::{
+    contacts_service::storage::database::Contact,
+    error::{WalletError, WalletStorageError},
+    output_manager_service::protocols::txo_validation_protocol::TxoValidationType,
     storage::{
-        database::TransactionDatabase,
-        models::{
-            CompletedTransaction,
-            InboundTransaction,
-            OutboundTransaction,
-            TransactionDirection,
-            TransactionStatus,
+        database::WalletDatabase,
+        sqlite_db::WalletSqliteDatabase,
+        sqlite_utilities::{initialize_sqlite_database_backends, partial_wallet_backup},
+    },
+    testnet_utils::{
+        broadcast_transaction,
+        complete_sent_transaction,
+        finalize_received_transaction,
+        generate_wallet_test_data,
+        get_next_memory_address,
+        mine_transaction,
+        receive_test_transaction,
+    },
+    transaction_service::{
+        config::TransactionServiceConfig,
+        error::TransactionServiceError,
+        storage::{
+            database::TransactionDatabase,
+            models::{
+                CompletedTransaction,
+                InboundTransaction,
+                OutboundTransaction,
+                TransactionDirection,
+                TransactionStatus,
+            },
         },
     },
     util::emoji::{emoji_set, EmojiId},
@@ -205,29 +212,14 @@ use tari_wallet::{contacts_service::storage::database::Contact, error::{WalletEr
     WalletConfig,
 };
 
-use crate::{enums::SeedWordPushResult, tasks::recovery_event_monitoring};
-use futures::StreamExt;
-use log4rs::append::{
-    rolling_file::{
-        policy::compound::{roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger, CompoundPolicy},
-        RollingFileAppender,
-    },
-    Append,
-};
-use tari_comms_dht::envelope::Network as DhtNetwork;
-use tari_core::{consensus::Network, transactions::transaction::OutputFeatures};
 use tari_crypto::script::TariScript;
-use tari_p2p::transport::TransportType::Tor;
 use tari_wallet::{
-    error::WalletStorageError,
-    output_manager_service::protocols::txo_validation_protocol::TxoValidationType,
     types::ValidationRetryStrategy,
     util::emoji::EmojiIdError,
     utxo_scanner_service::utxo_scanning::UtxoScannerService,
     WalletSqlite,
 };
 use tokio::runtime::Runtime;
-use tari_wallet::util::emoji::EmojiIdError;
 
 const LOG_TARGET: &str = "wallet_ffi";
 
@@ -4517,7 +4509,6 @@ pub unsafe extern "C" fn wallet_import_utxo(
     match (*wallet).runtime.block_on((*wallet).wallet.import_utxo(
         MicroTari::from(amount),
         &(*spending_key).clone(),
-        OutputFeatures::default(),
         TariScript::default(),
         ExecutionStack::default(),
         &(*source_public_key).clone(),
