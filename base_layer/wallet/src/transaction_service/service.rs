@@ -528,8 +528,8 @@ where
                 self.set_base_node_public_key(public_key).await;
                 Ok(TransactionServiceResponse::BaseNodePublicKeySet)
             },
-            TransactionServiceRequest::ImportUtxo(value, source_public_key, message) => self
-                .add_utxo_import_transaction(value, source_public_key, message)
+            TransactionServiceRequest::ImportUtxo(value, source_public_key, message, lock_height) => self
+                .add_utxo_import_transaction(value, source_public_key, message, lock_height)
                 .await
                 .map(TransactionServiceResponse::UtxoImported),
             TransactionServiceRequest::SubmitCoinSplitTransaction(tx_id, tx, fee, amount, message) => self
@@ -1631,6 +1631,7 @@ where
         value: MicroTari,
         source_public_key: CommsPublicKey,
         message: String,
+        maturity: Option<u64>,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = OsRng.next_u64();
         self.db
@@ -1640,6 +1641,7 @@ where
                 source_public_key,
                 self.node_identity.public_key().clone(),
                 message,
+                maturity,
             )
             .await?;
         Ok(tx_id)

@@ -156,6 +156,7 @@ use tari_comms_dht::{DbConnectionUrl, DhtConfig};
 use tari_core::transactions::{tari_amount::MicroTari, types::CryptoFactories};
 use tari_crypto::{
     keys::{PublicKey, SecretKey},
+    script::ExecutionStack,
     tari_utilities::ByteArray,
 };
 use tari_p2p::transport::{TorConfig, TransportType};
@@ -207,7 +208,8 @@ use log4rs::append::{
     Append,
 };
 use tari_comms_dht::envelope::Network as DhtNetwork;
-use tari_core::consensus::Network;
+use tari_core::{consensus::Network, transactions::transaction::OutputFeatures};
+use tari_crypto::script::TariScript;
 use tari_p2p::transport::TransportType::Tor;
 use tari_wallet::{
     error::WalletStorageError,
@@ -4507,6 +4509,9 @@ pub unsafe extern "C" fn wallet_import_utxo(
     match (*wallet).runtime.block_on((*wallet).wallet.import_utxo(
         MicroTari::from(amount),
         &(*spending_key).clone(),
+        OutputFeatures::default(),
+        TariScript::default(),
+        ExecutionStack::default(),
         &(*source_public_key).clone(),
         message_string,
     )) {

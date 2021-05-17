@@ -648,8 +648,7 @@ where T: OutputManagerBackend + 'static
     pub async fn add_known_script(
         &self,
         known_script: KnownOneSidedPaymentScript,
-    ) -> Result<(), OutputManagerStorageError>
-    {
+    ) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || {
             db_clone.write(WriteOperation::Insert(DbKeyValuePair::KnownOneSidedPaymentScripts(
