@@ -54,8 +54,7 @@ where T: WalletBackend + 'static
         backend: WalletDatabase<T>,
         factories: CryptoFactories,
         node_identity: Arc<NodeIdentity>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             interval,
             backend: Some(backend),

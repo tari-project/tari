@@ -76,8 +76,7 @@ where T: OutputManagerBackend + 'static
         factories: CryptoFactories,
         network: Network,
         master_secret_key: CommsSecretKey,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             config,
             backend: Some(backend),

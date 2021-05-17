@@ -45,14 +45,15 @@ use tari_core::{
     consensus::Network,
     transactions::{
         tari_amount::{uT, MicroTari},
-        transaction::UnblindedOutput,
+        transaction::{OutputFeatures, UnblindedOutput},
         types::{CryptoFactories, PrivateKey, PublicKey},
     },
 };
 use tari_crypto::{
     common::Blake256,
-    keys::PublicKey as PublicKeyTrait,
-    script::{ExecutionStack, TariScript},
+    inputs,
+    keys::{PublicKey as PublicKeyTrait, SecretKey},
+    script,
 };
 use tari_p2p::{initialization::CommsConfig, transport::TransportType, DEFAULT_DNS_SEED_RESOLVER};
 use tari_shutdown::{Shutdown, ShutdownSignal};
@@ -619,22 +620,30 @@ async fn test_import_utxo() {
     )
     .await
     .unwrap();
+    let key = PrivateKey::random(&mut OsRng);
+    let claim = PublicKey::from_secret_key(&key);
+    let script = script!(Nop);
+    let input = inputs!(claim);
+    let features = OutputFeatures::create_coinbase(50);
 
     let utxo = UnblindedOutput::new(
         20000 * uT,
-        PrivateKey::default(),
-        None,
-        TariScript::default(),
-        ExecutionStack::default(),
+        PrivateKey::random(&mut OsRng),
+        Some(features.clone()),
+        script.clone(),
+        input.clone(),
         0,
-        PrivateKey::default(),
-        RistrettoPublicKey::default(),
+        key,
+        RistrettoPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
     );
 
     let tx_id = alice_wallet
         .import_utxo(
             utxo.value,
             &utxo.spending_key,
+            features,
+            script,
+            input,
             base_node_identity.public_key(),
             OutputFeatures::default(),
             "Testing".to_string(),
@@ -655,6 +664,8 @@ async fn test_import_utxo() {
         .expect("Tx should be in collection");
 
     assert_eq!(completed_tx.amount, 20000 * uT);
+    let stored_utxo = alice_wallet.output_manager_service.get_unspent_outputs().await.unwrap()[0].clone();
+    assert_eq!(stored_utxo, utxo);
 }
 
 #[cfg(feature = "test_harness")]

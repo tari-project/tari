@@ -59,7 +59,7 @@ use tari_comms::{
 use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction::UnblindedOutput,
+    transaction::{OutputFeatures, UnblindedOutput},
     types::{CryptoFactories, PrivateKey, PublicKey},
 };
 use tari_crypto::{
@@ -286,6 +286,9 @@ where
         &mut self,
         amount: MicroTari,
         spending_key: &PrivateKey,
+        features: OutputFeatures,
+        script: TariScript,
+        input_data: ExecutionStack,
         source_public_key: &CommsPublicKey,
         features: OutputFeatures,
         message: String,
@@ -293,9 +296,9 @@ where
         let unblinded_output = UnblindedOutput::new(
             amount,
             spending_key.clone(),
-            Some(features),
-            TariScript::default(),
-            ExecutionStack::default(),
+            Some(features.clone()),
+            script,
+            input_data,
             0,
             spending_key.clone(),
             PublicKey::from_secret_key(&spending_key),
@@ -305,7 +308,7 @@ where
 
         let tx_id = self
             .transaction_service
-            .import_utxo(amount, source_public_key.clone(), message)
+            .import_utxo(amount, source_public_key.clone(), message, Some(features.maturity))
             .await?;
 
         info!(
@@ -333,7 +336,12 @@ where
 
         let tx_id = self
             .transaction_service
-            .import_utxo(unblinded_output.value, source_public_key.clone(), message)
+            .import_utxo(
+                unblinded_output.value,
+                source_public_key.clone(),
+                message,
+                Some(unblinded_output.features.maturity),
+            )
             .await?;
 
         info!(

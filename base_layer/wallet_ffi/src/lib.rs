@@ -169,6 +169,7 @@ use tari_core::{
 };
 use tari_crypto::{
     keys::{PublicKey, SecretKey},
+    script::ExecutionStack,
     tari_utilities::ByteArray,
 };
 use tari_p2p::transport::{TorConfig, TransportType, TransportType::Tor};
@@ -199,7 +200,32 @@ use tari_wallet::{contacts_service::storage::database::Contact, error::{WalletEr
             TransactionStatus,
         },
     },
-}, types::ValidationRetryStrategy, util::emoji::{emoji_set, EmojiId}, Wallet, WalletSqlite, utxo_scanner_service::utxo_scanning::UtxoScannerService, WalletConfig};
+    util::emoji::{emoji_set, EmojiId},
+    Wallet,
+    WalletConfig,
+};
+
+use crate::{enums::SeedWordPushResult, tasks::recovery_event_monitoring};
+use futures::StreamExt;
+use log4rs::append::{
+    rolling_file::{
+        policy::compound::{roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger, CompoundPolicy},
+        RollingFileAppender,
+    },
+    Append,
+};
+use tari_comms_dht::envelope::Network as DhtNetwork;
+use tari_core::{consensus::Network, transactions::transaction::OutputFeatures};
+use tari_crypto::script::TariScript;
+use tari_p2p::transport::TransportType::Tor;
+use tari_wallet::{
+    error::WalletStorageError,
+    output_manager_service::protocols::txo_validation_protocol::TxoValidationType,
+    types::ValidationRetryStrategy,
+    util::emoji::EmojiIdError,
+    utxo_scanner_service::utxo_scanning::UtxoScannerService,
+    WalletSqlite,
+};
 use tokio::runtime::Runtime;
 use tari_wallet::util::emoji::EmojiIdError;
 
@@ -4491,6 +4517,9 @@ pub unsafe extern "C" fn wallet_import_utxo(
     match (*wallet).runtime.block_on((*wallet).wallet.import_utxo(
         MicroTari::from(amount),
         &(*spending_key).clone(),
+        OutputFeatures::default(),
+        TariScript::default(),
+        ExecutionStack::default(),
         &(*source_public_key).clone(),
         // WARNING, this might be a problem in the future when importing anything else than a default features UTXO,
         // the FFI function signature should be updated to take this in.
