@@ -23,13 +23,9 @@
 use crate::{
     blocks::{
         genesis_block::{
-            get_mainnet_block_hash,
             get_mainnet_genesis_block,
-            get_ridcully_block_hash,
             get_ridcully_genesis_block,
-            get_stibbons_block_hash,
             get_stibbons_genesis_block,
-            get_weatherwax_block_hash,
             get_weatherwax_genesis_block,
         },
         Block,
@@ -37,7 +33,7 @@ use crate::{
     chain_storage::{ChainBlock, ChainStorageError},
     consensus::{
         chain_strength_comparer::{strongest_chain, ChainStrengthComparer},
-        emission::EmissionSchedule,
+        emission::{Emission, EmissionSchedule},
         network::Network,
         ConsensusConstants,
     },
@@ -88,18 +84,6 @@ impl ConsensusManager {
         }
     }
 
-    /// Returns the genesis block hash for the selected network.
-    #[deprecated]
-    pub fn get_genesis_block_hash(&self) -> Vec<u8> {
-        match self.inner.network {
-            Network::MainNet => get_mainnet_block_hash(),
-            Network::Ridcully => get_ridcully_block_hash(),
-            Network::Stibbons => get_stibbons_block_hash(),
-            Network::Weatherwax => get_weatherwax_block_hash(),
-            Network::LocalNet => get_weatherwax_block_hash(),
-        }
-    }
-
     /// Get a pointer to the emission schedule
     /// The height provided here, decides the emission curve to use. It swaps to the integer curve upon reaching
     /// 1_000_000_000
@@ -113,7 +97,7 @@ impl ConsensusManager {
 
     /// Get the emission reward at height
     /// Returns None if the total supply > u64::MAX
-    pub fn get_total_emission_at(&self, height: u64) -> Option<MicroTari> {
+    pub fn get_total_emission_at(&self, height: u64) -> MicroTari {
         self.inner.emission.supply_at_block(height)
     }
 

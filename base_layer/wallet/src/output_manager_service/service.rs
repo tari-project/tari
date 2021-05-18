@@ -77,7 +77,7 @@ use tari_crypto::{
     range_proof::REWIND_USER_MESSAGE_LENGTH,
     script,
     script::{ExecutionStack, TariScript},
-    tari_utilities::ByteArray,
+    tari_utilities::{hex::Hex, ByteArray},
 };
 use tari_key_manager::{
     key_manager::KeyManager,
@@ -1267,6 +1267,18 @@ where TBackend: OutputManagerBackend + 'static
                 )
             })
             .collect();
+        for output in &rewound_outputs {
+            trace!(
+                target: LOG_TARGET,
+                "Output {} with value {} with {} recovered",
+                output
+                    .as_transaction_input(&self.resources.factories.commitment)?
+                    .commitment
+                    .to_hex(),
+                output.value,
+                output.features,
+            );
+        }
 
         Ok(rewound_outputs)
     }

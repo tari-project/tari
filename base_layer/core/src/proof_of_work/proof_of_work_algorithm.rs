@@ -26,6 +26,7 @@ use std::convert::TryFrom;
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Hash, Eq)]
 pub enum PowAlgorithm {
     Monero = 0,
+    // TODO: remove #testnetreset
     Blake = 1,
     Sha3 = 2,
 }

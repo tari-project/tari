@@ -23,7 +23,7 @@
 use crate::{
     blocks::BlockHeader,
     consensus::{ConsensusManagerBuilder, Network},
-    test_helpers::blockchain::create_store_with_consensus,
+    test_helpers::{blockchain::create_store_with_consensus, create_chain_header},
     validation::header_iter::HeaderIter,
 };
 
@@ -36,7 +36,7 @@ fn header_iter_empty_and_invalid_height() {
     let headers = iter.map(Result::unwrap).collect::<Vec<_>>();
     assert_eq!(headers.len(), 1);
     let genesis = consensus_manager.get_genesis_block();
-    assert_eq!(&genesis.block.header, &headers[0]);
+    assert_eq!(genesis.header(), &headers[0]);
 
     // Invalid header height
     let iter = HeaderIter::new(&db, 1, 10);
@@ -57,24 +57,17 @@ fn header_iter_fetch_in_chunks() {
         header.kernel_mmr_size = 2 + i;
         header.output_mmr_size = 4001 + i;
 
-        let chain_header = db.create_chain_header_if_valid(header, prev).unwrap();
+        let chain_header = create_chain_header(&*db.db_read_access().unwrap(), header, &prev.accumulated_data());
         acc.push(chain_header);
         acc
     });
-    db.insert_valid_headers(
-        headers
-            .into_iter()
-            .skip(1)
-            .map(|chain_header| (chain_header.header, chain_header.accumulated_data))
-            .collect(),
-    )
-    .unwrap();
+    db.insert_valid_headers(headers.into_iter().skip(1).collect()).unwrap();
 
     let iter = HeaderIter::new(&db, 11, 3);
     let headers = iter.map(Result::unwrap).collect::<Vec<_>>();
     assert_eq!(headers.len(), 12);
     let genesis = consensus_manager.get_genesis_block();
-    assert_eq!(&genesis.block.header, &headers[0]);
+    assert_eq!(genesis.header(), &headers[0]);
 
     (1..=11).for_each(|i| {
         assert_eq!(headers[i].height, i as u64);

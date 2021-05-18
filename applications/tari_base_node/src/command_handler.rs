@@ -275,28 +275,6 @@ impl CommandHandler {
         });
     }
 
-    pub fn search_stxo(&self, commitment: Commitment) {
-        let mut handler = self.node_service.clone();
-        self.executor.spawn(async move {
-            match handler.get_blocks_with_stxos(vec![commitment.clone()]).await {
-                Err(err) => {
-                    println!("Failed to retrieve blocks: {:?}", err);
-                    warn!(
-                        target: LOG_TARGET,
-                        "Error communicating with local base node: {:?}", err,
-                    );
-                },
-                Ok(mut data) => match data.pop() {
-                    Some(v) => println!("{}", v.block()),
-                    _ => println!(
-                        "Pruned node: stxo found, but block not found for stxo commitment {}",
-                        commitment.to_hex()
-                    ),
-                },
-            };
-        });
-    }
-
     pub fn search_kernel(&self, excess_sig: Signature) {
         let mut handler = self.node_service.clone();
         let hex_sig = excess_sig.get_signature().to_hex();
@@ -754,7 +732,7 @@ impl CommandHandler {
                     println!("No headers found");
                     return;
                 },
-                Ok(h) => h.into_iter().map(|ch| ch.header).rev().collect::<Vec<_>>(),
+                Ok(h) => h.into_iter().map(|ch| ch.into_header()).rev().collect::<Vec<_>>(),
                 Err(err) => {
                     println!("Failed to retrieve headers: {:?}", err);
                     warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
@@ -873,11 +851,11 @@ impl CommandHandler {
                     },
                 };
                 height -= 1;
-                if block.block().header.timestamp.as_u64() > period_ticker_end {
+                if block.header().timestamp.as_u64() > period_ticker_end {
                     print!("\x1B[{}D\x1B[K", (height + 1).to_string().chars().count());
                     continue;
                 };
-                while block.block().header.timestamp.as_u64() < period_ticker_start {
+                while block.header().timestamp.as_u64() < period_ticker_start {
                     results.push((
                         period_tx_count,
                         period_hash,
@@ -895,10 +873,10 @@ impl CommandHandler {
                 }
                 period_tx_count += block.block().body.kernels().len() - 1;
                 period_block_count += 1;
-                let st = if prev_block.block().header.timestamp.as_u64() >= block.block().header.timestamp.as_u64() {
+                let st = if prev_block.header().timestamp.as_u64() >= block.header().timestamp.as_u64() {
                     1.0
                 } else {
-                    (block.block().header.timestamp.as_u64() - prev_block.block().header.timestamp.as_u64()) as f64
+                    (block.header().timestamp.as_u64() - prev_block.header().timestamp.as_u64()) as f64
                 };
                 let diff = block.accumulated_data.target_difficulty.as_u64();
                 period_difficulty += diff;
@@ -954,31 +932,29 @@ impl CommandHandler {
                 let header = try_or_print!(db.fetch_chain_header(height).await);
 
                 // Optionally, filter out pow algos
-                if pow_algo.map(|algo| header.header.pow_algo() != algo).unwrap_or(false) {
+                if pow_algo.map(|algo| header.header().pow_algo() != algo).unwrap_or(false) {
                     continue;
                 }
 
                 let target_diff = try_or_print!(db.fetch_target_difficulties(prev_header.hash().clone()).await);
+                let pow_algo = header.header().pow_algo();
 
-                let min = consensus_rules
-                    .consensus_constants(height)
-                    .min_pow_difficulty(header.header.pow_algo());
-                let max = consensus_rules
-                    .consensus_constants(height)
-                    .max_pow_difficulty(header.header.pow_algo());
+                let min = consensus_rules.consensus_constants(height).min_pow_difficulty(pow_algo);
+                let max = consensus_rules.consensus_constants(height).max_pow_difficulty(pow_algo);
 
-                let calculated_target_difficulty = target_diff.get(header.header.pow_algo()).calculate(min, max);
-                let existing_target_difficulty = header.accumulated_data.target_difficulty;
-                let achieved = header.accumulated_data.achieved_difficulty;
-                let solve_time = header.header.timestamp.as_u64() as i64 - prev_header.header.timestamp.as_u64() as i64;
+                let calculated_target_difficulty = target_diff.get(pow_algo).calculate(min, max);
+                let existing_target_difficulty = header.accumulated_data().target_difficulty;
+                let achieved = header.accumulated_data().achieved_difficulty;
+                let solve_time =
+                    header.header().timestamp.as_u64() as i64 - prev_header.header().timestamp.as_u64() as i64;
                 let normalized_solve_time = cmp::min(
                     cmp::max(solve_time, 1) as u64,
                     consensus_rules
                         .consensus_constants(height)
-                        .get_difficulty_max_block_interval(header.header.pow_algo()),
+                        .get_difficulty_max_block_interval(pow_algo),
                 );
-                let acc_sha3 = header.accumulated_data.accumulated_blake_difficulty;
-                let acc_monero = header.accumulated_data.accumulated_monero_difficulty;
+                let acc_sha3 = header.accumulated_data().accumulated_blake_difficulty;
+                let acc_monero = header.accumulated_data().accumulated_monero_difficulty;
 
                 writeln!(
                     output,
@@ -989,20 +965,20 @@ impl CommandHandler {
                     calculated_target_difficulty.as_u64(),
                     solve_time,
                     normalized_solve_time,
-                    header.header.pow_algo(),
-                    chrono::DateTime::from(header.header.timestamp),
-                    target_diff.get(header.header.pow_algo()).len(),
+                    pow_algo,
+                    chrono::DateTime::from(header.header().timestamp),
+                    target_diff.get(pow_algo).len(),
                     acc_monero.as_u64(),
                     acc_sha3.as_u64(),
                 )
                 .unwrap();
 
-                if header.header.hash() != header.accumulated_data.hash {
+                if header.header().hash() != header.accumulated_data().hash {
                     eprintln!(
                         "Difference in hash at {}! header = {} and accum hash = {}",
                         height,
-                        header.header.hash().to_hex(),
-                        header.accumulated_data.hash.to_hex()
+                        header.header().hash().to_hex(),
+                        header.accumulated_data().hash.to_hex()
                     );
                 }
 

@@ -125,70 +125,15 @@ impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for BodyOnlyValidator {
     /// 1. Are all inputs and outputs not in the STXO set?
     /// 1. Are the block header MMR roots valid?
     fn validate_body_for_valid_orphan(&self, block: &ChainBlock, backend: &B) -> Result<(), ValidationError> {
-        let block_id = format!("block #{} ({})", block.block.header.height, block.hash().to_hex());
-        check_inputs_are_utxos(&block.block, backend)?;
-        check_not_duplicate_txos(&block.block, backend)?;
+        let block_id = format!("block #{} ({})", block.header().height, block.hash().to_hex());
+        check_inputs_are_utxos(&block.block(), backend)?;
+        check_not_duplicate_txos(&block.block(), backend)?;
         trace!(
             target: LOG_TARGET,
             "Block validation: All inputs and outputs are valid for {}",
             block_id
         );
-        check_mmr_roots(&block.block, backend)?;
-        trace!(
-            target: LOG_TARGET,
-            "Block validation: MMR roots are valid for {}",
-            block_id
-        );
-        debug!(target: LOG_TARGET, "Block validation: Block is VALID for {}", block_id);
-        Ok(())
-    }
-}
-
-#[cfg(any(test, feature = "base_node"))]
-/// This is a test only validator as it skips the mined height rule of a input.
-#[derive(Default)]
-pub struct BodyOnlyMinusHeightValidator {}
-#[cfg(any(test, feature = "base_node"))]
-impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for BodyOnlyMinusHeightValidator {
-    /// The consensus checks that are done (in order of cheapest to verify to most expensive):
-    /// 1. Does the block satisfy the stateless checks?
-    /// 1. Are all inputs currently in the UTXO set?
-    /// 1. Are all inputs and outputs not in the STXO set?
-    /// 1. Are the block header MMR roots valid?
-    fn validate_body_for_valid_orphan(&self, block: &ChainBlock, backend: &B) -> Result<(), ValidationError> {
-        let block_id = format!("block #{} ({})", block.block.header.height, block.hash().to_hex());
-
-        {
-            let data = backend
-                .fetch_block_accumulated_data(&block.block.header.prev_hash)?
-                .ok_or(ValidationError::PreviousHashNotFound)?;
-
-            for input in block.block.body.inputs() {
-                if let Some((_, index, _)) = backend.fetch_output(&input.hash())? {
-                    if data.deleted().contains(index) {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Block validation failed due to already spent input: {}", input
-                        );
-                        return Err(ValidationError::ContainsSTxO);
-                    }
-                } else {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Block validation failed because the block has invalid input: {} which does not exist", input
-                    );
-                    return Err(ValidationError::BlockError(BlockValidationError::InvalidInput));
-                }
-            }
-        }
-
-        check_not_duplicate_txos(&block.block, backend)?;
-        trace!(
-            target: LOG_TARGET,
-            "Block validation: All inputs and outputs are valid for {}",
-            block_id
-        );
-        check_mmr_roots(&block.block, backend)?;
+        check_mmr_roots(block.block(), backend)?;
         trace!(
             target: LOG_TARGET,
             "Block validation: MMR roots are valid for {}",
@@ -487,25 +432,25 @@ impl<B: BlockchainBackend> CandidateBlockBodyValidation<B> for BlockValidator<B>
     /// The following consensus checks are done:
     /// 1. Does the block satisfy the stateless checks?
     /// 1. Are the block header MMR roots valid?
-    fn validate_body(&self, block: &ChainBlock, backend: &B) -> Result<(), ValidationError> {
-        let block_id = format!("block #{}", block.block.header.height);
+    fn validate_body(&self, block: &Block, backend: &B) -> Result<(), ValidationError> {
+        let block_id = format!("block #{}", block.header.height);
         trace!(target: LOG_TARGET, "Validating {}", block_id);
 
-        let constants = self.rules.consensus_constants(block.block.header.height);
-        check_block_weight(&block.block, &constants)?;
+        let constants = self.rules.consensus_constants(block.header.height);
+        check_block_weight(block, &constants)?;
         trace!(target: LOG_TARGET, "SV - Block weight is ok for {} ", &block_id);
 
-        self.check_inputs(&block.block)?;
-        self.check_outputs(&block.block)?;
+        self.check_inputs(block)?;
+        self.check_outputs(block)?;
 
-        check_accounting_balance(&block.block, &self.rules, &self.factories)?;
+        check_accounting_balance(block, &self.rules, &self.factories)?;
         trace!(target: LOG_TARGET, "SV - accounting balance correct for {}", &block_id);
         debug!(
             target: LOG_TARGET,
             "{} has PASSED stateless VALIDATION check.", &block_id
         );
 
-        self.check_mmr_roots(backend, &block.block)?;
+        self.check_mmr_roots(backend, &block)?;
         trace!(
             target: LOG_TARGET,
             "Block validation: MMR roots are valid for {}",

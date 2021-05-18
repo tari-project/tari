@@ -103,6 +103,7 @@ where T: WalletBackend + 'static
                 .run();
 
             futures::pin_mut!(scanning_service);
+            future::select(scanning_service, handles.get_shutdown_signal()).await;
             info!(target: LOG_TARGET, "Utxo scanner service shutdown");
         });
         future::ready(Ok(()))

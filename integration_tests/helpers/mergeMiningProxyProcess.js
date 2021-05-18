@@ -2,11 +2,10 @@ const { getFreePort } = require("./util");
 const dateFormat = require("dateformat");
 const fs = require("fs");
 const path = require("path");
-const { spawnSync, spawn, execSync } = require("child_process");
+const { spawn } = require("child_process");
 const { expect } = require("chai");
 const MergeMiningProxyClient = require("./mergeMiningProxyClient");
 const { createEnv } = require("./config");
-const { setWorldConstructor } = require("cucumber");
 
 let outputProcess;
 
@@ -34,18 +33,18 @@ class MergeMiningProxyProcess {
       new Date(),
       "yyyymmddHHMM"
     )}/${this.name}`;
-    //console.log("MergeMiningProxyProcess init - assign server GRPC:", this.grpcPort);
+    // console.log("MergeMiningProxyProcess init - assign server GRPC:", this.grpcPort);
   }
 
-  run(cmd, args, saveFile) {
+  run(cmd, args) {
     return new Promise((resolve, reject) => {
       if (!fs.existsSync(this.baseDir)) {
         fs.mkdirSync(this.baseDir, { recursive: true });
         fs.mkdirSync(this.baseDir + "/log", { recursive: true });
       }
 
-      let proxyAddress = "127.0.0.1:" + this.port;
-      let envs = createEnv(
+      const proxyAddress = "127.0.0.1:" + this.port;
+      const envs = createEnv(
         this.name,
         false,
         "nodeid.json",
@@ -59,19 +58,19 @@ class MergeMiningProxyProcess {
         [],
         []
       );
-      var extraEnvs = {
+      const extraEnvs = {
         TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_SUBMIT_TO_ORIGIN: this
           .submitOrigin,
       };
-      let completeEnvs = { ...envs, ...extraEnvs };
-      var ps = spawn(cmd, args, {
+      const completeEnvs = { ...envs, ...extraEnvs };
+      const ps = spawn(cmd, args, {
         cwd: this.baseDir,
         // shell: true,
         env: { ...process.env, ...completeEnvs },
       });
 
       ps.stdout.on("data", (data) => {
-        //console.log(`stdout: ${data}`);
+        // console.log(`stdout: ${data}`);
         fs.appendFileSync(`${this.baseDir}/log/stdout.log`, data.toString());
         if (data.toString().match(/Listening on/)) {
           resolve(ps);
@@ -84,7 +83,7 @@ class MergeMiningProxyProcess {
       });
 
       ps.on("close", (code) => {
-        let ps = this.ps;
+        const ps = this.ps;
         this.ps = null;
         if (code) {
           console.log(`child process exited with code ${code}`);
@@ -141,8 +140,8 @@ class MergeMiningProxyProcess {
   }
 
   createClient() {
-    let address = "http://127.0.0.1:" + this.port;
-    //console.log("MergeMiningProxyProcess createClient - client address:", address);
+    const address = "http://127.0.0.1:" + this.port;
+    // console.log("MergeMiningProxyProcess createClient - client address:", address);
     return new MergeMiningProxyClient(address);
   }
 }

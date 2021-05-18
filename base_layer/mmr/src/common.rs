@@ -37,8 +37,11 @@ pub fn node_index(leaf_index: usize) -> usize {
 }
 
 /// Returns the leaf index derived from the MMR node index.
-pub fn leaf_index(node_index: usize) -> u32 {
-    n_leaves(node_index) as u32
+pub fn leaf_index(node_index: u32) -> u32 {
+    let n = checked_n_leaves(node_index as usize)
+        .expect("checked_n_leaves can only overflow for `usize::MAX` and that is not possible");
+    // Conversion is safe because n < node_index
+    n as u32
 }
 
 /// Is this position a leaf in the MMR?
@@ -147,28 +150,6 @@ pub fn peak_map_height(mut pos: usize) -> (usize, usize) {
     (bitmap, pos)
 }
 
-/// sizes of peaks and height of next node in mmr of given size
-/// Example: on input 5 returns ([3,1], 1) as mmr state before adding 5 was
-///    2
-///   / \
-///  0   1   3   4
-pub fn peak_sizes_height(size: usize) -> (Vec<usize>, usize) {
-    if size == 0 {
-        return (vec![], 0);
-    }
-    let mut peak_size = ALL_ONES >> size.leading_zeros();
-    let mut sizes = vec![];
-    let mut size_left = size;
-    while peak_size != 0 {
-        if size_left >= peak_size {
-            sizes.push(peak_size);
-            size_left -= peak_size;
-        }
-        peak_size >>= 1;
-    }
-    (sizes, size_left)
-}
-
 /// Is the node at this pos the "left" sibling of its parent?
 pub fn is_left_sibling(pos: usize) -> bool {
     let (peak_map, height) = peak_map_height(pos);
@@ -181,13 +162,34 @@ pub fn hash_together<D: Digest>(left: &[u8], right: &[u8]) -> Hash {
 }
 
 /// The number of leaves in a MMR of the provided size.
-pub fn n_leaves(size: usize) -> usize {
-    let (sizes, height) = peak_sizes_height(size);
-    let nleaves = sizes.iter().map(|n| (n + 1) / 2).sum();
-    if height == 0 {
-        nleaves
+/// Example: on input 5 returns (2 + 1 + 1) as mmr state before adding 5 was
+///    2
+///   / \
+///  0   1   3   4
+/// None is returned if the number of leaves exceeds the maximum value of a usize
+pub fn checked_n_leaves(size: usize) -> Option<usize> {
+    if size == 0 {
+        return Some(0);
+    }
+    if size == usize::MAX {
+        return None;
+    }
+
+    let mut peak_size = ALL_ONES >> size.leading_zeros();
+    let mut nleaves = 0usize;
+    let mut size_left = size;
+    while peak_size != 0 {
+        if size_left >= peak_size {
+            nleaves += (peak_size + 1) >> 1;
+            size_left -= peak_size;
+        }
+        peak_size >>= 1;
+    }
+
+    if size_left == 0 {
+        Some(nleaves)
     } else {
-        nleaves + 1
+        Some(nleaves + 1)
     }
 }
 
@@ -209,14 +211,18 @@ mod test {
 
     #[test]
     fn n_leaf_nodes() {
-        assert_eq!(n_leaves(0), 0);
-        assert_eq!(n_leaves(1), 1);
-        assert_eq!(n_leaves(3), 2);
-        assert_eq!(n_leaves(4), 3);
-        assert_eq!(n_leaves(8), 5);
-        assert_eq!(n_leaves(10), 6);
-        assert_eq!(n_leaves(11), 7);
-        assert_eq!(n_leaves(15), 8);
+        assert_eq!(checked_n_leaves(0), Some(0));
+        assert_eq!(checked_n_leaves(1), Some(1));
+        assert_eq!(checked_n_leaves(3), Some(2));
+        assert_eq!(checked_n_leaves(4), Some(3));
+        assert_eq!(checked_n_leaves(5), Some(4));
+        assert_eq!(checked_n_leaves(8), Some(5));
+        assert_eq!(checked_n_leaves(10), Some(6));
+        assert_eq!(checked_n_leaves(11), Some(7));
+        assert_eq!(checked_n_leaves(15), Some(8));
+        assert_eq!(checked_n_leaves(usize::MAX - 1), Some(9223372036854775808));
+        // Overflowed
+        assert_eq!(checked_n_leaves(usize::MAX), None);
     }
 
     #[test]

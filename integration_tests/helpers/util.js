@@ -1,8 +1,8 @@
 const net = require("net");
-const fs = require("fs");
-const readline = require("readline");
 
 const { blake2bInit, blake2bUpdate, blake2bFinal } = require("blakejs");
+
+const NO_CONNECTION = 14;
 
 function getRandomInt(min, max) {
   min = Math.ceil(min);
@@ -33,22 +33,30 @@ async function waitFor(
   timeOut = 500,
   skipLog = 50
 ) {
-  let now = new Date();
+  const now = new Date();
 
   let i = 0;
   while (new Date() - now < maxTime) {
-    const value = await asyncTestFn();
-    if (value === toBe) {
-      if (i > 1) {
+    try {
+      const value = await asyncTestFn();
+      if (value === toBe) {
+        if (i > 1) {
+          console.log("waiting for process...", timeOut, i, value);
+        }
+        break;
+      }
+      if (i % skipLog === 0 && i > 1) {
         console.log("waiting for process...", timeOut, i, value);
       }
-      break;
+      await sleep(timeOut);
+      i++;
+    } catch (e) {
+      if (e && e.code && e.code === NO_CONNECTION) {
+        console.log("No connection yet (waitFor)...");
+      } else {
+        console.error("Error in waitFor: ", e);
+      }
     }
-    if (i % skipLog === 0 && i > 1) {
-      console.log("waiting for process...", timeOut, i, value);
-    }
-    await sleep(timeOut);
-    i++;
   }
 }
 
@@ -57,20 +65,20 @@ function dec2hex(n) {
 }
 
 function toLittleEndianInner(n) {
-  let hexar = dec2hex(n);
+  const hexar = dec2hex(n);
   return hexar
     .map((h) => (h < 16 ? "0" : "") + h.toString(16))
     .concat(Array(4 - hexar.length).fill("00"));
 }
 
 function toLittleEndian(n, numBits) {
-  let s = toLittleEndianInner(n);
+  const s = toLittleEndianInner(n);
 
   for (let i = s.length; i < numBits / 8; i++) {
     s.push("00");
   }
 
-  let arr = Buffer.from(s.join(""), "hex");
+  const arr = Buffer.from(s.join(""), "hex");
 
   return arr;
 }
@@ -84,24 +92,24 @@ function hexSwitchEndianness(val) {
 }
 
 // Thanks to https://stackoverflow.com/questions/29860354/in-nodejs-how-do-i-check-if-a-port-is-listening-or-in-use
-let portInUse = function (port, callback) {
-  let server = net.createServer(function (socket) {
+const portInUse = function (port, callback) {
+  const server = net.createServer(function (socket) {
     socket.write("Echo server\r\n");
     socket.pipe(socket);
   });
 
   server.listen(port, "127.0.0.1");
-  server.on("error", function (e) {
+  server.on("error", function () {
     callback(true);
   });
-  server.on("listening", function (e) {
+  server.on("listening", function () {
     server.close();
     callback(false);
   });
 };
 
 let index = 0;
-let getFreePort = async function (from, to) {
+const getFreePort = async function (from, to) {
   function testPort(port) {
     return new Promise((r) => {
       portInUse(port, (v) => {
@@ -123,7 +131,7 @@ let getFreePort = async function (from, to) {
     // await sleep(100);
     port++;
     index++;
-    let notInUse = await testPort(port);
+    const notInUse = await testPort(port);
     // console.log("Port not in use:", notInUse);
     if (notInUse) {
       return port;
@@ -132,12 +140,12 @@ let getFreePort = async function (from, to) {
 };
 
 const getTransactionOutputHash = function (output) {
-  let KEY = null; // optional key
-  let OUTPUT_LENGTH = 32; // bytes
-  let context = blake2bInit(OUTPUT_LENGTH, KEY);
-  let flags = Buffer.alloc(1);
+  const KEY = null; // optional key
+  const OUTPUT_LENGTH = 32; // bytes
+  const context = blake2bInit(OUTPUT_LENGTH, KEY);
+  const flags = Buffer.alloc(1);
   flags[0] = output.features.flags;
-  let buffer = Buffer.concat([
+  const buffer = Buffer.concat([
     flags,
     toLittleEndian(parseInt(output.features.maturity), 64),
   ]);
@@ -170,21 +178,18 @@ function calculateBeta(script_hash, features, script_offset_public_key) {
 }
 
 function consoleLogTransactionDetails(txnDetails, txId) {
-  let found = txnDetails[0];
-  let status = txnDetails[1];
+  const found = txnDetails[0];
+  const status = txnDetails[1];
   if (found) {
     console.log(
       "  Transaction " +
-        pad("'" + status.transactions[0]["tx_id"] + "'", 24) +
+        pad("'" + status.transactions[0].tx_id + "'", 24) +
         " has status " +
-        pad("'" + status.transactions[0]["status"] + "'", 40) +
+        pad("'" + status.transactions[0].status + "'", 40) +
         " and " +
-        pad(
-          "is_cancelled(" + status.transactions[0]["is_cancelled"] + ")",
-          21
-        ) +
+        pad("is_cancelled(" + status.transactions[0].is_cancelled + ")", 21) +
         " and " +
-        pad("is_valid(" + status.transactions[0]["valid"] + ")", 16)
+        pad("is_valid(" + status.transactions[0].valid + ")", 16)
     );
   } else {
     console.log("  Transaction '" + txId + "' " + status);
@@ -194,11 +199,11 @@ function consoleLogTransactionDetails(txnDetails, txId) {
 function consoleLogBalance(balance) {
   console.log(
     "  Available " +
-      pad(balance["available_balance"], 16) +
+      pad(balance.available_balance, 16) +
       " uT, Pending incoming " +
-      pad(balance["pending_incoming_balance"], 16) +
+      pad(balance.pending_incoming_balance, 16) +
       " uT, Pending outgoing " +
-      pad(balance["pending_outgoing_balance"], 16) +
+      pad(balance.pending_outgoing_balance, 16) +
       " uT"
   );
 }
@@ -206,18 +211,18 @@ function consoleLogBalance(balance) {
 function consoleLogCoinbaseDetails(txnDetails) {
   console.log(
     "  Transaction " +
-      pad("'" + txnDetails["tx_id"] + "'", 24) +
+      pad("'" + txnDetails.tx_id + "'", 24) +
       " has status " +
-      pad("'" + txnDetails["status"] + "'", 40) +
+      pad("'" + txnDetails.status + "'", 40) +
       " and " +
-      pad("is_cancelled(" + txnDetails["is_cancelled"] + ")", 21) +
+      pad("is_cancelled(" + txnDetails.is_cancelled + ")", 21) +
       " and " +
-      pad("is_valid(" + txnDetails["valid"] + ")", 16)
+      pad("is_valid(" + txnDetails.valid + ")", 16)
   );
 }
 
 function pad(str, length, padLeft = true) {
-  let padding = Array(length).join(" ");
+  const padding = Array(length).join(" ");
   if (typeof str === "undefined") return padding;
   if (padLeft) {
     return (padding + str).slice(-padding.length);
@@ -240,4 +245,5 @@ module.exports = {
   consoleLogCoinbaseDetails,
   withTimeout,
   calculateBeta,
+  NO_CONNECTION,
 };

@@ -2,7 +2,7 @@ const { getFreePort } = require("./util");
 const dateFormat = require("dateformat");
 const fs = require("fs");
 const path = require("path");
-const { spawnSync, spawn, execSync } = require("child_process");
+const { spawn } = require("child_process");
 const { expect } = require("chai");
 const { createEnv } = require("./config");
 const WalletClient = require("./walletClient");
@@ -14,7 +14,7 @@ class WalletProcess {
     this.name = name;
     this.options = options;
     this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath;
-    this.recoverWallet = seedWords ? true : false;
+    this.recoverWallet = !!seedWords;
     this.seedWords = seedWords;
   }
 
@@ -30,8 +30,7 @@ class WalletProcess {
   }
 
   getGrpcAddress() {
-    let address = "127.0.0.1:" + this.grpcPort;
-    return address;
+    return "127.0.0.1:" + this.grpcPort;
   }
 
   getClient() {
@@ -57,7 +56,7 @@ class WalletProcess {
         fs.mkdirSync(this.baseDir + "/log", { recursive: true });
       }
 
-      let envs = createEnv(
+      const envs = createEnv(
         this.name,
         true,
         "cwalletid.json",
@@ -72,14 +71,17 @@ class WalletProcess {
         this.peerSeeds
       );
 
-      var ps = spawn(cmd, args, {
+      if (saveFile) {
+        fs.appendFileSync(`${this.baseDir}/.env`, JSON.stringify(envs));
+      }
+      const ps = spawn(cmd, args, {
         cwd: this.baseDir,
         // shell: true,
         env: { ...process.env, ...envs },
       });
 
       ps.stdout.on("data", (data) => {
-        //console.log(`stdout: ${data}`);
+        // console.log(`stdout: ${data}`);
         fs.appendFileSync(`${this.baseDir}/log/stdout.log`, data.toString());
         if (data.toString().match(/Starting grpc server/)) {
           resolve(ps);
@@ -92,7 +94,7 @@ class WalletProcess {
       });
 
       ps.on("close", (code) => {
-        let ps = this.ps;
+        const ps = this.ps;
         this.ps = null;
         if (code) {
           console.log(`child process exited with code ${code}`);
@@ -109,7 +111,7 @@ class WalletProcess {
 
   async startNew() {
     await this.init();
-    var args;
+    let args;
     args = [
       "--base-path",
       ".",

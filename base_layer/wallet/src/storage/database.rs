@@ -87,9 +87,7 @@ pub enum WriteOperation {
 }
 
 #[derive(Clone)]
-pub struct WalletDatabase<T>
-where T: WalletBackend + 'static
-{
+pub struct WalletDatabase<T> {
     db: Arc<T>,
 }
 

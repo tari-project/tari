@@ -24,6 +24,8 @@ use crate::support::{
     comms_and_services::get_next_memory_address,
     utils::{make_input, random_string},
 };
+use tari_core::transactions::transaction::OutputFeatures;
+
 use aes_gcm::{
     aead::{generic_array::GenericArray, NewAead},
     Aes256Gcm,
@@ -43,7 +45,7 @@ use tari_core::{
     consensus::Network,
     transactions::{
         tari_amount::{uT, MicroTari},
-        transaction::{OutputFeatures, UnblindedOutput},
+        transaction::UnblindedOutput,
         types::{CryptoFactories, PrivateKey, PublicKey},
     },
 };
@@ -51,6 +53,7 @@ use tari_crypto::{
     common::Blake256,
     inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
+    ristretto::RistrettoPublicKey,
     script,
 };
 use tari_p2p::{initialization::CommsConfig, transport::TransportType, DEFAULT_DNS_SEED_RESOLVER};
@@ -631,17 +634,17 @@ async fn test_import_utxo() {
         input.clone(),
         0,
         key,
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        RistrettoPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
     );
 
     let tx_id = alice_wallet
         .import_utxo(
             utxo.value,
             &utxo.spending_key,
-            features,
             script,
             input,
             base_node_identity.public_key(),
+            features,
             "Testing".to_string(),
         )
         .await

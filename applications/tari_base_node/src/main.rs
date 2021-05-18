@@ -28,6 +28,7 @@
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
 // Enable 'impl Trait' type aliases
+#![allow(incomplete_features)]
 #![feature(type_alias_impl_trait)]
 #![feature(min_type_alias_impl_trait)]
 

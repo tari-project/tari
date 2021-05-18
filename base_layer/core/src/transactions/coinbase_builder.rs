@@ -22,7 +22,10 @@
 //
 
 use crate::{
-    consensus::{emission::EmissionSchedule, ConsensusConstants},
+    consensus::{
+        emission::{Emission, EmissionSchedule},
+        ConsensusConstants,
+    },
     transactions::{
         tari_amount::{uT, MicroTari},
         transaction::{
@@ -209,7 +212,7 @@ impl CoinbaseBuilder {
 #[cfg(test)]
 mod test {
     use crate::{
-        consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
+        consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder, Network},
         transactions::{
             coinbase_builder::CoinbaseBuildError,
             helpers::TestParams,
@@ -229,6 +232,7 @@ mod test {
         script::{ExecutionStack, TariScript},
         tari_utilities::ByteArray,
     };
+
     fn get_builder() -> (CoinbaseBuilder, ConsensusManager, CryptoFactories) {
         let network = Network::LocalNet;
         let rules = ConsensusManagerBuilder::new(network).build();

@@ -311,30 +311,6 @@ where T: BlockchainBackend + 'static
                 }
                 Ok(NodeCommsResponse::HistoricalBlocks(blocks))
             },
-            NodeCommsRequest::FetchBlocksWithStxos(hashes) => {
-                let mut blocks = Vec::with_capacity(hashes.len());
-                for hash in hashes {
-                    let hash_hex = hash.to_hex();
-                    debug!(
-                        target: LOG_TARGET,
-                        "A peer has requested a block with hash {}", hash_hex
-                    );
-                    match self.blockchain_db.fetch_block_with_stxo(hash).await {
-                        Ok(Some(block)) => blocks.push(block),
-                        Ok(None) => warn!(
-                            target: LOG_TARGET,
-                            "Could not provide requested block {} to peer because not stored", hash_hex
-                        ),
-                        Err(e) => warn!(
-                            target: LOG_TARGET,
-                            "Could not provide requested block {} to peer because: {}",
-                            hash_hex,
-                            e.to_string()
-                        ),
-                    }
-                }
-                Ok(NodeCommsResponse::HistoricalBlocks(blocks))
-            },
             NodeCommsRequest::FetchBlocksWithUtxos(hashes) => {
                 let mut blocks = Vec::with_capacity(hashes.len());
                 for hash in hashes {
@@ -370,7 +346,7 @@ where T: BlockchainBackend + 'static
             NodeCommsRequest::GetNewBlockTemplate(request) => {
                 let best_block_header = self.blockchain_db.fetch_tip_header().await?;
 
-                let mut header = BlockHeader::from_previous(&best_block_header.header)?;
+                let mut header = BlockHeader::from_previous(best_block_header.header());
                 let constants = self.consensus_manager.consensus_constants(header.height);
                 header.version = constants.blockchain_version();
                 header.pow.pow_algo = request.algo;
@@ -384,8 +360,8 @@ where T: BlockchainBackend + 'static
 
                 let transactions = async_mempool::retrieve(self.mempool.clone(), asking_weight)
                     .await?
-                    .iter()
-                    .map(|tx| (**tx).clone())
+                    .into_iter()
+                    .map(|tx| Arc::try_unwrap(tx).unwrap_or_else(|tx| (*tx).clone()))
                     .collect();
 
                 let height = header.height;

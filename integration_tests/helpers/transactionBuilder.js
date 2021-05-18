@@ -17,18 +17,18 @@ class TransactionBuilder {
   }
 
   buildChallenge(publicNonce, fee, lockHeight) {
-    var KEY = null; // optional key
-    var OUTPUT_LENGTH = 32; // bytes
-    var context = blake2bInit(OUTPUT_LENGTH, KEY);
-    let buff = Buffer.from(publicNonce, "hex");
+    const KEY = null; // optional key
+    const OUTPUT_LENGTH = 32; // bytes
+    const context = blake2bInit(OUTPUT_LENGTH, KEY);
+    const buff = Buffer.from(publicNonce, "hex");
     blake2bUpdate(context, buff);
     blake2bUpdate(context, toLittleEndian(fee, 64));
     blake2bUpdate(context, toLittleEndian(lockHeight, 64));
-    let final = blake2bFinal(context);
+    const final = blake2bFinal(context);
     return Buffer.from(final).toString("hex");
   }
 
-  buildScriptChallenge(publicNonce, script, input_data, height) {
+  buildScriptChallenge(publicNonce, script, input_data) {
     var KEY = null; // optional key
     var OUTPUT_LENGTH = 32; // bytes
     var context = blake2bInit(OUTPUT_LENGTH, KEY);
@@ -73,7 +73,7 @@ class TransactionBuilder {
       Buffer.from([0x04]),
       Buffer.from(scriptPublicKey, "hex"),
     ]);
-    let nonce = this.kv.new_key("common_nonce");
+    this.kv.new_key("common_nonce");
     let public_nonce = this.kv.public_key("common_nonce");
     let challenge = this.buildScriptChallenge(
       public_nonce,
@@ -108,7 +108,7 @@ class TransactionBuilder {
   }
 
   addOutput(amount) {
-    let outputFeatures = {
+    const outputFeatures = {
       flags: 0,
       maturity: 0,
     };
@@ -200,23 +200,23 @@ class TransactionBuilder {
     });
     // Assume low numbers....
 
-    let PrivateKey = totalPrivateKey.toString(16);
+    let privateKey = totalPrivateKey.toString(16);
     // we need to pad 0's in front
-    while (PrivateKey.length < 64) {
-      PrivateKey = "0" + PrivateKey;
+    while (privateKey.length < 64) {
+      privateKey = "0" + privateKey;
     }
-    let excess = tari_crypto.commit(PrivateKey, BigInt(0));
-    let nonce = this.kv.new_key("common_nonce");
-    let public_nonce = this.kv.public_key("common_nonce");
-    let challenge = this.buildChallenge(
-      public_nonce,
+    const excess = tari_crypto.commit(privateKey, BigInt(0));
+    this.kv.new_key("common_nonce");
+    const publicNonce = this.kv.public_key("common_nonce");
+    const challenge = this.buildChallenge(
+      publicNonce,
       this.fee,
       this.lockHeight
     );
-    let private_nonce = this.kv.private_key("common_nonce");
-    let sig = tari_crypto.sign_challenge_with_nonce(
-      PrivateKey,
-      private_nonce,
+    const privateNonce = this.kv.private_key("common_nonce");
+    const sig = tari_crypto.sign_challenge_with_nonce(
+      privateKey,
+      privateNonce,
       challenge
     );
 
@@ -269,12 +269,12 @@ class TransactionBuilder {
       BigInt(value + fee)
     ).proof;
 
-    let excess = tari_crypto.commit(privateKey, BigInt(0));
+    const excess = tari_crypto.commit(privateKey, BigInt(0));
     this.kv.new_key("nonce");
-    let public_nonce = this.kv.public_key("nonce");
-    let challenge = this.buildChallenge(public_nonce, 0, lockHeight);
-    let private_nonce = this.kv.private_key("nonce");
-    let sig = tari_crypto.sign_challenge_with_nonce(
+    const public_nonce = this.kv.public_key("nonce");
+    const challenge = this.buildChallenge(public_nonce, 0, lockHeight);
+    const private_nonce = this.kv.private_key("nonce");
+    const sig = tari_crypto.sign_challenge_with_nonce(
       privateKey,
       private_nonce,
       challenge

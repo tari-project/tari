@@ -125,14 +125,24 @@ mod tasks;
 
 use crate::{
     callback_handler::CallbackHandler,
+    enums::SeedWordPushResult,
     error::{InterfaceError, TransactionError},
+    tasks::recovery_event_monitoring,
 };
 use core::ptr;
 use error::LibWalletError;
+use futures::StreamExt;
 use libc::{c_char, c_int, c_longlong, c_uchar, c_uint, c_ulonglong, c_ushort};
 use log::{LevelFilter, *};
 use log4rs::{
-    append::file::FileAppender,
+    append::{
+        file::FileAppender,
+        rolling_file::{
+            policy::compound::{roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger, CompoundPolicy},
+            RollingFileAppender,
+        },
+        Append,
+    },
     config::{Appender, Config, Root},
     encode::pattern::PatternEncoder,
 };
@@ -152,19 +162,23 @@ use tari_comms::{
     tor,
     types::CommsSecretKey,
 };
-use tari_comms_dht::{DbConnectionUrl, DhtConfig};
-use tari_core::transactions::{tari_amount::MicroTari, types::CryptoFactories};
+use tari_comms_dht::{envelope::Network as DhtNetwork, DbConnectionUrl, DhtConfig};
+use tari_core::{
+    consensus::Network,
+    transactions::{tari_amount::MicroTari, transaction::OutputFeatures, types::CryptoFactories},
+};
 use tari_crypto::{
     keys::{PublicKey, SecretKey},
     script::ExecutionStack,
     tari_utilities::ByteArray,
 };
-use tari_p2p::transport::{TorConfig, TransportType};
+use tari_p2p::transport::{TorConfig, TransportType, TransportType::Tor};
 use tari_shutdown::Shutdown;
 use tari_utilities::{hex, hex::Hex};
 use tari_wallet::{
     contacts_service::storage::database::Contact,
-    error::WalletError,
+    error::{WalletError, WalletStorageError},
+    output_manager_service::protocols::txo_validation_protocol::TxoValidationType,
     storage::{
         database::WalletDatabase,
         sqlite_db::WalletSqliteDatabase,
@@ -198,22 +212,8 @@ use tari_wallet::{
     WalletConfig,
 };
 
-use crate::{enums::SeedWordPushResult, tasks::recovery_event_monitoring};
-use futures::StreamExt;
-use log4rs::append::{
-    rolling_file::{
-        policy::compound::{roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger, CompoundPolicy},
-        RollingFileAppender,
-    },
-    Append,
-};
-use tari_comms_dht::envelope::Network as DhtNetwork;
-use tari_core::{consensus::Network, transactions::transaction::OutputFeatures};
 use tari_crypto::script::TariScript;
-use tari_p2p::transport::TransportType::Tor;
 use tari_wallet::{
-    error::WalletStorageError,
-    output_manager_service::protocols::txo_validation_protocol::TxoValidationType,
     types::ValidationRetryStrategy,
     util::emoji::EmojiIdError,
     utxo_scanner_service::utxo_scanning::UtxoScannerService,
@@ -4509,10 +4509,12 @@ pub unsafe extern "C" fn wallet_import_utxo(
     match (*wallet).runtime.block_on((*wallet).wallet.import_utxo(
         MicroTari::from(amount),
         &(*spending_key).clone(),
-        OutputFeatures::default(),
         TariScript::default(),
         ExecutionStack::default(),
         &(*source_public_key).clone(),
+        // WARNING, this might be a problem in the future when importing anything else than a default features UTXO,
+        // the FFI function signature should be updated to take this in.
+        OutputFeatures::default(),
         message_string,
     )) {
         Ok(tx_id) => tx_id,

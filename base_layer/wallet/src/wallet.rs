@@ -273,7 +273,7 @@ where
             .set_base_node_public_key(peer.public_key.clone())
             .await?;
 
-        self.base_node_service.clone().set_base_node_peer(peer).await?;
+        self.base_node_service.set_base_node_peer(peer).await?;
 
         Ok(())
     }
@@ -281,14 +281,15 @@ where
     /// Import an external spendable UTXO into the wallet. The output will be added to the Output Manager and made
     /// spendable. A faux incoming transaction will be created to provide a record of the event. The TxId of the
     /// generated transaction is returned.
+    #[allow(clippy::too_many_arguments)]
     pub async fn import_utxo(
         &mut self,
         amount: MicroTari,
         spending_key: &PrivateKey,
-        features: OutputFeatures,
         script: TariScript,
         input_data: ExecutionStack,
         source_public_key: &CommsPublicKey,
+        features: OutputFeatures,
         message: String,
     ) -> Result<TxId, WalletError> {
         let unblinded_output = UnblindedOutput::new(

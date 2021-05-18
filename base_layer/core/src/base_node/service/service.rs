@@ -541,7 +541,6 @@ async fn handle_outbound_request(
                     Request::FetchMatchingBlocks(_) |
                     Request::FetchBlocksWithHashes(_) |
                     Request::FetchBlocksWithKernels(_) |
-                    Request::FetchBlocksWithStxos(_) |
                     Request::FetchBlocksWithUtxos(_) => {
                         trace!(
                             target: LOG_TARGET,

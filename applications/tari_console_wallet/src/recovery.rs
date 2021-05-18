@@ -24,6 +24,7 @@ use chrono::offset::Local;
 use futures::{FutureExt, StreamExt};
 use log::*;
 use rustyline::Editor;
+use std::cmp;
 use tari_app_utilities::utilities::ExitCodes;
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::types::PrivateKey;
@@ -151,7 +152,7 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, peer_seeds: Vec<CommsPublicK
                     "Recovery complete! Scanned = {} in {:.2?} ({} utxos/s), Recovered {} worth {}",
                     num_scanned,
                     elapsed,
-                    num_scanned / elapsed.as_secs(),
+                    num_scanned / cmp::max(elapsed.as_secs(), 1),
                     num_utxos,
                     total_amount
                 );

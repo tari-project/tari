@@ -17,17 +17,24 @@ commands:
           command: |
             rustc --version >rust-version
             test -e Cargo.lock || cargo generate-lockfile
+      - run:
+          name: Install cargo2junit
+          command: cargo install cargo2junit
       - restore_cache:
           keys:
             - v6-cargo-cache-{{arch}}-{{checksum "rust-version"}}-<<parameters.release>>-{{checksum "Cargo.lock"}}
       - run:
           name: Run tests
-          command: cargo test --workspace --all-features -v --jobs=3 <<#parameters.release>>--release<</parameters.release>>
+          command: mkdir -p testresults && cargo test --workspace --all-features -v --jobs=3 <<#parameters.release>>--release<</parameters.release>> -- -Z unstable-options --format json --report-time | cargo2junit > testresults/results.xml
       - save_cache:
           paths:
             - /usr/local/cargo/registry
             - target
           key: v6-cargo-cache-{{arch}}-{{checksum "rust-version"}}-<<parameters.release>>-{{checksum "Cargo.lock"}}
+      - store_test_results:
+          path: testresults
+      - store_artifacts:
+          path: testresults
   build:
     description: Build
     parameters:
@@ -46,7 +53,7 @@ commands:
             - v6-cargo-cache-{{arch}}-{{checksum "rust-version"}}-<<parameters.release>>-{{checksum "Cargo.lock"}}
       - run:
           name: Build
-          command: cargo build --all --all-features --jobs=3 <<#parameters.release>>--release<</parameters.release>>
+          command: cargo build -v --all --all-features --jobs=3 <<#parameters.release>>--release<</parameters.release>>
       - run:
           name: Build Wallet
           command: cargo build -p tari_wallet <<#parameters.release>>--release<</parameters.release>>
@@ -74,7 +81,10 @@ commands:
             cargo fmt --all -- --check
       - run:
           name: Run clippy (main source)
-          command: cargo clippy -- -D warnings -W clippy::cognitive_complexity
+          command: |
+            TOOLCHAIN=$(cat rust-toolchain)
+            rustup component add --toolchain $TOOLCHAIN clippy
+            cargo clippy -- -D warnings -W clippy::cognitive_complexity
       - run:
           name: Run clippy (all targets)
           command: cargo clippy --all-targets -- -D warnings
@@ -86,28 +96,34 @@ commands:
   cucumber-js:
     description: Run cucumber scenarios
     steps:
-     - run:
-         name: npm install
-         command: cd integration_tests && npm install
-     - run:
-         name: Check formatting
-         command: cd integration_tests && npm run check-fmt
-     - run:
-         name: Pre-build base node
-         command: cargo build --release --bin tari_base_node
-     - run:
-         name: Pre-build wallet
-         command: cargo build --release --bin tari_console_wallet
-     - run:
-         name: Pre-build mmproxy
-         command: cargo build --release --bin tari_merge_mining_proxy
-     - run:
-         name: Run cucumber scenarios
-         command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running and not @to-be-fixed-currently-failing" --format json:cucumber_output/tests.cucumber
-     - store_test_results:
-         path: integration_tests/cucumber_output
-     - store_artifacts:
-         path: integration_tests/cucumber_output
+      - run:
+          name: npm ci
+          command: cd integration_tests && npm ci
+      - run:
+          name: Check formatting
+          command: cd integration_tests && npm run check-fmt
+      - run:
+          name: Check eslint
+          command: cd integration_tests && npm run lint
+      - run:
+          name: Pre-build base node
+          command: cargo build --release --bin tari_base_node
+      - run:
+          name: Pre-build wallet
+          command: cargo build --release --bin tari_console_wallet
+      - run:
+          name: Pre-build mmproxy
+          command: cargo build --release --bin tari_merge_mining_proxy
+      - run:
+          name: Run cucumber scenarios
+          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running and not @broken and not @flaky" --format json:cucumber_output/tests.cucumber
+      - run:
+          name: Run flaky/broken cucumber scenarios (Always pass)
+          command: node_modules/.bin/cucumber-js --tags "not @long-running and @broken" --format json:cucumber_output/broken-tests.cucumber || true
+      - store_test_results:
+          path: integration_tests/cucumber_output
+      - store_artifacts:
+          path: integration_tests/cucumber_output
 
 jobs:
   test-docs:

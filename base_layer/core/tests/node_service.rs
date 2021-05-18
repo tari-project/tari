@@ -50,7 +50,7 @@ use tari_core::{
         state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
     },
     blocks::NewBlock,
-    chain_storage::BlockchainDatabaseConfig,
+    chain_storage::ChainBlock,
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     mempool::MempoolServiceConfig,
     proof_of_work::PowAlgorithm,
@@ -84,7 +84,6 @@ fn request_response_get_metadata() {
         .build();
     let (mut alice_node, bob_node, carol_node, _consensus_manager) = create_network_with_3_base_nodes_with_config(
         &mut runtime,
-        BlockchainDatabaseConfig::default(),
         BaseNodeServiceConfig::default(),
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
@@ -118,7 +117,6 @@ fn request_and_response_fetch_blocks() {
         .build();
     let (mut alice_node, mut bob_node, carol_node, _) = create_network_with_3_base_nodes_with_config(
         &mut runtime,
-        BlockchainDatabaseConfig::default(),
         BaseNodeServiceConfig::default(),
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
@@ -134,25 +132,25 @@ fn request_and_response_fetch_blocks() {
 
     carol_node
         .blockchain_db
-        .add_block(blocks[1].block.clone().into())
+        .add_block(blocks[1].to_arc_block())
         .unwrap()
         .assert_added();
     carol_node
         .blockchain_db
-        .add_block(blocks[2].block.clone().into())
+        .add_block(blocks[2].to_arc_block())
         .unwrap()
         .assert_added();
 
     runtime.block_on(async {
         let received_blocks = alice_node.outbound_nci.fetch_blocks(vec![0]).await.unwrap();
         assert_eq!(received_blocks.len(), 1);
-        assert_eq!(received_blocks[0].block(), &blocks[0].block);
+        assert_eq!(received_blocks[0].block(), blocks[0].block());
 
         let received_blocks = alice_node.outbound_nci.fetch_blocks(vec![0, 1]).await.unwrap();
         assert_eq!(received_blocks.len(), 2);
         assert_ne!(*received_blocks[0].block(), *received_blocks[1].block());
-        assert!((received_blocks[0].block() == &blocks[0].block) || (received_blocks[1].block() == &blocks[0].block));
-        assert!((received_blocks[0].block() == &blocks[1].block) || (received_blocks[1].block() == &blocks[1].block));
+        assert!(received_blocks[0].block() == blocks[0].block() || received_blocks[1].block() == blocks[0].block());
+        assert!(received_blocks[0].block() == blocks[1].block() || received_blocks[1].block() == blocks[1].block());
 
         alice_node.shutdown().await;
         bob_node.shutdown().await;
@@ -176,7 +174,6 @@ fn request_and_response_fetch_blocks_with_hashes() {
         .build();
     let (mut alice_node, mut bob_node, carol_node, _) = create_network_with_3_base_nodes_with_config(
         &mut runtime,
-        BlockchainDatabaseConfig::default(),
         BaseNodeServiceConfig::default(),
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
@@ -194,12 +191,12 @@ fn request_and_response_fetch_blocks_with_hashes() {
 
     carol_node
         .blockchain_db
-        .add_block(blocks[1].block.clone().into())
+        .add_block(blocks[1].to_arc_block())
         .unwrap()
         .assert_added();
     carol_node
         .blockchain_db
-        .add_block(blocks[2].block.clone().into())
+        .add_block(blocks[2].to_arc_block())
         .unwrap()
         .assert_added();
 
@@ -210,7 +207,7 @@ fn request_and_response_fetch_blocks_with_hashes() {
             .await
             .unwrap();
         assert_eq!(received_blocks.len(), 1);
-        assert_eq!(received_blocks[0].block(), &blocks[0].block);
+        assert_eq!(received_blocks[0].block(), blocks[0].block());
 
         let received_blocks = alice_node
             .outbound_nci
@@ -219,8 +216,8 @@ fn request_and_response_fetch_blocks_with_hashes() {
             .unwrap();
         assert_eq!(received_blocks.len(), 2);
         assert_ne!(received_blocks[0], received_blocks[1]);
-        assert!((*received_blocks[0].block() == blocks[0].block) || (*received_blocks[1].block() == blocks[0].block));
-        assert!((*received_blocks[0].block() == blocks[1].block) || (*received_blocks[1].block() == blocks[1].block));
+        assert!(received_blocks[0].block() == blocks[0].block() || received_blocks[1].block() == blocks[0].block());
+        assert!(received_blocks[0].block() == blocks[1].block() || received_blocks[1].block() == blocks[1].block());
 
         alice_node.shutdown().await;
         bob_node.shutdown().await;
@@ -303,7 +300,7 @@ fn propagate_and_forward_many_valid_blocks() {
         for block in &blocks {
             alice_node
                 .outbound_nci
-                .propagate_block(NewBlock::from(&block.block), vec![])
+                .propagate_block(NewBlock::from(block.block()), vec![])
                 .await
                 .unwrap();
 
@@ -393,9 +390,15 @@ fn propagate_and_forward_invalid_block_hash() {
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
     });
 
-    let mut block1 = append_block(&alice_node.blockchain_db, &block0, vec![], &rules, 1.into()).unwrap();
-    // Create unknown block hash
-    block1.block.header.height = 0;
+    let block1 = append_block(&alice_node.blockchain_db, &block0, vec![], &rules, 1.into()).unwrap();
+    let block1 = {
+        // Create unknown block hash
+        let mut block = block1.block().clone();
+        block.header.height = 0;
+        let mut accum_data = block1.accumulated_data().clone();
+        accum_data.hash = block.hash();
+        ChainBlock::try_construct(block.into(), accum_data).unwrap()
+    };
 
     let mut bob_message_events = bob_node.messaging_events.subscribe();
     let mut carol_message_events = carol_node.messaging_events.subscribe();
@@ -403,7 +406,7 @@ fn propagate_and_forward_invalid_block_hash() {
     runtime.block_on(async {
         alice_node
             .outbound_nci
-            .propagate_block(NewBlock::from(&block1.block), vec![])
+            .propagate_block(NewBlock::from(block1.block()), vec![])
             .await
             .unwrap();
 
@@ -518,7 +521,7 @@ fn propagate_and_forward_invalid_block() {
 
         assert!(alice_node
             .outbound_nci
-            .propagate_block(NewBlock::from(&block1.block), vec![])
+            .propagate_block(NewBlock::from(block1.block()), vec![])
             .await
             .is_ok());
 
@@ -561,7 +564,6 @@ fn service_request_timeout() {
     let temp_dir = tempdir().unwrap();
     let (mut alice_node, bob_node, _consensus_manager) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
-        BlockchainDatabaseConfig::default(),
         base_node_service_config,
         MempoolServiceConfig::default(),
         LivenessConfig::default(),

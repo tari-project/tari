@@ -209,8 +209,7 @@ impl TransactionServiceHandle {
     pub fn new(
         handle: SenderService<TransactionServiceRequest, Result<TransactionServiceResponse, TransactionServiceError>>,
         event_stream_sender: TransactionEventSender,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             handle,
             event_stream_sender,
@@ -227,8 +226,7 @@ impl TransactionServiceHandle {
         amount: MicroTari,
         fee_per_gram: MicroTari,
         message: String,
-    ) -> Result<TxId, TransactionServiceError>
-    {
+    ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::SendTransaction(
@@ -250,8 +248,7 @@ impl TransactionServiceHandle {
         amount: MicroTari,
         fee_per_gram: MicroTari,
         message: String,
-    ) -> Result<TxId, TransactionServiceError>
-    {
+    ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::SendOneSidedTransaction(
@@ -359,8 +356,7 @@ impl TransactionServiceHandle {
     pub async fn get_completed_transaction(
         &mut self,
         tx_id: TxId,
-    ) -> Result<CompletedTransaction, TransactionServiceError>
-    {
+    ) -> Result<CompletedTransaction, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetCompletedTransaction(tx_id))
@@ -374,8 +370,7 @@ impl TransactionServiceHandle {
     pub async fn get_any_transaction(
         &mut self,
         tx_id: TxId,
-    ) -> Result<Option<WalletTransaction>, TransactionServiceError>
-    {
+    ) -> Result<Option<WalletTransaction>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetAnyTransaction(tx_id))
@@ -389,8 +384,7 @@ impl TransactionServiceHandle {
     pub async fn set_base_node_public_key(
         &mut self,
         public_key: CommsPublicKey,
-    ) -> Result<(), TransactionServiceError>
-    {
+    ) -> Result<(), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::SetBaseNodePublicKey(public_key))
@@ -407,8 +401,7 @@ impl TransactionServiceHandle {
         source_public_key: CommsPublicKey,
         message: String,
         maturity: Option<u64>,
-    ) -> Result<TxId, TransactionServiceError>
-    {
+    ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::ImportUtxo(
@@ -431,8 +424,7 @@ impl TransactionServiceHandle {
         fee: MicroTari,
         amount: MicroTari,
         message: String,
-    ) -> Result<(), TransactionServiceError>
-    {
+    ) -> Result<(), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::SubmitCoinSplitTransaction(
@@ -508,8 +500,7 @@ impl TransactionServiceHandle {
         rewards: MicroTari,
         fees: MicroTari,
         block_height: u64,
-    ) -> Result<Transaction, TransactionServiceError>
-    {
+    ) -> Result<Transaction, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GenerateCoinbaseTransaction(
@@ -549,8 +540,7 @@ impl TransactionServiceHandle {
     pub async fn validate_transactions(
         &mut self,
         retry_strategy: ValidationRetryStrategy,
-    ) -> Result<u64, TransactionServiceError>
-    {
+    ) -> Result<u64, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::ValidateTransactions(retry_strategy))
@@ -565,8 +555,7 @@ impl TransactionServiceHandle {
     pub async fn test_complete_pending_transaction(
         &mut self,
         completed_tx: CompletedTransaction,
-    ) -> Result<(), TransactionServiceError>
-    {
+    ) -> Result<(), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::CompletePendingOutboundTransaction(
@@ -586,8 +575,7 @@ impl TransactionServiceHandle {
         amount: MicroTari,
         source_public_key: CommsPublicKey,
         handle: &Handle,
-    ) -> Result<(), TransactionServiceError>
-    {
+    ) -> Result<(), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::AcceptTestTransaction((
