@@ -402,8 +402,8 @@ impl ChainBlock {
         }
 
         Some(Self {
-            block,
             accumulated_data,
+            block,
         })
     }
 

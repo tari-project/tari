@@ -45,7 +45,7 @@ use tari_core::{
     consensus::Network,
     transactions::{
         tari_amount::{uT, MicroTari},
-        transaction::{OutputFeatures, UnblindedOutput},
+        transaction::UnblindedOutput,
         types::{CryptoFactories, PrivateKey, PublicKey},
     },
 };
@@ -641,11 +641,10 @@ async fn test_import_utxo() {
         .import_utxo(
             utxo.value,
             &utxo.spending_key,
-            features,
             script,
             input,
             base_node_identity.public_key(),
-            OutputFeatures::default(),
+            features,
             "Testing".to_string(),
         )
         .await

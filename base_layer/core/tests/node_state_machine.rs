@@ -42,7 +42,6 @@ use tari_core::{
         },
         SyncValidators,
     },
-    chain_storage::BlockchainDatabaseConfig,
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     mempool::MempoolServiceConfig,
     proof_of_work::randomx_factory::RandomXFactory,
@@ -76,7 +75,6 @@ fn test_listening_lagging() {
         .build();
     let (alice_node, bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
-        BlockchainDatabaseConfig::default(),
         BaseNodeServiceConfig::default(),
         MempoolServiceConfig::default(),
         LivenessConfig {

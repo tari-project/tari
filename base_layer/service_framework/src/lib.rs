@@ -72,6 +72,7 @@
 
 // Used to eliminate the need for boxing futures in many cases.
 // Tracking issue: https://github.com/rust-lang/rust/issues/63063
+#![allow(incomplete_features)]
 #![feature(type_alias_impl_trait)]
 #![feature(min_type_alias_impl_trait)]
 

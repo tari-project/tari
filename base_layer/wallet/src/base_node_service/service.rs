@@ -159,8 +159,10 @@ where T: WalletBackend + 'static
     }
 
     async fn set_base_node_peer(&self, peer: Peer) {
-        let mut new_state = BaseNodeState::default();
-        new_state.base_node_peer = Some(peer.clone());
+        let new_state = BaseNodeState {
+            base_node_peer: Some(peer.clone()),
+            ..Default::default()
+        };
 
         {
             let mut lock = self.state.write().await;

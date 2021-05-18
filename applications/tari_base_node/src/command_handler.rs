@@ -228,7 +228,6 @@ impl CommandHandler {
                 Err(err) => {
                     println!("Failed to retrieve blocks: {}", err);
                     warn!(target: LOG_TARGET, "{}", err);
-                    return;
                 },
             };
         });

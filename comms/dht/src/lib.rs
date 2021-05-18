@@ -112,6 +112,7 @@
 
 #![recursion_limit = "256"]
 // Details: https://doc.rust-lang.org/beta/unstable-book/language-features/type-alias-impl-trait.html
+#![allow(incomplete_features)]
 #![feature(type_alias_impl_trait)]
 #![feature(min_type_alias_impl_trait)]
 #[macro_use]

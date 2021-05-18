@@ -104,7 +104,7 @@ where
 
     /// Returns the number of leaf nodes in the MMR.
     pub fn get_leaf_count(&self) -> Result<usize, MerkleMountainRangeError> {
-        let nleaves = checked_n_leaves(self.len()?).ok_or_else(|| MerkleMountainRangeError::MaximumSizeReached)?;
+        let nleaves = checked_n_leaves(self.len()?).ok_or(MerkleMountainRangeError::MaximumSizeReached)?;
         Ok(nleaves)
     }
 
