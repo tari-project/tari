@@ -406,9 +406,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         for header in headers {
             debug!(
                 target: LOG_TARGET,
-                "Validating header #{} (Pow: {})",
+                "Validating header #{} (Pow: {}) with hash: ({})",
                 header.height,
                 header.pow_algo(),
+                header.hash().to_hex(),
             );
             self.header_validator.validate(header)?;
         }
@@ -510,9 +511,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             let header = BlockHeader::try_from(header?).map_err(BlockHeaderSyncError::ReceivedInvalidHeader)?;
             debug!(
                 target: LOG_TARGET,
-                "Validating header: #{} (PoW = {})",
+                "Validating header #{} (Pow: {}) with hash: ({})",
                 header.height,
-                header.pow_algo()
+                header.pow_algo(),
+                header.hash().to_hex(),
             );
             let existing_header = self.db.fetch_header_by_block_hash(header.hash()).await?;
             // TODO: Due to a bug in a previous version of base node sync RPC, the duplicate headers can be sent. We
