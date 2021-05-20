@@ -56,13 +56,15 @@ impl ReorgPoolStorage {
     /// the ReorgPoolStorage and will be discarded once the Time-to-live threshold has been reached.
     pub fn insert(&mut self, tx: Arc<Transaction>) {
         let tx_key = tx.body.kernels()[0].excess_sig.clone();
-        trace!(
+        let _ = self
+            .txs_by_signature
+            .insert(tx_key.clone(), tx.clone(), self.config.tx_ttl);
+        debug!(
             target: LOG_TARGET,
-            "Inserting tx into reorg pool: {}",
+            "Inserted transaction with signature {} into reorg pool:",
             tx_key.get_signature().to_hex()
         );
-        trace!(target: LOG_TARGET, "Transaction inserted: {}", tx);
-        let _ = self.txs_by_signature.insert(tx_key, tx, self.config.tx_ttl);
+        trace!(target: LOG_TARGET, "{}", tx);
     }
 
     /// Insert a set of new transactions into the ReorgPoolStorage
@@ -91,8 +93,12 @@ impl ReorgPoolStorage {
         }
 
         for tx_key in &removed_tx_keys {
-            trace!(target: LOG_TARGET, "Removed double spends: {:?}", tx_key);
             self.txs_by_signature.remove(&tx_key);
+            trace!(
+                target: LOG_TARGET,
+                "Removed double spend tx from reorg pool: {}",
+                tx_key.get_signature().to_hex()
+            );
         }
     }
 
@@ -111,7 +117,7 @@ impl ReorgPoolStorage {
         for block in &removed_blocks {
             for kernel in block.body.kernels() {
                 if let Some(removed_tx) = self.txs_by_signature.remove(&kernel.excess_sig) {
-                    trace!(target: LOG_TARGET, "Removing tx from reorg pool: {:?}", removed_tx);
+                    trace!(target: LOG_TARGET, "Removed tx from reorg pool: {:?}", removed_tx);
                     removed_txs.push(removed_tx);
                 }
             }

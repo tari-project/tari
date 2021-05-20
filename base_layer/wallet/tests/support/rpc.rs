@@ -245,15 +245,20 @@ impl BaseNodeWalletRpcMockState {
         timeout: Duration,
     ) -> Result<Vec<Transaction>, String> {
         let now = Instant::now();
+        let mut count = 0usize;
         while now.elapsed() < timeout {
             let mut lock = acquire_lock!(self.submit_transaction_calls);
+            count = (*lock).len();
             if (*lock).len() >= num_calls {
                 return Ok((*lock).drain(..num_calls).collect());
             }
             drop(lock);
             delay_for(Duration::from_millis(100)).await;
         }
-        Err("Did not receive enough calls within the timeout period".to_string())
+        Err(format!(
+            "Did not receive enough calls within the timeout period, received {}, expected {}.",
+            count, num_calls
+        ))
     }
 
     pub async fn wait_pop_fetch_utxos_calls(
