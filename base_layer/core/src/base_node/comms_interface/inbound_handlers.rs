@@ -377,6 +377,7 @@ where T: BlockchainBackend + 'static
                     target: LOG_TARGET,
                     "New block template requested at height {}", block_template.header.height,
                 );
+                trace!(target: LOG_TARGET, "{}", block_template);
                 Ok(NodeCommsResponse::NewBlockTemplate(block_template))
             },
             NodeCommsRequest::GetNewBlock(block_template) => {

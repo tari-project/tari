@@ -59,8 +59,8 @@ class MergeMiningProxyProcess {
         []
       );
       const extraEnvs = {
-        TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_SUBMIT_TO_ORIGIN: this
-          .submitOrigin,
+        TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_SUBMIT_TO_ORIGIN:
+          this.submitOrigin,
       };
       const completeEnvs = { ...envs, ...extraEnvs };
       const ps = spawn(cmd, args, {

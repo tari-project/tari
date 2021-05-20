@@ -23,7 +23,7 @@ Feature: Wallet Transfer
     Then all nodes are at height 20
     Then all wallets detect all transactions as Mined_Confirmed
 
-  @broken @long-running
+  @long-running
   Scenario: As a wallet I want to submit transfers to myself
     Given I have a seed node NODE
     # Add a 2nd node otherwise initial sync will not succeed

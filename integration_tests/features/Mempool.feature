@@ -1,4 +1,4 @@
-@propagation
+@mempool
 Feature: Mempool
 
  
@@ -56,7 +56,8 @@ Feature: Mempool
     Then SENDER has TX3 in MINED state
 
 
-Scenario: Double spend
+  @critical @broken
+  Scenario: Double spend
     Given I have 1 seed nodes
     And I have a base node SENDER connected to all seed nodes
     When I mine a block on SENDER with coinbase CB1
