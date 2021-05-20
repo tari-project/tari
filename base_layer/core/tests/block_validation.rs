@@ -22,7 +22,7 @@
 
 use crate::helpers::block_builders::chain_block_with_new_coinbase;
 use monero::{blockdata::block::Block as MoneroBlock, consensus::deserialize};
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 use tari_core::{
     blocks::{Block, BlockHeaderValidationError},
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
@@ -32,18 +32,14 @@ use tari_core::{
         ConsensusManagerBuilder,
         Network,
     },
-    proof_of_work::{
-        monero_rx,
-        monero_rx::MoneroData,
-        randomx_factory::{RandomXConfig, RandomXFactory},
-        PowAlgorithm,
-    },
+    proof_of_work::{monero_rx, monero_rx::MoneroData, PowAlgorithm},
     test_helpers::blockchain::{create_store_with_consensus_and_validators, create_test_db},
     transactions::types::CryptoFactories,
     validation::{
         block_validators::{BodyOnlyValidator, OrphanBlockValidator},
         header_validator::HeaderValidator,
         mocks::MockValidator,
+        DifficultyCalculator,
         ValidationError,
     },
 };
@@ -56,13 +52,20 @@ fn test_genesis_block() {
     let network = Network::Stibbons;
     let rules = ConsensusManagerBuilder::new(network).build();
     let backend = create_test_db();
-    let rx = RandomXFactory::new(RandomXConfig::default(), 1);
     let validators = Validators::new(
         BodyOnlyValidator::default(),
-        HeaderValidator::new(rules.clone(), rx),
+        HeaderValidator::new(rules.clone()),
         OrphanBlockValidator::new(rules.clone(), factories),
     );
-    let db = BlockchainDatabase::new(backend, &rules, validators, BlockchainDatabaseConfig::default(), false).unwrap();
+    let db = BlockchainDatabase::new(
+        backend,
+        rules.clone(),
+        validators,
+        BlockchainDatabaseConfig::default(),
+        DifficultyCalculator::new(rules.clone(), Default::default()),
+        false,
+    )
+    .unwrap();
     let block = rules.get_genesis_block();
     match db.add_block(block.to_arc_block()).unwrap_err() {
         ChainStorageError::ValidationError { source } => match source {
@@ -81,29 +84,28 @@ fn test_monero_blocks() {
 
     let factories = CryptoFactories::default();
     let network = Network::Stibbons;
-    let mut algos = HashMap::new();
-    algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
-        max_target_time: 1800,
-        min_difficulty: 1.into(),
-        max_difficulty: 1.into(),
-        target_time: 300,
-    });
-    algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
-        max_target_time: 1200,
-        min_difficulty: 1.into(),
-        max_difficulty: 1.into(),
-        target_time: 200,
-    });
     let cc = ConsensusConstantsBuilder::new(network)
         .with_max_randomx_seed_height(1)
-        .with_proof_of_work(algos)
+        .clear_proof_of_work()
+        .add_proof_of_work(PowAlgorithm::Sha3, PowAlgorithmConstants {
+            max_target_time: 1800,
+            min_difficulty: 1.into(),
+            max_difficulty: 1.into(),
+            target_time: 300,
+        })
+        .add_proof_of_work(PowAlgorithm::Monero, PowAlgorithmConstants {
+            max_target_time: 1200,
+            min_difficulty: 1.into(),
+            max_difficulty: 1.into(),
+            target_time: 200,
+        })
         .build();
     let cm = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(cc)
         .build();
-    let header_validator = HeaderValidator::new(cm.clone(), RandomXFactory::default());
+    let header_validator = HeaderValidator::new(cm.clone());
     let db = create_store_with_consensus_and_validators(
-        &cm,
+        cm.clone(),
         Validators::new(MockValidator::new(true), header_validator, MockValidator::new(true)),
     );
     let block_0 = db.fetch_block(0).unwrap().try_into_chain_block().unwrap();

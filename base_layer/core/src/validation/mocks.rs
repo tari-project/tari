@@ -28,6 +28,7 @@ use crate::{
     validation::{
         error::ValidationError,
         CandidateBlockBodyValidation,
+        DifficultyCalculator,
         FinalHorizonStateValidation,
         HeaderValidation,
         MempoolTransactionValidation,
@@ -102,14 +103,19 @@ impl OrphanValidation for MockValidator {
 }
 
 impl<B: BlockchainBackend> HeaderValidation<B> for MockValidator {
-    fn validate(&self, _db: &B, header: &BlockHeader) -> Result<AchievedTargetDifficulty, ValidationError> {
+    fn validate(
+        &self,
+        _: &B,
+        header: &BlockHeader,
+        _: &DifficultyCalculator,
+    ) -> Result<AchievedTargetDifficulty, ValidationError>
+    {
         if self.is_valid.load(Ordering::SeqCst) {
             let achieved = sha3_difficulty(header);
 
             let achieved_target =
                 AchievedTargetDifficulty::try_construct(PowAlgorithm::Sha3, achieved - Difficulty::from(1), achieved)
                     .unwrap();
-
             Ok(achieved_target)
         } else {
             Err(ValidationError::custom_error(

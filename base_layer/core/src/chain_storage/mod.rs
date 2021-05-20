@@ -47,7 +47,7 @@ pub use blockchain_database::{
     calculate_mmr_roots,
     fetch_header,
     fetch_headers,
-    fetch_target_difficulty,
+    fetch_target_difficulty_for_next_block,
     BlockchainDatabase,
     BlockchainDatabaseConfig,
     Validators,

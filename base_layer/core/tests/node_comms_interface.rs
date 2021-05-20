@@ -392,7 +392,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         pruning_interval: 1,
         ..Default::default()
     };
-    let store = create_store_with_consensus_and_validators_and_config(&consensus_manager, validators, config);
+    let store = create_store_with_consensus_and_validators_and_config(consensus_manager.clone(), validators, config);
     let mempool_validator = TxInputAndMaturityValidator::new(store.clone());
     let mempool = Mempool::new(MempoolConfig::default(), Arc::new(mempool_validator));
     let (block_event_sender, _) = broadcast::channel(50);

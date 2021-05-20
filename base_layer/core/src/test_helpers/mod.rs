@@ -35,10 +35,8 @@ use crate::{
     chain_storage::{BlockHeaderAccumulatedData, ChainHeader},
     consensus::{ConsensusManagerBuilder, Network},
     crypto::tari_utilities::Hashable,
-    proof_of_work::{sha3_difficulty, Difficulty},
-    test_helpers::blockchain::TempDatabase,
+    proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{types::CryptoFactories, CoinbaseBuilder},
-    validation::{mocks::MockValidator, HeaderValidation},
 };
 use rand::{distributions::Alphanumeric, Rng};
 use std::{iter, path::Path, sync::Arc};
@@ -106,14 +104,8 @@ pub fn create_peer_manager<P: AsRef<Path>>(data_path: P) -> Arc<PeerManager> {
     Arc::new(PeerManager::new(LMDBWrapper::new(Arc::new(peer_database)), None).unwrap())
 }
 
-pub fn create_chain_header(
-    db: &TempDatabase,
-    header: BlockHeader,
-    prev_accum: &BlockHeaderAccumulatedData,
-) -> ChainHeader
-{
-    let validator = MockValidator::new(true);
-    let achieved_target_diff = validator.validate(db, &header).unwrap();
+pub fn create_chain_header(header: BlockHeader, prev_accum: &BlockHeaderAccumulatedData) -> ChainHeader {
+    let achieved_target_diff = AchievedTargetDifficulty::try_construct(header.pow_algo(), 1.into(), 1.into()).unwrap();
     let accumulated_data = BlockHeaderAccumulatedData::builder(prev_accum)
         .with_hash(header.hash())
         .with_achieved_target_difficulty(achieved_target_diff)

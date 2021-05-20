@@ -21,10 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::chain_storage::ChainBlock;
-use std::sync::Arc;
-use strum_macros::Display;
+use std::{fmt, sync::Arc};
+use tari_crypto::tari_utilities::hex::Hex;
 
-#[derive(Clone, Debug, PartialEq, Display)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum BlockAddResult {
     Ok(Arc<ChainBlock>),
     BlockExists,
@@ -94,6 +94,34 @@ impl BlockAddResult {
         match self {
             Self::ChainReorg { added: _, removed } => removed.clone(),
             _ => vec![],
+        }
+    }
+}
+
+impl fmt::Display for BlockAddResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BlockAddResult::Ok(block) => {
+                write!(f, "Block {} at height {} added", block.hash().to_hex(), block.height())
+            },
+            BlockAddResult::BlockExists => write!(f, "Block already exists"),
+            BlockAddResult::OrphanBlock => write!(f, "Block added as orphan"),
+            BlockAddResult::ChainReorg { added, removed } => write!(
+                f,
+                "Reorg from {} ({}) to {}, and {} blocks added  ending with {} ({})",
+                removed.first().map(|r| r.height()).unwrap_or(0),
+                removed
+                    .first()
+                    .map(|r| r.hash().to_hex())
+                    .unwrap_or_else(|| "None".to_string()),
+                removed.last().map(|r| r.height()).unwrap_or(0),
+                added.len(),
+                added.last().map(|a| a.height()).unwrap_or(0),
+                added
+                    .last()
+                    .map(|a| a.hash().to_hex())
+                    .unwrap_or_else(|| "None".to_string())
+            ),
         }
     }
 }
