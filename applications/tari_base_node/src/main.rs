@@ -116,7 +116,7 @@ use tari_app_utilities::{
     utilities::{setup_runtime, ExitCodes},
 };
 use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
-use tari_comms::peer_manager::PeerFeatures;
+use tari_comms::{peer_manager::PeerFeatures, tor::HiddenServiceControllerError};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{runtime, task, time};
 use tonic::transport::Server;
@@ -198,6 +198,23 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
     .await
     .map_err(|err| {
         error!(target: LOG_TARGET, "{}", err);
+        for boxed_error in err.chain() {
+            if let Some(HiddenServiceControllerError::TorControlPortOffline) =
+                boxed_error.downcast_ref::<HiddenServiceControllerError>()
+            {
+                println!("Unable to connect to the Tor control port.");
+                println!(
+                    "Please check that you have the Tor proxy running and that access to the Tor control port is \
+                     turned on.",
+                );
+                println!("If you are unsure of what to do, use the following command to start the Tor proxy:");
+                println!(
+                    "tor --allow-missing-torrc --ignore-missing-torrc --clientonly 1 --socksport 9050 --controlport \
+                     127.0.0.1:9051 --log \"notice stdout\" --clientuseipv6 1",
+                );
+                return ExitCodes::TorOffline;
+            }
+        }
         ExitCodes::UnknownError
     })?;
 
