@@ -99,6 +99,7 @@ First you'll need to make sure you have a full development environment set up:
 ```
 brew update
 brew install cmake openssl tor coreutils
+brew install openssh --with-brewed-openssl --with-keychain-support
 brew install --cask powershell
 ```
 
@@ -106,7 +107,7 @@ brew install --cask powershell
 
 ```
 sudo apt-get update
-sudo apt-get -y install openssl libssl-dev pkg-config libsqlite3-dev clang git cmake libc++-dev libc++abi-dev libprotobuf-dev protobuf-compiler libncurses5-dev libncursesw5-dev
+sudo apt-get -y install openssl ssh libssl-dev pkg-config libsqlite3-dev clang git cmake libc++-dev libc++abi-dev libprotobuf-dev protobuf-compiler libncurses5-dev libncursesw5-dev
 sudo apt-get install -y wget apt-transport-https
 sudo wget -q "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb"
 sudo dpkg -i packages-microsoft-prod.deb
@@ -120,8 +121,9 @@ sudo apt-get install -y powershell
 First you'll need to make sure you have a full development environment set up:
 
 - git
-  
-- https://git-scm.com/downloads
+  - https://git-scm.com/downloads
+  - Ensure that git is aware of which `ssh` to use; see `OpenSSH:` further down on how to set the `GIT_SSH` environment 
+    variable
   
 - LLVM
   - https://releases.llvm.org/
@@ -158,6 +160,7 @@ https://visualstudio.microsoft.com/thank-you-downloading-visual-studio/?sku=Buil
     ```
     setx SQLITE3_LIB_DIR "%USERPROFILE%\.sqlite"
     ```
+    
 - OpenSSL:
   - Download full version of the 64bit Precompiled Binaries for Windows for
     [OpenSSL](https://slproweb.com/products/Win32OpenSSL.html)
@@ -167,6 +170,37 @@ https://visualstudio.microsoft.com/thank-you-downloading-visual-studio/?sku=Buil
     ```
     where libcrypto-1_1-x64.dll
     where libssl-1_1-x64.dll
+    ```
+    
+- OpenSSH:
+  - Version 8.1 or later is required. To verify run `ssh -V` in a command console:
+    ```
+    C:\>ssh -V
+        OpenSSH_for_Windows_8.1p1, LibreSSL 2.9.2
+    ```
+  - To install the latest release, download `OpenSSH-Win64.zip` or `OpenSSH-Win32.zip` from
+    https://github.com/PowerShell/Win32-OpenSSH/releases
+  - Extract zip contents to an installation location of your choice:
+    - `C:\Windows\System32\OpenSSH` may be reused if already installed as part of the 
+      `Settings -> Apps -> Optional features`
+      - Change ownership of `C:\Windows\System32\OpenSSH` and contents to local administrator user
+      - Remove all files from `C:\Windows\System32\OpenSSH`
+      - Copy all install files to `C:\Windows\System32\OpenSSH`
+    - Any other location will do, for example `C:\Program Files\OpenSSH` 
+  - Open Powershell as Administrator, then go to the installation location:
+    - Run:        `FixHostFilePermissions.ps1`
+    - Run:        `FixUserFilePermissions.ps1`
+    - Run:        `install-sshd.ps1`
+    - Execute:    `Get-Service ssh-agent | Set-Service -StartupType Automatic`
+    - Verify:     `Get-Command ssh`
+    - Start:      `ssh-agent`
+    - Link git:   `[Environment]::SetEnvironmentVariable("GIT_SSH", "$((Get-Command ssh).Source)", [System.EnvironmentVariableTarget]::User)`
+  - Ensure the installation location is in your path. If you want more than one version on your system, ensure
+    Version 8.1 or later is located first. To test, run `where ssh` in a command console:
+    ```
+    C:\>where ssh
+        C:\Program Files\OpenSSH
+        C:\Windows\System32\OpenSSH\ssh.exe
     ```
 
 - Tor
@@ -193,6 +227,12 @@ sure that `cargo` and `rustc` has been added to your path:
 
     cargo --version
     rustc --version
+
+### Ensure you have an SSH puplic/private key pair uploaded to GitHub
+
+See https://docs.github.com/en/github/authenticating-to-github/connecting-to-github-with-ssh for details. Make sure to 
+[test your connection](https://docs.github.com/en/github/authenticating-to-github/connecting-to-github-with-ssh/testing-your-ssh-connection) 
+with `ssh -T git@github.com`. 
 
 ### Checkout the source code
 
