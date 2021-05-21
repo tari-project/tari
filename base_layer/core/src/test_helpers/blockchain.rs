@@ -55,6 +55,7 @@ use crate::{
     validation::{
         block_validators::{BodyOnlyValidator, OrphanBlockValidator},
         mocks::MockValidator,
+        DifficultyCalculator,
     },
 };
 use croaring::Bitmap;
@@ -82,28 +83,36 @@ pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {
         MockValidator::new(true),
         MockValidator::new(true),
     );
-    create_store_with_consensus_and_validators(&consensus_manager, validators)
+    create_store_with_consensus_and_validators(consensus_manager, validators)
 }
 
 pub fn create_store_with_consensus_and_validators(
-    rules: &ConsensusManager,
+    rules: ConsensusManager,
     validators: Validators<TempDatabase>,
 ) -> BlockchainDatabase<TempDatabase>
 {
-    create_store_with_consensus_and_validators_and_config(&rules, validators, BlockchainDatabaseConfig::default())
+    create_store_with_consensus_and_validators_and_config(rules, validators, BlockchainDatabaseConfig::default())
 }
 
 pub fn create_store_with_consensus_and_validators_and_config(
-    rules: &ConsensusManager,
+    rules: ConsensusManager,
     validators: Validators<TempDatabase>,
     config: BlockchainDatabaseConfig,
 ) -> BlockchainDatabase<TempDatabase>
 {
     let backend = create_test_db();
-    BlockchainDatabase::new(backend, &rules, validators, config, false).unwrap()
+    BlockchainDatabase::new(
+        backend,
+        rules.clone(),
+        validators,
+        config,
+        DifficultyCalculator::new(rules, Default::default()),
+        false,
+    )
+    .unwrap()
 }
 
-pub fn create_store_with_consensus(rules: &ConsensusManager) -> BlockchainDatabase<TempDatabase> {
+pub fn create_store_with_consensus(rules: ConsensusManager) -> BlockchainDatabase<TempDatabase> {
     let factories = CryptoFactories::default();
     let validators = Validators::new(
         BodyOnlyValidator::default(),
@@ -115,7 +124,7 @@ pub fn create_store_with_consensus(rules: &ConsensusManager) -> BlockchainDataba
 pub fn create_test_blockchain_db() -> BlockchainDatabase<TempDatabase> {
     let network = Network::Stibbons;
     let rules = ConsensusManagerBuilder::new(network).build();
-    create_store_with_consensus(&rules)
+    create_store_with_consensus(rules)
 }
 
 pub fn create_test_db() -> TempDatabase {
@@ -181,7 +190,7 @@ impl BlockchainBackend for TempDatabase {
         self.db.fetch_header_accumulated_data(hash)
     }
 
-    fn fetch_chain_header_in_all_chains(&self, hash: &HashOutput) -> Result<Option<ChainHeader>, ChainStorageError> {
+    fn fetch_chain_header_in_all_chains(&self, hash: &HashOutput) -> Result<ChainHeader, ChainStorageError> {
         self.db.fetch_chain_header_in_all_chains(hash)
     }
 

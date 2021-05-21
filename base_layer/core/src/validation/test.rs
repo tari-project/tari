@@ -30,12 +30,13 @@ use crate::{
 #[test]
 fn header_iter_empty_and_invalid_height() {
     let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
-    let db = create_store_with_consensus(&consensus_manager);
+    let genesis = consensus_manager.get_genesis_block();
+    let db = create_store_with_consensus(consensus_manager);
 
     let iter = HeaderIter::new(&db, 0, 10);
     let headers = iter.map(Result::unwrap).collect::<Vec<_>>();
     assert_eq!(headers.len(), 1);
-    let genesis = consensus_manager.get_genesis_block();
+
     assert_eq!(genesis.header(), &headers[0]);
 
     // Invalid header height
@@ -47,7 +48,7 @@ fn header_iter_empty_and_invalid_height() {
 #[test]
 fn header_iter_fetch_in_chunks() {
     let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
-    let db = create_store_with_consensus(&consensus_manager);
+    let db = create_store_with_consensus(consensus_manager.clone());
     let headers = (1..=15).fold(vec![db.fetch_chain_header(0).unwrap()], |mut acc, i| {
         let prev = acc.last().unwrap();
         let mut header = BlockHeader::new(0);
@@ -57,7 +58,7 @@ fn header_iter_fetch_in_chunks() {
         header.kernel_mmr_size = 2 + i;
         header.output_mmr_size = 4001 + i;
 
-        let chain_header = create_chain_header(&*db.db_read_access().unwrap(), header, &prev.accumulated_data());
+        let chain_header = create_chain_header(header, &prev.accumulated_data());
         acc.push(chain_header);
         acc
     });

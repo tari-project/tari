@@ -11,14 +11,14 @@ use crate::proof_of_work::{
     error::DifficultyAdjustmentError,
 };
 use log::*;
-use std::cmp;
+use std::{cmp, collections::VecDeque};
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 pub const LOG_TARGET: &str = "c::pow::lwma_diff";
 
 #[derive(Debug, Clone)]
 pub struct LinearWeightedMovingAverage {
-    target_difficulties: Vec<(EpochTime, Difficulty)>,
+    target_difficulties: VecDeque<(EpochTime, Difficulty)>,
     block_window: usize,
     target_time: u64,
     max_block_time: u64,
@@ -27,7 +27,7 @@ pub struct LinearWeightedMovingAverage {
 impl LinearWeightedMovingAverage {
     pub fn new(block_window: usize, target_time: u64, max_block_time: u64) -> Self {
         Self {
-            target_difficulties: Vec::with_capacity(block_window + 1),
+            target_difficulties: VecDeque::with_capacity(block_window + 1),
             block_window,
             target_time,
             max_block_time,
@@ -100,14 +100,8 @@ impl LinearWeightedMovingAverage {
         Some(target.into())
     }
 
-    #[inline]
-    fn capacity(&self) -> usize {
-        self.target_difficulties.capacity()
-    }
-
-    #[inline]
-    pub fn is_at_capacity(&self) -> bool {
-        self.num_samples() == self.capacity()
+    pub fn is_full(&self) -> bool {
+        self.num_samples() == self.block_window() + 1
     }
 
     #[inline]
@@ -121,25 +115,17 @@ impl LinearWeightedMovingAverage {
     }
 
     pub fn add_front(&mut self, timestamp: EpochTime, target_difficulty: Difficulty) {
-        debug_assert!(
-            self.num_samples() <= self.block_window() + 1,
-            "LinearWeightedMovingAverage: len exceeded block_window"
-        );
-        if self.is_at_capacity() {
-            self.target_difficulties.pop();
+        if self.is_full() {
+            self.target_difficulties.pop_back();
         }
-        self.target_difficulties.insert(0, (timestamp, target_difficulty));
+        self.target_difficulties.push_front((timestamp, target_difficulty));
     }
 
     pub fn add_back(&mut self, timestamp: EpochTime, target_difficulty: Difficulty) {
-        debug_assert!(
-            self.num_samples() <= self.block_window() + 1,
-            "LinearWeightedMovingAverage: len exceeded block_window"
-        );
-        if self.is_at_capacity() {
-            self.target_difficulties.remove(0);
+        if self.is_full() {
+            self.target_difficulties.pop_front();
         }
-        self.target_difficulties.push((timestamp, target_difficulty));
+        self.target_difficulties.push_back((timestamp, target_difficulty));
     }
 }
 
@@ -165,23 +151,23 @@ mod test {
     }
 
     #[test]
-    fn lwma_is_at_capacity() {
+    fn lwma_is_full() {
         // This is important to check because using a VecDeque can cause bugs unless the following is accounted for
         // let v = VecDeq::with_capacity(10);
         // assert_eq!(v.capacity(), 11);
         // A Vec was chosen because it ended up being simpler to use
         let dif = LinearWeightedMovingAverage::new(0, 120, 120 * 6);
-        assert_eq!(dif.capacity(), 1);
+        assert_eq!(dif.is_full(), false);
         let mut dif = LinearWeightedMovingAverage::new(1, 120, 120 * 6);
         dif.add_front(60.into(), 100.into());
-        assert_eq!(dif.capacity(), 2);
+        assert_eq!(dif.is_full(), false);
         assert_eq!(dif.num_samples(), 1);
         dif.add_front(60.into(), 100.into());
         assert_eq!(dif.num_samples(), 2);
-        assert_eq!(dif.capacity(), 2);
+        assert_eq!(dif.is_full(), true);
         dif.add_front(60.into(), 100.into());
         assert_eq!(dif.num_samples(), 2);
-        assert_eq!(dif.capacity(), 2);
+        assert_eq!(dif.is_full(), true);
     }
 
     #[test]

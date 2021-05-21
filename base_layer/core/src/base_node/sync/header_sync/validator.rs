@@ -83,7 +83,10 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             .await?
             .ok_or_else(|| BlockHeaderSyncError::StartHashNotFound(start_hash.to_hex()))?;
         let timestamps = self.db.fetch_block_timestamps(start_hash.clone()).await?;
-        let target_difficulties = self.db.fetch_target_difficulties(start_hash.clone()).await?;
+        let target_difficulties = self
+            .db
+            .fetch_target_difficulties_for_next_block(start_hash.clone())
+            .await?;
         let previous_accum = self
             .db
             .fetch_header_accumulated_data(start_hash.clone())
