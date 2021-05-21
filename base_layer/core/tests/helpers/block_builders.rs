@@ -35,7 +35,7 @@ use tari_core::{
         ChainStorageError,
     },
     consensus::{emission::Emission, ConsensusConstants, ConsensusManager, ConsensusManagerBuilder, Network},
-    proof_of_work::{sha3_difficulty, Difficulty},
+    proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
         helpers::{create_random_signature_from_s_key, create_signature, create_utxo, spend_utxos, TransactionSchema},
         tari_amount::MicroTari,
@@ -50,7 +50,6 @@ use tari_core::{
         },
         types::{Commitment, CryptoFactories, HashDigest, HashOutput, PublicKey},
     },
-    validation::{mocks::MockValidator, HeaderValidation},
 };
 use tari_crypto::{
     inputs,
@@ -540,13 +539,13 @@ pub fn construct_chained_blocks<B: BlockchainBackend>(
 }
 
 #[allow(dead_code)]
-pub fn create_chain_header<B: BlockchainBackend>(
-    db: &B,
-    header: BlockHeader,
-    prev_accum: &BlockHeaderAccumulatedData,
-) -> ChainHeader {
-    let validator = MockValidator::new(true);
-    let achieved_target_diff = validator.validate(db, &header).unwrap();
+pub fn create_chain_header(header: BlockHeader, prev_accum: &BlockHeaderAccumulatedData) -> ChainHeader {
+    let achieved_target_diff = AchievedTargetDifficulty::try_construct(
+        header.pow_algo(),
+        prev_accum.target_difficulty,
+        prev_accum.achieved_difficulty,
+    )
+    .unwrap();
     let accumulated_data = BlockHeaderAccumulatedData::builder(prev_accum)
         .with_hash(header.hash())
         .with_achieved_target_difficulty(achieved_target_diff)

@@ -936,7 +936,10 @@ impl CommandHandler {
                     continue;
                 }
 
-                let target_diff = try_or_print!(db.fetch_target_difficulties(prev_header.hash().clone()).await);
+                let target_diff = try_or_print!(
+                    db.fetch_target_difficulties_for_next_block(prev_header.hash().clone())
+                        .await
+                );
                 let pow_algo = header.header().pow_algo();
 
                 let min = consensus_rules.consensus_constants(height).min_pow_difficulty(pow_algo);

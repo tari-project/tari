@@ -38,6 +38,8 @@ pub enum MmProxyError {
         #[from]
         source: MergeMineError,
     },
+    #[error("Reqwest error: {0}")]
+    ReqwestError(#[from] reqwest::Error),
     #[error("Missing data:{0}")]
     MissingDataError(String),
     #[error("An IO error occurred: {0}")]

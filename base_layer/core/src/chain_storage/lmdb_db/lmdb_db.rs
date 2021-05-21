@@ -1228,13 +1228,13 @@ impl BlockchainBackend for LMDBDatabase {
         }
     }
 
-    fn fetch_chain_header_in_all_chains(&self, hash: &HashOutput) -> Result<Option<ChainHeader>, ChainStorageError> {
+    fn fetch_chain_header_in_all_chains(&self, hash: &HashOutput) -> Result<ChainHeader, ChainStorageError> {
         let txn = self.read_transaction()?;
 
         let height: Option<u64> = self.fetch_height_from_hash(&txn, hash)?;
         if let Some(h) = height {
             let chain_header = self.fetch_chain_header_by_height(h)?;
-            return Ok(Some(chain_header));
+            return Ok(chain_header);
         }
 
         let orphan_accum: Option<BlockHeaderAccumulatedData> =
@@ -1256,10 +1256,14 @@ impl BlockchainBackend for LMDBDatabase {
                     details: format!("accumulated data mismatch for orphan header {}", hash.to_hex()),
                 }
             })?;
-            return Ok(Some(chain_header));
+            return Ok(chain_header);
         }
 
-        Ok(None)
+        Err(ChainStorageError::ValueNotFound {
+            entity: "chain_header_in_all_chains".to_string(),
+            field: "hash".to_string(),
+            value: hash.to_hex(),
+        })
     }
 
     fn fetch_header_containing_kernel_mmr(&self, mmr_position: u64) -> Result<ChainHeader, ChainStorageError> {

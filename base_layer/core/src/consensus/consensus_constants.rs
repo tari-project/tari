@@ -404,8 +404,13 @@ impl ConsensusConstantsBuilder {
         }
     }
 
-    pub fn with_proof_of_work(mut self, proof_of_work: HashMap<PowAlgorithm, PowAlgorithmConstants>) -> Self {
-        self.consensus.proof_of_work = proof_of_work;
+    pub fn clear_proof_of_work(mut self) -> Self {
+        self.consensus.proof_of_work = HashMap::new();
+        self
+    }
+
+    pub fn add_proof_of_work(mut self, proof_of_work: PowAlgorithm, constants: PowAlgorithmConstants) -> Self {
+        self.consensus.proof_of_work.insert(proof_of_work, constants);
         self
     }
 

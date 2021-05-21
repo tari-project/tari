@@ -34,7 +34,7 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     mempool::{async_mempool, Mempool},
     proof_of_work::{Difficulty, PowAlgorithm},
-    transactions::transaction::TransactionKernel,
+    transactions::{transaction::TransactionKernel, types::HashOutput},
 };
 use log::*;
 use std::{
@@ -364,11 +364,13 @@ where T: BlockchainBackend + 'static
                     .map(|tx| Arc::try_unwrap(tx).unwrap_or_else(|tx| (*tx).clone()))
                     .collect();
 
+                let prev_hash = header.prev_hash.clone();
                 let height = header.height;
 
                 let block_template = NewBlockTemplate::from_block(
                     header.into_builder().with_transactions(transactions).build(),
-                    self.get_target_difficulty(request.algo, constants, height).await?,
+                    self.get_target_difficulty_for_next_block(request.algo, constants, prev_hash)
+                        .await?,
                     self.consensus_manager.get_block_reward_at(height),
                 );
                 debug!(
@@ -533,19 +535,16 @@ where T: BlockchainBackend + 'static
         }
     }
 
-    async fn get_target_difficulty(
+    async fn get_target_difficulty_for_next_block(
         &self,
         pow_algo: PowAlgorithm,
         constants: &ConsensusConstants,
-        height: u64,
+        current_block_hash: HashOutput,
     ) -> Result<Difficulty, CommsInterfaceError> {
-        trace!(
-            target: LOG_TARGET,
-            "Calculating target difficulty at height: {} for PoW: {}",
-            height,
-            pow_algo
-        );
-        let target_difficulty = self.blockchain_db.fetch_target_difficulty(pow_algo, height).await?;
+        let target_difficulty = self
+            .blockchain_db
+            .fetch_target_difficulty_for_next_block(pow_algo, current_block_hash)
+            .await?;
 
         let target = target_difficulty.calculate(
             constants.min_pow_difficulty(pow_algo),

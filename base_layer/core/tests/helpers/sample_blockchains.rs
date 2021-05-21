@@ -40,6 +40,7 @@ use tari_core::{
         types::CryptoFactories,
     },
     txn_schema,
+    validation::DifficultyCalculator,
 };
 use tari_storage::lmdb_store::LMDBConfig;
 // use crate::helpers::database::{TempDatabase, create_store_with_consensus};
@@ -152,7 +153,7 @@ pub fn create_new_blockchain(
         .build();
     // let db = create_lmdb_database(&consensus_manager);
     (
-        create_store_with_consensus(&consensus_manager),
+        create_store_with_consensus(consensus_manager.clone()),
         vec![block0],
         vec![vec![output]],
         consensus_manager,
@@ -209,6 +210,14 @@ pub fn create_new_blockchain_lmdb<P: AsRef<std::path::Path>>(
         .with_block(block0.clone())
         .build();
     let db = create_lmdb_database(path, LMDBConfig::default()).unwrap();
-    let db = BlockchainDatabase::new(db, &consensus_manager, validators, config, false).unwrap();
+    let db = BlockchainDatabase::new(
+        db,
+        consensus_manager.clone(),
+        validators,
+        config,
+        DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
+        false,
+    )
+    .unwrap();
     (db, vec![block0], vec![vec![output]], consensus_manager)
 }

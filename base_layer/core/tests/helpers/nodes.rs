@@ -193,7 +193,7 @@ impl BaseNodeBuilder {
         let consensus_manager = self
             .consensus_manager
             .unwrap_or_else(|| ConsensusManagerBuilder::new(network).build());
-        let blockchain_db = create_store_with_consensus_and_validators(&consensus_manager, validators);
+        let blockchain_db = create_store_with_consensus_and_validators(consensus_manager.clone(), validators);
         let mempool_validator = TxInputAndMaturityValidator::new(blockchain_db.clone());
         let mempool = Mempool::new(self.mempool_config.unwrap_or_default(), Arc::new(mempool_validator));
         let node_identity = self.node_identity.unwrap_or_else(|| random_node_identity());
