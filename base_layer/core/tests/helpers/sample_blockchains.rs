@@ -179,7 +179,7 @@ pub fn create_new_blockchain_with_constants(
         .build();
     // let db = create_lmdb_database(&consensus_manager);
     (
-        create_store_with_consensus(&consensus_manager),
+        create_store_with_consensus(consensus_manager.clone()),
         vec![block0],
         vec![vec![output]],
         consensus_manager,
