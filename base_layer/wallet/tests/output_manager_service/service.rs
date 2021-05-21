@@ -1249,7 +1249,7 @@ fn coin_split_with_change<T: Clone + OutputManagerBackend + 'static>(backend: T)
     let uo = runtime
         .block_on(oms.rewind_outputs(vec![coin_split_tx.body.outputs()[3].clone()], 0))
         .expect("Should be able to rewind outputs");
-    assert_eq!(uo[0].value, MicroTari::from(1000))
+    assert!(uo[0].value == MicroTari::from(1000) || uo[0].value == MicroTari::from(3950))
 }
 
 #[test]

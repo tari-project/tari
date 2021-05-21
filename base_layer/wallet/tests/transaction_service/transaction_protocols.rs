@@ -64,7 +64,7 @@ use tari_wallet::{
     transaction_service::{
         config::TransactionServiceConfig,
         error::TransactionServiceError,
-        handle::{TransactionEvent, TransactionEventSender},
+        handle::{TransactionEvent, TransactionEventReceiver, TransactionEventSender},
         protocols::{
             transaction_broadcast_protocol::TransactionBroadcastProtocol,
             transaction_validation_protocol::TransactionValidationProtocol,
@@ -100,6 +100,7 @@ pub async fn setup(
     broadcast::Sender<Duration>,
     Shutdown,
     TempDir,
+    TransactionEventReceiver,
 ) {
     let client_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
@@ -143,7 +144,8 @@ pub async fn setup(
     let outbound_mock_state = mock_outbound_service.get_state();
     task::spawn(mock_outbound_service.run());
 
-    let (ts_event_publisher, _): (TransactionEventSender, _) = broadcast::channel(200);
+    let (ts_event_publisher, ts_event_receiver): (TransactionEventSender, TransactionEventReceiver) =
+        broadcast::channel(200);
 
     let shutdown = Shutdown::new();
 
@@ -175,6 +177,7 @@ pub async fn setup(
         timeout_update_publisher,
         shutdown,
         temp_dir,
+        ts_event_receiver,
     )
 }
 
@@ -229,7 +232,7 @@ pub async fn oms_reply_channel_task(
 /// A happy path test by submitting a transaction into the mempool, have it mined but unconfirmed and then confirmed.
 #[tokio_macros::test]
 #[allow(clippy::identity_op)]
-async fn tx_broadcast_protocol_submit_success() {
+async fn tx_broadcast_protocol_submit_success_i() {
     let (
         resources,
         _connectivity_mock_state,
@@ -240,6 +243,7 @@ async fn tx_broadcast_protocol_submit_success() {
         timeout_update_publisher,
         _shutdown,
         _temp_dir,
+        mut transaction_event_receiver,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let mut event_stream = resources.event_publisher.subscribe().fuse();
     let (base_node_update_publisher, _) = broadcast::channel(20);
@@ -254,7 +258,7 @@ async fn tx_broadcast_protocol_submit_success() {
     );
     let join_handle = task::spawn(protocol.execute());
 
-    // Fails because there is no transaqction in the database to be broadcast
+    // Fails because there is no transaction in the database to be broadcast
     assert!(join_handle.await.unwrap().is_err());
 
     add_transaction_to_database(1, 1 * T, true, None, resources.db.clone()).await;
@@ -280,9 +284,8 @@ async fn tx_broadcast_protocol_submit_success() {
         is_synced: false,
     });
 
-    // Wait for 2 queries
     let _ = rpc_service_state
-        .wait_pop_submit_transaction_calls(4, Duration::from_secs(5))
+        .wait_pop_submit_transaction_calls(5, Duration::from_secs(6))
         .await
         .unwrap();
 
@@ -308,7 +311,7 @@ async fn tx_broadcast_protocol_submit_success() {
     });
     // Wait for 1 query
     let _ = rpc_service_state
-        .wait_pop_transaction_query_calls(1, Duration::from_secs(5))
+        .wait_pop_transaction_query_calls(2, Duration::from_secs(5))
         .await
         .unwrap();
 
@@ -326,7 +329,7 @@ async fn tx_broadcast_protocol_submit_success() {
     });
     // Wait for 1 query
     let _ = rpc_service_state
-        .wait_pop_transaction_query_calls(1, Duration::from_secs(5))
+        .wait_pop_transaction_query_calls(2, Duration::from_secs(5))
         .await
         .unwrap();
 
@@ -348,7 +351,17 @@ async fn tx_broadcast_protocol_submit_success() {
         .wait_pop_transaction_query_calls(1, Duration::from_secs(5))
         .await
         .unwrap();
-
+    // lets wait for the transaction service event to notify us of a confirmed tx
+    // We need to do this to ensure that the wallet db has been updated to "Mined"
+    while let Some(v) = transaction_event_receiver.next().await {
+        let event = v.unwrap();
+        match (*event).clone() {
+            TransactionEvent::TransactionMined(_) => {
+                break;
+            },
+            _ => continue,
+        }
+    }
     // Check transaction status is updated
     let db_completed_tx = resources.db.get_completed_transaction(1).await.unwrap();
     assert_eq!(db_completed_tx.status, TransactionStatus::MinedConfirmed);
@@ -379,7 +392,7 @@ async fn tx_broadcast_protocol_submit_success() {
     );
 
     // Check that the appropriate events were emitted
-    let mut delay = delay_for(Duration::from_secs(1)).fuse();
+    let mut delay = delay_for(Duration::from_secs(5)).fuse();
     let mut broadcast = false;
     let mut unconfirmed = false;
     let mut confirmed = false;
@@ -426,6 +439,7 @@ async fn tx_broadcast_protocol_submit_rejection() {
         timeout_update_publisher,
         _shutdown,
         _temp_dir,
+        _transaction_event_receiver,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let mut event_stream = resources.event_publisher.subscribe().fuse();
     let (base_node_update_publisher, _) = broadcast::channel(20);
@@ -497,6 +511,7 @@ async fn tx_broadcast_protocol_restart_protocol_as_query() {
         timeout_update_publisher,
         _shutdown,
         _temp_dir,
+        _transaction_event_receiver,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let (base_node_update_publisher, _) = broadcast::channel(20);
 
@@ -583,6 +598,7 @@ async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
         timeout_update_publisher,
         _shutdown,
         _temp_dir,
+        _transaction_event_receiver,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let mut event_stream = resources.event_publisher.subscribe().fuse();
     let (base_node_update_publisher, _) = broadcast::channel(20);
@@ -683,6 +699,7 @@ async fn tx_broadcast_protocol_submit_mined_then_not_mined_resubmit_success() {
         timeout_update_publisher,
         _shutdown,
         _temp_dir,
+        _transaction_event_receiver,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let (base_node_update_publisher, _) = broadcast::channel(20);
 
@@ -776,6 +793,7 @@ async fn tx_broadcast_protocol_connection_problem() {
         timeout_update_publisher,
         _shutdown,
         _temp_dir,
+        _transaction_event_receiver,
     ) = setup(TxProtocolTestConfig::WithoutConnection).await;
     let (base_node_update_publisher, _) = broadcast::channel(20);
 
@@ -847,6 +865,7 @@ async fn tx_broadcast_protocol_submit_already_mined() {
         timeout_update_publisher,
         _shutdown,
         _temp_dir,
+        _transaction_event_receiver,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let (base_node_update_publisher, _) = broadcast::channel(20);
 
@@ -916,6 +935,7 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
         timeout_update_publisher,
         _shutdown,
         _temp_dir,
+        _transaction_event_receiver,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let (base_node_update_publisher, _) = broadcast::channel(20);
 
@@ -1017,6 +1037,7 @@ async fn tx_validation_protocol_tx_becomes_valid() {
         _timeout_update_publisher,
         _shutdown,
         _temp_dir,
+        _transaction_event_receiver,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let (base_node_update_publisher, _) = broadcast::channel(20);
     let (_timeout_update_publisher, _) = broadcast::channel(20);
@@ -1114,6 +1135,7 @@ async fn tx_validation_protocol_tx_becomes_invalid() {
         _timeout_update_publisher,
         _shutdown,
         _temp_dir,
+        _transaction_event_receiver,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let (base_node_update_publisher, _) = broadcast::channel(20);
     let (_timeout_update_publisher, _) = broadcast::channel(20);
@@ -1178,6 +1200,7 @@ async fn tx_validation_protocol_tx_becomes_unconfirmed() {
         _timeout_update_publisher,
         _shutdown,
         _temp_dir,
+        _transaction_event_receiver,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let (base_node_update_publisher, _) = broadcast::channel(20);
     let (_timeout_update_publisher, _) = broadcast::channel(20);
@@ -1249,6 +1272,7 @@ async fn tx_validation_protocol_tx_ends_on_base_node_end() {
         _timeout_update_publisher,
         _shutdown,
         _temp_dir,
+        _transaction_event_receiver,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let (base_node_update_publisher, _) = broadcast::channel(20);
     let (_timeout_update_publisher, _) = broadcast::channel(20);
@@ -1379,6 +1403,7 @@ async fn tx_validation_protocol_rpc_client_broken_between_calls() {
         _timeout_update_publisher,
         _shutdown,
         _temp_dir,
+        _transaction_event_receiver,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let (base_node_update_publisher, _) = broadcast::channel(20);
     let (_timeout_update_publisher, _) = broadcast::channel(20);
@@ -1502,6 +1527,7 @@ async fn tx_validation_protocol_rpc_client_broken_finite_retries() {
         _timeout_update_publisher,
         _shutdown,
         _temp_dir,
+        _transaction_event_receiver,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let (base_node_update_publisher, _) = broadcast::channel(20);
     let (_timeout_update_publisher, _) = broadcast::channel(20);
@@ -1602,6 +1628,7 @@ async fn tx_validation_protocol_base_node_not_synced() {
         _timeout_update_publisher,
         _shutdown,
         _temp_dir,
+        _transaction_event_receiver,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let (base_node_update_publisher, _) = broadcast::channel(20);
     let (_timeout_update_publisher, _) = broadcast::channel(20);
