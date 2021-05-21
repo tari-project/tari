@@ -157,17 +157,17 @@ mod test {
         // assert_eq!(v.capacity(), 11);
         // A Vec was chosen because it ended up being simpler to use
         let dif = LinearWeightedMovingAverage::new(0, 120, 120 * 6);
-        assert_eq!(dif.is_full(), false);
+        assert!(!dif.is_full());
         let mut dif = LinearWeightedMovingAverage::new(1, 120, 120 * 6);
         dif.add_front(60.into(), 100.into());
-        assert_eq!(dif.is_full(), false);
+        assert!(!dif.is_full());
         assert_eq!(dif.num_samples(), 1);
         dif.add_front(60.into(), 100.into());
         assert_eq!(dif.num_samples(), 2);
-        assert_eq!(dif.is_full(), true);
+        assert!(dif.is_full());
         dif.add_front(60.into(), 100.into());
         assert_eq!(dif.num_samples(), 2);
-        assert_eq!(dif.is_full(), true);
+        assert!(dif.is_full());
     }
 
     #[test]
