@@ -451,14 +451,14 @@ impl ChainBlock {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::blocks::genesis_block::get_ridcully_genesis_block;
+    use crate::blocks::genesis_block::get_weatherwax_genesis_block;
 
     mod chain_block {
         use super::*;
 
         #[test]
         fn it_converts_to_a_chain_header() {
-            let genesis = get_ridcully_genesis_block();
+            let genesis = get_weatherwax_genesis_block();
             let header = genesis.to_chain_header();
             assert_eq!(header.header(), genesis.header());
             assert_eq!(header.accumulated_data(), genesis.accumulated_data());
@@ -466,7 +466,7 @@ mod test {
 
         #[test]
         fn it_provides_guarantees_about_data_integrity() {
-            let mut genesis = get_ridcully_genesis_block();
+            let mut genesis = get_weatherwax_genesis_block();
             // Mess with the header, only possible using the non-public fields
             genesis.block = Arc::new({
                 let mut b = (*genesis.block).clone();
