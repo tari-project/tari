@@ -539,8 +539,7 @@ pub fn construct_chained_blocks<B: BlockchainBackend>(
 }
 
 #[allow(dead_code)]
-pub fn create_chain_header(header: BlockHeader, prev_accum: &BlockHeaderAccumulatedData
-) -> ChainHeader {
+pub fn create_chain_header(header: BlockHeader, prev_accum: &BlockHeaderAccumulatedData) -> ChainHeader {
     let achieved_target_diff = AchievedTargetDifficulty::try_construct(
         header.pow_algo(),
         prev_accum.target_difficulty,

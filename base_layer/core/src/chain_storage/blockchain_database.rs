@@ -622,8 +622,7 @@ where B: BlockchainBackend
     pub fn fetch_target_difficulties_for_next_block(
         &self,
         current_block_hash: HashOutput,
-    ) -> Result<TargetDifficulties, ChainStorageError>
-    {
+    ) -> Result<TargetDifficulties, ChainStorageError> {
         let db = self.db_read_access()?;
         let mut current_header = db.fetch_chain_header_in_all_chains(&current_block_hash)?;
         let mut targets = TargetDifficulties::new(&self.consensus_manager, current_header.height() + 1);
@@ -1095,8 +1094,7 @@ pub fn fetch_target_difficulty_for_next_block<T: BlockchainBackend>(
     consensus_manager: &ConsensusManager,
     pow_algo: PowAlgorithm,
     current_block_hash: &HashOutput,
-) -> Result<TargetDifficultyWindow, ChainStorageError>
-{
+) -> Result<TargetDifficultyWindow, ChainStorageError> {
     // The block may be in the chained orphan pool or in the main chain
     let mut header = db.fetch_chain_header_in_all_chains(current_block_hash)?;
     let mut target_difficulties = consensus_manager.new_target_difficulty(pow_algo, header.height() + 1);

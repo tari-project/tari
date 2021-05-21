@@ -38,13 +38,13 @@ mod proxy;
 #[cfg(test)]
 mod test;
 
-use crate::block_template_data::BlockTemplateRepository;
+use crate::{block_template_data::BlockTemplateRepository, error::MmProxyError};
 use futures::future;
 use hyper::{service::make_service_fn, Server};
 use proxy::{MergeMiningProxyConfig, MergeMiningProxyService};
 use std::convert::Infallible;
-use tari_app_utilities::initialization::init_configuration;
 use tari_app_grpc::tari_rpc as grpc;
+use tari_app_utilities::initialization::init_configuration;
 use tari_common::configuration::bootstrap::ApplicationType;
 use tokio::time::Duration;
 

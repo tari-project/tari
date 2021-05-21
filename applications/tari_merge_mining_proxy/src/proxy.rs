@@ -102,8 +102,7 @@ impl MergeMiningProxyService {
         base_node_client: grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>,
         wallet_client: grpc::wallet_client::WalletClient<tonic::transport::Channel>,
         block_templates: BlockTemplateRepository,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             inner: InnerService {
                 config,

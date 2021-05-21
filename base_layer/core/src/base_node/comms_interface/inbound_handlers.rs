@@ -540,8 +540,7 @@ where T: BlockchainBackend + 'static
         pow_algo: PowAlgorithm,
         constants: &ConsensusConstants,
         current_block_hash: HashOutput,
-    ) -> Result<Difficulty, CommsInterfaceError>
-    {
+    ) -> Result<Difficulty, CommsInterfaceError> {
         let target_difficulty = self
             .blockchain_db
             .fetch_target_difficulty_for_next_block(pow_algo, current_block_hash)

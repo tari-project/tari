@@ -62,8 +62,7 @@ impl<TBackend: BlockchainBackend> HeaderValidation<TBackend> for HeaderValidator
         backend: &TBackend,
         header: &BlockHeader,
         difficulty_calculator: &DifficultyCalculator,
-    ) -> Result<AchievedTargetDifficulty, ValidationError>
-    {
+    ) -> Result<AchievedTargetDifficulty, ValidationError> {
         check_timestamp_ftl(&header, &self.rules)?;
         let header_id = format!("header #{} ({})", header.height, header.hash().to_hex());
         trace!(
