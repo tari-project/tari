@@ -25,7 +25,7 @@ use crate::{
     chain_storage::{BlockchainBackend, ChainBlock},
     proof_of_work::AchievedTargetDifficulty,
     transactions::{transaction::Transaction, types::Commitment},
-    validation::error::ValidationError,
+    validation::{error::ValidationError, DifficultyCalculator},
 };
 
 /// A validator that determines if a block body is valid, assuming that the header has already been
@@ -47,8 +47,13 @@ pub trait OrphanValidation: Send + Sync {
     fn validate(&self, item: &Block) -> Result<(), ValidationError>;
 }
 
-pub trait HeaderValidation<B: BlockchainBackend>: Send + Sync {
-    fn validate(&self, db: &B, header: &BlockHeader) -> Result<AchievedTargetDifficulty, ValidationError>;
+pub trait HeaderValidation<TBackend: BlockchainBackend>: Send + Sync {
+    fn validate(
+        &self,
+        db: &TBackend,
+        header: &BlockHeader,
+        difficulty: &DifficultyCalculator,
+    ) -> Result<AchievedTargetDifficulty, ValidationError>;
 }
 
 pub trait FinalHorizonStateValidation<B>: Send + Sync {

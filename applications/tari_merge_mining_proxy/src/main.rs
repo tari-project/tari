@@ -42,9 +42,11 @@ use crate::block_template_data::BlockTemplateRepository;
 use futures::future;
 use hyper::{service::make_service_fn, Server};
 use proxy::{MergeMiningProxyConfig, MergeMiningProxyService};
-use std::{convert::Infallible, io};
+use std::convert::Infallible;
 use tari_app_utilities::initialization::init_configuration;
+use tari_app_grpc::tari_rpc as grpc;
 use tari_common::configuration::bootstrap::ApplicationType;
+use tokio::time::Duration;
 
 #[tokio_macros::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -52,14 +54,23 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let config = MergeMiningProxyConfig::from(config);
     let addr = config.proxy_host_address;
-
-    let xmrig_service = MergeMiningProxyService::new(config, BlockTemplateRepository::new());
-    if !xmrig_service.check_connections(&mut io::stdout()).await {
-        println!(
-            "Warning: some services have not been started or are mis-configured in the proxy config. The proxy will \
-             remain running and connect to these services on demand."
-        );
-    }
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(10))
+        .pool_max_idle_per_host(25)
+        .build()
+        .map_err(MmProxyError::ReqwestError)?;
+    let base_node_client =
+        grpc::base_node_client::BaseNodeClient::connect(format!("http://{}", config.grpc_base_node_address)).await?;
+    let wallet_client =
+        grpc::wallet_client::WalletClient::connect(format!("http://{}", config.grpc_console_wallet_address)).await?;
+    let xmrig_service = MergeMiningProxyService::new(
+        config,
+        client,
+        base_node_client,
+        wallet_client,
+        BlockTemplateRepository::new(),
+    );
     let service = make_service_fn(|_conn| future::ready(Result::<_, Infallible>::Ok(xmrig_service.clone())));
 
     match Server::try_bind(&addr) {

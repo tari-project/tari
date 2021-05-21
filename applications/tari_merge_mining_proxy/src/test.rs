@@ -20,58 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{common::proxy, proxy::MergeMiningProxyConfig};
-use hyper::Body;
-use tari_common::Network;
-
-fn default_test_config() -> MergeMiningProxyConfig {
-    MergeMiningProxyConfig {
-        network: Network::Rincewind,
-        monerod_url: "".to_string(),
-        monerod_username: "".to_string(),
-        monerod_password: "".to_string(),
-        monerod_use_auth: false,
-        grpc_base_node_address: "127.0.0.1:9999".parse().unwrap(),
-        grpc_console_wallet_address: "127.0.0.1:9998".parse().unwrap(),
-        proxy_host_address: "127.0.0.1:9997".parse().unwrap(),
-        proxy_submit_to_origin: false,
-        wait_for_initial_sync_at_startup: true,
-    }
-}
-
-async fn read_body_as_json(body: &mut Body) -> serde_json::Value {
-    serde_json::from_slice(&proxy::read_body_until_end(body).await.unwrap()).unwrap()
-}
-
-mod merge_mining_proxy_service {
-    use super::*;
-    use crate::{block_template_data::BlockTemplateRepository, proxy::MergeMiningProxyService};
-    use futures::task::Poll;
-    use futures_test::task::noop_context;
-    use hyper::{service::Service, Body, Request};
-
-    #[test]
-    fn it_is_always_ready() {
-        let mut service = MergeMiningProxyService::new(default_test_config(), BlockTemplateRepository::new());
-        let mut cx = noop_context();
-        let poll = service.poll_ready(&mut cx);
-        match poll {
-            Poll::Ready(v) => v.unwrap(),
-            Poll::Pending => panic!("not ready"),
-        }
-    }
-
-    #[tokio_macros::test]
-    async fn it_returns_an_error_response_empty_request() {
-        let mut service = MergeMiningProxyService::new(default_test_config(), BlockTemplateRepository::new());
-        let req = Request::new(Body::empty());
-        let mut resp = service.call(req).await.unwrap();
-        assert!(!resp.status().is_success());
-        let json = read_body_as_json(resp.body_mut()).await;
-        assert_eq!(json["error"]["message"], "Internal error");
-    }
-}
-
 mod add_aux_data {
     use crate::{
         common::json_rpc,

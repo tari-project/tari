@@ -38,6 +38,7 @@ use crate::{
         HistoricalBlock,
         HorizonData,
         MmrTree,
+        Optional,
         OrNotFound,
         TargetDifficulties,
     },
@@ -49,7 +50,7 @@ use crate::{
         transaction::{TransactionKernel, TransactionOutput},
         types::{Commitment, HashDigest, HashOutput, Signature},
     },
-    validation::{HeaderValidation, OrphanValidation, PostOrphanBodyValidation, ValidationError},
+    validation::{DifficultyCalculator, HeaderValidation, OrphanValidation, PostOrphanBodyValidation, ValidationError},
 };
 use croaring::Bitmap;
 use log::*;
@@ -163,6 +164,7 @@ pub struct BlockchainDatabase<B> {
     validators: Validators<B>,
     config: BlockchainDatabaseConfig,
     consensus_manager: ConsensusManager,
+    difficulty_calculator: Arc<DifficultyCalculator>,
 }
 
 #[allow(clippy::ptr_arg)]
@@ -172,9 +174,10 @@ where B: BlockchainBackend
     /// Creates a new `BlockchainDatabase` using the provided backend.
     pub fn new(
         db: B,
-        consensus_manager: &ConsensusManager,
+        consensus_manager: ConsensusManager,
         validators: Validators<B>,
         config: BlockchainDatabaseConfig,
+        difficulty_calculator: DifficultyCalculator,
         cleanup_orphans_at_startup: bool,
     ) -> Result<Self, ChainStorageError> {
         debug!(target: LOG_TARGET, "BlockchainDatabase config: {:?}", config);
@@ -183,11 +186,12 @@ where B: BlockchainBackend
             db: Arc::new(RwLock::new(db)),
             validators,
             config,
-            consensus_manager: consensus_manager.clone(),
+            consensus_manager,
+            difficulty_calculator: Arc::new(difficulty_calculator),
         };
         if is_empty {
             info!(target: LOG_TARGET, "Blockchain db is empty. Adding genesis block.");
-            let genesis_block = consensus_manager.get_genesis_block();
+            let genesis_block = blockchain_db.consensus_manager.get_genesis_block();
             blockchain_db.insert_block(Arc::new(genesis_block))?;
             blockchain_db.store_pruning_horizon(config.pruning_horizon)?;
         }
@@ -606,49 +610,36 @@ where B: BlockchainBackend
     /// Returns the set of target difficulties for the specified proof of work algorithm. The calculated target
     /// difficulty will be for the given height i.e calculated from the previous header backwards until the target
     /// difficulty window is populated according to consensus constants for the given height.
-    pub fn fetch_target_difficulty(
+    pub fn fetch_target_difficulty_for_next_block(
         &self,
         pow_algo: PowAlgorithm,
-        height: u64,
+        current_block_hash: HashOutput,
     ) -> Result<TargetDifficultyWindow, ChainStorageError> {
         let db = self.db_read_access()?;
-        fetch_target_difficulty(&*db, &self.consensus_manager, pow_algo, height)
+        fetch_target_difficulty_for_next_block(&*db, &self.consensus_manager, pow_algo, &current_block_hash)
     }
 
-    pub fn fetch_target_difficulties(&self, start_hash: HashOutput) -> Result<TargetDifficulties, ChainStorageError> {
+    pub fn fetch_target_difficulties_for_next_block(
+        &self,
+        current_block_hash: HashOutput,
+    ) -> Result<TargetDifficulties, ChainStorageError>
+    {
         let db = self.db_read_access()?;
-        let start_header =
-            fetch_header_by_block_hash(&*db, start_hash.clone())?.ok_or_else(|| ChainStorageError::ValueNotFound {
-                entity: "fetch_target_difficulties".to_string(),
-                field: "start_hash".to_string(),
-                value: start_hash.to_hex(),
-            })?;
-        let start_height = start_header.height;
-        let mut targets = TargetDifficulties::new(&self.consensus_manager, start_height);
-        let accum_data =
-            db.fetch_header_accumulated_data(&start_hash)?
-                .ok_or_else(|| ChainStorageError::ValueNotFound {
-                    entity: "BlockHeaderAccumulatedData".to_string(),
-                    field: "hash".to_string(),
-                    value: start_hash.to_hex(),
-                })?;
+        let mut current_header = db.fetch_chain_header_in_all_chains(&current_block_hash)?;
+        let mut targets = TargetDifficulties::new(&self.consensus_manager, current_header.height() + 1);
         // Add start header since we have it on hand
-        targets.add_front(&start_header, accum_data.target_difficulty);
+        targets.add_front(
+            current_header.header(),
+            current_header.accumulated_data().target_difficulty,
+        );
 
-        for h in (0..start_height).rev() {
-            // TODO: this can be optimized by retrieving the accumulated data and header at the same time, or even
-            // better by retrieving only the epoch and target difficulty in the same lmdb transaction
-            let header = fetch_header(&*db, h)?;
-            if !targets.is_algo_full(header.pow_algo()) {
-                let accum_data = db.fetch_header_accumulated_data(&header.hash())?.ok_or_else(|| {
-                    ChainStorageError::ValueNotFound {
-                        entity: "BlockHeaderAccumulatedData".to_string(),
-                        field: "hash".to_string(),
-                        value: header.hash().to_hex(),
-                    }
-                })?;
-
-                targets.add_front(&header, accum_data.target_difficulty);
+        while current_header.height() > 0 && !targets.is_full() {
+            current_header = db.fetch_chain_header_in_all_chains(&current_header.header().prev_hash)?;
+            if !targets.is_algo_full(current_header.header().pow_algo()) {
+                targets.add_front(
+                    current_header.header(),
+                    current_header.accumulated_data().target_difficulty,
+                );
             }
             if targets.is_full() {
                 break;
@@ -741,6 +732,7 @@ where B: BlockchainBackend
             &*self.validators.block,
             &*self.validators.header,
             self.consensus_manager.chain_strength_comparer(),
+            &self.difficulty_calculator,
             block,
         )?;
 
@@ -748,6 +740,11 @@ where B: BlockchainBackend
             // If blocks were added and the node is in pruned mode, perform pruning
             prune_database_if_needed(&mut *db, self.config.pruning_horizon, self.config.pruning_interval)?
         }
+
+        info!(
+            target: LOG_TARGET,
+            "Candidate block `add_block` result: {}", block_add_result
+        );
 
         trace!(
             target: LOG_TARGET,
@@ -1044,13 +1041,21 @@ fn add_block<T: BlockchainBackend>(
     block_validator: &dyn PostOrphanBodyValidation<T>,
     header_validator: &dyn HeaderValidation<T>,
     chain_strength_comparer: &dyn ChainStrengthComparer,
+    difficulty_calculator: &DifficultyCalculator,
     block: Arc<Block>,
 ) -> Result<BlockAddResult, ChainStorageError> {
     let block_hash = block.hash();
     if db.contains(&DbKey::BlockHash(block_hash))? {
         return Ok(BlockAddResult::BlockExists);
     }
-    handle_possible_reorg(db, block_validator, header_validator, chain_strength_comparer, block)
+    handle_possible_reorg(
+        db,
+        block_validator,
+        header_validator,
+        difficulty_calculator,
+        chain_strength_comparer,
+        block,
+    )
 }
 
 // Adds a new block onto the chain tip.
@@ -1084,31 +1089,25 @@ fn store_pruning_horizon<T: BlockchainBackend>(db: &mut T, pruning_horizon: u64)
     db.write(txn)
 }
 
-pub fn fetch_target_difficulty<T: BlockchainBackend>(
+#[allow(clippy::ptr_arg)]
+pub fn fetch_target_difficulty_for_next_block<T: BlockchainBackend>(
     db: &T,
     consensus_manager: &ConsensusManager,
     pow_algo: PowAlgorithm,
-    height: u64,
-) -> Result<TargetDifficultyWindow, ChainStorageError> {
-    let mut target_difficulties = consensus_manager.new_target_difficulty(pow_algo, height);
-    for height in (0..height).rev() {
-        // TODO: this can be optimized by retrieving the accumulated data and header at the same time, or even
-        // better by retrieving only the epoch and target difficulty in the same lmdb transaction
-        let header = fetch_header(&*db, height)?;
+    current_block_hash: &HashOutput,
+) -> Result<TargetDifficultyWindow, ChainStorageError>
+{
+    // The block may be in the chained orphan pool or in the main chain
+    let mut header = db.fetch_chain_header_in_all_chains(current_block_hash)?;
+    let mut target_difficulties = consensus_manager.new_target_difficulty(pow_algo, header.height() + 1);
+    if header.header().pow.pow_algo == pow_algo {
+        target_difficulties.add_front(header.header().timestamp(), header.accumulated_data().target_difficulty);
+    }
+    while header.height() > 0 && !target_difficulties.is_full() {
+        header = db.fetch_chain_header_in_all_chains(&header.header().prev_hash)?;
 
-        if header.pow.pow_algo == pow_algo {
-            let accum_data =
-                db.fetch_header_accumulated_data(&header.hash())?
-                    .ok_or_else(|| ChainStorageError::ValueNotFound {
-                        entity: "BlockHeaderAccumulatedData".to_string(),
-                        field: "hash".to_string(),
-                        value: header.hash().to_hex(),
-                    })?;
-
-            target_difficulties.add_front(header.timestamp(), accum_data.target_difficulty);
-            if target_difficulties.is_full() {
-                break;
-            }
+        if header.header().pow.pow_algo == pow_algo {
+            target_difficulties.add_front(header.header().timestamp(), header.accumulated_data().target_difficulty);
         }
     }
 
@@ -1268,14 +1267,21 @@ fn rewind_to_height<T: BlockchainBackend>(
             ))
         })?;
 
-    info!(
-        target: LOG_TARGET,
-        "Rewinding headers from height {} to {}",
-        last_header_height,
-        last_header_height - steps_back
-    );
+    if steps_back > 0 {
+        info!(
+            target: LOG_TARGET,
+            "Rewinding headers from height {} to {}",
+            last_header_height,
+            last_header_height - steps_back
+        );
+    }
     // We might have more headers than blocks, so we first see if we need to delete the extra headers.
     (0..steps_back).for_each(|h| {
+        info!(
+            target: LOG_TARGET,
+            "Rewinding headers at height {}",
+            last_header_height - h
+        );
         txn.delete_header(last_header_height - h);
     });
 
@@ -1376,13 +1382,14 @@ fn handle_possible_reorg<T: BlockchainBackend>(
     db: &mut T,
     block_validator: &dyn PostOrphanBodyValidation<T>,
     header_validator: &dyn HeaderValidation<T>,
+    difficulty_calculator: &DifficultyCalculator,
     chain_strength_comparer: &dyn ChainStrengthComparer,
     new_block: Arc<Block>,
 ) -> Result<BlockAddResult, ChainStorageError> {
     let db_height = db.fetch_chain_metadata()?.height_of_longest_chain();
     let new_block_hash = new_block.hash();
 
-    let new_tips = insert_orphan_and_find_new_tips(db, new_block.clone(), header_validator)?;
+    let new_tips = insert_orphan_and_find_new_tips(db, new_block.clone(), header_validator, difficulty_calculator)?;
     debug!(
         target: LOG_TARGET,
         "Added candidate block #{} ({}) to the orphan database. Best height is {}. New tips found: {} ",
@@ -1591,8 +1598,7 @@ fn restore_reorged_chain<T: BlockchainBackend>(
             .collect::<Vec<_>>(),
     );
     let mut txn = DbTransaction::new();
-    // Add removed blocks in the reverse order that they were removed
-    // See: https://github.com/tari-project/tari/issues/2182
+
     for block in previous_chain.into_iter().rev() {
         txn.delete_orphan(block.accumulated_data().hash.clone());
         insert_block(&mut txn, block)?;
@@ -1606,6 +1612,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     db: &mut T,
     block: Arc<Block>,
     validator: &dyn HeaderValidation<T>,
+    difficulty_calculator: &DifficultyCalculator,
 ) -> Result<Vec<ChainHeader>, ChainStorageError> {
     let hash = block.hash();
 
@@ -1618,15 +1625,18 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     let parent = match db.fetch_orphan_chain_tip_by_hash(&block.header.prev_hash)? {
         Some(curr_parent) => {
             txn.remove_orphan_chain_tip(block.header.prev_hash.clone());
-            debug!(
+            info!(
                 target: LOG_TARGET,
                 "New orphan extends a chain in the current candidate tip set"
             );
             curr_parent
         },
-        None => match db.fetch_chain_header_in_all_chains(&block.header.prev_hash)? {
+        None => match db
+            .fetch_chain_header_in_all_chains(&block.header.prev_hash)
+            .optional()?
+        {
             Some(curr_parent) => {
-                debug!(
+                info!(
                     target: LOG_TARGET,
                     "New orphan does not have a parent in the current tip set. Parent is {}",
                     curr_parent.hash().to_hex()
@@ -1634,7 +1644,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
                 curr_parent
             },
             None => {
-                debug!(
+                info!(
                     target: LOG_TARGET,
                     "Orphan {} was not connected to any previous headers. Inserting as true orphan",
                     hash.to_hex()
@@ -1649,7 +1659,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
         },
     };
 
-    let achieved_target_diff = validator.validate(db, &block.header)?;
+    let achieved_target_diff = validator.validate(db, &block.header, difficulty_calculator)?;
 
     let accumulated_data = BlockHeaderAccumulatedData::builder(parent.accumulated_data())
         .with_hash(hash)
@@ -1664,7 +1674,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     // Extend orphan chain tip.
     txn.insert_chained_orphan(Arc::new(chain_block));
 
-    let tips = find_orphan_descendant_tips_of(&*db, &chain_header, validator, &mut txn)?;
+    let tips = find_orphan_descendant_tips_of(&*db, &chain_header, validator, difficulty_calculator, &mut txn)?;
     debug!(target: LOG_TARGET, "Found {} new orphan tips", tips.len());
     for new_tip in &tips {
         txn.insert_orphan_chain_tip(new_tip.hash().clone());
@@ -1679,6 +1689,7 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
     db: &T,
     prev_chain_header: &ChainHeader,
     validator: &dyn HeaderValidation<T>,
+    difficulty_calculator: &DifficultyCalculator,
     txn: &mut DbTransaction,
 ) -> Result<Vec<ChainHeader>, ChainStorageError> {
     let children = db.fetch_orphan_children_of(prev_chain_header.hash().clone())?;
@@ -1694,7 +1705,7 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
 
     let mut res = vec![];
     for child in children {
-        match validator.validate(db, &child.header) {
+        match validator.validate(db, &child.header, difficulty_calculator) {
             Ok(achieved_target) => {
                 let child_hash = child.hash();
                 let accum_data = BlockHeaderAccumulatedData::builder(prev_chain_header.accumulated_data())
@@ -1713,7 +1724,8 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
                 // Set/overwrite accumulated data for this orphan block
                 txn.set_accumulated_data_for_orphan(chain_header.clone());
 
-                let children = find_orphan_descendant_tips_of(db, &chain_header, validator, txn)?;
+                let children =
+                    find_orphan_descendant_tips_of(db, &chain_header, validator, difficulty_calculator, txn)?;
                 res.extend(children);
             },
             Err(e) => {
@@ -1809,7 +1821,7 @@ fn prune_database_if_needed<T: BlockchainBackend>(
 
     if metadata.pruned_height() < abs_pruning_horizon.saturating_sub(pruning_interval) {
         let last_pruned = metadata.pruned_height();
-        debug!(
+        info!(
             target: LOG_TARGET,
             "Pruning blockchain database at height {} (was={})", abs_pruning_horizon, last_pruned,
         );
@@ -1856,6 +1868,7 @@ impl<T> Clone for BlockchainDatabase<T> {
             validators: self.validators.clone(),
             config: self.config,
             consensus_manager: self.consensus_manager.clone(),
+            difficulty_calculator: self.difficulty_calculator.clone(),
         }
     }
 }
@@ -1883,14 +1896,20 @@ fn convert_to_option_bounds<T: RangeBounds<u64>>(bounds: T) -> (Option<u64>, Opt
 mod test {
     use super::*;
     use crate::{
-        consensus::chain_strength_comparer::strongest_chain,
+        consensus::{
+            chain_strength_comparer::strongest_chain,
+            consensus_constants::PowAlgorithmConstants,
+            ConsensusConstantsBuilder,
+            ConsensusManagerBuilder,
+            Network,
+        },
         proof_of_work::AchievedTargetDifficulty,
         test_helpers::{
             blockchain::{create_new_blockchain, create_test_blockchain_db, TempDatabase},
             create_block,
             mine_to_difficulty,
         },
-        validation::mocks::MockValidator,
+        validation::{header_validator::HeaderValidator, mocks::MockValidator},
     };
     use std::collections::HashMap;
 
@@ -1932,7 +1951,8 @@ mod test {
         fn it_gets_a_simple_link_to_genesis() {
             let db = create_new_blockchain();
             let genesis = db.fetch_block(0).unwrap().try_into_chain_block().map(Arc::new).unwrap();
-            let (_, chain) = create_orphan_chain(&db, &[("A->GB", 1), ("B->A", 1), ("C->B", 1)], genesis);
+            let (_, chain) =
+                create_orphan_chain(&db, &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120)], genesis);
             let access = db.db_read_access().unwrap();
             let orphan_chain = get_orphan_link_main_chain(&*access, chain.get("C").unwrap().hash()).unwrap();
             assert_eq!(orphan_chain[2].hash(), chain.get("C").unwrap().hash());
@@ -1945,12 +1965,22 @@ mod test {
         fn it_selects_a_large_reorg_chain() {
             let db = create_new_blockchain();
             // Main chain
-            let (_, mainchain) = create_main_chain(&db, &[("A->GB", 1), ("B->A", 1), ("C->B", 1), ("D->C", 1)]);
+            let (_, mainchain) = create_main_chain(&db, &[
+                ("A->GB", 1, 120),
+                ("B->A", 1, 120),
+                ("C->B", 1, 120),
+                ("D->C", 1, 120),
+            ]);
             // Create reorg chain
             let fork_root = mainchain.get("B").unwrap().clone();
             let (_, reorg_chain) = create_orphan_chain(
                 &db,
-                &[("C2->GB", 2), ("D2->C2", 1), ("E2->D2", 1), ("F2->E2", 1)],
+                &[
+                    ("C2->GB", 2, 120),
+                    ("D2->C2", 1, 120),
+                    ("E2->D2", 1, 120),
+                    ("F2->E2", 1, 120),
+                ],
                 fork_root,
             );
             let access = db.db_read_access().unwrap();
@@ -1980,10 +2010,16 @@ mod test {
             let db = create_new_blockchain();
             let validator = MockValidator::new(true);
             let genesis_block = db.fetch_block(0).unwrap().try_into_chain_block().map(Arc::new).unwrap();
-            let (_, chain) = create_chained_blocks(&[("A->GB", 1)], genesis_block);
+            let (_, chain) = create_chained_blocks(&[("A->GB", 1, 120)], genesis_block);
             let block = chain.get("A").unwrap().clone();
             let mut access = db.db_write_access().unwrap();
-            let chain = insert_orphan_and_find_new_tips(&mut *access, block.to_arc_block(), &validator).unwrap();
+            let chain = insert_orphan_and_find_new_tips(
+                &mut *access,
+                block.to_arc_block(),
+                &validator,
+                &db.difficulty_calculator,
+            )
+            .unwrap();
             assert_eq!(chain.len(), 1);
             assert_eq!(chain[0].hash(), block.hash());
 
@@ -1995,18 +2031,31 @@ mod test {
         fn it_inserts_true_orphan_chain() {
             let db = create_new_blockchain();
             let validator = MockValidator::new(true);
-            let (_, main_chain) = create_main_chain(&db, &[("A->GB", 1), ("B->GB", 1)]);
+            let (_, main_chain) = create_main_chain(&db, &[("A->GB", 1, 120), ("B->GB", 1, 120)]);
 
             let block_b = main_chain.get("B").unwrap().clone();
-            let (_, orphan_chain) = create_chained_blocks(&[("C2->GB", 1), ("D2->C2", 1), ("E2->D2", 1)], block_b);
+            let (_, orphan_chain) =
+                create_chained_blocks(&[("C2->GB", 1, 120), ("D2->C2", 1, 120), ("E2->D2", 1, 120)], block_b);
             let mut access = db.db_write_access().unwrap();
 
             let block_d2 = orphan_chain.get("D2").unwrap().clone();
-            let chain = insert_orphan_and_find_new_tips(&mut *access, block_d2.to_arc_block(), &validator).unwrap();
+            let chain = insert_orphan_and_find_new_tips(
+                &mut *access,
+                block_d2.to_arc_block(),
+                &validator,
+                &db.difficulty_calculator,
+            )
+            .unwrap();
             assert!(chain.is_empty());
 
             let block_e2 = orphan_chain.get("E2").unwrap().clone();
-            let chain = insert_orphan_and_find_new_tips(&mut *access, block_e2.to_arc_block(), &validator).unwrap();
+            let chain = insert_orphan_and_find_new_tips(
+                &mut *access,
+                block_e2.to_arc_block(),
+                &validator,
+                &db.difficulty_calculator,
+            )
+            .unwrap();
             assert!(chain.is_empty());
 
             let maybe_block = access.fetch_orphan_children_of(block_d2.hash().clone()).unwrap();
@@ -2017,14 +2066,20 @@ mod test {
         fn it_correctly_handles_duplicate_blocks() {
             let db = create_new_blockchain();
             let validator = MockValidator::new(true);
-            let (_, main_chain) = create_main_chain(&db, &[("A->GB", 1)]);
+            let (_, main_chain) = create_main_chain(&db, &[("A->GB", 1, 120)]);
 
             let fork_root = main_chain.get("A").unwrap().clone();
-            let (_, orphan_chain) = create_chained_blocks(&[("B2->GB", 2)], fork_root);
+            let (_, orphan_chain) = create_chained_blocks(&[("B2->GB", 2, 120)], fork_root);
             let mut access = db.db_write_access().unwrap();
 
             let block = orphan_chain.get("B2").unwrap().clone();
-            let chain = insert_orphan_and_find_new_tips(&mut *access, block.to_arc_block(), &validator).unwrap();
+            let chain = insert_orphan_and_find_new_tips(
+                &mut *access,
+                block.to_arc_block(),
+                &validator,
+                &db.difficulty_calculator,
+            )
+            .unwrap();
             assert_eq!(chain.len(), 1);
             assert_eq!(chain[0].header(), block.header());
             assert_eq!(chain[0].accumulated_data().total_accumulated_difficulty, 4);
@@ -2032,7 +2087,13 @@ mod test {
             assert_eq!(fork_tip, block.to_chain_header());
 
             // Insert again (block was received more than once), no new tips
-            let chain = insert_orphan_and_find_new_tips(&mut *access, block.to_arc_block(), &validator).unwrap();
+            let chain = insert_orphan_and_find_new_tips(
+                &mut *access,
+                block.to_arc_block(),
+                &validator,
+                &db.difficulty_calculator,
+            )
+            .unwrap();
             assert_eq!(chain.len(), 0);
         }
     }
@@ -2040,40 +2101,42 @@ mod test {
     #[test]
     fn test_handle_possible_reorg_case1() {
         // Normal chain
-        let (result, _blocks) = test_case_handle_possible_reorg(&[("A->GB", 1), ("B->A", 1)]).unwrap();
+        let (result, _blocks) = test_case_handle_possible_reorg(&[("A->GB", 1, 120), ("B->A", 1, 120)]).unwrap();
         result[0].assert_added();
         result[1].assert_added();
     }
 
     #[test]
     fn test_handle_possible_reorg_case2() {
-        let (result, blocks) = test_case_handle_possible_reorg(&[("A->GB", 1), ("B->A", 1), ("A2->GB", 3)]).unwrap();
+        let (result, blocks) =
+            test_case_handle_possible_reorg(&[("A->GB", 1, 120), ("B->A", 1, 120), ("A2->GB", 3, 120)]).unwrap();
         result[0].assert_added();
         result[1].assert_added();
         result[2].assert_reorg(1, 2);
-        let added_blocks = result[2].added_blocks();
-        assert_eq!(added_blocks, vec![blocks.get(&"A2".to_string()).unwrap().clone()]);
+        assert_added_hashes_eq(&result[2], vec!["A2"], &blocks);
     }
 
     #[test]
     fn test_handle_possible_reorg_case3() {
         // Switch to new chain and then reorg back
-        let (result, blocks) = test_case_handle_possible_reorg(&[("A->GB", 1), ("A2->GB", 2), ("B->A", 2)]).unwrap();
+        let (result, blocks) =
+            test_case_handle_possible_reorg(&[("A->GB", 1, 120), ("A2->GB", 2, 120), ("B->A", 2, 120)]).unwrap();
         result[0].assert_added();
         result[1].assert_reorg(1, 1);
         result[2].assert_reorg(2, 1);
-        let added_blocks = result[2].added_blocks();
-        assert_eq!(added_blocks, vec![
-            blocks.get(&"A".to_string()).unwrap().clone(),
-            blocks.get(&"B".to_string()).unwrap().clone()
-        ]);
+        assert_added_hashes_eq(&result[2], vec!["A", "B"], &blocks);
     }
 
     #[test]
     fn test_handle_possible_reorg_case4() {
-        let (result, blocks) =
-            test_case_handle_possible_reorg(&[("A->GB", 1), ("A2->GB", 2), ("B->A", 2), ("A3->GB", 4), ("C->B", 2)])
-                .unwrap();
+        let (result, blocks) = test_case_handle_possible_reorg(&[
+            ("A->GB", 1, 120),
+            ("A2->GB", 2, 120),
+            ("B->A", 2, 120),
+            ("A3->GB", 4, 120),
+            ("C->B", 2, 120),
+        ])
+        .unwrap();
         result[0].assert_added();
         result[1].assert_reorg(1, 1);
         result[2].assert_reorg(2, 1);
@@ -2086,15 +2149,15 @@ mod test {
     #[test]
     fn test_handle_possible_reorg_case5() {
         let (result, blocks) = test_case_handle_possible_reorg(&[
-            ("A->GB", 1),
-            ("B->A", 1),
-            ("A2->GB", 3),
-            ("C->B", 1),
-            ("D->C", 2),
-            ("B2->A", 5),
-            ("D2->C", 6),
-            ("D3->C", 7),
-            ("D4->C", 8),
+            ("A->GB", 1, 120),
+            ("B->A", 1, 120),
+            ("A2->GB", 3, 120),
+            ("C->B", 1, 120),
+            ("D->C", 2, 120),
+            ("B2->A", 5, 120),
+            ("D2->C", 6, 120),
+            ("D3->C", 7, 120),
+            ("D4->C", 8, 120),
         ])
         .unwrap();
         result[0].assert_added();
@@ -2123,20 +2186,29 @@ mod test {
     #[test]
     fn test_handle_possible_reorg_case6_orphan_chain_link() {
         let db = create_new_blockchain();
-        let (_, mainchain) = create_main_chain(&db, &[("A->GB", 1), ("B->A", 1), ("C->B", 1), ("D->C", 1)]);
+        let (_, mainchain) = create_main_chain(&db, &[
+            ("A->GB", 1, 120),
+            ("B->A", 1, 120),
+            ("C->B", 1, 120),
+            ("D->C", 1, 120),
+        ]);
 
         let mut access = db.db_write_access().unwrap();
         let mock_validator = MockValidator::new(true);
         let chain_strength_comparer = strongest_chain().by_sha3_difficulty().build();
 
         let fork_block = mainchain.get("B").unwrap().clone();
-        let (_, reorg_chain) = create_chained_blocks(&[("C2->GB", 1), ("D2->C2", 1), ("E2->D2", 1)], fork_block);
+        let (_, reorg_chain) = create_chained_blocks(
+            &[("C2->GB", 1, 120), ("D2->C2", 1, 120), ("E2->D2", 1, 120)],
+            fork_block,
+        );
 
         // Add true orphans
         let result = handle_possible_reorg(
             &mut *access,
             &mock_validator,
             &mock_validator,
+            &db.difficulty_calculator,
             &*chain_strength_comparer,
             reorg_chain.get("E2").unwrap().to_arc_block(),
         )
@@ -2148,6 +2220,7 @@ mod test {
             &mut *access,
             &mock_validator,
             &mock_validator,
+            &db.difficulty_calculator,
             &*chain_strength_comparer,
             reorg_chain.get("E2").unwrap().to_arc_block(),
         )
@@ -2158,6 +2231,7 @@ mod test {
             &mut *access,
             &mock_validator,
             &mock_validator,
+            &db.difficulty_calculator,
             &*chain_strength_comparer,
             reorg_chain.get("D2").unwrap().to_arc_block(),
         )
@@ -2171,6 +2245,7 @@ mod test {
             &mut *access,
             &mock_validator,
             &mock_validator,
+            &db.difficulty_calculator,
             &*chain_strength_comparer,
             reorg_chain.get("C2").unwrap().to_arc_block(),
         )
@@ -2185,20 +2260,26 @@ mod test {
     #[test]
     fn test_handle_possible_reorg_case7_fail_reorg() {
         let db = create_new_blockchain();
-        let (_, mainchain) = create_main_chain(&db, &[("A->GB", 1), ("B->A", 1), ("C->B", 1), ("D->C", 1)]);
+        let (_, mainchain) = create_main_chain(&db, &[
+            ("A->GB", 1, 120),
+            ("B->A", 1, 120),
+            ("C->B", 1, 120),
+            ("D->C", 1, 120),
+        ]);
 
         let mut access = db.db_write_access().unwrap();
         let mock_validator = MockValidator::new(true);
         let chain_strength_comparer = strongest_chain().by_sha3_difficulty().build();
 
         let fork_block = mainchain.get("C").unwrap().clone();
-        let (_, reorg_chain) = create_chained_blocks(&[("D2->GB", 1), ("E2->D2", 2)], fork_block);
+        let (_, reorg_chain) = create_chained_blocks(&[("D2->GB", 1, 120), ("E2->D2", 2, 120)], fork_block);
 
         // Add true orphans
         let result = handle_possible_reorg(
             &mut *access,
             &mock_validator,
             &mock_validator,
+            &db.difficulty_calculator,
             &*chain_strength_comparer,
             reorg_chain.get("E2").unwrap().to_arc_block(),
         )
@@ -2209,6 +2290,7 @@ mod test {
             &mut *access,
             &MockValidator::new(false),
             &mock_validator,
+            &db.difficulty_calculator,
             &*chain_strength_comparer,
             reorg_chain.get("D2").unwrap().to_arc_block(),
         )
@@ -2219,6 +2301,89 @@ mod test {
         assert_eq!(&tip, mainchain.get("D").unwrap().header());
 
         check_whole_chain(&mut *access);
+    }
+
+    #[test]
+    fn test_handle_possible_reorg_target_difficulty_is_correct_case_1() {
+        let (result, _blocks) =
+            test_case_handle_possible_reorg(&[("A->GB", 1, 120), ("B->A", 1, 60), ("C2->B", 2, 20), ("D2->C2", 4, 60)])
+                .unwrap();
+        let mut expected_target_difficulties = vec![];
+        expected_target_difficulties.extend(result[0].added_blocks());
+        expected_target_difficulties.extend(result[1].added_blocks());
+        expected_target_difficulties.extend(result[2].added_blocks());
+        expected_target_difficulties.extend(result[3].added_blocks());
+        let expected_target_difficulties: Vec<u64> = expected_target_difficulties
+            .iter()
+            .map(|b| b.accumulated_data().target_difficulty.as_u64())
+            .collect();
+        assert_eq!(expected_target_difficulties, vec![1, 1, 2, 4]);
+
+        let (result, blocks) = test_case_handle_possible_reorg(&[
+            ("A->GB", 1, 120),
+            ("B->A", 1, 60),
+            ("C->B", 3, 240),
+            ("C2->B", 2, 20),
+            ("D2->C2", 4, 60),
+        ])
+        .unwrap();
+
+        result[0].assert_added();
+        result[1].assert_added();
+        result[2].assert_added();
+        result[3].assert_orphaned();
+        result[4].assert_reorg(2, 1);
+
+        assert_added_hashes_eq(&result[4], vec!["C2", "D2"], &blocks);
+        assert_target_difficulties_eq(&result[4], vec![2, 4]);
+    }
+
+    #[test]
+    fn test_handle_possible_reorg_target_difficulty_is_correct_case_2() {
+        let _ = env_logger::builder().is_test(true).try_init();
+        // Test a straight chain to get the correct target difficulty. The block times must be reduced so that the
+        // algorithm changes
+        let (result, _blocks) = test_case_handle_possible_reorg(&[
+            ("A->GB", 1, 120),
+            ("B2->A", 1, 60),
+            ("C2->B2", 2, 60),
+            ("D2->C2", 3, 60),
+            ("E2->D2", 4, 60),
+        ])
+        .unwrap();
+        let mut expected_target_difficulties = vec![];
+        expected_target_difficulties.extend(result[0].added_blocks());
+        expected_target_difficulties.extend(result[1].added_blocks());
+        expected_target_difficulties.extend(result[2].added_blocks());
+        expected_target_difficulties.extend(result[3].added_blocks());
+        expected_target_difficulties.extend(result[4].added_blocks());
+        let expected_target_difficulties: Vec<u64> = expected_target_difficulties
+            .iter()
+            .map(|b| b.accumulated_data().target_difficulty.as_u64())
+            .collect();
+        assert_eq!(expected_target_difficulties, vec![1, 1, 2, 3, 4]);
+
+        // Now do a reorg to make sure the target difficulties are the same
+        let (result, blocks) = test_case_handle_possible_reorg(&[
+            ("A->GB", 1, 120),
+            ("B->A", 4, 120),
+            ("C->B", 4, 120),
+            ("B2->A", 1, 60),
+            ("C2->B2", 2, 60),
+            ("D2->C2", 3, 60),
+            ("E2->D2", 4, 60),
+        ])
+        .unwrap();
+        result[0].assert_added();
+        result[1].assert_added();
+        result[2].assert_added();
+        result[3].assert_orphaned();
+        result[4].assert_orphaned();
+        result[5].assert_orphaned();
+        result[6].assert_reorg(4, 2);
+
+        assert_added_hashes_eq(&result[6], vec!["B2", "C2", "D2", "E2"], &blocks);
+        assert_target_difficulties_eq(&result[6], vec![1, 2, 3, 4]);
     }
 
     fn check_whole_chain(db: &mut TempDatabase) {
@@ -2237,10 +2402,10 @@ mod test {
     ) {
         let added = result.added_blocks();
         assert_eq!(
-            added,
+            added.iter().map(|b| b.hash()).collect::<Vec<_>>(),
             block_names
                 .iter()
-                .map(|b| blocks.get(*b).unwrap().clone())
+                .map(|b| blocks.get(*b).unwrap().hash())
                 .collect::<Vec<_>>()
         );
     }
@@ -2254,14 +2419,41 @@ mod test {
         assert_eq!(accum_difficulty, values);
     }
 
+    fn assert_target_difficulties_eq(result: &BlockAddResult, values: Vec<u64>) {
+        let accum_difficulty: Vec<u64> = result
+            .added_blocks()
+            .iter()
+            .map(|cb| cb.accumulated_data().target_difficulty.as_u64())
+            .collect();
+        assert_eq!(accum_difficulty, values);
+    }
+
     #[allow(clippy::type_complexity)]
     fn test_case_handle_possible_reorg(
-        blocks: &[(&str, u64)],
+        blocks: &[(&str, u64, u64)],
     ) -> Result<(Vec<BlockAddResult>, HashMap<String, Arc<ChainBlock>>), ChainStorageError> {
         let db = create_new_blockchain();
         let genesis_block = db.fetch_block(0).unwrap().try_into_chain_block().map(Arc::new).unwrap();
         let (block_names, chain) = create_chained_blocks(blocks, genesis_block);
         let mock_validator = Box::new(MockValidator::new(true));
+        // A real validator is needed here to test target difficulties
+
+        let consensus = ConsensusManagerBuilder::new(Network::LocalNet)
+            .with_consensus_constants(
+                ConsensusConstantsBuilder::new(Network::LocalNet)
+                    .clear_proof_of_work()
+                    .add_proof_of_work(PowAlgorithm::Sha3, PowAlgorithmConstants {
+                        max_target_time: 1200,
+                        min_difficulty: 1.into(),
+                        max_difficulty: 4.into(),
+                        target_time: 120,
+                    })
+                    .build(),
+            )
+            .build();
+
+        let difficulty_calculator = DifficultyCalculator::new(consensus.clone(), Default::default());
+        let header_validator = Box::new(HeaderValidator::new(consensus));
         let chain_strength_comparer = strongest_chain().by_sha3_difficulty().build();
         let mut results = vec![];
         for name in block_names {
@@ -2275,7 +2467,8 @@ mod test {
             results.push(handle_possible_reorg(
                 &mut *db.db_write_access()?,
                 &*mock_validator,
-                &*mock_validator,
+                &*header_validator,
+                &difficulty_calculator,
                 &*chain_strength_comparer,
                 block.to_arc_block(),
             )?);
@@ -2285,7 +2478,7 @@ mod test {
 
     fn create_main_chain(
         db: &BlockchainDatabase<TempDatabase>,
-        blocks: &[(&str, u64)],
+        blocks: &[(&str, u64, u64)],
     ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
         let genesis_block = db.fetch_block(0).unwrap().try_into_chain_block().map(Arc::new).unwrap();
         let (names, chain) = create_chained_blocks(blocks, genesis_block);
@@ -2299,7 +2492,7 @@ mod test {
 
     fn create_orphan_chain(
         db: &BlockchainDatabase<TempDatabase>,
-        blocks: &[(&str, u64)],
+        blocks: &[(&str, u64, u64)],
         root_block: Arc<ChainBlock>,
     ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
         let (names, chain) = create_chained_blocks(blocks, root_block);
@@ -2315,14 +2508,14 @@ mod test {
     }
 
     fn create_chained_blocks(
-        blocks: &[(&str, u64)],
+        blocks: &[(&str, u64, u64)],
         genesis_block: Arc<ChainBlock>,
     ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
         let mut block_hashes = HashMap::new();
         block_hashes.insert("GB".to_string(), genesis_block);
 
         let mut block_names = Vec::with_capacity(blocks.len());
-        for (name, difficulty) in blocks {
+        for (name, difficulty, time) in blocks {
             let split = name.split("->").collect::<Vec<_>>();
             let to = split[0].to_string();
             let from = split[1].to_string();
@@ -2333,6 +2526,8 @@ mod test {
             let mut block = create_block(1, prev_block.height() + 1, vec![]);
             block.header.prev_hash = prev_block.hash().clone();
 
+            // Keep times constant in case we need a particular target difficulty
+            block.header.timestamp = prev_block.header().timestamp.increase(*time);
             block.header.output_mmr_size = prev_block.header().output_mmr_size + block.body.outputs().len() as u64;
             block.header.kernel_mmr_size = prev_block.header().kernel_mmr_size + block.body.kernels().len() as u64;
             let block = mine_to_difficulty(block, (*difficulty).into()).unwrap();

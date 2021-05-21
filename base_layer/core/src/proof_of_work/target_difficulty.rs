@@ -65,7 +65,7 @@ impl TargetDifficultyWindow {
     /// Returns true of the TargetDifficulty has `block_window` data points, otherwise false
     #[inline]
     pub fn is_full(&self) -> bool {
-        self.lwma.num_samples() == self.lwma.block_window() + 1
+        self.lwma.is_full()
     }
 
     pub fn len(&self) -> usize {
@@ -93,7 +93,7 @@ pub struct AchievedTargetDifficulty {
 impl AchievedTargetDifficulty {
     /// Checks if the achieved difficulty is higher than the target difficulty. If not, None is returned because a valid
     /// AchievedTargetDifficulty cannot be constructed.
-    pub(crate) fn try_construct(pow_algo: PowAlgorithm, target: Difficulty, achieved: Difficulty) -> Option<Self> {
+    pub fn try_construct(pow_algo: PowAlgorithm, target: Difficulty, achieved: Difficulty) -> Option<Self> {
         if achieved < target {
             return None;
         }

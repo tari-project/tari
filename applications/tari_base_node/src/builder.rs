@@ -42,6 +42,7 @@ use tari_core::{
             TxInputAndMaturityValidator,
             TxInternalConsistencyValidator,
         },
+        DifficultyCalculator,
     },
 };
 use tari_service_framework::ServiceHandles;
@@ -197,7 +198,7 @@ async fn build_node_context(
     let randomx_factory = RandomXFactory::new(RandomXConfig::default(), config.max_randomx_vms);
     let validators = Validators::new(
         BodyOnlyValidator::default(),
-        HeaderValidator::new(rules.clone(), randomx_factory),
+        HeaderValidator::new(rules.clone()),
         OrphanBlockValidator::new(rules.clone(), factories.clone()),
     );
     let db_config = BlockchainDatabaseConfig {
@@ -205,7 +206,14 @@ async fn build_node_context(
         pruning_horizon: config.pruning_horizon,
         pruning_interval: config.pruned_mode_cleanup_interval,
     };
-    let blockchain_db = BlockchainDatabase::new(backend, &rules, validators, db_config, cleanup_orphans_at_startup)?;
+    let blockchain_db = BlockchainDatabase::new(
+        backend,
+        rules.clone(),
+        validators,
+        db_config,
+        DifficultyCalculator::new(rules.clone(), randomx_factory),
+        cleanup_orphans_at_startup,
+    )?;
     let mempool_validator = MempoolValidator::new(vec![
         Box::new(TxInternalConsistencyValidator::new(factories.clone())),
         Box::new(TxInputAndMaturityValidator::new(blockchain_db.clone())),

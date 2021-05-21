@@ -91,8 +91,6 @@ pub enum ChainStorageError {
     BlockingTaskSpawnError(String),
     #[error("A request was out of range")]
     OutOfRange,
-    #[error("Value not found: {0}")]
-    LmdbValueNotFound(lmdb_zero::Error),
     #[error("LMDB error: {source}")]
     LmdbError {
         #[from]
@@ -125,7 +123,11 @@ impl From<lmdb_zero::Error> for ChainStorageError {
     fn from(err: lmdb_zero::Error) -> Self {
         use lmdb_zero::Error::*;
         match err {
-            Code(c) if c == lmdb_zero::error::NOTFOUND => ChainStorageError::LmdbValueNotFound(err),
+            Code(c) if c == lmdb_zero::error::NOTFOUND => ChainStorageError::ValueNotFound {
+                entity: "LMDB".to_string(),
+                field: "unknown".to_string(),
+                value: "unknown".to_string(),
+            },
             _ => ChainStorageError::AccessError(err.to_string()),
         }
     }

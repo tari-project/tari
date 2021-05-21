@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2021. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,40 +20,39 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! The validation module defines the [Validation] trait which describes all code that can perform block,
-//! transaction, or other validation tasks. Validators implement the [Validation] trait and can be chained together
-//! in a [ValidationPipeline] object to carry out complex validation routines.
-//!
-//! This module also defines a mock [MockValidator] that is useful for testing components that require validation
-//! without having to bring in all sorts of blockchain and communications paraphernalia.
-
-mod error;
-pub use error::ValidationError;
-
-pub(crate) mod helpers;
-
-mod traits;
-pub use traits::{
-    CandidateBlockBodyValidation,
-    FinalHorizonStateValidation,
-    HeaderValidation,
-    MempoolTransactionValidation,
-    OrphanValidation,
-    PostOrphanBodyValidation,
+use crate::{
+    blocks::BlockHeader,
+    chain_storage::{fetch_target_difficulty_for_next_block, BlockchainBackend},
+    consensus::ConsensusManager,
+    proof_of_work::{randomx_factory::RandomXFactory, AchievedTargetDifficulty},
+    validation::{helpers::check_target_difficulty, ValidationError},
 };
 
-pub mod block_validators;
-mod difficulty_calculator;
-pub use difficulty_calculator::*;
-pub mod header_validator;
-pub mod mocks;
-pub mod transaction_validators;
-// pub mod header_validator;
+pub struct DifficultyCalculator {
+    rules: ConsensusManager,
+    randomx_factory: RandomXFactory,
+}
 
-mod chain_balance;
-pub use chain_balance::ChainBalanceValidator;
+impl DifficultyCalculator {
+    pub fn new(rules: ConsensusManager, randomx_factory: RandomXFactory) -> Self {
+        Self { rules, randomx_factory }
+    }
 
-mod header_iter;
+    pub fn check_achieved_and_target_difficulty<B: BlockchainBackend>(
+        &self,
+        db: &B,
+        block_header: &BlockHeader,
+    ) -> Result<AchievedTargetDifficulty, ValidationError>
+    {
+        let difficulty_window =
+            fetch_target_difficulty_for_next_block(db, &self.rules, block_header.pow_algo(), &block_header.prev_hash)?;
+        let constants = self.rules.consensus_constants(block_header.height);
+        let target = difficulty_window.calculate(
+            constants.min_pow_difficulty(block_header.pow.pow_algo),
+            constants.max_pow_difficulty(block_header.pow.pow_algo),
+        );
+        let achieved_target = check_target_difficulty(block_header, target, &self.randomx_factory)?;
 
-#[cfg(test)]
-mod test;
+        Ok(achieved_target)
+    }
+}
