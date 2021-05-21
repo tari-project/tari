@@ -57,9 +57,9 @@ use std::{iter::repeat_with, sync::Arc, time::Duration};
 use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
 
 // Seed nodes
-const NUM_SEED_NODES: usize = 6;
+const NUM_SEED_NODES: usize = 1;
 // Size of network. Must be at least 2
-const NUM_NODES: usize = 4;
+const NUM_NODES: usize = 6;
 // Must be at least 2
 const NUM_WALLETS: usize = 50;
 const QUIET_MODE: bool = true;

@@ -142,8 +142,6 @@ mod state_machine {
 
         let event = event_rx.next().await.unwrap().unwrap();
         unpack_enum!(DhtEvent::NetworkDiscoveryPeersAdded(info) = &*event);
-        assert_eq!(info.has_new_neighbours(), true);
-        assert_eq!(info.num_new_neighbours, NUM_PEERS);
         assert_eq!(info.num_new_peers, NUM_PEERS);
         assert_eq!(info.num_duplicate_peers, 0);
         assert_eq!(info.num_succeeded, 1);

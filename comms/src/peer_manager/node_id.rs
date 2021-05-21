@@ -294,46 +294,6 @@ mod test {
         .unwrap();
         assert!(node_id1.0 < node_id2.0);
         assert!(node_id1.0 > node_id3.0);
-        // XOR metric
-        let desired_n1_to_n2_dist = NodeDistance::try_from(
-            [
-                42, 55, 84, 126, 224, 19, 209, 195, 152, 163, 29, 237, 204, 128, 24, 118, 219, 83, 231, 183, 238, 237,
-                180, 195, 48, 73, 74, 26, 241, 219, 194, 181,
-            ]
-            .as_bytes(),
-        )
-        .unwrap();
-        let desired_n1_to_n3_dist = NodeDistance::try_from(
-            [
-                172, 60, 156, 87, 176, 12, 14, 44, 23, 63, 41, 51, 128, 253, 119, 4, 27, 174, 245, 134, 13, 225, 214,
-                165, 57, 7, 65, 59, 146, 21, 133, 81,
-            ]
-            .as_bytes(),
-        )
-        .unwrap();
-        // Hamming distance
-        // let desired_n1_to_n2_dist_bytes: &[u8] = &vec![52u8];
-        // let desired_n1_to_n2_dist = NodeDistance::try_from(desired_n1_to_n2_dist_bytes).unwrap();
-        // let desired_n1_to_n3_dist = NodeDistance::try_from(
-        // [
-        // 46, 60, 156, 87, 176, 12, 14, 44, 23, 63, 41, 51, 128, 253, 119, 4, 27, 174, 245, 134, 13, 225, 214,
-        // 165, 57, 7, 65, 59, 146, 21, 133, 81,
-        // ]
-        // .as_bytes(),
-        // )
-        // .unwrap(); // Unused bytes will be discarded
-        let n1_to_n2_dist = node_id1.distance(&node_id2);
-        let n1_to_n3_dist = node_id1.distance(&node_id3);
-        assert!(n1_to_n2_dist < n1_to_n3_dist); // XOR metric
-                                                // assert!(n1_to_n2_dist > n1_to_n3_dist); // Hamming Distance
-        assert_eq!(n1_to_n2_dist, desired_n1_to_n2_dist);
-        assert_eq!(n1_to_n3_dist, desired_n1_to_n3_dist);
-
-        // Commutative
-        let n1_to_n2_dist = node_id1.distance(&node_id2);
-        let n2_to_n1_dist = node_id2.distance(&node_id1);
-
-        assert_eq!(n1_to_n2_dist, n2_to_n1_dist);
     }
 
     #[test]

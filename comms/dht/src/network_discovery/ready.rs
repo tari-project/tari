@@ -60,41 +60,7 @@ impl DiscoveryReady {
 
         // We don't have many peers - let's aggressively probe for them
         if num_peers < self.context.config.network_discovery.min_desired_peers {
-            if self.context.num_rounds() >= self.config().network_discovery.idle_after_num_rounds {
-                warn!(
-                    target: LOG_TARGET,
-                    "Still unable to obtain at minimum desired peers ({}) after {} rounds. Idling...",
-                    self.config().network_discovery.min_desired_peers,
-                    self.context.num_rounds(),
-                );
-                self.context.reset_num_rounds();
-                return Ok(StateEvent::Idle);
-            }
-
-            let peers = self
-                .context
-                .peer_manager
-                .random_peers(
-                    self.config().network_discovery.max_sync_peers,
-                    self.context.all_attempted_peers.read().await.as_slice(),
-                )
-                .await?;
-            let peers = peers.into_iter().map(|p| p.node_id).collect::<Vec<_>>();
-
-            if peers.is_empty() {
-                debug!(
-                    target: LOG_TARGET,
-                    "No more sync peers after round #{}. Idling...",
-                    self.context.num_rounds()
-                );
-                return Ok(StateEvent::Idle);
-            }
-
-            return Ok(StateEvent::BeginDiscovery(DiscoveryParams {
-                // All peers
-                num_peers_to_request: None,
-                peers,
-            }));
+            return self.on_less_than_min_desired_peers().await;
         }
 
         let last_round = self.context.last_round().await;
@@ -188,6 +154,45 @@ impl DiscoveryReady {
             num_peers_to_request: None,
             peers,
         }))
+    }
+
+    async fn on_less_than_min_desired_peers(&mut self) -> Result<StateEvent, NetworkDiscoveryError> {
+
+            if self.context.num_rounds() >= self.config().network_discovery.idle_after_num_rounds {
+                warn!(
+                    target: LOG_TARGET,
+                    "Still unable to obtain at minimum desired peers ({}) after {} rounds. Idling...",
+                    self.config().network_discovery.min_desired_peers,
+                    self.context.num_rounds(),
+                );
+                self.context.reset_num_rounds();
+                return Ok(StateEvent::Idle);
+            }
+
+            let peers = self
+                .context
+                .peer_manager
+                .random_peers(
+                    self.config().network_discovery.max_sync_peers,
+                    self.context.all_attempted_peers.read().await.as_slice(),
+                )
+                .await?;
+            let peers = peers.into_iter().map(|p| p.node_id).collect::<Vec<_>>();
+
+            if peers.is_empty() {
+                debug!(
+                    target: LOG_TARGET,
+                    "No more sync peers after round #{}. Idling...",
+                    self.context.num_rounds()
+                );
+                return Ok(StateEvent::Idle);
+            }
+
+            Ok(StateEvent::BeginDiscovery(DiscoveryParams {
+                // All peers
+                num_peers_to_request: None,
+                peers,
+            }))
     }
 
     #[inline]

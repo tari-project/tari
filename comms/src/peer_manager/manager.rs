@@ -452,7 +452,7 @@ mod test {
         let n = 5;
         // Create peer manager with random peers
         let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
-        let network_region_node_id = create_test_peer(false, Default::default()).node_id;
+        let destination_node_id = create_test_peer(false, Default::default()).node_id;
         let test_peers = (0..10)
             .map(|_| create_test_peer(false, PeerFeatures::COMMUNICATION_NODE))
             .chain((0..10).map(|_| create_test_peer(false, PeerFeatures::COMMUNICATION_CLIENT)))
@@ -463,20 +463,29 @@ mod test {
         }
 
         for features in &[PeerFeatures::COMMUNICATION_NODE, PeerFeatures::COMMUNICATION_CLIENT] {
-            let closest = peer_manager
-                .closest_peers(&network_region_node_id, n, &[], Some(*features))
+            let closest_peers = peer_manager
+                .closest_peers(&destination_node_id, n, &[], Some(*features))
                 .await
                 .unwrap();
 
-            assert_eq!(closest.len(), 5);
+            assert_eq!(closest_peers.len(), 5);
             for peer in test_peers.iter().filter(|p| p.has_features(*features)) {
-                let peer_distance = peer.node_id.distance(&network_region_node_id);
-                assert!(
-                    closest.contains(peer) ||
-                        closest
-                            .iter()
-                            .all(|c| c.node_id.distance(&network_region_node_id) < peer_distance)
-                );
+                let peer_distance_to_destination = peer.node_id.distance(&destination_node_id);
+
+                if closest_peers.contains(peer) {
+                    continue;
+                }
+                // otherwise make sure that all the other peers are closer than this peer
+                let peers_in_closest_peers_that_are_further_away: Vec<(NodeId, NodeDistance)> = closest_peers
+                    .iter()
+                    .filter(|c| c.node_id.distance(&destination_node_id) > peer_distance_to_destination)
+                    .map(|c| (c.node_id.clone(), c.node_id.distance(&destination_node_id))).collect();
+
+
+                // Compare the array to an empty array so that we can get the actual peers when debugging.
+                let closest_peers_distances : Vec<(NodeId, NodeDistance)> = closest_peers.iter().map(|c| (c.node_id.clone(), c.node_id.distance(&destination_node_id))).collect();
+                assert_eq!(peers_in_closest_peers_that_are_further_away, Vec::<(NodeId, NodeDistance)>::new(), "Peer(s) in `closest_peers` were further away than another peer. This node: {}, distance: {}, Destination node: {}, closest_peers: {:?}", peer.node_id, peer_distance_to_destination, destination_node_id, closest_peers_distances);
+
             }
         }
     }

@@ -26,7 +26,6 @@ use crate::peer_manager::{
 };
 use nom::lib::std::collections::VecDeque;
 use std::{
-    cmp,
     convert::{TryFrom, TryInto},
     fmt,
 };
@@ -131,8 +130,12 @@ impl TryFrom<&[u8]> for XorDistance {
     /// Construct a node distance from a set of bytes
     #[allow(clippy::manual_memcpy)]
     fn try_from(elements: &[u8]) -> Result<Self, Self::Error> {
+        if elements.len() > NODE_XOR_DISTANCE_ARRAY_SIZE {
+            return Err(NodeIdError::IncorrectByteCount)
+        }
+
         let mut bytes = [0; NODE_XOR_DISTANCE_ARRAY_SIZE];
-        let start = cmp::max(NODE_XOR_DISTANCE_ARRAY_SIZE - elements.len(), 0);
+        let start = NODE_XOR_DISTANCE_ARRAY_SIZE.saturating_sub(elements.len());
         for i in start..NODE_XOR_DISTANCE_ARRAY_SIZE {
             bytes[i] = elements[i - start];
         }

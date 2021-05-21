@@ -182,7 +182,7 @@ impl DhtConnectivity {
         #[allow(clippy::single_match)]
         match event {
             DhtEvent::NetworkDiscoveryPeersAdded(info) => {
-                if info.has_new_neighbours() {
+                if info.has_new_peers() {
                     debug!(
                         target: LOG_TARGET,
                         "Network discovery discovered {} more neighbouring peers. Reinitializing pools",

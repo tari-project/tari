@@ -413,31 +413,46 @@ impl DhtActor {
                 let num_buckets = config.num_network_buckets;
                 let propagation_factor = config.propagation_factor;
                 let bucket = destination_distance.get_bucket(num_buckets);
+                let all_buckets = NodeDistance::get_buckets(num_buckets);
 
-                let query = PeerQuery::new()
-                    .select_where(|peer| {
-                        if peer.node_id == destination_node_id {
-                            return true;
-                        }
+                let mut peer_node_ids = vec![];
+                let mut bucket_number:usize  = bucket.2 as usize;
+                let mut bucket_min = bucket.0;
+                let mut bucket_max = bucket.1;
+                while peer_node_ids.len() < propagation_factor && bucket_number >= 0 {
+                    let query = PeerQuery::new()
+                        .select_where(|peer| {
+                            if peer.node_id == destination_node_id {
+                                return true;
+                            }
 
-                        if !peer.has_features(PeerFeatures::MESSAGE_PROPAGATION) {
-                            return false;
-                        }
+                            if !peer.has_features(PeerFeatures::MESSAGE_PROPAGATION) {
+                                return false;
+                            }
 
-                        let distance = peer.node_id.distance(node_identity.node_id());
-                        // if it's in the same bucket as us, only propagate strictly closer, otherwise
-                        // we will get this message back in an endless loop
-                        if bucket.0 == NodeDistance::zero() {
-                            distance < destination_distance
-                        } else {
-                            distance >= bucket.0 && distance < bucket.1
-                        }
-                    })
-                    .sort_by(PeerQuerySortBy::LastConnected)
-                    .limit(propagation_factor);
+                            let distance = peer.node_id.distance(node_identity.node_id());
+                            // if it's in the same bucket as us, only propagate strictly closer, otherwise
+                            // we will get this message back in an endless loop
+                            if bucket_min == NodeDistance::zero() {
+                                distance < destination_distance
+                            } else {
+                                distance >= bucket_min && distance < bucket_max
+                            }
+                        })
+                        .sort_by(PeerQuerySortBy::LastConnected)
+                        .limit(propagation_factor - peer_node_ids.len());
 
-                let peers = peer_manager.perform_query(query).await?;
-                Ok(peers.into_iter().map(|p| p.node_id).collect())
+                    let peers = peer_manager.perform_query(query).await?;
+                    peer_node_ids.extend(peers.into_iter().map(|p| p.node_id));
+                    // get a new bucket.
+                    bucket_number = match bucket_number.checked_sub(1) {
+                        Some(n) => n,
+                        None => break,
+                    };
+                    bucket_min = all_buckets[bucket_number].0;
+                    bucket_max = all_buckets[bucket_number].1;
+                }
+                Ok(peer_node_ids)
             },
             Closest(closest_request) => {
                 let connections = connectivity
@@ -540,7 +555,7 @@ impl DhtActor {
         // - it has the required features
         // - it didn't recently fail to connect, and
         // - it is not in the exclusion list in closest_request
-        let mut connect_ineligable_count = 0;
+        let mut connect_ineligible_count = 0;
         let mut banned_count = 0;
         let mut excluded_count = 0;
         let mut filtered_out_node_count = 0;
@@ -557,7 +572,7 @@ impl DhtActor {
                 }
 
                 if peer.is_offline() {
-                    connect_ineligable_count += 1;
+                    connect_ineligible_count += 1;
                     return false;
                 }
 
@@ -573,7 +588,7 @@ impl DhtActor {
             .limit(n);
 
         let peers = peer_manager.perform_query(query).await?;
-        let total_excluded = banned_count + connect_ineligable_count + excluded_count + filtered_out_node_count;
+        let total_excluded = banned_count + connect_ineligible_count + excluded_count + filtered_out_node_count;
         debug!(
             target: LOG_TARGET,
             "👨‍👧‍👦 Closest Peer Selection: {num_peers} peer(s) selected, {total} peer(s) not selected, {banned} \
@@ -583,7 +598,7 @@ impl DhtActor {
             total = total_excluded,
             banned = banned_count,
             filtered_out = filtered_out_node_count,
-            not_connectable = connect_ineligable_count,
+            not_connectable = connect_ineligible_count,
             excluded = excluded_count
         );
 
@@ -594,9 +609,7 @@ impl DhtActor {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        test_utils::{build_peer_manager, make_client_identity, make_node_identity},
-    };
+    use crate::test_utils::{build_peer_manager, make_client_identity, make_node_identity};
     use chrono::{DateTime, Utc};
     use tari_comms::test_utils::mocks::{create_connectivity_mock, create_peer_connection_mock_pair};
     use tari_shutdown::Shutdown;
@@ -722,12 +735,8 @@ mod test {
             .unwrap();
         assert_eq!(peers.len(), 1);
 
-
-
         let peers = requester
-            .select_peers(BroadcastStrategy::CloserOnly(
-                conn_out.peer_node_id().clone().into(),
-            ))
+            .select_peers(BroadcastStrategy::CloserOnly(conn_out.peer_node_id().clone().into()))
             .await
             .unwrap();
         assert_eq!(peers.len(), 1);

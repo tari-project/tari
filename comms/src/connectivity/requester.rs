@@ -31,14 +31,12 @@ use crate::{
     peer_manager::NodeId,
     PeerConnection,
 };
-use futures::{
-    channel::{mpsc, oneshot},
-    SinkExt,
-};
-// use log::*;
+use futures::{channel::{mpsc, oneshot}, SinkExt, StreamExt};
+use log::*;
 use std::{fmt, sync::Arc, time::Duration};
-use tokio::sync::broadcast;
-// const LOG_TARGET: &str = "comms::connectivity::requester";
+use tokio::{sync::broadcast, time};
+use std::time::Instant;
+const LOG_TARGET: &str = "comms::connectivity::requester";
 
 pub type ConnectivityEventRx = broadcast::Receiver<Arc<ConnectivityEvent>>;
 pub type ConnectivityEventTx = broadcast::Sender<Arc<ConnectivityEvent>>;
@@ -238,70 +236,68 @@ impl ConnectivityRequester {
     }
 
     /// Waits for the node to get at least one connection.
-    pub async fn wait_for_connectivity(&mut self, _timeout: Duration) -> Result<(), ConnectivityError> {
-        // TODO: re-enable this. It seems to fail
-        Ok(())
-        // let mut connectivity_events = self.get_event_subscription();
-        // let status = self.get_connectivity_status().await?;
-        // if status.is_online() {
-        //     return Ok(());
-        // }
-        // let start = Instant::now();
-        // let mut remaining = timeout;
-        //
-        // let mut last_known_peer_count = status.num_connected_nodes();
-        // loop {
-        //     debug!(target: LOG_TARGET, "Waiting for connectivity event");
-        //
-        //     let recv_result = time::timeout(remaining, connectivity_events.next())
-        //         .await
-        //         .map_err(|_| ConnectivityError::OnlineWaitTimeout(last_known_peer_count))?
-        //         .ok_or_else(|| ConnectivityError::ConnectivityEventStreamClosed)?;
-        //
-        //     remaining = timeout
-        //         .checked_sub(start.elapsed())
-        //         .ok_or_else(|| ConnectivityError::OnlineWaitTimeout(last_known_peer_count))?;
-        //
-        //     match recv_result {
-        //         Ok(event) => match &*event {
-        //             ConnectivityEvent::ConnectivityStateOnline(_) => {
-        //                 info!(target: LOG_TARGET, "Connectivity is ONLINE.");
-        //                 break Ok(());
-        //             },
-        //             ConnectivityEvent::ConnectivityStateDegraded(n) => {
-        //                 warn!(target: LOG_TARGET, "Connectivity is DEGRADED ({} peer(s))", n);
-        //                 last_known_peer_count = *n;
-        //             },
-        //             ConnectivityEvent::ConnectivityStateOffline => {
-        //                 warn!(
-        //                     target: LOG_TARGET,
-        //                     "Connectivity is OFFLINE. Waiting for connections..."
-        //                 );
-        //                 last_known_peer_count = 0;
-        //             },
-        //             event => {
-        //                 debug!(
-        //                     target: LOG_TARGET,
-        //                     "Received event while waiting for connectivity: {:?}", event
-        //                 );
-        //             },
-        //         },
-        //         Err(broadcast::RecvError::Closed) => {
-        //             error!(
-        //                 target: LOG_TARGET,
-        //                 "Connectivity event stream closed unexpectedly. System may be shutting down."
-        //             );
-        //             break Err(ConnectivityError::ConnectivityEventStreamClosed);
-        //         },
-        //         Err(broadcast::RecvError::Lagged(n)) => {
-        //             warn!(target: LOG_TARGET, "Lagging behind on {} connectivity event(s)", n);
-        //             // We lagged, so could have missed the state change. Check it explicitly.
-        //             let status = self.get_connectivity_status().await?;
-        //             if status.is_online() {
-        //                 break Ok(());
-        //             }
-        //         },
-        //     }
-        // }
+    pub async fn wait_for_connectivity(&mut self, timeout: Duration) -> Result<(), ConnectivityError> {
+        let mut connectivity_events = self.get_event_subscription();
+        let status = self.get_connectivity_status().await?;
+        if status.is_online() {
+            return Ok(());
+        }
+        let start = Instant::now();
+        let mut remaining = timeout;
+
+        let mut last_known_peer_count = status.num_connected_nodes();
+        loop {
+            debug!(target: LOG_TARGET, "Waiting for connectivity event");
+
+            let recv_result = time::timeout(remaining, connectivity_events.next())
+                .await
+                .map_err(|_| ConnectivityError::OnlineWaitTimeout(last_known_peer_count))?
+                .ok_or_else(|| ConnectivityError::ConnectivityEventStreamClosed)?;
+
+            remaining = timeout
+                .checked_sub(start.elapsed())
+                .ok_or_else(|| ConnectivityError::OnlineWaitTimeout(last_known_peer_count))?;
+
+            match recv_result {
+                Ok(event) => match &*event {
+                    ConnectivityEvent::ConnectivityStateOnline(_) => {
+                        info!(target: LOG_TARGET, "Connectivity is ONLINE.");
+                        break Ok(());
+                    },
+                    ConnectivityEvent::ConnectivityStateDegraded(n) => {
+                        warn!(target: LOG_TARGET, "Connectivity is DEGRADED ({} peer(s))", n);
+                        last_known_peer_count = *n;
+                    },
+                    ConnectivityEvent::ConnectivityStateOffline => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Connectivity is OFFLINE. Waiting for connections..."
+                        );
+                        last_known_peer_count = 0;
+                    },
+                    event => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Received event while waiting for connectivity: {:?}", event
+                        );
+                    },
+                },
+                Err(broadcast::RecvError::Closed) => {
+                    error!(
+                        target: LOG_TARGET,
+                        "Connectivity event stream closed unexpectedly. System may be shutting down."
+                    );
+                    break Err(ConnectivityError::ConnectivityEventStreamClosed);
+                },
+                Err(broadcast::RecvError::Lagged(n)) => {
+                    warn!(target: LOG_TARGET, "Lagging behind on {} connectivity event(s)", n);
+                    // We lagged, so could have missed the state change. Check it explicitly.
+                    let status = self.get_connectivity_status().await?;
+                    if status.is_online() {
+                        break Ok(());
+                    }
+                },
+            }
+        }
     }
 }
