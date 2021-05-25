@@ -22,25 +22,25 @@ use croaring::Bitmap;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_mmr::Hash;
 
-/// Identify behaviour for Blockchain database back ends. Implementations must support `Send` and `Sync` so that
+/// Identify behaviour for Blockchain database backends. Implementations must support `Send` and `Sync` so that
 /// `BlockchainDatabase` can be thread-safe. The backend *must* also execute transactions atomically; i.e., every
 /// operation within it must succeed, or they all fail. Failure to support this contract could lead to
 /// synchronisation issues in your database backend.
 ///
 /// Data is passed to and from the backend via the [DbKey], [DbValue], and [DbValueKey] enums. This strategy allows
-/// us to keep the reading and writing API extremely simple. Extending the types of data that the back ends can handle
-/// will entail adding to those enums, and the back ends, while this trait can remain unchanged.
+/// us to keep the reading and writing API extremely simple. Extending the types of data that the backends can handle
+/// will entail adding to those enums, and the backends, while this trait can remain unchanged.
 #[allow(clippy::ptr_arg)]
 pub trait BlockchainBackend: Send + Sync {
     /// Commit the transaction given to the backend. If there is an error, the transaction must be rolled back, and
     /// the error condition returned. On success, every operation in the transaction will have been committed, and
     /// the function will return `Ok(())`.
     fn write(&mut self, tx: DbTransaction) -> Result<(), ChainStorageError>;
-    /// Fetch a value from the back end corresponding to the given key. If the value is not found, `get` must return
-    /// `Ok(None)`. It should only error if there is an access or integrity issue with the underlying back end.
+    /// Fetch a value from the backend corresponding to the given key. If the value is not found, `get` must return
+    /// `Ok(None)`. It should only error if there is an access or integrity issue with the underlying backend.
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError>;
-    /// Checks to see whether the given key exists in the back end. This function should only fail if there is an
-    /// access or integrity issue with the back end.
+    /// Checks to see whether the given key exists in the backend. This function should only fail if there is an
+    /// access or integrity issue with the backend.
     fn contains(&self, key: &DbKey) -> Result<bool, ChainStorageError>;
 
     /// Fetches data that is calculated and accumulated for blocks that have been
@@ -129,7 +129,7 @@ pub trait BlockchainBackend: Send + Sync {
     /// Returns the kernel count
     fn kernel_count(&self) -> Result<usize, ChainStorageError>;
 
-    /// Fetches an current tip orphan by hash or returns None if the prohan is not found or is not a tip of any
+    /// Fetches an current tip orphan by hash or returns None if the orphan is not found or is not a tip of any
     /// alternate chain
     fn fetch_orphan_chain_tip_by_hash(&self, hash: &HashOutput) -> Result<Option<ChainHeader>, ChainStorageError>;
     /// Fetch all orphans that have `hash` as a previous hash

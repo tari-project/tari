@@ -44,10 +44,10 @@
 //!  +-------+                    +-----+
 //!  |                                |
 //!  | Txn Inventory                  |
-//!  |------------------------------->|   
+//!  |------------------------------->|
 //!  |                                |
 //!  |      TransactionItem(tx_b1)    |
-//!  |<-------------------------------|    
+//!  |<-------------------------------|
 //!  |             ...streaming...    |
 //!  |      TransactionItem(empty)    |
 //!  |<-------------------------------|
@@ -55,7 +55,7 @@
 //!  |<-------------------------------|
 //!  |                                |
 //!  | TransactionItem(tx_a1)         |
-//!  |------------------------------->|    
+//!  |------------------------------->|
 //!  |             ...streaming...    |
 //!  | TransactionItem(empty)         |
 //!  |------------------------------->|
@@ -147,7 +147,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
             if (*status_watch.borrow()).bootstrapped {
                 break;
             }
-            debug!(
+            trace!(
                 target: LOG_TARGET,
                 "Mempool sync still on hold, waiting for bootstrap to finish",
             );
