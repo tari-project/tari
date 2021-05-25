@@ -1265,6 +1265,8 @@ fn check_for_valid_height<T: BlockchainBackend>(db: &T, height: u64) -> Result<(
     Ok((tip_height, height < pruned_height))
 }
 
+/// Removes blocks from the db from current tip to specified height.
+/// Returns the blocks removed, ordered from tip to height.
 fn rewind_to_height<T: BlockchainBackend>(
     db: &mut T,
     mut height: u64,
@@ -1512,7 +1514,6 @@ fn handle_possible_reorg<T: BlockchainBackend>(
 
     let num_added_blocks = reorg_chain.len();
     let removed_blocks = reorganize_chain(db, block_validator, fork_height, &reorg_chain)?;
-
     let num_removed_blocks = removed_blocks.len();
 
     // reorg is required when any blocks are removed or more than one are added
@@ -1548,7 +1549,8 @@ fn handle_possible_reorg<T: BlockchainBackend>(
     }
 }
 
-// Reorganize the main chain with the provided fork chain, starting at the specified height.
+/// Reorganize the main chain with the provided fork chain, starting at the specified height.
+/// Returns the blocks that were removed (if any), ordered from tip to fork (ie. height desc).
 fn reorganize_chain<T: BlockchainBackend>(
     backend: &mut T,
     block_validator: &dyn PostOrphanBodyValidation<T>,
@@ -1603,6 +1605,15 @@ fn reorganize_chain<T: BlockchainBackend>(
         }
     }
 
+    if let Some(block) = removed_blocks.first() {
+        // insert the new orphan chain tip
+        let mut txn = DbTransaction::new();
+        let hash = block.hash().clone();
+        debug!(target: LOG_TARGET, "Inserting new orphan chain tip: {}", hash.to_hex());
+        txn.insert_orphan_chain_tip(hash);
+        backend.write(txn)?;
+    }
+
     Ok(removed_blocks)
 }
 
@@ -1632,7 +1643,7 @@ fn restore_reorged_chain<T: BlockchainBackend>(
     Ok(())
 }
 
-// Insert the provided block into the orphan pool and returns any new tips that were created
+/// Insert the provided block into the orphan pool and returns any new tips that were created.
 fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     db: &mut T,
     block: Arc<Block>,
