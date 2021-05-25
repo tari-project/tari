@@ -16,11 +16,11 @@ appenders:
       kind: compound
       trigger:
         kind: size
-        limit: 200mb
+        limit: 100mb
       roller:
         kind: fixed_window
         base: 1
-        count: 50
+        count: 10
         pattern: "log/proxy/proxy.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
@@ -39,6 +39,46 @@ loggers:
     additive: false
   hyper:
     level: info
+    appenders:
+      - proxy
+    additive: false
+  tracing:
+    level: info
+    appenders:
+      - proxy
+    additive: false
+  want:
+    level: info
+    appenders:
+      - proxy
+    additive: false
+  tower_buffer:
+    level: info
+    appenders:
+      - proxy
+    additive: false
+  tonic:
+    level: info
+    appenders:
+      - proxy
+    additive: false
+  tokio_util:
+    level: info
+    appenders:
+      - proxy
+    additive: false
+  mio::sys:
+    level: info
+    appenders:
+      - proxy
+    additive: false
+  mio::poll:
+    level: info
+    appenders:
+      - proxy
+    additive: false
+  tari_merge_mining_proxy::proxy:
+    level: error
     appenders:
       - proxy
     additive: false

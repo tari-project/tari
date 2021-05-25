@@ -446,86 +446,6 @@ When(/I ask for a block height from proxy (.*)/, async function (mmProxy) {
   lastResult = height;
 });
 
-Given(
-  /I have a SHA3 miner (.*) connected to seed node (.*)/,
-  { timeout: 40 * 1000 },
-  async function (name, seed) {
-    //add the base_node
-    const node = this.createNode(name);
-    console.log(this.seeds[seed].peerAddress());
-    node.setPeerSeeds([this.seeds[seed].peerAddress()]);
-    await node.startNew();
-    this.addNode(name, node);
-
-    // Add the wallet connected to the above base node
-    let wallet = new WalletProcess(name);
-    wallet.setPeerSeeds([node.peerAddress()]);
-    await wallet.startNew();
-    this.addWallet(name, wallet);
-
-    //Now lets add a standalone miner to both
-    const miningNode = new MiningNodeProcess(
-      name,
-      node.getGrpcAddress(),
-      wallet.getGrpcAddress()
-    );
-    this.addMiningNode(name, miningNode);
-  }
-);
-
-Given(
-  /I have a SHA3 miner (.*) connected to node (.*)/,
-  { timeout: 40 * 1000 },
-  async function (name, seed) {
-    //add the base_node
-    const node = this.createNode(name);
-    console.log(this.nodes[seed].peerAddress());
-    node.setPeerSeeds([this.nodes[seed].peerAddress()]);
-    await node.startNew();
-    this.addNode(name, node);
-
-    // Add the wallet connected to the above base node
-    let wallet = new WalletProcess(name);
-    wallet.setPeerSeeds([node.peerAddress()]);
-    await wallet.startNew();
-    this.addWallet(name, wallet);
-
-    //Now lets add a standalone miner to both
-    const miningNode = new MiningNodeProcess(
-      name,
-      node.getGrpcAddress(),
-      wallet.getGrpcAddress()
-    );
-    this.addMiningNode(name, miningNode);
-  }
-);
-
-Given(
-  /I have a SHA3 miner (.*) connected to all seed nodes/,
-  { timeout: 40 * 1000 },
-  async function (name) {
-    //add the base_node
-    const node = this.createNode(name);
-    node.setPeerSeeds([this.seedAddresses()]);
-    await node.startNew();
-    this.addNode(name, node);
-
-    // Add the wallet connected to the above base node
-    let wallet = new WalletProcess(name);
-    wallet.setPeerSeeds([node.peerAddress()]);
-    await wallet.startNew();
-    this.addWallet(name, wallet);
-
-    //Now lets add a standalone miner to both
-    const miningNode = new MiningNodeProcess(
-      name,
-      node.getGrpcAddress(),
-      wallet.getGrpcAddress()
-    );
-    this.addMiningNode(name, miningNode);
-  }
-);
-
 Then("Proxy response height is valid", function () {
   assert(Number.isInteger(lastResult), true);
 });
@@ -624,15 +544,22 @@ Then(
 
 Then(
   /node (.*) is at the same height as node (.*)/,
-  { timeout: 120 * 1000 },
+  { timeout: 130 * 1000 },
   async function (nodeA, nodeB) {
-    const expectedHeight = parseInt(await this.getClient(nodeB).getTipHeight());
-    await waitFor(
-      async () => this.getClient(nodeA).getTipHeight(),
-      expectedHeight,
-      115 * 1000
-    );
-    const currentHeight = await this.getClient(nodeA).getTipHeight();
+    var expectedHeight, currentHeight;
+    expectedHeight = parseInt(await this.getClient(nodeB).getTipHeight());
+    for (let i = 1; i <= 12; i++) {
+      await waitFor(
+        async () => this.getClient(nodeA).getTipHeight(),
+        expectedHeight,
+        10 * 1000
+      );
+      expectedHeight = parseInt(await this.getClient(nodeB).getTipHeight());
+      currentHeight = await this.getClient(nodeA).getTipHeight();
+      if (currentHeight === expectedHeight) {
+        break;
+      }
+    }
     console.log(
       `Node ${nodeA} is at tip: ${currentHeight} (should be`,
       expectedHeight,
@@ -717,18 +644,15 @@ Then(
 );
 
 Then(
-  /meddling with block template data from node (.*) for wallet (.*) is not allowed/,
-  async function (baseNodeName, walletName) {
+  /meddling with block template data from node (.*) is not allowed/,
+  async function (baseNodeName) {
     const baseNodeClient = this.getClient(baseNodeName);
-    const walletClient = this.getWallet(walletName).getClient();
 
     // No meddling with data
     // - Current tip
     const currHeight = await baseNodeClient.getTipHeight();
     // - New block
-    let newBlock = await baseNodeClient.mineBlockBeforeSubmit(walletClient, 0);
-    //    console.log("\nNew block:\n");
-    //    console.dir(newBlock, { depth: null });
+    let newBlock = await baseNodeClient.mineBlockBeforeSubmit(0);
     // - Submit block to base node
     await baseNodeClient.submitMinedBlock(newBlock);
     // - Verify new height
@@ -736,7 +660,7 @@ Then(
 
     // Meddle with data - kernel_mmr_size
     // - New block
-    newBlock = await baseNodeClient.mineBlockBeforeSubmit(walletClient, 0);
+    newBlock = await baseNodeClient.mineBlockBeforeSubmit(0);
     // - Change kernel_mmr_size
     newBlock.block.header.kernel_mmr_size =
       parseInt(newBlock.block.header.kernel_mmr_size) + 1;
@@ -758,7 +682,7 @@ Then(
 
     // Meddle with data - output_mmr_size
     // - New block
-    newBlock = await baseNodeClient.mineBlockBeforeSubmit(walletClient, 0);
+    newBlock = await baseNodeClient.mineBlockBeforeSubmit(0);
     // - Change output_mmr_size
     newBlock.block.header.output_mmr_size =
       parseInt(newBlock.block.header.output_mmr_size) + 1;
@@ -975,7 +899,7 @@ When(
 );
 
 When(
-  /I mine but don't submit a block (.*) on (.*)/,
+  /I mine but do not submit a block (.*) on (.*)/,
   async function (blockName, nodeName) {
     await this.mineBlock(
       nodeName,
@@ -1065,7 +989,7 @@ When("I print the world", function () {
 
 When(
   /I wait for wallet (.*) to have at least (.*) uT/,
-  { timeout: 250 * 1000 },
+  { timeout: 710 * 1000 },
   async function (wallet, amount) {
     const walletClient = this.getWallet(wallet).getClient();
     console.log("\n");
@@ -1078,7 +1002,7 @@ When(
       await waitFor(
         async () => walletClient.isBalanceAtLeast(amount),
         true,
-        240 * 1000,
+        700 * 1000,
         5 * 1000,
         5
       );
@@ -2218,7 +2142,8 @@ Then(
       5 * 1000,
       5
     );
-    const transactions = await walletClient.getAllSpendableCoinbaseTransactions();
+    const transactions =
+      await walletClient.getAllSpendableCoinbaseTransactions();
     expect(transactions.length >= count).to.equal(true);
   }
 );
@@ -2316,7 +2241,7 @@ When(
 
 When(
   /I send (.*) transactions of (.*) uT each from wallet (.*) to wallet (.*) at fee_per_gram (.*)/,
-  { timeout: 10800 * 1000 },
+  { timeout: 43200 * 1000 },
   async function (numTransactions, amount, sourceWallet, dest, feePerGram) {
     console.log("\n");
     const sourceWalletClient = this.getWallet(sourceWallet).getClient();

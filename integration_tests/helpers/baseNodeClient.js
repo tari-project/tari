@@ -171,26 +171,12 @@ class BaseNodeClient {
       });
   }
 
-  async mineBlockBeforeSubmit(walletClient, weight) {
-    // Empty template from base node
-    const emptyTemplate = await this.client
-      .getNewBlockTemplate()
-      .sendMessage({ algo: { pow_algo: 2 }, max_weight: weight });
-    // Coinbase from wallet
-    const coinbase = await walletClient.client.inner.getCoinbase().sendMessage({
-      reward: emptyTemplate.miner_data.reward,
-      fee: emptyTemplate.miner_data.total_fees,
-      height: emptyTemplate.new_block_template.header.height,
-    });
+  async mineBlockBeforeSubmit(weight) {
     // New block from base node including coinbase
-    const block = emptyTemplate.new_block_template;
-    block.body.outputs = block.body.outputs.concat(
-      coinbase.transaction.body.outputs
-    );
-    block.body.kernels = block.body.kernels.concat(
-      coinbase.transaction.body.kernels
-    );
-    const newBlock = await this.client.getNewBlock().sendMessage(block);
+    const block = await this.getMinedCandidateBlock(weight);
+    const newBlock = await this.client
+      .getNewBlock()
+      .sendMessage(block.template);
     return newBlock;
   }
 

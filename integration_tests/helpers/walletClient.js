@@ -142,12 +142,14 @@ class WalletClient {
         return false;
       }
     } catch (e) {
-      if (e && e.code && e.code === NO_CONNECTION) {
-        console.log("No connection yet (isBalanceAtLeast)...");
-      } else {
-        console.error(e);
-      }
       // Any error here must be treated as if the required status was not achieved
+      if (e && e.code && e.code === NO_CONNECTION) {
+        console.log(
+          "Wallet client, `async isBalanceAtLeast` - No connection yet..."
+        );
+      } else {
+        console.log("Wallet client, `async isBalanceAtLeast`", e);
+      }
       return false;
     }
   }
@@ -157,7 +159,10 @@ class WalletClient {
       const txnDetails = await this.getTransactionInfo({
         transaction_ids: [tx_id.toString()],
       });
-      if (transactionStatus().indexOf(txnDetails.transactions[0].status) >= 2) {
+      if (
+        transactionStatus().indexOf(txnDetails.transactions[0].status) >= 2 &&
+        txnDetails.transactions[0].valid
+      ) {
         return true;
       } else {
         return false;
@@ -173,7 +178,10 @@ class WalletClient {
       const txnDetails = await this.getTransactionInfo({
         transaction_ids: [tx_id.toString()],
       });
-      if (transactionStatus().indexOf(txnDetails.transactions[0].status) >= 3) {
+      if (
+        transactionStatus().indexOf(txnDetails.transactions[0].status) >= 3 &&
+        txnDetails.transactions[0].valid
+      ) {
         return true;
       } else {
         return false;
@@ -189,7 +197,10 @@ class WalletClient {
       const txnDetails = await this.getTransactionInfo({
         transaction_ids: [tx_id.toString()],
       });
-      if (transactionStatus().indexOf(txnDetails.transactions[0].status) >= 4) {
+      if (
+        transactionStatus().indexOf(txnDetails.transactions[0].status) >= 4 &&
+        txnDetails.transactions[0].valid
+      ) {
         return true;
       } else {
         return false;
@@ -205,7 +216,10 @@ class WalletClient {
       const txnDetails = await this.getTransactionInfo({
         transaction_ids: [tx_id.toString()],
       });
-      if (transactionStatus().indexOf(txnDetails.transactions[0].status) >= 5) {
+      if (
+        transactionStatus().indexOf(txnDetails.transactions[0].status) >= 5 &&
+        txnDetails.transactions[0].valid
+      ) {
         return true;
       } else {
         return false;
@@ -221,7 +235,10 @@ class WalletClient {
       const txnDetails = await this.getTransactionInfo({
         transaction_ids: [tx_id.toString()],
       });
-      if (transactionStatus().indexOf(txnDetails.transactions[0].status) == 5) {
+      if (
+        transactionStatus().indexOf(txnDetails.transactions[0].status) == 5 &&
+        txnDetails.transactions[0].valid
+      ) {
         return true;
       } else {
         return false;
@@ -237,7 +254,10 @@ class WalletClient {
       const txnDetails = await this.getTransactionInfo({
         transaction_ids: [tx_id.toString()],
       });
-      if (transactionStatus().indexOf(txnDetails.transactions[0].status) == 6) {
+      if (
+        transactionStatus().indexOf(txnDetails.transactions[0].status) == 6 &&
+        txnDetails.transactions[0].valid
+      ) {
         return true;
       } else {
         return false;

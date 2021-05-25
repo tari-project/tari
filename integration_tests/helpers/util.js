@@ -51,11 +51,14 @@ async function waitFor(
       await sleep(timeOut);
       i++;
     } catch (e) {
-      if (e && e.code && e.code === NO_CONNECTION) {
-        console.log("No connection yet (waitFor)...");
-      } else {
-        console.error("Error in waitFor: ", e);
+      if (i > 1) {
+        if (e && e.code && e.code === NO_CONNECTION) {
+          console.log("No connection yet (waitFor)...");
+        } else {
+          console.error("Error in waitFor: ", e);
+        }
       }
+      await sleep(timeOut);
     }
   }
 }
