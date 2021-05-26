@@ -1,7 +1,6 @@
-@long-running
+@stress-test
 Feature: Stress Test
 
-    @long-running
     Scenario Outline: Ramped Stress Test
         Given I have a seed node NODE1
         And I have stress-test wallet WALLET_A connected to the seed node NODE1 with broadcast monitoring timeout <MonitoringTimeout>
@@ -35,7 +34,15 @@ Feature: Stress Test
             | NumTransactions   | NumCoinsplitsNeeded   | NumNodes  | MonitoringTimeout |
             | 10                | 1                     | 3         | 10                |
             | 100               | 1                     | 3         | 10                |
+
+        @long-running
+        Examples:
+            | NumTransactions   | NumCoinsplitsNeeded   | NumNodes  | MonitoringTimeout |
             | 1000              | 3                     | 3         | 60                |
+
+        @long-running @broken
+        Examples:
+            | NumTransactions   | NumCoinsplitsNeeded   | NumNodes  | MonitoringTimeout |
             | 10000             | 21                    | 3         | 300               |
 
     @long-running

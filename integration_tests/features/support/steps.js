@@ -145,7 +145,7 @@ Given(
   async function (nodeNameA, nodeNameB, waitSeconds) {
     expect(waitSeconds < 1190).to.equal(true);
     console.log(
-      "Connecting",
+      "Connecting (add new peer seed, shut down, then start up)",
       nodeNameA,
       "to",
       nodeNameB,
@@ -158,6 +158,7 @@ Given(
     nodeA.setPeerSeeds([nodeB.peerAddress()]);
     await this.stopNode(nodeNameA);
     await this.startNode(nodeNameA);
+    await sleep(waitSeconds * 1000);
   }
 );
 
@@ -602,7 +603,7 @@ Then(
   { timeout: 1200 * 1000 },
   async function (height) {
     await this.forEachClientAsync(async (client, name) => {
-      await waitFor(async () => client.getTipHeight(), height, 115 * 1000);
+      await waitFor(async () => client.getTipHeight(), height, 1150 * 1000);
       const currTip = await client.getTipHeight();
       console.log(`Node ${name} is at tip: ${currTip} (should be ${height})`);
       expect(currTip).to.equal(height);
@@ -1005,7 +1006,7 @@ Then(
     await waitFor(
       async () => walletClient.isBalanceAtLeast(amount),
       true,
-      240 * 1000,
+      700 * 1000,
       5 * 1000,
       5
     );
@@ -1019,7 +1020,7 @@ Then(
 
 Then(
   /I wait for wallet (.*) to have less than (.*) uT/,
-  { timeout: 250 * 1000 },
+  { timeout: 710 * 1000 },
   async function (wallet, amount) {
     let walletClient = this.getWallet(wallet).getClient();
     console.log("\n");

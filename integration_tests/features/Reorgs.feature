@@ -42,41 +42,53 @@ Feature: Reorgs
   @critical @reorg
   Scenario: Pruned mode reorg simple
     Given I have a base node NODE1 connected to all seed nodes
-    When I mine 5 blocks on NODE1
+    And I have wallet WALLET1 connected to base node NODE1
+    And I have mining node MINING1 connected to base node NODE1 and wallet WALLET1
+    When mining node MINING1 mines 5 blocks with min difficulty 1 and max difficulty 20
     Then all nodes are at height 5
     Given I have a pruned node PNODE2 connected to node NODE1 with pruning horizon set to 5
-    When I mine 4 blocks on NODE1
+    And I have wallet WALLET2 connected to base node PNODE2
+    And I have mining node MINING2 connected to base node PNODE2 and wallet WALLET2
+    When mining node MINING1 mines 4 blocks with min difficulty 1 and max difficulty 20
     Then all nodes are at height 9
-    When I mine 5 blocks on PNODE2
+    When mining node MINING2 mines 5 blocks with min difficulty 1 and max difficulty 20
     Then all nodes are at height 14
     When I stop node PNODE2
-    And I mine 3 blocks on NODE1
+    When mining node MINING1 mines 3 blocks with min difficulty 1 and max difficulty 20
+    And node NODE1 is at height 17
     And I stop node NODE1
     And I start PNODE2
-    And I mine 36 blocks on PNODE2
+    When mining node MINING2 mines 6 blocks with min difficulty 20 and max difficulty 1000000
+    And node PNODE2 is at height 20
     When I start NODE1
-    Then all nodes are at height 50
+    Then all nodes are at height 20
 
   @critical @reorg
   Scenario: Pruned mode reorg past horizon
     Given I have a base node NODE1 connected to all seed nodes
-    When I mine a block on NODE1 with coinbase CB1
+    And I have wallet WALLET1 connected to base node NODE1
+    And I have mining node MINING1 connected to base node NODE1 and wallet WALLET1
     Given I have a base node NODE2 connected to node NODE1
+    And I have wallet WALLET2 connected to base node NODE2
+    And I have mining node MINING2 connected to base node NODE2 and wallet WALLET2
+    When I mine a block on NODE1 with coinbase CB1
     Then all nodes are at height 1
     And I stop node NODE1
-    When I mine 49 blocks on NODE2
-    And node NODE2 is at height 50
+    And mining node MINING2 mines 19 blocks with min difficulty 20 and max difficulty 1000000
+    And node NODE2 is at height 20
     And I stop node NODE2
     When I start NODE1
-    When I mine 3 blocks on NODE1
+    And mining node MINING1 mines 3 blocks with min difficulty 1 and max difficulty 20
+    And node NODE1 is at height 4
     When I create a transaction TX1 spending CB1 to UTX1
     When I submit transaction TX1 to NODE1
     Then NODE1 has TX1 in MEMPOOL state
-    When I mine 6 blocks on NODE1
+    And mining node MINING1 mines 6 blocks with min difficulty 1 and max difficulty 20
+    And node NODE1 is at height 10
     Given I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
     Then node PNODE1 is at height 10
     When I start NODE2
-    Then all nodes are at height 50
+    Then all nodes are at height 20
         # Because TX1 should have been re_orged out we should be able to spend CB1 again
     When I create a transaction TX2 spending CB1 to UTX2
     When I submit transaction TX2 to PNODE1
