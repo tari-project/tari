@@ -53,15 +53,6 @@ use tari_wallet::{
     output_manager_service::{
         config::OutputManagerServiceConfig,
         protocols::txo_validation_protocol::TxoValidationType,
-        storage::{
-            database::{
-                DbKeyValuePair as OutputDbKeyValuePair,
-                KeyManagerState,
-                OutputManagerBackend,
-                WriteOperation as OutputWriteOperation,
-            },
-            sqlite_db::OutputManagerSqliteDatabase,
-        },
     },
     storage::{database::WalletDatabase, sqlite_utilities::initialize_sqlite_database_backends},
     transaction_service::{
@@ -191,7 +182,11 @@ pub async fn get_base_node_peer_config(
 pub fn wallet_mode(bootstrap: &ConfigBootstrap, boot_mode: WalletBoot) -> WalletMode {
     // Recovery mode
     if matches!(boot_mode, WalletBoot::Recovery) {
-        return WalletMode::Recovery;
+        if bootstrap.daemon_mode {
+            return WalletMode::RecoveryDaemon;
+        } else {
+            return WalletMode::RecoveryTui;
+        }
     }
 
     match (
@@ -258,7 +253,7 @@ pub async fn init_wallet(
     config: &GlobalConfig,
     arg_password: Option<String>,
     seed_words_file_name: Option<PathBuf>,
-    master_key: Option<PrivateKey>,
+    recovery_master_key: Option<PrivateKey>,
     shutdown_signal: ShutdownSignal,
 ) -> Result<WalletSqlite, ExitCodes> {
     fs::create_dir_all(
@@ -394,8 +389,6 @@ pub async fn init_wallet(
     );
     wallet_config.buffer_size = std::cmp::max(BASE_NODE_BUFFER_MIN_SIZE, config.buffer_size_base_node);
 
-    let recovery = set_master_key(&output_manager_backend, master_key).await?;
-
     let mut wallet = Wallet::start(
         wallet_config,
         wallet_db,
@@ -403,6 +396,7 @@ pub async fn init_wallet(
         output_manager_backend,
         contacts_backend,
         shutdown_signal,
+        recovery_master_key.clone(),
     )
     .await
     .map_err(|e| {
@@ -444,7 +438,7 @@ pub async fn init_wallet(
 
         debug!(target: LOG_TARGET, "Wallet encrypted.");
 
-        if interactive && !recovery {
+        if interactive && recovery_master_key.is_none() {
             confirm_seed_words(&mut wallet).await?;
         }
         if let Some(file_name) = seed_words_file_name {
@@ -455,31 +449,6 @@ pub async fn init_wallet(
     }
 
     Ok(wallet)
-}
-
-/// If a master key is provided, set the initial key manager state to use that master key.
-/// Returns true if the master key was provided, which means recovery is required.
-async fn set_master_key(
-    output_manager_backend: &OutputManagerSqliteDatabase,
-    master_key: Option<PrivateKey>,
-) -> Result<bool, ExitCodes> {
-    if let Some(master_key) = master_key {
-        let state = KeyManagerState {
-            master_key,
-            branch_seed: "".to_string(),
-            primary_key_index: 0,
-        };
-
-        output_manager_backend
-            .write(OutputWriteOperation::Insert(OutputDbKeyValuePair::KeyManagerState(
-                state,
-            )))
-            .map_err(|e| ExitCodes::IOError(e.to_string()))?;
-
-        Ok(true)
-    } else {
-        Ok(false)
-    }
 }
 
 /// Starts the wallet by setting the base node peer, and restarting the transaction and broadcast protocols.

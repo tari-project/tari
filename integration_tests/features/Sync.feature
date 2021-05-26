@@ -42,10 +42,10 @@ Feature: Block Sync
     And I have mining node MINER2 connected to base node NODE2 and wallet WALLET2
     And mining node MINER1 mines 5 blocks with min difficulty 1 and max difficulty 10
     Then all nodes are at height 5
-    Given I stop NODE2
+    Given I stop node NODE2
     And mining node MINER1 mines 5 blocks with min difficulty 1 and max difficulty 10
     Then node NODE1 is at height 10
-    Given I stop NODE1
+    Given I stop node NODE1
     And I start NODE2
     And mining node MINER2 mines 7 blocks with min difficulty 11 and max difficulty 100000
     Then node NODE2 is at height 12
@@ -62,10 +62,10 @@ Feature: Block Sync
     And I have mining node MINER2 connected to base node NODE2 and wallet WALLET2
     And mining node MINER1 mines 5 blocks with min difficulty 1 and max difficulty 10
     Then all nodes are at height 5
-    Given I stop NODE2
+    Given I stop node NODE2
     And mining node MINER1 mines 1001 blocks with min difficulty 1 and max difficulty 10
     Then node NODE1 is at height 1006
-    Given I stop NODE1
+    Given I stop node NODE1
     And I start NODE2
     And mining node MINER2 mines 1500 blocks with min difficulty 11 and max difficulty 100000
     Then node NODE2 is at height 1505
@@ -101,7 +101,7 @@ Feature: Block Sync
     And I have mining node MINER connected to base node SEED and wallet WALLET1
     And I have a base node SYNCER connected to all seed nodes
     And I have mine-before-tip mining node MINER2 connected to base node SYNCER and wallet WALLET2
-    And I stop SYNCER
+    And I stop node SYNCER
     When mining node MINER mines <X1> blocks with min difficulty 1 and max difficulty 9999999999
     Then node SEED is at height <X1>
     When I start SYNCER

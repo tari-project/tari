@@ -77,7 +77,7 @@ Feature: Block Propagation
     And I have a lagging delayed node LAG1 connected to node MINER with blocks_behind_before_considered_lagging 6
     Given mining node MINER mines 1 blocks
     When I wait 100 seconds
-    When I stop LAG1
+    When I stop node LAG1
     When I wait 10 seconds
     And mining node MINER mines 5 blocks
     When I wait 100 seconds

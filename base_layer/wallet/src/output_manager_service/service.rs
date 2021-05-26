@@ -24,7 +24,7 @@ use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
     output_manager_service::{
         config::OutputManagerServiceConfig,
-        error::{OutputManagerError, OutputManagerProtocolError},
+        error::{OutputManagerError, OutputManagerProtocolError, OutputManagerStorageError},
         handle::{OutputManagerEventSender, OutputManagerRequest, OutputManagerResponse, PublicRewindKeys},
         protocols::txo_validation_protocol::{TxoValidationProtocol, TxoValidationType},
         storage::{
@@ -36,6 +36,7 @@ use crate::{
     transaction_service::handle::TransactionServiceHandle,
     types::{HashDigest, KeyDigest, ValidationRetryStrategy},
 };
+use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use digest::Digest;
 use futures::{pin_mut, stream::FuturesUnordered, StreamExt};
 use log::*;
@@ -76,7 +77,7 @@ use tari_crypto::{
     keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
     range_proof::REWIND_USER_MESSAGE_LENGTH,
     script,
-    script::{ExecutionStack, TariScript},
+    script::TariScript,
     tari_utilities::{hex::Hex, ByteArray},
 };
 use tari_key_manager::{
@@ -1252,18 +1253,28 @@ where TBackend: OutputManagerBackend + 'static
                         &rewind_data.rewind_blinding_key,
                     )
                     .ok()
-                    .map(|v| (v, output.features))
+                    .map(|v| (v, output.features, output.script_hash, output.script_offset_public_key))
             })
-            .map(|(output, features)| {
+            .map(|(output, features, script_hash, script_offset_public_key)| {
+                let beta_hash = Blake256::new()
+                    .chain(script_hash.as_bytes())
+                    .chain(features.to_bytes())
+                    .chain(script_offset_public_key.as_bytes())
+                    .result()
+                    .to_vec();
+                let beta = PrivateKey::from_bytes(beta_hash.as_slice())
+                    .expect("Should be able to construct a private key from a hash");
+                // TODO actually increment the keymanager with found private keys so that we don't reuse private keys
+                // once recovery is complete and use the correct script private key
                 UnblindedOutput::new(
                     output.committed_value,
-                    output.blinding_factor.clone(),
+                    output.blinding_factor.clone() - beta,
                     Some(features),
-                    TariScript::default(),
-                    ExecutionStack::default(),
+                    script!(Nop),
+                    inputs!(PublicKey::from_secret_key(&output.blinding_factor)),
                     height,
-                    output.blinding_factor.clone(),
-                    PublicKey::from_secret_key(&output.blinding_factor),
+                    output.blinding_factor,
+                    script_offset_public_key,
                 )
             })
             .collect();
@@ -1285,7 +1296,16 @@ where TBackend: OutputManagerBackend + 'static
 
     async fn add_known_script(&mut self, known_script: KnownOneSidedPaymentScript) -> Result<(), OutputManagerError> {
         debug!(target: LOG_TARGET, "Adding new script to output manager service");
-        Ok(self.resources.db.add_known_script(known_script).await?)
+        // It is not a problem if the script has already been persisted
+        match self.resources.db.add_known_script(known_script).await {
+            Ok(_) => (),
+            Err(OutputManagerStorageError::DieselError(DieselError::DatabaseError(
+                DatabaseErrorKind::UniqueViolation,
+                _,
+            ))) => (),
+            Err(e) => return Err(e.into()),
+        }
+        Ok(())
     }
 
     /// Attempt to scan and then rewind all of the given transaction outputs into unblinded outputs based on known
@@ -1297,6 +1317,7 @@ where TBackend: OutputManagerBackend + 'static
     ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         let known_one_sided_payment_scripts: Vec<KnownOneSidedPaymentScript> =
             self.resources.db.get_all_known_one_sided_payment_scripts().await?;
+
         let mut rewound_outputs: Vec<UnblindedOutput> = Vec::new();
         for output in outputs {
             let position = known_one_sided_payment_scripts
@@ -1314,11 +1335,20 @@ where TBackend: OutputManagerBackend + 'static
                 let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_key))?;
                 let rewound =
                     output.full_rewind_range_proof(&self.resources.factories.range_proof, &rewind_key, &blinding_key);
+
+                let beta_hash = Blake256::new()
+                    .chain(output.script_hash.as_bytes())
+                    .chain(output.features.to_bytes())
+                    .chain(output.script_offset_public_key.as_bytes())
+                    .result()
+                    .to_vec();
+                let beta = PrivateKey::from_bytes(beta_hash.as_slice())?;
+
                 if rewound.is_ok() {
                     let rewound_output = rewound.unwrap();
                     rewound_outputs.push(UnblindedOutput::new(
                         rewound_output.committed_value,
-                        rewound_output.blinding_factor.clone(),
+                        rewound_output.blinding_factor.clone() - beta,
                         Some(output.features),
                         known_one_sided_payment_scripts[i].script.clone(),
                         known_one_sided_payment_scripts[i].input.clone(),

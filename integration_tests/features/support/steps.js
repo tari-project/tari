@@ -354,6 +354,11 @@ Given(
   }
 );
 
+When(/I stop wallet (.*)/, async function (walletName) {
+  let wallet = this.getWallet(walletName);
+  await wallet.stop();
+});
+
 Given(
   /I have a merge mining proxy (.*) connected to (.*) and (.*) with default config/,
   { timeout: 20 * 1000 },
@@ -528,7 +533,7 @@ When(/I start (.*)/, { timeout: 20 * 1000 }, async function (name) {
   await this.startNode(name);
 });
 
-When(/I stop (.*)/, async function (name) {
+When(/I stop node (.*)/, async function (name) {
   await this.stopNode(name);
 });
 
@@ -987,7 +992,7 @@ When("I print the world", function () {
   console.log(this);
 });
 
-When(
+Then(
   /I wait for wallet (.*) to have at least (.*) uT/,
   { timeout: 710 * 1000 },
   async function (wallet, amount) {
@@ -996,21 +1001,42 @@ When(
     console.log(
       "Waiting for " + wallet + " balance to be at least " + amount + " uT"
     );
-    const balance = await walletClient.getBalance();
-    consoleLogBalance(balance);
-    if (parseInt(balance.available_balance) < parseInt(amount)) {
-      await waitFor(
-        async () => walletClient.isBalanceAtLeast(amount),
-        true,
-        700 * 1000,
-        5 * 1000,
-        5
-      );
-      if (!walletClient.isBalanceAtLeast(amount)) {
-        console.log("Balance not adequate!");
-      }
-      consoleLogBalance(await walletClient.getBalance());
+
+    await waitFor(
+      async () => walletClient.isBalanceAtLeast(amount),
+      true,
+      240 * 1000,
+      5 * 1000,
+      5
+    );
+    if (!walletClient.isBalanceAtLeast(amount)) {
+      console.log("Balance not adequate!");
     }
+    consoleLogBalance(await walletClient.getBalance());
+  }
+);
+
+Then(
+  /I wait for wallet (.*) to have less than (.*) uT/,
+  { timeout: 250 * 1000 },
+  async function (wallet, amount) {
+    let walletClient = this.getWallet(wallet).getClient();
+    console.log("\n");
+    console.log(
+      "Waiting for " + wallet + " balance to less than " + amount + " uT"
+    );
+
+    await waitFor(
+      async () => walletClient.isBalanceLessThan(amount),
+      true,
+      700 * 1000,
+      5 * 1000,
+      5
+    );
+    if (!walletClient.isBalanceLessThan(amount)) {
+      console.log("Balance has not dropped below specified amount!");
+    }
+    consoleLogBalance(await walletClient.getBalance());
   }
 );
 
@@ -1305,6 +1331,27 @@ When(
     const output = await client.transfer({ recipients });
     console.log("output", output);
     lastResult = output;
+  }
+);
+
+When(
+  /I send a one-sided transaction of (.*) uT from (.*) to (.*) at fee (.*)/,
+  async function (amount, source, dest, feePerGram) {
+    let wallet = this.getWallet(source);
+    let sourceClient = wallet.getClient();
+    let destPubkey = this.getWalletPubkey(dest);
+
+    lastResult = await sourceClient.transfer({
+      recipients: [
+        {
+          address: destPubkey,
+          amount: amount,
+          fee_per_gram: feePerGram,
+          message: "msg",
+          payment_type: 1,
+        },
+      ],
+    });
   }
 );
 

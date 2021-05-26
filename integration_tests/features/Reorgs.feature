@@ -49,9 +49,9 @@ Feature: Reorgs
     Then all nodes are at height 9
     When I mine 5 blocks on PNODE2
     Then all nodes are at height 14
-    When I stop PNODE2
+    When I stop node PNODE2
     And I mine 3 blocks on NODE1
-    And I stop NODE1
+    And I stop node NODE1
     And I start PNODE2
     And I mine 36 blocks on PNODE2
     When I start NODE1
@@ -63,10 +63,10 @@ Feature: Reorgs
     When I mine a block on NODE1 with coinbase CB1
     Given I have a base node NODE2 connected to node NODE1
     Then all nodes are at height 1
-    And I stop NODE1
+    And I stop node NODE1
     When I mine 49 blocks on NODE2
     And node NODE2 is at height 50
-    And I stop NODE2
+    And I stop node NODE2
     When I start NODE1
     When I mine 3 blocks on NODE1
     When I create a transaction TX1 spending CB1 to UTX1

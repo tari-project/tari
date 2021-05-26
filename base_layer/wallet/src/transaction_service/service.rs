@@ -766,6 +766,7 @@ where
             rewind_blinding_key: blinding_key.clone(),
             proof_message: [0u8; 21],
         };
+
         let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(
             sender_message,
             PrivateKey::random(&mut OsRng),
@@ -792,7 +793,7 @@ where
                 );
                 TransactionServiceProtocolError::new(tx_id, e.into())
             })?;
-        trace!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", tx_id);
+        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", tx_id);
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
         // there are no subscribers.

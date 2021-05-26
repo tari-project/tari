@@ -24,15 +24,26 @@ use crate::{
     output_manager_service::handle::OutputManagerHandle,
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::handle::TransactionServiceHandle,
-    utxo_scanner_service::utxo_scanning::{UtxoScannerMode, UtxoScannerService},
+    utxo_scanner_service::{
+        handle::UtxoScannerHandle,
+        utxo_scanning::{UtxoScannerMode, UtxoScannerService},
+    },
 };
 use futures::{future, Future};
 use log::*;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{connectivity::ConnectivityRequester, NodeIdentity};
 use tari_core::transactions::types::CryptoFactories;
-use tari_service_framework::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tari_service_framework::{
+    reply_channel,
+    ServiceInitializationError,
+    ServiceInitializer,
+    ServiceInitializerContext,
+};
+use tokio::sync::broadcast;
 
+pub mod error;
+pub mod handle;
 pub mod utxo_scanning;
 
 const LOG_TARGET: &str = "wallet::utxo_scanner_service::initializer";
@@ -72,6 +83,13 @@ where T: WalletBackend + 'static
     fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
         trace!(target: LOG_TARGET, "Utxo scanner initialization");
 
+        let (sender, receiver) = reply_channel::unbounded();
+        let (event_sender, _) = broadcast::channel(200);
+
+        // Register handle before waiting for handles to be ready
+        let utxo_scanner_handle = UtxoScannerHandle::new(sender, event_sender.clone());
+        context.register_handle(utxo_scanner_handle);
+
         let backend = self
             .backend
             .take()
@@ -99,6 +117,8 @@ where T: WalletBackend + 'static
                     node_identity,
                     factories,
                     handles.get_shutdown_signal(),
+                    receiver,
+                    event_sender,
                 )
                 .run();
 

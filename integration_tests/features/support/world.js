@@ -13,6 +13,7 @@ class CustomWorld {
     this.proxies = {};
     this.miners = {};
     this.wallets = {};
+    this.walletPubkeys = {};
     this.clients = {};
     this.headers = {};
     this.outputs = {};
@@ -84,6 +85,9 @@ class CustomWorld {
     wallet.setPeerSeeds([nodeAddresses]);
     await wallet.startNew();
     this.addWallet(name, wallet);
+    let walletClient = wallet.getClient();
+    let walletInfo = await walletClient.identify();
+    this.walletPubkeys[name] = walletInfo.public_key;
   }
 
   addWallet(name, process) {
@@ -134,6 +138,10 @@ class CustomWorld {
 
   getWallet(name) {
     return this.wallets[name];
+  }
+
+  getWalletPubkey(name) {
+    return this.walletPubkeys[name];
   }
 
   async getOrCreateWallet(name) {

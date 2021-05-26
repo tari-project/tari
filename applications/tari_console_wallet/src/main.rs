@@ -84,7 +84,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     // check for recovery based on existence of wallet file
     let mut boot_mode = boot(&bootstrap, &config)?;
 
-    let master_key: Option<PrivateKey> = get_master_key(boot_mode, &bootstrap)?;
+    let recovery_master_key: Option<PrivateKey> = get_recovery_master_key(boot_mode, &bootstrap)?;
 
     if bootstrap.init {
         info!(target: LOG_TARGET, "Default configuration created. Done.");
@@ -107,7 +107,7 @@ fn main_inner() -> Result<(), ExitCodes> {
         &config,
         arg_password,
         seed_words_file_name,
-        master_key,
+        recovery_master_key,
         shutdown_signal,
     ))?;
 
@@ -144,14 +144,14 @@ fn main_inner() -> Result<(), ExitCodes> {
         WalletMode::Grpc => grpc_mode(handle, wallet.clone(), config),
         WalletMode::Script(path) => script_mode(handle, path, wallet.clone(), config),
         WalletMode::Command(command) => command_mode(handle, command, wallet.clone(), config),
-        WalletMode::Recovery => recovery_mode(
+        WalletMode::RecoveryDaemon | WalletMode::RecoveryTui => recovery_mode(
             handle,
             config,
             wallet.clone(),
             base_node,
             base_node_config,
             notify_script,
-            &bootstrap,
+            wallet_mode,
         ),
         WalletMode::Invalid => Err(ExitCodes::InputError(
             "Invalid wallet mode - are you trying too many command options at once?".to_string(),
@@ -169,7 +169,10 @@ fn main_inner() -> Result<(), ExitCodes> {
     result
 }
 
-fn get_master_key(boot_mode: WalletBoot, bootstrap: &ConfigBootstrap) -> Result<Option<PrivateKey>, ExitCodes> {
+fn get_recovery_master_key(
+    boot_mode: WalletBoot,
+    bootstrap: &ConfigBootstrap,
+) -> Result<Option<PrivateKey>, ExitCodes> {
     if matches!(boot_mode, WalletBoot::Recovery) {
         let private_key = if bootstrap.seed_words.is_some() {
             let seed_words: Vec<String> = bootstrap

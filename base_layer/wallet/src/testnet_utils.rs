@@ -208,6 +208,7 @@ pub async fn create_wallet(
         oms_backend,
         ContactsServiceMemoryDatabase::new(),
         shutdown_signal,
+        None,
     )
     .await
     .expect("Could not create Wallet")

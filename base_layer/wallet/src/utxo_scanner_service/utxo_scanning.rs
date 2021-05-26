@@ -32,10 +32,14 @@ use crate::{
         sqlite_db::WalletSqliteDatabase,
     },
     transaction_service::handle::TransactionServiceHandle,
+    utxo_scanner_service::{
+        error::UtxoScannerError,
+        handle::{UtxoScannerEvent, UtxoScannerRequest, UtxoScannerResponse},
+    },
     WalletSqlite,
 };
 use chrono::Utc;
-use futures::{FutureExt, StreamExt};
+use futures::{pin_mut, FutureExt, StreamExt};
 use log::*;
 use std::{
     convert::TryFrom,
@@ -67,6 +71,7 @@ use tari_core::{
     },
 };
 use tari_crypto::tari_utilities::hex::*;
+use tari_service_framework::{reply_channel, reply_channel::SenderService};
 use tari_shutdown::ShutdownSignal;
 use tokio::{sync::broadcast, time::delay_for};
 
@@ -149,6 +154,12 @@ impl UtxoScannerServiceBuilder {
             node_identity: wallet.comms.node_identity(),
             factories: wallet.factories.clone(),
         };
+
+        // When the Utxo Scanner is built using this method it is not going to run as a Service so we will pass in the
+        // sender to be held by the service so that the receiver will not error when it is polled
+        let (sender, receiver) = reply_channel::unbounded();
+        let (event_sender, _) = broadcast::channel(200);
+
         let interval = self
             .scanning_interval
             .unwrap_or_else(|| Duration::from_secs(60 * 60 * 12));
@@ -159,6 +170,9 @@ impl UtxoScannerServiceBuilder {
             resources,
             interval,
             shutdown_signal,
+            receiver,
+            event_sender,
+            Some(sender),
         )
     }
 
@@ -172,6 +186,8 @@ impl UtxoScannerServiceBuilder {
         node_identity: Arc<NodeIdentity>,
         factories: CryptoFactories,
         shutdown_signal: ShutdownSignal,
+        request_stream: reply_channel::Receiver<UtxoScannerRequest, Result<UtxoScannerResponse, UtxoScannerError>>,
+        event_sender: broadcast::Sender<UtxoScannerEvent>,
     ) -> UtxoScannerService<TBackend> {
         let resources = UtxoScannerResources {
             db,
@@ -191,6 +207,9 @@ impl UtxoScannerServiceBuilder {
             resources,
             interval,
             shutdown_signal,
+            request_stream,
+            event_sender,
+            None,
         )
     }
 }
@@ -210,7 +229,12 @@ where TBackend: WalletBackend + 'static
 impl<TBackend> UtxoScannerTask<TBackend>
 where TBackend: WalletBackend + 'static
 {
-    async fn finalize(&self, total_scanned: u64, final_utxo_pos: u64, elapsed: Duration) -> Result<(), WalletError> {
+    async fn finalize(
+        &self,
+        total_scanned: u64,
+        final_utxo_pos: u64,
+        elapsed: Duration,
+    ) -> Result<(), UtxoScannerError> {
         match self.mode {
             UtxoScannerMode::Recovery => {
                 let num_recovered = self
@@ -261,7 +285,7 @@ where TBackend: WalletBackend + 'static
         Ok(())
     }
 
-    async fn connect_to_peer(&mut self, peer: NodeId) -> Result<PeerConnection, WalletError> {
+    async fn connect_to_peer(&mut self, peer: NodeId) -> Result<PeerConnection, UtxoScannerError> {
         self.publish_event(UtxoScannerEvent::ConnectingToBaseNode(peer.clone()));
         match self.resources.connectivity.dial_peer(peer.clone()).await {
             Ok(conn) => Ok(conn),
@@ -278,18 +302,14 @@ where TBackend: WalletBackend + 'static
         }
     }
 
-    async fn attempt_sync(&mut self, peer: NodeId) -> Result<(u64, u64, Duration), WalletError> {
+    async fn attempt_sync(&mut self, peer: NodeId) -> Result<(u64, u64, Duration), UtxoScannerError> {
         let mut connection = self.connect_to_peer(peer.clone()).await?;
 
         let mut client = connection
             .connect_rpc_using_builder(BaseNodeSyncRpcClient::builder().with_deadline(Duration::from_secs(60)))
-            .await
-            .map_err(to_wallet_scanning_error)?;
+            .await?;
 
-        let latency = client
-            .get_last_request_latency()
-            .await
-            .map_err(to_wallet_scanning_error)?;
+        let latency = client.get_last_request_latency().await?;
         self.publish_event(UtxoScannerEvent::ConnectedToBaseNode(
             peer.clone(),
             latency.unwrap_or_default(),
@@ -338,19 +358,16 @@ where TBackend: WalletBackend + 'static
         }
     }
 
-    async fn get_chain_tip_header(&self, client: &mut BaseNodeSyncRpcClient) -> Result<BlockHeader, WalletError> {
-        let chain_metadata = client.get_chain_metadata().await.map_err(to_wallet_scanning_error)?;
+    async fn get_chain_tip_header(&self, client: &mut BaseNodeSyncRpcClient) -> Result<BlockHeader, UtxoScannerError> {
+        let chain_metadata = client.get_chain_metadata().await?;
         let chain_height = chain_metadata.height_of_longest_chain();
-        let end_header = client
-            .get_header_by_height(chain_height)
-            .await
-            .map_err(to_wallet_scanning_error)?;
-        let end_header = BlockHeader::try_from(end_header).map_err(to_wallet_scanning_error)?;
+        let end_header = client.get_header_by_height(chain_height).await?;
+        let end_header = BlockHeader::try_from(end_header).map_err(|_| UtxoScannerError::ConversionError)?;
 
         Ok(end_header)
     }
 
-    async fn get_start_utxo_mmr_pos(&self, client: &mut BaseNodeSyncRpcClient) -> Result<u64, WalletError> {
+    async fn get_start_utxo_mmr_pos(&self, client: &mut BaseNodeSyncRpcClient) -> Result<u64, UtxoScannerError> {
         match self.mode {
             UtxoScannerMode::Recovery => {
                 let previous_sync_height = self
@@ -399,15 +416,12 @@ where TBackend: WalletBackend + 'static
                     return Ok(0);
                 }
                 // if it's none, we return 0 above.
-                let hash: Vec<u8> = from_hex(&previous_scan_hash.unwrap()).map_err(to_wallet_scanning_error)?;
+                let hash: Vec<u8> = from_hex(&previous_scan_hash.unwrap())?;
                 let request = FindChainSplitRequest {
                     block_hashes: vec![hash],
                     header_count: 1,
                 };
-                let resp = client
-                    .find_chain_split(request)
-                    .await
-                    .map_err(to_wallet_scanning_error)?;
+                let resp = client.find_chain_split(request).await?;
                 if resp.fork_hash_index != 0 {
                     // we had a fork, lets calc a new sync height
                     return Ok(resp.headers[0]
@@ -426,7 +440,7 @@ where TBackend: WalletBackend + 'static
         client: &mut BaseNodeSyncRpcClient,
         start_mmr_leaf_index: u64,
         end_header: BlockHeader,
-    ) -> Result<u64, WalletError> {
+    ) -> Result<u64, UtxoScannerError> {
         debug!(
             target: LOG_TARGET,
             "Scanning UTXO's from #{} to #{} (height {})",
@@ -453,7 +467,7 @@ where TBackend: WalletBackend + 'static
             include_deleted_bitmaps: false,
         };
 
-        let utxo_stream = client.sync_utxos(request).await.map_err(to_wallet_scanning_error)?;
+        let utxo_stream = client.sync_utxos(request).await?;
         // We download in chunks just because rewind_outputs works with multiple outputs (and could parallelized
         // rewinding)
         let mut utxo_stream = utxo_stream.chunks(10);
@@ -466,18 +480,18 @@ where TBackend: WalletBackend + 'static
             }
             let response: Vec<proto::base_node::SyncUtxosResponse> = response
                 .into_iter()
-                .map(|v| v.map_err(to_wallet_scanning_error))
+                .map(|v| v.map_err(|e| UtxoScannerError::RpcStatus(e.to_string())))
                 .collect::<Result<Vec<_>, _>>()?;
 
             let current_utxo_index = response
                 // Assumes correct ordering which is otherwise not required for this protocol
                 .last()
                 .ok_or_else(|| {
-                    WalletError::UtxoScannerError("Invalid response from base node: response was empty".to_string())
+                    UtxoScannerError::BaseNodeResponseError("Invalid response from base node: response was empty".to_string())
                 })?
                 .mmr_index;
             if current_utxo_index < last_utxo_index {
-                return Err(WalletError::UtxoScannerError(
+                return Err(UtxoScannerError::BaseNodeResponseError(
                     "Invalid response from base node: mmr index must be non-decreasing".to_string(),
                 ));
             }
@@ -489,7 +503,9 @@ where TBackend: WalletBackend + 'static
                     utxo.into_utxo()
                         .and_then(|o| o.utxo)
                         .and_then(|utxo| utxo.into_transaction_output())
-                        .map(|output| TransactionOutput::try_from(output).map_err(to_wallet_scanning_error))
+                        .map(|output| {
+                            TransactionOutput::try_from(output).map_err(|_| UtxoScannerError::ConversionError)
+                        })
                 })
                 .collect::<Result<Vec<_>, _>>()?;
 
@@ -560,7 +576,7 @@ where TBackend: WalletBackend + 'static
                     Err(WalletError::OutputManagerError(OutputManagerError::OutputManagerStorageError(
                         OutputManagerStorageError::DuplicateOutput,
                     ))) => warn!(target: LOG_TARGET, "Recovered output already in database"),
-                    Err(e) => return Err(e),
+                    Err(e) => return Err(UtxoScannerError::UtxoImportError(e.to_string())),
                 }
             }
         }
@@ -629,7 +645,7 @@ where TBackend: WalletBackend + 'static
         Ok(total_scanned as u64)
     }
 
-    async fn set_metadata<T: ToString>(&self, key: ScanningMetadataKey, value: T) -> Result<(), WalletError> {
+    async fn set_metadata<T: ToString>(&self, key: ScanningMetadataKey, value: T) -> Result<(), UtxoScannerError> {
         self.resources
             .db
             .set_client_key_value(key.as_key_str().to_string(), value.to_string())
@@ -637,7 +653,7 @@ where TBackend: WalletBackend + 'static
         Ok(())
     }
 
-    async fn get_metadata<T>(&self, key: ScanningMetadataKey) -> Result<Option<T>, WalletError>
+    async fn get_metadata<T>(&self, key: ScanningMetadataKey) -> Result<Option<T>, UtxoScannerError>
     where
         T: FromStr,
         T::Err: ToString,
@@ -691,7 +707,7 @@ where TBackend: WalletBackend + 'static
         Ok(tx_id)
     }
 
-    async fn run(mut self) -> Result<(), WalletError> {
+    async fn run(mut self) -> Result<(), UtxoScannerError> {
         self.run_flag.store(true, Ordering::Relaxed);
         loop {
             if !self.run_flag.load(Ordering::Relaxed) {
@@ -721,7 +737,7 @@ where TBackend: WalletBackend + 'static
                     });
 
                     if self.num_retries >= self.retry_limit {
-                        return Err(WalletError::UtxoScannerError(format!(
+                        return Err(UtxoScannerError::UtxoScanningError(format!(
                             "Failed to scan UTXO's after {} attempt(s) using all {} sync peer(s). Aborting...",
                             self.num_retries,
                             self.peer_seeds.len()
@@ -747,18 +763,22 @@ pub struct UtxoScannerService<TBackend>
 where TBackend: WalletBackend + 'static
 {
     resources: UtxoScannerResources<TBackend>,
-    event_sender: broadcast::Sender<UtxoScannerEvent>,
     retry_limit: usize,
     peer_seeds: Vec<CommsPublicKey>,
     mode: UtxoScannerMode,
     is_running: Arc<AtomicBool>,
     scan_for_utxo_interval: Duration,
     shutdown_signal: ShutdownSignal,
+    request_stream: Option<reply_channel::Receiver<UtxoScannerRequest, Result<UtxoScannerResponse, UtxoScannerError>>>,
+    event_sender: broadcast::Sender<UtxoScannerEvent>,
+    _request_stream_sender_holder:
+        Option<SenderService<UtxoScannerRequest, Result<UtxoScannerResponse, UtxoScannerError>>>,
 }
 
 impl<TBackend> UtxoScannerService<TBackend>
 where TBackend: WalletBackend + 'static
 {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         peer_seeds: Vec<CommsPublicKey>,
         retry_limit: usize,
@@ -766,17 +786,23 @@ where TBackend: WalletBackend + 'static
         resources: UtxoScannerResources<TBackend>,
         scan_for_utxo_interval: Duration,
         shutdown_signal: ShutdownSignal,
+        request_stream: reply_channel::Receiver<UtxoScannerRequest, Result<UtxoScannerResponse, UtxoScannerError>>,
+        event_sender: broadcast::Sender<UtxoScannerEvent>,
+        _request_stream_sender_holder: Option<
+            SenderService<UtxoScannerRequest, Result<UtxoScannerResponse, UtxoScannerError>>,
+        >,
     ) -> Self {
-        let (event_sender, _) = broadcast::channel(100);
         Self {
             resources,
             peer_seeds,
-            event_sender,
             retry_limit,
             mode,
             is_running: Arc::new(AtomicBool::new(false)),
             scan_for_utxo_interval,
             shutdown_signal,
+            request_stream: Some(request_stream),
+            event_sender,
+            _request_stream_sender_holder,
         }
     }
 
@@ -801,8 +827,16 @@ where TBackend: WalletBackend + 'static
         self.event_sender.subscribe()
     }
 
-    pub async fn run(self) -> Result<(), WalletError> {
+    pub async fn run(mut self) -> Result<(), WalletError> {
         info!(target: LOG_TARGET, "UTXO scanning service starting");
+
+        let request_stream = self
+            .request_stream
+            .take()
+            .expect("UTXO Scanner Service initialized without request_stream")
+            .fuse();
+        pin_mut!(request_stream);
+
         let mut shutdown = self.shutdown_signal.clone();
         let mut delay_time = Duration::from_secs(1);
         loop {
@@ -814,12 +848,24 @@ where TBackend: WalletBackend + 'static
                 let task = self.create_task();
                 let running_flag = self.is_running.clone();
                 tokio::task::spawn(async move {
-                    let _ = task.run();
+                    let _ = task.run().await;
                     //we make sure the flag is set to false here
                     running_flag.store(false, Ordering::Relaxed);
                 });
                 delay_time = self.scan_for_utxo_interval;
                 },
+            request_context = request_stream.select_next_some() => {
+                trace!(target: LOG_TARGET, "Handling Service API Request");
+                let (request, reply_tx) = request_context.split();
+                let response = self.handle_request(request).await.map_err(|e| {
+                    warn!(target: LOG_TARGET, "Error handling request: {:?}", e);
+                    e
+                });
+                let _ = reply_tx.send(response).map_err(|e| {
+                    warn!(target: LOG_TARGET, "Failed to send reply");
+                    e
+                });
+            },
              _ = shutdown => {
                  // this will stop the task if its running, and let that thread exit gracefully
                  self.is_running.store(false, Ordering::Relaxed);
@@ -830,6 +876,17 @@ where TBackend: WalletBackend + 'static
             if self.mode == UtxoScannerMode::Recovery {
                 return Ok(());
             };
+        }
+    }
+
+    async fn handle_request(&mut self, request: UtxoScannerRequest) -> Result<UtxoScannerResponse, UtxoScannerError> {
+        trace!(target: LOG_TARGET, "Handling Service Request: {:?}", request);
+        match request {
+            UtxoScannerRequest::SetBaseNodePublicKey(pk) => {
+                self.is_running.store(false, Ordering::Relaxed);
+                self.peer_seeds = vec![pk];
+                Ok(UtxoScannerResponse::BaseNodePublicKeySet)
+            },
         }
     }
 }
@@ -860,37 +917,4 @@ impl ScanningMetadataKey {
             ScanningTotalAmount => SCANNING_TOTAL_AMOUNT_KEY,
         }
     }
-}
-
-#[derive(Debug, Clone)]
-pub enum UtxoScannerEvent {
-    ConnectingToBaseNode(NodeId),
-    ConnectedToBaseNode(NodeId, Duration),
-    ConnectionFailedToBaseNode {
-        peer: NodeId,
-        num_retries: usize,
-        retry_limit: usize,
-        error: String,
-    },
-    ScanningRoundFailed {
-        num_retries: usize,
-        retry_limit: usize,
-    },
-    /// Progress of the recovery process (current_block, current_chain_height)
-    Progress {
-        current_block: u64,
-        current_chain_height: u64,
-    },
-    /// Completed Recovery (Number scanned, Num of Recovered outputs, Value of recovered outputs, Time taken)
-    Completed {
-        number_scanned: u64,
-        number_received: u64,
-        value_received: MicroTari,
-        time_taken: Duration,
-    },
-}
-
-// TODO: Replace this with UtxoScannerError error object
-fn to_wallet_scanning_error<T: ToString>(err: T) -> WalletError {
-    WalletError::UtxoScannerError(err.to_string())
 }

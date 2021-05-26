@@ -136,7 +136,7 @@ class WalletClient {
   async isBalanceAtLeast(amount) {
     try {
       const balance = await this.getBalance();
-      if (balance.available_balance >= amount) {
+      if (parseInt(balance.available_balance) >= parseInt(amount)) {
         return true;
       } else {
         return false;
@@ -150,6 +150,20 @@ class WalletClient {
       } else {
         console.log("Wallet client, `async isBalanceAtLeast`", e);
       }
+      return false;
+    }
+  }
+
+  async isBalanceLessThan(amount) {
+    try {
+      let balance = await this.getBalance();
+      if (parseInt(balance["available_balance"]) < parseInt(amount)) {
+        return true;
+      } else {
+        return false;
+      }
+    } catch (err) {
+      // Any error here must be treated as if the required status was not achieved
       return false;
     }
   }

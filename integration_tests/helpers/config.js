@@ -74,6 +74,7 @@ function baseEnvs(peerSeeds = []) {
     TARI_BASE_NODE__LOCALNET__DB_GROW_SIZE_MB: 20,
     TARI_MERGE_MINING_PROXY__LOCALNET__WAIT_FOR_INITIAL_SYNC_AT_STARTUP: false,
     TARI_MINING_NODE__MINE_ON_TIP_ONLY: true,
+    TARI_WALLET__SCAN_FOR_UTXO_INTERVAL: 5,
   };
   if (peerSeeds.length != 0) {
     envs.TARI_BASE_NODE__LOCALNET__PEER_SEEDS = peerSeeds;

@@ -161,6 +161,7 @@ async fn create_wallet(
         output_manager_backend,
         contacts_backend,
         shutdown_signal,
+        None,
     )
     .await
     .unwrap();
@@ -617,6 +618,7 @@ async fn test_import_utxo() {
         oms_backend,
         ContactsServiceMemoryDatabase::new(),
         shutdown.to_signal(),
+        None,
     )
     .await
     .unwrap();
@@ -729,6 +731,7 @@ async fn test_data_generation() {
         oms_backend,
         ContactsServiceMemoryDatabase::new(),
         shutdown.to_signal(),
+        None,
     )
     .await
     .unwrap();
