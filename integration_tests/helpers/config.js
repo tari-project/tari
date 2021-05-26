@@ -25,6 +25,9 @@ function mapEnvs(options) {
   if ("mineOnTipOnly" in options) {
     res.TARI_MINING_NODE__MINE_ON_TIP_ONLY = options.mineOnTipOnly;
   }
+  if (options.numMiningThreads) {
+    res.TARI_MINING_NODE__NUM_MINING_THREADS = options.numMiningThreads;
+  }
 
   if (options.network) {
     res.TARI_BASE_NODE__NETWORK = options.network;
@@ -74,6 +77,7 @@ function baseEnvs(peerSeeds = []) {
     TARI_BASE_NODE__LOCALNET__DB_GROW_SIZE_MB: 20,
     TARI_MERGE_MINING_PROXY__LOCALNET__WAIT_FOR_INITIAL_SYNC_AT_STARTUP: false,
     TARI_MINING_NODE__MINE_ON_TIP_ONLY: true,
+    TARI_MINING_NODE__VALIDATE_TIP_TIMEOUT_SEC: 2,
     TARI_WALLET__SCAN_FOR_UTXO_INTERVAL: 5,
   };
   if (peerSeeds.length != 0) {

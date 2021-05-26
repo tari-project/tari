@@ -134,6 +134,8 @@ pub struct ConfigBootstrap {
     /// Wallet notify script
     #[structopt(long, alias("notify"))]
     pub wallet_notify: Option<PathBuf>,
+    #[structopt(long, alias("mine-until-height"))]
+    pub mine_until_height: Option<u64>,
     #[structopt(long, alias("max-blocks"))]
     pub miner_max_blocks: Option<u64>,
     #[structopt(long, alias("min-difficulty"))]
@@ -169,6 +171,7 @@ impl Default for ConfigBootstrap {
             seed_words: None,
             seed_words_file_name: None,
             wallet_notify: None,
+            mine_until_height: None,
             miner_max_blocks: None,
             miner_min_diff: None,
             miner_max_diff: None,

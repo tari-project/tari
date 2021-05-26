@@ -1,8 +1,8 @@
 @coinbase_reorg
 Feature: Wallet Monitoring
 
-@long-running
-Scenario: Wallets monitoring coinbase after a reorg
+  @long-running
+  Scenario: Wallets monitoring coinbase after a reorg
         #
         # Chain 1:
         #   Collects 10 coinbases into one wallet, send 7 transactions
@@ -56,3 +56,37 @@ Scenario: Wallets monitoring coinbase after a reorg
     And I list all coinbase transactions for wallet WALLET_A1
     And I list all coinbase transactions for wallet WALLET_B1
     Then the number of coinbase transactions for wallet WALLET_A1 and wallet WALLET_B1 are 3 less
+
+  Scenario Outline: Verify all coinbases in hybrid mining are accounted for
+    Given I have a seed node SEED_A
+    And I have a SHA3 miner MINER_SEED_A connected to seed node SEED_A
+
+    And I have a base node NODE1 connected to seed SEED_A
+    And I have wallet WALLET1 connected to base node NODE1
+    And I have a merge mining proxy PROXY1 connected to NODE1 and WALLET1 with default config
+
+    And I have a base node NODE2 connected to seed SEED_A
+    And I have wallet WALLET2 connected to base node NODE2
+    And I have mining node MINER2 connected to base node NODE2 and wallet WALLET2
+
+    When I co-mine <numBlocks> blocks via merge mining proxy PROXY1 and mining node MINER2
+    Then node NODE1 is at the same height as node NODE2
+    Then node SEED_A is at the same height as node NODE1
+
+    And mining node MINER_SEED_A mines 5 blocks
+    Then all nodes are at the same height as node SEED_A
+
+    When I wait 1 seconds
+    Then wallets WALLET1,WALLET2 account for all valid spendable coinbase transactions on the blockchain
+    @critical
+    Examples:
+        | numBlocks |
+        | 10        |
+        | 100       |
+
+    @long-running
+    Examples:
+        | numBlocks |
+        | 1000      |
+        | 4500     |
+

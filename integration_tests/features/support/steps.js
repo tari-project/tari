@@ -89,7 +89,9 @@ Given(
     const miningNode = new MiningNodeProcess(
       name,
       node.getGrpcAddress(),
-      wallet.getGrpcAddress()
+      this.getClient(name),
+      wallet.getGrpcAddress(),
+      this.logFilePathMiningNocde
     );
     this.addMiningNode(name, miningNode);
   }
@@ -111,7 +113,9 @@ Given(
     const miningNode = new MiningNodeProcess(
       name,
       node.getGrpcAddress(),
-      wallet.getGrpcAddress()
+      this.getClient(name),
+      wallet.getGrpcAddress(),
+      this.logFilePathMiningNocde
     );
     this.addMiningNode(name, miningNode);
   }
@@ -133,7 +137,9 @@ Given(
     const miningNode = new MiningNodeProcess(
       name,
       node.getGrpcAddress(),
-      wallet.getGrpcAddress()
+      this.getClient(name),
+      wallet.getGrpcAddress(),
+      this.logFilePathMiningNocde
     );
     this.addMiningNode(name, miningNode);
   }
@@ -369,6 +375,7 @@ Given(
     const proxy = new MergeMiningProxyProcess(
       mmProxy,
       baseNode.getGrpcAddress(),
+      this.getClient(node),
       walletNode.getGrpcAddress(),
       this.logFilePathProxy,
       true
@@ -387,6 +394,7 @@ Given(
     const proxy = new MergeMiningProxyProcess(
       mmProxy,
       baseNode.getGrpcAddress(),
+      this.getClient(node),
       walletNode.getGrpcAddress(),
       this.logFilePathProxy,
       false
@@ -405,6 +413,7 @@ Given(
     const proxy = new MergeMiningProxyProcess(
       mmProxy,
       baseNode.getGrpcAddress(),
+      this.getClient(node),
       walletNode.getGrpcAddress(),
       this.logFilePathProxy,
       true
@@ -422,7 +431,9 @@ Given(
     const miningNode = new MiningNodeProcess(
       miner,
       baseNode.getGrpcAddress(),
+      this.getClient(node),
       walletNode.getGrpcAddress(),
+      this.logFilePathMiningNocde,
       true
     );
     this.addMiningNode(miner, miningNode);
@@ -437,7 +448,9 @@ Given(
     const miningNode = new MiningNodeProcess(
       miner,
       baseNode.getGrpcAddress(),
+      this.getClient(node),
       walletNode.getGrpcAddress(),
+      this.logFilePathMiningNocde,
       false
     );
     this.addMiningNode(miner, miningNode);
@@ -636,21 +649,35 @@ Then(
   /all nodes are at the same height as node (.*)/,
   { timeout: 1200 * 1000 },
   async function (nodeB) {
-    const expectedHeight = parseInt(await this.getClient(nodeB).getTipHeight());
+    let expectedHeight = parseInt(await this.getClient(nodeB).getTipHeight());
     console.log("Wait for all nodes to reach height of", expectedHeight);
     await this.forEachClientAsync(async (client, name) => {
-      await waitFor(
-        async () => client.getTipHeight(),
-        expectedHeight,
-        1200 * 1000
+      const newExpectedHeight = parseInt(
+        await this.getClient(nodeB).getTipHeight()
       );
-      const currTip = await client.getTipHeight();
+      if (newExpectedHeight !== expectedHeight) {
+        expectedHeight = newExpectedHeight;
+        console.log("Wait for all nodes to reach height of", expectedHeight);
+      }
+      let currentHeight;
+      for (let i = 1; i <= 12; i++) {
+        await waitFor(
+          async () => client.getTipHeight(),
+          expectedHeight,
+          10 * 1000
+        );
+        expectedHeight = parseInt(await this.getClient(nodeB).getTipHeight());
+        currentHeight = parseInt(await client.getTipHeight());
+        if (currentHeight === expectedHeight) {
+          break;
+        }
+      }
       console.log(
-        `Node ${name} is at tip: ${currTip} (should be`,
+        `Node ${name} is at tip: ${currentHeight} (should be`,
         expectedHeight,
         ")"
       );
-      expect(currTip).to.equal(expectedHeight);
+      expect(currentHeight).to.equal(expectedHeight);
     });
   }
 );
@@ -854,7 +881,14 @@ When(
   { timeout: 600 * 1000 },
   async function (miner, numBlocks, min, max) {
     const miningNode = this.getMiningNode(miner);
-    await miningNode.init(numBlocks, min, max, miningNode.mineOnTipOnly);
+    await miningNode.init(
+      numBlocks,
+      null,
+      min,
+      max,
+      miningNode.mineOnTipOnly,
+      null
+    );
     await miningNode.startNew();
   }
 );
@@ -864,7 +898,7 @@ When(
   { timeout: 600 * 1000 },
   async function (miner, numBlocks) {
     const miningNode = this.getMiningNode(miner);
-    await miningNode.init(numBlocks, 1, 100000);
+    await miningNode.init(numBlocks, null, 1, 100000, null, null);
     await miningNode.startNew();
   }
 );
@@ -904,9 +938,71 @@ When(
   { timeout: 600 * 1000 },
   async function (numBlocks, mmProxy) {
     for (let i = 0; i < numBlocks; i++) {
-      await this.mergeMineBlock(mmProxy, 0);
+      await this.mergeMineBlock(mmProxy);
     }
     this.tipHeight += parseInt(numBlocks);
+  }
+);
+
+// TODO: This step is still really flaky, rather use the co-mine with mining node step:
+//       Error: 13 INTERNAL:
+//          'Chain storage error: The requested BlockAccumulatedData was not found via
+//          header_hash:55545... in the database'
+When(
+  /I co-mine (.*) blocks via merge mining proxy (.*) and base node (.*) with wallet (.*)/,
+  { timeout: 1200 * 1000 },
+  async function (numBlocks, mmProxy, node, wallet) {
+    this.lastResult = this.tipHeight;
+    const baseNodeMiningPromise = this.baseNodeMineBlocksUntilHeightIncreasedBy(
+      node,
+      wallet,
+      numBlocks
+    );
+    const mergeMiningPromise = this.mergeMineBlocksUntilHeightIncreasedBy(
+      mmProxy,
+      numBlocks
+    );
+    await Promise.all([baseNodeMiningPromise, mergeMiningPromise]).then(
+      ([res1, res2]) => {
+        this.tipHeight = Math.max(res1, res2);
+        this.lastResult = this.tipHeight - this.lastResult;
+        console.log(
+          "Co-mining",
+          numBlocks,
+          "blocks concluded, tip at",
+          this.tipHeight
+        );
+      }
+    );
+  }
+);
+
+When(
+  /I co-mine (.*) blocks via merge mining proxy (.*) and mining node (.*)/,
+  { timeout: 6000 * 1000 },
+  async function (numBlocks, mmProxy, miner) {
+    this.lastResult = this.tipHeight;
+    const sha3MiningPromise = this.sha3MineBlocksUntilHeightIncreasedBy(
+      miner,
+      numBlocks,
+      105
+    );
+    const mergeMiningPromise = this.mergeMineBlocksUntilHeightIncreasedBy(
+      mmProxy,
+      numBlocks
+    );
+    await Promise.all([sha3MiningPromise, mergeMiningPromise]).then(
+      ([res1, res2]) => {
+        this.tipHeight = Math.max(res1, res2);
+        this.lastResult = this.tipHeight - this.lastResult;
+        console.log(
+          "Co-mining",
+          numBlocks,
+          "blocks concluded, tip at",
+          this.tipHeight
+        );
+      }
+    );
   }
 );
 
@@ -2201,6 +2297,49 @@ Then(
     const transactions =
       await walletClient.getAllSpendableCoinbaseTransactions();
     expect(transactions.length >= count).to.equal(true);
+  }
+);
+
+Then(
+  /wallets ([A-Za-z0-9,]+) account for all valid spendable coinbase transactions on the blockchain/,
+  { timeout: 610 * 1000 },
+  async function (wallets) {
+    const walletClients = wallets
+      .split(",")
+      .map((wallet) => this.getWallet(wallet).getClient());
+    let coinbaseCount = 0;
+    for (const client of walletClients) {
+      coinbaseCount += await client.countAllCoinbaseTransactions();
+    }
+    let spendableCoinbaseCount;
+    await waitFor(
+      async () => {
+        spendableCoinbaseCount = 0;
+        for (const client of walletClients) {
+          const count = await client.countAllSpendableCoinbaseTransactions();
+          console.log(client.name, "count", count);
+          spendableCoinbaseCount += count;
+        }
+        return spendableCoinbaseCount === this.lastResult;
+      },
+      true,
+      600 * 1000,
+      5 * 1000,
+      5
+    );
+
+    console.log(
+      "Found",
+      coinbaseCount,
+      "coinbases in wallets",
+      wallets,
+      "with",
+      spendableCoinbaseCount,
+      "being valid and Mined_Confirmed, expected",
+      this.lastResult,
+      "\n"
+    );
+    expect(spendableCoinbaseCount).to.equal(this.lastResult);
   }
 );
 
