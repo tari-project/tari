@@ -26,8 +26,9 @@ use crate::{
     contacts_service::{handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer},
     error::WalletError,
     output_manager_service::{
+        error::OutputManagerError,
         handle::OutputManagerHandle,
-        storage::database::OutputManagerBackend,
+        storage::{database::OutputManagerBackend, models::KnownOneSidedPaymentScript},
         OutputManagerServiceInitializer,
         TxId,
     },
@@ -38,7 +39,7 @@ use crate::{
         TransactionServiceInitializer,
     },
     types::KeyDigest,
-    utxo_scanner_service::UtxoScannerServiceInitializer,
+    utxo_scanner_service::{handle::UtxoScannerHandle, UtxoScannerServiceInitializer},
 };
 use aes_gcm::{
     aead::{generic_array::GenericArray, NewAead},
@@ -66,6 +67,7 @@ use tari_crypto::{
     common::Blake256,
     keys::{PublicKey as sk, SecretKey},
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
+    script,
     script::{ExecutionStack, TariScript},
     signatures::{SchnorrSignature, SchnorrSignatureError},
     tari_utilities::hex::Hex,
@@ -95,6 +97,7 @@ where
     pub transaction_service: TransactionServiceHandle,
     pub contacts_service: ContactsServiceHandle,
     pub base_node_service: BaseNodeServiceHandle,
+    pub utxo_scanner_service: UtxoScannerHandle,
     pub db: WalletDatabase<T>,
     pub factories: CryptoFactories,
     #[cfg(feature = "test_harness")]
@@ -118,8 +121,10 @@ where
         output_manager_backend: V,
         contacts_backend: W,
         shutdown_signal: ShutdownSignal,
+        recovery_master_key: Option<CommsSecretKey>,
     ) -> Result<Wallet<T, U, V, W>, WalletError> {
-        let master_secret_key = read_or_create_master_secret_key(&mut wallet_database.clone()).await?;
+        let master_secret_key =
+            read_or_create_master_secret_key(recovery_master_key, &mut wallet_database.clone()).await?;
         let comms_secret_key = derive_comms_secret_key(&master_secret_key)?;
 
         let node_identity = Arc::new(NodeIdentity::new(
@@ -195,13 +200,21 @@ where
             .expect("P2pInitializer was not added to the stack");
         let comms = initialization::spawn_comms_using_transport(comms, transport_type).await?;
 
-        let output_manager_handle = handles.expect_handle::<OutputManagerHandle>();
+        let mut output_manager_handle = handles.expect_handle::<OutputManagerHandle>();
         let transaction_service_handle = handles.expect_handle::<TransactionServiceHandle>();
         let contacts_handle = handles.expect_handle::<ContactsServiceHandle>();
         let dht = handles.expect_handle::<Dht>();
         let store_and_forward_requester = dht.store_and_forward_requester();
 
         let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
+        let utxo_scanner_service_handle = handles.expect_handle::<UtxoScannerHandle>();
+
+        persist_one_sided_payment_script_for_node_identity(&mut output_manager_handle, comms.node_identity())
+            .await
+            .map_err(|e| {
+                error!(target: LOG_TARGET, "{:?}", e);
+                e
+            })?;
 
         // Persist the comms node address and features after it has been spawned to capture any modifications made
         // during comms startup. In the case of a Tor Transport the public address could have been generated
@@ -220,6 +233,7 @@ where
             transaction_service: transaction_service_handle,
             contacts_service: contacts_handle,
             base_node_service: base_node_service_handle,
+            utxo_scanner_service: utxo_scanner_service_handle,
             db: wallet_database,
             factories,
             #[cfg(feature = "test_harness")]
@@ -270,6 +284,10 @@ where
             .await?;
 
         self.output_manager_service
+            .set_base_node_public_key(peer.public_key.clone())
+            .await?;
+
+        self.utxo_scanner_service
             .set_base_node_public_key(peer.public_key.clone())
             .await?;
 
@@ -442,15 +460,22 @@ where
 }
 
 async fn read_or_create_master_secret_key<T: WalletBackend + 'static>(
+    recovery_master_key: Option<CommsSecretKey>,
     db: &mut WalletDatabase<T>,
 ) -> Result<CommsSecretKey, WalletError> {
-    let master_secret_key = match db.get_master_secret_key().await? {
-        None => {
-            let sk = CommsSecretKey::random(&mut OsRng);
-            db.set_master_secret_key(sk.clone()).await?;
-            sk
+    let master_secret_key = match recovery_master_key {
+        None => match db.get_master_secret_key().await? {
+            None => {
+                let sk = CommsSecretKey::random(&mut OsRng);
+                db.set_master_secret_key(sk.clone()).await?;
+                sk
+            },
+            Some(sk) => sk,
         },
-        Some(sk) => sk,
+        Some(recovery_key) => {
+            db.set_master_secret_key(recovery_key.clone()).await?;
+            recovery_key
+        },
     };
 
     Ok(master_secret_key)
@@ -463,4 +488,26 @@ fn derive_comms_secret_key(master_secret_key: &CommsSecretKey) -> Result<CommsSe
         0,
     );
     Ok(comms_key_manager.derive_key(0)?.k)
+}
+
+/// Persist the one-sided payment script for the current wallet NodeIdentity for use during scanning for One-sided
+/// payment outputs. This is peristed so that if the Node Identity changes the wallet will still scan for outputs
+/// using old node identities.
+pub async fn persist_one_sided_payment_script_for_node_identity(
+    output_manager_service: &mut OutputManagerHandle,
+    node_identity: Arc<NodeIdentity>,
+) -> Result<(), WalletError> {
+    let script = script!(PushPubKey(Box::new(node_identity.public_key().clone())));
+    let known_script = KnownOneSidedPaymentScript {
+        script_hash: script
+            .as_hash::<Blake256>()
+            .map_err(|e| WalletError::OutputManagerError(OutputManagerError::ScriptError(e)))?
+            .to_vec(),
+        private_key: node_identity.secret_key().clone(),
+        script,
+        input: ExecutionStack::default(),
+    };
+
+    output_manager_service.add_known_script(known_script).await?;
+    Ok(())
 }

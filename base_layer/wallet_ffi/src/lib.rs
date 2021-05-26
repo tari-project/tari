@@ -2901,6 +2901,7 @@ pub unsafe extern "C" fn wallet_create(
         output_manager_backend,
         contacts_backend,
         shutdown.to_signal(),
+        None,
     ));
 
     match w {

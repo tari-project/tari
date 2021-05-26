@@ -24,7 +24,6 @@ use chrono::offset::Local;
 use futures::{FutureExt, StreamExt};
 use log::*;
 use rustyline::Editor;
-use std::cmp;
 use tari_app_utilities::utilities::ExitCodes;
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::types::PrivateKey;
@@ -32,7 +31,7 @@ use tari_key_manager::mnemonic::to_secretkey;
 use tari_shutdown::Shutdown;
 use tari_wallet::{
     storage::sqlite_db::WalletSqliteDatabase,
-    utxo_scanner_service::utxo_scanning::{UtxoScannerEvent, UtxoScannerService},
+    utxo_scanner_service::{handle::UtxoScannerEvent, utxo_scanning::UtxoScannerService},
     WalletSqlite,
 };
 
@@ -148,13 +147,10 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, peer_seeds: Vec<CommsPublicK
                 value_received: total_amount,
                 time_taken: elapsed,
             }) => {
+                let rate = (num_scanned as f32) * 1000f32 / (elapsed.as_millis() as f32);
                 let stats = format!(
-                    "Recovery complete! Scanned = {} in {:.2?} ({} utxos/s), Recovered {} worth {}",
-                    num_scanned,
-                    elapsed,
-                    num_scanned / cmp::max(elapsed.as_secs(), 1),
-                    num_utxos,
-                    total_amount
+                    "Recovery complete! Scanned = {} in {:.2?} ({:.2?} utxos/s), Recovered {} worth {}",
+                    num_scanned, elapsed, rate, num_utxos, total_amount
                 );
                 info!(target: LOG_TARGET, "{}", stats);
                 println!("{}", stats);

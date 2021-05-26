@@ -31,7 +31,7 @@ use log::*;
 use rand::{rngs::OsRng, seq::SliceRandom};
 use std::{fs, io::Stdout, net::SocketAddr, path::PathBuf};
 use tari_app_utilities::utilities::ExitCodes;
-use tari_common::{ConfigBootstrap, GlobalConfig};
+use tari_common::GlobalConfig;
 use tari_comms::{peer_manager::Peer, types::CommsPublicKey};
 use tari_wallet::WalletSqlite;
 use tokio::runtime::Handle;
@@ -46,7 +46,8 @@ pub enum WalletMode {
     Grpc,
     Script(PathBuf),
     Command(String),
-    Recovery,
+    RecoveryDaemon,
+    RecoveryTui,
     Invalid,
 }
 
@@ -179,7 +180,7 @@ pub fn recovery_mode(
     base_node_selected: Peer,
     base_node_config: PeerConfig,
     notify_script: Option<PathBuf>,
-    bootstrap: &ConfigBootstrap,
+    wallet_mode: WalletMode,
 ) -> Result<(), ExitCodes> {
     let peer_seed_public_keys: Vec<CommsPublicKey> = base_node_config
         .peer_seeds
@@ -200,18 +201,19 @@ pub fn recovery_mode(
         },
     }
 
-    if bootstrap.daemon_mode {
-        grpc_mode(handle, wallet, config)
-    } else {
-        println!("Starting TUI.");
-        tui_mode(
+    println!("Starting TUI.");
+
+    match wallet_mode {
+        WalletMode::RecoveryDaemon => grpc_mode(handle, wallet, config),
+        WalletMode::RecoveryTui => tui_mode(
             handle,
             config,
             wallet,
             base_node_selected,
             base_node_config,
             notify_script,
-        )
+        ),
+        _ => Err(ExitCodes::RecoveryError("Unsupported post recovery mode".to_string())),
     }
 }
 

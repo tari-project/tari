@@ -26,6 +26,7 @@ use crate::{
     output_manager_service::error::OutputManagerError,
     storage::database::DbKey,
     transaction_service::error::TransactionServiceError,
+    utxo_scanner_service::error::UtxoScannerError,
 };
 use diesel::result::Error as DieselError;
 use log::SetLoggerError;
@@ -76,14 +77,14 @@ pub enum WalletError {
     NodeIdentityError(#[from] NodeIdentityError),
     #[error("Error performing wallet recovery: '{0}'")]
     WalletRecoveryError(String),
-    #[error("Error performing wallet scanning: '{0}'")]
-    UtxoScannerError(String),
     #[error("Shutdown Signal Received")]
     Shutdown,
     #[error("Transaction Error: {0}")]
     TransactionError(#[from] TransactionError),
     #[error("Byte array error")]
     ByteArrayError(#[from] tari_crypto::tari_utilities::ByteArrayError),
+    #[error("Utxo Scanner Error: {0}")]
+    UtxoScannerError(#[from] UtxoScannerError),
 }
 
 #[derive(Debug, Error)]
