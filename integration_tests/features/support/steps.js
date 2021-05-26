@@ -1009,10 +1009,11 @@ Then(
       5 * 1000,
       5
     );
-    if (!walletClient.isBalanceAtLeast(amount)) {
+    consoleLogBalance(await walletClient.getBalance());
+    if (!(await walletClient.isBalanceAtLeast(amount))) {
       console.log("Balance not adequate!");
     }
-    consoleLogBalance(await walletClient.getBalance());
+    expect(await walletClient.isBalanceAtLeast(amount)).to.equal(true);
   }
 );
 
@@ -1033,10 +1034,11 @@ Then(
       5 * 1000,
       5
     );
-    if (!walletClient.isBalanceLessThan(amount)) {
+    consoleLogBalance(await walletClient.getBalance());
+    if (!(await walletClient.isBalanceLessThan(amount))) {
       console.log("Balance has not dropped below specified amount!");
     }
-    consoleLogBalance(await walletClient.getBalance());
+    expect(await walletClient.isBalanceLessThan(amount)).to.equal(true);
   }
 );
 
