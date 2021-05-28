@@ -142,12 +142,20 @@ pub struct ConfigBootstrap {
     pub miner_max_diff: Option<u64>,
 }
 
+fn normalize_path(path: PathBuf) -> PathBuf {
+    let mut result = PathBuf::new();
+    for component in path.components() {
+        result.push(component);
+    }
+    result
+}
+
 impl Default for ConfigBootstrap {
     fn default() -> Self {
         ConfigBootstrap {
-            base_path: dir_utils::default_path("", None),
-            config: dir_utils::default_path(DEFAULT_CONFIG, None),
-            log_config: dir_utils::default_path(DEFAULT_BASE_NODE_LOG_CONFIG, None),
+            base_path: normalize_path(dir_utils::default_path("", None)),
+            config: normalize_path(dir_utils::default_path(DEFAULT_CONFIG, None)),
+            log_config: normalize_path(dir_utils::default_path(DEFAULT_BASE_NODE_LOG_CONFIG, None)),
             init: false,
             create_id: false,
             daemon_mode: false,
@@ -192,23 +200,34 @@ impl ConfigBootstrap {
         })?;
 
         if self.config.to_str() == Some("") {
-            self.config = dir_utils::default_path(DEFAULT_CONFIG, Some(&self.base_path));
+            self.config = normalize_path(dir_utils::default_path(DEFAULT_CONFIG, Some(&self.base_path)));
         }
 
         if self.log_config.to_str() == Some("") {
             match application_type {
                 ApplicationType::BaseNode => {
-                    self.log_config = dir_utils::default_path(DEFAULT_BASE_NODE_LOG_CONFIG, Some(&self.base_path));
+                    self.log_config = normalize_path(dir_utils::default_path(
+                        DEFAULT_BASE_NODE_LOG_CONFIG,
+                        Some(&self.base_path),
+                    ));
                 },
                 ApplicationType::ConsoleWallet => {
-                    self.log_config = dir_utils::default_path(DEFAULT_WALLET_LOG_CONFIG, Some(&self.base_path));
+                    self.log_config = normalize_path(dir_utils::default_path(
+                        DEFAULT_WALLET_LOG_CONFIG,
+                        Some(&self.base_path),
+                    ));
                 },
                 ApplicationType::MergeMiningProxy => {
-                    self.log_config =
-                        dir_utils::default_path(DEFAULT_MERGE_MINING_PROXY_LOG_CONFIG, Some(&self.base_path))
+                    self.log_config = normalize_path(dir_utils::default_path(
+                        DEFAULT_MERGE_MINING_PROXY_LOG_CONFIG,
+                        Some(&self.base_path),
+                    ))
                 },
                 ApplicationType::MiningNode => {
-                    self.log_config = dir_utils::default_path(DEFAULT_MINING_NODE_LOG_CONFIG, Some(&self.base_path))
+                    self.log_config = normalize_path(dir_utils::default_path(
+                        DEFAULT_MINING_NODE_LOG_CONFIG,
+                        Some(&self.base_path),
+                    ))
                 },
             }
         }

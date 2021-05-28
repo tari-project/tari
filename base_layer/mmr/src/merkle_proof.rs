@@ -246,7 +246,7 @@ impl MerkleProof {
         }
 
         let sibling = self.path.remove(0); // FIXME Compare perf vs using a VecDeque
-        let (parent_pos, sibling_pos) = family(pos);
+        let (parent_pos, sibling_pos) = family(pos)?;
         if parent_pos > self.mmr_size {
             Err(MerkleProofError::Unexpected)
         } else {

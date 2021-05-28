@@ -47,9 +47,12 @@ pub fn default_subdir(path: &str, base_dir: Option<&PathBuf>) -> String {
 
 pub fn default_path(filename: &str, base_path: Option<&PathBuf>) -> PathBuf {
     let mut home = base_path.cloned().unwrap_or_else(|| {
-        let mut home = dirs_next::home_dir().unwrap_or_else(|| PathBuf::from("."));
-        home.push(".tari");
-        home
+        [
+            dirs_next::home_dir().unwrap_or_else(|| PathBuf::from(".")),
+            PathBuf::from(".tari"),
+        ]
+        .iter()
+        .collect()
     });
     home.push(filename);
     home

@@ -23,8 +23,9 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use crate::Hash;
+use crate::{error::MerkleMountainRangeError, Hash};
 use digest::Digest;
+use std::convert::TryInto;
 
 const ALL_ONES: usize = std::usize::MAX;
 
@@ -76,15 +77,27 @@ pub fn find_peaks(size: usize) -> Vec<usize> {
     peaks
 }
 
-/// Calculates the positions of the parent and sibling of the node at the provided position.
-pub fn family(pos: usize) -> (usize, usize) {
+/// Calculates the positions of the (parent, sibling) of the node at the provided position.
+/// Returns an error if the pos provided would result in an underflow or overflow.
+pub fn family(pos: usize) -> Result<(usize, usize), MerkleMountainRangeError> {
     let (peak_map, height) = peak_map_height(pos);
     let peak = 1 << height;
-    if (peak_map & peak) != 0 {
+
+    // Convert to i128 so that we don't over/underflow, and then we will cast back to usize after
+    let pos = pos as i128;
+    let peak = peak as i128;
+    let peak_map = peak_map as i128;
+
+    let res = if (peak_map & peak) != 0 {
         (pos + 1, pos + 1 - 2 * peak)
     } else {
         (pos + 2 * peak, pos + 2 * peak - 1)
-    }
+    };
+
+    Ok((
+        res.0.try_into().map_err(|_| MerkleMountainRangeError::OutOfRange)?,
+        res.1.try_into().map_err(|_| MerkleMountainRangeError::OutOfRange)?,
+    ))
 }
 
 /// For a given starting position calculate the parent and sibling positions
@@ -267,13 +280,13 @@ mod test {
 
     #[test]
     fn families() {
-        assert_eq!(family(1), (2, 0));
-        assert_eq!(family(0), (2, 1));
-        assert_eq!(family(3), (5, 4));
-        assert_eq!(family(9), (13, 12));
-        assert_eq!(family(15), (17, 16));
-        assert_eq!(family(6), (14, 13));
-        assert_eq!(family(13), (14, 6));
+        assert_eq!(family(1).unwrap(), (2, 0));
+        assert_eq!(family(0).unwrap(), (2, 1));
+        assert_eq!(family(3).unwrap(), (5, 4));
+        assert_eq!(family(9).unwrap(), (13, 12));
+        assert_eq!(family(15).unwrap(), (17, 16));
+        assert_eq!(family(6).unwrap(), (14, 13));
+        assert_eq!(family(13).unwrap(), (14, 6));
     }
 
     #[test]
