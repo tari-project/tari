@@ -548,6 +548,255 @@ fn handle_reorg() {
 }
 
 #[test]
+fn reorgs_should_update_orphan_tips() {
+    // Create a main chain GB -> A1 -> A2
+    // Create an orphan chain GB -> B1
+    // Add a block B2 that forces a reorg to B2
+    // Check that A2 is in the orphan chain tips db
+    // Add a block A3 that forces a reorg to A3
+    // Check that B2 is in the orphan chain tips db
+    // Add 2 blocks B3 and B4 that force a reorg to B4
+    // Check that A3 is in the orphan chain tips db
+    // Add 2 blocks A4 and A5 that force a reorg to A5
+    // Check that B4 is in the orphan chain tips db
+
+    let network = Network::LocalNet;
+    let (store, blocks, outputs, consensus_manager) = create_new_blockchain(network);
+
+    // Create "A" Chain
+    let mut a_store = create_store_with_consensus(consensus_manager.clone());
+    let mut a_blocks = vec![blocks[0].clone()];
+    let mut a_outputs = vec![outputs[0].clone()];
+
+    // Block A1
+    let txs = vec![txn_schema!(from: vec![a_outputs[0][0].clone()], to: vec![50 * T])];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut a_store,
+        &mut a_blocks,
+        &mut a_outputs,
+        txs,
+        Difficulty::from(1),
+        &consensus_manager
+    )
+    .is_ok());
+
+    store.add_block(a_blocks[1].to_arc_block()).unwrap().assert_added();
+
+    // Block A2
+    let txs = vec![txn_schema!(from: vec![a_outputs[1][1].clone()], to: vec![30 * T])];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut a_store,
+        &mut a_blocks,
+        &mut a_outputs,
+        txs,
+        Difficulty::from(3),
+        &consensus_manager
+    )
+    .is_ok());
+
+    store.add_block(a_blocks[2].to_arc_block()).unwrap().assert_added();
+    let a2_hash = a_blocks[2].hash().clone();
+
+    // Create "B" Chain
+    let mut b_store = create_store_with_consensus(consensus_manager.clone());
+    let mut b_blocks = vec![blocks[0].clone()];
+    let mut b_outputs = vec![outputs[0].clone()];
+
+    // Block B1
+    let txs = vec![txn_schema!(from: vec![b_outputs[0][0].clone()], to: vec![50 * T])];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut b_store,
+        &mut b_blocks,
+        &mut b_outputs,
+        txs,
+        Difficulty::from(2),
+        &consensus_manager
+    )
+    .is_ok());
+
+    store.add_block(b_blocks[1].to_arc_block()).unwrap().assert_orphaned();
+    let b1_hash = b_blocks[1].hash().clone();
+
+    // check that B1 is in orphan tips
+    let orphan_tip_b1 = store
+        .db_read_access()
+        .unwrap()
+        .fetch_orphan_chain_tip_by_hash(&b1_hash)
+        .unwrap();
+    assert!(orphan_tip_b1.is_some());
+    assert_eq!(orphan_tip_b1.unwrap().hash(), &b1_hash);
+
+    // Block B2
+    let txs = vec![txn_schema!(from: vec![b_outputs[1][0].clone()], to: vec![40 * T])];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut b_store,
+        &mut b_blocks,
+        &mut b_outputs,
+        txs,
+        Difficulty::from(4),
+        &consensus_manager
+    )
+    .is_ok());
+
+    store.add_block(b_blocks[2].to_arc_block()).unwrap().assert_reorg(2, 2);
+    let b2_hash = b_blocks[2].hash().clone();
+
+    // check that A2 is now in the orphan chain tip db
+    let orphan_tip_a2 = store
+        .db_read_access()
+        .unwrap()
+        .fetch_orphan_chain_tip_by_hash(&a2_hash)
+        .unwrap();
+    assert!(orphan_tip_a2.is_some());
+    assert_eq!(orphan_tip_a2.unwrap().hash(), &a2_hash);
+
+    // check that B1 was removed from orphan chain tips
+    let orphan_tip_b1 = store
+        .db_read_access()
+        .unwrap()
+        .fetch_orphan_chain_tip_by_hash(&b1_hash)
+        .unwrap();
+    assert!(orphan_tip_b1.is_none());
+
+    // Block A3
+    let txs = vec![txn_schema!(from: vec![a_outputs[2][0].clone()], to: vec![25 * T])];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut a_store,
+        &mut a_blocks,
+        &mut a_outputs,
+        txs,
+        Difficulty::from(5), // A chain accumulated difficulty 9
+        &consensus_manager,
+    )
+    .is_ok());
+
+    store.add_block(a_blocks[3].to_arc_block()).unwrap().assert_reorg(3, 2);
+    let a3_hash = a_blocks[3].hash().clone();
+
+    // check that B2 is now in the orphan chain tip db
+    let orphan_tip_b2 = store
+        .db_read_access()
+        .unwrap()
+        .fetch_orphan_chain_tip_by_hash(&b2_hash)
+        .unwrap();
+    assert!(orphan_tip_b2.is_some());
+    assert_eq!(orphan_tip_b2.unwrap().hash(), &b2_hash);
+
+    // check that A2 was removed from orphan chain tips
+    let orphan_tip_a2 = store
+        .db_read_access()
+        .unwrap()
+        .fetch_orphan_chain_tip_by_hash(&a2_hash)
+        .unwrap();
+    assert!(orphan_tip_a2.is_none());
+
+    // Block B3
+    let txs = vec![txn_schema!(from: vec![b_outputs[2][0].clone()], to: vec![30 * T])];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut b_store,
+        &mut b_blocks,
+        &mut b_outputs,
+        txs,
+        Difficulty::from(1), // B chain accumulated difficulty 7
+        &consensus_manager
+    )
+    .is_ok());
+
+    store.add_block(b_blocks[3].to_arc_block()).unwrap().assert_orphaned();
+    let b3_hash = b_blocks[3].hash().clone();
+
+    // Block B4
+    let txs = vec![txn_schema!(from: vec![b_outputs[3][0].clone()], to: vec![20 * T])];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut b_store,
+        &mut b_blocks,
+        &mut b_outputs,
+        txs,
+        Difficulty::from(5), // B chain accumulated difficulty 12
+        &consensus_manager
+    )
+    .is_ok());
+
+    store.add_block(b_blocks[4].to_arc_block()).unwrap().assert_reorg(4, 3);
+    let b4_hash = b_blocks[4].hash().clone();
+
+    // check that A3 is now in the orphan chain tip db
+    let orphan_tip_a3 = store
+        .db_read_access()
+        .unwrap()
+        .fetch_orphan_chain_tip_by_hash(&a3_hash)
+        .unwrap();
+    assert!(orphan_tip_a3.is_some());
+    assert_eq!(orphan_tip_a3.unwrap().hash(), &a3_hash);
+
+    // check that B3 was removed from orphan chain tips
+    let orphan_tip_b3 = store
+        .db_read_access()
+        .unwrap()
+        .fetch_orphan_chain_tip_by_hash(&b3_hash)
+        .unwrap();
+    assert!(orphan_tip_b3.is_none());
+
+    // Block A4
+    let txs = vec![txn_schema!(from: vec![a_outputs[3][0].clone()], to: vec![20 * T])];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut a_store,
+        &mut a_blocks,
+        &mut a_outputs,
+        txs,
+        Difficulty::from(2), // A chain accumulated difficulty 11
+        &consensus_manager
+    )
+    .is_ok());
+
+    store.add_block(a_blocks[4].to_arc_block()).unwrap().assert_orphaned();
+
+    // Block A5
+    let txs = vec![txn_schema!(from: vec![a_outputs[4][0].clone()], to: vec![10 * T])];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut a_store,
+        &mut a_blocks,
+        &mut a_outputs,
+        txs,
+        Difficulty::from(4), // A chain accumulated difficulty 15
+        &consensus_manager
+    )
+    .is_ok());
+
+    store.add_block(a_blocks[5].to_arc_block()).unwrap().assert_reorg(5, 4);
+
+    // check that B4 is now in the orphan chain tip db
+    let orphan_tip_b4 = store
+        .db_read_access()
+        .unwrap()
+        .fetch_orphan_chain_tip_by_hash(&b4_hash)
+        .unwrap();
+    assert!(orphan_tip_b4.is_some());
+    assert_eq!(orphan_tip_b4.unwrap().hash(), &b4_hash);
+
+    // check that A3 was removed from orphan chain tips
+    let orphan_tip_a3 = store
+        .db_read_access()
+        .unwrap()
+        .fetch_orphan_chain_tip_by_hash(&a3_hash)
+        .unwrap();
+    assert!(orphan_tip_a3.is_none());
+
+    // Check that B1 - B4 are orphans
+    assert!(store.fetch_orphan(b_blocks[1].hash().clone()).is_ok()); // B1
+    assert!(store.fetch_orphan(b_blocks[2].hash().clone()).is_ok()); // B2
+    assert!(store.fetch_orphan(b_blocks[3].hash().clone()).is_ok()); // B3
+    assert!(store.fetch_orphan(b_blocks[4].hash().clone()).is_ok()); // B4
+
+    // And blocks A1 - A5 are not
+    assert!(store.fetch_orphan(a_blocks[1].hash().clone()).is_err()); // A1
+    assert!(store.fetch_orphan(a_blocks[2].hash().clone()).is_err()); // A2
+    assert!(store.fetch_orphan(a_blocks[3].hash().clone()).is_err()); // A3
+    assert!(store.fetch_orphan(a_blocks[4].hash().clone()).is_err()); // A4
+    assert!(store.fetch_orphan(a_blocks[5].hash().clone()).is_err()); // A5
+}
+
+#[test]
 fn handle_reorg_with_no_removed_blocks() {
     // GB --> A1
     //          \--> B2 (?) --> B3)

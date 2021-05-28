@@ -125,10 +125,10 @@ const LOG_TARGET: &str = "base_node::app";
 /// Application entry point
 fn main() {
     if let Err(exit_code) = main_inner() {
-        eprintln!("{}", exit_code);
+        eprintln!("{:?}", exit_code);
         error!(
             target: LOG_TARGET,
-            "Exiting with code ({}): {}",
+            "Exiting with code ({}): {:?}",
             exit_code.as_i32(),
             exit_code
         );

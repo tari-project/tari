@@ -141,16 +141,16 @@ impl CommandHandler {
                 ),
             );
 
-            let banned_peers = fetch_banned_peers(&peer_manager).await.unwrap();
             let conns = connectivity.get_active_connections().await.unwrap();
             status_line.add_field("Connections", conns.len());
+            let banned_peers = fetch_banned_peers(&peer_manager).await.unwrap();
+            status_line.add_field("Banned", banned_peers.len());
 
             let num_messages = metrics
                 .get_total_message_count_in_timespan(Duration::from_secs(60))
                 .await
                 .unwrap();
             status_line.add_field("Messages (last 60s)", num_messages);
-            status_line.add_field("Banned", banned_peers.len());
 
             let num_active_rpc_sessions = rpc_server.get_num_active_sessions().await.unwrap();
             status_line.add_field(
