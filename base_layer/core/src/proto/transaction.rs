@@ -162,11 +162,13 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
         let script_offset_public_key =
             PublicKey::from_bytes(output.script_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
 
+        let script = TariScript::from_bytes(&output.script.to_vec()).map_err(|err| err.to_string())?;
+
         Ok(Self {
             features,
             commitment,
             proof: BulletRangeProof(output.range_proof),
-            script_hash: output.script_hash,
+            script,
             script_offset_public_key,
         })
     }
@@ -178,7 +180,7 @@ impl From<TransactionOutput> for proto::types::TransactionOutput {
             features: Some(output.features.into()),
             commitment: Some(output.commitment.into()),
             range_proof: output.proof.to_vec(),
-            script_hash: output.script_hash,
+            script: output.script.as_bytes(),
             script_offset_public_key: output.script_offset_public_key.as_bytes().to_vec(),
         }
     }

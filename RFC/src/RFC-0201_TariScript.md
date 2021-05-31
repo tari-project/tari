@@ -232,7 +232,7 @@ pub struct TransactionOutput {
     /// A proof that the commitment is in the right range
     proof: RangeProof,
     /// The serialised script
-    script_hash: Vec<u8>,
+    script: Vec<u8>,
     /// The offset pubkey, K_O
     script_offset_public_key: PublicKey
 }
@@ -246,11 +246,11 @@ $$
 C_i = v_i \cdot H  + k_i \cdot G
 $$
 
-We update \\( \rpc_i \\), the range proof commitment, to be the hash of the script hash, output features and
+We update \\( \rpc_i \\), the range proof commitment, to be the hash of the script, output features and
 offset public key as follows:
 
 $$
-  \rpc_i = \hash{\scripthash_i \cat \mathrm{F_i} \cat K_{Oi}}
+  \rpc_i = \hash{\script_i \cat \mathrm{F_i} \cat K_{Oi}}
 $$
 
 Wallets now generate the range proof with
@@ -423,7 +423,7 @@ Bob can then complete his side of the transaction by completing the output:
 * Creating a range proof for \\( \hat{C}_b = (k_b + \rpc_b) \cdot G + v \cdot H \\), with
 
   $$
-    \rpc_b = \hash{\scripthash_b \cat F_b \cat K_{Ob} }
+    \rpc_b = \hash{\script_b \cat F_b \cat K_{Ob} }
   $$
 
 Bob then signs the kernel excess as usual:
@@ -777,7 +777,7 @@ The capital letter subscripts, _R_ and _S_ refer to a UTXO _receiver_ and _scrip
 | \\( \scripthash_i \\)   | The 256-bit Blake2b hash of an output script, \\( \script_i \\)                                                                    |
 | \\( k_{Oi}\, K_{Oi} \\) | The private - public keypair for the UTXO offset key.                                                                              |
 | \\( k_{Si}\, K_{Si} \\) | The private - public keypair for the script key. The script, \\( \script_i \\) resolves to \\( K_S \\) after completing execution. |
-| \\( \rpc_i \\)          | Auxilliary data committed to in the range proof. \\( \rpc_i = \hash{ \scripthash_i \cat F_i \cat K_{Oi} } \\)                      |
+| \\( \rpc_i \\)          | Auxilliary data committed to in the range proof. \\( \rpc_i = \hash{ \script_i \cat F_i \cat K_{Oi} } \\)                      |
 | \\( \so_t \\)           | The script offset for transaction _t_. \\( \so_t = \sum_j{ k_{Sjt}} - \sum_j{k_{Ojt}\cdot\HU_i} \\)                               |
 | \\( C_i \\)             | A Pedersen commitment,  i.e. \\( k_i \cdot{G} + v_i \cdot H \\)                                                                    |
 | \\( \hat{C}_i \\)       | A modified Pedersen commitment, \\( \hat{C}_i = (k_i + \rpc_i)\cdot{G} + v_i\cdot H  \\)                                           |

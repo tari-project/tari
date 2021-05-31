@@ -41,7 +41,7 @@ class TransactionBuilder {
     return Buffer.from(final).toString("hex");
   }
 
-  hashOutput(features, commitment, script_hash, script_offset_public_key) {
+  hashOutput(features, commitment, script, script_offset_public_key) {
     var KEY = null; // optional key
     var OUTPUT_LENGTH = 32; // bytes
     var context = blake2bInit(OUTPUT_LENGTH, KEY);
@@ -53,7 +53,7 @@ class TransactionBuilder {
     ]);
     blake2bUpdate(context, features_buffer);
     blake2bUpdate(context, commitment);
-    blake2bUpdate(context, script_hash);
+    blake2bUpdate(context, script);
     blake2bUpdate(context, script_offset_public_key);
     let final = blake2bFinal(context);
     return Buffer.from(final).toString("hex");
@@ -125,8 +125,6 @@ class TransactionBuilder {
     let scriptOffsetPublicKey = tari_crypto.pubkey_from_secret(
       scriptOffsetPrivateKey.toString("hex")
     );
-    let nopScriptHash =
-      "2682c826cae74c92c0620c9ab73c7e577a37870b4ce42465a4e63b58ee4d2408";
 
     let beta = calculateBeta(
       nopScriptHash,
@@ -142,8 +140,8 @@ class TransactionBuilder {
       new_range_proof_key,
       BigInt(amount)
     ).proof;
-    let nop_script_hash =
-      "2682c826cae74c92c0620c9ab73c7e577a37870b4ce42465a4e63b58ee4d2408";
+    let nop_script_bytes = Buffer.from([0x73]);
+
     let output = {
       amount: amount,
       privateKey: privateKey,
@@ -156,7 +154,7 @@ class TransactionBuilder {
           "hex"
         ),
         range_proof: Buffer.from(rangeproof, "hex"),
-        script_hash: Buffer.from(nop_script_hash, "hex"),
+        script: nop_script_bytes,
         script_offset_public_key: Buffer.from(scriptOffsetPublicKey, "hex"),
       },
     };
@@ -189,7 +187,7 @@ class TransactionBuilder {
       let output_hash = this.hashOutput(
         output.output.features,
         output.output.commitment,
-        output.output.script_hash,
+        output.output.script,
         output.output.script_offset_public_key
       );
       let kU = tari_crypto.secret_key_from_hex_bytes(

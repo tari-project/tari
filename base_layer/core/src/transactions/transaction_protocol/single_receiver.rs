@@ -98,7 +98,7 @@ impl SingleReceiverTransactionProtocol {
             .commit_value(&spending_key, sender_info.amount.into());
 
         let beta_hash = Blake256::new()
-            .chain(sender_info.script_hash.clone())
+            .chain(sender_info.clone().script.as_bytes())
             .chain(features.to_bytes())
             .chain(sender_info.script_offset_public_key.clone().as_bytes())
             .result()
@@ -123,7 +123,7 @@ impl SingleReceiverTransactionProtocol {
             commitment,
             RangeProof::from_bytes(&proof)
                 .map_err(|_| TPE::RangeProofError(RangeProofError::ProofConstructionError))?,
-            sender_info.script_hash.clone(),
+            sender_info.script.clone(),
             sender_info.script_offset_public_key.clone(),
         ))
     }
@@ -147,6 +147,7 @@ mod test {
     use tari_crypto::{
         commitment::HomomorphicCommitmentFactory,
         keys::{PublicKey as PK, SecretKey as SK},
+        script::TariScript,
     };
 
     fn generate_output_parms() -> (PrivateKey, PrivateKey, OutputFeatures) {
@@ -187,7 +188,7 @@ mod test {
             public_nonce: pub_rs.clone(),
             metadata: m.clone(),
             message: "".to_string(),
-            script_hash: vec![],
+            script: TariScript::default(),
             script_offset_public_key: Default::default(),
         };
         let prot = SingleReceiverTransactionProtocol::create(&info, r, k.clone(), of, &factories, None).unwrap();

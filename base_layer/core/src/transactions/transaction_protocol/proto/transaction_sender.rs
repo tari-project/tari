@@ -30,6 +30,7 @@ use tari_crypto::tari_utilities::ByteArray;
 // The generated _oneof_ enum
 use crate::transactions::types::PublicKey;
 use proto::transaction_sender_message::Message as ProtoTxnSenderMessage;
+use tari_crypto::script::TariScript;
 
 impl proto::TransactionSenderMessage {
     pub fn none() -> Self {
@@ -106,7 +107,7 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             public_nonce,
             metadata,
             message,
-            script_hash: data.script_hash,
+            script: TariScript::from_bytes(&data.script).map_err(|err| err.to_string())?,
             script_offset_public_key,
         })
     }
@@ -123,7 +124,7 @@ impl From<SingleRoundSenderData> for proto::SingleRoundSenderData {
             public_nonce: sender_data.public_nonce.to_vec(),
             metadata: Some(sender_data.metadata.into()),
             message: sender_data.message,
-            script_hash: sender_data.script_hash,
+            script: sender_data.script.as_bytes(),
             script_offset_public_key: sender_data.script_offset_public_key.to_vec(),
         }
     }

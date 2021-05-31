@@ -132,6 +132,7 @@ fn async_add_new_block() {
     let network = Network::LocalNet;
     let (db, blocks, outputs, consensus_manager) = create_new_blockchain(network);
     let schema = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![20 * T, 20 * T])];
+
     let txns = schema_to_transaction(&schema)
         .0
         .iter()
@@ -144,7 +145,9 @@ fn async_add_new_block() {
         &CryptoFactories::default(),
     )
     .0;
+
     let new_block = db.prepare_block_merkle_roots(new_block).unwrap();
+
     test_async(|rt| {
         let db = AsyncBlockchainDb::new(db);
         rt.spawn(async move {
