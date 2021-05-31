@@ -72,7 +72,7 @@ use tari_core::{
     },
 };
 use tari_crypto::{
-    hash::blake2::Blake256,
+    common::Blake256,
     inputs,
     keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
     range_proof::REWIND_USER_MESSAGE_LENGTH,
@@ -498,7 +498,7 @@ where TBackend: OutputManagerBackend + 'static
         };
 
         // Confirm script hash is for the expected script, at the moment assuming Nop
-        if single_round_sender_data.script_hash != script!(Nop).as_hash::<Blake256>()? {
+        if single_round_sender_data.script != script!(Nop) {
             return Err(OutputManagerError::InvalidScriptHash);
         }
 
@@ -1253,11 +1253,11 @@ where TBackend: OutputManagerBackend + 'static
                         &rewind_data.rewind_blinding_key,
                     )
                     .ok()
-                    .map(|v| (v, output.features, output.script_hash, output.script_offset_public_key))
+                    .map(|v| (v, output.features, output.script, output.script_offset_public_key))
             })
-            .map(|(output, features, script_hash, script_offset_public_key)| {
+            .map(|(output, features, script, script_offset_public_key)| {
                 let beta_hash = Blake256::new()
-                    .chain(script_hash.as_bytes())
+                    .chain(script.as_bytes())
                     .chain(features.to_bytes())
                     .chain(script_offset_public_key.as_bytes())
                     .result()
@@ -1322,7 +1322,7 @@ where TBackend: OutputManagerBackend + 'static
         for output in outputs {
             let position = known_one_sided_payment_scripts
                 .iter()
-                .position(|hash| hash.script_hash == output.script_hash);
+                .position(|known_one_sided_script| known_one_sided_script.script == output.script);
             if let Some(i) = position {
                 let spending_key = PrivateKey::from_bytes(
                     CommsPublicKey::shared_secret(
@@ -1337,7 +1337,7 @@ where TBackend: OutputManagerBackend + 'static
                     output.full_rewind_range_proof(&self.resources.factories.range_proof, &rewind_key, &blinding_key);
 
                 let beta_hash = Blake256::new()
-                    .chain(output.script_hash.as_bytes())
+                    .chain(output.script.as_bytes())
                     .chain(output.features.to_bytes())
                     .chain(output.script_offset_public_key.as_bytes())
                     .result()

@@ -184,8 +184,8 @@ message TransactionOutput {
     bytes range_proof = 3;
     // The hash of the output, as it appears in the MMR
     bytes hash = 4;
-    // Tari script serialised script hash
-    bytes script_hash = 5;
+    // Tari script serialised script
+    bytes script = 5;
     // Tari script offset pubkey, K_O
     bytes script_offset_public_key = 6;
 }

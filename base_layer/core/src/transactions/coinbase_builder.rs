@@ -348,7 +348,7 @@ mod test {
             .full_rewind_range_proof(&factories.range_proof, &rewind_key, &rewind_blinding_key)
             .unwrap();
         let beta_hash = Blake256::new()
-            .chain(unblinded_output.script.as_hash::<Blake256>().unwrap().as_bytes())
+            .chain(unblinded_output.script.as_bytes())
             .chain(unblinded_output.features.to_bytes())
             .chain(unblinded_output.script_offset_public_key.as_bytes())
             .result()

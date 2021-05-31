@@ -202,18 +202,21 @@ impl ReceiverTransactionProtocol {
 
 #[cfg(test)]
 mod test {
-    use crate::transactions::{
-        helpers::TestParams,
-        tari_amount::*,
-        transaction::OutputFeatures,
-        transaction_protocol::{
-            build_challenge,
-            sender::{SingleRoundSenderData, TransactionSenderMessage},
-            RewindData,
-            TransactionMetadata,
+    use crate::{
+        crypto::script::TariScript,
+        transactions::{
+            helpers::TestParams,
+            tari_amount::*,
+            transaction::OutputFeatures,
+            transaction_protocol::{
+                build_challenge,
+                sender::{SingleRoundSenderData, TransactionSenderMessage},
+                RewindData,
+                TransactionMetadata,
+            },
+            types::{CryptoFactories, PrivateKey, PublicKey, Signature},
+            ReceiverTransactionProtocol,
         },
-        types::{CryptoFactories, PrivateKey, PublicKey, Signature},
-        ReceiverTransactionProtocol,
     };
     use digest::Digest;
     use rand::rngs::OsRng;
@@ -239,7 +242,7 @@ mod test {
             public_nonce: PublicKey::from_secret_key(&p.change_key), // any random key will do
             metadata: m.clone(),
             message: "".to_string(),
-            script_hash: vec![],
+            script: TariScript::default(),
             script_offset_public_key: Default::default(),
         };
         let sender_info = TransactionSenderMessage::Single(Box::new(msg.clone()));
@@ -287,7 +290,7 @@ mod test {
             public_nonce: PublicKey::from_secret_key(&p.change_key), // any random key will do
             metadata: m,
             message: "".to_string(),
-            script_hash: vec![],
+            script: TariScript::default(),
             script_offset_public_key: Default::default(),
         };
         let sender_info = TransactionSenderMessage::Single(Box::new(msg));
@@ -318,7 +321,7 @@ mod test {
             .full_rewind_range_proof(&factories.range_proof, &rewind_key, &rewind_blinding_key)
             .unwrap();
         let beta_hash = Blake256::new()
-            .chain(data.output.script_hash.as_bytes())
+            .chain(data.output.script.as_bytes())
             .chain(data.output.features.to_bytes())
             .chain(data.output.script_offset_public_key.as_bytes())
             .result()

@@ -406,11 +406,10 @@ pub fn create_utxo(
     let offset_private_key = generate_keys();
     let features = features.unwrap_or_default();
     let commitment = factories.commitment.commit_value(&keys.k, value.into());
-    let script_hash = script.as_hash::<Blake256>().unwrap().to_vec();
     let offset_pub_key = PublicKey::from_secret_key(&keys.k);
     // let construct beta for the utxo
     let beta_hash = Blake256::new()
-        .chain(script_hash.clone())
+        .chain(script.as_bytes())
         .chain(features.to_bytes())
         .chain(offset_pub_key.as_bytes())
         .result()
@@ -421,7 +420,7 @@ pub fn create_utxo(
         .construct_proof(&(&keys.k + &beta), value.into())
         .unwrap();
 
-    let utxo = TransactionOutput::new(features, commitment, proof.into(), script_hash, offset_pub_key);
+    let utxo = TransactionOutput::new(features, commitment, proof.into(), script.clone(), offset_pub_key);
     (utxo, keys.k, offset_private_key.k)
 }
 

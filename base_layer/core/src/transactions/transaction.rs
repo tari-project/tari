@@ -267,7 +267,7 @@ impl UnblindedOutput {
 
     pub fn as_transaction_output(&self, factories: &CryptoFactories) -> Result<TransactionOutput, TransactionError> {
         let beta_hash = Blake256::new()
-            .chain(self.script.as_hash::<Blake256>()?.as_bytes())
+            .chain(self.script.as_bytes())
             .chain(self.features.to_bytes())
             .chain(self.script_offset_public_key.as_bytes())
             .result()
@@ -284,7 +284,7 @@ impl UnblindedOutput {
                     .construct_proof(&(self.spending_key.clone() + beta), self.value.into())?,
             )
             .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?,
-            script_hash: self.script.as_hash::<Blake256>()?.to_vec(),
+            script: self.script.clone(),
             script_offset_public_key: self.script_offset_public_key.clone(),
         };
         // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
@@ -302,7 +302,7 @@ impl UnblindedOutput {
         rewind_data: &RewindData,
     ) -> Result<TransactionOutput, TransactionError> {
         let beta_hash = Blake256::new()
-            .chain(self.script.as_hash::<Blake256>()?.as_bytes())
+            .chain(self.script.as_bytes())
             .chain(self.features.to_bytes())
             .chain(self.script_offset_public_key.as_bytes())
             .result()
@@ -327,7 +327,7 @@ impl UnblindedOutput {
             features: self.features.clone(),
             commitment,
             proof,
-            script_hash: self.script.as_hash::<Blake256>()?.to_vec(),
+            script: self.script.clone(),
             script_offset_public_key: self.script_offset_public_key.clone(),
         };
         // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
@@ -475,7 +475,7 @@ impl Hashable for TransactionInput {
         HashDigest::new()
             .chain(self.features.to_bytes())
             .chain(self.commitment.as_bytes())
-            .chain(self.script.as_hash::<Blake256>().unwrap())
+            .chain(self.script.as_bytes())
             .chain(self.script_offset_public_key.as_bytes())
             .result()
             .to_vec()
@@ -489,7 +489,7 @@ impl Display for TransactionInput {
             "{} [{:?}], Script hash: ({}), Offset_Pubkey: ({})",
             self.commitment.to_hex(),
             self.features,
-            self.script.as_hash::<Blake256>().unwrap().to_hex(),
+            self.script,
             self.script_offset_public_key.to_hex()
         )
     }
@@ -512,7 +512,7 @@ impl Ord for TransactionInput {
 /// Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
 /// blinded value for the output while the range proof guarantees the commitment includes a positive value without
 /// overflow and the ownership of the private key.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransactionOutput {
     /// Options for an output's structure or use
     pub features: OutputFeatures,
@@ -520,8 +520,8 @@ pub struct TransactionOutput {
     pub commitment: Commitment,
     /// A proof that the commitment is in the right range
     pub proof: RangeProof,
-    /// Tari script serialised script hash
-    pub script_hash: Vec<u8>,
+    /// The script that will be executed when spending this output
+    pub script: TariScript,
     /// Tari script offset pubkey, K_O
     pub script_offset_public_key: PublicKey,
 }
@@ -533,14 +533,14 @@ impl TransactionOutput {
         features: OutputFeatures,
         commitment: Commitment,
         proof: RangeProof,
-        script_hash: Vec<u8>,
+        script: TariScript,
         script_offset_public_key: PublicKey,
     ) -> TransactionOutput {
         TransactionOutput {
             features,
             commitment,
             proof,
-            script_hash,
+            script,
             script_offset_public_key,
         }
     }
@@ -609,7 +609,7 @@ impl TransactionOutput {
     /// Return this outputs commitment modified by the script Beta term for use in verifying or rewinding the rangeproof
     fn get_modified_script_commitment(&self) -> Result<Commitment, TransactionError> {
         let beta_hash = Blake256::new()
-            .chain(&self.script_hash)
+            .chain(&self.script.as_bytes())
             .chain(self.features.to_bytes())
             .chain(self.script_offset_public_key.as_bytes())
             .result()
@@ -633,7 +633,7 @@ impl Hashable for TransactionOutput {
             .chain(self.features.to_bytes())
             .chain(self.commitment.as_bytes())
             // .chain(range proof) // See docs as to why we exclude this
-            .chain(self.script_hash.as_bytes())
+            .chain(self.script.as_bytes())
             .chain(self.script_offset_public_key.as_bytes())
             .result()
             .to_vec()
@@ -646,7 +646,7 @@ impl Default for TransactionOutput {
             OutputFeatures::default(),
             CommitmentFactory::default().zero(),
             RangeProof::default(),
-            TariScript::default().as_hash::<Blake256>().unwrap().to_vec(),
+            TariScript::default(),
             PublicKey::default(),
         )
     }
@@ -669,10 +669,22 @@ impl Display for TransactionOutput {
             "{} [{:?}], Script hash: ({}), Offset Pubkey: ({}), Proof: {}",
             self.commitment.to_hex(),
             self.features,
-            self.script_hash.to_hex(),
+            self.script,
             self.script_offset_public_key.to_hex(),
             proof
         )
+    }
+}
+
+impl PartialOrd for TransactionOutput {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.commitment.partial_cmp(&other.commitment)
+    }
+}
+
+impl Ord for TransactionOutput {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.commitment.cmp(&other.commitment)
     }
 }
 
@@ -1206,15 +1218,14 @@ mod test {
         let v = PrivateKey::from(2u64.pow(32) + 1);
         let c = factories.commitment.commit(&k2, &v);
         let proof = factories.range_proof.construct_proof(&k2, 2u64.pow(32) + 1).unwrap();
-        // TODO: Populate script_hash with the proper value
-        let script_hash = TariScript::default().as_hash::<Blake256>().unwrap().to_vec();
+
         // TODO: Populate offset_pub_key with the proper value
         let offset_pub_key = PublicKey::default();
         let tx_output3 = TransactionOutput::new(
             OutputFeatures::default(),
             c,
             RangeProof::from_bytes(&proof).unwrap(),
-            script_hash,
+            TariScript::default(),
             offset_pub_key,
         );
         assert!(!tx_output3.verify_range_proof(&factories.range_proof).unwrap());
@@ -1458,7 +1469,7 @@ mod test {
             .full_rewind_range_proof(&factories.range_proof, &rewind_key, &rewind_blinding_key)
             .unwrap();
         let beta_hash = Blake256::new()
-            .chain(unblinded_output.script.as_hash::<Blake256>().unwrap().as_bytes())
+            .chain(unblinded_output.script.as_bytes())
             .chain(unblinded_output.features.to_bytes())
             .chain(unblinded_output.script_offset_public_key.as_bytes())
             .result()

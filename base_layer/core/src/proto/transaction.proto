@@ -56,8 +56,8 @@ message TransactionOutput {
     Commitment commitment = 2;
     // A proof that the commitment is in the right range
     bytes range_proof = 3;
-    // Tari script serialised script hash
-    bytes script_hash = 4;
+    // Tari script serialised script
+    bytes script = 4;
     // Tari script offset pubkey, K_O
     bytes script_offset_public_key = 5;
 }

@@ -46,7 +46,6 @@ use digest::Digest;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use tari_crypto::{
-    common::Blake256,
     keys::PublicKey as PublicKeyTrait,
     ristretto::pedersen::PedersenCommitment,
     script::TariScript,
@@ -103,7 +102,7 @@ pub struct SingleRoundSenderData {
     /// Plain text message to receiver
     pub message: String,
     /// Script Hash
-    pub script_hash: Vec<u8>,
+    pub script: TariScript,
     /// Script offset public key
     pub script_offset_public_key: PublicKey,
 }
@@ -321,10 +320,7 @@ impl SenderTransactionProtocol {
                     public_excess: info.public_excess.clone(),
                     metadata: info.metadata.clone(),
                     message: info.message.clone(),
-                    script_hash: recipient_script
-                        .as_hash::<Blake256>()
-                        .map_err(|_| TPE::SerializationError)?
-                        .to_vec(),
+                    script: recipient_script,
                     script_offset_public_key: recipient_script_offset_public_key,
                 })
             },
@@ -1024,7 +1020,7 @@ mod test {
                     .full_rewind_range_proof(&factories.range_proof, &rewind_key, &rewind_blinding_key)
                     .unwrap();
                 let beta_hash = Blake256::new()
-                    .chain(tx.body.outputs()[0].script_hash.as_bytes())
+                    .chain(tx.body.outputs()[0].script.as_bytes())
                     .chain(tx.body.outputs()[0].features.to_bytes())
                     .chain(tx.body.outputs()[0].script_offset_public_key.as_bytes())
                     .result()
@@ -1049,7 +1045,7 @@ mod test {
                     .full_rewind_range_proof(&factories.range_proof, &rewind_key, &rewind_blinding_key)
                     .unwrap();
                 let beta_hash = Blake256::new()
-                    .chain(tx.body.outputs()[1].script_hash.as_bytes())
+                    .chain(tx.body.outputs()[1].script.as_bytes())
                     .chain(tx.body.outputs()[1].features.to_bytes())
                     .chain(tx.body.outputs()[1].script_offset_public_key.as_bytes())
                     .result()

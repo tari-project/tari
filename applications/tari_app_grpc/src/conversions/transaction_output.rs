@@ -27,7 +27,10 @@ use tari_core::transactions::{
     transaction::TransactionOutput,
     types::{Commitment, PublicKey},
 };
-use tari_crypto::tari_utilities::{ByteArray, Hashable};
+use tari_crypto::{
+    script::TariScript,
+    tari_utilities::{ByteArray, Hashable},
+};
 
 impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
     type Error = String;
@@ -42,11 +45,15 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
             .map_err(|err| format!("Invalid output commitment: {}", err.to_string()))?;
         let script_offset_public_key = PublicKey::from_bytes(output.script_offset_public_key.as_bytes())
             .map_err(|err| format!("script_offset_public_key {:?}", err))?;
+
+        let script = TariScript::from_bytes(output.script.as_slice())
+            .map_err(|err| format!("Script deserialization: {:?}", err))?;
+
         Ok(Self {
             features,
             commitment,
             proof: BulletRangeProof(output.range_proof),
-            script_hash: output.script_hash,
+            script,
             script_offset_public_key,
         })
     }
@@ -63,7 +70,7 @@ impl From<TransactionOutput> for grpc::TransactionOutput {
             }),
             commitment: Vec::from(output.commitment.as_bytes()),
             range_proof: Vec::from(output.proof.as_bytes()),
-            script_hash: output.script_hash,
+            script: output.script.as_bytes(),
             script_offset_public_key: output.script_offset_public_key.as_bytes().to_vec(),
         }
     }
