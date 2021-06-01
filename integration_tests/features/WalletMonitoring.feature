@@ -21,6 +21,7 @@ Scenario: Wallets monitoring coinbase after a reorg
         # Use 7 of the 10 coinbase UTXOs in transactions (others require 3 confirmations)
     And I multi-send 7 transactions of 1000000 uT from wallet WALLET_A1 to wallet WALLET_A2 at fee 100
     Then wallet WALLET_A1 detects all transactions are at least Broadcast
+    When I wait 1 seconds
         #
         # Chain 2:
         #   Collects 10 coinbases into one wallet, send 7 transactions
@@ -39,11 +40,10 @@ Scenario: Wallets monitoring coinbase after a reorg
         # Use 7 of the 10 coinbase UTXOs in transactions (others require 3 confirmations)
     And I multi-send 7 transactions of 1000000 uT from wallet WALLET_B1 to wallet WALLET_B2 at fee 100
     Then wallet WALLET_B1 detects all transactions are at least Broadcast
+    When I wait 1 seconds
         #
         # Connect Chain 1 and 2
         #
-        # TODO: This wait is needed to stop next base node task from continuing
-    When I wait 1 seconds
     And I have a SHA3 miner NODE_C connected to all seed nodes
         # Wait for the reorg to filter through
     When I wait 30 seconds

@@ -544,7 +544,13 @@ Then(
   async function (name, height) {
     const client = this.getClient(name);
     await waitFor(async () => client.getTipHeight(), height, 115 * 1000);
-    expect(await client.getTipHeight()).to.equal(height);
+    const currentHeight = await client.getTipHeight();
+    console.log(
+      `Node ${name} is at tip: ${currentHeight} (should be`,
+      height,
+      `)`
+    );
+    expect(currentHeight).to.equal(height);
   }
 );
 

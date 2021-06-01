@@ -38,9 +38,9 @@ use log::*;
 use std::sync::Arc;
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
-pub const LOG_TARGET: &str = "c::mp::mempool";
+pub const LOG_TARGET: &str = "c::mp::mempool_storage";
 
-/// The Mempool consists of an Unconfirmed Transaction Pool, Pending Pool, Orphan Pool and Reorg Pool and is responsible
+/// The Mempool consists of an Unconfirmed Transaction Pool and Reorg Pool and is responsible
 /// for managing and maintaining all unconfirmed transactions have not yet been included in a block, and transactions
 /// that have recently been included in a block.
 pub struct MempoolStorage {
@@ -50,7 +50,7 @@ pub struct MempoolStorage {
 }
 
 impl MempoolStorage {
-    /// Create a new Mempool with an UnconfirmedPool, OrphanPool, PendingPool and ReOrgPool.
+    /// Create a new Mempool with an UnconfirmedPool and ReOrgPool.
     pub fn new(config: MempoolConfig, validators: Arc<dyn MempoolTransactionValidation>) -> Self {
         Self {
             unconfirmed_pool: UnconfirmedPool::new(config.unconfirmed_pool),
@@ -115,14 +115,6 @@ impl MempoolStorage {
         Ok(())
     }
 
-    // Update the Mempool based on the received set of published blocks.
-    fn process_published_blocks(&mut self, published_blocks: Vec<Arc<Block>>) -> Result<(), MempoolError> {
-        for published_block in published_blocks {
-            self.process_published_block(published_block)?;
-        }
-        Ok(())
-    }
-
     /// In the event of a ReOrg, resubmit all ReOrged transactions into the Mempool and process each newly introduced
     /// block from the latest longest chain.
     pub fn process_reorg(
@@ -151,11 +143,20 @@ impl MempoolStorage {
         let previous_tip = removed_blocks.last().map(|block| block.header.height);
         let new_tip = new_blocks.last().map(|block| block.header.height);
 
+        // Clear out all transactions from the unconfirmed pool and re-submit them to the unconfirmed mempool for
+        // validation. This is important as invalid transactions that have not been mined yet may remain in the mempool
+        // after a reorg.
+        let removed_txs = self.unconfirmed_pool.drain_all_mempool_transactions();
+        self.insert_txs(removed_txs)?;
+        // Remove re-orged transactions from reorg  pool and re-submit them to the unconfirmed mempool
         self.insert_txs(
             self.reorg_pool
                 .remove_reorged_txs_and_discard_double_spends(removed_blocks, &new_blocks)?,
         )?;
-        self.process_published_blocks(new_blocks)?;
+        // Update the Mempool based on the received set of new blocks.
+        for block in new_blocks {
+            self.process_published_block(block)?;
+        }
 
         if let (Some(previous_tip_height), Some(new_tip_height)) = (previous_tip, new_tip) {
             if new_tip_height < previous_tip_height {
