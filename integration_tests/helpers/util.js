@@ -152,17 +152,17 @@ const getTransactionOutputHash = function (output) {
     flags,
     toLittleEndian(parseInt(output.features.maturity), 64),
   ]);
-  let nop_script_hash =
-    "2682c826cae74c92c0620c9ab73c7e577a37870b4ce42465a4e63b58ee4d2408";
+  let nopScriptBytes = Buffer.from([0x73]);
+
   blake2bUpdate(context, buffer);
   blake2bUpdate(context, output.commitment);
-  blake2bUpdate(context, Buffer.from(nop_script_hash, "hex"));
+  blake2bUpdate(context, nopScriptBytes);
   blake2bUpdate(context, output.script_offset_public_key);
   let final = blake2bFinal(context);
   return Buffer.from(final);
 };
 
-function calculateBeta(script_hash, features, script_offset_public_key) {
+function calculateBeta(script, features, script_offset_public_key) {
   let KEY = null; // optional key
   let OUTPUT_LENGTH = 32; // bytes
   let context = blake2bInit(OUTPUT_LENGTH, KEY);
@@ -173,7 +173,7 @@ function calculateBeta(script_hash, features, script_offset_public_key) {
     toLittleEndian(parseInt(features.maturity), 64),
   ]);
 
-  blake2bUpdate(context, Buffer.from(script_hash, "hex"));
+  blake2bUpdate(context, Buffer.from(script, "hex"));
   blake2bUpdate(context, features_buffer);
   blake2bUpdate(context, Buffer.from(script_offset_public_key, "hex"));
   let final = blake2bFinal(context);

@@ -64,7 +64,7 @@ class TransactionBuilder {
   }
 
   addInput(input) {
-    let nop_script_bytes = Buffer.from([0x73]);
+    let nopScriptBytes = Buffer.from([0x73]);
     let scriptPublicKey = tari_crypto.pubkey_from_secret(
       input.scriptPrivateKey.toString("hex")
     );
@@ -77,7 +77,7 @@ class TransactionBuilder {
     let public_nonce = this.kv.public_key("common_nonce");
     let challenge = this.buildScriptChallenge(
       public_nonce,
-      nop_script_bytes,
+      nopScriptBytes,
       input_data,
       0
     );
@@ -92,7 +92,7 @@ class TransactionBuilder {
       input: {
         features: input.output.features,
         commitment: input.output.commitment,
-        script: nop_script_bytes,
+        script: nopScriptBytes,
         input_data: input_data,
         height: 0,
         script_signature: {
@@ -125,9 +125,10 @@ class TransactionBuilder {
     let scriptOffsetPublicKey = tari_crypto.pubkey_from_secret(
       scriptOffsetPrivateKey.toString("hex")
     );
+    let nopScriptBytes = Buffer.from([0x73]);
 
     let beta = calculateBeta(
-      nopScriptHash,
+      nopScriptBytes,
       outputFeatures,
       scriptOffsetPublicKey
     );
@@ -140,7 +141,6 @@ class TransactionBuilder {
       new_range_proof_key,
       BigInt(amount)
     ).proof;
-    let nop_script_bytes = Buffer.from([0x73]);
 
     let output = {
       amount: amount,
@@ -154,7 +154,7 @@ class TransactionBuilder {
           "hex"
         ),
         range_proof: Buffer.from(rangeproof, "hex"),
-        script: nop_script_bytes,
+        script: nopScriptBytes,
         script_offset_public_key: Buffer.from(scriptOffsetPublicKey, "hex"),
       },
     };
@@ -242,8 +242,7 @@ class TransactionBuilder {
 
   generateCoinbase(value, privateKey, fee, lockHeight) {
     let coinbase = tari_crypto.commit(privateKey, BigInt(value + fee));
-    let nopScriptHash =
-      "2682c826cae74c92c0620c9ab73c7e577a37870b4ce42465a4e63b58ee4d2408";
+    let nopScriptBytes = Buffer.from([0x73]);
     let outputFeatures = {
       flags: 1,
       maturity: lockHeight,
@@ -253,7 +252,7 @@ class TransactionBuilder {
       "hex"
     );
     let beta = calculateBeta(
-      nopScriptHash,
+      nopScriptBytes,
       outputFeatures,
       scriptOffsetPublicKey
     );
@@ -284,7 +283,7 @@ class TransactionBuilder {
           features: outputFeatures,
           commitment: Buffer.from(coinbase.commitment, "hex"),
           range_proof: Buffer.from(rangeproof, "hex"),
-          script_hash: Buffer.from(nopScriptHash, "hex"),
+          script: nopScriptBytes,
           script_offset_public_key: scriptOffsetPublicKey,
         },
       ],
