@@ -125,9 +125,10 @@ class TransactionBuilder {
     let scriptOffsetPublicKey = tari_crypto.pubkey_from_secret(
       scriptOffsetPrivateKey.toString("hex")
     );
+    let nop_script_bytes = Buffer.from([0x73]);
 
     let beta = calculateBeta(
-      nopScriptHash,
+      nop_script_bytes,
       outputFeatures,
       scriptOffsetPublicKey
     );
@@ -140,7 +141,6 @@ class TransactionBuilder {
       new_range_proof_key,
       BigInt(amount)
     ).proof;
-    let nop_script_bytes = Buffer.from([0x73]);
 
     let output = {
       amount: amount,

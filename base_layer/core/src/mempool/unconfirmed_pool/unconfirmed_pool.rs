@@ -36,7 +36,7 @@ use std::{
     convert::TryFrom,
     sync::Arc,
 };
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
 
@@ -103,12 +103,6 @@ impl UnconfirmedPool {
             .first_kernel_excess_sig()
             .ok_or(UnconfirmedPoolError::TransactionNoKernels)?;
         if !self.txs_by_signature.contains_key(tx_key) {
-            debug!(
-                target: LOG_TARGET,
-                "Inserting tx into unconfirmed pool: {}",
-                tx_key.get_signature().to_hex()
-            );
-            trace!(target: LOG_TARGET, "Transaction inserted: {}", tx);
             let prioritized_tx = PrioritizedTransaction::try_from((*tx).clone())?;
             if self.txs_by_signature.len() >= self.config.storage_capacity {
                 if prioritized_tx.priority < *self.lowest_priority() {
@@ -119,6 +113,12 @@ impl UnconfirmedPool {
             self.txs_by_priority
                 .insert(prioritized_tx.priority.clone(), tx_key.clone());
             self.txs_by_signature.insert(tx_key.clone(), prioritized_tx);
+            debug!(
+                target: LOG_TARGET,
+                "Inserted transaction with signature {} into unconfirmed pool:",
+                tx_key.get_signature().to_hex()
+            );
+            trace!(target: LOG_TARGET, "{}", tx);
         }
         Ok(())
     }
@@ -176,36 +176,60 @@ impl UnconfirmedPool {
         false
     }
 
+    /// Remove all current mempool transactions from the UnconfirmedPoolStorage, returning that which have been removed
+    pub fn drain_all_mempool_transactions(&mut self) -> Vec<Arc<Transaction>> {
+        let mempool_txs: Vec<Arc<Transaction>> = self
+            .txs_by_signature
+            .drain()
+            .map(|(_key, val)| val.transaction)
+            .collect();
+        self.txs_by_priority.clear();
+
+        mempool_txs
+    }
+
     /// Remove all published transactions from the UnconfirmedPool and discard all double spend transactions.
-    /// Returns a list of all transactions that were removed the unconfirmed pool as a result of appearing in the block.
     fn discard_double_spends(&mut self, published_block: &Block) {
         let mut removed_tx_keys = Vec::new();
         for (tx_key, ptx) in self.txs_by_signature.iter() {
             for input in ptx.transaction.body.inputs() {
                 if published_block.body.inputs().contains(input) {
                     self.txs_by_priority.remove(&ptx.priority);
+                    debug!(
+                        target: LOG_TARGET,
+                        "Removed double spend tx with key {} from unconfirmed pool",
+                        tx_key.get_signature().to_hex()
+                    );
+                    trace!(target: LOG_TARGET, "{}", &ptx.transaction);
                     removed_tx_keys.push(tx_key.clone());
                 }
             }
         }
 
         for tx_key in &removed_tx_keys {
-            trace!(
-                target: LOG_TARGET,
-                "Removing double spends from unconfirmed pool: {:?}",
-                tx_key
-            );
             self.txs_by_signature.remove(&tx_key);
         }
     }
 
     /// Remove all published transactions from the UnconfirmedPoolStorage and discard double spends
     pub fn remove_published_and_discard_double_spends(&mut self, published_block: &Block) -> Vec<Arc<Transaction>> {
+        trace!(
+            target: LOG_TARGET,
+            "Searching for txns to remove from unconfirmed pool in block {} ({})",
+            published_block.header.height,
+            published_block.header.hash().to_hex(),
+        );
         let mut removed_txs = Vec::new();
         published_block.body.kernels().iter().for_each(|kernel| {
             if let Some(ptx) = self.txs_by_signature.get(&kernel.excess_sig) {
                 self.txs_by_priority.remove(&ptx.priority);
                 if let Some(ptx) = self.txs_by_signature.remove(&kernel.excess_sig) {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Removed tx with key {} from unconfirmed pool",
+                        kernel.excess_sig.get_signature().to_hex()
+                    );
+                    trace!(target: LOG_TARGET, "{}", &ptx.transaction);
                     removed_txs.push(ptx.transaction);
                 }
             }

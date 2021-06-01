@@ -1,7 +1,7 @@
 @wallet-recovery
 Feature: Wallet Recovery
 
-@critical @broken
+@critical
 Scenario: Wallet recovery with connected base node staying online
     Given I have a seed node NODE
     And I have 1 base nodes connected to all seed nodes
