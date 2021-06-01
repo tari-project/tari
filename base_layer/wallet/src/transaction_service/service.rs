@@ -1663,6 +1663,17 @@ where
                 maturity,
             )
             .await?;
+        let _ = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionImported(tx_id)))
+            .map_err(|e| {
+                trace!(
+                    target: LOG_TARGET,
+                    "Error sending event, usually because there are no subscribers: {:?}",
+                    e
+                );
+                e
+            });
         Ok(tx_id)
     }
 

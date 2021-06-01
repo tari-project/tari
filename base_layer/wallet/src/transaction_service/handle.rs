@@ -183,6 +183,7 @@ pub enum TransactionEvent {
     TransactionStoreForwardSendResult(TxId, bool),
     TransactionCancelled(TxId),
     TransactionBroadcast(TxId),
+    TransactionImported(TxId),
     TransactionMined(TxId),
     TransactionMinedRequestTimedOut(TxId),
     TransactionMinedUnconfirmed(TxId, u64),

@@ -119,6 +119,8 @@ base_node_query_timeout = 120
 # (options: "DirectOnly", "StoreAndForwardOnly", DirectAndStoreAndForward". default: "DirectAndStoreAndForward").
 #transaction_routing_mechanism = "DirectAndStoreAndForward"
 
+scan_for_utxo_interval=60
+
 # When running the console wallet in command mode, use these values to determine what "stage" and timeout to wait
 # for sent transactions.
 # The stages are:
