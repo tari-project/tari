@@ -466,11 +466,11 @@ async fn read_or_create_master_secret_key<T: WalletBackend + 'static>(
     let master_secret_key = match recovery_master_key {
         None => match db.get_master_secret_key().await? {
             None => {
-                let sk = CommsSecretKey::random(&mut OsRng);
-                db.set_master_secret_key(sk.clone()).await?;
-                sk
+                let secret_key = CommsSecretKey::random(&mut OsRng);
+                db.set_master_secret_key(secret_key.clone()).await?;
+                secret_key
             },
-            Some(sk) => sk,
+            Some(secret_key) => secret_key,
         },
         Some(recovery_key) => {
             db.set_master_secret_key(recovery_key.clone()).await?;

@@ -81,7 +81,7 @@ if [ -n "${DEPENDENCIES}" ] && [ "${BUILD_IOS}" -eq 1 ] && [ "${MACHINE}" == "Ma
   cargo-lipo lipo --release > ${IOS_LOG_PATH}/cargo.txt 2>&1
   cd ../..
   cd target || exit
-  cd universal || exit
+  cd aarch64-apple-ios || exit
   cd release || exit
   cp libtari_wallet_ffi.a "${DEPENDENCIES}/MobileWallet/TariLib/"
   cd ../../.. || exit

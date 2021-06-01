@@ -32,7 +32,7 @@ use rand::{rngs::OsRng, seq::SliceRandom};
 use std::{fs, io::Stdout, net::SocketAddr, path::PathBuf};
 use tari_app_utilities::utilities::ExitCodes;
 use tari_common::GlobalConfig;
-use tari_comms::{peer_manager::Peer, types::CommsPublicKey};
+use tari_comms::peer_manager::Peer;
 use tari_wallet::WalletSqlite;
 use tokio::runtime::Handle;
 use tonic::transport::Server;
@@ -93,6 +93,24 @@ impl PeerConfig {
                 "No peer seeds or base node peer defined in config!".to_string(),
             ))
         }
+    }
+
+    pub fn get_all_peers(&self) -> Vec<Peer> {
+        let num_peers = self.base_node_peers.len();
+        let num_seeds = self.peer_seeds.len();
+
+        let mut peers = if let Some(peer) = self.base_node_custom.clone() {
+            let mut peers = Vec::with_capacity(1 + num_peers + num_seeds);
+            peers.push(peer);
+            peers
+        } else {
+            Vec::with_capacity(num_peers + num_seeds)
+        };
+
+        peers.extend(self.base_node_peers.clone());
+        peers.extend(self.peer_seeds.clone());
+
+        peers
     }
 }
 
@@ -182,13 +200,8 @@ pub fn recovery_mode(
     notify_script: Option<PathBuf>,
     wallet_mode: WalletMode,
 ) -> Result<(), ExitCodes> {
-    let peer_seed_public_keys: Vec<CommsPublicKey> = base_node_config
-        .peer_seeds
-        .iter()
-        .map(|f| f.public_key.clone())
-        .collect();
     println!("Starting recovery...");
-    match handle.block_on(wallet_recovery(&wallet, peer_seed_public_keys)) {
+    match handle.block_on(wallet_recovery(&wallet, &base_node_config)) {
         Ok(_) => println!("Wallet recovered!"),
         Err(e) => {
             error!(target: LOG_TARGET, "Recovery failed: {}", e);

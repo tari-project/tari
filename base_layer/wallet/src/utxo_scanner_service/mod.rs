@@ -102,10 +102,9 @@ where T: WalletBackend + 'static
             let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
             let output_manager_service = handles.expect_handle::<OutputManagerHandle>();
             let connectivity_manager = handles.expect_handle::<ConnectivityRequester>();
-            let peer_seeds = Vec::new();
 
             let scanning_service = UtxoScannerService::<T>::builder()
-                .with_peer_seeds(peer_seeds)
+                .with_peers(vec![])
                 .with_retry_limit(10)
                 .with_scanning_interval(interval)
                 .with_mode(UtxoScannerMode::Scanning)
