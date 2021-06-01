@@ -52,15 +52,15 @@ pub const LOG_TARGET: &str = "tari::application";
 pub enum ExitCodes {
     #[error("There is an error in the wallet configuration: {0}")]
     ConfigError(String),
-    #[error("The wallet exited because an unknown error occurred. Check the logs for details.")]
+    #[error("The application exited because an unknown error occurred. Check the logs for details.")]
     UnknownError,
-    #[error("The wallet exited because an interface error occurred. Check the logs for details.")]
+    #[error("The application exited because an interface error occurred. Check the logs for details.")]
     InterfaceError,
-    #[error("The wallet exited. {0}")]
+    #[error("The application exited. {0}")]
     WalletError(String),
     #[error("The wallet was not able to start the GRPC server. {0}")]
     GrpcError(String),
-    #[error("The wallet did not accept the command input: {0}")]
+    #[error("The application did not accept the command input: {0}")]
     InputError(String),
     #[error("Invalid command: {0}")]
     CommandError(String),
@@ -74,8 +74,10 @@ pub enum ExitCodes {
     ConversionError(String),
     #[error("Your password was incorrect.")]
     IncorrectPassword,
-    #[error("Your wallet is encrypted but no password was provided.")]
+    #[error("Your application is encrypted but no password was provided.")]
     NoPassword,
+    #[error("Tor connection is offline")]
+    TorOffline,
 }
 
 impl ExitCodes {
@@ -93,6 +95,7 @@ impl ExitCodes {
             Self::NetworkError(_) => 110,
             Self::ConversionError(_) => 111,
             Self::IncorrectPassword | Self::NoPassword => 112,
+            Self::TorOffline => 113,
         }
     }
 }
