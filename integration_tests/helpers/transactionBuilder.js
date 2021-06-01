@@ -126,10 +126,10 @@ class TransactionBuilder {
       scriptOffsetPrivateKey.toString("hex")
     );
 
-    let nop_script_bytes = Buffer.from([0x73]);
+    let nopScriptBytes = Buffer.from([0x73]);
 
     let beta = calculateBeta(
-      nop_script_bytes,
+      nopScriptBytes,
       outputFeatures,
       scriptOffsetPublicKey
     );
