@@ -308,16 +308,16 @@ script input, _public script key_ and the commitment:
 
 $$
 \begin{aligned}
- s_{Si} = (s_{S1i}, s_{S2i}, R_{Si} )
+ s_{Si} = (a_{Si}, b_{Si}, R_{Si} )
  \end{aligned}
  \tag{3}
 $$
 Where
 $$
 \begin{aligned}
-R_{Si} &= r_{S1i} \cdot H + r_{S2i} \cdot G \\\\
-s_{S1i}  &= r_{S1i} +  e(v_{i}) \\\\
-s_{S2i} &= r_{S2i} +  e(k_{Si}+k_i) \\\\
+R_{Si} &= r_{Si_a} \cdot H + r_{Si_b} \cdot G \\\\
+a_{Si}  &= r_{Si_a} +  e(v_{i}) \\\\
+b_{Si} &= r_{Si_b} +  e(k_{Si}+k_i) \\\\
 e &= \hash{ R_{Si} \cat \alpha_i \cat \input_i \cat K_{Si} \cat C_i} \\\\
 \end{aligned}
 \tag{4}
@@ -326,7 +326,7 @@ $$
 This is verified by the following:
  $$
 \begin{aligned}
-s_{S1i} \cdot H + s_{S2i} \cdot G = R_{Si} + (C_i+K_{Si})e
+a_{Si} \cdot H + b_{Si} \cdot G = R_{Si} + (C_i+K_{Si})e
  \end{aligned}
  \tag{5}
 $$
@@ -456,7 +456,7 @@ To spend \\( C\_a \\), she provides
 
 * An input matching \\( C\_a \\), some output already on the blockchain.
 * The script input, \\( \input_a \\).
-* A valid script signature, \\( (s_{S1a}, s_{S2a}, R_{Sa}) \\) as per (3),(4) proving that she owns the commitment 
+* A valid script signature, \\( (a_{Sa}, b_{Sa}, R_{Sa}) \\) as per (3),(4) proving that she owns the commitment 
   \\( C\_a \\), knows the private key, \\( k_{Sa} \\), corresponding to \\( K_{Sa} \\), the public key left on the stack 
   after executing \\( \script_a \\) with \\( \input_a \\).
 * An _offset public key_, \\( k_{Ob} \\).
@@ -505,7 +505,7 @@ Base nodes validate the transaction as follows:
 * The _script signature_ on Alice's input is valid by checking:
   $$
 \begin{aligned}
-    s_{S1a} \cdot H + s_{S2a} \cdot G = R_{Sa} + (C_a + K_{Sa})* \hash{ R_{Sa} \cat \alpha_a \cat \input_a \cat K_{Sa} \cat C_a}
+    a_{Sa} \cdot H + b_{Sa} \cdot G = R_{Sa} + (C_a + K_{Sa})* \hash{ R_{Sa} \cat \alpha_a \cat \input_a \cat K_{Sa} \cat C_a}
   \end{aligned}
  \tag{13}
   $$
@@ -621,7 +621,7 @@ To summarise, the information required for one-sided transactions is as follows:
 | script            | \\( \alpha_a \\)                      | Public                                                                                        |
 | script input      | \\( \input_a \\)                      | Public                                                                                        |
 | height            | \\( h_a \\)                           | Public                                                                                        |
-| script signature  | \\( s_{S1a},s_{S2a}, R_{Sa} \\)       | Alice knows \\( k_{Sa},\\, r_{Sa} \\) and \\( k_{a},\\, v_{a} \\) of the commitment \\(C_a\\) |
+| script signature  | \\( a_{Sa},b_{Sa}, R_{Sa} \\)       | Alice knows \\( k_{Sa},\\, r_{Sa} \\) and \\( k_{a},\\, v_{a} \\) of the commitment \\(C_a\\) |
 | offset public key | \\( K_{Oa} \\)                        | Not used in this transaction                                                                  |
 
 | Transaction output | Symbols                               | Knowledge                                                              |
@@ -741,7 +741,7 @@ To summarise, the information required for creating a multiparty UTXO is as foll
 | script                      | \\( \alpha_a \\)                      | Public                                                                                        |
 | script input                | \\( \input_a \\)                      | Public                                                                                        |
 | height                      | \\( h_a \\)                           | Public                                                                                        |
-| script signature            | \\( (s_{S1a},s_{S2a}, R_{Sa}) \\)     | Alice knows \\( k_{Sa},\\, r_{Sa} \\) and \\( k_{a},\\, v_{a} \\) of the commitment \\(C_a\\) |
+| script signature            | \\( (a_{Sa},b_{Sa}, R_{Sa}) \\)     | Alice knows \\( k_{Sa},\\, r_{Sa} \\) and \\( k_{a},\\, v_{a} \\) of the commitment \\(C_a\\) |
 | offset&nbsp;public&nbsp;key | \\( K_{Oa} \\)                        | Not used in this transaction                                                                  |
 
 <br>
@@ -764,7 +764,7 @@ When spending the multi-party input:
 | script                      | \\( \alpha_s \\)                        | Public                                                                                                                                                             |
 | script input                | \\( \input_s \\)                        | Public                                                                                                                                                             |
 | height                      | \\( h_a \\)                             | Public                                                                                                                                                             |
-| script&nbsp;signature       | \\( (s_{S1s} ,s_{S2s} , R_{Ss}) \\)     | Alice knows \\( (k_{SsA},\\, r_{SsA}) \\), Bob knows \\( (k_{SsB},\\, r_{SsB}) \\). Both parties know \\( (k_{s},\\, v_{s}) \\). Neither party knows \\( k_{Ss}\\) |
+| script&nbsp;signature       | \\( (a_{Ss} ,b_{Ss} , R_{Ss}) \\)     | Alice knows \\( (k_{SsA},\\, r_{SsA}) \\), Bob knows \\( (k_{SsB},\\, r_{SsB}) \\). Both parties know \\( (k_{s},\\, v_{s}) \\). Neither party knows \\( k_{Ss}\\) |
 | offset&nbsp;public&nbsp;key | \\( K_{Os} \\)                          | As above, Alice and Bob each know part of the offset key                                                                                                           |
 
 
@@ -860,7 +860,7 @@ refer to a UTXO _receiver_ and _script_ respectively.
 | \\( \so_t \\)             | The script offset for transaction _t_, as \\( \so_t = \sum_j{ k_{Sjt}} - \sum_i{k_{Oit}}\\)                                                                                                                                           |
 | \\( C_i \\)               | A Pedersen commitment to a value \\( v_i \\), as \\( C_i = k_i \cdot{G} + v_i \cdot H \\)                                                                                                                                             |
 | \\( \input_i \\)          | The serialised input for script \\( \script_i \\)                                                                                                                                                                                     |
-| \\( s_{Si} \\)            | A script signature for output \\( i \\), as \\( s_{Si} = (s_{S1i}, s_{S2i}, R_{Si} ) = (r_{S1i} +  e(v_{i})), (r_{S2i} + e(k_{Si}+k_i)) \\; \text{where} \\; e = \hash{ R_{Si} \cat \script_i \cat \input_i \cat K_{Si} \cat C_i} \\) |
+| \\( s_{Si} \\)            | A script signature for output \\( i \\), as \\( s_{Si} = (a_{Si}, b_{Si}, R_{Si} ) = (r_{Si_a} +  e(v_{i})), (r_{Si_b} + e(k_{Si}+k_i)) \\; \text{where} \\; e = \hash{ R_{Si} \cat \script_i \cat \input_i \cat K_{Si} \cat C_i} \\) |
 | \\( s_{Mi} \\)            | A sender signature for output \\( i \\), as \\( s_{Mi} = r_{Mi} + k_{Oi}\hash{ \script_i \cat F_i \cat R_{Mi}  } \\)                                                                                                                  |
 
 ## Extensions
