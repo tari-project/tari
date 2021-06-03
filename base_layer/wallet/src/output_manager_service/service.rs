@@ -72,7 +72,6 @@ use tari_core::{
     },
 };
 use tari_crypto::{
-    common::Blake256,
     inputs,
     keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
     range_proof::REWIND_USER_MESSAGE_LENGTH,
@@ -1256,21 +1255,13 @@ where TBackend: OutputManagerBackend + 'static
                     .map(|v| (v, output.features, output.script, output.script_offset_public_key))
             })
             .map(|(output, features, script, script_offset_public_key)| {
-                let beta_hash = Blake256::new()
-                    .chain(script.as_bytes())
-                    .chain(features.to_bytes())
-                    .chain(script_offset_public_key.as_bytes())
-                    .result()
-                    .to_vec();
-                let beta = PrivateKey::from_bytes(beta_hash.as_slice())
-                    .expect("Should be able to construct a private key from a hash");
                 // TODO actually increment the keymanager with found private keys so that we don't reuse private keys
                 // once recovery is complete and use the correct script private key
                 UnblindedOutput::new(
                     output.committed_value,
-                    output.blinding_factor.clone() - beta,
+                    output.blinding_factor.clone(),
                     Some(features),
-                    script!(Nop),
+                    script,
                     inputs!(PublicKey::from_secret_key(&output.blinding_factor)),
                     height,
                     output.blinding_factor,
@@ -1336,19 +1327,11 @@ where TBackend: OutputManagerBackend + 'static
                 let rewound =
                     output.full_rewind_range_proof(&self.resources.factories.range_proof, &rewind_key, &blinding_key);
 
-                let beta_hash = Blake256::new()
-                    .chain(output.script.as_bytes())
-                    .chain(output.features.to_bytes())
-                    .chain(output.script_offset_public_key.as_bytes())
-                    .result()
-                    .to_vec();
-                let beta = PrivateKey::from_bytes(beta_hash.as_slice())?;
-
                 if rewound.is_ok() {
                     let rewound_output = rewound.unwrap();
                     rewound_outputs.push(UnblindedOutput::new(
                         rewound_output.committed_value,
-                        rewound_output.blinding_factor.clone() - beta,
+                        rewound_output.blinding_factor.clone(),
                         Some(output.features),
                         known_one_sided_payment_scripts[i].script.clone(),
                         known_one_sided_payment_scripts[i].input.clone(),

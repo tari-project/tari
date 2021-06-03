@@ -52,8 +52,7 @@ use std::{
     ops::Add,
 };
 use tari_crypto::{
-    commitment::{HomomorphicCommitment, HomomorphicCommitmentFactory},
-    hash::blake2::Blake256,
+    commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     range_proof::{
         FullRewindResult as CryptoFullRewindResult,
@@ -266,14 +265,6 @@ impl UnblindedOutput {
     }
 
     pub fn as_transaction_output(&self, factories: &CryptoFactories) -> Result<TransactionOutput, TransactionError> {
-        let beta_hash = Blake256::new()
-            .chain(self.script.as_bytes())
-            .chain(self.features.to_bytes())
-            .chain(self.script_offset_public_key.as_bytes())
-            .result()
-            .to_vec();
-        let beta = PrivateKey::from_bytes(beta_hash.as_slice())
-            .map_err(|e| TransactionError::ConversionError(e.to_string()))?;
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
         let output = TransactionOutput {
             features: self.features.clone(),
@@ -281,7 +272,7 @@ impl UnblindedOutput {
             proof: RangeProof::from_bytes(
                 &factories
                     .range_proof
-                    .construct_proof(&(self.spending_key.clone() + beta), self.value.into())?,
+                    .construct_proof(&self.spending_key, self.value.into())?,
             )
             .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?,
             script: self.script.clone(),
@@ -301,19 +292,10 @@ impl UnblindedOutput {
         factories: &CryptoFactories,
         rewind_data: &RewindData,
     ) -> Result<TransactionOutput, TransactionError> {
-        let beta_hash = Blake256::new()
-            .chain(self.script.as_bytes())
-            .chain(self.features.to_bytes())
-            .chain(self.script_offset_public_key.as_bytes())
-            .result()
-            .to_vec();
-        let beta = PrivateKey::from_bytes(beta_hash.as_slice())
-            .map_err(|e| TransactionError::ConversionError(e.to_string()))?;
-
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
 
         let proof_bytes = factories.range_proof.construct_proof_with_rewind_key(
-            &(self.spending_key.clone() + beta),
+            &self.spending_key,
             self.value.into(),
             &rewind_data.rewind_key,
             &rewind_data.rewind_blinding_key,
@@ -557,7 +539,7 @@ impl TransactionOutput {
 
     /// Verify that range proof is valid
     pub fn verify_range_proof(&self, prover: &RangeProofService) -> Result<bool, TransactionError> {
-        Ok(prover.verify(&self.proof.0, &self.get_modified_script_commitment()?))
+        Ok(prover.verify(&self.proof.0, &self.commitment))
     }
 
     /// Attempt to rewind the range proof to reveal the proof message and committed value
@@ -570,7 +552,7 @@ impl TransactionOutput {
         Ok(prover
             .rewind_proof_value_only(
                 &self.proof.0,
-                &self.get_modified_script_commitment()?,
+                &self.commitment,
                 rewind_public_key,
                 rewind_blinding_public_key,
             )?
@@ -585,12 +567,7 @@ impl TransactionOutput {
         rewind_blinding_key: &PrivateKey,
     ) -> Result<FullRewindResult, TransactionError> {
         Ok(prover
-            .rewind_proof_commitment_data(
-                &self.proof.0,
-                &self.get_modified_script_commitment()?,
-                rewind_key,
-                rewind_blinding_key,
-            )?
+            .rewind_proof_commitment_data(&self.proof.0, &self.commitment, rewind_key, rewind_blinding_key)?
             .into())
     }
 
@@ -604,20 +581,6 @@ impl TransactionOutput {
     /// Returns true if the output is a coinbase, otherwise false
     pub fn is_coinbase(&self) -> bool {
         self.features.flags.contains(OutputFlags::COINBASE_OUTPUT)
-    }
-
-    /// Return this outputs commitment modified by the script Beta term for use in verifying or rewinding the rangeproof
-    fn get_modified_script_commitment(&self) -> Result<Commitment, TransactionError> {
-        let beta_hash = Blake256::new()
-            .chain(&self.script.as_bytes())
-            .chain(self.features.to_bytes())
-            .chain(self.script_offset_public_key.as_bytes())
-            .result()
-            .to_vec();
-        let beta = PrivateKey::from_bytes(beta_hash.as_slice())
-            .map_err(|e| TransactionError::ConversionError(e.to_string()))?;
-        let public_beta = PublicKey::from_secret_key(&beta);
-        Ok(HomomorphicCommitment::from_public_key(&public_beta).add(&self.commitment))
     }
 }
 
@@ -1468,15 +1431,8 @@ mod test {
         let full_rewind_result = output
             .full_rewind_range_proof(&factories.range_proof, &rewind_key, &rewind_blinding_key)
             .unwrap();
-        let beta_hash = Blake256::new()
-            .chain(unblinded_output.script.as_bytes())
-            .chain(unblinded_output.features.to_bytes())
-            .chain(unblinded_output.script_offset_public_key.as_bytes())
-            .result()
-            .to_vec();
-        let beta = PrivateKey::from_bytes(beta_hash.as_slice()).unwrap();
         assert_eq!(full_rewind_result.committed_value, v);
         assert_eq!(&full_rewind_result.proof_message, proof_message);
-        assert_eq!(full_rewind_result.blinding_factor, k + beta);
+        assert_eq!(full_rewind_result.blinding_factor, k);
     }
 }

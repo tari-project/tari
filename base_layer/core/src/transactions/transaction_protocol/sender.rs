@@ -625,14 +625,13 @@ mod test {
         },
         types::{CryptoFactories, PrivateKey, PublicKey},
     };
-    use digest::Digest;
     use rand::rngs::OsRng;
     use tari_crypto::{
         common::Blake256,
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
         script,
         script::{ExecutionStack, TariScript},
-        tari_utilities::{hex::Hex, ByteArray},
+        tari_utilities::hex::Hex,
     };
 
     #[test]
@@ -1019,17 +1018,10 @@ mod test {
                 let full_rewind_result = tx.body.outputs()[0]
                     .full_rewind_range_proof(&factories.range_proof, &rewind_key, &rewind_blinding_key)
                     .unwrap();
-                let beta_hash = Blake256::new()
-                    .chain(tx.body.outputs()[0].script.as_bytes())
-                    .chain(tx.body.outputs()[0].features.to_bytes())
-                    .chain(tx.body.outputs()[0].script_offset_public_key.as_bytes())
-                    .result()
-                    .to_vec();
-                let beta = PrivateKey::from_bytes(beta_hash.as_slice()).unwrap();
 
                 assert_eq!(full_rewind_result.committed_value, change);
                 assert_eq!(&full_rewind_result.proof_message, proof_message);
-                assert_eq!(full_rewind_result.blinding_factor, a.change_key + beta);
+                assert_eq!(full_rewind_result.blinding_factor, a.change_key);
             },
             Err(_) => {
                 let rr = tx.body.outputs()[1]
@@ -1044,16 +1036,9 @@ mod test {
                 let full_rewind_result = tx.body.outputs()[1]
                     .full_rewind_range_proof(&factories.range_proof, &rewind_key, &rewind_blinding_key)
                     .unwrap();
-                let beta_hash = Blake256::new()
-                    .chain(tx.body.outputs()[1].script.as_bytes())
-                    .chain(tx.body.outputs()[1].features.to_bytes())
-                    .chain(tx.body.outputs()[1].script_offset_public_key.as_bytes())
-                    .result()
-                    .to_vec();
-                let beta = PrivateKey::from_bytes(beta_hash.as_slice()).unwrap();
                 assert_eq!(full_rewind_result.committed_value, change);
                 assert_eq!(&full_rewind_result.proof_message, proof_message);
-                assert_eq!(full_rewind_result.blinding_factor, a.change_key + beta);
+                assert_eq!(full_rewind_result.blinding_factor, a.change_key);
             },
         }
     }

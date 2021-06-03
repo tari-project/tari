@@ -113,14 +113,14 @@ Feature: Block Sync
     @critical
     Examples:
         | X1     | Y1     | SYNC_TIME |
-#        | 101    | 10     | 10        |
+        | 101    | 10     | 10        |
 
     @critical @long-running
     Examples:
         | X1     | Y1     | SYNC_TIME |
-#        | 501    | 50     | 20        |
-#        | 999    | 50     | 60        |
-#        | 1001   | 50     | 60        |
+        | 501    | 50     | 20        |
+        | 999    | 50     | 60        |
+        | 1001   | 50     | 60        |
 
     @critical @long-running @broken
     Examples:
