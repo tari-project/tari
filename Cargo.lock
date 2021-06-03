@@ -4697,6 +4697,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "tari_stratum_ffi"
+version = "0.0.1"
+dependencies = [
+ "hex",
+ "libc",
+ "serde 1.0.123",
+ "serde_json",
+ "tari_app_grpc",
+ "tari_common",
+ "tari_comms",
+ "tari_core",
+ "tari_crypto",
+ "tari_utilities",
+ "thiserror",
+]
+
+[[package]]
 name = "tari_test_utils"
 version = "0.9.0"
 dependencies = [
