@@ -236,7 +236,7 @@ mod test {
             tx_id: 15,
             amount: MicroTari(500),
             public_excess: PublicKey::from_secret_key(&p.spend_key), // any random key will do
-            public_nonce: PublicKey::from_secret_key(&p.change_key), // any random key will do
+            public_nonce: PublicKey::from_secret_key(&p.change_spend_key), // any random key will do
             metadata: m.clone(),
             message: "".to_string(),
             script: TariScript::default(),
@@ -284,7 +284,7 @@ mod test {
             tx_id: 15,
             amount,
             public_excess: PublicKey::from_secret_key(&p.spend_key), // any random key will do
-            public_nonce: PublicKey::from_secret_key(&p.change_key), // any random key will do
+            public_nonce: PublicKey::from_secret_key(&p.change_spend_key), // any random key will do
             metadata: m,
             message: "".to_string(),
             script: TariScript::default(),

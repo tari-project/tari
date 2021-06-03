@@ -176,17 +176,10 @@ class TransactionBuilder {
     });
     this.outputs.forEach((output) => {
       totalPrivateKey += BigInt("0x" + output.privateKey.toString());
-      let output_hash = this.hashOutput(
-        output.output.features,
-        output.output.commitment,
-        output.output.script,
-        output.output.script_offset_public_key
+      script_offset = tari_crypto.subtract_secret_keys(
+        script_offset,
+        output.scriptOffsetPrivateKey
       );
-      let kU = tari_crypto.secret_key_from_hex_bytes(
-        output_hash.toString("hex")
-      );
-      kU = tari_crypto.multiply_secret_keys(output.scriptOffsetPrivateKey, kU);
-      script_offset = tari_crypto.subtract_secret_keys(script_offset, kU);
     });
     // Assume low numbers....
 

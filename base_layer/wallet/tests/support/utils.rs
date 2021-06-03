@@ -61,7 +61,7 @@ where
 
 pub struct TestParams {
     pub spend_key: PrivateKey,
-    pub change_key: PrivateKey,
+    pub change_spend_key: PrivateKey,
     pub offset: PrivateKey,
     pub nonce: PrivateKey,
     pub public_nonce: PublicKey,
@@ -71,7 +71,7 @@ impl TestParams {
         let r = PrivateKey::random(rng);
         TestParams {
             spend_key: PrivateKey::random(rng),
-            change_key: PrivateKey::random(rng),
+            change_spend_key: PrivateKey::random(rng),
             offset: PrivateKey::random(rng),
             public_nonce: PublicKey::from_secret_key(&r),
             nonce: r,

@@ -50,7 +50,7 @@ use std::{
 use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     script::{ExecutionStack, TariScript},
-    tari_utilities::{fixed_set::FixedSet, ByteArray, Hashable},
+    tari_utilities::fixed_set::FixedSet,
 };
 
 pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
@@ -420,12 +420,8 @@ impl SenderTransactionInitializer {
                 .build_err("There should be the same number of sender added outputs as script offset private keys");
         }
 
-        for (o, opk) in outputs.iter().zip(self.script_offset_private_keys.iter()) {
-            let output_hash = match PrivateKey::from_bytes(&o.hash()) {
-                Ok(h) => h,
-                Err(_e) => return self.build_err("Output hash to private key conversion error"),
-            };
-            gamma = gamma - output_hash * opk.clone();
+        for script_offset_pvt_key in self.script_offset_private_keys.iter() {
+            gamma = gamma - script_offset_pvt_key.clone();
         }
 
         let nonce = self.private_nonce.clone().unwrap();
@@ -576,7 +572,7 @@ mod test {
         assert_eq!(err.message, "Change spending key was not provided");
         // Ok, give them a change output
         let mut builder = err.builder;
-        builder.with_change_secret(p.change_key);
+        builder.with_change_secret(p.change_spend_key);
         let result = builder.build::<Blake256>(&factories).unwrap();
         // Peek inside and check the results
         if let SenderState::Finalizing(info) = result.state {
@@ -741,7 +737,7 @@ mod test {
             .with_private_nonce(p.nonce)
             .with_input(utxo, input)
             .with_output(output, PrivateKey::random(&mut OsRng))
-            .with_change_secret(p.change_key)
+            .with_change_secret(p.change_spend_key)
             .with_fee_per_gram(MicroTari(1))
             .with_recipient_script(0, script.clone(), script_offset)
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
@@ -775,7 +771,7 @@ mod test {
             .with_private_nonce(p.nonce)
             .with_input(utxo, input)
             .with_output(output, PrivateKey::random(&mut OsRng))
-            .with_change_secret(p.change_key)
+            .with_change_secret(p.change_spend_key)
             .with_fee_per_gram(MicroTari(1))
             .with_recipient_script(0, script.clone(), script_offset)
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
@@ -811,7 +807,7 @@ mod test {
             .with_private_nonce(p.nonce)
             .with_input(utxo, input)
             .with_output(output, PrivateKey::random(&mut OsRng))
-            .with_change_secret(p.change_key)
+            .with_change_secret(p.change_spend_key)
             .with_fee_per_gram(MicroTari(20))
             .with_recipient_script(0, script.clone(), script_offset.clone())
             .with_recipient_script(1, script.clone(), script_offset)
@@ -856,7 +852,7 @@ mod test {
             .with_input(utxo1, input1)
             .with_input(utxo2, input2)
             .with_amount(0, MicroTari(2500))
-            .with_change_secret(p.change_key)
+            .with_change_secret(p.change_spend_key)
             .with_fee_per_gram(weight)
             .with_recipient_script(0, script.clone(), script_offset)
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
@@ -904,7 +900,7 @@ mod test {
             .with_output(output, PrivateKey::default())
             .with_input(utxo1, input1)
             .with_amount(0, MicroTari(100))
-            .with_change_secret(p.change_key)
+            .with_change_secret(p.change_spend_key)
             .with_fee_per_gram(weight)
             .with_recipient_script(0, script.clone(), script_offset)
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());

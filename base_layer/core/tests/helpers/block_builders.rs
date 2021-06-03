@@ -419,14 +419,12 @@ pub fn generate_new_block_with_coinbase<B: BlockchainBackend>(
 ) -> Result<BlockAddResult, ChainStorageError> {
     let mut txns = Vec::new();
     let mut block_utxos = Vec::new();
-    let mut keys = Vec::new();
     let mut fees = MicroTari(0);
     for schema in schemas {
-        let (tx, mut utxos, param) = spend_utxos(schema);
+        let (tx, mut utxos, _param) = spend_utxos(schema);
         fees += tx.body.get_total_fee();
         txns.push(tx);
         block_utxos.append(&mut utxos);
-        keys.push(param);
     }
 
     let (coinbase_utxo, coinbase_kernel, coinbase_output) = create_coinbase(factories, coinbase_value + fees, 100);

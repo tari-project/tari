@@ -35,7 +35,6 @@ use helpers::{
     nodes::{create_network_with_2_base_nodes_with_config, create_network_with_3_base_nodes_with_config},
     sample_blockchains::{create_new_blockchain, create_new_blockchain_with_constants},
 };
-use tari_core::tari_utilities::{ByteArray, Hashable};
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
 // use crate::helpers::database::create_store;
 use std::{ops::Deref, sync::Arc, time::Duration};
@@ -643,7 +642,7 @@ fn receive_and_propagate_transaction() {
 }
 
 #[test]
-fn consensus_validation() {
+fn consensus_validation_large_tx() {
     let network = Network::LocalNet;
     // We dont want to compute the 19500 limit of local net, so we create smaller blocks
     let consensus_constants = ConsensusConstantsBuilder::new(network)
@@ -695,10 +694,9 @@ fn consensus_validation() {
             inputs!(PublicKey::from_secret_key(&test_params.spend_key)),
             1,
             test_params.script_private_key,
-            test_params.script_offset,
+            test_params.script_offset_pub_key,
         );
-        let hash = utxo.as_transaction_output(&factories).unwrap().hash();
-        script_offset_pvt = script_offset_pvt - PrivateKey::from_bytes(&hash).unwrap() * test_params.script_offset_pvt;
+        script_offset_pvt = script_offset_pvt - test_params.script_offset_pvt_key;
         unblinded_outputs.push(utxo.clone());
     }
 
@@ -733,6 +731,10 @@ fn consensus_validation() {
         .unwrap();
     let kernels = vec![kernel];
     let tx = Transaction::new(inputs, outputs, kernels, offset, script_offset_pvt);
+
+    // make sure the tx was correctly made and is valid
+    let factories = CryptoFactories::default();
+    assert!(tx.validate_internal_consistency(&factories, None).is_ok());
     let weight = tx.calculate_weight();
 
     let height = blocks.len() as u64;
