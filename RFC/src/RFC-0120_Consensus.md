@@ -64,7 +64,6 @@ Every [block] MUST conform to the following:
 
 * Have a _single_ valid coinbase [UTXO] and kernel
 * have a _single_ valid blockheader;
-* [cut-through] MUST have been applied where possible;
 * every [UTXO] has a valid [range proof].
 
 If a [block] does not confirm to the above, the block should be rejected as invalid and the peer from which it was received marked as a malicious peer.
