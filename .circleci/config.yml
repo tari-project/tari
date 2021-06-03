@@ -115,41 +115,21 @@ commands:
           name: Pre-build mmproxy
           command: cargo build --release --bin tari_merge_mining_proxy
       - run:
-          name: Run cucumber scenarios
-          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running and not @broken and not @flaky" --format json:cucumber_output/tests.cucumber
+          name: Pre-build mining node
+          command: cargo build --release --bin tari_mining_node
       - run:
-          name: Run flaky/broken cucumber scenarios (Always pass)
-          command: node_modules/.bin/cucumber-js --tags "not @long-running and @broken" --format json:cucumber_output/broken-tests.cucumber || true
+          name: Run cucumber scenarios
+          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --name "Wallet sending and receiving" --name "Get Transaction Info" --format json:cucumber_output/tests.cucumber && ls -l -a integration_tests/cucumber_output && tar -cvzf integration_tests/cucumber_output/logs.tar integration_tests/cucumber_output/temp/base_nodes && ls -l integration_tests/cucumber_output/*.tar
+      - run:
+          name: Compress artifacts
+          command: ls -l -a integration_tests/cucumber_output && tar -cvzf integration_tests/cucumber_output/logs2.tar integration_tests/cucumber_output/temp/base_nodes && ls -l integration_tests/cucumber_output/*.tar
       - store_test_results:
           path: integration_tests/cucumber_output
       - store_artifacts:
-          path: integration_tests/cucumber_output
+          path: integration_tests/cucumber_output/logs.tar
+          destination: artifact_file
 
 jobs:
-  test-docs:
-    docker:
-      - image: *rust_image
-    steps:
-      - checkout
-      - run:
-          name: RFC documentation
-          command: |
-            cargo install mdbook --version ^0.4
-            cd RFC && mdbook test && mdbook build
-
-      - persist_to_workspace:
-          root: .
-          paths: book
-
-  test-tari-release:
-    docker:
-      - image: *rust_image
-    resource_class: medium
-    steps:
-      - checkout
-      - test:
-          release: true
-
   run-integration-tests:
     docker:
       - image: *rust_image
@@ -158,92 +138,12 @@ jobs:
       - checkout
       - cucumber-js
 
-  build-tari-release:
-    docker:
-      - image: *rust_image
-    resource_class: medium
-    steps:
-      - checkout
-      - build:
-          release: true
-
-  clippy:
-    docker:
-      - image: *rust_image
-    resource_class: medium
-    steps:
-      - checkout
-      - clippy
-
-  deploy-docs:
-    docker:
-      - image: quay.io/tarilabs/git-ssh-client:0.2-alpine
-    steps:
-      - checkout
-      - attach_workspace:
-          at: .
-      - add_ssh_keys:
-          fingerprints:
-            - "a6:a6:e2:be:a3:94:3e:4c:9d:51:25:f6:98:f9:0c:a4"
-      - run:
-          name: Deploy docs to gh-pages branch
-          command: |
-            DEST_BRANCH=gh-pages
-            DEST_PATH=book/
-
-            if [[ ! -d $DEST_PATH ]]; then
-              echo "$DEST_PATH directory not found!"
-              exit 1
-            fi
-
-            TMP_DIR=$(mktemp -d /tmp/ghpages_XXXXXX)
-
-            echo "Copying book files to temporary location $TMP_DIR"
-            cp -R $DEST_PATH/* $DEST_PATH/.nojekyll $TMP_DIR
-
-            REMOTE=$(git remote get-url origin)
-
-            cd $TMP_DIR
-
-            git config --global user.email "ci-build@tari.com"
-            git config --global user.name "ci-build"
-
-            git init
-            git checkout -b $DEST_BRANCH
-            git remote add origin $REMOTE
-            git add --all .
-            git commit -m "[skip ci] Update RFC docs"
-            git push origin $DEST_BRANCH --force
-
-            echo "Published."
 
 workflows:
   version: 2
   workflow:
     jobs:
       - run-integration-tests:
-          filters:
-            branches:
-              ignore: gh-pages
-      - test-docs:
-          filters:
-            branches:
-              ignore: gh-pages
-      - deploy-docs:
-          requires:
-            - test-docs
-          filters:
-            branches:
-              only: development
-      - build-tari-release:
-          filters:
-            branches:
-              ignore: gh-pages
-      - test-tari-release:
-          filters:
-            branches:
-              ignore: gh-pages
-      - clippy:
           filters:
             branches:
               ignore: gh-pages
