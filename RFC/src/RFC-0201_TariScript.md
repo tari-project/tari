@@ -233,7 +233,7 @@ pub struct TransactionOutput {
     /// The script offset pubkey, K_O
     script_offset_public_key: PublicKey
     /// UTXO signature with the script offset private key, k_O
-    sender_signature : Signature
+    sender_metadata_signature : Signature
 }
 ```
 
@@ -621,17 +621,17 @@ To summarise, the information required for one-sided transactions is as follows:
 | script            | \\( \alpha_a \\)                      | Public                                                                                        |
 | script input      | \\( \input_a \\)                      | Public                                                                                        |
 | height            | \\( h_a \\)                           | Public                                                                                        |
-| script signature  | \\( a_{Sa},b_{Sa}, R_{Sa} \\)       | Alice knows \\( k_{Sa},\\, r_{Sa} \\) and \\( k_{a},\\, v_{a} \\) of the commitment \\(C_a\\) |
+| script signature  | \\( a_{Sa},b_{Sa}, R_{Sa} \\)         | Alice knows \\( k_{Sa},\\, r_{Sa} \\) and \\( k_{a},\\, v_{a} \\) of the commitment \\(C_a\\) |
 | offset public key | \\( K_{Oa} \\)                        | Not used in this transaction                                                                  |
 
 | Transaction output | Symbols                               | Knowledge                                                              |
-|--------------------|---------------------------------------|------------------------------------------------------------------------|
-| commitment         | \\( C_b = k_b \cdot G + v \cdot H \\) | Alice and Bob know the blinding factor and value                       |
-| features           | \\( F_b \\)                           | Public                                                                 |
-| script             | \\( \script_b \\)                     | Script is public. Only Bob knows the correct script input.             |
-| range proof        |                                       | Alice and Bob know opening parameters                                  |
-| offset public key  | \\( K_{Ob} \\)                        | Alice knows \\( k_{Ob} \\)                                             |
-| sender signature   | \\( s_{Mb}, R_{Mb} \\)                | Alice knows \\( k_{Ob} \\)  and the metadata)                          |
+|---------------------------|---------------------------------------|------------------------------------------------------------|
+| commitment                | \\( C_b = k_b \cdot G + v \cdot H \\) | Alice and Bob know the blinding factor and value           |
+| features                  | \\( F_b \\)                           | Public                                                     |
+| script                    | \\( \script_b \\)                     | Script is public. Only Bob knows the correct script input. |
+| range proof               |                                       | Alice and Bob know opening parameters                      |
+| offset public key         | \\( K_{Ob} \\)                        | Alice knows \\( k_{Ob} \\)                                 |
+| sender metadata signature | \\( s_{Mb}, R_{Mb} \\)                | Alice knows \\( k_{Ob} \\)  and the metadata)              |
 
 
 ### HTLC-like script
