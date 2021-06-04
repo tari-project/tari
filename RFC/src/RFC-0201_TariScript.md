@@ -448,9 +448,7 @@ validation steps.
 For this use case we have Alice who sends Bob some Tari.
 Bob's wallet is  online and is able to countersign the transaction.
 
-Alice creates a new transaction spending \\( C\_a \\) to a new output containing the commitment \\( C\_b \\) (ignoring fees for now). 
-Because Alice is creating the transaction,  she has a final say over the script \\( \script_b \\), similar to a 
-[bitcoin transaction]. If Bob provides a script she has to approve it or she can choose something akin to a `NOP` script.
+Alice creates a new transaction spending \\( C\_a \\) to a new output containing the commitment \\( C\_b \\) (ignoring fees for now).
 
 To spend \\( C\_a \\), she provides:
 
@@ -468,9 +466,14 @@ $$
  \tag{10}
 $$
 
+
 Alice sends the usual first round data to Bob. Bob can then completes his side of the transaction and returns his commitment 
 \\(C\_b\\) along with its rangeproof, the partial signature and public blinding factor back to Alice. All this happens as per the 
-[standard Mimblewimble protocol]
+[standard Mimblewimble protocol]. 
+
+Because Alice is creating the transaction, she has a final say over the script \\( \script_b \\), similar to a 
+[bitcoin transaction], but Bob can also opt to send Alice a script \\(\script\_b\\) of his choosing. If Bob did not send a script, 
+she chooses something akin to a `NOP` script for the script \\(\script\_b\\).
 
 Alice calculates the sender signature \\( s_{Mb} \\) with: 
 
