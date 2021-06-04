@@ -1,6 +1,6 @@
 var tari_crypto = require("tari_crypto");
 var { blake2bInit, blake2bUpdate, blake2bFinal } = require("blakejs");
-const { toLittleEndian } = require("../helpers/util");
+const { toLittleEndian, calculateBeta } = require("../helpers/util");
 
 class TransactionBuilder {
   constructor() {
@@ -128,9 +128,18 @@ class TransactionBuilder {
 
     let nopScriptBytes = Buffer.from([0x73]);
 
+    let beta = calculateBeta(
+      nopScriptBytes,
+      outputFeatures,
+      scriptOffsetPublicKey
+    );
+
+    let beta_key = tari_crypto.secret_key_from_hex_bytes(beta.toString("hex"));
+    let new_range_proof_key = tari_crypto.add_secret_keys(beta_key, privateKey);
+
     let rangeproofFactory = tari_crypto.RangeProofFactory.new();
     let rangeproof = rangeproofFactory.create_proof(
-      privateKey,
+      new_range_proof_key,
       BigInt(amount)
     ).proof;
 
@@ -243,10 +252,18 @@ class TransactionBuilder {
       "0000000000000000000000000000000000000000000000000000000000000000",
       "hex"
     );
+    let beta = calculateBeta(
+      nopScriptBytes,
+      outputFeatures,
+      scriptOffsetPublicKey
+    );
+
+    let beta_key = tari_crypto.secret_key_from_hex_bytes(beta.toString("hex"));
+    let new_range_proof_key = tari_crypto.add_secret_keys(beta_key, privateKey);
 
     let rangeproofFactory = tari_crypto.RangeProofFactory.new();
     let rangeproof = rangeproofFactory.create_proof(
-      privateKey.toString("hex"),
+      new_range_proof_key.toString("hex"),
       BigInt(value + fee)
     ).proof;
 

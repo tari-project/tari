@@ -29,10 +29,12 @@ use crate::transactions::{
         RewindData,
         TransactionProtocolError as TPE,
     },
-    types::{CryptoFactories, PrivateKey as SK, PublicKey, RangeProof, Signature},
+    types::{CryptoFactories, PrivateKey as SK, PrivateKey, PublicKey, RangeProof, Signature},
 };
+use digest::Input;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
+    hash::blake2::Blake256,
     keys::PublicKey as PK,
     range_proof::{RangeProofError, RangeProofService as RPS},
     tari_utilities::byte_array::ByteArray,
@@ -95,9 +97,17 @@ impl SingleReceiverTransactionProtocol {
             .commitment
             .commit_value(&spending_key, sender_info.amount.into());
 
+        let beta_hash = Blake256::new()
+            .chain(sender_info.clone().script.as_bytes())
+            .chain(features.to_bytes())
+            .chain(sender_info.script_offset_public_key.clone().as_bytes())
+            .result()
+            .to_vec();
+        let beta = PrivateKey::from_bytes(beta_hash.as_slice()).map_err(|_| TPE::SerializationError)?;
+
         let proof = if let Some(rewind_data) = rewind_data {
             factories.range_proof.construct_proof_with_rewind_key(
-                &spending_key,
+                &(spending_key.clone() + beta),
                 sender_info.amount.into(),
                 &rewind_data.rewind_key,
                 &rewind_data.rewind_blinding_key,
@@ -106,7 +116,7 @@ impl SingleReceiverTransactionProtocol {
         } else {
             factories
                 .range_proof
-                .construct_proof(&spending_key, sender_info.amount.into())?
+                .construct_proof(&(spending_key.clone() + beta), sender_info.amount.into())?
         };
         Ok(TransactionOutput::new(
             features,
