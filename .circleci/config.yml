@@ -119,7 +119,7 @@ commands:
           command: cargo build --release --bin tari_mining_node
       - run:
           name: Run cucumber scenarios
-          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --name "Wallet sending and receiving" --name "Get Transaction Info" --format json:cucumber_output/tests.cucumber
+          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --name "Wallet sending and receiving one-sided transactions" --format json:cucumber_output/tests.cucumber
       - run:
           name: Compress artifacts
           command: ls -l -a integration_tests/temp && tar -cvzf integration_tests/logs.tar integration_tests/temp/base_nodes && ls -l integration_tests/*.tar
