@@ -1519,11 +1519,15 @@ fn handle_possible_reorg<T: BlockchainBackend>(
     // reorg is required when any blocks are removed or more than one are added
     // see https://github.com/tari-project/tari/issues/2101
     if num_removed_blocks > 0 || num_added_blocks > 1 {
-        info!(
+        log!(
             target: LOG_TARGET,
+            if num_removed_blocks > 1 {
+                Level::Warn
+            } else {
+                Level::Info
+            }, // We want a warning if the number of removed blocks is at least 2.
             "Chain reorg required from {} to {} (accum_diff:{}, hash:{}) to (accum_diff:{}, hash:{}). Number of \
-             blocks to remove: {}, to add: {}.
-            ",
+             blocks to remove: {}, to add: {}.",
             tip_header.header(),
             fork_header.header(),
             tip_header.accumulated_data().total_accumulated_difficulty,
