@@ -23,7 +23,7 @@ appenders:
       kind: compound
       trigger:
         kind: size
-        limit: 10mb
+        limit: 100mb
       roller:
         kind: fixed_window
         base: 1
@@ -44,11 +44,10 @@ loggers:
     level: info
     appenders:
       - mining_node
-    additive: false
-  tari_mining_node:
-    level: info
-    appenders:
-      - mining_node
       - stdout
     additive: false
-
+  tari_mining_node:
+    level: debug
+    appenders:
+      - mining_node
+    additive: false

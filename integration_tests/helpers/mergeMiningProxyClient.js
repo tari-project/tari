@@ -1,8 +1,9 @@
 const axios = require("axios");
 
 class MergeMiningProxyClient {
-  constructor(address) {
+  constructor(address, nodeClient) {
     this.address = address;
+    this.baseNodeClient = nodeClient;
   }
 
   async getHeight() {
@@ -60,10 +61,34 @@ class MergeMiningProxyClient {
   async mineBlock() {
     // Mines a block in the same way that xmrig would
     const template = await this.getBlockTemplate();
-    // const height = await this.getHeight();
+    // XMRig always calls this, so duplicated here
+    await this.getHeight();
     const block = template.blocktemplate_blob;
     // Need to insert a nonce into the template as xmrig would for it to be a valid block.
     await this.submitBlock(block);
+  }
+
+  async mineBlocksUntilHeightIncreasedBy(numBlocks) {
+    let tipHeight = parseInt(await this.baseNodeClient.getTipHeight());
+    const height = tipHeight + parseInt(numBlocks);
+    let i = 0;
+    do {
+      if (i % 25 === 0) {
+        console.log(
+          "[mmProxy client] Tip at",
+          tipHeight,
+          "...(stopping at " + height + ")"
+        );
+      }
+      i += 1;
+      // Mines a block in the same way that xmrig would
+      const template = await this.getBlockTemplate();
+      const block = template.blocktemplate_blob;
+      // Need to insert a nonce into the template as xmrig would for it to be a valid block.
+      await this.submitBlock(block);
+      tipHeight = parseInt(await this.baseNodeClient.getTipHeight());
+    } while (tipHeight < height);
+    return await this.baseNodeClient.getTipHeight();
   }
 }
 

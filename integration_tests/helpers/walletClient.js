@@ -79,6 +79,34 @@ class WalletClient {
     return transactions;
   }
 
+  async countAllCoinbaseTransactions() {
+    const data = await this.getCompletedTransactions();
+    let count = 0;
+    for (let i = 0; i < data.length; i++) {
+      if (
+        data[i].message.includes("Coinbase Transaction for Block ") &&
+        data[i].fee == 0
+      ) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  async countAllSpendableCoinbaseTransactions() {
+    const data = await this.getAllCoinbaseTransactions();
+    let count = 0;
+    for (let i = 0; i < data.length; i++) {
+      if (
+        transactionStatus().indexOf(data[i].status) == 6 &&
+        data[i].valid == true
+      ) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
   async areCoinbasesConfirmedAtLeast(number) {
     const data = await this.getAllSpendableCoinbaseTransactions();
     if (data.length >= number) {

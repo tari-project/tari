@@ -119,6 +119,7 @@ pub struct GlobalConfig {
     pub blocks_behind_before_considered_lagging: u64,
     pub flood_ban_max_msg_count: usize,
     pub mine_on_tip_only: bool,
+    pub validate_tip_timeout_sec: u64,
 }
 
 impl GlobalConfig {
@@ -602,6 +603,9 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     let key = "mining_node.mine_on_tip_only";
     let mine_on_tip_only = cfg.get_bool(key).unwrap_or(true);
 
+    let key = "mining_node.validate_tip_timeout_sec";
+    let validate_tip_timeout_sec = optional(cfg.get_int(&key))?.unwrap_or(0) as u64;
+
     Ok(GlobalConfig {
         network,
         comms_transport,
@@ -674,6 +678,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         blocks_behind_before_considered_lagging,
         flood_ban_max_msg_count,
         mine_on_tip_only,
+        validate_tip_timeout_sec,
     })
 }
 

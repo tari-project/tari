@@ -28,6 +28,8 @@ class CustomWorld {
     this.logFilePathBaseNode =
       parameters.logFilePathBaseNode || "./log4rs/base_node.yml";
     this.logFilePathProxy = parameters.logFilePathProxy || "./log4rs/proxy.yml";
+    this.logFilePathMiningNocde =
+      parameters.logFilePathMiningNocde || "./log4rs/mining_node.yml";
     this.logFilePathWallet =
       parameters.logFilePathWallet || "./log4rs/wallet.yml";
   }
@@ -106,9 +108,32 @@ class CustomWorld {
     );
   }
 
-  async mergeMineBlock(name, weight) {
+  baseNodeMineBlocksUntilHeightIncreasedBy(baseNode, wallet, numBlocks) {
+    const promise = this.getClient(baseNode).mineBlocksUntilHeightIncreasedBy(
+      numBlocks,
+      wallet ? this.getWallet(wallet).getClient() : null
+    );
+    return promise;
+  }
+
+  sha3MineBlocksUntilHeightIncreasedBy(miner, numBlocks, minDifficulty) {
+    const promise = this.getMiningNode(miner).mineBlocksUntilHeightIncreasedBy(
+      numBlocks,
+      minDifficulty
+    );
+    return promise;
+  }
+
+  async mergeMineBlock(name) {
     const client = this.proxies[name].createClient();
-    await client.mineBlock(weight);
+    await client.mineBlock();
+  }
+
+  mergeMineBlocksUntilHeightIncreasedBy(mmProxy, numBlocks) {
+    const promise = this.getProxy(mmProxy)
+      .createClient()
+      .mineBlocksUntilHeightIncreasedBy(numBlocks);
+    return promise;
   }
 
   saveBlock(name, block) {
@@ -203,6 +228,7 @@ BeforeAll({ timeout: 1200000 }, async function () {
   const mmProxy = new MergeMiningProxyProcess(
     "compile",
     "127.0.0.1:9999",
+    null,
     "127.0.0.1:9998"
   );
   console.log("Compiling mmproxy...");
@@ -212,10 +238,12 @@ BeforeAll({ timeout: 1200000 }, async function () {
   const miningNode = new MiningNodeProcess(
     "compile",
     "127.0.0.1:9999",
-    "127.0.0.1:9998"
+    null,
+    "127.0.0.1:9998",
+    this.logFilePathMiningNocde
   );
   console.log("Compiling mining node...");
-  await miningNode.init(1, 1, 1, true);
+  await miningNode.init(1, 1, 1, 1, true, 1);
   await miningNode.compile();
 
   console.log("Finished compilation.");

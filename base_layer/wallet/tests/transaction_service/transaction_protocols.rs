@@ -27,7 +27,7 @@ use crate::support::{
 use chrono::Utc;
 use futures::{FutureExt, StreamExt};
 use rand::rngs::OsRng;
-use std::{sync::Arc, time::Duration};
+use std::{sync::Arc, thread::sleep, time::Duration};
 use tari_comms::{
     peer_manager::PeerFeatures,
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService, RpcStatus},
@@ -699,7 +699,7 @@ async fn tx_broadcast_protocol_submit_mined_then_not_mined_resubmit_success() {
         timeout_update_publisher,
         _shutdown,
         _temp_dir,
-        _transaction_event_receiver,
+        mut transaction_event_receiver,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let (base_node_update_publisher, _) = broadcast::channel(20);
 
@@ -716,17 +716,22 @@ async fn tx_broadcast_protocol_submit_mined_then_not_mined_resubmit_success() {
 
     let join_handle = task::spawn(protocol.execute());
 
-    let _ = rpc_service_state
-        .wait_pop_submit_transaction_calls(1, Duration::from_secs(5))
+    // Wait for the correct amount of queries
+    if let Err(e) = rpc_service_state
+        .wait_pop_transaction_query_calls(4, Duration::from_secs(5))
         .await
-        .expect("Should receive a submission call");
+    {
+        println!("  {}", e)
+    }
 
     // Accepted in the mempool but not mined yet
-    // Wait for 1 query
-    let _ = rpc_service_state
-        .wait_pop_transaction_query_calls(1, Duration::from_secs(5))
+    // Wait for the correct amount of queries
+    if let Err(e) = rpc_service_state
+        .wait_pop_transaction_query_calls(4, Duration::from_secs(5))
         .await
-        .unwrap();
+    {
+        println!("  {}", e)
+    }
 
     // Set Base Node response to be mined but unconfirmed
     rpc_service_state.set_transaction_query_response(TxQueryResponse {
@@ -736,11 +741,32 @@ async fn tx_broadcast_protocol_submit_mined_then_not_mined_resubmit_success() {
         is_synced: true,
         height_of_longest_chain: 0,
     });
-    // Wait for 1 query
-    let _ = rpc_service_state
-        .wait_pop_transaction_query_calls(1, Duration::from_secs(5))
+    // Wait for the correct amount of queries
+    if let Err(e) = rpc_service_state
+        .wait_pop_transaction_query_calls(4, Duration::from_secs(5))
         .await
-        .unwrap();
+    {
+        println!("  {}", e)
+    }
+
+    // Wait for the "TransactionMinedUnconfirmed" tx event to ensure that the wallet db state is "MinedUnconfirmed"
+    let mut count = 0u16;
+    while let Some(v) = transaction_event_receiver.next().await {
+        let event = v.unwrap();
+        match (*event).clone() {
+            TransactionEvent::TransactionMinedUnconfirmed(_, _) => {
+                break;
+            },
+            _ => {
+                sleep(Duration::from_millis(1000));
+                count += 1;
+                if count >= 10 {
+                    break;
+                }
+                continue;
+            },
+        }
+    }
 
     // Check transaction status is updated
     let db_completed_tx = resources.db.get_completed_transaction(1).await.unwrap();
