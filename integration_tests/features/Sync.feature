@@ -39,7 +39,7 @@ Feature: Block Sync
     Given mining node NODE1 mines 5 blocks
     Then all nodes are at height 5
     Given I stop NODE2
-    Given mining node NODE1 mines 5 blocks
+    Given mining node NODE1 mines 5 blocks with min difficulty 1 and max difficulty 1
     Then node NODE1 is at height 10
     Given I stop NODE1
     And I start NODE2
