@@ -156,7 +156,7 @@ pub fn print_banner(commands: Vec<String>, chunk_size: i32) {
     println!("{}", box_data("~~~~~~~~~~~~~~".to_string(), target_line_length));
     println!(
         "{}",
-        box_data(format!("Copyright 2019-2020. {}", AUTHOR), target_line_length)
+        box_data(format!("Copyright 2019-2021. {}", AUTHOR), target_line_length)
     );
     println!("{}", box_data(format!("Version {}", VERSION), target_line_length));
     println!("{}", box_separator(target_line_length));
