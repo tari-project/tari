@@ -971,9 +971,12 @@ impl LMDBDatabase {
         horizon: u64,
     ) -> Result<(), ChainStorageError> {
         for pos in output_positions {
-            let (_height, hash) =
-                lmdb_first_after::<_, (u64, Vec<u8>)>(&write_txn, &self.output_mmr_size_index, &pos.to_be_bytes())
-                    .or_not_found("BlockHeader", "mmr_position", pos.to_string())?;
+            let (_height, hash) = lmdb_first_after::<_, (u64, Vec<u8>)>(
+                &write_txn,
+                &self.output_mmr_size_index,
+                &(pos as u64).to_be_bytes(),
+            )
+            .or_not_found("BlockHeader", "mmr_position", pos.to_string())?;
             let key = format!("{}-{:010}", hash.to_hex(), pos);
             debug!(target: LOG_TARGET, "Pruning output: {}", key);
             self.prune_output(&write_txn, &key)?;
