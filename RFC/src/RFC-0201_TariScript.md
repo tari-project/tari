@@ -183,13 +183,15 @@ Please refer to [Notation](#notation), which provides important pre-knowledge fo
 
 At a high level, Tari Script works as follows:
 
-* The spending script is recorded in the transaction UTXO.
-* UTXOs also define a new, _offset public key_ (\\(K\_{O}\\)).
-* After the script is executed, the execution stack must contain exactly one value that will be interpreted as a public
-  key (\\(K\_{S}\\)). One can prove ownership of a UTXO by demonstrating knowledge of both the commitment _blinding factor_ (\\(k\\)), _and_ the _script key_ (\\(k_\{S}\\)).
-* The _script key_, commitment _blinding factor_ and commitment _value_ (\\(v\\)) signs the script input data.
-* The _script offset keys_ and _script keys_ are used in conjunction to create a _script offset_ (\\(\so\\)), which used in the 
-  consensus balance to prevent a number of attacks.
+* The spending _script_ \\((\script)\\) is recorded in the transaction UTXO.
+* UTXOs also define a new, _script offset public key_ \\((K\_{O})\\).
+* After the _script_ \\((\script)\\) is executed, the execution stack must contain exactly one value that will be interpreted as the 
+  _script public key_ \\((K\_{S})\\). One can prove ownership of a UTXO by demonstrating knowledge of both the commitment _blinding 
+  factor_ \\((k\\)), _and_ the _script private key_ \\((k_\{S})\\).
+* The _script private key_ \\((k_\{S})\\), commitment _blinding factor_ \\((k)\\) and commitment _value_ \\((v)\\) signs the _script 
+  input data_ \\((\input)\\).
+* The _script offset private keys_ \\((k\_{O})\\) and _script private keys_ \\((k\_{S})\\) are used in conjunction to create a _script 
+  offset_ \\((\so)\\), which are used in the consensus balance to prevent a number of attacks.
 
 ### UTXO data commitments
 
@@ -219,7 +221,7 @@ pub struct TransactionOutput {
 
 _Note:_ Currently, the output features are actually malleable. Tari Script fixes this.
 
-Under Tari Script, this definition changes to accommodate the script and the offset public keys:
+Under Tari Script, this definition changes to accommodate the script and the script offset public keys:
 
 ```rust,ignore
 pub struct TransactionOutput {
@@ -446,18 +448,18 @@ validation steps.
 For this use case we have Alice who sends Bob some Tari.
 Bob's wallet is  online and is able to countersign the transaction.
 
-Alice creates a new transaction spending \\( C\_a \\) to a new output \\( C\_b \\) (ignoring fees for now).
-Because Alice is spending the transaction she chooses the script \\( \script_b \\), she can either ask Bob for one, or 
-choose something akin to a `NOP` script.
+Alice creates a new transaction spending \\( C\_a \\) to a new output containing the commitment \\( C\_b \\) (ignoring fees for now). 
+Because Alice is creating the transaction,  she has a final say over the script \\( \script_b \\), similar to a 
+[bitcoin transaction]. If Bob provides a script she has to approve it or she can choose something akin to a `NOP` script.
 
-To spend \\( C\_a \\), she provides
+To spend \\( C\_a \\), she provides:
 
 * An input that contains \\( C\_a \\).
 * The script input, \\( \input_a \\).
 * A valid script signature, \\( (a_{Sa}, b_{Sa}, R_{Sa}) \\) as per (3),(4) proving that she owns the commitment 
   \\( C\_a \\), knows the private key, \\( k_{Sa} \\), corresponding to \\( K_{Sa} \\), the public key left on the stack 
   after executing \\( \script_a \\) with \\( \input_a \\).
-* An offset public key, \\( k_{Ob} \\).
+* An script offset public key, \\( K_{Ob} \\).
 * The script offset, \\( \so\\) with:
 $$
 \begin{aligned}
@@ -465,7 +467,13 @@ $$
  \end{aligned}
  \tag{10}
 $$
-* The sender signature \\( s_{Mb} \\) with: 
+
+Alice sends the usual first round data to Bob. Bob can then completes his side of the transaction and returns his commitment 
+\\(C\_b\\) along with its rangeproof, the partial signature and public blinding factor back to Alice. All this happens as per the 
+[standard Mimblewimble protocol]
+
+Alice calculates the sender signature \\( s_{Mb} \\) with: 
+
 $$
 \begin{aligned}
   s_{Mb} = r_{mb} + k_{Ob} \hash{ \script_b \cat F_b \cat R_{Mb} }
@@ -473,26 +481,13 @@ $$
  \tag{11}
 $$
 
-Alice sends her signature nonce, as per the standard Mimblewimble protocol. However, she also 
-provides Bob with the offset public key \\( k_{Ob} \\) as wel as a meta_signature \\(s_{Mb}\\) for his output \\(C_b\\).
+Alice then adds the following info to Bob's TransactionOutput:
 
-Bob can then complete his side of the transaction by completing the output:
+* Meta_signature \\(s_{Mb}\\),
+* Script offset public key \\( K_{Ob} \\),
 
-* Calculating the commitment, \\( C_b = k_b \cdot G + v \cdot H \\),
-* Adding in the data from Alice: meta_signature\\(s_{Mb}\\), offset public key \\( k_{Ob} \\),
-
-Bob then signs the kernel excess as usual:
-$$
-\begin{aligned}
-  s_b = r_b + k_b \hash{R_a + R_b \cat f \cat m } 
-  \end{aligned}
- \tag{12}
-$$
-
-Bob returns the UTXO and partial signature along with his nonce, \\( R_b \\), back to Alice.
-
-Alice then adds in the the script offset \\( \so \\) after which she can construct and broadcast the transaction to the 
-network as per standard Mimblewimble.
+She completes the transaction as per [standard Mimblewimble protocol] and also adds the script offset \\( \so \\), after which 
+she broadcasts the transaction to the network.
 
 #### Transaction validation
 
@@ -550,7 +545,7 @@ Bob requires the value \\( v_b \\) and blinding factor \\( k_b \\) to claim his 
 claim it without asking Alice for them.
 
 This information can be obtained by using Diffie-Hellman and Bulletproof rewinding. If the blinding factor \\( k\_b \\) 
-was calculated with Diffie-Hellman using the offset keypair, (\\( k\_{Ob} \\),\\( K\_{Ob} \\)) as the sender keypair 
+was calculated with Diffie-Hellman using the script offset keypair, (\\( k\_{Ob} \\),\\( K\_{Ob} \\)) as the sender keypair 
 and the script keypair, \\( (k\_{Sb} \\),\\( K\_{Sb}) \\) as the receiver keypair, the blinding factor \\( k\_b \\) 
 can be securely calculated without communication.
 
@@ -572,7 +567,7 @@ key.
 
 Alice knows the script-redeeming private key \\( k_{Sa}\\) for the transaction input.
 
-Alice will create the entire transaction including, generating a new offset keypair and calculating the 
+Alice will create the entire transaction including, generating a new script offset keypair and calculating the 
 script offset,
 
 $$
@@ -624,7 +619,7 @@ To summarise, the information required for one-sided transactions is as follows:
 | script input      | \\( \input_a \\)                      | Public                                                                                        |
 | height            | \\( h_a \\)                           | Public                                                                                        |
 | script signature  | \\( a_{Sa},b_{Sa}, R_{Sa} \\)         | Alice knows \\( k_{Sa},\\, r_{Sa} \\) and \\( k_{a},\\, v_{a} \\) of the commitment \\(C_a\\) |
-| offset public key | \\( K_{Oa} \\)                        | Not used in this transaction                                                                  |
+| script offset public key | \\( K_{Oa} \\)                        | Not used in this transaction                                                                  |
 
 | Transaction output | Symbols                               | Knowledge                                                              |
 |---------------------------|---------------------------------------|------------------------------------------------------------|
@@ -632,7 +627,7 @@ To summarise, the information required for one-sided transactions is as follows:
 | features                  | \\( F_b \\)                           | Public                                                     |
 | script                    | \\( \script_b \\)                     | Script is public. Only Bob knows the correct script input. |
 | range proof               |                                       | Alice and Bob know opening parameters                      |
-| offset public key         | \\( K_{Ob} \\)                        | Alice knows \\( k_{Ob} \\)                                 |
+| script offset public key  | \\( K_{Ob} \\)                        | Alice knows \\( k_{Ob} \\)                                 |
 | sender metadata signature | \\( s_{Mb}, R_{Mb} \\)                | Alice knows \\( k_{Ob} \\)  and the metadata)              |
 
 
@@ -654,7 +649,7 @@ C_a \Rightarrow  C_s \Rightarrow  C_x
 $$
 
 Alice owns \\( C_a\\), so she knows the blinding factor \\( k_a\\) and the correct input for the script's spending 
-conditions. Alice also generates the offset keypair, \\( (k_{Os}, K_{Os} )\\).
+conditions. Alice also generates the script offset keypair, \\( (k_{Os}, K_{Os} )\\).
 
 Now Alice and Bob proceed with the standard transaction flow.
 
@@ -722,16 +717,16 @@ $$
 
 Notice that in this case, both \\( K_{Ss} \\) and \\( K_{Ox}\\) are aggregate keys.
 
-Notice also that because the script resolves to an aggregate key \\( K_s\\) neither Alice nor Bob can claim the
-commitment \\( C_s\\) without the other party's key. If either party tries to cheat by editing the input, the script
+Notice also that because the script resolves to an aggregate key \\( K_s\\) neither Alice nor Bob can claim the 
+commitment \\( C_s\\) without the other party's key. If either party tries to cheat by editing the input, the script 
 validation will fail.
 
-If either party tries to cheat by creating a new output, the offset will not validate correctly as the offset locks the
-output of the transaction.
+If either party tries to cheat by creating a new output, the script offset will not validate correctly as the script offset locks 
+the output of the transaction.
 
-A base node validating the transaction will also not be able to tell this is an aggregate transaction as all keys are
-aggregated Schnorr signatures. But it will be able to validate that the script input is correctly signed, thus the
-output public key is correct and that the \\( \so\\) is correctly calculated, meaning that the commitment \\( C_x\\) is
+A base node validating the transaction will also not be able to tell this is an aggregate transaction as all keys are 
+aggregated Schnorr signatures. But it will be able to validate that the script input is correctly signed, thus the 
+output public key is correct and that the \\( \so\\) is correctly calculated, meaning that the commitment \\( C_x\\) is 
 the correct UTXO for the transaction.
 
 To summarise, the information required for creating a multiparty UTXO is as follows:
@@ -744,7 +739,7 @@ To summarise, the information required for creating a multiparty UTXO is as foll
 | script input                | \\( \input_a \\)                      | Public                                                                                        |
 | height                      | \\( h_a \\)                           | Public                                                                                        |
 | script signature            | \\( (a_{Sa},b_{Sa}, R_{Sa}) \\)     | Alice knows \\( k_{Sa},\\, r_{Sa} \\) and \\( k_{a},\\, v_{a} \\) of the commitment \\(C_a\\) |
-| offset&nbsp;public&nbsp;key | \\( K_{Oa} \\)                        | Not used in this transaction                                                                  |
+| script offset&nbsp;public&nbsp;key | \\( K_{Oa} \\)                        | Not used in this transaction                                                                  |
 
 <br>
 
@@ -754,7 +749,7 @@ To summarise, the information required for creating a multiparty UTXO is as foll
 | features                    | \\( F_s \\)                                                            | Public                                                                                     |
 | script                      | \\( \script_s \\)                                                      | Script is public. Alice and Bob only knows their part of the  correct script input.        |
 | range proof                 |                                                                        | Alice and Bob know opening parameters                                                      |
-| offset&nbsp;public&nbsp;key | \\( K_{Os} = K_{OsA} + K_{OsB}\\)                                      | Alice knows \\( k_{OsA} \\), Bob knows \\( k_{OsB} \\). Neither party knows \\( k_{Os} \\) |
+| script offset&nbsp;public&nbsp;key | \\( K_{Os} = K_{OsA} + K_{OsB}\\)       | Alice knows \\( k_{OsA} \\), Bob knows \\( k_{OsB} \\). Neither party knows \\( k_{Os} \\) |
 | sender&nbsp;signature       | \\( s_{Ms} = s_{MsA} + s_{MsB}, \\, \\, R_{Ss} = R_{SsA} + R_{SsB} \\) | Alice knows \\( (s_{MsA}, R_{SsA}) \\), Bob knows \\( (s_{MsB}, R_{SsB}) \\)               |
 
 When spending the multi-party input:
@@ -767,7 +762,7 @@ When spending the multi-party input:
 | script input                | \\( \input_s \\)                        | Public                                                                                                                                                             |
 | height                      | \\( h_a \\)                             | Public                                                                                                                                                             |
 | script&nbsp;signature       | \\( (a_{Ss} ,b_{Ss} , R_{Ss}) \\)     | Alice knows \\( (k_{SsA},\\, r_{SsA}) \\), Bob knows \\( (k_{SsB},\\, r_{SsB}) \\). Both parties know \\( (k_{s},\\, v_{s}) \\). Neither party knows \\( k_{Ss}\\) |
-| offset&nbsp;public&nbsp;key | \\( K_{Os} \\)                          | As above, Alice and Bob each know part of the offset key                                                                                                           |
+| script offset&nbsp;public&nbsp;key | \\( K_{Os} \\)                          | As above, Alice and Bob each know part of the script offset key                                                                                                           |
 
 
 ### Cut-through
@@ -785,16 +780,13 @@ and outputs of all the transactions in a block and that tallied up to create the
 offset requires knowledge of keys that miners do not possess; thus they are unable to produce the necessary script 
 offset when attempting to perform cut-through on a pair of transactions.
 
-Lets show by example how the script offset stops cut-through. For this example, ignoring fees, we have: 
+Lets show by example how the script offset stops cut-through, where Alice spends to Bob who spends to Carol. Ignoring 
+fees, we have: 
 $$
 C_a \Rightarrow  C_b \Rightarrow  C_c
 $$
-In standard Mimblewimble this [cut-through] can be applied to get:
-$$
-C_a \Rightarrow  C_c
-$$
 
-With the script offset we have the following:
+For these two transactions, the total script offset is calculated as follows:
 $$
 \begin{aligned}
 \so_1 = k_{Sa} - k_{Ob}\\\\
@@ -806,8 +798,12 @@ $$
 \so_t = \so_1 + \so_2 =  (k_{Sa} + k_{Sb}) - (k_{Ob} + k_{Oc})\\\\
 \end{aligned}
 $$
+In standard Mimblewimble [cut-through] can be applied to get:
+$$
+C_a \Rightarrow  C_c
+$$
 
-If we apply cut-through we need: 
+After cut-through the total script offset becomes: 
 
 $$
 \begin{aligned}
@@ -822,10 +818,8 @@ $$
 \end{aligned}
 $$
 
-A User also cannot generate a new script offset as only the original owner can provide the private script key \\(k\_{Sa}\\) 
-to create a new script offset.Cut-through is only possible if the original owner participates. In this example cut-through 
-can happen only if Alice and Carol negotiate a new transaction. This will ensure that the original owner (Alice) is happy 
-with the spending of the transaction to a new party, e.g. she has verified the spending conditions like a script.
+A third party cannot generate a new script offset as only the original owner can provide the private script key \\(k\_{Sa}\\) 
+to create a new script offset. 
 
 ### Script Offset security
 
@@ -856,8 +850,8 @@ Mimblewimble terms is the  person who knows \\( k\_a, v\_a\\), can generate the 
 ### Script lock key generation
 
 At face value, it looks like the burden for wallets has tripled, since each UTXO owner has to remember three private 
-keys, the spend key, \\( k_i \\), the offset key \\( k_{O} \\) and the script key \\( k_{S} \\). In practice, the script 
-key will often be a static key associated with the user's node or wallet. Even if it is not, the script and offset keys
+keys, the spend key, \\( k_i \\), the script offset key \\( k_{O} \\) and the script key \\( k_{S} \\). In practice, the script 
+key will often be a static key associated with the user's node or wallet. Even if it is not, the script and script offset keys
 can be deterministically derived from the spend key. For example, \\( k_{S} \\) could be 
 \\( \hash{ k_i \cat \alpha} \\).
 
@@ -938,3 +932,5 @@ Thanks to David Burkett for proposing a method to prevent cut-through and willin
 [Signature on Commitment values]: https://documents.uow.edu.au/~wsusilo/ZCMS_IJNS08.pdf
 [Commitment Signature]: https://eprint.iacr.org/2020/061.pdf
 [cut-through]: https://tlu.tarilabs.com/protocols/grin-protocol-overview/MainReport.html#cut-through
+[standard Mimblewimble protocol]: https://tlu.tarilabs.com/protocols/mimblewimble-1/MainReport.html
+[bitcoin transaction]: https://en.bitcoin.it/wiki/Transaction
