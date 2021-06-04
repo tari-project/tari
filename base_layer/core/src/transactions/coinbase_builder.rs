@@ -223,14 +223,11 @@ mod test {
             CoinbaseBuilder,
         },
     };
-    use digest::Digest;
     use rand::rngs::OsRng;
     use tari_crypto::{
         commitment::HomomorphicCommitmentFactory,
-        hash::blake2::Blake256,
         keys::SecretKey as SecretKeyTrait,
         script::{ExecutionStack, TariScript},
-        tari_utilities::ByteArray,
     };
 
     fn get_builder() -> (CoinbaseBuilder, ConsensusManager, CryptoFactories) {
@@ -339,7 +336,7 @@ mod test {
             .with_nonce(p.nonce.clone())
             .with_spend_key(p.spend_key.clone())
             .with_rewind_data(rewind_data);
-        let (tx, unblinded_output) = builder
+        let (tx, _) = builder
             .build(rules.consensus_constants(42), rules.emission_schedule())
             .unwrap();
         let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
@@ -347,16 +344,9 @@ mod test {
         let rewind_result = tx.body.outputs()[0]
             .full_rewind_range_proof(&factories.range_proof, &rewind_key, &rewind_blinding_key)
             .unwrap();
-        let beta_hash = Blake256::new()
-            .chain(unblinded_output.script.as_bytes())
-            .chain(unblinded_output.features.to_bytes())
-            .chain(unblinded_output.script_offset_public_key.as_bytes())
-            .result()
-            .to_vec();
-        let beta = PrivateKey::from_bytes(beta_hash.as_slice()).unwrap();
         assert_eq!(rewind_result.committed_value, block_reward);
         assert_eq!(&rewind_result.proof_message, proof_message);
-        assert_eq!(rewind_result.blinding_factor, p.spend_key + beta);
+        assert_eq!(rewind_result.blinding_factor, p.spend_key);
     }
 
     #[test]

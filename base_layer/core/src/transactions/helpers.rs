@@ -37,7 +37,6 @@ use crate::transactions::{
     types::{Commitment, CommitmentFactory, CryptoFactories, PrivateKey, PublicKey, Signature},
     SenderTransactionProtocol,
 };
-use digest::Digest;
 use num::pow;
 use rand::rngs::OsRng;
 use std::sync::Arc;
@@ -49,7 +48,6 @@ use tari_crypto::{
     range_proof::RangeProofService,
     script,
     script::TariScript,
-    tari_utilities::ByteArray,
 };
 
 /// Create a random transaction input for the given amount and maturity period. The input ,its unblinded
@@ -407,18 +405,7 @@ pub fn create_utxo(
     let features = features.unwrap_or_default();
     let commitment = factories.commitment.commit_value(&keys.k, value.into());
     let offset_pub_key = PublicKey::from_secret_key(&keys.k);
-    // let construct beta for the utxo
-    let beta_hash = Blake256::new()
-        .chain(script.as_bytes())
-        .chain(features.to_bytes())
-        .chain(offset_pub_key.as_bytes())
-        .result()
-        .to_vec();
-    let beta = PrivateKey::from_bytes(beta_hash.as_slice()).unwrap();
-    let proof = factories
-        .range_proof
-        .construct_proof(&(&keys.k + &beta), value.into())
-        .unwrap();
+    let proof = factories.range_proof.construct_proof(&keys.k, value.into()).unwrap();
 
     let utxo = TransactionOutput::new(features, commitment, proof.into(), script.clone(), offset_pub_key);
     (utxo, keys.k, offset_private_key.k)
