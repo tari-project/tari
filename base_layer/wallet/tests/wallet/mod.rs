@@ -38,7 +38,7 @@ use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
-    types::CommsPublicKey,
+    types::{CommsPublicKey, CommsSecretKey},
 };
 use tari_comms_dht::DhtConfig;
 use tari_core::{
@@ -97,7 +97,8 @@ async fn create_wallet(
     factories: CryptoFactories,
     shutdown_signal: ShutdownSignal,
     passphrase: Option<String>,
-) -> WalletSqlite {
+    recovery_master_key: Option<CommsSecretKey>,
+) -> Result<WalletSqlite, WalletError> {
     let node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
     let comms_config = CommsConfig {
@@ -150,22 +151,20 @@ async fn create_wallet(
         None,
         None,
     );
-    let meta_data = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
+    let metadata = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
 
-    let _ = wallet_backend.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(meta_data)));
+    let _ = wallet_backend.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(metadata)));
 
-    let wallet = Wallet::start(
+    Wallet::start(
         config,
         WalletDatabase::new(wallet_backend),
         transaction_backend,
         output_manager_backend,
         contacts_backend,
         shutdown_signal,
-        None,
+        recovery_master_key,
     )
     .await
-    .unwrap();
-    wallet
 }
 
 #[tokio_macros::test]
@@ -186,8 +185,10 @@ async fn test_wallet() {
         factories.clone(),
         shutdown_a.to_signal(),
         None,
+        None,
     )
-    .await;
+    .await
+    .unwrap();
     let alice_identity = (*alice_wallet.comms.node_identity()).clone();
 
     let bob_wallet = create_wallet(
@@ -196,8 +197,10 @@ async fn test_wallet() {
         factories.clone(),
         shutdown_b.to_signal(),
         None,
+        None,
     )
-    .await;
+    .await
+    .unwrap();
     let bob_identity = (*bob_wallet.comms.node_identity()).clone();
 
     alice_wallet
@@ -339,8 +342,10 @@ async fn test_wallet() {
         factories.clone(),
         shutdown_a.to_signal(),
         Some("It's turtles all the way down".to_string()),
+        None,
     )
-    .await;
+    .await
+    .unwrap();
 
     alice_wallet.remove_encryption().await.unwrap();
 
@@ -363,8 +368,10 @@ async fn test_wallet() {
         factories.clone(),
         shutdown_a.to_signal(),
         None,
+        None,
     )
-    .await;
+    .await
+    .unwrap();
 
     let backup_db_tempdir = tempdir().unwrap();
     let backup_wallet_path = backup_db_tempdir
@@ -404,6 +411,84 @@ async fn test_wallet() {
     bob_wallet.wait_until_shutdown().await;
 }
 
+#[tokio_macros::test]
+async fn test_do_not_overwrite_master_key() {
+    let factories = CryptoFactories::default();
+    let dir = tempdir().unwrap();
+
+    // create a wallet and shut it down
+    let mut shutdown = Shutdown::new();
+    let (recovery_master_key, _) = PublicKey::random_keypair(&mut OsRng);
+    let wallet = create_wallet(
+        &dir.path(),
+        "wallet_db",
+        factories.clone(),
+        shutdown.to_signal(),
+        None,
+        Some(recovery_master_key),
+    )
+    .await
+    .unwrap();
+    shutdown.trigger().unwrap();
+    wallet.wait_until_shutdown().await;
+
+    // try to use a new master key to create a wallet using the existing wallet database
+    let shutdown = Shutdown::new();
+    let (recovery_master_key, _) = PublicKey::random_keypair(&mut OsRng);
+    match create_wallet(
+        &dir.path(),
+        "wallet_db",
+        factories.clone(),
+        shutdown.to_signal(),
+        None,
+        Some(recovery_master_key.clone()),
+    )
+    .await
+    {
+        Ok(_) => panic!("Should not be able to overwrite wallet master secret key!"),
+        Err(e) => assert!(matches!(e, WalletError::WalletRecoveryError(_))),
+    }
+
+    // make sure we can create a new wallet with recovery key if the db file does not exist
+    let dir = tempdir().unwrap();
+    let _wallet = create_wallet(
+        &dir.path(),
+        "wallet_db",
+        factories.clone(),
+        shutdown.to_signal(),
+        None,
+        Some(recovery_master_key),
+    )
+    .await
+    .unwrap();
+}
+
+#[tokio_macros::test]
+async fn test_sign_message() {
+    let factories = CryptoFactories::default();
+    let dir = tempdir().unwrap();
+
+    let shutdown = Shutdown::new();
+    let mut wallet = create_wallet(
+        &dir.path(),
+        "wallet_db",
+        factories.clone(),
+        shutdown.to_signal(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+
+    let (secret, public_key) = PublicKey::random_keypair(&mut OsRng);
+    let (nonce, public_nonce) = PublicKey::random_keypair(&mut OsRng);
+    let message = "Tragedy will find us.";
+    let schnorr = wallet.sign_message(secret, nonce, message).unwrap();
+    let signature = schnorr.get_signature().clone();
+
+    assert!(wallet.verify_message_signature(public_key, public_nonce, signature, message.into()));
+}
+
 #[test]
 #[ignore = "Useful for debugging, ignored because it takes over 30 minutes to run"]
 #[allow(clippy::redundant_closure)]
@@ -439,30 +524,39 @@ fn test_store_and_forward_send_tx() {
     let mut bob_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
     let mut carol_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
 
-    let mut alice_wallet = alice_runtime.block_on(create_wallet(
-        &alice_db_tempdir.path(),
-        "alice_db",
-        factories.clone(),
-        shutdown_a.to_signal(),
-        None,
-    ));
+    let mut alice_wallet = alice_runtime
+        .block_on(create_wallet(
+            &alice_db_tempdir.path(),
+            "alice_db",
+            factories.clone(),
+            shutdown_a.to_signal(),
+            None,
+            None,
+        ))
+        .unwrap();
 
-    let bob_wallet = bob_runtime.block_on(create_wallet(
-        &bob_db_tempdir.path(),
-        "bob_db",
-        factories.clone(),
-        shutdown_b.to_signal(),
-        None,
-    ));
+    let bob_wallet = bob_runtime
+        .block_on(create_wallet(
+            &bob_db_tempdir.path(),
+            "bob_db",
+            factories.clone(),
+            shutdown_b.to_signal(),
+            None,
+            None,
+        ))
+        .unwrap();
     let bob_identity = (*bob_wallet.comms.node_identity()).clone();
 
-    let carol_wallet = carol_runtime.block_on(create_wallet(
-        &carol_db_tempdir.path(),
-        "carol_db",
-        factories.clone(),
-        shutdown_c.to_signal(),
-        None,
-    ));
+    let carol_wallet = carol_runtime
+        .block_on(create_wallet(
+            &carol_db_tempdir.path(),
+            "carol_db",
+            factories.clone(),
+            shutdown_c.to_signal(),
+            None,
+            None,
+        ))
+        .unwrap();
     let carol_identity = (*carol_wallet.comms.node_identity()).clone();
     shutdown_c.trigger().unwrap();
     carol_runtime.block_on(carol_wallet.wait_until_shutdown());
@@ -509,13 +603,16 @@ fn test_store_and_forward_send_tx() {
 
     alice_runtime.block_on(async { delay_for(Duration::from_secs(60)).await });
 
-    let carol_wallet = carol_runtime.block_on(create_wallet(
-        &carol_db_tempdir.path(),
-        "carol_db",
-        factories,
-        shutdown_c2.to_signal(),
-        None,
-    ));
+    let carol_wallet = carol_runtime
+        .block_on(create_wallet(
+            &carol_db_tempdir.path(),
+            "carol_db",
+            factories,
+            shutdown_c2.to_signal(),
+            None,
+            None,
+        ))
+        .unwrap();
 
     let mut carol_event_stream = carol_wallet.transaction_service.get_event_stream_fused();
 
@@ -719,9 +816,9 @@ async fn test_data_generation() {
 
     let (db, transaction_backend, oms_backend, _temp_dir) = make_wallet_databases(None);
 
-    let meta_data = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
+    let metadata = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
 
-    db.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(meta_data)))
+    db.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(metadata)))
         .unwrap();
 
     let mut wallet = Wallet::start(
