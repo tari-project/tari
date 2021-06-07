@@ -233,9 +233,9 @@ impl InnerService {
         };
 
         for param in params.iter().filter_map(|p| p.as_str()) {
-            let monero_block = merge_mining::deserialize_monero_block_from_hex(param)?;
+            let monero_block = monero_rx::deserialize_monero_block_from_hex(param)?;
             debug!(target: LOG_TARGET, "Monero block: {}", monero_block);
-            let hash = merge_mining::extract_tari_hash(&monero_block)
+            let hash = monero_rx::extract_tari_hash(&monero_block)
                 .copied()
                 .ok_or_else(|| MmProxyError::MissingDataError("Could not find Tari header in coinbase".to_string()))?;
 
@@ -257,11 +257,11 @@ impl InnerService {
                 },
             };
 
-            let monero_data = merge_mining::construct_monero_data(monero_block, block_data.monero_seed.clone())?;
+            let monero_data = monero_rx::construct_monero_data(monero_block, block_data.monero_seed.clone())?;
 
             let header_mut = block_data.tari_block.header.as_mut().unwrap();
             let height = header_mut.height;
-            header_mut.pow.as_mut().unwrap().pow_data = bincode::serialize(&monero_data)?;
+            header_mut.pow.as_mut().unwrap().pow_data = monero_rx::serialize(&monero_data);
 
             let mut base_node_client = self.base_node_client.clone();
             let start = Instant::now();
@@ -468,7 +468,7 @@ impl InnerService {
             .to_string()
             .replace("\"", "");
         debug!(target: LOG_TARGET, "Deserializing Blocktemplate Blob into Monero Block",);
-        let mut monero_block = merge_mining::deserialize_monero_block_from_hex(block_template_blob)?;
+        let mut monero_block = monero_rx::deserialize_monero_block_from_hex(block_template_blob)?;
 
         debug!(target: LOG_TARGET, "Appending Merged Mining Tag",);
         // Add the Tari merge mining tag to the retrieved block template
@@ -476,12 +476,12 @@ impl InnerService {
 
         debug!(target: LOG_TARGET, "Creating blockhashing blob from blocktemplate blob",);
         // Must be done after the tag is inserted since it will affect the hash of the miner tx
-        let blockhashing_blob = monero_rx::create_blockhashing_blob(&monero_block)?;
+        let blockhashing_blob = monero_rx::create_blockhashing_blob_from_block(&monero_block)?;
 
         debug!(target: LOG_TARGET, "blockhashing_blob:{}", blockhashing_blob);
         monerod_resp["result"]["blockhashing_blob"] = blockhashing_blob.into();
 
-        let blocktemplate_blob = merge_mining::serialize_monero_block_to_hex(&monero_block)?;
+        let blocktemplate_blob = monero_rx::serialize_monero_block_to_hex(&monero_block)?;
         debug!(target: LOG_TARGET, "blocktemplate_blob:{}", block_template_blob);
         monerod_resp["result"]["blocktemplate_blob"] = blocktemplate_blob.into();
 

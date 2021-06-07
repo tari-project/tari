@@ -148,7 +148,7 @@ pub trait BlockchainBackend: Send + Sync {
     ) -> Result<(), ChainStorageError>;
 
     /// This gets the monero seed_height. This will return 0, if the seed is unkown
-    fn fetch_monero_seed_first_seen_height(&self, seed: &str) -> Result<u64, ChainStorageError>;
+    fn fetch_monero_seed_first_seen_height(&self, seed: &[u8]) -> Result<u64, ChainStorageError>;
 
     fn fetch_horizon_data(&self) -> Result<Option<HorizonData>, ChainStorageError>;
 }

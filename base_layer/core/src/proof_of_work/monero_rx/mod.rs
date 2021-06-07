@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -19,32 +19,33 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+mod error;
+pub use error::MergeMineError;
 
-use crate::error::MmProxyError;
-use std::convert::TryFrom;
-use tari_app_grpc::tari_rpc as grpc;
-use tari_core::{
-    blocks::NewBlockTemplate,
-    transactions::transaction::{TransactionKernel, TransactionOutput},
+mod helpers;
+pub use helpers::{
+    append_merge_mining_tag,
+    construct_monero_data,
+    create_blockhashing_blob_from_block,
+    create_ordered_transaction_hashes_from_block,
+    deserialize_monero_block_from_hex,
+    extract_tari_hash,
+    monero_difficulty,
+    serialize_monero_block_to_hex,
 };
 
-pub fn add_coinbase(
-    coinbase: Option<grpc::Transaction>,
-    mut block: NewBlockTemplate,
-) -> Result<grpc::NewBlockTemplate, MmProxyError> {
-    if let Some(tx) = coinbase {
-        let output = TransactionOutput::try_from(tx.clone().body.unwrap().outputs[0].clone())
-            .map_err(MmProxyError::MissingDataError)?;
-        let kernel =
-            TransactionKernel::try_from(tx.body.unwrap().kernels[0].clone()).map_err(MmProxyError::MissingDataError)?;
-        block.body.add_output(output);
-        block.body.add_kernel(kernel);
-        let template = grpc::NewBlockTemplate::try_from(block);
-        match template {
-            Ok(template) => Ok(template),
-            Err(_e) => Err(MmProxyError::MissingDataError("Template Invalid".to_string())),
-        }
-    } else {
-        Err(MmProxyError::MissingDataError("Coinbase Invalid".to_string()))
-    }
-}
+mod fixed_array;
+pub use fixed_array::FixedByteArray;
+
+mod pow_data;
+pub use pow_data::MoneroPowData;
+
+mod merkle_tree;
+pub use merkle_tree::{create_merkle_proof, tree_hash};
+
+// Re-exports
+pub use monero::{
+    consensus::{deserialize, serialize},
+    Block as MoneroBlock,
+    BlockHeader as MoneroBlockHeader,
+};

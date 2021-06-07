@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,31 +20,23 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::error::MmProxyError;
-use std::convert::TryFrom;
-use tari_app_grpc::tari_rpc as grpc;
-use tari_core::{
-    blocks::NewBlockTemplate,
-    transactions::transaction::{TransactionKernel, TransactionOutput},
-};
+use crate::crypto::tari_utilities::hex::HexError;
+use randomx_rs::RandomXError;
 
-pub fn add_coinbase(
-    coinbase: Option<grpc::Transaction>,
-    mut block: NewBlockTemplate,
-) -> Result<grpc::NewBlockTemplate, MmProxyError> {
-    if let Some(tx) = coinbase {
-        let output = TransactionOutput::try_from(tx.clone().body.unwrap().outputs[0].clone())
-            .map_err(MmProxyError::MissingDataError)?;
-        let kernel =
-            TransactionKernel::try_from(tx.body.unwrap().kernels[0].clone()).map_err(MmProxyError::MissingDataError)?;
-        block.body.add_output(output);
-        block.body.add_kernel(kernel);
-        let template = grpc::NewBlockTemplate::try_from(block);
-        match template {
-            Ok(template) => Ok(template),
-            Err(_e) => Err(MmProxyError::MissingDataError("Template Invalid".to_string())),
-        }
-    } else {
-        Err(MmProxyError::MissingDataError("Coinbase Invalid".to_string()))
-    }
+#[derive(Debug, thiserror::Error)]
+pub enum MergeMineError {
+    #[error("Serialization error: {0}")]
+    SerializeError(String),
+    #[error("Error deserializing Monero data: {0}")]
+    DeserializeError(String),
+    #[error("Hashing of Monero data failed: {0}")]
+    HashingError(String),
+    #[error("RandomX error: {0}")]
+    RandomXError(#[from] RandomXError),
+    #[error("Validation error: {0}")]
+    ValidationError(String),
+    #[error("Hex conversion error: {0}")]
+    HexError(#[from] HexError),
+    #[error("Monero PoW data did not contain a valid merkle root")]
+    InvalidMerkleRoot,
 }

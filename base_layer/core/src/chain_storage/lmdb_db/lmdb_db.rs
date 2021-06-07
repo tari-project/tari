@@ -237,7 +237,7 @@ impl LMDBDatabase {
                     self.delete_block_body(&write_txn, hash)?;
                 },
                 InsertMoneroSeedHeight(data, height) => {
-                    self.insert_monero_seed_height(&write_txn, data, height)?;
+                    self.insert_monero_seed_height(&write_txn, &data, height)?;
                 },
                 SetAccumulatedDataForOrphan(chain_header) => {
                     self.set_accumulated_data_for_orphan(
@@ -929,12 +929,12 @@ impl LMDBDatabase {
     fn insert_monero_seed_height(
         &self,
         write_txn: &WriteTransaction<'_>,
-        seed: String,
+        seed: &[u8],
         height: u64,
     ) -> Result<(), ChainStorageError> {
-        let current_height = lmdb_get(&write_txn, &self.monero_seed_height_db, seed.as_str())?.unwrap_or(std::u64::MAX);
+        let current_height = lmdb_get(&write_txn, &self.monero_seed_height_db, seed)?.unwrap_or(std::u64::MAX);
         if height < current_height {
-            lmdb_replace(&write_txn, &self.monero_seed_height_db, seed.as_str(), &height)?;
+            lmdb_replace(&write_txn, &self.monero_seed_height_db, seed, &height)?;
         };
         Ok(())
     }
@@ -1844,7 +1844,7 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(())
     }
 
-    fn fetch_monero_seed_first_seen_height(&self, seed: &str) -> Result<u64, ChainStorageError> {
+    fn fetch_monero_seed_first_seen_height(&self, seed: &[u8]) -> Result<u64, ChainStorageError> {
         let txn = self.read_transaction()?;
         Ok(lmdb_get(&txn, &self.monero_seed_height_db, seed)?.unwrap_or(0))
     }

@@ -30,7 +30,7 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     proof_of_work::{
         monero_difficulty,
-        monero_rx::MoneroData,
+        monero_rx::MoneroPowData,
         randomx_factory::RandomXFactory,
         sha3_difficulty,
         AchievedTargetDifficulty,
@@ -126,8 +126,8 @@ pub fn check_pow_data<B: BlockchainBackend>(
     match block_header.pow.pow_algo {
         Monero => {
             let monero_data =
-                MoneroData::from_header(block_header).map_err(|e| ValidationError::CustomError(e.to_string()))?;
-            let seed_height = db.fetch_monero_seed_first_seen_height(&monero_data.key)?;
+                MoneroPowData::from_header(block_header).map_err(|e| ValidationError::CustomError(e.to_string()))?;
+            let seed_height = db.fetch_monero_seed_first_seen_height(&monero_data.randomx_key)?;
             if (seed_height != 0) &&
                 (block_header.height - seed_height >
                     rules.consensus_constants(block_header.height).max_randomx_seed_height())

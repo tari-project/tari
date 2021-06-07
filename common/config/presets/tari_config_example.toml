@@ -315,7 +315,7 @@ tor_control_auth = "none" # or "password=xxxxxx"
 base_node_tor_identity_file = "config/base_node_tor.json"
 
 # A path to the file that stores the console wallet's tor hidden service private key, if using the tor transport.
-console_wallet_tor_identity_file = "config/cosole_wallet_tor.json"
+console_wallet_tor_identity_file = "config/console_wallet_tor.json"
 
 ########################################################################################################################
 #                                                                                                                      #
