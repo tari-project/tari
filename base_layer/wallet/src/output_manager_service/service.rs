@@ -25,26 +25,30 @@ use crate::{
     output_manager_service::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerProtocolError, OutputManagerStorageError},
-        handle::{OutputManagerEventSender, OutputManagerRequest, OutputManagerResponse, PublicRewindKeys},
-        protocols::txo_validation_protocol::{TxoValidationProtocol, TxoValidationType},
+        handle::{OutputManagerEventSender, OutputManagerRequest, OutputManagerResponse},
+        recovery::StandardUtxoRecoverer,
+        resources::OutputManagerResources,
         storage::{
-            database::{KeyManagerState, OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
+            database::{OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
             models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
         },
+        tasks::{TxoValidationTask, TxoValidationType},
+        MasterKeyManager,
         TxId,
     },
     transaction_service::handle::TransactionServiceHandle,
-    types::{HashDigest, KeyDigest, ValidationRetryStrategy},
+    types::{HashDigest, ValidationRetryStrategy},
 };
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use digest::Digest;
-use futures::{pin_mut, stream::FuturesUnordered, StreamExt};
+use futures::{pin_mut, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use std::{
     cmp::Ordering,
     collections::HashMap,
     fmt::{self, Display},
+    sync::Arc,
     time::Duration,
 };
 use tari_comms::{
@@ -64,7 +68,7 @@ use tari_core::{
             TransactionOutput,
             UnblindedOutput,
         },
-        transaction_protocol::{sender::TransactionSenderMessage, RewindData},
+        transaction_protocol::sender::TransactionSenderMessage,
         types::{CryptoFactories, PrivateKey, PublicKey},
         CoinbaseBuilder,
         ReceiverTransactionProtocol,
@@ -74,30 +78,16 @@ use tari_core::{
 use tari_crypto::{
     inputs,
     keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
-    range_proof::REWIND_USER_MESSAGE_LENGTH,
     script,
     script::TariScript,
     tari_utilities::{hex::Hex, ByteArray},
 };
-use tari_key_manager::{
-    key_manager::KeyManager,
-    mnemonic::{from_secret_key, MnemonicLanguage},
-};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
-use tokio::{
-    sync::{broadcast, Mutex},
-    task::JoinHandle,
-};
+use tokio::sync::broadcast;
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
 const LOG_TARGET_STRESS: &str = "stress_test::output_manager_service";
-
-const KEY_MANAGER_COINBASE_BRANCH_KEY: &str = "coinbase";
-const KEY_MANAGER_COINBASE_SCRIPT_BRANCH_KEY: &str = "coinbase_script";
-const KEY_MANAGER_SCRIPT_BRANCH_KEY: &str = "script";
-const KEY_MANAGER_RECOVERY_VIEWONLY_BRANCH_KEY: &str = "recovery_viewonly";
-const KEY_MANAGER_RECOVERY_BLINDING_BRANCH_KEY: &str = "recovery_blinding";
 
 /// This service will manage a wallet's available outputs and the key manager that produces the keys for these outputs.
 /// The service will assemble transactions to be sent from the wallets available outputs and provide keys to receive
@@ -107,10 +97,6 @@ pub struct OutputManagerService<TBackend>
 where TBackend: OutputManagerBackend + 'static
 {
     resources: OutputManagerResources<TBackend>,
-    key_manager: Mutex<KeyManager<PrivateKey, KeyDigest>>,
-    script_key_manager: Mutex<KeyManager<PrivateKey, KeyDigest>>,
-    coinbase_key_manager: Mutex<KeyManager<PrivateKey, KeyDigest>>,
-    coinbase_script_key_manager: Mutex<KeyManager<PrivateKey, KeyDigest>>,
     request_stream:
         Option<reply_channel::Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
     base_node_update_publisher: broadcast::Sender<CommsPublicKey>,
@@ -137,72 +123,11 @@ where TBackend: OutputManagerBackend + 'static
         connectivity_manager: ConnectivityRequester,
         master_secret_key: CommsSecretKey,
     ) -> Result<OutputManagerService<TBackend>, OutputManagerError> {
-        // Check to see if there is any persisted state. If there is confirm that the provided master secret key matches
-        let key_manager_state = match db.get_key_manager_state().await? {
-            None => {
-                let starting_state = KeyManagerState {
-                    master_key: master_secret_key,
-                    branch_seed: "".to_string(),
-                    primary_key_index: 0,
-                };
-                db.set_key_manager_state(starting_state.clone()).await?;
-                starting_state
-            },
-            Some(km) => {
-                if km.master_key != master_secret_key {
-                    return Err(OutputManagerError::MasterSecretKeyMismatch);
-                }
-                km
-            },
-        };
-
-        let coinbase_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
-            key_manager_state.master_key.clone(),
-            KEY_MANAGER_COINBASE_BRANCH_KEY.to_string(),
-            0,
-        );
-
-        let coinbase_script_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
-            key_manager_state.master_key.clone(),
-            KEY_MANAGER_COINBASE_SCRIPT_BRANCH_KEY.to_string(),
-            0,
-        );
-
-        let key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
-            key_manager_state.master_key.clone(),
-            key_manager_state.branch_seed,
-            key_manager_state.primary_key_index,
-        );
-
-        let script_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
-            key_manager_state.master_key.clone(),
-            KEY_MANAGER_SCRIPT_BRANCH_KEY.to_string(),
-            key_manager_state.primary_key_index,
-        );
-
-        let rewind_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
-            key_manager_state.master_key.clone(),
-            KEY_MANAGER_RECOVERY_VIEWONLY_BRANCH_KEY.to_string(),
-            0,
-        );
-        let rewind_key = rewind_key_manager.derive_key(0)?.k;
-
-        let rewind_blinding_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
-            key_manager_state.master_key,
-            KEY_MANAGER_RECOVERY_BLINDING_BRANCH_KEY.to_string(),
-            0,
-        );
-        let rewind_blinding_key = rewind_blinding_key_manager.derive_key(0)?.k;
-
-        let rewind_data = RewindData {
-            rewind_key,
-            rewind_blinding_key,
-            proof_message: [0u8; REWIND_USER_MESSAGE_LENGTH],
-        };
-
         // Clear any encumberances for transactions that were being negotiated but did not complete to become official
         // Pending Transactions.
         db.clear_short_term_encumberances().await?;
+
+        let master_key_manager = MasterKeyManager::new(master_secret_key, db.clone()).await?;
 
         let resources = OutputManagerResources {
             config,
@@ -211,7 +136,7 @@ where TBackend: OutputManagerBackend + 'static
             factories,
             base_node_public_key: None,
             event_publisher,
-            rewind_data,
+            master_key_manager: Arc::new(master_key_manager),
             consensus_constants,
             connectivity_manager,
             shutdown_signal,
@@ -221,10 +146,6 @@ where TBackend: OutputManagerBackend + 'static
 
         Ok(OutputManagerService {
             resources,
-            key_manager: Mutex::new(key_manager),
-            script_key_manager: Mutex::new(script_key_manager),
-            coinbase_key_manager: Mutex::new(coinbase_key_manager),
-            coinbase_script_key_manager: Mutex::new(coinbase_script_key_manager),
             request_stream: Some(request_stream),
             base_node_update_publisher,
             base_node_service,
@@ -241,16 +162,13 @@ where TBackend: OutputManagerBackend + 'static
 
         let mut shutdown = self.resources.shutdown_signal.clone();
 
-        let mut txo_validation_handles: FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>> =
-            FuturesUnordered::new();
-
         info!(target: LOG_TARGET, "Output Manager Service started");
         loop {
             futures::select! {
                 request_context = request_stream.select_next_some() => {
                 trace!(target: LOG_TARGET, "Handling Service API Request");
                     let (request, reply_tx) = request_context.split();
-                    let response = self.handle_request(request, &mut txo_validation_handles).await.map_err(|e| {
+                    let response = self.handle_request(request).await.map_err(|e| {
                         warn!(target: LOG_TARGET, "Error handling request: {:?}", e);
                         e
                     });
@@ -259,13 +177,6 @@ where TBackend: OutputManagerBackend + 'static
                         e
                     });
                 },
-                join_result = txo_validation_handles.select_next_some() => {
-                   trace!(target: LOG_TARGET, "TXO Validation protocol has ended with result {:?}", join_result);
-                   match join_result {
-                        Ok(join_result_inner) => self.complete_utxo_validation_protocol(join_result_inner).await,
-                        Err(e) => error!(target: LOG_TARGET, "Error resolving TXO Validation protocol: {:?}", e),
-                    };
-                }
                 _ = shutdown => {
                     info!(target: LOG_TARGET, "Output manager service shutting down because it received the shutdown signal");
                     break;
@@ -284,7 +195,6 @@ where TBackend: OutputManagerBackend + 'static
     async fn handle_request(
         &mut self,
         request: OutputManagerRequest,
-        txo_validation_handles: &mut FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>>,
     ) -> Result<OutputManagerResponse, OutputManagerError> {
         trace!(target: LOG_TARGET, "Handling Service Request: {}", request);
         match request {
@@ -364,13 +274,18 @@ where TBackend: OutputManagerBackend + 'static
                     .collect();
                 Ok(OutputManagerResponse::UnspentOutputs(outputs))
             },
-            OutputManagerRequest::GetSeedWords => self.get_seed_words().await.map(OutputManagerResponse::SeedWords),
+            OutputManagerRequest::GetSeedWords => self
+                .resources
+                .master_key_manager
+                .get_seed_words(&self.resources.config.seed_word_language)
+                .await
+                .map(OutputManagerResponse::SeedWords),
             OutputManagerRequest::SetBaseNodePublicKey(pk) => self
                 .set_base_node_public_key(pk)
                 .await
                 .map(|_| OutputManagerResponse::BaseNodePublicKeySet),
             OutputManagerRequest::ValidateUtxos(validation_type, retries) => self
-                .validate_outputs(validation_type, retries, txo_validation_handles)
+                .validate_outputs(validation_type, retries)
                 .map(OutputManagerResponse::UtxoValidationStarted),
             OutputManagerRequest::GetInvalidOutputs => {
                 let outputs = self
@@ -401,12 +316,16 @@ where TBackend: OutputManagerBackend + 'static
                 .map_err(OutputManagerError::OutputManagerStorageError),
 
             OutputManagerRequest::GetPublicRewindKeys => Ok(OutputManagerResponse::PublicRewindKeys(Box::new(
-                self.get_rewind_public_keys(),
+                self.resources.master_key_manager.get_rewind_public_keys(),
             ))),
-            OutputManagerRequest::RewindOutputs(outputs, height) => self
-                .rewind_outputs(outputs, height)
-                .await
-                .map(OutputManagerResponse::RewindOutputs),
+            OutputManagerRequest::ScanForRecoverableOutputs(outputs, height) => StandardUtxoRecoverer::new(
+                self.resources.master_key_manager.clone(),
+                self.resources.factories.clone(),
+                self.resources.db.clone(),
+            )
+            .scan_and_recover_outputs(outputs, height)
+            .await
+            .map(OutputManagerResponse::RewoundOutputs),
             OutputManagerRequest::ScanOutputs(outputs, height) => self
                 .scan_outputs_for_one_sided_payments(outputs, height)
                 .await
@@ -429,14 +348,13 @@ where TBackend: OutputManagerBackend + 'static
         &mut self,
         validation_type: TxoValidationType,
         retry_strategy: ValidationRetryStrategy,
-        txo_validation_handles: &mut FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>>,
     ) -> Result<u64, OutputManagerError> {
         match self.resources.base_node_public_key.as_ref() {
             None => Err(OutputManagerError::NoBaseNodeKeysProvided),
             Some(pk) => {
                 let id = OsRng.next_u64();
 
-                let utxo_validation_protocol = TxoValidationProtocol::new(
+                let utxo_validation_task = TxoValidationTask::new(
                     id,
                     validation_type,
                     retry_strategy,
@@ -445,27 +363,24 @@ where TBackend: OutputManagerBackend + 'static
                     self.base_node_update_publisher.subscribe(),
                 );
 
-                let join_handle = tokio::spawn(utxo_validation_protocol.execute());
-                txo_validation_handles.push(join_handle);
+                tokio::spawn(async move {
+                    match utxo_validation_task.execute().await {
+                        Ok(id) => {
+                            info!(
+                                target: LOG_TARGET,
+                                "UTXO Validation Protocol (Id: {}) completed successfully", id
+                            );
+                        },
+                        Err(OutputManagerProtocolError { id, error }) => {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Error completing UTXO Validation Protocol (Id: {}): {:?}", id, error
+                            );
+                        },
+                    }
+                });
 
                 Ok(id)
-            },
-        }
-    }
-
-    async fn complete_utxo_validation_protocol(&mut self, join_result: Result<u64, OutputManagerProtocolError>) {
-        match join_result {
-            Ok(id) => {
-                info!(
-                    target: LOG_TARGET,
-                    "UTXO Validation Protocol (Id: {}) completed successfully", id
-                );
-            },
-            Err(OutputManagerProtocolError { id, error }) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "Error completing UTXO Validation Protocol (Id: {}): {:?}", id, error
-                );
             },
         }
     }
@@ -501,7 +416,11 @@ where TBackend: OutputManagerBackend + 'static
             return Err(OutputManagerError::InvalidScriptHash);
         }
 
-        let (spending_key, script_private_key) = self.get_next_spend_and_script_key().await?;
+        let (spending_key, script_private_key) = self
+            .resources
+            .master_key_manager
+            .get_next_spend_and_script_key()
+            .await?;
 
         let output = DbUnblindedOutput::from_unblinded_output(
             UnblindedOutput::new(
@@ -532,63 +451,10 @@ where TBackend: OutputManagerBackend + 'static
             spending_key,
             OutputFeatures::default(),
             &self.resources.factories,
-            &self.resources.rewind_data,
+            self.resources.master_key_manager.rewind_data(),
         );
 
         Ok(rtp)
-    }
-
-    /// Request a Coinbase transaction for a specific block height. All existing pending transactions with
-    /// this blockheight will be cancelled.
-    /// The key will be derived from the coinbase specific keychain using the blockheight as an index. The coinbase
-    /// keychain is based on the wallets master_key and the "coinbase" branch.
-    async fn get_coinbase_transaction(
-        &mut self,
-        tx_id: TxId,
-        reward: MicroTari,
-        fees: MicroTari,
-        block_height: u64,
-    ) -> Result<Transaction, OutputManagerError> {
-        self.resources
-            .db
-            .cancel_pending_transaction_at_block_height(block_height)
-            .await?;
-
-        let (spending_key, script_key) = self.get_coinbase_spend_and_script_key_for_height(block_height).await?;
-
-        let nonce = PrivateKey::random(&mut OsRng);
-        let (tx, _) = CoinbaseBuilder::new(self.resources.factories.clone())
-            .with_block_height(block_height)
-            .with_fees(fees)
-            .with_spend_key(spending_key.clone())
-            .with_script_key(script_key.clone())
-            .with_nonce(nonce)
-            .with_rewind_data(self.resources.rewind_data.clone())
-            .build_with_reward(&self.resources.consensus_constants, reward)?;
-
-        let output = DbUnblindedOutput::from_unblinded_output(
-            UnblindedOutput::new(
-                reward + fees,
-                spending_key,
-                Some(OutputFeatures::create_coinbase(
-                    block_height + self.resources.consensus_constants.coinbase_lock_height(),
-                )),
-                script!(Nop),
-                inputs!(PublicKey::from_secret_key(&script_key)),
-                block_height,
-                script_key,
-                PublicKey::default(),
-            ),
-            &self.resources.factories,
-        )?;
-
-        self.resources
-            .db
-            .accept_incoming_pending_transaction(tx_id, output, Some(block_height))
-            .await?;
-
-        self.confirm_encumberance(tx_id).await?;
-        Ok(tx)
     }
 
     /// Confirm the reception of an expected transaction output. This will be called by the Transaction Service when it
@@ -708,10 +574,14 @@ where TBackend: OutputManagerBackend + 'static
         // If the input values > the amount to be sent + fee_without_change then we will need to include a change
         // output
         if total > amount + fee_without_change {
-            let (spending_key, script_private_key) = self.get_next_spend_and_script_key().await?;
+            let (spending_key, script_private_key) = self
+                .resources
+                .master_key_manager
+                .get_next_spend_and_script_key()
+                .await?;
             change_keys = Some((spending_key.clone(), script_private_key.clone()));
             builder.with_change_secret(spending_key);
-            builder.with_rewindable_outputs(self.resources.rewind_data.clone());
+            builder.with_rewindable_outputs(self.resources.master_key_manager.rewind_data().clone());
             builder.with_change_script(
                 script!(Nop),
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
@@ -764,6 +634,63 @@ where TBackend: OutputManagerBackend + 'static
         Ok(stp)
     }
 
+    /// Request a Coinbase transaction for a specific block height. All existing pending transactions with
+    /// this blockheight will be cancelled.
+    /// The key will be derived from the coinbase specific keychain using the blockheight as an index. The coinbase
+    /// keychain is based on the wallets master_key and the "coinbase" branch.
+    async fn get_coinbase_transaction(
+        &mut self,
+        tx_id: TxId,
+        reward: MicroTari,
+        fees: MicroTari,
+        block_height: u64,
+    ) -> Result<Transaction, OutputManagerError> {
+        self.resources
+            .db
+            .cancel_pending_transaction_at_block_height(block_height)
+            .await?;
+
+        let (spending_key, script_key) = self
+            .resources
+            .master_key_manager
+            .get_coinbase_spend_and_script_key_for_height(block_height)
+            .await?;
+
+        let nonce = PrivateKey::random(&mut OsRng);
+        let (tx, _) = CoinbaseBuilder::new(self.resources.factories.clone())
+            .with_block_height(block_height)
+            .with_fees(fees)
+            .with_spend_key(spending_key.clone())
+            .with_script_key(script_key.clone())
+            .with_nonce(nonce)
+            .with_rewind_data(self.resources.master_key_manager.rewind_data().clone())
+            .build_with_reward(&self.resources.consensus_constants, reward)?;
+
+        let output = DbUnblindedOutput::from_unblinded_output(
+            UnblindedOutput::new(
+                reward + fees,
+                spending_key,
+                Some(OutputFeatures::create_coinbase(
+                    block_height + self.resources.consensus_constants.coinbase_lock_height(),
+                )),
+                script!(Nop),
+                inputs!(PublicKey::from_secret_key(&script_key)),
+                block_height,
+                script_key,
+                PublicKey::default(),
+            ),
+            &self.resources.factories,
+        )?;
+
+        self.resources
+            .db
+            .accept_incoming_pending_transaction(tx_id, output, Some(block_height))
+            .await?;
+
+        self.confirm_encumberance(tx_id).await?;
+        Ok(tx)
+    }
+
     async fn create_pay_to_self_transaction(
         &mut self,
         amount: MicroTari,
@@ -795,7 +722,11 @@ where TBackend: OutputManagerBackend + 'static
             );
         }
 
-        let (spending_key, script_private_key) = self.get_next_spend_and_script_key().await?;
+        let (spending_key, script_private_key) = self
+            .resources
+            .master_key_manager
+            .get_next_spend_and_script_key()
+            .await?;
         let utxo = DbUnblindedOutput::from_unblinded_output(
             UnblindedOutput::new(
                 amount,
@@ -817,10 +748,14 @@ where TBackend: OutputManagerBackend + 'static
         let fee = Fee::calculate(fee_per_gram, 1, inputs.len(), 1);
         let change_value = total.saturating_sub(amount).saturating_sub(fee);
         if change_value > 0.into() {
-            let (spending_key, script_private_key) = self.get_next_spend_and_script_key().await?;
+            let (spending_key, script_private_key) = self
+                .resources
+                .master_key_manager
+                .get_next_spend_and_script_key()
+                .await?;
             change_keys = Some((spending_key.clone(), script_private_key.clone()));
             builder.with_change_secret(spending_key);
-            builder.with_rewindable_outputs(self.resources.rewind_data.clone());
+            builder.with_rewindable_outputs(self.resources.master_key_manager.rewind_data().clone());
             builder.with_change_script(
                 script!(Nop),
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
@@ -1154,7 +1089,7 @@ where TBackend: OutputManagerBackend + 'static
             .with_fee_per_gram(fee_per_gram)
             .with_offset(offset.clone())
             .with_private_nonce(nonce.clone())
-            .with_rewindable_outputs(self.resources.rewind_data.clone());
+            .with_rewindable_outputs(self.resources.master_key_manager.rewind_data().clone());
 
         trace!(target: LOG_TARGET, "Add inputs to coin split transaction.");
         for uo in inputs.iter() {
@@ -1178,7 +1113,11 @@ where TBackend: OutputManagerBackend + 'static
                 change_output
             };
 
-            let (spending_key, script_private_key) = self.get_next_spend_and_script_key().await?;
+            let (spending_key, script_private_key) = self
+                .resources
+                .master_key_manager
+                .get_next_spend_and_script_key()
+                .await?;
             let script_offset_private_key = PrivateKey::random(&mut OsRng);
 
             let utxo = DbUnblindedOutput::from_unblinded_output(
@@ -1218,73 +1157,8 @@ where TBackend: OutputManagerBackend + 'static
         Ok((tx_id, tx, fee, utxos_total_value))
     }
 
-    /// Return the Seed words for the current Master Key set in the Key Manager
-    pub async fn get_seed_words(&self) -> Result<Vec<String>, OutputManagerError> {
-        Ok(from_secret_key(
-            self.key_manager.lock().await.master_key(),
-            &MnemonicLanguage::English,
-        )?)
-    }
-
-    /// Return the public rewind keys
-    fn get_rewind_public_keys(&self) -> PublicRewindKeys {
-        PublicRewindKeys {
-            rewind_public_key: PublicKey::from_secret_key(&self.resources.rewind_data.rewind_key),
-            rewind_blinding_public_key: PublicKey::from_secret_key(&self.resources.rewind_data.rewind_blinding_key),
-        }
-    }
-
-    /// Attempt to rewind all of the given transaction outputs into unblinded outputs
-    async fn rewind_outputs(
-        &mut self,
-        outputs: Vec<TransactionOutput>,
-        height: u64,
-    ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
-        let rewind_data = &self.resources.rewind_data;
-
-        let rewound_outputs: Vec<UnblindedOutput> = outputs
-            .into_iter()
-            .filter_map(|output| {
-                output
-                    .full_rewind_range_proof(
-                        &self.resources.factories.range_proof,
-                        &rewind_data.rewind_key,
-                        &rewind_data.rewind_blinding_key,
-                    )
-                    .ok()
-                    .map(|v| (v, output.features, output.script, output.script_offset_public_key))
-            })
-            .map(|(output, features, script, script_offset_public_key)| {
-                // TODO actually increment the keymanager with found private keys so that we don't reuse private keys
-                // once recovery is complete and use the correct script private key
-                UnblindedOutput::new(
-                    output.committed_value,
-                    output.blinding_factor.clone(),
-                    Some(features),
-                    script,
-                    inputs!(PublicKey::from_secret_key(&output.blinding_factor)),
-                    height,
-                    output.blinding_factor,
-                    script_offset_public_key,
-                )
-            })
-            .collect();
-        for output in &rewound_outputs {
-            trace!(
-                target: LOG_TARGET,
-                "Output {} with value {} with {} recovered",
-                output
-                    .as_transaction_input(&self.resources.factories.commitment)?
-                    .commitment
-                    .to_hex(),
-                output.value,
-                output.features,
-            );
-        }
-
-        Ok(rewound_outputs)
-    }
-
+    /// Persist a one-sided payment script for a Comms Public/Private key. These are the scripts that this wallet knows
+    /// to look for when scanning for one-sided payments
     async fn add_known_script(&mut self, known_script: KnownOneSidedPaymentScript) -> Result<(), OutputManagerError> {
         debug!(target: LOG_TARGET, "Adding new script to output manager service");
         // It is not a problem if the script has already been persisted
@@ -1327,48 +1201,33 @@ where TBackend: OutputManagerBackend + 'static
                 let rewound =
                     output.full_rewind_range_proof(&self.resources.factories.range_proof, &rewind_key, &blinding_key);
 
-                if rewound.is_ok() {
-                    let rewound_output = rewound.unwrap();
-                    rewound_outputs.push(UnblindedOutput::new(
-                        rewound_output.committed_value,
-                        rewound_output.blinding_factor.clone(),
+                if let Ok(rewound_result) = rewound {
+                    let rewound_output = UnblindedOutput::new(
+                        rewound_result.committed_value,
+                        rewound_result.blinding_factor.clone(),
                         Some(output.features),
                         known_one_sided_payment_scripts[i].script.clone(),
                         known_one_sided_payment_scripts[i].input.clone(),
                         height,
                         known_one_sided_payment_scripts[i].private_key.clone(),
                         output.script_offset_public_key,
-                    ))
+                    );
+                    let db_output =
+                        DbUnblindedOutput::from_unblinded_output(rewound_output.clone(), &self.resources.factories)?;
+
+                    rewound_outputs.push(rewound_output);
+                    self.resources.db.add_unspent_output(db_output).await?;
+                    trace!(
+                        target: LOG_TARGET,
+                        "One-sided payment Output {} with value {} recovered",
+                        output.commitment.to_hex(),
+                        rewound_result.committed_value,
+                    );
                 }
             }
         }
 
         Ok(rewound_outputs)
-    }
-
-    /// Return the next pair of (spending_key, script_private_key) from the key managers. These will always be generated
-    /// in tandem and at corresponding increments
-    async fn get_next_spend_and_script_key(&self) -> Result<(PrivateKey, PrivateKey), OutputManagerError> {
-        let mut km = self.key_manager.lock().await;
-        let key = km.next_key()?;
-
-        let mut skm = self.script_key_manager.lock().await;
-        let script_key = skm.next_key()?;
-
-        self.resources.db.increment_key_index().await?;
-        Ok((key.k, script_key.k))
-    }
-
-    async fn get_coinbase_spend_and_script_key_for_height(
-        &self,
-        height: u64,
-    ) -> Result<(PrivateKey, PrivateKey), OutputManagerError> {
-        let km = self.coinbase_key_manager.lock().await;
-        let spending_key = km.derive_key(height)?;
-
-        let mut skm = self.coinbase_script_key_manager.lock().await;
-        let script_key = skm.next_key()?;
-        Ok((spending_key.k, script_key.k))
     }
 }
 
@@ -1426,23 +1285,6 @@ impl fmt::Display for Balance {
         write!(f, "Pending outgoing balance: {}", self.pending_outgoing_balance)?;
         Ok(())
     }
-}
-
-/// This struct is a collection of the common resources that a async task in the service requires.
-#[derive(Clone)]
-pub struct OutputManagerResources<TBackend>
-where TBackend: OutputManagerBackend + 'static
-{
-    pub config: OutputManagerServiceConfig,
-    pub db: OutputManagerDatabase<TBackend>,
-    pub transaction_service: TransactionServiceHandle,
-    pub factories: CryptoFactories,
-    pub base_node_public_key: Option<CommsPublicKey>,
-    pub event_publisher: OutputManagerEventSender,
-    pub rewind_data: RewindData,
-    pub consensus_constants: ConsensusConstants,
-    pub connectivity_manager: ConnectivityRequester,
-    pub shutdown_signal: ShutdownSignal,
 }
 
 fn hash_secret_key(key: &PrivateKey) -> Vec<u8> {

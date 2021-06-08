@@ -80,6 +80,8 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     /// This method will increment the currently stored key index for the key manager config. Increment this after each
     /// key is generated
     fn increment_key_index(&self) -> Result<(), OutputManagerStorageError>;
+    /// This method will set the currently stored key index for the key manager
+    fn set_key_index(&self, index: u64) -> Result<(), OutputManagerStorageError>;
     /// If an unspent output is detected as invalid (i.e. not available on the blockchain) then it should be moved to
     /// the invalid outputs collection. The function will return the last recorded TxId associated with this output.
     fn invalidate_unspent_output(&self, output: &DbUnblindedOutput) -> Result<Option<TxId>, OutputManagerStorageError>;
@@ -215,6 +217,14 @@ where T: OutputManagerBackend + 'static
     pub async fn increment_key_index(&self) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.increment_key_index())
+            .await
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(())
+    }
+
+    pub async fn set_key_index(&self, index: u64) -> Result<(), OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.set_key_index(index))
             .await
             .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())

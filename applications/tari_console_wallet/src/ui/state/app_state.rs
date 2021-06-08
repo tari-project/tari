@@ -55,12 +55,7 @@ use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
     contacts_service::storage::database::Contact,
-    output_manager_service::{
-        handle::OutputManagerEventReceiver,
-        protocols::txo_validation_protocol::TxoValidationType,
-        service::Balance,
-        TxId,
-    },
+    output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, TxId, TxoValidationType},
     transaction_service::{
         handle::TransactionEventReceiver,
         storage::models::{CompletedTransaction, TransactionStatus},

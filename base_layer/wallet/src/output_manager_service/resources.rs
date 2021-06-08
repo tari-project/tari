@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2021. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,26 +20,33 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
-use tari_key_manager::mnemonic::MnemonicLanguage;
+use crate::{
+    output_manager_service::{
+        config::OutputManagerServiceConfig,
+        handle::OutputManagerEventSender,
+        storage::database::{OutputManagerBackend, OutputManagerDatabase},
+        MasterKeyManager,
+    },
+    transaction_service::handle::TransactionServiceHandle,
+};
+use std::sync::Arc;
+use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
+use tari_core::{consensus::ConsensusConstants, transactions::types::CryptoFactories};
+use tari_shutdown::ShutdownSignal;
 
-#[derive(Clone, Debug)]
-pub struct OutputManagerServiceConfig {
-    pub base_node_query_timeout: Duration,
-    pub max_utxo_query_size: usize,
-    pub prevent_fee_gt_amount: bool,
-    pub peer_dial_retry_timeout: Duration,
-    pub seed_word_language: MnemonicLanguage,
-}
-
-impl Default for OutputManagerServiceConfig {
-    fn default() -> Self {
-        Self {
-            base_node_query_timeout: Duration::from_secs(60),
-            max_utxo_query_size: 5000,
-            prevent_fee_gt_amount: true,
-            peer_dial_retry_timeout: Duration::from_secs(20),
-            seed_word_language: MnemonicLanguage::English,
-        }
-    }
+/// This struct is a collection of the common resources that a async task in the service requires.
+#[derive(Clone)]
+pub(crate) struct OutputManagerResources<TBackend>
+where TBackend: OutputManagerBackend + 'static
+{
+    pub config: OutputManagerServiceConfig,
+    pub db: OutputManagerDatabase<TBackend>,
+    pub transaction_service: TransactionServiceHandle,
+    pub factories: CryptoFactories,
+    pub base_node_public_key: Option<CommsPublicKey>,
+    pub event_publisher: OutputManagerEventSender,
+    pub master_key_manager: Arc<MasterKeyManager<TBackend>>,
+    pub consensus_constants: ConsensusConstants,
+    pub connectivity_manager: ConnectivityRequester,
+    pub shutdown_signal: ShutdownSignal,
 }

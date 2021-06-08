@@ -573,6 +573,14 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
+    fn set_key_index(&self, index: u64) -> Result<(), OutputManagerStorageError> {
+        let conn = self.database_connection.acquire_lock();
+
+        KeyManagerStateSql::set_index(index, &(*conn))?;
+
+        Ok(())
+    }
+
     fn invalidate_unspent_output(&self, output: &DbUnblindedOutput) -> Result<Option<TxId>, OutputManagerStorageError> {
         let conn = self.database_connection.acquire_lock();
         let output = OutputSql::find_by_commitment(&output.commitment.to_vec(), &conn)?;
@@ -1384,6 +1392,28 @@ impl KeyManagerStateSql {
             },
             Err(_) => return Err(OutputManagerStorageError::KeyManagerNotInitialized),
         })
+    }
+
+    pub fn set_index(index: u64, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
+        match KeyManagerStateSql::get_state(conn) {
+            Ok(km) => {
+                let update = KeyManagerStateUpdateSql {
+                    master_key: None,
+                    branch_seed: None,
+                    primary_key_index: Some(index as i64),
+                };
+                let num_updated = diesel::update(key_manager_states::table.filter(key_manager_states::id.eq(&km.id)))
+                    .set(update)
+                    .execute(conn)?;
+                if num_updated == 0 {
+                    return Err(OutputManagerStorageError::UnexpectedResult(
+                        "Database update error".to_string(),
+                    ));
+                }
+                Ok(())
+            },
+            Err(_) => Err(OutputManagerStorageError::KeyManagerNotInitialized),
+        }
     }
 }
 

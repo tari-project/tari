@@ -22,11 +22,7 @@
 
 use crate::{
     error::WalletError,
-    output_manager_service::{
-        error::{OutputManagerError, OutputManagerStorageError},
-        handle::OutputManagerHandle,
-        TxId,
-    },
+    output_manager_service::{handle::OutputManagerHandle, TxId},
     storage::{
         database::{WalletBackend, WalletDatabase},
         sqlite_db::WalletSqliteDatabase,
@@ -531,38 +527,38 @@ where TBackend: WalletBackend + 'static
             // ToDo fix this,m this should come from the syncing node.
             let height = 0;
             iteration_count += 1;
-            let unblinded_outputs = match self.mode {
+            let (standard_outputs, one_sided_outputs) = match self.mode {
                 UtxoScannerMode::Recovery => {
-                    let mut unblinded_outputs = self
+                    let standard_outputs = self
                         .resources
                         .output_manager_service
-                        .rewind_outputs(outputs.clone(), height)
+                        .scan_for_recoverable_outputs(outputs.clone(), height)
                         .await?;
-                    unblinded_outputs.append(
-                        &mut self
-                            .resources
-                            .output_manager_service
-                            .scan_outputs_for_one_sided_payments(outputs.clone(), height)
-                            .await?,
-                    );
-                    unblinded_outputs
+                    let one_sided_outputs = self
+                        .resources
+                        .output_manager_service
+                        .scan_outputs_for_one_sided_payments(outputs.clone(), height)
+                        .await?;
+
+                    (standard_outputs, one_sided_outputs)
                 },
-                UtxoScannerMode::Scanning => {
+                UtxoScannerMode::Scanning => (
+                    vec![],
                     self.resources
                         .output_manager_service
                         .scan_outputs_for_one_sided_payments(outputs.clone(), height)
-                        .await?
-                },
+                        .await?,
+                ),
             };
-            if unblinded_outputs.is_empty() {
+            if standard_outputs.is_empty() && one_sided_outputs.is_empty() {
                 continue;
             }
 
             let source_public_key = self.resources.node_identity.public_key().clone();
 
-            for uo in unblinded_outputs {
+            for uo in standard_outputs {
                 match self
-                    .import_unblinded_utxo_to_services(
+                    .import_unblinded_utxo_to_transaction_service(
                         uo.clone(),
                         &source_public_key,
                         format!("Recovered on {}.", Utc::now().naive_utc()),
@@ -573,9 +569,23 @@ where TBackend: WalletBackend + 'static
                         num_recovered = num_recovered.saturating_add(1);
                         total_amount += uo.value;
                     },
-                    Err(WalletError::OutputManagerError(OutputManagerError::OutputManagerStorageError(
-                        OutputManagerStorageError::DuplicateOutput,
-                    ))) => warn!(target: LOG_TARGET, "Recovered output already in database"),
+                    Err(e) => return Err(UtxoScannerError::UtxoImportError(e.to_string())),
+                }
+            }
+
+            for uo in one_sided_outputs {
+                match self
+                    .import_unblinded_utxo_to_transaction_service(
+                        uo.clone(),
+                        &source_public_key,
+                        format!("Detected one-sided transaction on {}.", Utc::now().naive_utc()),
+                    )
+                    .await
+                {
+                    Ok(_) => {
+                        num_recovered = num_recovered.saturating_add(1);
+                        total_amount += uo.value;
+                    },
                     Err(e) => return Err(UtxoScannerError::UtxoImportError(e.to_string())),
                 }
             }
@@ -670,20 +680,14 @@ where TBackend: WalletBackend + 'static
         let _ = self.event_sender.send(event);
     }
 
-    /// Import an external spendable UTXO into the wallet. The output will be added to the Output Manager and made
-    /// spendable. A faux incoming transaction will be created to provide a record of the event. The TxId of the
-    /// generated transaction is returned.
-    pub async fn import_unblinded_utxo_to_services(
+    /// A faux incoming transaction will be created to provide a record of the event of importing a UTXO. The TxId of
+    /// the generated transaction is returned.
+    pub async fn import_unblinded_utxo_to_transaction_service(
         &mut self,
         unblinded_output: UnblindedOutput,
         source_public_key: &CommsPublicKey,
         message: String,
     ) -> Result<TxId, WalletError> {
-        self.resources
-            .output_manager_service
-            .add_output(unblinded_output.clone())
-            .await?;
-
         let tx_id = self
             .resources
             .transaction_service

@@ -23,9 +23,9 @@
 use crate::{
     output_manager_service::{
         error::OutputManagerError,
-        protocols::txo_validation_protocol::TxoValidationType,
         service::Balance,
         storage::{database::PendingTransactionOutputs, models::KnownOneSidedPaymentScript},
+        tasks::TxoValidationType,
         TxId,
     },
     types::ValidationRetryStrategy,
@@ -71,7 +71,7 @@ pub enum OutputManagerRequest {
     RemoveEncryption,
     GetPublicRewindKeys,
     FeeEstimate((MicroTari, MicroTari, u64, u64)),
-    RewindOutputs(Vec<TransactionOutput>, u64),
+    ScanForRecoverableOutputs(Vec<TransactionOutput>, u64),
     ScanOutputs(Vec<TransactionOutput>, u64),
     UpdateMinedHeight(u64, u64),
     AddKnownOneSidedPaymentScript(KnownOneSidedPaymentScript),
@@ -103,7 +103,7 @@ impl fmt::Display for OutputManagerRequest {
             GetCoinbaseTransaction(_) => write!(f, "GetCoinbaseTransaction"),
             GetPublicRewindKeys => write!(f, "GetPublicRewindKeys"),
             FeeEstimate(_) => write!(f, "FeeEstimate"),
-            RewindOutputs(_, _) => write!(f, "RewindAndImportOutputs"),
+            ScanForRecoverableOutputs(_, _) => write!(f, "ScanForRecoverableOutputs"),
             ScanOutputs(_, _) => write!(f, "ScanRewindAndImportOutputs"),
             UpdateMinedHeight(_, _) => write!(f, "UpdateMinedHeight"),
             AddKnownOneSidedPaymentScript(_) => write!(f, "AddKnownOneSidedPaymentScript"),
@@ -137,7 +137,7 @@ pub enum OutputManagerResponse {
     EncryptionRemoved,
     PublicRewindKeys(Box<PublicRewindKeys>),
     FeeEstimate(MicroTari),
-    RewindOutputs(Vec<UnblindedOutput>),
+    RewoundOutputs(Vec<UnblindedOutput>),
     ScanOutputs(Vec<UnblindedOutput>),
     MinedHeightUpdated,
     AddKnownOneSidedPaymentScript,
@@ -452,17 +452,17 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn rewind_outputs(
+    pub async fn scan_for_recoverable_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
         height: u64,
     ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::RewindOutputs(outputs, height))
+            .call(OutputManagerRequest::ScanForRecoverableOutputs(outputs, height))
             .await??
         {
-            OutputManagerResponse::RewindOutputs(outputs) => Ok(outputs),
+            OutputManagerResponse::RewoundOutputs(outputs) => Ok(outputs),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
