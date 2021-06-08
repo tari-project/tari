@@ -104,6 +104,8 @@ impl CommandHandler {
 
         self.executor.spawn(async move {
             let mut status_line = StatusLine::new();
+            let version = format!("v{}", consts::APP_VERSION_NUMBER);
+            status_line.add_field("", version);
 
             let state = state_info.recv().await.unwrap();
             status_line.add_field("State", state.state_info.short_desc());

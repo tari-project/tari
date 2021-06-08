@@ -21,7 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::error::CommandError;
-use crate::automation::command_parser::{ParsedArgument, ParsedCommand};
+use crate::{
+    automation::command_parser::{ParsedArgument, ParsedCommand},
+    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
+};
 use chrono::{DateTime, Utc};
 use futures::{FutureExt, StreamExt};
 use log::*;
@@ -33,7 +36,11 @@ use std::{
 };
 use strum_macros::{Display, EnumIter, EnumString};
 use tari_common::GlobalConfig;
-use tari_comms::connectivity::{ConnectivityEvent, ConnectivityRequester};
+use tari_comms::{
+    connectivity::{ConnectivityEvent, ConnectivityRequester},
+    multiaddr::Multiaddr,
+    types::CommsPublicKey,
+};
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::{
     tari_utilities::hex::Hex,
@@ -71,6 +78,9 @@ pub enum WalletCommand {
     ExportUtxos,
     ExportSpentUtxos,
     CountUtxos,
+    SetBaseNode,
+    SetCustomBaseNode,
+    ClearCustomBaseNode,
 }
 
 #[derive(Debug, EnumString, PartialEq, Clone)]
@@ -185,6 +195,28 @@ async fn wait_for_comms(connectivity_requester: &ConnectivityRequester) -> Resul
             }
         }
     }
+}
+async fn set_base_node_peer(
+    mut wallet: WalletSqlite,
+    args: &[ParsedArgument],
+) -> Result<(CommsPublicKey, Multiaddr), CommandError> {
+    let public_key = match args[0].clone() {
+        ParsedArgument::PublicKey(s) => Ok(s),
+        _ => Err(CommandError::Argument),
+    }?;
+
+    let net_address = match args[1].clone() {
+        ParsedArgument::Address(a) => Ok(a),
+        _ => Err(CommandError::Argument),
+    }?;
+
+    println!("Setting base node peer...");
+    println!("{}::{}", public_key, net_address);
+    wallet
+        .set_base_node_peer(public_key.clone(), net_address.to_string())
+        .await?;
+
+    Ok((public_key, net_address))
 }
 
 pub async fn discover_peer(
@@ -539,6 +571,32 @@ pub async fn command_runner(
                 if let Some(max) = values.iter().max() {
                     println!("Maximum value UTXO   : {}", max);
                 }
+            },
+            SetBaseNode => {
+                set_base_node_peer(wallet.clone(), &parsed.args).await?;
+            },
+            SetCustomBaseNode => {
+                let (public_key, net_address) = set_base_node_peer(wallet.clone(), &parsed.args).await?;
+                println!("Saving custom base node peer in wallet database.");
+                wallet
+                    .db
+                    .set_client_key_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string(), public_key.to_string())
+                    .await?;
+                wallet
+                    .db
+                    .set_client_key_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string(), net_address.to_string())
+                    .await?;
+            },
+            ClearCustomBaseNode => {
+                println!("Clearing custom base node peer in wallet database.");
+                wallet
+                    .db
+                    .clear_client_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string())
+                    .await?;
+                wallet
+                    .db
+                    .clear_client_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string())
+                    .await?;
             },
         }
     }

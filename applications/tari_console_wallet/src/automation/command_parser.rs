@@ -30,6 +30,7 @@ use std::{
     str::FromStr,
 };
 use tari_app_utilities::utilities::parse_emoji_id_or_public_key;
+use tari_comms::multiaddr::Multiaddr;
 
 use tari_core::transactions::{tari_amount::MicroTari, types::PublicKey};
 
@@ -41,17 +42,21 @@ pub struct ParsedCommand {
 
 impl Display for ParsedCommand {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        use WalletCommand::*;
         let command = match self.command {
-            WalletCommand::GetBalance => "get-balance",
-            WalletCommand::SendTari => "send-tari",
-            WalletCommand::SendOneSided => "send-one-sided",
-            WalletCommand::MakeItRain => "make-it-rain",
-            WalletCommand::CoinSplit => "coin-split",
-            WalletCommand::DiscoverPeer => "discover-peer",
-            WalletCommand::Whois => "whois",
-            WalletCommand::ExportUtxos => "export-utxos",
-            WalletCommand::ExportSpentUtxos => "export-spent-utxos",
-            WalletCommand::CountUtxos => "count-utxos",
+            GetBalance => "get-balance",
+            SendTari => "send-tari",
+            SendOneSided => "send-one-sided",
+            MakeItRain => "make-it-rain",
+            CoinSplit => "coin-split",
+            DiscoverPeer => "discover-peer",
+            Whois => "whois",
+            ExportUtxos => "export-utxos",
+            ExportSpentUtxos => "export-spent-utxos",
+            CountUtxos => "count-utxos",
+            SetBaseNode => "set-base-node",
+            SetCustomBaseNode => "set-custom-base-node",
+            ClearCustomBaseNode => "clear-custom-base-node",
         };
 
         let args = self
@@ -75,19 +80,22 @@ pub enum ParsedArgument {
     Date(DateTime<Utc>),
     OutputToCSVFile(String),
     CSVFileName(String),
+    Address(Multiaddr),
 }
 
 impl Display for ParsedArgument {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        use ParsedArgument::*;
         match self {
-            ParsedArgument::Amount(v) => write!(f, "{}", v.to_string()),
-            ParsedArgument::PublicKey(v) => write!(f, "{}", v.to_string()),
-            ParsedArgument::Text(v) => write!(f, "{}", v.to_string()),
-            ParsedArgument::Float(v) => write!(f, "{}", v.to_string()),
-            ParsedArgument::Int(v) => write!(f, "{}", v.to_string()),
-            ParsedArgument::Date(v) => write!(f, "{}", v.to_string()),
-            ParsedArgument::OutputToCSVFile(v) => write!(f, "{}", v.to_string()),
-            ParsedArgument::CSVFileName(v) => write!(f, "{}", v.to_string()),
+            Amount(v) => write!(f, "{}", v.to_string()),
+            PublicKey(v) => write!(f, "{}", v.to_string()),
+            Text(v) => write!(f, "{}", v.to_string()),
+            Float(v) => write!(f, "{}", v.to_string()),
+            Int(v) => write!(f, "{}", v.to_string()),
+            Date(v) => write!(f, "{}", v.to_string()),
+            OutputToCSVFile(v) => write!(f, "{}", v.to_string()),
+            CSVFileName(v) => write!(f, "{}", v.to_string()),
+            Address(v) => write!(f, "{}", v.to_string()),
         }
     }
 }
@@ -106,11 +114,14 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, ParseError> {
         SendOneSided => parse_send_tari(args)?,
         MakeItRain => parse_make_it_rain(args)?,
         CoinSplit => parse_coin_split(args)?,
-        DiscoverPeer => parse_discover_peer(args)?,
+        DiscoverPeer => parse_public_key(args)?,
         Whois => parse_whois(args)?,
         ExportUtxos => parse_export_utxos(args)?, // todo: only show X number of utxos
         ExportSpentUtxos => parse_export_spent_utxos(args)?, // todo: only show X number of utxos
         CountUtxos => Vec::new(),
+        SetBaseNode => parse_public_key_and_address(args)?,
+        SetCustomBaseNode => parse_public_key_and_address(args)?,
+        ClearCustomBaseNode => Vec::new(),
     };
 
     Ok(ParsedCommand { command, args })
@@ -129,7 +140,7 @@ fn parse_whois(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseEr
     Ok(parsed_args)
 }
 
-fn parse_discover_peer(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
+fn parse_public_key(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
     let mut parsed_args = Vec::new();
 
     // public key/emoji id
@@ -138,6 +149,26 @@ fn parse_discover_peer(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>,
         .ok_or_else(|| ParseError::Empty("public key or emoji id".to_string()))?;
     let pubkey = parse_emoji_id_or_public_key(pubkey).ok_or(ParseError::PublicKey)?;
     parsed_args.push(ParsedArgument::PublicKey(pubkey));
+
+    Ok(parsed_args)
+}
+
+fn parse_public_key_and_address(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
+    let mut parsed_args = Vec::new();
+
+    // public key/emoji id
+    let pubkey = args
+        .next()
+        .ok_or_else(|| ParseError::Empty("public key or emoji id".to_string()))?;
+    let pubkey = parse_emoji_id_or_public_key(pubkey).ok_or(ParseError::PublicKey)?;
+    parsed_args.push(ParsedArgument::PublicKey(pubkey));
+
+    // address
+    let address = args
+        .next()
+        .ok_or_else(|| ParseError::Empty("net address".to_string()))?;
+    let address = address.parse::<Multiaddr>().map_err(|_| ParseError::Address)?;
+    parsed_args.push(ParsedArgument::Address(address));
 
     Ok(parsed_args)
 }
