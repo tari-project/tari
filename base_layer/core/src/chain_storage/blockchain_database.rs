@@ -1453,7 +1453,7 @@ fn handle_possible_reorg<T: BlockchainBackend>(
             debug!(
                 target: LOG_TARGET,
                 "Fork chain (accum_diff:{}, hash:{}) is stronger than the current tip (#{} ({})).",
-                fork_header.header().height,
+                fork_header.accumulated_data().total_accumulated_difficulty,
                 fork_header.accumulated_data().hash.to_hex(),
                 tip_header.height(),
                 tip_header.hash().to_hex()
@@ -2314,26 +2314,31 @@ mod test {
 
     #[test]
     fn test_handle_possible_reorg_target_difficulty_is_correct_case_1() {
-        let (result, _blocks) =
-            test_case_handle_possible_reorg(&[("A->GB", 1, 120), ("B->A", 1, 60), ("C2->B", 2, 20), ("D2->C2", 4, 60)])
-                .unwrap();
+        let (result, _blocks) = test_case_handle_possible_reorg(&[
+            ("A->GB", 1, 12),
+            ("B->A", 10, 40),
+            ("C2->B", 20, 69),
+            ("D2->C2", 40, 40),
+        ])
+        .unwrap();
         let mut expected_target_difficulties = vec![];
         expected_target_difficulties.extend(result[0].added_blocks());
         expected_target_difficulties.extend(result[1].added_blocks());
         expected_target_difficulties.extend(result[2].added_blocks());
         expected_target_difficulties.extend(result[3].added_blocks());
+
         let expected_target_difficulties: Vec<u64> = expected_target_difficulties
             .iter()
             .map(|b| b.accumulated_data().target_difficulty.as_u64())
             .collect();
-        assert_eq!(expected_target_difficulties, vec![1, 1, 2, 4]);
+        assert_eq!(expected_target_difficulties, vec![1, 10, 19, 24]);
 
         let (result, blocks) = test_case_handle_possible_reorg(&[
-            ("A->GB", 1, 120),
-            ("B->A", 1, 60),
-            ("C->B", 3, 240),
-            ("C2->B", 2, 20),
-            ("D2->C2", 4, 60),
+            ("A->GB", 1, 12),
+            ("B->A", 10, 40),
+            ("C->B", 30, 155),
+            ("C2->B", 20, 69),
+            ("D2->C2", 40, 40),
         ])
         .unwrap();
 
@@ -2344,20 +2349,19 @@ mod test {
         result[4].assert_reorg(2, 1);
 
         assert_added_hashes_eq(&result[4], vec!["C2", "D2"], &blocks);
-        assert_target_difficulties_eq(&result[4], vec![2, 4]);
+        assert_target_difficulties_eq(&result[4], vec![19, 24]);
     }
 
     #[test]
     fn test_handle_possible_reorg_target_difficulty_is_correct_case_2() {
-        let _ = env_logger::builder().is_test(true).try_init();
         // Test a straight chain to get the correct target difficulty. The block times must be reduced so that the
-        // algorithm changes
+        // difficulty changes
         let (result, _blocks) = test_case_handle_possible_reorg(&[
-            ("A->GB", 1, 120),
-            ("B2->A", 1, 60),
-            ("C2->B2", 2, 60),
-            ("D2->C2", 3, 60),
-            ("E2->D2", 4, 60),
+            ("A->GB", 1, 12),
+            ("B2->A", 10, 40),
+            ("C2->B2", 20, 70),
+            ("D2->C2", 25, 70),
+            ("E2->D2", 30, 70),
         ])
         .unwrap();
         let mut expected_target_difficulties = vec![];
@@ -2370,17 +2374,17 @@ mod test {
             .iter()
             .map(|b| b.accumulated_data().target_difficulty.as_u64())
             .collect();
-        assert_eq!(expected_target_difficulties, vec![1, 1, 2, 3, 4]);
+        assert_eq!(expected_target_difficulties, vec![1, 10, 19, 23, 26]);
 
         // Now do a reorg to make sure the target difficulties are the same
         let (result, blocks) = test_case_handle_possible_reorg(&[
-            ("A->GB", 1, 120),
-            ("B->A", 4, 120),
-            ("C->B", 4, 120),
-            ("B2->A", 1, 60),
-            ("C2->B2", 2, 60),
-            ("D2->C2", 3, 60),
-            ("E2->D2", 4, 60),
+            ("A->GB", 1, 12),
+            ("B->A", 35, 200),
+            ("C->B", 35, 200),
+            ("B2->A", 10, 40),
+            ("C2->B2", 20, 70),
+            ("D2->C2", 25, 70),
+            ("E2->D2", 30, 70),
         ])
         .unwrap();
         result[0].assert_added();
@@ -2392,7 +2396,7 @@ mod test {
         result[6].assert_reorg(4, 2);
 
         assert_added_hashes_eq(&result[6], vec!["B2", "C2", "D2", "E2"], &blocks);
-        assert_target_difficulties_eq(&result[6], vec![1, 2, 3, 4]);
+        assert_target_difficulties_eq(&result[6], vec![10, 19, 23, 26]);
     }
 
     fn check_whole_chain(db: &mut TempDatabase) {
@@ -2454,7 +2458,7 @@ mod test {
                     .add_proof_of_work(PowAlgorithm::Sha3, PowAlgorithmConstants {
                         max_target_time: 1200,
                         min_difficulty: 1.into(),
-                        max_difficulty: 4.into(),
+                        max_difficulty: 100.into(),
                         target_time: 120,
                     })
                     .build(),
