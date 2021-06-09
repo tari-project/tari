@@ -251,6 +251,7 @@ pub struct ByteVector(Vec<c_uchar>); // declared like this so that it can be exp
 #[derive(Debug, PartialEq)]
 pub struct EmojiSet(Vec<ByteVector>);
 
+#[derive(Debug, PartialEq)]
 pub struct TariSeedWords(Vec<String>);
 
 pub struct TariWallet {
@@ -829,7 +830,7 @@ pub unsafe extern "C" fn seed_words_create() -> *mut TariSeedWords {
 /// as an out parameter.
 ///
 /// ## Returns
-/// `c_uint` - Returns number of elements in , zero if contacts is null
+/// `c_uint` - Returns number of elements in seed_words, zero if seed_words is null
 ///
 /// # Safety
 /// None
@@ -2740,6 +2741,7 @@ unsafe fn init_logging(log_path: *const c_char, num_rolling_log_files: c_uint, s
         Err(_) => warn!(target: LOG_TARGET, "Logging has already been initialized"),
     }
 }
+
 /// Creates a TariWallet
 ///
 /// ## Arguments
@@ -2753,12 +2755,13 @@ unsafe fn init_logging(log_path: *const c_char, num_rolling_log_files: c_uint, s
 /// `passphrase` - An optional string that represents the passphrase used to
 /// encrypt/decrypt the databases for this wallet. If it is left Null no encryption is used. If the databases have been
 /// encrypted then the correct passphrase is required or this function will fail.
-/// `callback_received_transaction` - The callback function pointer matching the
-/// function signature. This will be called when an inbound transaction is received.
-/// `callback_received_transaction_reply` - The callback function pointer matching the function signature. This will be
-/// called when a reply is received for a pending outbound transaction
-/// `callback_received_finalized_transaction` - The callback function pointer matching the function signature. This will
-/// be called when a Finalized version on an Inbound transaction is received
+/// `seed_words` - An optional instance of TariSeedWords, used to create a wallet for recovery purposes.
+/// If this is null, then a new master key is created for the wallet.
+/// `callback_received_transaction` - The callback function pointer matching the function signature. This will be
+/// called when an inbound transaction is received. `callback_received_transaction_reply` - The callback function
+/// pointer matching the function signature. This will be called when a reply is received for a pending outbound
+/// transaction `callback_received_finalized_transaction` - The callback function pointer matching the function
+/// signature. This will be called when a Finalized version on an Inbound transaction is received
 /// `callback_transaction_broadcast` - The callback function pointer matching the function signature. This will be
 /// called when a Finalized transaction is detected a Broadcast to a base node mempool.
 /// `callback_transaction_mined` - The callback function pointer matching the function signature. This will be called
@@ -2792,12 +2795,14 @@ unsafe fn init_logging(log_path: *const c_char, num_rolling_log_files: c_uint, s
 /// # Safety
 /// The ```wallet_destroy``` method must be called when finished with a TariWallet to prevent a memory leak
 #[no_mangle]
+#[allow(clippy::cognitive_complexity)]
 pub unsafe extern "C" fn wallet_create(
     config: *mut TariCommsConfig,
     log_path: *const c_char,
     num_rolling_log_files: c_uint,
     size_per_log_file_bytes: c_uint,
     passphrase: *const c_char,
+    seed_words: *const TariSeedWords,
     callback_received_transaction: unsafe extern "C" fn(*mut TariPendingInboundTransaction),
     callback_received_transaction_reply: unsafe extern "C" fn(*mut TariCompletedTransaction),
     callback_received_finalized_transaction: unsafe extern "C" fn(*mut TariCompletedTransaction),
@@ -2814,6 +2819,8 @@ pub unsafe extern "C" fn wallet_create(
     callback_saf_messages_received: unsafe extern "C" fn(),
     error_out: *mut c_int,
 ) -> *mut TariWallet {
+    use tari_key_manager::mnemonic::Mnemonic;
+
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if config.is_null() {
@@ -2834,6 +2841,20 @@ pub unsafe extern "C" fn wallet_create(
         Some(pf)
     } else {
         None
+    };
+
+    let recovery_master_key = if seed_words.is_null() {
+        None
+    } else {
+        match TariPrivateKey::from_mnemonic(&(*seed_words).0) {
+            Ok(private_key) => Some(private_key),
+            Err(e) => {
+                error!(target: LOG_TARGET, "Mnemonic Error for given seed words: {}", e);
+                error = LibWalletError::from(e).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        }
     };
 
     let mut runtime = match Runtime::new() {
@@ -2862,7 +2883,7 @@ pub unsafe extern "C" fn wallet_create(
                 return ptr::null_mut();
             },
         };
-    let wallet_db = WalletDatabase::new(wallet_backend);
+    let wallet_database = WalletDatabase::new(wallet_backend);
 
     debug!(target: LOG_TARGET, "Databases Initialized");
 
@@ -2870,7 +2891,7 @@ pub unsafe extern "C" fn wallet_create(
     let mut comms_config = (*config).clone();
     comms_config.transport_type = match comms_config.transport_type {
         Tor(mut tor_config) => {
-            tor_config.identity = match runtime.block_on(wallet_db.get_tor_id()) {
+            tor_config.identity = match runtime.block_on(wallet_database.get_tor_id()) {
                 Ok(Some(v)) => Some(Box::new(v)),
                 _ => None,
             };
@@ -2880,28 +2901,29 @@ pub unsafe extern "C" fn wallet_create(
     };
 
     let shutdown = Shutdown::new();
+    let wallet_config = WalletConfig::new(
+        comms_config,
+        factories,
+        Some(TransactionServiceConfig {
+            direct_send_timeout: (*config).dht.discovery_request_timeout,
+            ..Default::default()
+        }),
+        None,
+        Network::Weatherwax,
+        None,
+        None,
+        None,
+        None,
+    );
 
     w = runtime.block_on(Wallet::start(
-        WalletConfig::new(
-            comms_config,
-            factories,
-            Some(TransactionServiceConfig {
-                direct_send_timeout: (*config).dht.discovery_request_timeout,
-                ..Default::default()
-            }),
-            None,
-            Network::Weatherwax,
-            None,
-            None,
-            None,
-            None,
-        ),
-        wallet_db,
+        wallet_config,
+        wallet_database,
         transaction_backend.clone(),
         output_manager_backend,
         contacts_backend,
         shutdown.to_signal(),
-        None,
+        recovery_master_key,
     ));
 
     match w {
@@ -4901,7 +4923,7 @@ pub unsafe extern "C" fn wallet_get_seed_words(wallet: *mut TariWallet, error_ou
         .runtime
         .block_on((*wallet).wallet.output_manager_service.get_seed_words())
     {
-        Ok(sw) => Box::into_raw(Box::new(TariSeedWords(sw))),
+        Ok(seed_words) => Box::into_raw(Box::new(TariSeedWords(seed_words))),
         Err(e) => {
             error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
             ptr::swap(error_out, &mut error as *mut c_int);
@@ -5240,7 +5262,7 @@ pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet,
     }
 }
 
-/// Check if a Wallet has the data of an In Progress Recovery in its database.
+/// Starts the Wallet recovery process.
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer.
@@ -5279,9 +5301,9 @@ pub unsafe extern "C" fn wallet_start_recovery(
     }
 
     let shutdown_signal = (*wallet).shutdown.to_signal();
-    let peer_seed_public_keys: Vec<TariPublicKey> = vec![(*base_node_public_key).clone()];
+    let peer_public_keys: Vec<TariPublicKey> = vec![(*base_node_public_key).clone()];
     let mut recovery_task = UtxoScannerService::<WalletSqliteDatabase>::builder()
-        .with_peer_seeds(peer_seed_public_keys)
+        .with_peers(peer_public_keys)
         .with_retry_limit(10)
         .build_with_wallet(&(*wallet).wallet, shutdown_signal);
 
@@ -6089,6 +6111,7 @@ mod test {
                 2,
                 10000,
                 ptr::null(),
+                ptr::null(),
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -6135,6 +6158,7 @@ mod test {
                 bob_log_path_str,
                 0,
                 0,
+                ptr::null(),
                 ptr::null(),
                 received_tx_callback_bob,
                 received_tx_reply_callback_bob,
@@ -6659,6 +6683,7 @@ mod test {
                 0,
                 0,
                 ptr::null(),
+                ptr::null(),
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -6696,6 +6721,7 @@ mod test {
                 ptr::null(),
                 0,
                 0,
+                ptr::null(),
                 ptr::null(),
                 received_tx_callback,
                 received_tx_reply_callback,
@@ -6794,6 +6820,7 @@ mod test {
                 0,
                 0,
                 ptr::null(),
+                ptr::null(),
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -6841,6 +6868,7 @@ mod test {
                 0,
                 0,
                 ptr::null(),
+                ptr::null(),
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -6870,6 +6898,7 @@ mod test {
                 0,
                 0,
                 wrong_passphrase_const_str,
+                ptr::null(),
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -6894,6 +6923,7 @@ mod test {
                 0,
                 0,
                 passphrase_const_str,
+                ptr::null(),
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -6937,6 +6967,7 @@ mod test {
                 ptr::null(),
                 0,
                 0,
+                ptr::null(),
                 ptr::null(),
                 received_tx_callback,
                 received_tx_reply_callback,
@@ -7004,6 +7035,7 @@ mod test {
                 ptr::null(),
                 0,
                 0,
+                ptr::null(),
                 ptr::null(),
                 received_tx_callback,
                 received_tx_reply_callback,
@@ -7119,6 +7151,110 @@ mod test {
                     );
                 }
             }
+
+            // create a new wallet
+            let db_name = CString::new(random_string(8).as_str()).unwrap();
+            let db_name_str: *const c_char = CString::into_raw(db_name) as *const c_char;
+            let temp_dir = tempdir().unwrap();
+            let db_path = CString::new(temp_dir.path().to_str().unwrap()).unwrap();
+            let db_path_str: *const c_char = CString::into_raw(db_path) as *const c_char;
+            let transport_type = transport_memory_create();
+            let address = transport_memory_get_address(transport_type, error_ptr);
+            let address_str = CStr::from_ptr(address).to_str().unwrap().to_owned();
+            let address_str = CString::new(address_str).unwrap().into_raw() as *const c_char;
+
+            let config = comms_config_create(
+                address_str,
+                transport_type,
+                db_name_str,
+                db_path_str,
+                20,
+                10800,
+                error_ptr,
+            );
+
+            let wallet = wallet_create(
+                config,
+                ptr::null(),
+                0,
+                0,
+                ptr::null(),
+                ptr::null(),
+                received_tx_callback,
+                received_tx_reply_callback,
+                received_tx_finalized_callback,
+                broadcast_callback,
+                mined_callback,
+                mined_unconfirmed_callback,
+                direct_send_callback,
+                store_and_forward_send_callback,
+                tx_cancellation_callback,
+                utxo_validation_complete_callback,
+                stxo_validation_complete_callback,
+                invalid_txo_validation_complete_callback,
+                transaction_validation_complete_callback,
+                saf_messages_received_callback,
+                error_ptr,
+            );
+
+            let seed_words = wallet_get_seed_words(wallet, error_ptr);
+            assert_eq!(error, 0);
+            let public_key = wallet_get_public_key(wallet, error_ptr);
+            assert_eq!(error, 0);
+
+            // use seed words to create recovery wallet
+            let db_name = CString::new(random_string(8).as_str()).unwrap();
+            let db_name_str: *const c_char = CString::into_raw(db_name) as *const c_char;
+            let temp_dir = tempdir().unwrap();
+            let db_path = CString::new(temp_dir.path().to_str().unwrap()).unwrap();
+            let db_path_str: *const c_char = CString::into_raw(db_path) as *const c_char;
+            let transport_type = transport_memory_create();
+            let address = transport_memory_get_address(transport_type, error_ptr);
+            let address_str = CStr::from_ptr(address).to_str().unwrap().to_owned();
+            let address_str = CString::new(address_str).unwrap().into_raw() as *const c_char;
+
+            let config = comms_config_create(
+                address_str,
+                transport_type,
+                db_name_str,
+                db_path_str,
+                20,
+                10800,
+                error_ptr,
+            );
+
+            let recovered_wallet = wallet_create(
+                config,
+                ptr::null(),
+                0,
+                0,
+                ptr::null(),
+                seed_words,
+                received_tx_callback,
+                received_tx_reply_callback,
+                received_tx_finalized_callback,
+                broadcast_callback,
+                mined_callback,
+                mined_unconfirmed_callback,
+                direct_send_callback,
+                store_and_forward_send_callback,
+                tx_cancellation_callback,
+                utxo_validation_complete_callback,
+                stxo_validation_complete_callback,
+                invalid_txo_validation_complete_callback,
+                transaction_validation_complete_callback,
+                saf_messages_received_callback,
+                error_ptr,
+            );
+            assert_eq!(error, 0);
+
+            let recovered_seed_words = wallet_get_seed_words(recovered_wallet, error_ptr);
+            assert_eq!(error, 0);
+            let recovered_public_key = wallet_get_public_key(recovered_wallet, error_ptr);
+            assert_eq!(error, 0);
+
+            assert_eq!(*seed_words, *recovered_seed_words);
+            assert_eq!(*public_key, *recovered_public_key);
         }
     }
 }

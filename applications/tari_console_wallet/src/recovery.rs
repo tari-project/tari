@@ -25,7 +25,6 @@ use futures::{FutureExt, StreamExt};
 use log::*;
 use rustyline::Editor;
 use tari_app_utilities::utilities::ExitCodes;
-use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::types::PrivateKey;
 use tari_key_manager::mnemonic::to_secretkey;
 use tari_shutdown::Shutdown;
@@ -34,6 +33,8 @@ use tari_wallet::{
     utxo_scanner_service::{handle::UtxoScannerEvent, utxo_scanning::UtxoScannerService},
     WalletSqlite,
 };
+
+use crate::wallet_modes::PeerConfig;
 
 pub const LOG_TARGET: &str = "wallet::recovery";
 
@@ -76,13 +77,20 @@ pub fn get_private_key_from_seed_words(seed_words: Vec<String>) -> Result<Privat
 /// Recovers wallet funds by connecting to a given base node peer, downloading the transaction outputs stored in the
 /// blockchain, and attempting to rewind them. Any outputs that are successfully rewound are then imported into the
 /// wallet.
-pub async fn wallet_recovery(wallet: &WalletSqlite, peer_seeds: Vec<CommsPublicKey>) -> Result<(), ExitCodes> {
+pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfig) -> Result<(), ExitCodes> {
     println!("\nPress Ctrl-C to stop the recovery process\n");
     // We dont care about the shutdown signal here, so we just create one
     let shutdown = Shutdown::new();
     let shutdown_signal = shutdown.to_signal();
+
+    let peer_public_keys = base_node_config
+        .get_all_peers()
+        .iter()
+        .map(|peer| peer.public_key.clone())
+        .collect();
+
     let mut recovery_task = UtxoScannerService::<WalletSqliteDatabase>::builder()
-        .with_peer_seeds(peer_seeds)
+        .with_peers(peer_public_keys)
         .with_retry_limit(10)
         .build_with_wallet(wallet, shutdown_signal);
 

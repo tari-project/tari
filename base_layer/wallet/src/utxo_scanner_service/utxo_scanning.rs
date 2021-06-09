@@ -97,7 +97,7 @@ impl Default for UtxoScannerMode {
 #[derive(Debug, Default, Clone)]
 pub struct UtxoScannerServiceBuilder {
     retry_limit: usize,
-    peer_seeds: Vec<CommsPublicKey>,
+    peers: Vec<CommsPublicKey>,
     mode: Option<UtxoScannerMode>,
     scanning_interval: Option<Duration>,
 }
@@ -127,8 +127,8 @@ impl UtxoScannerServiceBuilder {
         self
     }
 
-    pub fn with_peer_seeds(&mut self, peer_seeds: Vec<CommsPublicKey>) -> &mut Self {
-        self.peer_seeds = peer_seeds;
+    pub fn with_peers(&mut self, peer_public_keys: Vec<CommsPublicKey>) -> &mut Self {
+        self.peers = peer_public_keys;
         self
     }
 
@@ -160,7 +160,7 @@ impl UtxoScannerServiceBuilder {
             .scanning_interval
             .unwrap_or_else(|| Duration::from_secs(60 * 60 * 12));
         UtxoScannerService::new(
-            self.peer_seeds.drain(..).collect(),
+            self.peers.drain(..).collect(),
             self.retry_limit,
             self.mode.clone().unwrap_or_default(),
             resources,
@@ -197,7 +197,7 @@ impl UtxoScannerServiceBuilder {
             .scanning_interval
             .unwrap_or_else(|| Duration::from_secs(60 * 60 * 12));
         UtxoScannerService::new(
-            self.peer_seeds.drain(..).collect(),
+            self.peers.drain(..).collect(),
             self.retry_limit,
             self.mode.clone().unwrap_or_default(),
             resources,
@@ -871,8 +871,8 @@ where TBackend: WalletBackend + 'static
                 });
             },
              _ = shutdown => {
-                 // this will stop the task if its running, and let that thread exit gracefully
-                 self.is_running.store(false, Ordering::Relaxed);
+                // this will stop the task if its running, and let that thread exit gracefully
+                self.is_running.store(false, Ordering::Relaxed);
                 info!(target: LOG_TARGET, "UTXO scanning service shutting down because it received the shutdown signal");
                 return Ok(());
                 }
