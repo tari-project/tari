@@ -20,4 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod txo_validation_protocol;
+mod txo_validation_task;
+
+pub use txo_validation_task::{TxoValidationTask, TxoValidationType};

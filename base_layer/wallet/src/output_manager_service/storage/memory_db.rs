@@ -381,6 +381,20 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
         Ok(())
     }
 
+    fn set_key_index(&self, index: u64) -> Result<(), OutputManagerStorageError> {
+        let mut db = acquire_write_lock!(self.db);
+
+        if db.key_manager_state.is_none() {
+            return Err(OutputManagerStorageError::KeyManagerNotInitialized);
+        }
+        db.key_manager_state = db.key_manager_state.clone().map(|mut state| {
+            state.primary_key_index = index;
+            state
+        });
+
+        Ok(())
+    }
+
     fn invalidate_unspent_output(&self, output: &DbUnblindedOutput) -> Result<Option<TxId>, OutputManagerStorageError> {
         let mut db = acquire_write_lock!(self.db);
         match db

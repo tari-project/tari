@@ -52,7 +52,7 @@ where K: SecretKey
 pub struct KeyManager<K: SecretKey, D: Digest> {
     master_key: K,
     pub branch_seed: String,
-    pub primary_key_index: u64,
+    primary_key_index: u64,
     digest_type: PhantomData<D>,
 }
 
@@ -133,6 +133,14 @@ where
 
     pub fn master_key(&self) -> &K {
         &self.master_key
+    }
+
+    pub fn key_index(&self) -> u64 {
+        self.primary_key_index
+    }
+
+    pub fn update_key_index(&mut self, new_index: u64) {
+        self.primary_key_index = new_index;
     }
 }
 

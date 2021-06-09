@@ -56,8 +56,8 @@ use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerEventReceiver},
-        protocols::txo_validation_protocol::TxoValidationType,
         TxId,
+        TxoValidationType,
     },
     transaction_service::{
         handle::{TransactionEvent, TransactionEventReceiver},
@@ -603,7 +603,7 @@ mod test {
     use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
     use tari_shutdown::Shutdown;
     use tari_wallet::{
-        output_manager_service::{handle::OutputManagerEvent, protocols::txo_validation_protocol::TxoValidationType},
+        output_manager_service::{handle::OutputManagerEvent, TxoValidationType},
         test_utils::make_wallet_databases,
         transaction_service::{
             handle::TransactionEvent,

@@ -24,7 +24,7 @@ use crate::{
     output_manager_service::{
         error::{OutputManagerError, OutputManagerProtocolError},
         handle::OutputManagerEvent,
-        service::OutputManagerResources,
+        resources::OutputManagerResources,
         storage::{database::OutputManagerBackend, models::DbUnblindedOutput},
     },
     types::ValidationRetryStrategy,
@@ -41,11 +41,11 @@ use tari_core::{
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
 use tokio::{sync::broadcast, time::delay_for};
 
-const LOG_TARGET: &str = "wallet::output_manager_service::protocols::utxo_validation_protocol";
+const LOG_TARGET: &str = "wallet::output_manager_service::utxo_validation_task";
 
 const MAX_RETRY_DELAY: Duration = Duration::from_secs(300);
 
-pub struct TxoValidationProtocol<TBackend>
+pub struct TxoValidationTask<TBackend>
 where TBackend: OutputManagerBackend + 'static
 {
     id: u64,
@@ -59,11 +59,11 @@ where TBackend: OutputManagerBackend + 'static
 }
 
 /// This protocol defines the process of submitting our current UTXO set to the Base Node to validate it.
-impl<TBackend> TxoValidationProtocol<TBackend>
+impl<TBackend> TxoValidationTask<TBackend>
 where TBackend: OutputManagerBackend + 'static
 {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub(crate) fn new(
         id: u64,
         validation_type: TxoValidationType,
         retry_strategy: ValidationRetryStrategy,

@@ -48,10 +48,16 @@ use tokio::sync::broadcast;
 pub mod config;
 pub mod error;
 pub mod handle;
-pub mod protocols;
+mod master_key_manager;
+mod recovery;
+pub mod resources;
 #[allow(unused_assignments)]
 pub mod service;
 pub mod storage;
+mod tasks;
+
+pub(crate) use master_key_manager::MasterKeyManager;
+pub use tasks::TxoValidationType;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::initializer";
 

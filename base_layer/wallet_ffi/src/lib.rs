@@ -178,7 +178,7 @@ use tari_utilities::{hex, hex::Hex};
 use tari_wallet::{
     contacts_service::storage::database::Contact,
     error::{WalletError, WalletStorageError},
-    output_manager_service::protocols::txo_validation_protocol::TxoValidationType,
+    output_manager_service::TxoValidationType,
     storage::{
         database::WalletDatabase,
         sqlite_db::WalletSqliteDatabase,

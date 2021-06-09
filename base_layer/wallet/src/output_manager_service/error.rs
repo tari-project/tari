@@ -107,6 +107,8 @@ pub enum OutputManagerError {
     ScriptError(#[from] ScriptError),
     #[error("Master secret key does not match persisted key manager state")]
     MasterSecretKeyMismatch,
+    #[error("Private Key is not found in the current Key Chain")]
+    KeyNotFoundInKeyChain,
 }
 
 #[derive(Debug, Error, PartialEq)]

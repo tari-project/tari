@@ -68,7 +68,6 @@ use tari_wallet::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerStorageError},
         handle::{OutputManagerEvent, OutputManagerHandle},
-        protocols::txo_validation_protocol::TxoValidationType,
         service::OutputManagerService,
         storage::{
             database::{DbKey, DbKeyValuePair, DbValue, OutputManagerBackend, OutputManagerDatabase, WriteOperation},
@@ -77,6 +76,7 @@ use tari_wallet::{
             sqlite_db::OutputManagerSqliteDatabase,
         },
         TxId,
+        TxoValidationType,
     },
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     transaction_service::handle::TransactionServiceHandle,
@@ -1244,12 +1244,6 @@ fn coin_split_with_change<T: Clone + OutputManagerBackend + 'static>(backend: T)
     assert_eq!(coin_split_tx.body.outputs().len(), split_count + 1);
     assert_eq!(fee, Fee::calculate(fee_per_gram, 1, 2, split_count + 1));
     assert_eq!(amount, val2 + val3);
-
-    // check they are rewindable
-    let uo = runtime
-        .block_on(oms.rewind_outputs(vec![coin_split_tx.body.outputs()[3].clone()], 0))
-        .expect("Should be able to rewind outputs");
-    assert!(uo[0].value == MicroTari::from(1000) || uo[0].value == MicroTari::from(3950))
 }
 
 #[test]

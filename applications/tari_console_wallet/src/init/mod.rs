@@ -50,10 +50,7 @@ use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     base_node_service::config::BaseNodeServiceConfig,
     error::{WalletError, WalletStorageError},
-    output_manager_service::{
-        config::OutputManagerServiceConfig,
-        protocols::txo_validation_protocol::TxoValidationType,
-    },
+    output_manager_service::{config::OutputManagerServiceConfig, TxoValidationType},
     storage::{database::WalletDatabase, sqlite_utilities::initialize_sqlite_database_backends},
     transaction_service::{
         config::{TransactionRoutingMechanism, TransactionServiceConfig},
