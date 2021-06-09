@@ -35,12 +35,24 @@ mod config;
 mod difficulty;
 mod errors;
 mod miner;
+mod stratum;
 mod utils;
 
-use crate::miner::MiningReport;
+use crate::{
+    miner::MiningReport,
+    stratum::{stratum_controller::controller::Controller, stratum_miner::miner::StratumMiner},
+};
 use errors::{err_empty, MinerError};
 use miner::Miner;
-use std::{convert::TryFrom, time::Instant};
+use std::{
+    convert::TryFrom,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    thread,
+    time::Instant,
+};
 
 /// Application entry point
 fn main() {
@@ -48,8 +60,8 @@ fn main() {
     match rt.block_on(main_inner()) {
         Ok(_) => std::process::exit(0),
         Err(exit_code) => {
-            eprintln!("Fatal error: {}", exit_code);
-            error!("Exiting with code: {}", exit_code);
+            eprintln!("Fatal error: {:?}", exit_code);
+            error!("Exiting with code: {:?}", exit_code);
             std::process::exit(exit_code.as_i32())
         },
     }
@@ -64,53 +76,107 @@ async fn main_inner() -> Result<(), ExitCodes> {
     debug!("{:?}", bootstrap);
     debug!("{:?}", config);
 
-    let (mut node_conn, mut wallet_conn) = connect(&config, &global).await.map_err(ExitCodes::grpc)?;
+    if !config.mining_wallet_address.is_empty() && !config.mining_pool_address.is_empty() {
+        let url = config.mining_pool_address.clone();
+        let miner_address = config.mining_wallet_address.clone();
+        let mut mc = Controller::new().unwrap_or_else(|e| {
+            panic!("Error loading mining controller: {}", e);
+        });
+        let cc = stratum::controller::Controller::new(&url, Some(miner_address), None, None, mc.tx.clone())
+            .unwrap_or_else(|e| {
+                panic!("Error loading stratum client controller: {:?}", e);
+            });
+        let miner_stopped = Arc::new(AtomicBool::new(false));
+        let client_stopped = Arc::new(AtomicBool::new(false));
 
-    let mut blocks_found: u64 = 0;
-    loop {
-        debug!("Starting new mining cycle");
-        match mining_cycle(&mut node_conn, &mut wallet_conn, &config, &bootstrap).await {
-            err @ Err(MinerError::GrpcConnection(_)) | err @ Err(MinerError::GrpcStatus(_)) => {
-                // Any GRPC error we will try to reconnect with a standard delay
-                error!("Connection error: {:?}", err);
-                loop {
+        mc.set_client_tx(cc.tx.clone());
+        let mut miner = StratumMiner::new(config);
+        if let Err(e) = miner.start_solvers() {
+            println!("Error. Please check logs for further info.");
+            println!("Error details:");
+            println!("{:?}", e);
+            println!("Exiting");
+        }
+
+        let miner_stopped_internal = miner_stopped.clone();
+        let _ = thread::Builder::new()
+            .name("mining_controller".to_string())
+            .spawn(move || {
+                if let Err(e) = mc.run(miner) {
+                    error!("Error. Please check logs for further info: {:?}", e);
+                    return;
+                }
+                miner_stopped_internal.store(true, Ordering::Relaxed);
+            });
+
+        let client_stopped_internal = client_stopped.clone();
+        let _ = thread::Builder::new()
+            .name("client_controller".to_string())
+            .spawn(move || {
+                cc.run();
+                client_stopped_internal.store(true, Ordering::Relaxed);
+            });
+
+        loop {
+            if miner_stopped.load(Ordering::Relaxed) && client_stopped.load(Ordering::Relaxed) {
+                thread::sleep(std::time::Duration::from_millis(100));
+                break;
+            }
+            thread::sleep(std::time::Duration::from_millis(100));
+        }
+        Ok(())
+    } else {
+        config.mine_on_tip_only = global.mine_on_tip_only;
+        debug!("mine_on_tip_only is {}", config.mine_on_tip_only);
+
+        let (mut node_conn, mut wallet_conn) = connect(&config, &global).await.map_err(ExitCodes::grpc)?;
+
+        let mut blocks_found: u64 = 0;
+        loop {
+            debug!("Starting new mining cycle");
+            match mining_cycle(&mut node_conn, &mut wallet_conn, &config, &bootstrap).await {
+                err @ Err(MinerError::GrpcConnection(_)) | err @ Err(MinerError::GrpcStatus(_)) => {
+                    // Any GRPC error we will try to reconnect with a standard delay
+                    error!("Connection error: {:?}", err);
+                    loop {
+                        debug!("Holding for {:?}", config.wait_timeout());
+                        delay_for(config.wait_timeout()).await;
+                        match connect(&config, &global).await {
+                            Ok((nc, wc)) => {
+                                node_conn = nc;
+                                wallet_conn = wc;
+                                break;
+                            },
+                            Err(err) => {
+                                error!("Connection error: {:?}", err);
+                                continue;
+                            },
+                        }
+                    }
+                },
+                Err(MinerError::MineUntilHeightReached(h)) => {
+                    info!("Prescribed blockchain height {} reached. Aborting ...", h);
+                    return Ok(());
+                },
+                Err(MinerError::MinerLostBlock(h)) => {
+                    info!("Height {} already mined by other node. Restarting ...", h);
+                },
+                Err(err) => {
+                    error!("Error: {:?}", err);
                     debug!("Holding for {:?}", config.wait_timeout());
                     delay_for(config.wait_timeout()).await;
-                    match connect(&config, &global).await {
-                        Ok((nc, wc)) => {
-                            node_conn = nc;
-                            wallet_conn = wc;
-                            break;
-                        },
-                        Err(err) => {
-                            error!("Connection error: {:?}", err);
-                            continue;
-                        },
+                },
+                Ok(submitted) => {
+                    if submitted {
+                        blocks_found += 1;
                     }
-                }
-            },
-            Err(MinerError::MineUntilHeightReached(h)) => {
-                info!("Prescribed blockchain height {} reached. Aborting ...", h);
-                return Ok(());
-            },
-            Err(MinerError::MinerLostBlock(h)) => {
-                info!("Height {} already mined by other node. Restarting ...", h);
-            },
-            Err(err) => {
-                error!("Error: {:?}", err);
-                debug!("Holding for {:?}", config.wait_timeout());
-                delay_for(config.wait_timeout()).await;
-            },
-            Ok(submitted) => {
-                if submitted {
-                    blocks_found += 1;
-                }
-                if let Some(max_blocks) = bootstrap.miner_max_blocks {
-                    if blocks_found >= max_blocks {
-                        return Ok(());
+                    if let Some(max_blocks) = bootstrap.miner_max_blocks {
+                        if blocks_found >= max_blocks {
+                            return Ok(());
+                        }
                     }
-                }
-            },
+                },
+            }
         }
     }
 }

@@ -71,6 +71,7 @@ class WalletProcess {
           "8080",
           "8081",
           "127.0.0.1:8084",
+          "127.0.0.1:8085",
           this.options,
           this.peerSeeds
         );

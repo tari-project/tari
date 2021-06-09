@@ -69,6 +69,7 @@ class MiningNodeProcess {
         this.nodeGrpcPort,
         this.baseNodePort,
         "127.0.0.1:8084",
+        "127.0.0.1:8085",
         {
           mineOnTipOnly: this.mineOnTipOnly,
           numMiningThreads: this.numMiningThreads,
