@@ -8,6 +8,7 @@
   -   [RFC-0111: Base node architecture](RFC-0111_BaseNodeArchitecture.md)
     - [RFC-0120: Consensus rules](RFC-0120_Consensus.md)
     - [RFC-0131: Mining](RFC-0131_Mining.md)
+      - [RFC-0132: Merge Mining Monero](RFC-0132_Merge_Mining_Monero.md)
     - [RFC-0140: Sync and Seeding](RFC-0140_Syncing_and_seeding.md)
     - [RFC-0150: Wallets](RFC-0150_Wallets.md)
     - [RFC-0151: Transaction protocol](RFC-0151_TransactionProtocol.md)
