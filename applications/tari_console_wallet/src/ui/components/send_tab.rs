@@ -527,7 +527,7 @@ impl<B: Backend> Component<B> for SendTab {
             .constraints(
                 [
                     Constraint::Length(3),
-                    Constraint::Length(13),
+                    Constraint::Length(14),
                     Constraint::Min(42),
                     Constraint::Length(1),
                 ]

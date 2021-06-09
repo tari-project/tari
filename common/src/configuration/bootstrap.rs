@@ -129,7 +129,7 @@ pub struct ConfigBootstrap {
     #[structopt(long, alias("seed_words"))]
     pub seed_words: Option<String>,
     /// Supply the optional file name to save the wallet seed words into
-    #[structopt(long, alias("seed_words_file_name"), parse(from_os_str))]
+    #[structopt(long, aliases(&["seed_words_file_name", "seed-words-file"]), parse(from_os_str))]
     pub seed_words_file_name: Option<PathBuf>,
     /// Wallet notify script
     #[structopt(long, alias("notify"))]

@@ -384,7 +384,7 @@ where
         message: &str,
     ) -> Result<SchnorrSignature<RistrettoPublicKey, RistrettoSecretKey>, SchnorrSignatureError> {
         let challenge = Blake256::digest(message.as_bytes());
-        RistrettoSchnorr::sign(secret, nonce, challenge.clone().as_slice())
+        RistrettoSchnorr::sign(secret, nonce, &challenge)
     }
 
     pub fn verify_message_signature(
@@ -467,8 +467,10 @@ async fn read_or_create_master_secret_key<T: WalletBackend + 'static>(
     recovery_master_key: Option<CommsSecretKey>,
     db: &mut WalletDatabase<T>,
 ) -> Result<CommsSecretKey, WalletError> {
+    let db_master_secret_key = db.get_master_secret_key().await?;
+
     let master_secret_key = match recovery_master_key {
-        None => match db.get_master_secret_key().await? {
+        None => match db_master_secret_key {
             None => {
                 let secret_key = CommsSecretKey::random(&mut OsRng);
                 db.set_master_secret_key(secret_key.clone()).await?;
@@ -477,8 +479,18 @@ async fn read_or_create_master_secret_key<T: WalletBackend + 'static>(
             Some(secret_key) => secret_key,
         },
         Some(recovery_key) => {
-            db.set_master_secret_key(recovery_key.clone()).await?;
-            recovery_key
+            if db_master_secret_key.is_none() {
+                db.set_master_secret_key(recovery_key.clone()).await?;
+                recovery_key
+            } else {
+                error!(
+                    target: LOG_TARGET,
+                    "Attempted recovery would overwrite the existing wallet database master secret key, causing a \
+                     `MasterSecretKeyMismatch` error."
+                );
+                let msg = "Wallet already exists! Move the existing wallet database file.".to_string();
+                return Err(WalletError::WalletRecoveryError(msg));
+            }
         },
     };
 
