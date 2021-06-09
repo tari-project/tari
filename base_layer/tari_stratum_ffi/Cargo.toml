@@ -1,0 +1,23 @@
+[package]
+name = "tari_stratum_ffi"
+authors = ["The Tari Development Community"]
+description = "Tari cryptocurrency miningcore C FFI bindings"
+license = "BSD-3-Clause"
+version = "0.0.1"
+edition = "2018"
+
+[dependencies]
+tari_comms = { version = "^0.9", path = "../../comms" }
+tari_crypto = "^0.11.1"
+tari_common = {  path = "../../common" }
+tari_app_grpc = { path = "../../applications/tari_app_grpc" }
+tari_core = {  path = "../../base_layer/core", default-features = false, features = ["transactions"]}
+tari_utilities = "^0.3"
+libc = "0.2.65"
+thiserror = "1.0.20"
+hex = "0.4.2"
+serde = { version="1.0.106", features = ["derive"] }
+serde_json = "1.0.57"
+
+[lib]
+crate-type = ["staticlib","cdylib"]

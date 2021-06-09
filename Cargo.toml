@@ -9,6 +9,7 @@ members = [
     "base_layer/service_framework",
     "base_layer/wallet",
     "base_layer/wallet_ffi",
+    "base_layer/tari_stratum_ffi",
     "comms",
     "comms/dht",
     "comms/rpc_macros",
@@ -20,5 +21,6 @@ members = [
     "applications/test_faucet",
     "applications/tari_app_utilities",
     "applications/tari_merge_mining_proxy",
+    "applications/tari_stratum_transcoder",
     "applications/tari_mining_node",
 ]

@@ -123,6 +123,8 @@ pub struct GlobalConfig {
     pub flood_ban_max_msg_count: usize,
     pub mine_on_tip_only: bool,
     pub validate_tip_timeout_sec: u64,
+    pub mining_pool_address: String,
+    pub mining_wallet_address: String,
 }
 
 impl GlobalConfig {
@@ -634,6 +636,11 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     let key = "common.auto_update.hashes_sig_url";
     let autoupdate_hashes_sig_url = cfg.get_str(&key)?;
 
+    let key = "mining_node.mining_pool_address";
+    let mining_pool_address = cfg.get_str(&key).unwrap_or_else(|_| "".to_string());
+    let key = "mining_node.mining_wallet_address";
+    let mining_wallet_address = cfg.get_str(&key).unwrap_or_else(|_| "".to_string());
+
     Ok(GlobalConfig {
         autoupdate_check_interval,
         autoupdate_dns_hosts,
@@ -711,6 +718,8 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         flood_ban_max_msg_count,
         mine_on_tip_only,
         validate_tip_timeout_sec,
+        mining_pool_address,
+        mining_wallet_address,
     })
 }
 
