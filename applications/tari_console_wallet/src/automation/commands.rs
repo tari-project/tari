@@ -39,6 +39,7 @@ use tari_core::{
     tari_utilities::hex::Hex,
     transactions::{
         tari_amount::{uT, MicroTari, Tari},
+        transaction::UnblindedOutput,
         types::PublicKey,
     },
 };
@@ -68,6 +69,7 @@ pub enum WalletCommand {
     DiscoverPeer,
     Whois,
     ExportUtxos,
+    ExportSpentUtxos,
     CountUtxos,
 }
 
@@ -500,27 +502,21 @@ pub async fn command_runner(
                         println!("{}. Value: {} {}", i + 1, utxo.value, utxo.features);
                     }
                 } else if let ParsedArgument::CSVFileName(file) = parsed.args[1].clone() {
-                    let factory = PedersenCommitmentFactory::default();
-                    let file = File::create(file).map_err(|e| CommandError::CSVFile(e.to_string()))?;
-                    let mut csv_file = LineWriter::new(file);
-                    writeln!(
-                        csv_file,
-                        r##""#","Value (uT)","Spending Key","Commitment","Flags","Maturity""##
-                    )
-                    .map_err(|e| CommandError::CSVFile(e.to_string()))?;
+                    write_utxos_to_csv_file(utxos, file)?;
+                }
+                println!("Total number of UTXOs: {}", count);
+                println!("Total value of UTXOs: {}", sum);
+            },
+            ExportSpentUtxos => {
+                let utxos = output_service.get_spent_outputs().await?;
+                let count = utxos.len();
+                let sum: MicroTari = utxos.iter().map(|utxo| utxo.value).sum();
+                if parsed.args.is_empty() {
                     for (i, utxo) in utxos.iter().enumerate() {
-                        writeln!(
-                            csv_file,
-                            r##""{}","{}","{}","{}","{:?}","{}""##,
-                            i + 1,
-                            utxo.value.0,
-                            utxo.spending_key.to_hex(),
-                            utxo.as_transaction_input(&factory)?.commitment.to_hex(),
-                            utxo.features.flags,
-                            utxo.features.maturity,
-                        )
-                        .map_err(|e| CommandError::CSVFile(e.to_string()))?;
+                        println!("{}. Value: {} {}", i + 1, utxo.value, utxo.features);
                     }
+                } else if let ParsedArgument::CSVFileName(file) = parsed.args[1].clone() {
+                    write_utxos_to_csv_file(utxos, file)?;
                 }
                 println!("Total number of UTXOs: {}", count);
                 println!("Total value of UTXOs: {}", sum);
@@ -582,5 +578,35 @@ pub async fn command_runner(
         );
     }
 
+    Ok(())
+}
+
+fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: String) -> Result<(), CommandError> {
+    let factory = PedersenCommitmentFactory::default();
+    let file = File::create(file_path).map_err(|e| CommandError::CSVFile(e.to_string()))?;
+    let mut csv_file = LineWriter::new(file);
+    writeln!(
+        csv_file,
+        r##""index","value","spending_key","commitment","flags","maturity","script","input_data","height","script_private_key","script_offset_public_key""##
+    )
+    .map_err(|e| CommandError::CSVFile(e.to_string()))?;
+    for (i, utxo) in utxos.iter().enumerate() {
+        writeln!(
+            csv_file,
+            r##""{}","{}","{}","{}","{:?}","{}","{}","{}","{}","{}","{}""##,
+            i + 1,
+            utxo.value.0,
+            utxo.spending_key.to_hex(),
+            utxo.as_transaction_input(&factory)?.commitment.to_hex(),
+            utxo.features.flags,
+            utxo.features.maturity,
+            utxo.script.to_hex(),
+            utxo.input_data.to_hex(),
+            utxo.height,
+            utxo.script_private_key.to_hex(),
+            utxo.script_offset_public_key.to_hex(),
+        )
+        .map_err(|e| CommandError::CSVFile(e.to_string()))?;
+    }
     Ok(())
 }

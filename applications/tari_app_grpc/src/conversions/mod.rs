@@ -35,6 +35,7 @@ mod transaction;
 mod transaction_input;
 mod transaction_kernel;
 mod transaction_output;
+mod unblinded_output;
 
 pub use self::{
     aggregate_body::*,

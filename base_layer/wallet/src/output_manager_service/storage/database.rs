@@ -151,6 +151,7 @@ pub enum DbValue {
 pub enum DbKeyValuePair {
     SpentOutput(Commitment, Box<DbUnblindedOutput>),
     UnspentOutput(Commitment, Box<DbUnblindedOutput>),
+    UnspentOutputWithTxId(Commitment, (TxId, Box<DbUnblindedOutput>)),
     PendingTransactionOutputs(TxId, Box<PendingTransactionOutputs>),
     KeyManagerState(KeyManagerState),
     KnownOneSidedPaymentScripts(KnownOneSidedPaymentScript),
@@ -236,6 +237,24 @@ where T: OutputManagerBackend + 'static
             db_clone.write(WriteOperation::Insert(DbKeyValuePair::UnspentOutput(
                 output.commitment.clone(),
                 Box::new(output),
+            )))
+        })
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+
+        Ok(())
+    }
+
+    pub async fn add_unspent_output_with_tx_id(
+        &self,
+        tx_id: TxId,
+        output: DbUnblindedOutput,
+    ) -> Result<(), OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || {
+            db_clone.write(WriteOperation::Insert(DbKeyValuePair::UnspentOutputWithTxId(
+                output.commitment.clone(),
+                (tx_id, Box::new(output)),
             )))
         })
         .await

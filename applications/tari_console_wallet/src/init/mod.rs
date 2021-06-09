@@ -267,6 +267,7 @@ pub async fn init_wallet(
 
     // test encryption by initializing with no passphrase...
     let db_path = config.console_wallet_db_file.clone();
+
     let result = initialize_sqlite_database_backends(db_path.clone(), None);
     let (backends, wallet_encrypted) = match result {
         Ok(backends) => {

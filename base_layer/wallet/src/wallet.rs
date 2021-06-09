@@ -321,11 +321,13 @@ where
             PublicKey::from_secret_key(&spending_key),
         );
 
-        self.output_manager_service.add_output(unblinded_output.clone()).await?;
-
         let tx_id = self
             .transaction_service
             .import_utxo(amount, source_public_key.clone(), message, Some(features.maturity))
+            .await?;
+
+        self.output_manager_service
+            .add_output_with_tx_id(tx_id, unblinded_output.clone())
             .await?;
 
         info!(
@@ -349,8 +351,6 @@ where
         source_public_key: &CommsPublicKey,
         message: String,
     ) -> Result<TxId, WalletError> {
-        self.output_manager_service.add_output(unblinded_output.clone()).await?;
-
         let tx_id = self
             .transaction_service
             .import_utxo(
@@ -359,6 +359,10 @@ where
                 message,
                 Some(unblinded_output.features.maturity),
             )
+            .await?;
+
+        self.output_manager_service
+            .add_output_with_tx_id(tx_id, unblinded_output.clone())
             .await?;
 
         info!(

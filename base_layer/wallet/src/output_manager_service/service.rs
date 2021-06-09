@@ -198,9 +198,14 @@ where TBackend: OutputManagerBackend + 'static
     ) -> Result<OutputManagerResponse, OutputManagerError> {
         trace!(target: LOG_TARGET, "Handling Service Request: {}", request);
         match request {
-            OutputManagerRequest::AddOutput(uo) => {
-                self.add_output(*uo).await.map(|_| OutputManagerResponse::OutputAdded)
-            },
+            OutputManagerRequest::AddOutput(uo) => self
+                .add_output(None, *uo)
+                .await
+                .map(|_| OutputManagerResponse::OutputAdded),
+            OutputManagerRequest::AddOutputWithTxId((tx_id, uo)) => self
+                .add_output(Some(tx_id), *uo)
+                .await
+                .map(|_| OutputManagerResponse::OutputAdded),
             OutputManagerRequest::GetBalance => {
                 let current_chain_tip = match self.base_node_service.get_chain_metadata().await {
                     Ok(metadata) => metadata.map(|m| m.height_of_longest_chain()),
@@ -386,13 +391,17 @@ where TBackend: OutputManagerBackend + 'static
     }
 
     /// Add an unblinded output to the unspent outputs list
-    pub async fn add_output(&mut self, output: UnblindedOutput) -> Result<(), OutputManagerError> {
+    pub async fn add_output(&mut self, tx_id: Option<TxId>, output: UnblindedOutput) -> Result<(), OutputManagerError> {
         debug!(
             target: LOG_TARGET,
             "Add output of value {} to Output Manager", output.value
         );
         let output = DbUnblindedOutput::from_unblinded_output(output, &self.resources.factories)?;
-        Ok(self.resources.db.add_unspent_output(output).await?)
+        match tx_id {
+            None => self.resources.db.add_unspent_output(output).await?,
+            Some(t) => self.resources.db.add_unspent_output_with_tx_id(t, output).await?,
+        }
+        Ok(())
     }
 
     async fn get_balance(&self, current_chain_tip: Option<u64>) -> Result<Balance, OutputManagerError> {

@@ -86,6 +86,7 @@ class CustomWorld {
     const wallet = new WalletProcess(name, {}, this.logFilePathWallet);
     wallet.setPeerSeeds([nodeAddresses]);
     await wallet.startNew();
+
     this.addWallet(name, wallet);
     let walletClient = wallet.getClient();
     let walletInfo = await walletClient.identify();

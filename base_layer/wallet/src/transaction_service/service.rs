@@ -484,7 +484,7 @@ where
                 .await
                 .map(TransactionServiceResponse::TransactionSent),
             TransactionServiceRequest::CancelTransaction(tx_id) => self
-                .cancel_transaction(tx_id)
+                .cancel_pending_transaction(tx_id)
                 .await
                 .map(|_| TransactionServiceResponse::TransactionCancelled),
             TransactionServiceRequest::GetPendingInboundTransactions => {
@@ -609,6 +609,10 @@ where
                 .start_transaction_validation_protocol(retry_strategy, transaction_validation_join_handles)
                 .await
                 .map(TransactionServiceResponse::ValidationStarted),
+            TransactionServiceRequest::SetCompletedTransactionValidity(tx_id, validity) => self
+                .set_completed_transaction_validity(tx_id, validity)
+                .await
+                .map(|_| TransactionServiceResponse::CompletedTransactionValidityChanged),
         }
     }
 
@@ -1015,7 +1019,7 @@ where
     }
 
     /// Cancel a pending transaction
-    async fn cancel_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
+    async fn cancel_pending_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
         self.db.cancel_pending_transaction(tx_id).await.map_err(|e| {
             warn!(
                 target: LOG_TARGET,
@@ -1053,6 +1057,19 @@ where
         Ok(())
     }
 
+    async fn set_completed_transaction_validity(
+        &mut self,
+        tx_id: TxId,
+        valid: bool,
+    ) -> Result<(), TransactionServiceError> {
+        self.resources
+            .db
+            .set_completed_transaction_validity(tx_id, valid)
+            .await?;
+
+        Ok(())
+    }
+
     /// Handle a Transaction Cancelled message received from the Comms layer
     pub async fn handle_transaction_cancelled_message(
         &mut self,
@@ -1065,7 +1082,7 @@ where
         // is the same as the cancellation message
         if let Ok(inbound_tx) = self.db.get_pending_inbound_transaction(tx_id).await {
             if inbound_tx.source_public_key == source_pubkey {
-                self.cancel_transaction(tx_id).await?;
+                self.cancel_pending_transaction(tx_id).await?;
             } else {
                 trace!(
                     target: LOG_TARGET,
@@ -2086,7 +2103,7 @@ where
         use crate::testnet_utils::make_input;
         let (_ti, uo) = make_input(&mut OsRng, amount + 100000 * uT, &self.resources.factories);
 
-        fake_oms.add_output(uo).await?;
+        fake_oms.add_output(None, uo).await?;
 
         let mut stp = fake_oms
             .prepare_transaction_to_send(amount, MicroTari::from(25), None, "".to_string(), script!(Nop))
