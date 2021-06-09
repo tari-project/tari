@@ -175,6 +175,14 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
                     }
                     db.unspent_outputs.push(DbOutput::from(*o));
                 },
+                DbKeyValuePair::UnspentOutputWithTxId(k, (_, o)) => {
+                    if db.unspent_outputs.iter().any(|v| v.output.commitment == k) ||
+                        db.spent_outputs.iter().any(|v| v.output.commitment == k)
+                    {
+                        return Err(OutputManagerStorageError::DuplicateOutput);
+                    }
+                    db.unspent_outputs.push(DbOutput::from(*o));
+                },
                 DbKeyValuePair::PendingTransactionOutputs(t, p) => {
                     db.short_term_pending_transactions.insert(t, *p);
                 },

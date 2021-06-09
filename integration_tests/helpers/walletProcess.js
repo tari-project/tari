@@ -6,6 +6,7 @@ const { spawn } = require("child_process");
 const { expect } = require("chai");
 const { createEnv } = require("./config");
 const WalletClient = require("./walletClient");
+const csvParser = require("csv-parser");
 
 let outputProcess;
 
@@ -111,25 +112,7 @@ class WalletProcess {
 
   async startNew() {
     await this.init();
-    let args;
-    args = [
-      "--base-path",
-      ".",
-      "--init",
-      "--create_id",
-      "--password",
-      "kensentme",
-      "--seed-words-file-name",
-      this.seedWordsFile,
-      "--daemon",
-    ];
-    if (this.recoverWallet) {
-      args.push("--recover", "--seed-words", this.seedWords);
-    }
-    if (this.logFilePath) {
-      args.push("--log-config", this.logFilePath);
-    }
-    return await this.run(await this.compile(), args, true);
+    return await this.start();
   }
 
   async compile() {
@@ -162,6 +145,96 @@ class WalletProcess {
       });
       this.ps.kill("SIGINT");
     });
+  }
+
+  async start() {
+    let args;
+    args = [
+      "--base-path",
+      ".",
+      "--init",
+      "--create_id",
+      "--password",
+      "kensentme",
+      "--seed-words-file-name",
+      this.seedWordsFile,
+      "--daemon",
+    ];
+    if (this.recoverWallet) {
+      args.push("--recover", "--seed-words", this.seedWords);
+    }
+    if (this.logFilePath) {
+      args.push("--log-config", this.logFilePath);
+    }
+    return await this.run(await this.compile(), args, true);
+  }
+
+  async export_spent_outputs() {
+    let args;
+    args = [
+      "--init",
+      "--base-path",
+      ".",
+      "--password",
+      "kensentme",
+      "--command",
+      "export-spent-utxos  --csv-file exported_outputs.csv",
+    ];
+    outputProcess = __dirname + "/../temp/out/tari_console_wallet";
+    await this.run(outputProcess, args, true);
+  }
+
+  async export_unspent_outputs() {
+    let args;
+    args = [
+      "--init",
+      "--base-path",
+      ".",
+      "--password",
+      "kensentme",
+      "--command",
+      "export-utxos  --csv-file exported_outputs.csv",
+    ];
+    outputProcess = __dirname + "/../temp/out/tari_console_wallet";
+    await this.run(outputProcess, args, true);
+  }
+
+  async read_exported_outputs() {
+    const filePath = path.resolve(this.baseDir + "/exported_outputs.csv");
+    expect(fs.existsSync(filePath)).to.equal(
+      true,
+      "outputs export csv must exist"
+    );
+
+    let unblinded_outputs = await new Promise((resolve) => {
+      let unblinded_outputs = [];
+      fs.createReadStream(filePath)
+        .pipe(csvParser())
+        .on("data", (row) => {
+          let unblinded_output = {
+            value: parseInt(row.value),
+            spending_key: Buffer.from(row.spending_key, "hex"),
+            features: {
+              flags: 0,
+              maturity: parseInt(row.maturity) || 0,
+            },
+            script: Buffer.from(row.script, "hex"),
+            input_data: Buffer.from(row.input_data, "hex"),
+            height: parseInt(row.height),
+            script_private_key: Buffer.from(row.script_private_key, "hex"),
+            script_offset_public_key: Buffer.from(
+              row.script_offset_public_key,
+              "hex"
+            ),
+          };
+          unblinded_outputs.push(unblinded_output);
+        })
+        .on("end", () => {
+          resolve(unblinded_outputs);
+        });
+    });
+
+    return unblinded_outputs;
   }
 }
 

@@ -51,6 +51,7 @@ use tower::Service;
 pub enum OutputManagerRequest {
     GetBalance,
     AddOutput(Box<UnblindedOutput>),
+    AddOutputWithTxId((TxId, Box<UnblindedOutput>)),
     GetRecipientTransaction(TransactionSenderMessage),
     GetCoinbaseTransaction((u64, MicroTari, MicroTari, u64)),
     ConfirmPendingTransaction(u64),
@@ -83,6 +84,7 @@ impl fmt::Display for OutputManagerRequest {
         match self {
             GetBalance => write!(f, "GetBalance"),
             AddOutput(v) => write!(f, "AddOutput ({})", v.value),
+            AddOutputWithTxId((t, v)) => write!(f, "AddOutputWithTxId ({}: {})", t, v.value),
             GetRecipientTransaction(_) => write!(f, "GetRecipientTransaction"),
             ConfirmTransaction(v) => write!(f, "ConfirmTransaction ({})", v.0),
             ConfirmPendingTransaction(v) => write!(f, "ConfirmPendingTransaction ({})", v),
@@ -188,6 +190,21 @@ impl OutputManagerHandle {
         match self
             .handle
             .call(OutputManagerRequest::AddOutput(Box::new(output)))
+            .await??
+        {
+            OutputManagerResponse::OutputAdded => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn add_output_with_tx_id(
+        &mut self,
+        tx_id: TxId,
+        output: UnblindedOutput,
+    ) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::AddOutputWithTxId((tx_id, Box::new(output))))
             .await??
         {
             OutputManagerResponse::OutputAdded => Ok(()),

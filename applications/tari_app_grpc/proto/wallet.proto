@@ -44,6 +44,8 @@ service Wallet {
     rpc GetBalance (GetBalanceRequest) returns (GetBalanceResponse);
     // Request the wallet perform a coinsplit
     rpc CoinSplit (CoinSplitRequest) returns (CoinSplitResponse);
+    // Import Utxo to wallet
+    rpc ImportUtxos (ImportUtxosRequest) returns (ImportUtxosResponse);
 }
 
 message GetVersionRequest { }
@@ -168,4 +170,12 @@ message CoinSplitRequest {
 
 message CoinSplitResponse {
     uint64 tx_id = 1;
+}
+
+message ImportUtxosRequest {
+    repeated UnblindedOutput outputs = 1;
+}
+
+message ImportUtxosResponse {
+    repeated uint64 tx_ids = 1;
 }

@@ -50,6 +50,7 @@ impl Display for ParsedCommand {
             WalletCommand::DiscoverPeer => "discover-peer",
             WalletCommand::Whois => "whois",
             WalletCommand::ExportUtxos => "export-utxos",
+            WalletCommand::ExportSpentUtxos => "export-spent-utxos",
             WalletCommand::CountUtxos => "count-utxos",
         };
 
@@ -108,6 +109,7 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, ParseError> {
         DiscoverPeer => parse_discover_peer(args)?,
         Whois => parse_whois(args)?,
         ExportUtxos => parse_export_utxos(args)?, // todo: only show X number of utxos
+        ExportSpentUtxos => parse_export_spent_utxos(args)?, // todo: only show X number of utxos
         CountUtxos => Vec::new(),
     };
 
@@ -237,6 +239,31 @@ fn parse_export_utxos(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, 
         } else {
             return Err(ParseError::Empty(
                 "'--csv-file' qualifier\n  Usage:\n    export-utxos\n    export-utxos --csv-file <file name>"
+                    .to_string(),
+            ));
+        }
+    };
+
+    Ok(parsed_args)
+}
+
+fn parse_export_spent_utxos(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
+    let mut parsed_args = Vec::new();
+
+    if let Some(v) = args.next() {
+        if v == "--csv-file" {
+            let file_name = args.next().ok_or_else(|| {
+                ParseError::Empty(
+                    "file name\n  Usage:\n    export-spent-utxos\n    export-spent-utxos --csv-file <file name>"
+                        .to_string(),
+                )
+            })?;
+            parsed_args.push(ParsedArgument::OutputToCSVFile("--csv-file".to_string()));
+            parsed_args.push(ParsedArgument::CSVFileName(file_name.to_string()));
+        } else {
+            return Err(ParseError::Empty(
+                "'--csv-file' qualifier\n  Usage:\n    export-spent-utxos\n    export-spent-utxos --csv-file <file \
+                 name>"
                     .to_string(),
             ));
         }

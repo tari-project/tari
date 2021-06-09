@@ -136,6 +136,12 @@ class WalletClient {
     return await this.client.transfer(args);
   }
 
+  async importUtxos(outputs) {
+    return await this.client.importUtxos({
+      outputs: outputs,
+    });
+  }
+
   async getTransactionInfo(args) {
     return await this.client.getTransactionInfo(args);
   }

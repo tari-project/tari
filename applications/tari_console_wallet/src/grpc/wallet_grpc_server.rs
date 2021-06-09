@@ -1,5 +1,6 @@
 use futures::future;
 use log::*;
+use std::convert::TryFrom;
 use tari_app_grpc::{
     conversions::naive_datetime_to_timestamp,
     tari_rpc::{
@@ -19,6 +20,8 @@ use tari_app_grpc::{
         GetTransactionInfoResponse,
         GetVersionRequest,
         GetVersionResponse,
+        ImportUtxosRequest,
+        ImportUtxosResponse,
         TransactionDirection,
         TransactionInfo,
         TransactionStatus,
@@ -30,7 +33,7 @@ use tari_app_grpc::{
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
     tari_utilities::{hex::Hex, ByteArray},
-    transactions::tari_amount::MicroTari,
+    transactions::{tari_amount::MicroTari, transaction::UnblindedOutput, types::Signature},
 };
 use tari_wallet::{
     output_manager_service::handle::OutputManagerHandle,
@@ -200,6 +203,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let queries = message.transaction_ids.into_iter().map(|tx_id| {
             let mut transaction_service = self.get_transaction_service();
             async move {
+                error!(target: LOG_TARGET, "TX_ID: {}", tx_id);
                 transaction_service
                     .get_any_transaction(tx_id)
                     .await
@@ -255,7 +259,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         excess_sig: txn
                             .transaction
                             .first_kernel_excess_sig()
-                            .expect("Complete transaction has no kernels")
+                            .unwrap_or(&Signature::default())
                             .get_signature()
                             .to_vec(),
                         message: txn.message,
@@ -306,6 +310,34 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         Ok(Response::new(CoinSplitResponse { tx_id }))
     }
+
+    async fn import_utxos(
+        &self,
+        request: Request<ImportUtxosRequest>,
+    ) -> Result<Response<ImportUtxosResponse>, Status> {
+        let message = request.into_inner();
+
+        let mut wallet = self.wallet.clone();
+
+        let unblinded_outputs: Vec<UnblindedOutput> = message
+            .outputs
+            .into_iter()
+            .map(UnblindedOutput::try_from)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(Status::invalid_argument)?;
+        let mut tx_ids = Vec::new();
+
+        for o in unblinded_outputs.iter() {
+            tx_ids.push(
+                wallet
+                    .import_unblinded_utxo(o.clone(), &CommsPublicKey::default(), "Imported via gRPC".to_string())
+                    .await
+                    .map_err(|e| Status::internal(format!("{:?}", e)))?,
+            );
+        }
+
+        Ok(Response::new(ImportUtxosResponse { tx_ids }))
+    }
 }
 
 fn convert_wallet_transaction_into_transaction_info(
@@ -313,6 +345,7 @@ fn convert_wallet_transaction_into_transaction_info(
     wallet_pk: &CommsPublicKey,
 ) -> TransactionInfo {
     use models::WalletTransaction::*;
+    error!(target: LOG_TARGET, "FOUND WALLET: {:?}", tx);
     match tx {
         PendingInbound(tx) => TransactionInfo {
             tx_id: tx.tx_id,

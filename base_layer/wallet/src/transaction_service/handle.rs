@@ -66,6 +66,7 @@ pub enum TransactionServiceRequest {
     RestartBroadcastProtocols,
     GetNumConfirmationsRequired,
     SetNumConfirmationsRequired(u64),
+    SetCompletedTransactionValidity(u64, bool),
     ValidateTransactions(ValidationRetryStrategy),
     #[cfg(feature = "test_harness")]
     CompletePendingOutboundTransaction(CompletedTransaction),
@@ -132,6 +133,10 @@ impl fmt::Display for TransactionServiceRequest {
             Self::BroadcastTransaction(id) => f.write_str(&format!("BroadcastTransaction ({})", id)),
             Self::GetAnyTransaction(t) => f.write_str(&format!("GetAnyTransaction({})", t)),
             TransactionServiceRequest::ValidateTransactions(t) => f.write_str(&format!("ValidateTransaction({:?})", t)),
+            TransactionServiceRequest::SetCompletedTransactionValidity(tx_id, s) => f.write_str(&format!(
+                "SetCompletedTransactionValidity(TxId: {}, Validity: {:?})",
+                tx_id, s
+            )),
         }
     }
 }
@@ -158,6 +163,7 @@ pub enum TransactionServiceResponse {
     NumConfirmationsRequired(u64),
     NumConfirmationsSet,
     ValidationStarted(u64),
+    CompletedTransactionValidityChanged,
     #[cfg(feature = "test_harness")]
     CompletedPendingTransaction,
     #[cfg(feature = "test_harness")]
@@ -548,6 +554,17 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::ValidationStarted(id) => Ok(id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn set_transaction_validity(&mut self, tx_id: TxId, valid: bool) -> Result<(), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SetCompletedTransactionValidity(tx_id, valid))
+            .await??
+        {
+            TransactionServiceResponse::CompletedTransactionValidityChanged => Ok(()),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

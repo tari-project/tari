@@ -281,6 +281,14 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     self.encrypt_if_necessary(&mut new_output)?;
                     new_output.commit(&(*conn))?
                 },
+                DbKeyValuePair::UnspentOutputWithTxId(c, (tx_id, o)) => {
+                    if OutputSql::find_by_commitment(&c.to_vec(), &(*conn)).is_ok() {
+                        return Err(OutputManagerStorageError::DuplicateOutput);
+                    }
+                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, Some(tx_id));
+                    self.encrypt_if_necessary(&mut new_output)?;
+                    new_output.commit(&(*conn))?
+                },
                 DbKeyValuePair::PendingTransactionOutputs(tx_id, p) => {
                     if PendingTransactionOutputSql::find(tx_id, &(*conn)).is_ok() {
                         return Err(OutputManagerStorageError::DuplicateOutput);

@@ -366,6 +366,86 @@ When(/I stop wallet (.*)/, async function (walletName) {
   await wallet.stop();
 });
 
+When(/I restart wallet (.*)/, async function (walletName) {
+  let wallet = this.getWallet(walletName);
+  await wallet.stop();
+  await wallet.start();
+});
+
+When(
+  /I import (.*) spent outputs to (.*)/,
+  async function (walletNameA, walletNameB) {
+    let walletA = this.getWallet(walletNameA);
+    let walletB = this.getWallet(walletNameB);
+    let clientB = walletB.getClient();
+
+    await walletA.export_spent_outputs();
+    let spent_outputs = await walletA.read_exported_outputs();
+    let result = await clientB.importUtxos(spent_outputs);
+    lastResult = result.tx_ids;
+  }
+);
+
+When(
+  /I import (.*) unspent outputs to (.*)/,
+  async function (walletNameA, walletNameB) {
+    let walletA = this.getWallet(walletNameA);
+    let walletB = this.getWallet(walletNameB);
+    let clientB = walletB.getClient();
+
+    await walletA.export_unspent_outputs();
+    let outputs = await walletA.read_exported_outputs();
+    let result = await clientB.importUtxos(outputs);
+    lastResult = result.tx_ids;
+  }
+);
+
+When(
+  /I check if last imported transactions are invalid in wallet (.*)/,
+  async function (walletName) {
+    let wallet = this.getWallet(walletName);
+    let client = wallet.getClient();
+    let found_txs = await client.getCompletedTransactions();
+    console.log("Found: ", found_txs);
+    let found_count = 0;
+    for (let imported_tx = 0; imported_tx < lastResult.length; imported_tx++) {
+      for (let found_tx = 0; found_tx < found_txs.length; found_tx++) {
+        if (found_txs[found_tx].tx_id === lastResult[imported_tx]) {
+          found_count++;
+          expect(found_txs[found_tx].status).to.equal(
+            "TRANSACTION_STATUS_IMPORTED"
+          );
+          expect(found_txs[found_tx].valid).to.equal(false);
+        }
+      }
+    }
+    expect(found_count).to.equal(lastResult.length);
+  }
+);
+
+When(
+  /I check if last imported transactions are valid in wallet (.*)/,
+  async function (walletName) {
+    let wallet = this.getWallet(walletName);
+    let client = wallet.getClient();
+    let found_txs = await client.getCompletedTransactions();
+
+    let found_count = 0;
+    for (let imported_tx = 0; imported_tx < lastResult.length; imported_tx++) {
+      for (let found_tx = 0; found_tx < found_txs.length; found_tx++) {
+        if (found_txs[found_tx].tx_id === lastResult[imported_tx]) {
+          found_count++;
+          expect(found_txs[found_tx].status).to.equal(
+            "TRANSACTION_STATUS_IMPORTED"
+          );
+          expect(found_txs[found_tx].valid).to.equal(true);
+        }
+      }
+    }
+    expect(found_count).to.equal(lastResult.length);
+  }
+);
+
 Given(
   /I have a merge mining proxy (.*) connected to (.*) and (.*) with default config/,
   { timeout: 20 * 1000 },
@@ -1734,7 +1814,8 @@ Then(
     const walletClient = wallet.getClient();
     const walletInfo = await walletClient.identify();
 
-    const txIds = this.transactionsMap.get(walletInfo.public_key);
+    let txIds = this.transactionsMap.get(walletInfo.public_key);
+    console.log(walletName, txIds);
     if (txIds === undefined) {
       console.log("\nNo transactions for " + walletName + "!");
       expect(false).to.equal(true);

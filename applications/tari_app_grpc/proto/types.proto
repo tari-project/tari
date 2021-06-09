@@ -294,3 +294,14 @@ message Peer{
     /// User agent advertised by the peer
     string user_agent = 12;
 }
+
+message UnblindedOutput {
+    uint64 value = 1;
+    bytes spending_key = 2;
+    OutputFeatures features = 3;
+    bytes script = 4;
+    bytes input_data = 5;
+    uint64 height = 6;
+    bytes script_private_key = 7;
+    bytes script_offset_public_key = 8;
+}

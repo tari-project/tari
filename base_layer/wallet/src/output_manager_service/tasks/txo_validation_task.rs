@@ -27,6 +27,7 @@ use crate::{
         resources::OutputManagerResources,
         storage::{database::OutputManagerBackend, models::DbUnblindedOutput},
     },
+    transaction_service::storage::models::TransactionStatus,
     types::ValidationRetryStrategy,
 };
 use futures::{FutureExt, StreamExt};
@@ -36,7 +37,7 @@ use tari_comms::{peer_manager::NodeId, types::CommsPublicKey, PeerConnection};
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcClient,
     proto::base_node::FetchMatchingUtxos,
-    transactions::transaction::TransactionOutput,
+    transactions::{transaction::TransactionOutput, types::Signature},
 };
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
 use tokio::{sync::broadcast, time::delay_for};
@@ -485,11 +486,26 @@ where TBackend: OutputManagerBackend + 'static
                                  Signature: {}",
                                 transaction.tx_id,
                                 transaction.message,
-                                transaction.transaction.body.kernels()[0]
-                                    .excess_sig
+                                transaction
+                                    .transaction
+                                    .first_kernel_excess_sig()
+                                    .unwrap_or(&Signature::default())
                                     .get_signature()
                                     .to_hex()
-                            )
+                            );
+
+                            // If transaction is imported we will invalidate it. Normal transactions will be handled by
+                            // the transaction validators.
+                            if transaction.status == TransactionStatus::Imported && transaction.valid {
+                                if let Err(e) = self
+                                    .resources
+                                    .transaction_service
+                                    .set_transaction_validity(transaction.tx_id, false)
+                                    .await
+                                {
+                                    warn!(target: LOG_TARGET, "Problem setting transaction validity: {}", e);
+                                }
+                            }
                         }
                     } else {
                         info!(
