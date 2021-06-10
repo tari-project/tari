@@ -138,7 +138,7 @@ impl From<WalletError> for LibWalletError {
                 message: format!("{:?}", w),
             },
             WalletError::OutputManagerError(OutputManagerError::OutputManagerStorageError(
-                OutputManagerStorageError::ValueNotFound(_),
+                OutputManagerStorageError::ValueNotFound,
             )) => Self {
                 code: 108,
                 message: format!("{:?}", w),

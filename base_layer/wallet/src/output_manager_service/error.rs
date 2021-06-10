@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{base_node_service::error::BaseNodeServiceError, output_manager_service::storage::database::DbKey};
+use crate::base_node_service::error::BaseNodeServiceError;
 use diesel::result::Error as DieselError;
 use tari_comms::{peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
@@ -115,8 +115,12 @@ pub enum OutputManagerError {
 pub enum OutputManagerStorageError {
     #[error("Tried to insert an output that already exists in the database")]
     DuplicateOutput,
-    #[error("Value not found: `{0}`")]
-    ValueNotFound(DbKey),
+    #[error(
+        "Tried to insert an pending transaction encumberance for a transaction ID that already exists in the database"
+    )]
+    DuplicateTransaction,
+    #[error("Value not found")]
+    ValueNotFound,
     #[error("Unexpected result: `{0}`")]
     UnexpectedResult(String),
     #[error("If an pending transaction does not exist to be confirmed")]
