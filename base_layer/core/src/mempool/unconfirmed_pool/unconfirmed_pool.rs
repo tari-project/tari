@@ -168,8 +168,10 @@ impl UnconfirmedPool {
     fn find_duplicate_input(array_of_tx: &[Arc<Transaction>], tx: &Arc<Transaction>) -> bool {
         for transaction in array_of_tx {
             for input in transaction.body.inputs() {
-                if tx.body.inputs().contains(input) {
-                    return true;
+                for tx_input in tx.body.inputs() {
+                    if tx_input.commitment == input.commitment {
+                        return true;
+                    }
                 }
             }
         }
@@ -193,15 +195,17 @@ impl UnconfirmedPool {
         let mut removed_tx_keys = Vec::new();
         for (tx_key, ptx) in self.txs_by_signature.iter() {
             for input in ptx.transaction.body.inputs() {
-                if published_block.body.inputs().contains(input) {
-                    self.txs_by_priority.remove(&ptx.priority);
-                    debug!(
-                        target: LOG_TARGET,
-                        "Removed double spend tx with key {} from unconfirmed pool",
-                        tx_key.get_signature().to_hex()
-                    );
-                    trace!(target: LOG_TARGET, "{}", &ptx.transaction);
-                    removed_tx_keys.push(tx_key.clone());
+                for published_input in published_block.body.inputs() {
+                    if published_input.commitment == input.commitment {
+                        self.txs_by_priority.remove(&ptx.priority);
+                        debug!(
+                            target: LOG_TARGET,
+                            "Removed double spend tx with key {} from unconfirmed pool",
+                            tx_key.get_signature().to_hex()
+                        );
+                        trace!(target: LOG_TARGET, "{}", &ptx.transaction);
+                        removed_tx_keys.push(tx_key.clone());
+                    }
                 }
             }
         }
