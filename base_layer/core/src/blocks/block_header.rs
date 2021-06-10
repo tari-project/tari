@@ -173,23 +173,23 @@ impl BlockHeader {
 
     /// Given a slice of headers (in reverse order), calculate the maximum, minimum and average periods between them
     pub fn timing_stats(headers: &[BlockHeader]) -> (u64, u64, f64) {
-        let (max, min) = headers.windows(2).fold((0u64, std::u64::MAX), |(max, min), next| {
-            let delta_t = match next[0].timestamp.checked_sub(next[1].timestamp) {
-                Some(delta) => delta.as_u64(),
-                None => 0u64,
-            };
-            let min = min.min(delta_t);
-            let max = max.max(delta_t);
-            (max, min)
-        });
-        let avg = if headers.len() >= 2 {
+        if headers.len() < 2 {
+            (0, 0, 0.0)
+        } else {
+            let (max, min) = headers.windows(2).fold((0u64, std::u64::MAX), |(max, min), next| {
+                let dt = match next[0].timestamp.checked_sub(next[1].timestamp) {
+                    Some(delta) => delta.as_u64(),
+                    None => 0u64,
+                };
+                (max.max(dt), min.min(dt))
+            });
+
             let dt = headers.first().unwrap().timestamp - headers.last().unwrap().timestamp;
             let n = headers.len() - 1;
-            dt.as_u64() as f64 / n as f64
-        } else {
-            0.0
-        };
-        (max, min, avg)
+            let avg = dt.as_u64() as f64 / n as f64;
+
+            (max, min, avg)
+        }
     }
 
     /// Provides a hash of the header, used for the merge mining.
@@ -385,8 +385,36 @@ mod test {
     fn timing_empty_list() {
         let (max, min, avg) = BlockHeader::timing_stats(&[]);
         assert_eq!(max, 0);
-        assert_eq!(min, std::u64::MAX);
+        assert_eq!(min, 0);
         let error_margin = f64::EPSILON; // Use machine epsilon for comparison of floats
         assert!((avg - 0f64).abs() < error_margin);
+    }
+
+    #[test]
+    fn timing_one_block() {
+        let header = BlockHeader {
+            timestamp: EpochTime::from(0),
+            ..BlockHeader::default()
+        };
+
+        let (max, min, avg) = BlockHeader::timing_stats(&[header]);
+        assert_eq!((max, min), (0, 0));
+        assert!((avg - 0f64).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn timing_two_blocks() {
+        let headers = vec![150, 90]
+            .into_iter()
+            .map(|t| BlockHeader {
+                timestamp: EpochTime::from(t),
+                ..BlockHeader::default()
+            })
+            .collect::<Vec<BlockHeader>>();
+        let (max, min, avg) = dbg!(BlockHeader::timing_stats(&headers));
+        assert_eq!(max, 60);
+        assert_eq!(min, 60);
+        let error_margin = f64::EPSILON; // Use machine epsilon for comparison of floats
+        assert!((avg - 60f64).abs() < error_margin);
     }
 }

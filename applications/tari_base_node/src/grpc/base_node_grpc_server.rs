@@ -828,14 +828,30 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(rx))
     }
 
+    // deprecated
     async fn get_calc_timing(
         &self,
         request: Request<tari_rpc::HeightRequest>,
     ) -> Result<Response<tari_rpc::CalcTimingResponse>, Status> {
+        debug!(
+            target: LOG_TARGET,
+            "Incoming GRPC request for deprecated GetCalcTiming. Forwarding to GetBlockTiming.",
+        );
+
+        let tari_rpc::BlockTimingResponse { max, min, avg } = self.get_block_timing(request).await?.into_inner();
+        let response = tari_rpc::CalcTimingResponse { max, min, avg };
+
+        Ok(Response::new(response))
+    }
+
+    async fn get_block_timing(
+        &self,
+        request: Request<tari_rpc::HeightRequest>,
+    ) -> Result<Response<tari_rpc::BlockTimingResponse>, Status> {
         let request = request.into_inner();
         debug!(
             target: LOG_TARGET,
-            "Incoming GRPC request for GetCalcTiming: from_tip: {:?} start_height: {:?} end_height: {:?}",
+            "Incoming GRPC request for GetBlockTiming: from_tip: {:?} start_height: {:?} end_height: {:?}",
             request.from_tip,
             request.start_height,
             request.end_height
@@ -853,8 +869,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         };
         let (max, min, avg) = BlockHeader::timing_stats(&headers);
 
-        let response: tari_rpc::CalcTimingResponse = tari_rpc::CalcTimingResponse { max, min, avg };
-        debug!(target: LOG_TARGET, "Sending GetCalcTiming response to client");
+        let response = tari_rpc::BlockTimingResponse { max, min, avg };
+        debug!(target: LOG_TARGET, "Sending GetBlockTiming response to client");
         Ok(Response::new(response))
     }
 
