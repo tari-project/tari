@@ -4,10 +4,15 @@ const BaseNodeProcess = require("../../helpers/baseNodeProcess");
 const MergeMiningProxyProcess = require("../../helpers/mergeMiningProxyProcess");
 const WalletProcess = require("../../helpers/walletProcess");
 const MiningNodeProcess = require("../../helpers/miningNodeProcess");
+const glob = require("glob");
+const fs = require("fs");
+const archiver = require("archiver");
 
 class CustomWorld {
-  constructor({ parameters }) {
+  constructor({ attach, parameters }) {
     // this.variable = 0;
+    this.attach = attach;
+
     this.seeds = {};
     this.nodes = {};
     this.proxies = {};
@@ -250,21 +255,65 @@ BeforeAll({ timeout: 1200000 }, async function () {
   console.log("Finished compilation.");
 });
 
-After(async function () {
+After(async function (testCase) {
   console.log("Stopping nodes");
   for (const key in this.seeds) {
+    if (testCase.result.status === "failed") {
+      await attachLogs(`${this.seeds[key].baseDir}`, this);
+    }
     await this.stopNode(key);
   }
   for (const key in this.nodes) {
+    if (testCase.result.status === "failed") {
+      await attachLogs(`${this.nodes[key].baseDir}`, this);
+    }
     await this.stopNode(key);
   }
   for (const key in this.proxies) {
+    if (testCase.result.status === "failed") {
+      await attachLogs(`${this.proxies[key].baseDir}`, this);
+    }
     await this.proxies[key].stop();
   }
   for (const key in this.wallets) {
+    if (testCase.result.status === "failed") {
+      await attachLogs(`${this.wallets[key].baseDir}`, this);
+    }
     await this.wallets[key].stop();
   }
   for (const key in this.miners) {
+    if (testCase.result.status === "failed") {
+      await attachLogs(`${this.miners[key].baseDir}`, this);
+    }
     await this.miners[key].stop();
   }
 });
+
+function attachLogs(path, context) {
+  return new Promise((outerRes) => {
+    let zipFile = fs.createWriteStream("./temp/logzip.zip");
+    const archive = archiver("zip", {
+      zlib: { level: 9 },
+    });
+    archive.pipe(zipFile);
+
+    glob(path + "/**/*.log", {}, function (err, files) {
+      console.log(files);
+      for (let i = 0; i < files.length; i++) {
+        // Append the file name at the bottom
+        fs.appendFileSync(files[i], `>>>> End of ${files[i]}`);
+        archive.append(fs.createReadStream(files[i]), { name: files[i] });
+      }
+      archive.finalize().then(function () {
+        context.attach(
+          fs.createReadStream("./temp/logzip.zip"),
+          "application/zip",
+          function () {
+            fs.rmSync("./temp/logzip.zip");
+            outerRes();
+          }
+        );
+      });
+    });
+  });
+}
