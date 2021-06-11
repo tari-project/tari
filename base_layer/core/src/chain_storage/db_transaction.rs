@@ -260,9 +260,9 @@ impl DbTransaction {
 
     /// This will store the seed key with the height. This is called when a block is accepted into the main chain.
     /// This will only update the hieght of the seed, if its lower then currently stored.
-    pub fn insert_monero_seed_height(&mut self, monero_seed: &str, height: u64) {
+    pub fn insert_monero_seed_height(&mut self, monero_seed: Vec<u8>, height: u64) {
         self.operations
-            .push(WriteOperation::InsertMoneroSeedHeight(monero_seed.to_string(), height));
+            .push(WriteOperation::InsertMoneroSeedHeight(monero_seed, height));
     }
 }
 
@@ -305,7 +305,7 @@ pub enum WriteOperation {
     DeleteBlock(HashOutput),
     DeleteOrphanChainTip(HashOutput),
     InsertOrphanChainTip(HashOutput),
-    InsertMoneroSeedHeight(String, u64),
+    InsertMoneroSeedHeight(Vec<u8>, u64),
     UpdatePrunedHashSet {
         mmr_tree: MmrTree,
         header_hash: HashOutput,
@@ -395,7 +395,7 @@ impl fmt::Display for WriteOperation {
             InsertOrphanChainTip(hash) => write!(f, "InsertOrphanChainTip({})", hash.to_hex()),
             DeleteBlock(hash) => write!(f, "DeleteBlock({})", hash.to_hex()),
             InsertMoneroSeedHeight(data, height) => {
-                write!(f, "Insert Monero seed string {} for height: {}", data, height)
+                write!(f, "Insert Monero seed string {} for height: {}", data.to_hex(), height)
             },
             InsertChainOrphanBlock(block) => write!(f, "InsertChainOrphanBlock({})", block.hash().to_hex()),
             UpdatePrunedHashSet {

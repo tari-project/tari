@@ -44,7 +44,7 @@ fs2 = "0.3.0"
 hex = "0.4.2"
 lmdb-zero = "0.4.4"
 log = "0.4"
-monero = { version = "^0.9.1", features= ["serde_support"], optional = true }
+monero = { version = "^0.13.0", features= ["serde_support"], optional = true }
 newtype-ops = "0.1.4"
 num = "0.3"
 prost = "0.6.1"

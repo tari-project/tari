@@ -44,7 +44,7 @@ use crate::{
     },
     common::rolling_vec::RollingVec,
     consensus::{chain_strength_comparer::ChainStrengthComparer, ConsensusConstants, ConsensusManager},
-    proof_of_work::{monero_rx::MoneroData, PowAlgorithm, TargetDifficultyWindow},
+    proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
     tari_utilities::epoch_time::EpochTime,
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
@@ -1067,10 +1067,10 @@ fn insert_block(txn: &mut DbTransaction, block: Arc<ChainBlock>) -> Result<(), C
         block_hash.to_hex()
     );
     if block.header().pow_algo() == PowAlgorithm::Monero {
-        let monero_seed = MoneroData::from_header(&block.header())
+        let monero_seed = MoneroPowData::from_header(&block.header())
             .map_err(|e| ValidationError::CustomError(e.to_string()))?
-            .key;
-        txn.insert_monero_seed_height(&monero_seed, block.height());
+            .randomx_key;
+        txn.insert_monero_seed_height(monero_seed.to_vec(), block.height());
     }
 
     let height = block.height();
@@ -1925,31 +1925,31 @@ mod test {
     #[test]
     fn lmdb_fetch_monero_seeds() {
         let db = create_test_blockchain_db();
-        let seed = "test1".to_string();
+        let seed = b"test1";
         {
             let db_read = db.db_read_access().unwrap();
-            assert_eq!(db_read.fetch_monero_seed_first_seen_height(&seed).unwrap(), 0);
+            assert_eq!(db_read.fetch_monero_seed_first_seen_height(&seed[..]).unwrap(), 0);
         }
         {
             let mut txn = DbTransaction::new();
-            txn.insert_monero_seed_height(&seed, 5);
+            txn.insert_monero_seed_height(seed.to_vec(), 5);
             let mut db_write = db.test_db_write_access().unwrap();
             assert!(db_write.write(txn).is_ok());
         }
         {
             let db_read = db.db_read_access().unwrap();
-            assert_eq!(db_read.fetch_monero_seed_first_seen_height(&seed).unwrap(), 5);
+            assert_eq!(db_read.fetch_monero_seed_first_seen_height(&seed[..]).unwrap(), 5);
         }
 
         {
             let mut txn = DbTransaction::new();
-            txn.insert_monero_seed_height(&seed, 2);
+            txn.insert_monero_seed_height(seed.to_vec(), 2);
             let mut db_write = db.db_write_access().unwrap();
             assert!(db_write.write(txn).is_ok());
         }
         {
             let db_read = db.db_read_access().unwrap();
-            assert_eq!(db_read.fetch_monero_seed_first_seen_height(&seed).unwrap(), 2);
+            assert_eq!(db_read.fetch_monero_seed_first_seen_height(&seed[..]).unwrap(), 2);
         }
     }
 

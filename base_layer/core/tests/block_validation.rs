@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::helpers::block_builders::chain_block_with_new_coinbase;
-use monero::{blockdata::block::Block as MoneroBlock, consensus::deserialize};
+use monero::blockdata::block::Block as MoneroBlock;
 use std::sync::Arc;
 use tari_core::{
     blocks::{Block, BlockHeaderValidationError},
@@ -32,7 +32,12 @@ use tari_core::{
         ConsensusManagerBuilder,
         Network,
     },
-    proof_of_work::{monero_rx, monero_rx::MoneroData, PowAlgorithm},
+    crypto::tari_utilities::hex::Hex,
+    proof_of_work::{
+        monero_rx,
+        monero_rx::{FixedByteArray, MoneroPowData},
+        PowAlgorithm,
+    },
     test_helpers::blockchain::{create_store_with_consensus_and_validators, create_test_db},
     transactions::types::CryptoFactories,
     validation::{
@@ -79,8 +84,8 @@ fn test_genesis_block() {
 #[test]
 fn test_monero_blocks() {
     // Create temporary test folder
-    let seed1 = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
-    let seed2 = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad98".to_string();
+    let seed1 = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97";
+    let seed2 = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad98";
 
     let factories = CryptoFactories::default();
     let network = Network::Weatherwax;
@@ -113,13 +118,13 @@ fn test_monero_blocks() {
     let mut block_1 = db.prepare_block_merkle_roots(block_1_t).unwrap();
 
     // Now we have block 1, lets add monero data to it
-    add_monero_data(&mut block_1, seed1.clone());
+    add_monero_data(&mut block_1, seed1);
     let cb_1 = db.add_block(Arc::new(block_1)).unwrap().assert_added();
     // Now lets add a second faulty block using the same seed hash
     let (block_2_t, _) = chain_block_with_new_coinbase(&cb_1, vec![], &cm, &factories);
     let mut block_2 = db.prepare_block_merkle_roots(block_2_t).unwrap();
 
-    add_monero_data(&mut block_2, seed1.clone());
+    add_monero_data(&mut block_2, seed1);
     let cb_2 = db.add_block(Arc::new(block_2)).unwrap().assert_added();
     // Now lets add a third faulty block using the same seed hash. This should fail.
     let (block_3_t, _) = chain_block_with_new_coinbase(&cb_2, vec![], &cm, &factories);
@@ -143,23 +148,24 @@ fn test_monero_blocks() {
     db.add_block(Arc::new(block_3)).unwrap().assert_added();
 }
 
-fn add_monero_data(tblock: &mut Block, seed_hash: String) {
+fn add_monero_data(tblock: &mut Block, seed_key: &str) {
     let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
     let bytes = hex::decode(blocktemplate_blob).unwrap();
-    let mut mblock = deserialize::<MoneroBlock>(&bytes[..]).unwrap();
+    let mut mblock = monero_rx::deserialize::<MoneroBlock>(&bytes[..]).unwrap();
     let hash = tblock.header.merged_mining_hash();
     monero_rx::append_merge_mining_tag(&mut mblock, hash).unwrap();
     let hashes = monero_rx::create_ordered_transaction_hashes_from_block(&mblock);
-    let root = monero_rx::tree_hash(&hashes).unwrap();
-    let monero_data = MoneroData {
+    let merkle_root = monero_rx::tree_hash(&hashes).unwrap();
+    let coinbase_merkle_proof = monero_rx::create_merkle_proof(&hashes, &hashes[0]).unwrap();
+    let monero_data = MoneroPowData {
         header: mblock.header,
-        key: seed_hash,
-        count: hashes.len() as u16,
-        transaction_root: root.to_fixed_bytes(),
-        transaction_hashes: hashes.into_iter().map(|h| h.to_fixed_bytes()).collect(),
+        randomx_key: FixedByteArray::from_hex(seed_key).unwrap(),
+        transaction_count: hashes.len() as u16,
+        merkle_root,
+        coinbase_merkle_proof,
         coinbase_tx: mblock.miner_tx,
     };
-    let serialized = bincode::serialize(&monero_data).unwrap();
+    let serialized = monero_rx::serialize(&monero_data);
     tblock.header.pow.pow_algo = PowAlgorithm::Monero;
     tblock.header.pow.pow_data = serialized;
 }

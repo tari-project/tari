@@ -22,17 +22,20 @@
 
 use super::block_builders::chain_block;
 use monero::{
-    blockdata::Block as MoneroBlock,
+    consensus,
     consensus::deserialize,
     cryptonote::hash::{Hash as MoneroHash, Hashable as MoneroHashable},
+    Block as MoneroBlock,
 };
 use tari_core::{
     blocks::Block,
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::{ConsensusConstants, ConsensusManager},
+    crypto::tari_utilities::hex::Hex,
     proof_of_work::{
         lwma_diff::LinearWeightedMovingAverage,
-        monero_rx::{append_merge_mining_tag, tree_hash, MoneroData},
+        monero_rx,
+        monero_rx::{FixedByteArray, MoneroPowData},
         Difficulty,
         DifficultyAdjustment,
         PowAlgorithm,
@@ -67,12 +70,12 @@ pub fn append_to_pow_blockchain<T: BlockchainBackend>(
         new_block.header.pow.pow_algo = pow_algo;
 
         if new_block.header.pow.pow_algo == PowAlgorithm::Monero {
-            let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
-            let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
-            let bytes = hex::decode(blocktemplate_blob.clone()).unwrap();
+            let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000";
+            let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97";
+            let bytes = hex::decode(&blocktemplate_blob).unwrap();
             let mut block = deserialize::<MoneroBlock>(&bytes[..]).unwrap();
             let hash = MoneroHash::from_slice(new_block.header.merged_mining_hash().as_ref());
-            append_merge_mining_tag(&mut block, hash).unwrap();
+            monero_rx::append_merge_mining_tag(&mut block, hash).unwrap();
             let count = 1 + (block.tx_hashes.len() as u16);
             let mut hashes = Vec::with_capacity(count as usize);
             let mut proof = Vec::with_capacity(count as usize);
@@ -82,17 +85,16 @@ pub fn append_to_pow_blockchain<T: BlockchainBackend>(
                 hashes.push(item);
                 proof.push(item);
             }
-            let root = tree_hash(hashes.clone().as_ref()).unwrap();
-            let monero_data = MoneroData {
+            let root = monero_rx::tree_hash(hashes.clone().as_ref()).unwrap();
+            let monero_data = MoneroPowData {
                 header: block.header,
-                key: seed_hash.clone(),
-                count,
-                transaction_root: root.to_fixed_bytes(),
-                transaction_hashes: hashes.into_iter().map(|h| h.to_fixed_bytes()).collect(),
+                randomx_key: FixedByteArray::from_hex(seed_hash).unwrap(),
+                transaction_count: count,
+                merkle_root: root,
+                coinbase_merkle_proof: monero_rx::create_merkle_proof(&hashes, &hashes[0]).unwrap(),
                 coinbase_tx: block.miner_tx,
             };
-            let serialized = bincode::serialize(&monero_data).unwrap();
-            new_block.header.pow.pow_data = serialized.clone();
+            new_block.header.pow.pow_data = consensus::serialize(&monero_data);
         }
 
         db.add_block(new_block.clone().into()).unwrap();

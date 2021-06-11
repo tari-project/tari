@@ -23,6 +23,7 @@ use crate::error::MmProxyError;
 use chrono::{self, DateTime, Duration, Utc};
 use std::{collections::HashMap, sync::Arc};
 use tari_app_grpc::tari_rpc::{Block, MinerData};
+use tari_core::{crypto::tari_utilities::hex::Hex, proof_of_work::monero_rx::FixedByteArray};
 use tokio::sync::RwLock;
 use tracing::trace;
 
@@ -100,7 +101,7 @@ impl BlockTemplateRepository {
 
 #[derive(Clone, Debug)]
 pub struct BlockTemplateData {
-    pub monero_seed: String,
+    pub monero_seed: FixedByteArray,
     pub tari_block: Block,
     pub tari_miner_data: MinerData,
     pub monero_difficulty: u64,
@@ -162,7 +163,7 @@ impl BlockTemplateDataBuilder {
             .ok_or_else(|| MmProxyError::MissingDataError("tari_difficulty not provided".to_string()))?;
 
         Ok(BlockTemplateData {
-            monero_seed,
+            monero_seed: FixedByteArray::from_hex(&monero_seed).map_err(|_| MmProxyError::InvalidRandomXSeed)?,
             tari_block,
             tari_miner_data,
             monero_difficulty,
