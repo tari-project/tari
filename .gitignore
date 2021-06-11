@@ -40,3 +40,4 @@ keys.json
 node_modules
 /integration_tests/temp
 /applications/utils/temp/
+/integration_tests/cucumber_output

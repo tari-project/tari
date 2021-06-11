@@ -981,7 +981,6 @@ impl Transaction {
 impl Add for Transaction {
     type Output = Self;
 
-    // Note this will also do cut-through
     fn add(mut self, other: Self) -> Self {
         self = self.add_no_cut_through(other);
         self
@@ -1315,35 +1314,32 @@ mod test {
         assert_eq!(tx2.body.outputs().len(), 3);
         assert_eq!(tx2.body.kernels().len(), 1);
 
-        let mut tx3 = tx.clone().add_no_cut_through(tx2.clone());
-        let tx = tx + tx2;
+        let tx3 = tx + tx2;
+        let mut tx3_cut_through = tx3.clone();
         // check that all inputs are as we expect them to be
         assert_eq!(tx3.body.inputs().len(), 3);
         assert_eq!(tx3.body.outputs().len(), 5);
         assert_eq!(tx3.body.kernels().len(), 2);
 
-        let double_inputs: Vec<TransactionInput> = tx3
+        // Do manual cut-through on tx3
+        let double_inputs: Vec<TransactionInput> = tx3_cut_through
             .body
             .inputs()
             .clone()
             .iter()
-            .filter(|input| tx3.body.outputs_mut().iter().any(|o| o.is_equal_to(input)))
+            .filter(|input| tx3_cut_through.body.outputs_mut().iter().any(|o| o.is_equal_to(input)))
             .cloned()
             .collect();
-
         for input in double_inputs {
-            tx3.body.outputs_mut().retain(|x| !input.is_equal_to(x));
-            tx3.body.inputs_mut().retain(|x| *x != input);
+            tx3_cut_through.body.outputs_mut().retain(|x| !input.is_equal_to(x));
+            tx3_cut_through.body.inputs_mut().retain(|x| *x != input);
         }
 
-        // check that cut-through has been applied.
-        assert!(tx.validate_internal_consistency(&factories, None).is_ok());
-        assert_eq!(tx.body.inputs().len(), 3);
-        assert_eq!(tx.body.outputs().len(), 5);
-        assert_eq!(tx.body.kernels().len(), 2);
+        // Validate basis transaction where cut-through has not been applied.
+        assert!(tx3.validate_internal_consistency(&factories, None).is_ok());
 
-        // tx3 has manual cut-through, it should not be possible so this should fail
-        assert!(tx3.validate_internal_consistency(&factories, None).is_err());
+        // tx3_cut_through has manual cut-through, it should not be possible so this should fail
+        assert!(tx3_cut_through.validate_internal_consistency(&factories, None).is_err());
     }
 
     #[test]

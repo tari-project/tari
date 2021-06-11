@@ -49,7 +49,7 @@ use tari_crypto::{
     keys::PublicKey as PublicKeyTrait,
     ristretto::pedersen::PedersenCommitment,
     script::TariScript,
-    tari_utilities::{ByteArray, Hashable},
+    tari_utilities::ByteArray,
 };
 
 //----------------------------------------   Local Data types     ----------------------------------------------------//
@@ -350,10 +350,7 @@ impl SenderTransactionProtocol {
                             "For single recipient there should be one recipient script offset".to_string(),
                         )
                     })?;
-                info.gamma = info.gamma.clone() -
-                    PrivateKey::from_bytes(rec.output.hash().as_slice())
-                        .map_err(|e| TPE::ConversionError(e.to_string()))? *
-                        recipient_script_offset_private_key.clone();
+                info.gamma = info.gamma.clone() - recipient_script_offset_private_key.clone();
 
                 // nonce is in the signature, so we'll add those together later
                 info.public_excess = &info.public_excess + &rec.public_spend_key;
@@ -647,7 +644,7 @@ mod test {
             .with_fee_per_gram(MicroTari(10))
             .with_offset(p.offset.clone())
             .with_private_nonce(p.nonce.clone())
-            .with_change_secret(p.change_key.clone())
+            .with_change_secret(p.change_spend_key.clone())
             .with_input(utxo, input)
             .with_output(
                 UnblindedOutput::new(
@@ -762,7 +759,7 @@ mod test {
             .with_fee_per_gram(MicroTari(20))
             .with_offset(a.offset.clone())
             .with_private_nonce(a.nonce.clone())
-            .with_change_secret(a.change_key.clone())
+            .with_change_secret(a.change_spend_key.clone())
             .with_input(utxo.clone(), input)
             .with_recipient_script(0, script.clone(), script_offset)
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default())
@@ -839,7 +836,7 @@ mod test {
             .with_fee_per_gram(MicroTari(20))
             .with_offset(a.offset.clone())
             .with_private_nonce(a.nonce.clone())
-            .with_change_secret(a.change_key)
+            .with_change_secret(a.change_spend_key)
             .with_input(utxo, input)
             .with_recipient_script(0, script.clone(), script_offset)
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default())
@@ -887,7 +884,7 @@ mod test {
             .with_fee_per_gram(fee_per_gram)
             .with_offset(alice.offset.clone())
             .with_private_nonce(alice.nonce.clone())
-            .with_change_secret(alice.change_key)
+            .with_change_secret(alice.change_spend_key)
             .with_input(utxo, input)
             .with_amount(0, amount)
             .with_recipient_script(0, script.clone(), script_offset)
@@ -913,7 +910,7 @@ mod test {
             .with_fee_per_gram(fee_per_gram)
             .with_offset(alice.offset.clone())
             .with_private_nonce(alice.nonce.clone())
-            .with_change_secret(alice.change_key)
+            .with_change_secret(alice.change_spend_key)
             .with_input(utxo, input)
             .with_amount(0, amount)
             .with_prevent_fee_gt_amount(false)
@@ -957,7 +954,7 @@ mod test {
             .with_fee_per_gram(MicroTari(20))
             .with_offset(a.offset.clone())
             .with_private_nonce(a.nonce.clone())
-            .with_change_secret(a.change_key.clone())
+            .with_change_secret(a.change_spend_key.clone())
             .with_rewindable_outputs(rewind_data)
             .with_input(utxo, input)
             .with_amount(0, MicroTari(5000))
@@ -1021,7 +1018,7 @@ mod test {
 
                 assert_eq!(full_rewind_result.committed_value, change);
                 assert_eq!(&full_rewind_result.proof_message, proof_message);
-                assert_eq!(full_rewind_result.blinding_factor, a.change_key);
+                assert_eq!(full_rewind_result.blinding_factor, a.change_spend_key);
             },
             Err(_) => {
                 let rr = tx.body.outputs()[1]
@@ -1038,7 +1035,7 @@ mod test {
                     .unwrap();
                 assert_eq!(full_rewind_result.committed_value, change);
                 assert_eq!(&full_rewind_result.proof_message, proof_message);
-                assert_eq!(full_rewind_result.blinding_factor, a.change_key);
+                assert_eq!(full_rewind_result.blinding_factor, a.change_spend_key);
             },
         }
     }

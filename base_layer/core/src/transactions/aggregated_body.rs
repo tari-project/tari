@@ -32,7 +32,7 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PublicKeyTrait,
     ristretto::pedersen::PedersenCommitment,
-    tari_utilities::{hex::Hex, ByteArray, Hashable},
+    tari_utilities::hex::Hex,
 };
 
 pub const LOG_TARGET: &str = "c::tx::aggregated_body";
@@ -390,10 +390,7 @@ impl AggregateBody {
         for output in &self.outputs {
             // We should not count the coinbase tx here
             if !output.is_coinbase() {
-                output_keys = output_keys +
-                    PrivateKey::from_bytes(&output.hash())
-                        .map_err(|e| TransactionError::ConversionError(e.to_string()))? *
-                        output.script_offset_public_key.clone();
+                output_keys = output_keys + output.script_offset_public_key.clone();
             }
         }
         let lhs = input_keys - output_keys;

@@ -376,7 +376,7 @@ mod test {
             .with_fee_per_gram(20.into())
             .with_offset(Default::default())
             .with_private_nonce(test_params.nonce.clone())
-            .with_change_secret(test_params.change_key.clone());
+            .with_change_secret(test_params.change_spend_key.clone());
 
         // Double spend the input from tx2 in tx3
         let double_spend_utxo = tx2.body.inputs().first().unwrap().clone();

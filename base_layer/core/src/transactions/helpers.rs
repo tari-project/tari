@@ -83,28 +83,28 @@ pub fn create_test_input(
 #[derive(Default)]
 pub struct TestParams {
     pub spend_key: PrivateKey,
-    pub change_key: PrivateKey,
+    pub change_spend_key: PrivateKey,
     pub offset: PrivateKey,
     pub nonce: PrivateKey,
     pub public_nonce: PublicKey,
     pub script_private_key: PrivateKey,
-    pub script_offset: PublicKey,
-    pub script_offset_pvt: PrivateKey,
+    pub script_offset_pub_key: PublicKey,
+    pub script_offset_pvt_key: PrivateKey,
 }
 
 impl TestParams {
     pub fn new() -> TestParams {
         let r = PrivateKey::random(&mut OsRng);
-        let script_offset_pvt = PrivateKey::random(&mut OsRng);
+        let script_offset_pvt_key = PrivateKey::random(&mut OsRng);
         TestParams {
             spend_key: PrivateKey::random(&mut OsRng),
-            change_key: PrivateKey::random(&mut OsRng),
+            change_spend_key: PrivateKey::random(&mut OsRng),
             offset: PrivateKey::random(&mut OsRng),
             public_nonce: PublicKey::from_secret_key(&r),
             nonce: r,
             script_private_key: PrivateKey::random(&mut OsRng),
-            script_offset: PublicKey::from_secret_key(&script_offset_pvt),
-            script_offset_pvt,
+            script_offset_pub_key: PublicKey::from_secret_key(&script_offset_pvt_key),
+            script_offset_pvt_key,
         }
     }
 }
@@ -262,7 +262,7 @@ pub fn create_tx(
         .with_fee_per_gram(fee_per_gram)
         .with_offset(test_params.offset.clone())
         .with_private_nonce(test_params.nonce.clone())
-        .with_change_secret(test_params.change_key.clone());
+        .with_change_secret(test_params.change_spend_key);
 
     let mut unblinded_inputs = Vec::with_capacity(input_count);
     let mut unblinded_outputs = Vec::with_capacity(output_count);
@@ -286,18 +286,19 @@ pub fn create_tx(
         } else {
             amount_for_last_output
         };
+        let test_params = TestParams::new();
         let utxo = UnblindedOutput::new(
             output_amount,
             test_params.spend_key.clone(),
             None,
             script!(Nop),
-            inputs!(PublicKey::from_secret_key(&test_params.spend_key)),
+            inputs!(PublicKey::from_secret_key(&test_params.script_private_key)),
             0,
-            test_params.spend_key.clone(),
-            PublicKey::from_secret_key(&test_params.spend_key),
+            test_params.script_private_key.clone(),
+            test_params.script_offset_pub_key,
         );
         unblinded_outputs.push(utxo.clone());
-        stx_builder.with_output(utxo, test_params.spend_key.clone());
+        stx_builder.with_output(utxo, test_params.script_offset_pvt_key.clone());
     }
 
     let mut stx_protocol = stx_builder.build::<Blake256>(&factories).unwrap();
@@ -318,18 +319,20 @@ pub fn create_tx(
 /// The output features will be applied to every output
 pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutput>, TestParams) {
     let factories = CryptoFactories::default();
-    let test_params = TestParams::new();
+    let test_params_change_and_txn = TestParams::new();
     let mut stx_builder = SenderTransactionProtocol::builder(0);
     stx_builder
         .with_lock_height(schema.lock_height)
         .with_fee_per_gram(schema.fee)
-        .with_offset(test_params.offset.clone())
-        .with_private_nonce(test_params.nonce.clone())
-        .with_change_secret(test_params.change_key.clone())
+        .with_offset(test_params_change_and_txn.offset.clone())
+        .with_private_nonce(test_params_change_and_txn.nonce.clone())
+        .with_change_secret(test_params_change_and_txn.change_spend_key.clone())
         .with_change_script(
             script!(Nop),
-            inputs!(PublicKey::from_secret_key(&test_params.script_private_key)),
-            test_params.script_private_key.clone(),
+            inputs!(PublicKey::from_secret_key(
+                &test_params_change_and_txn.script_private_key
+            )),
+            test_params_change_and_txn.script_private_key.clone(),
         );
 
     for tx_input in &schema.from {
@@ -342,21 +345,19 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
     }
     let mut outputs = Vec::with_capacity(schema.to.len());
     for val in schema.to {
-        let k = PrivateKey::random(&mut OsRng);
-        let script_private_key = PrivateKey::random(&mut OsRng);
-        let script_offset_private_key = PrivateKey::random(&mut OsRng);
+        let test_params = TestParams::new();
         let utxo = UnblindedOutput::new(
             val,
-            k.clone(),
+            test_params.spend_key.clone(),
             Some(schema.features.clone()),
             script!(Nop),
-            inputs!(PublicKey::from_secret_key(&script_private_key)),
+            inputs!(PublicKey::from_secret_key(&test_params.script_private_key)),
             0,
-            script_private_key,
-            PublicKey::from_secret_key(&script_offset_private_key),
+            test_params.script_private_key.clone(),
+            test_params.script_offset_pub_key,
         );
         outputs.push(utxo.clone());
-        stx_builder.with_output(utxo, script_offset_private_key);
+        stx_builder.with_output(utxo, test_params.script_offset_pvt_key);
     }
 
     let mut stx_protocol = stx_builder.build::<Blake256>(&factories).unwrap();
@@ -364,12 +365,14 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
     let change_script_offset_public_key = stx_protocol.get_change_script_offset_public_key().unwrap().unwrap();
     let change_output = UnblindedOutput::new(
         change,
-        test_params.change_key.clone(),
+        test_params_change_and_txn.change_spend_key.clone(),
         Some(schema.features),
         script!(Nop),
-        inputs!(PublicKey::from_secret_key(&test_params.script_private_key)),
+        inputs!(PublicKey::from_secret_key(
+            &test_params_change_and_txn.script_private_key
+        )),
         0,
-        test_params.script_private_key.clone(),
+        test_params_change_and_txn.script_private_key.clone(),
         change_script_offset_public_key,
     );
     outputs.push(change_output);
@@ -378,7 +381,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
         Err(e) => panic!("{:?}", e),
     }
     let txn = stx_protocol.get_transaction().unwrap().clone();
-    (txn, outputs, test_params)
+    (txn, outputs, test_params_change_and_txn)
 }
 
 /// Create a transaction kernel with the given fee, using random keys to generate the signature

@@ -850,7 +850,7 @@ fn generate_sender_transaction_message(amount: MicroTari) -> (TxId, TransactionS
         .with_fee_per_gram(MicroTari(20))
         .with_offset(alice.offset.clone())
         .with_private_nonce(alice.nonce.clone())
-        .with_change_secret(alice.change_key)
+        .with_change_secret(alice.change_spend_key)
         .with_input(utxo, input)
         .with_amount(0, amount)
         .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng))
