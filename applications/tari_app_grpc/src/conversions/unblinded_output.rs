@@ -46,6 +46,10 @@ impl From<UnblindedOutput> for grpc::UnblindedOutput {
             height: output.height,
             script_private_key: output.script_private_key.as_bytes().to_vec(),
             script_offset_public_key: output.script_offset_public_key.as_bytes().to_vec(),
+            sender_metadata_signature: Some(grpc::Signature {
+                public_nonce: Vec::from(output.sender_metadata_signature.get_public_nonce().as_bytes()),
+                signature: Vec::from(output.sender_metadata_signature.get_signature().as_bytes()),
+            }),
         }
     }
 }
@@ -73,6 +77,12 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
         let script_offset_public_key = PublicKey::from_bytes(output.script_offset_public_key.as_bytes())
             .map_err(|err| format!("script_offset_public_key {:?}", err))?;
 
+        let sender_metadata_signature = output
+            .sender_metadata_signature
+            .ok_or_else(|| "Sender signature not provided".to_string())?
+            .try_into()
+            .map_err(|_| "Sender signature could not be converted".to_string())?;
+
         Ok(Self {
             value: MicroTari::from(output.value),
             spending_key,
@@ -82,6 +92,7 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
             height: output.height,
             script_private_key,
             script_offset_public_key,
+            sender_metadata_signature,
         })
     }
 }

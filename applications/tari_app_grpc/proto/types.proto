@@ -188,6 +188,8 @@ message TransactionOutput {
     bytes script = 5;
     // Tari script offset pubkey, K_O
     bytes script_offset_public_key = 6;
+    // UTXO signature with the script offset private key, k_O
+    Signature sender_metadata_signature = 7;
 }
 
 // Options for UTXO's
@@ -296,12 +298,22 @@ message Peer{
 }
 
 message UnblindedOutput {
+    // Value of the output
     uint64 value = 1;
+    // Spending key of the output
     bytes spending_key = 2;
+    // Options for an output's structure or use
     OutputFeatures features = 3;
+    // Tari script serialised script
     bytes script = 4;
+    // Tari script input data for spending
     bytes input_data = 5;
+    // The block height that the UTXO was mined
     uint64 height = 6;
+    // Tari script private key
     bytes script_private_key = 7;
+    // Tari script offset pubkey, K_O
     bytes script_offset_public_key = 8;
+    // UTXO signature with the script offset private key, k_O
+    Signature sender_metadata_signature = 9;
 }

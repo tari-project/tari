@@ -37,7 +37,15 @@ use tari_core::{
     consensus::{emission::Emission, ConsensusConstants, ConsensusManager, ConsensusManagerBuilder, Network},
     proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
-        helpers::{create_random_signature_from_s_key, create_signature, create_utxo, spend_utxos, TransactionSchema},
+        helpers::{
+            create_random_signature_from_s_key,
+            create_signature,
+            create_unblinded_output,
+            create_utxo,
+            spend_utxos,
+            TestParams,
+            TransactionSchema,
+        },
         tari_amount::MicroTari,
         transaction::{
             KernelBuilder,
@@ -52,7 +60,6 @@ use tari_core::{
     },
 };
 use tari_crypto::{
-    inputs,
     keys::PublicKey as PublicKeyTrait,
     script,
     script::TariScript,
@@ -68,28 +75,22 @@ pub fn create_coinbase(
     value: MicroTari,
     maturity_height: u64,
 ) -> (TransactionOutput, TransactionKernel, UnblindedOutput) {
-    let features = OutputFeatures::create_coinbase(maturity_height);
-    let script = script!(Nop);
-    let (utxo, key, _) = create_utxo(value, &factories, Some(features.clone()), &script);
-    let excess = Commitment::from_public_key(&PublicKey::from_secret_key(&key));
-    let sig = create_signature(key.clone(), 0.into(), 0);
+    let p = TestParams::new();
+
+    let excess = Commitment::from_public_key(&PublicKey::from_secret_key(&p.spend_key));
+    let sig = create_signature(p.spend_key.clone(), 0.into(), 0);
     let kernel = KernelBuilder::new()
         .with_signature(&sig)
         .with_excess(&excess)
         .with_features(KernelFeatures::COINBASE_KERNEL)
         .build()
         .unwrap();
-    let output = UnblindedOutput::new(
-        value,
-        key.clone(),
-        Some(features),
-        script!(Nop),
-        inputs!(PublicKey::from_secret_key(&key)),
-        0,
-        key,
-        utxo.script_offset_public_key.clone(),
-    );
-    (utxo, kernel, output)
+
+    let unblinded_output =
+        create_unblinded_output(script!(Nop), OutputFeatures::create_coinbase(maturity_height), p, value);
+    let output = unblinded_output.as_transaction_output(&factories).unwrap();
+
+    (output, kernel, unblinded_output)
 }
 
 fn genesis_template(
@@ -207,19 +208,13 @@ pub fn create_genesis_block_with_utxos(
 ) -> (ChainBlock, Vec<UnblindedOutput>) {
     let (mut template, coinbase) = genesis_template(&factories, 100_000_000.into(), consensus_constants);
     let script = script!(Nop);
+    let output_features = OutputFeatures::default();
     let outputs = values.iter().fold(vec![coinbase], |mut secrets, v| {
-        let (t, k, _) = create_utxo(*v, factories, None, &script);
-        template.body.add_output(t.clone());
-        secrets.push(UnblindedOutput::new(
-            *v,
-            k.clone(),
-            None,
-            script.clone(),
-            inputs!(PublicKey::from_secret_key(&k)),
-            0,
-            k,
-            t.script_offset_public_key,
-        ));
+        let p = TestParams::new();
+        let unblinded_output = create_unblinded_output(script.clone(), output_features.clone(), p, *v);
+        secrets.push(unblinded_output.clone());
+        let output = unblinded_output.as_transaction_output(&factories).unwrap();
+        template.body.add_output(output);
         secrets
     });
     let mut block = update_genesis_block_mmr_roots(template).unwrap();

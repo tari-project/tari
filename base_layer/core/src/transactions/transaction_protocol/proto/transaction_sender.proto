@@ -1,6 +1,8 @@
 syntax = "proto3";
 
 import "transaction_metadata.proto";
+import "types.proto";
+import "transaction.proto";
 
 package tari.transaction_protocol;
 
@@ -21,6 +23,10 @@ message SingleRoundSenderData {
     bytes script = 7;
     // Tari script offset pubkey, K_O
     bytes script_offset_public_key = 8;
+    // UTXO signature with the script offset private key, k_O
+    tari.types.Signature sender_metadata_signature = 9;
+    // Output features
+    tari.types.OutputFeatures features = 10;
 }
 
 message TransactionSenderMessage {

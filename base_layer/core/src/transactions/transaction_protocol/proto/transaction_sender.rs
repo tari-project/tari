@@ -99,6 +99,15 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             .map(Into::into)
             .ok_or_else(|| "Transaction metadata not provided".to_string())?;
         let message = data.message;
+        let sender_metadata_signature = data
+            .sender_metadata_signature
+            .map(TryInto::try_into)
+            .ok_or_else(|| "Sender metadata signature not provided".to_string())?
+            .map_err(|err| format!("{}", err))?;
+        let features = data
+            .features
+            .map(TryInto::try_into)
+            .ok_or_else(|| "Transaction output features not provided".to_string())??;
 
         Ok(Self {
             tx_id: data.tx_id,
@@ -107,8 +116,10 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             public_nonce,
             metadata,
             message,
+            features,
             script: TariScript::from_bytes(&data.script).map_err(|err| err.to_string())?,
             script_offset_public_key,
+            sender_metadata_signature,
         })
     }
 }
@@ -124,8 +135,10 @@ impl From<SingleRoundSenderData> for proto::SingleRoundSenderData {
             public_nonce: sender_data.public_nonce.to_vec(),
             metadata: Some(sender_data.metadata.into()),
             message: sender_data.message,
+            features: Some(sender_data.features.into()),
             script: sender_data.script.as_bytes(),
             script_offset_public_key: sender_data.script_offset_public_key.to_vec(),
+            sender_metadata_signature: Some(sender_data.sender_metadata_signature.into()),
         }
     }
 }

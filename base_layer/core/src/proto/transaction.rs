@@ -151,7 +151,7 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
         let features = output
             .features
             .map(TryInto::try_into)
-            .ok_or_else(|| "transaction output features not provided".to_string())??;
+            .ok_or_else(|| "Transaction output features not provided".to_string())??;
 
         let commitment = output
             .commitment
@@ -164,12 +164,19 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
 
         let script = TariScript::from_bytes(&output.script.to_vec()).map_err(|err| err.to_string())?;
 
+        let sender_metadata_signature = output
+            .sender_metadata_signature
+            .ok_or_else(|| "Sender signature not provided".to_string())?
+            .try_into()
+            .map_err(|_| "Sender signature could not be converted".to_string())?;
+
         Ok(Self {
             features,
             commitment,
             proof: BulletRangeProof(output.range_proof),
             script,
             script_offset_public_key,
+            sender_metadata_signature,
         })
     }
 }
@@ -182,6 +189,7 @@ impl From<TransactionOutput> for proto::types::TransactionOutput {
             range_proof: output.proof.to_vec(),
             script: output.script.as_bytes(),
             script_offset_public_key: output.script_offset_public_key.as_bytes().to_vec(),
+            sender_metadata_signature: Some(output.sender_metadata_signature.into()),
         }
     }
 }

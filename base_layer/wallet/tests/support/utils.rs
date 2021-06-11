@@ -23,12 +23,12 @@
 use rand::{distributions::Alphanumeric, rngs::OsRng, CryptoRng, Rng};
 use std::{fmt::Debug, iter, thread, time::Duration};
 use tari_core::transactions::{
+    helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
     tari_amount::MicroTari,
     transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
     types::{CommitmentFactory, PrivateKey, PublicKey},
 };
 use tari_crypto::{
-    inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
     script,
 };
@@ -80,27 +80,11 @@ impl TestParams {
 }
 
 pub fn make_input<R: Rng + CryptoRng>(
-    rng: &mut R,
+    _rng: &mut R,
     val: MicroTari,
     factory: &CommitmentFactory,
 ) -> (TransactionInput, UnblindedOutput) {
-    let key = PrivateKey::random(rng);
-    let script = script!(Nop);
-    let script_private_key = PrivateKey::random(rng);
-    let input_data = inputs!(PublicKey::from_secret_key(&script_private_key));
-    let offset_pub_key = PublicKey::default();
-
-    let utxo = UnblindedOutput::new(
-        val,
-        key,
-        None,
-        script,
-        input_data,
-        0,
-        script_private_key,
-        offset_pub_key,
-    );
-
+    let utxo = create_unblinded_output(script!(Nop), OutputFeatures::default(), TestParamsHelpers::new(), val);
     (
         utxo.as_transaction_input(&factory)
             .expect("Should be able to make transaction input"),
@@ -109,28 +93,17 @@ pub fn make_input<R: Rng + CryptoRng>(
 }
 
 pub fn make_input_with_features<R: Rng + CryptoRng>(
-    rng: &mut R,
+    _rng: &mut R,
     value: MicroTari,
     factory: &CommitmentFactory,
     features: Option<OutputFeatures>,
 ) -> (TransactionInput, UnblindedOutput) {
-    let spending_key = PrivateKey::random(rng);
-    let script = script!(Nop);
-    let script_private_key = PrivateKey::random(rng);
-    let input_data = inputs!(PublicKey::from_secret_key(&script_private_key));
-    let offset_pub_key = PublicKey::default();
-
-    let utxo = UnblindedOutput::new(
+    let utxo = create_unblinded_output(
+        script!(Nop),
+        features.unwrap_or_default(),
+        TestParamsHelpers::new(),
         value,
-        spending_key,
-        features,
-        script,
-        input_data,
-        0,
-        script_private_key,
-        offset_pub_key,
     );
-
     (
         utxo.as_transaction_input(&factory)
             .expect("Should be able to make transaction input"),

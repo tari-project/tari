@@ -71,8 +71,9 @@ use tari_core::{
     proto::base_node as base_node_proto,
     transactions::{
         fee::Fee,
+        helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
         tari_amount::*,
-        transaction::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction, UnblindedOutput},
+        transaction::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction},
         transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage},
         types::{CryptoFactories, PrivateKey, PublicKey, Signature},
         ReceiverTransactionProtocol,
@@ -2047,18 +2048,15 @@ fn test_transaction_cancellation() {
         .remove(&tx_id)
         .is_none());
 
+    let input = create_unblinded_output(
+        TariScript::default(),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(100_000),
+    );
+
     let mut builder = SenderTransactionProtocol::builder(1);
     let amount = MicroTari::from(10_000);
-    let input = UnblindedOutput::new(
-        MicroTari::from(100_000),
-        PrivateKey::random(&mut OsRng),
-        None,
-        TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        PrivateKey::default(),
-        PublicKey::default(),
-    );
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177))
@@ -2073,7 +2071,7 @@ fn test_transaction_cancellation() {
             input,
         )
         .with_change_secret(PrivateKey::random(&mut OsRng))
-        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng))
+        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng), Default::default())
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
     let mut stp = builder.build::<HashDigest>(&factories).unwrap();
@@ -2115,18 +2113,14 @@ fn test_transaction_cancellation() {
         .is_none());
 
     // Lets cancel the last one using a Comms stack message
+    let input = create_unblinded_output(
+        TariScript::default(),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(100_000),
+    );
     let mut builder = SenderTransactionProtocol::builder(1);
     let amount = MicroTari::from(10_000);
-    let input = UnblindedOutput::new(
-        MicroTari::from(100_000),
-        PrivateKey::random(&mut OsRng),
-        None,
-        TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        PrivateKey::default(),
-        PublicKey::default(),
-    );
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177))
@@ -2141,7 +2135,7 @@ fn test_transaction_cancellation() {
             input,
         )
         .with_change_secret(PrivateKey::random(&mut OsRng))
-        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng))
+        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng), Default::default())
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
     let mut stp = builder.build::<HashDigest>(&factories).unwrap();
@@ -2702,7 +2696,7 @@ fn test_restarting_transaction_protocols() {
         .with_private_nonce(bob.nonce)
         .with_input(utxo, input)
         .with_amount(0, MicroTari(2000) - fee - MicroTari(10))
-        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng))
+        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng), Default::default())
         .with_change_script(
             script!(Nop),
             inputs!(PublicKey::from_secret_key(&script_private_key)),
@@ -3775,19 +3769,14 @@ fn test_resend_on_startup() {
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
 
     // First we will check the Send Tranasction message
+    let input = create_unblinded_output(
+        script!(Nop),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(100_000),
+    );
     let mut builder = SenderTransactionProtocol::builder(1);
     let amount = MicroTari::from(10_000);
-    let script_private_key = PrivateKey::random(&mut OsRng);
-    let input = UnblindedOutput::new(
-        MicroTari::from(100_000),
-        PrivateKey::random(&mut OsRng),
-        None,
-        script!(Nop),
-        inputs!(PublicKey::from_secret_key(&script_private_key)),
-        0,
-        script_private_key,
-        PublicKey::default(),
-    );
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177))
@@ -3802,7 +3791,7 @@ fn test_resend_on_startup() {
             input,
         )
         .with_change_secret(PrivateKey::random(&mut OsRng))
-        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng))
+        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng), Default::default())
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
     let mut stp = builder.build::<HashDigest>(&factories).unwrap();
@@ -4223,18 +4212,14 @@ fn test_transaction_timeout_cancellation() {
 
     // Now to test if the timeout has elapsed during downtime and that it is honoured on startup
     // First we will check the Send Transction message
+    let input = create_unblinded_output(
+        TariScript::default(),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(100_000),
+    );
     let mut builder = SenderTransactionProtocol::builder(1);
     let amount = MicroTari::from(10_000);
-    let input = UnblindedOutput::new(
-        MicroTari::from(100_000),
-        PrivateKey::random(&mut OsRng),
-        None,
-        TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        PrivateKey::default(),
-        PublicKey::default(),
-    );
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177))
@@ -4249,7 +4234,7 @@ fn test_transaction_timeout_cancellation() {
             input,
         )
         .with_change_secret(PrivateKey::random(&mut OsRng))
-        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng))
+        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng), Default::default())
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
     let mut stp = builder.build::<HashDigest>(&factories).unwrap();

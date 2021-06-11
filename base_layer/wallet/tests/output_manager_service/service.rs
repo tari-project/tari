@@ -42,8 +42,9 @@ use tari_core::{
     consensus::{ConsensusConstantsBuilder, Network},
     transactions::{
         fee::Fee,
+        helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
         tari_amount::{uT, MicroTari},
-        transaction::{KernelFeatures, OutputFeatures, Transaction, UnblindedOutput},
+        transaction::{KernelFeatures, OutputFeatures, Transaction},
         transaction_protocol::{
             recipient::RecipientState,
             sender::TransactionSenderMessage,
@@ -58,7 +59,7 @@ use tari_crypto::{
     inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     script,
-    script::{ExecutionStack, TariScript},
+    script::TariScript,
 };
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
@@ -679,34 +680,22 @@ fn send_no_change<T: OutputManagerBackend + 'static>(backend: T) {
 
     let fee_per_gram = MicroTari::from(20);
     let fee_without_change = Fee::calculate(fee_per_gram, 1, 2, 1);
-    let key1 = PrivateKey::random(&mut OsRng);
     let value1 = 500;
-    let script_key1 = PrivateKey::random(&mut OsRng);
     runtime
-        .block_on(oms.add_output(UnblindedOutput::new(
-            MicroTari::from(value1),
-            key1,
-            None,
+        .block_on(oms.add_output(create_unblinded_output(
             script!(Nop),
-            inputs!(PublicKey::from_secret_key(&script_key1)),
-            0,
-            script_key1,
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            OutputFeatures::default(),
+            TestParamsHelpers::new(),
+            MicroTari::from(value1),
         )))
         .unwrap();
-    let key2 = PrivateKey::random(&mut OsRng);
     let value2 = 800;
-    let script_key2 = PrivateKey::random(&mut OsRng);
     runtime
-        .block_on(oms.add_output(UnblindedOutput::new(
-            MicroTari::from(value2),
-            key2,
-            None,
+        .block_on(oms.add_output(create_unblinded_output(
             script!(Nop),
-            inputs!(PublicKey::from_secret_key(&script_key2)),
-            0,
-            script_key2,
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            OutputFeatures::default(),
+            TestParamsHelpers::new(),
+            MicroTari::from(value2),
         )))
         .unwrap();
 
@@ -780,32 +769,22 @@ fn send_not_enough_for_change<T: OutputManagerBackend + 'static>(backend: T) {
 
     let fee_per_gram = MicroTari::from(20);
     let fee_without_change = Fee::calculate(fee_per_gram, 1, 2, 1);
-    let key1 = PrivateKey::random(&mut OsRng);
     let value1 = 500;
     runtime
-        .block_on(oms.add_output(UnblindedOutput::new(
-            MicroTari::from(value1),
-            key1,
-            None,
+        .block_on(oms.add_output(create_unblinded_output(
             TariScript::default(),
-            ExecutionStack::default(),
-            0,
-            PrivateKey::default(),
-            PublicKey::default(),
+            OutputFeatures::default(),
+            TestParamsHelpers::new(),
+            MicroTari::from(value1),
         )))
         .unwrap();
-    let key2 = PrivateKey::random(&mut OsRng);
     let value2 = 800;
     runtime
-        .block_on(oms.add_output(UnblindedOutput::new(
-            MicroTari::from(value2),
-            key2,
-            None,
+        .block_on(oms.add_output(create_unblinded_output(
             TariScript::default(),
-            ExecutionStack::default(),
-            0,
-            PrivateKey::default(),
-            PublicKey::default(),
+            OutputFeatures::default(),
+            TestParamsHelpers::new(),
+            MicroTari::from(value2),
         )))
         .unwrap();
 
@@ -853,7 +832,7 @@ fn generate_sender_transaction_message(amount: MicroTari) -> (TxId, TransactionS
         .with_change_secret(alice.change_spend_key)
         .with_input(utxo, input)
         .with_amount(0, amount)
-        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng))
+        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng), Default::default())
         .with_change_script(
             script!(Nop),
             inputs!(PublicKey::from_secret_key(&script_private_key)),
@@ -1402,17 +1381,12 @@ fn test_utxo_stxo_invalid_txo_validation() {
     let mut runtime = Runtime::new().unwrap();
     let backend = OutputManagerMemoryDatabase::new();
 
-    let invalid_key = PrivateKey::random(&mut OsRng);
     let invalid_value = 666;
-    let invalid_output = UnblindedOutput::new(
-        MicroTari::from(invalid_value),
-        invalid_key,
-        None,
+    let invalid_output = create_unblinded_output(
         TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        PrivateKey::default(),
-        PublicKey::default(),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(invalid_value),
     );
     let invalid_tx_output = invalid_output.as_transaction_output(&factories).unwrap();
 
@@ -1429,17 +1403,12 @@ fn test_utxo_stxo_invalid_txo_validation() {
         )
         .unwrap();
 
-    let spent_key1 = PrivateKey::random(&mut OsRng);
     let spent_value1 = 500;
-    let spent_output1 = UnblindedOutput::new(
-        MicroTari::from(spent_value1),
-        spent_key1,
-        None,
+    let spent_output1 = create_unblinded_output(
         TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        PrivateKey::default(),
-        PublicKey::default(),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(spent_value1),
     );
     let spent_tx_output1 = spent_output1.as_transaction_output(&factories).unwrap();
     let spent_db_output1 = DbUnblindedOutput::from_unblinded_output(spent_output1.clone(), &factories).unwrap();
@@ -1451,17 +1420,12 @@ fn test_utxo_stxo_invalid_txo_validation() {
         )))
         .unwrap();
 
-    let spent_key2 = PrivateKey::random(&mut OsRng);
     let spent_value2 = 800;
-    let spent_output2 = UnblindedOutput::new(
-        MicroTari::from(spent_value2),
-        spent_key2,
-        None,
+    let spent_output2 = create_unblinded_output(
         TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        PrivateKey::default(),
-        PublicKey::default(),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(spent_value2),
     );
 
     let spent_db_output2 = DbUnblindedOutput::from_unblinded_output(spent_output2, &factories).unwrap();
@@ -1476,64 +1440,44 @@ fn test_utxo_stxo_invalid_txo_validation() {
         setup_output_manager_service(&mut runtime, backend, true);
     let mut event_stream = oms.get_event_stream_fused();
 
-    let unspent_key1 = PrivateKey::random(&mut OsRng);
     let unspent_value1 = 500;
-    let unspent_output1 = UnblindedOutput::new(
-        MicroTari::from(unspent_value1),
-        unspent_key1,
-        None,
+    let unspent_output1 = create_unblinded_output(
         TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        PrivateKey::default(),
-        PublicKey::default(),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(unspent_value1),
     );
     let unspent_tx_output1 = unspent_output1.as_transaction_output(&factories).unwrap();
 
     runtime.block_on(oms.add_output(unspent_output1.clone())).unwrap();
 
-    let unspent_key2 = PrivateKey::random(&mut OsRng);
     let unspent_value2 = 800;
-    let unspent_output2 = UnblindedOutput::new(
-        MicroTari::from(unspent_value2),
-        unspent_key2,
-        None,
+    let unspent_output2 = create_unblinded_output(
         TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        PrivateKey::default(),
-        PublicKey::default(),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(unspent_value2),
     );
 
     runtime.block_on(oms.add_output(unspent_output2)).unwrap();
 
-    let unspent_key3 = PrivateKey::random(&mut OsRng);
     let unspent_value3 = 900;
-    let unspent_output3 = UnblindedOutput::new(
-        MicroTari::from(unspent_value3),
-        unspent_key3,
-        None,
+    let unspent_output3 = create_unblinded_output(
         TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        PrivateKey::default(),
-        PublicKey::default(),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(unspent_value3),
     );
     let unspent_tx_output3 = unspent_output3.as_transaction_output(&factories).unwrap();
 
     runtime.block_on(oms.add_output(unspent_output3.clone())).unwrap();
 
-    let unspent_key4 = PrivateKey::random(&mut OsRng);
     let unspent_value4 = 901;
-    let unspent_output4 = UnblindedOutput::new(
-        MicroTari::from(unspent_value4),
-        unspent_key4,
-        None,
+    let unspent_output4 = create_unblinded_output(
         TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        PrivateKey::default(),
-        PublicKey::default(),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(unspent_value4),
     );
     let unspent_tx_output4 = unspent_output4.as_transaction_output(&factories).unwrap();
 
@@ -1677,48 +1621,33 @@ fn test_base_node_switch_during_validation() {
     ) = setup_output_manager_service(&mut runtime, backend, true);
     let mut event_stream = oms.get_event_stream_fused();
 
-    let unspent_key1 = PrivateKey::random(&mut OsRng);
     let unspent_value1 = 500;
-    let unspent_output1 = UnblindedOutput::new(
-        MicroTari::from(unspent_value1),
-        unspent_key1,
-        None,
+    let unspent_output1 = create_unblinded_output(
         TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        PrivateKey::default(),
-        PublicKey::default(),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(unspent_value1),
     );
     let unspent_tx_output1 = unspent_output1.as_transaction_output(&factories).unwrap();
 
     runtime.block_on(oms.add_output(unspent_output1)).unwrap();
 
-    let unspent_key2 = PrivateKey::random(&mut OsRng);
     let unspent_value2 = 800;
-    let unspent_output2 = UnblindedOutput::new(
-        MicroTari::from(unspent_value2),
-        unspent_key2,
-        None,
+    let unspent_output2 = create_unblinded_output(
         TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        PrivateKey::default(),
-        PublicKey::default(),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(unspent_value2),
     );
 
     runtime.block_on(oms.add_output(unspent_output2)).unwrap();
 
-    let unspent_key3 = PrivateKey::random(&mut OsRng);
     let unspent_value3 = 900;
-    let unspent_output3 = UnblindedOutput::new(
-        MicroTari::from(unspent_value3),
-        unspent_key3,
-        None,
+    let unspent_output3 = create_unblinded_output(
         TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        PrivateKey::default(),
-        PublicKey::default(),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(unspent_value3),
     );
     let unspent_tx_output3 = unspent_output3.as_transaction_output(&factories).unwrap();
 
@@ -1778,32 +1707,22 @@ fn test_txo_validation_connection_timeout_retries() {
         setup_output_manager_service(&mut runtime, backend, false);
     let mut event_stream = oms.get_event_stream_fused();
 
-    let unspent_key1 = PrivateKey::random(&mut OsRng);
     let unspent_value1 = 500;
-    let unspent_output1 = UnblindedOutput::new(
-        MicroTari::from(unspent_value1),
-        unspent_key1,
-        None,
+    let unspent_output1 = create_unblinded_output(
         TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        PrivateKey::default(),
-        PublicKey::default(),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(unspent_value1),
     );
 
     runtime.block_on(oms.add_output(unspent_output1)).unwrap();
 
-    let unspent_key2 = PrivateKey::random(&mut OsRng);
     let unspent_value2 = 800;
-    let unspent_output2 = UnblindedOutput::new(
-        MicroTari::from(unspent_value2),
-        unspent_key2,
-        None,
+    let unspent_output2 = create_unblinded_output(
         TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        PrivateKey::default(),
-        PublicKey::default(),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(unspent_value2),
     );
 
     runtime.block_on(oms.add_output(unspent_output2)).unwrap();
@@ -1858,32 +1777,22 @@ fn test_txo_validation_rpc_error_retries() {
     let mut event_stream = oms.get_event_stream_fused();
     rpc_service_state.set_rpc_status_error(Some(RpcStatus::bad_request("blah".to_string())));
 
-    let unspent_key1 = PrivateKey::random(&mut OsRng);
     let unspent_value1 = 500;
-    let unspent_output1 = UnblindedOutput::new(
-        MicroTari::from(unspent_value1),
-        unspent_key1,
-        None,
+    let unspent_output1 = create_unblinded_output(
         TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        PrivateKey::default(),
-        PublicKey::default(),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(unspent_value1),
     );
 
     runtime.block_on(oms.add_output(unspent_output1)).unwrap();
 
-    let unspent_key2 = PrivateKey::random(&mut OsRng);
     let unspent_value2 = 800;
-    let unspent_output2 = UnblindedOutput::new(
-        MicroTari::from(unspent_value2),
-        unspent_key2,
-        None,
+    let unspent_output2 = create_unblinded_output(
         TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        PrivateKey::default(),
-        PublicKey::default(),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(unspent_value2),
     );
 
     runtime.block_on(oms.add_output(unspent_output2)).unwrap();
@@ -1938,32 +1847,22 @@ fn test_txo_validation_rpc_timeout() {
     let mut event_stream = oms.get_event_stream_fused();
     rpc_service_state.set_response_delay(Some(Duration::from_secs(120)));
 
-    let unspent_key1 = PrivateKey::random(&mut OsRng);
     let unspent_value1 = 500;
-    let unspent_output1 = UnblindedOutput::new(
-        MicroTari::from(unspent_value1),
-        unspent_key1,
-        None,
+    let unspent_output1 = create_unblinded_output(
         TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        PrivateKey::default(),
-        PublicKey::default(),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(unspent_value1),
     );
 
     runtime.block_on(oms.add_output(unspent_output1)).unwrap();
 
-    let unspent_key2 = PrivateKey::random(&mut OsRng);
     let unspent_value2 = 800;
-    let unspent_output2 = UnblindedOutput::new(
-        MicroTari::from(unspent_value2),
-        unspent_key2,
-        None,
+    let unspent_output2 = create_unblinded_output(
         TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        PrivateKey::default(),
-        PublicKey::default(),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(unspent_value2),
     );
 
     runtime.block_on(oms.add_output(unspent_output2)).unwrap();
@@ -2013,33 +1912,23 @@ fn test_txo_validation_base_node_not_synced() {
     let mut event_stream = oms.get_event_stream_fused();
     rpc_service_state.set_is_synced(false);
 
-    let unspent_key1 = PrivateKey::random(&mut OsRng);
     let unspent_value1 = 500;
-    let unspent_output1 = UnblindedOutput::new(
-        MicroTari::from(unspent_value1),
-        unspent_key1,
-        None,
+    let unspent_output1 = create_unblinded_output(
         TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        PrivateKey::default(),
-        PublicKey::default(),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(unspent_value1),
     );
     let unspent_tx_output1 = unspent_output1.as_transaction_output(&factories).unwrap();
 
     runtime.block_on(oms.add_output(unspent_output1.clone())).unwrap();
 
-    let unspent_key2 = PrivateKey::random(&mut OsRng);
     let unspent_value2 = 800;
-    let unspent_output2 = UnblindedOutput::new(
-        MicroTari::from(unspent_value2),
-        unspent_key2,
-        None,
+    let unspent_output2 = create_unblinded_output(
         TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        PrivateKey::default(),
-        PublicKey::default(),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(unspent_value2),
     );
 
     runtime.block_on(oms.add_output(unspent_output2)).unwrap();

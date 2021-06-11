@@ -283,7 +283,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     if OutputSql::find_by_commitment(&c.to_vec(), &(*conn)).is_ok() {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
-                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Spent, None);
+                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Spent, None)?;
 
                     self.encrypt_if_necessary(&mut new_output)?;
 
@@ -293,7 +293,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     if OutputSql::find_by_commitment(&c.to_vec(), &(*conn)).is_ok() {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
-                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, None);
+                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, None)?;
                     self.encrypt_if_necessary(&mut new_output)?;
                     new_output.commit(&(*conn))?
                 },
@@ -301,7 +301,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     if OutputSql::find_by_commitment(&c.to_vec(), &(*conn)).is_ok() {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
-                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, Some(tx_id));
+                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, Some(tx_id))?;
                     self.encrypt_if_necessary(&mut new_output)?;
                     new_output.commit(&(*conn))?
                 },
@@ -318,12 +318,12 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     )
                     .commit(&(*conn))?;
                     for o in p.outputs_to_be_spent {
-                        let mut new_output = NewOutputSql::new(o, OutputStatus::EncumberedToBeSpent, Some(p.tx_id));
+                        let mut new_output = NewOutputSql::new(o, OutputStatus::EncumberedToBeSpent, Some(p.tx_id))?;
                         self.encrypt_if_necessary(&mut new_output)?;
                         new_output.commit(&(*conn))?;
                     }
                     for o in p.outputs_to_be_received {
-                        let mut new_output = NewOutputSql::new(o, OutputStatus::EncumberedToBeReceived, Some(p.tx_id));
+                        let mut new_output = NewOutputSql::new(o, OutputStatus::EncumberedToBeReceived, Some(p.tx_id))?;
                         self.encrypt_if_necessary(&mut new_output)?;
                         new_output.commit(&(*conn))?;
                     }
@@ -498,7 +498,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         }
 
         for co in outputs_to_receive {
-            let mut new_output = NewOutputSql::new(co.clone(), OutputStatus::EncumberedToBeReceived, Some(tx_id));
+            let mut new_output = NewOutputSql::new(co.clone(), OutputStatus::EncumberedToBeReceived, Some(tx_id))?;
             self.encrypt_if_necessary(&mut new_output)?;
             new_output.commit(&(*conn))?;
         }
@@ -883,11 +883,18 @@ struct NewOutputSql {
     height: i64,
     script_private_key: Vec<u8>,
     script_offset_public_key: Vec<u8>,
+    sender_metadata_signature: String,
 }
 
 impl NewOutputSql {
-    pub fn new(output: DbUnblindedOutput, status: OutputStatus, tx_id: Option<TxId>) -> Self {
-        Self {
+    pub fn new(
+        output: DbUnblindedOutput,
+        status: OutputStatus,
+        tx_id: Option<TxId>,
+    ) -> Result<Self, OutputManagerStorageError> {
+        let sender_metadata_signature = serde_json::to_string(&output.unblinded_output.sender_metadata_signature)
+            .map_err(|e| OutputManagerStorageError::UnexpectedResult(e.to_string()))?;
+        Ok(Self {
             commitment: Some(output.commitment.to_vec()),
             spending_key: output.unblinded_output.spending_key.to_vec(),
             value: (u64::from(output.unblinded_output.value)) as i64,
@@ -901,7 +908,8 @@ impl NewOutputSql {
             height: output.unblinded_output.height as i64,
             script_private_key: output.unblinded_output.script_private_key.to_vec(),
             script_offset_public_key: output.unblinded_output.script_offset_public_key.to_vec(),
-        }
+            sender_metadata_signature,
+        })
     }
 
     /// Write this struct to the database
@@ -942,6 +950,7 @@ struct OutputSql {
     height: i64,
     script_private_key: Vec<u8>,
     script_offset_public_key: Vec<u8>,
+    sender_metadata_signature: String,
 }
 
 impl OutputSql {
@@ -1128,6 +1137,8 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 );
                 OutputManagerStorageError::ConversionError
             })?,
+            serde_json::from_str(&o.sender_metadata_signature)
+                .map_err(|e| OutputManagerStorageError::UnexpectedResult(e.to_string()))?,
         );
 
         let hash = match o.hash {
@@ -1185,6 +1196,7 @@ impl From<OutputSql> for NewOutputSql {
             height: o.height,
             script_private_key: o.script_private_key,
             script_offset_public_key: o.script_offset_public_key,
+            sender_metadata_signature: o.sender_metadata_signature,
         }
     }
 }
@@ -1670,44 +1682,26 @@ mod test {
     };
     use chrono::{Duration as ChronoDuration, Utc};
     use diesel::{Connection, SqliteConnection};
-    use rand::{distributions::Alphanumeric, rngs::OsRng, CryptoRng, Rng, RngCore};
+    use rand::{distributions::Alphanumeric, rngs::OsRng, Rng, RngCore};
     use std::{convert::TryFrom, iter, time::Duration};
     use tari_core::transactions::{
+        helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
         tari_amount::MicroTari,
-        transaction::{TransactionInput, UnblindedOutput},
-        types::{CommitmentFactory, CryptoFactories, PrivateKey, PublicKey},
+        transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
+        types::{CommitmentFactory, CryptoFactories, PrivateKey},
     };
-    use tari_crypto::{
-        inputs,
-        keys::{PublicKey as PublicKeyTrait, SecretKey},
-        script,
-    };
+    use tari_crypto::{keys::SecretKey, script};
     use tempfile::tempdir;
 
     pub fn random_string(len: usize) -> String {
         iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
     }
 
-    pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: MicroTari) -> (TransactionInput, UnblindedOutput) {
-        let key = PrivateKey::random(rng);
-        let script_key = PrivateKey::random(rng);
-        let script_offset_private_key = PrivateKey::random(rng);
+    pub fn make_input(val: MicroTari) -> (TransactionInput, UnblindedOutput) {
+        let test_params = TestParamsHelpers::new();
         let factory = CommitmentFactory::default();
 
-        let script = script!(Nop);
-        let input_data = inputs!(PublicKey::from_secret_key(&script_key));
-        let height = 0;
-        let unblinded_output = UnblindedOutput::new(
-            val,
-            key,
-            None,
-            script,
-            input_data,
-            height,
-            script_key,
-            PublicKey::from_secret_key(&script_offset_private_key),
-        );
-
+        let unblinded_output = create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params, val);
         let input = unblinded_output.as_transaction_input(&factory).unwrap();
 
         (input, unblinded_output)
@@ -1734,18 +1728,18 @@ mod test {
         let factories = CryptoFactories::default();
 
         for _i in 0..2 {
-            let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
+            let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
             let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
-            let o = NewOutputSql::new(uo, OutputStatus::Unspent, None);
+            let o = NewOutputSql::new(uo, OutputStatus::Unspent, None).unwrap();
             outputs.push(o.clone());
             outputs_unspent.push(o.clone());
             o.commit(&conn).unwrap();
         }
 
         for _i in 0..3 {
-            let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
+            let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
             let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
-            let o = NewOutputSql::new(uo, OutputStatus::Spent, None);
+            let o = NewOutputSql::new(uo, OutputStatus::Spent, None).unwrap();
             outputs.push(o.clone());
             outputs_spent.push(o.clone());
             o.commit(&conn).unwrap();
@@ -1920,9 +1914,9 @@ mod test {
         conn.execute("PRAGMA foreign_keys = ON").unwrap();
         let factories = CryptoFactories::default();
 
-        let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
+        let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
         let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
-        let output = NewOutputSql::new(uo, OutputStatus::Unspent, None);
+        let output = NewOutputSql::new(uo, OutputStatus::Unspent, None).unwrap();
 
         let key = GenericArray::from_slice(b"an example very very secret key.");
         let cipher = Aes256Gcm::new(key);
@@ -2028,14 +2022,14 @@ mod test {
         let state_sql = KeyManagerStateSql::from(starting_state);
         state_sql.set_state(&conn).unwrap();
 
-        let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
+        let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
         let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
-        let output = NewOutputSql::new(uo, OutputStatus::Unspent, None);
+        let output = NewOutputSql::new(uo, OutputStatus::Unspent, None).unwrap();
         output.commit(&conn).unwrap();
 
-        let (_, uo2) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
+        let (_, uo2) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
         let uo2 = DbUnblindedOutput::from_unblinded_output(uo2, &factories).unwrap();
-        let output2 = NewOutputSql::new(uo2, OutputStatus::Unspent, None);
+        let output2 = NewOutputSql::new(uo2, OutputStatus::Unspent, None).unwrap();
         output2.commit(&conn).unwrap();
 
         let key = GenericArray::from_slice(b"an example very very secret key.");

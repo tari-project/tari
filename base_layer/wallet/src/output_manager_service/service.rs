@@ -435,12 +435,14 @@ where TBackend: OutputManagerBackend + 'static
             UnblindedOutput::new(
                 single_round_sender_data.amount,
                 spending_key.clone(),
-                None,
-                script!(Nop),
+                Some(single_round_sender_data.features.clone()),
+                single_round_sender_data.script.clone(),
+                // TODO: The input data should be variable; this will only work for a Nop script
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
                 0,
                 script_private_key,
                 single_round_sender_data.script_offset_public_key.clone(),
+                single_round_sender_data.sender_metadata_signature.clone(),
             ),
             &self.resources.factories,
         )?;
@@ -455,10 +457,10 @@ where TBackend: OutputManagerBackend + 'static
         let nonce = PrivateKey::random(&mut OsRng);
 
         let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(
-            sender_message,
+            sender_message.clone(),
             nonce,
             spending_key,
-            OutputFeatures::default(),
+            single_round_sender_data.features.clone(),
             &self.resources.factories,
             self.resources.master_key_manager.rewind_data(),
         );
@@ -561,7 +563,7 @@ where TBackend: OutputManagerBackend + 'static
             .with_offset(offset.clone())
             .with_private_nonce(nonce.clone())
             .with_amount(0, amount)
-            .with_recipient_script(0, recipient_script, PrivateKey::random(&mut OsRng))
+            .with_recipient_script(0, recipient_script, PrivateKey::random(&mut OsRng), Default::default())
             .with_message(message)
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
 
@@ -579,7 +581,6 @@ where TBackend: OutputManagerBackend + 'static
             outputs.len()
         );
         let fee_without_change = Fee::calculate(fee_per_gram, 1, outputs.len(), 1);
-        let mut change_keys: Option<(PrivateKey, PrivateKey)> = None;
         // If the input values > the amount to be sent + fee_without_change then we will need to include a change
         // output
         if total > amount + fee_without_change {
@@ -588,7 +589,6 @@ where TBackend: OutputManagerBackend + 'static
                 .master_key_manager
                 .get_next_spend_and_script_key()
                 .await?;
-            change_keys = Some((spending_key.clone(), script_private_key.clone()));
             builder.with_change_secret(spending_key);
             builder.with_rewindable_outputs(self.resources.master_key_manager.rewind_data().clone());
             builder.with_change_script(
@@ -604,24 +604,12 @@ where TBackend: OutputManagerBackend + 'static
 
         // If a change output was created add it to the pending_outputs list.
         let mut change_output = Vec::<DbUnblindedOutput>::new();
-        if let Some((spending_key, script_private_key)) = change_keys {
-            let change_script_offset_public_key = stp.get_change_script_offset_public_key()?.ok_or_else(|| {
-                OutputManagerError::BuildError(
-                    "There should be a change script offset public key available".to_string(),
-                )
+        if total > amount + fee_without_change {
+            let unblinded_output = stp.get_change_unblinded_output()?.ok_or_else(|| {
+                OutputManagerError::BuildError("There should be a change output sender signature available".to_string())
             })?;
-
             change_output.push(DbUnblindedOutput::from_unblinded_output(
-                UnblindedOutput::new(
-                    stp.get_change_amount()?,
-                    spending_key,
-                    None,
-                    script!(Nop),
-                    inputs!(PublicKey::from_secret_key(&script_private_key)),
-                    0,
-                    script_private_key,
-                    change_script_offset_public_key,
-                ),
+                unblinded_output,
                 &self.resources.factories,
             )?);
         }
@@ -661,30 +649,17 @@ where TBackend: OutputManagerBackend + 'static
             .await?;
 
         let nonce = PrivateKey::random(&mut OsRng);
-        let (tx, _) = CoinbaseBuilder::new(self.resources.factories.clone())
+        let (tx, unblinded_output) = CoinbaseBuilder::new(self.resources.factories.clone())
             .with_block_height(block_height)
             .with_fees(fees)
             .with_spend_key(spending_key.clone())
             .with_script_key(script_key.clone())
+            .with_script(script!(Nop))
             .with_nonce(nonce)
             .with_rewind_data(self.resources.master_key_manager.rewind_data().clone())
             .build_with_reward(&self.resources.consensus_constants, reward)?;
 
-        let output = DbUnblindedOutput::from_unblinded_output(
-            UnblindedOutput::new(
-                reward + fees,
-                spending_key,
-                Some(OutputFeatures::create_coinbase(
-                    block_height + self.resources.consensus_constants.coinbase_lock_height(),
-                )),
-                script!(Nop),
-                inputs!(PublicKey::from_secret_key(&script_key)),
-                block_height,
-                script_key,
-                PublicKey::default(),
-            ),
-            &self.resources.factories,
-        )?;
+        let output = DbUnblindedOutput::from_unblinded_output(unblinded_output, &self.resources.factories)?;
 
         // Clear any existing pending coinbase transactions for this blockheight
         self.resources
@@ -745,6 +720,10 @@ where TBackend: OutputManagerBackend + 'static
             );
         }
 
+        let script = script!(Nop);
+        let output_features = OutputFeatures::default();
+        let sender_signature =
+            TransactionOutput::create_sender_signature(&script, &output_features, &script_offset_private_key);
         let (spending_key, script_private_key) = self
             .resources
             .master_key_manager
@@ -754,19 +733,19 @@ where TBackend: OutputManagerBackend + 'static
             UnblindedOutput::new(
                 amount,
                 spending_key.clone(),
-                None,
-                script!(Nop),
+                Some(output_features),
+                script,
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
                 0,
                 script_private_key,
                 PublicKey::from_secret_key(&script_offset_private_key),
+                sender_signature,
             ),
             &self.resources.factories,
         )?;
         builder.with_output(utxo.unblinded_output.clone(), script_offset_private_key.clone());
 
         let mut outputs = vec![utxo];
-        let mut change_keys = None;
 
         let fee = Fee::calculate(fee_per_gram, 1, inputs.len(), 1);
         let change_value = total.saturating_sub(amount).saturating_sub(fee);
@@ -776,7 +755,6 @@ where TBackend: OutputManagerBackend + 'static
                 .master_key_manager
                 .get_next_spend_and_script_key()
                 .await?;
-            change_keys = Some((spending_key.clone(), script_private_key.clone()));
             builder.with_change_secret(spending_key);
             builder.with_rewindable_outputs(self.resources.master_key_manager.rewind_data().clone());
             builder.with_change_script(
@@ -791,25 +769,11 @@ where TBackend: OutputManagerBackend + 'static
             .build::<HashDigest>(&self.resources.factories)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
-        if let Some((spending_key, script_private_key)) = change_keys {
-            let change_script_offset_public_key = stp.get_change_script_offset_public_key()?.ok_or_else(|| {
-                OutputManagerError::BuildError(
-                    "There should be a change script offset public key available".to_string(),
-                )
+        if change_value > 0.into() {
+            let unblinded_output = stp.get_change_unblinded_output()?.ok_or_else(|| {
+                OutputManagerError::BuildError("There should be a change output sender signature available".to_string())
             })?;
-            let change_output = DbUnblindedOutput::from_unblinded_output(
-                UnblindedOutput::new(
-                    stp.get_change_amount()?,
-                    spending_key,
-                    None,
-                    script!(Nop),
-                    inputs!(PublicKey::from_secret_key(&script_private_key)),
-                    0,
-                    script_private_key,
-                    change_script_offset_public_key,
-                ),
-                &self.resources.factories,
-            )?;
+            let change_output = DbUnblindedOutput::from_unblinded_output(unblinded_output, &self.resources.factories)?;
 
             outputs.push(change_output);
         }
@@ -1143,16 +1107,21 @@ where TBackend: OutputManagerBackend + 'static
                 .await?;
             let script_offset_private_key = PrivateKey::random(&mut OsRng);
 
+            let script = script!(Nop);
+            let output_features = OutputFeatures::default();
+            let sender_signature =
+                TransactionOutput::create_sender_signature(&script, &output_features, &script_offset_private_key);
             let utxo = DbUnblindedOutput::from_unblinded_output(
                 UnblindedOutput::new(
                     output_amount,
                     spending_key.clone(),
-                    None,
-                    script!(Nop),
+                    Some(output_features),
+                    script,
                     inputs!(PublicKey::from_secret_key(&script_private_key)),
                     0,
                     script_private_key,
                     PublicKey::from_secret_key(&script_offset_private_key),
+                    sender_signature,
                 ),
                 &self.resources.factories,
             )?;
@@ -1234,6 +1203,7 @@ where TBackend: OutputManagerBackend + 'static
                         height,
                         known_one_sided_payment_scripts[i].private_key.clone(),
                         output.script_offset_public_key,
+                        output.sender_metadata_signature,
                     );
                     let db_output =
                         DbUnblindedOutput::from_unblinded_output(rewound_output.clone(), &self.resources.factories)?;

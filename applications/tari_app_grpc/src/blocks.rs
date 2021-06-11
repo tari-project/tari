@@ -80,6 +80,13 @@ impl From<tari_core::blocks::Block> for grpc::Block {
                         }),
                         commitment: Vec::from(output.commitment.as_bytes()),
                         range_proof: Vec::from(output.proof.as_bytes()),
+                        hash: Vec::from(output.hash.as_bytes()),
+                        script: Vec::from(output.script.as_bytes()),
+                        script_offset_public_key: Vec::from(output.script_offset_public_key.as_bytes()),
+                        sender_metadata_signature: Some(grpc::Signature {
+                            public_nonce: Vec::from(output.sender_metadata_signature.get_public_nonce().as_bytes()),
+                            signature: Vec::from(output.sender_metadata_signature.get_signature().as_bytes()),
+                        }),
                     })
                     .collect(),
                 kernels: block
@@ -175,6 +182,13 @@ impl From<NewBlockTemplate> for grpc::NewBlockTemplate {
                         }),
                         commitment: Vec::from(output.commitment.as_bytes()),
                         range_proof: Vec::from(output.proof.as_bytes()),
+                        hash: Vec::from(output.hash.as_bytes()),
+                        script: Vec::from(output.script.as_bytes()),
+                        script_offset_public_key: Vec::from(output.script_offset_public_key.as_bytes()),
+                        sender_metadata_signature: Some(grpc::Signature {
+                            public_nonce: Vec::from(output.sender_metadata_signature.get_public_nonce().as_bytes()),
+                            signature: Vec::from(output.sender_metadata_signature.get_signature().as_bytes()),
+                        }),
                     })
                     .collect(),
                 kernels: block

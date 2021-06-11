@@ -406,7 +406,7 @@ When(
     let wallet = this.getWallet(walletName);
     let client = wallet.getClient();
     let found_txs = await client.getCompletedTransactions();
-    console.log("Found: ", found_txs);
+    //console.log("Found: ", found_txs);
     let found_count = 0;
     for (let imported_tx = 0; imported_tx < lastResult.length; imported_tx++) {
       for (let found_tx = 0; found_tx < found_txs.length; found_tx++) {
@@ -1227,21 +1227,24 @@ Then(
 
 Then(
   /wallet (.*) and wallet (.*) have the same balance/,
-  { timeout: 60 * 1000 },
+  { timeout: 65 * 1000 },
   async function (walletNameA, walletNameB) {
     const walletClientA = this.getWallet(walletNameA).getClient();
-    const balanceA = await walletClientA.getBalance();
-    console.log("\n");
-    console.log(walletNameA, "balance:");
+    var balanceA = await walletClientA.getBalance();
+    console.log("\n", walletNameA, "balance:");
     consoleLogBalance(balanceA);
     const walletClientB = this.getWallet(walletNameB).getClient();
-    await waitFor(
-      async () => walletClientB.isBalanceAtLeast(balanceA.available_balance),
-      true,
-      55 * 1000,
-      5 * 1000,
-      5
-    );
+    for (let i = 1; i <= 12; i++) {
+      await waitFor(
+        async () => walletClientB.isBalanceAtLeast(balanceA.available_balance),
+        true,
+        5 * 1000
+      );
+      balanceA = await walletClientA.getBalance();
+      if (walletClientB.isBalanceAtLeast(balanceA.available_balance) === true) {
+        break;
+      }
+    }
     const balanceB = await walletClientB.getBalance();
     console.log(walletNameB, "balance:");
     consoleLogBalance(balanceB);
