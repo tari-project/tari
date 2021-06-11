@@ -133,6 +133,7 @@ pub enum DbKey {
     KeyManagerState,
     InvalidOutputs,
     KnownOneSidedPaymentScripts,
+    CoinbaseOutput { commitment: Commitment, block_height: u64 },
 }
 
 #[derive(Debug)]
@@ -146,6 +147,7 @@ pub enum DbValue {
     AllPendingTransactionOutputs(HashMap<TxId, PendingTransactionOutputs>),
     KeyManagerState(KeyManagerState),
     KnownOneSidedPaymentScripts(Vec<KnownOneSidedPaymentScript>),
+    CoinbaseOutput(Box<DbUnblindedOutput>),
 }
 
 pub enum DbKeyValuePair {
@@ -167,7 +169,7 @@ macro_rules! fetch {
     ($db:ident, $key_val:expr, $key_var:ident) => {{
         let key = DbKey::$key_var($key_val);
         match $db.fetch(&key) {
-            Ok(None) => Err(OutputManagerStorageError::ValueNotFound(key)),
+            Ok(None) => Err(OutputManagerStorageError::ValueNotFound),
             Ok(Some(DbValue::$key_var(k))) => Ok(*k),
             Ok(Some(other)) => unexpected_result(key, other),
             Err(e) => log_error(key, e),
@@ -631,6 +633,46 @@ where T: OutputManagerBackend + 'static
             .and_then(|inner_result| inner_result)
     }
 
+    pub async fn remove_coinbase_output_at_block_height(
+        &self,
+        commitment: Commitment,
+        block_height: u64,
+    ) -> Result<(), OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || {
+            match db_clone.write(WriteOperation::Remove(DbKey::CoinbaseOutput {
+                commitment: commitment.clone(),
+                block_height,
+            })) {
+                Ok(None) => log_error(
+                    DbKey::CoinbaseOutput {
+                        commitment,
+                        block_height,
+                    },
+                    OutputManagerStorageError::ValueNotFound,
+                ),
+                Ok(Some(DbValue::CoinbaseOutput(_))) => Ok(()),
+                Ok(Some(other)) => unexpected_result(
+                    DbKey::CoinbaseOutput {
+                        commitment,
+                        block_height,
+                    },
+                    other,
+                ),
+                Err(e) => log_error(
+                    DbKey::CoinbaseOutput {
+                        commitment,
+                        block_height,
+                    },
+                    e,
+                ),
+            }
+        })
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(())
+    }
+
     pub async fn update_output_mined_height(&self, tx_id: u64, height: u64) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.update_mined_height(tx_id, height))
@@ -712,6 +754,7 @@ impl Display for DbKey {
             DbKey::InvalidOutputs => f.write_str(&"Invalid Outputs Key"),
             DbKey::TimeLockedUnspentOutputs(_t) => f.write_str(&"Timelocked Outputs"),
             DbKey::KnownOneSidedPaymentScripts => f.write_str(&"Known claiming scripts"),
+            DbKey::CoinbaseOutput { .. } => f.write_str("Coinbase Output"),
         }
     }
 }
@@ -728,6 +771,7 @@ impl Display for DbValue {
             DbValue::KeyManagerState(_) => f.write_str("Key Manager State"),
             DbValue::InvalidOutputs(_) => f.write_str("Invalid Outputs"),
             DbValue::KnownOneSidedPaymentScripts(_) => f.write_str(&"Known claiming scripts"),
+            DbValue::CoinbaseOutput(_) => f.write_str("Coinbase Output"),
         }
     }
 }

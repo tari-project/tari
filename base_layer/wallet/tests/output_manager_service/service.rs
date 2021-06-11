@@ -935,7 +935,7 @@ fn cancel_transaction<T: OutputManagerBackend + 'static>(backend: T) {
         .unwrap();
 
     match runtime.block_on(oms.cancel_transaction(1)) {
-        Err(OutputManagerError::OutputManagerStorageError(OutputManagerStorageError::ValueNotFound(_))) => {},
+        Err(OutputManagerError::OutputManagerStorageError(OutputManagerStorageError::ValueNotFound)) => {},
         _ => panic!("Value should not exist"),
     }
 
@@ -2192,4 +2192,32 @@ fn test_oms_key_manager_discrepancy() {
         output_manager_service3,
         Err(OutputManagerError::MasterSecretKeyMismatch)
     ));
+}
+
+#[test]
+fn get_coinbase_tx_for_same_height() {
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_tempdir = tempdir().unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_path = format!("{}/{}", db_folder, db_name);
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+
+    let mut runtime = Runtime::new().unwrap();
+    let (mut oms, _shutdown, _, _, _, _, _) =
+        setup_output_manager_service(&mut runtime, OutputManagerSqliteDatabase::new(connection, None), true);
+
+    runtime
+        .block_on(oms.get_coinbase_transaction(1, 100_000.into(), 100.into(), 1))
+        .unwrap();
+
+    let pending_transactions = runtime.block_on(oms.get_pending_transactions()).unwrap();
+    assert!(pending_transactions.values().any(|p| p.tx_id == 1));
+
+    runtime
+        .block_on(oms.get_coinbase_transaction(2, 100_000.into(), 100.into(), 1))
+        .unwrap();
+
+    let pending_transactions = runtime.block_on(oms.get_pending_transactions()).unwrap();
+    assert!(!pending_transactions.values().any(|p| p.tx_id == 1));
+    assert!(pending_transactions.values().any(|p| p.tx_id == 2));
 }

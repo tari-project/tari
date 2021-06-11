@@ -253,6 +253,22 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             },
+            DbKey::CoinbaseOutput {
+                commitment,
+                block_height,
+            } => match OutputSql::find_by_commitment_and_block_height(&commitment.to_vec(), *block_height, &(*conn)) {
+                Ok(mut o) => {
+                    self.decrypt_if_necessary(&mut o)?;
+                    Some(DbValue::CoinbaseOutput(Box::new(DbUnblindedOutput::try_from(o)?)))
+                },
+                Err(e) => {
+                    match e {
+                        OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
+                        e => return Err(e),
+                    };
+                    None
+                },
+            },
         };
 
         Ok(result)
@@ -291,7 +307,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 },
                 DbKeyValuePair::PendingTransactionOutputs(tx_id, p) => {
                     if PendingTransactionOutputSql::find(tx_id, &(*conn)).is_ok() {
-                        return Err(OutputManagerStorageError::DuplicateOutput);
+                        return Err(OutputManagerStorageError::DuplicateTransaction);
                     }
 
                     PendingTransactionOutputSql::new(
@@ -347,6 +363,23 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                             e => return Err(e),
                         };
                     },
+                },
+                DbKey::CoinbaseOutput {
+                    commitment,
+                    block_height,
+                } => {
+                    match OutputSql::find_by_commitment_and_block_height(&commitment.to_vec(), block_height, &(*conn)) {
+                        Ok(o) => {
+                            o.delete(&(*conn))?;
+                            return Ok(Some(DbValue::CoinbaseOutput(Box::new(DbUnblindedOutput::try_from(o)?))));
+                        },
+                        Err(e) => {
+                            match e {
+                                OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
+                                e => return Err(e),
+                            };
+                        },
+                    }
                 },
                 DbKey::PendingTransactionOutputs(tx_id) => match PendingTransactionOutputSql::find(tx_id, &(*conn)) {
                     Ok(p) => {
@@ -483,9 +516,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             Err(e) => {
                 match e {
                     OutputManagerStorageError::DieselError(DieselError::NotFound) => {
-                        return Err(OutputManagerStorageError::ValueNotFound(
-                            DbKey::PendingTransactionOutputs(tx_id),
-                        ))
+                        return Err(OutputManagerStorageError::ValueNotFound)
                     },
                     e => return Err(e),
                 };
@@ -547,9 +578,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             Err(e) => {
                 match e {
                     OutputManagerStorageError::DieselError(DieselError::NotFound) => {
-                        return Err(OutputManagerStorageError::ValueNotFound(
-                            DbKey::PendingTransactionOutputs(tx_id),
-                        ))
+                        return Err(OutputManagerStorageError::ValueNotFound)
                     },
                     e => return Err(e),
                 };
@@ -944,7 +973,6 @@ impl OutputSql {
             .first::<OutputSql>(conn)?)
     }
 
-    /// Find a particular Output by its public_spending_key
     pub fn find_by_commitment(
         commitment: &[u8],
         conn: &SqliteConnection,
@@ -953,6 +981,17 @@ impl OutputSql {
         Ok(outputs::table
             .filter(outputs::status.ne(cancelled))
             .filter(outputs::commitment.eq(commitment))
+            .first::<OutputSql>(conn)?)
+    }
+
+    pub fn find_by_commitment_and_block_height(
+        commitment: &[u8],
+        height: u64,
+        conn: &SqliteConnection,
+    ) -> Result<OutputSql, OutputManagerStorageError> {
+        Ok(outputs::table
+            .filter(outputs::commitment.eq(commitment))
+            .filter(outputs::height.eq(height as i64))
             .first::<OutputSql>(conn)?)
     }
 

@@ -654,11 +654,6 @@ where TBackend: OutputManagerBackend + 'static
         fees: MicroTari,
         block_height: u64,
     ) -> Result<Transaction, OutputManagerError> {
-        self.resources
-            .db
-            .cancel_pending_transaction_at_block_height(block_height)
-            .await?;
-
         let (spending_key, script_key) = self
             .resources
             .master_key_manager
@@ -690,6 +685,25 @@ where TBackend: OutputManagerBackend + 'static
             ),
             &self.resources.factories,
         )?;
+
+        // Clear any existing pending coinbase transactions for this blockheight
+        self.resources
+            .db
+            .cancel_pending_transaction_at_block_height(block_height)
+            .await?;
+
+        // Clear any matching coinbase outputs for this block_height AND commitment. Even if the older output is valid
+        // we are losing no information as this output has the same commitment.
+        match self
+            .resources
+            .db
+            .remove_coinbase_output_at_block_height(output.commitment.clone(), output.unblinded_output.height)
+            .await
+        {
+            Ok(_) => {},
+            Err(OutputManagerStorageError::ValueNotFound) => {},
+            Err(e) => return Err(e.into()),
+        }
 
         self.resources
             .db
