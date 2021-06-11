@@ -70,6 +70,7 @@ pub enum BaseNodeCommand {
     CheckDb,
     PeriodStats,
     HeaderStats,
+    BlockTiming,
     CalcTiming,
     DiscoverPeer,
     GetBlock,
@@ -228,8 +229,8 @@ impl Parser {
             ListHeaders => {
                 self.process_list_headers(args);
             },
-            CalcTiming => {
-                self.process_calc_timing(args);
+            BlockTiming | CalcTiming => {
+                self.process_block_timing(args);
             },
             GetBlock => {
                 self.process_get_block(args);
@@ -261,9 +262,9 @@ impl Parser {
     }
 
     /// Displays the commands or context specific help for a given command
-    fn print_help(&self, help_for: BaseNodeCommand) {
+    fn print_help(&self, command: BaseNodeCommand) {
         use BaseNodeCommand::*;
-        match help_for {
+        match command {
             Help => {
                 println!("Available commands are: ");
                 let joined = self.commands.join(", ");
@@ -298,7 +299,7 @@ impl Parser {
             },
             RewindBlockchain => {
                 println!("Rewinds the blockchain to the given height.");
-                println!("Usage: {} [new_height]", help_for);
+                println!("Usage: {} [new_height]", command);
                 println!("new_height must be less than the current height.");
             },
             BanPeer => {
@@ -344,8 +345,10 @@ impl Parser {
                 println!("list-headers [first header height] [last header height]");
                 println!("list-headers [number of headers starting from the chain tip back]");
             },
-            CalcTiming => {
-                println!("Calculates the time average time taken to mine a given range of blocks.");
+            BlockTiming | CalcTiming => {
+                println!("Calculates the maximum, minimum, and average time taken to mine a given range of blocks.");
+                println!("block-timing [start height] [end height]");
+                println!("block-timing [number of blocks from chain tip]");
             },
             GetBlock => {
                 println!("Display a block by height or hash:");
@@ -577,17 +580,21 @@ impl Parser {
     }
 
     /// Function to process the calc-timing command
-    fn process_calc_timing<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
+    fn process_block_timing<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
         let start = args.next().map(u64::from_str).map(Result::ok).flatten();
         let end = args.next().map(u64::from_str).map(Result::ok).flatten();
-        if start.is_none() {
-            println!("Command entered incorrectly, please use the following formats: ");
-            println!("calc-timing [first header height] [last header height]");
-            println!("calc-timing [number of headers from chain tip]");
-            return;
+
+        let command = BaseNodeCommand::BlockTiming;
+        if let Some(start) = start {
+            if end.is_none() && start < 2 {
+                println!("Number of headers must be at least 2.");
+                self.print_help(command);
+            } else {
+                self.command_handler.block_timing(start, end)
+            }
+        } else {
+            self.print_help(command);
         }
-        let start = start.unwrap();
-        self.command_handler.calc_timing(start, end)
     }
 
     fn process_period_stats<'a, I: Iterator<Item = &'a str>>(&self, args: I) {

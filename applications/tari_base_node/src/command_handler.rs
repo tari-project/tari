@@ -726,7 +726,7 @@ impl CommandHandler {
         }
     }
 
-    pub fn calc_timing(&self, start: u64, end: Option<u64>) {
+    pub fn block_timing(&self, start: u64, end: Option<u64>) {
         let blockchain_db = self.blockchain_db.clone();
         self.executor.spawn(async move {
             let headers = match Self::get_chain_headers(&blockchain_db, start, end).await {
