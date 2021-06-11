@@ -6,7 +6,7 @@
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
 #![recursion_limit = "1024"]
-use crate::recovery::get_private_key_from_seed_words;
+use crate::{recovery::get_private_key_from_seed_words, wallet_modes::WalletModeConfig};
 use init::{
     boot,
     change_password,
@@ -62,7 +62,7 @@ fn main_inner() -> Result<(), ExitCodes> {
         .build()
         .expect("Failed to build a runtime!");
 
-    let (bootstrap, config, _) = init_configuration(ApplicationType::ConsoleWallet)?;
+    let (bootstrap, global_config, _) = init_configuration(ApplicationType::ConsoleWallet)?;
 
     info!(
         target: LOG_TARGET,
@@ -71,7 +71,7 @@ fn main_inner() -> Result<(), ExitCodes> {
         consts::APP_VERSION
     );
 
-    debug!(target: LOG_TARGET, "Using configuration: {:?}", config);
+    debug!(target: LOG_TARGET, "Using configuration: {:?}", global_config);
     debug!(target: LOG_TARGET, "Using bootstrap: {:?}", bootstrap);
 
     // get command line password if provided
@@ -82,7 +82,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     }
 
     // check for recovery based on existence of wallet file
-    let mut boot_mode = boot(&bootstrap, &config)?;
+    let mut boot_mode = boot(&bootstrap, &global_config)?;
 
     let recovery_master_key: Option<PrivateKey> = get_recovery_master_key(boot_mode, &bootstrap)?;
 
@@ -99,12 +99,12 @@ fn main_inner() -> Result<(), ExitCodes> {
 
     if bootstrap.change_password {
         info!(target: LOG_TARGET, "Change password requested.");
-        return runtime.block_on(change_password(&config, arg_password, shutdown_signal));
+        return runtime.block_on(change_password(&global_config, arg_password, shutdown_signal));
     }
 
     // initialize wallet
     let mut wallet = runtime.block_on(init_wallet(
-        &config,
+        &global_config,
         arg_password,
         seed_words_file_name,
         recovery_master_key,
@@ -118,41 +118,35 @@ fn main_inner() -> Result<(), ExitCodes> {
     }
 
     // get base node/s
-    let base_node_config = runtime.block_on(get_base_node_peer_config(&config, &mut wallet))?;
-    let base_node = base_node_config.get_base_node_peer()?;
+    let base_node_config = runtime.block_on(get_base_node_peer_config(&global_config, &mut wallet))?;
+    let base_node_selected = base_node_config.get_base_node_peer()?;
 
     let wallet_mode = wallet_mode(&bootstrap, boot_mode);
 
     // start wallet
-    runtime.block_on(start_wallet(&mut wallet, &base_node, &wallet_mode))?;
+    runtime.block_on(start_wallet(&mut wallet, &base_node_selected, &wallet_mode))?;
 
     // optional path to notify script
-    let notify_script = get_notify_script(&bootstrap, &config)?;
+    let notify_script = get_notify_script(&bootstrap, &global_config)?;
 
     debug!(target: LOG_TARGET, "Starting app");
 
     let handle = runtime.handle().clone();
+    let config = WalletModeConfig {
+        base_node_config,
+        base_node_selected,
+        daemon_mode: bootstrap.daemon_mode,
+        global_config,
+        handle,
+        notify_script,
+        wallet_mode: wallet_mode.clone(),
+    };
     let result = match wallet_mode {
-        WalletMode::Tui => tui_mode(
-            handle,
-            config,
-            wallet.clone(),
-            base_node,
-            base_node_config,
-            notify_script,
-        ),
-        WalletMode::Grpc => grpc_mode(handle, wallet.clone(), config),
-        WalletMode::Script(path) => script_mode(handle, path, wallet.clone(), config),
-        WalletMode::Command(command) => command_mode(handle, command, wallet.clone(), config),
-        WalletMode::RecoveryDaemon | WalletMode::RecoveryTui => recovery_mode(
-            handle,
-            config,
-            wallet.clone(),
-            base_node,
-            base_node_config,
-            notify_script,
-            wallet_mode,
-        ),
+        WalletMode::Tui => tui_mode(config, wallet.clone()),
+        WalletMode::Grpc => grpc_mode(config, wallet.clone()),
+        WalletMode::Script(path) => script_mode(config, wallet.clone(), path),
+        WalletMode::Command(command) => command_mode(config, wallet.clone(), command),
+        WalletMode::RecoveryDaemon | WalletMode::RecoveryTui => recovery_mode(config, wallet.clone()),
         WalletMode::Invalid => Err(ExitCodes::InputError(
             "Invalid wallet mode - are you trying too many command options at once?".to_string(),
         )),

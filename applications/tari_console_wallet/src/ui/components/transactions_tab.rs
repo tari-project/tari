@@ -6,6 +6,7 @@ use crate::ui::{
     widgets::{draw_dialog, MultiColumnList, WindowedListState},
     MAX_WIDTH,
 };
+use chrono::{DateTime, Local};
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_wallet::transaction_service::storage::models::{
     CompletedTransaction,
@@ -112,8 +113,9 @@ impl TransactionsTab {
                 };
                 column1_items.push(ListItem::new(Span::styled(format!("{}", t.amount), amount_style)));
             }
+            let local_time = DateTime::<Local>::from_utc(t.timestamp, Local::now().offset().to_owned());
             column2_items.push(ListItem::new(Span::styled(
-                format!("{}", t.timestamp.format("%Y-%m-%d %H:%M:%S")),
+                format!("{}", local_time.format("%Y-%m-%d %H:%M:%S")),
                 Style::default().fg(text_color),
             )));
             column3_items.push(ListItem::new(Span::styled(
@@ -128,7 +130,7 @@ impl TransactionsTab {
             .max_width(MAX_WIDTH)
             .add_column(Some("Source/Destination Public Key"), Some(67), column0_items)
             .add_column(Some("Amount"), Some(18), column1_items)
-            .add_column(Some("Timestamp"), Some(20), column2_items)
+            .add_column(Some("Local Date/Time"), Some(20), column2_items)
             .add_column(Some("Message"), None, column3_items);
         column_list.render(f, list_areas[0], &mut pending_list_state);
 
@@ -181,8 +183,9 @@ impl TransactionsTab {
                 };
                 column1_items.push(ListItem::new(Span::styled(format!("{}", t.amount), amount_style)));
             }
+            let local_time = DateTime::<Local>::from_utc(t.timestamp, Local::now().offset().to_owned());
             column2_items.push(ListItem::new(Span::styled(
-                format!("{}", t.timestamp.format("%Y-%m-%d %H:%M:%S")),
+                format!("{}", local_time.format("%Y-%m-%d %H:%M:%S")),
                 Style::default().fg(text_color),
             )));
             let status = if t.cancelled {
@@ -201,7 +204,7 @@ impl TransactionsTab {
             .max_width(MAX_WIDTH)
             .add_column(Some("Source/Destination Public Key"), Some(67), column0_items)
             .add_column(Some("Amount"), Some(18), column1_items)
-            .add_column(Some("Timestamp"), Some(20), column2_items)
+            .add_column(Some("Local Date/Time"), Some(20), column2_items)
             .add_column(Some("Status"), None, column3_items);
 
         column_list.render(f, list_areas[1], &mut completed_list_state);
@@ -251,7 +254,7 @@ impl TransactionsTab {
         let fee = Span::styled("Fee:", Style::default().fg(Color::Magenta));
         let status = Span::styled("Status:", Style::default().fg(Color::Magenta));
         let message = Span::styled("Message:", Style::default().fg(Color::Magenta));
-        let timestamp = Span::styled("Timestamp:", Style::default().fg(Color::Magenta));
+        let timestamp = Span::styled("Local Date/Time:", Style::default().fg(Color::Magenta));
         let excess = Span::styled("Excess:", Style::default().fg(Color::Magenta));
         let confirmations = Span::styled("Confirmations:", Style::default().fg(Color::Magenta));
         let mined_height = Span::styled("Mined Height:", Style::default().fg(Color::Magenta));
@@ -331,8 +334,9 @@ impl TransactionsTab {
             };
             let status = Span::styled(status_msg, Style::default().fg(Color::White));
             let message = Span::styled(tx.message.as_str(), Style::default().fg(Color::White));
+            let local_time = DateTime::<Local>::from_utc(tx.timestamp, Local::now().offset().to_owned());
             let timestamp = Span::styled(
-                format!("{}", tx.timestamp.format("%Y-%m-%d %H:%M:%S")),
+                format!("{}", local_time.format("%Y-%m-%d %H:%M:%S")),
                 Style::default().fg(Color::White),
             );
             let excess_hex = if tx.transaction.body.kernels().is_empty() {

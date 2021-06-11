@@ -57,6 +57,11 @@ impl StaticApplicationInfo {
         )?;
         writeln!(
             file,
+            r#"#[allow(dead_code)] pub const APP_VERSION_NUMBER: &str = "{}";"#,
+            self.get_version_number()
+        )?;
+        writeln!(
+            file,
             r#"#[allow(dead_code)] pub const APP_AUTHOR: &str = "{}";"#,
             self.manifest.package.authors.join(","),
         )?;
@@ -71,6 +76,12 @@ impl StaticApplicationInfo {
             "Unknown".to_string()
         });
         format!("{}-{}-{}", self.manifest.package.version, self.commit, build)
+    }
+
+    /// Get the version number only
+    /// The final output looks like 0.1.2
+    fn get_version_number(&self) -> String {
+        self.manifest.package.version.clone()
     }
 }
 

@@ -27,6 +27,7 @@ use log::*;
 use tari_app_utilities::utilities::ExitCodes;
 use tari_core::transactions::{tari_amount::MicroTariError, transaction::TransactionError};
 use tari_wallet::{
+    error::{WalletError, WalletStorageError},
     output_manager_service::error::OutputManagerError,
     transaction_service::error::TransactionServiceError,
 };
@@ -54,6 +55,10 @@ pub enum CommandError {
     Comms(String),
     #[error("CSV file error `{0}`")]
     CSVFile(String),
+    #[error("Wallet error `{0}`")]
+    WalletError(#[from] WalletError),
+    #[error("Wallet storage error `{0}`")]
+    WalletStorageError(#[from] WalletStorageError),
 }
 
 impl From<CommandError> for ExitCodes {
@@ -79,6 +84,8 @@ pub enum ParseError {
     Int(#[from] ParseIntError),
     #[error("Failed to parse date. {0}")]
     Date(#[from] DateError),
+    #[error("Failed to parse a net address.")]
+    Address,
     #[error("Invalid combination of arguments.")]
     Invalid,
     #[error("Parsing not yet implemented for {0}.")]

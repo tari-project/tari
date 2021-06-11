@@ -40,7 +40,7 @@ use tui::backend::CrosstermBackend;
 
 pub const LOG_TARGET: &str = "wallet::app::main";
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum WalletMode {
     Tui,
     Grpc,
@@ -49,6 +49,17 @@ pub enum WalletMode {
     RecoveryDaemon,
     RecoveryTui,
     Invalid,
+}
+
+#[derive(Debug, Clone)]
+pub struct WalletModeConfig {
+    pub base_node_config: PeerConfig,
+    pub base_node_selected: Peer,
+    pub daemon_mode: bool,
+    pub global_config: GlobalConfig,
+    pub handle: Handle,
+    pub notify_script: Option<PathBuf>,
+    pub wallet_mode: WalletMode,
 }
 
 #[derive(Debug, Clone)]
@@ -114,21 +125,23 @@ impl PeerConfig {
     }
 }
 
-pub fn command_mode(
-    handle: Handle,
-    command: String,
-    wallet: WalletSqlite,
-    config: GlobalConfig,
-) -> Result<(), ExitCodes> {
+pub fn command_mode(config: WalletModeConfig, wallet: WalletSqlite, command: String) -> Result<(), ExitCodes> {
+    let WalletModeConfig {
+        global_config, handle, ..
+    } = config.clone();
     let commands = vec![parse_command(&command)?];
     info!("Starting wallet command mode");
-    handle.block_on(command_runner(handle.clone(), commands, wallet, config))?;
+    handle.block_on(command_runner(handle.clone(), commands, wallet.clone(), global_config))?;
+
     info!("Shutting down wallet command mode");
 
-    Ok(())
+    wallet_or_exit(config, wallet)
 }
 
-pub fn script_mode(handle: Handle, path: PathBuf, wallet: WalletSqlite, config: GlobalConfig) -> Result<(), ExitCodes> {
+pub fn script_mode(config: WalletModeConfig, wallet: WalletSqlite, path: PathBuf) -> Result<(), ExitCodes> {
+    let WalletModeConfig {
+        global_config, handle, ..
+    } = config.clone();
     info!(target: LOG_TARGET, "Starting wallet script mode");
     println!("Starting wallet script mode");
     let script = fs::read_to_string(path).map_err(|e| ExitCodes::InputError(e.to_string()))?;
@@ -150,32 +163,54 @@ pub fn script_mode(handle: Handle, path: PathBuf, wallet: WalletSqlite, config: 
     println!("{} commands parsed successfully.", commands.len());
 
     println!("Starting the command runner!");
-    handle.block_on(command_runner(handle.clone(), commands, wallet, config))?;
+    handle.block_on(command_runner(handle.clone(), commands, wallet.clone(), global_config))?;
 
     info!(target: LOG_TARGET, "Completed wallet script mode");
-    Ok(())
+
+    wallet_or_exit(config, wallet)
 }
 
-pub fn tui_mode(
-    handle: Handle,
-    node_config: GlobalConfig,
-    wallet: WalletSqlite,
-    base_node_selected: Peer,
-    base_node_config: PeerConfig,
-    notify_script: Option<PathBuf>,
-) -> Result<(), ExitCodes> {
+fn wallet_or_exit(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), ExitCodes> {
+    debug!(target: LOG_TARGET, "Prompting for run or exit key.");
+    println!("\nPress Enter to continue to the wallet, or or type q (or quit) followed by Enter.");
+    let mut buf = String::new();
+    std::io::stdin()
+        .read_line(&mut buf)
+        .map_err(|e| ExitCodes::IOError(e.to_string()))?;
+
+    match buf.as_str().trim() {
+        "quit" | "q" | "exit" => Ok(()),
+        _ => {
+            if config.daemon_mode {
+                grpc_mode(config, wallet)
+            } else {
+                tui_mode(config, wallet)
+            }
+        },
+    }
+}
+
+pub fn tui_mode(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), ExitCodes> {
+    let WalletModeConfig {
+        base_node_config,
+        base_node_selected,
+        global_config,
+        handle,
+        notify_script,
+        ..
+    } = config;
     let grpc = WalletGrpcServer::new(wallet.clone());
-    handle.spawn(run_grpc(grpc, node_config.grpc_console_wallet_address));
+    handle.spawn(run_grpc(grpc, global_config.grpc_console_wallet_address));
 
     let notifier = Notifier::new(notify_script, handle.clone(), wallet.clone());
 
     let app = App::<CrosstermBackend<Stdout>>::new(
         "Tari Console Wallet".into(),
         wallet,
-        node_config.network,
+        global_config.network,
         base_node_selected,
         base_node_config,
-        node_config,
+        global_config,
         notifier,
     );
 
@@ -191,15 +226,13 @@ pub fn tui_mode(
     Ok(())
 }
 
-pub fn recovery_mode(
-    handle: Handle,
-    config: GlobalConfig,
-    wallet: WalletSqlite,
-    base_node_selected: Peer,
-    base_node_config: PeerConfig,
-    notify_script: Option<PathBuf>,
-    wallet_mode: WalletMode,
-) -> Result<(), ExitCodes> {
+pub fn recovery_mode(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), ExitCodes> {
+    let WalletModeConfig {
+        base_node_config,
+        handle,
+        wallet_mode,
+        ..
+    } = config.clone();
     println!("Starting recovery...");
     match handle.block_on(wallet_recovery(&wallet, &base_node_config)) {
         Ok(_) => println!("Wallet recovered!"),
@@ -217,24 +250,20 @@ pub fn recovery_mode(
     println!("Starting TUI.");
 
     match wallet_mode {
-        WalletMode::RecoveryDaemon => grpc_mode(handle, wallet, config),
-        WalletMode::RecoveryTui => tui_mode(
-            handle,
-            config,
-            wallet,
-            base_node_selected,
-            base_node_config,
-            notify_script,
-        ),
+        WalletMode::RecoveryDaemon => grpc_mode(config, wallet),
+        WalletMode::RecoveryTui => tui_mode(config, wallet),
         _ => Err(ExitCodes::RecoveryError("Unsupported post recovery mode".to_string())),
     }
 }
 
-pub fn grpc_mode(handle: Handle, wallet: WalletSqlite, node_config: GlobalConfig) -> Result<(), ExitCodes> {
+pub fn grpc_mode(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), ExitCodes> {
+    let WalletModeConfig {
+        global_config, handle, ..
+    } = config;
     println!("Starting grpc server");
     let grpc = WalletGrpcServer::new(wallet);
     handle
-        .block_on(run_grpc(grpc, node_config.grpc_console_wallet_address))
+        .block_on(run_grpc(grpc, global_config.grpc_console_wallet_address))
         .map_err(ExitCodes::GrpcError)?;
     println!("Shutting down");
     Ok(())

@@ -196,9 +196,9 @@ pub fn wallet_mode(bootstrap: &ConfigBootstrap, boot_mode: WalletBoot) -> Wallet
         // GRPC daemon mode
         (true, None, None) => WalletMode::Grpc,
         // Script mode
-        (false, Some(path), None) => WalletMode::Script(path),
+        (_, Some(path), None) => WalletMode::Script(path),
         // Command mode
-        (false, None, Some(command)) => WalletMode::Command(command),
+        (_, None, Some(command)) => WalletMode::Command(command),
         // Invalid combinations
         _ => WalletMode::Invalid,
     }
