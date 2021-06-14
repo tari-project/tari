@@ -28,19 +28,13 @@ use crate::output_manager_service::{
     },
     MasterKeyManager,
 };
-use blake2::Digest;
 use log::*;
 use std::sync::Arc;
 use tari_core::transactions::{
     transaction::{TransactionOutput, UnblindedOutput},
-    types::{CryptoFactories, PrivateKey, PublicKey},
+    types::{CryptoFactories, PublicKey},
 };
-use tari_crypto::{
-    common::Blake256,
-    inputs,
-    keys::PublicKey as PublicKeyTrait,
-    tari_utilities::{hex::Hex, ByteArray},
-};
+use tari_crypto::{inputs, keys::PublicKey as PublicKeyTrait, tari_utilities::hex::Hex};
 
 const LOG_TARGET: &str = "wallet::output_manager_service::recovery";
 
@@ -85,17 +79,9 @@ where TBackend: OutputManagerBackend + 'static
                     .map(|v| (v, output.features, output.script, output.script_offset_public_key))
             })
             .map(|(output, features, script, script_offset_public_key)| {
-                let beta_hash = Blake256::new()
-                    .chain(script.as_bytes())
-                    .chain(features.to_bytes())
-                    .chain(script_offset_public_key.as_bytes())
-                    .result()
-                    .to_vec();
-                let beta = PrivateKey::from_bytes(beta_hash.as_slice())
-                    .expect("Should be able to construct a private key from a hash");
                 UnblindedOutput::new(
                     output.committed_value,
-                    output.blinding_factor.clone() - beta,
+                    output.blinding_factor.clone(),
                     Some(features),
                     script,
                     inputs!(PublicKey::from_secret_key(&output.blinding_factor)),

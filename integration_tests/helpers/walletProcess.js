@@ -175,6 +175,7 @@ class WalletProcess {
       "--init",
       "--base-path",
       ".",
+      "--daemon",
       "--password",
       "kensentme",
       "--command",
@@ -190,10 +191,11 @@ class WalletProcess {
       "--init",
       "--base-path",
       ".",
+      "--daemon",
       "--password",
       "kensentme",
       "--command",
-      "export-utxos  --csv-file exported_outputs.csv",
+      "export-utxos --csv-file exported_outputs.csv",
     ];
     outputProcess = __dirname + "/../temp/out/tari_console_wallet";
     await this.run(outputProcess, args, true);
