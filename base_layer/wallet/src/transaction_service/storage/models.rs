@@ -150,6 +150,7 @@ pub struct OutboundTransaction {
     pub direct_send_success: bool,
     pub send_count: u32,
     pub last_send_timestamp: Option<NaiveDateTime>,
+    pub unique_id: Option<Vec<u8>>
 }
 
 impl OutboundTransaction {
@@ -158,6 +159,7 @@ impl OutboundTransaction {
         tx_id: TxId,
         destination_public_key: CommsPublicKey,
         amount: MicroTari,
+        unique_id: Option<Vec<u8>>,
         fee: MicroTari,
         sender_protocol: SenderTransactionProtocol,
         status: TransactionStatus,
@@ -169,6 +171,7 @@ impl OutboundTransaction {
             tx_id,
             destination_public_key,
             amount,
+            unique_id,
             fee,
             sender_protocol,
             status,
@@ -188,6 +191,7 @@ pub struct CompletedTransaction {
     pub source_public_key: CommsPublicKey,
     pub destination_public_key: CommsPublicKey,
     pub amount: MicroTari,
+    pub unique_id: Option<Vec<u8>>,
     pub fee: MicroTari,
     pub transaction: Transaction,
     pub status: TransactionStatus,
@@ -297,6 +301,7 @@ impl From<CompletedTransaction> for OutboundTransaction {
             tx_id: ct.tx_id,
             destination_public_key: ct.destination_public_key,
             amount: ct.amount,
+            unique_id: ct.unique_id.clone(),
             fee: ct.fee,
             sender_protocol: SenderTransactionProtocol::new_placeholder(),
             status: ct.status,

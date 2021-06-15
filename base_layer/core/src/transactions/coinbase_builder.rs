@@ -176,14 +176,16 @@ impl CoinbaseBuilder {
             height,
             script_key,
             PublicKey::default(),
+            None
         );
+        // TODO: Verify bullet proof?
         let output = if let Some(rewind_data) = self.rewind_data.as_ref() {
             unblinded_output
-                .as_rewindable_transaction_output(&self.factories, rewind_data)
+                .as_rewindable_transaction_output(&self.factories, rewind_data, false)
                 .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?
         } else {
             unblinded_output
-                .as_transaction_output(&self.factories)
+                .as_transaction_output(&self.factories, false)
                 .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?
         };
         let kernel = KernelBuilder::new()

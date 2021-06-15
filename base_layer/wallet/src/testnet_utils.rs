@@ -373,6 +373,7 @@ pub async fn generate_wallet_test_data<
         .send_transaction(
             contacts[0].public_key.clone(),
             MicroTari::from(1_100_000),
+            None,
             MicroTari::from(100),
             messages[message_index].clone(),
         )
@@ -385,6 +386,7 @@ pub async fn generate_wallet_test_data<
         .send_transaction(
             contacts[0].public_key.clone(),
             MicroTari::from(2_010_500),
+            None,
             MicroTari::from(110),
             messages[message_index].clone(),
         )
@@ -422,6 +424,7 @@ pub async fn generate_wallet_test_data<
         .send_transaction(
             contacts[0].public_key.clone(),
             MicroTari::from(10_000_000),
+            None,
             MicroTari::from(110),
             messages[message_index].clone(),
         )
@@ -433,6 +436,7 @@ pub async fn generate_wallet_test_data<
         .send_transaction(
             contacts[1].public_key.clone(),
             MicroTari::from(3_441_000),
+            None,
             MicroTari::from(105),
             messages[message_index].clone(),
         )
@@ -444,6 +448,7 @@ pub async fn generate_wallet_test_data<
         .send_transaction(
             contacts[1].public_key.clone(),
             MicroTari::from(14_100_000),
+            None,
             MicroTari::from(100),
             messages[message_index].clone(),
         )
@@ -454,6 +459,7 @@ pub async fn generate_wallet_test_data<
         .send_transaction(
             contacts[0].public_key.clone(),
             MicroTari::from(22_010_500),
+            None,
             MicroTari::from(110),
             messages[message_index].clone(),
         )
@@ -465,6 +471,7 @@ pub async fn generate_wallet_test_data<
         .send_transaction(
             contacts[0].public_key.clone(),
             MicroTari::from(17_000_000),
+            None,
             MicroTari::from(110),
             messages[message_index].clone(),
         )
@@ -476,6 +483,7 @@ pub async fn generate_wallet_test_data<
         .send_transaction(
             contacts[1].public_key.clone(),
             MicroTari::from(31_441_000),
+            None,
             MicroTari::from(105),
             messages[message_index].clone(),
         )
@@ -487,6 +495,7 @@ pub async fn generate_wallet_test_data<
         .send_transaction(
             contacts[0].public_key.clone(),
             MicroTari::from(12_100_000),
+            None,
             MicroTari::from(100),
             messages[message_index].clone(),
         )
@@ -497,6 +506,7 @@ pub async fn generate_wallet_test_data<
         .send_transaction(
             contacts[1].public_key.clone(),
             MicroTari::from(28_010_500),
+            None,
             MicroTari::from(110),
             messages[message_index].clone(),
         )
@@ -509,6 +519,7 @@ pub async fn generate_wallet_test_data<
         .send_transaction(
             contacts[2].public_key.clone(),
             MicroTari::from(2_500_000),
+            None,
             MicroTari::from(107),
             messages[message_index].clone(),
         )
@@ -520,6 +531,7 @@ pub async fn generate_wallet_test_data<
         .send_transaction(
             contacts[3].public_key.clone(),
             MicroTari::from(3_512_000),
+            None,
             MicroTari::from(117),
             messages[message_index].clone(),
         )
@@ -580,6 +592,7 @@ pub async fn generate_wallet_test_data<
         .send_transaction(
             wallet.comms.node_identity().public_key().clone(),
             MicroTari::from(1_235_000),
+            None,
             MicroTari::from(117),
             messages[message_index].clone(),
         )
@@ -591,6 +604,7 @@ pub async fn generate_wallet_test_data<
         .send_transaction(
             wallet.comms.node_identity().public_key().clone(),
             MicroTari::from(3_500_000),
+            None,
             MicroTari::from(117),
             messages[message_index].clone(),
         )
@@ -602,6 +616,7 @@ pub async fn generate_wallet_test_data<
         .send_transaction(
             wallet.comms.node_identity().public_key().clone(),
             MicroTari::from(2_335_000),
+            None,
             MicroTari::from(117),
             messages[message_index].clone(),
         )
@@ -613,6 +628,7 @@ pub async fn generate_wallet_test_data<
         .send_transaction(
             wallet.comms.node_identity().public_key().clone(),
             MicroTari::from(8_035_000),
+            None,
             MicroTari::from(117),
             messages[message_index].clone(),
         )
@@ -624,6 +640,7 @@ pub async fn generate_wallet_test_data<
         .send_transaction(
             wallet.comms.node_identity().public_key().clone(),
             MicroTari::from(5_135_000),
+            None,
             MicroTari::from(117),
             messages[message_index].clone(),
         )

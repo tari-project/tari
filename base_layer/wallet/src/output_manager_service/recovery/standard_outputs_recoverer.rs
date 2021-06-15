@@ -82,26 +82,19 @@ where TBackend: OutputManagerBackend + 'static
                         &self.master_key_manager.rewind_data().rewind_blinding_key,
                     )
                     .ok()
-                    .map(|v| (v, output.features, output.script, output.script_offset_public_key))
+                    .map(|v| (v, output.features, output.script, output.script_offset_public_key, output.unique_id))
             })
-            .map(|(output, features, script, script_offset_public_key)| {
-                let beta_hash = Blake256::new()
-                    .chain(script.as_bytes())
-                    .chain(features.to_bytes())
-                    .chain(script_offset_public_key.as_bytes())
-                    .result()
-                    .to_vec();
-                let beta = PrivateKey::from_bytes(beta_hash.as_slice())
-                    .expect("Should be able to construct a private key from a hash");
+            .map(|(output, features, script, script_offset_public_key, unique_id)| {
                 UnblindedOutput::new(
                     output.committed_value,
-                    output.blinding_factor.clone() - beta,
+                    output.blinding_factor.clone(),
                     Some(features),
                     script,
                     inputs!(PublicKey::from_secret_key(&output.blinding_factor)),
                     height,
                     output.blinding_factor,
                     script_offset_public_key,
+                    unique_id
                 )
             })
             .collect();

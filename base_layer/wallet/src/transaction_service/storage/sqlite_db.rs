@@ -1131,6 +1131,7 @@ struct OutboundTransactionSql {
     direct_send_success: i32,
     send_count: i32,
     last_send_timestamp: Option<NaiveDateTime>,
+    unique_id: Option<Vec<u8>>
 }
 
 impl OutboundTransactionSql {
@@ -1278,6 +1279,7 @@ impl TryFrom<OutboundTransactionSql> for OutboundTransaction {
             destination_public_key: PublicKey::from_vec(&o.destination_public_key)
                 .map_err(|_| TransactionStorageError::ConversionError("Invalid destination PublicKey".to_string()))?,
             amount: MicroTari::from(o.amount as u64),
+            unique_id: o.unique_id,
             fee: MicroTari::from(o.fee as u64),
             sender_protocol: serde_json::from_str(&o.sender_protocol)?,
             status: TransactionStatus::Pending,

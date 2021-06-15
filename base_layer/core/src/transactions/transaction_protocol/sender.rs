@@ -36,7 +36,7 @@ use crate::transactions::{
     transaction_protocol::{
         build_challenge,
         recipient::{RecipientInfo, RecipientSignedMessage},
-        transaction_initializer::SenderTransactionInitializer,
+        sender_transaction_protocol_builder::SenderTransactionProtocolBuilder,
         TransactionMetadata,
         TransactionProtocolError as TPE,
     },
@@ -85,6 +85,7 @@ pub(super) struct RawTransactionInfo {
     pub recipient_info: RecipientInfo,
     pub signatures: Vec<Signature>,
     pub message: String,
+    pub unique_id: Option<Vec<u8>>
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -105,6 +106,8 @@ pub struct SingleRoundSenderData {
     pub script: TariScript,
     /// Script offset public key
     pub script_offset_public_key: PublicKey,
+    /// Unique id on the blockchain, if present
+    pub unique_id: Option<Vec<u8>>
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,8 +140,8 @@ pub struct SenderTransactionProtocol {
 impl SenderTransactionProtocol {
     /// Begin constructing a new transaction. All the up-front data is collected via the `SenderTransactionInitializer`
     /// builder function
-    pub fn builder(num_recipients: usize) -> SenderTransactionInitializer {
-        SenderTransactionInitializer::new(num_recipients)
+    pub fn builder(num_recipients: usize) -> SenderTransactionProtocolBuilder {
+        SenderTransactionProtocolBuilder::new(num_recipients)
     }
 
     /// Convenience method to check whether we're receiving recipient data
@@ -322,6 +325,7 @@ impl SenderTransactionProtocol {
                     message: info.message.clone(),
                     script: recipient_script,
                     script_offset_public_key: recipient_script_offset_public_key,
+                    unique_id: info.unique_id.clone()
                 })
             },
             _ => Err(TPE::InvalidStateError),

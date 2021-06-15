@@ -84,7 +84,7 @@ pub mod proto;
 pub mod recipient;
 pub mod sender;
 pub mod single_receiver;
-pub mod transaction_initializer;
+pub mod sender_transaction_protocol_builder;
 
 use crate::transactions::{
     tari_amount::*,

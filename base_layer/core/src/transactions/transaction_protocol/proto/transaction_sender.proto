@@ -21,6 +21,8 @@ message SingleRoundSenderData {
     bytes script = 7;
     // Tari script offset pubkey, K_O
     bytes script_offset_public_key = 8;
+    // Unique id for NFTs
+    bytes unique_id = 9;
 }
 
 message TransactionSenderMessage {

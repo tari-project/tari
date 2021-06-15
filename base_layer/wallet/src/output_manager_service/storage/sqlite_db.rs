@@ -942,6 +942,7 @@ struct OutputSql {
     height: i64,
     script_private_key: Vec<u8>,
     script_offset_public_key: Vec<u8>,
+    unique_id: Option<Vec<u8>>
 }
 
 impl OutputSql {
@@ -1128,12 +1129,13 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 );
                 OutputManagerStorageError::ConversionError
             })?,
+            o.unique_id.clone()
         );
 
         let hash = match o.hash {
             None => {
                 let factories = CryptoFactories::default();
-                unblinded_output.as_transaction_output(&factories)?.hash()
+                unblinded_output.as_transaction_output(&factories, false)?.hash()
             },
             Some(v) => v,
         };

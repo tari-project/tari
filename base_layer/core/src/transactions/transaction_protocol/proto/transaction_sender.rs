@@ -100,6 +100,7 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             .ok_or_else(|| "Transaction metadata not provided".to_string())?;
         let message = data.message;
 
+        let unique_id = if data.unique_id.is_empty() { None} else {Some(data.unique_id.clone())};
         Ok(Self {
             tx_id: data.tx_id,
             amount: data.amount.into(),
@@ -109,6 +110,7 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             message,
             script: TariScript::from_bytes(&data.script).map_err(|err| err.to_string())?,
             script_offset_public_key,
+            unique_id: unique_id
         })
     }
 }
@@ -126,6 +128,7 @@ impl From<SingleRoundSenderData> for proto::SingleRoundSenderData {
             message: sender_data.message,
             script: sender_data.script.as_bytes(),
             script_offset_public_key: sender_data.script_offset_public_key.to_vec(),
+            unique_id: sender_data.unique_id.unwrap_or_default()
         }
     }
 }

@@ -319,6 +319,8 @@ where
             0,
             spending_key.clone(),
             PublicKey::from_secret_key(&spending_key),
+        // TODO: Allow importing of unique ids
+        None,
         );
 
         let tx_id = self

@@ -60,6 +60,8 @@ message TransactionOutput {
     bytes script = 4;
     // Tari script offset pubkey, K_O
     bytes script_offset_public_key = 5;
+    // A unique id field that can be used to ensure there is only one of a specific NFT or token in the Unspent set at a time
+    bytes unique_id = 6;
 }
 
 // Options for UTXO's

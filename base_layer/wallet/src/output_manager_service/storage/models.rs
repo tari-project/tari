@@ -44,7 +44,7 @@ impl DbUnblindedOutput {
         output: UnblindedOutput,
         factory: &CryptoFactories,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
-        let tx_out = output.as_transaction_output(factory)?;
+        let tx_out = output.as_transaction_output(factory, false)?;
         Ok(DbUnblindedOutput {
             hash: tx_out.hash(),
             commitment: tx_out.commitment,
@@ -57,7 +57,7 @@ impl DbUnblindedOutput {
         factory: &CryptoFactories,
         rewind_data: &RewindData,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
-        let tx_out = output.as_rewindable_transaction_output(factory, rewind_data)?;
+        let tx_out = output.as_rewindable_transaction_output(factory, rewind_data, false)?;
         Ok(DbUnblindedOutput {
             hash: tx_out.hash(),
             commitment: tx_out.commitment,

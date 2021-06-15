@@ -52,8 +52,8 @@ pub enum TransactionServiceRequest {
     GetCompletedTransaction(TxId),
     GetAnyTransaction(TxId),
     SetBaseNodePublicKey(CommsPublicKey),
-    SendTransaction(CommsPublicKey, MicroTari, MicroTari, String),
-    SendOneSidedTransaction(CommsPublicKey, MicroTari, MicroTari, String),
+    SendTransaction{dest_pubkey: CommsPublicKey, amount: MicroTari, unique_id: Option<Vec<u8>>, fee_per_gram: MicroTari, message: String},
+    SendOneSidedTransaction{dest_pubkey: CommsPublicKey, amount: MicroTari, unique_id: Option<Vec<u8>>, fee_per_gram: MicroTari, message: String},
     CancelTransaction(TxId),
     ImportUtxo(MicroTari, CommsPublicKey, String, Option<u64>),
     SubmitCoinSplitTransaction(TxId, Transaction, MicroTari, MicroTari, String),
@@ -91,9 +91,9 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetCancelledCompletedTransactions => f.write_str("GetCancelledCompletedTransactions"),
             Self::GetCompletedTransaction(t) => f.write_str(&format!("GetCompletedTransaction({})", t)),
             Self::SetBaseNodePublicKey(k) => f.write_str(&format!("SetBaseNodePublicKey ({})", k)),
-            Self::SendTransaction(k, v, _, msg) => f.write_str(&format!("SendTransaction (to {}, {}, {})", k, v, msg)),
-            Self::SendOneSidedTransaction(k, v, _, msg) => {
-                f.write_str(&format!("SendOneSidedTransaction (to {}, {}, {})", k, v, msg))
+            Self::SendTransaction{ dest_pubkey, amount, message, .. }=> f.write_str(&format!("SendTransaction (to {}, {}, {})", dest_pubkey, amount, message)),
+            Self::SendOneSidedTransaction{dest_pubkey, amount, message, .. }=> {
+                f.write_str(&format!("SendOneSidedTransaction (to {}, {}, {})", dest_pubkey, amount, message))
             },
             Self::CancelTransaction(t) => f.write_str(&format!("CancelTransaction ({})", t)),
             Self::ImportUtxo(v, k, msg, maturity) => f.write_str(&format!(
@@ -231,17 +231,19 @@ impl TransactionServiceHandle {
         &mut self,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
+        unique_id: Option<Vec<u8>>,
         fee_per_gram: MicroTari,
         message: String,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::SendTransaction(
+            .call(TransactionServiceRequest::SendTransaction {
                 dest_pubkey,
                 amount,
+                unique_id,
                 fee_per_gram,
                 message,
-            ))
+            })
             .await??
         {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
@@ -253,17 +255,19 @@ impl TransactionServiceHandle {
         &mut self,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
+        unique_id: Option<Vec<u8>>,
         fee_per_gram: MicroTari,
         message: String,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::SendOneSidedTransaction(
+            .call(TransactionServiceRequest::SendOneSidedTransaction {
                 dest_pubkey,
                 amount,
+                unique_id,
                 fee_per_gram,
                 message,
-            ))
+            })
             .await??
         {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),

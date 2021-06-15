@@ -108,6 +108,7 @@ impl SingleReceiverTransactionProtocol {
                 .range_proof
                 .construct_proof(&spending_key, sender_info.amount.into())?
         };
+        // TODO: Add unique id if present
         Ok(TransactionOutput::new(
             features,
             commitment,
@@ -115,6 +116,7 @@ impl SingleReceiverTransactionProtocol {
                 .map_err(|_| TPE::RangeProofError(RangeProofError::ProofConstructionError))?,
             sender_info.script.clone(),
             sender_info.script_offset_public_key.clone(),
+            None
         ))
     }
 }

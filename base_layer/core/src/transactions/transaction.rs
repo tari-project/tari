@@ -210,6 +210,7 @@ pub struct UnblindedOutput {
     pub height: u64,
     pub script_private_key: PrivateKey,
     pub script_offset_public_key: PublicKey,
+    unique_id: Option<Vec<u8>>
 }
 
 impl UnblindedOutput {
@@ -224,6 +225,7 @@ impl UnblindedOutput {
         height: u64,
         script_private_key: PrivateKey,
         script_offset_public_key: PublicKey,
+        unique_id: Option<Vec<u8>>
     ) -> UnblindedOutput {
         UnblindedOutput {
             value,
@@ -234,6 +236,7 @@ impl UnblindedOutput {
             height,
             script_private_key,
             script_offset_public_key,
+            unique_id
         }
     }
 
@@ -264,7 +267,7 @@ impl UnblindedOutput {
         })
     }
 
-    pub fn as_transaction_output(&self, factories: &CryptoFactories) -> Result<TransactionOutput, TransactionError> {
+    pub fn as_transaction_output(&self, factories: &CryptoFactories, verify_proof: bool) -> Result<TransactionOutput, TransactionError> {
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
         let output = TransactionOutput {
             features: self.features.clone(),
@@ -277,9 +280,10 @@ impl UnblindedOutput {
             .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?,
             script: self.script.clone(),
             script_offset_public_key: self.script_offset_public_key.clone(),
+            unique_id: self.unique_id.clone()
         };
         // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
-        if !output.verify_range_proof(&factories.range_proof)? {
+        if verify_proof && !output.verify_range_proof(&factories.range_proof)? {
             return Err(TransactionError::ValidationError(
                 "Range proof could not be verified".into(),
             ));
@@ -291,6 +295,7 @@ impl UnblindedOutput {
         &self,
         factories: &CryptoFactories,
         rewind_data: &RewindData,
+        verify_proof: bool
     ) -> Result<TransactionOutput, TransactionError> {
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
 
@@ -311,9 +316,10 @@ impl UnblindedOutput {
             proof,
             script: self.script.clone(),
             script_offset_public_key: self.script_offset_public_key.clone(),
+            unique_id: self.unique_id.clone()
         };
         // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
-        if !output.verify_range_proof(&factories.range_proof)? {
+        if verify_proof && !output.verify_range_proof(&factories.range_proof)? {
             return Err(TransactionError::ValidationError(
                 "Range proof could not be verified".into(),
             ));
@@ -506,6 +512,8 @@ pub struct TransactionOutput {
     pub script: TariScript,
     /// Tari script offset pubkey, K_O
     pub script_offset_public_key: PublicKey,
+    /// Unique id. There can only be one UTXO at a time in the unspent set with this id
+    pub unique_id: Option<Vec<u8>>
 }
 
 /// An output for a transaction, includes a range proof and Tari script metadata
@@ -517,6 +525,7 @@ impl TransactionOutput {
         proof: RangeProof,
         script: TariScript,
         script_offset_public_key: PublicKey,
+        unique_id: Option<Vec<u8>>
     ) -> TransactionOutput {
         TransactionOutput {
             features,
@@ -524,6 +533,7 @@ impl TransactionOutput {
             proof,
             script,
             script_offset_public_key,
+            unique_id
         }
     }
 
@@ -603,17 +613,17 @@ impl Hashable for TransactionOutput {
     }
 }
 
-impl Default for TransactionOutput {
-    fn default() -> Self {
-        TransactionOutput::new(
-            OutputFeatures::default(),
-            CommitmentFactory::default().zero(),
-            RangeProof::default(),
-            TariScript::default(),
-            PublicKey::default(),
-        )
-    }
-}
+// impl Default for TransactionOutput {
+//     fn default() -> Self {
+//         TransactionOutput::new(
+//             OutputFeatures::default(),
+//             CommitmentFactory::default().zero(),
+//             RangeProof::default(),
+//             TariScript::default(),
+//             PublicKey::default(),
+//         )
+//     }
+// }
 
 impl Display for TransactionOutput {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {

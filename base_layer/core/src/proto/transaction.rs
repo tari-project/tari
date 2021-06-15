@@ -164,12 +164,18 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
 
         let script = TariScript::from_bytes(&output.script.to_vec()).map_err(|err| err.to_string())?;
 
+        let unique_id = if output.unique_id.is_empty() {
+            None
+        } else {
+            Some(output.unique_id.clone())
+        };
         Ok(Self {
             features,
             commitment,
             proof: BulletRangeProof(output.range_proof),
             script,
             script_offset_public_key,
+            unique_id
         })
     }
 }
@@ -182,6 +188,7 @@ impl From<TransactionOutput> for proto::types::TransactionOutput {
             range_proof: output.proof.to_vec(),
             script: output.script.as_bytes(),
             script_offset_public_key: output.script_offset_public_key.as_bytes().to_vec(),
+            unique_id: output.unique_id.unwrap_or_default()
         }
     }
 }

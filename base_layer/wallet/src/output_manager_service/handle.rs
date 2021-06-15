@@ -56,8 +56,8 @@ pub enum OutputManagerRequest {
     GetCoinbaseTransaction((u64, MicroTari, MicroTari, u64)),
     ConfirmPendingTransaction(u64),
     ConfirmTransaction((u64, Vec<TransactionInput>, Vec<TransactionOutput>)),
-    PrepareToSendTransaction((MicroTari, MicroTari, Option<u64>, String, TariScript)),
-    CreatePayToSelfTransaction((MicroTari, MicroTari, Option<u64>, String)),
+    PrepareToSendTransaction{ amount: MicroTari, unique_id: Option<Vec<u8>>, fee_per_gram: MicroTari, lock_height: Option<u64>, message: String, script: TariScript},
+    CreatePayToSelfTransaction { amount : MicroTari, unique_id: Option<Vec<u8>>, fee_per_gram: MicroTari, lock_height: Option<u64>,message:  String},
     CancelTransaction(u64),
     TimeoutTransactions(Duration),
     GetPendingTransactions,
@@ -88,8 +88,8 @@ impl fmt::Display for OutputManagerRequest {
             GetRecipientTransaction(_) => write!(f, "GetRecipientTransaction"),
             ConfirmTransaction(v) => write!(f, "ConfirmTransaction ({})", v.0),
             ConfirmPendingTransaction(v) => write!(f, "ConfirmPendingTransaction ({})", v),
-            PrepareToSendTransaction((_, _, _, msg, _)) => write!(f, "PrepareToSendTransaction ({})", msg),
-            CreatePayToSelfTransaction((_, _, _, msg)) => write!(f, "CreatePayToSelfTransaction ({})", msg),
+            PrepareToSendTransaction { message,.. } => write!(f, "PrepareToSendTransaction ({})", message),
+            CreatePayToSelfTransaction{message, ..} => write!(f, "CreatePayToSelfTransaction ({})", message),
             CancelTransaction(v) => write!(f, "CancelTransaction ({})", v),
             TimeoutTransactions(d) => write!(f, "TimeoutTransactions ({}s)", d.as_secs()),
             GetPendingTransactions => write!(f, "GetPendingTransactions"),
@@ -258,20 +258,22 @@ impl OutputManagerHandle {
     pub async fn prepare_transaction_to_send(
         &mut self,
         amount: MicroTari,
+        unique_id: Option<Vec<u8>>,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
-        recipient_script: TariScript,
+        script: TariScript,
     ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::PrepareToSendTransaction((
+            .call(OutputManagerRequest::PrepareToSendTransaction {
                 amount,
+                unique_id,
                 fee_per_gram,
                 lock_height,
                 message,
-                recipient_script,
-            )))
+                script,
+            })
             .await??
         {
             OutputManagerResponse::TransactionToSend(stp) => Ok(stp),
@@ -513,18 +515,20 @@ impl OutputManagerHandle {
     pub async fn create_pay_to_self_transaction(
         &mut self,
         amount: MicroTari,
+        unique_id: Option<Vec<u8>>,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
     ) -> Result<(TxId, MicroTari, Transaction), OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::CreatePayToSelfTransaction((
+            .call(OutputManagerRequest::CreatePayToSelfTransaction {
                 amount,
                 fee_per_gram,
                 lock_height,
                 message,
-            )))
+                unique_id
+            })
             .await??
         {
             OutputManagerResponse::PayToSelfTransaction(outputs) => Ok(outputs),
