@@ -130,10 +130,10 @@ pub fn command_mode(config: WalletModeConfig, wallet: WalletSqlite, command: Str
         global_config, handle, ..
     } = config.clone();
     let commands = vec![parse_command(&command)?];
-    info!("Starting wallet command mode");
+    info!(target: LOG_TARGET, "Starting wallet command mode");
     handle.block_on(command_runner(handle.clone(), commands, wallet.clone(), global_config))?;
 
-    info!("Shutting down wallet command mode");
+    info!(target: LOG_TARGET, "Completed wallet command mode");
 
     wallet_or_exit(config, wallet)
 }
@@ -171,22 +171,27 @@ pub fn script_mode(config: WalletModeConfig, wallet: WalletSqlite, path: PathBuf
 }
 
 fn wallet_or_exit(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), ExitCodes> {
-    debug!(target: LOG_TARGET, "Prompting for run or exit key.");
-    println!("\nPress Enter to continue to the wallet, or or type q (or quit) followed by Enter.");
-    let mut buf = String::new();
-    std::io::stdin()
-        .read_line(&mut buf)
-        .map_err(|e| ExitCodes::IOError(e.to_string()))?;
+    if config.daemon_mode {
+        info!(target: LOG_TARGET, "Daemon mode detected - auto exiting.");
+        Ok(())
+    } else {
+        debug!(target: LOG_TARGET, "Prompting for run or exit key.");
+        println!("\nPress Enter to continue to the wallet, or type q (or quit) followed by Enter.");
+        let mut buf = String::new();
+        std::io::stdin()
+            .read_line(&mut buf)
+            .map_err(|e| ExitCodes::IOError(e.to_string()))?;
 
-    match buf.as_str().trim() {
-        "quit" | "q" | "exit" => Ok(()),
-        _ => {
-            if config.daemon_mode {
-                grpc_mode(config, wallet)
-            } else {
+        match buf.as_str().trim() {
+            "quit" | "q" | "exit" => {
+                info!(target: LOG_TARGET, "Exiting.");
+                Ok(())
+            },
+            _ => {
+                info!(target: LOG_TARGET, "Starting TUI.");
                 tui_mode(config, wallet)
-            }
-        },
+            },
+        }
     }
 }
 
