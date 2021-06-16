@@ -110,7 +110,7 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             message,
             script: TariScript::from_bytes(&data.script).map_err(|err| err.to_string())?,
             script_offset_public_key,
-            unique_id: unique_id
+            unique_id
         })
     }
 }

@@ -49,8 +49,10 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
         let script = TariScript::from_bytes(output.script.as_slice())
             .map_err(|err| format!("Script deserialization: {:?}", err))?;
 
+        let unique_id = if output.unique_id.is_empty()  { None} else { Some(output.unique_id.clone())};
         Ok(Self {
             features,
+            unique_id,
             commitment,
             proof: BulletRangeProof(output.range_proof),
             script,
@@ -72,6 +74,7 @@ impl From<TransactionOutput> for grpc::TransactionOutput {
             range_proof: Vec::from(output.proof.as_bytes()),
             script: output.script.as_bytes(),
             script_offset_public_key: output.script_offset_public_key.as_bytes().to_vec(),
+            unique_id: output.unique_id.unwrap_or_default()
         }
     }
 }

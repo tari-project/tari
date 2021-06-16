@@ -124,6 +124,7 @@ pub fn make_input<R: Rng + CryptoRng>(
         0,
         script_private_key,
         offset_pub_key,
+        None,
     );
 
     (
@@ -796,6 +797,7 @@ pub async fn complete_sent_transaction<
                 wallet.comms.node_identity().public_key().clone(),
                 p.destination_public_key.clone(),
                 p.amount,
+                None,
                 p.fee,
                 Transaction::new(
                     Vec::new(),

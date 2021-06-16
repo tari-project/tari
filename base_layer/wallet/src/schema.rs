@@ -47,6 +47,7 @@ table! {
         direct_send_success -> Integer,
         send_count -> Integer,
         last_send_timestamp -> Nullable<Timestamp>,
+        unique_id -> Nullable<Binary>,
     }
 }
 
@@ -89,14 +90,14 @@ table! {
 table! {
     outputs (id) {
         id -> Integer,
-        commitment -> Binary,
+        commitment -> Nullable<Binary>,
         spending_key -> Binary,
         value -> BigInt,
         flags -> Integer,
         maturity -> BigInt,
         status -> Integer,
         tx_id -> Nullable<BigInt>,
-        hash -> Binary,
+        hash -> Nullable<Binary>,
         script -> Binary,
         input_data -> Binary,
         height -> BigInt,

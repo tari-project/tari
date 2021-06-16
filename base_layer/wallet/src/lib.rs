@@ -11,6 +11,8 @@
 #![feature(type_alias_impl_trait)]
 #![feature(min_type_alias_impl_trait)]
 
+#![allow(clippy::too_many_arguments)]
+
 #[macro_use]
 mod macros;
 pub mod base_node_service;

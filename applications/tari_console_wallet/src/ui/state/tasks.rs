@@ -42,7 +42,7 @@ pub async fn send_transaction_task(
     let mut send_direct_received_result = (false, false);
     let mut send_saf_received_result = (false, false);
     match transaction_service_handle
-        .send_transaction(public_key, amount, fee_per_gram, message)
+        .send_transaction(public_key, amount, None, fee_per_gram, message)
         .await
     {
         Err(e) => {
@@ -112,7 +112,7 @@ pub async fn send_one_sided_transaction_task(
     let _ = result_tx.broadcast(UiTransactionSendStatus::Initiated);
     let mut event_stream = transaction_service_handle.get_event_stream_fused();
     match transaction_service_handle
-        .send_one_sided_transaction(public_key, amount, fee_per_gram, message)
+        .send_one_sided_transaction(public_key, amount, None, fee_per_gram, message)
         .await
     {
         Err(e) => {

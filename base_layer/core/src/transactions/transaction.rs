@@ -210,7 +210,7 @@ pub struct UnblindedOutput {
     pub height: u64,
     pub script_private_key: PrivateKey,
     pub script_offset_public_key: PublicKey,
-    unique_id: Option<Vec<u8>>
+    pub unique_id: Option<Vec<u8>>
 }
 
 impl UnblindedOutput {

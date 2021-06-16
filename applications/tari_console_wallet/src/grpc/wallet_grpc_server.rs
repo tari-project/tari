@@ -147,7 +147,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     (
                         address,
                         transaction_service
-                            .send_transaction(pk, amount.into(), fee_per_gram.into(), message)
+                            .send_transaction(pk, amount.into(), None, fee_per_gram.into(), message)
                             .await,
                     )
                 });
@@ -156,7 +156,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     (
                         address,
                         transaction_service
-                            .send_one_sided_transaction(pk, amount.into(), fee_per_gram.into(), message)
+                            .send_one_sided_transaction(pk, amount.into(), None, fee_per_gram.into(), message)
                             .await,
                     )
                 });

@@ -148,6 +148,7 @@ where TBackend: TransactionBackend + 'static
                 data.tx_id,
                 self.source_pubkey.clone(),
                 amount,
+                data.unique_id,
                 rtp,
                 TransactionStatus::Pending,
                 data.message.clone(),
@@ -307,6 +308,7 @@ where TBackend: TransactionBackend + 'static
 
         #[allow(unused_assignments)]
         let mut incoming_finalized_transaction = None;
+
         loop {
             loop {
                 let mut resend_timeout = delay_for(self.resources.config.transaction_resend_period).fuse();
@@ -408,6 +410,7 @@ where TBackend: TransactionBackend + 'static
                 self.source_pubkey.clone(),
                 self.resources.node_identity.public_key().clone(),
                 inbound_tx.amount,
+                rtp_output.unique_id,
                 finalized_transaction.body.get_total_fee(),
                 finalized_transaction.clone(),
                 TransactionStatus::Completed,

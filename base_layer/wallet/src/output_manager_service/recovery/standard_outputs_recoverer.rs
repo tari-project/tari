@@ -28,18 +28,16 @@ use crate::output_manager_service::{
     },
     MasterKeyManager,
 };
-use blake2::Digest;
 use log::*;
 use std::sync::Arc;
 use tari_core::transactions::{
     transaction::{TransactionOutput, UnblindedOutput},
-    types::{CryptoFactories, PrivateKey, PublicKey},
+    types::{CryptoFactories, PublicKey},
 };
 use tari_crypto::{
-    common::Blake256,
     inputs,
     keys::PublicKey as PublicKeyTrait,
-    tari_utilities::{hex::Hex, ByteArray},
+    tari_utilities::{hex::Hex, },
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::recovery";

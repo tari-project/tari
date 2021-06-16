@@ -46,6 +46,7 @@ impl From<UnblindedOutput> for grpc::UnblindedOutput {
             height: output.height,
             script_private_key: output.script_private_key.as_bytes().to_vec(),
             script_offset_public_key: output.script_offset_public_key.as_bytes().to_vec(),
+            unique_id: output.unique_id.unwrap_or_default()
         }
     }
 }
@@ -73,6 +74,7 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
         let script_offset_public_key = PublicKey::from_bytes(output.script_offset_public_key.as_bytes())
             .map_err(|err| format!("script_offset_public_key {:?}", err))?;
 
+        let unique_id = if output.unique_id.is_empty() { None } else {Some(output.unique_id.clone())};
         Ok(Self {
             value: MicroTari::from(output.value),
             spending_key,
@@ -82,6 +84,7 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
             height: output.height,
             script_private_key,
             script_offset_public_key,
+            unique_id
         })
     }
 }

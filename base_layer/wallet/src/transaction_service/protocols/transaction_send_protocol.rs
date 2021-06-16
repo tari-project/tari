@@ -91,7 +91,6 @@ where TBackend: TransactionBackend + 'static
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
         message: String,
-        unique_id: Option<Vec<u8>>,
         sender_protocol: SenderTransactionProtocol,
         stage: TransactionSendProtocolStage,
     ) -> Self {
@@ -427,6 +426,7 @@ where TBackend: TransactionBackend + 'static
             self.resources.node_identity.public_key().clone(),
             outbound_tx.destination_public_key.clone(),
             outbound_tx.amount,
+            outbound_tx.unique_id,
             outbound_tx.fee,
             tx.clone(),
             TransactionStatus::Completed,

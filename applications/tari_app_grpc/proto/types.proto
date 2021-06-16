@@ -188,6 +188,9 @@ message TransactionOutput {
     bytes script = 5;
     // Tari script offset pubkey, K_O
     bytes script_offset_public_key = 6;
+
+    // Unique id, e.g. for NFTs
+    bytes unique_id = 7;
 }
 
 // Options for UTXO's
@@ -304,4 +307,5 @@ message UnblindedOutput {
     uint64 height = 6;
     bytes script_private_key = 7;
     bytes script_offset_public_key = 8;
+    bytes unique_id = 9;
 }

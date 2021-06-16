@@ -132,7 +132,7 @@ pub async fn send_tari(
 ) -> Result<TxId, CommandError> {
     let (fee_per_gram, amount, dest_pubkey, message) = get_transaction_parameters(args)?;
     wallet_transaction_service
-        .send_transaction(dest_pubkey, amount, fee_per_gram, message)
+        .send_transaction(dest_pubkey, amount,None, fee_per_gram, message)
         .await
         .map_err(CommandError::TransactionServiceError)
 }
@@ -144,7 +144,7 @@ pub async fn send_one_sided(
 ) -> Result<TxId, CommandError> {
     let (fee_per_gram, amount, dest_pubkey, message) = get_transaction_parameters(args)?;
     wallet_transaction_service
-        .send_one_sided_transaction(dest_pubkey, amount, fee_per_gram, message)
+        .send_one_sided_transaction(dest_pubkey, amount, None, fee_per_gram, message)
         .await
         .map_err(CommandError::TransactionServiceError)
 }

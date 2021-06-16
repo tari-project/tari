@@ -644,7 +644,7 @@ where
 
             let (tx_id, fee, transaction) = self
                 .output_manager_service
-                .create_pay_to_self_transaction(amount, unique_id, fee_per_gram, None, message.clone())
+                .create_pay_to_self_transaction(amount, unique_id.clone(), fee_per_gram, None, message.clone())
                 .await?;
 
             // Notify that the transaction was successfully resolved.
@@ -659,6 +659,7 @@ where
                     self.node_identity.public_key().clone(),
                     self.node_identity.public_key().clone(),
                     amount,
+                    unique_id,
                     fee,
                     transaction,
                     TransactionStatus::Completed,
@@ -694,7 +695,6 @@ where
             dest_pubkey,
             amount,
             message,
-            unique_id,
             sender_protocol,
             TransactionSendProtocolStage::Initial,
         );
@@ -826,6 +826,7 @@ where
                 self.resources.node_identity.public_key().clone(),
                 dest_pubkey.clone(),
                 amount,
+                unique_id,
                 fee,
                 tx.clone(),
                 TransactionStatus::Completed,
@@ -1126,7 +1127,6 @@ where
                     tx.destination_public_key,
                     tx.amount,
                     tx.message,
-                    tx.unique_id,
                     tx.sender_protocol,
                     TransactionSendProtocolStage::WaitForReply,
                 );
@@ -1744,6 +1744,7 @@ where
                 self.node_identity.public_key().clone(),
                 self.node_identity.public_key().clone(),
                 amount,
+                None,
                 fee,
                 tx,
                 TransactionStatus::Completed,
@@ -1807,6 +1808,7 @@ where
                             self.node_identity.public_key().clone(),
                             self.node_identity.public_key().clone(),
                             amount,
+                            None,
                             MicroTari::from(0),
                             tx.clone(),
                             TransactionStatus::Coinbase,
@@ -2140,6 +2142,7 @@ where
             tx_id,
             source_public_key,
             amount,
+            None,
             rtp,
             TransactionStatus::Pending,
             "".to_string(),
@@ -2191,6 +2194,7 @@ where
             found_tx.source_public_key.clone(),
             self.node_identity.public_key().clone(),
             found_tx.amount,
+            None,
             MicroTari::from(2000), // a placeholder fee for this test function
             Transaction::new(
                 Vec::new(),
