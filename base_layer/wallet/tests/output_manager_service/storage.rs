@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::utils::{make_input, random_string};
+use crate::support::{data::get_temp_sqlite_database_connection, utils::make_input};
 use aes_gcm::{
     aead::{generic_array::GenericArray, NewAead},
     Aes256Gcm,
@@ -39,25 +39,22 @@ use tari_crypto::{
     keys::SecretKey,
     script::{ExecutionStack, TariScript},
 };
-use tari_wallet::{
-    output_manager_service::{
-        error::OutputManagerStorageError,
-        service::Balance,
-        storage::{
-            database::{KeyManagerState, OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
-            memory_db::OutputManagerMemoryDatabase,
-            models::DbUnblindedOutput,
-            sqlite_db::OutputManagerSqliteDatabase,
-        },
+use tari_wallet::output_manager_service::{
+    error::OutputManagerStorageError,
+    service::Balance,
+    storage::{
+        database::{KeyManagerState, OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
+        models::DbUnblindedOutput,
+        sqlite_db::OutputManagerSqliteDatabase,
     },
-    storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
 };
-use tempfile::tempdir;
+
 use tokio::runtime::Runtime;
 
 #[allow(clippy::same_item_push)]
 pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     let mut runtime = Runtime::new().unwrap();
+
     let db = OutputManagerDatabase::new(backend);
     let factories = CryptoFactories::default();
 
@@ -384,26 +381,15 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
 }
 
 #[test]
-pub fn test_output_manager_memory_db() {
-    test_db_backend(OutputManagerMemoryDatabase::new());
-}
-
-#[test]
 pub fn test_output_manager_sqlite_db() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let temp_dir = tempdir().unwrap();
-    let db_folder = temp_dir.path().to_str().unwrap().to_string();
-    let connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
     test_db_backend(OutputManagerSqliteDatabase::new(connection, None));
 }
 
 #[test]
 pub fn test_output_manager_sqlite_db_encrypted() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let temp_dir = tempdir().unwrap();
-    let db_folder = temp_dir.path().to_str().unwrap().to_string();
-    let connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
     let key = GenericArray::from_slice(b"an example very very secret key.");
     let cipher = Aes256Gcm::new(key);
@@ -411,9 +397,11 @@ pub fn test_output_manager_sqlite_db_encrypted() {
     test_db_backend(OutputManagerSqliteDatabase::new(connection, Some(cipher)));
 }
 
-pub fn test_key_manager_crud<T: OutputManagerBackend + 'static>(backend: T) {
+#[test]
+pub fn test_key_manager_crud() {
     let mut runtime = Runtime::new().unwrap();
-
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
     let db = OutputManagerDatabase::new(backend);
 
     assert_eq!(runtime.block_on(db.get_key_manager_state()).unwrap(), None);
@@ -447,24 +435,12 @@ pub fn test_key_manager_crud<T: OutputManagerBackend + 'static>(backend: T) {
     let read_state3 = runtime.block_on(db.get_key_manager_state()).unwrap().unwrap();
     assert_eq!(read_state3.primary_key_index, 2);
 }
-#[test]
-pub fn test_key_manager_crud_memory_db() {
-    test_key_manager_crud(OutputManagerMemoryDatabase::new());
-}
 
-#[test]
-pub fn test_key_manager_crud_sqlite_db() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let temp_dir = tempdir().unwrap();
-    let db_folder = temp_dir.path().to_str().unwrap().to_string();
-    let connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();
-
-    test_key_manager_crud(OutputManagerSqliteDatabase::new(connection, None));
-}
-
-pub async fn test_short_term_encumberance<T: OutputManagerBackend + 'static>(backend: T) {
+#[tokio_macros::test]
+pub async fn test_short_term_encumberance() {
     let factories = CryptoFactories::default();
-
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
     let db = OutputManagerDatabase::new(backend);
 
     // Add a pending tx
@@ -542,37 +518,10 @@ pub async fn test_short_term_encumberance<T: OutputManagerBackend + 'static>(bac
 }
 
 #[tokio_macros::test]
-pub async fn test_short_term_encumberance_memory_db() {
-    test_short_term_encumberance(OutputManagerMemoryDatabase::new()).await;
-}
-
-#[tokio_macros::test]
-pub async fn test_short_term_encumberance_sqlite_db() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let temp_dir = tempdir().unwrap();
-    let db_folder = temp_dir.path().to_str().unwrap().to_string();
-    let connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();
-
-    test_short_term_encumberance(OutputManagerSqliteDatabase::new(connection, None)).await;
-}
-
-#[tokio_macros::test]
-pub async fn test_no_duplicate_outputs_memory_db() {
-    test_no_duplicate_outputs(OutputManagerMemoryDatabase::new()).await;
-}
-
-#[tokio_macros::test]
-pub async fn test_no_duplicate_outputs_sqlite_db() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let temp_dir = tempdir().unwrap();
-    let db_folder = temp_dir.path().to_str().unwrap().to_string();
-    let connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();
-
-    test_no_duplicate_outputs(OutputManagerSqliteDatabase::new(connection, None)).await;
-}
-
-pub async fn test_no_duplicate_outputs<T: OutputManagerBackend + 'static>(backend: T) {
+pub async fn test_no_duplicate_outputs() {
     let factories = CryptoFactories::default();
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
     let db = OutputManagerDatabase::new(backend);
 
     // create an output
