@@ -148,8 +148,7 @@ class WalletProcess {
   }
 
   async start() {
-    let args;
-    args = [
+    const args = [
       "--base-path",
       ".",
       "--init",
@@ -169,29 +168,27 @@ class WalletProcess {
     return await this.run(await this.compile(), args, true);
   }
 
-  async export_spent_outputs() {
-    let args;
-    args = [
+  async exportSpentOutputs() {
+    const args = [
       "--init",
       "--base-path",
       ".",
-      "--daemon",
+      "--auto-exit",
       "--password",
       "kensentme",
       "--command",
-      "export-spent-utxos  --csv-file exported_outputs.csv",
+      "export-spent-utxos --csv-file exported_outputs.csv",
     ];
     outputProcess = __dirname + "/../temp/out/tari_console_wallet";
     await this.run(outputProcess, args, true);
   }
 
-  async export_unspent_outputs() {
-    let args;
-    args = [
+  async exportUnspentOutputs() {
+    const args = [
       "--init",
       "--base-path",
       ".",
-      "--daemon",
+      "--auto-exit",
       "--password",
       "kensentme",
       "--command",
@@ -201,7 +198,7 @@ class WalletProcess {
     await this.run(outputProcess, args, true);
   }
 
-  async read_exported_outputs() {
+  async readExportedOutputs() {
     const filePath = path.resolve(this.baseDir + "/exported_outputs.csv");
     expect(fs.existsSync(filePath)).to.equal(
       true,

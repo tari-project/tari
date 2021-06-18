@@ -32,7 +32,7 @@ use log::*;
 use rand::{rngs::OsRng, seq::SliceRandom};
 use std::{fs, io::Stdout, net::SocketAddr, path::PathBuf};
 use tari_app_utilities::utilities::ExitCodes;
-use tari_common::GlobalConfig;
+use tari_common::{ConfigBootstrap, GlobalConfig};
 use tari_comms::peer_manager::Peer;
 use tari_wallet::WalletSqlite;
 use tokio::runtime::Handle;
@@ -56,7 +56,7 @@ pub enum WalletMode {
 pub struct WalletModeConfig {
     pub base_node_config: PeerConfig,
     pub base_node_selected: Peer,
-    pub daemon_mode: bool,
+    pub bootstrap: ConfigBootstrap,
     pub global_config: GlobalConfig,
     pub handle: Handle,
     pub notify_script: Option<PathBuf>,
@@ -175,9 +175,14 @@ pub fn script_mode(config: WalletModeConfig, wallet: WalletSqlite, path: PathBuf
 
 /// Prompts the user to continue to the wallet, or exit.
 fn wallet_or_exit(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), ExitCodes> {
-    if config.daemon_mode {
-        info!(target: LOG_TARGET, "Daemon mode detected - auto exiting.");
-        Ok(())
+    if config.bootstrap.command_mode_auto_exit {
+        info!(target: LOG_TARGET, "Auto exit argument supplied - exiting.");
+        return Ok(());
+    }
+
+    if config.bootstrap.daemon_mode {
+        info!(target: LOG_TARGET, "Starting GRPC server.");
+        grpc_mode(config, wallet)
     } else {
         debug!(target: LOG_TARGET, "Prompting for run or exit key.");
         println!("\nPress Enter to continue to the wallet, or type q (or quit) followed by Enter.");
