@@ -200,6 +200,8 @@ message OutputFeatures {
     // The maturity of the specific UTXO. This is the min lock height at which an UTXO can be spend. Coinbase UTXO
     // require a min maturity of the Coinbase_lock_height, this should be checked on receiving new blocks.
     uint64 maturity = 2;
+
+    bytes metadata= 3;
 }
 
 // The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,

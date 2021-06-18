@@ -15,6 +15,7 @@
 
 #[macro_use]
 mod macros;
+pub mod assets;
 pub mod base_node_service;
 pub mod contacts_service;
 pub mod error;

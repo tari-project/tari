@@ -32,6 +32,7 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             flags: OutputFlags::from_bits(features.flags as u8)
                 .ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
             maturity: features.maturity,
+            metadata: features.metadata
         })
     }
 }

@@ -2063,109 +2063,110 @@ where
         source_public_key: CommsPublicKey,
         handle: Handle,
     ) -> Result<(), TransactionServiceError> {
-        use crate::{
-            base_node_service::{handle::BaseNodeServiceHandle, mock_base_node_service::MockBaseNodeService},
-            output_manager_service::{
-                config::OutputManagerServiceConfig,
-                error::OutputManagerError,
-                service::OutputManagerService,
-                storage::{database::OutputManagerDatabase, memory_db::OutputManagerMemoryDatabase},
-            },
-            transaction_service::{handle::TransactionServiceHandle, storage::models::InboundTransaction},
-        };
-        use tari_comms::types::CommsSecretKey;
-        use tari_core::consensus::{ConsensusConstantsBuilder, Network};
-
-        let (_sender, receiver) = reply_channel::unbounded();
-        let (oms_event_publisher, _oms_event_subscriber) = broadcast::channel(100);
-        let (ts_request_sender, _ts_request_receiver) = reply_channel::unbounded();
-        let (event_publisher, _) = broadcast::channel(100);
-        let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher.clone());
-        let constants = ConsensusConstantsBuilder::new(Network::Weatherwax).build();
-        let shutdown_signal = self.resources.shutdown_signal.clone();
-        let (sender, receiver_bns) = reply_channel::unbounded();
-        let (event_publisher_bns, _) = broadcast::channel(100);
-        let (connectivity_tx_publisher, _) = broadcast::channel(100);
-        let (connectivity_tx, _) = mpsc::channel(20);
-
-        let connectivity_manager = ConnectivityRequester::new(connectivity_tx, connectivity_tx_publisher);
-
-        let basenode_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns);
-        let mut mock_base_node_service = MockBaseNodeService::new(receiver_bns, shutdown_signal.clone());
-        mock_base_node_service.set_default_base_node_state();
-        handle.spawn(mock_base_node_service.run());
-        let mut fake_oms = OutputManagerService::new(
-            OutputManagerServiceConfig::default(),
-            ts_handle,
-            receiver,
-            OutputManagerDatabase::new(OutputManagerMemoryDatabase::new()),
-            oms_event_publisher,
-            self.resources.factories.clone(),
-            constants,
-            shutdown_signal,
-            basenode_service_handle,
-            connectivity_manager,
-            CommsSecretKey::default(),
-        )
-        .await?;
-
-        use crate::testnet_utils::make_input;
-        let (_ti, uo) = make_input(&mut OsRng, amount + 100000 * uT, &self.resources.factories);
-
-        fake_oms.add_output(None, uo).await?;
-
-        let mut stp = fake_oms
-            .prepare_transaction_to_send(amount, None, MicroTari::from(25), None, "".to_string(), script!(Nop))
-            .await?;
-
-        let msg = stp.build_single_round_message()?;
-        let proto_msg = proto::TransactionSenderMessage::single(msg.into());
-        let sender_message: TransactionSenderMessage = proto_msg
-            .try_into()
-            .map_err(TransactionServiceError::InvalidMessageError)?;
-
-        let (tx_id, _amount) = match sender_message.clone() {
-            TransactionSenderMessage::Single(data) => (data.tx_id, data.amount),
-            _ => {
-                return Err(TransactionServiceError::OutputManagerError(
-                    OutputManagerError::InvalidSenderMessage,
-                ))
-            },
-        };
-
-        let rtp = self
-            .output_manager_service
-            .get_recipient_transaction(sender_message)
-            .await?;
-
-        let inbound_transaction = InboundTransaction::new(
-            tx_id,
-            source_public_key,
-            amount,
-            None,
-            rtp,
-            TransactionStatus::Pending,
-            "".to_string(),
-            Utc::now().naive_utc(),
-        );
-
-        self.db
-            .add_pending_inbound_transaction(tx_id, inbound_transaction.clone())
-            .await?;
-
-        let _ = self
-            .event_publisher
-            .send(Arc::new(TransactionEvent::ReceivedTransaction(tx_id)))
-            .map_err(|e| {
-                trace!(
-                    target: LOG_TARGET,
-                    "Error sending event, usually because there are no subscribers: {:?}",
-                    e
-                );
-                e
-            });
-
-        Ok(())
+        // use crate::{
+        //     base_node_service::{handle::BaseNodeServiceHandle, mock_base_node_service::MockBaseNodeService},
+        //     output_manager_service::{
+        //         config::OutputManagerServiceConfig,
+        //         error::OutputManagerError,
+        //         service::OutputManagerService,
+        //         storage::{database::OutputManagerDatabase},
+        //     },
+        //     transaction_service::{handle::TransactionServiceHandle, storage::models::InboundTransaction},
+        // };
+        // use tari_comms::types::CommsSecretKey;
+        // use tari_core::consensus::{ConsensusConstantsBuilder, Network};
+        //
+        // let (_sender, receiver) = reply_channel::unbounded();
+        // let (oms_event_publisher, _oms_event_subscriber) = broadcast::channel(100);
+        // let (ts_request_sender, _ts_request_receiver) = reply_channel::unbounded();
+        // let (event_publisher, _) = broadcast::channel(100);
+        // let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher.clone());
+        // let constants = ConsensusConstantsBuilder::new(Network::Weatherwax).build();
+        // let shutdown_signal = self.resources.shutdown_signal.clone();
+        // let (sender, receiver_bns) = reply_channel::unbounded();
+        // let (event_publisher_bns, _) = broadcast::channel(100);
+        // let (connectivity_tx_publisher, _) = broadcast::channel(100);
+        // let (connectivity_tx, _) = mpsc::channel(20);
+        //
+        // let connectivity_manager = ConnectivityRequester::new(connectivity_tx, connectivity_tx_publisher);
+        //
+        // let basenode_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns);
+        // let mut mock_base_node_service = MockBaseNodeService::new(receiver_bns, shutdown_signal.clone());
+        // mock_base_node_service.set_default_base_node_state();
+        // handle.spawn(mock_base_node_service.run());
+        // let mut fake_oms = OutputManagerService::new(
+        //     OutputManagerServiceConfig::default(),
+        //     ts_handle,
+        //     receiver,
+        //     OutputManagerDatabase::new(OutputManagerMemoryDatabase::new()),
+        //     oms_event_publisher,
+        //     self.resources.factories.clone(),
+        //     constants,
+        //     shutdown_signal,
+        //     basenode_service_handle,
+        //     connectivity_manager,
+        //     CommsSecretKey::default(),
+        // )
+        // .await?;
+        //
+        // use crate::testnet_utils::make_input;
+        // let (_ti, uo) = make_input(&mut OsRng, amount + 100000 * uT, &self.resources.factories);
+        //
+        // fake_oms.add_output(None, uo).await?;
+        //
+        // let mut stp = fake_oms
+        //     .prepare_transaction_to_send(amount, None, MicroTari::from(25), None, "".to_string(), script!(Nop))
+        //     .await?;
+        //
+        // let msg = stp.build_single_round_message()?;
+        // let proto_msg = proto::TransactionSenderMessage::single(msg.into());
+        // let sender_message: TransactionSenderMessage = proto_msg
+        //     .try_into()
+        //     .map_err(TransactionServiceError::InvalidMessageError)?;
+        //
+        // let (tx_id, _amount) = match sender_message.clone() {
+        //     TransactionSenderMessage::Single(data) => (data.tx_id, data.amount),
+        //     _ => {
+        //         return Err(TransactionServiceError::OutputManagerError(
+        //             OutputManagerError::InvalidSenderMessage,
+        //         ))
+        //     },
+        // };
+        //
+        // let rtp = self
+        //     .output_manager_service
+        //     .get_recipient_transaction(sender_message)
+        //     .await?;
+        //
+        // let inbound_transaction = InboundTransaction::new(
+        //     tx_id,
+        //     source_public_key,
+        //     amount,
+        //     None,
+        //     rtp,
+        //     TransactionStatus::Pending,
+        //     "".to_string(),
+        //     Utc::now().naive_utc(),
+        // );
+        //
+        // self.db
+        //     .add_pending_inbound_transaction(tx_id, inbound_transaction.clone())
+        //     .await?;
+        //
+        // let _ = self
+        //     .event_publisher
+        //     .send(Arc::new(TransactionEvent::ReceivedTransaction(tx_id)))
+        //     .map_err(|e| {
+        //         trace!(
+        //             target: LOG_TARGET,
+        //             "Error sending event, usually because there are no subscribers: {:?}",
+        //             e
+        //         );
+        //         e
+        //     });
+        //
+        // Ok(())
+        unimplemented!("iTOD")
     }
 
     /// This function is only available for testing by the client of LibWallet. This function simulates an external

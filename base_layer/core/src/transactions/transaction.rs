@@ -98,6 +98,7 @@ pub struct OutputFeatures {
     /// the maturity of the specific UTXO. This is the min lock height at which an UTXO can be spend. Coinbase UTXO
     /// require a min maturity of the Coinbase_lock_height, this should be checked on receiving new blocks.
     pub maturity: u64,
+    pub metadata: Vec<u8>
 }
 
 impl OutputFeatures {
@@ -111,6 +112,7 @@ impl OutputFeatures {
         OutputFeatures {
             flags: OutputFlags::COINBASE_OUTPUT,
             maturity: maturity_height,
+            metadata: vec![]
         }
     }
 
@@ -128,6 +130,7 @@ impl Default for OutputFeatures {
         OutputFeatures {
             flags: OutputFlags::empty(),
             maturity: 0,
+            metadata: vec![]
         }
     }
 }
@@ -159,6 +162,7 @@ bitflags! {
     pub struct OutputFlags: u8 {
         /// Output is a coinbase output, must not be spent until maturity
         const COINBASE_OUTPUT = 0b0000_0001;
+        const ASSET_REGISTRATION = 0b0000_0010;
     }
 }
 

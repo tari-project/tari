@@ -26,7 +26,7 @@ use crate::{
         config::OutputManagerServiceConfig,
         handle::OutputManagerHandle,
         service::OutputManagerService,
-        storage::database::{OutputManagerBackend, OutputManagerDatabase},
+        storage::{database::OutputManagerBackend, database::OutputManagerDatabase},
     },
     transaction_service::handle::TransactionServiceHandle,
 };

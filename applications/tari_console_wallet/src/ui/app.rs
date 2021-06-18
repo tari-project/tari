@@ -47,6 +47,7 @@ use tui::{
     layout::{Constraint, Direction, Layout},
     Frame,
 };
+use crate::ui::components::assets_tab::AssetsTab;
 
 pub const LOG_TARGET: &str = "wallet::ui::app";
 pub const CUSTOM_BASE_NODE_PUBLIC_KEY_KEY: &str = "console_wallet_custom_base_node_public_key";
@@ -87,7 +88,10 @@ impl<B: Backend> App<B> {
             .add("Transactions".into(), Box::new(TransactionsTab::new()))
             .add("Send".into(), Box::new(SendTab::new()))
             .add("Receive".into(), Box::new(ReceiveTab::new()))
-            .add("Network".into(), Box::new(NetworkTab::new(base_node_selected)));
+            .add("Network".into(), Box::new(NetworkTab::new(base_node_selected)))
+            .add("Assets".into(), Box::new(AssetsTab::new()));
+
+
 
         let base_node_status = BaseNode::new();
         let menu = Menu::new();

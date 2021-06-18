@@ -203,6 +203,7 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             flags: OutputFlags::from_bits(features.flags as u8)
                 .ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
             maturity: features.maturity,
+            metadata: features.metadata
         })
     }
 }
@@ -212,6 +213,7 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
         Self {
             flags: features.flags.bits() as u32,
             maturity: features.maturity,
+            metadata: features.metadata
         }
     }
 }

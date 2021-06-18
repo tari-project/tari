@@ -274,6 +274,22 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(result)
     }
 
+
+    fn fetch_with_features(&self, flags: OutputFlags) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+        let conn = self.database_connection.acquire_lock();
+        let mut outputs = OutputSql::index_by_feature_flags(flags, &conn)?;
+        for o in outputs.iter_mut() {
+            self.decrypt_if_necessary(o)?;
+        }
+
+
+            outputs
+                .iter()
+                .map(|o| DbUnblindedOutput::try_from(o.clone()))
+                .collect::<Result<Vec<_>, _>>()
+
+    }
+
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError> {
         let conn = self.database_connection.acquire_lock();
 
@@ -810,6 +826,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let _ = (*current_cipher).take();
         Ok(())
     }
+
+
 }
 
 /// A utility function to construct a PendingTransactionOutputs structure for a TxId, set of Outputs and a Timestamp
@@ -942,7 +960,8 @@ struct OutputSql {
     height: i64,
     script_private_key: Vec<u8>,
     script_offset_public_key: Vec<u8>,
-    unique_id: Option<Vec<u8>>
+    unique_id: Option<Vec<u8>>,
+    metadata: Vec<u8>
 }
 
 impl OutputSql {
@@ -965,6 +984,11 @@ impl OutputSql {
             .filter(outputs::status.eq(OutputStatus::Unspent as i32))
             .filter(outputs::maturity.gt(tip as i64))
             .load(conn)?)
+    }
+
+    pub fn index_by_feature_flags(
+        flags: OutputFlags, conn : &SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        Ok(outputs::table.filter(outputs::status.eq(OutputStatus::Unspent as i32)).filter(outputs::flags.eq(flags.bits() as i32)).load(conn)?)
     }
 
     /// Find a particular Output, if it exists
@@ -1111,6 +1135,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             Some(OutputFeatures {
                 flags: OutputFlags::from_bits(o.flags as u8).ok_or(OutputManagerStorageError::ConversionError)?,
                 maturity: o.maturity as u64,
+                metadata: o.metadata.clone()
             }),
             TariScript::from_bytes(o.script.as_slice())?,
             ExecutionStack::from_bytes(o.input_data.as_slice())?,

@@ -29,7 +29,8 @@ pub mod receive_tab;
 pub mod send_tab;
 pub mod tabs_container;
 pub mod transactions_tab;
-
+pub mod assets_tab;
+mod styles;
 pub use self::component::*;
 
 #[derive(PartialEq, Eq)]

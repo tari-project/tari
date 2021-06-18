@@ -97,6 +97,7 @@ pub fn get_weatherwax_genesis_block_raw() -> Block {
             features: OutputFeatures {
                 flags: OutputFlags::COINBASE_OUTPUT,
                 maturity: 60,
+                metadata: vec![]
             },
             commitment: Commitment::from_hex(
                 "fadafb12de96d90042dcbf839985aadb7ae88baa3446d5c6a17937ef2b36783e",
@@ -203,6 +204,7 @@ pub fn get_ridcully_genesis_block_raw() -> Block {
             features: OutputFeatures {
                 flags: OutputFlags::COINBASE_OUTPUT,
                 maturity: 60,
+                metadata: vec![]
             },
             commitment: Commitment::from_hex(
                 "fadafb12de96d90042dcbf839985aadb7ae88baa3446d5c6a17937ef2b36783e",

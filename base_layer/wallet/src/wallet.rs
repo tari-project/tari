@@ -77,6 +77,10 @@ use tari_p2p::{comms_connector::pubsub_connector, initialization, initialization
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 use tokio::runtime;
+use crate::assets::{AssetManager, infrastructure::AssetManagerService, AssetManagerHandle};
+use crate::output_manager_service::storage::database::OutputManagerDatabase;
+use tokio::sync::RwLock;
+use crate::assets::infrastructure::initializer::AssetManagerServiceInitializer;
 
 const LOG_TARGET: &str = "wallet";
 
@@ -98,6 +102,7 @@ where
     pub contacts_service: ContactsServiceHandle,
     pub base_node_service: BaseNodeServiceHandle,
     pub utxo_scanner_service: UtxoScannerHandle,
+    pub asset_manager: AssetManagerHandle,
     pub db: WalletDatabase<T>,
     pub factories: CryptoFactories,
     #[cfg(feature = "test_harness")]
@@ -169,7 +174,7 @@ where
             .add_initializer(P2pInitializer::new(comms_config, publisher))
             .add_initializer(OutputManagerServiceInitializer::new(
                 config.output_manager_service_config.unwrap_or_default(),
-                output_manager_backend,
+                output_manager_backend.clone(),
                 factories.clone(),
                 config.network,
                 master_secret_key,
@@ -191,7 +196,7 @@ where
                 wallet_database.clone(),
                 factories.clone(),
                 node_identity.clone(),
-            ));
+            )).add_initializer(AssetManagerServiceInitializer::new(output_manager_backend));
 
         let mut handles = stack.build().await?;
 
@@ -208,6 +213,7 @@ where
 
         let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
         let utxo_scanner_service_handle = handles.expect_handle::<UtxoScannerHandle>();
+        let asset_manager_handle = handles.expect_handle::<AssetManagerHandle>();
 
         persist_one_sided_payment_script_for_node_identity(&mut output_manager_handle, comms.node_identity())
             .await
@@ -236,6 +242,7 @@ where
             utxo_scanner_service: utxo_scanner_service_handle,
             db: wallet_database,
             factories,
+            asset_manager: asset_manager_handle,
             #[cfg(feature = "test_harness")]
             transaction_backend: transaction_backend_handle,
             _u: PhantomData,

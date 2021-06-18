@@ -65,6 +65,7 @@ use tari_wallet::{
     WalletSqlite,
 };
 use tokio::sync::{watch, RwLock};
+use tari_wallet::assets::Asset;
 
 const LOG_TARGET: &str = "wallet::console_wallet::app_state";
 
@@ -125,6 +126,14 @@ impl AppState {
         Ok(())
     }
 
+    pub async fn refresh_assets_state(&mut self) -> Result<(), UiError> {
+        let mut inner = self.inner.write().await;
+        inner.refresh_assets_state().await?;
+        if let Some(data) = inner.get_updated_app_state() {
+            self.cached_data = data;
+        }
+        Ok(())
+    }
     pub async fn update_cache(&mut self) {
         let mut inner = self.inner.write().await;
         if let Some(data) = inner.get_updated_app_state() {
@@ -235,8 +244,11 @@ impl AppState {
         &self.cached_data.my_identity
     }
 
-    pub fn get_contacts(&self) -> &Vec<UiContact> {
-        &self.cached_data.contacts
+    pub fn get_owned_assets(&self) -> &[Asset] {
+        self.cached_data.owned_assets.as_slice()
+    }
+    pub fn get_contacts(&self) -> &[UiContact] {
+        self.cached_data.contacts.as_slice()
     }
 
     pub fn get_contact(&self, index: usize) -> Option<&UiContact> {
@@ -570,6 +582,14 @@ impl AppStateInner {
         Ok(())
     }
 
+
+    pub async fn refresh_assets_state(&mut self) -> Result<(), UiError> {
+        let asset_utxos = self.wallet.asset_manager.list_owned_assets().await?;
+        self.data.owned_assets = asset_utxos;
+        self.updated = true;
+        Ok(())
+    }
+
     pub async fn refresh_balance(&mut self) -> Result<(), UiError> {
         let balance = self.wallet.output_manager_service.get_balance().await?;
         self.data.balance = balance;
@@ -769,6 +789,7 @@ impl AppStateInner {
 
 #[derive(Clone)]
 struct AppStateData {
+    owned_assets: Vec<Asset>,
     pending_txs: Vec<CompletedTransaction>,
     completed_txs: Vec<CompletedTransaction>,
     confirmations: HashMap<TxId, u64>,
@@ -832,6 +853,7 @@ impl AppStateData {
         }
 
         AppStateData {
+            owned_assets: Vec::new(),
             pending_txs: Vec::new(),
             completed_txs: Vec::new(),
             confirmations: HashMap::new(),
