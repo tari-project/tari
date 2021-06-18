@@ -219,8 +219,9 @@ pub fn tui_mode(config: WalletModeConfig, mut wallet: WalletSqlite) -> Result<()
     let notifier = Notifier::new(notify_script, handle.clone(), wallet.clone());
 
     // update the selected/custom base node since it may have been changed by script/command mode
-    if let Some(peer) = handle.block_on(get_custom_base_node_peer_from_db(&mut wallet)) {
-        base_node_config.base_node_custom = Some(peer.clone());
+    let base_node_custom = handle.block_on(get_custom_base_node_peer_from_db(&mut wallet));
+    base_node_config.base_node_custom = base_node_custom.clone();
+    if let Some(peer) = base_node_custom {
         base_node_selected = peer;
     } else if let Some(peer) = handle.block_on(wallet.get_base_node_peer())? {
         base_node_selected = peer;
