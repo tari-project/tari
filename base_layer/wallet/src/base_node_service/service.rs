@@ -187,6 +187,10 @@ where T: WalletBackend + 'static
                 self.set_base_node_peer(*peer).await;
                 Ok(BaseNodeServiceResponse::BaseNodePeerSet)
             },
+            BaseNodeServiceRequest::GetBaseNodePeer => {
+                let peer = self.get_state().await.base_node_peer.map(Box::new);
+                Ok(BaseNodeServiceResponse::BaseNodePeer(peer))
+            },
             BaseNodeServiceRequest::GetChainMetadata => match self.get_state().await.chain_metadata.clone() {
                 Some(metadata) => Ok(BaseNodeServiceResponse::ChainMetadata(Some(metadata))),
                 None => {

@@ -26,6 +26,7 @@ use crate::{
     recovery::wallet_recovery,
     ui,
     ui::App,
+    utils::db::get_custom_base_node_peer_from_db,
 };
 use log::*;
 use rand::{rngs::OsRng, seq::SliceRandom};
@@ -106,6 +107,8 @@ impl PeerConfig {
         }
     }
 
+    /// Returns all the peers from the PeerConfig.
+    /// In order: Custom base node, service peers, peer seeds.
     pub fn get_all_peers(&self) -> Vec<Peer> {
         let num_peers = self.base_node_peers.len();
         let num_seeds = self.peer_seeds.len();
@@ -170,6 +173,7 @@ pub fn script_mode(config: WalletModeConfig, wallet: WalletSqlite, path: PathBuf
     wallet_or_exit(config, wallet)
 }
 
+/// Prompts the user to continue to the wallet, or exit.
 fn wallet_or_exit(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), ExitCodes> {
     if config.daemon_mode {
         info!(target: LOG_TARGET, "Daemon mode detected - auto exiting.");
@@ -195,10 +199,10 @@ fn wallet_or_exit(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), 
     }
 }
 
-pub fn tui_mode(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), ExitCodes> {
+pub fn tui_mode(config: WalletModeConfig, mut wallet: WalletSqlite) -> Result<(), ExitCodes> {
     let WalletModeConfig {
-        base_node_config,
-        base_node_selected,
+        mut base_node_config,
+        mut base_node_selected,
         global_config,
         handle,
         notify_script,
@@ -208,6 +212,14 @@ pub fn tui_mode(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), Ex
     handle.spawn(run_grpc(grpc, global_config.grpc_console_wallet_address));
 
     let notifier = Notifier::new(notify_script, handle.clone(), wallet.clone());
+
+    // update the selected/custom base node since it may have been changed by script/command mode
+    if let Some(peer) = handle.block_on(get_custom_base_node_peer_from_db(&mut wallet)) {
+        base_node_config.base_node_custom = Some(peer.clone());
+        base_node_selected = peer;
+    } else if let Some(peer) = handle.block_on(wallet.get_base_node_peer())? {
+        base_node_selected = peer;
+    }
 
     let app = App::<CrosstermBackend<Stdout>>::new(
         "Tari Console Wallet".into(),

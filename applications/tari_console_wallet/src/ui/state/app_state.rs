@@ -29,9 +29,8 @@ use crate::{
         },
         UiContact,
         UiError,
-        CUSTOM_BASE_NODE_ADDRESS_KEY,
-        CUSTOM_BASE_NODE_PUBLIC_KEY_KEY,
     },
+    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
     wallet_modes::PeerConfig,
 };
 use futures::{stream::Fuse, StreamExt};
