@@ -57,6 +57,7 @@ impl Display for ParsedCommand {
             SetBaseNode => "set-base-node",
             SetCustomBaseNode => "set-custom-base-node",
             ClearCustomBaseNode => "clear-custom-base-node",
+
         };
 
         let args = self

@@ -51,28 +51,28 @@ pub fn get_weatherwax_genesis_block() -> ChainBlock {
     // lets get the block
     let mut block = get_weatherwax_genesis_block_raw();
     // Lets load in the weatherwax faucet tx's
-    let mut utxos = Vec::new();
-    let file = include_str!("faucets/weatherwax_faucet.json");
-    // last 2 lines are used for the kernel creation
-    let mut kernel: Option<TransactionKernel> = None;
-    let mut counter = 1;
-    for line in file.lines() {
-        if counter < 4001 {
-            let utxo: TransactionOutput = serde_json::from_str(line).unwrap();
-            utxos.push(utxo);
-        } else {
-            kernel = Some(serde_json::from_str(line).unwrap());
-        }
-        counter += 1;
-    }
+    // let mut utxos = Vec::new();
+    // let file = include_str!("faucets/weatherwax_faucet.json");
+    // // last 2 lines are used for the kernel creation
+    // let mut kernel: Option<TransactionKernel> = None;
+    // let mut counter = 1;
+    // for line in file.lines() {
+    //     if counter < 4001 {
+    //         let utxo: TransactionOutput = serde_json::from_str(line).unwrap();
+    //         utxos.push(utxo);
+    //     } else {
+    //         kernel = Some(serde_json::from_str(line).unwrap());
+    //     }
+    //     counter += 1;
+    // }
     // fix headers to new mmr roots after adding utxos
-    block.header.output_mr = from_hex("a939fda2579fb0b6fd906111f61e37c5ea23eccd8b737eb7da517fde71a98078").unwrap();
-    block.header.range_proof_mr = from_hex("90a557390ce185318375546cb1244ffda3bb62274cce591880e2d012c38b1755").unwrap();
-    block.header.output_mmr_size += 4000;
-    block.header.kernel_mr = from_hex("f5e08e66e9c0e5e3818d96a694f4f6eafd689f38cea2e52e771eab2cc7a3941a").unwrap();
-    block.header.kernel_mmr_size += 1;
-    block.body.add_outputs(&mut utxos);
-    block.body.add_kernels(&mut vec![kernel.unwrap()]);
+    // block.header.output_mr = from_hex("a939fda2579fb0b6fd906111f61e37c5ea23eccd8b737eb7da517fde71a98078").unwrap();
+    // block.header.range_proof_mr = from_hex("90a557390ce185318375546cb1244ffda3bb62274cce591880e2d012c38b1755").unwrap();
+    // block.header.output_mmr_size += 4000;
+    // block.header.kernel_mr = from_hex("f5e08e66e9c0e5e3818d96a694f4f6eafd689f38cea2e52e771eab2cc7a3941a").unwrap();
+    // block.header.kernel_mmr_size += 1;
+    // block.body.add_outputs(&mut utxos);
+    // block.body.add_kernels(&mut vec![kernel.unwrap()]);
     let accumulated_data = BlockHeaderAccumulatedData {
         hash: block.hash(),
         total_kernel_offset: block.header.total_kernel_offset.clone(),

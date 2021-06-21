@@ -30,14 +30,12 @@ use tui::widgets::{Table, Block, Row, TableState, Borders};
 
 pub struct AssetsTab {
     table_state: TableState,
-    assets: Vec<AssetListItem>
 }
 
 impl AssetsTab {
 
     pub fn new() -> Self {
-        Self{  table_state: TableState::default(),
-        assets: vec![ AssetListItem{ name: "Yat".into(), pub_key: "pub".into() }]}
+        Self{  table_state: TableState::default(),}
     }
 }
 
@@ -47,7 +45,7 @@ impl<B:Backend> Component<B> for AssetsTab {
         let assets = app_state.get_owned_assets();
 
 
-        let rows :Vec<_>= self.assets.iter().map(|r| Row::new(vec![r.name.as_str(), r.pub_key.as_str()])).collect();
+        let rows :Vec<_>= assets.iter().map(|r| Row::new(vec![r.name(), "<pub key>"])).collect();
         let table = Table::new(rows)
             .header(Row::new(vec!["Name", "Pub Key"]).style(styles::header_row())).block(Block::default().title("Assets").borders(Borders::ALL)).widths(&[Constraint::Length(10), Constraint::Length(20)]).highlight_style(styles::highlight()).highlight_symbol(">>");
         f.render_stateful_widget(table, area, &mut self.table_state)
@@ -62,9 +60,10 @@ impl<B:Backend> Component<B> for AssetsTab {
         }
     }
 
-    fn on_down(&mut self, _app_state: &mut AppState) {
+    fn on_down(&mut self, app_state: &mut AppState) {
         let index =self.table_state.selected().map(|s| s + 1).unwrap_or_default();
-        if index > self.assets.len() - 1  {
+        let assets = app_state.get_owned_assets();
+        if index > assets.len() - 1  {
             self.table_state.select(None);
         } else {
             self.table_state.select(Some(index));
@@ -72,8 +71,3 @@ impl<B:Backend> Component<B> for AssetsTab {
     }
 }
 
-
-pub struct AssetListItem {
-    name: String,
-    pub_key: String,
-}
