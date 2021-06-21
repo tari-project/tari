@@ -66,7 +66,7 @@ use std::{
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 #[cfg(feature = "test_harness")]
-use tari_core::transactions::{tari_amount::uT, types::BlindingFactor};
+use tari_core::transactions::{types::BlindingFactor};
 use tari_core::{
     crypto::keys::SecretKey,
     proto::base_node as base_node_proto,
@@ -90,7 +90,6 @@ use tari_shutdown::ShutdownSignal;
 #[cfg(feature = "test_harness")]
 use tokio::runtime::Handle;
 use tokio::{sync::broadcast, task::JoinHandle};
-use tari_core::transactions::transaction::UnblindedOutput;
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
 
@@ -2061,9 +2060,9 @@ where
     pub async fn receive_test_transaction(
         &mut self,
         _tx_id: TxId,
-        amount: MicroTari,
-        source_public_key: CommsPublicKey,
-        handle: Handle,
+        _amount: MicroTari,
+        _source_public_key: CommsPublicKey,
+        _handle: Handle,
     ) -> Result<(), TransactionServiceError> {
         // use crate::{
         //     base_node_service::{handle::BaseNodeServiceHandle, mock_base_node_service::MockBaseNodeService},
@@ -2229,9 +2228,7 @@ where
             });
         Ok(())
     }
-    async fn create_send_to_self_with_output(&self, output: UnblindedOutput) -> Result<Transaction, TransactionServiceError> {
-        unimplemented!()
-    }
+
 }
 
 /// This struct is a collection of the common resources that a protocol in the service requires.

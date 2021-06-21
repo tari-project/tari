@@ -49,7 +49,7 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
 
 pub fn get_weatherwax_genesis_block() -> ChainBlock {
     // lets get the block
-    let mut block = get_weatherwax_genesis_block_raw();
+    let block = get_weatherwax_genesis_block_raw();
     // Lets load in the weatherwax faucet tx's
     // let mut utxos = Vec::new();
     // let file = include_str!("faucets/weatherwax_faucet.json");

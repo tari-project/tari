@@ -1,24 +1,21 @@
 use crate::output_manager_service::storage::database::OutputManagerBackend;
-use tari_service_framework::{ ServiceHandles};
-use tari_service_framework::reply_channel::{SenderService, Receiver};
+
+
 use crate::assets::AssetManagerHandle;
 use crate::assets::infrastructure::AssetManagerService;
 use log::*;
 
 use futures::{future, Future};
-use log::*;
-use tari_comms::{connectivity::ConnectivityRequester, types::CommsSecretKey};
-use tari_core::{
-    consensus::{ConsensusConstantsBuilder, Network},
-    transactions::types::CryptoFactories,
-};
+
+
+
 use tari_service_framework::{
     reply_channel,
     ServiceInitializationError,
     ServiceInitializer,
     ServiceInitializerContext,
 };
-use tokio::sync::broadcast;
+
 use crate::output_manager_service::handle::OutputManagerHandle;
 use crate::transaction_service::handle::TransactionServiceHandle;
 

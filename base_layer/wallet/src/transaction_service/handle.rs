@@ -39,7 +39,7 @@ use tower::Service;
 use crate::types::ValidationRetryStrategy;
 #[cfg(feature = "test_harness")]
 use tokio::runtime::Handle;
-use tari_core::transactions::transaction::UnblindedOutput;
+
 
 /// API Request enum
 #[allow(clippy::large_enum_variant)]

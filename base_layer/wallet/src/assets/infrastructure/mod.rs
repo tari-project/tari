@@ -2,7 +2,7 @@
 mod asset_manager_service;
 pub use asset_manager_service::AssetManagerService;
 use crate::assets::Asset;
-use crate::output_manager_service::TxId;
+
 use tari_core::transactions::transaction::Transaction;
 
 pub mod initializer;

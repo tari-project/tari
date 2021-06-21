@@ -6,7 +6,7 @@ use crate::{
     error::WalletError,
 };
 use tari_service_framework::{reply_channel::SenderService, Service};
-use crate::output_manager_service::TxId;
+
 use tari_core::transactions::transaction::Transaction;
 
 #[derive(Clone)]

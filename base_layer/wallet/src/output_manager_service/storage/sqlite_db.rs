@@ -961,7 +961,7 @@ struct OutputSql {
     script_private_key: Vec<u8>,
     script_offset_public_key: Vec<u8>,
     unique_id: Option<Vec<u8>>,
-    metadata: Vec<u8>
+    metadata: Option<Vec<u8>>
 }
 
 impl OutputSql {
@@ -1135,7 +1135,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             Some(OutputFeatures {
                 flags: OutputFlags::from_bits(o.flags as u8).ok_or(OutputManagerStorageError::ConversionError)?,
                 maturity: o.maturity as u64,
-                metadata: o.metadata.clone()
+                metadata: o.metadata.unwrap_or_default()
             }),
             TariScript::from_bytes(o.script.as_slice())?,
             ExecutionStack::from_bytes(o.input_data.as_slice())?,

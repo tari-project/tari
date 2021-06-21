@@ -359,7 +359,7 @@ where TBackend: OutputManagerBackend + 'static
                     output: unblinded_output,
                 })
             },
-            OutputManagerRequest::CreatePayToSelfWithOutputs { amount, outputs, fee_per_gram } => {
+            OutputManagerRequest::CreatePayToSelfWithOutputs { amount: _, outputs, fee_per_gram } => {
                 let transaction = self.create_pay_to_self_containing_outputs(outputs, fee_per_gram).await?;
                 Ok(OutputManagerResponse::CreatePayToSelfWithOutputs {transaction})
             }
@@ -791,12 +791,13 @@ where TBackend: OutputManagerBackend + 'static
                 uo.unblinded_output.clone(),
             );
         }
-        for unblinded_output in outputs {
+        for mut unblinded_output in outputs {
             let script_offset_private_key = PrivateKey::random(&mut OsRng);
+            unblinded_output.script_offset_public_key = PublicKey::from_secret_key(&script_offset_private_key);
             builder.with_output(unblinded_output.clone(), script_offset_private_key.clone());
         }
 
-        let mut change_keys = None;
+        // let mut change_keys = None;
 
         let fee = Fee::calculate(fee_per_gram, 1, inputs.len(), 1);
         let change_value = total.saturating_sub(fee);
@@ -806,7 +807,7 @@ where TBackend: OutputManagerBackend + 'static
                 .master_key_manager
                 .get_next_spend_and_script_key()
                 .await?;
-            change_keys = Some((spending_key.clone(), script_private_key.clone()));
+            // change_keys = Some((spending_key.clone(), script_private_key.clone()));
             builder.with_change_secret(spending_key);
             builder.with_rewindable_outputs(self.resources.master_key_manager.rewind_data().clone());
             builder.with_change_script(
@@ -1067,7 +1068,7 @@ where TBackend: OutputManagerBackend + 'static
 
         // If we know the chain height then filter out unspendable UTXOs
         let num_utxos = uo.len();
-        let mut uo = if connected {
+        let uo = if connected {
             let mature_utxos = uo
                 .into_iter()
                 .filter(|u| u.unblinded_output.features.maturity <= tip_height)

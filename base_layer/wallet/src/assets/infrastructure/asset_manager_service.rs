@@ -1,19 +1,15 @@
 use crate::{
     assets::{
         infrastructure::{AssetManagerRequest, AssetManagerResponse},
-        Asset,
         AssetManager,
-        AssetManagerHandle,
     },
     error::WalletError,
     output_manager_service::storage::{
-        database::{OutputManagerBackend, OutputManagerDatabase},
-        sqlite_db::OutputManagerSqliteDatabase,
+        database::{OutputManagerBackend},
     },
 };
 use tari_service_framework::{
-    reply_channel::{Receiver, SenderService},
-    ServiceHandles,
+    reply_channel::{Receiver, },
 };
 use futures::{pin_mut, StreamExt};
 use tari_shutdown::ShutdownSignal;

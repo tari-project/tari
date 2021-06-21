@@ -104,7 +104,7 @@ table! {
         script_private_key -> Binary,
         script_offset_public_key -> Binary,
         unique_id -> Nullable<Binary>,
-        metadata -> Binary,
+        metadata -> Nullable<Binary>,
     }
 }
 
