@@ -57,7 +57,7 @@ impl Display for ParsedCommand {
             SetBaseNode => "set-base-node",
             SetCustomBaseNode => "set-custom-base-node",
             ClearCustomBaseNode => "clear-custom-base-node",
-
+            RegisterAsset => "register-asset"
         };
 
         let args = self
@@ -123,10 +123,44 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, ParseError> {
         SetBaseNode => parse_public_key_and_address(args)?,
         SetCustomBaseNode => parse_public_key_and_address(args)?,
         ClearCustomBaseNode => Vec::new(),
+        RegisterAsset => parser_builder(args).text().build()?
     };
 
     Ok(ParsedCommand { command, args })
 }
+
+struct ArgParser<'a> {
+    args: SplitWhitespace<'a>,
+    result: Vec<Result<ParsedArgument, ParseError>>
+}
+
+impl<'a> ArgParser<'a> {
+    fn new(args: SplitWhitespace<'a>) -> Self {
+        Self{
+            args, result: vec![]
+        }
+    }
+    fn text(mut self) -> Self {
+    let text_result = self.args.next().map(|t| ParsedArgument::Text(t.to_string()))
+    .ok_or_else(|| ParseError::Empty("text".to_string()));
+        self.result.push(text_result);
+    self
+    }
+
+    fn build(self) -> Result<Vec<ParsedArgument>, ParseError> {
+        let mut result = Vec::with_capacity(self.result.len());
+        for r in self.result {
+            result.push(r?);
+        }
+       Ok(result)
+    }
+}
+
+fn parser_builder(args: SplitWhitespace) -> ArgParser {
+    ArgParser::new(args)
+}
+
+
 
 fn parse_whois(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
     let mut parsed_args = Vec::new();

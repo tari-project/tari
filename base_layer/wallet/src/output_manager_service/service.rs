@@ -347,6 +347,10 @@ where TBackend: OutputManagerBackend + 'static
                 .await
                 .map(|_| OutputManagerResponse::MinedHeightUpdated)
                 .map_err(OutputManagerError::OutputManagerStorageError),
+            OutputManagerRequest::CreateOutputWithFeatures { value, features } => {
+                let unblinded_output = self.create_output_with_features(value, features).await?;
+                Ok(OutputManagerResponse::CreateOutputWithFeatures{ output: unblinded_output})
+            }
         }
     }
 
@@ -404,6 +408,24 @@ where TBackend: OutputManagerBackend + 'static
         }
         Ok(())
     }
+
+    async fn create_output_with_features(&self, value: MicroTari, features: OutputFeatures) -> Result<UnblindedOutput, OutputManagerError> {
+
+        let (spending_key, script_private_key) = self.resources.master_key_manager.get_next_spend_and_script_key().await?;
+        Ok(UnblindedOutput{
+            value,
+            spending_key,
+            features,
+            script:script!(Nop),
+            input_data: Default::default(),
+            height: 0,
+            script_private_key,
+            // To be completed in processing
+            script_offset_public_key: Default::default(),
+            unique_id: None
+        })
+    }
+
 
     async fn get_balance(&self, current_chain_tip: Option<u64>) -> Result<Balance, OutputManagerError> {
         let balance = self.resources.db.get_balance(current_chain_tip).await?;

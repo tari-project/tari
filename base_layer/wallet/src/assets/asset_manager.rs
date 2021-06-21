@@ -1,15 +1,17 @@
 use crate::error::WalletError;
 use crate::assets::Asset;
 use crate::output_manager_service::storage::database::{OutputManagerDatabase, OutputManagerBackend};
-use tari_core::transactions::transaction::OutputFlags;
+use tari_core::transactions::transaction::{OutputFlags, Transaction, OutputFeatures, UnblindedOutput};
 use crate::error::WalletError::WalletRecoveryError;
+use crate::output_manager_service::handle::OutputManagerHandle;
 
 pub struct AssetManager<T:OutputManagerBackend + 'static>  {
-     output_database : OutputManagerDatabase<T>
+     output_database : OutputManagerDatabase<T>,
+     output_manager: OutputManagerHandle
  }
  impl<T:OutputManagerBackend + 'static> AssetManager<T> {
-     pub fn new(backend: T) -> Self {
-         Self{ output_database: OutputManagerDatabase::new(backend)}
+     pub fn new(backend: T, output_manager: OutputManagerHandle) -> Self {
+         Self{ output_database: OutputManagerDatabase::new(backend), output_manager}
      }
 
      // TODO: Write test
@@ -27,31 +29,51 @@ pub struct AssetManager<T:OutputManagerBackend + 'static>  {
          ).collect();
          Ok(assets)
     }
+
+     pub async fn create_registration_transaction(&mut self, name: String) -> Result<Transaction, WalletError>{
+         let serializer = V1AssetMetadataSerializer{};
+
+         let metadata = AssetMetadata {
+             name
+         };
+         let mut metadata_bin = vec![1u8];
+         metadata_bin.extend(serializer.serialize(&metadata).into_iter());
+         let output = self.output_manager.create_output_with_features(0.into(), OutputFeatures::custom(OutputFlags::ASSET_REGISTRATION, metadata_bin)).await?;
+         // let transaction = self.transaction_manager.create_transaction_to_self_with_output(output);
+         unimplemented!()
+     }
 }
 
 fn get_deserializer(version: u8) -> impl AssetMetadataDeserializer {
     match version {
-        _ => V1AssetMetadataDeserializer{}
+        _ => V1AssetMetadataSerializer{}
     }
 }
 
 pub trait AssetMetadataDeserializer {
-    fn deserialize(&self, _metadata: &[u8]) -> AssetMetadata {
-        return AssetMetadata{
-            name: "Big Neon Tickets".to_string()
+    fn deserialize(&self, metadata: &[u8]) -> AssetMetadata;
+}
+pub trait AssetMetadataSerializer {
+    fn serialize(&self, model: &AssetMetadata) -> Vec<u8> ;
+}
+
+pub struct V1AssetMetadataSerializer {
+
+}
+
+impl AssetMetadataDeserializer for V1AssetMetadataSerializer {
+    fn deserialize(&self, metadata: &[u8]) -> AssetMetadata {
+        AssetMetadata {
+            name: String::from_utf8(Vec::from(metadata)).unwrap()
         }
     }
 }
 
-
-pub struct V1AssetMetadataDeserializer {
-
-}
-
-
-impl AssetMetadataDeserializer for V1AssetMetadataDeserializer {
-
-}
+    impl AssetMetadataSerializer for V1AssetMetadataSerializer {
+        fn serialize(&self, model: &AssetMetadata) -> Vec<u8> {
+           model.name.clone().into_bytes()
+        }
+    }
 
 pub struct AssetMetadata {
     name: String

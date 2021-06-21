@@ -81,6 +81,7 @@ pub enum WalletCommand {
     SetBaseNode,
     SetCustomBaseNode,
     ClearCustomBaseNode,
+    RegisterAsset
 }
 
 #[derive(Debug, EnumString, PartialEq, Clone)]
@@ -598,6 +599,13 @@ pub async fn command_runner(
                     .clear_client_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string())
                     .await?;
             },
+            RegisterAsset => {
+                println!("Registering asset.");
+                let name = parsed.args[0].to_string();
+                let mut manager = wallet.asset_manager.clone();
+                let transaction  = manager.create_registration_transaction(name).await?;
+                // wallet.transaction_service.broadcast_transaction()
+            }
         }
     }
 

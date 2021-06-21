@@ -18,6 +18,7 @@ use tari_service_framework::{
 use futures::{pin_mut, StreamExt};
 use tari_shutdown::ShutdownSignal;
 use log::*;
+use crate::output_manager_service::handle::OutputManagerHandle;
 
 const LOG_TARGET: &str = "wallet::assets::infrastructure::asset_manager_service";
 
@@ -26,9 +27,9 @@ pub struct AssetManagerService<T: OutputManagerBackend + 'static> {
 }
 
 impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
-    pub fn new(backend: T) -> Self {
+    pub fn new(backend: T, output_manager: OutputManagerHandle) -> Self {
         Self {
-            manager: AssetManager::<T>::new(backend),
+            manager: AssetManager::<T>::new(backend, output_manager),
         }
     }
 
@@ -73,6 +74,7 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
             AssetManagerRequest::ListOwned { .. } => Ok(AssetManagerResponse::ListOwned {
                 assets: self.manager.list_owned().await?,
             }),
+            AssetManagerRequest::CreateRegistrationTransaction {name} => Ok(AssetManagerResponse::CreateRegistrationTransaction {transaction: self.manager.create_registration_transaction(name).await?})
         }
     }
 }

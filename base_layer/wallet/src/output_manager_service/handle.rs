@@ -46,6 +46,7 @@ use tari_crypto::script::TariScript;
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
+use tari_core::transactions::transaction::OutputFeatures;
 
 /// API Request enum
 pub enum OutputManagerRequest {
@@ -76,6 +77,7 @@ pub enum OutputManagerRequest {
     ScanOutputs(Vec<TransactionOutput>, u64),
     UpdateMinedHeight(u64, u64),
     AddKnownOneSidedPaymentScript(KnownOneSidedPaymentScript),
+    CreateOutputWithFeatures { value: MicroTari, features: OutputFeatures}
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -109,6 +111,7 @@ impl fmt::Display for OutputManagerRequest {
             ScanOutputs(_, _) => write!(f, "ScanRewindAndImportOutputs"),
             UpdateMinedHeight(_, _) => write!(f, "UpdateMinedHeight"),
             AddKnownOneSidedPaymentScript(_) => write!(f, "AddKnownOneSidedPaymentScript"),
+            CreateOutputWithFeatures { value, features} => write!(f, "CreateOutputWithFeatures({}, {})", value, features.to_string())
         }
     }
 }
@@ -143,6 +146,7 @@ pub enum OutputManagerResponse {
     ScanOutputs(Vec<UnblindedOutput>),
     MinedHeightUpdated,
     AddKnownOneSidedPaymentScript,
+    CreateOutputWithFeatures{ output: UnblindedOutput}
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -209,6 +213,13 @@ impl OutputManagerHandle {
         {
             OutputManagerResponse::OutputAdded => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn create_output_with_features(&mut self, value: MicroTari, features: OutputFeatures) -> Result<UnblindedOutput, OutputManagerError> {
+        match self.handle.call(OutputManagerRequest::CreateOutputWithFeatures{ value, features}).await?? {
+            OutputManagerResponse::CreateOutputWithFeatures{ output} => Ok(output),
+            _ => Err(OutputManagerError::UnexpectedApiResponse)
         }
     }
 

@@ -19,6 +19,7 @@ use tari_service_framework::{
     ServiceInitializerContext,
 };
 use tokio::sync::broadcast;
+use crate::output_manager_service::handle::OutputManagerHandle;
 
 
 const LOG_TARGET: &str = "wallet::assets::infrastructure::initializer";
@@ -57,7 +58,8 @@ impl<T> ServiceInitializer for AssetManagerServiceInitializer<T>
 
         context.spawn_when_ready(move |handles| async move {
 
-            let service = AssetManagerService::new(backend);
+            let output_manager  = handles.expect_handle::<OutputManagerHandle>();
+            let service = AssetManagerService::new(backend, output_manager);
 
             let running = service.start(handles.get_shutdown_signal(), receiver);
 

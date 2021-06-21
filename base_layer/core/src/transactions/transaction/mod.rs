@@ -123,6 +123,14 @@ impl OutputFeatures {
             ..OutputFeatures::default()
         }
     }
+
+    pub fn custom(flags: OutputFlags, metadata: Vec<u8>) -> OutputFeatures {
+        Self {
+            flags,
+            maturity: 0,
+            metadata
+        }
+    }
 }
 
 impl Default for OutputFeatures {
@@ -1109,7 +1117,7 @@ mod test {
         transactions::{
             helpers::{create_test_kernel, create_tx, spend_utxos},
             tari_amount::T,
-            transaction::OutputFeatures,
+            r#mod::OutputFeatures,
             types::{BlindingFactor, PrivateKey, PublicKey, RangeProof},
         },
         txn_schema,
