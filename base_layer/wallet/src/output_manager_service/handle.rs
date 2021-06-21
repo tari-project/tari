@@ -59,6 +59,7 @@ pub enum OutputManagerRequest {
     ConfirmTransaction((u64, Vec<TransactionInput>, Vec<TransactionOutput>)),
     PrepareToSendTransaction{ amount: MicroTari, unique_id: Option<Vec<u8>>, fee_per_gram: MicroTari, lock_height: Option<u64>, message: String, script: TariScript},
     CreatePayToSelfTransaction { amount : MicroTari, unique_id: Option<Vec<u8>>, fee_per_gram: MicroTari, lock_height: Option<u64>,message:  String},
+    CreatePayToSelfWithOutputs{ amount: MicroTari, outputs: Vec<UnblindedOutput>, fee_per_gram: MicroTari},
     CancelTransaction(u64),
     TimeoutTransactions(Duration),
     GetPendingTransactions,
@@ -77,7 +78,8 @@ pub enum OutputManagerRequest {
     ScanOutputs(Vec<TransactionOutput>, u64),
     UpdateMinedHeight(u64, u64),
     AddKnownOneSidedPaymentScript(KnownOneSidedPaymentScript),
-    CreateOutputWithFeatures { value: MicroTari, features: OutputFeatures}
+    CreateOutputWithFeatures { value: MicroTari, features: OutputFeatures},
+
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -111,7 +113,8 @@ impl fmt::Display for OutputManagerRequest {
             ScanOutputs(_, _) => write!(f, "ScanRewindAndImportOutputs"),
             UpdateMinedHeight(_, _) => write!(f, "UpdateMinedHeight"),
             AddKnownOneSidedPaymentScript(_) => write!(f, "AddKnownOneSidedPaymentScript"),
-            CreateOutputWithFeatures { value, features} => write!(f, "CreateOutputWithFeatures({}, {})", value, features.to_string())
+            CreateOutputWithFeatures { value, features} => write!(f, "CreateOutputWithFeatures({}, {})", value, features.to_string()),
+            CreatePayToSelfWithOutputs { .. } => write!(f, "CreatePayToSelfWithOutputs" )
         }
     }
 }
@@ -146,7 +149,8 @@ pub enum OutputManagerResponse {
     ScanOutputs(Vec<UnblindedOutput>),
     MinedHeightUpdated,
     AddKnownOneSidedPaymentScript,
-    CreateOutputWithFeatures{ output: UnblindedOutput}
+    CreateOutputWithFeatures{ output: UnblindedOutput},
+    CreatePayToSelfWithOutputs { transaction: Transaction }
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -523,6 +527,12 @@ impl OutputManagerHandle {
         }
     }
 
+    pub async fn create_send_to_self_with_output(&mut self,  amount: MicroTari, outputs: Vec<UnblindedOutput>, fee_per_gram: MicroTari) -> Result<Transaction, OutputManagerError >{
+        match self.handle.call(OutputManagerRequest::CreatePayToSelfWithOutputs {amount,outputs, fee_per_gram }).await?? {
+            OutputManagerResponse::CreatePayToSelfWithOutputs {transaction} => Ok(transaction),
+            _ => Err(OutputManagerError::UnexpectedApiResponse)
+        }
+    }
     pub async fn create_pay_to_self_transaction(
         &mut self,
         amount: MicroTari,

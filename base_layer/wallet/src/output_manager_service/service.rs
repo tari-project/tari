@@ -234,7 +234,13 @@ where TBackend: OutputManagerBackend + 'static
                 .prepare_transaction_to_send(amount, unique_id, fee_per_gram, lock_height, message, script)
                 .await
                 .map(OutputManagerResponse::TransactionToSend),
-            OutputManagerRequest::CreatePayToSelfTransaction{ amount, unique_id, fee_per_gram, lock_height, message} => self
+            OutputManagerRequest::CreatePayToSelfTransaction {
+                amount,
+                unique_id,
+                fee_per_gram,
+                lock_height,
+                message,
+            } => self
                 .create_pay_to_self_transaction(amount, unique_id, fee_per_gram, lock_height, message)
                 .await
                 .map(OutputManagerResponse::PayToSelfTransaction),
@@ -349,7 +355,13 @@ where TBackend: OutputManagerBackend + 'static
                 .map_err(OutputManagerError::OutputManagerStorageError),
             OutputManagerRequest::CreateOutputWithFeatures { value, features } => {
                 let unblinded_output = self.create_output_with_features(value, features).await?;
-                Ok(OutputManagerResponse::CreateOutputWithFeatures{ output: unblinded_output})
+                Ok(OutputManagerResponse::CreateOutputWithFeatures {
+                    output: unblinded_output,
+                })
+            },
+            OutputManagerRequest::CreatePayToSelfWithOutputs { amount, outputs, fee_per_gram } => {
+                let transaction = self.create_pay_to_self_containing_outputs(outputs, fee_per_gram).await?;
+                Ok(OutputManagerResponse::CreatePayToSelfWithOutputs {transaction})
             }
         }
     }
@@ -409,23 +421,29 @@ where TBackend: OutputManagerBackend + 'static
         Ok(())
     }
 
-    async fn create_output_with_features(&self, value: MicroTari, features: OutputFeatures) -> Result<UnblindedOutput, OutputManagerError> {
-
-        let (spending_key, script_private_key) = self.resources.master_key_manager.get_next_spend_and_script_key().await?;
-        Ok(UnblindedOutput{
+    async fn create_output_with_features(
+        &self,
+        value: MicroTari,
+        features: OutputFeatures,
+    ) -> Result<UnblindedOutput, OutputManagerError> {
+        let (spending_key, script_private_key) = self
+            .resources
+            .master_key_manager
+            .get_next_spend_and_script_key()
+            .await?;
+        Ok(UnblindedOutput {
             value,
             spending_key,
             features,
-            script:script!(Nop),
+            script: script!(Nop),
             input_data: Default::default(),
             height: 0,
             script_private_key,
             // To be completed in processing
             script_offset_public_key: Default::default(),
-            unique_id: None
+            unique_id: None,
         })
     }
-
 
     async fn get_balance(&self, current_chain_tip: Option<u64>) -> Result<Balance, OutputManagerError> {
         let balance = self.resources.db.get_balance(current_chain_tip).await?;
@@ -464,7 +482,7 @@ where TBackend: OutputManagerBackend + 'static
                 0,
                 script_private_key,
                 single_round_sender_data.script_offset_public_key.clone(),
-                single_round_sender_data.unique_id.clone()
+                single_round_sender_data.unique_id.clone(),
             ),
             &self.resources.factories,
         )?;
@@ -547,7 +565,7 @@ where TBackend: OutputManagerBackend + 'static
             num_kernels,
             num_outputs
         );
-// TODO: Perhaps include unique id here
+        // TODO: Perhaps include unique id here
         let (utxos, _, _) = self
             .select_utxos(amount, fee_per_gram, num_outputs as usize, None, None)
             .await?;
@@ -574,7 +592,9 @@ where TBackend: OutputManagerBackend + 'static
             target: LOG_TARGET,
             "Preparing to send transaction. Amount: {}. Fee per gram: {}. ", amount, fee_per_gram,
         );
-        let (outputs, _, total) = self.select_utxos(amount, fee_per_gram, 1, None, unique_id.as_ref()).await?;
+        let (outputs, _, total) = self
+            .select_utxos(amount, fee_per_gram, 1, None, unique_id.as_ref())
+            .await?;
 
         let offset = PrivateKey::random(&mut OsRng);
         let nonce = PrivateKey::random(&mut OsRng);
@@ -649,7 +669,7 @@ where TBackend: OutputManagerBackend + 'static
                     0,
                     script_private_key,
                     change_script_offset_public_key,
-                    None
+                    None,
                 ),
                 &self.resources.factories,
             )?);
@@ -711,7 +731,7 @@ where TBackend: OutputManagerBackend + 'static
                 block_height,
                 script_key,
                 PublicKey::default(),
-                None
+                None,
             ),
             &self.resources.factories,
         )?;
@@ -744,6 +764,67 @@ where TBackend: OutputManagerBackend + 'static
         Ok(tx)
     }
 
+    async fn create_pay_to_self_containing_outputs(
+        &mut self,
+        outputs: Vec<UnblindedOutput>,
+        fee_per_gram: MicroTari,
+    ) -> Result<Transaction, OutputManagerError> {
+        let (inputs, _, total) = self
+            .select_utxos(0.into(), fee_per_gram, outputs.len(), None, None)
+            .await?;
+        let offset = PrivateKey::random(&mut OsRng);
+        let nonce = PrivateKey::random(&mut OsRng);
+
+        // Create builder with no recipients (other than ourselves)
+        let mut builder = SenderTransactionProtocol::builder(0);
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(fee_per_gram)
+            .with_offset(offset.clone())
+            .with_private_nonce(nonce.clone())
+            .with_prevent_fee_gt_amount(false);
+
+        for uo in &inputs {
+            builder.with_input(
+                uo.unblinded_output
+                    .as_transaction_input(&self.resources.factories.commitment)?,
+                uo.unblinded_output.clone(),
+            );
+        }
+        for unblinded_output in outputs {
+            let script_offset_private_key = PrivateKey::random(&mut OsRng);
+            builder.with_output(unblinded_output.clone(), script_offset_private_key.clone());
+        }
+
+        let mut change_keys = None;
+
+        let fee = Fee::calculate(fee_per_gram, 1, inputs.len(), 1);
+        let change_value = total.saturating_sub(fee);
+        if change_value > 0.into() {
+            let (spending_key, script_private_key) = self
+                .resources
+                .master_key_manager
+                .get_next_spend_and_script_key()
+                .await?;
+            change_keys = Some((spending_key.clone(), script_private_key.clone()));
+            builder.with_change_secret(spending_key);
+            builder.with_rewindable_outputs(self.resources.master_key_manager.rewind_data().clone());
+            builder.with_change_script(
+                script!(Nop),
+                inputs!(PublicKey::from_secret_key(&script_private_key)),
+                script_private_key,
+            );
+        }
+
+        let mut stp = builder
+            .build::<HashDigest>(&self.resources.factories)
+            .map_err(|e| OutputManagerError::BuildError(e.message))?;
+
+        stp.finalize(KernelFeatures::empty(), &self.resources.factories)?;
+
+        Ok(stp.take_transaction()?)
+    }
+
     async fn create_pay_to_self_transaction(
         &mut self,
         amount: MicroTari,
@@ -752,7 +833,9 @@ where TBackend: OutputManagerBackend + 'static
         lock_height: Option<u64>,
         message: String,
     ) -> Result<(TxId, MicroTari, Transaction), OutputManagerError> {
-        let (inputs, _, total) = self.select_utxos(amount, fee_per_gram, 1, None, unique_id.as_ref()).await?;
+        let (inputs, _, total) = self
+            .select_utxos(amount, fee_per_gram, 1, None, unique_id.as_ref())
+            .await?;
 
         let offset = PrivateKey::random(&mut OsRng);
         let nonce = PrivateKey::random(&mut OsRng);
@@ -795,7 +878,7 @@ where TBackend: OutputManagerBackend + 'static
                 0,
                 script_private_key,
                 PublicKey::from_secret_key(&script_offset_private_key),
-                unique_id.clone()
+                unique_id.clone(),
             ),
             &self.resources.factories,
         )?;
@@ -843,7 +926,7 @@ where TBackend: OutputManagerBackend + 'static
                     0,
                     script_private_key,
                     change_script_offset_public_key,
-                    None
+                    None,
                 ),
                 &self.resources.factories,
             )?;
@@ -947,7 +1030,7 @@ where TBackend: OutputManagerBackend + 'static
         fee_per_gram: MicroTari,
         output_count: usize,
         strategy: Option<UTXOSelectionStrategy>,
-        unique_id: Option<&Vec<u8>>
+        unique_id: Option<&Vec<u8>>,
     ) -> Result<(Vec<DbUnblindedOutput>, bool, MicroTari), OutputManagerError> {
         if unique_id.is_some() {
             // Select UTXO that has this ID
@@ -984,7 +1067,7 @@ where TBackend: OutputManagerBackend + 'static
 
         // If we know the chain height then filter out unspendable UTXOs
         let num_utxos = uo.len();
-        let uo = if connected {
+        let mut uo = if connected {
             let mature_utxos = uo
                 .into_iter()
                 .filter(|u| u.unblinded_output.features.maturity <= tip_height)
@@ -1136,7 +1219,7 @@ where TBackend: OutputManagerBackend + 'static
                 fee_per_gram,
                 output_count,
                 Some(UTXOSelectionStrategy::Largest),
-                None
+                None,
             )
             .await?;
         let input_count = inputs.len();
@@ -1196,7 +1279,7 @@ where TBackend: OutputManagerBackend + 'static
                     0,
                     script_private_key,
                     PublicKey::from_secret_key(&script_offset_private_key),
-                    None
+                    None,
                 ),
                 &self.resources.factories,
             )?;
@@ -1278,7 +1361,7 @@ where TBackend: OutputManagerBackend + 'static
                         height,
                         known_one_sided_payment_scripts[i].private_key.clone(),
                         output.script_offset_public_key,
-                        output.unique_id
+                        output.unique_id,
                     );
                     let db_output =
                         DbUnblindedOutput::from_unblinded_output(rewound_output.clone(), &self.resources.factories)?;

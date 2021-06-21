@@ -19,6 +19,7 @@ use futures::{pin_mut, StreamExt};
 use tari_shutdown::ShutdownSignal;
 use log::*;
 use crate::output_manager_service::handle::OutputManagerHandle;
+use crate::transaction_service::handle::TransactionServiceHandle;
 
 const LOG_TARGET: &str = "wallet::assets::infrastructure::asset_manager_service";
 
@@ -27,9 +28,9 @@ pub struct AssetManagerService<T: OutputManagerBackend + 'static> {
 }
 
 impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
-    pub fn new(backend: T, output_manager: OutputManagerHandle) -> Self {
+    pub fn new(backend: T, output_manager: OutputManagerHandle, transaction_service: TransactionServiceHandle) -> Self {
         Self {
-            manager: AssetManager::<T>::new(backend, output_manager),
+            manager: AssetManager::<T>::new(backend, output_manager, transaction_service),
         }
     }
 

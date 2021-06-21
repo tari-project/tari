@@ -4,14 +4,16 @@ use crate::output_manager_service::storage::database::{OutputManagerDatabase, Ou
 use tari_core::transactions::transaction::{OutputFlags, Transaction, OutputFeatures, UnblindedOutput};
 use crate::error::WalletError::WalletRecoveryError;
 use crate::output_manager_service::handle::OutputManagerHandle;
+use crate::transaction_service::handle::TransactionServiceHandle;
 
 pub struct AssetManager<T:OutputManagerBackend + 'static>  {
      output_database : OutputManagerDatabase<T>,
-     output_manager: OutputManagerHandle
+     output_manager: OutputManagerHandle,
+    transaction_service: TransactionServiceHandle
  }
  impl<T:OutputManagerBackend + 'static> AssetManager<T> {
-     pub fn new(backend: T, output_manager: OutputManagerHandle) -> Self {
-         Self{ output_database: OutputManagerDatabase::new(backend), output_manager}
+     pub fn new(backend: T, output_manager: OutputManagerHandle, transaction_service: TransactionServiceHandle) -> Self {
+         Self{ output_database: OutputManagerDatabase::new(backend), output_manager, transaction_service}
      }
 
      // TODO: Write test
@@ -39,8 +41,8 @@ pub struct AssetManager<T:OutputManagerBackend + 'static>  {
          let mut metadata_bin = vec![1u8];
          metadata_bin.extend(serializer.serialize(&metadata).into_iter());
          let output = self.output_manager.create_output_with_features(0.into(), OutputFeatures::custom(OutputFlags::ASSET_REGISTRATION, metadata_bin)).await?;
-         // let transaction = self.transaction_manager.create_transaction_to_self_with_output(output);
-         unimplemented!()
+         let transaction = self.output_manager.create_send_to_self_with_output(0.into(), vec![output], 100.into()).await?;
+        Ok(transaction)
      }
 }
 

@@ -90,6 +90,7 @@ use tari_shutdown::ShutdownSignal;
 #[cfg(feature = "test_harness")]
 use tokio::runtime::Handle;
 use tokio::{sync::broadcast, task::JoinHandle};
+use tari_core::transactions::transaction::UnblindedOutput;
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
 
@@ -615,6 +616,7 @@ where
                 .set_completed_transaction_validity(tx_id, validity)
                 .await
                 .map(|_| TransactionServiceResponse::CompletedTransactionValidityChanged),
+
         }
     }
 
@@ -2226,6 +2228,9 @@ where
                 e
             });
         Ok(())
+    }
+    async fn create_send_to_self_with_output(&self, output: UnblindedOutput) -> Result<Transaction, TransactionServiceError> {
+        unimplemented!()
     }
 }
 
