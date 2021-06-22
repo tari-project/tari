@@ -86,9 +86,13 @@ Every [block header] MUST contain the following fields:
 * prev_hash;
 * timestamp;
 * output_mr;
+* output_mmr_size;
+* witness_mr;
 * range_proof_mr;
 * kernel_mr;
+* kernel_mmr_size;
 * total_kernel_offset;
+* script_kernel_offset;
 * nonce;
 * pow.
 
@@ -140,12 +144,39 @@ The timestamp MUST confirm to the following:
 
 #### Output_mr
 
-This is the merkle root of the outputs. This is calculated in the following way: Hash (txo MMR root  || roaring bitmap hash of UTXO indices).
+This is the merkle root of the outputs. It MUST be calculated in the following way: Hash (`txo MMR root`  || 
+Hash(`roaring bitmap`)). The output_mr field is used to represent the entire UTXO set in the blockchain; this is a 
+proof that every UTXO exists and that a TXO is either spent or unspent. The `txo MMR root` MUST be the merkle 
+mountain range (MMR) root of all transactional outputs in existence. The `roaring bitmap hash` MUST be a roaring bitmap 
+of every spent transactional output (aka every input in a block). The index used in the roaring bitmap represents the 
+leaf index of the UTXO in the output MMR. 
 
 The output_mr MUST confirm to the following:
 
 * Represented as an array of unsigned 8-bit integers (bytes) in little-endian format.
 * The hashing function used MUST be blake2b with a 256 bit digest.
+
+#### Output_mmr_size
+
+This is the total size of the leaves in the output merkle mountain range.
+
+The Output_mmr_size MUST confirm to the following:
+
+* Represented as a single unsigned 64-bit integer.
+
+#### Witness_mr
+
+This is the merkle root of all witness data for the block, which consists of the script signature and sender metadata 
+signature of every transactional input and output. It is used to proof that all witness data in the block is correct and 
+has not been tampered with. The order of the leaves at the bottom of the mountain range MUST be an ordering of the 
+transactional inputs and then the outputs. The items that are hashed MUST be either the script signature or sender 
+metadata signature respectively. This ensures that nodes who receive a block can verify that the witness data is 
+unchanged. 
+
+The witness_mr MUST confirm to the following:
+
+* Represented as an array of unsigned 8-bit integers (bytes) in little-endian format.
+* The hashing function used must be blake2b with a 256 bit digest.
 
 #### Range_proof_mr
 
@@ -165,11 +196,27 @@ The kernel_mr MUST confirm to the following:.
 * Must be transmitted as an array of unsigned 8-bit integers (bytes) in little-endian format.
 * The hashing function used must be blake2b with a 256 bit digest.
 
+#### Kernel_mmr_size
+
+This is the total size of the leaves in the kernel merkle mountain range.
+
+The Kernel_mmr_size MUST confirm to the following:
+
+* Represented as a single unsigned 64-bit integer.
+
 #### Total_kernel_offset
 
 This is total summed offset of all the transactions contained in this block.
 
 The total_kernel_offset MUST confirm to the following:
+
+* Must be transmitted as an array of unsigned 8-bit integers (bytes) in little-endian format
+
+#### Total_script_offset
+
+This is total summed script offset of all the transactions contained in this block.
+
+The total_script_offset MUST confirm to the following:
 
 * Must be transmitted as an array of unsigned 8-bit integers (bytes) in little-endian format
 
