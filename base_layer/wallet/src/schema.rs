@@ -100,6 +100,7 @@ table! {
         height -> BigInt,
         script_private_key -> Binary,
         script_offset_public_key -> Binary,
+        sender_metadata_signature -> Text,
     }
 }
 

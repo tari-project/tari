@@ -44,8 +44,8 @@ use tari_comms_dht::DhtConfig;
 use tari_core::{
     consensus::Network,
     transactions::{
+        helpers::{create_unblinded_output, TestParams},
         tari_amount::{uT, MicroTari},
-        transaction::UnblindedOutput,
         types::{CryptoFactories, PrivateKey, PublicKey},
     },
 };
@@ -53,7 +53,6 @@ use tari_crypto::{
     common::Blake256,
     inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
-    ristretto::RistrettoPublicKey,
     script,
 };
 use tari_p2p::{initialization::CommsConfig, transport::TransportType, DEFAULT_DNS_SEED_RESOLVER};
@@ -725,16 +724,8 @@ async fn test_import_utxo() {
     let input = inputs!(claim);
     let features = OutputFeatures::create_coinbase(50);
 
-    let utxo = UnblindedOutput::new(
-        20000 * uT,
-        PrivateKey::random(&mut OsRng),
-        Some(features.clone()),
-        script.clone(),
-        input.clone(),
-        0,
-        key,
-        RistrettoPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-    );
+    let p = TestParams::new();
+    let utxo = create_unblinded_output(script.clone(), features.clone(), p.clone(), 20000 * uT);
 
     let tx_id = alice_wallet
         .import_utxo(
@@ -745,6 +736,9 @@ async fn test_import_utxo() {
             base_node_identity.public_key(),
             features,
             "Testing".to_string(),
+            utxo.sender_metadata_signature.clone(),
+            &p.script_private_key,
+            &p.script_offset_pub_key,
         )
         .await
         .unwrap();

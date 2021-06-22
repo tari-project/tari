@@ -212,6 +212,7 @@ use tari_wallet::{
     WalletConfig,
 };
 
+use tari_core::transactions::types::Signature;
 use tari_crypto::script::TariScript;
 use tari_wallet::{
     types::ValidationRetryStrategy,
@@ -4500,6 +4501,7 @@ pub unsafe extern "C" fn wallet_import_utxo(
     source_public_key: *mut TariPublicKey,
     message: *const c_char,
     error_out: *mut c_int,
+    // TODO: Update this interface to add the sender signature, script private key and script offset public keys here.
 ) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
@@ -4535,10 +4537,14 @@ pub unsafe extern "C" fn wallet_import_utxo(
         TariScript::default(),
         ExecutionStack::default(),
         &(*source_public_key).clone(),
-        // WARNING, this might be a problem in the future when importing anything else than a default features UTXO,
-        // the FFI function signature should be updated to take this in.
         OutputFeatures::default(),
         message_string,
+        // TODO: Add the actual sender signature here.
+        Signature::default(),
+        // TODO:Add the actual script private key here.
+        &Default::default(),
+        // TODO:Add the actual script offset public keys here.
+        &Default::default(),
     )) {
         Ok(tx_id) => tx_id,
         Err(e) => {

@@ -1,5 +1,4 @@
 const { Client } = require("wallet-grpc-client");
-const { NO_CONNECTION } = require("./util");
 
 function transactionStatus() {
   return [
@@ -177,13 +176,6 @@ class WalletClient {
       }
     } catch (e) {
       // Any error here must be treated as if the required status was not achieved
-      if (e && e.code && e.code === NO_CONNECTION) {
-        console.log(
-          "Wallet client, `async isBalanceAtLeast` - No connection yet..."
-        );
-      } else {
-        console.log("Wallet client, `async isBalanceAtLeast`", e);
-      }
       return false;
     }
   }

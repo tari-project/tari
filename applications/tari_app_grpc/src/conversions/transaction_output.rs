@@ -39,15 +39,21 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
         let features = output
             .features
             .map(TryInto::try_into)
-            .ok_or_else(|| "transaction output features not provided".to_string())??;
+            .ok_or_else(|| "Transaction output features not provided".to_string())??;
 
         let commitment = Commitment::from_bytes(&output.commitment)
             .map_err(|err| format!("Invalid output commitment: {}", err.to_string()))?;
         let script_offset_public_key = PublicKey::from_bytes(output.script_offset_public_key.as_bytes())
-            .map_err(|err| format!("script_offset_public_key {:?}", err))?;
+            .map_err(|err| format!("Invalid script_offset_public_key {:?}", err))?;
 
         let script = TariScript::from_bytes(output.script.as_slice())
             .map_err(|err| format!("Script deserialization: {:?}", err))?;
+
+        let sender_metadata_signature = output
+            .sender_metadata_signature
+            .ok_or_else(|| "Sender signature not provided".to_string())?
+            .try_into()
+            .map_err(|_| "Sender signature could not be converted".to_string())?;
 
         Ok(Self {
             features,
@@ -55,6 +61,7 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
             proof: BulletRangeProof(output.range_proof),
             script,
             script_offset_public_key,
+            sender_metadata_signature,
         })
     }
 }
@@ -72,6 +79,10 @@ impl From<TransactionOutput> for grpc::TransactionOutput {
             range_proof: Vec::from(output.proof.as_bytes()),
             script: output.script.as_bytes(),
             script_offset_public_key: output.script_offset_public_key.as_bytes().to_vec(),
+            sender_metadata_signature: Some(grpc::Signature {
+                public_nonce: Vec::from(output.sender_metadata_signature.get_public_nonce().as_bytes()),
+                signature: Vec::from(output.sender_metadata_signature.get_signature().as_bytes()),
+            }),
         }
     }
 }

@@ -76,20 +76,31 @@ where TBackend: OutputManagerBackend + 'static
                         &self.master_key_manager.rewind_data().rewind_blinding_key,
                     )
                     .ok()
-                    .map(|v| (v, output.features, output.script, output.script_offset_public_key))
+                    .map(|v| {
+                        (
+                            v,
+                            output.features,
+                            output.script,
+                            output.script_offset_public_key,
+                            output.sender_metadata_signature,
+                        )
+                    })
             })
-            .map(|(output, features, script, script_offset_public_key)| {
-                UnblindedOutput::new(
-                    output.committed_value,
-                    output.blinding_factor.clone(),
-                    Some(features),
-                    script,
-                    inputs!(PublicKey::from_secret_key(&output.blinding_factor)),
-                    height,
-                    output.blinding_factor,
-                    script_offset_public_key,
-                )
-            })
+            .map(
+                |(output, features, script, script_offset_public_key, sender_metadata_signature)| {
+                    UnblindedOutput::new(
+                        output.committed_value,
+                        output.blinding_factor.clone(),
+                        Some(features),
+                        script,
+                        inputs!(PublicKey::from_secret_key(&output.blinding_factor)),
+                        height,
+                        output.blinding_factor,
+                        script_offset_public_key,
+                        sender_metadata_signature,
+                    )
+                },
+            )
             .collect();
 
         for output in rewound_outputs.iter_mut() {
