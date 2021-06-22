@@ -29,7 +29,7 @@ use tari_comms_dht::Dht;
 use tari_core::{
     base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface, StateMachineHandle},
     chain_storage::{create_lmdb_database, BlockchainDatabase, BlockchainDatabaseConfig, LMDBDatabase, Validators},
-    consensus::ConsensusManagerBuilder,
+    consensus::ConsensusManager,
     mempool::{service::LocalMempoolService, Mempool, MempoolConfig},
     proof_of_work::randomx_factory::{RandomXConfig, RandomXFactory},
     transactions::types::CryptoFactories,
@@ -193,7 +193,7 @@ async fn build_node_context(
 ) -> Result<BaseNodeContext, anyhow::Error> {
     //---------------------------------- Blockchain --------------------------------------------//
 
-    let rules = ConsensusManagerBuilder::new(config.network.into()).build();
+    let rules = ConsensusManager::builder(config.network).build();
     let factories = CryptoFactories::default();
     let randomx_factory = RandomXFactory::new(RandomXConfig::default(), config.max_randomx_vms);
     let validators = Validators::new(

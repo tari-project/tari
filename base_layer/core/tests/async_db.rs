@@ -30,10 +30,10 @@ use helpers::{
     sample_blockchains::{create_blockchain_db_no_cut_through, create_new_blockchain},
 };
 use std::ops::Deref;
+use tari_common::configuration::Network;
 use tari_core::{
     blocks::Block,
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult},
-    consensus::Network,
     transactions::{
         helpers::schema_to_transaction,
         tari_amount::T,

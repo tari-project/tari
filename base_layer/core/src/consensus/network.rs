@@ -21,46 +21,32 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::consensus_constants::ConsensusConstants;
-use tari_common::configuration::Network as GlobalNetwork;
-/// Specifies the configured chain network.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum Network {
-    /// Mainnet of Tari, currently should panic if network is set to this.
-    MainNet,
-    /// Alpha net version
-    // Rincewind,
-    /// Second test net version
-    Ridcully,
-    /// Third test net
-    Stibbons,
-    /// Fourth test net, includes tari script
-    Weatherwax,
-    /// Local network constants used inside of unit and integration tests. Contains the genesis block to be used for
-    /// that chain.
-    LocalNet,
-}
+use tari_common::configuration::Network;
 
-impl Network {
+/// Represents the consensus used for a given network
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct NetworkConsensus(Network);
+
+impl NetworkConsensus {
     pub fn create_consensus_constants(&self) -> Vec<ConsensusConstants> {
-        match self {
-            Network::MainNet => ConsensusConstants::mainnet(),
-            Network::Ridcully => ConsensusConstants::ridcully(),
-            Network::Stibbons => ConsensusConstants::stibbons(),
-            Network::Weatherwax => ConsensusConstants::weatherwax(),
-            Network::LocalNet => ConsensusConstants::localnet(),
+        use Network::*;
+        match self.as_network() {
+            MainNet => ConsensusConstants::mainnet(),
+            Ridcully => ConsensusConstants::ridcully(),
+            Stibbons => ConsensusConstants::stibbons(),
+            Weatherwax => ConsensusConstants::weatherwax(),
+            LocalNet => ConsensusConstants::localnet(),
         }
+    }
+
+    #[inline]
+    pub fn as_network(self) -> Network {
+        self.0
     }
 }
 
-impl From<GlobalNetwork> for Network {
-    fn from(global_network: GlobalNetwork) -> Self {
-        match global_network {
-            GlobalNetwork::MainNet => Network::MainNet,
-            GlobalNetwork::Ridcully => Network::Ridcully,
-            GlobalNetwork::Stibbons => Network::Stibbons,
-            GlobalNetwork::Weatherwax => Network::Weatherwax,
-            GlobalNetwork::LocalNet => Network::LocalNet,
-            GlobalNetwork::Rincewind => unimplemented!("Rincewind has been retired"),
-        }
+impl From<Network> for NetworkConsensus {
+    fn from(global_network: Network) -> Self {
+        Self(global_network)
     }
 }

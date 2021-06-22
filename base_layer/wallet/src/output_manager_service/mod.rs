@@ -34,7 +34,7 @@ use futures::future;
 use log::*;
 use tari_comms::{connectivity::ConnectivityRequester, types::CommsSecretKey};
 use tari_core::{
-    consensus::{ConsensusConstantsBuilder, Network},
+    consensus::{ConsensusConstantsBuilder, NetworkConsensus},
     transactions::types::CryptoFactories,
 };
 use tari_service_framework::{
@@ -70,7 +70,7 @@ where T: OutputManagerBackend
     config: OutputManagerServiceConfig,
     backend: Option<T>,
     factories: CryptoFactories,
-    network: Network,
+    network: NetworkConsensus,
     master_secret_key: CommsSecretKey,
 }
 
@@ -81,7 +81,7 @@ where T: OutputManagerBackend + 'static
         config: OutputManagerServiceConfig,
         backend: T,
         factories: CryptoFactories,
-        network: Network,
+        network: NetworkConsensus,
         master_secret_key: CommsSecretKey,
     ) -> Self {
         Self {
@@ -118,7 +118,7 @@ where T: OutputManagerBackend + 'static
             .expect("Cannot start Output Manager Service without setting a storage backend");
         let factories = self.factories.clone();
         let config = self.config.clone();
-        let constants = ConsensusConstantsBuilder::new(self.network).build();
+        let constants = ConsensusConstantsBuilder::new(self.network.as_network()).build();
         let master_secret_key = self.master_secret_key.clone();
         context.spawn_when_ready(move |handles| async move {
             let transaction_service = handles.expect_handle::<TransactionServiceHandle>();

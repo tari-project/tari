@@ -21,9 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::helpers::database::create_orphan_block;
+use tari_common::configuration::Network;
 use tari_core::{
     chain_storage::{create_lmdb_database, BlockchainBackend, ChainStorageError, DbKey, DbTransaction, DbValue},
-    consensus::{ConsensusManagerBuilder, Network},
+    consensus::ConsensusManagerBuilder,
     test_helpers::blockchain::create_test_db,
     tx,
 };

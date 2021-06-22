@@ -40,7 +40,7 @@ use tari_comms::{
 };
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcServer,
-    consensus::{ConsensusConstantsBuilder, Network},
+    consensus::ConsensusConstantsBuilder,
     transactions::{
         fee::Fee,
         helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
@@ -62,6 +62,7 @@ use tari_crypto::{
     script,
     script::TariScript,
 };
+use tari_p2p::Network;
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
 use tari_wallet::{

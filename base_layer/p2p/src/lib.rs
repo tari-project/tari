@@ -45,4 +45,13 @@ pub mod services;
 pub mod tari_message;
 pub mod transport;
 
+// Re-export
+pub use tari_common::configuration::Network;
+
 pub const DEFAULT_DNS_SEED_RESOLVER: &str = "1.1.1.1:53";
+
+/// Major network version. Peers will refuse connections if this value differs
+pub const MAJOR_NETWORK_VERSION: u32 = 0;
+/// Minor network version. This should change with each time the network protocol has changed in a backward-compatible
+/// way.
+pub const MINOR_NETWORK_VERSION: u32 = 0;

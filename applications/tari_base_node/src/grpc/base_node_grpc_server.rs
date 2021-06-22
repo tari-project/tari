@@ -34,6 +34,7 @@ use tari_app_grpc::{
     tari_rpc,
     tari_rpc::{CalcType, Sorting},
 };
+use tari_common::configuration::Network;
 use tari_comms::PeerManager;
 use tari_core::{
     base_node::{
@@ -43,7 +44,7 @@ use tari_core::{
         StateMachineHandle,
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
-    consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder, Network},
+    consensus::{emission::Emission, ConsensusManager, NetworkConsensus},
     crypto::tari_utilities::hex::Hex,
     mempool::{service::LocalMempoolService, TxStorageResponse},
     proof_of_work::PowAlgorithm,
@@ -75,7 +76,7 @@ const LIST_HEADERS_DEFAULT_NUM_HEADERS: u64 = 10;
 pub struct BaseNodeGrpcServer {
     node_service: LocalNodeCommsInterface,
     mempool_service: LocalMempoolService,
-    network: Network,
+    network: NetworkConsensus,
     state_machine_handle: StateMachineHandle,
     peer_manager: Arc<PeerManager>,
     consensus_rules: ConsensusManager,
@@ -93,7 +94,7 @@ impl BaseNodeGrpcServer {
             node_service: local_node,
             mempool_service: local_mempool,
             consensus_rules: ConsensusManager::builder(network).build(),
-            network,
+            network: network.into(),
             state_machine_handle,
             peer_manager,
         }
@@ -914,7 +915,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         heights = heights
             .drain(..cmp::min(heights.len(), GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS))
             .collect();
-        let consensus_manager = ConsensusManagerBuilder::new(self.network).build();
+        let consensus_manager = ConsensusManager::builder(self.network.as_network()).build();
 
         let (mut tx, rx) = mpsc::channel(GET_TOKENS_IN_CIRCULATION_PAGE_SIZE);
         task::spawn(async move {

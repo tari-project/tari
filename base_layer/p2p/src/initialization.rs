@@ -25,6 +25,8 @@ use crate::{
     dns_seed::DnsSeedResolver,
     seed_peer::SeedPeer,
     transport::{TorConfig, TransportType},
+    MAJOR_NETWORK_VERSION,
+    MINOR_NETWORK_VERSION,
 };
 use fs2::FileExt;
 use futures::{channel::mpsc, future, Sink};
@@ -40,6 +42,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use tari_common::configuration::Network;
 use tari_comms::{
     backoff::ConstantBackoff,
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerManagerError},
@@ -48,6 +51,7 @@ use tari_comms::{
     protocol::{
         messaging::{MessagingEventSender, MessagingProtocolExtension},
         rpc::RpcServer,
+        NodeNetworkInfo,
     },
     tor,
     tor::HiddenServiceControllerError,
@@ -120,6 +124,8 @@ pub struct CommsConfig {
     pub outbound_buffer_size: usize,
     /// Configuration for DHT
     pub dht: DhtConfig,
+    /// The p2p network currently being connected to.
+    pub network: Network,
     /// The identity of this node on the network
     pub node_identity: Arc<NodeIdentity>,
     /// The type of transport to use
@@ -534,7 +540,12 @@ impl ServiceInitializer for P2pInitializer {
         let mut builder = CommsBuilder::new()
             .with_shutdown_signal(context.get_shutdown_signal())
             .with_node_identity(config.node_identity.clone())
-            .with_user_agent(&config.user_agent);
+            .with_node_info(NodeNetworkInfo {
+                major_version: MAJOR_NETWORK_VERSION,
+                minor_version: MINOR_NETWORK_VERSION,
+                network_byte: config.network.as_byte(),
+                user_agent: config.user_agent.clone(),
+            });
 
         if config.allow_test_addresses {
             builder = builder.allow_test_addresses();

@@ -241,7 +241,7 @@ impl CoinbaseBuilder {
 #[cfg(test)]
 mod test {
     use crate::{
-        consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder, Network},
+        consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder},
         transactions::{
             coinbase_builder::CoinbaseBuildError,
             helpers::TestParams,
@@ -253,6 +253,7 @@ mod test {
         },
     };
     use rand::rngs::OsRng;
+    use tari_common::configuration::Network;
     use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as SecretKeyTrait};
 
     fn get_builder() -> (CoinbaseBuilder, ConsensusManager, CryptoFactories) {

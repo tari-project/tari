@@ -304,7 +304,7 @@ impl UnconfirmedPool {
 mod test {
     use super::*;
     use crate::{
-        consensus::{ConsensusManagerBuilder, Network},
+        consensus::ConsensusManagerBuilder,
         test_helpers::create_orphan_block,
         transactions::{
             fee::Fee,
@@ -316,6 +316,7 @@ mod test {
         },
         tx,
     };
+    use tari_common::configuration::Network;
     use tari_crypto::script;
 
     #[test]

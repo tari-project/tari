@@ -27,7 +27,6 @@ use super::{
     PeerFeatures,
 };
 use crate::{
-    consts::PEER_OFFLINE_COOLDOWN_PERIOD,
     net_address::MultiaddressesWithStats,
     protocol::ProtocolId,
     types::CommsPublicKey,
@@ -141,16 +140,6 @@ impl Peer {
     /// list of supported protocols
     pub fn supported_protocols(&self) -> &[ProtocolId] {
         &self.supported_protocols
-    }
-
-    /// Returns true if the last connection attempt has failed within the constant
-    /// [PEER_OFFLINE_COOLDOWN_PERIOD](crate::consts::PEER_OFFLINE_COOLDOWN_PERIOD).
-    pub fn is_recently_offline(&self) -> bool {
-        self.connection_stats.failed_attempts() > 1 &&
-            self.connection_stats
-                .time_since_last_failure()
-                .map(|last_failure| last_failure <= PEER_OFFLINE_COOLDOWN_PERIOD)
-                .unwrap_or(false)
     }
 
     /// Returns true if the peer is marked as offline

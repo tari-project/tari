@@ -290,7 +290,6 @@ impl Dht {
         ServiceBuilder::new()
             .layer(MetricsLayer::new(self.metrics_collector.clone()))
             .layer(inbound::DeserializeLayer::new(self.peer_manager.clone()))
-            .layer(inbound::ValidateLayer::new(self.config.network))
             .layer(DedupLayer::new(self.dht_requester()))
             .layer(tower_filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
             .layer(MessageLoggingLayer::new(format!(
@@ -352,8 +351,7 @@ impl Dht {
                 Arc::clone(&self.node_identity),
                 self.dht_requester(),
                 self.discovery_service_requester(),
-                self.config.network,
-                chrono::Duration::from_std(self.config.saf_msg_validity).unwrap(),
+                self.config.saf_msg_validity,
             ))
             .layer(MessageLoggingLayer::new(format!(
                 "Outbound [{}]",

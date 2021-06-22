@@ -315,7 +315,7 @@ mod test {
         test_utils::mocks::create_connectivity_mock,
     };
     use tari_comms_dht::{
-        envelope::{DhtMessageHeader, DhtMessageType, Network},
+        envelope::{DhtMessageHeader, DhtMessageType},
         outbound::{DhtOutboundRequest, MessageSendState, SendMessageResponse},
     };
     use tari_crypto::keys::PublicKey;
@@ -425,12 +425,12 @@ mod test {
         );
         DomainMessage {
             dht_header: DhtMessageHeader {
-                version: 0,
+                major: 0,
+                minor: 0,
                 destination: Default::default(),
                 origin_mac: Vec::new(),
                 ephemeral_public_key: None,
                 message_type: DhtMessageType::None,
-                network: Network::LocalTest,
                 flags: Default::default(),
                 message_tag: MessageTag::new(),
                 expires: None,

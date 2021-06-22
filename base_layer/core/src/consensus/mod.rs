@@ -43,4 +43,4 @@ pub use consensus_constants::{ConsensusConstants, ConsensusConstantsBuilder};
 #[cfg(feature = "base_node")]
 pub use consensus_manager::{ConsensusManager, ConsensusManagerBuilder, ConsensusManagerError};
 #[cfg(any(feature = "base_node", feature = "transactions"))]
-pub use network::Network;
+pub use network::NetworkConsensus;

@@ -64,8 +64,6 @@ pub enum ConnectionManagerError {
     NoiseError(String),
     #[error("Incoming listener stream unexpectedly closed")]
     IncomingListenerStreamClosed,
-    #[error("The peer offered a NodeId that failed to validate against it's public key")]
-    PeerIdentityInvalidNodeId,
     #[error("Peer is banned, denying connection")]
     PeerBanned,
     #[error("Unable to parse any of the network addresses offered by the connecting peer")]

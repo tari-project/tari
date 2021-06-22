@@ -34,13 +34,14 @@ use crate::{
     consensus::{
         chain_strength_comparer::{strongest_chain, ChainStrengthComparer},
         emission::{Emission, EmissionSchedule},
-        network::Network,
         ConsensusConstants,
+        NetworkConsensus,
     },
     proof_of_work::{DifficultyAdjustmentError, PowAlgorithm, TargetDifficultyWindow},
     transactions::tari_amount::MicroTari,
 };
 use std::{convert::TryFrom, sync::Arc};
+use tari_common::configuration::Network;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -71,7 +72,7 @@ impl ConsensusManager {
 
     /// Returns the genesis block for the selected network.
     pub fn get_genesis_block(&self) -> ChainBlock {
-        match self.inner.network {
+        match self.inner.network.as_network() {
             Network::MainNet => get_mainnet_genesis_block(),
             Network::Ridcully => get_ridcully_genesis_block(),
             Network::Stibbons => get_stibbons_genesis_block(),
@@ -137,7 +138,7 @@ impl ConsensusManager {
     }
 
     /// This is the currently configured chain network.
-    pub fn network(&self) -> Network {
+    pub fn network(&self) -> NetworkConsensus {
         self.inner.network
     }
 }
@@ -148,7 +149,7 @@ struct ConsensusManagerInner {
     /// This is the inner struct used to control all consensus values.
     pub consensus_constants: Vec<ConsensusConstants>,
     /// The configured chain network.
-    pub network: Network,
+    pub network: NetworkConsensus,
     /// The configuration for the emission schedule for integer only.
     pub emission: EmissionSchedule,
     /// This allows the user to set a custom Genesis block
@@ -160,7 +161,7 @@ struct ConsensusManagerInner {
 /// Constructor for the consensus manager struct
 pub struct ConsensusManagerBuilder {
     consensus_constants: Vec<ConsensusConstants>,
-    network: Network,
+    network: NetworkConsensus,
     gen_block: Option<ChainBlock>,
     chain_strength_comparer: Option<Box<dyn ChainStrengthComparer + Send + Sync>>,
 }
@@ -170,7 +171,7 @@ impl ConsensusManagerBuilder {
     pub fn new(network: Network) -> Self {
         ConsensusManagerBuilder {
             consensus_constants: vec![],
-            network,
+            network: network.into(),
             gen_block: None,
             chain_strength_comparer: None,
         }

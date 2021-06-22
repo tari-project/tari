@@ -27,19 +27,15 @@ pub mod blockchain;
 
 use crate::{
     blocks::{Block, BlockHeader},
-    consensus::ConsensusManager,
-    transactions::transaction::Transaction,
-};
-
-use crate::{
     chain_storage::{BlockHeaderAccumulatedData, ChainHeader},
-    consensus::{ConsensusManagerBuilder, Network},
+    consensus::ConsensusManager,
     crypto::tari_utilities::Hashable,
     proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty},
-    transactions::{types::CryptoFactories, CoinbaseBuilder},
+    transactions::{transaction::Transaction, types::CryptoFactories, CoinbaseBuilder},
 };
 use rand::{distributions::Alphanumeric, Rng};
 use std::{iter, path::Path, sync::Arc};
+use tari_common::configuration::Network;
 use tari_comms::PeerManager;
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 
@@ -57,7 +53,7 @@ pub fn create_block(block_version: u16, block_height: u64, transactions: Vec<Tra
     let mut header = BlockHeader::new(block_version);
     header.height = block_height;
     if transactions.is_empty() {
-        let constants = ConsensusManagerBuilder::new(Network::LocalNet).build();
+        let constants = ConsensusManager::builder(Network::LocalNet).build();
         let coinbase = CoinbaseBuilder::new(CryptoFactories::default())
             .with_block_height(block_height)
             .with_fees(0.into())

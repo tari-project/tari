@@ -28,13 +28,13 @@ use crate::{
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
     proto::identity::PeerIdentityMsg,
     protocol,
-    protocol::ProtocolId,
+    protocol::{NodeNetworkInfo, ProtocolId},
     types::CommsPublicKey,
     PeerManager,
 };
 use futures::StreamExt;
 use log::*;
-use tari_crypto::tari_utilities::ByteArray;
+use std::convert::TryFrom;
 
 const LOG_TARGET: &str = "comms::connection_manager::common";
 
@@ -46,7 +46,7 @@ pub async fn perform_identity_exchange<'p, P: IntoIterator<Item = &'p ProtocolId
     node_identity: &NodeIdentity,
     direction: ConnectionDirection,
     our_supported_protocols: P,
-    user_agent: String,
+    network_info: NodeNetworkInfo,
 ) -> Result<PeerIdentityMsg, ConnectionManagerError> {
     let mut control = muxer.get_yamux_control();
     let stream = match direction {
@@ -64,18 +64,9 @@ pub async fn perform_identity_exchange<'p, P: IntoIterator<Item = &'p ProtocolId
     );
 
     let peer_identity =
-        protocol::identity_exchange(node_identity, direction, our_supported_protocols, user_agent, stream).await?;
+        protocol::identity_exchange(node_identity, direction, our_supported_protocols, network_info, stream).await?;
 
     Ok(peer_identity)
-}
-
-/// Validate the node id against the given public key. Returns true if this is a valid base node
-/// node id, otherwise false.
-pub fn is_valid_base_node_node_id(node_id: &NodeId, public_key: &CommsPublicKey) -> bool {
-    match NodeId::from_key(public_key) {
-        Ok(expected_node_id) => &expected_node_id == node_id,
-        Err(_) => false,
-    }
 }
 
 /// Validate the peer identity info.
@@ -96,19 +87,11 @@ pub async fn validate_and_add_peer_from_peer_identity(
     dialed_addr: Option<&Multiaddr>,
     allow_test_addrs: bool,
 ) -> Result<(NodeId, Vec<ProtocolId>), ConnectionManagerError> {
-    // let peer_manager = peer_manager.inner();
-    // Validate the given node id for base nodes
-    // TODO: This is technically a domain-level rule
-    let peer_node_id =
-        NodeId::from_bytes(&peer_identity.node_id).map_err(|_| ConnectionManagerError::PeerIdentityInvalidNodeId)?;
-    if !is_valid_base_node_node_id(&peer_node_id, &authenticated_public_key) {
-        return Err(ConnectionManagerError::PeerIdentityInvalidNodeId);
-    }
-
+    let peer_node_id = NodeId::from_public_key(&authenticated_public_key);
     let addresses = peer_identity
         .addresses
         .into_iter()
-        .filter_map(|addr_str| addr_str.parse().ok())
+        .filter_map(|addr_bytes| Multiaddr::try_from(addr_bytes).ok())
         .collect::<Vec<_>>();
 
     // TODO: #banheuristic

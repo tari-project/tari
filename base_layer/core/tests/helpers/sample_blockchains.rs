@@ -23,6 +23,7 @@
 
 use crate::helpers::block_builders::{create_genesis_block, generate_new_block};
 
+use tari_common::configuration::Network;
 use tari_core::{
     chain_storage::{
         create_lmdb_database,
@@ -32,7 +33,7 @@ use tari_core::{
         LMDBDatabase,
         Validators,
     },
-    consensus::{ConsensusConstants, ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder, Network},
+    consensus::{ConsensusConstants, ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder},
     test_helpers::blockchain::{create_store_with_consensus, TempDatabase},
     transactions::{
         tari_amount::{uT, T},

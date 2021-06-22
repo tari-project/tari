@@ -46,7 +46,7 @@ use std::{
     time::Instant,
 };
 use tari_app_grpc::{tari_rpc as grpc, tari_rpc::GetCoinbaseRequest};
-use tari_common::{GlobalConfig, Network};
+use tari_common::{configuration::Network, GlobalConfig};
 use tari_core::{
     blocks::{Block, NewBlockTemplate},
     proof_of_work::monero_rx,

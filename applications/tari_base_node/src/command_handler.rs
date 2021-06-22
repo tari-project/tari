@@ -49,7 +49,7 @@ use tari_core::{
     },
     blocks::BlockHeader,
     chain_storage::{async_db::AsyncBlockchainDb, ChainHeader, LMDBDatabase},
-    consensus::{ConsensusManager, Network},
+    consensus::ConsensusManager,
     mempool::service::LocalMempoolService,
     proof_of_work::PowAlgorithm,
     tari_utilities::{hex::Hex, message_format::MessageFormat},
@@ -921,7 +921,7 @@ impl CommandHandler {
 
             let start_height = cmp::max(start_height, 1);
             let mut prev_header = try_or_print!(db.fetch_chain_header(start_height - 1).await);
-            let consensus_rules = ConsensusManager::builder(Network::from(network)).build();
+            let consensus_rules = ConsensusManager::builder(network).build();
 
             writeln!(
                 output,
