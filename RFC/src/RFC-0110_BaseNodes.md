@@ -4,7 +4,7 @@
 
 ![status: draft](theme/images/status-draft.svg)
 
-**Maintainer(s)**: [Cayle Sharrock](https://github.com/CjS77) and [S W van heerden](https://github.com/SWvheerden)
+**Maintainer(s)**: [Cayle Sharrock](https://github.com/CjS77), [S W van heerden](https://github.com/SWvheerden) and  [Stanley Bondi](https://github.com/sdbondi)
 
 # Licence
 
@@ -56,13 +56,17 @@ their general approach for doing so.
 * [RFC-0100: Base Layer](RFC-0100_BaseLayer.md)
 * [RFC-0140: SyncAndSeeding](RFC-0140_Syncing_and_seeding.md)
 
+$$
+\newcommand{\so}{\gamma} % script offset
+$$
+
 ## Description
 
 ### Broad Requirements
 
 Tari Base Nodes form a peer-to-peer network for a proof-of-work based blockchain running the [Mimblewimble]
-protocol. The proof-of-work is performed via merge mining with Monero. Arguments for this design are
-presented [in the overview](RFC-0001_overview.md#proof-of-work).
+protocol. The proof-of-work is performed via hybrid mining, that is merge mining with Monero and stand-alone SHA 3. 
+Arguments for this design are presented [in the overview](RFC-0001_overview.md#proof-of-work).
 
 Tari Base Nodes MUST carry out the following tasks:
 
@@ -74,7 +78,7 @@ Tari Base Nodes MUST carry out the following tasks:
 * provide historical block information to peers that are syncing.
 
 Once the Digital Assets Network (DAN) goes live, Base Nodes will also need to support the tasks described in
-[RFC-0300/Assets](RFC-0300_DAN.md). These requirements are omitted for the moment.
+[RFC-0300_DAN](RFC-0300_DAN.md). These requirements are omitted for the moment.
 
 To carry out these tasks effectively, Base Nodes SHOULD:
 
@@ -101,10 +105,10 @@ Base nodes can be notified of new transactions by:
 * connected peers;
 * clients via APIs.
 
-When a new transaction has been received, it has the `unvalidated` [ValidationState]. The transaction is then passed
-to the transaction validation service, where its state will become `rejected`, `timelocked` or `validated`.
+When a new transaction has been received, it is then passed to the mempool service where it will be 
+validated and either stored or rejected.
 
-The transaction validation service checks that:
+The transaction is validated as follows:
 
 * All inputs to the transaction are valid [UTXO]s.
 * No inputs are duplicated.
@@ -115,18 +119,20 @@ The transaction validation service checks that:
 * The transaction does not have [timelocks] applied, limiting it from being mined and added to the blockchain before a
   specified block height or timestamp has been reached.
 * The transaction excess has a valid signature.
+* The [transaction weight] does not exceed the maximum permitted in a single block as defined by consensus.
 * The transaction excess is a valid public key. This proves that:
   $$ \Sigma \left( \mathrm{inputs} - \mathrm{outputs} - \mathrm{fees} \right) = 0 $$.
+* The [Tari script] of each input must execute successfully and return the public key that signs the script signature. 
+* The script offset \\( \so\\) is calculated and verified as per [RFC-0201_TariScript].
 
-`Rejected` transactions are dropped silently.
+Rejected transactions are dropped silently.
 
-`Timelocked` transactions are:
-* marked with a timelocked status and get added to the [mempool];
-* will be evaluated again at a later state to determine if the timelock has passed and if it can be upgraded to "Validated" status.
+Timelocked transactions are rejected by the mempool. The onus is on the client to submit transactions once they are 
+able to be spent.
 
 **Note:** More detailed information is available in the [timelocks] RFC document.
 
-`Validated` transactions are:
+Valid transactions are:
 
 * added to the [mempool];
 * forwarded to peers using the transaction [BroadcastStrategy].
@@ -136,32 +142,35 @@ The transaction validation service checks that:
 The block validation and propagation process is analogous to that of transactions. New blocks are received from the 
 peer-to-peer network, or from an API call if the Base Node is connected to a Miner.
 
-When a new block is received, it is assigned the `unvalidated` [ValidationState]. The block is then passed to the
-block validation service. The validation service checks that:
+When a new block is received, it is passed to the block validation service. The validation service checks that:
 
 * The block has not been processed before.
 * Every [transaction] in the block is valid.
 * The proof-of-work is valid.
 * The block header is well-formed.
 * The block is being added to the chain with the highest accumulated proof-of-work.
-  * It is possible for the chain to temporarily fork; Base Nodes SHOULD account for forks up to some configured depth.
-  * It is possible that blocks may be received out of order, particularly while syncing. Base Nodes SHOULD keep blocks 
-  that have block heights greater than the current chain tip in memory for some preconfigured period.
+  * It is possible for the chain to temporarily fork; Base Nodes SHOULD store orphaned forks up to some configured depth.
+  * It is possible that blocks may be received out of order. Base Nodes SHOULD keep blocks that have block heights 
+    greater than the current chain tip for some preconfigured period.
 * The sum of all excesses is a valid public key. This proves that:
    $$ \Sigma \left( \mathrm{inputs} - \mathrm{outputs} - \mathrm{fees} \right) = 0$$. 
-* Check if [cut-through] was applied and, if a block contains already spent outputs, reject that block.
+* Check if a block contains already spent outputs, reject that block.
+* The [Tari script] of every input must execute successfully and return the public key that signs the script signature.
+* The script offset \\( \so\\) is calculated and verified as per [RFC-0201_TariScript]. This prevents [cut-through] from 
+  being applied.
+
 
 Because Mimblewimble blocks can simply be seen as large transactions with multiple inputs and outputs, the block 
 validation service checks all transaction verification on the block as well.
 
-`Rejected` blocks are dropped silently.
+Rejected blocks are dropped silently.
 
 Base Nodes are not obliged to accept connections from any peer node on the network. In particular:
 
 * Base Nodes MAY refuse connections from peers that have been added to a denylist.
 * Base Nodes MAY be configured to exclusively connect to a given set of peer nodes.
 
-`Validated` blocks are
+Validated blocks are
 * added to the [blockchain];
 * forwarded to peers using the block [BroadcastStrategy].
 
@@ -175,9 +184,16 @@ Syncing, pruning and cut-through are discussed in detail in [RFC-0140](RFC-0140_
 
 ### Archival Nodes
 
-[Archival nodes] are used to keep a complete history of the blockchain since genesis block. They do not employ pruning 
-at all. These nodes will allow full syncing of the blockchain, because normal nodes will not keep the full history to 
-enable this.
+[Archival nodes] are used to keep a complete history of the blockchain since genesis block. They do not employ pruning
+at all. These nodes will allow full syncing of the blockchain, because normal nodes will not keep the full history to
+enable this. These nodes must sync from another archival node.
+
+### Pruned Nodes
+
+[Pruned nodes] take advantage of the cryptography of [mimblewimble] to allow them to prune spent inputs and outputs 
+beyond the pruning horizon and still validate the integrity of the blockchain i.e. no coins were destroyed or created 
+beyond what is allowed by consensus rules. A sufficient number of blocks back from the tip should be configured because 
+reorgs are no longer possible beyond that horizon. These nodes can sync from any other base node (archival and pruned).
 
 
 
@@ -190,11 +206,13 @@ enable this.
 [utxo]: Glossary.md#unspent-transaction-outputs
 [mimblewimble]: Glossary.md#mimblewimble
 [mempool]: Glossary.md#mempool
-[ValidationState]: Glossary.md#validationstate
 [BroadcastStrategy]: Glossary.md#broadcaststrategy
 [range proof]: Glossary.md#range-proof
 [SynchronisationStrategy]: Glossary.md#synchronisationstrategy
 [SynchronisationState]: Glossary.md#synchronisationstate
 [mining server]: Glossary.md#mining-server
-[cut-through]: RFC-0140_Syncing_and_seeding.md#pruning-and-cut-through
+[cut-through]: Glossary.md#cut-through
 [timelocks]: RFC-0230_HTLC.md#time-locked-contracts
+[transaction weight]: ./Glossary.md#transaction-weight
+[Tari script]: ./RFC-0201_TariScript.md
+[RFC-0201_TariScript]: ./RFC-0201_TariScript.md

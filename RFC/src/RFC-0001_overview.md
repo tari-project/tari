@@ -154,7 +154,7 @@ There are a few options for the PoW mechanism for Tari:
 
 Given Tari's relationship with Monero, a merged-mining strategy with Monero makes the most sense. However, the PoW mechanism
 SHOULD be written in a way that makes it relatively easy to code, implement and switch to a different strategy in the
-future.
+future. More information on Tari's current approach can be found in [RFC-0131_Mining].
 
 ### Multiparty Payment Channel
 
@@ -237,3 +237,4 @@ The following table summarizes the defining characteristics of the Tari network 
 [Validator Nodes]: Glossary.md#validator-node
 [Mimblewimble]: Glossary.md#mimblewimble
 [UTXO]: Glossary.md#unspent-transaction-outputs
+[RFC-0131_Mining]: RFC-0131_Mining.md
