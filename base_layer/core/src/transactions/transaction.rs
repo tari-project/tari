@@ -201,6 +201,7 @@ pub enum TransactionError {
 
 /// An unblinded output is one where the value and spending key (blinding factor) are known. This can be used to
 /// build both inputs and outputs (every input comes from an output)
+// TODO: Try to get rid of 'Serialize' and 'Deserialize' traits here; see related comment at 'struct RawTransactionInfo'
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UnblindedOutput {
     pub value: MicroTari,
@@ -374,7 +375,7 @@ pub struct TransactionInput {
     pub height: u64,
     /// A signature with k_s, signing the script, input data, and mined height
     pub script_signature: Signature,
-    /// The offset pubkey, K_O
+    /// The offset public key, K_O
     pub script_offset_public_key: PublicKey,
 }
 
@@ -412,7 +413,7 @@ impl TransactionInput {
     }
 
     /// This will check if the input and the output is the same commitment by looking at the commitment and features.
-    /// This will ignore the output rangeproof
+    /// This will ignore the output range proof
     pub fn is_equal_to(&self, output: &TransactionOutput) -> bool {
         self.commitment == output.commitment && self.features == output.features
     }
@@ -601,7 +602,7 @@ impl TransactionOutput {
     }
 
     /// This will check if the input and the output is the same commitment by looking at the commitment and features.
-    /// This will ignore the output rangeproof
+    /// This will ignore the output range proof
     #[inline]
     pub fn is_equal_to(&self, output: &TransactionInput) -> bool {
         self.commitment == output.commitment && self.features == output.features
@@ -617,18 +618,18 @@ impl TransactionOutput {
         script: &TariScript,
         features: &OutputFeatures,
         script_offset_public_key: &PublicKey,
-        puplic_nonce: &PublicKey,
+        public_nonce: &PublicKey,
     ) -> MessageHash {
         Challenge::new()
             .chain(script.as_bytes())
             .chain(features.to_bytes())
             .chain(script_offset_public_key.as_bytes())
-            .chain(puplic_nonce.as_bytes())
+            .chain(public_nonce.as_bytes())
             .result()
             .to_vec()
     }
 
-    /// Create sender signature fore the output meta data
+    /// Create sender signature for the output meta data
     pub fn create_sender_signature(
         script: &TariScript,
         output_features: &OutputFeatures,
@@ -1011,7 +1012,7 @@ impl Transaction {
             .fold(0, |max_maturity, input| max(max_maturity, input.features.maturity))
     }
 
-    /// Returns the maximum timelock of the kernels inside of the transaction
+    /// Returns the maximum time lock of the kernels inside of the transaction
     pub fn max_kernel_timelock(&self) -> u64 {
         self.body
             .kernels()
@@ -1331,7 +1332,7 @@ mod test {
         let mut kernel = create_test_kernel(0.into(), 0);
         let mut tx = Transaction::new(Vec::new(), Vec::new(), Vec::new(), 0.into(), 0.into());
 
-        // lets add timelocks
+        // lets add time locks
         input.features.maturity = 5;
         kernel.lock_height = 2;
         tx.body.add_input(input.clone());

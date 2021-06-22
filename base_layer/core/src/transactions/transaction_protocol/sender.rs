@@ -58,6 +58,8 @@ use tari_crypto::{
 
 /// This struct contains all the information that a transaction initiator (the sender) will manage throughout the
 /// Transaction construction process.
+// TODO: Investigate necessity to use the 'Serialize' and 'Deserialize' traits here; this could potentially leak
+// TODO:   information when least expected.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub(super) struct RawTransactionInfo {
     pub num_recipients: usize,
