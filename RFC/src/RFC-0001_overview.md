@@ -60,14 +60,12 @@ The aim of this proposal is to provide a very high-level perspective of the movi
 
 ### Abstract
 
-The Tari network comprises three layers:
+The Tari network comprises two layers:
 
 1. A base layer that deals with [Tari coin] [transaction]s. It governed by a proof-of-work (PoW) blockchain that is merged-mined with
 Monero. The base layer is highly secure, decentralized and relatively slow.
-2. A multiparty payments channel that allows rapid, secure, low-cost, off-chain payments that are periodically settled on the
-   base layer.
-3. A digital assets network (DAN) that manages all things to do with native digital assets. It is built for liveness,
-   speed and scalability at the expense of decentralization.
+2. A digital assets network (DAN), consisting of multiple independent sidechains, that manage the state of the native digital assets. 
+   It is built for liveness, speed and scalability at the expense of decentralization.
 
 
 ![Tari Network Overview](theme/images/tari_network_overview.png)
@@ -103,17 +101,16 @@ mutually exclusive.
 
 We can't have fast, cheap digital assets and also highly secure and decentralized currency tokens on a single system.
 
-Tari overcomes this constraint by building three layers:
+Tari overcomes this constraint by building two layers:
 
 1. A base layer that provides a public ledger of Tari coin transactions, secured by PoW to maximize security.
-2. A multiparty payment channel that allows funds to be sent to parties in the channel instantly, securely and with very
-    low fees.
-3. A DAN that manages the state of digital assets. It is very fast and cheap, at the expense of
+2. A DAN consisting of multiple independent sidechains that each manage the state of a digital asset. It is very fast and cheap, at the expense of
     decentralization.
 
 If required, the digital assets layer can refer back to the base layer to temporarily give up speed in exchange for
-increased security. This fallback is used to resolve consensus issues on the digital assets layer that may crop up from
-time to time as a result of the lower degree of decentralization.
+increased security. These commitments allow token owners to make attestations based on their asset state without relying completely on 
+the sidechain infrastructure. Furthermore, this link to the base layer can be used to resolve consensus issues on the digital assets 
+layer that may crop up from time to time as a result of the lower degree of decentralization.
 
 ### Base Layer
 
@@ -152,40 +149,29 @@ There are a few options for the PoW mechanism for Tari:
   well-distributed.
 * A hybrid approach, utilizing two or more of the above mechanisms.
 
-Given Tari's relationship with Monero, a merged-mining strategy with Monero makes the most sense. However, the PoW mechanism
-SHOULD be written in a way that makes it relatively easy to code, implement and switch to a different strategy in the
-future.
+Given Tari's relationship with Monero, a merged-mining strategy with Monero makes the most sense. While merge mining provides incentives to 
+bootstrap a large hash rate from day one, if there is not a complete buy-in from the majority of pools on the merge mined network it can become
+cheap for the remaining pools to attack Tari. As such Tari is opting for a hybrid mining approach where Tari will be merge mined with Monero and also support 
+a native PoW mechanism in the form of a SHA3 algorithm.
 
-### Multiparty Payment Channel
-
-Further details about the Tari multiparty payment channel technology are given in
-[RFC-500/PaymentChannels](RFC-0500_PaymentChannels.md).
+The mining strategy is explained more thoroughly in [RFC-130](RFC-0130_Mining.md).
 
 ### Digital Assets Network
 
 A more detailed proposal for the DAN is presented in [RFC-0300/DAN](RFC-0300_DAN.md). Digital assets
 _are discussed in more detail in [RFC-0310/Assets](RFC-0311_AssetTemplates.md)._
 
-The Tari DAN consists of a peer-to-peer network of [Validator nodes]. These nodes ensure the
-safe and efficient operation of all native digital assets on the Tari network.
-
-Validator nodes are responsible for:
-
-* _Registering_ themselves on the base layer.
-* Validating and executing the contracts that _create_ and issue _new digital assets_ on the network.
-* Validating and executing _instructions_ for _changes in state_ of digital assets, e.g. allowing the transfer of
-  ownership of a token from one person to another.
-* _Maintaining consensus_ with other validator nodes managing the same asset.
-* Submitting periodic _checkpoints_ to the base layer for the state of assets under their management.
-
 The DAN is focused on achieving high speed and scalability, without compromising on security. To achieve
-this, we make the explicit trade-off of sacrificing decentralization.
+this we make the explicit trade-off of sacrificing decentralization. Generally, the primary parties that have a stake in the 
+security of a given digital asset are the Asset Issuer and Token owners. This fact points to a natural centralization of control
+of an asset by the Asset Issuer. 
 
-In many ways this is desirable, since the vast majority of assets (and their issuers) don't need or want _the entire
-network_ to validate every state change in their asset contracts.
+Digital Assets consist of a set of tokens and their associated state. The state of an asset's tokens will be managed on a sidechain 
+that will run in parallel to the Tari base layer. The consensus mechanism, ledger style and other characteristics of the sidechain 
+will be chosen and managed by the Asset Issuer. 
 
-Digital assets necessarily have _state_. Therefore the digital assets layer must have a means of synchronizing and
-agreeing on state that is managed simultaneously by multiple servers, i.e. reaching consensus.
+There are many options for the nature of these sidechains. These are still under discussion but it will be possible to run
+multiple types of sidechains in the DAN and an Asset Issuer can choose which best suits the asset type it is supporting.
 
 Please refer to Tari Labs University (TLU) for detailed discussions on
 [layer 2 scaling solutions](https://tlu.tarilabs.com/layer2scaling/layer2scaling-landscape/layer2scaling-survey.html)
@@ -207,33 +193,27 @@ It is better to keep the two networks almost totally decoupled from the outset, 
 strength.
 
 That said, there are key interactions between the two layers. The base layer is a ledger and can be used as a
-source of truth for the DAN to use as a type of registrar as well as final court of appeal in the case of consensus
-disputes. This is what gives the DAN a secure fallback should bad actors try to manipulate asset state by taking
-advantage of its non-decentralization.
-
-These interactions require making provision for additional transaction types, in addition to payment and coinbase
-transactions, which mark validator node registrations, contract collateral, etc.
+source of truth for the DAN. Asset sidechains will periodically commit to their state on the base layer. These commitments
+make it possible for token owners to make attestations about their tokens at certain points in time without relying on the 
+sidechain. These commitments can also be used as a final court of appeal in the case of consensus disputes. 
 
 The interplay between base layer and DAN is what incentivizes every actor in the system to maintain an efficient and
 well-functioning network, even while acting in their own self-interest.
-
 
 ### Summary
 
 The following table summarizes the defining characteristics of the Tari network layers:
 
-|                                      | Base Layer      | Payment Channels | Digital Assets Network |
-|:-------------------------------------|:-----------------|:-----------------|:-----------------------|
-| Speed                                | Slow             | Fast             | Fast                   |
-| Scalability                          | Moderate         | High             | Very high              |
-| Security                             | High             | High             | Moderate (High with fallback) |
-| Decentralization                     | High             | Low - Medium        | Low - Med              |
-| Processes Tari coin transactions     | Yes              | Yes              | No                     |
-| Processes digital asset instructions | Only checkpoints | No               | Yes                    |
+|                                      | Base Layer       | Digital Assets Network          |
+|:-------------------------------------|:-----------------|---------------------------------|
+| Speed                                | Slow             | Fast                            |
+| Scalability                          | Moderate         | Very high                       |
+| Security                             | High             | Moderate                        |
+| Decentralization                     | High             | Low - Med                       |
+| Processes digital asset instructions | Only checkpoints | Yes                             |
 
 
 [Tari coin]: Glossary.md#tari-coin
 [transaction]: Glossary.md#transaction
-[Validator Nodes]: Glossary.md#validator-node
 [Mimblewimble]: Glossary.md#mimblewimble
 [UTXO]: Glossary.md#unspent-transaction-outputs
