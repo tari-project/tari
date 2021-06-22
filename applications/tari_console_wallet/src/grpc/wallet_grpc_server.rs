@@ -172,7 +172,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map(|(address, result)| match result {
                 Ok(tx_id) => TransferResult {
                     address,
-                    transaction_id: tx_id,
+                    transaction_id: tx_id.into(),
                     is_success: true,
                     failure_message: Default::default(),
                 },
@@ -201,6 +201,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let message = request.into_inner();
 
         let queries = message.transaction_ids.into_iter().map(|tx_id| {
+            let tx_id = tx_id.into();
             let mut transaction_service = self.get_transaction_service();
             async move {
                 error!(target: LOG_TARGET, "TX_ID: {}", tx_id);
@@ -221,7 +222,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let transactions = transactions
             .map(|(tx_id, tx)| match tx {
                 Some(tx) => convert_wallet_transaction_into_transaction_info(tx, wallet_pk),
-                None => TransactionInfo::not_found(tx_id),
+                None => TransactionInfo::not_found(tx_id.into()),
             })
             .collect();
 
@@ -247,7 +248,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             for (_, txn) in transactions {
                 let response = GetCompletedTransactionsResponse {
                     transaction: Some(TransactionInfo {
-                        tx_id: txn.tx_id,
+                        tx_id: txn.tx_id.into(),
                         source_pk: txn.source_public_key.to_vec(),
                         dest_pk: txn.destination_public_key.to_vec(),
                         status: TransactionStatus::from(txn.status) as i32,
@@ -308,7 +309,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
 
-        Ok(Response::new(CoinSplitResponse { tx_id }))
+        Ok(Response::new(CoinSplitResponse { tx_id: tx_id.into() }))
     }
 
     async fn import_utxos(
@@ -332,7 +333,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 wallet
                     .import_unblinded_utxo(o.clone(), &CommsPublicKey::default(), "Imported via gRPC".to_string())
                     .await
-                    .map_err(|e| Status::internal(format!("{:?}", e)))?,
+                    .map_err(|e| Status::internal(format!("{:?}", e)))?.into(),
             );
         }
 
@@ -348,7 +349,7 @@ fn convert_wallet_transaction_into_transaction_info(
     error!(target: LOG_TARGET, "FOUND WALLET: {:?}", tx);
     match tx {
         PendingInbound(tx) => TransactionInfo {
-            tx_id: tx.tx_id,
+            tx_id: tx.tx_id.into(),
             source_pk: tx.source_public_key.to_vec(),
             dest_pk: wallet_pk.to_vec(),
             status: TransactionStatus::from(tx.status) as i32,
@@ -363,7 +364,7 @@ fn convert_wallet_transaction_into_transaction_info(
             is_found: true,
         },
         PendingOutbound(tx) => TransactionInfo {
-            tx_id: tx.tx_id,
+            tx_id: tx.tx_id.into(),
             source_pk: wallet_pk.to_vec(),
             dest_pk: tx.destination_public_key.to_vec(),
             status: TransactionStatus::from(tx.status) as i32,
@@ -378,7 +379,7 @@ fn convert_wallet_transaction_into_transaction_info(
             is_found: true,
         },
         Completed(tx) => TransactionInfo {
-            tx_id: tx.tx_id,
+            tx_id: tx.tx_id.into(),
             source_pk: tx.source_public_key.to_vec(),
             dest_pk: tx.destination_public_key.to_vec(),
             status: TransactionStatus::from(tx.status) as i32,

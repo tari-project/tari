@@ -44,13 +44,14 @@ use tari_core::{
     proto::{base_node::Signatures as SignaturesProto, types::Signature as SignatureProto},
 };
 use tokio::{sync::broadcast, time::delay_for};
+use tari_core::transactions::transaction_protocol::TxId;
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::validation_protocol";
 
 pub struct TransactionValidationProtocol<TBackend>
 where TBackend: TransactionBackend + 'static
 {
-    id: u64,
+    id: TxId,
     resources: TransactionServiceResources<TBackend>,
     timeout: Duration,
     base_node_public_key: CommsPublicKey,
@@ -69,7 +70,7 @@ impl<TBackend> TransactionValidationProtocol<TBackend>
 where TBackend: TransactionBackend + 'static
 {
     pub fn new(
-        id: u64,
+        id: TxId,
         resources: TransactionServiceResources<TBackend>,
         base_node_public_key: CommsPublicKey,
         timeout: Duration,
@@ -90,7 +91,7 @@ where TBackend: TransactionBackend + 'static
     }
 
     /// The task that defines the execution of the protocol.
-    pub async fn execute(mut self) -> Result<u64, TransactionServiceProtocolError> {
+    pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError> {
         let mut timeout_update_receiver = self
             .timeout_update_receiver
             .take()

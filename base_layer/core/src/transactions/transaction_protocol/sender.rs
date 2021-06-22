@@ -51,6 +51,7 @@ use tari_crypto::{
     script::TariScript,
     tari_utilities::ByteArray,
 };
+use crate::transactions::transaction_protocol::TxId;
 
 //----------------------------------------   Local Data types     ----------------------------------------------------//
 
@@ -61,7 +62,7 @@ pub(super) struct RawTransactionInfo {
     pub num_recipients: usize,
     // The sum of self-created outputs plus change
     pub amount_to_self: MicroTari,
-    pub ids: Vec<u64>,
+    pub ids: Vec<TxId>,
     pub amounts: Vec<MicroTari>,
     pub recipient_scripts: Vec<TariScript>,
     pub recipient_script_offset_private_keys: Vec<PrivateKey>,
@@ -91,7 +92,7 @@ pub(super) struct RawTransactionInfo {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct SingleRoundSenderData {
     /// The transaction id for the recipient
-    pub tx_id: u64,
+    pub tx_id: TxId,
     /// The amount, in µT, being sent to the recipient
     pub amount: MicroTari,
     /// The offset public excess for this transaction
@@ -195,7 +196,7 @@ impl SenderTransactionProtocol {
     }
 
     /// Method to check if the provided tx_id matches this transaction
-    pub fn check_tx_id(&self, tx_id: u64) -> bool {
+    pub fn check_tx_id(&self, tx_id: TxId) -> bool {
         match &self.state {
             SenderState::Finalizing(info) |
             SenderState::SingleRoundMessageReady(info) |
@@ -204,7 +205,7 @@ impl SenderTransactionProtocol {
         }
     }
 
-    pub fn get_tx_id(&self) -> Result<u64, TPE> {
+    pub fn get_tx_id(&self) -> Result<TxId, TPE> {
         match &self.state {
             SenderState::Finalizing(info) |
             SenderState::SingleRoundMessageReady(info) |
@@ -526,11 +527,11 @@ impl fmt::Display for SenderTransactionProtocol {
     }
 }
 
-pub fn calculate_tx_id<D: Digest>(pub_nonce: &PublicKey, index: usize) -> u64 {
+pub fn calculate_tx_id<D: Digest>(pub_nonce: &PublicKey, index: usize) -> TxId {
     let hash = D::new().chain(pub_nonce.as_bytes()).chain(index.to_le_bytes()).result();
     let mut bytes: [u8; 8] = [0u8; 8];
     bytes.copy_from_slice(&hash[..8]);
-    u64::from_le_bytes(bytes)
+    u64::from_le_bytes(bytes).into()
 }
 
 //----------------------------------------      Sender State      ----------------------------------------------------//

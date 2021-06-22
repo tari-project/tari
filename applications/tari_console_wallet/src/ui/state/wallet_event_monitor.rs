@@ -27,10 +27,12 @@ use std::sync::Arc;
 use tari_comms::{connectivity::ConnectivityEvent, peer_manager::Peer};
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEvent, service::BaseNodeState},
-    output_manager_service::{handle::OutputManagerEvent, TxId},
+    output_manager_service::{handle::OutputManagerEvent, },
     transaction_service::handle::TransactionEvent,
 };
 use tokio::sync::RwLock;
+use tari_core::transactions::transaction_protocol::TxId;
+use crate::ui::state::EventListItem;
 
 const LOG_TARGET: &str = "wallet::console_wallet::wallet_event_monitor";
 
@@ -64,6 +66,7 @@ impl WalletEventMonitor {
                         match result {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet event {:?}", msg);
+                            self.app_state_inner.write().await.add_event(EventListItem{event_type: "TransactionEvent".to_string(), desc: (&*msg).to_string() });
                                 match (*msg).clone() {
                                     TransactionEvent::ReceivedFinalizedTransaction(tx_id) => {
                                         self.trigger_tx_state_refresh(tx_id).await;
@@ -109,6 +112,7 @@ impl WalletEventMonitor {
                         match result {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet event {:?}", msg);
+                              self.app_state_inner.write().await.add_event(EventListItem{event_type: "Connectivity".to_string(), desc: (&*msg).to_string() });
                                 match &*msg {
                                     ConnectivityEvent::PeerDisconnected(_) |
                                     ConnectivityEvent::ManagedPeerDisconnected(_) |
@@ -129,6 +133,7 @@ impl WalletEventMonitor {
                         match result {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Wallet Event Monitor received base node event {:?}", msg);
+                              //self.app_state_inner.write().await.add_event(EventListItem{event_type: "BaseNodeEvent".to_string(), desc: (&*msg).to_string() });
                                 match (*msg).clone() {
                                     BaseNodeEvent::BaseNodeStateChanged(state) => {
                                         self.trigger_base_node_state_refresh(state).await;
@@ -145,6 +150,7 @@ impl WalletEventMonitor {
                         match result {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {:?}", msg);
+                              self.app_state_inner.write().await.add_event(EventListItem{event_type: "OutputManagerEvent".to_string(), desc: (&*msg).to_string() });
                                 if let OutputManagerEvent::TxoValidationSuccess(_,_) = &*msg {
                                     self.trigger_balance_refresh().await;
                                 }

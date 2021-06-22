@@ -133,6 +133,8 @@ pub enum OutputManagerStorageError {
     ConversionError,
     #[error("Output has already been spent")]
     OutputAlreadySpent,
+    #[error("Output is already encumbered")]
+    OutputAlreadyEncumbered,
     #[error("Key Manager not initialized")]
     KeyManagerNotInitialized,
     #[error("Out of range error: `{0}`")]

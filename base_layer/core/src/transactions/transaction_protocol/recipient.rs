@@ -32,6 +32,7 @@ use crate::transactions::{
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt};
+use crate::transactions::transaction_protocol::TxId;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[allow(clippy::large_enum_variant)]
@@ -77,7 +78,7 @@ pub(super) struct MultiRecipientInfo {
 /// This is the message containing the public data that the Receiver will send back to the Sender
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RecipientSignedMessage {
-    pub tx_id: u64,
+    pub tx_id: TxId,
     pub output: TransactionOutput,
     pub public_spend_key: PublicKey,
     pub partial_signature: Signature,

@@ -61,8 +61,6 @@ pub use tasks::TxoValidationType;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::initializer";
 
-pub type TxId = u64;
-
 pub struct OutputManagerServiceInitializer<T>
 where T: OutputManagerBackend
 {

@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    output_manager_service::{error::OutputManagerError, TxId},
+    output_manager_service::{error::OutputManagerError},
     transaction_service::storage::database::DbKey,
 };
 use diesel::result::Error as DieselError;
@@ -35,6 +35,7 @@ use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
 use time::OutOfRangeError;
 use tokio::sync::broadcast::RecvError;
+use tari_core::transactions::transaction_protocol::TxId;
 
 #[derive(Debug, Error)]
 pub enum TransactionServiceError {
@@ -185,12 +186,12 @@ pub enum TransactionStorageError {
 /// include the ID of the protocol
 #[derive(Debug)]
 pub struct TransactionServiceProtocolError {
-    pub id: u64,
+    pub id: TxId,
     pub error: TransactionServiceError,
 }
 
 impl TransactionServiceProtocolError {
-    pub fn new(id: u64, error: TransactionServiceError) -> Self {
+    pub fn new(id: TxId, error: TransactionServiceError) -> Self {
         Self { id, error }
     }
 }

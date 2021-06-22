@@ -55,6 +55,7 @@ use tari_core::transactions::{
 };
 use tari_p2p::tari_message::TariMessageType;
 use tokio::time::delay_for;
+use tari_core::transactions::transaction_protocol::TxId;
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::send_protocol";
 const LOG_TARGET_STRESS: &str = "stress_test::send_protocol";
@@ -68,7 +69,7 @@ pub enum TransactionSendProtocolStage {
 pub struct TransactionSendProtocol<TBackend>
 where TBackend: TransactionBackend + 'static
 {
-    id: u64,
+    id: TxId,
     dest_pubkey: CommsPublicKey,
     amount: MicroTari,
     message: String,
@@ -84,7 +85,7 @@ impl<TBackend> TransactionSendProtocol<TBackend>
 where TBackend: TransactionBackend + 'static
 {
     pub fn new(
-        id: u64,
+        id: TxId,
         resources: TransactionServiceResources<TBackend>,
         transaction_reply_receiver: Receiver<(CommsPublicKey, RecipientSignedMessage)>,
         cancellation_receiver: oneshot::Receiver<()>,
@@ -108,7 +109,7 @@ where TBackend: TransactionBackend + 'static
     }
 
     /// Execute the Transaction Send Protocol as an async task.
-    pub async fn execute(mut self) -> Result<u64, TransactionServiceProtocolError> {
+    pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError> {
         info!(
             target: LOG_TARGET,
             "Starting Transaction Send protocol for TxId: {} at Stage {:?}", self.id, self.stage

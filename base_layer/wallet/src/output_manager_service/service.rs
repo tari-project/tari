@@ -34,7 +34,6 @@ use crate::{
         },
         tasks::{TxoValidationTask, TxoValidationType},
         MasterKeyManager,
-        TxId,
     },
     transaction_service::handle::TransactionServiceHandle,
     types::{HashDigest, ValidationRetryStrategy},
@@ -85,6 +84,7 @@ use tari_crypto::{
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::broadcast;
+use tari_core::transactions::transaction_protocol::TxId;
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
 const LOG_TARGET_STRESS: &str = "stress_test::output_manager_service";
@@ -360,8 +360,8 @@ where TBackend: OutputManagerBackend + 'static
                 })
             },
             OutputManagerRequest::CreatePayToSelfWithOutputs { amount: _, outputs, fee_per_gram } => {
-                let transaction = self.create_pay_to_self_containing_outputs(outputs, fee_per_gram).await?;
-                Ok(OutputManagerResponse::CreatePayToSelfWithOutputs {transaction})
+                let (tx_id, transaction) = self.create_pay_to_self_containing_outputs(outputs, fee_per_gram).await?;
+                Ok(OutputManagerResponse::CreatePayToSelfWithOutputs {transaction, tx_id})
             }
         }
     }
@@ -431,12 +431,13 @@ where TBackend: OutputManagerBackend + 'static
             .master_key_manager
             .get_next_spend_and_script_key()
             .await?;
+        let input_data = inputs!(PublicKey::from_secret_key(&script_private_key));
         Ok(UnblindedOutput {
             value,
             spending_key,
             features,
             script: script!(Nop),
-            input_data: Default::default(),
+            input_data,
             height: 0,
             script_private_key,
             // To be completed in processing
@@ -512,7 +513,7 @@ where TBackend: OutputManagerBackend + 'static
     /// detects the output on the blockchain
     pub async fn confirm_received_transaction_output(
         &mut self,
-        tx_id: u64,
+        tx_id: TxId,
         received_output: &TransactionOutput,
     ) -> Result<(), OutputManagerError> {
         let pending_transaction = self.resources.db.fetch_pending_transaction_outputs(tx_id).await?;
@@ -768,7 +769,7 @@ where TBackend: OutputManagerBackend + 'static
         &mut self,
         outputs: Vec<UnblindedOutput>,
         fee_per_gram: MicroTari,
-    ) -> Result<Transaction, OutputManagerError> {
+    ) -> Result<(TxId, Transaction), OutputManagerError> {
         let (inputs, _, total) = self
             .select_utxos(0.into(), fee_per_gram, outputs.len(), None, None)
             .await?;
@@ -791,10 +792,15 @@ where TBackend: OutputManagerBackend + 'static
                 uo.unblinded_output.clone(),
             );
         }
+        let mut db_outputs = vec![];
         for mut unblinded_output in outputs {
             let script_offset_private_key = PrivateKey::random(&mut OsRng);
             unblinded_output.script_offset_public_key = PublicKey::from_secret_key(&script_offset_private_key);
             builder.with_output(unblinded_output.clone(), script_offset_private_key.clone());
+            db_outputs.push(DbUnblindedOutput::from_unblinded_output(
+                unblinded_output,
+                &self.resources.factories,
+            )?)
         }
 
         // let mut change_keys = None;
@@ -821,9 +827,12 @@ where TBackend: OutputManagerBackend + 'static
             .build::<HashDigest>(&self.resources.factories)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
+        let tx_id = stp.get_tx_id()?;
+
+        self.resources.db.encumber_outputs(tx_id, inputs, db_outputs).await?;
         stp.finalize(KernelFeatures::empty(), &self.resources.factories)?;
 
-        Ok(stp.take_transaction()?)
+        Ok((tx_id, stp.take_transaction()?))
     }
 
     async fn create_pay_to_self_transaction(
@@ -953,7 +962,7 @@ where TBackend: OutputManagerBackend + 'static
 
     /// Confirm that a transaction has finished being negotiated between parties so the short-term encumberance can be
     /// made official
-    async fn confirm_encumberance(&mut self, tx_id: u64) -> Result<(), OutputManagerError> {
+    async fn confirm_encumberance(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
         self.resources.db.confirm_encumbered_outputs(tx_id).await?;
 
         Ok(())
@@ -964,7 +973,7 @@ where TBackend: OutputManagerBackend + 'static
     /// be called by the Transaction Service which monitors the base chain.
     async fn confirm_transaction(
         &mut self,
-        tx_id: u64,
+        tx_id: TxId,
         inputs: &[TransactionInput],
         outputs: &[TransactionOutput],
     ) -> Result<(), OutputManagerError> {
@@ -1010,7 +1019,7 @@ where TBackend: OutputManagerBackend + 'static
     }
 
     /// Cancel a pending transaction and place the encumbered outputs back into the unspent pool
-    pub async fn cancel_transaction(&mut self, tx_id: u64) -> Result<(), OutputManagerError> {
+    pub async fn cancel_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
         debug!(
             target: LOG_TARGET,
             "Cancelling pending transaction outputs for TxId: {}", tx_id
@@ -1184,7 +1193,7 @@ where TBackend: OutputManagerBackend + 'static
 
     pub async fn fetch_pending_transaction_outputs(
         &self,
-    ) -> Result<HashMap<u64, PendingTransactionOutputs>, OutputManagerError> {
+    ) -> Result<HashMap<TxId, PendingTransactionOutputs>, OutputManagerError> {
         Ok(self.resources.db.fetch_all_pending_transaction_outputs().await?)
     }
 
@@ -1207,7 +1216,7 @@ where TBackend: OutputManagerBackend + 'static
         split_count: usize,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
-    ) -> Result<(u64, Transaction, MicroTari, MicroTari), OutputManagerError> {
+    ) -> Result<(TxId, Transaction, MicroTari, MicroTari), OutputManagerError> {
         trace!(
             target: LOG_TARGET,
             "Select UTXOs and estimate coin split transaction fee."

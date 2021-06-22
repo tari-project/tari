@@ -30,7 +30,6 @@ use crate::{
         handle::OutputManagerHandle,
         storage::{database::OutputManagerBackend, models::KnownOneSidedPaymentScript},
         OutputManagerServiceInitializer,
-        TxId,
     },
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
@@ -81,6 +80,7 @@ use crate::assets::{AssetManagerHandle};
 
 
 use crate::assets::infrastructure::initializer::AssetManagerServiceInitializer;
+use tari_core::transactions::transaction_protocol::TxId;
 
 const LOG_TARGET: &str = "wallet";
 

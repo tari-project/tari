@@ -55,7 +55,7 @@ use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
     contacts_service::storage::database::Contact,
-    output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, TxId, TxoValidationType},
+    output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, TxoValidationType},
     transaction_service::{
         handle::TransactionEventReceiver,
         storage::models::{CompletedTransaction, TransactionStatus},
@@ -66,6 +66,8 @@ use tari_wallet::{
 };
 use tokio::sync::{watch, RwLock};
 use tari_wallet::assets::Asset;
+use tari_core::transactions::transaction_protocol::TxId;
+use std::collections::VecDeque;
 
 const LOG_TARGET: &str = "wallet::console_wallet::app_state";
 
@@ -97,6 +99,10 @@ impl AppState {
     pub async fn start_event_monitor(&self, notifier: Notifier) {
         let event_monitor = WalletEventMonitor::new(self.inner.clone());
         tokio::spawn(event_monitor.run(notifier));
+    }
+
+    pub fn get_all_events(&self) -> VecDeque<EventListItem> {
+        self.cached_data.all_events.to_owned()
     }
 
     pub async fn refresh_transaction_state(&mut self) -> Result<(), UiError> {
@@ -399,6 +405,14 @@ impl AppStateInner {
             data,
             wallet,
         }
+    }
+
+    pub fn add_event(&mut self, event : EventListItem) {
+        if self.data.all_events.len() > 30 {
+            self.data.all_events.pop_back();
+        }
+        self.data.all_events.push_front(event);
+        self.updated = true;
     }
 
     /// If there has been an update to the state since the last call to this function it will provide a cloned snapshot
@@ -802,6 +816,14 @@ struct AppStateData {
     base_node_previous: Peer,
     base_node_list: Vec<(String, Peer)>,
     base_node_peer_custom: Option<Peer>,
+    all_events: VecDeque<EventListItem>
+}
+
+
+#[derive(Clone)]
+pub struct EventListItem{
+    pub event_type: String,
+    pub desc: String
 }
 
 impl AppStateData {
@@ -866,6 +888,7 @@ impl AppStateData {
             base_node_previous,
             base_node_list,
             base_node_peer_custom: base_node_config.base_node_custom,
+            all_events: VecDeque::new()
         }
     }
 }

@@ -24,7 +24,8 @@ use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
 use tari_core::transactions::transaction::Transaction;
 use tari_crypto::{ristretto::RistrettoSecretKey, tari_utilities::ByteArray};
-use tari_wallet::{output_manager_service::TxId, transaction_service::storage::models};
+use tari_wallet::{transaction_service::storage::models};
+use tari_core::transactions::transaction_protocol::TxId;
 
 impl From<Transaction> for grpc::Transaction {
     fn from(source: Transaction) -> Self {
@@ -82,7 +83,7 @@ impl From<models::TransactionDirection> for grpc::TransactionDirection {
 impl grpc::TransactionInfo {
     pub fn not_found(tx_id: TxId) -> Self {
         Self {
-            tx_id,
+            tx_id: tx_id.into(),
             is_found: false,
             ..Default::default()
         }

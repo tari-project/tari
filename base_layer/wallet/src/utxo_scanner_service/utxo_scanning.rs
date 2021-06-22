@@ -22,7 +22,7 @@
 
 use crate::{
     error::WalletError,
-    output_manager_service::{handle::OutputManagerHandle, TxId},
+    output_manager_service::{handle::OutputManagerHandle, },
     storage::{
         database::{WalletBackend, WalletDatabase},
         sqlite_db::WalletSqliteDatabase,
@@ -70,6 +70,7 @@ use tari_crypto::tari_utilities::hex::*;
 use tari_service_framework::{reply_channel, reply_channel::SenderService};
 use tari_shutdown::ShutdownSignal;
 use tokio::{sync::broadcast, time::delay_for};
+use tari_core::transactions::transaction_protocol::TxId;
 
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 

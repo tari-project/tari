@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2021. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,22 +20,58 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod balance;
-pub mod base_node;
-mod component;
-pub(crate) mod menu;
-pub mod network_tab;
-pub mod receive_tab;
-pub mod send_tab;
-pub mod tabs_container;
-pub mod transactions_tab;
-pub mod assets_tab;
-mod styles;
-pub use self::component::*;
-pub mod events_component;
+use std::fmt;
+use std::fmt::Formatter;
+use serde::{Serialize, Deserialize};
+use std::hash::{Hash, Hasher};
+use rand::rngs::OsRng;
+use rand::RngCore;
 
-#[derive(PartialEq, Eq)]
-pub enum KeyHandled {
-    Handled = 1,
-    NotHandled,
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Default)]
+pub struct TxId(u64);
+
+impl TxId {
+    pub fn new_random() -> Self {
+        TxId(OsRng.next_u64())
+    }
+
+    pub fn as_u64(self) -> u64 {
+        self.0
+    }
+}
+
+impl Hash for TxId {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.hash(state)
+    }
+}
+
+impl PartialEq for TxId {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq(&other.0)
+    }
+}
+
+
+impl Eq for TxId {
+
+}
+
+impl From<u64> for TxId {
+    fn from(s: u64) -> Self {
+        Self(s)
+    }
+}
+
+impl From<TxId> for u64 {
+    fn from(s: TxId) ->Self {
+        s.0
+    }
+}
+
+impl fmt::Display for TxId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
 }

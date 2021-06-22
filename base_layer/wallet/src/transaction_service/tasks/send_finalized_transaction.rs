@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
-    output_manager_service::TxId,
     transaction_service::{
         config::TransactionRoutingMechanism,
         error::TransactionServiceError,
@@ -36,6 +35,7 @@ use tari_comms_dht::{
 };
 use tari_core::transactions::{transaction::Transaction, transaction_protocol::proto};
 use tari_p2p::tari_message::TariMessageType;
+use tari_core::transactions::transaction_protocol::TxId;
 
 const LOG_TARGET: &str = "wallet::transaction_service::tasks::send_finalized_transaction";
 const LOG_TARGET_STRESS: &str = "stress_test::send_finalized_transaction";
@@ -62,7 +62,7 @@ pub async fn send_finalized_transaction_message(
         },
         TransactionRoutingMechanism::StoreAndForwardOnly => {
             let finalized_transaction_message = proto::TransactionFinalizedMessage {
-                tx_id,
+                tx_id: tx_id.into(),
                 transaction: Some(transaction.clone().into()),
             };
             let store_and_forward_send_result = send_transaction_finalized_message_store_and_forward(
@@ -90,7 +90,7 @@ pub async fn send_finalized_transaction_message_direct(
     transaction_routing_mechanism: TransactionRoutingMechanism,
 ) -> Result<(), TransactionServiceError> {
     let finalized_transaction_message = proto::TransactionFinalizedMessage {
-        tx_id,
+        tx_id: tx_id.into(),
         transaction: Some(transaction.clone().into()),
     };
     let mut store_and_forward_send_result = false;

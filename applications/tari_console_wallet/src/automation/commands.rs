@@ -52,7 +52,7 @@ use tari_core::{
 };
 use tari_crypto::ristretto::pedersen::PedersenCommitmentFactory;
 use tari_wallet::{
-    output_manager_service::{handle::OutputManagerHandle, TxId},
+    output_manager_service::{handle::OutputManagerHandle, },
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
     util::emoji::EmojiId,
     WalletSqlite,
@@ -61,6 +61,7 @@ use tokio::{
     runtime::Handle,
     time::{delay_for, timeout},
 };
+use tari_core::transactions::transaction_protocol::TxId;
 
 pub const LOG_TARGET: &str = "wallet::automation::commands";
 
@@ -469,7 +470,7 @@ pub async fn command_runner(
     let wait_stage = TransactionStage::from_str(&config.wallet_command_send_wait_stage)
         .map_err(|e| CommandError::Config(e.to_string()))?;
 
-    let transaction_service = wallet.transaction_service.clone();
+    let mut transaction_service = wallet.transaction_service.clone();
     let mut output_service = wallet.output_manager_service.clone();
     let dht_service = wallet.dht_service.discovery_service_requester().clone();
     let connectivity_requester = wallet.comms.connectivity();
@@ -603,8 +604,9 @@ pub async fn command_runner(
                 println!("Registering asset.");
                 let name = parsed.args[0].to_string();
                 let mut manager = wallet.asset_manager.clone();
-                let transaction  = manager.create_registration_transaction(name).await?;
-                // wallet.transaction_service.broadcast_transaction()
+                let (tx_id, transaction)  = manager.create_registration_transaction(name).await?;
+                let fee = transaction.body.get_total_fee();
+                let result = transaction_service.submit_transaction(tx_id, transaction, fee, 0.into(), "test o ramam".to_string()).await?;
             }
         }
     }

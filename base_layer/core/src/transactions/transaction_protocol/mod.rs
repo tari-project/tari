@@ -85,6 +85,8 @@ pub mod recipient;
 pub mod sender;
 pub mod single_receiver;
 pub mod sender_transaction_protocol_builder;
+mod tx_id;
+pub use tx_id::*;
 
 use crate::transactions::{
     tari_amount::*,

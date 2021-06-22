@@ -1,11 +1,11 @@
 use crate::output_manager_service::storage::database::{DbKey, DbValue, WriteOperation};
 use crate::output_manager_service::error::OutputManagerStorageError;
 use crate::output_manager_service::storage::models::DbUnblindedOutput;
-use crate::output_manager_service::TxId;
 use std::time::Duration;
 use tari_core::transactions::types::Commitment;
 use aes_gcm::Aes256Gcm;
 use tari_core::transactions::transaction::OutputFlags;
+use tari_core::transactions::transaction_protocol::TxId;
 
 /// This trait defines the required behaviour that a storage backend must provide for the Output Manager service.
 /// Data is passed to and from the backend via the [DbKey], [DbValue], and [DbValueKey] enums. If new data types are
@@ -68,5 +68,5 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
         commitment: &Commitment,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError>;
     /// Update the mined height for all outputs for this tx_id
-    fn update_mined_height(&self, tx_id: u64, height: u64) -> Result<(), OutputManagerStorageError>;
+    fn update_mined_height(&self, tx_id: TxId, height: u64) -> Result<(), OutputManagerStorageError>;
 }

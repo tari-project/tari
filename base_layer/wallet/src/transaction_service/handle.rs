@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    output_manager_service::TxId,
     transaction_service::{
         error::TransactionServiceError,
         storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
@@ -39,6 +38,8 @@ use tower::Service;
 use crate::types::ValidationRetryStrategy;
 #[cfg(feature = "test_harness")]
 use tokio::runtime::Handle;
+use tari_core::transactions::transaction_protocol::TxId;
+use std::fmt::Formatter;
 
 
 /// API Request enum
@@ -57,7 +58,7 @@ pub enum TransactionServiceRequest {
     SendOneSidedTransaction{dest_pubkey: CommsPublicKey, amount: MicroTari, unique_id: Option<Vec<u8>>, fee_per_gram: MicroTari, message: String},
     CancelTransaction(TxId),
     ImportUtxo(MicroTari, CommsPublicKey, String, Option<u64>),
-    SubmitCoinSplitTransaction(TxId, Transaction, MicroTari, MicroTari, String),
+    SubmitSelfSendTransaction(TxId, Transaction, MicroTari, MicroTari, String),
     SetLowPowerMode,
     SetNormalPowerMode,
     ApplyEncryption(Box<Aes256Gcm>),
@@ -67,7 +68,7 @@ pub enum TransactionServiceRequest {
     RestartBroadcastProtocols,
     GetNumConfirmationsRequired,
     SetNumConfirmationsRequired(u64),
-    SetCompletedTransactionValidity(u64, bool),
+    SetCompletedTransactionValidity(TxId, bool),
     ValidateTransactions(ValidationRetryStrategy),
     #[cfg(feature = "test_harness")]
     CompletePendingOutboundTransaction(CompletedTransaction),
@@ -104,7 +105,7 @@ impl fmt::Display for TransactionServiceRequest {
                 msg,
                 maturity.unwrap_or(0)
             )),
-            Self::SubmitCoinSplitTransaction(tx_id, _, _, _, _) => {
+            Self::SubmitSelfSendTransaction(tx_id, _, _, _, _) => {
                 f.write_str(&format!("SubmitTransaction ({})", tx_id))
             },
             Self::SetLowPowerMode => f.write_str("SetLowPowerMode "),
@@ -147,9 +148,9 @@ impl fmt::Display for TransactionServiceRequest {
 pub enum TransactionServiceResponse {
     TransactionSent(TxId),
     TransactionCancelled,
-    PendingInboundTransactions(HashMap<u64, InboundTransaction>),
-    PendingOutboundTransactions(HashMap<u64, OutboundTransaction>),
-    CompletedTransactions(HashMap<u64, CompletedTransaction>),
+    PendingInboundTransactions(HashMap<TxId, InboundTransaction>),
+    PendingOutboundTransactions(HashMap<TxId, OutboundTransaction>),
+    CompletedTransactions(HashMap<TxId, CompletedTransaction>),
     CompletedTransaction(Box<CompletedTransaction>),
     BaseNodePublicKeySet,
     UtxoImported(TxId),
@@ -163,7 +164,7 @@ pub enum TransactionServiceResponse {
     AnyTransaction(Box<Option<WalletTransaction>>),
     NumConfirmationsRequired(u64),
     NumConfirmationsSet,
-    ValidationStarted(u64),
+    ValidationStarted(TxId),
     CompletedTransactionValidityChanged,
     #[cfg(feature = "test_harness")]
     CompletedPendingTransaction,
@@ -194,13 +195,42 @@ pub enum TransactionEvent {
     TransactionMined(TxId),
     TransactionMinedRequestTimedOut(TxId),
     TransactionMinedUnconfirmed(TxId, u64),
-    TransactionValidationTimedOut(u64),
-    TransactionValidationSuccess(u64),
-    TransactionValidationFailure(u64),
-    TransactionValidationAborted(u64),
-    TransactionValidationDelayed(u64),
-    TransactionBaseNodeConnectionProblem(u64),
+    TransactionValidationTimedOut(TxId),
+    TransactionValidationSuccess(TxId),
+    TransactionValidationFailure(TxId),
+    TransactionValidationAborted(TxId),
+    TransactionValidationDelayed(TxId),
+    TransactionBaseNodeConnectionProblem(TxId),
     Error(String),
+}
+
+impl fmt::Display for TransactionEvent {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+
+        match self {
+            TransactionEvent::MempoolBroadcastTimedOut(tx_id) => {write!(f, "MempoolBroadcastTimedOut for tx:{}", tx_id)}
+            TransactionEvent::ReceivedTransaction(tx) => {write!(f, "ReceivedTransaction for {}", tx)}
+            TransactionEvent::ReceivedTransactionReply(tx) => {write!(f, "ReceivedTransactionReply for {}", tx)}
+            TransactionEvent::ReceivedFinalizedTransaction(tx) => {write!(f, "ReceivedFinalizedTransaction for {}", tx)}
+            TransactionEvent::TransactionDiscoveryInProgress(tx) => {write!(f, "TransactionDiscoveryInProgress for {}", tx)}
+            TransactionEvent::TransactionDirectSendResult(tx, success) => {write!(f, "TransactionDirectSendResult for {}: {}", tx, success)}
+            TransactionEvent::TransactionCompletedImmediately(tx) => {write!(f, "TransactionCompletedImmediately for {}", tx)}
+            TransactionEvent::TransactionStoreForwardSendResult(tx, success) => {write!(f, "TransactionStoreForwardSendResult for {}:{}", tx, success)}
+            TransactionEvent::TransactionCancelled(tx) => {write!(f, "TransactionCancelled for {}", tx)}
+            TransactionEvent::TransactionBroadcast(tx) => {write!(f, "TransactionBroadcast for {}", tx)}
+            TransactionEvent::TransactionImported(tx) => {write!(f, "TransactionImported for {}", tx)}
+            TransactionEvent::TransactionMined(tx) => {write!(f, "TransactionMined for {}", tx)}
+            TransactionEvent::TransactionMinedRequestTimedOut(tx) => {write!(f, "TransactionMinedRequestTimedOut for {}", tx)}
+            TransactionEvent::TransactionMinedUnconfirmed(tx, height) => {write!(f, "TransactionMinedUnconfirmed for {} at height:{}", tx, height)}
+            TransactionEvent::TransactionValidationTimedOut(tx) => {write!(f, "TransactionValidationTimedOut for {}", tx)}
+            TransactionEvent::TransactionValidationSuccess(tx) => {write!(f, "TransactionValidationSuccess for {}", tx)}
+            TransactionEvent::TransactionValidationFailure(tx) => {write!(f, "TransactionValidationFailure for {}", tx)}
+            TransactionEvent::TransactionValidationAborted(tx) => {write!(f, "TransactionValidationAborted for {}", tx)}
+            TransactionEvent::TransactionValidationDelayed(tx) => {write!(f, "TransactionValidationDelayed for {}", tx)}
+            TransactionEvent::TransactionBaseNodeConnectionProblem(tx) => {write!(f, "TransactionBaseNodeConnectionProblem for {}", tx)}
+            TransactionEvent::Error(error) => {write!(f, "Error:{}", error)}
+        }
+    }
 }
 
 pub type TransactionEventSender = broadcast::Sender<Arc<TransactionEvent>>;
@@ -289,7 +319,7 @@ impl TransactionServiceHandle {
 
     pub async fn get_pending_inbound_transactions(
         &mut self,
-    ) -> Result<HashMap<u64, InboundTransaction>, TransactionServiceError> {
+    ) -> Result<HashMap<TxId, InboundTransaction>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetPendingInboundTransactions)
@@ -302,7 +332,7 @@ impl TransactionServiceHandle {
 
     pub async fn get_cancelled_pending_inbound_transactions(
         &mut self,
-    ) -> Result<HashMap<u64, InboundTransaction>, TransactionServiceError> {
+    ) -> Result<HashMap<TxId, InboundTransaction>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetCancelledPendingInboundTransactions)
@@ -315,7 +345,7 @@ impl TransactionServiceHandle {
 
     pub async fn get_pending_outbound_transactions(
         &mut self,
-    ) -> Result<HashMap<u64, OutboundTransaction>, TransactionServiceError> {
+    ) -> Result<HashMap<TxId, OutboundTransaction>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetPendingOutboundTransactions)
@@ -328,7 +358,7 @@ impl TransactionServiceHandle {
 
     pub async fn get_cancelled_pending_outbound_transactions(
         &mut self,
-    ) -> Result<HashMap<u64, OutboundTransaction>, TransactionServiceError> {
+    ) -> Result<HashMap<TxId, OutboundTransaction>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetCancelledPendingOutboundTransactions)
@@ -341,7 +371,7 @@ impl TransactionServiceHandle {
 
     pub async fn get_completed_transactions(
         &mut self,
-    ) -> Result<HashMap<u64, CompletedTransaction>, TransactionServiceError> {
+    ) -> Result<HashMap<TxId, CompletedTransaction>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetCompletedTransactions)
@@ -354,7 +384,7 @@ impl TransactionServiceHandle {
 
     pub async fn get_cancelled_completed_transactions(
         &mut self,
-    ) -> Result<HashMap<u64, CompletedTransaction>, TransactionServiceError> {
+    ) -> Result<HashMap<TxId, CompletedTransaction>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetCancelledCompletedTransactions)
@@ -439,7 +469,7 @@ impl TransactionServiceHandle {
     ) -> Result<(), TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::SubmitCoinSplitTransaction(
+            .call(TransactionServiceRequest::SubmitSelfSendTransaction(
                 tx_id, tx, fee, amount, message,
             ))
             .await??
@@ -552,7 +582,7 @@ impl TransactionServiceHandle {
     pub async fn validate_transactions(
         &mut self,
         retry_strategy: ValidationRetryStrategy,
-    ) -> Result<u64, TransactionServiceError> {
+    ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::ValidateTransactions(retry_strategy))

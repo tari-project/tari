@@ -24,7 +24,6 @@ use crate::output_manager_service::{
     error::OutputManagerStorageError,
     service::Balance,
     storage::models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
-    TxId,
 };
 use aes_gcm::Aes256Gcm;
 use chrono::{NaiveDateTime, Utc};
@@ -45,11 +44,12 @@ const LOG_TARGET: &str = "wallet::output_manager_service::database";
 mod backend;
 pub use backend::OutputManagerBackend;
 use tari_core::transactions::transaction::OutputFlags;
+use tari_core::transactions::transaction_protocol::TxId;
 
 /// Holds the outputs that have been selected for a given pending transaction waiting for confirmation
 #[derive(Debug, Clone, PartialEq)]
 pub struct PendingTransactionOutputs {
-    pub tx_id: u64,
+    pub tx_id: TxId,
     pub outputs_to_be_spent: Vec<DbUnblindedOutput>,
     pub outputs_to_be_received: Vec<DbUnblindedOutput>,
     pub timestamp: NaiveDateTime,
@@ -448,7 +448,7 @@ impl<T> OutputManagerDatabase<T>
 
     pub async fn fetch_all_pending_transaction_outputs(
         &self,
-    ) -> Result<HashMap<u64, PendingTransactionOutputs>, OutputManagerStorageError> {
+    ) -> Result<HashMap<TxId, PendingTransactionOutputs>, OutputManagerStorageError> {
         let db_clone = self.db.clone();
 
         let uo = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::AllPendingTransactionOutputs) {
@@ -621,7 +621,7 @@ impl<T> OutputManagerDatabase<T>
         Ok(())
     }
 
-    pub async fn update_output_mined_height(&self, tx_id: u64, height: u64) -> Result<(), OutputManagerStorageError> {
+    pub async fn update_output_mined_height(&self, tx_id: TxId, height: u64) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.update_mined_height(tx_id, height))
             .await

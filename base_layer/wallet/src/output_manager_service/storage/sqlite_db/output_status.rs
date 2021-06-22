@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2021. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,23 +19,34 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use core::convert::TryFrom;
+use core::result::Result;
+use core::result::Result::{Err, Ok};
+use crate::output_manager_service::error::OutputManagerStorageError;
 
-pub mod balance;
-pub mod base_node;
-mod component;
-pub(crate) mod menu;
-pub mod network_tab;
-pub mod receive_tab;
-pub mod send_tab;
-pub mod tabs_container;
-pub mod transactions_tab;
-pub mod assets_tab;
-mod styles;
-pub use self::component::*;
-pub mod events_component;
+/// The status of a given output
+#[derive(PartialEq)]
+pub enum OutputStatus {
+    Unspent,
+    Spent,
+    EncumberedToBeReceived,
+    EncumberedToBeSpent,
+    Invalid,
+    CancelledInbound,
+}
 
-#[derive(PartialEq, Eq)]
-pub enum KeyHandled {
-    Handled = 1,
-    NotHandled,
+impl TryFrom<i32> for OutputStatus {
+    type Error = OutputManagerStorageError;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(OutputStatus::Unspent),
+            1 => Ok(OutputStatus::Spent),
+            2 => Ok(OutputStatus::EncumberedToBeReceived),
+            3 => Ok(OutputStatus::EncumberedToBeSpent),
+            4 => Ok(OutputStatus::Invalid),
+            5 => Ok(OutputStatus::CancelledInbound),
+            _ => Err(OutputManagerStorageError::ConversionError),
+        }
+    }
 }

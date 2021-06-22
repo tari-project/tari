@@ -44,7 +44,7 @@ impl TryFrom<proto::RecipientSignedMessage> for RecipientSignedMessage {
             .map_err(|err| format!("{}", err))?;
 
         Ok(Self {
-            tx_id: message.tx_id,
+            tx_id: message.tx_id.into(),
             output,
             public_spend_key,
             partial_signature,
@@ -55,7 +55,7 @@ impl TryFrom<proto::RecipientSignedMessage> for RecipientSignedMessage {
 impl From<RecipientSignedMessage> for proto::RecipientSignedMessage {
     fn from(message: RecipientSignedMessage) -> Self {
         Self {
-            tx_id: message.tx_id,
+            tx_id: message.tx_id.into(),
             output: Some(message.output.into()),
             public_spend_key: message.public_spend_key.to_vec(),
             partial_signature: Some(message.partial_signature.into()),

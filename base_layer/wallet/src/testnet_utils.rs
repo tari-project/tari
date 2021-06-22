@@ -27,7 +27,6 @@ use crate::{
     error::{WalletError, WalletStorageError},
     output_manager_service::{
         storage::{database::OutputManagerBackend, sqlite_db::OutputManagerSqliteDatabase},
-        TxId,
     },
     storage::{
         database::{DbKeyValuePair, WalletBackend, WalletDatabase, WriteOperation},
@@ -80,6 +79,7 @@ use tari_crypto::{
 use tari_p2p::{initialization::CommsConfig, transport::TransportType};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{runtime::Handle, time::delay_for};
+use tari_core::transactions::transaction_protocol::TxId;
 
 // Used to generate test wallet data
 
@@ -849,7 +849,7 @@ pub async fn receive_test_transaction<
     wallet
         .transaction_service
         .test_accept_transaction(
-            OsRng.next_u64(),
+            TxId::new_random(),
             MicroTari::from(10_000 + OsRng.next_u64() % 101_000),
             public_key,
             handle,

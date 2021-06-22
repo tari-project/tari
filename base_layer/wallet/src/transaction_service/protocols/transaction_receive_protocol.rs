@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    output_manager_service::TxId,
     transaction_service::{
         error::{TransactionServiceError, TransactionServiceProtocolError},
         handle::TransactionEvent,
@@ -48,6 +47,7 @@ use tari_core::transactions::{
     transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
 };
 use tokio::time::delay_for;
+use tari_core::transactions::transaction_protocol::TxId;
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::receive_protocol";
 const LOG_TARGET_STRESS: &str = "stress_test::receive_protocol";
@@ -61,7 +61,7 @@ pub enum TransactionReceiveProtocolStage {
 pub struct TransactionReceiveProtocol<TBackend>
 where TBackend: TransactionBackend + 'static
 {
-    id: u64,
+    id: TxId,
     source_pubkey: CommsPublicKey,
     sender_message: TransactionSenderMessage,
     stage: TransactionReceiveProtocolStage,
@@ -74,7 +74,7 @@ impl<TBackend> TransactionReceiveProtocol<TBackend>
 where TBackend: TransactionBackend + 'static
 {
     pub fn new(
-        id: u64,
+        id: TxId,
         source_pubkey: CommsPublicKey,
         sender_message: TransactionSenderMessage,
         stage: TransactionReceiveProtocolStage,
@@ -93,7 +93,7 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
-    pub async fn execute(mut self) -> Result<u64, TransactionServiceProtocolError> {
+    pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError> {
         info!(
             target: LOG_TARGET,
             "Starting Transaction Receive protocol for TxId: {} at Stage {:?}", self.id, self.stage

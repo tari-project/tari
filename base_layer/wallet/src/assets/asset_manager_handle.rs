@@ -8,6 +8,7 @@ use crate::{
 use tari_service_framework::{reply_channel::SenderService, Service};
 
 use tari_core::transactions::transaction::Transaction;
+use tari_core::transactions::transaction_protocol::TxId;
 
 #[derive(Clone)]
 pub struct AssetManagerHandle {
@@ -26,9 +27,10 @@ impl AssetManagerHandle {
         }
     }
 
-    pub async fn create_registration_transaction(&mut self, name: String) -> Result<Transaction, WalletError> {
+    pub async fn create_registration_transaction(&mut self, name: String) -> Result<(TxId, Transaction), WalletError> {
         match self.handle.call(AssetManagerRequest::CreateRegistrationTransaction{name}).await?? {
-            AssetManagerResponse::CreateRegistrationTransaction{transaction} => Ok(transaction),
+            AssetManagerResponse::CreateRegistrationTransaction{transaction, tx_id}
+            => Ok((tx_id, transaction)),
             _ => Err(WalletError::UnexpectedApiResponse{ method: "create_registration_transaction".to_string(), api: "AssetManagerService".to_string()}),
         }
     }

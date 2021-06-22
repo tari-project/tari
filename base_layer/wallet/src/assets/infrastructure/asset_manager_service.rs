@@ -71,7 +71,10 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
             AssetManagerRequest::ListOwned { .. } => Ok(AssetManagerResponse::ListOwned {
                 assets: self.manager.list_owned().await?,
             }),
-            AssetManagerRequest::CreateRegistrationTransaction {name} => Ok(AssetManagerResponse::CreateRegistrationTransaction {transaction: self.manager.create_registration_transaction(name).await?})
+            AssetManagerRequest::CreateRegistrationTransaction {name} => {
+                let (tx_id, transaction) =self.manager.create_registration_transaction(name).await?;
+                Ok(AssetManagerResponse::CreateRegistrationTransaction {transaction, tx_id})
+            }
         }
     }
 }

@@ -29,6 +29,8 @@ use tari_common_types::chain_metadata::ChainMetadata;
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
+use std::fmt;
+use std::fmt::Formatter;
 
 pub type BaseNodeEventSender = broadcast::Sender<Arc<BaseNodeEvent>>;
 pub type BaseNodeEventReceiver = broadcast::Receiver<Arc<BaseNodeEvent>>;
@@ -48,6 +50,15 @@ pub enum BaseNodeServiceResponse {
 pub enum BaseNodeEvent {
     BaseNodeStateChanged(BaseNodeState),
     BaseNodePeerSet(Box<Peer>),
+}
+
+impl fmt::Display  for BaseNodeEvent {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            BaseNodeEvent::BaseNodeStateChanged(state) => { write!(f, "BaseNodeStateChanged: Online: {:?}, Synced:{:?}", state.online, state.is_synced)}
+            BaseNodeEvent::BaseNodePeerSet(peer) => { write!(f, "BaseNodePeerSet:{}", peer)}
+        }
+    }
 }
 
 /// The Base Node Service Handle is a struct that contains the interfaces used to communicate with a running

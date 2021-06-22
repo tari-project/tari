@@ -6,6 +6,7 @@ use tari_core::transactions::transaction::{OutputFlags, Transaction, OutputFeatu
 use crate::output_manager_service::handle::OutputManagerHandle;
 use crate::transaction_service::handle::TransactionServiceHandle;
 use log::*;
+use tari_core::transactions::transaction_protocol::TxId;
 
 const LOG_TARGET: &str = "wallet::assets::asset_manager";
 
@@ -35,7 +36,7 @@ pub struct AssetManager<T:OutputManagerBackend + 'static>  {
          Ok(assets)
     }
 
-     pub async fn create_registration_transaction(&mut self, name: String) -> Result<Transaction, WalletError>{
+     pub async fn create_registration_transaction(&mut self, name: String) -> Result<(TxId, Transaction), WalletError>{
          let serializer = V1AssetMetadataSerializer{};
 
          let metadata = AssetMetadata {
@@ -45,8 +46,8 @@ pub struct AssetManager<T:OutputManagerBackend + 'static>  {
          metadata_bin.extend(serializer.serialize(&metadata).into_iter());
          let output = self.output_manager.create_output_with_features(0.into(), OutputFeatures::custom(OutputFlags::ASSET_REGISTRATION, metadata_bin)).await?;
          debug!(target: LOG_TARGET, "Created output: {:?}", output);
-         let transaction = self.output_manager.create_send_to_self_with_output(0.into(), vec![output], 100.into()).await?;
-        Ok(transaction)
+         let (tx_id, transaction) = self.output_manager.create_send_to_self_with_output(0.into(), vec![output], 100.into()).await?;
+        Ok((tx_id, transaction))
      }
 }
 
