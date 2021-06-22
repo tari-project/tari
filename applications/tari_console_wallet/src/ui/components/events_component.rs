@@ -25,4 +25,24 @@ impl<B:Backend> Component<B> for EventsComponent {
         let table = Table::new(rows)
             .header(Row::new(vec!["Type", "Desc"]).style(styles::header_row())).block(Block::default().title("Events").borders(Borders::ALL)).widths(&[Constraint::Length(20), Constraint::Length(120)]).highlight_style(styles::highlight()).highlight_symbol(">>");
         f.render_stateful_widget(table, area, &mut self.table_state)
-    }}
+    }
+
+    fn on_up(&mut self, _app_state: &mut AppState) {
+        let index =self.table_state.selected().unwrap_or_default();
+        if index ==  0 {
+            self.table_state.select(None);
+        } else {
+            self.table_state.select(Some(index - 1));
+        }
+    }
+
+    fn on_down(&mut self, app_state: &mut AppState) {
+        let index =self.table_state.selected().map(|s| s + 1).unwrap_or_default();
+        let events = app_state.get_all_events();
+        if index > events.len() - 1  {
+            self.table_state.select(None);
+        } else {
+            self.table_state.select(Some(index));
+        }
+    }
+}
