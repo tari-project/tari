@@ -154,6 +154,8 @@ bootstrap a large hash rate from day one, if there is not a complete buy-in from
 cheap for the remaining pools to attack Tari. As such Tari is opting for a hybrid mining approach where Tari will be merge mined with Monero and also support 
 a native PoW mechanism in the form of a SHA3 algorithm.
 
+The mining strategy is explained more thoroughly in [RFC-130](RFC-0130_Mining.md).
+
 ### Digital Assets Network
 
 A more detailed proposal for the DAN is presented in [RFC-0300/DAN](RFC-0300_DAN.md). Digital assets
