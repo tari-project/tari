@@ -16,6 +16,7 @@ tari_app_grpc = {  path = "../tari_app_grpc" }
 tari_shutdown = {  path = "../../infrastructure/shutdown" }
 tari_key_manager = { path = "../../base_layer/key_manager"  }
 
+bitflags = "1.2.1"
 chrono = { version = "0.4.6", features = ["serde"]}
 chrono-english = "0.1"
 futures = { version = "^0.3.1", default-features = false, features = ["alloc"]}

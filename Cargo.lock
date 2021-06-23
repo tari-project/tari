@@ -3999,6 +3999,7 @@ dependencies = [
 name = "tari_console_wallet"
 version = "0.8.11"
 dependencies = [
+ "bitflags 1.2.1",
  "chrono",
  "chrono-english",
  "crossterm",
