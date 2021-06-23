@@ -49,6 +49,7 @@ use std::{
 use tari_comms::{
     connectivity::ConnectivityRequester,
     peer_manager::NodeId,
+    protocol::rpc::RpcStatus,
     types::CommsPublicKey,
     NodeIdentity,
     PeerConnection,
@@ -73,14 +74,10 @@ use tokio::{sync::broadcast, time::delay_for};
 
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 
-pub const RECOVERY_HEIGHT_KEY: &str = "recovery/height-progress";
-const RECOVERY_NUM_UTXOS_KEY: &str = "recovery/num-utxos";
-const RECOVERY_UTXO_INDEX_KEY: &str = "recovery/utxos-index";
-const RECOVERY_TOTAL_AMOUNT_KEY: &str = "recovery/total-amount";
-const SCANNING_HASH_KEY: &str = "scanning/hash";
-const SCANNING_UTXO_INDEX_KEY: &str = "scanning/utxos-index";
-const SCANNING_TOTAL_AMOUNT_KEY: &str = "scanning/total-amount";
-const SCANNING_NUM_UTXOS_KEY: &str = "scanning/num-utxos";
+const TOTAL_AMOUNT_KEY: &str = "/total-amount";
+const NUM_UTXOS_KEY: &str = "/num-utxos";
+pub const UTXO_INDEX_KEY: &str = "/utxos-index";
+const HEIGHT_HASH_KEY: &str = "/height-hash";
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum UtxoScannerMode {
@@ -231,53 +228,26 @@ where TBackend: WalletBackend + 'static
         final_utxo_pos: u64,
         elapsed: Duration,
     ) -> Result<(), UtxoScannerError> {
-        match self.mode {
-            UtxoScannerMode::Recovery => {
-                let num_recovered = self
-                    .get_metadata(ScanningMetadataKey::RecoveryNumUtxos)
-                    .await?
-                    .unwrap_or(0);
-                let total_amount = self
-                    .resources
-                    .db
-                    .get_client_key_from_str(RECOVERY_TOTAL_AMOUNT_KEY.to_string())
-                    .await?
-                    .unwrap_or_else(|| 0.into());
-                let height = self
-                    .get_metadata(ScanningMetadataKey::RecoveryHeight)
-                    .await?
-                    .unwrap_or(0);
-                self.set_metadata(ScanningMetadataKey::RecoveryHeight, height).await?;
+        let num_recovered = self.get_metadata(ScanningMetadataKey::NumUtxos).await?.unwrap_or(0);
+        let total_amount = self
+            .get_metadata(ScanningMetadataKey::TotalAmount)
+            .await?
+            .unwrap_or_else(|| 0.into());
+        self.publish_event(UtxoScannerEvent::Progress {
+            current_block: final_utxo_pos,
+            current_chain_height: final_utxo_pos,
+        });
+        self.publish_event(UtxoScannerEvent::Completed {
+            number_scanned: total_scanned,
+            number_received: num_recovered,
+            value_received: total_amount,
+            time_taken: elapsed,
+        });
 
-                let _ = self
-                    .resources
-                    .db
-                    .clear_client_value(RECOVERY_HEIGHT_KEY.to_string())
-                    .await?;
-                let _ = self
-                    .resources
-                    .db
-                    .clear_client_value(RECOVERY_NUM_UTXOS_KEY.to_string())
-                    .await?;
-                let _ = self
-                    .resources
-                    .db
-                    .clear_client_value(RECOVERY_TOTAL_AMOUNT_KEY.to_string())
-                    .await?;
-                self.publish_event(UtxoScannerEvent::Progress {
-                    current_block: final_utxo_pos,
-                    current_chain_height: final_utxo_pos,
-                });
-                self.publish_event(UtxoScannerEvent::Completed {
-                    number_scanned: total_scanned,
-                    number_received: num_recovered,
-                    value_received: total_amount,
-                    time_taken: elapsed,
-                });
-            },
-            UtxoScannerMode::Scanning => {},
+        // Presence of scanning keys are used to determine if a wallet is busy with recovery or not.
+        if self.mode == UtxoScannerMode::Recovery {
+            self.clear_db().await?;
         }
-
         Ok(())
     }
 
@@ -329,7 +299,6 @@ where TBackend: WalletBackend + 'static
                 tip_header.height,
                 tip_header.hash().to_hex()
             );
-
             // start_index could be greater than output_mmr_size if we switch to a new peer that is behind the original
             // peer. In the common case, we wait for start index.
             if start_index >= output_mmr_size - 1 {
@@ -364,70 +333,37 @@ where TBackend: WalletBackend + 'static
     }
 
     async fn get_start_utxo_mmr_pos(&self, client: &mut BaseNodeSyncRpcClient) -> Result<u64, UtxoScannerError> {
-        match self.mode {
-            UtxoScannerMode::Recovery => {
-                let previous_sync_height = self
-                    .get_metadata::<u64>(ScanningMetadataKey::RecoveryHeight)
-                    .await
-                    .ok()
-                    .flatten();
-                let previous_utxo_index = self
-                    .get_metadata::<u64>(ScanningMetadataKey::RecoveryUtxoIndex)
-                    .await
-                    .ok()
-                    .flatten();
+        let previous_scan_hash = self
+            .get_metadata::<String>(ScanningMetadataKey::HeightHash)
+            .await
+            .ok()
+            .flatten();
+        let previous_utxo_index = self
+            .get_metadata::<u64>(ScanningMetadataKey::UtxoIndex)
+            .await
+            .ok()
+            .flatten();
 
-                if previous_sync_height.is_none() || previous_utxo_index.is_none() {
-                    // Set a value in here so that if the recovery fails on the genesis block the client will know a
-                    // recover was started. Important on Console wallet that otherwise makes this decision based on the
-                    // presence of the data file
-                    self.set_metadata(ScanningMetadataKey::RecoveryHeight, 0u64).await?;
-                    self.set_metadata(ScanningMetadataKey::RecoveryUtxoIndex, 0u64).await?;
-                }
-
-                Ok(previous_utxo_index.unwrap_or(0u64))
-            },
-            UtxoScannerMode::Scanning => {
-                let previous_scan_hash = self
-                    .get_metadata::<String>(ScanningMetadataKey::ScanningHash)
-                    .await
-                    .ok()
-                    .flatten();
-                let previous_utxo_index = self
-                    .get_metadata::<u64>(ScanningMetadataKey::ScanningUtxoIndex)
-                    .await
-                    .ok()
-                    .flatten();
-
-                if previous_utxo_index.is_none() || previous_scan_hash.is_none() {
-                    // Set a value in here so that if the recovery fails on the genesis block the client will know a
-                    // recover was started. Important on Console wallet that otherwise makes this decision based on the
-                    // presence of the data file
-                    self.set_metadata(ScanningMetadataKey::ScanningUtxoIndex, 0u64).await?;
-                    let _ = self
-                        .resources
-                        .db
-                        .clear_client_value(SCANNING_HASH_KEY.to_string())
-                        .await?;
-                    return Ok(0);
-                }
-                // if it's none, we return 0 above.
-                let hash: Vec<u8> = from_hex(&previous_scan_hash.unwrap())?;
-                let request = FindChainSplitRequest {
-                    block_hashes: vec![hash],
-                    header_count: 1,
-                };
-                let resp = client.find_chain_split(request).await?;
-                if resp.fork_hash_index != 0 {
-                    // we had a fork, lets calc a new sync height
-                    return Ok(resp.headers[0]
-                        .output_mmr_size
-                        .saturating_sub(previous_utxo_index.unwrap()));
-                }
-
-                // If its none, we return 0 above
-                Ok(previous_utxo_index.unwrap())
-            },
+        if previous_utxo_index.is_none() || previous_scan_hash.is_none() {
+            // Set a value in here so that if the recovery fails on the genesis block the client will know a
+            // recover was started. Important on Console wallet that otherwise makes this decision based on the
+            // presence of the data file
+            self.set_metadata(ScanningMetadataKey::UtxoIndex, 0u64).await?;
+            return Ok(0);
+        }
+        // if it's none, we return 0 above.
+        let hash: Vec<u8> = from_hex(&previous_scan_hash.unwrap())?;
+        let request = FindChainSplitRequest {
+            block_hashes: vec![hash],
+            header_count: 1,
+        };
+        // this returns the index of the vec of hashes we sent it, that is the last hash it knows of.
+        if client.find_chain_split(request).await.is_ok() {
+            Ok(previous_utxo_index.unwrap())
+        } else {
+            // The node does not know of the last hash we scanned, thus we had a chain split.
+            // We now start at 0 again.
+            Ok(0)
         }
     }
 
@@ -447,7 +383,6 @@ where TBackend: WalletBackend + 'static
 
         let end_header_hash = end_header.hash();
         let end_header_size = end_header.output_mmr_size;
-
         let mut num_recovered = 0u64;
         let mut total_amount = MicroTari::from(0);
         let mut total_scanned = 0;
@@ -458,7 +393,7 @@ where TBackend: WalletBackend + 'static
         });
         let request = SyncUtxosRequest {
             start: start_mmr_leaf_index,
-            end_header_hash,
+            end_header_hash: end_header_hash.clone(),
             include_pruned_utxos: false,
             include_deleted_bitmaps: false,
         };
@@ -474,191 +409,143 @@ where TBackend: WalletBackend + 'static
                 // if running is set to false, we know its been canceled upstream so lets exit the loop
                 return Ok(total_scanned as u64);
             }
-            let response: Vec<proto::base_node::SyncUtxosResponse> = response
-                .into_iter()
-                .map(|v| v.map_err(|e| UtxoScannerError::RpcStatus(e.to_string())))
-                .collect::<Result<Vec<_>, _>>()?;
-
-            let current_utxo_index = response
-                // Assumes correct ordering which is otherwise not required for this protocol
-                .last()
-                .ok_or_else(|| {
-                    UtxoScannerError::BaseNodeResponseError("Invalid response from base node: response was empty".to_string())
-                })?
-                .mmr_index;
-            if current_utxo_index < last_utxo_index {
-                return Err(UtxoScannerError::BaseNodeResponseError(
-                    "Invalid response from base node: mmr index must be non-decreasing".to_string(),
-                ));
-            }
-            last_utxo_index = current_utxo_index;
-
-            let outputs = response
-                .into_iter()
-                .filter_map(|utxo| {
-                    utxo.into_utxo()
-                        .and_then(|o| o.utxo)
-                        .and_then(|utxo| utxo.into_transaction_output())
-                        .map(|output| {
-                            TransactionOutput::try_from(output).map_err(|_| UtxoScannerError::ConversionError)
-                        })
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-
+            let (outputs, utxo_index) = convert_response_to_unblinded_outputs(response, last_utxo_index)?;
+            last_utxo_index = utxo_index;
             total_scanned += outputs.len();
+            iteration_count += 1;
+            let found_outputs = self.scan_for_outputs(outputs).await?;
+
             // Reduce the number of db hits by only persisting progress every N iterations
             const COMMIT_EVERY_N: u64 = 100;
-            if iteration_count % COMMIT_EVERY_N == 0 || current_utxo_index >= end_header_size - 1 {
+            if iteration_count % COMMIT_EVERY_N == 0 || last_utxo_index >= end_header_size - 1 {
                 self.publish_event(UtxoScannerEvent::Progress {
-                    current_block: current_utxo_index,
+                    current_block: last_utxo_index,
                     current_chain_height: (end_header_size - 1),
                 });
-                match self.mode {
-                    UtxoScannerMode::Recovery => {
-                        self.set_metadata(ScanningMetadataKey::RecoveryUtxoIndex, current_utxo_index)
-                            .await?
-                    },
-                    UtxoScannerMode::Scanning => {
-                        self.set_metadata(ScanningMetadataKey::ScanningUtxoIndex, current_utxo_index)
-                            .await?
-                    },
-                };
+                self.update_scanning_progress_in_db(
+                    last_utxo_index,
+                    total_amount,
+                    num_recovered,
+                    end_header_hash.clone(),
+                )
+                .await?;
             }
-            // ToDo fix this,m this should come from the syncing node.
-            let height = 0;
-            iteration_count += 1;
-            let (standard_outputs, one_sided_outputs) = match self.mode {
-                UtxoScannerMode::Recovery => {
-                    let standard_outputs = self
-                        .resources
-                        .output_manager_service
-                        .scan_for_recoverable_outputs(outputs.clone(), height)
-                        .await?;
-                    let one_sided_outputs = self
-                        .resources
-                        .output_manager_service
-                        .scan_outputs_for_one_sided_payments(outputs.clone(), height)
-                        .await?;
-
-                    (standard_outputs, one_sided_outputs)
-                },
-                UtxoScannerMode::Scanning => (
-                    vec![],
-                    self.resources
-                        .output_manager_service
-                        .scan_outputs_for_one_sided_payments(outputs.clone(), height)
-                        .await?,
-                ),
-            };
-            if standard_outputs.is_empty() && one_sided_outputs.is_empty() {
-                continue;
-            }
-
-            let source_public_key = self.resources.node_identity.public_key().clone();
-
-            for uo in standard_outputs {
-                match self
-                    .import_unblinded_utxo_to_transaction_service(
-                        uo.clone(),
-                        &source_public_key,
-                        format!("Recovered on {}.", Utc::now().naive_utc()),
-                    )
-                    .await
-                {
-                    Ok(_) => {
-                        num_recovered = num_recovered.saturating_add(1);
-                        total_amount += uo.value;
-                    },
-                    Err(e) => return Err(UtxoScannerError::UtxoImportError(e.to_string())),
-                }
-            }
-
-            for uo in one_sided_outputs {
-                match self
-                    .import_unblinded_utxo_to_transaction_service(
-                        uo.clone(),
-                        &source_public_key,
-                        format!("Detected one-sided transaction on {}.", Utc::now().naive_utc()),
-                    )
-                    .await
-                {
-                    Ok(_) => {
-                        num_recovered = num_recovered.saturating_add(1);
-                        total_amount += uo.value;
-                    },
-                    Err(e) => return Err(UtxoScannerError::UtxoImportError(e.to_string())),
-                }
-            }
+            let (count, amount) = self.import_utxos_to_transaction_service(found_outputs).await?;
+            num_recovered = num_recovered.saturating_add(count);
+            total_amount += amount;
         }
-
-        match self.mode {
-            UtxoScannerMode::Recovery => {
-                self.set_metadata(ScanningMetadataKey::RecoveryHeight, end_header.height)
-                    .await?;
-
-                let current_num_utxos = self
-                    .get_metadata(ScanningMetadataKey::RecoveryNumUtxos)
-                    .await?
-                    .unwrap_or(0u64);
-                self.set_metadata(
-                    ScanningMetadataKey::RecoveryNumUtxos,
-                    (current_num_utxos + num_recovered).to_string(),
-                )
-                .await?;
-
-                let current_total_amount = self
-                    .get_metadata::<MicroTari>(ScanningMetadataKey::RecoveryTotalAmount)
-                    .await?
-                    .unwrap_or_else(|| 0.into());
-
-                self.set_metadata(ScanningMetadataKey::RecoveryUtxoIndex, last_utxo_index)
-                    .await?;
-                self.set_metadata(
-                    ScanningMetadataKey::RecoveryTotalAmount,
-                    (current_total_amount + total_amount).as_u64().to_string(),
-                )
-                .await?;
-
-                self.publish_event(UtxoScannerEvent::Progress {
-                    current_block: (end_header_size - 1),
-                    current_chain_height: (end_header_size - 1),
-                });
-            },
-            UtxoScannerMode::Scanning => {
-                self.set_metadata(ScanningMetadataKey::ScanningHash, end_header.hash().to_hex())
-                    .await?;
-                let current_num_utxos = self
-                    .get_metadata(ScanningMetadataKey::ScanningNumUtxos)
-                    .await?
-                    .unwrap_or(0u64);
-                self.set_metadata(
-                    ScanningMetadataKey::ScanningNumUtxos,
-                    (current_num_utxos + num_recovered).to_string(),
-                )
-                .await?;
-
-                let current_total_amount = self
-                    .get_metadata::<MicroTari>(ScanningMetadataKey::ScanningTotalAmount)
-                    .await?
-                    .unwrap_or_else(|| 0.into());
-
-                self.set_metadata(ScanningMetadataKey::ScanningUtxoIndex, last_utxo_index)
-                    .await?;
-                self.set_metadata(
-                    ScanningMetadataKey::ScanningTotalAmount,
-                    (current_total_amount + total_amount).as_u64().to_string(),
-                )
-                .await?;
-            },
-        };
-
+        self.update_scanning_progress_in_db(last_utxo_index, total_amount, num_recovered, end_header_hash)
+            .await?;
+        self.publish_event(UtxoScannerEvent::Progress {
+            current_block: (end_header_size - 1),
+            current_chain_height: (end_header_size - 1),
+        });
         Ok(total_scanned as u64)
     }
 
+    async fn update_scanning_progress_in_db(
+        &self,
+        last_utxo_index: u64,
+        total_amount: MicroTari,
+        num_recovered: u64,
+        end_header_hash: Vec<u8>,
+    ) -> Result<(), UtxoScannerError> {
+        self.set_metadata(ScanningMetadataKey::HeightHash, end_header_hash.to_hex())
+            .await?;
+        let current_num_utxos = self.get_metadata(ScanningMetadataKey::NumUtxos).await?.unwrap_or(0u64);
+        self.set_metadata(
+            ScanningMetadataKey::NumUtxos,
+            (current_num_utxos + num_recovered).to_string(),
+        )
+        .await?;
+
+        let current_total_amount = self
+            .get_metadata::<MicroTari>(ScanningMetadataKey::TotalAmount)
+            .await?
+            .unwrap_or_else(|| 0.into());
+
+        self.set_metadata(ScanningMetadataKey::UtxoIndex, last_utxo_index)
+            .await?;
+        self.set_metadata(
+            ScanningMetadataKey::TotalAmount,
+            (current_total_amount + total_amount).as_u64().to_string(),
+        )
+        .await?;
+        Ok(())
+    }
+
+    async fn scan_for_outputs(
+        &mut self,
+        outputs: Vec<TransactionOutput>,
+    ) -> Result<Vec<(UnblindedOutput, String)>, UtxoScannerError> {
+        let mut found_outputs: Vec<(UnblindedOutput, String)> = Vec::new();
+        let height = 0;
+        if self.mode == UtxoScannerMode::Recovery {
+            found_outputs.append(
+                &mut self
+                    .resources
+                    .output_manager_service
+                    .scan_for_recoverable_outputs(outputs.clone(), height)
+                    .await?
+                    .into_iter()
+                    .map(|v| (v, format!("Recovered on {}.", Utc::now().naive_utc())))
+                    .collect(),
+            );
+        };
+        found_outputs.append(
+            &mut self
+                .resources
+                .output_manager_service
+                .scan_outputs_for_one_sided_payments(outputs.clone(), height)
+                .await?
+                .into_iter()
+                .map(|v| {
+                    (
+                        v,
+                        format!("Detected one-sided transaction on {}.", Utc::now().naive_utc()),
+                    )
+                })
+                .collect(),
+        );
+        Ok(found_outputs)
+    }
+
+    async fn import_utxos_to_transaction_service(
+        &mut self,
+        utxos: Vec<(UnblindedOutput, String)>,
+    ) -> Result<(u64, MicroTari), UtxoScannerError> {
+        let mut num_recovered = 0u64;
+        let mut total_amount = MicroTari::from(0);
+        let source_public_key = self.resources.node_identity.public_key().clone();
+
+        for uo in utxos {
+            match self
+                .import_unblinded_utxo_to_transaction_service(uo.0.clone(), &source_public_key, uo.1)
+                .await
+            {
+                Ok(_) => {
+                    num_recovered = num_recovered.saturating_add(1);
+                    total_amount += uo.0.value;
+                },
+                Err(e) => return Err(UtxoScannerError::UtxoImportError(e.to_string())),
+            }
+        }
+        Ok((num_recovered, total_amount))
+    }
+
+    fn get_db_mode_key(&self) -> String {
+        match self.mode {
+            UtxoScannerMode::Recovery => "recovery".to_owned(),
+            UtxoScannerMode::Scanning => "scanning".to_owned(),
+        }
+    }
+
     async fn set_metadata<T: ToString>(&self, key: ScanningMetadataKey, value: T) -> Result<(), UtxoScannerError> {
+        let mut total_key = self.get_db_mode_key();
+        total_key.push_str(key.as_key_str());
         self.resources
             .db
-            .set_client_key_value(key.as_key_str().to_string(), value.to_string())
+            .set_client_key_value(total_key, value.to_string())
             .await?;
         Ok(())
     }
@@ -668,12 +555,35 @@ where TBackend: WalletBackend + 'static
         T: FromStr,
         T::Err: ToString,
     {
-        let value = self
+        let mut total_key = self.get_db_mode_key();
+        total_key.push_str(key.as_key_str());
+        let value = self.resources.db.get_client_key_from_str(total_key).await?;
+        Ok(value)
+    }
+
+    async fn clear_db(&self) -> Result<(), UtxoScannerError> {
+        let total_key = self.get_db_mode_key();
+        let _ = self
             .resources
             .db
-            .get_client_key_from_str(key.as_key_str().to_string())
+            .clear_client_value(total_key.clone() + ScanningMetadataKey::HeightHash.as_key_str())
             .await?;
-        Ok(value)
+        let _ = self
+            .resources
+            .db
+            .clear_client_value(total_key.clone() + ScanningMetadataKey::NumUtxos.as_key_str())
+            .await?;
+        let _ = self
+            .resources
+            .db
+            .clear_client_value(total_key.clone() + ScanningMetadataKey::TotalAmount.as_key_str())
+            .await?;
+        let _ = self
+            .resources
+            .db
+            .clear_client_value(total_key + ScanningMetadataKey::UtxoIndex.as_key_str())
+            .await?;
+        Ok(())
     }
 
     fn publish_event(&self, event: UtxoScannerEvent) {
@@ -895,30 +805,56 @@ where TBackend: WalletBackend + 'static
     }
 }
 
+fn convert_response_to_unblinded_outputs(
+    response: Vec<Result<proto::base_node::SyncUtxosResponse, RpcStatus>>,
+    last_utxo_index: u64,
+) -> Result<(Vec<TransactionOutput>, u64), UtxoScannerError> {
+    let response: Vec<proto::base_node::SyncUtxosResponse> = response
+        .into_iter()
+        .map(|v| v.map_err(|e| UtxoScannerError::RpcStatus(e.to_string())))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let current_utxo_index = response
+    // Assumes correct ordering which is otherwise not required for this protocol
+    .last()
+    .ok_or_else(|| {
+        UtxoScannerError::BaseNodeResponseError("Invalid response from base node: response was empty".to_string())
+    })?
+    .mmr_index;
+    if current_utxo_index < last_utxo_index {
+        return Err(UtxoScannerError::BaseNodeResponseError(
+            "Invalid response from base node: mmr index must be non-decreasing".to_string(),
+        ));
+    }
+
+    let outputs = response
+        .into_iter()
+        .filter_map(|utxo| {
+            utxo.into_utxo()
+                .and_then(|o| o.utxo)
+                .and_then(|utxo| utxo.into_transaction_output())
+                .map(|output| TransactionOutput::try_from(output).map_err(|_| UtxoScannerError::ConversionError))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok((outputs, current_utxo_index))
+}
+
 #[derive(Debug, Clone)]
 enum ScanningMetadataKey {
-    RecoveryTotalAmount,
-    RecoveryNumUtxos,
-    RecoveryUtxoIndex,
-    RecoveryHeight,
-    ScanningHash,
-    ScanningUtxoIndex,
-    ScanningNumUtxos,
-    ScanningTotalAmount,
+    TotalAmount,
+    NumUtxos,
+    UtxoIndex,
+    HeightHash,
 }
 
 impl ScanningMetadataKey {
     pub fn as_key_str(&self) -> &'static str {
         use ScanningMetadataKey::*;
         match self {
-            RecoveryTotalAmount => RECOVERY_TOTAL_AMOUNT_KEY,
-            RecoveryNumUtxos => RECOVERY_NUM_UTXOS_KEY,
-            RecoveryUtxoIndex => RECOVERY_UTXO_INDEX_KEY,
-            RecoveryHeight => RECOVERY_HEIGHT_KEY,
-            ScanningHash => SCANNING_HASH_KEY,
-            ScanningUtxoIndex => SCANNING_UTXO_INDEX_KEY,
-            ScanningNumUtxos => SCANNING_NUM_UTXOS_KEY,
-            ScanningTotalAmount => SCANNING_TOTAL_AMOUNT_KEY,
+            TotalAmount => TOTAL_AMOUNT_KEY,
+            NumUtxos => NUM_UTXOS_KEY,
+            UtxoIndex => UTXO_INDEX_KEY,
+            HeightHash => HEIGHT_HASH_KEY,
         }
     }
 }
