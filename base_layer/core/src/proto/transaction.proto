@@ -73,6 +73,12 @@ message OutputFeatures {
     uint64 maturity = 2;
 
     bytes metadata = 3;
+
+    AssetOutputFeatures asset = 16;
+}
+
+message AssetOutputFeatures {
+    bytes public_key = 1;
 }
 
 // The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,

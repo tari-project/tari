@@ -356,12 +356,12 @@ where TBackend: OutputManagerBackend + 'static
             OutputManagerRequest::CreateOutputWithFeatures { value, features } => {
                 let unblinded_output = self.create_output_with_features(value, features).await?;
                 Ok(OutputManagerResponse::CreateOutputWithFeatures {
-                    output: unblinded_output,
+                    output: Box::new(unblinded_output),
                 })
             },
             OutputManagerRequest::CreatePayToSelfWithOutputs { amount: _, outputs, fee_per_gram } => {
                 let (tx_id, transaction) = self.create_pay_to_self_containing_outputs(outputs, fee_per_gram).await?;
-                Ok(OutputManagerResponse::CreatePayToSelfWithOutputs {transaction, tx_id})
+                Ok(OutputManagerResponse::CreatePayToSelfWithOutputs {transaction: Box::new(transaction), tx_id})
             }
         }
     }
@@ -803,7 +803,7 @@ where TBackend: OutputManagerBackend + 'static
             )?)
         }
 
-        // let mut change_keys = None;
+        let mut change_keys = None;
 
         let fee = Fee::calculate(fee_per_gram, 1, inputs.len(), 1);
         let change_value = total.saturating_sub(fee);
@@ -813,7 +813,7 @@ where TBackend: OutputManagerBackend + 'static
                 .master_key_manager
                 .get_next_spend_and_script_key()
                 .await?;
-            // change_keys = Some((spending_key.clone(), script_private_key.clone()));
+            change_keys = Some((spending_key.clone(), script_private_key.clone()));
             builder.with_change_secret(spending_key);
             builder.with_rewindable_outputs(self.resources.master_key_manager.rewind_data().clone());
             builder.with_change_script(
@@ -826,7 +826,29 @@ where TBackend: OutputManagerBackend + 'static
         let mut stp = builder
             .build::<HashDigest>(&self.resources.factories)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
+        if let Some((spending_key, script_private_key)) = change_keys {
+            let change_script_offset_public_key = stp.get_change_script_offset_public_key()?.ok_or_else(|| {
+                OutputManagerError::BuildError(
+                    "There should be a change script offset public key available".to_string(),
+                )
+            })?;
+            let change_output = DbUnblindedOutput::from_unblinded_output(
+                UnblindedOutput::new(
+                    stp.get_change_amount()?,
+                    spending_key,
+                    None,
+                    script!(Nop),
+                    inputs!(PublicKey::from_secret_key(&script_private_key)),
+                    0,
+                    script_private_key,
+                    change_script_offset_public_key,
+                    None,
+                ),
+                &self.resources.factories,
+            )?;
 
+            db_outputs.push(change_output);
+        }
         let tx_id = stp.get_tx_id()?;
 
         self.resources.db.encumber_outputs(tx_id, inputs, db_outputs).await?;

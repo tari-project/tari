@@ -90,6 +90,11 @@ impl KernelFeatures {
     }
 }
 
+#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
+pub struct AssetOutputFeatures {
+    pub public_key: PublicKey
+}
+
 /// Options for UTXO's
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
 pub struct OutputFeatures {
@@ -98,7 +103,8 @@ pub struct OutputFeatures {
     /// the maturity of the specific UTXO. This is the min lock height at which an UTXO can be spend. Coinbase UTXO
     /// require a min maturity of the Coinbase_lock_height, this should be checked on receiving new blocks.
     pub maturity: u64,
-    pub metadata: Vec<u8>
+    pub metadata: Vec<u8>,
+    pub asset: Option<AssetOutputFeatures>
 }
 
 impl OutputFeatures {
@@ -112,7 +118,9 @@ impl OutputFeatures {
         OutputFeatures {
             flags: OutputFlags::COINBASE_OUTPUT,
             maturity: maturity_height,
-            metadata: vec![]
+            metadata: vec![],
+            asset: None
+
         }
     }
 
@@ -120,15 +128,26 @@ impl OutputFeatures {
     pub fn with_maturity(maturity: u64) -> OutputFeatures {
         OutputFeatures {
             maturity,
-            ..OutputFeatures::default()
+            ..Default::default()
         }
     }
 
     pub fn custom(flags: OutputFlags, metadata: Vec<u8>) -> OutputFeatures {
         Self {
             flags,
+            metadata,
+            ..Default::default()
+        }
+    }
+
+    pub fn for_asset_registration(metadata: Vec<u8>, public_key: PublicKey) -> OutputFeatures {
+        Self{
+            flags: OutputFlags::ASSET_REGISTRATION,
             maturity: 0,
-            metadata
+            metadata,
+            asset: Some(AssetOutputFeatures{
+                public_key
+            })
         }
     }
 }
@@ -138,7 +157,9 @@ impl Default for OutputFeatures {
         OutputFeatures {
             flags: OutputFlags::empty(),
             maturity: 0,
-            metadata: vec![]
+            metadata: vec![],
+            asset: None
+
         }
     }
 }

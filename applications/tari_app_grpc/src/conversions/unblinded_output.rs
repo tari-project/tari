@@ -40,7 +40,8 @@ impl From<UnblindedOutput> for grpc::UnblindedOutput {
             features: Some(grpc::OutputFeatures {
                 flags: output.features.flags.bits() as u32,
                 maturity: output.features.maturity,
-                metadata: output.features.metadata
+                metadata: output.features.metadata,
+                asset: output.features.asset.map(|a| a.into())
             }),
             script: output.script.as_bytes(),
             input_data: output.input_data.as_bytes(),

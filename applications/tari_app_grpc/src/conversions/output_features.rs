@@ -22,7 +22,10 @@
 
 use crate::tari_rpc as grpc;
 use std::convert::TryFrom;
-use tari_core::transactions::transaction::{OutputFeatures, OutputFlags};
+use tari_core::transactions::transaction::{OutputFeatures, OutputFlags, AssetOutputFeatures};
+use tari_core::transactions::types::PublicKey;
+use tari_crypto::tari_utilities::ByteArray;
+use std::convert::TryInto;
 
 impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
     type Error = String;
@@ -32,7 +35,33 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             flags: OutputFlags::from_bits(features.flags as u8)
                 .ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
             maturity: features.maturity,
-            metadata: features.metadata
+            metadata: features.metadata,
+            asset: match features.asset {
+                Some(a) => Some(a.try_into()?),
+                None => None
+            }
         })
     }
 }
+
+impl TryFrom<grpc::AssetOutputFeatures> for AssetOutputFeatures {
+    type Error = String;
+
+    fn try_from(features: grpc::AssetOutputFeatures) -> Result<Self, Self::Error> {
+        let public_key = PublicKey::from_bytes(features.public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+
+        Ok(Self {
+            public_key
+        })
+    }
+}
+
+impl From<AssetOutputFeatures> for grpc::AssetOutputFeatures {
+    fn from(features: AssetOutputFeatures) -> Self {
+        Self{
+            public_key: features.public_key.as_bytes().to_vec()
+        }
+    }
+}
+
+

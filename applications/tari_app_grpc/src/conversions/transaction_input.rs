@@ -73,7 +73,8 @@ impl From<TransactionInput> for grpc::TransactionInput {
             features: Some(grpc::OutputFeatures {
                 flags: input.features.flags.bits() as u32,
                 maturity: input.features.maturity,
-                metadata: input.features.metadata
+                metadata: input.features.metadata,
+                asset: input.features.asset.map(|a| a.into())
             }),
             commitment: Vec::from(input.commitment.as_bytes()),
             hash,

@@ -4,20 +4,22 @@ use crate::output_manager_service::storage::database::{OutputManagerDatabase, Ou
 use tari_core::transactions::transaction::{OutputFlags, Transaction, OutputFeatures};
 
 use crate::output_manager_service::handle::OutputManagerHandle;
-use crate::transaction_service::handle::TransactionServiceHandle;
 use log::*;
 use tari_core::transactions::transaction_protocol::TxId;
+use tari_core::transactions::types::{PublicKey};
+use crate::types::PersistentKeyManager;
 
 const LOG_TARGET: &str = "wallet::assets::asset_manager";
 
-pub struct AssetManager<T:OutputManagerBackend + 'static>  {
+pub(crate) struct AssetManager<T:OutputManagerBackend + 'static, TPersistentKeyManager: PersistentKeyManager>  {
      output_database : OutputManagerDatabase<T>,
      output_manager: OutputManagerHandle,
+    assets_key_manager: TPersistentKeyManager
     // transaction_service: TransactionServiceHandle
  }
- impl<T:OutputManagerBackend + 'static> AssetManager<T> {
-     pub fn new(backend: T, output_manager: OutputManagerHandle, _transaction_service: TransactionServiceHandle) -> Self {
-         Self{ output_database: OutputManagerDatabase::new(backend), output_manager}
+ impl<T:OutputManagerBackend + 'static, TPersistentKeyManager: PersistentKeyManager> AssetManager<T, TPersistentKeyManager> {
+     pub fn new(backend: T, output_manager: OutputManagerHandle, assets_key_manager: TPersistentKeyManager) -> Self {
+         Self{ output_database: OutputManagerDatabase::new(backend), output_manager, assets_key_manager}
      }
 
      // TODO: Write test
@@ -40,6 +42,11 @@ pub struct AssetManager<T:OutputManagerBackend + 'static>  {
          Ok(assets)
     }
 
+     pub async fn get_owned_asset_by_pub_key(&self, _public_key: PublicKey) -> Result<Asset, WalletError> {
+
+         unimplemented!()
+     }
+
      pub async fn create_registration_transaction(&mut self, name: String) -> Result<(TxId, Transaction), WalletError>{
          let serializer = V1AssetMetadataSerializer{};
 
@@ -48,7 +55,9 @@ pub struct AssetManager<T:OutputManagerBackend + 'static>  {
          };
          let mut metadata_bin = vec![1u8];
          metadata_bin.extend(serializer.serialize(&metadata).into_iter());
-         let output = self.output_manager.create_output_with_features(0.into(), OutputFeatures::custom(OutputFlags::ASSET_REGISTRATION, metadata_bin)).await?;
+
+         let public_key = self.assets_key_manager.create_and_store_new()?;
+         let output = self.output_manager.create_output_with_features(0.into(), OutputFeatures::for_asset_registration(metadata_bin, public_key)).await?;
          debug!(target: LOG_TARGET, "Created output: {:?}", output);
          let (tx_id, transaction) = self.output_manager.create_send_to_self_with_output(0.into(), vec![output], 100.into()).await?;
         Ok((tx_id, transaction))

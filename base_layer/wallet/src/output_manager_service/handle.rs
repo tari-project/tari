@@ -150,8 +150,8 @@ pub enum OutputManagerResponse {
     ScanOutputs(Vec<UnblindedOutput>),
     MinedHeightUpdated,
     AddKnownOneSidedPaymentScript,
-    CreateOutputWithFeatures{ output: UnblindedOutput},
-    CreatePayToSelfWithOutputs { transaction: Transaction, tx_id: TxId }
+    CreateOutputWithFeatures{ output: Box<UnblindedOutput>},
+    CreatePayToSelfWithOutputs { transaction: Box<Transaction>, tx_id: TxId }
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -236,7 +236,7 @@ impl OutputManagerHandle {
 
     pub async fn create_output_with_features(&mut self, value: MicroTari, features: OutputFeatures) -> Result<UnblindedOutput, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::CreateOutputWithFeatures{ value, features}).await?? {
-            OutputManagerResponse::CreateOutputWithFeatures{ output} => Ok(output),
+            OutputManagerResponse::CreateOutputWithFeatures{ output} => Ok(*output),
             _ => Err(OutputManagerError::UnexpectedApiResponse)
         }
     }
@@ -543,7 +543,7 @@ impl OutputManagerHandle {
 
     pub async fn create_send_to_self_with_output(&mut self,  amount: MicroTari, outputs: Vec<UnblindedOutput>, fee_per_gram: MicroTari) -> Result<(TxId, Transaction), OutputManagerError >{
         match self.handle.call(OutputManagerRequest::CreatePayToSelfWithOutputs {amount,outputs, fee_per_gram }).await?? {
-            OutputManagerResponse::CreatePayToSelfWithOutputs {transaction, tx_id} => Ok((tx_id, transaction)),
+            OutputManagerResponse::CreatePayToSelfWithOutputs {transaction, tx_id} => Ok((tx_id, *transaction)),
             _ => Err(OutputManagerError::UnexpectedApiResponse)
         }
     }

@@ -69,7 +69,8 @@ impl From<TransactionOutput> for grpc::TransactionOutput {
             features: Some(grpc::OutputFeatures {
                 flags: output.features.flags.bits() as u32,
                 maturity: output.features.maturity,
-                metadata: output.features.metadata
+                metadata: output.features.metadata,
+                asset: output.features.asset.map(|a| a.into())
             }),
             commitment: Vec::from(output.commitment.as_bytes()),
             range_proof: Vec::from(output.proof.as_bytes()),

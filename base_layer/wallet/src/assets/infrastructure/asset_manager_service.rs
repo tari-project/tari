@@ -15,18 +15,18 @@ use futures::{pin_mut, StreamExt};
 use tari_shutdown::ShutdownSignal;
 use log::*;
 use crate::output_manager_service::handle::OutputManagerHandle;
-use crate::transaction_service::handle::TransactionServiceHandle;
+use crate::types::MockPersistentKeyManager;
 
 const LOG_TARGET: &str = "wallet::assets::infrastructure::asset_manager_service";
 
 pub struct AssetManagerService<T: OutputManagerBackend + 'static> {
-    manager: AssetManager<T>,
+    manager: AssetManager<T, MockPersistentKeyManager>,
 }
 
 impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
-    pub fn new(backend: T, output_manager: OutputManagerHandle, transaction_service: TransactionServiceHandle) -> Self {
+    pub fn new(backend: T, output_manager: OutputManagerHandle) -> Self {
         Self {
-            manager: AssetManager::<T>::new(backend, output_manager, transaction_service),
+            manager: AssetManager::<T,_>::new(backend, output_manager, MockPersistentKeyManager::new()),
         }
     }
 
@@ -74,6 +74,10 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
             AssetManagerRequest::CreateRegistrationTransaction {name} => {
                 let (tx_id, transaction) =self.manager.create_registration_transaction(name).await?;
                 Ok(AssetManagerResponse::CreateRegistrationTransaction {transaction, tx_id})
+            }
+            AssetManagerRequest::GetOwnedAsset { public_key } => {
+                let asset = self.manager.get_owned_asset_by_pub_key(public_key).await?;
+                Ok(AssetManagerResponse::GetOwnedAsset { asset})
             }
         }
     }

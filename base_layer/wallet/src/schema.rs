@@ -105,6 +105,7 @@ table! {
         script_offset_public_key -> Binary,
         unique_id -> Nullable<Binary>,
         metadata -> Nullable<Binary>,
+        features_asset_public_key -> Nullable<Binary>,
     }
 }
 

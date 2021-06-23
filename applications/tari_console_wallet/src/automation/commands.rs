@@ -82,7 +82,8 @@ pub enum WalletCommand {
     SetBaseNode,
     SetCustomBaseNode,
     ClearCustomBaseNode,
-    RegisterAsset
+    RegisterAsset,
+    MintTokens
 }
 
 #[derive(Debug, EnumString, PartialEq, Clone)]
@@ -606,7 +607,19 @@ pub async fn command_runner(
                 let mut manager = wallet.asset_manager.clone();
                 let (tx_id, transaction)  = manager.create_registration_transaction(name).await?;
                 let fee = transaction.body.get_total_fee();
-                let result = transaction_service.submit_transaction(tx_id, transaction, fee, 0.into(), "test o ramam".to_string()).await?;
+                let _result = transaction_service.submit_transaction(tx_id, transaction, fee, 0.into(), "test o ramam".to_string()).await?;
+            }
+            MintTokens => {
+                println!("Minting tokens for asset");
+                let public_key = match parsed.args[0] {
+                    ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
+                    _ => Err(CommandError::Argument),
+                }?;
+
+                let unique_ids :Vec<String>= parsed.args[1..].iter().map(|arg| arg.to_string()).collect();
+
+                let mut asset_manager = wallet.asset_manager.clone();
+                let asset = asset_manager.get_owned_asset_by_pub_key(public_key).await?;
             }
         }
     }

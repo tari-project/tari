@@ -17,7 +17,6 @@ use tari_service_framework::{
 };
 
 use crate::output_manager_service::handle::OutputManagerHandle;
-use crate::transaction_service::handle::TransactionServiceHandle;
 
 
 const LOG_TARGET: &str = "wallet::assets::infrastructure::initializer";
@@ -57,8 +56,8 @@ impl<T> ServiceInitializer for AssetManagerServiceInitializer<T>
         context.spawn_when_ready(move |handles| async move {
 
             let output_manager  = handles.expect_handle::<OutputManagerHandle>();
-            let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
-            let service = AssetManagerService::new(backend, output_manager, transaction_service);
+            // let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
+            let service = AssetManagerService::new(backend, output_manager);
 
             let running = service.start(handles.get_shutdown_signal(), receiver);
 
