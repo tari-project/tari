@@ -31,12 +31,14 @@ use tari_core::{
     },
 };
 use tari_crypto::script::{ExecutionStack, TariScript};
+use crate::output_manager_service::storage::OutputStatus;
 
 #[derive(Debug, Clone)]
 pub struct DbUnblindedOutput {
     pub commitment: Commitment,
     pub unblinded_output: UnblindedOutput,
     pub hash: HashOutput,
+    pub status: OutputStatus
 }
 
 impl DbUnblindedOutput {
@@ -49,6 +51,7 @@ impl DbUnblindedOutput {
             hash: tx_out.hash(),
             commitment: tx_out.commitment,
             unblinded_output: output,
+            status: OutputStatus::NotStored
         })
     }
 
@@ -62,6 +65,7 @@ impl DbUnblindedOutput {
             hash: tx_out.hash(),
             commitment: tx_out.commitment,
             unblinded_output: output,
+            status: OutputStatus::NotStored
         })
     }
 }

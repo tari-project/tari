@@ -24,13 +24,17 @@ pub struct AssetManager<T:OutputManagerBackend + 'static>  {
     pub async fn list_owned(&self) -> Result<Vec<Asset>, WalletError>{
         let outputs = self.output_database.fetch_with_features(OutputFlags::ASSET_REGISTRATION).await.map_err(|err| WalletError::OutputManagerError(err.into()))?;
 
+         debug!(target: LOG_TARGET, "Found {} owned outputs that contain assets", outputs.len());
          let assets = outputs.into_iter().map(|unblinded_output| {
+             if unblinded_output.unblinded_output.features.metadata.is_empty() {
+                 return Asset::new("<Invalid metadata:empty>".to_string(), unblinded_output.status.to_string());
+             }
              let version = unblinded_output.unblinded_output.features.metadata[0];
 
              let deserializer = get_deserializer(version);
 
              let metadata = deserializer.deserialize(&unblinded_output.unblinded_output.features.metadata[1..]);
-             Asset::new(metadata.name)
+             Asset::new(metadata.name, unblinded_output.status.to_string())
          }
          ).collect();
          Ok(assets)
@@ -66,6 +70,7 @@ pub struct V1AssetMetadataSerializer {
 
 }
 
+// TODO: Replace with proto serializer
 impl AssetMetadataDeserializer for V1AssetMetadataSerializer {
     fn deserialize(&self, metadata: &[u8]) -> AssetMetadata {
         AssetMetadata {

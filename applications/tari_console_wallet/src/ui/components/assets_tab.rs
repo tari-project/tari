@@ -45,9 +45,9 @@ impl<B:Backend> Component<B> for AssetsTab {
         let assets = app_state.get_owned_assets();
 
 
-        let rows :Vec<_>= assets.iter().map(|r| Row::new(vec![r.name(), "<pub key>"])).collect();
+        let rows :Vec<_>= assets.iter().map(|r| Row::new(vec![r.name(), r.registration_output_status(), "<pub key>"])).collect();
         let table = Table::new(rows)
-            .header(Row::new(vec!["Name", "Pub Key"]).style(styles::header_row())).block(Block::default().title("Assets").borders(Borders::ALL)).widths(&[Constraint::Length(10), Constraint::Length(20)]).highlight_style(styles::highlight()).highlight_symbol(">>");
+            .header(Row::new(vec!["Name", "Status" , "Pub Key"]).style(styles::header_row())).block(Block::default().title("Assets").borders(Borders::ALL)).widths(&[Constraint::Length(30), Constraint::Length(20), Constraint::Length(20)]).highlight_style(styles::highlight()).highlight_symbol(">>");
         f.render_stateful_widget(table, area, &mut self.table_state)
     }
 
@@ -63,7 +63,7 @@ impl<B:Backend> Component<B> for AssetsTab {
     fn on_down(&mut self, app_state: &mut AppState) {
         let index =self.table_state.selected().map(|s| s + 1).unwrap_or_default();
         let assets = app_state.get_owned_assets();
-        if index > assets.len() - 1  {
+        if index > assets.len().saturating_sub(1)  {
             self.table_state.select(None);
         } else {
             self.table_state.select(Some(index));

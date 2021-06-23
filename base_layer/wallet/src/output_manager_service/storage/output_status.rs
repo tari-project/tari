@@ -23,9 +23,11 @@ use core::convert::TryFrom;
 use core::result::Result;
 use core::result::Result::{Err, Ok};
 use crate::output_manager_service::error::OutputManagerStorageError;
+use std::fmt;
+use std::fmt::Formatter;
 
 /// The status of a given output
-#[derive(PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum OutputStatus {
     Unspent,
     Spent,
@@ -33,6 +35,7 @@ pub enum OutputStatus {
     EncumberedToBeSpent,
     Invalid,
     CancelledInbound,
+    NotStored
 }
 
 impl TryFrom<i32> for OutputStatus {
@@ -46,7 +49,22 @@ impl TryFrom<i32> for OutputStatus {
             3 => Ok(OutputStatus::EncumberedToBeSpent),
             4 => Ok(OutputStatus::Invalid),
             5 => Ok(OutputStatus::CancelledInbound),
+            6 => Ok(OutputStatus::NotStored),
             _ => Err(OutputManagerStorageError::ConversionError),
+        }
+    }
+}
+
+impl fmt::Display for OutputStatus {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            OutputStatus::Unspent => {write!(f, "Unspent")}
+            OutputStatus::Spent => {write!(f, "Spent")}
+            OutputStatus::EncumberedToBeReceived => {write!(f, "EncumberedToBeReceived")}
+            OutputStatus::EncumberedToBeSpent => {write!(f, "EncumberedToBeSpent")}
+            OutputStatus::Invalid => {write!(f, "Invalid")}
+            OutputStatus::CancelledInbound => {write!(f, "CancelledInbound")}
+            OutputStatus::NotStored => {write!(f, "NotStored")}
         }
     }
 }

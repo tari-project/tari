@@ -71,10 +71,8 @@ use crate::{
     storage::sqlite_utilities::WalletDbConnection,
     util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
 };
-
-
-mod output_status;
-pub use output_status::OutputStatus;
+use crate::output_manager_service::storage::OutputStatus;
+use std::convert::TryInto;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database::sqlite_db";
 
@@ -288,7 +286,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         for o in outputs.iter_mut() {
             self.decrypt_if_necessary(o)?;
         }
-
 
         outputs
             .iter()
@@ -884,6 +881,7 @@ struct NewOutputSql {
     height: i64,
     script_private_key: Vec<u8>,
     script_offset_public_key: Vec<u8>,
+    metadata: Option<Vec<u8>>
 }
 
 impl NewOutputSql {
@@ -902,6 +900,7 @@ impl NewOutputSql {
             height: output.unblinded_output.height as i64,
             script_private_key: output.unblinded_output.script_private_key.to_vec(),
             script_offset_public_key: output.unblinded_output.script_offset_public_key.to_vec(),
+            metadata: Some(output.unblinded_output.features.metadata)
         }
     }
 
@@ -971,7 +970,7 @@ impl OutputSql {
 
     pub fn index_by_feature_flags(
         flags: OutputFlags, conn : &SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
-        Ok(outputs::table.filter(outputs::status.eq(OutputStatus::Unspent as i32)).filter(outputs::flags.eq(flags.bits() as i32)).load(conn)?)
+        Ok(outputs::table.filter(outputs::flags.eq(flags.bits() as i32)).load(conn)?)
     }
 
     /// Find a particular Output, if it exists
@@ -1162,6 +1161,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             commitment,
             unblinded_output,
             hash,
+            status: o.status.try_into()?
         })
     }
 }
@@ -1196,6 +1196,7 @@ impl From<OutputSql> for NewOutputSql {
             height: o.height,
             script_private_key: o.script_private_key,
             script_offset_public_key: o.script_offset_public_key,
+            metadata: o.metadata
         }
     }
 }
