@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::support::utils::random_string;
 use std::path::PathBuf;
+use tari_wallet::storage::sqlite_utilities::{run_migration_and_create_sqlite_connection, WalletDbConnection};
+use tempfile::{tempdir, TempDir};
 
 pub fn get_path(name: Option<&str>) -> String {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -39,4 +42,14 @@ pub fn init_sql_database(name: &str) {
     clean_up_sql_database(name);
     let path = get_path(None);
     let _ = std::fs::create_dir(&path).unwrap_or_default();
+}
+
+pub fn get_temp_sqlite_database_connection() -> (WalletDbConnection, TempDir) {
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_tempdir = tempdir().unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_path = format!("{}/{}", db_folder, db_name);
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+
+    (connection, db_tempdir)
 }

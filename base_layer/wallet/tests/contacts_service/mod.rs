@@ -20,26 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::utils::random_string;
+use crate::support::{data::get_temp_sqlite_database_connection, utils::random_string};
 use rand::rngs::OsRng;
 use tari_core::transactions::types::PublicKey;
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_service_framework::StackBuilder;
 use tari_shutdown::Shutdown;
-use tari_wallet::{
-    contacts_service::{
-        error::{ContactsServiceError, ContactsServiceStorageError},
-        handle::ContactsServiceHandle,
-        storage::{
-            database::{Contact, ContactsBackend, ContactsDatabase, DbKey},
-            memory_db::ContactsServiceMemoryDatabase,
-            sqlite_db::ContactsServiceSqliteDatabase,
-        },
-        ContactsServiceInitializer,
+use tari_wallet::contacts_service::{
+    error::{ContactsServiceError, ContactsServiceStorageError},
+    handle::ContactsServiceHandle,
+    storage::{
+        database::{Contact, ContactsBackend, DbKey},
+        sqlite_db::ContactsServiceSqliteDatabase,
     },
-    storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
+    ContactsServiceInitializer,
 };
-use tempfile::tempdir;
 use tokio::runtime::Runtime;
 
 pub fn setup_contacts_service<T: ContactsBackend + 'static>(
@@ -59,55 +54,11 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
 }
 
 #[test]
-pub fn test_memory_database_crud() {
+pub fn test_contacts_service() {
     let mut runtime = Runtime::new().unwrap();
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = ContactsServiceSqliteDatabase::new(connection);
 
-    let db = ContactsDatabase::new(ContactsServiceMemoryDatabase::new());
-    let mut contacts = Vec::new();
-    for i in 0..5 {
-        let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
-
-        contacts.push(Contact {
-            alias: random_string(8),
-            public_key,
-        });
-
-        runtime.block_on(db.upsert_contact(contacts[i].clone())).unwrap();
-    }
-
-    let got_contacts = runtime.block_on(db.get_contacts()).unwrap();
-    assert_eq!(contacts, got_contacts);
-
-    let contact = runtime
-        .block_on(db.get_contact(contacts[0].public_key.clone()))
-        .unwrap();
-    assert_eq!(contact, contacts[0]);
-
-    let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
-
-    let contact = runtime.block_on(db.get_contact(public_key.clone()));
-    assert_eq!(
-        contact,
-        Err(ContactsServiceStorageError::ValueNotFound(DbKey::Contact(
-            public_key.clone()
-        )))
-    );
-    assert_eq!(
-        runtime.block_on(db.remove_contact(public_key.clone())),
-        Err(ContactsServiceStorageError::ValueNotFound(DbKey::Contact(public_key)))
-    );
-
-    let _ = runtime
-        .block_on(db.remove_contact(contacts[0].public_key.clone()))
-        .unwrap();
-    contacts.remove(0);
-    let got_contacts = runtime.block_on(db.get_contacts()).unwrap();
-
-    assert_eq!(contacts, got_contacts);
-}
-
-pub fn test_contacts_service<T: ContactsBackend + 'static>(backend: T) {
-    let mut runtime = Runtime::new().unwrap();
     let (mut contacts_service, _shutdown) = setup_contacts_service(&mut runtime, backend);
 
     let mut contacts = Vec::new();
@@ -167,19 +118,4 @@ pub fn test_contacts_service<T: ContactsBackend + 'static>(backend: T) {
         .unwrap();
 
     assert_eq!(new_contact.alias, updated_contact.alias);
-}
-
-#[test]
-fn contacts_service_memory_db() {
-    test_contacts_service(ContactsServiceMemoryDatabase::new());
-}
-
-#[test]
-fn contacts_service_sqlite_db() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let temp_dir = tempdir().unwrap();
-    let db_folder = temp_dir.path().to_str().unwrap().to_string();
-    let db_path = format!("{}/{}", db_folder, db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
-    test_contacts_service(ContactsServiceSqliteDatabase::new(connection));
 }

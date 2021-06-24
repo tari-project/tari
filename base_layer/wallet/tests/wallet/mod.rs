@@ -58,7 +58,7 @@ use tari_crypto::{
 use tari_p2p::{initialization::CommsConfig, transport::TransportType, DEFAULT_DNS_SEED_RESOLVER};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_wallet::{
-    contacts_service::storage::{database::Contact, memory_db::ContactsServiceMemoryDatabase},
+    contacts_service::storage::database::Contact,
     error::{WalletError, WalletStorageError},
     storage::{
         database::{DbKeyValuePair, WalletBackend, WalletDatabase, WriteOperation},
@@ -675,7 +675,7 @@ async fn test_import_utxo() {
     )
     .unwrap();
     let temp_dir = tempdir().unwrap();
-    let (wallet_backend, tx_backend, oms_backend, _temp_dir) = make_wallet_databases(None);
+    let (wallet_backend, tx_backend, oms_backend, contacts_backend, _temp_dir) = make_wallet_databases(None);
     let comms_config = CommsConfig {
         node_identity: Arc::new(alice_identity.clone()),
         transport_type: TransportType::Tcp {
@@ -712,7 +712,7 @@ async fn test_import_utxo() {
         WalletDatabase::new(wallet_backend),
         tx_backend,
         oms_backend,
-        ContactsServiceMemoryDatabase::new(),
+        contacts_backend,
         shutdown.to_signal(),
         None,
     )
@@ -808,7 +808,7 @@ async fn test_data_generation() {
         None,
     );
 
-    let (db, transaction_backend, oms_backend, _temp_dir) = make_wallet_databases(None);
+    let (db, transaction_backend, oms_backend, contacts_backend, _temp_dir) = make_wallet_databases(None);
 
     let metadata = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
 
@@ -820,7 +820,7 @@ async fn test_data_generation() {
         WalletDatabase::new(db),
         transaction_backend.clone(),
         oms_backend,
-        ContactsServiceMemoryDatabase::new(),
+        contacts_backend,
         shutdown.to_signal(),
         None,
     )
