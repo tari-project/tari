@@ -2,7 +2,7 @@ use crate::output_manager_service::storage::database::{DbKey, DbValue, WriteOper
 use crate::output_manager_service::error::OutputManagerStorageError;
 use crate::output_manager_service::storage::models::DbUnblindedOutput;
 use std::time::Duration;
-use tari_core::transactions::types::Commitment;
+use tari_core::transactions::types::{Commitment, PublicKey};
 use aes_gcm::Aes256Gcm;
 use tari_core::transactions::transaction::OutputFlags;
 use tari_core::transactions::transaction_protocol::TxId;
@@ -20,6 +20,8 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
 
     /// Fetch outputs with specific features
     fn fetch_with_features(&self, features: OutputFlags) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
+
+    fn fetch_by_features_asset_public_key(&self, public_key: PublicKey) -> Result<DbUnblindedOutput, OutputManagerStorageError>;
 
     /// Modify the state the of the backend with a write operation
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError>;

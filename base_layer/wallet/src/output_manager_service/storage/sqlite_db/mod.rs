@@ -273,7 +273,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 Err(e) => {
                     match e {
                         OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
-                        e => return Err(e),
+                        e => return Err(e)
                     };
                     None
                 },
@@ -294,6 +294,14 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .iter()
             .map(|o| DbUnblindedOutput::try_from(o.clone()))
             .collect::<Result<Vec<_>, _>>()
+    }
+
+    fn fetch_by_features_asset_public_key(&self, public_key: PublicKey) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
+        let conn = self.database_connection.acquire_lock();
+        let mut o :OutputSql = outputs::table.filter(columns::features_asset_public_key.eq(public_key.to_vec())).filter(outputs::status.eq(OutputStatus::Unspent as i32)).first(&*conn)?;
+            self.decrypt_if_necessary(&mut o)?;
+            Ok(o.try_into()?)
+
     }
 
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError> {

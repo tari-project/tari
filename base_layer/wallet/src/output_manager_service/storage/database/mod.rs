@@ -45,6 +45,7 @@ mod backend;
 pub use backend::OutputManagerBackend;
 use tari_core::transactions::transaction::OutputFlags;
 use tari_core::transactions::transaction_protocol::TxId;
+use tari_core::transactions::types::PublicKey;
 
 /// Holds the outputs that have been selected for a given pending transaction waiting for confirmation
 #[derive(Debug, Clone, PartialEq)]
@@ -481,6 +482,10 @@ impl<T> OutputManagerDatabase<T>
     pub async fn fetch_with_features(&self, feature: OutputFlags) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let db_clone =  self.db.clone();
         db_clone.fetch_with_features(feature)
+    }
+
+    pub fn fetch_by_features_asset_public_key(&self, public_key: PublicKey) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
+        self.db.fetch_by_features_asset_public_key(public_key)
     }
 
     pub async fn get_spent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
