@@ -577,7 +577,6 @@ pub async fn command_runner(
             },
             SetCustomBaseNode => {
                 let (public_key, net_address) = set_base_node_peer(wallet.clone(), &parsed.args).await?;
-                println!("Saving custom base node peer in wallet database.");
                 wallet
                     .db
                     .set_client_key_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string(), public_key.to_string())
@@ -586,9 +585,9 @@ pub async fn command_runner(
                     .db
                     .set_client_key_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string(), net_address.to_string())
                     .await?;
+                println!("Custom base node peer saved in wallet database.");
             },
             ClearCustomBaseNode => {
-                println!("Clearing custom base node peer in wallet database.");
                 wallet
                     .db
                     .clear_client_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string())
@@ -597,6 +596,7 @@ pub async fn command_runner(
                     .db
                     .clear_client_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string())
                     .await?;
+                println!("Custom base node peer cleared from wallet database.");
             },
         }
     }

@@ -49,8 +49,6 @@ use tui::{
 };
 
 pub const LOG_TARGET: &str = "wallet::ui::app";
-pub const CUSTOM_BASE_NODE_PUBLIC_KEY_KEY: &str = "console_wallet_custom_base_node_public_key";
-pub const CUSTOM_BASE_NODE_ADDRESS_KEY: &str = "console_wallet_custom_base_node_address";
 
 pub struct App<B: Backend> {
     pub title: String,

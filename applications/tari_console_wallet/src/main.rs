@@ -135,7 +135,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     let config = WalletModeConfig {
         base_node_config,
         base_node_selected,
-        daemon_mode: bootstrap.daemon_mode,
+        bootstrap,
         global_config,
         handle,
         notify_script,

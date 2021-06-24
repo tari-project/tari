@@ -7,6 +7,7 @@ use crate::{
     },
     utils::formatting::display_compressed_string,
 };
+use tari_core::transactions::tari_amount::MicroTari;
 use tari_wallet::types::DEFAULT_FEE_PER_GRAM;
 use tokio::{runtime::Handle, sync::watch};
 use tui::{
@@ -131,7 +132,7 @@ impl SendTab {
                 SendInputMode::Amount => Style::default().fg(Color::Magenta),
                 _ => Style::default(),
             })
-            .block(Block::default().borders(Borders::ALL).title("(A)mount (uT):"));
+            .block(Block::default().borders(Borders::ALL).title("(A)mount (uT or T):"));
         f.render_widget(amount_input, amount_fee_layout[0]);
 
         let fee_input = Paragraph::new(self.fee_field.as_ref())
@@ -315,7 +316,7 @@ impl SendTab {
                     Some(ConfirmationDialogType::ConfirmNormalSend) |
                     Some(ConfirmationDialogType::ConfirmOneSidedSend) => {
                         if 'y' == c {
-                            let amount = if let Ok(v) = self.amount_field.parse::<u64>() {
+                            let amount = if let Ok(v) = self.amount_field.parse::<MicroTari>() {
                                 v
                             } else {
                                 self.error_message =
@@ -337,7 +338,7 @@ impl SendTab {
                             if one_sided_transaction {
                                 match Handle::current().block_on(app_state.send_one_sided_transaction(
                                     self.to_field.clone(),
-                                    amount,
+                                    amount.into(),
                                     fee_per_gram,
                                     self.message_field.clone(),
                                     tx,
@@ -353,7 +354,7 @@ impl SendTab {
                             } else {
                                 match Handle::current().block_on(app_state.send_transaction(
                                     self.to_field.clone(),
-                                    amount,
+                                    amount.into(),
                                     fee_per_gram,
                                     self.message_field.clone(),
                                     tx,
@@ -408,7 +409,7 @@ impl SendTab {
             match self.send_input_mode {
                 SendInputMode::None => (),
                 SendInputMode::To => match c {
-                    '\n' | '\t' => {
+                    '\n' => {
                         self.send_input_mode = SendInputMode::Amount;
                     },
                     c => {
@@ -419,7 +420,8 @@ impl SendTab {
                 SendInputMode::Amount => match c {
                     '\n' => self.send_input_mode = SendInputMode::Message,
                     c => {
-                        if c.is_numeric() {
+                        let symbols = &['t', 'T', 'u', 'U'];
+                        if c.is_numeric() || symbols.contains(&c) {
                             self.amount_field.push(c);
                         }
                         return KeyHandled::Handled;
@@ -692,8 +694,9 @@ impl<B: Backend> Component<B> for SendTab {
                     );
                     return;
                 }
-                if self.amount_field.parse::<u64>().is_err() {
-                    self.error_message = Some("Amount should be an integer\nPress Enter to continue.".to_string());
+                if self.amount_field.parse::<MicroTari>().is_err() {
+                    self.error_message =
+                        Some("Amount should be a valid amount of Tari\nPress Enter to continue.".to_string());
                     return;
                 };
 
