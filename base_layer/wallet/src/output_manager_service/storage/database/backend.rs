@@ -15,6 +15,10 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     /// Retrieve the record associated with the provided DbKey
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, OutputManagerStorageError>;
 
+    /// Fetch outputs that can be spent
+    fn fetch_spendable_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
+
+    /// Fetch outputs with specific features
     fn fetch_with_features(&self, features: OutputFlags) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
 
     /// Modify the state the of the backend with a write operation

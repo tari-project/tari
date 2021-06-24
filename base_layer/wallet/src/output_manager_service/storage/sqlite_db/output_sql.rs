@@ -179,11 +179,9 @@ impl OutputSql {
     pub fn update_encryption(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
         let _ = self.update(
             UpdateOutput {
-                status: None,
-                tx_id: None,
                 spending_key: Some(self.spending_key.clone()),
-                height: None,
                 script_private_key: Some(self.script_private_key.clone()),
+                .. Default::default()
             },
             conn,
         )?;

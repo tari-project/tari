@@ -34,7 +34,7 @@ pub struct BaseNodeServiceConfig {
 impl Default for BaseNodeServiceConfig {
     fn default() -> Self {
         Self {
-            base_node_monitor_refresh_interval: Duration::from_secs(5),
+            base_node_monitor_refresh_interval: Duration::from_secs(30),
             request_max_age: Duration::from_secs(60),
         }
     }

@@ -20,15 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-
 use std::{
     collections::HashMap,
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     str::from_utf8,
     sync::{Arc, RwLock},
     time::Duration,
 };
-use std::convert::TryInto;
 
 use aes_gcm::{aead::Error as AeadError, Aes256Gcm, Error};
 use chrono::{Duration as ChronoDuration, NaiveDateTime, Utc};
@@ -38,8 +36,8 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     script::{ExecutionStack, TariScript},
     tari_utilities::{
-        ByteArray,
         hex::{from_hex, Hex},
+        ByteArray,
     },
 };
 
@@ -48,10 +46,10 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         transaction::{OutputFeatures, OutputFlags, UnblindedOutput},
+        transaction_protocol::TxId,
         types::{Commitment, CryptoFactories, PrivateKey, PublicKey},
     },
 };
-use tari_core::transactions::transaction_protocol::TxId;
 
 use crate::{
     output_manager_service::{
@@ -67,17 +65,18 @@ use crate::{
                 WriteOperation,
             },
             models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
+            OutputStatus,
         },
     },
     schema::{key_manager_states, known_one_sided_payment_scripts, outputs, pending_transaction_outputs},
     storage::sqlite_utilities::WalletDbConnection,
     util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
 };
-use crate::output_manager_service::storage::OutputStatus;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database::sqlite_db";
 
 mod output_sql;
+use crate::schema::outputs::columns;
 pub(crate) use output_sql::OutputSql;
 use tari_core::transactions::transaction::AssetOutputFeatures;
 
@@ -284,7 +283,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(result)
     }
 
-
     fn fetch_with_features(&self, flags: OutputFlags) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let conn = self.database_connection.acquire_lock();
         let mut outputs = OutputSql::index_by_feature_flags(flags, &conn)?;
@@ -296,7 +294,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .iter()
             .map(|o| DbUnblindedOutput::try_from(o.clone()))
             .collect::<Result<Vec<_>, _>>()
-
     }
 
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError> {
@@ -341,7 +338,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         p.timestamp,
                         p.coinbase_block_height.map(|h| h as i64),
                     )
-                        .commit(&(*conn))?;
+                    .commit(&(*conn))?;
                     for o in p.outputs_to_be_spent {
                         let mut new_output = NewOutputSql::new(o, OutputStatus::EncumberedToBeSpent, Some(p.tx_id));
                         self.encrypt_if_necessary(&mut new_output)?;
@@ -456,10 +453,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         o.update(
                             UpdateOutput {
                                 status: Some(OutputStatus::Unspent),
-                                tx_id: None,
-                                spending_key: None,
-                                height: None,
-                                script_private_key: None,
+                                ..Default::default()
                             },
                             &(*conn),
                         )?;
@@ -467,10 +461,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         o.update(
                             UpdateOutput {
                                 status: Some(OutputStatus::Spent),
-                                tx_id: None,
-                                spending_key: None,
-                                height: None,
-                                script_private_key: None,
+                                ..Default::default()
                             },
                             &(*conn),
                         )?;
@@ -505,7 +496,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 return Err(OutputManagerStorageError::OutputAlreadySpent);
             }
             if output.status == (OutputStatus::EncumberedToBeSpent as i32) {
-                return Err(OutputManagerStorageError::OutputAlreadyEncumbered)
+                return Err(OutputManagerStorageError::OutputAlreadyEncumbered);
             }
             outputs_to_be_spent.push(output);
         }
@@ -517,9 +508,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 UpdateOutput {
                     status: Some(OutputStatus::EncumberedToBeSpent),
                     tx_id: Some(tx_id.into()),
-                    spending_key: None,
-                    height: None,
-                    script_private_key: None,
+                    ..Default::default()
                 },
                 &(*conn),
             )?;
@@ -570,7 +559,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     fn cancel_pending_transaction(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
         let conn = self.database_connection.acquire_lock();
 
-
         match PendingTransactionOutputSql::find(tx_id, &(*conn)) {
             Ok(p) => {
                 let outputs = OutputSql::find_by_tx_id_and_encumbered(tx_id, &(*conn))?;
@@ -580,10 +568,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         o.update(
                             UpdateOutput {
                                 status: Some(OutputStatus::CancelledInbound),
-                                tx_id: None,
-                                spending_key: None,
-                                height: None,
-                                script_private_key: None,
+                                ..Default::default()
                             },
                             &(*conn),
                         )?;
@@ -591,10 +576,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         o.update(
                             UpdateOutput {
                                 status: Some(OutputStatus::Unspent),
-                                tx_id: None,
-                                spending_key: None,
-                                height: None,
-                                script_private_key: None,
+                                ..Default::default()
                             },
                             &(*conn),
                         )?;
@@ -653,10 +635,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let _ = output.update(
             UpdateOutput {
                 status: Some(OutputStatus::Invalid),
-                tx_id: None,
-                spending_key: None,
-                height: None,
-                script_private_key: None,
+                ..Default::default()
             },
             &(*conn),
         )?;
@@ -674,10 +653,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let _ = output.update(
             UpdateOutput {
                 status: Some(OutputStatus::Unspent),
-                tx_id: None,
-                spending_key: None,
-                height: None,
-                script_private_key: None,
+                ..Default::default()
             },
             &(*conn),
         )?;
@@ -698,10 +674,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let mut o = output.update(
             UpdateOutput {
                 status: Some(OutputStatus::Unspent),
-                tx_id: None,
-                spending_key: None,
-                height: None,
-                script_private_key: None,
+                ..Default::default()
             },
             &(*conn),
         )?;
@@ -839,7 +812,26 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
+    fn fetch_spendable_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+        let conn = self.database_connection.acquire_lock();
+        // Only select spendable normal utxos and coinbases
+        let mut outputs: Vec<OutputSql> = outputs::table
+            .filter(
+                outputs::flags
+                    .eq(OutputFlags::empty().bits() as i32)
+                    .or(outputs::flags.eq(OutputFlags::COINBASE_OUTPUT.bits() as i32)),
+            )
+            .filter(columns::status.eq(OutputStatus::Unspent as i32))
+            .load(&*conn)?;
 
+        for o in outputs.iter_mut() {
+            self.decrypt_if_necessary(o)?;
+        }
+        outputs
+            .iter()
+            .map(|o| DbUnblindedOutput::try_from(o.clone()))
+            .collect::<Result<Vec<_>, _>>()
+    }
 }
 
 /// A utility function to construct a PendingTransactionOutputs structure for a TxId, set of Outputs and a Timestamp
@@ -887,7 +879,7 @@ struct NewOutputSql {
     script_private_key: Vec<u8>,
     script_offset_public_key: Vec<u8>,
     metadata: Option<Vec<u8>>,
-    features_asset_public_key: Option<Vec<u8>>
+    features_asset_public_key: Option<Vec<u8>>,
 }
 
 impl NewOutputSql {
@@ -907,7 +899,7 @@ impl NewOutputSql {
             script_private_key: output.unblinded_output.script_private_key.to_vec(),
             script_offset_public_key: output.unblinded_output.script_offset_public_key.to_vec(),
             metadata: Some(output.unblinded_output.features.metadata),
-            features_asset_public_key: output.unblinded_output.features.asset.map(|a| a.public_key.to_vec())
+            features_asset_public_key: output.unblinded_output.features.asset.map(|a| a.public_key.to_vec()),
         }
     }
 
@@ -938,15 +930,17 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
 
     fn try_from(o: OutputSql) -> Result<Self, Self::Error> {
         let asset_features = match o.features_asset_public_key {
-            Some(ref public_key) => Some(AssetOutputFeatures{ public_key: PublicKey::from_bytes(public_key)? }),
-            None => None
+            Some(ref public_key) => Some(AssetOutputFeatures {
+                public_key: PublicKey::from_bytes(public_key)?,
+            }),
+            None => None,
         };
-        let features =Some(OutputFeatures {
+        let features = Some(OutputFeatures {
             flags: OutputFlags::from_bits(o.flags as u8).ok_or(OutputManagerStorageError::ConversionError)?,
             maturity: o.maturity as u64,
             metadata: o.metadata.unwrap_or_default(),
-            asset: asset_features
-        }) ;
+            asset: asset_features,
+        });
         let unblinded_output = UnblindedOutput::new(
             MicroTari::from(o.value as u64),
             PrivateKey::from_vec(&o.spending_key).map_err(|_| {
@@ -974,7 +968,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 );
                 OutputManagerStorageError::ConversionError
             })?,
-            o.unique_id.clone()
+            o.unique_id.clone(),
         );
 
         let hash = match o.hash {
@@ -998,7 +992,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             commitment,
             unblinded_output,
             hash,
-            status: o.status.try_into()?
+            status: o.status.try_into()?,
         })
     }
 }
@@ -1025,6 +1019,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
 // }
 
 /// These are the fields that can be updated for an Output
+#[derive(Default)]
 pub struct UpdateOutput {
     status: Option<OutputStatus>,
     tx_id: Option<u64>,
@@ -1135,7 +1130,7 @@ impl PendingTransactionOutputSql {
         let num_deleted = diesel::delete(
             pending_transaction_outputs::table.filter(pending_transaction_outputs::tx_id.eq(&self.tx_id)),
         )
-            .execute(conn)?;
+        .execute(conn)?;
 
         if num_deleted == 0 {
             return Err(OutputManagerStorageError::ValuesNotFound);
@@ -1157,8 +1152,8 @@ impl PendingTransactionOutputSql {
         let num_updated = diesel::update(
             pending_transaction_outputs::table.filter(pending_transaction_outputs::tx_id.eq(&self.tx_id)),
         )
-            .set(UpdatePendingTransactionOutputSql { short_term: Some(0i32) })
-            .execute(conn)?;
+        .set(UpdatePendingTransactionOutputSql { short_term: Some(0i32) })
+        .execute(conn)?;
 
         if num_updated == 0 {
             return Err(OutputManagerStorageError::UnexpectedResult(
@@ -1372,7 +1367,7 @@ impl KnownOneSidedPaymentScriptSql {
             known_one_sided_payment_scripts::table
                 .filter(known_one_sided_payment_scripts::script_hash.eq(&self.script_hash)),
         )
-            .execute(conn)?;
+        .execute(conn)?;
 
         if num_deleted == 0 {
             return Err(OutputManagerStorageError::ValuesNotFound);
@@ -1390,8 +1385,8 @@ impl KnownOneSidedPaymentScriptSql {
             known_one_sided_payment_scripts::table
                 .filter(known_one_sided_payment_scripts::script_hash.eq(&self.script_hash)),
         )
-            .set(updated_known_script)
-            .execute(conn)?;
+        .set(updated_known_script)
+        .execute(conn)?;
 
         if num_updated == 0 {
             return Err(OutputManagerStorageError::UnexpectedResult(
@@ -1484,7 +1479,7 @@ mod test {
     };
     use chrono::{Duration as ChronoDuration, Utc};
     use diesel::{Connection, SqliteConnection};
-    use rand::{CryptoRng, distributions::Alphanumeric, Rng, RngCore, rngs::OsRng};
+    use rand::{distributions::Alphanumeric, rngs::OsRng, CryptoRng, Rng, RngCore};
     use tari_crypto::{
         inputs,
         keys::{PublicKey as PublicKeyTrait, SecretKey},
@@ -1667,8 +1662,8 @@ mod test {
             Utc::now().naive_utc() - ChronoDuration::from_std(Duration::from_millis(600_000)).unwrap(),
             Some(3),
         )
-            .commit(&conn)
-            .unwrap();
+        .commit(&conn)
+        .unwrap();
 
         let pending_older1 = PendingTransactionOutputSql::index_older(Utc::now().naive_utc(), &conn).unwrap();
         assert_eq!(pending_older1.len(), 3);
@@ -1677,7 +1672,7 @@ mod test {
             Utc::now().naive_utc() - ChronoDuration::from_std(Duration::from_millis(200_000)).unwrap(),
             &conn,
         )
-            .unwrap();
+        .unwrap();
         assert_eq!(pending_older2.len(), 1);
 
         PendingTransactionOutputSql::new(13u64, true, Utc::now().naive_utc(), None)

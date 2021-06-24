@@ -1081,7 +1081,7 @@ where TBackend: OutputManagerBackend + 'static
         let mut fee_without_change = MicroTari::from(0);
         let mut fee_with_change = MicroTari::from(0);
 
-        let uo = self.resources.db.fetch_sorted_unspent_outputs().await?;
+        let uo = self.resources.db.fetch_spendable_outputs()?;
 
         // Attempt to get the chain tip height
         let chain_metadata = self.base_node_service.get_chain_metadata().await?;
@@ -1223,9 +1223,9 @@ where TBackend: OutputManagerBackend + 'static
         Ok(self.resources.db.fetch_spent_outputs().await?)
     }
 
-    /// Sorted from lowest value to highest
+
     pub async fn fetch_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
-        Ok(self.resources.db.fetch_sorted_unspent_outputs().await?)
+        Ok(self.resources.db.fetch_all_unspent_outputs().await?)
     }
 
     pub async fn fetch_invalid_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {

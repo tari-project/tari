@@ -409,25 +409,19 @@ impl<T> OutputManagerDatabase<T>
             .and_then(|inner_result| inner_result)
     }
 
-    /// Retrieves UTXOs sorted by value from smallest to largest.
-    pub async fn fetch_sorted_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-
-        let mut uo = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::UnspentOutputs) {
-            Ok(None) => log_error(
-                DbKey::UnspentOutputs,
-                OutputManagerStorageError::UnexpectedResult("Could not retrieve unspent outputs".to_string()),
-            ),
-            Ok(Some(DbValue::UnspentOutputs(uo))) => Ok(uo),
-            Ok(Some(other)) => unexpected_result(DbKey::UnspentOutputs, other),
-            Err(e) => log_error(DbKey::UnspentOutputs, e),
-        })
-            .await
-            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
-
-        uo.sort();
-        Ok(uo)
+    pub async fn fetch_all_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+       let result =  match self.db.fetch(&DbKey::UnspentOutputs)? {
+           Some(DbValue::UnspentOutputs(outputs)) => outputs,
+           Some(other) => return unexpected_result(DbKey::UnspentOutputs, other),
+           None => vec![]
+       };
+        Ok(result)
     }
+
+    pub fn fetch_spendable_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+       self.db.fetch_spendable_outputs()
+    }
+
 
     pub async fn fetch_spent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let db_clone = self.db.clone();

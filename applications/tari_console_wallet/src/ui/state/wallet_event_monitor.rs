@@ -133,7 +133,7 @@ impl WalletEventMonitor {
                         match result {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Wallet Event Monitor received base node event {:?}", msg);
-                              //self.app_state_inner.write().await.add_event(EventListItem{event_type: "BaseNodeEvent".to_string(), desc: (&*msg).to_string() });
+                              self.app_state_inner.write().await.add_event(EventListItem{event_type: "BaseNodeEvent".to_string(), desc: (&*msg).to_string() });
                                 match (*msg).clone() {
                                     BaseNodeEvent::BaseNodeStateChanged(state) => {
                                         self.trigger_base_node_state_refresh(state).await;

@@ -488,7 +488,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     let key = "wallet.base_node_service_refresh_interval";
     let wallet_base_node_service_refresh_interval = match cfg.get_int(key) {
         Ok(seconds) => seconds as u64,
-        Err(ConfigError::NotFound(_)) => 10,
+        Err(ConfigError::NotFound(_)) => 30,
         Err(e) => return Err(ConfigurationError::new(&key, &e.to_string())),
     };
 
