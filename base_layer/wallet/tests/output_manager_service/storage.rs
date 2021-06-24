@@ -36,15 +36,13 @@ use tari_core::transactions::{
     types::{CryptoFactories, PrivateKey},
 };
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey, script::TariScript};
-use tari_wallet::{
-    output_manager_service::{
-        error::OutputManagerStorageError,
-        service::Balance,
-        storage::{
-            database::{KeyManagerState, OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
-            models::DbUnblindedOutput,
-            sqlite_db::OutputManagerSqliteDatabase,
-        },
+use tari_wallet::output_manager_service::{
+    error::OutputManagerStorageError,
+    service::Balance,
+    storage::{
+        database::{KeyManagerState, OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
+        models::DbUnblindedOutput,
+        sqlite_db::OutputManagerSqliteDatabase,
     },
 };
 

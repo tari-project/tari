@@ -780,7 +780,6 @@ fn send_not_enough_for_change() {
 
 #[test]
 fn receiving_and_confirmation() {
-
     let mut runtime = Runtime::new().unwrap();
 
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
