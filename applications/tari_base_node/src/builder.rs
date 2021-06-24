@@ -45,6 +45,7 @@ use tari_core::{
         DifficultyCalculator,
     },
 };
+use tari_p2p::auto_update::SoftwareUpdaterHandle;
 use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::watch;
@@ -110,6 +111,11 @@ impl BaseNodeContext {
     /// Returns the base node DHT
     pub fn base_node_dht(&self) -> &Dht {
         &self.base_node_dht
+    }
+
+    /// Returns a software update handle
+    pub fn software_updater(&self) -> SoftwareUpdaterHandle {
+        self.base_node_handles.expect_handle()
     }
 
     /// Returns a handle to the comms RPC server

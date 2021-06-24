@@ -56,6 +56,7 @@ use tari_core::{
     transactions::types::{Commitment, HashOutput, Signature},
 };
 use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::Hashable};
+use tari_p2p::auto_update::SoftwareUpdaterHandle;
 use tari_wallet::util::emoji::EmojiId;
 use tokio::{runtime, sync::watch};
 
@@ -72,6 +73,7 @@ pub struct CommandHandler {
     node_service: LocalNodeCommsInterface,
     mempool_service: LocalMempoolService,
     state_machine_info: watch::Receiver<StatusInfo>,
+    software_updater: SoftwareUpdaterHandle,
 }
 
 impl CommandHandler {
@@ -89,6 +91,7 @@ impl CommandHandler {
             node_service: ctx.local_node(),
             mempool_service: ctx.local_mempool(),
             state_machine_info: ctx.get_state_machine_info_channel(),
+            software_updater: ctx.software_updater(),
         }
     }
 
@@ -189,10 +192,42 @@ impl CommandHandler {
         });
     }
 
+    /// Check for updates
+    pub fn check_for_updates(&self) {
+        let mut updater = self.software_updater.clone();
+        println!("Checking for updates (current version: {})...", consts::APP_VERSION);
+        self.executor.spawn(async move {
+            match updater.check_for_updates().await {
+                Some(update) => {
+                    println!(
+                        "Version {} of the {} is available: {} (sha: {})",
+                        update.version(),
+                        update.app(),
+                        update.download_url(),
+                        update.to_hash_hex()
+                    );
+                },
+                None => {
+                    println!("No updates found.",);
+                },
+            }
+        });
+    }
+
     /// Function process the version command
     pub fn print_version(&self) {
         println!("Version: {}", consts::APP_VERSION);
         println!("Author: {}", consts::APP_AUTHOR);
+
+        if let Some(ref update) = *self.software_updater.new_update_notifier().borrow() {
+            println!(
+                "Version {} of the {} is available: {} (sha: {})",
+                update.version(),
+                update.app(),
+                update.download_url(),
+                update.to_hash_hex()
+            );
+        }
     }
 
     pub fn get_chain_meta(&self) {
@@ -1015,6 +1050,10 @@ impl CommandHandler {
     /// Function to process the whoami command
     pub fn whoami(&self) {
         println!("{}", self.base_node_identity);
+    }
+
+    pub(crate) fn get_software_updater(&self) -> SoftwareUpdaterHandle {
+        self.software_updater.clone()
     }
 }
 

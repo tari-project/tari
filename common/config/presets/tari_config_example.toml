@@ -61,6 +61,16 @@
 # The maximum simultaneous comms RPC sessions allowed. Setting this to -1 will allow unlimited sessions.
 # rpc_max_simultaneous_sessions = 1000
 
+# Auto Update
+#
+# This interval in seconds to check for software updates. Setting this to 0 disables checking.
+# auto_update.check_interval = 300
+# Customize the hosts that are used to check for updates. These hosts must contain update information in DNS TXT records.
+# auto_update.dns_hosts = ["updates.tari.com"]
+# Customize the location of the update SHA hashes and maintainer-signed signature.
+# auto_update.hashes_url = "https://.../hashes.txt"
+# auto_update.hashes_sig_url = "https://.../hashes.txt.sig"
+
 ########################################################################################################################
 #                                                                                                                      #
 #                                          Wallet Configuration Options                                                #

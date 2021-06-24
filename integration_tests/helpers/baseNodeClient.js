@@ -153,6 +153,10 @@ class BaseNodeClient {
       });
   }
 
+  checkForUpdates() {
+    return this.client.checkForUpdates().sendMessage({});
+  }
+
   transactionStateResult(txn) {
     return this.client
       .transactionState()

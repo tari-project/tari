@@ -16,6 +16,13 @@ const {
 const TransactionBuilder = require("../../helpers/transactionBuilder");
 let lastResult;
 
+const AUTOUPDATE_HASHES_TXT_URL =
+  "https://raw.githubusercontent.com/sdbondi/tari/autoupdate-test-branch/meta/hashes.txt";
+const AUTOUPDATE_HASHES_TXT_SIG_URL =
+  "https://github.com/sdbondi/tari/raw/base-node-auto-update/meta/good.sig";
+const AUTOUPDATE_HASHES_TXT_BAD_SIG_URL =
+  "https://github.com/sdbondi/tari/raw/base-node-auto-update/meta/bad.sig";
+
 Given(/I have a seed node (.*)/, { timeout: 20 * 1000 }, async function (name) {
   return await this.createSeedNode(name);
 });
@@ -54,6 +61,44 @@ Given(
       addresses.push(this.nodes[nodes[i]].peerAddress());
     }
     await this.createAndAddNode(name, addresses);
+  }
+);
+
+Given(
+  /I have a node (.*) with auto update enabled/,
+  { timeout: 20 * 1000 },
+  async function (name) {
+    const node = await this.createNode(name, {
+      common: {
+        auto_update: {
+          enabled: true,
+          dns_hosts: ["_test_autoupdate.tari.io"],
+          hashes_url: AUTOUPDATE_HASHES_TXT_URL,
+          hashes_sig_url: AUTOUPDATE_HASHES_TXT_SIG_URL,
+        },
+      },
+    });
+    await node.startNew();
+    this.addNode(name, node);
+  }
+);
+
+Given(
+  /I have a node (.*) with auto update configured with a bad signature/,
+  { timeout: 20 * 1000 },
+  async function (name) {
+    const node = await this.createNode(name, {
+      common: {
+        auto_update: {
+          enabled: true,
+          dns_hosts: ["_test_autoupdate.tari.io"],
+          hashes_url: AUTOUPDATE_HASHES_TXT_URL,
+          hashes_sig_url: AUTOUPDATE_HASHES_TXT_BAD_SIG_URL,
+        },
+      },
+    });
+    await node.startNew();
+    this.addNode(name, node);
   }
 );
 
@@ -702,11 +747,40 @@ Then(
   { timeout: 1200 * 1000 },
   async function (height) {
     await this.forEachClientAsync(async (client, name) => {
-      await waitFor(async () => client.getTipHeight(), height, 1150 * 1000);
+      await waitFor(async () => client.getTipHeight(), height, 60 * 1000);
       const currTip = await client.getTipHeight();
       console.log(`Node ${name} is at tip: ${currTip} (should be ${height})`);
       expect(currTip).to.equal(height);
     });
+  }
+);
+
+Then(
+  /(.*) does not have a new software update/,
+  { timeout: 1200 * 1000 },
+  async function (name) {
+    let client = this.getClient(name);
+    await sleep(5000);
+    await waitFor(
+      async () => client.checkForUpdates().has_update,
+      false,
+      60 * 1000
+    );
+  }
+);
+
+Then(
+  /(.+) has a new software update/,
+  { timeout: 1200 * 1000 },
+  async function (name) {
+    let client = this.getClient(name);
+    await waitFor(
+      async () => {
+        return client.checkForUpdates().has_update;
+      },
+      true,
+      1150 * 1000
+    );
   }
 );
 

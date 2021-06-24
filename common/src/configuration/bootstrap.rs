@@ -66,6 +66,7 @@ use std::{
     fmt::{Display, Formatter},
     io,
     path::{Path, PathBuf},
+    str::FromStr,
 };
 use structopt::StructOpt;
 
@@ -322,7 +323,7 @@ where F: Fn(&Path) -> Result<(), std::io::Error> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ApplicationType {
     BaseNode,
     ConsoleWallet,
@@ -338,6 +339,31 @@ impl ApplicationType {
             ConsoleWallet => "Tari Console Wallet",
             MergeMiningProxy => "Tari Merge Mining Proxy",
             MiningNode => "Tari Mining Node",
+        }
+    }
+
+    pub const fn as_tag_str(&self) -> &'static str {
+        use ApplicationType::*;
+        match self {
+            BaseNode => "base-node",
+            ConsoleWallet => "console-wallet",
+            MergeMiningProxy => "mm-proxy",
+            MiningNode => "miner",
+        }
+    }
+}
+
+impl FromStr for ApplicationType {
+    type Err = ConfigError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        use ApplicationType::*;
+        match s {
+            "base-node" => Ok(BaseNode),
+            "console-wallet" => Ok(ConsoleWallet),
+            "mm-proxy" => Ok(MergeMiningProxy),
+            "miner" => Ok(MiningNode),
+            _ => Err(ConfigError::new("Invalid ApplicationType", None)),
         }
     }
 }

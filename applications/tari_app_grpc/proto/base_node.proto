@@ -48,6 +48,8 @@ service BaseNode {
     rpc GetBlockFees (BlockGroupRequest) returns (BlockGroupResponse);
     // Get Version
     rpc GetVersion(Empty) returns (StringValue);
+    // Get Version
+    rpc CheckForUpdates(Empty) returns (SoftwareUpdate);
     // Get coins in circulation
     rpc GetTokensInCirculation(GetBlocksRequest) returns (stream ValueAtHeightResponse);
     // Get network difficulties
@@ -322,4 +324,11 @@ enum TransactionLocation {
     MEMPOOL = 1;
     MINED = 2;
     NOT_STORED = 3;
+}
+
+message SoftwareUpdate {
+    bool has_update = 1;
+    string version = 2;
+    string sha = 3;
+    string download_url = 4;
 }

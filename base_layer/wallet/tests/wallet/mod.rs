@@ -52,7 +52,7 @@ use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     script,
 };
-use tari_p2p::{initialization::CommsConfig, transport::TransportType, Network, DEFAULT_DNS_SEED_RESOLVER};
+use tari_p2p::{initialization::CommsConfig, transport::TransportType, Network, DEFAULT_DNS_NAME_SERVER};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_wallet::{
     contacts_service::storage::database::Contact,
@@ -118,7 +118,7 @@ async fn create_wallet(
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
         user_agent: "tari/test-wallet".to_string(),
-        dns_seeds_name_server: DEFAULT_DNS_SEED_RESOLVER.parse().unwrap(),
+        dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
         peer_seeds: Default::default(),
         dns_seeds: Default::default(),
         dns_seeds_use_dnssec: false,
@@ -691,7 +691,7 @@ async fn test_import_utxo() {
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
         user_agent: "tari/test-wallet".to_string(),
-        dns_seeds_name_server: DEFAULT_DNS_SEED_RESOLVER.parse().unwrap(),
+        dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
         peer_seeds: Default::default(),
         dns_seeds: Default::default(),
         dns_seeds_use_dnssec: false,
@@ -788,7 +788,7 @@ async fn test_data_generation() {
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
         user_agent: "tari/test-wallet".to_string(),
-        dns_seeds_name_server: DEFAULT_DNS_SEED_RESOLVER.parse().unwrap(),
+        dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
         peer_seeds: Default::default(),
         dns_seeds: Default::default(),
         dns_seeds_use_dnssec: false,

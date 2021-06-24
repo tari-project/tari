@@ -61,6 +61,20 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("common.fetch_utxos_timeout", 600).unwrap();
     cfg.set_default("common.service_request_timeout", 180).unwrap();
 
+    cfg.set_default("common.auto_update.dns_hosts", vec!["versions.tari.com"])
+        .unwrap();
+    // TODO: Change to a more permanent link
+    cfg.set_default(
+        "common.auto_update.hashes_url",
+        "https://raw.githubusercontent.com/tari-project/tari/tari-script/meta/hashes.txt",
+    )
+    .unwrap();
+    cfg.set_default(
+        "common.auto_update.hashes_sig_url",
+        "https://github.com/sdbondi/tari/raw/tari-script/meta/hashes.txt.sig",
+    )
+    .unwrap();
+
     // Wallet settings
     cfg.set_default("wallet.grpc_enabled", false).unwrap();
     cfg.set_default("wallet.grpc_address", "127.0.0.1:18040").unwrap();

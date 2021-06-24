@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,12 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use trust_dns_client::{error::ClientError, proto::error::ProtoError};
+use crate::dns::DnsClientError;
 
 #[derive(Debug, thiserror::Error)]
-pub enum DnsSeedError {
-    #[error("Client error: {0}")]
-    ClientError(#[from] ClientError),
-    #[error("Client error: {0}")]
-    ProtoError(#[from] ProtoError),
+pub enum AutoUpdateError {
+    #[error("DNS Client error: {0}")]
+    DnsClientError(#[from] DnsClientError),
+    #[error("Failed to download file: {0}")]
+    DownloadError(#[from] reqwest::Error),
+    #[error("Failed to verify signature: {0}")]
+    SignatureError(#[from] pgp::errors::Error),
 }

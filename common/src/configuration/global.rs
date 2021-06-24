@@ -47,6 +47,10 @@ const DB_RESIZE_MIN_MB: i64 = 10;
 
 #[derive(Debug, Clone)]
 pub struct GlobalConfig {
+    pub autoupdate_check_interval: Option<Duration>,
+    pub autoupdate_dns_hosts: Vec<String>,
+    pub autoupdate_hashes_url: String,
+    pub autoupdate_hashes_sig_url: String,
     pub network: Network,
     pub comms_transport: CommsTransport,
     pub allow_test_addresses: bool,
@@ -605,7 +609,36 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     let key = "mining_node.validate_tip_timeout_sec";
     let validate_tip_timeout_sec = optional(cfg.get_int(&key))?.unwrap_or(0) as u64;
 
+    // Auto update
+    let key = "common.auto_update.check_interval";
+    let autoupdate_check_interval = optional(cfg.get_int(&key))?.and_then(|secs| {
+        if secs > 0 {
+            Some(Duration::from_secs(secs as u64))
+        } else {
+            None
+        }
+    });
+
+    let key = "common.auto_update.dns_hosts";
+    let autoupdate_dns_hosts = cfg
+        .get_array(key)
+        .and_then(|arr| arr.into_iter().map(|s| s.into_str()).collect::<Result<Vec<_>, _>>())
+        .or_else(|_| {
+            cfg.get_str(key)
+                .map(|s| s.split(',').map(ToString::to_string).collect())
+        })?;
+
+    let key = "common.auto_update.hashes_url";
+    let autoupdate_hashes_url = cfg.get_str(&key)?;
+
+    let key = "common.auto_update.hashes_sig_url";
+    let autoupdate_hashes_sig_url = cfg.get_str(&key)?;
+
     Ok(GlobalConfig {
+        autoupdate_check_interval,
+        autoupdate_dns_hosts,
+        autoupdate_hashes_url,
+        autoupdate_hashes_sig_url,
         network,
         comms_transport,
         allow_test_addresses,
