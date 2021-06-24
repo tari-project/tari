@@ -21,28 +21,18 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::context::ServiceInitializerContext;
-use futures::{Future, FutureExt};
-use std::pin::Pin;
+use async_trait::async_trait;
 
 pub type ServiceInitializationError = anyhow::Error;
 
+type Output = Result<(), ServiceInitializationError>;
+
 /// Implementors of this trait will initialize a service
 /// The `StackBuilder` builds impls of this trait.
+#[async_trait]
 pub trait ServiceInitializer {
-    /// The future returned from the initialize function
-    type Future: Future<Output = Result<(), ServiceInitializationError>>;
-
     /// Async initialization code for a service
-    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future;
-
-    /// Create a boxed version of this ServiceInitializer.
-    fn boxed(self) -> BoxedServiceInitializer
-    where
-        Self: Sized + Send + 'static,
-        Self::Future: Send + 'static,
-    {
-        BoxedServiceInitializer::new(self)
-    }
+    async fn initialize(&mut self, context: ServiceInitializerContext) -> Output;
 }
 
 /// Implementation of ServiceInitializer for any function matching the signature of `ServiceInitializer::initialize`
@@ -56,14 +46,11 @@ pub trait ServiceInitializer {
 ///     futures::future::ready(Result::<_, ()>::Ok(()))
 /// };
 /// ```
-impl<TFunc, TFut> ServiceInitializer for TFunc
-where
-    TFunc: FnMut(ServiceInitializerContext) -> TFut,
-    TFut: Future<Output = Result<(), ServiceInitializationError>>,
+#[async_trait]
+impl<TFunc> ServiceInitializer for TFunc
+where TFunc: FnMut(ServiceInitializerContext) -> Output + Send
 {
-    type Future = TFut;
-
-    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+    async fn initialize(&mut self, context: ServiceInitializerContext) -> Output {
         (self)(context)
     }
 }
@@ -77,70 +64,12 @@ impl<TFunc> InitializerFn<TFunc> {
     }
 }
 
-impl<TFunc, TFut> ServiceInitializer for InitializerFn<TFunc>
-where
-    TFunc: FnOnce(ServiceInitializerContext) -> TFut,
-    TFut: Future<Output = Result<(), ServiceInitializationError>>,
+#[async_trait]
+impl<TFunc> ServiceInitializer for InitializerFn<TFunc>
+where TFunc: FnOnce(ServiceInitializerContext) -> Output + Send
 {
-    type Future = TFut;
-
-    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+    async fn initialize(&mut self, context: ServiceInitializerContext) -> Output {
         let f = self.0.take().expect("initializer called more than once");
         (f)(context)
-    }
-}
-
-//---------------------------------- Boxed Service Initializer --------------------------------------------//
-// The following code is essentially a substitute for async trait functions. Any initializer can
-// converted to the boxed form by using ServiceInitializer::boxed(). This is done for you when
-// using `StackBuilder::add_initializer`.
-
-/// A pinned, boxed form of the future resulting from a boxed ServiceInitializer
-type ServiceInitializationFuture = Pin<Box<dyn Future<Output = Result<(), ServiceInitializationError>> + Send>>;
-
-/// This trait mirrors the ServiceInitializer trait, with the exception
-/// of always returning a boxed future (aliased ServiceInitializationFuture type),
-/// therefore it does not need the `Future` associated type. This makes it
-/// possible to store a boxed dyn `AbstractServiceInitializer<TName, TExec>`.
-pub trait AbstractServiceInitializer {
-    fn initialize(&mut self, context: ServiceInitializerContext) -> ServiceInitializationFuture;
-}
-
-/// AbstractServiceInitializer impl for every T: ServiceInitializer.
-impl<T> AbstractServiceInitializer for T
-where
-    T: ServiceInitializer,
-    T::Future: Send + 'static,
-{
-    fn initialize(&mut self, context: ServiceInitializerContext) -> ServiceInitializationFuture {
-        let initialization = self.initialize(context);
-        initialization.boxed() as ServiceInitializationFuture
-    }
-}
-
-/// A concrete boxed version of a ServiceInitializer. This makes it possible
-/// to have a collection of ServiceInitializers which return various boxed future types.
-/// This type is used in StackBuilder's internal vec.
-pub struct BoxedServiceInitializer {
-    inner: Box<dyn AbstractServiceInitializer + Send + 'static>,
-}
-
-impl BoxedServiceInitializer {
-    pub(super) fn new<T>(initializer: T) -> Self
-    where
-        T: ServiceInitializer + Send + 'static,
-        T::Future: Send + 'static,
-    {
-        Self {
-            inner: Box::new(initializer),
-        }
-    }
-}
-
-impl ServiceInitializer for BoxedServiceInitializer {
-    type Future = ServiceInitializationFuture;
-
-    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
-        self.inner.initialize(context)
     }
 }

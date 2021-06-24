@@ -45,13 +45,12 @@ impl<TSink> InboundDomainConnector<TSink> {
 
 impl<TSink> Service<DecryptedDhtMessage> for InboundDomainConnector<TSink>
 where
-    TSink: Sink<Arc<PeerMessage>> + Unpin + Clone,
+    TSink: Sink<Arc<PeerMessage>> + Unpin + Clone + 'static,
     TSink::Error: std::error::Error + Send + Sync + 'static,
 {
     type Error = PipelineError;
+    type Future = Pin<Box<dyn Future<Output = Result<(), PipelineError>>>>;
     type Response = ();
-
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Pin::new(&mut self.sink).poll_ready(cx).map_err(Into::into)
@@ -59,14 +58,15 @@ where
 
     fn call(&mut self, msg: DecryptedDhtMessage) -> Self::Future {
         let mut sink = self.sink.clone();
-        async move {
+        let future = async move {
             let peer_message = Self::construct_peer_message(msg)?;
             // If this fails there is something wrong with the sink and the pubsub middleware should not
             // continue
             sink.send(Arc::new(peer_message)).await?;
 
             Ok(())
-        }
+        };
+        Box::pin(future)
     }
 }
 

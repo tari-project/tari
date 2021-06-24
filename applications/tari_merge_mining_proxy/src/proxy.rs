@@ -37,6 +37,7 @@ use std::{
     convert::TryFrom,
     future::Future,
     net::SocketAddr,
+    pin::Pin,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -116,11 +117,11 @@ impl MergeMiningProxyService {
     }
 }
 
+#[allow(clippy::type_complexity)]
 impl Service<Request<Body>> for MergeMiningProxyService {
     type Error = hyper::Error;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
     type Response = Response<Body>;
-
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
@@ -128,7 +129,7 @@ impl Service<Request<Body>> for MergeMiningProxyService {
 
     fn call(&mut self, req: Request<Body>) -> Self::Future {
         let inner = self.inner.clone();
-        async move {
+        let future = async move {
             match inner.handle(req).await {
                 Ok(resp) => Ok(resp),
                 Err(err) => {
@@ -145,7 +146,9 @@ impl Service<Request<Body>> for MergeMiningProxyService {
                     .expect("unexpected failure"))
                 },
             }
-        }
+        };
+
+        Box::pin(future)
     }
 }
 

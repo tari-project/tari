@@ -24,18 +24,16 @@ use super::{service::ChainMetadataService, LOG_TARGET};
 use crate::base_node::{chain_metadata_service::handle::ChainMetadataHandle, comms_interface::LocalNodeCommsInterface};
 use futures::{future, pin_mut};
 use log::*;
-use std::future::Future;
 use tari_comms::connectivity::ConnectivityRequester;
 use tari_p2p::services::liveness::LivenessHandle;
-use tari_service_framework::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::sync::broadcast;
 
 pub struct ChainMetadataServiceInitializer;
 
+#[async_trait]
 impl ServiceInitializer for ChainMetadataServiceInitializer {
-    type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
-
-    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+    async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         // Buffer size set to 1 because only the most recent metadata is applicable
         let (publisher, _) = broadcast::channel(1);
 
@@ -53,6 +51,6 @@ impl ServiceInitializer for ChainMetadataServiceInitializer {
             info!(target: LOG_TARGET, "ChainMetadataService has shut down");
         });
 
-        future::ready(Ok(()))
+        Ok(())
     }
 }

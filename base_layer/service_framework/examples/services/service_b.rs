@@ -20,7 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{pin_mut, Future, StreamExt};
+use async_trait::async_trait;
+use futures::{pin_mut, StreamExt};
 use std::time::Duration;
 use tari_service_framework::{
     reply_channel,
@@ -111,10 +112,9 @@ impl ServiceBInitializer {
     }
 }
 
+#[async_trait]
 impl ServiceInitializer for ServiceBInitializer {
-    type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
-
-    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+    async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (sender, receiver) = reply_channel::unbounded();
 
         let service_b_handle = ServiceBHandle::new(sender);
@@ -134,9 +134,7 @@ impl ServiceInitializer for ServiceBInitializer {
             println!("Service B has shutdown and initializer spawned task is now ending");
         });
 
-        async {
-            delay_for(Duration::from_secs(10)).await;
-            Ok(())
-        }
+        delay_for(Duration::from_secs(10)).await;
+        Ok(())
     }
 }
