@@ -34,6 +34,7 @@ use crate::transactions::{
         CommitmentFactory,
         CryptoFactories,
         HashDigest,
+        MessageHash,
         PrivateKey,
         PublicKey,
         RangeProof,
@@ -200,7 +201,7 @@ pub enum TransactionError {
 
 /// An unblinded output is one where the value and spending key (blinding factor) are known. This can be used to
 /// build both inputs and outputs (every input comes from an output)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UnblindedOutput {
     pub value: MicroTari,
     pub spending_key: BlindingFactor,
@@ -210,6 +211,7 @@ pub struct UnblindedOutput {
     pub height: u64,
     pub script_private_key: PrivateKey,
     pub script_offset_public_key: PublicKey,
+    pub sender_metadata_signature: Signature,
 }
 
 impl UnblindedOutput {
@@ -224,6 +226,7 @@ impl UnblindedOutput {
         height: u64,
         script_private_key: PrivateKey,
         script_offset_public_key: PublicKey,
+        sender_metadata_signature: Signature,
     ) -> UnblindedOutput {
         UnblindedOutput {
             value,
@@ -234,6 +237,7 @@ impl UnblindedOutput {
             height,
             script_private_key,
             script_offset_public_key,
+            sender_metadata_signature,
         }
     }
 
@@ -277,6 +281,7 @@ impl UnblindedOutput {
             .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?,
             script: self.script.clone(),
             script_offset_public_key: self.script_offset_public_key.clone(),
+            sender_metadata_signature: self.sender_metadata_signature.clone(),
         };
         // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
         if !output.verify_range_proof(&factories.range_proof)? {
@@ -311,6 +316,7 @@ impl UnblindedOutput {
             proof,
             script: self.script.clone(),
             script_offset_public_key: self.script_offset_public_key.clone(),
+            sender_metadata_signature: self.sender_metadata_signature.clone(),
         };
         // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
         if !output.verify_range_proof(&factories.range_proof)? {
@@ -506,6 +512,8 @@ pub struct TransactionOutput {
     pub script: TariScript,
     /// Tari script offset pubkey, K_O
     pub script_offset_public_key: PublicKey,
+    /// UTXO signature with the script offset private key, k_O
+    pub sender_metadata_signature: Signature,
 }
 
 /// An output for a transaction, includes a range proof and Tari script metadata
@@ -517,6 +525,7 @@ impl TransactionOutput {
         proof: RangeProof,
         script: TariScript,
         script_offset_public_key: PublicKey,
+        sender_metadata_signature: Signature,
     ) -> TransactionOutput {
         TransactionOutput {
             features,
@@ -524,6 +533,7 @@ impl TransactionOutput {
             proof,
             script,
             script_offset_public_key,
+            sender_metadata_signature,
         }
     }
 
@@ -540,6 +550,25 @@ impl TransactionOutput {
     /// Verify that range proof is valid
     pub fn verify_range_proof(&self, prover: &RangeProofService) -> Result<bool, TransactionError> {
         Ok(prover.verify(&self.proof.0, &self.commitment))
+    }
+
+    /// Verify that sender signature is valid
+    pub fn verify_sender_signature(&self) -> Result<(), TransactionError> {
+        let challenge = TransactionOutput::build_sender_challenge(
+            &self.script,
+            &self.features,
+            &self.script_offset_public_key,
+            &self.sender_metadata_signature.get_public_nonce(),
+        );
+        if !self
+            .sender_metadata_signature
+            .verify_challenge(&self.script_offset_public_key, &challenge)
+        {
+            return Err(TransactionError::InvalidSignatureError(
+                "Sender signature not valid!".to_string(),
+            ));
+        }
+        Ok(())
     }
 
     /// Attempt to rewind the range proof to reveal the proof message and committed value
@@ -582,6 +611,38 @@ impl TransactionOutput {
     pub fn is_coinbase(&self) -> bool {
         self.features.flags.contains(OutputFlags::COINBASE_OUTPUT)
     }
+
+    /// Convenience function that calculates the challenge for the sender Schnorr signature
+    pub fn build_sender_challenge(
+        script: &TariScript,
+        features: &OutputFeatures,
+        script_offset_public_key: &PublicKey,
+        puplic_nonce: &PublicKey,
+    ) -> MessageHash {
+        Challenge::new()
+            .chain(script.as_bytes())
+            .chain(features.to_bytes())
+            .chain(script_offset_public_key.as_bytes())
+            .chain(puplic_nonce.as_bytes())
+            .result()
+            .to_vec()
+    }
+
+    /// Create sender signature fore the output meta data
+    pub fn create_sender_signature(
+        script: &TariScript,
+        output_features: &OutputFeatures,
+        script_offset_private_key: &PrivateKey,
+    ) -> Signature {
+        let (sender_sig_pvt_nonce, sender_sig_pub_nonce) = PublicKey::random_keypair(&mut OsRng);
+        let e = TransactionOutput::build_sender_challenge(
+            &script,
+            &output_features,
+            &PublicKey::from_secret_key(script_offset_private_key),
+            &sender_sig_pub_nonce,
+        );
+        Signature::sign(script_offset_private_key.clone(), sender_sig_pvt_nonce, &e).unwrap()
+    }
 }
 
 /// Implement the canonical hashing function for TransactionOutput for use in ordering.
@@ -611,6 +672,7 @@ impl Default for TransactionOutput {
             RangeProof::default(),
             TariScript::default(),
             PublicKey::default(),
+            Signature::default(),
         )
     }
 }
@@ -629,11 +691,13 @@ impl Display for TransactionOutput {
         };
         write!(
             fmt,
-            "{} [{:?}], Script hash: ({}), Offset Pubkey: ({}), Proof: {}",
+            "{} [{:?}], Script: ({}), Offset Pubkey: ({}), Sender Signature: ({}, {}), Proof: {}",
             self.commitment.to_hex(),
             self.features,
             self.script,
             self.script_offset_public_key.to_hex(),
+            self.sender_metadata_signature.get_signature().to_hex(),
+            self.sender_metadata_signature.get_public_nonce().to_hex(),
             proof
         )
     }
@@ -1093,7 +1157,7 @@ mod test {
     use super::*;
     use crate::{
         transactions::{
-            helpers::{create_test_kernel, create_tx, spend_utxos},
+            helpers::{create_test_kernel, create_tx, create_unblinded_output, spend_utxos, TestParams},
             tari_amount::T,
             transaction::OutputFeatures,
             types::{BlindingFactor, PrivateKey, PublicKey, RangeProof},
@@ -1102,7 +1166,6 @@ mod test {
     };
     use rand::{self, rngs::OsRng};
     use tari_crypto::{
-        inputs,
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
         ristretto::pedersen::PedersenCommitmentFactory,
         script,
@@ -1111,18 +1174,10 @@ mod test {
 
     #[test]
     fn unblinded_input() {
-        let k = BlindingFactor::random(&mut OsRng);
+        let test_params = TestParams::new();
         let factory = PedersenCommitmentFactory::default();
-        let i = UnblindedOutput::new(
-            10.into(),
-            k.clone(),
-            None,
-            script!(Nop),
-            inputs!(PublicKey::from_secret_key(&k)),
-            0,
-            k.clone(),
-            PublicKey::from_secret_key(&k),
-        );
+
+        let i = create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params, 10.into());
         let input = i
             .as_transaction_input(&factory)
             .expect("Should be able to create transaction input");
@@ -1141,35 +1196,28 @@ mod test {
     fn range_proof_verification() {
         let factories = CryptoFactories::new(32);
         // Directly test the tx_output verification
-        let k1 = BlindingFactor::random(&mut OsRng);
-        let k2 = BlindingFactor::random(&mut OsRng);
+        let test_params_1 = TestParams::new();
+        let test_params_2 = TestParams::new();
+        let script = script!(Nop);
+        let output_features = OutputFeatures::default();
 
         // For testing the max range has been limited to 2^32 so this value is too large.
-        let unblinded_output1 = UnblindedOutput::new(
+        let unblinded_output1 = create_unblinded_output(
+            script.clone(),
+            output_features.clone(),
+            test_params_1,
             (2u64.pow(32) - 1u64).into(),
-            k1.clone(),
-            None,
-            script!(Nop),
-            inputs!(PublicKey::from_secret_key(&k1)),
-            0,
-            k1.clone(),
-            PublicKey::from_secret_key(&k1),
         );
         let tx_output1 = unblinded_output1.as_transaction_output(&factories).unwrap();
         assert!(tx_output1.verify_range_proof(&factories.range_proof).unwrap());
 
-        let unblinded_output2 = UnblindedOutput::new(
+        let unblinded_output2 = create_unblinded_output(
+            script.clone(),
+            output_features.clone(),
+            test_params_2.clone(),
             (2u64.pow(32) + 1u64).into(),
-            k2.clone(),
-            None,
-            script!(Nop),
-            inputs!(PublicKey::from_secret_key(&k2)),
-            0,
-            k2.clone(),
-            PublicKey::from_secret_key(&k2),
         );
         let tx_output2 = unblinded_output2.as_transaction_output(&factories);
-
         match tx_output2 {
             Ok(_) => panic!("Range proof should have failed to verify"),
             Err(e) => assert_eq!(
@@ -1177,20 +1225,47 @@ mod test {
                 TransactionError::ValidationError("Range proof could not be verified".to_string())
             ),
         }
-        let v = PrivateKey::from(2u64.pow(32) + 1);
-        let c = factories.commitment.commit(&k2, &v);
-        let proof = factories.range_proof.construct_proof(&k2, 2u64.pow(32) + 1).unwrap();
 
-        // TODO: Populate offset_pub_key with the proper value
-        let offset_pub_key = PublicKey::default();
+        let v = PrivateKey::from(2u64.pow(32) + 1);
+        let c = factories.commitment.commit(&test_params_2.spend_key, &v);
+        let proof = factories
+            .range_proof
+            .construct_proof(&test_params_2.spend_key, 2u64.pow(32) + 1)
+            .unwrap();
+
         let tx_output3 = TransactionOutput::new(
-            OutputFeatures::default(),
+            output_features.clone(),
             c,
             RangeProof::from_bytes(&proof).unwrap(),
-            TariScript::default(),
-            offset_pub_key,
+            script.clone(),
+            test_params_2.script_offset_pub_key,
+            TransactionOutput::create_sender_signature(&script, &output_features, &test_params_2.script_offset_pvt_key),
         );
         assert!(!tx_output3.verify_range_proof(&factories.range_proof).unwrap());
+    }
+
+    #[test]
+    fn sender_signature_verification() {
+        let test_params = TestParams::new();
+        let factories = CryptoFactories::new(32);
+        let script = script!(Nop);
+        let output_features = OutputFeatures::default();
+        let unblinded_output = create_unblinded_output(script, output_features, test_params, 100.into());
+
+        let mut tx_output = unblinded_output.as_transaction_output(&factories).unwrap();
+        assert!(tx_output.verify_sender_signature().is_ok());
+        tx_output.script = TariScript::default();
+        assert!(tx_output.verify_sender_signature().is_err());
+
+        tx_output = unblinded_output.as_transaction_output(&factories).unwrap();
+        assert!(tx_output.verify_sender_signature().is_ok());
+        tx_output.features = OutputFeatures::create_coinbase(0);
+        assert!(tx_output.verify_sender_signature().is_err());
+
+        tx_output = unblinded_output.as_transaction_output(&factories).unwrap();
+        assert!(tx_output.verify_sender_signature().is_ok());
+        tx_output.script_offset_public_key = PublicKey::default();
+        assert!(tx_output.verify_sender_signature().is_err());
     }
 
     #[test]
@@ -1363,8 +1438,8 @@ mod test {
 
     #[test]
     fn test_output_rewinding() {
+        let test_params = TestParams::new();
         let factories = CryptoFactories::new(32);
-        let k = BlindingFactor::random(&mut OsRng);
         let v = MicroTari::from(42);
         let rewind_key = PrivateKey::random(&mut OsRng);
         let rewind_blinding_key = PrivateKey::random(&mut OsRng);
@@ -1380,17 +1455,7 @@ mod test {
             proof_message: proof_message.to_owned(),
         };
 
-        let unblinded_output = UnblindedOutput::new(
-            v,
-            k.clone(),
-            None,
-            script!(Nop),
-            inputs!(PublicKey::from_secret_key(&k)),
-            0,
-            k.clone(),
-            PublicKey::from_secret_key(&k),
-        );
-
+        let unblinded_output = create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params.clone(), v);
         let output = unblinded_output
             .as_rewindable_transaction_output(&factories, &rewind_data)
             .unwrap();
@@ -1429,6 +1494,6 @@ mod test {
             .unwrap();
         assert_eq!(full_rewind_result.committed_value, v);
         assert_eq!(&full_rewind_result.proof_message, proof_message);
-        assert_eq!(full_rewind_result.blinding_factor, k);
+        assert_eq!(full_rewind_result.blinding_factor, test_params.spend_key);
     }
 }

@@ -28,6 +28,31 @@ class TransactionBuilder {
     return Buffer.from(final).toString("hex");
   }
 
+  buildSenderMetaChallenge(
+    script,
+    features,
+    scriptOffsetPublicKey,
+    publicNonce
+  ) {
+    const KEY = null; // optional key
+    const OUTPUT_LENGTH = 32; // bytes
+    const context = blake2bInit(OUTPUT_LENGTH, KEY);
+    const buff_nonce = Buffer.from(publicNonce, "hex");
+    const buff_key = Buffer.from(scriptOffsetPublicKey, "hex");
+    let flags = Buffer.alloc(1);
+    flags[0] = features.flags;
+    let features_buffer = Buffer.concat([
+      flags,
+      toLittleEndian(parseInt(features.maturity), 64),
+    ]);
+    blake2bUpdate(context, script);
+    blake2bUpdate(context, features_buffer);
+    blake2bUpdate(context, buff_key);
+    blake2bUpdate(context, buff_nonce);
+    const final = blake2bFinal(context);
+    return Buffer.from(final).toString("hex");
+  }
+
   buildScriptChallenge(publicNonce, script, input_data) {
     var KEY = null; // optional key
     var OUTPUT_LENGTH = 32; // bytes
@@ -133,7 +158,20 @@ class TransactionBuilder {
       privateKey,
       BigInt(amount)
     ).proof;
-
+    this.kv.new_key("common_nonce");
+    let public_nonce = this.kv.public_key("common_nonce");
+    let private_nonce = this.kv.private_key("common_nonce");
+    let sender_meta_challenge = this.buildSenderMetaChallenge(
+      nopScriptBytes,
+      outputFeatures,
+      scriptOffsetPublicKey,
+      public_nonce
+    );
+    let sender_sig = tari_crypto.sign_challenge_with_nonce(
+      scriptOffsetPrivateKey.toString("hex"),
+      private_nonce,
+      sender_meta_challenge
+    );
     let output = {
       amount: amount,
       privateKey: privateKey,
@@ -148,6 +186,10 @@ class TransactionBuilder {
         range_proof: Buffer.from(rangeproof, "hex"),
         script: nopScriptBytes,
         script_offset_public_key: Buffer.from(scriptOffsetPublicKey, "hex"),
+        sender_metadata_signature: {
+          public_nonce: Buffer.from(sender_sig.public_nonce, "hex"),
+          signature: Buffer.from(sender_sig.signature, "hex"),
+        },
       },
     };
     this.outputs.push(output);
@@ -232,9 +274,12 @@ class TransactionBuilder {
       flags: 1,
       maturity: lockHeight,
     };
-    let scriptOffsetPublicKey = Buffer.from(
-      "0000000000000000000000000000000000000000000000000000000000000000",
-      "hex"
+    let scriptOffsetPrivateKeyNum = Math.floor(Math.random() * 500 + 1);
+    let scriptOffsetPrivateKey = Buffer.from(
+      toLittleEndian(scriptOffsetPrivateKeyNum, 256)
+    ).toString("hex");
+    let scriptOffsetPublicKey = tari_crypto.pubkey_from_secret(
+      scriptOffsetPrivateKey.toString("hex")
     );
 
     let rangeproofFactory = tari_crypto.RangeProofFactory.new();
@@ -242,7 +287,6 @@ class TransactionBuilder {
       privateKey.toString("hex"),
       BigInt(value + fee)
     ).proof;
-
     const excess = tari_crypto.commit(privateKey, BigInt(0));
     this.kv.new_key("nonce");
     const public_nonce = this.kv.public_key("nonce");
@@ -254,6 +298,21 @@ class TransactionBuilder {
       challenge
     );
 
+    this.kv.new_key("common_nonce");
+    let sender_sig_public_nonce = this.kv.public_key("common_nonce");
+    let sender_sig_private_nonce = this.kv.private_key("common_nonce");
+    let sender_meta_challenge = this.buildSenderMetaChallenge(
+      nopScriptBytes,
+      outputFeatures,
+      scriptOffsetPublicKey,
+      sender_sig_public_nonce
+    );
+    let sender_sig = tari_crypto.sign_challenge_with_nonce(
+      scriptOffsetPrivateKey.toString("hex"),
+      sender_sig_private_nonce,
+      sender_meta_challenge
+    );
+
     return {
       outputs: [
         {
@@ -261,7 +320,11 @@ class TransactionBuilder {
           commitment: Buffer.from(coinbase.commitment, "hex"),
           range_proof: Buffer.from(rangeproof, "hex"),
           script: nopScriptBytes,
-          script_offset_public_key: scriptOffsetPublicKey,
+          script_offset_public_key: Buffer.from(scriptOffsetPublicKey, "hex"),
+          sender_metadata_signature: {
+            public_nonce: Buffer.from(sender_sig.public_nonce, "hex"),
+            signature: Buffer.from(sender_sig.signature, "hex"),
+          },
         },
       ],
       kernels: [

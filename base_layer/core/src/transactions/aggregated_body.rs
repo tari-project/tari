@@ -317,6 +317,7 @@ impl AggregateBody {
         self.validate_kernel_sum(total_offset, &factories.commitment)?;
 
         self.validate_range_proofs(&factories.range_proof)?;
+        self.validate_sender_signatures()?;
         self.validate_script_offset(script_offset_g)
     }
 
@@ -408,6 +409,14 @@ impl AggregateBody {
                     "Range proof could not be verified".into(),
                 ));
             }
+        }
+        Ok(())
+    }
+
+    fn validate_sender_signatures(&self) -> Result<(), TransactionError> {
+        trace!(target: LOG_TARGET, "Checking sender signatures");
+        for o in &self.outputs {
+            let _ = o.verify_sender_signature()?;
         }
         Ok(())
     }

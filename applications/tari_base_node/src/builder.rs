@@ -97,7 +97,7 @@ impl BaseNodeContext {
         &self.base_node_comms
     }
 
-    /// Returns the wallet CommsNode.
+    /// Returns the base node state machine
     pub fn state_machine(&self) -> StateMachineHandle {
         self.base_node_handles.expect_handle()
     }

@@ -30,22 +30,21 @@ use diesel::result::{DatabaseErrorKind, Error::DatabaseError};
 use rand::{rngs::OsRng, RngCore};
 use std::time::Duration;
 use tari_core::transactions::{
+    helpers::{create_unblinded_output, TestParams},
     tari_amount::MicroTari,
-    transaction::UnblindedOutput,
-    types::{CryptoFactories, PrivateKey, PublicKey},
+    transaction::OutputFeatures,
+    types::{CryptoFactories, PrivateKey},
 };
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::SecretKey,
-    script::{ExecutionStack, TariScript},
-};
-use tari_wallet::output_manager_service::{
-    error::OutputManagerStorageError,
-    service::Balance,
-    storage::{
-        database::{KeyManagerState, OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
-        models::DbUnblindedOutput,
-        sqlite_db::OutputManagerSqliteDatabase,
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey, script::TariScript};
+use tari_wallet::{
+    output_manager_service::{
+        error::OutputManagerStorageError,
+        service::Balance,
+        storage::{
+            database::{KeyManagerState, OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
+            models::DbUnblindedOutput,
+            sqlite_db::OutputManagerSqliteDatabase,
+        },
     },
 };
 
@@ -234,15 +233,11 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         MicroTari::from(100 + OsRng.next_u64() % 1000),
         &factories.commitment,
     );
-    let output = UnblindedOutput::new(
-        uo_incoming.value,
-        uo_incoming.spending_key.clone(),
-        None,
+    let output = create_unblinded_output(
         TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        PrivateKey::default(),
-        PublicKey::default(),
+        OutputFeatures::default(),
+        TestParams::new(),
+        uo_incoming.value,
     );
     runtime
         .block_on(db.accept_incoming_pending_transaction(

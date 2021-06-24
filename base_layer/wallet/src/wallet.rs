@@ -61,11 +61,11 @@ use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{OutputFeatures, UnblindedOutput},
-    types::{CryptoFactories, PrivateKey, PublicKey},
+    types::{CryptoFactories, PrivateKey, PublicKey, Signature},
 };
 use tari_crypto::{
     common::Blake256,
-    keys::{PublicKey as sk, SecretKey},
+    keys::SecretKey,
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
     script,
     script::{ExecutionStack, TariScript},
@@ -309,6 +309,9 @@ where
         source_public_key: &CommsPublicKey,
         features: OutputFeatures,
         message: String,
+        sender_signature: Signature,
+        script_private_key: &PrivateKey,
+        script_offset_public_key: &PublicKey,
     ) -> Result<TxId, WalletError> {
         let unblinded_output = UnblindedOutput::new(
             amount,
@@ -317,8 +320,9 @@ where
             script,
             input_data,
             0,
-            spending_key.clone(),
-            PublicKey::from_secret_key(&spending_key),
+            script_private_key.clone(),
+            script_offset_public_key.clone(),
+            sender_signature,
         );
 
         let tx_id = self
@@ -454,12 +458,10 @@ where
     /// Utility function to find out if there is data in the database indicating that there is an incomplete recovery
     /// process in progress
     pub async fn is_recovery_in_progress(&self) -> Result<bool, WalletError> {
-        use crate::utxo_scanner_service::utxo_scanning::RECOVERY_HEIGHT_KEY;
-        Ok(self
-            .db
-            .get_client_key_value(RECOVERY_HEIGHT_KEY.to_string())
-            .await?
-            .is_some())
+        use crate::utxo_scanner_service::utxo_scanning::UTXO_INDEX_KEY;
+        let mut key = "recovery".to_owned();
+        key.push_str(&UTXO_INDEX_KEY.to_string());
+        Ok(self.db.get_client_key_value(key).await?.is_some())
     }
 }
 

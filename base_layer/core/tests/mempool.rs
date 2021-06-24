@@ -51,9 +51,9 @@ use tari_core::{
     proto,
     transactions::{
         fee::Fee,
-        helpers::{schema_to_transaction, spend_utxos, TestParams},
+        helpers::{create_unblinded_output, schema_to_transaction, spend_utxos, TestParams},
         tari_amount::{uT, MicroTari, T},
-        transaction::{KernelBuilder, OutputFeatures, Transaction, TransactionOutput, UnblindedOutput},
+        transaction::{KernelBuilder, OutputFeatures, Transaction, TransactionOutput},
         transaction_protocol::{build_challenge, TransactionMetadata},
         types::{Commitment, CryptoFactories, PrivateKey, PublicKey, Signature},
     },
@@ -61,7 +61,7 @@ use tari_core::{
     txn_schema,
     validation::transaction_validators::{TxConsensusValidator, TxInputAndMaturityValidator},
 };
-use tari_crypto::{inputs, script};
+use tari_crypto::script;
 use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType};
 use tari_test_utils::async_assert_eventually;
 use tempfile::tempdir;
@@ -680,24 +680,21 @@ fn consensus_validation_large_tx() {
     for i in 0..output_count {
         let test_params = TestParams::new();
         nonce = nonce + test_params.nonce.clone();
-        offset = offset + test_params.offset;
+        offset = offset + test_params.offset.clone();
         let output_amount = if i < output_count - 1 {
             amount_per_output
         } else {
             amount_for_last_output
         };
-        let utxo = UnblindedOutput::new(
-            output_amount,
-            test_params.spend_key.clone(),
-            None,
+        let output = create_unblinded_output(
             script!(Nop),
-            inputs!(PublicKey::from_secret_key(&test_params.spend_key)),
-            1,
-            test_params.script_private_key,
-            test_params.script_offset_pub_key,
+            OutputFeatures::default(),
+            test_params.clone(),
+            output_amount,
         );
+
         script_offset_pvt = script_offset_pvt - test_params.script_offset_pvt_key;
-        unblinded_outputs.push(utxo.clone());
+        unblinded_outputs.push(output.clone());
     }
 
     let mut sum_outputs_blinding_factors = unblinded_outputs[0].spending_key.clone();

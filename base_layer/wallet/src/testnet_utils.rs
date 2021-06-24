@@ -66,13 +66,13 @@ use tari_comms_dht::{envelope::Network as DhtNetwork, DhtConfig};
 use tari_core::{
     consensus::Network,
     transactions::{
+        helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
         tari_amount::MicroTari,
-        transaction::{Transaction, TransactionInput, UnblindedOutput},
+        transaction::{OutputFeatures, Transaction, TransactionInput, UnblindedOutput},
         types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey},
     },
 };
 use tari_crypto::{
-    inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
     script,
     tari_utilities::hex::Hex,
@@ -104,28 +104,9 @@ impl TestParams {
         }
     }
 }
-pub fn make_input<R: Rng + CryptoRng>(
-    rng: &mut R,
-    val: MicroTari,
-    factories: &CryptoFactories,
-) -> (TransactionInput, UnblindedOutput) {
-    let key = PrivateKey::random(rng);
-    let script = script!(Nop);
-    let script_private_key = PrivateKey::random(rng);
-    let input_data = inputs!(PublicKey::from_secret_key(&script_private_key));
-    let offset_pub_key = PublicKey::default();
-
-    let utxo = UnblindedOutput::new(
-        val,
-        key,
-        None,
-        script,
-        input_data,
-        0,
-        script_private_key,
-        offset_pub_key,
-    );
-
+pub fn make_input(val: MicroTari, factories: &CryptoFactories) -> (TransactionInput, UnblindedOutput) {
+    let test_params = TestParamsHelpers::new();
+    let utxo = create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params, val);
     (
         utxo.as_transaction_input(&factories.commitment)
             .expect("Should be able to make transaction input"),
@@ -288,7 +269,7 @@ pub async fn generate_wallet_test_data<
     // Generate outputs
     let num_outputs = 75;
     for i in 0..num_outputs {
-        let (_ti, uo) = make_input(&mut OsRng.clone(), MicroTari::from(5_000_000 + i * 35_000), &factories);
+        let (_ti, uo) = make_input(MicroTari::from(5_000_000 + i * 35_000), &factories);
         wallet.output_manager_service.add_output(uo).await?;
     }
     info!(target: LOG_TARGET, "Added test outputs to wallet");
@@ -312,7 +293,7 @@ pub async fn generate_wallet_test_data<
     contacts[0].public_key = wallet_alice.comms.node_identity().public_key().clone();
 
     for i in 0..20 {
-        let (_ti, uo) = make_input(&mut OsRng.clone(), MicroTari::from(1_500_000 + i * 530_500), &factories);
+        let (_ti, uo) = make_input(MicroTari::from(1_500_000 + i * 530_500), &factories);
         wallet_alice.output_manager_service.add_output(uo).await?;
     }
     info!(target: LOG_TARGET, "Alice Wallet created");
@@ -333,11 +314,7 @@ pub async fn generate_wallet_test_data<
     contacts[1].public_key = wallet_bob.comms.node_identity().public_key().clone();
 
     for i in 0..20 {
-        let (_ti, uo) = make_input(
-            &mut OsRng.clone(),
-            MicroTari::from(2_000_000 + i * i * 61_050),
-            &factories,
-        );
+        let (_ti, uo) = make_input(MicroTari::from(2_000_000 + i * i * 61_050), &factories);
         wallet_bob.output_manager_service.add_output(uo).await?;
     }
     info!(target: LOG_TARGET, "Bob Wallet created");

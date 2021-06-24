@@ -308,15 +308,15 @@ mod test {
         test_helpers::create_orphan_block,
         transactions::{
             fee::Fee,
-            helpers::TestParams,
+            helpers::{create_unblinded_output, TestParams},
             tari_amount::MicroTari,
-            transaction::{KernelFeatures, UnblindedOutput},
-            types::{CryptoFactories, HashDigest, PublicKey},
+            transaction::{KernelFeatures, OutputFeatures},
+            types::{CryptoFactories, HashDigest},
             SenderTransactionProtocol,
         },
         tx,
     };
-    use tari_crypto::{inputs, keys::PublicKey as PublicKeyTrait, script};
+    use tari_crypto::script;
 
     #[test]
     fn test_find_duplicate_input() {
@@ -387,19 +387,15 @@ mod test {
         let double_spend_input = inputs.first().unwrap().clone();
 
         let estimated_fee = Fee::calculate(20.into(), 1, 1, 1);
-        let utxo = UnblindedOutput::new(
-            INPUT_AMOUNT - estimated_fee,
-            test_params.spend_key.clone(),
-            None,
+        let utxo = create_unblinded_output(
             script!(Nop),
-            inputs!(PublicKey::from_secret_key(&test_params.spend_key)),
-            0,
-            test_params.spend_key.clone(),
-            PublicKey::from_secret_key(&test_params.spend_key),
+            OutputFeatures::default(),
+            test_params.clone(),
+            INPUT_AMOUNT - estimated_fee,
         );
         stx_builder
             .with_input(double_spend_utxo, double_spend_input)
-            .with_output(utxo, test_params.spend_key);
+            .with_output(utxo, test_params.script_offset_pvt_key);
 
         let factories = CryptoFactories::default();
         let mut stx_protocol = stx_builder.build::<HashDigest>(&factories).unwrap();

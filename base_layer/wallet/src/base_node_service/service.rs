@@ -73,7 +73,7 @@ impl Default for BaseNodeState {
     }
 }
 
-/// The wallet base node service is responsible for handling requests to be sent to the connected base node.
+/// The base node service is responsible for handling requests to be sent to the connected base node.
 pub struct BaseNodeService<T>
 where T: WalletBackend + 'static
 {

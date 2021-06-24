@@ -2113,7 +2113,7 @@ where
         .await?;
 
         use crate::testnet_utils::make_input;
-        let (_ti, uo) = make_input(&mut OsRng, amount + 100000 * uT, &self.resources.factories);
+        let (_ti, uo) = make_input(amount + 100000 * uT, &self.resources.factories);
 
         fake_oms.add_output(None, uo).await?;
 

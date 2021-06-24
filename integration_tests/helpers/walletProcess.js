@@ -228,6 +228,10 @@ class WalletProcess {
               row.script_offset_public_key,
               "hex"
             ),
+            sender_metadata_signature: {
+              public_nonce: Buffer.from(row.public_nonce, "hex"),
+              signature: Buffer.from(row.signature, "hex"),
+            },
           };
           unblinded_outputs.push(unblinded_output);
         })
