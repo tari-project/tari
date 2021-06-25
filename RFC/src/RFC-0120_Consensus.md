@@ -87,8 +87,8 @@ Every [block header] MUST contain the following fields:
 * timestamp;
 * output_mr;
 * output_mmr_size;
+* input_mr;
 * witness_mr;
-* range_proof_mr;
 * kernel_mr;
 * kernel_mmr_size;
 * total_kernel_offset;
@@ -164,25 +164,24 @@ The Output_mmr_size MUST confirm to the following:
 
 * Represented as a single unsigned 64-bit integer.
 
-#### Witness_mr
+#### Input_mr
 
-This is the merkle root of all witness data for the block, which consists of the script signature and sender metadata 
-signature of every transactional input and output. It is used to proof that all witness data in the block is correct and 
-has not been tampered with. The order of the leaves at the bottom of the mountain range MUST be an ordering of the 
-transactional inputs and then the outputs. The items that are hashed MUST be either the script signature or sender 
-metadata signature respectively. This ensures that nodes who receive a block can verify that the witness data is 
-unchanged. 
+This is the merkle root of all the inputs in the block, which consists of the hashed inputs. It is used to prove that 
+all inputs are correct and not changed after mining. This MUST be constructed by adding in order, the hash of every 
+input contained in the block.
 
-The witness_mr MUST confirm to the following:
+The input_mr MUST confirm to the following:
 
 * Represented as an array of unsigned 8-bit integers (bytes) in little-endian format.
 * The hashing function used must be blake2b with a 256 bit digest.
 
-#### Range_proof_mr
+#### Witness_mr
 
-This is the merkle root of the range proofs.
+This is the merkle root of the output witness data. Contained in this merkle mountain range is the rangeproofs and 
+sender_meta_data signatures of all created outputs. This MUST be constructed by adding the Hash ( `RangeProof` || 
+`sender_meta_data signature`) in order for every output contain in the block.
 
-The range_proof_mr MUST confirm to the following:
+The witness_mr MUST confirm to the following:
 
 * Represented as an array of unsigned 8-bit integers (bytes) in little-endian format.
 * The hashing function used must be blake2b with a 256 bit digest.
