@@ -33,7 +33,11 @@ pub struct OutputSql {
     pub script_offset_public_key: Vec<u8>,
     pub unique_id: Option<Vec<u8>>,
     pub metadata: Option<Vec<u8>>,
-    pub features_asset_public_key: Option<Vec<u8>>
+    pub features_asset_public_key: Option<Vec<u8>>,
+    pub parent_public_key: Option<Vec<u8>>,
+    pub features_mint_asset_public_key: Option<Vec<u8>>,
+    pub features_mint_asset_owner_commitment: Option<Vec<u8>>
+
 }
 
 impl OutputSql {

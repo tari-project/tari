@@ -191,6 +191,7 @@ message TransactionOutput {
 
     // Unique id, e.g. for NFTs
     bytes unique_id = 7;
+    bytes parent_public_key = 8;
 }
 
 // Options for UTXO's
@@ -204,10 +205,16 @@ message OutputFeatures {
     bytes metadata= 3;
 
     AssetOutputFeatures asset = 16;
+    MintNonFungibleFeatures mint_non_fungible = 17;
 }
 
 message AssetOutputFeatures {
     bytes public_key = 1;
+}
+
+message MintNonFungibleFeatures {
+    bytes asset_public_key = 1;
+    bytes asset_owner_commitment  = 2;
 }
 
 

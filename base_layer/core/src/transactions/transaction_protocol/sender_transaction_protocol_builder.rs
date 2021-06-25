@@ -281,6 +281,7 @@ impl SenderTransactionProtocolBuilder {
                                 .ok_or("Change script private key was not provided")?
                                 .clone(),
                             PublicKey::from_secret_key(&change_script_offset_private_key),
+                            None,
                             None
                         );
                         Ok((fee_with_change, v, Some(change_unblinded_output)))

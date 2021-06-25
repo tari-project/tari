@@ -37,12 +37,7 @@ impl From<UnblindedOutput> for grpc::UnblindedOutput {
         grpc::UnblindedOutput {
             value: u64::from(output.value),
             spending_key: output.spending_key.as_bytes().to_vec(),
-            features: Some(grpc::OutputFeatures {
-                flags: output.features.flags.bits() as u32,
-                maturity: output.features.maturity,
-                metadata: output.features.metadata,
-                asset: output.features.asset.map(|a| a.into())
-            }),
+            features: Some(output.features.into()),
             script: output.script.as_bytes(),
             input_data: output.input_data.as_bytes(),
             height: output.height,
@@ -86,7 +81,10 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
             height: output.height,
             script_private_key,
             script_offset_public_key,
-            unique_id
+            unique_id,
+
+            // TODO: Remove this none
+            parent_public_key: None
         })
     }
 }

@@ -79,7 +79,7 @@ pub enum OutputManagerRequest {
     ScanOutputs(Vec<TransactionOutput>, u64),
     UpdateMinedHeight(TxId, u64),
     AddKnownOneSidedPaymentScript(KnownOneSidedPaymentScript),
-    CreateOutputWithFeatures { value: MicroTari, features: OutputFeatures},
+    CreateOutputWithFeatures { value: MicroTari, features: Box<OutputFeatures>, unique_id: Option<Vec<u8>>, parent_public_key: Box<Option<PublicKey>>},
 
 }
 
@@ -114,7 +114,7 @@ impl fmt::Display for OutputManagerRequest {
             ScanOutputs(_, _) => write!(f, "ScanRewindAndImportOutputs"),
             UpdateMinedHeight(_, _) => write!(f, "UpdateMinedHeight"),
             AddKnownOneSidedPaymentScript(_) => write!(f, "AddKnownOneSidedPaymentScript"),
-            CreateOutputWithFeatures { value, features} => write!(f, "CreateOutputWithFeatures({}, {})", value, features.to_string()),
+            CreateOutputWithFeatures { value, features, unique_id, parent_public_key } => write!(f, "CreateOutputWithFeatures({}, {}, {:?}, {:?})", value, features.to_string(), unique_id, parent_public_key),
             CreatePayToSelfWithOutputs { .. } => write!(f, "CreatePayToSelfWithOutputs" )
         }
     }
@@ -234,8 +234,8 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn create_output_with_features(&mut self, value: MicroTari, features: OutputFeatures) -> Result<UnblindedOutput, OutputManagerError> {
-        match self.handle.call(OutputManagerRequest::CreateOutputWithFeatures{ value, features}).await?? {
+    pub async fn create_output_with_features(&mut self, value: MicroTari, features: OutputFeatures, unique_id: Option<Vec<u8>>, parent_public_key: Option<PublicKey>) -> Result<UnblindedOutput, OutputManagerError> {
+        match self.handle.call(OutputManagerRequest::CreateOutputWithFeatures{ value, features: Box::new(features), unique_id, parent_public_key: Box::new(parent_public_key)}).await?? {
             OutputManagerResponse::CreateOutputWithFeatures{ output} => Ok(*output),
             _ => Err(OutputManagerError::UnexpectedApiResponse)
         }

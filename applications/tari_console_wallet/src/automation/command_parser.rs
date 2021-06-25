@@ -150,7 +150,7 @@ impl<'a> ArgParser<'a> {
         self.result.push(text_result);
     self
     }
-    fn text_array(mut self) -> Self {
+    fn text_array(self) -> Self {
         let mut me = self;
         while me.args.peek().is_some() {
            me = me.text();

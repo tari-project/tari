@@ -419,10 +419,10 @@ where TBackend: OutputManagerBackend + 'static
 
         let mut returned_outputs = Vec::new();
         for output_proto in batch_response.outputs.iter() {
-            let output = TransactionOutput::try_from(output_proto.clone()).map_err(|_| {
+            let output = TransactionOutput::try_from(output_proto.clone()).map_err(|err| {
                 OutputManagerProtocolError::new(
                     self.id,
-                    OutputManagerError::ConversionError("Could not convert protobuf TransactionOutput".to_string()),
+                    OutputManagerError::ConversionError(format!("Could not convert protobuf TransactionOutput:{}", err)),
                 )
             })?;
             returned_outputs.push(output);

@@ -222,7 +222,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let transactions = transactions
             .map(|(tx_id, tx)| match tx {
                 Some(tx) => convert_wallet_transaction_into_transaction_info(tx, wallet_pk),
-                None => TransactionInfo::not_found(tx_id.into()),
+                None => TransactionInfo::not_found(tx_id),
             })
             .collect();
 

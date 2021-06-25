@@ -78,7 +78,7 @@ const LOG_TARGET: &str = "wallet::output_manager_service::database::sqlite_db";
 mod output_sql;
 use crate::schema::outputs::columns;
 pub(crate) use output_sql::OutputSql;
-use tari_core::transactions::transaction::AssetOutputFeatures;
+use tari_core::transactions::transaction::{AssetOutputFeatures, MintNonFungibleFeatures};
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
@@ -300,7 +300,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let conn = self.database_connection.acquire_lock();
         let mut o :OutputSql = outputs::table.filter(columns::features_asset_public_key.eq(public_key.to_vec())).filter(outputs::status.eq(OutputStatus::Unspent as i32)).first(&*conn)?;
             self.decrypt_if_necessary(&mut o)?;
-            Ok(o.try_into()?)
+            o.try_into()
 
     }
 
@@ -943,11 +943,20 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             }),
             None => None,
         };
+        let mint_non_fungible = match o.features_mint_asset_public_key {
+            Some(ref public_key) => Some(MintNonFungibleFeatures{
+                asset_public_key: PublicKey::from_bytes(public_key)?,
+                asset_owner_commitment: o.features_mint_asset_owner_commitment.map(|ao| Commitment::from_bytes(&ao)).unwrap()?
+            }),
+            None => None
+
+        };
         let features = Some(OutputFeatures {
             flags: OutputFlags::from_bits(o.flags as u8).ok_or(OutputManagerStorageError::ConversionError)?,
             maturity: o.maturity as u64,
             metadata: o.metadata.unwrap_or_default(),
             asset: asset_features,
+            mint_non_fungible
         });
         let unblinded_output = UnblindedOutput::new(
             MicroTari::from(o.value as u64),
@@ -977,6 +986,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 OutputManagerStorageError::ConversionError
             })?,
             o.unique_id.clone(),
+            o.parent_public_key.map(|p| PublicKey::from_bytes(&p)).transpose()?
         );
 
         let hash = match o.hash {

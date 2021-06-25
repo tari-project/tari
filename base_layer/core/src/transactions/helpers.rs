@@ -75,6 +75,7 @@ pub fn create_test_input(
         mined_height,
         script_key,
         offset_pub_key,
+        None,
         None
     );
     let input = unblinded_output.as_transaction_input(factory).unwrap();
@@ -297,6 +298,7 @@ pub fn create_tx(
             0,
             test_params.script_private_key.clone(),
             test_params.script_offset_pub_key,
+            None,
             None
         );
         unblinded_outputs.push(utxo.clone());
@@ -357,6 +359,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
             0,
             test_params.script_private_key.clone(),
             test_params.script_offset_pub_key,
+            None,
             None
         );
         outputs.push(utxo.clone());
@@ -377,6 +380,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
         0,
         test_params_change_and_txn.script_private_key.clone(),
         change_script_offset_public_key,
+        None,
         None,
     );
     outputs.push(change_output);
@@ -414,7 +418,7 @@ pub fn create_utxo(
     let offset_pub_key = PublicKey::from_secret_key(&keys.k);
     let proof = factories.range_proof.construct_proof(&keys.k, value.into()).unwrap();
 
-    let utxo = TransactionOutput::new(features, commitment, proof.into(), script.clone(), offset_pub_key, None);
+    let utxo = TransactionOutput::new(features, commitment, proof.into(), script.clone(), offset_pub_key, None, None);
     (utxo, keys.k, offset_private_key.k)
 }
 

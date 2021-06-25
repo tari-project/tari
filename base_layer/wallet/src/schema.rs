@@ -106,6 +106,9 @@ table! {
         unique_id -> Nullable<Binary>,
         metadata -> Nullable<Binary>,
         features_asset_public_key -> Nullable<Binary>,
+        features_mint_asset_public_key -> Nullable<Binary>,
+        features_mint_asset_owner_commitment -> Nullable<Binary>,
+        parent_public_key -> Nullable<Binary>,
     }
 }
 

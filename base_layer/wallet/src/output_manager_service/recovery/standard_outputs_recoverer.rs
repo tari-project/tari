@@ -80,9 +80,9 @@ where TBackend: OutputManagerBackend + 'static
                         &self.master_key_manager.rewind_data().rewind_blinding_key,
                     )
                     .ok()
-                    .map(|v| (v, output.features, output.script, output.script_offset_public_key, output.unique_id))
+                    .map(|v| (v, output.features, output.script, output.script_offset_public_key, output.unique_id, output.parent_public_key))
             })
-            .map(|(output, features, script, script_offset_public_key, unique_id)| {
+            .map(|(output, features, script, script_offset_public_key, unique_id, parent_public_key)| {
                 UnblindedOutput::new(
                     output.committed_value,
                     output.blinding_factor.clone(),
@@ -92,7 +92,8 @@ where TBackend: OutputManagerBackend + 'static
                     height,
                     output.blinding_factor,
                     script_offset_public_key,
-                    unique_id
+                    unique_id,
+                    parent_public_key
                 )
             })
             .collect();

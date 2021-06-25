@@ -176,6 +176,7 @@ impl CoinbaseBuilder {
             height,
             script_key,
             PublicKey::default(),
+            None,
             None
         );
         // TODO: Verify bullet proof?

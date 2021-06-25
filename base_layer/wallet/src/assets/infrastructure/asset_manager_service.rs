@@ -73,15 +73,15 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
             }),
             AssetManagerRequest::CreateRegistrationTransaction {name} => {
                 let (tx_id, transaction) =self.manager.create_registration_transaction(name).await?;
-                Ok(AssetManagerResponse::CreateRegistrationTransaction {transaction, tx_id})
+                Ok(AssetManagerResponse::CreateRegistrationTransaction {transaction: Box::new(transaction), tx_id})
             }
             AssetManagerRequest::GetOwnedAsset { public_key } => {
                 let asset = self.manager.get_owned_asset_by_pub_key(public_key).await?;
-                Ok(AssetManagerResponse::GetOwnedAsset { asset})
+                Ok(AssetManagerResponse::GetOwnedAsset { asset: Box::new(asset)})
             },
-            AssetManagerRequest::CreateMintingTransaction { public_key, unique_ids } => {
-                let (tx_id, transaction) =self.manager.create_minting_transaction(public_key, unique_ids).await?;
-                Ok(AssetManagerResponse::CreateMintingTransaction {transaction, tx_id})
+            AssetManagerRequest::CreateMintingTransaction { asset_public_key, asset_owner_commitment, unique_ids } => {
+                let (tx_id, transaction) =self.manager.create_minting_transaction(*asset_public_key, *asset_owner_commitment,  unique_ids).await?;
+                Ok(AssetManagerResponse::CreateMintingTransaction {transaction: Box::new(transaction), tx_id})
             }
         }
     }

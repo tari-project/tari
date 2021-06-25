@@ -328,6 +328,7 @@ where
             PublicKey::from_secret_key(&spending_key),
         // TODO: Allow importing of unique ids
         None,
+            None
         );
 
         let tx_id = self

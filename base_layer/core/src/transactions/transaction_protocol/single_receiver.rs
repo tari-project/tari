@@ -116,6 +116,7 @@ impl SingleReceiverTransactionProtocol {
                 .map_err(|_| TPE::RangeProofError(RangeProofError::ProofConstructionError))?,
             sender_info.script.clone(),
             sender_info.script_offset_public_key.clone(),
+            None,
             None
         ))
     }

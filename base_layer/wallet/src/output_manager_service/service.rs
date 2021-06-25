@@ -353,8 +353,8 @@ where TBackend: OutputManagerBackend + 'static
                 .await
                 .map(|_| OutputManagerResponse::MinedHeightUpdated)
                 .map_err(OutputManagerError::OutputManagerStorageError),
-            OutputManagerRequest::CreateOutputWithFeatures { value, features } => {
-                let unblinded_output = self.create_output_with_features(value, features).await?;
+            OutputManagerRequest::CreateOutputWithFeatures { value, features, unique_id, parent_public_key } => {
+                let unblinded_output = self.create_output_with_features(value, *features, unique_id, *parent_public_key).await?;
                 Ok(OutputManagerResponse::CreateOutputWithFeatures {
                     output: Box::new(unblinded_output),
                 })
@@ -425,6 +425,8 @@ where TBackend: OutputManagerBackend + 'static
         &self,
         value: MicroTari,
         features: OutputFeatures,
+        unique_id: Option<Vec<u8>>,
+        parent_public_key: Option<PublicKey>
     ) -> Result<UnblindedOutput, OutputManagerError> {
         let (spending_key, script_private_key) = self
             .resources
@@ -442,7 +444,8 @@ where TBackend: OutputManagerBackend + 'static
             script_private_key,
             // To be completed in processing
             script_offset_public_key: Default::default(),
-            unique_id: None,
+            unique_id,
+            parent_public_key
         })
     }
 
@@ -484,6 +487,8 @@ where TBackend: OutputManagerBackend + 'static
                 script_private_key,
                 single_round_sender_data.script_offset_public_key.clone(),
                 single_round_sender_data.unique_id.clone(),
+               // TODO: implement
+                None
             ),
             &self.resources.factories,
         )?;
@@ -671,6 +676,7 @@ where TBackend: OutputManagerBackend + 'static
                     script_private_key,
                     change_script_offset_public_key,
                     None,
+                    None
                 ),
                 &self.resources.factories,
             )?);
@@ -733,6 +739,7 @@ where TBackend: OutputManagerBackend + 'static
                 script_key,
                 PublicKey::default(),
                 None,
+                None
             ),
             &self.resources.factories,
         )?;
@@ -843,6 +850,7 @@ where TBackend: OutputManagerBackend + 'static
                     script_private_key,
                     change_script_offset_public_key,
                     None,
+                    None
                 ),
                 &self.resources.factories,
             )?;
@@ -911,6 +919,7 @@ where TBackend: OutputManagerBackend + 'static
                 script_private_key,
                 PublicKey::from_secret_key(&script_offset_private_key),
                 unique_id.clone(),
+                None
             ),
             &self.resources.factories,
         )?;
@@ -959,6 +968,7 @@ where TBackend: OutputManagerBackend + 'static
                     script_private_key,
                     change_script_offset_public_key,
                     None,
+                    None
                 ),
                 &self.resources.factories,
             )?;
@@ -1312,6 +1322,7 @@ where TBackend: OutputManagerBackend + 'static
                     script_private_key,
                     PublicKey::from_secret_key(&script_offset_private_key),
                     None,
+                    None
                 ),
                 &self.resources.factories,
             )?;
@@ -1394,6 +1405,7 @@ where TBackend: OutputManagerBackend + 'static
                         known_one_sided_payment_scripts[i].private_key.clone(),
                         output.script_offset_public_key,
                         output.unique_id,
+                        output.parent_public_key
                     );
                     let db_output =
                         DbUnblindedOutput::from_unblinded_output(rewound_output.clone(), &self.resources.factories)?;

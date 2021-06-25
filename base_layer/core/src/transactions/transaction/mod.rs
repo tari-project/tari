@@ -95,6 +95,13 @@ pub struct AssetOutputFeatures {
     pub public_key: PublicKey
 }
 
+#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
+pub struct MintNonFungibleFeatures {
+    pub asset_public_key: PublicKey,
+    pub asset_owner_commitment: Commitment,
+    // pub proof_of_ownership: ComSignature
+}
+
 /// Options for UTXO's
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
 pub struct OutputFeatures {
@@ -104,7 +111,8 @@ pub struct OutputFeatures {
     /// require a min maturity of the Coinbase_lock_height, this should be checked on receiving new blocks.
     pub maturity: u64,
     pub metadata: Vec<u8>,
-    pub asset: Option<AssetOutputFeatures>
+    pub asset: Option<AssetOutputFeatures>,
+    pub mint_non_fungible: Option<MintNonFungibleFeatures>
 }
 
 impl OutputFeatures {
@@ -118,9 +126,7 @@ impl OutputFeatures {
         OutputFeatures {
             flags: OutputFlags::COINBASE_OUTPUT,
             maturity: maturity_height,
-            metadata: vec![],
-            asset: None
-
+         ..Default::default()
         }
     }
 
@@ -147,7 +153,20 @@ impl OutputFeatures {
             metadata,
             asset: Some(AssetOutputFeatures{
                 public_key
-            })
+            }),
+            ..Default::default()
+        }
+    }
+
+    pub fn for_minting(metadata: Vec<u8>, asset_public_key: PublicKey, asset_owner_commitment: Commitment)-> OutputFeatures {
+        Self {
+            flags: OutputFlags::MINT_NON_FUNGIBLE,
+            metadata,
+            mint_non_fungible: Some(MintNonFungibleFeatures{
+                asset_public_key,
+                asset_owner_commitment
+            }),
+            .. Default::default()
         }
     }
 }
@@ -158,7 +177,8 @@ impl Default for OutputFeatures {
             flags: OutputFlags::empty(),
             maturity: 0,
             metadata: vec![],
-            asset: None
+            asset: None,
+            mint_non_fungible: None
 
         }
     }
@@ -191,7 +211,10 @@ bitflags! {
     pub struct OutputFlags: u8 {
         /// Output is a coinbase output, must not be spent until maturity
         const COINBASE_OUTPUT = 0b0000_0001;
-        const ASSET_REGISTRATION = 0b0000_0010;
+        const NON_FUNGIBLE = 0b0000_1010;
+        // TODO: separate these flags
+        const ASSET_REGISTRATION = 0b0000_1010; // Registration and also non-fungible
+        const MINT_NON_FUNGIBLE = 0b0000_1100; // Mint and non-fungible
     }
 }
 
@@ -243,7 +266,8 @@ pub struct UnblindedOutput {
     pub height: u64,
     pub script_private_key: PrivateKey,
     pub script_offset_public_key: PublicKey,
-    pub unique_id: Option<Vec<u8>>
+    pub unique_id: Option<Vec<u8>>,
+    pub parent_public_key: Option<PublicKey>
 }
 
 impl UnblindedOutput {
@@ -258,7 +282,8 @@ impl UnblindedOutput {
         height: u64,
         script_private_key: PrivateKey,
         script_offset_public_key: PublicKey,
-        unique_id: Option<Vec<u8>>
+        unique_id: Option<Vec<u8>>,
+        parent_public_key: Option<PublicKey>
     ) -> UnblindedOutput {
         UnblindedOutput {
             value,
@@ -269,7 +294,8 @@ impl UnblindedOutput {
             height,
             script_private_key,
             script_offset_public_key,
-            unique_id
+            unique_id,
+            parent_public_key
         }
     }
 
@@ -313,7 +339,8 @@ impl UnblindedOutput {
             .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?,
             script: self.script.clone(),
             script_offset_public_key: self.script_offset_public_key.clone(),
-            unique_id: self.unique_id.clone()
+            unique_id: self.unique_id.clone(),
+            parent_public_key: self.parent_public_key.clone()
         };
         // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
         if verify_proof && !output.verify_range_proof(&factories.range_proof)? {
@@ -349,7 +376,8 @@ impl UnblindedOutput {
             proof,
             script: self.script.clone(),
             script_offset_public_key: self.script_offset_public_key.clone(),
-            unique_id: self.unique_id.clone()
+            unique_id: self.unique_id.clone(),
+            parent_public_key: self.parent_public_key.clone()
         };
         // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
         if verify_proof && !output.verify_range_proof(&factories.range_proof)? {
@@ -546,7 +574,9 @@ pub struct TransactionOutput {
     /// Tari script offset pubkey, K_O
     pub script_offset_public_key: PublicKey,
     /// Unique id. There can only be one UTXO at a time in the unspent set with this id
-    pub unique_id: Option<Vec<u8>>
+    pub unique_id: Option<Vec<u8>>,
+    /// Public key if this has a parent (e.g. tokens or sub assets)
+    pub parent_public_key: Option<PublicKey>,
 }
 
 /// An output for a transaction, includes a range proof and Tari script metadata
@@ -558,7 +588,8 @@ impl TransactionOutput {
         proof: RangeProof,
         script: TariScript,
         script_offset_public_key: PublicKey,
-        unique_id: Option<Vec<u8>>
+        unique_id: Option<Vec<u8>>,
+        parent_public_key: Option<PublicKey>
     ) -> TransactionOutput {
         TransactionOutput {
             features,
@@ -566,7 +597,8 @@ impl TransactionOutput {
             proof,
             script,
             script_offset_public_key,
-            unique_id
+            unique_id,
+            parent_public_key
         }
     }
 

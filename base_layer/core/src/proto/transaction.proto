@@ -62,6 +62,8 @@ message TransactionOutput {
     bytes script_offset_public_key = 5;
     // A unique id field that can be used to ensure there is only one of a specific NFT or token in the Unspent set at a time
     bytes unique_id = 6;
+
+    bytes parent_public_key = 7;
 }
 
 // Options for UTXO's
@@ -75,10 +77,16 @@ message OutputFeatures {
     bytes metadata = 3;
 
     AssetOutputFeatures asset = 16;
+    MintNonFungibleFeatures mint_non_fungible = 17;
 }
 
 message AssetOutputFeatures {
     bytes public_key = 1;
+}
+
+message MintNonFungibleFeatures {
+    bytes asset_public_key = 1;
+    Commitment asset_owner_commitment  = 2;
 }
 
 // The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,

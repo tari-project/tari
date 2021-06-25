@@ -125,6 +125,7 @@ pub fn make_input<R: Rng + CryptoRng>(
         script_private_key,
         offset_pub_key,
         None,
+        None
     );
 
     (

@@ -622,7 +622,7 @@ pub async fn command_runner(
                 let asset = asset_manager.get_owned_asset_by_pub_key(&public_key).await?;
                 println!("Found asset:{}", asset.name());
 
-                let (tx_id, transaction) = asset_manager.create_minting_transaction(&public_key, unique_ids).await?;
+                let (tx_id, transaction) = asset_manager.create_minting_transaction(&public_key, asset.owner_commitment(), unique_ids).await?;
                 let fee = transaction.body.get_total_fee();
                 let _result = transaction_service.submit_transaction(tx_id, transaction, fee, 0.into(), "test mint transaction".to_string()).await?;
             }

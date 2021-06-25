@@ -22,8 +22,8 @@
 
 use crate::tari_rpc as grpc;
 use std::convert::TryFrom;
-use tari_core::transactions::transaction::{OutputFeatures, OutputFlags, AssetOutputFeatures};
-use tari_core::transactions::types::PublicKey;
+use tari_core::transactions::transaction::{OutputFeatures, OutputFlags, AssetOutputFeatures, MintNonFungibleFeatures};
+use tari_core::transactions::types::{PublicKey, Commitment};
 use tari_crypto::tari_utilities::ByteArray;
 use std::convert::TryInto;
 
@@ -36,11 +36,21 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
                 .ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
             maturity: features.maturity,
             metadata: features.metadata,
-            asset: match features.asset {
-                Some(a) => Some(a.try_into()?),
-                None => None
-            }
+            asset: features.asset.map(|a| a.try_into()).transpose()?,
+            mint_non_fungible: features.mint_non_fungible.map(|m| m.try_into()).transpose()?
         })
+    }
+}
+
+impl From<OutputFeatures> for grpc::OutputFeatures {
+    fn from(features: OutputFeatures) -> Self {
+        Self {
+            flags: features.flags.bits() as u32,
+            maturity: features.maturity,
+            metadata: features.metadata,
+            asset: features.asset.map(|a| a.into()),
+            mint_non_fungible: features.mint_non_fungible.map(|m| m.into())
+        }
     }
 }
 
@@ -60,6 +70,32 @@ impl From<AssetOutputFeatures> for grpc::AssetOutputFeatures {
     fn from(features: AssetOutputFeatures) -> Self {
         Self{
             public_key: features.public_key.as_bytes().to_vec()
+        }
+    }
+}
+
+impl TryFrom<grpc::MintNonFungibleFeatures> for MintNonFungibleFeatures {
+    type Error = String;
+
+    fn try_from(value: grpc::MintNonFungibleFeatures) -> Result<Self, Self::Error> {
+        let asset_public_key =
+            PublicKey::from_bytes(value.asset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+
+        let asset_owner_commitment =
+            Commitment::from_bytes(&value.asset_owner_commitment).map_err(|err| err.to_string())?;
+
+        Ok(Self {
+            asset_public_key,
+            asset_owner_commitment,
+        })
+    }
+}
+
+impl From<MintNonFungibleFeatures> for grpc::MintNonFungibleFeatures {
+    fn from(value: MintNonFungibleFeatures) -> Self {
+        Self {
+            asset_public_key: value.asset_public_key.as_bytes().to_vec(),
+            asset_owner_commitment: value.asset_owner_commitment.to_vec(),
         }
     }
 }

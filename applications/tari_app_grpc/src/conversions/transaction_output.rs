@@ -50,6 +50,14 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
             .map_err(|err| format!("Script deserialization: {:?}", err))?;
 
         let unique_id = if output.unique_id.is_empty()  { None} else { Some(output.unique_id.clone())};
+
+        let parent_public_key = if output.parent_public_key.is_empty() {
+            None
+        } else {
+            Some(PublicKey::from_bytes(output.parent_public_key.as_bytes())
+                .map_err(|err| format!("parent_public_key {:?}", err))?)
+        };
+
         Ok(Self {
             features,
             unique_id,
@@ -57,6 +65,7 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
             proof: BulletRangeProof(output.range_proof),
             script,
             script_offset_public_key,
+            parent_public_key
         })
     }
 }
@@ -66,17 +75,13 @@ impl From<TransactionOutput> for grpc::TransactionOutput {
         let hash = output.hash();
         grpc::TransactionOutput {
             hash,
-            features: Some(grpc::OutputFeatures {
-                flags: output.features.flags.bits() as u32,
-                maturity: output.features.maturity,
-                metadata: output.features.metadata,
-                asset: output.features.asset.map(|a| a.into())
-            }),
+            features: Some(output.features.into()),
             commitment: Vec::from(output.commitment.as_bytes()),
             range_proof: Vec::from(output.proof.as_bytes()),
             script: output.script.as_bytes(),
             script_offset_public_key: output.script_offset_public_key.as_bytes().to_vec(),
-            unique_id: output.unique_id.unwrap_or_default()
+            unique_id: output.unique_id.unwrap_or_default(),
+            parent_public_key: output.parent_public_key.map(|b| b.to_vec()).unwrap_or_default()
         }
     }
 }

@@ -32,7 +32,7 @@ use crate::{
         aggregated_body::AggregateBody,
         bullet_rangeproofs::BulletRangeProof,
         tari_amount::MicroTari,
-        transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionKernel, TransactionOutput},
+        transaction::{KernelFeatures, OutputFeatures, TransactionKernel, TransactionOutput},
         types::{Commitment, PrivateKey, PublicKey, Signature},
     },
 };
@@ -94,12 +94,7 @@ pub fn get_weatherwax_genesis_block_raw() -> Block {
     let mut body = AggregateBody::new(
         vec![],
         vec![TransactionOutput {
-            features: OutputFeatures {
-                flags: OutputFlags::COINBASE_OUTPUT,
-                maturity: 60,
-                metadata: vec![],
-                asset: None
-            },
+            features: OutputFeatures::create_coinbase(60),
             commitment: Commitment::from_hex(
                 "fadafb12de96d90042dcbf839985aadb7ae88baa3446d5c6a17937ef2b36783e",
             )
@@ -108,7 +103,8 @@ pub fn get_weatherwax_genesis_block_raw() -> Block {
             script: script!(Nop),
             // TODO: Replace default offset public key
             script_offset_public_key: Default::default(),
-            unique_id: None
+            unique_id: None,
+            parent_public_key: None
         }],
         vec![TransactionKernel {
             features: KernelFeatures::COINBASE_KERNEL,
@@ -202,12 +198,7 @@ pub fn get_ridcully_genesis_block_raw() -> Block {
     let mut body = AggregateBody::new(
         vec![],
         vec![TransactionOutput {
-            features: OutputFeatures {
-                flags: OutputFlags::COINBASE_OUTPUT,
-                maturity: 60,
-                metadata: vec![],
-                asset: None
-            },
+            features: OutputFeatures::create_coinbase(60),
             commitment: Commitment::from_hex(
                 "fadafb12de96d90042dcbf839985aadb7ae88baa3446d5c6a17937ef2b36783e",
             )
@@ -217,7 +208,8 @@ pub fn get_ridcully_genesis_block_raw() -> Block {
             script: TariScript::default(),
             // TODO: Replace default offset public key
             script_offset_public_key: Default::default(),
-            unique_id: None
+            unique_id: None,
+            parent_public_key: None
         }],
         vec![TransactionKernel {
             features: KernelFeatures::COINBASE_KERNEL,
