@@ -55,6 +55,10 @@ pub(crate) struct AssetManager<T:OutputManagerBackend + 'static, TPersistentKeyM
          let (tx_id, transaction) = self.output_manager.create_send_to_self_with_output(0.into(), vec![output], 100.into()).await?;
         Ok((tx_id, transaction))
      }
+
+     pub async fn create_minting_transaction(&mut self, public_key: PublicKey, unique_ids: Vec<Vec<u8>>) -> Result<(TxId, Transaction), WalletError> {
+        unimplemented!()
+     }
 }
 
 

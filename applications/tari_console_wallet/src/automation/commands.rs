@@ -616,10 +616,15 @@ pub async fn command_runner(
                     _ => Err(CommandError::Argument),
                 }?;
 
-                let unique_ids :Vec<String>= parsed.args[1..].iter().map(|arg| arg.to_string()).collect();
+                let unique_ids :Vec<Vec<u8>>= parsed.args[1..].iter().map(|arg| arg.to_string().into_bytes()).collect();
 
                 let mut asset_manager = wallet.asset_manager.clone();
-                let asset = asset_manager.get_owned_asset_by_pub_key(public_key).await?;
+                let asset = asset_manager.get_owned_asset_by_pub_key(&public_key).await?;
+                println!("Found asset:{}", asset.name());
+
+                let (tx_id, transaction) = asset_manager.create_minting_transaction(&public_key, unique_ids).await?;
+                let fee = transaction.body.get_total_fee();
+                let _result = transaction_service.submit_transaction(tx_id, transaction, fee, 0.into(), "test mint transaction".to_string()).await?;
             }
         }
     }

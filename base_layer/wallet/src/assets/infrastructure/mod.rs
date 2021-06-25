@@ -13,11 +13,13 @@ pub mod initializer;
 pub enum AssetManagerRequest {
     ListOwned{},
     GetOwnedAsset{ public_key: PublicKey},
-    CreateRegistrationTransaction{name: String}
+    CreateRegistrationTransaction{name: String},
+    CreateMintingTransaction{public_key: PublicKey, unique_ids: Vec<Vec<u8>>}
 }
 
 pub enum AssetManagerResponse {
     ListOwned{ assets : Vec<Asset>},
     GetOwnedAsset{ asset: Asset},
-    CreateRegistrationTransaction{transaction: Transaction, tx_id: TxId}
+    CreateRegistrationTransaction{transaction: Transaction, tx_id: TxId},
+    CreateMintingTransaction{transaction: Transaction, tx_id: TxId}
 }

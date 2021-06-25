@@ -78,6 +78,10 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
             AssetManagerRequest::GetOwnedAsset { public_key } => {
                 let asset = self.manager.get_owned_asset_by_pub_key(public_key).await?;
                 Ok(AssetManagerResponse::GetOwnedAsset { asset})
+            },
+            AssetManagerRequest::CreateMintingTransaction { public_key, unique_ids } => {
+                let (tx_id, transaction) =self.manager.create_minting_transaction(public_key, unique_ids).await?;
+                Ok(AssetManagerResponse::CreateMintingTransaction {transaction, tx_id})
             }
         }
     }
