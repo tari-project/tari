@@ -19,6 +19,14 @@ message Signature {
     bytes signature = 2;
 }
 
+// Define the explicit ComSignature implementation for the Tari base layer. A different signature scheme can be
+// employed by redefining this type.
+message ComSignature {
+    bytes public_nonce_commitment = 1;
+    bytes signature_u = 2;
+    bytes signature_v = 3;
+}
+
 // BlindingFactor wrapper
 message BlindingFactor {
     bytes data = 1;
