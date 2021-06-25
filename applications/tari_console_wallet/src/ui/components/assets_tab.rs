@@ -27,6 +27,7 @@ use tui::Frame;
 use tui::layout::{Rect, Constraint};
 use crate::ui::state::AppState;
 use tui::widgets::{Table, Block, Row, TableState, Borders};
+use tari_crypto::tari_utilities::hex::Hex;
 
 pub struct AssetsTab {
     table_state: TableState,
@@ -45,9 +46,10 @@ impl<B:Backend> Component<B> for AssetsTab {
         let assets = app_state.get_owned_assets();
 
 
-        let rows :Vec<_>= assets.iter().map(|r| Row::new(vec![r.name(), r.registration_output_status(), "<pub key>"])).collect();
+        let assets :Vec<_>= assets.iter().map(|r| (r.name().to_string(), r.registration_output_status().to_string(), r.public_key().to_hex(), r.owner_commitment().to_hex())).collect();
+        let rows : Vec<_>= assets.iter().map(|v| Row::new(vec![v.0.as_str(), v.1.as_str(), v.2.as_str(), v.3.as_str()])).collect();
         let table = Table::new(rows)
-            .header(Row::new(vec!["Name", "Status" , "Pub Key"]).style(styles::header_row())).block(Block::default().title("Assets").borders(Borders::ALL)).widths(&[Constraint::Length(30), Constraint::Length(20), Constraint::Length(20)]).highlight_style(styles::highlight()).highlight_symbol(">>");
+            .header(Row::new(vec!["Name", "Status" , "Pub Key", "Owner"]).style(styles::header_row())).block(Block::default().title("Assets").borders(Borders::ALL)).widths(&[Constraint::Length(30), Constraint::Length(20), Constraint::Length(64), Constraint::Length(64)]).highlight_style(styles::highlight()).highlight_symbol(">>");
         f.render_stateful_widget(table, area, &mut self.table_state)
     }
 
