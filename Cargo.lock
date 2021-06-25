@@ -984,9 +984,9 @@ dependencies = [
 
 [[package]]
 name = "diesel"
-version = "1.4.5"
+version = "1.4.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e2de9deab977a153492a1468d1b1c0662c1cf39e5ea87d0c060ecd59ef18d8c"
+checksum = "bba51ca66f57261fd17cadf8b73e4775cc307d0521d855de3f5de91a8f074e0e"
 dependencies = [
  "bigdecimal",
  "byteorder",
@@ -2000,10 +2000,11 @@ checksum = "7fc7aa29613bd6a620df431842069224d8bc9011086b1db4c0e0cd47fa03ec9a"
 
 [[package]]
 name = "libsqlite3-sys"
-version = "0.18.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e704a02bcaecd4a08b93a23f6be59d0bd79cd161e0963e9499165a0a35df7bd"
+checksum = "0e9eb7b8e152b6a01be6a4a2917248381875758250dc3df5d46caf9250341dda"
 dependencies = [
+ "cc",
  "pkg-config",
  "vcpkg",
 ]
@@ -4070,6 +4071,7 @@ dependencies = [
  "futures-test-preview",
  "futures-util",
  "lazy_static 1.4.0",
+ "libsqlite3-sys",
  "lmdb-zero",
  "log 0.4.14",
  "petgraph",
@@ -4474,6 +4476,7 @@ dependencies = [
  "fs2",
  "futures 0.3.12",
  "lazy_static 1.4.0",
+ "libsqlite3-sys",
  "lmdb-zero",
  "log 0.4.14",
  "log4rs",
