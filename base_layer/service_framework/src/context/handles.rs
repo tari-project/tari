@@ -67,7 +67,7 @@ impl ServiceInitializerContext {
 
     /// Insert a service handle with the given name
     pub fn register_handle<H>(&self, handle: H)
-    where H: Any + Send + Sync {
+    where H: Any + Send {
         self.inner.register(handle);
     }
 
@@ -160,7 +160,7 @@ impl ServiceHandles {
 
     /// Register a handle
     pub fn register<H>(&self, handle: H)
-    where H: Any + Send + Sync {
+    where H: Any + Send {
         acquire_lock!(self.handles).insert(TypeId::of::<H>(), Box::new(handle));
     }
 

@@ -42,7 +42,7 @@ pub struct Inbound<TSvc, TStream> {
 
 impl<TSvc, TStream> Inbound<TSvc, TStream>
 where
-    TStream: Stream + FusedStream + Unpin + Send + 'static,
+    TStream: Stream + FusedStream + Unpin,
     TStream::Item: Send + 'static,
     TSvc: Service<TStream::Item> + Clone + Send + 'static,
     TSvc::Error: Display + Send,

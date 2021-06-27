@@ -41,9 +41,9 @@ use digest::Digest;
 use futures::{
     channel::oneshot,
     future,
+    future::BoxFuture,
     stream::{self, StreamExt},
     task::Context,
-    Future,
 };
 use log::*;
 use rand::rngs::OsRng;
@@ -109,7 +109,7 @@ impl<S> Layer<S> for BroadcastLayer {
 /// the worker task.
 #[derive(Clone)]
 pub struct BroadcastMiddleware<S> {
-    next: S,
+    next_service: S,
     dht_requester: DhtRequester,
     dht_discovery_requester: DhtDiscoveryRequester,
     node_identity: Arc<NodeIdentity>,
@@ -127,7 +127,7 @@ impl<S> BroadcastMiddleware<S> {
         message_validity_window: chrono::Duration,
     ) -> Self {
         Self {
-            next: service,
+            next_service: service,
             dht_requester,
             dht_discovery_requester,
             node_identity,
@@ -138,28 +138,31 @@ impl<S> BroadcastMiddleware<S> {
 }
 
 impl<S> Service<DhtOutboundRequest> for BroadcastMiddleware<S>
-where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError> + Clone
+where
+    S: Service<DhtOutboundMessage, Response = (), Error = PipelineError> + Clone + Send + 'static,
+    S::Future: Send,
 {
     type Error = PipelineError;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
     type Response = ();
-
-    type Future = impl Future<Output = Result<(), Self::Error>>;
 
     fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
     }
 
     fn call(&mut self, msg: DhtOutboundRequest) -> Self::Future {
-        BroadcastTask::new(
-            self.next.clone(),
-            Arc::clone(&self.node_identity),
-            self.dht_requester.clone(),
-            self.dht_discovery_requester.clone(),
-            self.target_network,
-            msg,
-            self.message_validity_window,
+        Box::pin(
+            BroadcastTask::new(
+                self.next_service.clone(),
+                Arc::clone(&self.node_identity),
+                self.dht_requester.clone(),
+                self.dht_discovery_requester.clone(),
+                self.target_network,
+                msg,
+                self.message_validity_window,
+            )
+            .handle(),
         )
-        .handle()
     }
 }
 
@@ -523,7 +526,14 @@ mod test {
     use super::*;
     use crate::{
         outbound::SendMessageParams,
-        test_utils::{create_dht_actor_mock, create_dht_discovery_mock, make_peer, service_spy, DhtDiscoveryMockState},
+        test_utils::{
+            assert_send_static_service,
+            create_dht_actor_mock,
+            create_dht_discovery_mock,
+            make_peer,
+            service_spy,
+            DhtDiscoveryMockState,
+        },
     };
     use futures::channel::oneshot;
     use rand::rngs::OsRng;
@@ -585,6 +595,7 @@ mod test {
             Network::LocalTest,
             chrono::Duration::seconds(10800),
         );
+        assert_send_static_service(&service);
         let (reply_tx, _reply_rx) = oneshot::channel();
 
         service
