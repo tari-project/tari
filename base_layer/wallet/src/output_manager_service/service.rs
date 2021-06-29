@@ -1274,8 +1274,11 @@ impl Balance {
 impl fmt::Display for Balance {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Available balance: {}", self.available_balance)?;
+        if let Some(locked) = self.time_locked_balance {
+            writeln!(f, "Time locked: {}", locked)?;
+        }
         writeln!(f, "Pending incoming balance: {}", self.pending_incoming_balance)?;
-        write!(f, "Pending outgoing balance: {}", self.pending_outgoing_balance)?;
+        writeln!(f, "Pending outgoing balance: {}", self.pending_outgoing_balance)?;
         Ok(())
     }
 }

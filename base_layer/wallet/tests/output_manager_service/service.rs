@@ -297,12 +297,7 @@ fn generate_sender_transaction_message(amount: MicroTari) -> (TxId, TransactionS
         .with_change_secret(alice.change_spend_key)
         .with_input(utxo, input)
         .with_amount(0, amount)
-        .with_recipient_script(
-            0,
-            script!(Nop),
-            PrivateKey::random(&mut OsRng),
-            OutputFeatures::default(),
-        )
+        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng), Default::default())
         .with_change_script(
             script!(Nop),
             inputs!(PublicKey::from_secret_key(&script_private_key)),

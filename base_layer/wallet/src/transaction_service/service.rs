@@ -1804,7 +1804,7 @@ where
                             MicroTari::from(0),
                             tx.clone(),
                             TransactionStatus::Coinbase,
-                            format!("Coinbase Transaction for Block {}", block_height),
+                            format!("Coinbase Transaction for Block #{}", block_height),
                             Utc::now().naive_utc(),
                             TransactionDirection::Inbound,
                             Some(block_height),
