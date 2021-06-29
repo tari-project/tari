@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{error::WalletStorageError, output_manager_service::error::OutputManagerError};
+use serde_json::Error as SerdeJsonError;
 use tari_comms::{connectivity::ConnectivityError, protocol::rpc::RpcError};
 use tari_crypto::tari_utilities::hex::HexError;
 use tari_service_framework::reply_channel::TransportChannelError;
@@ -52,4 +53,6 @@ pub enum UtxoScannerError {
     UtxoImportError(String),
     #[error("Transport channel error: `{0}`")]
     TransportChannelError(#[from] TransportChannelError),
+    #[error("Serde json error: `{0}`")]
+    SerdeJsonError(#[from] SerdeJsonError),
 }

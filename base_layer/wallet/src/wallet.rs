@@ -465,10 +465,8 @@ where
     /// Utility function to find out if there is data in the database indicating that there is an incomplete recovery
     /// process in progress
     pub async fn is_recovery_in_progress(&self) -> Result<bool, WalletError> {
-        use crate::utxo_scanner_service::utxo_scanning::UTXO_INDEX_KEY;
-        let mut key = "recovery".to_owned();
-        key.push_str(&UTXO_INDEX_KEY.to_string());
-        Ok(self.db.get_client_key_value(key).await?.is_some())
+        use crate::utxo_scanner_service::utxo_scanning::RECOVERY_KEY;
+        Ok(self.db.get_client_key_value(RECOVERY_KEY.to_string()).await?.is_some())
     }
 }
 
