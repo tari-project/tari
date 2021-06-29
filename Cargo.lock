@@ -4202,6 +4202,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "tari_dan_node"
+version = "0.8.11"
+dependencies = [
+ "anyhow",
+ "futures 0.3.15",
+ "log 0.4.14",
+ "prost",
+ "prost-types",
+ "tari_shutdown",
+ "thiserror",
+ "tokio",
+ "tonic",
+ "tonic-build",
+]
+
+[[package]]
 name = "tari_infra_derive"
 version = "0.8.11"
 dependencies = [

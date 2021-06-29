@@ -1,0 +1,23 @@
+[package]
+name = "tari_dan_node"
+authors = ["The Tari Development Community"]
+description = "The tari digital assets network node implementation"
+repository = "https://github.com/tari-project/tari"
+license = "BSD-3-Clause"
+version = "0.8.11"
+edition = "2018"
+
+[dependencies]
+tari_shutdown = { path = "../../infrastructure/shutdown"}
+
+thiserror = "^1.0.20"
+log = { version = "0.4.8", features = ["std"] }
+anyhow = "1.0.32"
+tokio = { version="0.2.10" }
+tonic = "0.2"
+prost = "0.6"
+prost-types = "0.6.1"
+futures = { version = "^0.3.1"}
+
+[build-dependencies]
+tonic-build = "0.2"
