@@ -68,10 +68,13 @@ function dec2hex(n) {
 }
 
 function toLittleEndianInner(n) {
-  const hexar = dec2hex(n);
-  return hexar
-    .map((h) => (h < 16 ? "0" : "") + h.toString(16))
-    .concat(Array(4 - hexar.length).fill("00"));
+  let hexar = dec2hex(n);
+  hexar = hexar.map((h) => (h < 16 ? "0" : "") + h.toString(16));
+  if (hexar.length < 4) {
+    return hexar.concat(Array(4 - hexar.length).fill("00"));
+  } else {
+    return hexar;
+  }
 }
 
 function toLittleEndian(n, numBits) {

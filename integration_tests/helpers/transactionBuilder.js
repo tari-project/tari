@@ -53,15 +53,23 @@ class TransactionBuilder {
     return Buffer.from(final).toString("hex");
   }
 
-  buildScriptChallenge(publicNonce, script, input_data) {
+  buildScriptChallenge(
+    publicNonce,
+    script,
+    input_data,
+    public_key,
+    commitment
+  ) {
     var KEY = null; // optional key
     var OUTPUT_LENGTH = 32; // bytes
     var context = blake2bInit(OUTPUT_LENGTH, KEY);
-    let buff = Buffer.from(publicNonce, "hex");
-    blake2bUpdate(context, buff);
+    let buff_publicNonce = Buffer.from(publicNonce, "hex");
+    let buff_public_key = Buffer.from(public_key, "hex");
+    blake2bUpdate(context, buff_publicNonce);
     blake2bUpdate(context, script);
     blake2bUpdate(context, input_data);
-    // blake2bUpdate(context, height);
+    blake2bUpdate(context, buff_public_key);
+    blake2bUpdate(context, commitment);
     let final = blake2bFinal(context);
     return Buffer.from(final).toString("hex");
   }
@@ -98,21 +106,34 @@ class TransactionBuilder {
       Buffer.from([0x04]),
       Buffer.from(scriptPublicKey, "hex"),
     ]);
-    this.kv.new_key("common_nonce");
-    let public_nonce = this.kv.public_key("common_nonce");
+    this.kv.new_key("common_nonce_1");
+    this.kv.new_key("common_nonce_2");
+    let private_nonce_1 = this.kv.private_key("common_nonce_1");
+    let private_nonce_2 = this.kv.private_key("common_nonce_2");
+    let public_nonce = tari_crypto.commit_private_keys(
+      private_nonce_1,
+      private_nonce_2
+    ).commitment;
     let challenge = this.buildScriptChallenge(
       public_nonce,
       nopScriptBytes,
       input_data,
-      0
+      scriptPublicKey,
+      input.output.commitment
     );
-    let private_nonce = this.kv.private_key("common_nonce");
-    let script_sig = tari_crypto.sign_challenge_with_nonce(
-      input.scriptPrivateKey,
-      private_nonce,
+    let amount_key = Buffer.from(toLittleEndian(input.amount, 256)).toString(
+      "hex"
+    );
+    let total_key =
+      BigInt("0x" + input.scriptPrivateKey) + BigInt("0x" + input.privateKey);
+    total_key = "0" + total_key.toString(16);
+    let script_sig = tari_crypto.sign_comsig_challenge_with_nonce(
+      amount_key,
+      total_key,
+      private_nonce_1,
+      private_nonce_2,
       challenge
     );
-
     this.inputs.push({
       input: {
         features: input.output.features,
@@ -121,8 +142,9 @@ class TransactionBuilder {
         input_data: input_data,
         height: 0,
         script_signature: {
-          public_nonce: Buffer.from(script_sig.public_nonce, "hex"),
-          signature: Buffer.from(script_sig.signature, "hex"),
+          public_nonce_commitment: Buffer.from(script_sig.public_nonce, "hex"),
+          signature_u: Buffer.from(script_sig.u, "hex"),
+          signature_v: Buffer.from(script_sig.v, "hex"),
         },
         script_offset_public_key: input.output.script_offset_public_key,
       },

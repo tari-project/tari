@@ -30,6 +30,7 @@ use crate::transactions::{
     types::{
         BlindingFactor,
         Challenge,
+        ComSignature,
         Commitment,
         CommitmentFactory,
         CryptoFactories,
@@ -244,18 +245,27 @@ impl UnblindedOutput {
     /// Commits an UnblindedOutput into a Transaction input
     pub fn as_transaction_input(&self, factory: &CommitmentFactory) -> Result<TransactionInput, TransactionError> {
         let commitment = factory.commit(&self.spending_key, &self.value.into());
-        let script_nonce = PrivateKey::random(&mut OsRng);
-        let public_script_nonce = PublicKey::from_secret_key(&script_nonce);
+        let script_nonce_a = PrivateKey::random(&mut OsRng);
+        let script_nonce_b = PrivateKey::random(&mut OsRng);
+        let nonce_commitment = factory.commit(&script_nonce_b, &script_nonce_a);
+
         let e = Challenge::new()
-            .chain(public_script_nonce.as_bytes())
+            .chain(nonce_commitment.as_bytes())
             .chain(self.script.as_bytes().as_slice())
             .chain(self.input_data.as_bytes().as_slice())
-            //.chain(&self.height.to_le_bytes()) //TODO decide if the height should remain in this signature
+            .chain(PublicKey::from_secret_key(&self.script_private_key).as_bytes())
+            .chain(commitment.as_bytes())
             .result()
             .to_vec();
-
-        let script_signature = Signature::sign(self.script_private_key.clone(), script_nonce, &e)
-            .map_err(|_| TransactionError::InvalidSignatureError("Generating script signature".to_string()))?;
+        let script_signature = ComSignature::sign(
+            self.value.into(),
+            self.script_private_key.clone() + self.spending_key.clone(),
+            script_nonce_a,
+            script_nonce_b,
+            &e,
+            factory,
+        )
+        .map_err(|_| TransactionError::InvalidSignatureError("Generating script signature".to_string()))?;
 
         Ok(TransactionInput {
             features: self.features.clone(),
@@ -373,7 +383,7 @@ pub struct TransactionInput {
     /// The block height that the UTXO was mined
     pub height: u64,
     /// A signature with k_s, signing the script, input data, and mined height
-    pub script_signature: Signature,
+    pub script_signature: ComSignature,
     /// The offset pubkey, K_O
     pub script_offset_public_key: PublicKey,
 }
@@ -387,7 +397,7 @@ impl TransactionInput {
         script: TariScript,
         input_data: ExecutionStack,
         height: u64,
-        script_signature: Signature,
+        script_signature: ComSignature,
         script_offset_public_key: PublicKey,
     ) -> TransactionInput {
         TransactionInput {
@@ -428,16 +438,24 @@ impl TransactionInput {
         }
     }
 
-    pub fn validate_script_signature(&self, key: &PublicKey) -> Result<(), TransactionError> {
-        let r = self.script_signature.get_public_nonce();
-        let m = HashDigest::new()
-            .chain(r.as_bytes())
-            .chain(self.script.as_bytes())
-            .chain(self.input_data.as_bytes())
-            //.chain(self.height.to_le_bytes()) //TODO decide if the height should remain in the script signature
+    pub fn validate_script_signature(
+        &self,
+        public_script_key: &PublicKey,
+        factory: &CommitmentFactory,
+    ) -> Result<(), TransactionError> {
+        let nonce_commitment = self.script_signature.public_nonce();
+        let m = Challenge::new()
+            .chain(nonce_commitment.as_bytes())
+            .chain(self.script.as_bytes().as_slice())
+            .chain(self.input_data.as_bytes().as_slice())
+            .chain(public_script_key.as_bytes())
+            .chain(self.commitment.as_bytes())
             .result()
             .to_vec();
-        if self.script_signature.verify_challenge(key, &m) {
+        if self
+            .script_signature
+            .verify_challenge(&(&self.commitment + public_script_key), &m, factory)
+        {
             Ok(())
         } else {
             Err(TransactionError::InvalidSignatureError(
@@ -448,9 +466,9 @@ impl TransactionInput {
 
     /// This will run the script and verify the script signature. If its valid, it will return the resulting public key
     /// from the script.
-    pub fn run_and_verify_script(&self) -> Result<PublicKey, TransactionError> {
+    pub fn run_and_verify_script(&self, factory: &CommitmentFactory) -> Result<PublicKey, TransactionError> {
         let key = self.run_script()?;
-        self.validate_script_signature(&key)?;
+        self.validate_script_signature(&key, factory)?;
         Ok(key)
     }
 }
@@ -1316,7 +1334,7 @@ mod test {
         let script = TariScript::default();
         let input_data = ExecutionStack::default();
         let height = 0;
-        let script_signature = Signature::default();
+        let script_signature = ComSignature::default();
         let offset_pub_key = PublicKey::default();
         let mut input = TransactionInput::new(
             OutputFeatures::default(),

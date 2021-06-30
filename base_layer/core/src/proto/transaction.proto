@@ -41,7 +41,7 @@ message TransactionInput {
     // The block height that the UTXO was mined
     uint64 height = 5;
     // A signature with k_s, signing the script, input data, and mined height
-    Signature script_signature = 6;
+    ComSignature script_signature = 6;
     // The offset pubkey, K_O
     bytes script_offset_public_key = 7;
 }
