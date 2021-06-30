@@ -27,7 +27,6 @@ use crate::{
     validation::{MempoolTransactionValidation, ValidationError},
 };
 use log::*;
-use tari_crypto::tari_utilities::hash::Hashable;
 
 pub const LOG_TARGET: &str = "c::val::transaction_validators";
 
@@ -132,7 +131,7 @@ fn verify_not_stxos<B: BlockchainBackend>(tx: &Transaction, db: &B) -> Result<()
             )
         });
     for input in tx.body.inputs() {
-        if let Some((_, index, _height)) = db.fetch_output(&input.hash())? {
+        if let Some((_, index, _height)) = db.fetch_output(&input.output_hash())? {
             if data.deleted().contains(index) {
                 warn!(
                     target: LOG_TARGET,

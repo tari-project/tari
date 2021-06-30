@@ -4,27 +4,29 @@ Below are a list of terms and their definitions that are used throughout the Tar
 glossary to disambiguate ideas, and work towards a
 [ubiquitous language](https://blog.carbonfive.com/2016/10/04/ubiquitous-language-the-joy-of-naming/) for this project.
 
-
 ## Archive node
 [archivenode]: #archive-node	"a full history node"
 
-This is a full history [base node]. It will keep a complete history of every transaction ever received and it will not implement pruning.
+This is a full history [base node]. It will keep a complete history of every transaction ever received and it will not 
+implement pruning.
 
 ## AssetCollateral
 [AssetCollateral]: #assetcollateral
 
-The amount of tari coin that a [Validator Node] must put up on the [base layer] in order to become part of an asset [committee].
+The amount of tari coin that a [Validator Node] must put up on the [base layer] in order to become part of an asset 
+[committee].
 
 ## Asset Issuer
 [Asset Issuer]: #asset-issuer "An entity that creates digital assets on the Tari DAN"
 
-An entity that creates digital assets on the Tari DAN. The Asset Issuer will specify the parameters of the contract template
-that defines the rules that govern the asset and the number and nature of its constituent tokens on issuance. The Asset Issuer
-will, generally, be the initial owner of the tokens.
+An entity that creates digital assets on the Tari DAN. The Asset Issuer will specify the parameters of the contract 
+template that defines the rules that govern the asset and the number and nature of its constituent tokens on issuance. 
+The Asset Issuer will, generally, be the initial owner of the tokens.
 
 
 ## Bad Actor
-[Bad Actor]: #bad-actor "A participant that acts maliciously or negligently to the detriment of the network or another participant"
+[Bad Actor]: #bad-actor "A participant that acts maliciously or negligently to the detriment of the network or another 
+participant"
 
 A participant that acts maliciously or negligently to the detriment of the network or another participant.
 
@@ -37,7 +39,8 @@ the emission of new Tari, for securing and managing [Tari coin] transfers.
 
 
 ## Base Node
-[base node]: #base-node "A full Tari node running on the base layer, validating and propagating Tari coin transactions and blocks"
+[base node]: #base-node "A full Tari node running on the base layer, validating and propagating Tari coin transactions 
+and blocks"
 
 A full Tari node running on the base layer. It's primary role is validating and propagating [Tari coin] transactions
 and blocks to the rest of the network.
@@ -73,7 +76,8 @@ blockchain from that point on.
 ## Blockchain state
 [blockchainstate]: #blockchain-state	"This is a snapshot of how the blockchain looks"
 
-The complete state of the blockchain at a specific block height. This means a pruned [utxo] set, a complete set of kernels and headers up to that block height from the genesis block.
+The complete state of the blockchain at a specific block height. This means a pruned [utxo] set, a complete set of 
+kernels and headers up to that block height from the genesis block.
 
 
 ## BroadcastStrategy
@@ -99,20 +103,24 @@ awarded to the miner that performed the Proof of Work for the block.
 ## Committee
 [Committee]: #committee "A group of validator nodes that are responsible for managing a specific Digital Asset"
 
-A group of [Validator Node]s that are responsible for managing the state of a specific [Digital Asset]. A committee is selected
-during asset issuance and can be updated at [Checkpoint]s.
+A group of [Validator Node]s that are responsible for managing the state of a specific [Digital Asset]. A committee is 
+selected during asset issuance and can be updated at [Checkpoint]s.
 
 
 ## CommitteeSelectionStrategy
-[CommitteeSelectionStrategy]: #committeeselectionstrategy "A strategy for an Asset Issuer to select candidates for the committee from the available registered Validator Nodes who responded to the nomination call for that asset"
-A strategy for an Asset Issuer to select candidates for the committee from the available registered Validator Nodes who responded to the nomination call for that asset.
+[CommitteeSelectionStrategy]: #committeeselectionstrategy "A strategy for an Asset Issuer to select candidates for the 
+committee from the available registered Validator Nodes who responded to the nomination call for that asset"
+
+A strategy for an Asset Issuer to select candidates for the committee from the available registered Validator Nodes who 
+responded to the nomination call for that asset.
 
 
 ## ConsensusStrategy
-[ConsensusStrategy]: #consensusstrategy "The approach that will be taken for a committee to reach consensus on instructions"
+[ConsensusStrategy]: #consensusstrategy "The approach that will be taken for a committee to reach consensus on 
+instructions"
 
-The approach that will be taken for a committee to reach consensus on the validity of instructions that are performed on a
-given Digital Asset.
+The approach that will be taken for a committee to reach consensus on the validity of instructions that are performed 
+on a given Digital Asset.
 
 
 ## Commitment
@@ -124,27 +132,36 @@ value or statement after they have committed to it.
 
 
 ## Communication Node
-[Communication Node]: #communication-node "A communication node that is responsible for maintaining the Tari communication network"
+[Communication Node]: #communication-node "A communication node that is responsible for maintaining the Tari 
+communication network"
 
-A Communication Node is either a Validator Node or Base Node that is part of the Tari communication network. It maintains the network and is responsible for forwarding and propagating joining requests, discovery requests and data messages on the communication network.
+A Communication Node is either a Validator Node or Base Node that is part of the Tari communication network. It 
+maintains the network and is responsible for forwarding and propagating joining requests, discovery requests and data 
+messages on the communication network.
 
 
 ## Communication Client
-[Communication Client]: #communication-client "A communication client that makes use of the Tari communication network, but does not maintain it"
+[Communication Client]: #communication-client "A communication client that makes use of the Tari communication network, 
+but does not maintain it"
 
-A Communication Client is a Wallet or Asset Manager that makes use of the Tari communication network to send joining and discovery requests. A Communication Client does not maintain the communication network and is not responsible for forwarding or propagating any requests or data messages.
+A Communication Client is a Wallet or Asset Manager that makes use of the Tari communication network to send joining and 
+discovery requests. A Communication Client does not maintain the communication network and is not responsible for 
+forwarding or propagating any requests or data messages.
 
 
 ## Creator Nomination Mode
-[creator nomination mode]: #creator-nomination-mode "An asset runs in creator nomination mode when _every_ validator node in a validator committee is a [Trusted Node] that was directly nominated by the AI."
+[creator nomination mode]: #creator-nomination-mode "An asset runs in creator nomination mode when _every_ validator 
+node in a validator committee is a [Trusted Node] that was directly nominated by the AI."
 
-An asset runs in creator nomination mode when _every_ validator node in a validator committee is a [Trusted Node] that was directly nominated by the [Asset Issuer].
+An asset runs in creator nomination mode when _every_ validator node in a validator committee is a [Trusted Node] that 
+was directly nominated by the [Asset Issuer].
 
 
 ## Current head
 [currenthead]: #current-head	"The last valid block of the longest chain"
 
-The last [block] of the base layer that represents the latest valid block. This [block] must be from the longest proof-of-work chain to be the current head.
+The last [block] of the base layer that represents the latest valid block. This [block] must be from the longest 
+proof-of-work chain to be the current head.
 
 
 ## Digital asset
@@ -152,8 +169,8 @@ The last [block] of the base layer that represents the latest valid block. This 
 asset issuers on the Tari 2nd layer'
 
 Digital assets (DAs) are the sets or collections of native digital tokens (both fungible and non-fungible) that are 
-created by [asset issuer]s on the Tari 2nd layer. For example, a promoter might create a DA for a music concert event. The
- event is the digital asset, and the tickets for the event are digital asset [tokens].
+created by [asset issuer]s on the Tari 2nd layer. For example, a promoter might create a DA for a music concert event. 
+The event is the digital asset, and the tickets for the event are digital asset [tokens].
 
 
 ## Digital Asset Network
@@ -166,8 +183,8 @@ interactions (defined in [instruction]s) are processed and validated by [Validat
 ## DigitalAssetTemplate
 [DigitalAssetTemplate]: #digitalassettemplate "A set of non-turing complete contract types supported by the DAN"
 
-A DigitalAssetTemplate is one of a set of contract types supported by the DAN. These contracts are non-turing complete and consist of
-rigid rule-sets with parameters that can be set by Asset Issuers.
+A DigitalAssetTemplate is one of a set of contract types supported by the DAN. These contracts are non-turing complete 
+and consist of rigid rule-sets with parameters that can be set by Asset Issuers.
 
 
 ## Digital asset tokens
@@ -182,7 +199,8 @@ asset. Depending on the DA created, tokens can represent tickets, in-game items,
 ## Hashed Time Locked Contract
 [htlc]: #hashed-time-locked-contract 'or just, "HTLC".'
 
-A time locked contract that only pays out after a certain criteria has been met or refunds the originator if a certain period has expired.
+A time locked contract that only pays out after a certain criteria has been met or refunds the originator if a certain 
+period has expired.
 
 
 ## Emission schedule
@@ -203,8 +221,9 @@ client applications and are relayed by the DAN to the [validator node]s that are
 ## Mempool
 [mempool]: #mempool "A memory pool for unconfirmed transactions on the base layer"
 
-The mempool consists of the transaction pool, pending pool, orphan pool and reorg pool, and is responsible for managing unconfirmed transactions that have not yet been included in the
-longest proof-of-work chain. Miners usually draw verified transactions from the mempool to build up transaction [block]s.
+The mempool consists of the transaction pool, pending pool, orphan pool and reorg pool, and is responsible for managing 
+unconfirmed transactions that have not yet been included in the longest proof-of-work chain. Miners usually draw 
+verified transactions from the mempool to build up transaction [block]s.
 
 
 ## Mimblewimble
@@ -218,7 +237,8 @@ anonymous author and has since been refined by several authors, including Andrew
 ## Mining Server
 [mining server]: #mining-server
 
-A Mining Server is responsible for constructing new blocks by bundling transactions from the [mempool] of a connected [Base Node]. It also distributes Proof-of-Work tasks to Mining Workers and verifies PoW solutions.
+A Mining Server is responsible for constructing new blocks by bundling transactions from the [mempool] of a connected 
+[Base Node]. It also distributes Proof-of-Work tasks to Mining Workers and verifies PoW solutions.
 
 
 ## Mining Worker
@@ -230,7 +250,9 @@ A Mining Worker is responsible for performing Proof-of-Work tasks received from 
 ## Multisig
 [multisig]: #multisig
 
-Multi-signatures (Multisigs) are also known as N-of-M signatures, this means that a minimum of N number of the M peers need to agree before a transaction can be spent. N and M can be equal; which is a special case and is often referred to as an N-of-N Multisig.
+Multi-signatures (Multisigs) are also known as N-of-M signatures, this means that a minimum of N number of the M peers 
+need to agree before a transaction can be spent. N and M can be equal; which is a special case and is often referred to 
+as an N-of-N Multisig.
 
 [TLU musig](<https://tlu.tarilabs.com/cryptography/musig-schnorr-sig-scheme/The_MuSig_Schnorr_Signature_Scheme.html>)
 
@@ -246,23 +268,29 @@ from the public identification key of a [communication node] or [communication c
 ## Orphan Pool
 [orphan pool]: #orphan-pool "A pool in the Mempool for unconfirmed transactions that attempt to spend non-existent UTXOs"
 
-The orphan pool is part of the [mempool] and manages all [transaction]s that have been verified but attempt to spend [UTXO]s that do not exist or haven't been created yet.
+The orphan pool is part of the [mempool] and manages all [transaction]s that have been verified but attempt to spend 
+[UTXO]s that do not exist or haven't been created yet.
 
 
 ## Pending Pool
 [pending pool]: #pending-pool "A pool in the Mempool for unconfirmed transactions with time-lock restrictions"
 
-The pending pool is part of the [mempool] and manages all [transaction]s that have a time-lock restriction on when it can be processed or attempts to spend [UTXO]s with time-locks.
+The pending pool is part of the [mempool] and manages all [transaction]s that have a time-lock restriction on when it 
+can be processed or attempts to spend [UTXO]s with time-locks.
 
 
 ## Pruning horizon
 [pruninghorizon]: #pruning-horizon	"Block height at which pruning will commence"
 
-This is a local setting for each node to help reduce syncing time and bandwidth. This is the number of blocks from the chain tip beyond which a chain will be pruned.
+This is a local setting for each node to help reduce syncing time and bandwidth. This is the number of blocks from the 
+chain tip beyond which a chain will be pruned.
 
 ## Public Nomination Mode
 [public nomination mode]: #public-nomination-mode
-An asset runs in public nomination mode when the [Asset Issuer] broadcasts a call for nominations to the network and VNs from the network nominate themselves as candidates to become members of the [committee] for the asset. The [Asset Issuer] will then employ the [CommitteeSelectionStrategy] to select the committee from the list of available candidates.
+An asset runs in public nomination mode when the [Asset Issuer] broadcasts a call for nominations to the network and VNs 
+from the network nominate themselves as candidates to become members of the [committee] for the asset. The 
+[Asset Issuer] will then employ the [CommitteeSelectionStrategy] to select the committee from the list of available 
+candidates.
 
 ## Range proof
 [range proof]: #range-proof
@@ -272,7 +300,8 @@ A mathematical demonstration that a value inside a [commitment] (i.e. it is hidd
 
 
 ## Registration Deposit
-[Registration Deposit]: #registration-deposit "An amount of tari coin that is locked up on the base layer when a [Validator Node] is registered"
+[Registration Deposit]: #registration-deposit "An amount of tari coin that is locked up on the base layer when a 
+[Validator Node] is registered"
 
 An amount of tari coin that is locked up on the base layer when a [Validator Node] is registered. In order to make Sybil
 attacks expensive and to provide an authorative base layer registry of [validator node]s they will need to lock up a
@@ -289,7 +318,35 @@ minimum period has elapsed.
 ## Reorg Pool
 [reorg pool]: #reorg-pool "A backup pool in the Mempool for unconfirmed transactions that have been included in blocks"
 
-The reorg pool is part of the [mempool] and stores all [transaction]s that have recently been included in blocks in case a blockchain reorganization occurs and the transactions need to be restored to the [transaction pool].
+The reorg pool is part of the [mempool] and stores all [transaction]s that have recently been included in blocks in case 
+a blockchain reorganization occurs and the transactions need to be restored to the [transaction pool].
+
+
+## Script Keypair
+[script key]: #script-keypair
+
+The script private - public keypair, \\((k\_{Si}\\),\\(K\_{Si})\\), is used in [TariScript] to unlock and execute the 
+script associated with an output. Afterwards the execution stack must contain exactly one value that must be equal to 
+the script public key.
+
+
+## Script Offset
+[script offset]: #script-offset
+
+The script offset provides a proof that every script public key \\( K\_{Si} \\) and sender offset public key 
+\\( K\_{Oi} \\) provided for the a transaction's inputs and outputs are correct.
+
+## Sender Metadata Signature
+[sender metadata signature]: #sender-metadata-signature
+
+The sender metadata signature is used to sign the metadata of the UTXO with the [sender offset] private key
+\\( k_{Oi} \\) and this stops malleability of the UTXO metadata.
+
+## Sender Offset Keypair
+[sender offset]: #sender-offset-keypair
+
+The sender offset private - public keypair, (\\( k\_{Oi} \\),\\( K\_{Oi} \\)), is used by the sender of an output to
+lock all its metadata by virtue of a [sender metadata signature].
 
 
 ## Spending Key
@@ -327,6 +384,14 @@ network conditions etc.
 The base layer token. Tari coins are released according to the [emission schedule] on the Tari [base layer] 
 [blockchain] in [coinbase transaction]s.
 
+
+## TariScript
+[TariScript]: #tariscript "The Tari scripting system for transactions"
+
+Tari uses a scripting system for transactions, not unlike [Bitcoin's scripting system](https://en.bitcoin.it/wiki/Script), 
+called TariScript. It is also simple, stack-based, processed from left to right, not Turing-complete, with no loops. It 
+is a list of instructions linked in a non&nbsp;malleable way to each output, specifying its conditions of spending.
+
 ## Transaction
 [transaction]: #transaction "Base layer tari coin transfers."
 
@@ -337,7 +402,8 @@ transfer of [Tari coin]s.
 ## Transaction Pool
 [transaction pool]: #transaction-pool "A pool in the Mempool for valid and verified unconfirmed transactions"
 
-The transaction pool is part of the [mempool] and manages all [transaction]s that have been verified, that spend valid [UTXO]s and don't have any time-lock restrictions.
+The transaction pool is part of the [mempool] and manages all [transaction]s that have been verified, that spend valid 
+[UTXO]s and don't have any time-lock restrictions.
 
 
 ## Trusted Node
@@ -349,7 +415,8 @@ A permissioned Validator Node nominated by an Asset Issuer that will form part o
 ## Token Wallet
 [token wallet]: #token-wallet "An Asset Manager Wallet for Tari Assets and Tokens"
 
-A Tari Token Wallet is responsible for managing [Digital asset]s and [Tokens], and for constructing and negotiating [instruction]s for transferring and receiving Assets and Tokens on the [Digital Asset Network].
+A Tari Token Wallet is responsible for managing [Digital asset]s and [Tokens], and for constructing and negotiating 
+[instruction]s for transferring and receiving Assets and Tokens on the [Digital Asset Network].
 
 
 ## Unspent transaction outputs
@@ -384,8 +451,8 @@ Transactions or blocks are `unvalidated` when first received by a [Base Node]. A
 [wallet]: #wallet "A Wallet for Tari coins"
 [Registration Deposit]: #registration-deposit
 
-
-A Tari Wallet is responsible for managing key pairs, and for constructing and negotiating [transaction]s for transferring and receiving [tari coin]s on the [Base Layer].
+A Tari Wallet is responsible for managing key pairs, and for constructing and negotiating [transaction]s for 
+transferring and receiving [tari coin]s on the [Base Layer].
 
 
 # Disclaimer

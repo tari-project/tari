@@ -318,7 +318,7 @@ impl AggregateBody {
 
         self.validate_range_proofs(&factories.range_proof)?;
         self.validate_sender_signatures()?;
-        self.validate_script_offset(script_offset_g)
+        self.validate_script_offset(script_offset_g, &factories.commitment)
     }
 
     pub fn dissolve(self) -> (Vec<TransactionInput>, Vec<TransactionOutput>, Vec<TransactionKernel>) {
@@ -378,12 +378,16 @@ impl AggregateBody {
     }
 
     /// this will validate the script offset of the aggregate body.
-    fn validate_script_offset(&self, script_offset: PublicKey) -> Result<(), TransactionError> {
+    fn validate_script_offset(
+        &self,
+        script_offset: PublicKey,
+        factory: &CommitmentFactory,
+    ) -> Result<(), TransactionError> {
         trace!(target: LOG_TARGET, "Checking script offset");
         // lets count up the input script public keys
         let mut input_keys = PublicKey::default();
         for input in &self.inputs {
-            input_keys = input_keys + input.run_and_verify_script()?;
+            input_keys = input_keys + input.run_and_verify_script(factory)?;
         }
 
         // Now lets gather the output public keys and hashes.

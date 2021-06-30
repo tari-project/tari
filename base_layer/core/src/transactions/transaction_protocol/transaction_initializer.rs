@@ -85,7 +85,7 @@ pub struct SenderTransactionInitializer {
     private_nonce: Option<PrivateKey>,
     message: Option<String>,
     prevent_fee_gt_amount: bool,
-    recipient_outpout_features: FixedSet<OutputFeatures>,
+    recipient_output_features: FixedSet<OutputFeatures>,
     recipient_scripts: FixedSet<TariScript>,
     recipient_script_offset_private_keys: FixedSet<PrivateKey>,
 }
@@ -123,7 +123,7 @@ impl SenderTransactionInitializer {
             excess_blinding_factor: BlindingFactor::default(),
             message: None,
             prevent_fee_gt_amount: true,
-            recipient_outpout_features: FixedSet::new(num_recipients),
+            recipient_output_features: FixedSet::new(num_recipients),
             recipient_scripts: FixedSet::new(num_recipients),
             recipient_script_offset_private_keys: FixedSet::new(num_recipients),
         }
@@ -150,8 +150,8 @@ impl SenderTransactionInitializer {
         script: TariScript,
         recipient_script_offset_private_key: PrivateKey,
         recipient_output_features: OutputFeatures,
-    ) -> &mut Self {
-        self.recipient_outpout_features
+    ) -> &mut Self 
+        self.recipient_output_features
             .set_item(receiver_index, recipient_output_features);
         self.recipient_scripts.set_item(receiver_index, script);
         self.recipient_script_offset_private_keys
@@ -486,7 +486,7 @@ impl SenderTransactionInitializer {
             amount_to_self,
             ids,
             amounts: self.amounts.into_vec(),
-            recipient_output_features: self.recipient_outpout_features.into_vec(),
+            recipient_output_features: self.recipient_output_features.into_vec(),
             recipient_scripts: self.recipient_scripts.into_vec(),
             recipient_script_offset_private_keys: self.recipient_script_offset_private_keys.into_vec(),
             change,

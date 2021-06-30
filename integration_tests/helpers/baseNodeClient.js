@@ -361,8 +361,9 @@ class BaseNodeClient {
     hash.update(header.prev_hash);
     const timestamp = parseInt(header.timestamp.seconds);
     hash.update(toLittleEndian(timestamp, 64));
+    hash.update(header.input_mr);
     hash.update(header.output_mr);
-    hash.update(header.range_proof_mr);
+    hash.update(header.witness_mr);
     hash.update(header.kernel_mr);
     hash.update(header.total_kernel_offset);
     hash.update(toLittleEndian(parseInt(header.nonce), 64));

@@ -188,16 +188,39 @@ class CustomWorld {
     return this.proxies[name];
   }
 
-  async forEachClientAsync(f) {
+  async forEachClientAsync(f, canFailPercent = 0) {
     const promises = [];
+    let total = 0;
+    let succeeded = 0;
+    let failed = 0;
 
     for (const property in this.seeds) {
       promises.push(f(this.getClient(property), property));
+      ++total;
     }
     for (const property in this.nodes) {
       promises.push(f(this.getClient(property), property));
+      ++total;
     }
-    await Promise.all(promises);
+
+    // Round up the number of nodes that can fail.
+    let canFail = Math.ceil((total * canFailPercent) / 100);
+
+    return new Promise((resolve, reject) => {
+      for (let promise of promises) {
+        Promise.resolve(promise).then(
+          () => {
+            succeeded += 1;
+            console.log(`${succeeded} of ${total} (need ${total - canFail})`);
+            if (succeeded >= total - canFail) resolve();
+          },
+          () => {
+            failed += 1;
+            if (failed > canFail) reject("Too many failed.");
+          }
+        );
+      }
+    });
   }
 
   async stopNode(name) {

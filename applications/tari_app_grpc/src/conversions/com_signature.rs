@@ -20,38 +20,23 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use serde::{Deserialize, Serialize};
-use std::{
-    convert::TryFrom,
-    fmt::{Display, Error, Formatter},
-};
+use std::convert::TryFrom;
+use tari_crypto::tari_utilities::ByteArray;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Copy)]
-pub enum MmrTree {
-    Utxo,
-    Kernel,
-    Witness,
-}
+use crate::tari_rpc as grpc;
+use tari_core::transactions::types::{ComSignature, Commitment, PrivateKey};
 
-impl Display for MmrTree {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        match self {
-            MmrTree::Witness => f.write_str("Witness"),
-            MmrTree::Utxo => f.write_str("UTXO"),
-            MmrTree::Kernel => f.write_str("Kernel"),
-        }
-    }
-}
-
-impl TryFrom<i32> for MmrTree {
+impl TryFrom<grpc::ComSignature> for ComSignature {
     type Error = String;
 
-    fn try_from(v: i32) -> Result<Self, Self::Error> {
-        match v {
-            0 => Ok(MmrTree::Utxo),
-            1 => Ok(MmrTree::Kernel),
-            2 => Ok(MmrTree::Witness),
-            _ => Err("Invalid MmrTree".into()),
-        }
+    fn try_from(sig: grpc::ComSignature) -> Result<Self, Self::Error> {
+        let public_nonce = Commitment::from_bytes(&sig.public_nonce_commitment)
+            .map_err(|_| "Could not get public nonce commitment".to_string())?;
+        let signature_u =
+            PrivateKey::from_bytes(&sig.signature_u).map_err(|_| "Could not get partial signature u".to_string())?;
+        let signature_v =
+            PrivateKey::from_bytes(&sig.signature_v).map_err(|_| "Could not get partial signature v".to_string())?;
+
+        Ok(Self::new(public_nonce, signature_u, signature_v))
     }
 }
