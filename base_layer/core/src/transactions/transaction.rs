@@ -471,11 +471,20 @@ impl TransactionInput {
         self.validate_script_signature(&key, factory)?;
         Ok(key)
     }
+
+    /// Returns the hash of the output data contained in this input.
+    /// This hash matches the hash of a transaction output that this input spends.
+    pub fn output_hash(&self) -> Vec<u8> {
+        HashDigest::new()
+            .chain(self.features.to_bytes())
+            .chain(self.commitment.as_bytes())
+            .chain(self.script.as_bytes())
+            .result()
+            .to_vec()
+    }
 }
 
 /// Implement the canonical hashing function for TransactionInput for use in ordering
-// Note we use the hash of an UTXO to ID it, so we need the hash of the TransactionInput to equal the hash of the
-// TransactionOutput
 impl Hashable for TransactionInput {
     fn hash(&self) -> Vec<u8> {
         HashDigest::new()
@@ -483,6 +492,8 @@ impl Hashable for TransactionInput {
             .chain(self.commitment.as_bytes())
             .chain(self.script.as_bytes())
             .chain(self.script_offset_public_key.as_bytes())
+            .chain(self.script_signature.get_signature().as_bytes())
+            .chain(self.input_data.as_bytes())
             .result()
             .to_vec()
     }
@@ -635,13 +646,13 @@ impl TransactionOutput {
         script: &TariScript,
         features: &OutputFeatures,
         script_offset_public_key: &PublicKey,
-        puplic_nonce: &PublicKey,
+        public_nonce: &PublicKey,
     ) -> MessageHash {
         Challenge::new()
             .chain(script.as_bytes())
             .chain(features.to_bytes())
             .chain(script_offset_public_key.as_bytes())
-            .chain(puplic_nonce.as_bytes())
+            .chain(public_nonce.as_bytes())
             .result()
             .to_vec()
     }
@@ -661,6 +672,14 @@ impl TransactionOutput {
         );
         Signature::sign(script_offset_private_key.clone(), sender_sig_pvt_nonce, &e).unwrap()
     }
+
+    pub fn witness_hash(&self) -> Vec<u8> {
+        HashDigest::new()
+            .chain(self.proof.as_bytes())
+            .chain(self.sender_metadata_signature.get_signature().as_bytes())
+            .result()
+            .to_vec()
+    }
 }
 
 /// Implement the canonical hashing function for TransactionOutput for use in ordering.
@@ -676,7 +695,6 @@ impl Hashable for TransactionOutput {
             .chain(self.commitment.as_bytes())
             // .chain(range proof) // See docs as to why we exclude this
             .chain(self.script.as_bytes())
-            .chain(self.script_offset_public_key.as_bytes())
             .result()
             .to_vec()
     }
@@ -1189,6 +1207,17 @@ mod test {
         script,
         script::ExecutionStack,
     };
+
+    #[test]
+    fn input_and_output_hash_match() {
+        let test_params = TestParams::new();
+        let factory = PedersenCommitmentFactory::default();
+
+        let i = create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params, 10.into());
+        let output = i.as_transaction_output(&CryptoFactories::default()).unwrap();
+        let input = i.as_transaction_input(&factory).unwrap();
+        assert_eq!(output.hash(), input.output_hash());
+    }
 
     #[test]
     fn unblinded_input() {

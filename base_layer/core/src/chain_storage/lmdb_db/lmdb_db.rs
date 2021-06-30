@@ -806,11 +806,11 @@ impl LMDBDatabase {
         }
 
         let mut output_mmr = MutableMmr::<HashDigest, _>::new(pruned_output_set, deleted.deleted)?;
-        let mut proof_mmr = MerkleMountainRange::<HashDigest, _>::new(pruned_proof_set);
+        let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(pruned_proof_set);
         for output in outputs {
             total_utxo_sum = &total_utxo_sum + &output.commitment;
             output_mmr.push(output.hash())?;
-            proof_mmr.push(output.proof().hash())?;
+            witness_mmr.push(output.witness_hash())?;
             trace!(
                 target: LOG_TARGET,
                 "Inserting output `{}`",
@@ -821,14 +821,14 @@ impl LMDBDatabase {
                 block_hash.clone(),
                 header.height,
                 output,
-                (proof_mmr.get_leaf_count()? - 1) as u32,
+                (witness_mmr.get_leaf_count()? - 1) as u32,
             )?;
         }
 
         for input in inputs {
             total_utxo_sum = &total_utxo_sum - &input.commitment;
             let index = self
-                .fetch_mmr_leaf_index(&**txn, MmrTree::Utxo, &input.hash())?
+                .fetch_mmr_leaf_index(&**txn, MmrTree::Utxo, &input.output_hash())?
                 .ok_or(ChainStorageError::UnspendableInput)?;
             if !output_mmr.delete(index) {
                 return Err(ChainStorageError::InvalidOperation(format!(
@@ -851,7 +851,7 @@ impl LMDBDatabase {
             &BlockAccumulatedData::new(
                 kernel_mmr.get_pruned_hash_set()?,
                 output_mmr.mmr().get_pruned_hash_set()?,
-                proof_mmr.get_pruned_hash_set()?,
+                witness_mmr.get_pruned_hash_set()?,
                 output_mmr.deleted().clone(),
                 total_kernel_sum,
             ),
@@ -957,7 +957,7 @@ impl LMDBDatabase {
         match mmr_tree {
             MmrTree::Kernel => block_accum_data.kernels = pruned_hash_set,
             MmrTree::Utxo => block_accum_data.outputs = pruned_hash_set,
-            MmrTree::RangeProof => block_accum_data.range_proofs = pruned_hash_set,
+            MmrTree::Witness => block_accum_data.range_proofs = pruned_hash_set,
         }
 
         lmdb_replace(&write_txn, &self.block_accumulated_data_db, &height, &block_accum_data)?;
@@ -1647,7 +1647,7 @@ impl BlockchainBackend for LMDBDatabase {
         match tree {
             MmrTree::Kernel => Ok(lmdb_len(&txn, &self.kernels_db)? as u64),
             MmrTree::Utxo => Ok(lmdb_len(&txn, &self.utxos_db)? as u64),
-            MmrTree::RangeProof => {
+            MmrTree::Witness => {
                 //  lmdb_len(&txn, &self.utxo)
                 unimplemented!("Need to get rangeproof mmr size")
             },

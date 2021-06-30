@@ -387,7 +387,7 @@ impl fmt::Display for WriteOperation {
             } => write!(
                 f,
                 "Insert input {} in block: {} position: {}",
-                input.hash().to_hex(),
+                input.output_hash().to_hex(),
                 header_hash.to_hex(),
                 mmr_position
             ),

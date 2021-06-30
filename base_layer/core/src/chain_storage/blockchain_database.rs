@@ -656,8 +656,9 @@ where B: BlockchainBackend
         let roots = self.calculate_mmr_roots(&block)?;
         block.header.kernel_mr = roots.kernel_mr;
         block.header.kernel_mmr_size = roots.kernel_mmr_size;
+        block.header.input_mr = roots.input_mr;
         block.header.output_mr = roots.output_mr;
-        block.header.range_proof_mr = roots.range_proof_mr;
+        block.header.witness_mr = roots.witness_mr;
         block.header.output_mmr_size = roots.output_mmr_size;
         Ok(block)
     }
@@ -899,8 +900,9 @@ fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, ChainStorageError
 pub struct MmrRoots {
     pub kernel_mr: BlockHash,
     pub kernel_mmr_size: u64,
+    pub input_mr: BlockHash,
     pub output_mr: BlockHash,
-    pub range_proof_mr: BlockHash,
+    pub witness_mr: BlockHash,
     pub output_mmr_size: u64,
 }
 
@@ -925,7 +927,8 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
     let deleted = deleted.deleted;
     let mut kernel_mmr = MerkleMountainRange::<HashDigest, _>::new(kernels);
     let mut output_mmr = MutableMmr::<HashDigest, _>::new(outputs, deleted)?;
-    let mut proof_mmr = MerkleMountainRange::<HashDigest, _>::new(range_proofs);
+    let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(range_proofs);
+    let mut input_mmr = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create())?;
 
     for kernel in body.kernels().iter() {
         kernel_mmr.push(kernel.hash())?;
@@ -933,17 +936,18 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
 
     for output in body.outputs().iter() {
         output_mmr.push(output.hash())?;
-        proof_mmr.push(output.proof().hash())?;
+        witness_mmr.push(output.witness_hash())?;
     }
 
     for input in body.inputs().iter() {
-        let index =
-            db.fetch_mmr_leaf_index(MmrTree::Utxo, &input.hash())?
-                .ok_or_else(|| ChainStorageError::ValueNotFound {
-                    entity: "UTXO".to_string(),
-                    field: "hash".to_string(),
-                    value: input.hash().to_hex(),
-                })?;
+        let index = db
+            .fetch_mmr_leaf_index(MmrTree::Utxo, &input.output_hash())?
+            .ok_or_else(|| ChainStorageError::ValueNotFound {
+                entity: "UTXO".to_string(),
+                field: "hash".to_string(),
+                value: input.output_hash().to_hex(),
+            })?;
+        input_mmr.push(input.hash())?;
 
         if !output_mmr.delete(index) {
             let len = output_mmr.len();
@@ -959,9 +963,10 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
     let mmr_roots = MmrRoots {
         kernel_mr: kernel_mmr.get_merkle_root()?,
         kernel_mmr_size: kernel_mmr.get_leaf_count()? as u64,
+        input_mr: input_mmr.get_merkle_root()?,
         output_mr: output_mmr.get_merkle_root()?,
-        output_mmr_size: proof_mmr.get_leaf_count()? as u64,
-        range_proof_mr: proof_mmr.get_merkle_root()?,
+        output_mmr_size: witness_mmr.get_leaf_count()? as u64,
+        witness_mr: witness_mmr.get_merkle_root()?,
     };
     Ok(mmr_roots)
 }
