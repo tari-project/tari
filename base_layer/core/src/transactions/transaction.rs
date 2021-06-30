@@ -492,7 +492,9 @@ impl Hashable for TransactionInput {
             .chain(self.commitment.as_bytes())
             .chain(self.script.as_bytes())
             .chain(self.script_offset_public_key.as_bytes())
-            .chain(self.script_signature.get_signature().as_bytes())
+            .chain(self.script_signature.u().as_bytes())
+            .chain(self.script_signature.v().as_bytes())
+            .chain(self.script_signature.public_nonce().as_bytes())
             .chain(self.input_data.as_bytes())
             .result()
             .to_vec()
@@ -677,6 +679,7 @@ impl TransactionOutput {
         HashDigest::new()
             .chain(self.proof.as_bytes())
             .chain(self.sender_metadata_signature.get_signature().as_bytes())
+            .chain(self.sender_metadata_signature.get_public_nonce().as_bytes())
             .result()
             .to_vec()
     }
