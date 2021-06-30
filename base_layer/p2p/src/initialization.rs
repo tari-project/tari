@@ -33,7 +33,6 @@ use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use std::{
     error::Error,
     fs::File,
-    future::Future,
     iter,
     net::SocketAddr,
     path::{Path, PathBuf},
@@ -61,7 +60,7 @@ use tari_comms::{
     UnspawnedCommsNode,
 };
 use tari_comms_dht::{Dht, DhtBuilder, DhtConfig, DhtInitializationError};
-use tari_service_framework::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tari_shutdown::ShutdownSignal;
 use tari_storage::{
     lmdb_store::{LMDBBuilder, LMDBConfig},
@@ -525,42 +524,39 @@ impl P2pInitializer {
     }
 }
 
+#[async_trait]
 impl ServiceInitializer for P2pInitializer {
-    type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
-
-    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+    async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let config = self.config.clone();
         let connector = self.connector.take().expect("P2pInitializer called more than once");
 
-        async move {
-            let mut builder = CommsBuilder::new()
-                .with_shutdown_signal(context.get_shutdown_signal())
-                .with_node_identity(config.node_identity.clone())
-                .with_user_agent(&config.user_agent);
+        let mut builder = CommsBuilder::new()
+            .with_shutdown_signal(context.get_shutdown_signal())
+            .with_node_identity(config.node_identity.clone())
+            .with_user_agent(&config.user_agent);
 
-            if config.allow_test_addresses {
-                builder = builder.allow_test_addresses();
-            }
-
-            let (comms, dht) = configure_comms_and_dht(builder, &config, connector).await?;
-
-            let peers = Self::try_parse_seed_peers(&config.peer_seeds)?;
-            add_all_peers(&comms.peer_manager(), &comms.node_identity(), peers).await?;
-
-            let peers = Self::try_resolve_dns_seeds(
-                config.dns_seeds_name_server,
-                &config.dns_seeds,
-                config.dns_seeds_use_dnssec,
-            )
-            .await?;
-            add_all_peers(&comms.peer_manager(), &comms.node_identity(), peers).await?;
-
-            context.register_handle(comms.connectivity());
-            context.register_handle(comms.peer_manager());
-            context.register_handle(comms);
-            context.register_handle(dht);
-
-            Ok(())
+        if config.allow_test_addresses {
+            builder = builder.allow_test_addresses();
         }
+
+        let (comms, dht) = configure_comms_and_dht(builder, &config, connector).await?;
+
+        let peers = Self::try_parse_seed_peers(&config.peer_seeds)?;
+        add_all_peers(&comms.peer_manager(), &comms.node_identity(), peers).await?;
+
+        let peers = Self::try_resolve_dns_seeds(
+            config.dns_seeds_name_server,
+            &config.dns_seeds,
+            config.dns_seeds_use_dnssec,
+        )
+        .await?;
+        add_all_peers(&comms.peer_manager(), &comms.node_identity(), peers).await?;
+
+        context.register_handle(comms.connectivity());
+        context.register_handle(comms.peer_manager());
+        context.register_handle(comms);
+        context.register_handle(dht);
+
+        Ok(())
     }
 }

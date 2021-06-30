@@ -22,11 +22,6 @@
 
 // Needed to make futures::select! work
 #![recursion_limit = "256"]
-// Used to eliminate the need for boxing futures in many cases.
-// Tracking issue: https://github.com/rust-lang/rust/issues/63063
-#![allow(incomplete_features)]
-#![feature(type_alias_impl_trait)]
-#![feature(min_type_alias_impl_trait)]
 #![cfg_attr(not(debug_assertions), deny(unused_variables))]
 #![cfg_attr(not(debug_assertions), deny(unused_imports))]
 #![cfg_attr(not(debug_assertions), deny(dead_code))]
