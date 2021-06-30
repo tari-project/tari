@@ -379,8 +379,8 @@ When(
     let walletB = this.getWallet(walletNameB);
     let clientB = walletB.getClient();
 
-    await walletA.export_spent_outputs();
-    let spent_outputs = await walletA.read_exported_outputs();
+    await walletA.exportSpentOutputs();
+    let spent_outputs = await walletA.readExportedOutputs();
     let result = await clientB.importUtxos(spent_outputs);
     lastResult = result.tx_ids;
   }
@@ -393,8 +393,8 @@ When(
     let walletB = this.getWallet(walletNameB);
     let clientB = walletB.getClient();
 
-    await walletA.export_unspent_outputs();
-    let outputs = await walletA.read_exported_outputs();
+    await walletA.exportUnspentOutputs();
+    let outputs = await walletA.readExportedOutputs();
     let result = await clientB.importUtxos(outputs);
     lastResult = result.tx_ids;
   }

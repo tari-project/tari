@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase,
     output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
     storage::{sqlite_db::WalletSqliteDatabase, sqlite_utilities::run_migration_and_create_sqlite_connection},
     transaction_service::storage::sqlite_db::TransactionServiceSqliteDatabase,
@@ -41,6 +42,7 @@ pub fn make_wallet_databases(
     WalletSqliteDatabase,
     TransactionServiceSqliteDatabase,
     OutputManagerSqliteDatabase,
+    ContactsServiceSqliteDatabase,
     Option<TempDir>,
 ) {
     let (path_string, temp_dir): (String, Option<TempDir>) = if let Some(p) = path {
@@ -59,7 +61,8 @@ pub fn make_wallet_databases(
     (
         WalletSqliteDatabase::new(connection.clone(), None).expect("Should be able to create wallet database"),
         TransactionServiceSqliteDatabase::new(connection.clone(), None),
-        OutputManagerSqliteDatabase::new(connection, None),
+        OutputManagerSqliteDatabase::new(connection.clone(), None),
+        ContactsServiceSqliteDatabase::new(connection),
         temp_dir,
     )
 }

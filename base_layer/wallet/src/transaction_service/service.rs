@@ -87,6 +87,7 @@ use tari_crypto::{keys::DiffieHellmanSharedSecret, script, tari_utilities::ByteA
 use tari_p2p::domain_message::DomainMessage;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
+
 #[cfg(feature = "test_harness")]
 use tokio::runtime::Handle;
 use tokio::{sync::broadcast, task::JoinHandle};
@@ -2060,12 +2061,15 @@ where
                 config::OutputManagerServiceConfig,
                 error::OutputManagerError,
                 service::OutputManagerService,
-                storage::{database::OutputManagerDatabase, memory_db::OutputManagerMemoryDatabase},
+                storage::{database::OutputManagerDatabase, sqlite_db::OutputManagerSqliteDatabase},
             },
+            storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
+            test_utils::random_string,
             transaction_service::{handle::TransactionServiceHandle, storage::models::InboundTransaction},
         };
         use tari_comms::types::CommsSecretKey;
         use tari_core::consensus::{ConsensusConstantsBuilder, Network};
+        use tempfile::tempdir;
 
         let (_sender, receiver) = reply_channel::unbounded();
         let (oms_event_publisher, _oms_event_subscriber) = broadcast::channel(100);
@@ -2084,12 +2088,20 @@ where
         let basenode_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns);
         let mut mock_base_node_service = MockBaseNodeService::new(receiver_bns, shutdown_signal.clone());
         mock_base_node_service.set_default_base_node_state();
+
+        let db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let db_tempdir = tempdir().unwrap();
+        let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+        let db_path = format!("{}/{}", db_folder, db_name);
+        let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+        let backend = OutputManagerSqliteDatabase::new(connection, None);
+
         handle.spawn(mock_base_node_service.run());
         let mut fake_oms = OutputManagerService::new(
             OutputManagerServiceConfig::default(),
             ts_handle,
             receiver,
-            OutputManagerDatabase::new(OutputManagerMemoryDatabase::new()),
+            OutputManagerDatabase::new(backend),
             oms_event_publisher,
             self.resources.factories.clone(),
             constants,

@@ -121,6 +121,10 @@ impl MockBaseNodeService {
                 self.set_base_node_peer(*peer);
                 Ok(BaseNodeServiceResponse::BaseNodePeerSet)
             },
+            BaseNodeServiceRequest::GetBaseNodePeer => {
+                let peer = self.state.base_node_peer.clone();
+                Ok(BaseNodeServiceResponse::BaseNodePeer(peer.map(Box::new)))
+            },
             BaseNodeServiceRequest::GetChainMetadata => Ok(BaseNodeServiceResponse::ChainMetadata(
                 self.state.chain_metadata.clone(),
             )),

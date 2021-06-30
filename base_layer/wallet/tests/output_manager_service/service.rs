@@ -21,8 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::support::{
+    data::get_temp_sqlite_database_connection,
     rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
-    utils::{make_input, make_input_with_features, random_string, TestParams},
+    utils::{make_input, make_input_with_features, TestParams},
 };
 use futures::{FutureExt, StreamExt};
 use rand::{rngs::OsRng, RngCore};
@@ -72,18 +73,16 @@ use tari_wallet::{
         service::OutputManagerService,
         storage::{
             database::{DbKey, DbKeyValuePair, DbValue, OutputManagerBackend, OutputManagerDatabase, WriteOperation},
-            memory_db::OutputManagerMemoryDatabase,
             models::DbUnblindedOutput,
             sqlite_db::OutputManagerSqliteDatabase,
         },
         TxId,
         TxoValidationType,
     },
-    storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     transaction_service::handle::TransactionServiceHandle,
     types::ValidationRetryStrategy,
 };
-use tempfile::tempdir;
+
 use tokio::{
     runtime::Runtime,
     sync::{broadcast, broadcast::channel},
@@ -216,9 +215,318 @@ async fn complete_transaction(mut stp: SenderTransactionProtocol, mut oms: Outpu
     stp.get_transaction().unwrap().clone()
 }
 
-fn sending_transaction_and_confirmation<T: Clone + OutputManagerBackend + 'static>(backend: T) {
+pub fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
+    runtime: &mut Runtime,
+    backend: T,
+    height: Option<u64>,
+) -> (
+    OutputManagerHandle,
+    Shutdown,
+    TransactionServiceHandle,
+    BaseNodeServiceHandle,
+) {
+    let shutdown = Shutdown::new();
     let factories = CryptoFactories::default();
 
+    let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
+    let (oms_event_publisher, _) = broadcast::channel(200);
+
+    let (ts_request_sender, _ts_request_receiver) = reply_channel::unbounded();
+    let (event_publisher, _) = channel(100);
+    let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher);
+
+    let constants = ConsensusConstantsBuilder::new(Network::Weatherwax).build();
+
+    let (sender, receiver_bns) = reply_channel::unbounded();
+    let (event_publisher_bns, _) = broadcast::channel(100);
+
+    let base_node_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns);
+    let mut mock_base_node_service = MockBaseNodeService::new(receiver_bns, shutdown.to_signal());
+    mock_base_node_service.set_base_node_state(height);
+    runtime.spawn(mock_base_node_service.run());
+
+    let (connectivity_manager, connectivity_mock) = create_connectivity_mock();
+    let _connectivity_mock_state = connectivity_mock.get_shared_state();
+    runtime.spawn(connectivity_mock.run());
+
+    let output_manager_service = runtime
+        .block_on(OutputManagerService::new(
+            OutputManagerServiceConfig {
+                base_node_query_timeout: Duration::from_secs(10),
+                max_utxo_query_size: 2,
+                peer_dial_retry_timeout: Duration::from_secs(5),
+                ..Default::default()
+            },
+            ts_handle.clone(),
+            oms_request_receiver,
+            OutputManagerDatabase::new(backend),
+            oms_event_publisher.clone(),
+            factories,
+            constants,
+            shutdown.to_signal(),
+            base_node_service_handle.clone(),
+            connectivity_manager,
+            CommsSecretKey::default(),
+        ))
+        .unwrap();
+    let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender, oms_event_publisher);
+
+    runtime.spawn(async move { output_manager_service.start().await.unwrap() });
+
+    (
+        output_manager_service_handle,
+        shutdown,
+        ts_handle,
+        base_node_service_handle,
+    )
+}
+
+fn generate_sender_transaction_message(amount: MicroTari) -> (TxId, TransactionSenderMessage) {
+    let factories = CryptoFactories::default();
+
+    let alice = TestParams::new(&mut OsRng);
+
+    let (utxo, input) = make_input(&mut OsRng, 2 * amount, &factories.commitment);
+    let mut builder = SenderTransactionProtocol::builder(1);
+    let script_private_key = PrivateKey::random(&mut OsRng);
+    builder
+        .with_lock_height(0)
+        .with_fee_per_gram(MicroTari(20))
+        .with_offset(alice.offset.clone())
+        .with_private_nonce(alice.nonce.clone())
+        .with_change_secret(alice.change_spend_key)
+        .with_input(utxo, input)
+        .with_amount(0, amount)
+        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng))
+        .with_change_script(
+            script!(Nop),
+            inputs!(PublicKey::from_secret_key(&script_private_key)),
+            script_private_key,
+        );
+
+    let mut stp = builder.build::<Blake256>(&factories).unwrap();
+    let tx_id = stp.get_tx_id().unwrap();
+    (
+        tx_id,
+        TransactionSenderMessage::new_single_round_message(stp.build_single_round_message().unwrap()),
+    )
+}
+
+#[test]
+fn fee_estimate() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
+
+    let factories = CryptoFactories::default();
+    let mut runtime = Runtime::new().unwrap();
+    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(&mut runtime, backend, true);
+
+    let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(3000), &factories.commitment);
+    runtime.block_on(oms.add_output(uo)).unwrap();
+
+    // minimum fee
+    let fee_per_gram = MicroTari::from(1);
+    let fee = runtime
+        .block_on(oms.fee_estimate(MicroTari::from(100), fee_per_gram, 1, 1))
+        .unwrap();
+    assert_eq!(fee, MicroTari::from(100));
+
+    let fee_per_gram = MicroTari::from(25);
+    for outputs in 1..5 {
+        let fee = runtime
+            .block_on(oms.fee_estimate(MicroTari::from(100), fee_per_gram, 1, outputs))
+            .unwrap();
+        assert_eq!(fee, Fee::calculate(fee_per_gram, 1, 1, outputs as usize));
+    }
+
+    // not enough funds
+    let err = runtime
+        .block_on(oms.fee_estimate(MicroTari::from(2750), fee_per_gram, 1, 1))
+        .unwrap_err();
+    assert!(matches!(err, OutputManagerError::NotEnoughFunds));
+}
+
+#[allow(clippy::identity_op)]
+#[test]
+fn test_utxo_selection_no_chain_metadata() {
+    let factories = CryptoFactories::default();
+    let mut runtime = Runtime::new().unwrap();
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+
+    // no chain metadata
+    let (mut oms, _shutdown, _, _) =
+        setup_oms_with_bn_state(&mut runtime, OutputManagerSqliteDatabase::new(connection, None), None);
+
+    // no utxos - not enough funds
+    let amount = MicroTari::from(1000);
+    let fee_per_gram = MicroTari::from(10);
+    let err = runtime
+        .block_on(oms.prepare_transaction_to_send(amount, fee_per_gram, None, "".to_string(), script!(Nop)))
+        .unwrap_err();
+    assert!(matches!(err, OutputManagerError::NotEnoughFunds));
+
+    // create 10 utxos with maturity at heights from 1 to 10
+    for i in 1..=10 {
+        let (_, uo) = make_input_with_features(
+            &mut OsRng.clone(),
+            i * amount,
+            &factories.commitment,
+            Some(OutputFeatures::with_maturity(i)),
+        );
+        runtime.block_on(oms.add_output(uo.clone())).unwrap();
+    }
+
+    // but we have no chain state so the lowest maturity should be used
+    let stp = runtime
+        .block_on(oms.prepare_transaction_to_send(amount, fee_per_gram, None, "".to_string(), script!(Nop)))
+        .unwrap();
+    assert!(stp.get_tx_id().is_ok());
+
+    // test that lowest 2 maturities were encumbered
+    let utxos = runtime.block_on(oms.get_unspent_outputs()).unwrap();
+    assert_eq!(utxos.len(), 8);
+    for (index, utxo) in utxos.iter().enumerate() {
+        let i = index as u64 + 3;
+        assert_eq!(utxo.features.maturity, i);
+        assert_eq!(utxo.value, i * amount);
+    }
+
+    // test that we can get a fee estimate with no chain metadata
+    let fee = runtime.block_on(oms.fee_estimate(amount, fee_per_gram, 1, 2)).unwrap();
+    assert_eq!(fee, MicroTari::from(300));
+
+    // test if a fee estimate would be possible with pending funds included
+    // at this point 52000 uT is still spendable, with pending change incoming of 1690 uT
+    // so instead of returning "not enough funds", return "funds pending"
+    let spendable_amount = (3..=10).sum::<u64>() * amount;
+    let err = runtime
+        .block_on(oms.fee_estimate(spendable_amount, fee_per_gram, 1, 2))
+        .unwrap_err();
+    assert!(matches!(err, OutputManagerError::FundsPending));
+
+    // test not enough funds
+    let broke_amount = spendable_amount + MicroTari::from(2000);
+    let err = runtime
+        .block_on(oms.fee_estimate(broke_amount, fee_per_gram, 1, 2))
+        .unwrap_err();
+    assert!(matches!(err, OutputManagerError::NotEnoughFunds));
+
+    // coin split uses the "Largest" selection strategy
+    let (_, _, fee, utxos_total_value) = runtime
+        .block_on(oms.create_coin_split(amount, 5, fee_per_gram, None))
+        .unwrap();
+    assert_eq!(fee, MicroTari::from(820));
+    assert_eq!(utxos_total_value, MicroTari::from(10_000));
+
+    // test that largest utxo was encumbered
+    let utxos = runtime.block_on(oms.get_unspent_outputs()).unwrap();
+    assert_eq!(utxos.len(), 7);
+    for (index, utxo) in utxos.iter().enumerate() {
+        let i = index as u64 + 3;
+        assert_eq!(utxo.features.maturity, i);
+        assert_eq!(utxo.value, i * amount);
+    }
+}
+
+#[allow(clippy::identity_op)]
+#[test]
+fn test_utxo_selection_with_chain_metadata() {
+    let factories = CryptoFactories::default();
+    let mut runtime = Runtime::new().unwrap();
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+
+    // setup with chain metadata at a height of 6
+    let (mut oms, _shutdown, _, _) = setup_oms_with_bn_state(
+        &mut runtime,
+        OutputManagerSqliteDatabase::new(connection, None),
+        Some(6),
+    );
+
+    // no utxos - not enough funds
+    let amount = MicroTari::from(1000);
+    let fee_per_gram = MicroTari::from(10);
+    let err = runtime
+        .block_on(oms.prepare_transaction_to_send(amount, fee_per_gram, None, "".to_string(), script!(Nop)))
+        .unwrap_err();
+    assert!(matches!(err, OutputManagerError::NotEnoughFunds));
+
+    // create 10 utxos with maturity at heights from 1 to 10
+    for i in 1..=10 {
+        let (_, uo) = make_input_with_features(
+            &mut OsRng.clone(),
+            i * amount,
+            &factories.commitment,
+            Some(OutputFeatures::with_maturity(i)),
+        );
+        runtime.block_on(oms.add_output(uo.clone())).unwrap();
+    }
+
+    let utxos = runtime.block_on(oms.get_unspent_outputs()).unwrap();
+    assert_eq!(utxos.len(), 10);
+
+    // test fee estimates
+    let fee = runtime.block_on(oms.fee_estimate(amount, fee_per_gram, 1, 2)).unwrap();
+    assert_eq!(fee, MicroTari::from(310));
+
+    // test fee estimates are maturity aware
+    // even though we have utxos for the fee, they can't be spent because they are not mature yet
+    let spendable_amount = (1..=6).sum::<u64>() * amount;
+    let err = runtime
+        .block_on(oms.fee_estimate(spendable_amount, fee_per_gram, 1, 2))
+        .unwrap_err();
+    assert!(matches!(err, OutputManagerError::NotEnoughFunds));
+
+    // test coin split is maturity aware
+    let (_, _, fee, utxos_total_value) = runtime
+        .block_on(oms.create_coin_split(amount, 5, fee_per_gram, None))
+        .unwrap();
+    assert_eq!(utxos_total_value, MicroTari::from(6_000));
+    assert_eq!(fee, MicroTari::from(820));
+
+    // test that largest spendable utxo was encumbered
+    let utxos = runtime.block_on(oms.get_unspent_outputs()).unwrap();
+    assert_eq!(utxos.len(), 9);
+    let found = utxos.iter().any(|u| u.value == 6 * amount);
+    assert!(!found, "An unspendable utxo was selected");
+
+    // test transactions
+    let stp = runtime
+        .block_on(oms.prepare_transaction_to_send(amount, fee_per_gram, None, "".to_string(), script!(Nop)))
+        .unwrap();
+    assert!(stp.get_tx_id().is_ok());
+
+    // test that utxos with the lowest 2 maturities were encumbered
+    let utxos = runtime.block_on(oms.get_unspent_outputs()).unwrap();
+    assert_eq!(utxos.len(), 7);
+    for utxo in utxos.iter() {
+        assert_ne!(utxo.features.maturity, 1);
+        assert_ne!(utxo.value, amount);
+        assert_ne!(utxo.features.maturity, 2);
+        assert_ne!(utxo.value, 2 * amount);
+    }
+
+    // when the amount is greater than the largest utxo, then "Largest" selection strategy is used
+    let stp = runtime
+        .block_on(oms.prepare_transaction_to_send(6 * amount, fee_per_gram, None, "".to_string(), script!(Nop)))
+        .unwrap();
+    assert!(stp.get_tx_id().is_ok());
+
+    // test that utxos with the highest spendable 2 maturities were encumbered
+    let utxos = runtime.block_on(oms.get_unspent_outputs()).unwrap();
+    assert_eq!(utxos.len(), 5);
+    for utxo in utxos.iter() {
+        assert_ne!(utxo.features.maturity, 4);
+        assert_ne!(utxo.value, 4 * amount);
+        assert_ne!(utxo.features.maturity, 5);
+        assert_ne!(utxo.value, 5 * amount);
+    }
+}
+
+#[test]
+fn sending_transaction_and_confirmation() {
+    let factories = CryptoFactories::default();
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
     let mut runtime = Runtime::new().unwrap();
 
     let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(&mut runtime, backend.clone(), true);
@@ -317,320 +625,14 @@ fn sending_transaction_and_confirmation<T: Clone + OutputManagerBackend + 'stati
     }
 }
 
-fn fee_estimate<T: Clone + OutputManagerBackend + 'static>(backend: T) {
-    let factories = CryptoFactories::default();
-    let mut runtime = Runtime::new().unwrap();
-    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(&mut runtime, backend, true);
-
-    let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(3000), &factories.commitment);
-    runtime.block_on(oms.add_output(uo)).unwrap();
-
-    // minimum fee
-    let fee_per_gram = MicroTari::from(1);
-    let fee = runtime
-        .block_on(oms.fee_estimate(MicroTari::from(100), fee_per_gram, 1, 1))
-        .unwrap();
-    assert_eq!(fee, MicroTari::from(100));
-
-    let fee_per_gram = MicroTari::from(25);
-    for outputs in 1..5 {
-        let fee = runtime
-            .block_on(oms.fee_estimate(MicroTari::from(100), fee_per_gram, 1, outputs))
-            .unwrap();
-        assert_eq!(fee, Fee::calculate(fee_per_gram, 1, 1, outputs as usize));
-    }
-
-    // not enough funds
-    let err = runtime
-        .block_on(oms.fee_estimate(MicroTari::from(2750), fee_per_gram, 1, 1))
-        .unwrap_err();
-    assert!(matches!(err, OutputManagerError::NotEnoughFunds));
-}
-
 #[test]
-fn fee_estimate_memory_db() {
-    fee_estimate(OutputManagerMemoryDatabase::new());
-}
-
-pub fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
-    runtime: &mut Runtime,
-    backend: T,
-    height: Option<u64>,
-) -> (
-    OutputManagerHandle,
-    Shutdown,
-    TransactionServiceHandle,
-    BaseNodeServiceHandle,
-) {
-    let shutdown = Shutdown::new();
-    let factories = CryptoFactories::default();
-
-    let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
-    let (oms_event_publisher, _) = broadcast::channel(200);
-
-    let (ts_request_sender, _ts_request_receiver) = reply_channel::unbounded();
-    let (event_publisher, _) = channel(100);
-    let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher);
-
-    let constants = ConsensusConstantsBuilder::new(Network::Weatherwax).build();
-
-    let (sender, receiver_bns) = reply_channel::unbounded();
-    let (event_publisher_bns, _) = broadcast::channel(100);
-
-    let base_node_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns);
-    let mut mock_base_node_service = MockBaseNodeService::new(receiver_bns, shutdown.to_signal());
-    mock_base_node_service.set_base_node_state(height);
-    runtime.spawn(mock_base_node_service.run());
-
-    let (connectivity_manager, connectivity_mock) = create_connectivity_mock();
-    let _connectivity_mock_state = connectivity_mock.get_shared_state();
-    runtime.spawn(connectivity_mock.run());
-
-    let output_manager_service = runtime
-        .block_on(OutputManagerService::new(
-            OutputManagerServiceConfig {
-                base_node_query_timeout: Duration::from_secs(10),
-                max_utxo_query_size: 2,
-                peer_dial_retry_timeout: Duration::from_secs(5),
-                ..Default::default()
-            },
-            ts_handle.clone(),
-            oms_request_receiver,
-            OutputManagerDatabase::new(backend),
-            oms_event_publisher.clone(),
-            factories,
-            constants,
-            shutdown.to_signal(),
-            base_node_service_handle.clone(),
-            connectivity_manager,
-            CommsSecretKey::default(),
-        ))
-        .unwrap();
-    let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender, oms_event_publisher);
-
-    runtime.spawn(async move { output_manager_service.start().await.unwrap() });
-
-    (
-        output_manager_service_handle,
-        shutdown,
-        ts_handle,
-        base_node_service_handle,
-    )
-}
-
-#[allow(clippy::identity_op)]
-#[test]
-fn test_utxo_selection_no_chain_metadata() {
-    let factories = CryptoFactories::default();
-    let mut runtime = Runtime::new().unwrap();
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = tempdir().unwrap();
-    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-    let db_path = format!("{}/{}", db_folder, db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
-    // no chain metadata
-    let (mut oms, _shutdown, _, _) =
-        setup_oms_with_bn_state(&mut runtime, OutputManagerSqliteDatabase::new(connection, None), None);
-
-    // no utxos - not enough funds
-    let amount = MicroTari::from(1000);
-    let fee_per_gram = MicroTari::from(10);
-    let err = runtime
-        .block_on(oms.prepare_transaction_to_send(amount, fee_per_gram, None, "".to_string(), script!(Nop)))
-        .unwrap_err();
-    assert!(matches!(err, OutputManagerError::NotEnoughFunds));
-
-    // create 10 utxos with maturity at heights from 1 to 10
-    for i in 1..=10 {
-        let (_, uo) = make_input_with_features(
-            &mut OsRng.clone(),
-            i * amount,
-            &factories.commitment,
-            Some(OutputFeatures::with_maturity(i)),
-        );
-        runtime.block_on(oms.add_output(uo.clone())).unwrap();
-    }
-
-    // but we have no chain state so the lowest maturity should be used
-    let stp = runtime
-        .block_on(oms.prepare_transaction_to_send(amount, fee_per_gram, None, "".to_string(), script!(Nop)))
-        .unwrap();
-    assert!(stp.get_tx_id().is_ok());
-
-    // test that lowest 2 maturities were encumbered
-    let utxos = runtime.block_on(oms.get_unspent_outputs()).unwrap();
-    assert_eq!(utxos.len(), 8);
-    for (index, utxo) in utxos.iter().enumerate() {
-        let i = index as u64 + 3;
-        assert_eq!(utxo.features.maturity, i);
-        assert_eq!(utxo.value, i * amount);
-    }
-
-    // test that we can get a fee estimate with no chain metadata
-    let fee = runtime.block_on(oms.fee_estimate(amount, fee_per_gram, 1, 2)).unwrap();
-    assert_eq!(fee, MicroTari::from(300));
-
-    // test if a fee estimate would be possible with pending funds included
-    // at this point 52000 uT is still spendable, with pending change incoming of 1690 uT
-    // so instead of returning "not enough funds", return "funds pending"
-    let spendable_amount = (3..=10).sum::<u64>() * amount;
-    let err = runtime
-        .block_on(oms.fee_estimate(spendable_amount, fee_per_gram, 1, 2))
-        .unwrap_err();
-    assert!(matches!(err, OutputManagerError::FundsPending));
-
-    // test not enough funds
-    let broke_amount = spendable_amount + MicroTari::from(2000);
-    let err = runtime
-        .block_on(oms.fee_estimate(broke_amount, fee_per_gram, 1, 2))
-        .unwrap_err();
-    assert!(matches!(err, OutputManagerError::NotEnoughFunds));
-
-    // coin split uses the "Largest" selection strategy
-    let (_, _, fee, utxos_total_value) = runtime
-        .block_on(oms.create_coin_split(amount, 5, fee_per_gram, None))
-        .unwrap();
-    assert_eq!(fee, MicroTari::from(820));
-    assert_eq!(utxos_total_value, MicroTari::from(10_000));
-
-    // test that largest utxo was encumbered
-    let utxos = runtime.block_on(oms.get_unspent_outputs()).unwrap();
-    assert_eq!(utxos.len(), 7);
-    for (index, utxo) in utxos.iter().enumerate() {
-        let i = index as u64 + 3;
-        assert_eq!(utxo.features.maturity, i);
-        assert_eq!(utxo.value, i * amount);
-    }
-}
-
-#[allow(clippy::identity_op)]
-#[test]
-fn test_utxo_selection_with_chain_metadata() {
-    let factories = CryptoFactories::default();
-    let mut runtime = Runtime::new().unwrap();
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = tempdir().unwrap();
-    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-    let db_path = format!("{}/{}", db_folder, db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
-    // setup with chain metadata at a height of 6
-    let (mut oms, _shutdown, _, _) = setup_oms_with_bn_state(
-        &mut runtime,
-        OutputManagerSqliteDatabase::new(connection, None),
-        Some(6),
-    );
-
-    // no utxos - not enough funds
-    let amount = MicroTari::from(1000);
-    let fee_per_gram = MicroTari::from(10);
-    let err = runtime
-        .block_on(oms.prepare_transaction_to_send(amount, fee_per_gram, None, "".to_string(), script!(Nop)))
-        .unwrap_err();
-    assert!(matches!(err, OutputManagerError::NotEnoughFunds));
-
-    // create 10 utxos with maturity at heights from 1 to 10
-    for i in 1..=10 {
-        let (_, uo) = make_input_with_features(
-            &mut OsRng.clone(),
-            i * amount,
-            &factories.commitment,
-            Some(OutputFeatures::with_maturity(i)),
-        );
-        runtime.block_on(oms.add_output(uo.clone())).unwrap();
-    }
-
-    let utxos = runtime.block_on(oms.get_unspent_outputs()).unwrap();
-    assert_eq!(utxos.len(), 10);
-
-    // test fee estimates
-    let fee = runtime.block_on(oms.fee_estimate(amount, fee_per_gram, 1, 2)).unwrap();
-    assert_eq!(fee, MicroTari::from(310));
-
-    // test fee estimates are maturity aware
-    // even though we have utxos for the fee, they can't be spent because they are not mature yet
-    let spendable_amount = (1..=6).sum::<u64>() * amount;
-    let err = runtime
-        .block_on(oms.fee_estimate(spendable_amount, fee_per_gram, 1, 2))
-        .unwrap_err();
-    assert!(matches!(err, OutputManagerError::NotEnoughFunds));
-
-    // test coin split is maturity aware
-    let (_, _, fee, utxos_total_value) = runtime
-        .block_on(oms.create_coin_split(amount, 5, fee_per_gram, None))
-        .unwrap();
-    assert_eq!(utxos_total_value, MicroTari::from(6_000));
-    assert_eq!(fee, MicroTari::from(820));
-
-    // test that largest spendable utxo was encumbered
-    let utxos = runtime.block_on(oms.get_unspent_outputs()).unwrap();
-    assert_eq!(utxos.len(), 9);
-    let found = utxos.iter().any(|u| u.value == 6 * amount);
-    assert!(!found, "An unspendable utxo was selected");
-
-    // test transactions
-    let stp = runtime
-        .block_on(oms.prepare_transaction_to_send(amount, fee_per_gram, None, "".to_string(), script!(Nop)))
-        .unwrap();
-    assert!(stp.get_tx_id().is_ok());
-
-    // test that utxos with the lowest 2 maturities were encumbered
-    let utxos = runtime.block_on(oms.get_unspent_outputs()).unwrap();
-    assert_eq!(utxos.len(), 7);
-    for utxo in utxos.iter() {
-        assert_ne!(utxo.features.maturity, 1);
-        assert_ne!(utxo.value, amount);
-        assert_ne!(utxo.features.maturity, 2);
-        assert_ne!(utxo.value, 2 * amount);
-    }
-
-    // when the amount is greater than the largest utxo, then "Largest" selection strategy is used
-    let stp = runtime
-        .block_on(oms.prepare_transaction_to_send(6 * amount, fee_per_gram, None, "".to_string(), script!(Nop)))
-        .unwrap();
-    assert!(stp.get_tx_id().is_ok());
-
-    // test that utxos with the highest spendable 2 maturities were encumbered
-    let utxos = runtime.block_on(oms.get_unspent_outputs()).unwrap();
-    assert_eq!(utxos.len(), 5);
-    for utxo in utxos.iter() {
-        assert_ne!(utxo.features.maturity, 4);
-        assert_ne!(utxo.value, 4 * amount);
-        assert_ne!(utxo.features.maturity, 5);
-        assert_ne!(utxo.value, 5 * amount);
-    }
-}
-
-#[test]
-fn fee_estimate_sqlite_db() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = tempdir().unwrap();
-    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-    let db_path = format!("{}/{}", db_folder, db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
-
-    fee_estimate(OutputManagerSqliteDatabase::new(connection, None));
-}
-
-#[test]
-fn sending_transaction_and_confirmation_memory_db() {
-    sending_transaction_and_confirmation(OutputManagerMemoryDatabase::new());
-}
-
-#[test]
-fn sending_transaction_and_confirmation_sqlite_db() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = tempdir().unwrap();
-    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-    let db_path = format!("{}/{}", db_folder, db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
-
-    sending_transaction_and_confirmation(OutputManagerSqliteDatabase::new(connection, None));
-}
-
-fn send_not_enough_funds<T: OutputManagerBackend + 'static>(backend: T) {
+fn send_not_enough_funds() {
     let factories = CryptoFactories::default();
 
     let mut runtime = Runtime::new().unwrap();
+
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
 
     let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(&mut runtime, backend, true);
     let num_outputs = 20;
@@ -656,25 +658,13 @@ fn send_not_enough_funds<T: OutputManagerBackend + 'static>(backend: T) {
 }
 
 #[test]
-fn send_not_enough_funds_memory_db() {
-    send_not_enough_funds(OutputManagerMemoryDatabase::new());
-}
-
-#[test]
-fn send_not_enough_funds_sqlite_db() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = tempdir().unwrap();
-    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-    let db_path = format!("{}/{}", db_folder, db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
-
-    send_not_enough_funds(OutputManagerSqliteDatabase::new(connection, None));
-}
-
-fn send_no_change<T: OutputManagerBackend + 'static>(backend: T) {
+fn send_no_change() {
     let factories = CryptoFactories::default();
 
     let mut runtime = Runtime::new().unwrap();
+
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
 
     let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(&mut runtime, backend, true);
 
@@ -747,23 +737,11 @@ fn send_no_change<T: OutputManagerBackend + 'static>(backend: T) {
 }
 
 #[test]
-fn send_no_change_memory_db() {
-    send_no_change(OutputManagerMemoryDatabase::new());
-}
-
-#[test]
-fn send_no_change_sqlite_db() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = tempdir().unwrap();
-    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-    let db_path = format!("{}/{}", db_folder, db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
-
-    send_no_change(OutputManagerSqliteDatabase::new(connection, None));
-}
-
-fn send_not_enough_for_change<T: OutputManagerBackend + 'static>(backend: T) {
+fn send_not_enough_for_change() {
     let mut runtime = Runtime::new().unwrap();
+
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
 
     let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(&mut runtime, backend, true);
 
@@ -801,54 +779,11 @@ fn send_not_enough_for_change<T: OutputManagerBackend + 'static>(backend: T) {
 }
 
 #[test]
-fn send_not_enough_for_change_memory_db() {
-    send_not_enough_for_change(OutputManagerMemoryDatabase::new());
-}
-
-#[test]
-fn send_not_enough_for_change_sqlite_db() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = tempdir().unwrap();
-    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-    let db_path = format!("{}/{}", db_folder, db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
-
-    send_not_enough_for_change(OutputManagerSqliteDatabase::new(connection, None));
-}
-
-fn generate_sender_transaction_message(amount: MicroTari) -> (TxId, TransactionSenderMessage) {
-    let factories = CryptoFactories::default();
-
-    let alice = TestParams::new(&mut OsRng);
-
-    let (utxo, input) = make_input(&mut OsRng, 2 * amount, &factories.commitment);
-    let mut builder = SenderTransactionProtocol::builder(1);
-    let script_private_key = PrivateKey::random(&mut OsRng);
-    builder
-        .with_lock_height(0)
-        .with_fee_per_gram(MicroTari(20))
-        .with_offset(alice.offset.clone())
-        .with_private_nonce(alice.nonce.clone())
-        .with_change_secret(alice.change_spend_key)
-        .with_input(utxo, input)
-        .with_amount(0, amount)
-        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng), Default::default())
-        .with_change_script(
-            script!(Nop),
-            inputs!(PublicKey::from_secret_key(&script_private_key)),
-            script_private_key,
-        );
-
-    let mut stp = builder.build::<Blake256>(&factories).unwrap();
-    let tx_id = stp.get_tx_id().unwrap();
-    (
-        tx_id,
-        TransactionSenderMessage::new_single_round_message(stp.build_single_round_message().unwrap()),
-    )
-}
-
-fn receiving_and_confirmation<T: OutputManagerBackend + 'static>(backend: T) {
+fn receiving_and_confirmation() {
     let mut runtime = Runtime::new().unwrap();
+
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
 
     let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(&mut runtime, backend, true);
 
@@ -872,25 +807,13 @@ fn receiving_and_confirmation<T: OutputManagerBackend + 'static>(backend: T) {
 }
 
 #[test]
-fn receiving_and_confirmation_memory_db() {
-    receiving_and_confirmation(OutputManagerMemoryDatabase::new());
-}
-
-#[test]
-fn receiving_and_confirmation_sqlite_db() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = tempdir().unwrap();
-    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-    let db_path = format!("{}/{}", db_folder, db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
-
-    receiving_and_confirmation(OutputManagerSqliteDatabase::new(connection, None));
-}
-
-fn cancel_transaction<T: OutputManagerBackend + 'static>(backend: T) {
+fn cancel_transaction() {
     let factories = CryptoFactories::default();
 
     let mut runtime = Runtime::new().unwrap();
+
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
 
     let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(&mut runtime, backend, true);
 
@@ -926,25 +849,13 @@ fn cancel_transaction<T: OutputManagerBackend + 'static>(backend: T) {
 }
 
 #[test]
-fn cancel_transaction_memory_db() {
-    cancel_transaction(OutputManagerMemoryDatabase::new());
-}
-
-#[test]
-fn cancel_transaction_sqlite_db() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = tempdir().unwrap();
-    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-    let db_path = format!("{}/{}", db_folder, db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
-
-    cancel_transaction(OutputManagerSqliteDatabase::new(connection, None));
-}
-
-fn timeout_transaction<T: OutputManagerBackend + 'static>(backend: T) {
+fn timeout_transaction() {
     let factories = CryptoFactories::default();
 
     let mut runtime = Runtime::new().unwrap();
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
+
     let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(&mut runtime, backend, true);
 
     let num_outputs = 20;
@@ -987,24 +898,12 @@ fn timeout_transaction<T: OutputManagerBackend + 'static>(backend: T) {
 }
 
 #[test]
-fn timeout_transaction_memory_db() {
-    timeout_transaction(OutputManagerMemoryDatabase::new());
-}
-
-#[test]
-fn timeout_transaction_sqlite_db() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = tempdir().unwrap();
-    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-    let db_path = format!("{}/{}", db_folder, db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
-
-    timeout_transaction(OutputManagerSqliteDatabase::new(connection, None));
-}
-
-fn test_get_balance<T: OutputManagerBackend + 'static>(backend: T) {
+fn test_get_balance() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
+
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
 
     let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(&mut runtime, backend, true);
 
@@ -1041,23 +940,11 @@ fn test_get_balance<T: OutputManagerBackend + 'static>(backend: T) {
 }
 
 #[test]
-fn test_get_balance_memory_db() {
-    test_get_balance(OutputManagerMemoryDatabase::new());
-}
-
-#[test]
-fn test_get_balance_sqlite_db() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = tempdir().unwrap();
-    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-    let db_path = format!("{}/{}", db_folder, db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
-
-    test_get_balance(OutputManagerSqliteDatabase::new(connection, None));
-}
-
-fn test_confirming_received_output<T: OutputManagerBackend + 'static>(backend: T) {
+fn test_confirming_received_output() {
     let mut runtime = Runtime::new().unwrap();
+
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
 
     let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(&mut runtime, backend, true);
 
@@ -1089,24 +976,12 @@ fn test_confirming_received_output<T: OutputManagerBackend + 'static>(backend: T
 }
 
 #[test]
-fn test_confirming_received_output_memory_db() {
-    test_confirming_received_output(OutputManagerMemoryDatabase::new());
-}
-
-#[test]
-fn test_confirming_received_output_sqlite_db() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = tempdir().unwrap();
-    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-    let db_path = format!("{}/{}", db_folder, db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
-
-    test_confirming_received_output(OutputManagerSqliteDatabase::new(connection, None));
-}
-
-fn sending_transaction_with_short_term_clear<T: Clone + OutputManagerBackend + 'static>(backend: T) {
+fn sending_transaction_with_short_term_clear() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
+
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
 
     let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(&mut runtime, backend.clone(), true);
 
@@ -1184,24 +1059,11 @@ fn sending_transaction_with_short_term_clear<T: Clone + OutputManagerBackend + '
 }
 
 #[test]
-fn sending_transaction_with_short_term_clear_memory_db() {
-    sending_transaction_with_short_term_clear(OutputManagerMemoryDatabase::new());
-}
-
-#[test]
-fn sending_transaction_with_short_term_clear_sqlite_db() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = tempdir().unwrap();
-    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-    let db_path = format!("{}/{}", db_folder, db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
-
-    sending_transaction_with_short_term_clear(OutputManagerSqliteDatabase::new(connection, None));
-}
-
-fn coin_split_with_change<T: Clone + OutputManagerBackend + 'static>(backend: T) {
+fn coin_split_with_change() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
     let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(&mut runtime, backend, true);
 
     let val1 = 6_000 * uT;
@@ -1226,24 +1088,11 @@ fn coin_split_with_change<T: Clone + OutputManagerBackend + 'static>(backend: T)
 }
 
 #[test]
-fn coin_split_with_change_memory_db() {
-    coin_split_with_change(OutputManagerMemoryDatabase::new());
-}
-
-#[test]
-fn coin_split_with_change_sqlite_db() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = tempdir().unwrap();
-    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-    let db_path = format!("{}/{}", db_folder, db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
-
-    coin_split_with_change(OutputManagerSqliteDatabase::new(connection, None));
-}
-
-fn coin_split_no_change<T: Clone + OutputManagerBackend + 'static>(backend: T) {
+fn coin_split_no_change() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
     let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(&mut runtime, backend, true);
 
     let fee_per_gram = MicroTari::from(25);
@@ -1269,25 +1118,11 @@ fn coin_split_no_change<T: Clone + OutputManagerBackend + 'static>(backend: T) {
 }
 
 #[test]
-fn coin_split_no_change_memory_db() {
-    coin_split_no_change(OutputManagerMemoryDatabase::new());
-}
-
-#[test]
-fn coin_split_no_change_sqlite_db() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = tempdir().unwrap();
-    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-    let db_path = format!("{}/{}", db_folder, db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
-
-    coin_split_no_change(OutputManagerSqliteDatabase::new(connection, None));
-}
-
-fn handle_coinbase<T: Clone + OutputManagerBackend + 'static>(backend: T) {
+fn handle_coinbase() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
-
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
     let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(&mut runtime, backend, true);
 
     let reward1 = MicroTari::from(1000);
@@ -1358,28 +1193,12 @@ fn handle_coinbase<T: Clone + OutputManagerBackend + 'static>(backend: T) {
 }
 
 #[test]
-fn handle_coinbase_memory_db() {
-    handle_coinbase(OutputManagerMemoryDatabase::new());
-}
-
-#[test]
-fn handle_coinbase_sqlite_db() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = tempdir().unwrap();
-    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-
-    let db_path = format!("{}/{}", db_folder, db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
-
-    handle_coinbase(OutputManagerSqliteDatabase::new(connection, None));
-}
-
-#[test]
 fn test_utxo_stxo_invalid_txo_validation() {
     let factories = CryptoFactories::default();
 
     let mut runtime = Runtime::new().unwrap();
-    let backend = OutputManagerMemoryDatabase::new();
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
 
     let invalid_value = 666;
     let invalid_output = create_unblinded_output(
@@ -1608,7 +1427,8 @@ fn test_base_node_switch_during_validation() {
     let factories = CryptoFactories::default();
 
     let mut runtime = Runtime::new().unwrap();
-    let backend = OutputManagerMemoryDatabase::new();
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
 
     let (
         mut oms,
@@ -1701,7 +1521,8 @@ fn test_base_node_switch_during_validation() {
 #[test]
 fn test_txo_validation_connection_timeout_retries() {
     let mut runtime = Runtime::new().unwrap();
-    let backend = OutputManagerMemoryDatabase::new();
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
 
     let (mut oms, _shutdown, _ts, _mock_rpc_server, server_node_identity, _rpc_service_state, _connectivity_mock_state) =
         setup_output_manager_service(&mut runtime, backend, false);
@@ -1770,7 +1591,8 @@ fn test_txo_validation_connection_timeout_retries() {
 #[test]
 fn test_txo_validation_rpc_error_retries() {
     let mut runtime = Runtime::new().unwrap();
-    let backend = OutputManagerMemoryDatabase::new();
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
 
     let (mut oms, _shutdown, _ts, _mock_rpc_server, server_node_identity, rpc_service_state, _connectivity_mock_state) =
         setup_output_manager_service(&mut runtime, backend, true);
@@ -1833,7 +1655,8 @@ fn test_txo_validation_rpc_error_retries() {
 #[test]
 fn test_txo_validation_rpc_timeout() {
     let mut runtime = Runtime::new().unwrap();
-    let backend = OutputManagerMemoryDatabase::new();
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
 
     let (
         mut oms,
@@ -1905,7 +1728,8 @@ fn test_txo_validation_base_node_not_synced() {
     let factories = CryptoFactories::default();
 
     let mut runtime = Runtime::new().unwrap();
-    let backend = OutputManagerMemoryDatabase::new();
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
 
     let (mut oms, _shutdown, _ts, _mock_rpc_server, server_node_identity, rpc_service_state, _connectivity_mock_state) =
         setup_output_manager_service(&mut runtime, backend, true);
@@ -2016,11 +1840,7 @@ fn test_oms_key_manager_discrepancy() {
 
     let (connectivity_manager, _connectivity_mock) = create_connectivity_mock();
 
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = tempdir().unwrap();
-    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-    let db_path = format!("{}/{}", db_folder, db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection, None));
 
     let master_key1 = CommsSecretKey::random(&mut OsRng);
@@ -2085,11 +1905,7 @@ fn test_oms_key_manager_discrepancy() {
 
 #[test]
 fn get_coinbase_tx_for_same_height() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = tempdir().unwrap();
-    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-    let db_path = format!("{}/{}", db_folder, db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
     let mut runtime = Runtime::new().unwrap();
     let (mut oms, _shutdown, _, _, _, _, _) =

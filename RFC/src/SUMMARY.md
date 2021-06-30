@@ -15,6 +15,7 @@
     - [RFC-0170: Network Communication Protocol](RFC-0170_NetworkCommunicationProtocol.md)
       - [RFC-0171: Message Serialisation](RFC-0171_MessageSerialisation.md)
       - [RFC-0172: Peer to Peer Messaging Protocol](RFC-0172_PeerToPeerMessagingProtocol.md)
+      - [RFC-0173: Versioning](RFC-0173_Versioning.md)
     - [RFC-0190: Mempool](RFC-0190_Mempool.md)
     - [Tari-specific extensions to Mimblewimble](BaseLayerExtensions.md)
       - [RFC-0201: TariScript](RFC-0201_TariScript.md)
