@@ -117,7 +117,7 @@ mod test {
 
         impl Service<u32> for ReadyLater {
             type Error = ();
-            type Future = Pin<Box<dyn Future<Output = Result<u32, ()>>>>;
+            type Future = future::Ready<Result<Self::Response, Self::Error>>;
             type Response = u32;
 
             fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -130,7 +130,7 @@ mod test {
 
             fn call(&mut self, req: u32) -> Self::Future {
                 self.call_count += 1;
-                Box::pin(future::ok(req + req))
+                future::ok(req + req)
             }
         }
 

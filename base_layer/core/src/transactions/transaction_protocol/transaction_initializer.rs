@@ -149,10 +149,10 @@ impl SenderTransactionInitializer {
         receiver_index: usize,
         script: TariScript,
         recipient_script_offset_private_key: PrivateKey,
-        recipient_outpout_features: OutputFeatures,
+        recipient_output_features: OutputFeatures,
     ) -> &mut Self {
         self.recipient_outpout_features
-            .set_item(receiver_index, recipient_outpout_features);
+            .set_item(receiver_index, recipient_output_features);
         self.recipient_scripts.set_item(receiver_index, script);
         self.recipient_script_offset_private_keys
             .set_item(receiver_index, recipient_script_offset_private_key);
