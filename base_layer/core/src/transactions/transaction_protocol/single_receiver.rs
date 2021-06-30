@@ -108,16 +108,25 @@ impl SingleReceiverTransactionProtocol {
                 .range_proof
                 .construct_proof(&spending_key, sender_info.amount.into())?
         };
+
+        let partial_metadata_signature = TransactionOutput::create_partial_metadata_signature(
+            &sender_info.amount,
+            &spending_key.clone(),
+            &sender_info.script,
+            &sender_info.features,
+            &sender_info.sender_offset_public_key,
+            &sender_info.public_commitment_nonce,
+        )?;
+
         let output = TransactionOutput::new(
             features,
             commitment,
             RangeProof::from_bytes(&proof)
                 .map_err(|_| TPE::RangeProofError(RangeProofError::ProofConstructionError))?,
             sender_info.script.clone(),
-            sender_info.script_offset_public_key.clone(),
-            sender_info.sender_metadata_signature.clone(),
+            sender_info.sender_offset_public_key.clone(),
+            partial_metadata_signature,
         );
-        output.verify_sender_signature()?;
         Ok(output)
     }
 }
@@ -126,7 +135,7 @@ impl SingleReceiverTransactionProtocol {
 mod test {
     use crate::transactions::{
         tari_amount::*,
-        transaction::{OutputFeatures, TransactionOutput},
+        transaction::OutputFeatures,
         transaction_protocol::{
             build_challenge,
             sender::SingleRoundSenderData,
@@ -175,7 +184,9 @@ mod test {
             lock_height: 0,
         };
         let script_offset_secret_key = PrivateKey::random(&mut OsRng);
-        let script_offset_public_key = PublicKey::from_secret_key(&script_offset_secret_key);
+        let sender_offset_public_key = PublicKey::from_secret_key(&script_offset_secret_key);
+        let private_commitment_nonce = PrivateKey::random(&mut OsRng);
+        let public_commitment_nonce = PublicKey::from_secret_key(&private_commitment_nonce);
         let script = TariScript::default();
         let info = SingleRoundSenderData {
             tx_id: 500,
@@ -185,13 +196,9 @@ mod test {
             metadata: m.clone(),
             message: "".to_string(),
             features: of.clone(),
-            script: script.clone(),
-            script_offset_public_key,
-            sender_metadata_signature: TransactionOutput::create_sender_signature(
-                &script,
-                &of,
-                &script_offset_secret_key,
-            ),
+            script,
+            sender_offset_public_key,
+            public_commitment_nonce,
         };
         let prot = SingleReceiverTransactionProtocol::create(&info, r, k.clone(), of, &factories, None).unwrap();
         assert_eq!(prot.tx_id, 500, "tx_id is incorrect");

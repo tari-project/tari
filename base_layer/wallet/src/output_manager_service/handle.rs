@@ -52,6 +52,7 @@ pub enum OutputManagerRequest {
     GetBalance,
     AddOutput(Box<UnblindedOutput>),
     AddOutputWithTxId((TxId, Box<UnblindedOutput>)),
+    UpdateOutputMetadataSignature(Box<TransactionOutput>),
     GetRecipientTransaction(TransactionSenderMessage),
     GetCoinbaseTransaction((u64, MicroTari, MicroTari, u64)),
     ConfirmPendingTransaction(u64),
@@ -84,6 +85,7 @@ impl fmt::Display for OutputManagerRequest {
             GetBalance => write!(f, "GetBalance"),
             AddOutput(v) => write!(f, "AddOutput ({})", v.value),
             AddOutputWithTxId((t, v)) => write!(f, "AddOutputWithTxId ({}: {})", t, v.value),
+            UpdateOutputMetadataSignature(v) => write!(f, "UpdateOutputMetadataSignature ({:?})", v.metadata_signature),
             GetRecipientTransaction(_) => write!(f, "GetRecipientTransaction"),
             ConfirmTransaction(v) => write!(f, "ConfirmTransaction ({})", v.0),
             ConfirmPendingTransaction(v) => write!(f, "ConfirmPendingTransaction ({})", v),
@@ -116,6 +118,7 @@ impl fmt::Display for OutputManagerRequest {
 pub enum OutputManagerResponse {
     Balance(Balance),
     OutputAdded,
+    OutputMetadataSignatureUpdated,
     RecipientTransactionGenerated(ReceiverTransactionProtocol),
     CoinbaseTransaction(Transaction),
     OutputConfirmed,
@@ -205,6 +208,20 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::OutputAdded => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn update_output_metadata_signature(
+        &mut self,
+        output: TransactionOutput,
+    ) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::UpdateOutputMetadataSignature(Box::new(output)))
+            .await??
+        {
+            OutputManagerResponse::OutputMetadataSignatureUpdated => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

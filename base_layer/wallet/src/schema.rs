@@ -98,9 +98,10 @@ table! {
         script -> Binary,
         input_data -> Binary,
         script_private_key -> Binary,
-        script_offset_public_key -> Binary,
-        sender_metadata_signature_key -> Binary,
-        sender_metadata_signature_nonce -> Binary,
+        sender_offset_public_key -> Binary,
+        metadata_signature_nonce -> Binary,
+        metadata_signature_u_key -> Binary,
+        metadata_signature_v_key -> Binary,
     }
 }
 

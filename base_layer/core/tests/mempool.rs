@@ -991,7 +991,7 @@ fn consensus_validation_large_tx() {
             output_amount,
         );
 
-        script_offset_pvt = script_offset_pvt - test_params.script_offset_pvt_key;
+        script_offset_pvt = script_offset_pvt - test_params.sender_offset_private_key;
         unblinded_outputs.push(output.clone());
     }
 

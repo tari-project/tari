@@ -206,6 +206,10 @@ where TBackend: OutputManagerBackend + 'static
                 .add_output(Some(tx_id), *uo)
                 .await
                 .map(|_| OutputManagerResponse::OutputAdded),
+            OutputManagerRequest::UpdateOutputMetadataSignature(uo) => self
+                .update_output_metadata_signature(*uo)
+                .await
+                .map(|_| OutputManagerResponse::OutputMetadataSignatureUpdated),
             OutputManagerRequest::GetBalance => {
                 let current_chain_tip = match self.base_node_service.get_chain_metadata().await {
                     Ok(metadata) => metadata.map(|m| m.height_of_longest_chain()),
@@ -397,6 +401,16 @@ where TBackend: OutputManagerBackend + 'static
         Ok(())
     }
 
+    /// Update an output's metadata signature, akin to 'finalize output'
+    pub async fn update_output_metadata_signature(
+        &mut self,
+        output: TransactionOutput,
+    ) -> Result<(), OutputManagerError> {
+        debug!(target: LOG_TARGET, "Update metadata signature for output {}", output);
+        self.resources.db.update_output_metadata_signature(output).await?;
+        Ok(())
+    }
+
     async fn get_balance(&self, current_chain_tip: Option<u64>) -> Result<Balance, OutputManagerError> {
         let balance = self.resources.db.get_balance(current_chain_tip).await?;
         trace!(target: LOG_TARGET, "Balance: {:?}", balance);
@@ -433,8 +447,16 @@ where TBackend: OutputManagerBackend + 'static
                 // TODO: The input data should be variable; this will only work for a Nop script
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
                 script_private_key,
-                single_round_sender_data.script_offset_public_key.clone(),
-                single_round_sender_data.sender_metadata_signature.clone(),
+                single_round_sender_data.sender_offset_public_key.clone(),
+                // Note: The commitment signature at this time is only partially built
+                TransactionOutput::create_partial_metadata_signature(
+                    &single_round_sender_data.amount,
+                    &spending_key.clone(),
+                    &single_round_sender_data.script.clone(),
+                    &single_round_sender_data.features.clone(),
+                    &single_round_sender_data.sender_offset_public_key.clone(),
+                    &single_round_sender_data.public_commitment_nonce.clone(),
+                )?,
             ),
             &self.resources.factories,
         )?;
@@ -555,7 +577,13 @@ where TBackend: OutputManagerBackend + 'static
             .with_offset(offset.clone())
             .with_private_nonce(nonce.clone())
             .with_amount(0, amount)
-            .with_recipient_script(0, recipient_script, PrivateKey::random(&mut OsRng), Default::default())
+            .with_recipient_data(
+                0,
+                recipient_script,
+                PrivateKey::random(&mut OsRng),
+                Default::default(),
+                PrivateKey::random(&mut OsRng),
+            )
             .with_message(message)
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
 
@@ -598,7 +626,9 @@ where TBackend: OutputManagerBackend + 'static
         let mut change_output = Vec::<DbUnblindedOutput>::new();
         if total > amount + fee_without_change {
             let unblinded_output = stp.get_change_unblinded_output()?.ok_or_else(|| {
-                OutputManagerError::BuildError("There should be a change output sender signature available".to_string())
+                OutputManagerError::BuildError(
+                    "There should be a change output metadata signature available".to_string(),
+                )
             })?;
             change_output.push(DbUnblindedOutput::from_unblinded_output(
                 unblinded_output,
@@ -693,7 +723,7 @@ where TBackend: OutputManagerBackend + 'static
 
         let offset = PrivateKey::random(&mut OsRng);
         let nonce = PrivateKey::random(&mut OsRng);
-        let script_offset_private_key = PrivateKey::random(&mut OsRng);
+        let sender_offset_private_key = PrivateKey::random(&mut OsRng);
 
         // Create builder with no recipients (other than ourselves)
         let mut builder = SenderTransactionProtocol::builder(0);
@@ -715,13 +745,18 @@ where TBackend: OutputManagerBackend + 'static
 
         let script = script!(Nop);
         let output_features = OutputFeatures::default();
-        let sender_signature =
-            TransactionOutput::create_sender_signature(&script, &output_features, &script_offset_private_key);
         let (spending_key, script_private_key) = self
             .resources
             .master_key_manager
             .get_next_spend_and_script_key()
             .await?;
+        let metadata_signature = TransactionOutput::create_final_metadata_signature(
+            &amount,
+            &spending_key.clone(),
+            &script,
+            &output_features,
+            &&sender_offset_private_key,
+        )?;
         let utxo = DbUnblindedOutput::from_unblinded_output(
             UnblindedOutput::new(
                 amount,
@@ -730,12 +765,14 @@ where TBackend: OutputManagerBackend + 'static
                 script,
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
                 script_private_key,
-                PublicKey::from_secret_key(&script_offset_private_key),
-                sender_signature,
+                PublicKey::from_secret_key(&sender_offset_private_key),
+                metadata_signature,
             ),
             &self.resources.factories,
         )?;
-        builder.with_output(utxo.unblinded_output.clone(), script_offset_private_key.clone());
+        builder
+            .with_output(utxo.unblinded_output.clone(), sender_offset_private_key.clone())
+            .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
         let mut outputs = vec![utxo];
 
@@ -763,7 +800,9 @@ where TBackend: OutputManagerBackend + 'static
 
         if change_value > 0.into() {
             let unblinded_output = stp.get_change_unblinded_output()?.ok_or_else(|| {
-                OutputManagerError::BuildError("There should be a change output sender signature available".to_string())
+                OutputManagerError::BuildError(
+                    "There should be a change output metadata signature available".to_string(),
+                )
             })?;
             let change_output = DbUnblindedOutput::from_unblinded_output(unblinded_output, &self.resources.factories)?;
 
@@ -1097,12 +1136,18 @@ where TBackend: OutputManagerBackend + 'static
                 .master_key_manager
                 .get_next_spend_and_script_key()
                 .await?;
-            let script_offset_private_key = PrivateKey::random(&mut OsRng);
+            let sender_offset_private_key = PrivateKey::random(&mut OsRng);
 
             let script = script!(Nop);
             let output_features = OutputFeatures::default();
-            let sender_signature =
-                TransactionOutput::create_sender_signature(&script, &output_features, &script_offset_private_key);
+            let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+            let metadata_signature = TransactionOutput::create_final_metadata_signature(
+                &output_amount,
+                &spending_key.clone(),
+                &script,
+                &output_features,
+                &sender_offset_private_key,
+            )?;
             let utxo = DbUnblindedOutput::from_unblinded_output(
                 UnblindedOutput::new(
                     output_amount,
@@ -1111,13 +1156,15 @@ where TBackend: OutputManagerBackend + 'static
                     script,
                     inputs!(PublicKey::from_secret_key(&script_private_key)),
                     script_private_key,
-                    PublicKey::from_secret_key(&script_offset_private_key),
-                    sender_signature,
+                    sender_offset_public_key,
+                    metadata_signature,
                 ),
                 &self.resources.factories,
             )?;
             outputs.push(utxo.clone());
-            builder.with_output(utxo.unblinded_output, script_offset_private_key);
+            builder
+                .with_output(utxo.unblinded_output, sender_offset_private_key)
+                .map_err(|e| OutputManagerError::BuildError(e.message))?;
         }
         trace!(target: LOG_TARGET, "Build coin split transaction.");
         let factories = CryptoFactories::default();
@@ -1174,7 +1221,7 @@ where TBackend: OutputManagerBackend + 'static
                 let spending_key = PrivateKey::from_bytes(
                     CommsPublicKey::shared_secret(
                         &known_one_sided_payment_scripts[i].private_key,
-                        &output.script_offset_public_key,
+                        &output.sender_offset_public_key,
                     )
                     .as_bytes(),
                 )?;
@@ -1191,8 +1238,8 @@ where TBackend: OutputManagerBackend + 'static
                         known_one_sided_payment_scripts[i].script.clone(),
                         known_one_sided_payment_scripts[i].input.clone(),
                         known_one_sided_payment_scripts[i].private_key.clone(),
-                        output.script_offset_public_key,
-                        output.sender_metadata_signature,
+                        output.sender_offset_public_key,
+                        output.metadata_signature,
                     );
                     let db_output =
                         DbUnblindedOutput::from_unblinded_output(rewound_output.clone(), &self.resources.factories)?;

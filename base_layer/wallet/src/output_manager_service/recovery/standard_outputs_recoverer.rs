@@ -80,13 +80,13 @@ where TBackend: OutputManagerBackend + 'static
                             v,
                             output.features,
                             output.script,
-                            output.script_offset_public_key,
-                            output.sender_metadata_signature,
+                            output.sender_offset_public_key,
+                            output.metadata_signature,
                         )
                     })
             })
             .map(
-                |(output, features, script, script_offset_public_key, sender_metadata_signature)| {
+                |(output, features, script, sender_offset_public_key, metadata_signature)| {
                     UnblindedOutput::new(
                         output.committed_value,
                         output.blinding_factor.clone(),
@@ -94,8 +94,8 @@ where TBackend: OutputManagerBackend + 'static
                         script,
                         inputs!(PublicKey::from_secret_key(&output.blinding_factor)),
                         output.blinding_factor,
-                        script_offset_public_key,
-                        sender_metadata_signature,
+                        sender_offset_public_key,
+                        metadata_signature,
                     )
                 },
             )

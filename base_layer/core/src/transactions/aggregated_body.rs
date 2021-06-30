@@ -317,7 +317,7 @@ impl AggregateBody {
         self.validate_kernel_sum(total_offset, &factories.commitment)?;
 
         self.validate_range_proofs(&factories.range_proof)?;
-        self.validate_sender_signatures()?;
+        self.verify_metadata_signatures()?;
         self.validate_script_offset(script_offset_g, &factories.commitment)
     }
 
@@ -395,7 +395,7 @@ impl AggregateBody {
         for output in &self.outputs {
             // We should not count the coinbase tx here
             if !output.is_coinbase() {
-                output_keys = output_keys + output.script_offset_public_key.clone();
+                output_keys = output_keys + output.sender_offset_public_key.clone();
             }
         }
         let lhs = input_keys - output_keys;
@@ -417,10 +417,10 @@ impl AggregateBody {
         Ok(())
     }
 
-    fn validate_sender_signatures(&self) -> Result<(), TransactionError> {
+    fn verify_metadata_signatures(&self) -> Result<(), TransactionError> {
         trace!(target: LOG_TARGET, "Checking sender signatures");
         for o in &self.outputs {
-            o.verify_sender_signature()?;
+            o.verify_metadata_signature()?;
         }
         Ok(())
     }

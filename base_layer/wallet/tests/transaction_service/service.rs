@@ -550,6 +550,7 @@ fn manage_single_transaction() {
         loop {
             futures::select! {
                 _event = alice_event_stream.select_next_some() => {
+                    println!("alice: {:?}", &*_event.as_ref().unwrap());
                     count+=1;
                     if count>=2 {
                         break;
@@ -568,16 +569,17 @@ fn manage_single_transaction() {
         let mut finalized = 0;
         loop {
             futures::select! {
-                            event = bob_event_stream.select_next_some() => {
-            if let TransactionEvent::ReceivedFinalizedTransaction(id) = &*event.unwrap() {
-            tx_id = *id;
-            finalized+=1;
+                event = bob_event_stream.select_next_some() => {
+                    println!("bob: {:?}", &*event.as_ref().unwrap());
+                    if let TransactionEvent::ReceivedFinalizedTransaction(id) = &*event.unwrap() {
+                        tx_id = *id;
+                        finalized+=1;
+                    }
+                },
+                () = delay => {
+                    break;
+                },
             }
-                            },
-                            () = delay => {
-                                break;
-                            },
-                        }
         }
         assert_eq!(finalized, 1);
     });
@@ -2071,7 +2073,13 @@ fn test_transaction_cancellation() {
             input,
         )
         .with_change_secret(PrivateKey::random(&mut OsRng))
-        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng), Default::default())
+        .with_recipient_data(
+            0,
+            script!(Nop),
+            PrivateKey::random(&mut OsRng),
+            Default::default(),
+            PrivateKey::random(&mut OsRng),
+        )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
     let mut stp = builder.build::<HashDigest>(&factories).unwrap();
@@ -2135,7 +2143,13 @@ fn test_transaction_cancellation() {
             input,
         )
         .with_change_secret(PrivateKey::random(&mut OsRng))
-        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng), Default::default())
+        .with_recipient_data(
+            0,
+            script!(Nop),
+            PrivateKey::random(&mut OsRng),
+            Default::default(),
+            PrivateKey::random(&mut OsRng),
+        )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
     let mut stp = builder.build::<HashDigest>(&factories).unwrap();
@@ -2696,7 +2710,13 @@ fn test_restarting_transaction_protocols() {
         .with_private_nonce(bob.nonce)
         .with_input(utxo, input)
         .with_amount(0, MicroTari(2000) - fee - MicroTari(10))
-        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng), Default::default())
+        .with_recipient_data(
+            0,
+            script!(Nop),
+            PrivateKey::random(&mut OsRng),
+            Default::default(),
+            PrivateKey::random(&mut OsRng),
+        )
         .with_change_script(
             script!(Nop),
             inputs!(PublicKey::from_secret_key(&script_private_key)),
@@ -3791,7 +3811,13 @@ fn test_resend_on_startup() {
             input,
         )
         .with_change_secret(PrivateKey::random(&mut OsRng))
-        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng), Default::default())
+        .with_recipient_data(
+            0,
+            script!(Nop),
+            PrivateKey::random(&mut OsRng),
+            Default::default(),
+            PrivateKey::random(&mut OsRng),
+        )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
     let mut stp = builder.build::<HashDigest>(&factories).unwrap();
@@ -4234,7 +4260,13 @@ fn test_transaction_timeout_cancellation() {
             input,
         )
         .with_change_secret(PrivateKey::random(&mut OsRng))
-        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng), Default::default())
+        .with_recipient_data(
+            0,
+            script!(Nop),
+            PrivateKey::random(&mut OsRng),
+            Default::default(),
+            PrivateKey::random(&mut OsRng),
+        )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
     let mut stp = builder.build::<HashDigest>(&factories).unwrap();

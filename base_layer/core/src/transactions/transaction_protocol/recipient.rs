@@ -207,7 +207,7 @@ mod test {
         transactions::{
             helpers::TestParams,
             tari_amount::*,
-            transaction::{OutputFeatures, TransactionOutput},
+            transaction::OutputFeatures,
             transaction_protocol::{
                 build_challenge,
                 sender::{SingleRoundSenderData, TransactionSenderMessage},
@@ -232,25 +232,20 @@ mod test {
             fee: MicroTari(125),
             lock_height: 0,
         };
-        let script_offset_secret_key = PrivateKey::random(&mut OsRng);
-        let script_offset_public_key = PublicKey::from_secret_key(&script_offset_secret_key);
         let script = TariScript::default();
         let features = OutputFeatures::default();
+        let amount = MicroTari(500);
         let msg = SingleRoundSenderData {
             tx_id: 15,
-            amount: MicroTari(500),
+            amount,
             public_excess: PublicKey::from_secret_key(&p.spend_key), // any random key will do
             public_nonce: PublicKey::from_secret_key(&p.change_spend_key), // any random key will do
             metadata: m.clone(),
             message: "".to_string(),
             features: features.clone(),
-            script: script.clone(),
-            script_offset_public_key,
-            sender_metadata_signature: TransactionOutput::create_sender_signature(
-                &script,
-                &features,
-                &script_offset_secret_key,
-            ),
+            script,
+            sender_offset_public_key: p.sender_offset_public_key,
+            public_commitment_nonce: p.sender_public_commitment_nonce,
         };
         let sender_info = TransactionSenderMessage::Single(Box::new(msg.clone()));
         let pubkey = PublicKey::from_secret_key(&p.spend_key);
@@ -285,8 +280,6 @@ mod test {
             fee: MicroTari(125),
             lock_height: 0,
         };
-        let script_offset_secret_key = PrivateKey::random(&mut OsRng);
-        let script_offset_public_key = PublicKey::from_secret_key(&script_offset_secret_key);
         let script = TariScript::default();
         let features = OutputFeatures::default();
         let msg = SingleRoundSenderData {
@@ -297,13 +290,9 @@ mod test {
             metadata: m,
             message: "".to_string(),
             features: features.clone(),
-            script: script.clone(),
-            script_offset_public_key,
-            sender_metadata_signature: TransactionOutput::create_sender_signature(
-                &script,
-                &features,
-                &script_offset_secret_key,
-            ),
+            script,
+            sender_offset_public_key: p.sender_offset_public_key,
+            public_commitment_nonce: p.sender_public_commitment_nonce,
         };
         let sender_info = TransactionSenderMessage::Single(Box::new(msg));
         let rewind_data = RewindData {

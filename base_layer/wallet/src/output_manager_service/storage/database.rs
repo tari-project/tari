@@ -37,6 +37,7 @@ use std::{
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
+    transaction::TransactionOutput,
     types::{BlindingFactor, Commitment, PrivateKey},
 };
 
@@ -85,6 +86,8 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     /// If an unspent output is detected as invalid (i.e. not available on the blockchain) then it should be moved to
     /// the invalid outputs collection. The function will return the last recorded TxId associated with this output.
     fn invalidate_unspent_output(&self, output: &DbUnblindedOutput) -> Result<Option<TxId>, OutputManagerStorageError>;
+    /// This method will update an output's metadata signature, akin to 'finalize output'
+    fn update_output_metadata_signature(&self, output: &TransactionOutput) -> Result<(), OutputManagerStorageError>;
     /// If an invalid output is found to be valid this function will turn it back into an unspent output
     fn revalidate_unspent_output(&self, spending_key: &Commitment) -> Result<(), OutputManagerStorageError>;
     /// Check to see if there exist any pending transaction with a blockheight equal that provided and cancel those
@@ -596,6 +599,17 @@ where T: OutputManagerBackend + 'static
     ) -> Result<Option<TxId>, OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.invalidate_unspent_output(&output))
+            .await
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
+            .and_then(|inner_result| inner_result)
+    }
+
+    pub async fn update_output_metadata_signature(
+        &self,
+        output: TransactionOutput,
+    ) -> Result<(), OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.update_output_metadata_signature(&output))
             .await
             .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)

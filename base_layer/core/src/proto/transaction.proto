@@ -41,7 +41,7 @@ message TransactionInput {
     // A signature with k_s, signing the script, input data, and mined height
     ComSignature script_signature = 6;
     // The offset pubkey, K_O
-    bytes script_offset_public_key = 7;
+    bytes sender_offset_public_key = 7;
 }
 
 // Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
@@ -57,9 +57,9 @@ message TransactionOutput {
     // Tari script serialised script
     bytes script = 4;
     // Tari script offset pubkey, K_O
-    bytes script_offset_public_key = 5;
+    bytes sender_offset_public_key = 5;
     // UTXO signature with the script offset private key, k_O
-    Signature sender_metadata_signature = 6;
+    ComSignature metadata_signature = 6;
 }
 
 // Options for UTXO's

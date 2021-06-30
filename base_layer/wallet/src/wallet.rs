@@ -61,7 +61,7 @@ use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{OutputFeatures, UnblindedOutput},
-    types::{CryptoFactories, PrivateKey, PublicKey, Signature},
+    types::{ComSignature, CryptoFactories, PrivateKey, PublicKey},
 };
 use tari_crypto::{
     common::Blake256,
@@ -316,9 +316,9 @@ where
         source_public_key: &CommsPublicKey,
         features: OutputFeatures,
         message: String,
-        sender_metadata_signature: Signature,
+        metadata_signature: ComSignature,
         script_private_key: &PrivateKey,
-        script_offset_public_key: &PublicKey,
+        sender_offset_public_key: &PublicKey,
     ) -> Result<TxId, WalletError> {
         let unblinded_output = UnblindedOutput::new(
             amount,
@@ -327,8 +327,8 @@ where
             script,
             input_data,
             script_private_key.clone(),
-            script_offset_public_key.clone(),
-            sender_metadata_signature,
+            sender_offset_public_key.clone(),
+            metadata_signature,
         );
 
         let tx_id = self
