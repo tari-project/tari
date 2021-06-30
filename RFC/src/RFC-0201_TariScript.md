@@ -49,14 +49,14 @@ technological merits of the potential system outlined herein.
 
 ## Goals
 
-This Request for Comment (RFC) presents a proposal for introducing Tari Script into the Tari base layer protocol. Tari
+This Request for Comment (RFC) presents a proposal for introducing [TariScript] into the Tari base layer protocol. Tari
 Script aims to provide a general mechanism for enabling further extensions such as side chains, the DAN, one-sided
 payments and atomic swaps.
 
 ## Related Requests for Comment
 
 * [RFC-0200: Base Layer Extensions](BaseLayerExtensions.md)
-* [RFC-0202: Tari Script Opcodes](RFC-0202_TariScriptOpcodes.md)
+* [RFC-0202: TariScript Opcodes](RFC-0202_TariScriptOpcodes.md)
 * [RFC-0300: The Tari Digital Assets Network](RFC-0300_DAN.md)
 
 
@@ -82,7 +82,7 @@ Extensions to Mimblewimble have been proposed for most of these features, for ex
 proposal for LiteCoin ([LIP-004]), this project's [HTLC RFC](RFC-0230_HTLC.md) and the pegging proposals for the
 Clacks side-chain.
 
-Some smart contract features are possible, or partly possible in vanilla Mimblewimble using [Scriptless script], such as
+Some smart contract features are possible, or partly possible in vanilla [Mimblewimble] using [Scriptless script], such as
 
 * Atomic swaps 
 * Hash time-locked contracts
@@ -93,7 +93,7 @@ current Tari and Mimblewimble protocol.
 
 ## Scripting on Mimblewimble
 
-To the author's knowledge, none of existing Mimblewimble projects have employed a scripting language, nor are there 
+To the author's knowledge, none of existing [Mimblewimble] projects have employed a scripting language, nor are there 
 ambitions to do so. 
  
 [Grin](https://github.com/mimblewimble/grin) styles itself as a "Minimal implementation of the Mimblewimble protocol",
@@ -112,7 +112,7 @@ to be no plans to include general scripting into the protocol.
 
 ### Scriptless scripts
 
-[Scriptless script] is a wonderfully elegant technology and inclusion of Tari Script does not preclude the use of
+[Scriptless script] is a wonderfully elegant technology and inclusion of [TariScript] does not preclude the use of
 Scriptless script in Tari. However, scriptless scripts have some disadvantages:
 
 * They are often difficult to reason about, with the result that the development of features based on scriptless scripts
@@ -122,9 +122,9 @@ Scriptless script in Tari. However, scriptless scripts have some disadvantages:
 * Every feature must be written and implemented separately using the specific and specialised protocol designed for that
   feature. That is, it cannot be used as a dynamic scripting framework on a running blockchain.
 
-## Tari Script - a brief motivation
+## TariScript - a brief motivation
 
-The essential idea of Tari Script is as follows:
+The essential idea of [TariScript] is as follows:
 
 Given a standard Tari UTXO, we add _additional restrictions_ on whether that UTXO can be included as a valid input in a
 transaction.
@@ -136,7 +136,7 @@ requirement of having range proofs attached to UTXOs, which require that the val
 This argument is independent of the nature of the additional restrictions. Specifically, if these restrictions are
 manifested as a script that provides additional constraints over whether a UTXO may be spent, the same arguments apply.
 
-This means that in a very hand-wavy sort of way, there ought to be no reason that Tari Script is not workable.
+This means that in a very hand-wavy sort of way, there ought to be no reason that TariScript is not workable.
 
 Note that range proofs can be discarded after a UTXO is spent. This entails that the global security guarantees of
 Mimblewimble are not that every transaction in history was valid from an inflation perspective, but that the net effect
@@ -150,7 +150,7 @@ chain synchronisation in pruned mode.
 But if there was a steady inflation bug due to invalid range proofs making it into the blockchain, a pruned mode sync
 would still detect that _something_ was awry, because the global coin supply balance acts as another check.
 
-With Tari Script, once the script has been pruned away, and then there is a re-org to an earlier point on the chain,
+With TariScript, once the script has been pruned away, and then there is a re-org to an earlier point on the chain,
 then there's no way to ensure that the script was honoured unless you run an archival node.
 
 This is broadly in keeping with the Mimblewimble security guarantees that, in pruned-mode synchronisation, individual 
@@ -158,7 +158,7 @@ transactions are not necessarily verified during chain synchronisation.
 
 However, the guarantee that no additional coins are created or destroyed remains intact.
 
-Put another way, the blockchain relies on the network _at the time_ to enforce the Tari Script spending rules. 
+Put another way, the blockchain relies on the network _at the time_ to enforce the TariScript spending rules. 
 This means that the scheme may be susceptible to certain _horizon attacks_.
 
 Incidentally, a single honest archival node would be able to detect any fraud on the same chain and provide a simple 
@@ -181,23 +181,23 @@ The next section discusses the specific proposals for achieving these requiremen
 
 Please refer to [Notation](#notation), which provides important pre-knowledge for the remainder of the report.
 
-At a high level, Tari Script works as follows:
+At a high level, TariScript works as follows:
 
 * The spending _script_ \\((\script)\\) is recorded in the transaction UTXO.
-* UTXOs also define a new, _script offset public key_ \\((K\_{O})\\).
+* UTXOs also define a new, _[sender offset] public key_ \\((K\_{O})\\).
 * After the _script_ \\((\script)\\) is executed, the execution stack must contain exactly one value that will be interpreted as the 
-  _script public key_ \\((K\_{S})\\). One can prove ownership of a UTXO by demonstrating knowledge of both the commitment _blinding 
-  factor_ \\((k\\)), _and_ the _script private key_ \\((k_\{S})\\).
+  _[script public key]_ \\((K\_{S})\\). One can prove ownership of a UTXO by demonstrating knowledge of both the commitment _blinding 
+  factor_ \\((k\\)), _and_ the _[script private key]_ \\((k_\{S})\\).
 * The _script private key_ \\((k_\{S})\\), commitment _blinding factor_ \\((k)\\) and commitment _value_ \\((v)\\) signs the _script 
   input data_ \\((\input)\\).
-* The _script offset private keys_ \\((k\_{O})\\) and _script private keys_ \\((k\_{S})\\) are used in conjunction to create a _script 
+* The _sender offset private keys_ \\((k\_{O})\\) and _script private keys_ \\((k\_{S})\\) are used in conjunction to create a _script 
   offset_ \\((\so)\\), which are used in the consensus balance to prevent a number of attacks.
 
 ### UTXO data commitments
 
-The script, as well as other UTXO metadata, such as the output features are signed for with the script offset key to 
-prevent malleability. As we will describe later, the notion of a script offset is introduced to prevent cut-through 
-and forces the preservation of these commitments until they are recorded into the blockchain.
+The script, as well as other UTXO metadata, such as the output features are signed for with the [sender offset] private 
+key to prevent malleability. As we will describe later, the notion of a [script offset] is introduced to prevent 
+cut-through and forces the preservation of these commitments until they are recorded into the blockchain.
  
 There are two changes to the protocol data structures that must be made to allow this scheme to work. 
 
@@ -219,9 +219,9 @@ pub struct TransactionOutput {
 }
 ```
 
-_Note:_ Currently, the output features are actually malleable. Tari Script fixes this.
+_Note:_ Currently, the output features are actually malleable. TariScript fixes this.
 
-Under Tari Script, this definition changes to accommodate the script and the script offset public keys:
+Under TariScript, this definition changes to accommodate the script and the [sender offset] public keys:
 
 ```rust,ignore
 pub struct TransactionOutput {
@@ -233,9 +233,9 @@ pub struct TransactionOutput {
     proof: RangeProof,
     /// The serialised script
     script: Vec<u8>,
-    /// The script offset pubkey, K_O
-    script_offset_public_key: PublicKey
-    /// UTXO signature with the script offset private key, k_O
+    /// The sender offset pubkey, K_O
+    sender_offset_public_key: PublicKey
+    /// UTXO signature with the sender offset private key, k_O
     sender_metadata_signature : Signature
 }
 ```
@@ -249,7 +249,7 @@ C_i = v_i \cdot H  + k_i \cdot G
  \tag{1}
 $$
 
-The sender signature signs the  metadata of the UTXO with the script offset private key \\( k_{Oi} \\) and this stops 
+The [sender metadata signature] signs the metadata of the UTXO with the sender offset private key \\( k_{Oi} \\) and this stops 
 malleability of the UTXO metadata.
 
 $$
@@ -263,7 +263,7 @@ $$
 Note that:
 * The UTXO has a positive value `v` like any normal UTXO. 
 * The script and the output features can no longer be changed by the miner or any other party. Once mined, the owner can
-  also no longer change the script or output features without invalidating the meta data signature.
+  also no longer change the script or output features without invalidating the sender meta data signature.
 * We provide the complete script on the output.
 
 ### Transaction input changes
@@ -294,18 +294,18 @@ pub struct TransactionInput {
     script: Vec<u8>,
     /// The script input data, if any
     input_data: Vec<u8>,
-    /// Signature signing the script, input data, public script key and the homomorphic commitment with a combination 
-    /// of the homomorphic commitment private values (amount and blinding factor) and the private script key.
+    /// Signature signing the script, input data, [script public key] and the homomorphic commitment with a combination 
+    /// of the homomorphic commitment private values (amount and blinding factor) and the [script private key].
     script_signature: CommitmentSignature,
-    /// The script offset pubkey, K_O
-    script_offset_public_key: PublicKey
+    /// The sender offset pubkey, K_O
+    sender_offset_public_key: PublicKey
 }
 ```
 
 The `script_signature` is an aggregated Schnorr signature signed with a combination of the homomorphic commitment 
-private values \\( (v\_i \\, , \\, k\_i )\\) and private script key \\(k\_{Si}\\) to prove ownership of thereof, see 
+private values \\( (v\_i \\, , \\, k\_i )\\) and [script private key] \\(k\_{Si}\\) to prove ownership of thereof, see 
 [Signature on Commitment values] by F. Zhang et. al. and [Commitment Signature] by G. Yu. It signs the script, the 
-script input, public script key and the commitment:
+script input, [script public key] and the commitment:
 
 $$
 \begin{aligned}
@@ -332,14 +332,16 @@ a_{Si} \cdot H + b_{Si} \cdot G = R_{Si} + (C_i+K_{Si})e
  \tag{5}
 $$
 
-This signature ensures that only the owner can provide the input data  \\(\input_i\\) to the TransactionInput.
-
+The script public key \\(K\_{Si}\\) needed for the script signature verification is not stored with the TransactionInput, 
+but obtained by executing the script with the provided input data. Because this signature is signed with the script 
+private key \\(k\_{Si}\\), it ensures that only the owner can provide the input data \\(\input_i\\) to the 
+TransactionInput. 
 
 ### Script Offset
 
-For every transaction an accompanying script offset \\( \so \\) needs to be provided. This is there to prove that every 
-public script key \\( K\_{Sj} \\) and every public script offset key \\( K\_{Oi} \\) supplied with the UTXOs are the 
-correct ones. The sender will know and provide script offset private keys \\(k_{Oi} \\) and script private keys 
+For every transaction an accompanying [script offset] \\( \so \\) needs to be provided. This is there to prove that every  
+script public key \\( K\_{Sj} \\) and every sender offset public key \\( K\_{Oi} \\) supplied with the UTXOs are the 
+correct ones. The sender will know and provide sender offset private keys \\(k_{Oi} \\) and script private keys 
 \\(k_{Si} \\); these are combined to create the script offset \\( \so \\), which is calculated as follows:
 
 $$
@@ -370,7 +372,7 @@ pub struct Transaction {
 }
 ```
 
-All script offsets (\\(\so\\)) from (6) contained in a block is summed together to create a total script offset (8) 
+All script offsets (\\(\so\\)) from (6) contained in a block is summed together to create a total [script offset] (8) 
 so that algorithm (6) still holds for a block.
 
 $$
@@ -392,7 +394,7 @@ $$
 As can be seen all information required to verify (8) is contained in a block's inputs and outputs. One important 
 distinction to make is that the Coinbase output in a coinbase transaction does not count towards the script offset. 
 This is because the Coinbase UTXO already has special rules accompanying it and it has no input, thus we cannot generate a 
-script offset \\( \so \\). The coinbase output can allow any script \\(\script_i\\) and  script offset public key 
+script offset \\( \so \\). The coinbase output can allow any script \\(\script_i\\) and sender offset public key 
 \\( K\_{Oi} \\) as long as it does not break any of the rules in [RFC 120](RFC-0120_Consensus.md) and the script is 
 honored at spend. If the coinbase is used as in input, it is treated exactly the same as any other input.
 
@@ -410,16 +412,16 @@ pub struct BlockHeader {
 This notion of the script offset \\(\so\\) means that the no third party can remove any input or output from a 
 transaction or the block, as that will invalidate the script offset balance equation, either (7) or (9) depending on 
 whether the scope is a transaction or block. It is important to know that this also stops 
-[cut&#8209;through](#cut-through) so that we can verify all spent UTXO scripts. Because the private script key and private 
-script offset key is not publicly known, its impossible to create a new script offset.
+[cut&#8209;through](#cut-through) so that we can verify all spent UTXO scripts. Because the script private key and  
+sender offset private key is not publicly known, its impossible to create a new script offset.
 
 Certain scripts may allow more than one valid set of input data. Users might be led to believe that this will allow a 
 third party to change the script keypair \\((k\_{Si}\\),\\(K\_{Si})\\). If an attacker can change the \\(K\_{Si}\\) 
 keys of the input then he can take control of the \\(K\_{Oi}\\) as well, allowing the attacker to change the metadata of 
-the UTXO including the script. But as shown in [Script Offset security](#script-offset-security), this is not possible.
+the UTXO including the script. But as shown in [Script offset security](#script-offset-security), this is not possible.
 
 If equation (7) or (9) balances then we know that every included input and output in the transaction or block has its 
-correct public script key and public script offset key. Signatures (2) & (3) are checked independently from script 
+correct script public key and sender offset public key. Signatures (2) & (3) are checked independently from script 
 offset verification (7) and (9), and looked at in isolation those could verify correctly but can still be signed by fake 
 keys. When doing verification in (7) and (9) you know that the signatures and the message/metadata signed by the private 
 keys can be trusted.
@@ -430,12 +432,12 @@ The Mimblewimble balance for blocks and transactions stays the same.
 
 In addition to the changes given above, there are consensus rule changes for transaction and block validation.
 
-For every valid transaction or block,
+Verify that for every valid transaction or block:
 
-1. Check the sender signature \\(s\_{Mi}\\) is valid for every output.
+1. The [sender metadata signature] \\(s\_{Mi}\\) is valid for every output.
 2. The script executes successfully using the given input script data.
-3. The result of the script is a valid public key, \\( K\_S \\).
-4. The script signature, \\( s\_{Si} \\) is valid for every input.
+3. The result of the script is a valid script public key, \\( K\_S \\).
+4. The script signature, \\( s\_{Si} \\), is valid for every input.
 5. The script offset is valid for every transaction and block.
 
 ## Examples
@@ -457,7 +459,7 @@ To spend \\( C\_a \\), she provides:
 * A valid script signature, \\( (a_{Sa}, b_{Sa}, R_{Sa}) \\) as per (3),(4) proving that she owns the commitment 
   \\( C\_a \\), knows the private key, \\( k_{Sa} \\), corresponding to \\( K_{Sa} \\), the public key left on the stack 
   after executing \\( \script_a \\) with \\( \input_a \\).
-* An script offset public key, \\( K_{Ob} \\).
+* A sender offset public key, \\( K_{Ob} \\).
 * The script offset, \\( \so\\) with:
 $$
 \begin{aligned}
@@ -475,7 +477,7 @@ Because Alice is creating the transaction, she has a final say over the script \
 [bitcoin transaction], but Bob can also opt to send Alice a script \\(\script\_b\\) of his choosing. If Bob did not send a script, 
 she chooses something akin to a `NOP` script for the script \\(\script\_b\\).
 
-Alice calculates the sender signature \\( s_{Mb} \\) with: 
+Alice calculates the [sender metadata signature] \\( s_{Mb} \\) with: 
 
 $$
 \begin{aligned}
@@ -487,7 +489,7 @@ $$
 Alice then adds the following info to Bob's TransactionOutput:
 
 * Meta_signature \\(s_{Mb}\\),
-* Script offset public key \\( K_{Ob} \\),
+* sender offset public key \\( K_{Ob} \\),
 
 She completes the transaction as per [standard Mimblewimble protocol] and also adds the script offset \\( \so \\), after which 
 she broadcasts the transaction to the network.
@@ -499,7 +501,7 @@ Base nodes validate the transaction as follows:
 * They check that the usual Mimblewimble balance holds by summing inputs and outputs and validating against the excess
   signature. This check does not change nor do the other validation rules, such as confirming that all inputs are in
   the UTXO set etc.
-* The sender signature \\(s_{Ma}\\) on Bob's output,
+* The sender metadata signature \\(s_{Ma}\\) on Bob's output,
 * The input script must execute successfully using the provided input data; and the script result must be a valid 
   public key,
 * The script signature on Alice's input is valid by checking:
@@ -517,9 +519,9 @@ Base nodes validate the transaction as follows:
  \tag{14}
   $$
 
-Finally, when Bob spends this output, he will use \\( K\_{Sb} \\) as his script input and sign it with his private key
-\\( k\_{Sb} \\). He will choose a new \\( K\_{Oc} \\) to give to the recipient, and he will construct the 
-script offset, \\( \so_b \\) as follows:
+Finally, when Bob spends this output, he will use \\( K\_{Sb} \\) as his script input and sign it with his script 
+private key \\( k\_{Sb} \\). He will choose a new sender offset public key \\( K\_{Oc} \\) to give to the recipient, and 
+he will construct the script offset, \\( \so_b \\) as follows:
 
 $$
 \begin{aligned}
@@ -548,9 +550,9 @@ Bob requires the value \\( v_b \\) and blinding factor \\( k_b \\) to claim his 
 claim it without asking Alice for them.
 
 This information can be obtained by using Diffie-Hellman and Bulletproof rewinding. If the blinding factor \\( k\_b \\) 
-was calculated with Diffie-Hellman using the script offset keypair, (\\( k\_{Ob} \\),\\( K\_{Ob} \\)) as the sender keypair 
-and the script keypair, \\( (k\_{Sb} \\),\\( K\_{Sb}) \\) as the receiver keypair, the blinding factor \\( k\_b \\) 
-can be securely calculated without communication.
+was calculated with Diffie-Hellman using the sender offset keypair, (\\( k\_{Ob} \\),\\( K\_{Ob} \\)) as the sender 
+keypair and the script keypair, \\( (k\_{Sb} \\),\\( K\_{Sb}) \\) as the receiver keypair, the blinding factor 
+\\( k\_b \\) can be securely calculated without communication.
 
 Alice uses Bob's public key to create a shared secret, \\( k\_b \\) for the output commitment, \\( C\_b \\), using
 Diffie-Hellman key exchange.
@@ -570,7 +572,7 @@ key.
 
 Alice knows the script-redeeming private key \\( k_{Sa}\\) for the transaction input.
 
-Alice will create the entire transaction including, generating a new script offset keypair and calculating the 
+Alice will create the entire transaction including, generating a new sender offset keypair and calculating the 
 script offset,
 
 $$
@@ -622,7 +624,7 @@ To summarise, the information required for one-sided transactions is as follows:
 | script input      | \\( \input_a \\)                      | Public                                                                                        |
 | height            | \\( h_a \\)                           | Public                                                                                        |
 | script signature  | \\( a_{Sa},b_{Sa}, R_{Sa} \\)         | Alice knows \\( k_{Sa},\\, r_{Sa} \\) and \\( k_{a},\\, v_{a} \\) of the commitment \\(C_a\\) |
-| script offset public key | \\( K_{Oa} \\)                        | Not used in this transaction                                                                  |
+| sender offset public key | \\( K_{Oa} \\)                        | Not used in this transaction                                                                  |
 
 | Transaction output | Symbols                               | Knowledge                                                              |
 |---------------------------|---------------------------------------|------------------------------------------------------------|
@@ -630,7 +632,7 @@ To summarise, the information required for one-sided transactions is as follows:
 | features                  | \\( F_b \\)                           | Public                                                     |
 | script                    | \\( \script_b \\)                     | Script is public. Only Bob knows the correct script input. |
 | range proof               |                                       | Alice and Bob know opening parameters                      |
-| script offset public key  | \\( K_{Ob} \\)                        | Alice knows \\( k_{Ob} \\)                                 |
+| sender offset public key  | \\( K_{Ob} \\)                        | Alice knows \\( k_{Ob} \\)                                 |
 | sender metadata signature | \\( s_{Mb}, R_{Mb} \\)                | Alice knows \\( k_{Ob} \\)  and the metadata)              |
 
 
@@ -652,11 +654,11 @@ C_a \Rightarrow  C_s \Rightarrow  C_x
 $$
 
 Alice owns \\( C_a\\), so she knows the blinding factor \\( k_a\\) and the correct input for the script's spending 
-conditions. Alice also generates the script offset keypair, \\( (k_{Os}, K_{Os} )\\).
+conditions. Alice also generates the sender offset keypair, \\( (k_{Os}, K_{Os} )\\).
 
 Now Alice and Bob proceed with the standard transaction flow.
 
-Alice ensures that the script offset public key \\( K_{Os}\\) is part of the output metadata that contains commitment 
+Alice ensures that the sender offset public key \\( K_{Os}\\) is part of the output metadata that contains commitment 
 \\( C_s\\). Alice will fill in the script with her \\( k_{Sa}\\) to unlock the commitment \\( C_a\\). Because Alice 
 owns \\( C_a\\) she needs to construct \\( \so\\) with:
 
@@ -689,7 +691,7 @@ The script input needs to be signed by this aggregate key, and so Alice and Bob 
 following the usual Schnorr aggregate mechanics, but one person needs to add in the signature of the blinding factor and 
 value.
 
-In an analogous fashion, Alice and Bob also generate an aggregate script offset private key \\( k_{Ox}\\), each using
+In an analogous fashion, Alice and Bob also generate an aggregate sender offset private key \\( k_{Ox}\\), each using
 their own \\( k_{OxA} \\) and \\( k_{OxB}\\).
 
 To be specific, Alice calculates her portion from
@@ -724,7 +726,7 @@ Notice also that because the script resolves to an aggregate key \\( K_s\\) neit
 commitment \\( C_s\\) without the other party's key. If either party tries to cheat by editing the input, the script 
 validation will fail.
 
-If either party tries to cheat by creating a new output, the script offset will not validate correctly as the script offset locks 
+If either party tries to cheat by creating a new output, the script offset will not validate correctly as it locks 
 the output of the transaction.
 
 A base node validating the transaction will also not be able to tell this is an aggregate transaction as all keys are 
@@ -742,7 +744,7 @@ To summarise, the information required for creating a multiparty UTXO is as foll
 | script input                | \\( \input_a \\)                      | Public                                                                                        |
 | height                      | \\( h_a \\)                           | Public                                                                                        |
 | script signature            | \\( (a_{Sa},b_{Sa}, R_{Sa}) \\)     | Alice knows \\( k_{Sa},\\, r_{Sa} \\) and \\( k_{a},\\, v_{a} \\) of the commitment \\(C_a\\) |
-| script offset&nbsp;public&nbsp;key | \\( K_{Oa} \\)                        | Not used in this transaction                                                                  |
+| sender offset&nbsp;public&nbsp;key | \\( K_{Oa} \\)                        | Not used in this transaction                                                                  |
 
 <br>
 
@@ -752,7 +754,7 @@ To summarise, the information required for creating a multiparty UTXO is as foll
 | features                    | \\( F_s \\)                                                            | Public                                                                                     |
 | script                      | \\( \script_s \\)                                                      | Script is public. Alice and Bob only knows their part of the  correct script input.        |
 | range proof                 |                                                                        | Alice and Bob know opening parameters                                                      |
-| script offset&nbsp;public&nbsp;key | \\( K_{Os} = K_{OsA} + K_{OsB}\\)       | Alice knows \\( k_{OsA} \\), Bob knows \\( k_{OsB} \\). Neither party knows \\( k_{Os} \\) |
+| sender offset&nbsp;public&nbsp;key | \\( K_{Os} = K_{OsA} + K_{OsB}\\)       | Alice knows \\( k_{OsA} \\), Bob knows \\( k_{OsB} \\). Neither party knows \\( k_{Os} \\) |
 | sender&nbsp;signature       | \\( s_{Ms} = s_{MsA} + s_{MsB}, \\, \\, R_{Ss} = R_{SsA} + R_{SsB} \\) | Alice knows \\( (s_{MsA}, R_{SsA}) \\), Bob knows \\( (s_{MsB}, R_{SsB}) \\)               |
 
 When spending the multi-party input:
@@ -765,7 +767,7 @@ When spending the multi-party input:
 | script input                | \\( \input_s \\)                        | Public                                                                                                                                                             |
 | height                      | \\( h_a \\)                             | Public                                                                                                                                                             |
 | script&nbsp;signature       | \\( (a_{Ss} ,b_{Ss} , R_{Ss}) \\)     | Alice knows \\( (k_{SsA},\\, r_{SsA}) \\), Bob knows \\( (k_{SsB},\\, r_{SsB}) \\). Both parties know \\( (k_{s},\\, v_{s}) \\). Neither party knows \\( k_{Ss}\\) |
-| script offset&nbsp;public&nbsp;key | \\( K_{Os} \\)                          | As above, Alice and Bob each know part of the script offset key                                                                                                           |
+| sender offset&nbsp;public&nbsp;key | \\( K_{Os} \\)                          | As above, Alice and Bob each know part of the sender offset key                                                                                                           |
 
 
 ### Cut-through
@@ -775,10 +777,10 @@ spent in the same block it was created. This makes it so that the intervening UT
 and balances carried in that UTXO. It's also impossible to prove without additional information that cut-through even 
 occurred (though one may suspect, since the "one" transaction would contribute two kernels to the block).
 
-In particular, cut-through is devastating for an idea like Tari Script which relies on conditions present in the UTXO 
+In particular, cut-through is devastating for an idea like TariScript which relies on conditions present in the UTXO 
 being enforced.
 
-This is a reason for the presence of the script offset in the Tari Script proposal. It mathematically links all inputs 
+This is a reason for the presence of the script offset in the TariScript proposal. It mathematically links all inputs 
 and outputs of all the transactions in a block and that tallied up to create the script offset. Providing the script 
 offset requires knowledge of keys that miners do not possess; thus they are unable to produce the necessary script 
 offset when attempting to perform cut-through on a pair of transactions.
@@ -821,10 +823,10 @@ $$
 \end{aligned}
 $$
 
-A third party cannot generate a new script offset as only the original owner can provide the private script key \\(k\_{Sa}\\) 
+A third party cannot generate a new script offset as only the original owner can provide the script private key \\(k\_{Sa}\\) 
 to create a new script offset. 
 
-### Script Offset security
+### Script offset security
 
 If all the inputs in a transaction or a block contain scripts such as just `NOP` or `CompareHeight` commands, then the 
 hypothesis is that it is possible to recreate a false script offset. Lets show by example why this is not possible. In 
@@ -836,10 +838,10 @@ $$
 Alice has an output \\(C\_{a}\\) which contains a script that only has a `NOP` command in it. This means that the 
 script \\( \script\_a \\) will immediately exit on execution leaving the entire input data \\( \input\_a \\)on the 
 stack. She sends all the required information to Bob as per the [standard mw transaction](#standard-mw-transaction), who 
-creates an output \\(C\_{b}\\). Because of the `NOP` script \\( \script\_a \\), Bob can change the public script key 
+creates an output \\(C\_{b}\\). Because of the `NOP` script \\( \script\_a \\), Bob can change the script public key 
 \\( K\_{Sa}\\) contained in the input data. Bob can now use his own \\(k'\_{Sa}\\) as the script private key. He 
-replaces the script offset public key with his own \\(K'\_{Ob}\\) allowing him to change the script 
-\\( \script\_b \\) and generate a new signature as in (2). Bob cab now generate a new script offset with 
+replaces the sender offset public key with his own \\(K'\_{Ob}\\) allowing him to change the script 
+\\( \script\_b \\) and generate a new signature as in (2). Bob can now generate a new script offset with 
 \\(\so' = k'\_{Sa} - k'\_{Ob} \\). Up to this point, it all seems valid. No one can detect that Bob changed the script 
 to \\( \script\_b \\).
 
@@ -853,14 +855,14 @@ Mimblewimble terms is the  person who knows \\( k\_a, v\_a\\), can generate the 
 ### Script lock key generation
 
 At face value, it looks like the burden for wallets has tripled, since each UTXO owner has to remember three private 
-keys, the spend key, \\( k_i \\), the script offset key \\( k_{O} \\) and the script key \\( k_{S} \\). In practice, the script 
-key will often be a static key associated with the user's node or wallet. Even if it is not, the script and script offset keys
-can be deterministically derived from the spend key. For example, \\( k_{S} \\) could be 
+keys, the spend key, \\( k_i \\), the sender offset key \\( k_{O} \\) and the script key \\( k_{S} \\). In practice, the 
+script key will often be a static key associated with the user's node or wallet. Even if it is not, the script and 
+sender offset keys can be deterministically derived from the spend key. For example, \\( k_{S} \\) could be 
 \\( \hash{ k_i \cat \alpha} \\).
 
 ### Blockchain bloat
 
-The most obvious drawback to Tari Script is the effect it will have on blockchain size. UTXOs are substantially larger,
+The most obvious drawback to TariScript is the effect it will have on blockchain size. UTXOs are substantially larger,
 with the addition of the script, script signature, and a public key to every output.
 
 These can eventually be pruned, but will increase storage and bandwidth requirements.
@@ -874,7 +876,7 @@ Every header will also be bigger as it includes an extra blinding factor that wi
 
 ### Fodder for chain analysis
 
-Another potential drawback of Tari Script is the additional information that is handed to entities wishing to perform 
+Another potential drawback of TariScript is the additional information that is handed to entities wishing to perform 
 chain analysis. Having scripts attached to outputs will often clearly mark the purpose of that UTXO. Users may wish to 
 re-spend outputs into vanilla, default UTXOs in a mixing transaction to disassociate Tari funds from a particular 
 script.
@@ -883,7 +885,7 @@ script.
 
 
 Where possible, the "usual" notation is used to denote terms commonly found in cryptocurrency literature. Lower case characters are used as private keys, while uppercase characters are used as public keys. New terms 
-introduced by Tari Script are assigned greek lowercase letters in most cases. The capital letter subscripts, _R_ and _S_ 
+introduced by TariScript are assigned greek lowercase letters in most cases. The capital letter subscripts, _R_ and _S_ 
 refer to a UTXO _receiver_ and _script_ respectively.
 
 | Symbol                    | Definition                                                                                                                                                                                                                            |
@@ -892,23 +894,23 @@ refer to a UTXO _receiver_ and _script_ respectively.
 | \\( F_i \\)               | Output features for UTXO _i_.                                                                                                                                                                                                         |
 | \\( f_t \\)               | Transaction fee for transaction _t_.                                                                                                                                                                                                  |
 | \\( m_t \\)               | Metadata for transaction _t_. Currently this includes the lock height.                                                                                                                                                                |
-| \\( (k_{Oi}\, K_{Oi}) \\) | The private - public keypair for the UTXO script offset key.                                                                                                                                                                          |
+| \\( (k_{Oi}\, K_{Oi}) \\) | The private - public keypair for the UTXO sender offset key.                                                                                                                                                                          |
 | \\( (k_{Si}\, K_{Si}) \\) | The private - public keypair for the script key. The script, \\( \script_i \\) resolves to \\( K_S \\) after completing execution.                                                                                                    |
 | \\( \so_t \\)             | The script offset for transaction _t_, as \\( \so_t = \sum_j{ k_{Sjt}} - \sum_i{k_{Oit}}\\)                                                                                                                                           |
 | \\( C_i \\)               | A Pedersen commitment to a value \\( v_i \\), as \\( C_i = k_i \cdot{G} + v_i \cdot H \\)                                                                                                                                             |
 | \\( \input_i \\)          | The serialised input for script \\( \script_i \\)                                                                                                                                                                                     |
 | \\( s_{Si} \\)            | A script signature for output \\( i \\), as \\( s_{Si} = (a_{Si}, b_{Si}, R_{Si} ) = (r_{Si_a} +  e(v_{i})), (r_{Si_b} + e(k_{Si}+k_i)) \\; \text{where} \\; e = \hash{ R_{Si} \cat \script_i \cat \input_i \cat K_{Si} \cat C_i} \\) |
-| \\( s_{Mi} \\)            | A sender signature for output \\( i \\), as \\( s_{Mi} = r_{Mi} + k_{Oi}\hash{ \script_i \cat F_i \cat R_{Mi}  } \\)                                                                                                                  |
+| \\( s_{Mi} \\)            | A sender metadata signature for output \\( i \\), as \\( s_{Mi} = r_{Mi} + k_{Oi}\hash{ \script_i \cat F_i \cat R_{Mi}  } \\)                                                                                                                  |
 
 ## Extensions
 
 ### Covenants
 
-Tari Script places restrictions on _who_ can spend UTXOs. It will also be useful for Tari digital asset applications to
+TariScript places restrictions on _who_ can spend UTXOs. It will also be useful for Tari digital asset applications to
 restrict _how_ or _where_ UTXOs may be spent in some cases. The general term for these sorts of restrictions are termed
 _covenants_. The [Handshake white paper] has a fairly good description of how covenants work.
 
-It is beyond the scope of this RFC, but it's anticipated that Tari Script would play a key role in the introduction of
+It is beyond the scope of this RFC, but it's anticipated that TariScript would play a key role in the introduction of
 generalised covenant support into Tari.
 
 ### Lock-time malleability
@@ -916,7 +918,7 @@ generalised covenant support into Tari.
 The current Tari protocol has an issue with Transaction Output Maturity malleability. This output feature is enforced in
 the consensus rules, but it is actually possible for a miner to change the value without invalidating the transaction.
 
-With Tari Script, output features are properly committed to in the transaction and verified as part of the script offset
+With TariScript, output features are properly committed to in the transaction and verified as part of the script offset
 validation.
 
 ### Credits
@@ -937,3 +939,10 @@ Thanks to David Burkett for proposing a method to prevent cut-through and willin
 [cut-through]: https://tlu.tarilabs.com/protocols/grin-protocol-overview/MainReport.html#cut-through
 [standard Mimblewimble protocol]: https://tlu.tarilabs.com/protocols/mimblewimble-1/MainReport.html
 [bitcoin transaction]: https://en.bitcoin.it/wiki/Transaction
+
+[TariScript]: Glossary.md#tariscript
+[sender metadata signature]: Glossary.md#sender-metadata-signature
+[script private key]: Glossary.md#script-keypair
+[script public key]: Glossary.md#script-keypair
+[sender offset]: Glossary.md#sender-offset-keypair
+[script offset]: Glossary.md#script-offset
