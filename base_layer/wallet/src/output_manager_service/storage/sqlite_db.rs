@@ -57,7 +57,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         transaction::{OutputFeatures, OutputFlags, UnblindedOutput},
-        types::{Commitment, CryptoFactories, PrivateKey, PublicKey},
+        types::{Commitment, CryptoFactories, PrivateKey, PublicKey, Signature},
     },
 };
 use tari_crypto::{
@@ -883,7 +883,8 @@ struct NewOutputSql {
     height: i64,
     script_private_key: Vec<u8>,
     script_offset_public_key: Vec<u8>,
-    sender_metadata_signature: String,
+    sender_metadata_signature_key: Vec<u8>,
+    sender_metadata_signature_nonce: Vec<u8>,
 }
 
 impl NewOutputSql {
@@ -892,8 +893,6 @@ impl NewOutputSql {
         status: OutputStatus,
         tx_id: Option<TxId>,
     ) -> Result<Self, OutputManagerStorageError> {
-        let sender_metadata_signature = serde_json::to_string(&output.unblinded_output.sender_metadata_signature)
-            .map_err(|e| OutputManagerStorageError::UnexpectedResult(e.to_string()))?;
         Ok(Self {
             commitment: Some(output.commitment.to_vec()),
             spending_key: output.unblinded_output.spending_key.to_vec(),
@@ -908,7 +907,16 @@ impl NewOutputSql {
             height: output.unblinded_output.height as i64,
             script_private_key: output.unblinded_output.script_private_key.to_vec(),
             script_offset_public_key: output.unblinded_output.script_offset_public_key.to_vec(),
-            sender_metadata_signature,
+            sender_metadata_signature_key: output
+                .unblinded_output
+                .sender_metadata_signature
+                .get_signature()
+                .to_vec(),
+            sender_metadata_signature_nonce: output
+                .unblinded_output
+                .sender_metadata_signature
+                .get_public_nonce()
+                .to_vec(),
         })
     }
 
@@ -950,7 +958,8 @@ struct OutputSql {
     height: i64,
     script_private_key: Vec<u8>,
     script_offset_public_key: Vec<u8>,
-    sender_metadata_signature: String,
+    sender_metadata_signature_key: Vec<u8>,
+    sender_metadata_signature_nonce: Vec<u8>,
 }
 
 impl OutputSql {
@@ -1133,12 +1142,26 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             PublicKey::from_vec(&o.script_offset_public_key).map_err(|_| {
                 error!(
                     target: LOG_TARGET,
-                    "Could not create PrivateKey from stored bytes, They might be encrypted"
+                    "Could not create PublicKey from stored bytes, They might be encrypted"
                 );
                 OutputManagerStorageError::ConversionError
             })?,
-            serde_json::from_str(&o.sender_metadata_signature)
-                .map_err(|e| OutputManagerStorageError::UnexpectedResult(e.to_string()))?,
+            Signature::new(
+                PublicKey::from_vec(&o.sender_metadata_signature_nonce).map_err(|_| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not create PublicKey from stored bytes, They might be encrypted"
+                    );
+                    OutputManagerStorageError::ConversionError
+                })?,
+                PrivateKey::from_vec(&o.sender_metadata_signature_key).map_err(|_| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not create PrivateKey from stored bytes, They might be encrypted"
+                    );
+                    OutputManagerStorageError::ConversionError
+                })?,
+            ),
         );
 
         let hash = match o.hash {
@@ -1196,7 +1219,8 @@ impl From<OutputSql> for NewOutputSql {
             height: o.height,
             script_private_key: o.script_private_key,
             script_offset_public_key: o.script_offset_public_key,
-            sender_metadata_signature: o.sender_metadata_signature,
+            sender_metadata_signature_key: o.sender_metadata_signature_key,
+            sender_metadata_signature_nonce: o.sender_metadata_signature_nonce,
         }
     }
 }

@@ -420,7 +420,7 @@ impl AggregateBody {
     fn validate_sender_signatures(&self) -> Result<(), TransactionError> {
         trace!(target: LOG_TARGET, "Checking sender signatures");
         for o in &self.outputs {
-            let _ = o.verify_sender_signature()?;
+            o.verify_sender_signature()?;
         }
         Ok(())
     }

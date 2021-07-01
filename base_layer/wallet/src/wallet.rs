@@ -316,7 +316,7 @@ where
         source_public_key: &CommsPublicKey,
         features: OutputFeatures,
         message: String,
-        sender_signature: Signature,
+        sender_metadata_signature: Signature,
         script_private_key: &PrivateKey,
         script_offset_public_key: &PublicKey,
     ) -> Result<TxId, WalletError> {
@@ -329,7 +329,7 @@ where
             0,
             script_private_key.clone(),
             script_offset_public_key.clone(),
-            sender_signature,
+            sender_metadata_signature,
         );
 
         let tx_id = self
