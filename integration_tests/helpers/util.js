@@ -160,7 +160,6 @@ const getTransactionOutputHash = function (output) {
   blake2bUpdate(context, buffer);
   blake2bUpdate(context, output.commitment);
   blake2bUpdate(context, nopScriptBytes);
-  blake2bUpdate(context, output.script_offset_public_key);
   let final = blake2bFinal(context);
   return Buffer.from(final);
 };
