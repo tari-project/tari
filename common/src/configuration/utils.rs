@@ -225,8 +225,11 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
 }
 
 fn set_merge_mining_defaults(cfg: &mut Config) {
-    cfg.set_default("merge_mining_proxy.mainnet.monerod_url", "http://18.133.55.120:38081")
-        .unwrap();
+    cfg.set_default(
+        "merge_mining_proxy.mainnet.monerod_url",
+        "http://monero-stagenet.exan.tech:38081",
+    )
+    .unwrap();
     cfg.set_default("merge_mining_proxy.mainnet.proxy_host_address", "127.0.0.1:7878")
         .unwrap();
     cfg.set_default("merge_mining_proxy.mainnet.monerod_use_auth", "false")
@@ -240,7 +243,7 @@ fn set_merge_mining_defaults(cfg: &mut Config) {
 
     cfg.set_default(
         "merge_mining_proxy.weatherwax.monerod_url",
-        "http://18.133.55.120:38081",
+        "http://monero-stagenet.exan.tech:38081",
     )
     .unwrap();
     cfg.set_default("merge_mining_proxy.weatherwax.proxy_host_address", "127.0.0.1:7878")
