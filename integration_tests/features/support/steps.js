@@ -379,8 +379,8 @@ When(
     let walletB = this.getWallet(walletNameB);
     let clientB = walletB.getClient();
 
-    await walletA.export_spent_outputs();
-    let spent_outputs = await walletA.read_exported_outputs();
+    await walletA.exportSpentOutputs();
+    let spent_outputs = await walletA.readExportedOutputs();
     let result = await clientB.importUtxos(spent_outputs);
     lastResult = result.tx_ids;
   }
@@ -393,8 +393,8 @@ When(
     let walletB = this.getWallet(walletNameB);
     let clientB = walletB.getClient();
 
-    await walletA.export_unspent_outputs();
-    let outputs = await walletA.read_exported_outputs();
+    await walletA.exportUnspentOutputs();
+    let outputs = await walletA.readExportedOutputs();
     let result = await clientB.importUtxos(outputs);
     lastResult = result.tx_ids;
   }
@@ -889,21 +889,25 @@ Then(/(.*) has (.*) in (.*) state/, async function (node, txn, pool) {
   expect(this.lastResult.result).to.equal(pool);
 });
 
+// The number is rounded down. E.g. if 1% can fail out of 17, that is 16.83 have to succeed.
+// It's means at least 16 have to succeed.
 Then(
-  /(.*) is in the (.*) of all nodes/,
+  /(.*) is in the (.*) of all nodes(, where (\d+)% can fail)?/,
   { timeout: 1200 * 1000 },
-  async function (txn, pool) {
+  async function (txn, pool, canFail) {
     const sig = this.transactions[txn].body.kernels[0].excess_sig;
-    await this.forEachClientAsync(async (client, name) => {
-      await waitFor(
-        async () => client.transactionStateResult(sig),
-        pool,
-        1200 * 1000
-      );
-      this.lastResult = await client.transactionState(sig);
-      console.log(`Node ${name} response is: ${this.lastResult.result}`);
-      expect(this.lastResult.result).to.equal(pool);
-    });
+    await this.forEachClientAsync(
+      async (client, name) => {
+        await waitFor(
+          async () => client.transactionStateResult(sig),
+          pool,
+          1200 * 1000
+        );
+        this.lastResult = await client.transactionState(sig);
+        console.log(`Node ${name} response is: ${this.lastResult.result}`);
+      },
+      canFail ? parseInt(canFail) : 0
+    );
   }
 );
 

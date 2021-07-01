@@ -145,13 +145,13 @@ impl TransactionsTab {
             .title(Span::styled("Completed (T)ransactions", style));
         f.render_widget(block, list_areas[1]);
 
-        self.completed_list_state
-            .set_num_items(app_state.get_completed_txs().len());
+        let completed_txs = app_state.get_completed_txs();
+        self.completed_list_state.set_num_items(completed_txs.len());
         let mut completed_list_state = self
             .completed_list_state
             .get_list_state((list_areas[1].height as usize).saturating_sub(3));
         let window = self.completed_list_state.get_start_end();
-        let windowed_view = app_state.get_completed_txs_slice(window.0, window.1);
+        let windowed_view = &completed_txs[window.0..window.1];
 
         let mut column0_items = Vec::new();
         let mut column1_items = Vec::new();
@@ -188,7 +188,9 @@ impl TransactionsTab {
                 format!("{}", local_time.format("%Y-%m-%d %H:%M:%S")),
                 Style::default().fg(text_color),
             )));
-            let status = if t.cancelled {
+            let status = if t.cancelled && t.status == TransactionStatus::Coinbase {
+                "Abandoned".to_string()
+            } else if t.cancelled {
                 "Cancelled".to_string()
             } else if !t.valid {
                 "Invalid".to_string()
@@ -425,6 +427,8 @@ impl<B: Backend> Component<B> for TransactionsTab {
         span_vec.push(Span::raw(" selects a transaction, "));
         span_vec.push(Span::styled("C", Style::default().add_modifier(Modifier::BOLD)));
         span_vec.push(Span::raw(" cancels a selected Pending Tx, "));
+        span_vec.push(Span::styled("A", Style::default().add_modifier(Modifier::BOLD)));
+        span_vec.push(Span::raw(" shows abandoned coinbase Txs, "));
         span_vec.push(Span::styled("Esc", Style::default().add_modifier(Modifier::BOLD)));
         span_vec.push(Span::raw(" exits the list."));
 
@@ -512,6 +516,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
                     self.confirmation_dialog = true;
                 }
             },
+            'a' => app_state.toggle_abandoned_coinbase_filter(),
             '\n' => match self.selected_tx_list {
                 SelectedTransactionList::None => {},
                 SelectedTransactionList::PendingTxs => {

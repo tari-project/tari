@@ -24,6 +24,7 @@ mod aggregate_body;
 mod block;
 mod block_header;
 mod chain_metadata;
+mod com_signature;
 mod consensus_constants;
 mod historical_block;
 mod new_block_template;
@@ -42,6 +43,7 @@ pub use self::{
     block::*,
     block_header::*,
     chain_metadata::*,
+    com_signature::*,
     consensus_constants::*,
     historical_block::*,
     new_block_template::*,

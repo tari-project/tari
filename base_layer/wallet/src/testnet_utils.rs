@@ -22,7 +22,7 @@
 use crate::{
     contacts_service::storage::{
         database::{Contact, ContactsBackend},
-        memory_db::ContactsServiceMemoryDatabase,
+        sqlite_db::ContactsServiceSqliteDatabase,
     },
     error::{WalletError, WalletStorageError},
     output_manager_service::{
@@ -127,7 +127,7 @@ pub async fn create_wallet(
     WalletSqliteDatabase,
     TransactionServiceSqliteDatabase,
     OutputManagerSqliteDatabase,
-    ContactsServiceMemoryDatabase,
+    ContactsServiceSqliteDatabase,
 > {
     let factories = CryptoFactories::default();
 
@@ -176,7 +176,8 @@ pub async fn create_wallet(
         None,
     );
 
-    let (db, backend, oms_backend, _) = make_wallet_databases(Some(datastore_path.to_str().unwrap().to_string()));
+    let (db, backend, oms_backend, contacts_backend, _) =
+        make_wallet_databases(Some(datastore_path.to_str().unwrap().to_string()));
 
     let metadata = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
 
@@ -187,7 +188,7 @@ pub async fn create_wallet(
         WalletDatabase::new(db),
         backend,
         oms_backend,
-        ContactsServiceMemoryDatabase::new(),
+        contacts_backend,
         shutdown_signal,
         None,
     )

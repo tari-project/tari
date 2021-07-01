@@ -155,18 +155,18 @@ checksum = "25f9db3b38af870bf7e5cc649167533b493928e50744e2c30ae350230b414670"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.9",
- "syn 1.0.60",
+ "syn 1.0.67",
 ]
 
 [[package]]
 name = "async-trait"
-version = "0.1.42"
+version = "0.1.50"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d3a45e77e34375a7923b1e8febb049bb011f064714a8e17a1a616fef01da13d"
+checksum = "0b98e84bbb4cbcdd97da190ba0c58a1bb0de2c1fdf67d159e192ed766aeca722"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.9",
- "syn 1.0.60",
+ "syn 1.0.67",
 ]
 
 [[package]]
@@ -484,7 +484,7 @@ dependencies = [
  "quote 1.0.9",
  "serde 1.0.126",
  "serde_json",
- "syn 1.0.60",
+ "syn 1.0.67",
  "tempfile",
  "toml 0.5.8",
 ]
@@ -1030,7 +1030,7 @@ checksum = "45f5098f628d02a7a0f68ddba586fb61e80edec3bdc1be3b921f4ceec60858d3"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.9",
- "syn 1.0.60",
+ "syn 1.0.67",
 ]
 
 [[package]]
@@ -1118,7 +1118,7 @@ dependencies = [
  "heck",
  "proc-macro2 1.0.24",
  "quote 1.0.9",
- "syn 1.0.60",
+ "syn 1.0.67",
 ]
 
 [[package]]
@@ -1356,7 +1356,7 @@ dependencies = [
  "proc-macro-hack",
  "proc-macro2 1.0.24",
  "quote 1.0.9",
- "syn 1.0.60",
+ "syn 1.0.67",
 ]
 
 [[package]]
@@ -1655,9 +1655,9 @@ dependencies = [
 
 [[package]]
 name = "httparse"
-version = "1.3.5"
+version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "615caabe2c3160b313d52ccc905335f4ed5f10881dd63dc5699d47e90be85691"
+checksum = "f3a87b616e37e93c22fb19bcd386f02f3af5ea98a25670ad0fce773de23c5e68"
 
 [[package]]
 name = "httpdate"
@@ -2113,7 +2113,7 @@ dependencies = [
  "migrations_internals",
  "proc-macro2 1.0.24",
  "quote 1.0.9",
- "syn 1.0.60",
+ "syn 1.0.67",
 ]
 
 [[package]]
@@ -2254,7 +2254,7 @@ dependencies = [
  "proc-macro-error",
  "proc-macro2 1.0.24",
  "quote 1.0.9",
- "syn 1.0.60",
+ "syn 1.0.67",
  "synstructure",
 ]
 
@@ -2652,7 +2652,7 @@ checksum = "65ad2ae56b6abe3a1ee25f15ee605bacadb9a764edaba9c2bf4103800d4a1895"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.9",
- "syn 1.0.60",
+ "syn 1.0.67",
 ]
 
 [[package]]
@@ -2663,7 +2663,7 @@ checksum = "758669ae3558c6f74bd2a18b41f7ac0b5a195aea6639d6a9b5e5d1ad5ba24c0b"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.9",
- "syn 1.0.60",
+ "syn 1.0.67",
 ]
 
 [[package]]
@@ -2725,7 +2725,7 @@ dependencies = [
  "proc-macro-error-attr",
  "proc-macro2 1.0.24",
  "quote 1.0.9",
- "syn 1.0.60",
+ "syn 1.0.67",
  "version_check 0.9.2",
 ]
 
@@ -2808,7 +2808,7 @@ dependencies = [
  "itertools",
  "proc-macro2 1.0.24",
  "quote 1.0.9",
- "syn 1.0.60",
+ "syn 1.0.67",
 ]
 
 [[package]]
@@ -3276,7 +3276,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "54a50e29610a5be68d4a586a5cce3bfb572ed2c2a74227e4168444b7bf4e5235"
 dependencies = [
  "quote 1.0.9",
- "syn 1.0.60",
+ "syn 1.0.67",
 ]
 
 [[package]]
@@ -3426,7 +3426,7 @@ checksum = "963a7dbc9895aeac7ac90e74f34a5d5261828f79df35cbed41e10189d3804d43"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.9",
- "syn 1.0.60",
+ "syn 1.0.67",
 ]
 
 [[package]]
@@ -3448,7 +3448,7 @@ checksum = "2dc6b7951b17b051f3210b063f12cc17320e2fe30ae05b0fe2a3abb068551c76"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.9",
- "syn 1.0.60",
+ "syn 1.0.67",
 ]
 
 [[package]]
@@ -3644,7 +3644,7 @@ dependencies = [
  "proc-macro-error",
  "proc-macro2 1.0.24",
  "quote 1.0.9",
- "syn 1.0.60",
+ "syn 1.0.67",
 ]
 
 [[package]]
@@ -3662,7 +3662,7 @@ dependencies = [
  "heck",
  "proc-macro2 1.0.24",
  "quote 1.0.9",
- "syn 1.0.60",
+ "syn 1.0.67",
 ]
 
 [[package]]
@@ -3674,7 +3674,7 @@ dependencies = [
  "heck",
  "proc-macro2 1.0.24",
  "quote 1.0.9",
- "syn 1.0.60",
+ "syn 1.0.67",
 ]
 
 [[package]]
@@ -3686,7 +3686,7 @@ dependencies = [
  "heck",
  "proc-macro2 1.0.24",
  "quote 1.0.9",
- "syn 1.0.60",
+ "syn 1.0.67",
 ]
 
 [[package]]
@@ -3731,9 +3731,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "1.0.60"
+version = "1.0.67"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c700597eca8a5a762beb35753ef6b94df201c81cca676604f547495a0d7f0081"
+checksum = "6498a9efc342871f91cc2d0d694c674368b4ceb40f62b65a7a08c3792935e702"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.9",
@@ -3757,7 +3757,7 @@ checksum = "b834f2d66f734cb897113e34aaff2f1ab4719ca946f9a7358dba8f8064148701"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.9",
- "syn 1.0.60",
+ "syn 1.0.67",
  "unicode-xid 0.2.1",
 ]
 
@@ -3987,7 +3987,7 @@ dependencies = [
  "proc-macro2 1.0.24",
  "prost",
  "quote 1.0.9",
- "syn 1.0.60",
+ "syn 1.0.67",
  "tari_comms",
  "tari_test_utils",
  "tokio",
@@ -3999,6 +3999,7 @@ dependencies = [
 name = "tari_console_wallet"
 version = "0.8.11"
 dependencies = [
+ "bitflags 1.2.1",
  "chrono",
  "chrono-english",
  "crossterm",
@@ -4082,7 +4083,7 @@ dependencies = [
 [[package]]
 name = "tari_crypto"
 version = "0.9.0"
-source = "git+ssh://git@github.com/tari-project/tari-crypto.git?branch=main#1620db4dd428dfb67179e8c6dd3bb1a6d04b67a9"
+source = "git+ssh://git@github.com/tari-project/tari-crypto.git?branch=main#45fba2160694ac19f51d6233fd5465da8a1614ee"
 dependencies = [
  "base64 0.10.1",
  "blake2",
@@ -4254,6 +4255,7 @@ name = "tari_service_framework"
 version = "0.8.11"
 dependencies = [
  "anyhow",
+ "async-trait",
  "futures 0.3.12",
  "futures-test",
  "log 0.4.14",
@@ -4453,7 +4455,7 @@ checksum = "7765189610d8241a44529806d6fd1f2e0a08734313a35d5b3a556f92b381f3c0"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.9",
- "syn 1.0.60",
+ "syn 1.0.67",
 ]
 
 [[package]]
@@ -4552,7 +4554,7 @@ checksum = "e44da00bfc73a25f814cd8d7e57a68a5c31b74b3152a0a1d1f590c97ed06265a"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.9",
- "syn 1.0.60",
+ "syn 1.0.67",
 ]
 
 [[package]]
@@ -4661,7 +4663,7 @@ dependencies = [
  "proc-macro2 1.0.24",
  "prost-build",
  "quote 1.0.9",
- "syn 1.0.60",
+ "syn 1.0.67",
 ]
 
 [[package]]
@@ -4877,7 +4879,7 @@ checksum = "a8a9bd1db7706f2373a190b0d067146caa39350c486f3d455b0e33b431f94c07"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.9",
- "syn 1.0.60",
+ "syn 1.0.67",
 ]
 
 [[package]]
@@ -5265,7 +5267,7 @@ dependencies = [
  "log 0.4.14",
  "proc-macro2 1.0.24",
  "quote 1.0.9",
- "syn 1.0.60",
+ "syn 1.0.67",
  "wasm-bindgen-shared",
 ]
 
@@ -5299,7 +5301,7 @@ checksum = "4133b5e7f2a531fa413b3a1695e925038a05a71cf67e87dafa295cb645a01385"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.9",
- "syn 1.0.60",
+ "syn 1.0.67",
  "wasm-bindgen-backend",
  "wasm-bindgen-shared",
 ]
@@ -5452,6 +5454,6 @@ checksum = "c3f369ddb18862aba61aa49bf31e74d29f0f162dec753063200e1dc084345d16"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.9",
- "syn 1.0.60",
+ "syn 1.0.67",
  "synstructure",
 ]

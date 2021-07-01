@@ -20,10 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#![allow(incomplete_features)]
-#![feature(type_alias_impl_trait)]
-#![feature(min_type_alias_impl_trait)]
-
 pub mod contacts_service;
 pub mod output_manager_service;
 pub mod support;

@@ -8,5 +8,5 @@ enum MmrTree {
     MmrTreeNone = 0;
     MmrTreeUtxo = 1;
     MmrTreeKernel = 2;
-    MmrTreeRangeProof = 3;
+    MmrTreeWitness = 3;
 }

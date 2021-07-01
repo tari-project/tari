@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
-use futures::future;
+use async_trait::async_trait;
 
 /// This initializer adds a handle to the service context.
 pub struct RegisterHandle<T> {
@@ -34,15 +34,14 @@ impl<T> RegisterHandle<T> {
     }
 }
 
+#[async_trait]
 impl<T: Send + Sync + 'static> ServiceInitializer for RegisterHandle<T> {
-    type Future = future::Ready<Result<(), ServiceInitializationError>>;
-
-    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+    async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         context.register_handle(
             self.handle
                 .take()
                 .expect("RegisterHandle: ServiceInitializer called more than once"),
         );
-        future::ready(Ok(()))
+        Ok(())
     }
 }

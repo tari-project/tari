@@ -22,18 +22,17 @@
 
 use crate::{
     context::{create_context_notifier_pair, ServiceHandles},
-    initializer::{BoxedServiceInitializer, InitializerFn, ServiceInitializationError, ServiceInitializer},
+    initializer::{InitializerFn, ServiceInitializationError, ServiceInitializer},
     ServiceInitializerContext,
 };
 use futures::future;
-use std::future::Future;
 use tari_shutdown::ShutdownSignal;
 
 /// Responsible for building and collecting handles and (usually long-running) service futures.
 /// `finish` is an async function which resolves once all the services are initialized, or returns
 /// an error if any one of the services fails to initialize.
 pub struct StackBuilder {
-    initializers: Vec<BoxedServiceInitializer>,
+    initializers: Vec<Box<dyn ServiceInitializer + Send>>,
     shutdown_signal: ShutdownSignal,
 }
 
@@ -49,25 +48,19 @@ impl StackBuilder {
 impl StackBuilder {
     /// Add an impl of ServiceInitializer to the stack
     pub fn add_initializer<I>(self, initializer: I) -> Self
-    where
-        I: ServiceInitializer + Send + 'static,
-        I::Future: Send + 'static,
-    {
-        self.add_initializer_boxed(initializer.boxed())
+    where I: ServiceInitializer + Send + 'static {
+        self.add_initializer_boxed(initializer)
     }
 
     /// Add an impl of ServiceInitializer to the stack
-    pub fn add_initializer_fn<TFunc, TFut>(self, initializer: TFunc) -> Self
-    where
-        TFunc: FnOnce(ServiceInitializerContext) -> TFut + Send + 'static,
-        TFut: Future<Output = Result<(), ServiceInitializationError>> + Send + 'static,
-    {
-        self.add_initializer_boxed(InitializerFn::new(initializer).boxed())
+    pub fn add_initializer_fn<TFunc>(self, initializer: TFunc) -> Self
+    where TFunc: FnOnce(ServiceInitializerContext) -> Result<(), ServiceInitializationError> + Send + 'static {
+        self.add_initializer_boxed(InitializerFn::new(initializer))
     }
 
     /// Add a ServiceInitializer which has been boxed using `ServiceInitializer::boxed`
-    pub fn add_initializer_boxed(mut self, initializer: BoxedServiceInitializer) -> Self {
-        self.initializers.push(initializer);
+    pub fn add_initializer_boxed(mut self, initializer: impl ServiceInitializer + Send + 'static) -> Self {
+        self.initializers.push(Box::new(initializer));
         self
     }
 
@@ -83,9 +76,7 @@ impl StackBuilder {
         let (mut notifier, context) = create_context_notifier_pair(shutdown_signal);
 
         // Collect all the initialization futures
-        let init_futures = initializers
-            .iter_mut()
-            .map(|init| ServiceInitializer::initialize(init, context.clone()));
+        let init_futures = initializers.iter_mut().map(|init| init.initialize(context.clone()));
 
         // Run all the initializers concurrently and check each Result returning an error
         // on the first one that failed.
@@ -103,7 +94,8 @@ impl StackBuilder {
 mod test {
     use super::*;
     use crate::{initializer::ServiceInitializer, ServiceInitializerContext};
-    use futures::{executor::block_on, future, Future};
+    use async_trait::async_trait;
+    use futures::{executor::block_on, future};
     use std::sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -114,7 +106,7 @@ mod test {
     #[tokio_macros::test]
     async fn service_defn_simple() {
         // This is less of a test and more of a demo of using the short-hand implementation of ServiceInitializer
-        let simple_initializer = |_: ServiceInitializerContext| future::ok(());
+        let simple_initializer = |_: ServiceInitializerContext| Ok(());
 
         let shutdown = Shutdown::new();
 
@@ -138,16 +130,15 @@ mod test {
         }
     }
 
+    #[async_trait]
     impl ServiceInitializer for DummyInitializer {
-        type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
-
-        fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+        async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
             // Add a handle
             context.register_handle(DummyServiceHandle(123));
 
             // This demonstrates the chicken and egg problem with services and handles. Specifically,
             // that we have a service which requires the handles of other services to be able to
-            // create it's own handle. Here we wait for the handles_fut to resolve before continuing
+            // create its own handle. Here we wait for the handles_fut to resolve before continuing
             // to initialize the service.
             //
             // Critically, you should never wait for handles in the initialize method because
@@ -160,7 +151,7 @@ mod test {
             });
 
             self.state.fetch_add(1, Ordering::AcqRel);
-            future::ready(Ok(()))
+            Ok(())
         }
     }
 

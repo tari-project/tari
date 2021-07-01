@@ -175,7 +175,7 @@ impl Default for DhtConfig {
             allow_test_addresses: false,
             flood_ban_max_msg_count: 10000,
             flood_ban_timespan: Duration::from_secs(100),
-            offline_peer_cooldown: Duration::from_secs(24 * 60 * 60),
+            offline_peer_cooldown: Duration::from_secs(2 * 60 * 60),
             saf_msg_validity: Duration::from_secs(10800),
         }
     }

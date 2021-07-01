@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2020. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,36 +20,23 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::utils::random_string;
-use std::path::PathBuf;
-use tari_wallet::storage::sqlite_utilities::{run_migration_and_create_sqlite_connection, WalletDbConnection};
-use tempfile::{tempdir, TempDir};
+use std::convert::TryFrom;
+use tari_crypto::tari_utilities::ByteArray;
 
-pub fn get_path(name: Option<&str>) -> String {
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/data");
-    path.push(name.unwrap_or(""));
-    path.to_str().unwrap().to_string()
-}
+use crate::tari_rpc as grpc;
+use tari_core::transactions::types::{ComSignature, Commitment, PrivateKey};
 
-pub fn clean_up_sql_database(name: &str) {
-    if std::fs::metadata(get_path(Some(name))).is_ok() {
-        std::fs::remove_file(get_path(Some(name))).unwrap();
+impl TryFrom<grpc::ComSignature> for ComSignature {
+    type Error = String;
+
+    fn try_from(sig: grpc::ComSignature) -> Result<Self, Self::Error> {
+        let public_nonce = Commitment::from_bytes(&sig.public_nonce_commitment)
+            .map_err(|_| "Could not get public nonce commitment".to_string())?;
+        let signature_u =
+            PrivateKey::from_bytes(&sig.signature_u).map_err(|_| "Could not get partial signature u".to_string())?;
+        let signature_v =
+            PrivateKey::from_bytes(&sig.signature_v).map_err(|_| "Could not get partial signature v".to_string())?;
+
+        Ok(Self::new(public_nonce, signature_u, signature_v))
     }
-}
-
-pub fn init_sql_database(name: &str) {
-    clean_up_sql_database(name);
-    let path = get_path(None);
-    let _ = std::fs::create_dir(&path).unwrap_or_default();
-}
-
-pub fn get_temp_sqlite_database_connection() -> (WalletDbConnection, TempDir) {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = tempdir().unwrap();
-    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-    let db_path = format!("{}/{}", db_folder, db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
-
-    (connection, db_tempdir)
 }

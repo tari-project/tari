@@ -44,23 +44,25 @@ message BlockHeader {
     // This is the UTXO merkle root of the outputs
     // This is calculated as Hash (txo MMR root  || roaring bitmap hash of UTXO indices)
     bytes output_mr = 6;
-    // This is the MMR root of the range proofs
-    bytes range_proof_mr = 7;
+    // This is the MMR root of the the output witness data
+    bytes witness_mr = 7;
     // This is the MMR root of the kernels
     bytes kernel_mr = 8;
+    // This is the Merkle root of the inputs in this block
+    bytes input_mr = 9;
     // Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
     // block from the total kernel offset of the previous block header.
-    bytes total_kernel_offset = 9;
+    bytes total_kernel_offset = 10;
     // Nonce increment used to mine this block.
-    uint64 nonce = 10;
+    uint64 nonce = 11;
     // Proof of work metadata
-    ProofOfWork pow = 11;
+    ProofOfWork pow = 12;
     // Kernel MMR size
-    uint64 kernel_mmr_size = 12;
+    uint64 kernel_mmr_size = 13;
     // Output MMR size
-    uint64 output_mmr_size = 13;
+    uint64 output_mmr_size = 14;
     // Sum of script offsets for all kernels in this block.
-    bytes total_script_offset = 14;
+    bytes total_script_offset = 15;
 }
 
 // Metadata required for validating the Proof of Work calculation
@@ -102,7 +104,7 @@ message HistoricalBlock {
 }
 
 
-// The NewBlockHeaderTemplate is used for the construction of a new mineable block. It contains all the metadata for the block that the Base Node is able to complete on behalf of a Miner.
+// The NewBlockHeaderTemplate is used for the construction of a new mine-able block. It contains all the metadata for the block that the Base Node is able to complete on behalf of a Miner.
 message NewBlockHeaderTemplate {
     // Version of the block
     uint32 version = 1;
@@ -167,8 +169,8 @@ message TransactionInput {
     // The block height that the UTXO was mined
     uint64 height = 6;
     // A signature with k_s, signing the script, input data, and mined height
-    Signature script_signature = 7;
-    // The offset pubkey, K_O
+    ComSignature script_signature = 7;
+    // The offset public key, K_O
     bytes script_offset_public_key = 8;
 }
 
@@ -186,7 +188,7 @@ message TransactionOutput {
     bytes hash = 4;
     // Tari script serialised script
     bytes script = 5;
-    // Tari script offset pubkey, K_O
+    // Tari script offset public key, K_O
     bytes script_offset_public_key = 6;
     // UTXO signature with the script offset private key, k_O
     Signature sender_metadata_signature = 7;
@@ -225,6 +227,14 @@ message Transaction {
 message Signature {
     bytes public_nonce = 1;
     bytes signature = 2;
+}
+
+// Define the explicit ComSignature implementation for the Tari base layer. A different signature scheme can be
+// employed by redefining this type.
+message ComSignature {
+    bytes public_nonce_commitment = 1;
+    bytes signature_u = 2;
+    bytes signature_v = 3;
 }
 
 /// Consensus Constants response

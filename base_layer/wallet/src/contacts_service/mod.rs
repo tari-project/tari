@@ -30,9 +30,10 @@ use crate::contacts_service::{
     service::ContactsService,
     storage::database::{ContactsBackend, ContactsDatabase},
 };
-use futures::{future, Future};
+use futures::future;
 use log::*;
 use tari_service_framework::{
+    async_trait,
     reply_channel,
     ServiceInitializationError,
     ServiceInitializer,
@@ -55,12 +56,11 @@ where T: ContactsBackend
     }
 }
 
+#[async_trait]
 impl<T> ServiceInitializer for ContactsServiceInitializer<T>
 where T: ContactsBackend + 'static
 {
-    type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
-
-    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+    async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (sender, receiver) = reply_channel::unbounded();
 
         let contacts_handle = ContactsServiceHandle::new(sender);
@@ -82,6 +82,6 @@ where T: ContactsBackend + 'static
             future::select(service, shutdown_signal).await;
             info!(target: LOG_TARGET, "Contacts service shutdown");
         });
-        future::ready(Ok(()))
+        Ok(())
     }
 }
