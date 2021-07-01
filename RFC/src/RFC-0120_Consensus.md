@@ -64,7 +64,6 @@ Every [block] MUST conform to the following:
 
 * Have a _single_ valid coinbase [UTXO] and kernel
 * have a _single_ valid blockheader;
-* [cut-through] MUST have been applied where possible;
 * every [UTXO] has a valid [range proof].
 
 If a [block] does not confirm to the above, the block should be rejected as invalid and the peer from which it was received marked as a malicious peer.
@@ -224,6 +223,6 @@ This is defined as the total accumulated proof of work done on a single block ch
 [block header]: Glossary.md#block-header
 [utxo]: Glossary.md#unspent-transaction-outputs
 [range proof]: Glossary.md#range-proof
-[cut-through]: RFC-0140_Syncing_and_seeding.md#pruning-and-cut-through
+[cut-through]: Glossary.md#cut-through
 [FTL]: RFC-0120_Consensus.md#FTL
 [MTP]: RFC-0120_Consensus.md#MTP
