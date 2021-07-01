@@ -77,6 +77,7 @@ pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     is_bootstrapped: bool,
     event_publisher: broadcast::Sender<Arc<StateEvent>>,
     interrupt_signal: ShutdownSignal,
+    exit_when_synced: bool,
 }
 
 impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
@@ -96,6 +97,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         randomx_factory: RandomXFactory,
         consensus_rules: ConsensusManager,
         interrupt_signal: ShutdownSignal,
+        exit_when_synced: bool,
     ) -> Self
     {
         Self {
@@ -114,6 +116,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             is_bootstrapped: false,
             consensus_rules,
             interrupt_signal,
+            exit_when_synced,
         }
     }
 
@@ -128,7 +131,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
                 if self.config.pruning_horizon > 0 {
                     HorizonStateSync(states::HorizonStateSync::with_peer(conn))
                 } else {
-                    BlockSync(states::BlockSync::with_peer(conn))
+                    BlockSync(states::BlockSync::with_peer(conn, self.exit_when_synced))
                 }
             },
             (HeaderSync(s), HeaderSyncFailed) => Waiting(s.into()),

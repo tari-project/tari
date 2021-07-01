@@ -83,6 +83,7 @@ pub struct BaseNodeBootstrapper<'a, B> {
     pub rules: ConsensusManager,
     pub factories: CryptoFactories,
     pub interrupt_signal: ShutdownSignal,
+    pub exit_when_synced: bool,
 }
 
 impl<B> BaseNodeBootstrapper<'_, B>
@@ -162,6 +163,7 @@ where B: BlockchainBackend + 'static
                 },
                 self.rules,
                 self.factories,
+                self.exit_when_synced,
             ))
             .build()
             .await?;

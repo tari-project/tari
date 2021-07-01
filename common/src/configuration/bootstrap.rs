@@ -138,6 +138,9 @@ pub struct ConfigBootstrap {
     pub miner_min_diff: Option<u64>,
     #[structopt(long, alias("max-difficulty"))]
     pub miner_max_diff: Option<u64>,
+    /// Exit when synced.
+    #[structopt(long, alias("exit-when-synced"))]
+    pub exit_when_synced: bool,
 }
 
 fn normalize_path(path: PathBuf) -> PathBuf {
@@ -170,6 +173,7 @@ impl Default for ConfigBootstrap {
             miner_max_blocks: None,
             miner_min_diff: None,
             miner_max_diff: None,
+            exit_when_synced: false,
         }
     }
 }
@@ -357,12 +361,14 @@ mod test {
             "no-seed-words-file-name-provided",
             "--seed-words",
             "purse soup tornado success arch expose submit",
+            "--exit-when-synced",
         ])
         .expect("failed to process arguments");
         assert!(bootstrap.init);
         assert!(bootstrap.create_id);
         assert!(bootstrap.rebuild_db);
         assert!(bootstrap.clean_orphans_db);
+        assert!(bootstrap.exit_when_synced);
         assert_eq!(bootstrap.base_path.to_str(), Some("no-temp-path-created"));
         assert_eq!(bootstrap.log_config.to_str(), Some("no-log-config-file-created"));
         assert_eq!(bootstrap.config.to_str(), Some("no-config-file-created"));

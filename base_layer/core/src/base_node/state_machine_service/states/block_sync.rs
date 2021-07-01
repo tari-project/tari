@@ -39,6 +39,7 @@ const LOG_TARGET: &str = "c::bn::block_sync";
 pub struct BlockSync {
     sync_peer: Option<PeerConnection>,
     is_synced: bool,
+    exit_when_synced: bool,
 }
 
 impl BlockSync {
@@ -46,10 +47,11 @@ impl BlockSync {
         Default::default()
     }
 
-    pub fn with_peer(sync_peer: PeerConnection) -> Self {
+    pub fn with_peer(sync_peer: PeerConnection, exit_when_synced: bool) -> Self {
         Self {
             sync_peer: Some(sync_peer),
             is_synced: false,
+            exit_when_synced,
         }
     }
 
@@ -96,7 +98,10 @@ impl BlockSync {
             Ok(()) => {
                 info!(target: LOG_TARGET, "Blocks synchronized in {:.0?}", timer.elapsed());
                 self.is_synced = true;
-                StateEvent::BlocksSynchronized
+                match self.exit_when_synced {
+                    true => StateEvent::UserQuit,
+                    false => StateEvent::BlocksSynchronized,
+                }
             },
             Err(err) => {
                 debug!(target: LOG_TARGET, "Block sync failed: {}", err);

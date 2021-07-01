@@ -192,6 +192,7 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
         node_identity,
         shutdown.to_signal(),
         bootstrap.clean_orphans_db,
+        bootstrap.exit_when_synced,
     )
     .await
     .map_err(|err| {

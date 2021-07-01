@@ -51,6 +51,7 @@ pub struct BaseNodeStateMachineInitializer<B> {
     config: BaseNodeStateMachineConfig,
     rules: ConsensusManager,
     factories: CryptoFactories,
+    exit_when_synced: bool,
 }
 
 impl<B> BaseNodeStateMachineInitializer<B>
@@ -61,6 +62,7 @@ where B: BlockchainBackend + 'static
         config: BaseNodeStateMachineConfig,
         rules: ConsensusManager,
         factories: CryptoFactories,
+        exit_when_synced: bool,
     ) -> Self
     {
         Self {
@@ -68,6 +70,7 @@ where B: BlockchainBackend + 'static
             config,
             rules,
             factories,
+            exit_when_synced,
         }
     }
 }
@@ -93,6 +96,7 @@ where B: BlockchainBackend + 'static
         let rules = self.rules.clone();
         let db = self.db.clone();
         let config = self.config.clone();
+        let exit_when_synced = self.exit_when_synced;
 
         context.spawn_when_ready(move |handles| async move {
             let outbound_interface = handles.expect_handle::<OutboundNodeCommsInterface>();
@@ -118,6 +122,7 @@ where B: BlockchainBackend + 'static
                 RandomXFactory::new(RandomXConfig::default(), max_randomx_vms),
                 rules,
                 handles.get_shutdown_signal(),
+                exit_when_synced,
             );
 
             node.run().await;

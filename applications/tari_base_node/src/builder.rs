@@ -143,6 +143,7 @@ pub async fn configure_and_initialize_node(
     node_identity: Arc<NodeIdentity>,
     interrupt_signal: ShutdownSignal,
     cleanup_orphans_at_startup: bool,
+    exit_when_synced: bool,
 ) -> Result<BaseNodeContext, anyhow::Error>
 {
     let result = match &config.db_type {
@@ -167,6 +168,7 @@ pub async fn configure_and_initialize_node(
                 config,
                 interrupt_signal,
                 cleanup_orphans_at_startup,
+                exit_when_synced,
             )
             .await?
         },
@@ -191,6 +193,7 @@ async fn build_node_context(
     config: Arc<GlobalConfig>,
     interrupt_signal: ShutdownSignal,
     cleanup_orphans_at_startup: bool,
+    exit_when_synced: bool,
 ) -> Result<BaseNodeContext, anyhow::Error>
 {
     //---------------------------------- Blockchain --------------------------------------------//
@@ -234,6 +237,7 @@ async fn build_node_context(
         rules: rules.clone(),
         factories: factories.clone(),
         interrupt_signal: interrupt_signal.clone(),
+        exit_when_synced,
     }
     .bootstrap()
     .await?;
