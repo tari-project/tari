@@ -46,6 +46,9 @@ service Wallet {
     rpc CoinSplit (CoinSplitRequest) returns (CoinSplitResponse);
     // Import Utxo to wallet
     rpc ImportUtxos (ImportUtxosRequest) returns (ImportUtxosResponse);
+
+    // Mint base layer tokens for an asset
+    rpc MintTokens(MintTokensRequest) returns (MintTokensResponse);
 }
 
 message GetVersionRequest { }
@@ -178,4 +181,13 @@ message ImportUtxosRequest {
 
 message ImportUtxosResponse {
     repeated uint64 tx_ids = 1;
+}
+
+message MintTokensRequest {
+    bytes asset_public_key = 1;
+    repeated bytes unique_ids = 2;
+}
+
+message MintTokensResponse {
+    repeated bytes owner_commitments =1;
 }

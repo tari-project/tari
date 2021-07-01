@@ -28,6 +28,8 @@ use tari_app_grpc::{
         TransferRequest,
         TransferResponse,
         TransferResult,
+        MintTokensRequest,
+        MintTokensResponse
     },
 };
 use tari_comms::types::CommsPublicKey;
@@ -42,6 +44,7 @@ use tari_wallet::{
 };
 use tokio::{sync::mpsc, task};
 use tonic::{Request, Response, Status};
+use tari_core::transactions::types::PublicKey;
 
 const LOG_TARGET: &str = "wallet::ui::grpc";
 
@@ -338,6 +341,25 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }
 
         Ok(Response::new(ImportUtxosResponse { tx_ids }))
+    }
+
+    async fn mint_tokens(&self, request: Request<MintTokensRequest>) -> Result<Response<MintTokensResponse>, Status> {
+        let mut asset_manager = self.wallet.asset_manager.clone();
+        let mut transaction_service = self.wallet.transaction_service.clone();
+        let message = request.into_inner();
+
+        // TODO: Clean up unwrap
+        let asset_public_key = PublicKey::from_bytes(message.asset_public_key.as_slice()).unwrap();
+        let asset = asset_manager.get_owned_asset_by_pub_key(&asset_public_key).await.map_err(|e| Status::internal(e.to_string()))?;
+
+        let (tx_id, transaction) = asset_manager.create_minting_transaction(&asset_public_key, asset.owner_commitment(), message.unique_ids).await.map_err(|e| Status::internal(e.to_string()))?;
+        let fee = transaction.body.get_total_fee();
+        let _result = transaction_service.submit_transaction(tx_id, transaction, fee, 0.into(), "test mint transaction".to_string()).await.map_err(|e| Status::internal(e.to_string()))?;
+
+
+        Ok(Response::new(MintTokensResponse {
+            owner_commitments: vec![]
+        }))
     }
 }
 
