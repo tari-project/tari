@@ -27,7 +27,7 @@ use crate::{
     proto::envelope::OriginMac,
     DhtConfig,
 };
-use futures::{task::Context, Future};
+use futures::{future::BoxFuture, task::Context};
 use log::*;
 use prost::Message;
 use std::{sync::Arc, task::Poll, time::Duration};
@@ -123,25 +123,26 @@ impl<S> DecryptionService<S> {
 }
 
 impl<S> Service<DhtInboundMessage> for DecryptionService<S>
-where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Clone
+where
+    S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Clone + Send + 'static,
+    S::Future: Send,
 {
     type Error = PipelineError;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
     type Response = ();
-
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
     }
 
     fn call(&mut self, msg: DhtInboundMessage) -> Self::Future {
-        Self::handle_message(
+        Box::pin(Self::handle_message(
             self.inner.clone(),
             Arc::clone(&self.node_identity),
             self.connectivity.clone(),
             self.config.ban_duration,
             msg,
-        )
+        ))
     }
 }
 
@@ -416,10 +417,13 @@ mod test {
 
     #[test]
     fn decrypt_inbound_success() {
-        let result = Mutex::new(None);
-        let service = service_fn(|msg: DecryptedDhtMessage| {
-            *result.lock().unwrap() = Some(msg);
-            future::ready(Result::<(), PipelineError>::Ok(()))
+        let result = Arc::new(Mutex::new(None));
+        let service = service_fn({
+            let result = result.clone();
+            move |msg: DecryptedDhtMessage| {
+                *result.lock().unwrap() = Some(msg);
+                future::ready(Result::<(), PipelineError>::Ok(()))
+            }
         });
         let node_identity = make_node_identity();
         let (connectivity, _) = create_connectivity_mock();
@@ -441,10 +445,13 @@ mod test {
 
     #[test]
     fn decrypt_inbound_fail() {
-        let result = Mutex::new(None);
-        let service = service_fn(|msg: DecryptedDhtMessage| {
-            *result.lock().unwrap() = Some(msg);
-            future::ready(Result::<(), PipelineError>::Ok(()))
+        let result = Arc::new(Mutex::new(None));
+        let service = service_fn({
+            let result = result.clone();
+            move |msg: DecryptedDhtMessage| {
+                *result.lock().unwrap() = Some(msg);
+                future::ready(Result::<(), PipelineError>::Ok(()))
+            }
         });
         let node_identity = make_node_identity();
         let (connectivity, _) = create_connectivity_mock();
@@ -466,10 +473,13 @@ mod test {
     async fn decrypt_inbound_fail_destination() {
         let (connectivity, mock) = create_connectivity_mock();
         mock.spawn();
-        let result = Mutex::new(None);
-        let service = service_fn(|msg: DecryptedDhtMessage| {
-            *result.lock().unwrap() = Some(msg);
-            future::ready(Result::<(), PipelineError>::Ok(()))
+        let result = Arc::new(Mutex::new(None));
+        let service = service_fn({
+            let result = result.clone();
+            move |msg: DecryptedDhtMessage| {
+                *result.lock().unwrap() = Some(msg);
+                future::ready(Result::<(), PipelineError>::Ok(()))
+            }
         });
         let node_identity = make_node_identity();
         let mut service = DecryptionService::new(Default::default(), node_identity.clone(), connectivity, service);

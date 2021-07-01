@@ -25,7 +25,7 @@ use crate::{
     outbound::message::DhtOutboundMessage,
     proto::envelope::{DhtEnvelope, DhtHeader},
 };
-use futures::{task::Context, Future};
+use futures::task::Context;
 use log::*;
 use std::task::Poll;
 use tari_comms::{
@@ -34,7 +34,7 @@ use tari_comms::{
     Bytes,
 };
 use tari_utilities::ByteArray;
-use tower::{layer::Layer, Service, ServiceExt};
+use tower::{layer::Layer, util::Oneshot, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::serialize";
 
@@ -50,12 +50,13 @@ impl<S> SerializeMiddleware<S> {
 }
 
 impl<S> Service<DhtOutboundMessage> for SerializeMiddleware<S>
-where S: Service<OutboundMessage, Response = (), Error = PipelineError> + Clone + 'static
+where
+    S: Service<OutboundMessage, Response = (), Error = PipelineError> + Clone + Send,
+    S::Future: Send,
 {
     type Error = PipelineError;
+    type Future = Oneshot<S, OutboundMessage>;
     type Response = ();
-
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
@@ -63,58 +64,54 @@ where S: Service<OutboundMessage, Response = (), Error = PipelineError> + Clone 
 
     fn call(&mut self, message: DhtOutboundMessage) -> Self::Future {
         let next_service = self.inner.clone();
-        async move {
-            let DhtOutboundMessage {
-                tag,
-                destination_node_id,
-                custom_header,
-                body,
-                ephemeral_public_key,
-                destination,
-                dht_message_type,
-                network,
-                dht_flags,
-                origin_mac,
-                reply,
-                expires,
-                ..
-            } = message;
-            trace!(
-                target: LOG_TARGET,
-                "Serializing outbound message {:?} for peer `{}`",
-                message.tag,
-                destination_node_id.short_str()
-            );
-            let dht_header = custom_header.map(DhtHeader::from).unwrap_or_else(|| DhtHeader {
-                version: DHT_ENVELOPE_HEADER_VERSION,
-                origin_mac: origin_mac.map(|b| b.to_vec()).unwrap_or_else(Vec::new),
-                ephemeral_public_key: ephemeral_public_key.map(|e| e.to_vec()).unwrap_or_else(Vec::new),
-                message_type: dht_message_type as i32,
-                network: network as i32,
-                flags: dht_flags.bits(),
-                destination: Some(destination.into()),
-                message_tag: tag.as_value(),
-                expires,
-            });
-            let envelope = DhtEnvelope::new(dht_header, body);
+        let DhtOutboundMessage {
+            tag,
+            destination_node_id,
+            custom_header,
+            body,
+            ephemeral_public_key,
+            destination,
+            dht_message_type,
+            network,
+            dht_flags,
+            origin_mac,
+            reply,
+            expires,
+            ..
+        } = message;
+        trace!(
+            target: LOG_TARGET,
+            "Serializing outbound message {:?} for peer `{}`",
+            message.tag,
+            destination_node_id.short_str()
+        );
+        let dht_header = custom_header.map(DhtHeader::from).unwrap_or_else(|| DhtHeader {
+            version: DHT_ENVELOPE_HEADER_VERSION,
+            origin_mac: origin_mac.map(|b| b.to_vec()).unwrap_or_else(Vec::new),
+            ephemeral_public_key: ephemeral_public_key.map(|e| e.to_vec()).unwrap_or_else(Vec::new),
+            message_type: dht_message_type as i32,
+            network: network as i32,
+            flags: dht_flags.bits(),
+            destination: Some(destination.into()),
+            message_tag: tag.as_value(),
+            expires,
+        });
+        let envelope = DhtEnvelope::new(dht_header, body);
 
-            let body = Bytes::from(envelope.to_encoded_bytes());
+        let body = Bytes::from(envelope.to_encoded_bytes());
 
-            trace!(
-                target: LOG_TARGET,
-                "Serialized outbound message {} for peer `{}`. Passing onto next service",
-                tag,
-                destination_node_id.short_str()
-            );
-            next_service
-                .oneshot(OutboundMessage {
-                    tag,
-                    peer_node_id: destination_node_id,
-                    reply,
-                    body,
-                })
-                .await
-        }
+        trace!(
+            target: LOG_TARGET,
+            "Serialized outbound message {} for peer `{}`. Passing onto next service",
+            tag,
+            destination_node_id.short_str()
+        );
+        next_service.oneshot(OutboundMessage {
+            tag,
+            peer_node_id: destination_node_id,
+            reply,
+            body,
+        })
     }
 }
 
@@ -138,24 +135,21 @@ impl<S> Layer<S> for SerializeLayer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_utils::{create_outbound_message, service_spy};
-    use futures::executor::block_on;
+    use crate::test_utils::{assert_send_static_service, create_outbound_message, service_spy};
     use prost::Message;
     use tari_comms::peer_manager::NodeId;
-    use tari_test_utils::panic_context;
 
-    #[test]
-    fn serialize() {
+    #[tokio_macros::test_basic]
+    async fn serialize() {
         let spy = service_spy();
         let mut serialize = SerializeLayer.layer(spy.to_service::<PipelineError>());
 
-        panic_context!(cx);
-
-        assert!(serialize.poll_ready(&mut cx).is_ready());
         let body = b"A";
         let msg = create_outbound_message(body);
-        block_on(serialize.call(msg)).unwrap();
+        assert_send_static_service(&serialize);
 
+        let service = serialize.ready_and().await.unwrap();
+        service.call(msg).await.unwrap();
         let mut msg = spy.pop_request().unwrap();
         let dht_envelope = DhtEnvelope::decode(&mut msg.body).unwrap();
         assert_eq!(dht_envelope.body, b"A".to_vec());

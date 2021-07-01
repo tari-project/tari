@@ -20,11 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{task::Context, Future, TryFutureExt};
+use futures::task::Context;
 use log::*;
 use std::{borrow::Cow, fmt::Display, marker::PhantomData, task::Poll};
-use tari_comms::pipeline::PipelineError;
-use tower::{layer::Layer, Service, ServiceExt};
+use tower::{layer::Layer, Service};
 
 const LOG_TARGET: &str = "comms::middleware::message_logging";
 
@@ -46,7 +45,6 @@ impl<'a, R> MessageLoggingLayer<'a, R> {
 impl<'a, S, R> Layer<S> for MessageLoggingLayer<'a, R>
 where
     S: Service<R>,
-    S::Error: Into<PipelineError> + Send + Sync + 'static,
     R: Display,
 {
     type Service = MessageLoggingService<'a, S>;
@@ -73,22 +71,19 @@ impl<'a, S> MessageLoggingService<'a, S> {
 
 impl<S, R> Service<R> for MessageLoggingService<'_, S>
 where
-    S: Service<R> + Clone,
-    S::Error: Into<PipelineError> + Send + Sync + 'static,
+    S: Service<R>,
     R: Display,
 {
-    type Error = PipelineError;
+    type Error = S::Error;
+    type Future = S::Future;
     type Response = S::Response;
 
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
-
-    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
     }
 
     fn call(&mut self, msg: R) -> Self::Future {
         trace!(target: LOG_TARGET, "{}{}", self.prefix_msg, msg);
-        let mut inner = self.inner.clone();
-        async move { inner.ready_and().and_then(|s| s.call(msg)).await.map_err(Into::into) }
+        self.inner.call(msg)
     }
 }

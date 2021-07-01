@@ -278,9 +278,8 @@ impl Dht {
             InboundMessage,
             Response = (),
             Error = PipelineError,
-            Future = impl Future<Output = Result<(), PipelineError>> + Send,
-        > + Clone
-                      + Send,
+            Future = impl Future<Output = Result<(), PipelineError>>,
+        > + Clone,
     >
     where
         S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Clone + Send + Sync + 'static,
@@ -341,9 +340,8 @@ impl Dht {
             DhtOutboundRequest,
             Response = (),
             Error = PipelineError,
-            Future = impl Future<Output = Result<(), PipelineError>> + Send,
-        > + Clone
-                      + Send,
+            Future = impl Future<Output = Result<(), PipelineError>>,
+        > + Clone,
     >
     where
         S: Service<OutboundMessage, Response = (), Error = PipelineError> + Clone + Send + 'static,

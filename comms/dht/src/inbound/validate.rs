@@ -21,11 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{inbound::DhtInboundMessage, proto::envelope::Network};
-use futures::{task::Context, Future};
+use futures::{future, future::Either, task::Context};
 use log::*;
 use std::task::Poll;
 use tari_comms::pipeline::PipelineError;
-use tower::{layer::Layer, Service, ServiceExt};
+use tower::{layer::Layer, util::Oneshot, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::validate";
 
@@ -49,41 +49,37 @@ impl<S> ValidateMiddleware<S> {
 }
 
 impl<S> Service<DhtInboundMessage> for ValidateMiddleware<S>
-where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clone + 'static
+where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clone + Send + 'static
 {
     type Error = PipelineError;
+    type Future = Either<Oneshot<S, DhtInboundMessage>, future::Ready<Result<(), PipelineError>>>;
     type Response = ();
 
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
-
-    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.next_service.poll_ready(cx)
     }
 
     fn call(&mut self, message: DhtInboundMessage) -> Self::Future {
         let next_service = self.next_service.clone();
         let target_network = self.target_network;
-        async move {
-            if message.dht_header.network == target_network && message.dht_header.is_valid() {
-                trace!(
-                    target: LOG_TARGET,
-                    "Passing message {} to next service (Trace: {})",
-                    message.tag,
-                    message.dht_header.message_tag
-                );
-                next_service.oneshot(message).await?;
-            } else {
-                debug!(
-                    target: LOG_TARGET,
-                    "Message is for another network (want = {:?} got = {:?}) or message header is invalid. Discarding \
-                     the message (Trace: {}).",
-                    target_network,
-                    message.dht_header.network,
-                    message.dht_header.message_tag
-                );
-            }
-
-            Ok(())
+        if message.dht_header.network == target_network && message.dht_header.is_valid() {
+            trace!(
+                target: LOG_TARGET,
+                "Passing message {} to next service (Trace: {})",
+                message.tag,
+                message.dht_header.message_tag
+            );
+            Either::Left(next_service.oneshot(message))
+        } else {
+            debug!(
+                target: LOG_TARGET,
+                "Message is for another network (want = {:?} got = {:?}) or message header is invalid. Discarding the \
+                 message (Trace: {}).",
+                target_network,
+                message.dht_header.network,
+                message.dht_header.message_tag
+            );
+            Either::Right(future::ready(Ok(())))
         }
     }
 }
@@ -111,7 +107,7 @@ mod test {
     use super::*;
     use crate::{
         envelope::DhtMessageFlags,
-        test_utils::{make_dht_inbound_message, make_node_identity, service_spy},
+        test_utils::{assert_send_static_service, make_dht_inbound_message, make_node_identity, service_spy},
     };
     use tari_test_utils::panic_context;
     use tokio::runtime::Runtime;
@@ -122,6 +118,7 @@ mod test {
         let spy = service_spy();
 
         let mut validate = ValidateLayer::new(Network::LocalTest).layer(spy.to_service::<PipelineError>());
+        assert_send_static_service(&validate);
 
         panic_context!(cx);
 

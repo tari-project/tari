@@ -339,15 +339,19 @@ where
         .with_peer_storage(peer_database, Some(file_lock))
         .build()?;
 
+    let peer_manager = comms.peer_manager();
+    let connectivity = comms.connectivity();
+    let node_identity = comms.node_identity();
+    let shutdown_signal = comms.shutdown_signal();
     // Create outbound channel
     let (outbound_tx, outbound_rx) = mpsc::channel(config.outbound_buffer_size);
 
     let dht = DhtBuilder::new(
-        comms.node_identity(),
-        comms.peer_manager(),
+        node_identity.clone(),
+        peer_manager,
         outbound_tx,
-        comms.connectivity(),
-        comms.shutdown_signal(),
+        connectivity,
+        shutdown_signal,
     )
     .with_config(config.dht.clone())
     .build()
@@ -356,10 +360,7 @@ where
     let dht_outbound_layer = dht.outbound_middleware_layer();
 
     // DHT RPC service is only available for communication nodes
-    if comms
-        .node_identity()
-        .has_peer_features(PeerFeatures::COMMUNICATION_NODE)
-    {
+    if node_identity.has_peer_features(PeerFeatures::COMMUNICATION_NODE) {
         comms = comms.add_rpc_server(RpcServer::new().add_service(dht.rpc_service()));
     }
 
@@ -542,7 +543,9 @@ impl ServiceInitializer for P2pInitializer {
         let (comms, dht) = configure_comms_and_dht(builder, &config, connector).await?;
 
         let peers = Self::try_parse_seed_peers(&config.peer_seeds)?;
-        add_all_peers(&comms.peer_manager(), &comms.node_identity(), peers).await?;
+        let peer_manager = comms.peer_manager();
+        let node_identity = comms.node_identity();
+        add_all_peers(&peer_manager, &node_identity, peers).await?;
 
         let peers = Self::try_resolve_dns_seeds(
             config.dns_seeds_name_server,
@@ -550,10 +553,10 @@ impl ServiceInitializer for P2pInitializer {
             config.dns_seeds_use_dnssec,
         )
         .await?;
-        add_all_peers(&comms.peer_manager(), &comms.node_identity(), peers).await?;
+        add_all_peers(&peer_manager, &node_identity, peers).await?;
 
         context.register_handle(comms.connectivity());
-        context.register_handle(comms.peer_manager());
+        context.register_handle(peer_manager);
         context.register_handle(comms);
         context.register_handle(dht);
 
