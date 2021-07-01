@@ -58,8 +58,8 @@ pub struct Sha3DifficultyComparer {}
 impl ChainStrengthComparer for Sha3DifficultyComparer {
     fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
         a.accumulated_data()
-            .accumulated_blake_difficulty
-            .cmp(&b.accumulated_data().accumulated_blake_difficulty)
+            .accumulated_sha_difficulty
+            .cmp(&b.accumulated_data().accumulated_sha_difficulty)
     }
 }
 

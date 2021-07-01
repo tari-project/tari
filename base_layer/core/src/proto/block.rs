@@ -113,7 +113,7 @@ impl From<BlockHeaderAccumulatedData> for proto::BlockHeaderAccumulatedData {
         Self {
             achieved_difficulty: source.achieved_difficulty.into(),
             accumulated_monero_difficulty: source.accumulated_monero_difficulty.into(),
-            accumulated_blake_difficulty: source.accumulated_blake_difficulty.into(),
+            accumulated_sha_difficulty: source.accumulated_sha_difficulty.into(),
             target_difficulty: source.target_difficulty.into(),
             total_kernel_offset: source.total_kernel_offset.to_vec(),
             hash: source.hash,
@@ -135,7 +135,7 @@ impl TryFrom<proto::BlockHeaderAccumulatedData> for BlockHeaderAccumulatedData {
             achieved_difficulty: source.achieved_difficulty.into(),
             total_accumulated_difficulty: accumulated_difficulty,
             accumulated_monero_difficulty: source.accumulated_monero_difficulty.into(),
-            accumulated_blake_difficulty: source.accumulated_blake_difficulty.into(),
+            accumulated_sha_difficulty: source.accumulated_sha_difficulty.into(),
             target_difficulty: source.target_difficulty.into(),
             total_kernel_offset: BlindingFactor::from_bytes(source.total_kernel_offset.as_slice())
                 .map_err(|err| format!("Invalid value for total_kernel_offset: {}", err))?,

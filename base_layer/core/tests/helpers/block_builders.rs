@@ -190,7 +190,7 @@ pub fn create_genesis_block_with_coinbase_value(
             achieved_difficulty: 1.into(),
             total_accumulated_difficulty: 1,
             accumulated_monero_difficulty: 1.into(),
-            accumulated_blake_difficulty: 1.into(),
+            accumulated_sha_difficulty: 1.into(),
             target_difficulty: 1.into(),
         })
         .unwrap(),
@@ -227,7 +227,7 @@ pub fn create_genesis_block_with_utxos(
             achieved_difficulty: 1.into(),
             total_accumulated_difficulty: 1,
             accumulated_monero_difficulty: 1.into(),
-            accumulated_blake_difficulty: 1.into(),
+            accumulated_sha_difficulty: 1.into(),
             target_difficulty: 1.into(),
         })
         .unwrap(),

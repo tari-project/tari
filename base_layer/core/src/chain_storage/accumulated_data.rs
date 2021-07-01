@@ -239,12 +239,11 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
         let (monero_diff, blake_diff) = match achieved_target.pow_algo() {
             PowAlgorithm::Monero => (
                 previous_accum.accumulated_monero_difficulty + achieved_target.achieved(),
-                previous_accum.accumulated_blake_difficulty,
+                previous_accum.accumulated_sha_difficulty,
             ),
-            PowAlgorithm::Blake => unimplemented!(),
             PowAlgorithm::Sha3 => (
                 previous_accum.accumulated_monero_difficulty,
-                previous_accum.accumulated_blake_difficulty + achieved_target.achieved(),
+                previous_accum.accumulated_sha_difficulty + achieved_target.achieved(),
             ),
         };
 
@@ -259,7 +258,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             achieved_difficulty: achieved_target.achieved(),
             total_accumulated_difficulty: monero_diff.as_u64() as u128 * blake_diff.as_u64() as u128,
             accumulated_monero_difficulty: monero_diff,
-            accumulated_blake_difficulty: blake_diff,
+            accumulated_sha_difficulty: blake_diff,
             target_difficulty: achieved_target.target(),
         };
         trace!(
@@ -267,7 +266,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             "Calculated: Tot_acc_diff {}, Monero {}, SHA3 {}",
             result.total_accumulated_difficulty.to_formatted_string(&Locale::en),
             result.accumulated_monero_difficulty,
-            result.accumulated_blake_difficulty,
+            result.accumulated_sha_difficulty,
         );
         Ok(result)
     }
@@ -280,11 +279,12 @@ pub struct BlockHeaderAccumulatedData {
     pub total_kernel_offset: BlindingFactor,
     pub achieved_difficulty: Difficulty,
     pub total_accumulated_difficulty: u128,
-    /// The total accumulated difficulty for each proof of work algorithms for all blocks since Genesis,
+    /// The total accumulated difficulty for monero proof of work for all blocks since Genesis,
     /// but not including this block, tracked separately.
     pub accumulated_monero_difficulty: Difficulty,
-    // TODO: Rename #testnetreset
-    pub accumulated_blake_difficulty: Difficulty,
+    /// The total accumulated difficulty for SHA3 proof of work for all blocks since Genesis,
+    /// but not including this block, tracked separately.
+    pub accumulated_sha_difficulty: Difficulty,
     /// The target difficulty for solving the current block using the specified proof of work algorithm.
     pub target_difficulty: Difficulty,
 }
@@ -305,7 +305,7 @@ impl Display for BlockHeaderAccumulatedData {
             "Accumulated monero difficulty: {}",
             self.accumulated_monero_difficulty
         )?;
-        writeln!(f, "Accumulated sha3 difficulty: {}", self.accumulated_blake_difficulty)?;
+        writeln!(f, "Accumulated sha3 difficulty: {}", self.accumulated_sha_difficulty)?;
         writeln!(f, "Target difficulty: {}", self.target_difficulty)?;
         Ok(())
     }
