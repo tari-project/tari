@@ -49,6 +49,7 @@ use tui::{
 };
 use crate::ui::components::assets_tab::AssetsTab;
 use crate::ui::components::events_component::EventsComponent;
+use crate::ui::components::tokens_component::TokensComponent;
 
 pub const LOG_TARGET: &str = "wallet::ui::app";
 pub const CUSTOM_BASE_NODE_PUBLIC_KEY_KEY: &str = "console_wallet_custom_base_node_public_key";
@@ -91,6 +92,7 @@ impl<B: Backend> App<B> {
             .add("Receive".into(), Box::new(ReceiveTab::new()))
             .add("Network".into(), Box::new(NetworkTab::new(base_node_selected)))
             .add("Assets".into(), Box::new(AssetsTab::new()))
+            .add("Tokens".into(), Box::new(TokensComponent::new()))
             .add("Events".into(), Box::new(EventsComponent::new()));
 
 
@@ -170,7 +172,7 @@ impl<B: Backend> App<B> {
             .split(max_width_layout[0]);
         let title_halves = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+            .constraints([Constraint::Percentage(65), Constraint::Percentage(35)].as_ref())
             .split(title_chunks[0]);
 
         self.tabs.draw_titles(f, title_halves[0]);

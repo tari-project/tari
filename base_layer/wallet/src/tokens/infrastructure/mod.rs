@@ -20,12 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod asset_manager;
-pub(crate) use asset_manager::AssetManager;
+use crate::tokens::Token;
 
-mod asset;
-pub use asset::Asset;
+pub mod initializer;
+pub mod token_manager_service;
 
-mod asset_manager_handle;
-pub use asset_manager_handle::AssetManagerHandle;
-pub(crate) mod infrastructure;
+pub enum TokenManagerRequest {
+    ListOwned{},
+}
+
+pub enum TokenManagerResponse {
+    ListOwned{ tokens : Vec<Token>},
+}

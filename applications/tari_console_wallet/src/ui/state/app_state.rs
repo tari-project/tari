@@ -66,6 +66,7 @@ use tari_wallet::{
 };
 use tokio::sync::{watch, RwLock};
 use tari_wallet::assets::Asset;
+use tari_wallet::tokens::Token;
 use tari_core::transactions::transaction_protocol::TxId;
 use std::collections::VecDeque;
 
@@ -135,6 +136,15 @@ impl AppState {
     pub async fn refresh_assets_state(&mut self) -> Result<(), UiError> {
         let mut inner = self.inner.write().await;
         inner.refresh_assets_state().await?;
+        if let Some(data) = inner.get_updated_app_state() {
+            self.cached_data = data;
+        }
+        Ok(())
+    }
+
+    pub async fn refresh_tokens_state(&mut self) -> Result<(), UiError> {
+        let mut inner = self.inner.write().await;
+        inner.refresh_tokens_state().await?;
         if let Some(data) = inner.get_updated_app_state() {
             self.cached_data = data;
         }
@@ -253,6 +263,11 @@ impl AppState {
     pub fn get_owned_assets(&self) -> &[Asset] {
         self.cached_data.owned_assets.as_slice()
     }
+
+    pub fn get_owned_tokens(&self) -> &[Token] {
+        self.cached_data.owned_tokens.as_slice()
+    }
+
     pub fn get_contacts(&self) -> &[UiContact] {
         self.cached_data.contacts.as_slice()
     }
@@ -604,6 +619,13 @@ impl AppStateInner {
         Ok(())
     }
 
+    pub async fn refresh_tokens_state(&mut self) -> Result<(), UiError> {
+        let token_utxos = self.wallet.token_manager.list_owned_tokens().await?;
+        self.data.owned_tokens = token_utxos;
+        self.updated = true;
+        Ok(())
+    }
+
     pub async fn refresh_balance(&mut self) -> Result<(), UiError> {
         let balance = self.wallet.output_manager_service.get_balance().await?;
         self.data.balance = balance;
@@ -804,6 +826,7 @@ impl AppStateInner {
 #[derive(Clone)]
 struct AppStateData {
     owned_assets: Vec<Asset>,
+    owned_tokens: Vec<Token>,
     pending_txs: Vec<CompletedTransaction>,
     completed_txs: Vec<CompletedTransaction>,
     confirmations: HashMap<TxId, u64>,
@@ -876,6 +899,7 @@ impl AppStateData {
 
         AppStateData {
             owned_assets: Vec::new(),
+            owned_tokens: Vec::new(),
             pending_txs: Vec::new(),
             completed_txs: Vec::new(),
             confirmations: HashMap::new(),

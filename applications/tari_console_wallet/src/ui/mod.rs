@@ -62,6 +62,8 @@ pub fn run(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitCodes> {
             app.app_state.refresh_connected_peers_state().await?;
             trace!(target: LOG_TARGET, "Refreshing assets");
             app.app_state.refresh_assets_state().await?;
+            trace!(target: LOG_TARGET, "Refreshing tokens");
+            app.app_state.refresh_tokens_state().await?;
             app.app_state.start_event_monitor(app.notifier.clone()).await;
             Result::<_, UiError>::Ok(())
         })

@@ -211,7 +211,7 @@ bitflags! {
     pub struct OutputFlags: u8 {
         /// Output is a coinbase output, must not be spent until maturity
         const COINBASE_OUTPUT = 0b0000_0001;
-        const NON_FUNGIBLE = 0b0000_1010;
+        const NON_FUNGIBLE = 0b0000_1000;
         // TODO: separate these flags
         const ASSET_REGISTRATION = 0b0000_1010; // Registration and also non-fungible
         const MINT_NON_FUNGIBLE = 0b0000_1100; // Mint and non-fungible

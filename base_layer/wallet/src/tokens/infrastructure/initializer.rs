@@ -23,8 +23,8 @@
 use crate::output_manager_service::storage::database::OutputManagerBackend;
 
 
-use crate::assets::AssetManagerHandle;
-use crate::assets::infrastructure::AssetManagerService;
+use crate::tokens::TokenManagerHandle;
+use crate::tokens::infrastructure::token_manager_service::TokenManagerService;
 use log::*;
 
 use futures::{future, Future};
@@ -43,13 +43,13 @@ use crate::output_manager_service::handle::OutputManagerHandle;
 
 const LOG_TARGET: &str = "wallet::assets::infrastructure::initializer";
 
-pub struct AssetManagerServiceInitializer<T>
+pub struct TokenManagerServiceInitializer<T>
     where T: OutputManagerBackend
 {
     backend: Option<T>
 }
 
-impl<T> AssetManagerServiceInitializer<T>
+impl<T> TokenManagerServiceInitializer<T>
     where T: OutputManagerBackend + 'static
 {
     pub fn new(backend: T
@@ -61,7 +61,7 @@ impl<T> AssetManagerServiceInitializer<T>
     }
 }
 
-impl<T> ServiceInitializer for AssetManagerServiceInitializer<T>
+impl<T> ServiceInitializer for TokenManagerServiceInitializer<T>
     where T: OutputManagerBackend + 'static
 {
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
@@ -70,7 +70,7 @@ impl<T> ServiceInitializer for AssetManagerServiceInitializer<T>
 
         let (sender, receiver) = reply_channel::unbounded();
 
-        let handle = AssetManagerHandle::new(sender);
+        let handle = TokenManagerHandle::new(sender);
         context.register_handle(handle);
 
         let backend = self.backend.take().expect("this expect pattern is dumb");
@@ -79,13 +79,13 @@ impl<T> ServiceInitializer for AssetManagerServiceInitializer<T>
 
             let output_manager  = handles.expect_handle::<OutputManagerHandle>();
             // let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
-            let service = AssetManagerService::new(backend, output_manager);
+            let service = TokenManagerService::new(backend, output_manager);
 
             let running = service.start(handles.get_shutdown_signal(), receiver);
 
             futures::pin_mut!(running);
             future::select(running, handles.get_shutdown_signal()).await;
-            info!(target: LOG_TARGET, "Asset Manager Service shutdown");
+            info!(target: LOG_TARGET, "Token Manager Service shutdown");
         });
         future::ready(Ok(()))
     }

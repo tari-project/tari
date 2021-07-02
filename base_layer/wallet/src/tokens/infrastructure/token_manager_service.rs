@@ -21,9 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    assets::{
-        infrastructure::{AssetManagerRequest, AssetManagerResponse},
-        AssetManager,
+    tokens::{
+        infrastructure::{TokenManagerRequest, TokenManagerResponse},
+        TokenManager,
     },
     error::WalletError,
     output_manager_service::storage::{
@@ -41,26 +41,26 @@ use crate::types::MockPersistentKeyManager;
 
 const LOG_TARGET: &str = "wallet::assets::infrastructure::asset_manager_service";
 
-pub struct AssetManagerService<T: OutputManagerBackend + 'static> {
-    manager: AssetManager<T, MockPersistentKeyManager>,
+pub struct TokenManagerService<T: OutputManagerBackend + 'static> {
+    manager: TokenManager<T>,
 }
 
-impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
+impl<T: OutputManagerBackend + 'static> TokenManagerService<T> {
     pub fn new(backend: T, output_manager: OutputManagerHandle) -> Self {
         Self {
-            manager: AssetManager::<T,_>::new(backend, output_manager, MockPersistentKeyManager::new()),
+            manager: TokenManager::<T>::new(backend, output_manager),
         }
     }
 
     pub async fn start(
         mut self,
         mut shutdown_signal: ShutdownSignal,
-        request_stream: Receiver<AssetManagerRequest, Result<AssetManagerResponse, WalletError>>,
+        request_stream: Receiver<TokenManagerRequest, Result<TokenManagerResponse, WalletError>>,
     ) -> Result<(), WalletError> {
         let request_stream = request_stream.fuse();
         pin_mut!(request_stream);
 
-        info!(target: LOG_TARGET, "Asset Manager Service started");
+        info!(target: LOG_TARGET, "Token Manager Service started");
         loop {
             futures::select! {
                 request_context = request_stream.select_next_some() => {
@@ -76,11 +76,11 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
                     });
                 },
                 _ = shutdown_signal => {
-                    info!(target: LOG_TARGET, "Asset manager service shutting down because it received the shutdown signal");
+                    info!(target: LOG_TARGET, "Token manager service shutting down because it received the shutdown signal");
                     break;
                 }
                 complete => {
-                    info!(target: LOG_TARGET, "Asset manager service shutting down");
+                    info!(target: LOG_TARGET, "Token manager service shutting down");
                     break;
                 }
             }
@@ -88,23 +88,12 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
         Ok(())
     }
 
-    pub async fn handle_request(&mut self, request: AssetManagerRequest) -> Result<AssetManagerResponse, WalletError> {
+    pub async fn handle_request(&mut self, request: TokenManagerRequest) -> Result<TokenManagerResponse, WalletError> {
         match request {
-            AssetManagerRequest::ListOwned { .. } => Ok(AssetManagerResponse::ListOwned {
-                assets: self.manager.list_owned().await?,
+            TokenManagerRequest::ListOwned { .. } => Ok(TokenManagerResponse::ListOwned {
+                tokens: self.manager.list_owned().await?,
             }),
-            AssetManagerRequest::CreateRegistrationTransaction {name} => {
-                let (tx_id, transaction) =self.manager.create_registration_transaction(name).await?;
-                Ok(AssetManagerResponse::CreateRegistrationTransaction {transaction: Box::new(transaction), tx_id})
-            }
-            AssetManagerRequest::GetOwnedAsset { public_key } => {
-                let asset = self.manager.get_owned_asset_by_pub_key(public_key).await?;
-                Ok(AssetManagerResponse::GetOwnedAsset { asset: Box::new(asset)})
-            },
-            AssetManagerRequest::CreateMintingTransaction { asset_public_key, asset_owner_commitment, unique_ids } => {
-                let (tx_id, transaction) =self.manager.create_minting_transaction(*asset_public_key, *asset_owner_commitment,  unique_ids).await?;
-                Ok(AssetManagerResponse::CreateMintingTransaction {transaction: Box::new(transaction), tx_id})
-            }
+
         }
     }
 }

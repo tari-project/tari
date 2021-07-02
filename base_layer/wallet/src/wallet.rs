@@ -81,6 +81,8 @@ use crate::assets::{AssetManagerHandle};
 
 use crate::assets::infrastructure::initializer::AssetManagerServiceInitializer;
 use tari_core::transactions::transaction_protocol::TxId;
+use crate::tokens::TokenManagerHandle;
+use crate::tokens::infrastructure::initializer::TokenManagerServiceInitializer;
 
 const LOG_TARGET: &str = "wallet";
 
@@ -103,6 +105,7 @@ where
     pub base_node_service: BaseNodeServiceHandle,
     pub utxo_scanner_service: UtxoScannerHandle,
     pub asset_manager: AssetManagerHandle,
+    pub token_manager: TokenManagerHandle,
     pub db: WalletDatabase<T>,
     pub factories: CryptoFactories,
     #[cfg(feature = "test_harness")]
@@ -196,7 +199,8 @@ where
                 wallet_database.clone(),
                 factories.clone(),
                 node_identity.clone(),
-            )).add_initializer(AssetManagerServiceInitializer::new(output_manager_backend));
+            )).add_initializer(AssetManagerServiceInitializer::new(output_manager_backend.clone()))
+            .add_initializer(TokenManagerServiceInitializer::new(output_manager_backend));
 
         let mut handles = stack.build().await?;
 
@@ -214,6 +218,7 @@ where
         let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
         let utxo_scanner_service_handle = handles.expect_handle::<UtxoScannerHandle>();
         let asset_manager_handle = handles.expect_handle::<AssetManagerHandle>();
+        let token_manager_handle = handles.expect_handle::<TokenManagerHandle>();
 
         persist_one_sided_payment_script_for_node_identity(&mut output_manager_handle, comms.node_identity())
             .await
@@ -243,6 +248,7 @@ where
             db: wallet_database,
             factories,
             asset_manager: asset_manager_handle,
+            token_manager: token_manager_handle,
             #[cfg(feature = "test_harness")]
             transaction_backend: transaction_backend_handle,
             _u: PhantomData,

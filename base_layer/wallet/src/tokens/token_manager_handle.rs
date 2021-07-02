@@ -20,12 +20,36 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod asset_manager;
-pub(crate) use asset_manager::AssetManager;
+use crate::{
+    tokens::{
+        infrastructure::{TokenManagerRequest, TokenManagerResponse},
+        Token,
+    },
+    error::WalletError,
+};
+use tari_service_framework::{reply_channel::SenderService, Service};
 
-mod asset;
-pub use asset::Asset;
+use tari_core::transactions::transaction::Transaction;
+use tari_core::transactions::transaction_protocol::TxId;
+use tari_core::transactions::types::{PublicKey, Commitment};
 
-mod asset_manager_handle;
-pub use asset_manager_handle::AssetManagerHandle;
-pub(crate) mod infrastructure;
+#[derive(Clone)]
+pub struct TokenManagerHandle {
+    handle: SenderService<TokenManagerRequest, Result<TokenManagerResponse, WalletError>>,
+}
+
+impl TokenManagerHandle {
+
+    pub fn new(sender: SenderService<TokenManagerRequest, Result<TokenManagerResponse, WalletError>>) -> Self {
+        Self{handle: sender}
+    }
+
+
+    pub async fn list_owned_tokens(&mut self) -> Result<Vec<Token>, WalletError> {
+        match self.handle.call(TokenManagerRequest::ListOwned {}).await?? {
+            TokenManagerResponse::ListOwned { tokens } => Ok(tokens),
+            // _ => Err(WalletError::UnexpectedApiResponse{ method: "list_owned_tokens".to_string(), api: "TokenManagerService".to_string()}),
+        }
+
+    }
+}
