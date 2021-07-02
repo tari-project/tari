@@ -157,4 +157,4 @@ The Tari Mining Worker:
 [mining worker]: Glossary.md#mining-worker
 [block]: Glossary.md#block
 [mempool]: Glossary.md#mempool
-[cut-through]: RFC-0140_Syncing_and_seeding.html#pruning-and-cut-through
+[cut-through]: Glossary.md#cut-through

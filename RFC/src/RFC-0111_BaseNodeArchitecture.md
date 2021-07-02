@@ -4,13 +4,13 @@
 
 ![status: draft](theme/images/status-draft.svg)
 
-**Maintainer(s)**: [Cayle Sharrock](https://github.com/CjS77)
+**Maintainer(s)**: [Cayle Sharrock](https://github.com/CjS77), [Philip Robinson](https://github.com/philipr-za)
 
 # Licence
 
 [ The 3-Clause BSD Licence](https://opensource.org/licenses/BSD-3-Clause).
 
-Copyright 2019 The Tari Development Community
+Copyright 2021 The Tari Development Community
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 following conditions are met:
@@ -61,40 +61,62 @@ The major components are separated into separate modules. Each module exposes a 
 
 ### Base Node Service
 
-The Base Node Service is an instantiation of a Tari Comms Service, which subscribes to and handles specific messages
-coming from the P2P Tari network via the Comms Module of a live Tari communications node. The Base Node Service's job is
-to delegate the jobs required by those messages to its sub-modules, consisting primarily of the Transaction Validation
-Service, the Block Validation Service and the Block synchronisation service, using an asynchronous Request-Response
-pattern.
+The Base Node Service fields requests for the local nodes chain state and also accepts newly mined blocks that are 
+propagating across the network. The service subscribes to NewBlock and BaseNodeRequest messages via the P2P comms 
+interface. These messages are propagated across the P2P network and can also be received directly from other nodes. The 
+service also provides a local interface to its functionality via an asynchronous Request-Response API. 
 
-The Base Node Service will pass messages back to the P2P network via the Comms Module, based on the results of its
-actions.
+The P2P message types this service subscribes to are: 
 
-The primary messages that a Base Node will subscribe to are:
-
-* **NewTransaction.** A New Transaction is being propagated over the network. If it has not seen the transaction before,
-  the Base Node will validate the transaction and, if it is valid:
-  * add it to its mempool;
-  * pass the transaction on to peers.
-
-  Otherwise, the transaction is dropped.
-* **NewBlock.** A newly mined block is being propagated over the network. If the node has not seen the block before, the
+* **NewBlock:** A newly mined block is being propagated over the network. If the node has not seen the block before, the
   node will validate it. Its action depends on the validation outcome:
   * _Invalid block_ - drop the block.
   * _Valid block appending to the longest chain_ - add the block to the local state; propagate the block to peers.
   * _Valid block forking off main chain_ - add the block to the local state; propagate the block to peers.
   * _Valid block building off unknown block_ - add the orphan block to the local state.
 
-* **Sync Request.** A peer is synchronizing state and is asking for block data. The node can decide to:
-  * Ignore or ban the peer (based on previous behaviour heuristics).
-  * Try and provide the data, returning an appropriate response. Note that most nodes can only offer block data up until
-    their pruning horizon. Only full archival nodes can return the full block history. Refer to
-    [RFC-0140](RFC-0140_Syncing_and_seeding.md) for more details.
+* **BaseNodeServiceRequest:** A collection of requests for chain data from the node.
 
-The validation procedures are complex and are thus encapsulated in their own sub-services. These services hold
-references to the blockchain state API, the mempool API, a range proof service and whatever other modules they need to
-complete their work. Each validation module has a single primary method, `validate_xxx()`, which takes in the
-transaction or block to be validated and returns a future that resolves once the validation task is complete.
+### Base Node State Machine Service
+
+This service is essentially a finite state machine that synchronises its blockchain state with its peers. When the state 
+machine decides it needs to synchronize its chain state with a peer it uses the Base Node Sync RPC service to do so. The
+RPC service allows for streaming of headers and blocks in a far more efficient manner than using the P2P messaging.
+
+This service does not provide a local API but does provide an event stream and Status Info watch channel for other 
+modules to subscribe to.
+
+### Mempool and Mempool Sync Services
+
+The mempool service tracks valid transactions that the node knows about, but that have not yet been included in a
+block. The mempool is ephemeral and non-consensus critical, and as such may be a memory-only data structure. Maintaining
+a large mempool is far more important for Base Nodes serving miners than those serving wallets. The mempool structure 
+itself is a set of hash maps as described in [RFC-0190]
+
+When the node reboots the Mempool sync service will contact peers and sync valid mempool transactions from them. After 
+it has synced this service runs to field such requests from other peers.
+
+The Mempool service handles Mempool Service Requests which it can receive from the P2P comms stack via its 
+subscriptions, via the Mempool RPC service and via an internal Request-Response API. All these interfaces provide the 
+following calls:
+- *SubmitTransaction*: Submit a transaction to be validated and included in the mempool. If the transaction is invalid 
+  it will be rejected with a reason.
+- *GetTxStateByExcess*: Request the state of a transaction if it exists in the mempool using its excess signature
+- *GetStats* and *getState*: Request information about the current status of the mempool.
+
+### Liveness Service
+
+The Liveness service can be used by other modules to test the liveness of a specific peer and also periodically tests a 
+set of its connected peers for liveness. This service subscribes to `Ping` P2P messages and responds with `Pong`s. The 
+service gathers data about the monitored peer's liveness such as its latency. The `Ping` and Pong` messages also contain
+a copy of this nodes current Chain Metadata for use by the receiving nodes Chain Metadata Service.
+
+### Chain Metadata Service
+
+The Chain Metadata Service maintains this nodes current Chain Metadata state to be sent out via `Ping` and `Pong` 
+messages by the Liveness service. This node also monitors the Chain Metadata received from other peers in the `Ping` and
+`Pong` messages received by the Liveness service. Once a full round of `Pong` messages are received this service will 
+emit this data as an event which the Base Node State Machine monitors.
 
 ### Distributed Hash Table (DHT) Service
 
@@ -112,47 +134,41 @@ will do the rest.
 When a node wishes to query a peer for its peer list, this request will be handled by the `DHTService`. It will
 communicate with its Comms module's Peer Manager, and provide that information to the peer.
 
-### Blockchain State Module
+### Blockchain Database
 
-The blockchain state module is responsible for providing a persistent storage solution for blockchain state data. For
-Tari, this is delivered using the Lightning Memory-mapped Database (LMDB). LMDB is highly performant, intelligent and
+The blockchain database module is responsible for providing a persistent storage solution for blockchain state data. 
+This module is used by the Base Node Service, Base Node State Machine, Mempool Service and the RPC servers. For Tari, 
+this is delivered using the Lightning Memory-mapped Database (LMDB). LMDB is highly performant, intelligent and
 straightforward to use. An LMDB is essentially treated as a hash map data structure that transparently handles
-memory caching, disk Input/Output (I/O) and multi-threaded access.
+memory caching, disk Input/Output (I/O) and multi-threaded access. This module is shared by many services and so must
+be thread-safe.
 
-The blockchain module is able to run as a standalone service, but must be thread-safe. Block and transaction validation
-requests are futures-based. These are asynchronous requests, which means that multiple validation requests can and
-should be handled in parallel, in separate threads. Initially, all the logic for a single block or transaction
-validation can be executed in sequence, wrapped inside a single future. However, there is scope to optimise this in
-future; for example: Validating a block entails checking the proof-of-work (very slow), checking signatures (fast, but
-many of them), and checking the accounting (slow). Each of these sub-tasks could also be spun off as a future, with a
-master future co-ordinating the sub-futures and assembling the final results.
+## Communication Interfaces
 
-Tokio is becoming the _de facto_ standard for asynchronous programming in Rust.
+### P2P communications
+The Tari Peer to Peer messaging protocol is defined in [RFC-0172]. It is a fire-and-forget style protocol. Messages can 
+be sent directly to a known peer, sent indirectly to an offline or unknown peer and broadcast to a set of peers. When
+a message is sent to specific peer it is propagated to the peers local neighbourhood and stored by those peers until it
+comes online to receive the message. Messages that are broadcast will be propagated around the network until the whole
+network has received them, they are not stored.
 
-Tokio's default task executor provides multi-threaded work-stealing work queues and CPU-bound worker threads out of the
-box. This is a good fit for the type of work that base nodes must perform. In addition, the
-[Tower project](https://github.com/tower-rs) provides a set of traits and middleware that will be very useful in Tari
-services, and so it is recommended to follow the Services pattern as used by that project.
+### RPC Services
+Fire-and-forget messaging is not efficient for point to point communications between online peers. For these applications
+the Base Node provides RPC services that present an API for clients to interact with. These RPC services provide a
+Request-Response interface defined by Profobuf for clients to use. RPC also allows for streaming of data which is much
+more efficient when transferring large amounts of data.
 
-This RFC proposes that the 0.1 version of tokio is used in the Tari project until the standard
-[futures](https://doc.rust-lang.org/std/future/index.html) library has stabilised before making a switch.
-
-
-### Mempool Module
-
-The mempool module tracks (valid) transactions that the node knows about, but that have not yet been included in a
-block. The mempool is ephemeral and non-consensus critical, and as such may be a memory-only data structure. Maintaining
-a large mempool is far more important for Base Nodes serving miners than those serving wallets. A mempool will slowly
-rebuild after a node reboots.
-
-That said, the mempool module must be thread safe. The Tari mempool module handles requests in the same way as the
-Blockchain state module: via futures. The mempool structure itself is a set of hash maps as described in [RFC-0190]. For
-performance reasons, it may be worthwhile using a [concurrent hash map] implementation.
+Examples of RPC services running in 
+Base Node are:
+  - **Wallet RPC service**: An RPC interface containing methods used by wallets to submit and query transactions on a 
+    Base Node
+  - **Base Node Sync RPC Service**: Used by the Base Node State Machine Service to synchronize blocks
+  - **Mempool RPC Service**: Provides the Mempool Service API via RPC
 
 ### gRPC Interface
 
-Base Nodes need to provide a local communication interface in addition to the P2P communication interface. This is
-best achieved using [gRPC]. The Base Node gRPC interface provides access to the public API methods of the Base Node
+Base Nodes need to provide a local communication interface in addition to the P2P and RPC communication interface. This 
+is best achieved using [gRPC]. The Base Node gRPC interface provides access to the public API methods of the Base Node
 Service, the mempool module and the blockchain state module, as discussed above.
 
 gRPC access is useful for tools such as local User Interfaces (UIs) to a running Base Node; client wallets running on
@@ -174,13 +190,11 @@ A non-exhaustive list of methods the base node module API will expose includes:
     * validating and adding a (validated) new block to the state, and informing of the result (orphaned, fork, reorg, etc.).
 * Mempool calls
   * The number of unconfirmed transactions
-  * The number of orphaned transactions
   * Returning a list of transaction ranked by some criterion (of interest to miners)
   * The current size of the mempool (in transaction weight)
 * Block and transaction validation calls
 * Block synchronisation calls
 
-
-[concurrent hash map]: https://crates.io/crates/chashmap
 [gRPC]: https://grpc.io/
 [RFC-0190]: RFC-0190_Mempool.md
+[RFC-0172]: RFC-0172_PeerToPeerMessagingProtocol.md
