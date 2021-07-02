@@ -14,7 +14,7 @@ use aes_gcm::Aes256Gcm;
 use tari_core::transactions::transaction_protocol::TxId;
 use crate::output_manager_service::storage::sqlite_db::AeadError;
 
-#[derive(Clone, Debug, Queryable, Identifiable, PartialEq)]
+#[derive(Clone, Debug, Queryable, QueryableByName, Identifiable, PartialEq)]
 #[table_name = "outputs"]
 pub struct OutputSql {
     pub id: i32,
@@ -64,7 +64,8 @@ impl OutputSql {
 
     pub fn index_by_feature_flags(
         flags: OutputFlags, conn : &SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
-        Ok(outputs::table.filter(columns::flags.eq(flags.bits() as i32)).load(conn)?)
+        let res = diesel::sql_query("SELECT * FROM outputs where flags & $1 = $1 ORDER BY id;").bind::<diesel::sql_types::Integer, _>(flags.bits() as i32).load(conn)?;
+        Ok(res)
     }
 
     /// Find a particular Output, if it exists

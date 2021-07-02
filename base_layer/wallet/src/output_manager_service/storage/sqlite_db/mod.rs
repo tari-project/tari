@@ -36,11 +36,13 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     script::{ExecutionStack, TariScript},
     tari_utilities::{
-        hex::{from_hex, Hex},
         ByteArray,
+        hex::{from_hex, Hex},
     },
 };
 
+pub(crate) use new_output_sql::NewOutputSql;
+pub(crate) use output_sql::OutputSql;
 use tari_core::{
     tari_utilities::hash::Hashable,
     transactions::{
@@ -50,6 +52,7 @@ use tari_core::{
         types::{Commitment, CryptoFactories, PrivateKey, PublicKey},
     },
 };
+use tari_core::transactions::transaction::{AssetOutputFeatures, MintNonFungibleFeatures};
 
 use crate::{
     output_manager_service::{
@@ -72,13 +75,12 @@ use crate::{
     storage::sqlite_utilities::WalletDbConnection,
     util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
 };
+use crate::schema::outputs::columns;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database::sqlite_db";
 
 mod output_sql;
-use crate::schema::outputs::columns;
-pub(crate) use output_sql::OutputSql;
-use tari_core::transactions::transaction::{AssetOutputFeatures, MintNonFungibleFeatures};
+mod new_output_sql;
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
@@ -868,70 +870,6 @@ fn pending_transaction_outputs_from_sql_outputs(
     })
 }
 
-/// This struct represents an Output in the Sql database. A distinct struct is required to define the Sql friendly
-/// equivalent datatypes for the members.
-#[derive(Clone, Debug, Insertable, PartialEq)]
-#[table_name = "outputs"]
-struct NewOutputSql {
-    commitment: Option<Vec<u8>>,
-    spending_key: Vec<u8>,
-    value: i64,
-    flags: i32,
-    maturity: i64,
-    status: i32,
-    tx_id: Option<i64>,
-    hash: Option<Vec<u8>>,
-    script: Vec<u8>,
-    input_data: Vec<u8>,
-    height: i64,
-    script_private_key: Vec<u8>,
-    script_offset_public_key: Vec<u8>,
-    metadata: Option<Vec<u8>>,
-    features_asset_public_key: Option<Vec<u8>>,
-}
-
-impl NewOutputSql {
-    pub fn new(output: DbUnblindedOutput, status: OutputStatus, tx_id: Option<TxId>) -> Self {
-        Self {
-            commitment: Some(output.commitment.to_vec()),
-            spending_key: output.unblinded_output.spending_key.to_vec(),
-            value: (u64::from(output.unblinded_output.value)) as i64,
-            flags: output.unblinded_output.features.flags.bits() as i32,
-            maturity: output.unblinded_output.features.maturity as i64,
-            status: status as i32,
-            tx_id: tx_id.map(|i| i.as_u64() as i64),
-            hash: Some(output.hash),
-            script: output.unblinded_output.script.as_bytes(),
-            input_data: output.unblinded_output.input_data.as_bytes(),
-            height: output.unblinded_output.height as i64,
-            script_private_key: output.unblinded_output.script_private_key.to_vec(),
-            script_offset_public_key: output.unblinded_output.script_offset_public_key.to_vec(),
-            metadata: Some(output.unblinded_output.features.metadata),
-            features_asset_public_key: output.unblinded_output.features.asset.map(|a| a.public_key.to_vec()),
-        }
-    }
-
-    /// Write this struct to the database
-    pub fn commit(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
-        diesel::insert_into(outputs::table).values(self.clone()).execute(conn)?;
-        Ok(())
-    }
-}
-
-impl Encryptable<Aes256Gcm> for NewOutputSql {
-    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
-        self.spending_key = encrypt_bytes_integral_nonce(&cipher, self.spending_key.clone())?;
-        self.script_private_key = encrypt_bytes_integral_nonce(&cipher, self.script_private_key.clone())?;
-        Ok(())
-    }
-
-    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
-        self.spending_key = decrypt_bytes_integral_nonce(&cipher, self.spending_key.clone())?;
-        self.script_private_key = decrypt_bytes_integral_nonce(&cipher, self.script_private_key.clone())?;
-        Ok(())
-    }
-}
-
 /// Conversion from an DbUnblindedOutput to the Sql datatype form
 impl TryFrom<OutputSql> for DbUnblindedOutput {
     type Error = OutputManagerStorageError;
@@ -1497,7 +1435,7 @@ mod test {
     };
     use chrono::{Duration as ChronoDuration, Utc};
     use diesel::{Connection, SqliteConnection};
-    use rand::{distributions::Alphanumeric, rngs::OsRng, CryptoRng, Rng, RngCore};
+    use rand::{CryptoRng, distributions::Alphanumeric, Rng, RngCore, rngs::OsRng};
     use tari_crypto::{
         inputs,
         keys::{PublicKey as PublicKeyTrait, SecretKey},
@@ -1517,7 +1455,6 @@ mod test {
             models::DbUnblindedOutput,
             sqlite_db::{
                 KeyManagerStateSql,
-                NewOutputSql,
                 OutputManagerSqliteDatabase,
                 OutputSql,
                 OutputStatus,
@@ -1528,6 +1465,7 @@ mod test {
         storage::sqlite_utilities::WalletDbConnection,
         util::encryption::Encryptable,
     };
+    use crate::output_manager_service::storage::sqlite_db::new_output_sql::NewOutputSql;
 
     pub fn random_string(len: usize) -> String {
         iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()

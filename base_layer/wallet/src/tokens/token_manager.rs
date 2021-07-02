@@ -54,7 +54,11 @@ impl<T:OutputManagerBackend + 'static> TokenManager<T> {
         // These will include assets registrations
 
         debug!(target: LOG_TARGET, "Found {} owned outputs that contain tokens", outputs.len());
-        let assets: Vec<Token> = outputs.into_iter().map(|unblinded_output| {
+        let assets: Vec<Token> = outputs.into_iter().filter(|ub | {
+            // Filter out asset registrations that don't have a parent pub key
+            ub.unblinded_output.parent_public_key.is_some()
+        }).map(|unblinded_output| {
+
             convert_to_token(unblinded_output)
         }
         ).collect::<Result<_, _>>()?;
