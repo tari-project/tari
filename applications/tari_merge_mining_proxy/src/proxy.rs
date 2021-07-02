@@ -26,10 +26,10 @@ use crate::{
     error::MmProxyError,
 };
 use bytes::Bytes;
-use hyper::{service::Service, Body, Method, Request, Response, StatusCode, Uri};
+use hyper::{header::HeaderValue, service::Service, Body, Method, Request, Response, StatusCode, Uri};
 use json::json;
 use jsonrpc::error::StandardError;
-use reqwest::{header, ResponseBuilderExt, Url};
+use reqwest::{ResponseBuilderExt, Url};
 use serde_json as json;
 use std::{
     cmp,
@@ -645,19 +645,24 @@ impl InnerService {
     ) -> Result<(Request<Bytes>, Response<json::Value>), MmProxyError> {
         let monerod_uri = self.get_fully_qualified_monerod_url(request.uri())?;
 
+        let mut headers = request.headers().clone();
+        // Some public monerod setups (e.g. those that are reverse proxied by nginx) require the Host header.
+        // The mmproxy is the direct client of monerod and so is responsible for setting this header.
+        if let Some(host) = monerod_uri.host_str() {
+            let host: HeaderValue = match monerod_uri.port_or_known_default() {
+                Some(port) => format!("{}:{}", host, port).parse()?,
+                None => host.parse()?,
+            };
+            headers.insert("host", host);
+            debug!(
+                target: LOG_TARGET,
+                "Host header updated to match monerod_uri. Request headers: {:?}", headers
+            );
+        }
         let mut builder = self
             .http_client
             .request(request.method().clone(), monerod_uri.clone())
-            .headers(request.headers().clone());
-
-        // Some public monerod setups (e.g. those that are reverse proxied by nginx) require the Host header.
-        // The mmproxy is the direct client of monerod and so is responsible for setting this header.
-        if let Some(mut host) = monerod_uri.host_str().map(ToString::to_string) {
-            if let Some(port) = monerod_uri.port_or_known_default() {
-                host.push_str(&format!(":{}", port));
-            }
-            builder = builder.header(header::HOST, host);
-        }
+            .headers(headers);
 
         if self.config.monerod_use_auth {
             // Use HTTP basic auth. This is the only reason we are using `reqwest` over the standard hyper client.
