@@ -103,6 +103,7 @@ fn test_listening_lagging() {
         RandomXFactory::default(),
         consensus_manager.clone(),
         shutdown.to_signal(),
+        false,
     );
     wait_until_online(&mut runtime, &[&alice_node, &bob_node]);
 
@@ -164,6 +165,7 @@ fn test_event_channel() {
         RandomXFactory::default(),
         consensus_manager,
         shutdown.to_signal(),
+        false,
     );
 
     runtime.spawn(state_machine.run());
