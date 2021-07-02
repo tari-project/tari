@@ -219,7 +219,6 @@ class WalletProcess {
             },
             script: Buffer.from(row.script, "hex"),
             input_data: Buffer.from(row.input_data, "hex"),
-            height: parseInt(row.height),
             script_private_key: Buffer.from(row.script_private_key, "hex"),
             script_offset_public_key: Buffer.from(
               row.script_offset_public_key,

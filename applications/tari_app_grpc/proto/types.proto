@@ -166,8 +166,6 @@ message TransactionInput {
     bytes script = 4;
     // The script input data, if any
     bytes input_data = 5;
-    // The block height that the UTXO was mined
-    uint64 height = 6;
     // A signature with k_s, signing the script, input data, and mined height
     ComSignature script_signature = 7;
     // The offset public key, K_O
@@ -318,8 +316,6 @@ message UnblindedOutput {
     bytes script = 4;
     // Tari script input data for spending
     bytes input_data = 5;
-    // The block height that the UTXO was mined
-    uint64 height = 6;
     // Tari script private key
     bytes script_private_key = 7;
     // Tari script offset pubkey, K_O

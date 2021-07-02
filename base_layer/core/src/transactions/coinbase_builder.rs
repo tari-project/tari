@@ -201,7 +201,6 @@ impl CoinbaseBuilder {
             Some(output_features),
             script,
             inputs!(PublicKey::from_secret_key(&script_private_key)),
-            height,
             script_private_key,
             script_offset_pub_key,
             sender_sig,

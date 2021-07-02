@@ -59,7 +59,6 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
             commitment,
             script,
             input_data,
-            height: input.height,
             script_signature,
             script_offset_public_key,
         })
@@ -78,7 +77,6 @@ impl From<TransactionInput> for grpc::TransactionInput {
             hash,
             script: input.script.as_bytes(),
             input_data: input.input_data.as_bytes(),
-            height: input.height,
             script_signature: Some(grpc::ComSignature {
                 public_nonce_commitment: Vec::from(input.script_signature.public_nonce().as_bytes()),
                 signature_u: Vec::from(input.script_signature.u().as_bytes()),

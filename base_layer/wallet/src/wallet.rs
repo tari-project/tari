@@ -326,7 +326,6 @@ where
             Some(features.clone()),
             script,
             input_data,
-            0,
             script_private_key.clone(),
             script_offset_public_key.clone(),
             sender_metadata_signature,
