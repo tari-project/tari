@@ -32,7 +32,7 @@ impl TryFrom<proto::MmrTree> for MmrTree {
             None => return Err("MmrTree not provided".to_string()),
             Utxo => MmrTree::Utxo,
             Kernel => MmrTree::Kernel,
-            RangeProof => MmrTree::RangeProof,
+            Witness => MmrTree::Witness,
         })
     }
 }
@@ -43,7 +43,7 @@ impl From<MmrTree> for proto::MmrTree {
         match tree {
             Utxo => proto::MmrTree::Utxo,
             Kernel => proto::MmrTree::Kernel,
-            RangeProof => proto::MmrTree::RangeProof,
+            Witness => proto::MmrTree::Witness,
         }
     }
 }

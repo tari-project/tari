@@ -10,7 +10,6 @@ license = "BSD-3-Clause"
 edition = "2018"
 
 [dependencies]
-tari_common = { version = "^0.8", path = "../../common"}
 tari_comms  = { version = "^0.8", path = "../", features = ["rpc"]}
 tari_comms_rpc_macros  = { version = "^0.8", path = "../rpc_macros"}
 tari_crypto = { git = "ssh://git@github.com/tari-project/tari-crypto.git", branch = "main" }

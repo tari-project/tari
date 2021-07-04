@@ -40,7 +40,7 @@ use tari_comms::{
 };
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcServer,
-    consensus::{ConsensusConstantsBuilder, Network},
+    consensus::ConsensusConstantsBuilder,
     transactions::{
         fee::Fee,
         helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
@@ -62,6 +62,7 @@ use tari_crypto::{
     script,
     script::TariScript,
 };
+use tari_p2p::Network;
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
 use tari_wallet::{
@@ -297,12 +298,7 @@ fn generate_sender_transaction_message(amount: MicroTari) -> (TxId, TransactionS
         .with_change_secret(alice.change_spend_key)
         .with_input(utxo, input)
         .with_amount(0, amount)
-        .with_recipient_script(
-            0,
-            script!(Nop),
-            PrivateKey::random(&mut OsRng),
-            OutputFeatures::default(),
-        )
+        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng), Default::default())
         .with_change_script(
             script!(Nop),
             inputs!(PublicKey::from_secret_key(&script_private_key)),

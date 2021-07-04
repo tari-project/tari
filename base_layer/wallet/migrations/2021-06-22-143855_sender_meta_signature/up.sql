@@ -18,7 +18,8 @@ CREATE TABLE outputs (
     height INTEGER NOT NULL,
     script_private_key BLOB NOT NULL,
     script_offset_public_key BLOB NOT NULL,
-    sender_metadata_signature TEXT NOT NULL,
+    sender_metadata_signature_key BLOB NOT NULL,
+    sender_metadata_signature_nonce BLOB NOT NULL,
     CONSTRAINT unique_commitment UNIQUE (commitment)
 );
 PRAGMA foreign_keys=on;

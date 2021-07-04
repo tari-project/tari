@@ -178,24 +178,22 @@ async fn setup_comms_dht(
     }
 
     let dht_outbound_layer = dht.outbound_middleware_layer();
+    let pipeline = pipeline::Builder::new()
+        .outbound_buffer_size(10)
+        .with_outbound_pipeline(outbound_rx, |sink| {
+            ServiceBuilder::new().layer(dht_outbound_layer).service(sink)
+        })
+        .max_concurrent_inbound_tasks(10)
+        .with_inbound_pipeline(
+            ServiceBuilder::new()
+                .layer(dht.inbound_middleware_layer())
+                .service(SinkService::new(inbound_tx)),
+        )
+        .build();
 
     let (event_tx, _) = broadcast::channel(100);
     let comms = comms
-        .add_protocol_extension(MessagingProtocolExtension::new(
-            event_tx.clone(),
-            pipeline::Builder::new()
-                .outbound_buffer_size(10)
-                .with_outbound_pipeline(outbound_rx, |sink| {
-                    ServiceBuilder::new().layer(dht_outbound_layer).service(sink)
-                })
-                .max_concurrent_inbound_tasks(10)
-                .with_inbound_pipeline(
-                    ServiceBuilder::new()
-                        .layer(dht.inbound_middleware_layer())
-                        .service(SinkService::new(inbound_tx)),
-                )
-                .build(),
-        ))
+        .add_protocol_extension(MessagingProtocolExtension::new(event_tx.clone(), pipeline))
         .spawn_with_transport(MemoryTransport)
         .await
         .unwrap();

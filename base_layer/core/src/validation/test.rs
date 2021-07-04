@@ -22,10 +22,11 @@
 
 use crate::{
     blocks::BlockHeader,
-    consensus::{ConsensusManagerBuilder, Network},
+    consensus::ConsensusManagerBuilder,
     test_helpers::{blockchain::create_store_with_consensus, create_chain_header},
     validation::header_iter::HeaderIter,
 };
+use tari_common::configuration::Network;
 
 #[test]
 fn header_iter_empty_and_invalid_height() {

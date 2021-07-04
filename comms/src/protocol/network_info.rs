@@ -1,4 +1,4 @@
-//  Copyright 2019 The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,11 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
-
-/// The maximum number of peers to return from the flood_identities method in peer manager
-pub const PEER_MANAGER_MAX_FLOOD_PEERS: usize = 1000;
-
-/// The amount of time to consider a peer to be offline (i.e. dial to peer will fail without trying) after a failed
-/// connection attempt
-pub const PEER_OFFLINE_COOLDOWN_PERIOD: Duration = Duration::from_secs(60);
+/// Represents the current nodes network info
+#[derive(Debug, Clone, Default)]
+pub struct NodeNetworkInfo {
+    /// Major protocol version. This indicates the protocol version that is supported by this node. A peer MAY reject
+    /// the connection if a remote peer advertises a different major version number.
+    pub major_version: u32,
+    /// Minor protocol version. A version number that represents backward-compatible protocol changes. A peer SHOULD
+    /// NOT reject the connection if a remote peer advertises a different minor version number.
+    pub minor_version: u32,
+    /// The byte that MUST be sent (outbound connections) or MUST be received (inbound connections) for a connection to
+    /// be established. This byte cannot be 0x46 (E) because that is reserved for liveness.
+    /// Default: 0x00
+    pub network_byte: u8,
+    /// The user agent string for this node
+    pub user_agent: String,
+}

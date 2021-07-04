@@ -30,6 +30,7 @@ use crate::transactions::{
     types::{
         BlindingFactor,
         Challenge,
+        ComSignature,
         Commitment,
         CommitmentFactory,
         CryptoFactories,
@@ -201,6 +202,7 @@ pub enum TransactionError {
 
 /// An unblinded output is one where the value and spending key (blinding factor) are known. This can be used to
 /// build both inputs and outputs (every input comes from an output)
+// TODO: Try to get rid of 'Serialize' and 'Deserialize' traits here; see related comment at 'struct RawTransactionInfo'
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UnblindedOutput {
     pub value: MicroTari,
@@ -208,7 +210,6 @@ pub struct UnblindedOutput {
     pub features: OutputFeatures,
     pub script: TariScript,
     pub input_data: ExecutionStack,
-    pub height: u64,
     pub script_private_key: PrivateKey,
     pub script_offset_public_key: PublicKey,
     pub sender_metadata_signature: Signature,
@@ -223,7 +224,6 @@ impl UnblindedOutput {
         features: Option<OutputFeatures>,
         script: TariScript,
         input_data: ExecutionStack,
-        height: u64,
         script_private_key: PrivateKey,
         script_offset_public_key: PublicKey,
         sender_metadata_signature: Signature,
@@ -234,7 +234,6 @@ impl UnblindedOutput {
             features: features.unwrap_or_default(),
             script,
             input_data,
-            height,
             script_private_key,
             script_offset_public_key,
             sender_metadata_signature,
@@ -244,25 +243,33 @@ impl UnblindedOutput {
     /// Commits an UnblindedOutput into a Transaction input
     pub fn as_transaction_input(&self, factory: &CommitmentFactory) -> Result<TransactionInput, TransactionError> {
         let commitment = factory.commit(&self.spending_key, &self.value.into());
-        let script_nonce = PrivateKey::random(&mut OsRng);
-        let public_script_nonce = PublicKey::from_secret_key(&script_nonce);
+        let script_nonce_a = PrivateKey::random(&mut OsRng);
+        let script_nonce_b = PrivateKey::random(&mut OsRng);
+        let nonce_commitment = factory.commit(&script_nonce_b, &script_nonce_a);
+
         let e = Challenge::new()
-            .chain(public_script_nonce.as_bytes())
+            .chain(nonce_commitment.as_bytes())
             .chain(self.script.as_bytes().as_slice())
             .chain(self.input_data.as_bytes().as_slice())
-            //.chain(&self.height.to_le_bytes()) //TODO decide if the height should remain in this signature
+            .chain(PublicKey::from_secret_key(&self.script_private_key).as_bytes())
+            .chain(commitment.as_bytes())
             .result()
             .to_vec();
-
-        let script_signature = Signature::sign(self.script_private_key.clone(), script_nonce, &e)
-            .map_err(|_| TransactionError::InvalidSignatureError("Generating script signature".to_string()))?;
+        let script_signature = ComSignature::sign(
+            self.value.into(),
+            self.script_private_key.clone() + self.spending_key.clone(),
+            script_nonce_a,
+            script_nonce_b,
+            &e,
+            factory,
+        )
+        .map_err(|_| TransactionError::InvalidSignatureError("Generating script signature".to_string()))?;
 
         Ok(TransactionInput {
             features: self.features.clone(),
             commitment,
             script: self.script.clone(),
             input_data: self.input_data.clone(),
-            height: self.height,
             script_signature,
             script_offset_public_key: self.script_offset_public_key.clone(),
         })
@@ -370,10 +377,8 @@ pub struct TransactionInput {
     pub script: TariScript,
     /// The script input data, if any
     pub input_data: ExecutionStack,
-    /// The block height that the UTXO was mined
-    pub height: u64,
     /// A signature with k_s, signing the script, input data, and mined height
-    pub script_signature: Signature,
+    pub script_signature: ComSignature,
     /// The offset pubkey, K_O
     pub script_offset_public_key: PublicKey,
 }
@@ -386,8 +391,7 @@ impl TransactionInput {
         commitment: Commitment,
         script: TariScript,
         input_data: ExecutionStack,
-        height: u64,
-        script_signature: Signature,
+        script_signature: ComSignature,
         script_offset_public_key: PublicKey,
     ) -> TransactionInput {
         TransactionInput {
@@ -395,7 +399,6 @@ impl TransactionInput {
             commitment,
             script,
             input_data,
-            height,
             script_signature,
             script_offset_public_key,
         }
@@ -412,7 +415,7 @@ impl TransactionInput {
     }
 
     /// This will check if the input and the output is the same commitment by looking at the commitment and features.
-    /// This will ignore the output rangeproof
+    /// This will ignore the output range proof
     pub fn is_equal_to(&self, output: &TransactionOutput) -> bool {
         self.commitment == output.commitment && self.features == output.features
     }
@@ -428,16 +431,24 @@ impl TransactionInput {
         }
     }
 
-    pub fn validate_script_signature(&self, key: &PublicKey) -> Result<(), TransactionError> {
-        let r = self.script_signature.get_public_nonce();
-        let m = HashDigest::new()
-            .chain(r.as_bytes())
-            .chain(self.script.as_bytes())
-            .chain(self.input_data.as_bytes())
-            //.chain(self.height.to_le_bytes()) //TODO decide if the height should remain in the script signature
+    pub fn validate_script_signature(
+        &self,
+        public_script_key: &PublicKey,
+        factory: &CommitmentFactory,
+    ) -> Result<(), TransactionError> {
+        let nonce_commitment = self.script_signature.public_nonce();
+        let m = Challenge::new()
+            .chain(nonce_commitment.as_bytes())
+            .chain(self.script.as_bytes().as_slice())
+            .chain(self.input_data.as_bytes().as_slice())
+            .chain(public_script_key.as_bytes())
+            .chain(self.commitment.as_bytes())
             .result()
             .to_vec();
-        if self.script_signature.verify_challenge(key, &m) {
+        if self
+            .script_signature
+            .verify_challenge(&(&self.commitment + public_script_key), &m, factory)
+        {
             Ok(())
         } else {
             Err(TransactionError::InvalidSignatureError(
@@ -448,16 +459,25 @@ impl TransactionInput {
 
     /// This will run the script and verify the script signature. If its valid, it will return the resulting public key
     /// from the script.
-    pub fn run_and_verify_script(&self) -> Result<PublicKey, TransactionError> {
+    pub fn run_and_verify_script(&self, factory: &CommitmentFactory) -> Result<PublicKey, TransactionError> {
         let key = self.run_script()?;
-        self.validate_script_signature(&key)?;
+        self.validate_script_signature(&key, factory)?;
         Ok(key)
+    }
+
+    /// Returns the hash of the output data contained in this input.
+    /// This hash matches the hash of a transaction output that this input spends.
+    pub fn output_hash(&self) -> Vec<u8> {
+        HashDigest::new()
+            .chain(self.features.to_bytes())
+            .chain(self.commitment.as_bytes())
+            .chain(self.script.as_bytes())
+            .result()
+            .to_vec()
     }
 }
 
 /// Implement the canonical hashing function for TransactionInput for use in ordering
-// Note we use the hash of an UTXO to ID it, so we need the hash of the TransactionInput to equal the hash of the
-// TransactionOutput
 impl Hashable for TransactionInput {
     fn hash(&self) -> Vec<u8> {
         HashDigest::new()
@@ -465,6 +485,10 @@ impl Hashable for TransactionInput {
             .chain(self.commitment.as_bytes())
             .chain(self.script.as_bytes())
             .chain(self.script_offset_public_key.as_bytes())
+            .chain(self.script_signature.u().as_bytes())
+            .chain(self.script_signature.v().as_bytes())
+            .chain(self.script_signature.public_nonce().as_bytes())
+            .chain(self.input_data.as_bytes())
             .result()
             .to_vec()
     }
@@ -601,7 +625,7 @@ impl TransactionOutput {
     }
 
     /// This will check if the input and the output is the same commitment by looking at the commitment and features.
-    /// This will ignore the output rangeproof
+    /// This will ignore the output range proof
     #[inline]
     pub fn is_equal_to(&self, output: &TransactionInput) -> bool {
         self.commitment == output.commitment && self.features == output.features
@@ -617,18 +641,18 @@ impl TransactionOutput {
         script: &TariScript,
         features: &OutputFeatures,
         script_offset_public_key: &PublicKey,
-        puplic_nonce: &PublicKey,
+        public_nonce: &PublicKey,
     ) -> MessageHash {
         Challenge::new()
             .chain(script.as_bytes())
             .chain(features.to_bytes())
             .chain(script_offset_public_key.as_bytes())
-            .chain(puplic_nonce.as_bytes())
+            .chain(public_nonce.as_bytes())
             .result()
             .to_vec()
     }
 
-    /// Create sender signature fore the output meta data
+    /// Create sender signature for the output meta data
     pub fn create_sender_signature(
         script: &TariScript,
         output_features: &OutputFeatures,
@@ -642,6 +666,15 @@ impl TransactionOutput {
             &sender_sig_pub_nonce,
         );
         Signature::sign(script_offset_private_key.clone(), sender_sig_pvt_nonce, &e).unwrap()
+    }
+
+    pub fn witness_hash(&self) -> Vec<u8> {
+        HashDigest::new()
+            .chain(self.proof.as_bytes())
+            .chain(self.sender_metadata_signature.get_signature().as_bytes())
+            .chain(self.sender_metadata_signature.get_public_nonce().as_bytes())
+            .result()
+            .to_vec()
     }
 }
 
@@ -658,7 +691,6 @@ impl Hashable for TransactionOutput {
             .chain(self.commitment.as_bytes())
             // .chain(range proof) // See docs as to why we exclude this
             .chain(self.script.as_bytes())
-            .chain(self.script_offset_public_key.as_bytes())
             .result()
             .to_vec()
     }
@@ -1011,7 +1043,7 @@ impl Transaction {
             .fold(0, |max_maturity, input| max(max_maturity, input.features.maturity))
     }
 
-    /// Returns the maximum timelock of the kernels inside of the transaction
+    /// Returns the maximum time lock of the kernels inside of the transaction
     pub fn max_kernel_timelock(&self) -> u64 {
         self.body
             .kernels()
@@ -1173,6 +1205,17 @@ mod test {
     };
 
     #[test]
+    fn input_and_output_hash_match() {
+        let test_params = TestParams::new();
+        let factory = PedersenCommitmentFactory::default();
+
+        let i = create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params, 10.into());
+        let output = i.as_transaction_output(&CryptoFactories::default()).unwrap();
+        let input = i.as_transaction_input(&factory).unwrap();
+        assert_eq!(output.hash(), input.output_hash());
+    }
+
+    #[test]
     fn unblinded_input() {
         let test_params = TestParams::new();
         let factory = PedersenCommitmentFactory::default();
@@ -1315,15 +1358,13 @@ mod test {
 
         let script = TariScript::default();
         let input_data = ExecutionStack::default();
-        let height = 0;
-        let script_signature = Signature::default();
+        let script_signature = ComSignature::default();
         let offset_pub_key = PublicKey::default();
         let mut input = TransactionInput::new(
             OutputFeatures::default(),
             c,
             script,
             input_data,
-            height,
             script_signature,
             offset_pub_key,
         );
@@ -1331,7 +1372,7 @@ mod test {
         let mut kernel = create_test_kernel(0.into(), 0);
         let mut tx = Transaction::new(Vec::new(), Vec::new(), Vec::new(), 0.into(), 0.into());
 
-        // lets add timelocks
+        // lets add time locks
         input.features.maturity = 5;
         kernel.lock_height = 2;
         tx.body.add_input(input.clone());

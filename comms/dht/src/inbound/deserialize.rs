@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{inbound::DhtInboundMessage, proto::envelope::DhtEnvelope};
-use futures::{task::Context, Future};
+use futures::{future::BoxFuture, task::Context};
 use log::*;
 use prost::Message;
 use std::{convert::TryInto, sync::Arc, task::Poll};
@@ -51,12 +51,13 @@ impl<S> DhtDeserializeMiddleware<S> {
 }
 
 impl<S> Service<InboundMessage> for DhtDeserializeMiddleware<S>
-where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clone + 'static
+where
+    S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clone + Send + 'static,
+    S::Future: Send,
 {
     type Error = PipelineError;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
     type Response = ();
-
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
@@ -65,7 +66,7 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clon
     fn call(&mut self, message: InboundMessage) -> Self::Future {
         let next_service = self.next_service.clone();
         let peer_manager = self.peer_manager.clone();
-        async move {
+        Box::pin(async move {
             trace!(target: LOG_TARGET, "Deserializing InboundMessage {}", message.tag);
 
             let InboundMessage {
@@ -92,6 +93,7 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clon
                         inbound_msg.dht_header.message_tag
                     );
 
+                    let next_service = next_service.ready_oneshot().await?;
                     next_service.oneshot(inbound_msg).await
                 },
                 Err(err) => {
@@ -99,7 +101,7 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clon
                     Err(err.into())
                 },
             }
-        }
+        })
     }
 }
 
@@ -127,6 +129,7 @@ mod test {
     use crate::{
         envelope::DhtMessageFlags,
         test_utils::{
+            assert_send_static_service,
             build_peer_manager,
             make_comms_inbound_message,
             make_dht_envelope,
@@ -144,6 +147,7 @@ mod test {
         peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
 
         let mut deserialize = DeserializeLayer::new(peer_manager).layer(spy.to_service::<PipelineError>());
+        assert_send_static_service(&deserialize);
 
         let dht_envelope = make_dht_envelope(
             &node_identity,

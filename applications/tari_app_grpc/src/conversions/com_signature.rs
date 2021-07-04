@@ -1,4 +1,4 @@
-// Copyright 2020, The Tari Project
+// Copyright 2020. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,29 +20,23 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod error;
-pub use error::ProtocolError;
+use std::convert::TryFrom;
+use tari_crypto::tari_utilities::ByteArray;
 
-mod extensions;
-pub use extensions::{ProtocolExtension, ProtocolExtensionContext, ProtocolExtensionError, ProtocolExtensions};
+use crate::tari_rpc as grpc;
+use tari_core::transactions::types::{ComSignature, Commitment, PrivateKey};
 
-mod identity;
-pub use identity::{identity_exchange, IdentityProtocolError, IDENTITY_PROTOCOL};
+impl TryFrom<grpc::ComSignature> for ComSignature {
+    type Error = String;
 
-mod negotiation;
-pub use negotiation::ProtocolNegotiation;
+    fn try_from(sig: grpc::ComSignature) -> Result<Self, Self::Error> {
+        let public_nonce = Commitment::from_bytes(&sig.public_nonce_commitment)
+            .map_err(|_| "Could not get public nonce commitment".to_string())?;
+        let signature_u =
+            PrivateKey::from_bytes(&sig.signature_u).map_err(|_| "Could not get partial signature u".to_string())?;
+        let signature_v =
+            PrivateKey::from_bytes(&sig.signature_v).map_err(|_| "Could not get partial signature v".to_string())?;
 
-mod network_info;
-pub use network_info::NodeNetworkInfo;
-
-mod protocols;
-pub use protocols::{ProtocolEvent, ProtocolNotification, ProtocolNotificationRx, ProtocolNotificationTx, Protocols};
-
-#[cfg(feature = "rpc")]
-pub mod rpc;
-
-pub mod messaging;
-
-/// Represents a protocol id string (e.g. /tari/transactions/1.0.0).
-/// This is atomically reference counted, so clones are shallow and cheap
-pub type ProtocolId = bytes::Bytes;
+        Ok(Self::new(public_nonce, signature_u, signature_v))
+    }
+}

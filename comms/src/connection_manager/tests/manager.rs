@@ -108,7 +108,7 @@ async fn dial_success() {
                 node_identity: node_identity1.clone(),
                 ..Default::default()
             };
-            config.connection_manager_config.user_agent = "node1".to_string();
+            config.connection_manager_config.network_info.user_agent = "node1".to_string();
             config
         },
         peer_manager1.clone(),
@@ -127,7 +127,7 @@ async fn dial_success() {
                 node_identity: node_identity2.clone(),
                 ..Default::default()
             };
-            config.connection_manager_config.user_agent = "node2".to_string();
+            config.connection_manager_config.network_info.user_agent = "node2".to_string();
             config
         },
         peer_manager2.clone(),
@@ -308,7 +308,7 @@ async fn dial_cancelled() {
                 dial_backoff_duration: Duration::from_secs(100),
                 ..Default::default()
             };
-            config.connection_manager_config.user_agent = "node1".to_string();
+            config.connection_manager_config.network_info.user_agent = "node1".to_string();
             config
         },
         peer_manager1.clone(),

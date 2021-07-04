@@ -38,6 +38,7 @@ use helpers::{
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
 // use crate::helpers::database::create_store;
 use std::{ops::Deref, sync::Arc, time::Duration};
+use tari_common::configuration::Network;
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
     base_node::{
@@ -45,7 +46,7 @@ use tari_core::{
         service::BaseNodeServiceConfig,
         state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
     },
-    consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
+    consensus::{ConsensusConstantsBuilder, ConsensusManager, NetworkConsensus},
     mempool::{Mempool, MempoolConfig, MempoolServiceConfig, MempoolServiceError, TxStorageResponse},
     proof_of_work::Difficulty,
     proto,
@@ -77,14 +78,14 @@ fn test_insert_and_process_published_block() {
     // Create a block with 4 outputs
     let txs = vec![txn_schema!(
         from: vec![outputs[0][0].clone()],
-        to: vec![2 * T, 2 * T, 2 * T, 2 * T],fee: 25.into(), lock: 0,mined_height: 0, features: OutputFeatures::default()
+        to: vec![2 * T, 2 * T, 2 * T, 2 * T],fee: 25.into(), lock: 0, features: OutputFeatures::default()
     )];
     generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
     // Create 6 new transactions to add to the mempool
     let (orphan, _, _) = tx!(1*T, fee: 100*uT);
     let orphan = Arc::new(orphan);
 
-    let tx2 = txn_schema!(from: vec![outputs[1][0].clone()], to: vec![1*T], fee: 20*uT, lock: 0,mined_height: 1, features: OutputFeatures::default());
+    let tx2 = txn_schema!(from: vec![outputs[1][0].clone()], to: vec![1*T], fee: 20*uT, lock: 0, features: OutputFeatures::default());
     let tx2 = Arc::new(spend_utxos(tx2).0);
 
     let tx3 = txn_schema!(
@@ -92,7 +93,6 @@ fn test_insert_and_process_published_block() {
         to: vec![1*T],
         fee: 20*uT,
         lock: 4,
-        mined_height: 1,
         features: OutputFeatures::with_maturity(1)
     );
     let tx3 = Arc::new(spend_utxos(tx3).0);
@@ -102,11 +102,10 @@ fn test_insert_and_process_published_block() {
         to: vec![1*T],
         fee: 20*uT,
         lock: 3,
-        mined_height: 1,
         features: OutputFeatures::with_maturity(2)
     );
     let tx5 = Arc::new(spend_utxos(tx5).0);
-    let tx6 = txn_schema!(from: vec![outputs[1][3].clone()], to: vec![1 * T], fee: 25*uT, lock: 0,mined_height: 1, features: OutputFeatures::default());
+    let tx6 = txn_schema!(from: vec![outputs[1][3].clone()], to: vec![1 * T], fee: 25*uT, lock: 0, features: OutputFeatures::default());
     let tx6 = spend_utxos(tx6).0;
 
     mempool.insert(orphan.clone()).unwrap();
@@ -212,12 +211,12 @@ fn test_time_locked() {
     // Create a block with 4 outputs
     let txs = vec![txn_schema!(
         from: vec![outputs[0][0].clone()],
-        to: vec![2 * T, 2 * T, 2 * T, 2 * T], fee: 25*uT, lock: 0,mined_height: 0, features: OutputFeatures::default()
+        to: vec![2 * T, 2 * T, 2 * T, 2 * T], fee: 25*uT, lock: 0, features: OutputFeatures::default()
     )];
     generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
     mempool.process_published_block(blocks[1].to_arc_block()).unwrap();
     // Block height should be 1
-    let mut tx2 = txn_schema!(from: vec![outputs[1][0].clone()], to: vec![1*T], fee: 20*uT, lock: 0,mined_height: 1, features: OutputFeatures::default());
+    let mut tx2 = txn_schema!(from: vec![outputs[1][0].clone()], to: vec![1*T], fee: 20*uT, lock: 0, features: OutputFeatures::default());
     tx2.lock_height = 3;
     let tx2 = Arc::new(spend_utxos(tx2).0);
 
@@ -226,7 +225,6 @@ fn test_time_locked() {
         to: vec![1*T],
         fee: 20*uT,
         lock: 4,
-        mined_height: 1,
         features: OutputFeatures::with_maturity(1)
     );
     tx3.lock_height = 2;
@@ -263,17 +261,17 @@ fn test_retrieve() {
     mempool.process_published_block(blocks[1].to_arc_block()).unwrap();
     // 1-Block, 8 UTXOs, empty mempool
     let txs = vec![
-        txn_schema!(from: vec![outputs[1][0].clone()], to: vec![], fee: 30*uT, lock: 0, mined_height: 1, features: OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[1][1].clone()], to: vec![], fee: 20*uT, lock: 0, mined_height: 1, features: OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[1][2].clone()], to: vec![], fee: 40*uT, lock: 0, mined_height: 1, features: OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[1][3].clone()], to: vec![], fee: 50*uT, lock: 0, mined_height: 1, features: OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[1][4].clone()], to: vec![], fee: 20*uT, lock: 2, mined_height: 1, features: OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[1][5].clone()], to: vec![], fee: 20*uT, lock: 3, mined_height: 1, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][0].clone()], to: vec![], fee: 30*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][1].clone()], to: vec![], fee: 20*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][2].clone()], to: vec![], fee: 40*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][3].clone()], to: vec![], fee: 50*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][4].clone()], to: vec![], fee: 20*uT, lock: 2, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][5].clone()], to: vec![], fee: 20*uT, lock: 3, features: OutputFeatures::default()),
         // Will be time locked when a tx is added to mempool with this as an input:
-        txn_schema!(from: vec![outputs[1][6].clone()], to: vec![800_000*uT], fee: 60*uT, lock: 0, mined_height: 1,
+        txn_schema!(from: vec![outputs[1][6].clone()], to: vec![800_000*uT], fee: 60*uT, lock: 0, 
         features: OutputFeatures::with_maturity(4)),
         // Will be time locked when a tx is added to mempool with this as an input:
-        txn_schema!(from: vec![outputs[1][7].clone()], to: vec![800_000*uT], fee: 25*uT, lock: 0, mined_height: 1,
+        txn_schema!(from: vec![outputs[1][7].clone()], to: vec![800_000*uT], fee: 25*uT, lock: 0, 
         features: OutputFeatures::with_maturity(3)),
     ];
     let (tx, utxos) = schema_to_transaction(&txs);
@@ -310,9 +308,9 @@ fn test_retrieve() {
     assert_eq!(stats.reorg_txs, 5);
     // Create transactions wih time-locked inputs
     let txs = vec![
-        txn_schema!(from: vec![outputs[2][6].clone()], to: vec![], fee: 80*uT, lock: 0,mined_height: 2, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[2][6].clone()], to: vec![], fee: 80*uT, lock: 0, features: OutputFeatures::default()),
         // account for change output
-        txn_schema!(from: vec![outputs[2][8].clone()], to: vec![], fee: 40*uT, lock: 0,mined_height: 2, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[2][8].clone()], to: vec![], fee: 40*uT, lock: 0, features: OutputFeatures::default()),
     ];
     let (tx2, _) = schema_to_transaction(&txs);
     tx2.iter().for_each(|t| {
@@ -343,16 +341,16 @@ fn test_reorg() {
 
     // "Mine" Block 1
     let txs = vec![
-        txn_schema!(from: vec![outputs[0][0].clone()], to: vec![1 * T, 1 * T], fee: 25*uT, lock: 0,mined_height: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[0][0].clone()], to: vec![1 * T, 1 * T], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
     ];
     generate_new_block(&mut db, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
     mempool.process_published_block(blocks[1].to_arc_block()).unwrap();
 
     // "Mine" block 2
     let schemas = vec![
-        txn_schema!(from: vec![outputs[1][0].clone()], to: vec![], fee: 25*uT, lock: 0,mined_height: 1, features: OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[1][1].clone()], to: vec![], fee: 25*uT, lock: 0,mined_height: 1, features: OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[1][2].clone()], to: vec![], fee: 25*uT, lock: 0,mined_height: 1, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][0].clone()], to: vec![], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][1].clone()], to: vec![], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][2].clone()], to: vec![], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
     ];
     let (txns2, utxos) = schema_to_transaction(&schemas);
     outputs.push(utxos);
@@ -367,9 +365,9 @@ fn test_reorg() {
 
     // "Mine" block 3
     let schemas = vec![
-        txn_schema!(from: vec![outputs[2][0].clone()], to: vec![], fee: 25*uT, lock: 0,mined_height: 2, features: OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[2][1].clone()], to: vec![], fee: 25*uT, lock: 5, mined_height: 2, features: OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[2][2].clone()], to: vec![], fee: 25*uT, lock: 0,mined_height: 2, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[2][0].clone()], to: vec![], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[2][1].clone()], to: vec![], fee: 25*uT, lock: 5, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[2][2].clone()], to: vec![], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
     ];
     let (txns3, utxos) = schema_to_transaction(&schemas);
     outputs.push(utxos);
@@ -428,7 +426,7 @@ fn request_response_get_stats() {
         .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
-    let consensus_manager = ConsensusManagerBuilder::new(network)
+    let consensus_manager = ConsensusManager::builder(network)
         .with_consensus_constants(consensus_constants)
         .with_block(block0)
         .build();
@@ -483,7 +481,7 @@ fn request_response_get_tx_state_by_excess_sig() {
         .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
-    let consensus_manager = ConsensusManagerBuilder::new(network)
+    let consensus_manager = ConsensusManager::builder(network)
         .with_consensus_constants(consensus_constants)
         .with_block(block0)
         .build();
@@ -553,7 +551,7 @@ fn receive_and_propagate_transaction() {
         .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
-    let consensus_manager = ConsensusManagerBuilder::new(network)
+    let consensus_manager = ConsensusManager::builder(network)
         .with_consensus_constants(consensus_constants)
         .with_block(block0)
         .build();
@@ -748,7 +746,7 @@ fn consensus_validation_large_tx() {
 fn service_request_timeout() {
     let mut runtime = Runtime::new().unwrap();
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManagerBuilder::new(network).build();
+    let consensus_manager = ConsensusManager::builder(network).build();
     let mempool_service_config = MempoolServiceConfig {
         request_timeout: Duration::from_millis(1),
         ..Default::default()
@@ -789,13 +787,13 @@ fn block_event_and_reorg_event_handling() {
     // When block B2B is submitted with TX2B, TX3B, then TX2A, TX3A are discarded (Not Stored)
     let factories = CryptoFactories::default();
     let network = Network::LocalNet;
-    let consensus_constants = network.create_consensus_constants();
+    let consensus_constants = NetworkConsensus::from(network).create_consensus_constants();
 
     let mut runtime = Runtime::new().unwrap();
     let temp_dir = tempdir().unwrap();
     let (block0, utxos0) =
         create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants[0]);
-    let consensus_manager = ConsensusManagerBuilder::new(network)
+    let consensus_manager = ConsensusManager::builder(network)
         .with_consensus_constants(consensus_constants[0].clone())
         .with_block(block0.clone())
         .build();

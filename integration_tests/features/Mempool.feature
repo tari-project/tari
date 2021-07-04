@@ -2,6 +2,10 @@
 Feature: Mempool
 
   Scenario: Transactions are propagated through a network
+    #
+    # The randomness of the TX1 propagation can result in this test not passing.
+    # The probability of not passing (at least 2 nodes are not aware of TX1) is ~0.01%.
+    #
     Given I have 8 seed nodes
     And I have a base node SENDER connected to all seed nodes
     And I have 8 base nodes connected to all seed nodes
@@ -10,7 +14,7 @@ Feature: Mempool
     When I create a transaction TX1 spending CB1 to UTX1
     When I submit transaction TX1 to SENDER
     Then SENDER has TX1 in MEMPOOL state
-    Then TX1 is in the MEMPOOL of all nodes
+    Then TX1 is in the MEMPOOL of all nodes, where 1% can fail
 
 
   Scenario: Transactions are synced

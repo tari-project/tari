@@ -162,11 +162,8 @@ use tari_comms::{
     tor,
     types::CommsSecretKey,
 };
-use tari_comms_dht::{envelope::Network as DhtNetwork, DbConnectionUrl, DhtConfig};
-use tari_core::{
-    consensus::Network,
-    transactions::{tari_amount::MicroTari, transaction::OutputFeatures, types::CryptoFactories},
-};
+use tari_comms_dht::{DbConnectionUrl, DhtConfig};
+use tari_core::transactions::{tari_amount::MicroTari, transaction::OutputFeatures, types::CryptoFactories};
 use tari_crypto::{
     keys::{PublicKey, SecretKey},
     script::ExecutionStack,
@@ -214,6 +211,7 @@ use tari_wallet::{
 
 use tari_core::transactions::types::Signature;
 use tari_crypto::script::TariScript;
+use tari_p2p::Network;
 use tari_wallet::{
     types::ValidationRetryStrategy,
     util::emoji::EmojiIdError,
@@ -2628,6 +2626,7 @@ pub unsafe extern "C" fn comms_config_create(
             match ni {
                 Ok(ni) => {
                     let config = TariCommsConfig {
+                        network: Network::Weatherwax,
                         node_identity: Arc::new(ni),
                         transport_type: (*transport_type).clone(),
                         datastore_path,
@@ -2638,7 +2637,6 @@ pub unsafe extern "C" fn comms_config_create(
                             discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
                             database_url: DbConnectionUrl::File(dht_database_path),
                             auto_join: true,
-                            network: DhtNetwork::Weatherwax,
                             saf_msg_validity: Duration::from_secs(saf_message_duration_in_secs),
                             ..Default::default()
                         },
@@ -2910,7 +2908,7 @@ pub unsafe extern "C" fn wallet_create(
             ..Default::default()
         }),
         None,
-        Network::Weatherwax,
+        Network::Weatherwax.into(),
         None,
         None,
         None,

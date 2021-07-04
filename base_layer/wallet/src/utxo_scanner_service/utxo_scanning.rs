@@ -447,13 +447,12 @@ where TBackend: WalletBackend + 'static
         outputs: Vec<TransactionOutput>,
     ) -> Result<Vec<(UnblindedOutput, String)>, UtxoScannerError> {
         let mut found_outputs: Vec<(UnblindedOutput, String)> = Vec::new();
-        let height = 0;
         if self.mode == UtxoScannerMode::Recovery {
             found_outputs.append(
                 &mut self
                     .resources
                     .output_manager_service
-                    .scan_for_recoverable_outputs(outputs.clone(), height)
+                    .scan_for_recoverable_outputs(outputs.clone())
                     .await?
                     .into_iter()
                     .map(|v| (v, format!("Recovered on {}.", Utc::now().naive_utc())))
@@ -464,7 +463,7 @@ where TBackend: WalletBackend + 'static
             &mut self
                 .resources
                 .output_manager_service
-                .scan_outputs_for_one_sided_payments(outputs.clone(), height)
+                .scan_outputs_for_one_sided_payments(outputs.clone())
                 .await?
                 .into_iter()
                 .map(|v| {

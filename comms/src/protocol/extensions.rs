@@ -31,7 +31,7 @@ use tari_shutdown::ShutdownSignal;
 
 pub type ProtocolExtensionError = anyhow::Error;
 
-pub trait ProtocolExtension: Send + Sync {
+pub trait ProtocolExtension: Send {
     // TODO: The Box<Self> is easier to do for now at the cost of ProtocolExtension being less generic.
     fn install(self: Box<Self>, context: &mut ProtocolExtensionContext) -> Result<(), ProtocolExtensionError>;
 }

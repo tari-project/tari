@@ -645,13 +645,13 @@ fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: String) -> Re
     let mut csv_file = LineWriter::new(file);
     writeln!(
         csv_file,
-        r##""index","value","spending_key","commitment","flags","maturity","script","input_data","height","script_private_key","script_offset_public_key","signature","public_nonce""##
+        r##""index","value","spending_key","commitment","flags","maturity","script","input_data","script_private_key","script_offset_public_key","signature","public_nonce""##
     )
     .map_err(|e| CommandError::CSVFile(e.to_string()))?;
     for (i, utxo) in utxos.iter().enumerate() {
         writeln!(
             csv_file,
-            r##""{}","{}","{}","{}","{:?}","{}","{}","{}","{}","{}","{}","{}","{}""##,
+            r##""{}","{}","{}","{}","{:?}","{}","{}","{}","{}","{}","{}","{}""##,
             i + 1,
             utxo.value.0,
             utxo.spending_key.to_hex(),
@@ -660,7 +660,6 @@ fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: String) -> Re
             utxo.features.maturity,
             utxo.script.to_hex(),
             utxo.input_data.to_hex(),
-            utxo.height,
             utxo.script_private_key.to_hex(),
             utxo.script_offset_public_key.to_hex(),
             utxo.sender_metadata_signature.get_signature().to_hex(),

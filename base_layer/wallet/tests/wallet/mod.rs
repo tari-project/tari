@@ -41,13 +41,10 @@ use tari_comms::{
     types::{CommsPublicKey, CommsSecretKey},
 };
 use tari_comms_dht::DhtConfig;
-use tari_core::{
-    consensus::Network,
-    transactions::{
-        helpers::{create_unblinded_output, TestParams},
-        tari_amount::{uT, MicroTari},
-        types::{CryptoFactories, PrivateKey, PublicKey},
-    },
+use tari_core::transactions::{
+    helpers::{create_unblinded_output, TestParams},
+    tari_amount::{uT, MicroTari},
+    types::{CryptoFactories, PrivateKey, PublicKey},
 };
 use tari_crypto::{
     common::Blake256,
@@ -55,7 +52,7 @@ use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     script,
 };
-use tari_p2p::{initialization::CommsConfig, transport::TransportType, DEFAULT_DNS_SEED_RESOLVER};
+use tari_p2p::{initialization::CommsConfig, transport::TransportType, Network, DEFAULT_DNS_SEED_RESOLVER};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_wallet::{
     contacts_service::storage::database::Contact,
@@ -98,9 +95,11 @@ async fn create_wallet(
     passphrase: Option<String>,
     recovery_master_key: Option<CommsSecretKey>,
 ) -> Result<WalletSqlite, WalletError> {
+    const NETWORK: Network = Network::Weatherwax;
     let node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
     let comms_config = CommsConfig {
+        network: NETWORK,
         node_identity: Arc::new(node_identity.clone()),
         transport_type: TransportType::Memory {
             listener_address: node_identity.public_address(),
@@ -144,7 +143,7 @@ async fn create_wallet(
         factories,
         Some(transaction_service_config),
         None,
-        Network::Weatherwax,
+        NETWORK.into(),
         None,
         None,
         None,
@@ -677,6 +676,7 @@ async fn test_import_utxo() {
     let temp_dir = tempdir().unwrap();
     let (wallet_backend, tx_backend, oms_backend, contacts_backend, _temp_dir) = make_wallet_databases(None);
     let comms_config = CommsConfig {
+        network: Network::Weatherwax,
         node_identity: Arc::new(alice_identity.clone()),
         transport_type: TransportType::Tcp {
             listener_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
@@ -701,7 +701,7 @@ async fn test_import_utxo() {
         factories.clone(),
         None,
         None,
-        Network::Weatherwax,
+        Network::Weatherwax.into(),
         None,
         None,
         None,
@@ -763,8 +763,6 @@ async fn test_import_utxo() {
 #[cfg(feature = "test_harness")]
 #[tokio_macros::test]
 async fn test_data_generation() {
-    use tari_comms_dht::envelope::Network as DhtNetwork;
-
     let mut shutdown = Shutdown::new();
     use tari_wallet::testnet_utils::generate_wallet_test_data;
     let factories = CryptoFactories::default();
@@ -772,6 +770,7 @@ async fn test_data_generation() {
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
     let temp_dir = tempdir().unwrap();
     let comms_config = CommsConfig {
+        network: Network::Weatherwax,
         node_identity: Arc::new(node_id.clone()),
         transport_type: TransportType::Memory {
             listener_address: node_id.public_address(),
@@ -782,7 +781,6 @@ async fn test_data_generation() {
         outbound_buffer_size: 100,
         dht: DhtConfig {
             discovery_request_timeout: Duration::from_millis(500),
-            network: DhtNetwork::Weatherwax,
             allow_test_addresses: true,
             ..Default::default()
         },
@@ -801,7 +799,7 @@ async fn test_data_generation() {
         factories,
         None,
         None,
-        Network::Weatherwax,
+        Network::Weatherwax.into(),
         None,
         None,
         None,

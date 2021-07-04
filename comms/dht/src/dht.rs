@@ -278,9 +278,8 @@ impl Dht {
             InboundMessage,
             Response = (),
             Error = PipelineError,
-            Future = impl Future<Output = Result<(), PipelineError>> + Send,
-        > + Clone
-                      + Send,
+            Future = impl Future<Output = Result<(), PipelineError>>,
+        > + Clone,
     >
     where
         S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Clone + Send + Sync + 'static,
@@ -291,7 +290,6 @@ impl Dht {
         ServiceBuilder::new()
             .layer(MetricsLayer::new(self.metrics_collector.clone()))
             .layer(inbound::DeserializeLayer::new(self.peer_manager.clone()))
-            .layer(inbound::ValidateLayer::new(self.config.network))
             .layer(DedupLayer::new(self.dht_requester()))
             .layer(tower_filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
             .layer(MessageLoggingLayer::new(format!(
@@ -341,9 +339,8 @@ impl Dht {
             DhtOutboundRequest,
             Response = (),
             Error = PipelineError,
-            Future = impl Future<Output = Result<(), PipelineError>> + Send,
-        > + Clone
-                      + Send,
+            Future = impl Future<Output = Result<(), PipelineError>>,
+        > + Clone,
     >
     where
         S: Service<OutboundMessage, Response = (), Error = PipelineError> + Clone + Send + 'static,
@@ -354,8 +351,7 @@ impl Dht {
                 Arc::clone(&self.node_identity),
                 self.dht_requester(),
                 self.discovery_service_requester(),
-                self.config.network,
-                chrono::Duration::from_std(self.config.saf_msg_validity).unwrap(),
+                self.config.saf_msg_validity,
             ))
             .layer(MessageLoggingLayer::new(format!(
                 "Outbound [{}]",

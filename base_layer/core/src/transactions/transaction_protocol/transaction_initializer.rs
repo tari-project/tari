@@ -85,7 +85,7 @@ pub struct SenderTransactionInitializer {
     private_nonce: Option<PrivateKey>,
     message: Option<String>,
     prevent_fee_gt_amount: bool,
-    recipient_outpout_features: FixedSet<OutputFeatures>,
+    recipient_output_features: FixedSet<OutputFeatures>,
     recipient_scripts: FixedSet<TariScript>,
     recipient_script_offset_private_keys: FixedSet<PrivateKey>,
 }
@@ -123,7 +123,7 @@ impl SenderTransactionInitializer {
             excess_blinding_factor: BlindingFactor::default(),
             message: None,
             prevent_fee_gt_amount: true,
-            recipient_outpout_features: FixedSet::new(num_recipients),
+            recipient_output_features: FixedSet::new(num_recipients),
             recipient_scripts: FixedSet::new(num_recipients),
             recipient_script_offset_private_keys: FixedSet::new(num_recipients),
         }
@@ -149,10 +149,10 @@ impl SenderTransactionInitializer {
         receiver_index: usize,
         script: TariScript,
         recipient_script_offset_private_key: PrivateKey,
-        recipient_outpout_features: OutputFeatures,
+        recipient_output_features: OutputFeatures,
     ) -> &mut Self {
-        self.recipient_outpout_features
-            .set_item(receiver_index, recipient_outpout_features);
+        self.recipient_output_features
+            .set_item(receiver_index, recipient_output_features);
         self.recipient_scripts.set_item(receiver_index, script);
         self.recipient_script_offset_private_keys
             .set_item(receiver_index, recipient_script_offset_private_key);
@@ -287,7 +287,6 @@ impl SenderTransactionInitializer {
                                 .as_ref()
                                 .ok_or("Change script was not provided")?
                                 .clone(),
-                            0,
                             self.change_script_private_key
                                 .as_ref()
                                 .ok_or("Change script private key was not provided")?
@@ -486,7 +485,7 @@ impl SenderTransactionInitializer {
             amount_to_self,
             ids,
             amounts: self.amounts.into_vec(),
-            recipient_output_features: self.recipient_outpout_features.into_vec(),
+            recipient_output_features: self.recipient_output_features.into_vec(),
             recipient_scripts: self.recipient_scripts.into_vec(),
             recipient_script_offset_private_keys: self.recipient_script_offset_private_keys.into_vec(),
             change,
@@ -722,7 +721,6 @@ mod test {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
         let (utxo, input) = create_test_input(MicroTari(500), 0, &factories.commitment);
-
         let script = script!(Nop);
         let output = create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(400));
         // Start the builder
@@ -747,7 +745,6 @@ mod test {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
         let (utxo, input) = create_test_input(MicroTari(400), 0, &factories.commitment);
-
         let script = script!(Nop);
         let output = create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(400));
         // Start the builder
@@ -772,7 +769,6 @@ mod test {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
         let (utxo, input) = create_test_input(MicroTari(100_000), 0, &factories.commitment);
-
         let script = script!(Nop);
         let output = create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(15000));
         // Start the builder

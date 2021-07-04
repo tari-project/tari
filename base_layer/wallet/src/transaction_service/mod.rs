@@ -37,7 +37,7 @@ use crate::{
         storage::database::{TransactionBackend, TransactionDatabase},
     },
 };
-use futures::{future, Future, Stream, StreamExt};
+use futures::{Stream, StreamExt};
 use log::*;
 use std::sync::Arc;
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeIdentity};
@@ -53,6 +53,7 @@ use tari_p2p::{
     tari_message::TariMessageType,
 };
 use tari_service_framework::{
+    async_trait,
     reply_channel,
     ServiceInitializationError,
     ServiceInitializer,
@@ -159,12 +160,11 @@ where T: TransactionBackend
     }
 }
 
+#[async_trait]
 impl<T> ServiceInitializer for TransactionServiceInitializer<T>
 where T: TransactionBackend + 'static
 {
-    type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
-
-    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+    async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (sender, receiver) = reply_channel::unbounded();
         let transaction_stream = self.transaction_stream();
         let transaction_reply_stream = self.transaction_reply_stream();
@@ -219,6 +219,6 @@ where T: TransactionBackend + 'static
             info!(target: LOG_TARGET, "Transaction Service shutdown");
         });
 
-        future::ready(Ok(()))
+        Ok(())
     }
 }

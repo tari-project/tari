@@ -504,7 +504,7 @@ and performing mining:
 2021-02-26 11:28:19.687855700 [tari_mining_node::miner] INFO  Mining thread 2 stopped
 2021-02-26 11:28:19.688251200 [tari_mining_node] INFO  Miner 2 found block header BlockHeader { hash: [...], version: 1, 
   height: 8493, prev_hash: [...], timestamp: Some(Timestamp { seconds: 1614331698, nanos: 0 }), output_mr: [...],
-  range_proof_mr: [...], total_kernel_offset: [...], nonce: 8415580256943728281, pow: Some(ProofOfWork { pow_algo: 2, 
+  witness_mr: [...], total_kernel_offset: [...], nonce: 8415580256943728281, pow: Some(ProofOfWork { pow_algo: 2, 
   pow_data: [] }), kernel_mmr_size: 24983, output_mmr_size: 125474 } with difficulty 7316856839
 ```
 

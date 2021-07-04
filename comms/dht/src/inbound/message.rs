@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    consts::DHT_ENVELOPE_HEADER_VERSION,
+    consts::DHT_MAJOR_VERSION,
     envelope::{DhtMessageFlags, DhtMessageHeader},
 };
 use std::{
@@ -49,7 +49,7 @@ impl DhtInboundMessage {
     pub fn new(tag: MessageTag, dht_header: DhtMessageHeader, source_peer: Arc<Peer>, body: Vec<u8>) -> Self {
         Self {
             tag,
-            version: DHT_ENVELOPE_HEADER_VERSION,
+            version: DHT_MAJOR_VERSION,
             dht_header,
             source_peer,
             is_saf_message: false,

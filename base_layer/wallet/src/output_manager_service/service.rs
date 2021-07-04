@@ -323,29 +323,22 @@ where TBackend: OutputManagerBackend + 'static
             OutputManagerRequest::GetPublicRewindKeys => Ok(OutputManagerResponse::PublicRewindKeys(Box::new(
                 self.resources.master_key_manager.get_rewind_public_keys(),
             ))),
-            OutputManagerRequest::ScanForRecoverableOutputs(outputs, height) => StandardUtxoRecoverer::new(
+            OutputManagerRequest::ScanForRecoverableOutputs(outputs) => StandardUtxoRecoverer::new(
                 self.resources.master_key_manager.clone(),
                 self.resources.factories.clone(),
                 self.resources.db.clone(),
             )
-            .scan_and_recover_outputs(outputs, height)
+            .scan_and_recover_outputs(outputs)
             .await
             .map(OutputManagerResponse::RewoundOutputs),
-            OutputManagerRequest::ScanOutputs(outputs, height) => self
-                .scan_outputs_for_one_sided_payments(outputs, height)
+            OutputManagerRequest::ScanOutputs(outputs) => self
+                .scan_outputs_for_one_sided_payments(outputs)
                 .await
                 .map(OutputManagerResponse::ScanOutputs),
             OutputManagerRequest::AddKnownOneSidedPaymentScript(known_script) => self
                 .add_known_script(known_script)
                 .await
                 .map(|_| OutputManagerResponse::AddKnownOneSidedPaymentScript),
-            OutputManagerRequest::UpdateMinedHeight(tx_id, height) => self
-                .resources
-                .db
-                .update_output_mined_height(tx_id, height)
-                .await
-                .map(|_| OutputManagerResponse::MinedHeightUpdated)
-                .map_err(OutputManagerError::OutputManagerStorageError),
         }
     }
 
@@ -439,7 +432,6 @@ where TBackend: OutputManagerBackend + 'static
                 single_round_sender_data.script.clone(),
                 // TODO: The input data should be variable; this will only work for a Nop script
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
-                0,
                 script_private_key,
                 single_round_sender_data.script_offset_public_key.clone(),
                 single_round_sender_data.sender_metadata_signature.clone(),
@@ -667,12 +659,12 @@ where TBackend: OutputManagerBackend + 'static
             .cancel_pending_transaction_at_block_height(block_height)
             .await?;
 
-        // Clear any matching coinbase outputs for this block_height AND commitment. Even if the older output is valid
+        // Clear any matching outputs for this commitment. Even if the older output is valid
         // we are losing no information as this output has the same commitment.
         match self
             .resources
             .db
-            .remove_coinbase_output_at_block_height(output.commitment.clone(), output.unblinded_output.height)
+            .remove_output_by_commitment(output.commitment.clone())
             .await
         {
             Ok(_) => {},
@@ -686,6 +678,7 @@ where TBackend: OutputManagerBackend + 'static
             .await?;
 
         self.confirm_encumberance(tx_id).await?;
+
         Ok(tx)
     }
 
@@ -736,7 +729,6 @@ where TBackend: OutputManagerBackend + 'static
                 Some(output_features),
                 script,
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
-                0,
                 script_private_key,
                 PublicKey::from_secret_key(&script_offset_private_key),
                 sender_signature,
@@ -1118,7 +1110,6 @@ where TBackend: OutputManagerBackend + 'static
                     Some(output_features),
                     script,
                     inputs!(PublicKey::from_secret_key(&script_private_key)),
-                    0,
                     script_private_key,
                     PublicKey::from_secret_key(&script_offset_private_key),
                     sender_signature,
@@ -1170,7 +1161,6 @@ where TBackend: OutputManagerBackend + 'static
     async fn scan_outputs_for_one_sided_payments(
         &mut self,
         outputs: Vec<TransactionOutput>,
-        height: u64,
     ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         let known_one_sided_payment_scripts: Vec<KnownOneSidedPaymentScript> =
             self.resources.db.get_all_known_one_sided_payment_scripts().await?;
@@ -1200,7 +1190,6 @@ where TBackend: OutputManagerBackend + 'static
                         Some(output.features),
                         known_one_sided_payment_scripts[i].script.clone(),
                         known_one_sided_payment_scripts[i].input.clone(),
-                        height,
                         known_one_sided_payment_scripts[i].private_key.clone(),
                         output.script_offset_public_key,
                         output.sender_metadata_signature,
@@ -1274,8 +1263,11 @@ impl Balance {
 impl fmt::Display for Balance {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Available balance: {}", self.available_balance)?;
+        if let Some(locked) = self.time_locked_balance {
+            writeln!(f, "Time locked: {}", locked)?;
+        }
         writeln!(f, "Pending incoming balance: {}", self.pending_incoming_balance)?;
-        write!(f, "Pending outgoing balance: {}", self.pending_outgoing_balance)?;
+        writeln!(f, "Pending outgoing balance: {}", self.pending_outgoing_balance)?;
         Ok(())
     }
 }

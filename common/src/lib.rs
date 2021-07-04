@@ -63,7 +63,7 @@
 //! # use tari_test_utils::random::string;
 //! # use tempfile::tempdir;
 //! # use structopt::StructOpt;
-//! # use tari_common::configuration::bootstrap::ApplicationType;
+//! # use tari_common::configuration::{Network, bootstrap::ApplicationType};
 //! let mut args = ConfigBootstrap::from_args();
 //! # let temp_dir = tempdir().unwrap();
 //! # args.base_path = temp_dir.path().to_path_buf();
@@ -78,19 +78,20 @@
 
 #[cfg(feature = "build")]
 pub mod build;
-pub mod configuration;
 #[macro_use]
 mod logging;
 
-pub use configuration::error::ConfigError;
-
-pub mod dir_utils;
+pub mod configuration;
 pub use configuration::{
     bootstrap::{install_configuration, ConfigBootstrap},
-    global::{CommsTransport, DatabaseType, GlobalConfig, Network, SocksAuthentication, TorControlAuthentication},
+    error::ConfigError,
+    global::{CommsTransport, DatabaseType, GlobalConfig, SocksAuthentication, TorControlAuthentication},
     loader::{ConfigLoader, ConfigPath, ConfigurationError, DefaultConfigLoader, NetworkConfigPath},
     utils::{default_config, install_default_config_file, load_configuration},
 };
+
+pub mod dir_utils;
+
 pub use logging::initialize_logging;
 
 pub const DEFAULT_CONFIG: &str = "config/config.toml";

@@ -22,12 +22,11 @@
 //
 //! # Global configuration of tari base layer system
 
-use super::ConfigurationError;
+use crate::{configuration::Network, ConfigurationError};
 use config::{Config, ConfigError, Environment};
 use multiaddr::Multiaddr;
 use std::{
     convert::TryInto,
-    fmt::{Display, Formatter, Result as FormatResult},
     net::SocketAddr,
     num::{NonZeroU16, TryFromIntError},
     path::PathBuf,
@@ -784,50 +783,6 @@ fn network_transport_config(cfg: &Config, network: &str) -> Result<CommsTranspor
 
 fn config_string(prefix: &str, network: &str, key: &str) -> String {
     format!("{}.{}.{}", prefix, network, key)
-}
-
-//---------------------------------------------       Network type        ------------------------------------------//
-#[derive(Clone, Debug, PartialEq, Copy)]
-pub enum Network {
-    MainNet,
-    Rincewind,
-    LocalNet,
-    Ridcully,
-    Stibbons,
-    Weatherwax,
-}
-
-impl FromStr for Network {
-    type Err = ConfigurationError;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        match value.to_lowercase().as_str() {
-            "rincewind" => Ok(Self::Rincewind),
-            "ridcully" => Ok(Self::Ridcully),
-            "stibbons" => Ok(Self::Stibbons),
-            "weatherwax" => Ok(Self::Weatherwax),
-            "mainnet" => Ok(Self::MainNet),
-            "localnet" => Ok(Self::LocalNet),
-            invalid => Err(ConfigurationError::new(
-                "network",
-                &format!("Invalid network option: {}", invalid),
-            )),
-        }
-    }
-}
-
-impl Display for Network {
-    fn fmt(&self, f: &mut Formatter) -> FormatResult {
-        let msg = match self {
-            Self::MainNet => "mainnet",
-            Self::Rincewind => "rincewind",
-            Self::Ridcully => "ridcully",
-            Self::Stibbons => "stibbons",
-            Self::Weatherwax => "weatherwax",
-            Self::LocalNet => "localnet",
-        };
-        f.write_str(msg)
-    }
 }
 
 //---------------------------------------------      Database type        ------------------------------------------//

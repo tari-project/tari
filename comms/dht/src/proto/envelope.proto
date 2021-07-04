@@ -20,48 +20,32 @@ enum DhtMessageType {
 }
 
 message DhtHeader {
-    uint32 version = 1;
+    uint32 major = 1;
+    uint32 minor = 2;
     oneof destination {
         // The sender has chosen not to disclose the message destination
-        bool unknown = 2;
+        bool unknown = 3;
         // Destined for a particular public key
-        bytes public_key = 3;
+        bytes public_key = 4;
         // Destined for a particular node id, or network region
-        bytes node_id = 4;
+        bytes node_id = 5;
     }
 
     // Origin public key of the message. This can be the same peer that sent the message
     // or another peer if the message should be forwarded. This is optional but MUST be specified
     // if the ENCRYPTED flag is set.
     // If an ephemeral_public_key is specified, this MUST be encrypted using a derived ECDH shared key
-    bytes origin_mac = 5;
+    bytes origin_mac = 6;
     // Ephemeral public key component of the ECDH shared key. MUST be specified if the ENCRYPTED flag is set.
-    bytes ephemeral_public_key = 6;
+    bytes ephemeral_public_key = 7;
     // The type of message
-    DhtMessageType message_type = 7;
-    // The network for which this message is intended (e.g. TestNet, MainNet etc.)
-    Network network = 8;
-    uint32 flags = 9;
+    DhtMessageType message_type = 8;
+    uint32 flags = 10;
     // Message trace ID
     // TODO: Remove for mainnet or when testing message traces is not required
-    uint64 message_tag = 10;
+    uint64 message_tag = 11;
     // Expiry timestamp for the message
-    google.protobuf.Timestamp expires = 11;
-}
-
-enum Network {
-    // Main net (default)
-    NetworkMainNet = 0;
-    // Test net
-    NetworkTestNet = 1;
-    // Network used for local tests
-    NetworkLocalTest = 2;
-    // Ridcully
-    NetworkRidcully = 3;
-    // Stibbons
-    NetworkStibbons = 4;
-    // Weatherwax
-    NetworkWeatherwax = 5;
+    google.protobuf.Timestamp expires = 12;
 }
 
 message DhtEnvelope {

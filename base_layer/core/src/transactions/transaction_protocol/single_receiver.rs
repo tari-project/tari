@@ -117,7 +117,7 @@ impl SingleReceiverTransactionProtocol {
             sender_info.script_offset_public_key.clone(),
             sender_info.sender_metadata_signature.clone(),
         );
-        let _ = output.verify_sender_signature()?;
+        output.verify_sender_signature()?;
         Ok(output)
     }
 }

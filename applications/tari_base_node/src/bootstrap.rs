@@ -226,6 +226,7 @@ where B: BlockchainBackend + 'static
 
     fn create_comms_config(&self) -> CommsConfig {
         CommsConfig {
+            network: self.config.network,
             node_identity: self.node_identity.clone(),
             transport_type: self.create_transport_type(),
             datastore_path: self.config.peer_db_path.clone(),
@@ -236,7 +237,6 @@ where B: BlockchainBackend + 'static
                 database_url: DbConnectionUrl::File(self.config.data_dir.join("dht.db")),
                 auto_join: true,
                 allow_test_addresses: self.config.allow_test_addresses,
-                network: self.config.network.into(),
                 flood_ban_max_msg_count: self.config.flood_ban_max_msg_count,
                 saf_msg_validity: self.config.saf_expiry_duration,
                 ..Default::default()

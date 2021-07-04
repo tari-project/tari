@@ -23,6 +23,7 @@
 use croaring::Bitmap;
 use rand::{rngs::OsRng, RngCore};
 use std::{iter::repeat_with, sync::Arc};
+use tari_common::configuration::Network;
 use tari_core::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{
@@ -34,7 +35,7 @@ use tari_core::{
         ChainHeader,
         ChainStorageError,
     },
-    consensus::{emission::Emission, ConsensusConstants, ConsensusManager, ConsensusManagerBuilder, Network},
+    consensus::{emission::Emission, ConsensusConstants, ConsensusManager, ConsensusManagerBuilder},
     proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
         helpers::{
@@ -66,9 +67,6 @@ use tari_crypto::{
     tari_utilities::{hash::Hashable, hex::Hex},
 };
 use tari_mmr::MutableMmr;
-
-const _MAINNET: Network = Network::MainNet;
-const _WEATHERWAX: Network = Network::Weatherwax;
 
 pub fn create_coinbase(
     factories: &CryptoFactories,
@@ -111,7 +109,7 @@ fn genesis_template(
 // This is a helper function to generate and print out a block that can be used as the genesis block.
 // #[test]
 pub fn _create_act_gen_block() {
-    let network = _WEATHERWAX;
+    let network = Network::Weatherwax;
     let consensus_manager: ConsensusManager = ConsensusManagerBuilder::new(network).build();
     let factories = CryptoFactories::default();
     let mut header = BlockHeader::new(consensus_manager.consensus_constants(0).blockchain_version());
@@ -128,11 +126,11 @@ pub fn _create_act_gen_block() {
         .unwrap();
 
     let utxo_hash = utxo.hash();
-    let rp = utxo.proof().hash();
+    let witness_hash = utxo.witness_hash();
     let kern = kernel.hash();
     header.kernel_mr = kern;
     header.output_mr = utxo_hash;
-    header.range_proof_mr = rp;
+    header.witness_mr = witness_hash;
     let block = header.into_builder().with_coinbase_utxo(utxo, kernel).build();
     println!("{}", &block);
     dbg!(&key.to_hex());
@@ -158,7 +156,7 @@ fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, C
     body.sort();
     let kernel_hashes: Vec<HashOutput> = body.kernels().iter().map(|k| k.hash()).collect();
     let out_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.hash()).collect();
-    let rp_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.proof().hash()).collect();
+    let rp_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.witness_hash()).collect();
 
     let mut header = BlockHeader::from(header);
     header.kernel_mr = MutableMmr::<HashDigest, _>::new(kernel_hashes, Bitmap::create())
@@ -167,7 +165,7 @@ fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, C
     header.output_mr = MutableMmr::<HashDigest, _>::new(out_hashes, Bitmap::create())
         .unwrap()
         .get_merkle_root()?;
-    header.range_proof_mr = MutableMmr::<HashDigest, _>::new(rp_hashes, Bitmap::create())
+    header.witness_mr = MutableMmr::<HashDigest, _>::new(rp_hashes, Bitmap::create())
         .unwrap()
         .get_merkle_root()?;
     Ok(Block { header, body })
@@ -506,11 +504,11 @@ pub fn generate_block_with_coinbase<B: BlockchainBackend>(
         consensus,
     );
     let new_block = db.prepare_block_merkle_roots(template)?;
-    let result = db.add_block(new_block.into());
-    if let Ok(BlockAddResult::Ok(ref b)) = result {
+    let result = db.add_block(new_block.into())?;
+    if let BlockAddResult::Ok(ref b) = result {
         blocks.push(b.as_ref().clone());
     }
-    result
+    Ok(result)
 }
 
 #[allow(dead_code)]

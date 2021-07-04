@@ -49,13 +49,13 @@
 //! }
 //!
 //! # let mut config = Config::new();
-//! config.set("my_node.network", "rincewind");
-//! config.set("my_node.rincewind.welcome_message", "nice to see you at unseen");
+//! config.set("my_node.network", "weatherwax");
+//! config.set("my_node.weatherwax.welcome_message", "nice to see you at unseen");
 //! let my_config = <MyNodeConfig as ConfigLoader>::load_from(&config).unwrap();
 //! assert_eq!(my_config.welcome_message, "nice to see you at unseen");
 //! ```
 
-use super::Network;
+use crate::configuration::Network;
 use config::Config;
 use std::{
     error::Error,
