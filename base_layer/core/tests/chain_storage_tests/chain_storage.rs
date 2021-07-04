@@ -38,6 +38,7 @@ use crate::helpers::{
     test_blockchain::TestBlockchain,
 };
 use rand::{rngs::OsRng, RngCore};
+use tari_common::configuration::Network;
 use tari_common_types::types::BlockHash;
 use tari_core::{
     blocks::{genesis_block, Block, BlockHeader},
@@ -51,7 +52,7 @@ use tari_core::{
         DbTransaction,
         Validators,
     },
-    consensus::{emission::Emission, ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
+    consensus::{emission::Emission, ConsensusConstantsBuilder, ConsensusManagerBuilder},
     proof_of_work::Difficulty,
     test_helpers::blockchain::{
         create_store_with_consensus,

@@ -49,6 +49,7 @@ use crate::helpers::{
     nodes::{BaseNodeBuilder, NodeInterfaces},
 };
 use std::convert::TryFrom;
+use tari_common::configuration::Network;
 use tari_comms::protocol::rpc::mock::RpcRequestMock;
 use tari_core::{
     base_node::{
@@ -64,7 +65,7 @@ use tari_core::{
         state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
     },
     chain_storage::ChainBlock,
-    consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
+    consensus::{ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
     crypto::tari_utilities::Hashable,
     proto::{
         base_node::{FetchMatchingUtxos, Signatures as SignaturesProto},
@@ -92,7 +93,7 @@ fn setup() -> (
     Runtime,
     TempDir,
 ) {
-    let network = Network::LocalNet;
+    let network = NetworkConsensus::from(Network::LocalNet);
     let consensus_constants = network.create_consensus_constants();
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
@@ -100,8 +101,7 @@ fn setup() -> (
 
     let (block0, utxo0) =
         create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants[0]);
-    let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants[0].clone())
+    let consensus_manager = ConsensusManagerBuilder::new(network.as_network())
         .with_block(block0.clone())
         .build();
 

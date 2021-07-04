@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    consts::DHT_ENVELOPE_HEADER_VERSION,
+    consts::{DHT_MAJOR_VERSION, DHT_MINOR_VERSION},
     outbound::message::DhtOutboundMessage,
     proto::envelope::{DhtEnvelope, DhtHeader},
 };
@@ -64,6 +64,7 @@ where
 
     fn call(&mut self, message: DhtOutboundMessage) -> Self::Future {
         let next_service = self.inner.clone();
+
         let DhtOutboundMessage {
             tag,
             destination_node_id,
@@ -72,7 +73,6 @@ where
             ephemeral_public_key,
             destination,
             dht_message_type,
-            network,
             dht_flags,
             origin_mac,
             reply,
@@ -86,11 +86,11 @@ where
             destination_node_id.short_str()
         );
         let dht_header = custom_header.map(DhtHeader::from).unwrap_or_else(|| DhtHeader {
-            version: DHT_ENVELOPE_HEADER_VERSION,
+            major: DHT_MAJOR_VERSION,
+            minor: DHT_MINOR_VERSION,
             origin_mac: origin_mac.map(|b| b.to_vec()).unwrap_or_else(Vec::new),
             ephemeral_public_key: ephemeral_public_key.map(|e| e.to_vec()).unwrap_or_else(Vec::new),
             message_type: dht_message_type as i32,
-            network: network as i32,
             flags: dht_flags.bits(),
             destination: Some(destination.into()),
             message_tag: tag.as_value(),

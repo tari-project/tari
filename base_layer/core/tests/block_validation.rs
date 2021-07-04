@@ -23,15 +23,11 @@
 use crate::helpers::block_builders::chain_block_with_new_coinbase;
 use monero::blockdata::block::Block as MoneroBlock;
 use std::sync::Arc;
+use tari_common::configuration::Network;
 use tari_core::{
     blocks::{Block, BlockHeaderValidationError},
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
-    consensus::{
-        consensus_constants::PowAlgorithmConstants,
-        ConsensusConstantsBuilder,
-        ConsensusManagerBuilder,
-        Network,
-    },
+    consensus::{consensus_constants::PowAlgorithmConstants, ConsensusConstantsBuilder, ConsensusManagerBuilder},
     crypto::tari_utilities::hex::Hex,
     proof_of_work::{
         monero_rx,

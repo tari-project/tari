@@ -62,22 +62,19 @@ use tari_comms::{
     transports::MemoryTransport,
     types::{CommsPublicKey, CommsSecretKey},
 };
-use tari_comms_dht::{envelope::Network as DhtNetwork, DhtConfig};
-use tari_core::{
-    consensus::Network,
-    transactions::{
-        helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
-        tari_amount::MicroTari,
-        transaction::{OutputFeatures, Transaction, TransactionInput, UnblindedOutput},
-        types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey},
-    },
+use tari_comms_dht::DhtConfig;
+use tari_core::transactions::{
+    helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
+    tari_amount::MicroTari,
+    transaction::{OutputFeatures, Transaction, TransactionInput, UnblindedOutput},
+    types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey},
 };
 use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
     script,
     tari_utilities::hex::Hex,
 };
-use tari_p2p::{initialization::CommsConfig, transport::TransportType};
+use tari_p2p::{initialization::CommsConfig, transport::TransportType, Network};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{runtime::Handle, time::delay_for};
 
@@ -140,6 +137,7 @@ pub async fn create_wallet(
         .expect("Could not construct Node Identity"),
     );
     let comms_config = CommsConfig {
+        network: Network::Weatherwax,
         transport_type: TransportType::Memory {
             listener_address: public_address,
         },
@@ -151,7 +149,6 @@ pub async fn create_wallet(
         user_agent: "/tari/wallet/test".to_string(),
         dht: DhtConfig {
             discovery_request_timeout: Duration::from_secs(30),
-            network: DhtNetwork::Weatherwax,
             allow_test_addresses: true,
             ..Default::default()
         },
@@ -169,7 +166,7 @@ pub async fn create_wallet(
         factories,
         None,
         None,
-        Network::Weatherwax,
+        Network::Weatherwax.into(),
         None,
         None,
         None,

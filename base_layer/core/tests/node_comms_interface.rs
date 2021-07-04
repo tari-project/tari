@@ -26,6 +26,7 @@ mod helpers;
 use futures::{channel::mpsc, StreamExt};
 use helpers::block_builders::append_block;
 use std::sync::Arc;
+use tari_common::configuration::Network;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::peer_manager::NodeId;
 use tari_core::{
@@ -33,9 +34,9 @@ use tari_core::{
         comms_interface::{CommsInterfaceError, InboundNodeCommsHandlers, NodeCommsRequest, NodeCommsResponse},
         OutboundNodeCommsInterface,
     },
-    blocks::{genesis_block, BlockBuilder, BlockHeader},
+    blocks::{BlockBuilder, BlockHeader},
     chain_storage::{BlockchainDatabaseConfig, DbTransaction, HistoricalBlock, Validators},
-    consensus::{ConsensusManagerBuilder, Network},
+    consensus::{ConsensusManager, NetworkConsensus},
     mempool::{Mempool, MempoolConfig},
     test_helpers::blockchain::{create_store_with_consensus_and_validators_and_config, create_test_blockchain_db},
     transactions::{helpers::create_utxo, tari_amount::MicroTari, types::CryptoFactories},
@@ -80,7 +81,7 @@ async fn inbound_get_metadata() {
     let mempool = new_mempool();
 
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManagerBuilder::new(network).build();
+    let consensus_manager = ConsensusManager::builder(network).build();
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded();
@@ -111,7 +112,7 @@ async fn inbound_fetch_kernel_by_excess_sig() {
     let mempool = new_mempool();
 
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManagerBuilder::new(network).build();
+    let consensus_manager = ConsensusManager::builder(network).build();
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded();
@@ -160,10 +161,7 @@ async fn inbound_fetch_headers() {
     let store = create_test_blockchain_db();
     let mempool = new_mempool();
     let network = Network::LocalNet;
-    let consensus_constants = network.create_consensus_constants();
-    let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants[0].clone())
-        .build();
+    let consensus_manager = ConsensusManager::builder(network).build();
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded();
@@ -214,10 +212,7 @@ async fn inbound_fetch_utxos() {
     let store = create_test_blockchain_db();
     let mempool = new_mempool();
     let network = Network::LocalNet;
-    let consensus_constants = network.create_consensus_constants();
-    let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants[0].clone())
-        .build();
+    let consensus_manager = ConsensusManager::builder(network).build();
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded();
@@ -277,10 +272,7 @@ async fn inbound_fetch_txos() {
     let mempool = new_mempool();
     let (block_event_sender, _) = broadcast::channel(50);
     let network = Network::LocalNet;
-    let consensus_constants = network.create_consensus_constants();
-    let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants[0].clone())
-        .build();
+    let consensus_manager = ConsensusManager::builder(network).build();
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
@@ -324,7 +316,7 @@ async fn outbound_fetch_blocks() {
     let (block_sender, _) = mpsc::unbounded();
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
     let network = Network::LocalNet;
-    let consensus_constants = network.create_consensus_constants();
+    let consensus_constants = NetworkConsensus::from(network).create_consensus_constants();
     let gb = BlockBuilder::new(consensus_constants[0].blockchain_version()).build();
     let block = HistoricalBlock::new(gb, 0, Default::default(), vec![], 0);
     let block_response = NodeCommsResponse::HistoricalBlocks(vec![block.clone()]);
@@ -343,10 +335,7 @@ async fn inbound_fetch_blocks() {
     let mempool = new_mempool();
     let (block_event_sender, _) = broadcast::channel(50);
     let network = Network::LocalNet;
-    let consensus_constants = network.create_consensus_constants();
-    let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants[0].clone())
-        .build();
+    let consensus_manager = ConsensusManager::builder(network).build();
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
@@ -375,12 +364,8 @@ async fn inbound_fetch_blocks() {
 // Test needs to be updated to new pruned structure.
 async fn inbound_fetch_blocks_before_horizon_height() {
     let network = Network::LocalNet;
-    let consensus_constants = network.create_consensus_constants();
-    let block0 = genesis_block::get_weatherwax_genesis_block();
-    let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants[0].clone())
-        .with_block(block0.clone())
-        .build();
+    let consensus_manager = ConsensusManager::builder(network).build();
+    let block0 = consensus_manager.get_genesis_block();
     let validators = Validators::new(
         MockValidator::new(true),
         MockValidator::new(true),

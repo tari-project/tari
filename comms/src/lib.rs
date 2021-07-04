@@ -40,7 +40,6 @@ pub mod framing;
 
 mod common;
 pub use common::rate_limit;
-mod consts;
 
 mod multiplexing;
 pub use multiplexing::Substream;

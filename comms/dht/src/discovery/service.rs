@@ -247,7 +247,7 @@ impl DhtDiscoveryService {
             .filter_map(|addr| addr.parse().ok())
             .collect::<Vec<_>>();
 
-        validate_peer_addresses(&addresses, self.config.network.is_localtest())
+        validate_peer_addresses(&addresses, self.config.allow_test_addresses)
             .map_err(|err| DhtDiscoveryError::InvalidPeerMultiaddr(err.to_string()))?;
 
         let peer = self

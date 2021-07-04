@@ -1914,8 +1914,7 @@ mod test {
             chain_strength_comparer::strongest_chain,
             consensus_constants::PowAlgorithmConstants,
             ConsensusConstantsBuilder,
-            ConsensusManagerBuilder,
-            Network,
+            ConsensusManager,
         },
         proof_of_work::AchievedTargetDifficulty,
         test_helpers::{
@@ -1926,6 +1925,7 @@ mod test {
         validation::{header_validator::HeaderValidator, mocks::MockValidator},
     };
     use std::collections::HashMap;
+    use tari_common::configuration::Network;
 
     #[test]
     fn lmdb_fetch_monero_seeds() {
@@ -2456,7 +2456,7 @@ mod test {
         let mock_validator = Box::new(MockValidator::new(true));
         // A real validator is needed here to test target difficulties
 
-        let consensus = ConsensusManagerBuilder::new(Network::LocalNet)
+        let consensus = ConsensusManager::builder(Network::LocalNet)
             .with_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .clear_proof_of_work()

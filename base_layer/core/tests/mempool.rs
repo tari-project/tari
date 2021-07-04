@@ -38,6 +38,7 @@ use helpers::{
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
 // use crate::helpers::database::create_store;
 use std::{ops::Deref, sync::Arc, time::Duration};
+use tari_common::configuration::Network;
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
     base_node::{
@@ -45,7 +46,7 @@ use tari_core::{
         service::BaseNodeServiceConfig,
         state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
     },
-    consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
+    consensus::{ConsensusConstantsBuilder, ConsensusManager, NetworkConsensus},
     mempool::{Mempool, MempoolConfig, MempoolServiceConfig, MempoolServiceError, TxStorageResponse},
     proof_of_work::Difficulty,
     proto,
@@ -425,7 +426,7 @@ fn request_response_get_stats() {
         .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
-    let consensus_manager = ConsensusManagerBuilder::new(network)
+    let consensus_manager = ConsensusManager::builder(network)
         .with_consensus_constants(consensus_constants)
         .with_block(block0)
         .build();
@@ -480,7 +481,7 @@ fn request_response_get_tx_state_by_excess_sig() {
         .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
-    let consensus_manager = ConsensusManagerBuilder::new(network)
+    let consensus_manager = ConsensusManager::builder(network)
         .with_consensus_constants(consensus_constants)
         .with_block(block0)
         .build();
@@ -550,7 +551,7 @@ fn receive_and_propagate_transaction() {
         .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
-    let consensus_manager = ConsensusManagerBuilder::new(network)
+    let consensus_manager = ConsensusManager::builder(network)
         .with_consensus_constants(consensus_constants)
         .with_block(block0)
         .build();
@@ -745,7 +746,7 @@ fn consensus_validation_large_tx() {
 fn service_request_timeout() {
     let mut runtime = Runtime::new().unwrap();
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManagerBuilder::new(network).build();
+    let consensus_manager = ConsensusManager::builder(network).build();
     let mempool_service_config = MempoolServiceConfig {
         request_timeout: Duration::from_millis(1),
         ..Default::default()
@@ -786,13 +787,13 @@ fn block_event_and_reorg_event_handling() {
     // When block B2B is submitted with TX2B, TX3B, then TX2A, TX3A are discarded (Not Stored)
     let factories = CryptoFactories::default();
     let network = Network::LocalNet;
-    let consensus_constants = network.create_consensus_constants();
+    let consensus_constants = NetworkConsensus::from(network).create_consensus_constants();
 
     let mut runtime = Runtime::new().unwrap();
     let temp_dir = tempdir().unwrap();
     let (block0, utxos0) =
         create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants[0]);
-    let consensus_manager = ConsensusManagerBuilder::new(network)
+    let consensus_manager = ConsensusManager::builder(network)
         .with_consensus_constants(consensus_constants[0].clone())
         .with_block(block0.clone())
         .build();

@@ -87,9 +87,6 @@ use tari_crypto::{keys::DiffieHellmanSharedSecret, script, tari_utilities::ByteA
 use tari_p2p::domain_message::DomainMessage;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
-
-#[cfg(feature = "test_harness")]
-use tokio::runtime::Handle;
 use tokio::{sync::broadcast, task::JoinHandle};
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
@@ -2053,7 +2050,7 @@ where
         _tx_id: TxId,
         amount: MicroTari,
         source_public_key: CommsPublicKey,
-        handle: Handle,
+        handle: tokio::runtime::Handle,
     ) -> Result<(), TransactionServiceError> {
         use crate::{
             base_node_service::{handle::BaseNodeServiceHandle, mock_base_node_service::MockBaseNodeService},
@@ -2068,7 +2065,8 @@ where
             transaction_service::{handle::TransactionServiceHandle, storage::models::InboundTransaction},
         };
         use tari_comms::types::CommsSecretKey;
-        use tari_core::consensus::{ConsensusConstantsBuilder, Network};
+        use tari_core::consensus::ConsensusConstantsBuilder;
+        use tari_p2p::Network;
         use tempfile::tempdir;
 
         let (_sender, receiver) = reply_channel::unbounded();

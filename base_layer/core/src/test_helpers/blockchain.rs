@@ -41,13 +41,7 @@ use crate::{
         PrunedOutput,
         Validators,
     },
-    consensus::{
-        chain_strength_comparer::ChainStrengthComparerBuilder,
-        ConsensusConstantsBuilder,
-        ConsensusManager,
-        ConsensusManagerBuilder,
-        Network,
-    },
+    consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
         types::{CryptoFactories, HashOutput, Signature},
@@ -64,6 +58,7 @@ use std::{
     ops::Deref,
     path::{Path, PathBuf},
 };
+use tari_common::configuration::Network;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
@@ -73,7 +68,7 @@ pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {
     let network = Network::Weatherwax;
     let consensus_constants = ConsensusConstantsBuilder::new(network).build();
     let genesis = get_weatherwax_genesis_block();
-    let consensus_manager = ConsensusManagerBuilder::new(network)
+    let consensus_manager = ConsensusManager::builder(network)
         .with_consensus_constants(consensus_constants)
         .with_block(genesis)
         .on_ties(ChainStrengthComparerBuilder::new().by_height().build())
@@ -121,7 +116,7 @@ pub fn create_store_with_consensus(rules: ConsensusManager) -> BlockchainDatabas
 }
 pub fn create_test_blockchain_db() -> BlockchainDatabase<TempDatabase> {
     let network = Network::Weatherwax;
-    let rules = ConsensusManagerBuilder::new(network).build();
+    let rules = ConsensusManager::builder(network).build();
     create_store_with_consensus(rules)
 }
 

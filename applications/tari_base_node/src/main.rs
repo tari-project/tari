@@ -219,7 +219,7 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
         let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::new(
             ctx.local_node(),
             ctx.local_mempool(),
-            node_config.network.into(),
+            node_config.network,
             ctx.state_machine(),
             ctx.base_node_comms().peer_manager(),
         );

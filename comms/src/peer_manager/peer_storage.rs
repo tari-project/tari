@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    consts::PEER_MANAGER_MAX_FLOOD_PEERS,
     peer_manager::{
         node_id::{NodeDistance, NodeId},
         peer::{Peer, PeerFlags},
@@ -40,6 +39,8 @@ use std::{collections::HashMap, time::Duration};
 use tari_storage::{IterationResult, KeyValueStore};
 
 const LOG_TARGET: &str = "comms::peer_manager::peer_storage";
+/// The maximum number of peers to return from the flood_identities method in peer manager
+const PEER_MANAGER_MAX_FLOOD_PEERS: usize = 1000;
 
 /// PeerStorage provides a mechanism to keep a datastore and a local copy of all peers in sync and allow fast searches
 /// using the node_id, public key or net_address of a peer.
