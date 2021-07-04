@@ -866,8 +866,7 @@ mod test {
 
         // Receiver gets message, deserializes it etc, and creates his response
         let mut bob_info =
-            SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, features, &factories, None).unwrap();
-        // Alice gets message back, deserializes it, etc
+            SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, features, &factories, None).unwrap(); // Alice gets message back, deserializes it, etc
         alice
             .add_single_recipient_info(bob_info.clone(), &factories.range_proof)
             .unwrap();
@@ -1004,8 +1003,7 @@ mod test {
         assert!(alice.is_collecting_single_signature());
         // Receiver gets message, deserializes it etc, and creates his response
         let bob_info =
-            SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, features, &factories, None).unwrap();
-        // Alice gets message back, deserializes it, etc
+            SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, features, &factories, None).unwrap(); // Alice gets message back, deserializes it, etc
         match alice.add_single_recipient_info(bob_info, &factories.range_proof) {
             Ok(_) => panic!("Range proof should have failed to verify"),
             Err(e) => assert_eq!(

@@ -32,10 +32,11 @@ use rand::{rngs::OsRng, RngCore};
 use std::{collections::HashMap, sync::Arc};
 use tari_common::configuration::Network;
 use tari_core::{
-    chain_storage::{BlockAddResult, BlockchainDatabase},
+    blocks::Block,
+    chain_storage::{BlockAddResult, BlockchainDatabase, ChainStorageError},
     consensus::ConsensusManager,
     test_helpers::blockchain::TempDatabase,
-    transactions::types::CryptoFactories,
+    transactions::{transaction::UnblindedOutput, types::CryptoFactories},
 };
 use tari_crypto::tari_utilities::Hashable;
 
@@ -46,13 +47,14 @@ pub struct TestBlockchain {
     blocks: HashMap<String, BlockProxy>,
     hash_to_block: HashMap<Vec<u8>, String>,
     consensus_manager: ConsensusManager,
+    outputs: Vec<Vec<UnblindedOutput>>,
 }
 
 #[allow(dead_code)]
 impl TestBlockchain {
     pub fn with_genesis(genesis_name: &'static str) -> Self {
         let network = Network::LocalNet;
-        let (store, mut b, _outputs, consensus_manager) = create_new_blockchain(network);
+        let (store, mut b, outputs, consensus_manager) = create_new_blockchain(network);
 
         let name = genesis_name.to_string();
         let mut blocks = HashMap::new();
@@ -66,28 +68,59 @@ impl TestBlockchain {
             blocks,
             hash_to_block,
             consensus_manager,
+            outputs,
         }
     }
 
-    pub fn add_block(&mut self, block: TestBlockBuilderInner) -> BlockAddResult {
+    pub fn store(&self) -> &BlockchainDatabase<TempDatabase> {
+        &self.store
+    }
+
+    pub fn consensus_manager(&self) -> &ConsensusManager {
+        &self.consensus_manager
+    }
+
+    pub fn build_block(&self, block: TestBlockBuilderInner) -> (Block, UnblindedOutput) {
         debug!(target: LOG_TARGET, "Adding block '{}' to test block chain", block.name);
         let prev_block = self.blocks.get(&block.child_of.unwrap());
         let prev_block = prev_block.map(|b| &b.block).unwrap();
-        let template =
-            chain_block_with_new_coinbase(prev_block, vec![], &self.consensus_manager, &CryptoFactories::default()).0;
+        let (template, output) = chain_block_with_new_coinbase(
+            prev_block,
+            block.transactions,
+            &self.consensus_manager,
+            &CryptoFactories::default(),
+        );
 
         let mut new_block = self.store.prepare_block_merkle_roots(template).unwrap();
         new_block.header.nonce = OsRng.next_u64();
         find_header_with_achieved_difficulty(&mut new_block.header, block.difficulty.unwrap_or(1).into());
 
-        let res = self.store.add_block(Arc::new(new_block)).unwrap();
+        (new_block, output)
+    }
+
+    pub fn add_block(&mut self, block: TestBlockBuilderInner) -> (BlockAddResult, UnblindedOutput) {
+        let block_name = block.name.clone();
+        let (block, output) = self.build_block(block);
+        self.outputs.push(vec![output.clone()]);
+        let res = self.add_raw_block(&block_name, block).unwrap();
+        (res, output)
+    }
+
+    pub fn add_raw_block(&mut self, block_name: &str, block: Block) -> Result<BlockAddResult, ChainStorageError> {
+        let res = self.store.add_block(Arc::new(block))?;
         if let BlockAddResult::Ok(ref b) = res {
-            self.hash_to_block.insert(b.hash().clone(), block.name.clone());
-            self.blocks
-                .insert(block.name.clone(), BlockProxy::new(block.name, b.as_ref().clone()));
+            self.hash_to_block.insert(b.hash().clone(), block_name.to_string());
+            self.blocks.insert(
+                block_name.to_string(),
+                BlockProxy::new(block_name.to_string(), b.as_ref().clone()),
+            );
         }
 
-        res
+        Ok(res)
+    }
+
+    pub fn outputs_at(&self, height: u64) -> &[UnblindedOutput] {
+        self.outputs.get(height as usize).unwrap()
     }
 
     pub fn builder(&mut self) -> TestBlockBuilder {

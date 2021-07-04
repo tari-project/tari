@@ -61,7 +61,7 @@ use tari_core::{
         create_test_db,
     },
     transactions::{
-        helpers::spend_utxos,
+        helpers::{schema_to_transaction, spend_utxos},
         tari_amount::{uT, MicroTari, T},
         types::CryptoFactories,
     },
@@ -69,7 +69,7 @@ use tari_core::{
     txn_schema,
     validation::{mocks::MockValidator, DifficultyCalculator, ValidationError},
 };
-use tari_crypto::tari_utilities::Hashable;
+use tari_crypto::{script::StackItem, tari_utilities::Hashable};
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
 
@@ -377,7 +377,6 @@ fn blockchain_reorgs_to_stronger_chain() {
 #[test]
 #[allow(clippy::identity_op)]
 fn handle_reorg() {
-    env_logger::init();
     // GB --> A1 --> A2 --> A3 -----> A4(Low PoW)     [Main Chain]
     //          \--> B2 --> B3(?) --> B4(Medium PoW)  [Forked Chain 1]
     //                        \-----> C4(Highest PoW) [Forked Chain 2]
@@ -1742,6 +1741,39 @@ fn pruned_mode_cleanup_and_fetch_block() {
     assert_eq!(metadata.pruned_height(), 1);
     assert_eq!(metadata.height_of_longest_chain(), 5);
     assert_eq!(metadata.pruning_horizon(), 3);
+}
+
+#[test]
+fn input_malleability() {
+    let mut blockchain = TestBlockchain::with_genesis("GB");
+    let blocks = blockchain.builder();
+
+    let (_, output) = blockchain.add_block(blocks.new_block("A1").child_of("GB").difficulty(1));
+
+    let (txs, _) = schema_to_transaction(&[txn_schema!(from: vec![output], to: vec![50 * T])]);
+    blockchain.add_block(
+        blocks
+            .new_block("A2")
+            .child_of("A1")
+            .difficulty(1)
+            .with_transactions(txs.into_iter().map(|tx| Clone::clone(&*tx)).collect()),
+    );
+    let block = blockchain.get_block("A2").cloned().unwrap().block;
+    let block_hash = block.hash();
+    let roots = blockchain.store().calculate_mmr_roots(block.block()).unwrap();
+
+    let mut mod_block = block.block().clone();
+    mod_block.body.inputs_mut()[0]
+        .input_data
+        .push(StackItem::Hash(*b"I can't do whatever I want......"))
+        .unwrap();
+
+    let modded_root = blockchain.store().calculate_mmr_roots(&mod_block).unwrap();
+    assert_ne!(roots.input_mr, modded_root.input_mr);
+
+    mod_block.header.input_mr = modded_root.input_mr;
+    let mod_block_hash = mod_block.hash();
+    assert_ne!(*block_hash, mod_block_hash);
 }
 
 #[test]

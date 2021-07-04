@@ -569,7 +569,7 @@ mod test {
         consensus::{KERNEL_WEIGHT, WEIGHT_PER_INPUT, WEIGHT_PER_OUTPUT},
         transactions::{
             fee::Fee,
-            helpers::{create_test_input, create_unblinded_output, TestParams},
+            helpers::{create_test_input, create_unblinded_output, TestParams, UtxoTestParams},
             tari_amount::*,
             transaction::{OutputFeatures, MAX_TRANSACTION_INPUTS},
             transaction_protocol::{
@@ -616,7 +616,10 @@ mod test {
                 PrivateKey::random(&mut OsRng),
             )
             .unwrap();
-        let (utxo, input) = create_test_input(MicroTari(5_000), 0, &factories.commitment);
+        let (utxo, input) = TestParams::new().create_input(UtxoTestParams {
+            value: MicroTari(5_000),
+            ..Default::default()
+        });
         builder.with_input(utxo, input);
         builder
             .with_fee_per_gram(MicroTari(20))
@@ -705,12 +708,10 @@ mod test {
         // fee == 340, output = 80
 
         // Pay out so that I should get change, but not enough to pay for the output
-        let output = create_unblinded_output(
-            TariScript::default(),
-            OutputFeatures::default(),
-            p.clone(),
-            MicroTari(500) - expected_fee - MicroTari(50),
-        );
+        let output = p.create_unblinded_output(UtxoTestParams {
+            value: MicroTari(500) - expected_fee - MicroTari(50),
+            ..Default::default()
+        });
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0);
         builder

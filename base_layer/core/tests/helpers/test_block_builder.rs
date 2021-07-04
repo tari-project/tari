@@ -21,6 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+use tari_core::transactions::transaction::Transaction;
+
 #[derive(Default)]
 pub struct TestBlockBuilder {}
 
@@ -36,6 +38,7 @@ pub struct TestBlockBuilderInner {
     pub name: String,
     pub child_of: Option<String>,
     pub difficulty: Option<u64>,
+    pub transactions: Vec<Transaction>,
 }
 
 #[allow(dead_code)]
@@ -45,6 +48,7 @@ impl TestBlockBuilderInner {
             name: name.to_string(),
             child_of: None,
             difficulty: None,
+            transactions: Vec::new(),
         }
     }
 
@@ -55,6 +59,11 @@ impl TestBlockBuilderInner {
 
     pub fn difficulty(mut self, difficulty: u64) -> Self {
         self.difficulty = Some(difficulty);
+        self
+    }
+
+    pub fn with_transactions(mut self, transactions: Vec<Transaction>) -> Self {
+        self.transactions = transactions;
         self
     }
 }

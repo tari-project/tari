@@ -23,7 +23,7 @@
 
 use tari_core::chain_storage::ChainBlock;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BlockProxy {
     pub name: String,
     pub block: ChainBlock,
