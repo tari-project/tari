@@ -169,7 +169,6 @@ pub fn create_unblinded_output(
         Some(output_features),
         script,
         inputs!(PublicKey::from_secret_key(&test_params.script_private_key)),
-        0, // TODO: This will be removed by a later PR
         test_params.script_private_key,
         test_params.script_offset_pub_key,
         sender_sig,
@@ -211,12 +210,11 @@ macro_rules! tx {
 /// The output of this macro is intended to be used in [spend_utxos].
 #[macro_export]
 macro_rules! txn_schema {
-    (from: $input:expr, to: $outputs:expr, fee: $fee:expr, lock: $lock:expr, mined_height: $mined_height:expr, features: $features:expr) => {{
+    (from: $input:expr, to: $outputs:expr, fee: $fee:expr, lock: $lock:expr, features: $features:expr) => {{
         $crate::transactions::helpers::TransactionSchema {
             from: $input.clone(),
             to: $outputs.clone(),
             fee: $fee,
-            mined_height: $mined_height,
             lock_height: $lock,
             features: $features
         }
@@ -228,7 +226,6 @@ macro_rules! txn_schema {
             to:$outputs,
             fee:$fee,
             lock:$lock,
-            mined_height: 0,
             features: $features
         )
     }};
@@ -259,7 +256,6 @@ macro_rules! txn_schema {
 pub struct TransactionSchema {
     pub from: Vec<UnblindedOutput>,
     pub to: Vec<MicroTari>,
-    pub mined_height: u64,
     pub fee: MicroTari,
     pub lock_height: u64,
     pub features: OutputFeatures,
@@ -354,8 +350,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
         );
 
     for tx_input in &schema.from {
-        let mut input = tx_input.clone();
-        input.height = schema.mined_height;
+        let input = tx_input.clone();
         let utxo = input
             .as_transaction_input(&factories.commitment)
             .expect("Should be able to make a transaction input");
@@ -396,7 +391,6 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
         inputs!(PublicKey::from_secret_key(
             &test_params_change_and_txn.script_private_key
         )),
-        0,
         test_params_change_and_txn.script_private_key.clone(),
         change_script_offset_public_key,
         sender_sig,

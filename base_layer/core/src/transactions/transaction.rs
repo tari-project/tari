@@ -210,7 +210,6 @@ pub struct UnblindedOutput {
     pub features: OutputFeatures,
     pub script: TariScript,
     pub input_data: ExecutionStack,
-    pub height: u64,
     pub script_private_key: PrivateKey,
     pub script_offset_public_key: PublicKey,
     pub sender_metadata_signature: Signature,
@@ -225,7 +224,6 @@ impl UnblindedOutput {
         features: Option<OutputFeatures>,
         script: TariScript,
         input_data: ExecutionStack,
-        height: u64,
         script_private_key: PrivateKey,
         script_offset_public_key: PublicKey,
         sender_metadata_signature: Signature,
@@ -236,7 +234,6 @@ impl UnblindedOutput {
             features: features.unwrap_or_default(),
             script,
             input_data,
-            height,
             script_private_key,
             script_offset_public_key,
             sender_metadata_signature,
@@ -273,7 +270,6 @@ impl UnblindedOutput {
             commitment,
             script: self.script.clone(),
             input_data: self.input_data.clone(),
-            height: self.height,
             script_signature,
             script_offset_public_key: self.script_offset_public_key.clone(),
         })
@@ -381,8 +377,6 @@ pub struct TransactionInput {
     pub script: TariScript,
     /// The script input data, if any
     pub input_data: ExecutionStack,
-    /// The block height that the UTXO was mined
-    pub height: u64,
     /// A signature with k_s, signing the script, input data, and mined height
     pub script_signature: ComSignature,
     /// The offset pubkey, K_O
@@ -397,7 +391,6 @@ impl TransactionInput {
         commitment: Commitment,
         script: TariScript,
         input_data: ExecutionStack,
-        height: u64,
         script_signature: ComSignature,
         script_offset_public_key: PublicKey,
     ) -> TransactionInput {
@@ -406,7 +399,6 @@ impl TransactionInput {
             commitment,
             script,
             input_data,
-            height,
             script_signature,
             script_offset_public_key,
         }
@@ -1366,7 +1358,6 @@ mod test {
 
         let script = TariScript::default();
         let input_data = ExecutionStack::default();
-        let height = 0;
         let script_signature = ComSignature::default();
         let offset_pub_key = PublicKey::default();
         let mut input = TransactionInput::new(
@@ -1374,7 +1365,6 @@ mod test {
             c,
             script,
             input_data,
-            height,
             script_signature,
             offset_pub_key,
         );

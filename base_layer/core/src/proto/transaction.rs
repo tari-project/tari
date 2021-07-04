@@ -121,7 +121,6 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
             commitment,
             script: TariScript::from_bytes(input.script.as_slice()).map_err(|err| format!("{:?}", err))?,
             input_data: ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
-            height: input.height,
             script_signature,
             script_offset_public_key,
         })
@@ -135,7 +134,6 @@ impl From<TransactionInput> for proto::types::TransactionInput {
             commitment: Some(input.commitment.into()),
             script: input.script.as_bytes(),
             input_data: input.input_data.as_bytes(),
-            height: input.height,
             script_signature: Some(input.script_signature.into()),
             script_offset_public_key: input.script_offset_public_key.as_bytes().to_vec(),
         }

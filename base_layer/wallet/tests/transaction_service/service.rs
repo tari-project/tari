@@ -895,7 +895,7 @@ fn recover_one_sided_transaction() {
             .expect("Could not find completed one-sided tx");
         let outputs = completed_tx.transaction.body.outputs().clone();
 
-        let unblinded = bob_oms.scan_outputs_for_one_sided_payments(outputs, 0).await.unwrap();
+        let unblinded = bob_oms.scan_outputs_for_one_sided_payments(outputs).await.unwrap();
         // Bob should be able to claim 1 output.
         assert_eq!(1, unblinded.len());
         assert_eq!(value, unblinded[0].value);

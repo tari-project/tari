@@ -72,9 +72,8 @@ pub enum OutputManagerRequest {
     RemoveEncryption,
     GetPublicRewindKeys,
     FeeEstimate((MicroTari, MicroTari, u64, u64)),
-    ScanForRecoverableOutputs(Vec<TransactionOutput>, u64),
-    ScanOutputs(Vec<TransactionOutput>, u64),
-    UpdateMinedHeight(u64, u64),
+    ScanForRecoverableOutputs(Vec<TransactionOutput>),
+    ScanOutputs(Vec<TransactionOutput>),
     AddKnownOneSidedPaymentScript(KnownOneSidedPaymentScript),
 }
 
@@ -105,9 +104,8 @@ impl fmt::Display for OutputManagerRequest {
             GetCoinbaseTransaction(_) => write!(f, "GetCoinbaseTransaction"),
             GetPublicRewindKeys => write!(f, "GetPublicRewindKeys"),
             FeeEstimate(_) => write!(f, "FeeEstimate"),
-            ScanForRecoverableOutputs(_, _) => write!(f, "ScanForRecoverableOutputs"),
-            ScanOutputs(_, _) => write!(f, "ScanRewindAndImportOutputs"),
-            UpdateMinedHeight(_, _) => write!(f, "UpdateMinedHeight"),
+            ScanForRecoverableOutputs(_) => write!(f, "ScanForRecoverableOutputs"),
+            ScanOutputs(_) => write!(f, "ScanRewindAndImportOutputs"),
             AddKnownOneSidedPaymentScript(_) => write!(f, "AddKnownOneSidedPaymentScript"),
         }
     }
@@ -141,7 +139,6 @@ pub enum OutputManagerResponse {
     FeeEstimate(MicroTari),
     RewoundOutputs(Vec<UnblindedOutput>),
     ScanOutputs(Vec<UnblindedOutput>),
-    MinedHeightUpdated,
     AddKnownOneSidedPaymentScript,
 }
 
@@ -472,11 +469,10 @@ impl OutputManagerHandle {
     pub async fn scan_for_recoverable_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
-        height: u64,
     ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::ScanForRecoverableOutputs(outputs, height))
+            .call(OutputManagerRequest::ScanForRecoverableOutputs(outputs))
             .await??
         {
             OutputManagerResponse::RewoundOutputs(outputs) => Ok(outputs),
@@ -487,13 +483,8 @@ impl OutputManagerHandle {
     pub async fn scan_outputs_for_one_sided_payments(
         &mut self,
         outputs: Vec<TransactionOutput>,
-        height: u64,
     ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::ScanOutputs(outputs, height))
-            .await??
-        {
+        match self.handle.call(OutputManagerRequest::ScanOutputs(outputs)).await?? {
             OutputManagerResponse::ScanOutputs(outputs) => Ok(outputs),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
@@ -528,17 +519,6 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::PayToSelfTransaction(outputs) => Ok(outputs),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn update_mined_height(&mut self, tx_id: u64, height: u64) -> Result<(), OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::UpdateMinedHeight(tx_id, height))
-            .await??
-        {
-            OutputManagerResponse::MinedHeightUpdated => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

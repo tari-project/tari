@@ -622,7 +622,6 @@ To summarise, the information required for one-sided transactions is as follows:
 | features          | \\( F_a \\)                           | Public                                                                                        |
 | script            | \\( \alpha_a \\)                      | Public                                                                                        |
 | script input      | \\( \input_a \\)                      | Public                                                                                        |
-| height            | \\( h_a \\)                           | Public                                                                                        |
 | script signature  | \\( a_{Sa},b_{Sa}, R_{Sa} \\)         | Alice knows \\( k_{Sa},\\, r_{Sa} \\) and \\( k_{a},\\, v_{a} \\) of the commitment \\(C_a\\) |
 | sender offset public key | \\( K_{Oa} \\)                        | Not used in this transaction                                                                  |
 
@@ -742,7 +741,6 @@ To summarise, the information required for creating a multiparty UTXO is as foll
 | features                    | \\( F_a \\)                           | Public                                                                                        |
 | script                      | \\( \alpha_a \\)                      | Public                                                                                        |
 | script input                | \\( \input_a \\)                      | Public                                                                                        |
-| height                      | \\( h_a \\)                           | Public                                                                                        |
 | script signature            | \\( (a_{Sa},b_{Sa}, R_{Sa}) \\)     | Alice knows \\( k_{Sa},\\, r_{Sa} \\) and \\( k_{a},\\, v_{a} \\) of the commitment \\(C_a\\) |
 | sender offset&nbsp;public&nbsp;key | \\( K_{Oa} \\)                        | Not used in this transaction                                                                  |
 
@@ -765,7 +763,6 @@ When spending the multi-party input:
 | features                    | \\( F_s \\)                             | Public                                                                                                                                                             |
 | script                      | \\( \alpha_s \\)                        | Public                                                                                                                                                             |
 | script input                | \\( \input_s \\)                        | Public                                                                                                                                                             |
-| height                      | \\( h_a \\)                             | Public                                                                                                                                                             |
 | script&nbsp;signature       | \\( (a_{Ss} ,b_{Ss} , R_{Ss}) \\)     | Alice knows \\( (k_{SsA},\\, r_{SsA}) \\), Bob knows \\( (k_{SsB},\\, r_{SsB}) \\). Both parties know \\( (k_{s},\\, v_{s}) \\). Neither party knows \\( k_{Ss}\\) |
 | sender offset&nbsp;public&nbsp;key | \\( K_{Os} \\)                          | As above, Alice and Bob each know part of the sender offset key                                                                                                           |
 

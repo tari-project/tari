@@ -43,7 +43,6 @@ impl From<UnblindedOutput> for grpc::UnblindedOutput {
             }),
             script: output.script.as_bytes(),
             input_data: output.input_data.as_bytes(),
-            height: output.height,
             script_private_key: output.script_private_key.as_bytes().to_vec(),
             script_offset_public_key: output.script_offset_public_key.as_bytes().to_vec(),
             sender_metadata_signature: Some(grpc::Signature {
@@ -89,7 +88,6 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
             features,
             script,
             input_data,
-            height: output.height,
             script_private_key,
             script_offset_public_key,
             sender_metadata_signature,

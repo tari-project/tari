@@ -64,7 +64,6 @@ where TBackend: OutputManagerBackend + 'static
     pub async fn scan_and_recover_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
-        height: u64,
     ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         let mut rewound_outputs: Vec<UnblindedOutput> = outputs
             .into_iter()
@@ -94,7 +93,6 @@ where TBackend: OutputManagerBackend + 'static
                         Some(features),
                         script,
                         inputs!(PublicKey::from_secret_key(&output.blinding_factor)),
-                        height,
                         output.blinding_factor,
                         script_offset_public_key,
                         sender_metadata_signature,

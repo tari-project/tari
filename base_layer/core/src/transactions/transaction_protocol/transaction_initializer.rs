@@ -287,7 +287,6 @@ impl SenderTransactionInitializer {
                                 .as_ref()
                                 .ok_or("Change script was not provided")?
                                 .clone(),
-                            0,
                             self.change_script_private_key
                                 .as_ref()
                                 .ok_or("Change script private key was not provided")?
@@ -722,7 +721,6 @@ mod test {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
         let (utxo, input) = create_test_input(MicroTari(500), 0, &factories.commitment);
-
         let script = script!(Nop);
         let output = create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(400));
         // Start the builder
@@ -747,7 +745,6 @@ mod test {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
         let (utxo, input) = create_test_input(MicroTari(400), 0, &factories.commitment);
-
         let script = script!(Nop);
         let output = create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(400));
         // Start the builder
@@ -772,7 +769,6 @@ mod test {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
         let (utxo, input) = create_test_input(MicroTari(100_000), 0, &factories.commitment);
-
         let script = script!(Nop);
         let output = create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(15000));
         // Start the builder
