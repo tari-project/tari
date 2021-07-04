@@ -230,7 +230,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                     .total_accumulated_difficulty
                     .to_formatted_string(&Locale::en),
                 block.accumulated_data().accumulated_monero_difficulty,
-                block.accumulated_data().accumulated_blake_difficulty,
+                block.accumulated_data().accumulated_sha_difficulty,
             );
             current_block = Some(block);
         }

@@ -372,7 +372,7 @@ class BaseNodeClient {
       toLittleEndian(parseInt(header.pow.accumulated_monero_difficulty), 64)
     );
     hash.update(
-      toLittleEndian(parseInt(header.pow.accumulated_blake_difficulty), 64)
+      toLittleEndian(parseInt(header.pow.accumulated_sha_difficulty), 64)
     );
     hash.update(header.pow.pow_data);
     const first_round = hash.digest();

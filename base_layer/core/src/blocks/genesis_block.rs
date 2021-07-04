@@ -79,7 +79,7 @@ pub fn get_stibbons_genesis_block() -> ChainBlock {
         achieved_difficulty: 1.into(),
         total_accumulated_difficulty: 1,
         accumulated_monero_difficulty: 1.into(),
-        accumulated_blake_difficulty: 1.into(),
+        accumulated_sha_difficulty: 1.into(),
         target_difficulty: 1.into(),
     };
     // NOTE: Panic is impossible, accumulated_data is created from the block
@@ -118,7 +118,7 @@ pub fn get_weatherwax_genesis_block() -> ChainBlock {
         achieved_difficulty: 1.into(),
         total_accumulated_difficulty: 1,
         accumulated_monero_difficulty: 1.into(),
-        accumulated_blake_difficulty: 1.into(),
+        accumulated_sha_difficulty: 1.into(),
         target_difficulty: 1.into(),
     };
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
@@ -291,7 +291,7 @@ pub fn get_ridcully_genesis_block() -> ChainBlock {
         achieved_difficulty: 1.into(),
         total_accumulated_difficulty: 1,
         accumulated_monero_difficulty: 1.into(),
-        accumulated_blake_difficulty: 1.into(),
+        accumulated_sha_difficulty: 1.into(),
         target_difficulty: 1.into(),
     };
     // NOTE: Panic is impossible, accumulated_data hash is set from block

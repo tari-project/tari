@@ -958,7 +958,7 @@ impl CommandHandler {
                         .consensus_constants(height)
                         .get_difficulty_max_block_interval(pow_algo),
                 );
-                let acc_sha3 = header.accumulated_data().accumulated_blake_difficulty;
+                let acc_sha3 = header.accumulated_data().accumulated_sha_difficulty;
                 let acc_monero = header.accumulated_data().accumulated_monero_difficulty;
 
                 writeln!(
