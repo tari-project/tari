@@ -1157,6 +1157,12 @@ Then(
     const client = this.getClient(nodeName);
     const hash = getTransactionOutputHash(this.outputs[outputName].output);
     const lastResult = await client.fetchMatchingUtxos([hash]);
+
+    expect(
+      lastResult,
+      `UTXO (${outputName}) not found with hash ${hash.toString("hex")}`
+    ).to.be.an("array").that.is.not.empty;
+
     expect(lastResult[0].output.commitment.toString("hex")).to.equal(
       this.outputs[outputName].output.commitment.toString("hex")
     );
