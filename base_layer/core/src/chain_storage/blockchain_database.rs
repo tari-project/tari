@@ -940,13 +940,19 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
     }
 
     for input in body.inputs().iter() {
-        let index = db
-            .fetch_mmr_leaf_index(MmrTree::Utxo, &input.output_hash())?
-            .ok_or_else(|| ChainStorageError::ValueNotFound {
-                entity: "UTXO".to_string(),
-                field: "hash".to_string(),
-                value: input.output_hash().to_hex(),
-            })?;
+        // Search the DB for the output leaf index so that it can be marked as spent/deleted.
+        // If the output hash is not found, check the current output_mmr. This allows zero-conf transactions
+        let index =
+            match db.fetch_mmr_leaf_index(MmrTree::Utxo, &input.output_hash())? {
+                Some(index) => index,
+                None => output_mmr.find_leaf_index(&input.output_hash())?.ok_or_else(|| {
+                    ChainStorageError::ValueNotFound {
+                        entity: "UTXO".to_string(),
+                        field: "hash".to_string(),
+                        value: input.output_hash().to_hex(),
+                    }
+                })?,
+            };
         input_mmr.push(input.hash())?;
 
         if !output_mmr.delete(index) {
@@ -965,6 +971,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
         kernel_mmr_size: kernel_mmr.get_leaf_count()? as u64,
         input_mr: input_mmr.get_merkle_root()?,
         output_mr: output_mmr.get_merkle_root()?,
+        // witness mmr size and output mmr size should be the same size
         output_mmr_size: witness_mmr.get_leaf_count()? as u64,
         witness_mr: witness_mmr.get_merkle_root()?,
     };

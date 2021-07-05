@@ -89,6 +89,16 @@ function toLittleEndian(n, numBits) {
   return arr;
 }
 
+function littleEndianHexStringToBigEndianHexString(string) {
+  if (!string) return undefined;
+  var len = string.length;
+  var bigEndianHexString = "0x";
+  for (var i = 0; i < len / 2; i++) {
+    bigEndianHexString += string.substring(len - (i + 1) * 2, len - i * 2);
+  }
+  return bigEndianHexString;
+}
+
 function hexSwitchEndianness(val) {
   let res = "";
   for (let i = val.length - 2; i > 0; i -= 2) {
@@ -223,6 +233,7 @@ module.exports = {
   sleep,
   waitFor,
   toLittleEndian,
+  littleEndianHexStringToBigEndianHexString,
   // portInUse,
   getFreePort,
   getTransactionOutputHash,

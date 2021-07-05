@@ -73,12 +73,17 @@ impl MempoolStorage {
         );
         match self.validator.validate(&tx) {
             Ok(()) => {
-                self.unconfirmed_pool.insert(tx)?;
+                self.unconfirmed_pool.insert(tx, None)?;
                 Ok(TxStorageResponse::UnconfirmedPool)
             },
-            Err(ValidationError::UnknownInputs) => {
-                warn!(target: LOG_TARGET, "Validation failed due to unknown inputs");
-                Ok(TxStorageResponse::NotStoredOrphan)
+            Err(ValidationError::UnknownInputs(dependent_outputs)) => {
+                if self.unconfirmed_pool.verify_outputs_exist(&dependent_outputs) {
+                    self.unconfirmed_pool.insert(tx, Some(dependent_outputs))?;
+                    Ok(TxStorageResponse::UnconfirmedPool)
+                } else {
+                    warn!(target: LOG_TARGET, "Validation failed due to unknown inputs");
+                    Ok(TxStorageResponse::NotStoredOrphan)
+                }
             },
             Err(ValidationError::ContainsSTxO) => {
                 warn!(target: LOG_TARGET, "Validation failed due to already spent output");
@@ -109,7 +114,7 @@ impl MempoolStorage {
         // Move published txs to ReOrgPool and discard double spends
         self.reorg_pool.insert_txs(
             self.unconfirmed_pool
-                .remove_published_and_discard_double_spends(&published_block),
+                .remove_published_and_discard_deprecated_transactions(&published_block),
         )?;
 
         Ok(())
@@ -191,8 +196,10 @@ impl MempoolStorage {
 
     /// Returns a list of transaction ranked by transaction priority up to a given weight.
     /// Will only return transactions that will fit into a block
-    pub fn retrieve(&self, total_weight: u64) -> Result<Vec<Arc<Transaction>>, MempoolError> {
-        Ok(self.unconfirmed_pool.highest_priority_txs(total_weight)?)
+    pub fn retrieve(&mut self, total_weight: u64) -> Result<Vec<Arc<Transaction>>, MempoolError> {
+        let results = self.unconfirmed_pool.highest_priority_txs(total_weight)?;
+        self.insert_txs(results.transactions_to_insert)?;
+        Ok(results.retrieved_transactions)
     }
 
     /// Check if the specified transaction is stored in the Mempool.
