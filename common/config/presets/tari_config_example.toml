@@ -208,28 +208,20 @@ data_dir = "weatherwax"
 # new nodes can use to introduce themselves to the network.
 # peer_seeds = ["public_key1::address1", "public_key2::address2",... ]
 peer_seeds = [
+    "9a26e910288213d649b26f9a7a7ee51fe2b2a67ff7d42334523463bf4be94312::/onion3/56kq54ylttnbl5ikotqex3oqvtzlxdpn7zlx4v56rvzf4kq7eezlclid:18141", #london
+    "6afd5b3c7772ad7d4bb26e0c19668fe04f2d68f99de9e132bee50a6c1846946d::/onion3/may4ajbmcn4dlnzf6fanvqlklxzqiw6qwu6ywqwkjc3bb354rc2i5wid:18141", #ncal
+    "8e7beec9becdc44fe6015a00d97a77fa3dbafe65127dcc988df6326bd9fd040d::/onion3/3pise36l4imoopsbjic5rtw67adx7rms6w5pgjmccpdwiqx66j7oqcqd:18141", #nvir
+    "80bb590d943a46e63ae79af5dc2c7d35a3dcd7922c182b28f619dc4cfc366f44::/onion3/oaxwahri7r3h5qjlcdbveyjmg4jsttausik66bicmhixft73nmvecdad:18141", #oregon
+    "981cc8cd1e4fe2f99ea1bd3e0ab1e7821ca0bfab336a4967cfec053fee86254c::/onion3/7hxpnxrxycdfevirddau7ybofwedaamjrg2ijm57k2kevh5q46ixamid:18141", #seoul
+    "f2ce179fb733725961a5f7e1e45dacdd443dd43ba6237438d6abe344fb717058::/onion3/nvgdmjf4wucgatz7vemzvi2u4sw5o4gyzwuikagpepoj4w7mkii47zid:18141", #stockholm
+    "909c0160f4d8e815aba5c2bbccfcceb448877e7b38759fb160f3e9494484d515::/onion3/qw5uxv533sqdn2qoncfyqo35dgecy4rt4x27rexi2her6q6pcpxbm4qd:18141", #sydney
+    # backups
     "0c3fe3c23866ed3827e1cd72aae0c9d364d860d597993104e90d9a9401e52f05::/onion3/2m2xnylrsqbaozsndkbmfisxxbwh2vgvs6oyfak2qah4snnxykrf7zad:18141",
     "b6b2c8a997ba3500d44b64a3b47203d922d614c01ebd9cad5563dc59086f9938::/onion3/kxtcwaoan6wvdl4wltguo4omo2san2ge727cfoc65hrzuwixprvop5id:18141",
     "4471cec2b77b1608ff26b8695281e0b4ab35bad7f882eeaab043398644094a6c::/onion3/fqmbme5qvagh2tv722nrnwwcd2ooa4aqr43mxgiozo2yq33w74bop5qd:18141",
     "e427d6007cb46e8c311fc75d2daaa95898a6162ce6a29cb4ab257c2ef70bfd62::/onion3/glicssekriwwwvfm2o5sk2mari4czbd7eklv4lsdn4wmy4ljss2t7zqd:18141",
     "021baaee838a6c7a21ae3ed74f1cbb27e46351b78f0e00810c1a344a9042754d::/onion3/p2z2ptouqgi3agmw62uhz2tambqfzfdtetrfw443of3jnkkiw44e2zqd:18141",
     "002a5b9d129401ca250d120b126caf067f8eb7a616252e630b6974da48def71a::/onion3/cldbbow3yzgxkvz4g2apoclrkbvg3mjxdvonoaeej3tarhlzkluodeyd:18141",
-    # t-tbn-nvir
-    # "b60d073e2f2337fdd95a58065e1d0182cca1d36c20ed10b27bc1232bc2836a17::/onion3/ssiz76b33emcerusblo6wba3ejqsub6ihkabjilem6ygoldodf6aenid:18141",
-    # t-tbn-ncal
-    # "e2cef0473117da34108dd85d4425536b8a1f317478686a6d7a0bbb5c800a747d::/onion3/3eiacmnozk7rcvrx7brhlssnpueqsjdsfbfmq63d2bk7h3vtah35tcyd:18141",
-    # t-tbn-oregon
-    # "f606c82d23b2a2eda65156cef9efcaf77031d16a681fca99af7c08e98035f21d::/onion3/i7nsgt2p7tkvpnhygnvihpuaqlunbtw3zti3qvi3eur7obkjkwgla4id:18141",
-    # t-tbn-london
-    # "d23cfeb05674d25c5b970b6bffefdc1e7c2c1f1f9c32fde04688d1b94c81705a::/onion3/obfjpoon2hm4uqerirhp4sf26bvq5ztokxhq274c2fg2uadrsu5drnqd:18141",
-    # t-tbn-stockholm
-    # "9cedfc16708f857e070e32d9cc1939fd6a57b5945ee97fdc707aa2f034ba6507::/onion3/ryfa3iufgmvwmghyhamkjz5rfygde6kmy7e5jn5oc2n44cpbvey654ad:18141",
-    # t-tbn-seoul
-    # "50ee725e2c6ca8282ab62bb7aef52a9c4df283ec99e00497a358dbaf4112ff0c::/onion3/yrzdnyayg2jqym7rmeoc3lwixylasokqwkrtqyvutobllz27jdznuoyd:18141",
-    # t-tbn-sydney
-    # "f0515584db420849a6c149517e4b326616d2d0b346f6f887adbf2c3937a87b5a::/onion3/n4kq54sjyghe4mvopk5gtmep5etblrdpqcx65o44stdb33od3tksmfqd:18141",
-    # backup-node
-    #"4a0c44d9132a8275d5ef8a969fb5d6085026b2d440350a3b238dfbbd1c068649::/onion3/fych32gn6yrvscbytm252woulv7o66q3pttirdmt7jlh7uyulcoikfad:18141"
 ]
 
 # This allowlist provides a method to force syncing from any known nodes you may choose, for example if you have a
