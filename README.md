@@ -171,7 +171,7 @@ First you'll need to make sure you have a full development environment set up:
     ```
 
 - Tor
-  - Donwload [Tor Windows Expert Bundle](https://www.torproject.org/download/tor/)
+  - Download [Tor Windows Expert Bundle](https://www.torproject.org/download/tor/)
   - Extract to local path, e.g. `C:\Program Files (x86)\Tor Services`
   - Ensure the directory containing the Tor executable, e.g. `C:\Program Files (x86)\Tor Services\Tor`, is in the path
 
@@ -258,7 +258,10 @@ anywhere on your system.
 The executables will either be inside your `~/tari/target/release` (on Linux) or `%USERPROFILE%\Code\tari\target\release`
 (on Windows) directory, or alternatively, inside your `~/.cargo/bin` (on Linux) `%USERPROFILE%\.cargo\bin` (on Windows)
 directory, depending on the build choice above, and must be run from the command line. If the former build method was
-used, you can run it from that directory, or you more likely want to copy it somewhere more convenient.
+used, you can run it from that directory, or you more likely want to copy it somewhere more convenient. Make sure to 
+start Tor service `~/tari/applications/tari_base_node/osx/start_tor` (on Mac),
+`~/tari/applications/tari_base_node/ubuntu/start_tor` (on Linux) or
+`%USERPROFILE%\Code\tari\applications\tari_base_node\windows\start_tor.lnk` (on Windows).
 
 To run from any directory of your choice, where the executable is visible in the path (first time use):
 

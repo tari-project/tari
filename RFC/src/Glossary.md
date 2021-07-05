@@ -84,7 +84,7 @@ kernels and headers up to that block height from the genesis block.
 [broadcast strategy]: #broadcaststrategy "Strategy used for broadcasting messages in a peer-to-peer network"
 
 A strategy for propagating messages amongst nodes in a peer-to-peer network. Example implementations of
-`BroadcastStrategy` include the Gossip protocol, Dandelion and flood fill.
+`BroadcastStrategy` include the Gossip protocol and flood fill.
 
 
 ## Checkpoint
@@ -162,6 +162,15 @@ was directly nominated by the [Asset Issuer].
 
 The last [block] of the base layer that represents the latest valid block. This [block] must be from the longest 
 proof-of-work chain to be the current head.
+
+
+## Cut-Through
+[cut-through]: #cut-through "Cut-through is the process where outputs may be omitted"
+
+Cut-through is the process where outputs spent within a single block may be removed without breaking the standard [MimbleWimble](#mimblewimble)
+validation rules. Simplistically, `Alice -> Bob -> Carol` may be "cut-through" to `Alice -> Carol`. Bob's commitments may be removed.
+
+On Tari, for reasons described in [RFC-0201_TariScript](./RFC-0201_TariScript.md#utxo-data-commitments), cut-through is prevented from ever happening.
 
 
 ## Digital asset
@@ -418,6 +427,12 @@ A permissioned Validator Node nominated by an Asset Issuer that will form part o
 A Tari Token Wallet is responsible for managing [Digital asset]s and [Tokens], and for constructing and negotiating 
 [instruction]s for transferring and receiving Assets and Tokens on the [Digital Asset Network].
 
+## Transaction Weight
+[Transaction weight]: #transaction-weight "Transaction "
+
+The weight of a transaction / block measured in "grams". Block / transaction weight are defined in the same way:
+`weight = num_inputs * PER_INPUT_GRAMS + num_outputs * PER_OUTPUT_GRAMS + num_kernels * PER_KERNEL_GRAMS`
+where the capitalized values are hard-coded constants.
 
 ## Unspent transaction outputs
 [utxo]: #unspent-transaction-outputs
@@ -435,16 +450,6 @@ UTXO values are hidden by their [commitment]s. Only the owner of the UTXO and (p
 
 Validator nodes (VNs) make up the Tari second layer, or [Digital Asset Network]. VNs are responsible for creating and
 updating [digital asset]s living on the Tari network.
-
-
-## ValidationState
-[ValidationState]: #validationstate
-Transactions or blocks are `unvalidated` when first received by a [Base Node]. After validation, they are either
-`rejected` or `validated`.
-
-`Validated` transactions can be added to the [mempool] and propagated to peers.
-
-`Validated` blocks are added to the [blockchain] and propagated to peers.
 
 
 ## Wallet

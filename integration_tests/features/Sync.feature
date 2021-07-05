@@ -22,7 +22,7 @@ Feature: Block Sync
     Given I have a SHA3 miner MINER connected to all seed nodes
     Given mining node MINER mines 20 blocks
     Given I have 2 base nodes connected to all seed nodes
-        # All nodes should sync to tip
+    # All nodes should sync to tip
     Then all nodes are at height 20
 
   Scenario: When a new node joins the network, it should receive all peers
@@ -44,7 +44,7 @@ Feature: Block Sync
     And mining node MINER1 mines 5 blocks with min difficulty 1 and max difficulty 10
     Then all nodes are at height 5
     Given I stop node NODE2
-    And mining node MINER1 mines 5 blocks with min difficulty 1 and max difficulty 10
+    And mining node MINER1 mines 5 blocks with min difficulty 1 and max difficulty 1
     Then node NODE1 is at height 10
     Given I stop node NODE1
     And I start NODE2
@@ -75,7 +75,7 @@ Feature: Block Sync
 
   @critical
   Scenario: Pruned mode
-        # TODO: Merge steps into single lines
+    # TODO: Merge steps into single lines
     Given I have a base node NODE1 connected to all seed nodes
     When I mine a block on NODE1 with coinbase CB1
     When I mine a block on NODE1 with coinbase CB2
@@ -106,24 +106,24 @@ Feature: Block Sync
     When mining node MINER mines <X1> blocks with min difficulty 1 and max difficulty 9999999999
     Then node SEED is at height <X1>
     When I start SYNCER
-        # Try to mine much faster than block sync, but still producing a lower accumulated difficulty
+    # Try to mine much faster than block sync, but still producing a lower accumulated difficulty
     And mining node MINER2 mines <Y1> blocks with min difficulty 1 and max difficulty 10
-        # Allow reorg to filter through
+    # Allow reorg to filter through
     When I wait <SYNC_TIME> seconds
     Then node SYNCER is at the same height as node SEED
     @critical
     Examples:
-        | X1     | Y1     | SYNC_TIME |
-        | 101    | 10     | 10        |
+      | X1  | Y1 | SYNC_TIME |
+      | 101 | 10 | 10        |
 
     @critical @long-running
     Examples:
-        | X1     | Y1     | SYNC_TIME |
-        | 501    | 50     | 20        |
-        | 999    | 50     | 60        |
-        | 1001   | 50     | 60        |
+      | X1   | Y1 | SYNC_TIME |
+      | 501  | 50 | 20        |
+      | 999  | 50 | 60        |
+      | 1001 | 50 | 60        |
 
     @critical @long-running @broken
     Examples:
-        | X1     | Y1     | SYNC_TIME |
-        | 1000   | 50     | 60        |
+      | X1   | Y1 | SYNC_TIME |
+      | 1000 | 50 | 60        |
