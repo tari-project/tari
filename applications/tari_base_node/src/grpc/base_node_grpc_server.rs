@@ -34,6 +34,7 @@ use tari_app_grpc::{
     tari_rpc,
     tari_rpc::{CalcType, Sorting},
 };
+use tari_app_utilities::consts;
 use tari_common::configuration::Network;
 use tari_comms::PeerManager;
 use tari_core::{
@@ -51,10 +52,9 @@ use tari_core::{
     transactions::{transaction::Transaction, types::Signature},
 };
 use tari_crypto::tari_utilities::{message_format::MessageFormat, Hashable};
+use tari_p2p::auto_update::SoftwareUpdaterHandle;
 use tokio::{sync::mpsc, task};
 use tonic::{Request, Response, Status};
-
-const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const LOG_TARGET: &str = "tari::base_node::grpc";
 const GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS: usize = 1_000_000;
@@ -80,6 +80,7 @@ pub struct BaseNodeGrpcServer {
     state_machine_handle: StateMachineHandle,
     peer_manager: Arc<PeerManager>,
     consensus_rules: ConsensusManager,
+    software_updater: SoftwareUpdaterHandle,
 }
 
 impl BaseNodeGrpcServer {
@@ -89,6 +90,7 @@ impl BaseNodeGrpcServer {
         network: Network,
         state_machine_handle: StateMachineHandle,
         peer_manager: Arc<PeerManager>,
+        software_updater: SoftwareUpdaterHandle,
     ) -> Self {
         Self {
             node_service: local_node,
@@ -97,6 +99,7 @@ impl BaseNodeGrpcServer {
             network: network.into(),
             state_machine_handle,
             peer_manager,
+            software_updater,
         }
     }
 }
@@ -902,7 +905,23 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     }
 
     async fn get_version(&self, _request: Request<tari_rpc::Empty>) -> Result<Response<tari_rpc::StringValue>, Status> {
-        Ok(Response::new(VERSION.to_string().into()))
+        Ok(Response::new(consts::APP_VERSION.to_string().into()))
+    }
+
+    async fn check_for_updates(
+        &self,
+        _request: Request<tari_rpc::Empty>,
+    ) -> Result<Response<tari_rpc::SoftwareUpdate>, Status> {
+        let mut resp = tari_rpc::SoftwareUpdate::default();
+
+        if let Some(ref update) = *self.software_updater.new_update_notifier().borrow() {
+            resp.has_update = true;
+            resp.version = update.version().to_string();
+            resp.sha = update.to_hash_hex();
+            resp.download_url = update.download_url().to_string();
+        }
+
+        Ok(Response::new(resp))
     }
 
     async fn get_tokens_in_circulation(

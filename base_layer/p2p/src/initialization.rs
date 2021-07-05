@@ -22,8 +22,7 @@
 
 use crate::{
     comms_connector::{InboundDomainConnector, PeerMessage, PubsubDomainConnector},
-    dns_seed::DnsSeedResolver,
-    seed_peer::SeedPeer,
+    peer_seeds::{DnsSeedResolver, SeedPeer},
     transport::{TorConfig, TransportType},
     MAJOR_NETWORK_VERSION,
     MINOR_NETWORK_VERSION,
@@ -488,19 +487,19 @@ impl P2pInitializer {
         let resolver = if use_dnssec {
             debug!(
                 target: LOG_TARGET,
-                "Using {} to resove DNS seeds. DNSSEC is enabled", resolver_addr
+                "Using {} to resolve DNS seeds. DNSSEC is enabled", resolver_addr
             );
             DnsSeedResolver::connect_secure(resolver_addr).await?
         } else {
             debug!(
                 target: LOG_TARGET,
-                "Using {} to resove DNS seeds. DNSSEC is disabled", resolver_addr
+                "Using {} to resolve DNS seeds. DNSSEC is disabled", resolver_addr
             );
             DnsSeedResolver::connect(resolver_addr).await?
         };
         let resolving = dns_seeds.iter().map(|addr| {
             let mut resolver = resolver.clone();
-            async move { (resolver.resolve(addr.clone()).await, addr) }
+            async move { (resolver.resolve(addr).await, addr) }
         });
 
         let peers = future::join_all(resolving)

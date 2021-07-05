@@ -39,9 +39,9 @@ use tari_comms_dht::{DbConnectionUrl, DhtConfig};
 use tari_core::transactions::types::{CryptoFactories, PrivateKey};
 use tari_p2p::{
     initialization::CommsConfig,
-    seed_peer::SeedPeer,
+    peer_seeds::SeedPeer,
     transport::TransportType::Tor,
-    DEFAULT_DNS_SEED_RESOLVER,
+    DEFAULT_DNS_NAME_SERVER,
 };
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
@@ -336,7 +336,7 @@ pub async fn init_wallet(
         allow_test_addresses: config.allow_test_addresses,
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
-        dns_seeds_name_server: DEFAULT_DNS_SEED_RESOLVER.parse().unwrap(),
+        dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
         peer_seeds: Default::default(),
         dns_seeds: Default::default(),
         dns_seeds_use_dnssec: true,
