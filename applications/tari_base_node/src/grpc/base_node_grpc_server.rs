@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2021. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -52,6 +52,7 @@ use tari_core::{
 use tari_crypto::tari_utilities::{message_format::MessageFormat, Hashable};
 use tokio::{sync::mpsc, task};
 use tonic::{Request, Response, Status};
+use tari_crypto::tari_utilities::ByteArray;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -117,6 +118,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type GetTokensInCirculationStream = mpsc::Receiver<Result<tari_rpc::ValueAtHeightResponse, Status>>;
     type ListHeadersStream = mpsc::Receiver<Result<tari_rpc::BlockHeader, Status>>;
     type SearchKernelsStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
+    type GetTokensStream = mpsc::Receiver<Result<tari_rpc::GetTokensResponse, Status>>;
 
     async fn get_network_difficulty(
         &self,
@@ -349,6 +351,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 .collect();
             while !page.is_empty() {
                 trace!(target: LOG_TARGET, "Page: {:?}", page);
+                // TODO: Better error handling
                 let result_headers = match handler.get_headers(page).await {
                     Err(err) => {
                         warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
@@ -385,6 +388,62 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         });
 
         debug!(target: LOG_TARGET, "Sending ListHeaders response stream to client");
+        Ok(Response::new(rx))
+    }
+
+    async fn get_tokens(&self, request: Request<tari_rpc::GetTokensRequest>) -> Result<Response<Self::GetTokensStream>, Status> {
+        let request = request.into_inner();
+        debug!(
+            target: LOG_TARGET,
+            "Incoming GRPC request for GetTokens: asset_pub_key: {}",
+            request.asset_public_key.to_hex(),
+        );
+        let mut handler = self.node_service.clone();
+        let (mut tx, rx) = mpsc::channel(50);
+        task::spawn(async move {
+            let asset_pub_key_hex = request.asset_public_key.to_hex();
+            debug!(
+                target: LOG_TARGET,
+                "Starting thread to process GetTokens: asset_pub_key: {}",
+                asset_pub_key_hex,
+            );
+            let tokens = match handler.get_tokens(request.asset_public_key, request.unique_ids).await {
+                Ok(tokens) => tokens,
+                Err(err) => {
+                    warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err, );
+                    return;
+                }
+            };
+
+            debug!(
+                target: LOG_TARGET,
+                "Found tokens for {}",
+                asset_pub_key_hex
+            );
+
+            for token in tokens {
+                match tx.send(Ok(tari_rpc::GetTokensResponse {
+ asset_public_key: token.parent_public_key.map(|pk| pk.to_vec()).unwrap_or_default(),
+                    unique_id: token.unique_id.unwrap_or_default(),
+                    owner_commitment: token.commitment.to_vec(),
+                    mined_in_block: vec![],
+                    mined_height: 0
+                })).await {
+                    Ok(_) => (),
+                    Err(err) => {
+                        warn!(target: LOG_TARGET, "Error sending token via GRPC:  {}", err);
+                        match tx.send(Err(Status::unknown("Error sending data"))).await {
+                            Ok(_) => (),
+                            Err(send_err) => {
+                                warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
+                            },
+                        }
+                        return;
+                    },
+                }
+            }
+
+        });
         Ok(Response::new(rx))
     }
 
@@ -1031,6 +1090,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             None => Err(Status::not_found(format!("Header not found with hash `{}`", hash_hex))),
         }
     }
+
+
 }
 
 enum BlockGroupType {

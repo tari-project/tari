@@ -104,6 +104,13 @@ impl LocalNodeCommsInterface {
         }
     }
 
+    pub async fn get_tokens(&mut self, asset_public_key: Vec<u8>, unique_ids: Vec<Vec<u8>>) -> Result<Vec<TransactionOutput>, CommsInterfaceError> {
+        match self.request_sender.call(NodeCommsRequest::FetchTokens{ asset_public_key, unique_ids}).await?? {
+            NodeCommsResponse::FetchTokensResponse{outputs} => Ok(outputs) ,
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse)
+        }
+    }
+
     /// Request the construction of a new mineable block template from the base node service.
     pub async fn get_new_block_template(
         &mut self,

@@ -150,3 +150,8 @@ loggers:
     appenders:
       - base_layer
     additive: false
+  h2:
+    level: warn
+    appenders:
+      - other
+    additive: false

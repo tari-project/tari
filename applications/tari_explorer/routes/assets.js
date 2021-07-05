@@ -26,28 +26,25 @@ var express = require('express')
 var router = express.Router()
 
 /* GET home page. */
-router.get('/:height', async function (req, res, next) {
+router.get('/:asset_public_key', async function (req, res, next) {
   let client = createClient()
-  let height = req.params.height
+  let asset_public_key = req.params.asset_public_key
 
   try {
-    let block = await client.getBlocks({ heights: [height] })
+    let tokens = await client.getTokens({ asset_public_key:  Buffer.from(asset_public_key, "hex") })
+    console.log(tokens)
 
-    if (!block || block.length === 0) {
+    if (!tokens || tokens.length === 0) {
       res.status(404);
-      res.render('404', { message: `Block at height ${height} not found`});
+      res.render('404', { message: `No tokens for asset found`});
       return;
     }
-    console.log(block)
-    console.log(block[0].block.body.outputs[0])
-    res.render('blocks', {
-      title: `Block at height:${block[0].block.header.height}`,
-      height: height,
-      prevHeight: parseInt(height) - 1,
-      nextHeight: parseInt(height) + 1,
-      block: block[0].block,
-      pows: { '0': 'Monero', '2': 'SHA' }
+
+    res.render('assets', {
+      title: `Asset with pub key: ${asset_public_key}`,
+      tokens: tokens
     })
+
 
   } catch (error) {
     res.status(500)

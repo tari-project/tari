@@ -58,7 +58,7 @@
          <td>{{ features.asset }}</td>
          <td>{{ json features.mint_non_fungible }}</td>
          <td>{{ hex unique_id}}</td>
-         <td>{{ hex parent_public_key }}</td>
+         <td><a href="/tokens/{{ hex parent_public_key }}">{{ hex parent_public_key }}</a></td>
      </tr>
     {{/each}}
     </tbody>
