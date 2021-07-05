@@ -427,7 +427,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
         span_vec.push(Span::styled("C", Style::default().add_modifier(Modifier::BOLD)));
         span_vec.push(Span::raw(" cancels a selected Pending Tx, "));
         span_vec.push(Span::styled("Esc", Style::default().add_modifier(Modifier::BOLD)));
-        span_vec.push(Span::raw(" exits the list."));
+        span_vec.push(Span::raw(" exits the list. R: Rebroadcast all in Broadcast"));
 
         let instructions = Paragraph::new(Spans::from(span_vec)).wrap(Wrap { trim: true });
         f.render_widget(instructions, areas[1]);
@@ -513,6 +513,11 @@ impl<B: Backend> Component<B> for TransactionsTab {
                     self.confirmation_dialog = true;
                 }
             },
+            // Rebroadcast
+            'r' => {
+                // TODO: use this result
+                let _res = Handle::current().block_on(app_state.rebroadcast_all());
+            }
             '\n' => match self.selected_tx_list {
                 SelectedTransactionList::None => {},
                 SelectedTransactionList::PendingTxs => {

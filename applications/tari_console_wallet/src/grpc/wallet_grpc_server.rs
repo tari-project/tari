@@ -354,11 +354,14 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let (tx_id, transaction) = asset_manager.create_minting_transaction(&asset_public_key, asset.owner_commitment(), message.unique_ids).await.map_err(|e| Status::internal(e.to_string()))?;
         let fee = transaction.body.get_total_fee();
+
+
+        let owner_commitments = transaction.body.outputs().iter().filter_map(|o| o.unique_id.as_ref().map(|_| o.commitment.to_vec())).collect();
         let _result = transaction_service.submit_transaction(tx_id, transaction, fee, 0.into(), "test mint transaction".to_string()).await.map_err(|e| Status::internal(e.to_string()))?;
 
 
         Ok(Response::new(MintTokensResponse {
-            owner_commitments: vec![]
+            owner_commitments
         }))
     }
 }

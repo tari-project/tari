@@ -395,8 +395,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let request = request.into_inner();
         debug!(
             target: LOG_TARGET,
-            "Incoming GRPC request for GetTokens: asset_pub_key: {}",
+            "Incoming GRPC request for GetTokens: asset_pub_key: {}, unique_ids: [{}]",
             request.asset_public_key.to_hex(),
+            request.unique_ids.iter().map(|s| s.to_hex()).collect::<Vec<_>>().join(",")
         );
         let mut handler = self.node_service.clone();
         let (mut tx, rx) = mpsc::channel(50);
@@ -417,7 +418,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
             debug!(
                 target: LOG_TARGET,
-                "Found tokens for {}",
+                "Found {} tokens for {}",
+                tokens.len(),
                 asset_pub_key_hex
             );
 

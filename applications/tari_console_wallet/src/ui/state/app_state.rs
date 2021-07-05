@@ -256,6 +256,14 @@ impl AppState {
         Ok(())
     }
 
+    pub async fn rebroadcast_all(&mut self) -> Result<(), UiError> {
+        let inner = self.inner.write().await;
+        let mut tx_service = inner.wallet.transaction_service.clone();
+        tx_service.restart_broadcast_protocols().await?;
+        Ok(())
+
+    }
+
     pub fn get_identity(&self) -> &MyIdentity {
         &self.cached_data.my_identity
     }
