@@ -269,6 +269,6 @@ This is defined as the total accumulated proof of work done on a single block ch
 [block header]: Glossary.md#block-header
 [utxo]: Glossary.md#unspent-transaction-outputs
 [range proof]: Glossary.md#range-proof
-[cut-through]: RFC-0140_Syncing_and_seeding.md#pruning-and-cut-through
+[cut-through]: Glossary.md#cut-through
 [FTL]: RFC-0120_Consensus.md#FTL
 [MTP]: RFC-0120_Consensus.md#MTP

@@ -772,11 +772,8 @@ fn service_request_timeout() {
 }
 
 #[test]
-#[ignore = "Flaky test that needs to be fixed"]
 #[allow(clippy::identity_op)]
 fn block_event_and_reorg_event_handling() {
-    // #flaky, this test seems to fail after submiting block B2A to bob.
-
     // This test creates 2 nodes Alice and Bob
     // Then creates 2 chains B1 -> B2A (diff 1) and B1 -> B2B (diff 10)
     // There are 5 transactions created
@@ -813,43 +810,50 @@ fn block_event_and_reorg_event_handling() {
     // Bob creates Block 1 and sends it to Alice. Alice adds it to her chain and creates a block event that the Mempool
     // service will receive.
     let (tx1, utxos1) = schema_to_transaction(&[txn_schema!(from: vec![utxos0], to: vec![1 * T, 1 * T])]);
-    let (txs2, _utxos2) = schema_to_transaction(&[
+    let (txs_a, _utxos2) = schema_to_transaction(&[
         txn_schema!(from: vec![utxos1[0].clone()], to: vec![400_000 * uT, 590_000 * uT]),
         txn_schema!(from: vec![utxos1[1].clone()], to: vec![750_000 * uT, 240_000 * uT]),
     ]);
-    let (txs3, _utxos3) = schema_to_transaction(&[
+    let (txs_b, _utxos3) = schema_to_transaction(&[
         txn_schema!(from: vec![utxos1[0].clone()], to: vec![100_000 * uT, 890_000 * uT]),
         txn_schema!(from: vec![utxos1[1].clone()], to: vec![850_000 * uT, 140_000 * uT]),
     ]);
     let tx1 = (*tx1[0]).clone();
-    let tx2a = (*txs2[0]).clone();
-    let tx3a = (*txs2[1]).clone();
-    let tx2b = (*txs3[0]).clone();
-    let tx3b = (*txs3[1]).clone();
+    let tx2a = (*txs_a[0]).clone();
+    let tx3a = (*txs_a[1]).clone();
+    let tx2b = (*txs_b[0]).clone();
+    let tx3b = (*txs_b[1]).clone();
     let tx1_excess_sig = tx1.body.kernels()[0].excess_sig.clone();
     let tx2a_excess_sig = tx2a.body.kernels()[0].excess_sig.clone();
     let tx3a_excess_sig = tx3a.body.kernels()[0].excess_sig.clone();
     let tx2b_excess_sig = tx2b.body.kernels()[0].excess_sig.clone();
     let tx3b_excess_sig = tx3b.body.kernels()[0].excess_sig.clone();
-    alice.mempool.insert(Arc::new(tx1.clone())).unwrap();
-    bob.mempool.insert(Arc::new(tx1.clone())).unwrap();
-    alice.mempool.insert(Arc::new(tx2a.clone())).unwrap();
-    alice.mempool.insert(Arc::new(tx3a.clone())).unwrap();
-    alice.mempool.insert(Arc::new(tx2b.clone())).unwrap();
-    alice.mempool.insert(Arc::new(tx3b.clone())).unwrap();
-    bob.mempool.insert(Arc::new(tx2a.clone())).unwrap();
-    bob.mempool.insert(Arc::new(tx3a.clone())).unwrap();
-    bob.mempool.insert(Arc::new(tx2b.clone())).unwrap();
-    bob.mempool.insert(Arc::new(tx3b.clone())).unwrap();
 
     // These blocks are manually constructed to allow the block event system to be used.
-    let mut block1 = bob
+    let empty_block = bob
         .blockchain_db
-        .prepare_block_merkle_roots(chain_block(block0.block(), vec![tx1], &consensus_manager))
+        .prepare_block_merkle_roots(chain_block(block0.block(), vec![], &consensus_manager))
         .unwrap();
-    find_header_with_achieved_difficulty(&mut block1.header, Difficulty::from(1));
 
     runtime.block_on(async {
+        // Add one empty block, so the coinbase UTXO is no longer time-locked.
+        assert!(bob
+            .local_nci
+            .submit_block(empty_block.clone(), Broadcast::from(true))
+            .await
+            .is_ok());
+        assert!(alice
+            .local_nci
+            .submit_block(empty_block.clone(), Broadcast::from(true))
+            .await
+            .is_ok());
+        alice.mempool.insert(Arc::new(tx1.clone())).unwrap();
+        bob.mempool.insert(Arc::new(tx1.clone())).unwrap();
+        let mut block1 = bob
+            .blockchain_db
+            .prepare_block_merkle_roots(chain_block(&empty_block, vec![tx1], &consensus_manager))
+            .unwrap();
+        find_header_with_achieved_difficulty(&mut block1.header, Difficulty::from(1));
         // Add Block1 - tx1 will be moved to the ReorgPool.
         assert!(bob
             .local_nci
@@ -862,6 +866,14 @@ fn block_event_and_reorg_event_handling() {
             max_attempts = 20,
             interval = Duration::from_millis(1000)
         );
+        alice.mempool.insert(Arc::new(tx2a.clone())).unwrap();
+        alice.mempool.insert(Arc::new(tx3a.clone())).unwrap();
+        alice.mempool.insert(Arc::new(tx2b.clone())).unwrap();
+        alice.mempool.insert(Arc::new(tx3b.clone())).unwrap();
+        bob.mempool.insert(Arc::new(tx2a.clone())).unwrap();
+        bob.mempool.insert(Arc::new(tx3a.clone())).unwrap();
+        bob.mempool.insert(Arc::new(tx2b.clone())).unwrap();
+        bob.mempool.insert(Arc::new(tx3b.clone())).unwrap();
 
         let mut block2a = bob
             .blockchain_db
@@ -875,17 +887,13 @@ fn block_event_and_reorg_event_handling() {
             .unwrap();
         find_header_with_achieved_difficulty(&mut block2b.header, Difficulty::from(10));
 
-        // Add Block2a - tx4 and tx5 will be discarded as double spends.
+        // Add Block2a - tx2b and tx3b will be discarded as double spends.
         assert!(bob
             .local_nci
             .submit_block(block2a.clone(), Broadcast::from(true))
             .await
             .is_ok());
 
-        assert_eq!(
-            bob.mempool.has_tx_with_excess_sig(tx2a_excess_sig.clone()).unwrap(),
-            TxStorageResponse::ReorgPool
-        );
         async_assert_eventually!(
             bob.mempool.has_tx_with_excess_sig(tx2a_excess_sig.clone()).unwrap(),
             expect = TxStorageResponse::ReorgPool,
@@ -911,7 +919,7 @@ fn block_event_and_reorg_event_handling() {
             TxStorageResponse::NotStored
         );
 
-        // Reorg chain by adding Block2b - tx2 and tx3 will be discarded as double spends.
+        // Reorg chain by adding Block2b - tx2a and tx3a will be discarded as double spends.
         assert!(bob
             .local_nci
             .submit_block(block2b.clone(), Broadcast::from(true))
