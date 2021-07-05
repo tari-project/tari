@@ -25,7 +25,6 @@ use crate::{
     multiaddr::Protocol,
     transports::{dns::TorDnsResolver, SocksConfig, SocksTransport, TcpSocket, TcpTransport},
 };
-use futures::{Future, FutureExt};
 use multiaddr::Multiaddr;
 use std::io;
 
@@ -74,25 +73,22 @@ impl TcpWithTorTransport {
     }
 }
 
+#[crate::async_trait]
 impl Transport for TcpWithTorTransport {
     type Error = io::Error;
-    type Inbound = <TcpTransport as Transport>::Inbound;
-    type ListenFuture = <TcpTransport as Transport>::ListenFuture;
     type Listener = <TcpTransport as Transport>::Listener;
     type Output = TcpSocket;
 
-    type DialFuture = impl Future<Output = io::Result<Self::Output>>;
-
-    fn listen(&self, addr: Multiaddr) -> Result<Self::ListenFuture, Self::Error> {
-        self.tcp_transport.listen(addr)
+    async fn listen(&self, addr: Multiaddr) -> Result<(Self::Listener, Multiaddr), Self::Error> {
+        self.tcp_transport.listen(addr).await
     }
 
-    fn dial(&self, addr: Multiaddr) -> Result<Self::DialFuture, Self::Error> {
+    async fn dial(&self, addr: Multiaddr) -> Result<Self::Output, Self::Error> {
         if Self::is_onion_address(&addr)? {
             match self.socks_transport {
                 Some(ref transport) => {
-                    let dial_fut = transport.dial(addr)?;
-                    Ok(dial_fut.boxed())
+                    let socket = transport.dial(addr).await?;
+                    Ok(socket)
                 },
                 None => Err(io::Error::new(
                     io::ErrorKind::Other,
@@ -100,8 +96,8 @@ impl Transport for TcpWithTorTransport {
                 )),
             }
         } else {
-            let dial_fut = self.tcp_transport.dial(addr)?;
-            Ok(dial_fut.boxed())
+            let socket = self.tcp_transport.dial(addr).await?;
+            Ok(socket)
         }
     }
 }

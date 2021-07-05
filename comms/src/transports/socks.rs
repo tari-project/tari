@@ -26,7 +26,6 @@ use crate::{
     socks::Socks5Client,
     transports::{tcp::TcpTransport, TcpSocket, Transport},
 };
-use futures::{Future, FutureExt};
 use std::{io, time::Duration};
 
 /// SO_KEEPALIVE setting for the SOCKS TCP connection
@@ -65,7 +64,7 @@ impl SocksTransport {
         dest_addr: Multiaddr,
     ) -> io::Result<TcpSocket> {
         // Create a new connection to the SOCKS proxy
-        let socks_conn = tcp.dial(socks_config.proxy_address)?.await?;
+        let socks_conn = tcp.dial(socks_config.proxy_address).await?;
         let mut client = Socks5Client::new(socks_conn);
 
         client
@@ -80,21 +79,19 @@ impl SocksTransport {
     }
 }
 
+#[crate::async_trait]
 impl Transport for SocksTransport {
     type Error = <TcpTransport as Transport>::Error;
-    type Inbound = <TcpTransport as Transport>::Inbound;
-    type ListenFuture = <TcpTransport as Transport>::ListenFuture;
     type Listener = <TcpTransport as Transport>::Listener;
     type Output = <TcpTransport as Transport>::Output;
 
-    type DialFuture = impl Future<Output = Result<Self::Output, Self::Error>> + Unpin;
-
-    fn listen(&self, addr: Multiaddr) -> Result<Self::ListenFuture, Self::Error> {
-        self.tcp_transport.listen(addr)
+    async fn listen(&self, addr: Multiaddr) -> Result<(Self::Listener, Multiaddr), Self::Error> {
+        self.tcp_transport.listen(addr).await
     }
 
-    fn dial(&self, addr: Multiaddr) -> Result<Self::DialFuture, Self::Error> {
-        Ok(Self::socks_connect(self.tcp_transport.clone(), self.socks_config.clone(), addr).boxed())
+    async fn dial(&self, addr: Multiaddr) -> Result<Self::Output, Self::Error> {
+        let socket = Self::socks_connect(self.tcp_transport.clone(), self.socks_config.clone(), addr).await?;
+        Ok(socket)
     }
 }
 

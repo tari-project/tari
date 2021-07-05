@@ -39,7 +39,7 @@ use crate::{
 use bytes::Bytes;
 use futures::{
     channel::{mpsc, oneshot},
-    future::Either,
+    future::{BoxFuture, Either},
     task::{Context, Poll},
     AsyncRead,
     AsyncWrite,
@@ -258,9 +258,8 @@ impl fmt::Debug for ClientConnector {
 
 impl Service<BaseRequest<Bytes>> for ClientConnector {
     type Error = RpcError;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
     type Response = mpsc::Receiver<Result<Response<Bytes>, RpcStatus>>;
-
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready_unpin(cx).map_err(|_| RpcError::ClientClosed)
@@ -277,6 +276,7 @@ impl Service<BaseRequest<Bytes>> for ClientConnector {
 
             reply_rx.await.map_err(|_| RpcError::RequestCancelled)
         }
+        .boxed()
     }
 }
 

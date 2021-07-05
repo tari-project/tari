@@ -496,7 +496,6 @@ where
                     let dial_fut = async move {
                         let mut socket = transport
                             .dial(address.clone())
-                            .map_err(|err| ConnectionManagerError::TransportError(err.to_string()))?
                             .await
                             .map_err(|err| ConnectionManagerError::TransportError(err.to_string()))?;
                         debug!(

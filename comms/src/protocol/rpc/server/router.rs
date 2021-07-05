@@ -45,10 +45,10 @@ use crate::{
 };
 use futures::{
     channel::mpsc,
+    future::BoxFuture,
     task::{Context, Poll},
     AsyncRead,
     AsyncWrite,
-    Future,
     FutureExt,
 };
 use std::sync::Arc;
@@ -151,24 +151,25 @@ where
 impl<A, B> Service<ProtocolId> for Router<A, B>
 where
     A: MakeService<
-        ProtocolId,
-        Request<Bytes>,
-        Response = Response<Body>,
-        Error = RpcStatus,
-        MakeError = RpcServerError,
-    >,
+            ProtocolId,
+            Request<Bytes>,
+            Response = Response<Body>,
+            Error = RpcStatus,
+            MakeError = RpcServerError,
+        > + Send,
     B: MakeService<
-        ProtocolId,
-        Request<Bytes>,
-        Response = Response<Body>,
-        Error = RpcStatus,
-        MakeError = RpcServerError,
-    >,
+            ProtocolId,
+            Request<Bytes>,
+            Response = Response<Body>,
+            Error = RpcStatus,
+            MakeError = RpcServerError,
+        > + Send,
+    A::Future: Send + 'static,
+    B::Future: Send + 'static,
 {
-    type Error = A::MakeError;
-    type Response = Either<A::Service, B::Service>;
-
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
+    type Error = <Or<A, B> as Service<ProtocolId>>::Error;
+    type Future = <Or<A, B> as Service<ProtocolId>>::Future;
+    type Response = <Or<A, B> as Service<ProtocolId>>::Response;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Service::poll_ready(&mut self.routes, cx)
@@ -235,24 +236,25 @@ impl<A, B> Or<A, B> {
 impl<A, B> Service<ProtocolId> for Or<A, B>
 where
     A: MakeService<
-        ProtocolId,
-        Request<Bytes>,
-        Response = Response<Body>,
-        Error = RpcStatus,
-        MakeError = RpcServerError,
-    >,
+            ProtocolId,
+            Request<Bytes>,
+            Response = Response<Body>,
+            Error = RpcStatus,
+            MakeError = RpcServerError,
+        > + Send,
     B: MakeService<
-        ProtocolId,
-        Request<Bytes>,
-        Response = Response<Body>,
-        Error = RpcStatus,
-        MakeError = RpcServerError,
-    >,
+            ProtocolId,
+            Request<Bytes>,
+            Response = Response<Body>,
+            Error = RpcStatus,
+            MakeError = RpcServerError,
+        > + Send,
+    A::Future: Send + 'static,
+    B::Future: Send + 'static,
 {
     type Error = A::MakeError;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
     type Response = Either<A::Service, B::Service>;
-
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
@@ -264,6 +266,7 @@ where
         } else {
             Either::B(self.b.make_service(protocol).map(|r| r.map(Either::B)))
         }
+        .boxed()
     }
 }
 
@@ -274,6 +277,7 @@ mod test {
     use futures::{future, StreamExt};
     use prost::Message;
     use tari_test_utils::unpack_enum;
+    use tower::util::BoxService;
 
     #[derive(Clone)]
     struct HelloService;
@@ -282,9 +286,8 @@ mod test {
     }
     impl Service<ProtocolId> for HelloService {
         type Error = RpcServerError;
-
-        type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
-        type Response = impl Service<Request<Bytes>, Response = Response<Body>, Error = RpcStatus>;
+        type Future = future::Ready<Result<Self::Response, Self::Error>>;
+        type Response = BoxService<Request<Bytes>, Response<Body>, RpcStatus>;
 
         fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
             Poll::Ready(Ok(()))
@@ -297,7 +300,7 @@ mod test {
                 future::ready(Ok(Response::from_message(format!("Hello {}", str))))
             });
 
-            future::ready(Ok(my_service))
+            future::ready(Ok(BoxService::new(my_service)))
         }
     }
 
@@ -308,9 +311,8 @@ mod test {
     }
     impl Service<ProtocolId> for GoodbyeService {
         type Error = RpcServerError;
-
-        type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
-        type Response = impl Service<Request<Bytes>, Response = Response<Body>, Error = RpcStatus>;
+        type Future = future::Ready<Result<Self::Response, Self::Error>>;
+        type Response = BoxService<Request<Bytes>, Response<Body>, RpcStatus>;
 
         fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
             Poll::Ready(Ok(()))
@@ -323,7 +325,7 @@ mod test {
                 future::ready(Ok(Response::from_message(format!("Goodbye {}", str))))
             });
 
-            future::ready(Ok(my_service))
+            future::ready(Ok(BoxService::new(my_service)))
         }
     }
 

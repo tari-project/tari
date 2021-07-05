@@ -24,7 +24,7 @@
 // Copyright (c) The Libra Core Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use futures::{Future, Stream};
+use futures::Stream;
 use multiaddr::Multiaddr;
 
 mod dns;
@@ -41,24 +41,18 @@ pub use tcp::{TcpSocket, TcpTransport};
 mod tcp_with_tor;
 pub use tcp_with_tor::TcpWithTorTransport;
 
+#[crate::async_trait]
 pub trait Transport {
     /// The output of the transport after a connection is established
     type Output;
     /// Transport error type
     type Error: std::error::Error + Send + Sync;
-    /// A future which resolves to `Self::Output`
-    type Inbound: Future<Output = Result<Self::Output, Self::Error>> + Send;
-    /// A stream which emits `Self::InboundFuture` whenever a successful inbound connection is made
-    type Listener: Stream<Item = Result<(Self::Inbound, Multiaddr), Self::Error>> + Send + Unpin;
-
-    /// The future returned from the `listen` method.
-    type ListenFuture: Future<Output = Result<(Self::Listener, Multiaddr), Self::Error>> + Send + Unpin;
-    /// The future returned from the `dial` method.
-    type DialFuture: Future<Output = Result<Self::Output, Self::Error>> + Send + Unpin;
+    /// A stream which emits a (socket, source ip) tuple whenever a successful inbound connection is made
+    type Listener: Stream<Item = Result<(Self::Output, Multiaddr), Self::Error>> + Send + Unpin;
 
     /// Listen for connections on the given multiaddr
-    fn listen(&self, addr: Multiaddr) -> Result<Self::ListenFuture, Self::Error>;
+    async fn listen(&self, addr: Multiaddr) -> Result<(Self::Listener, Multiaddr), Self::Error>;
 
     /// Connect (dial) to the given multiaddr
-    fn dial(&self, addr: Multiaddr) -> Result<Self::DialFuture, Self::Error>;
+    async fn dial(&self, addr: Multiaddr) -> Result<Self::Output, Self::Error>;
 }

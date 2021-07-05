@@ -34,7 +34,7 @@ use crate::{
 };
 use futures::StreamExt;
 use log::*;
-use std::convert::TryFrom;
+use std::{convert::TryFrom, net::Ipv6Addr};
 
 const LOG_TARGET: &str = "comms::connection_manager::common";
 
@@ -192,6 +192,12 @@ fn validate_address(addr: &Multiaddr, allow_test_addrs: bool) -> Result<(), Conn
         None => Ok(()),
     };
 
+    /// Returns [true] if the address is a unicast link-local address (fe80::/10).
+    #[inline]
+    const fn is_unicast_link_local(addr: &Ipv6Addr) -> bool {
+        (addr.segments()[0] & 0xffc0) == 0xfe80
+    }
+
     match proto {
         Protocol::Dns4(_) | Protocol::Dns6(_) | Protocol::Dnsaddr(_) => {
             let tcp = addr_iter.next().ok_or_else(|| {
@@ -211,7 +217,7 @@ fn validate_address(addr: &Multiaddr, allow_test_addrs: bool) -> Result<(), Conn
             ))
         },
         Protocol::Ip6(addr)
-            if !allow_test_addrs && (addr.is_loopback() || addr.is_unicast_link_local() || addr.is_unspecified()) =>
+            if !allow_test_addrs && (addr.is_loopback() || is_unicast_link_local(&addr) || addr.is_unspecified()) =>
         {
             Err(ConnectionManagerError::InvalidMultiaddr(
                 "Non-global IP addresses are invalid".to_string(),

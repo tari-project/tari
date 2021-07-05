@@ -174,12 +174,12 @@ mod test {
     async fn identity_exchange() {
         let transport = MemoryTransport;
         let addr = "/memory/0".parse().unwrap();
-        let (mut listener, addr) = transport.listen(addr).unwrap().await.unwrap();
+        let (mut listener, addr) = transport.listen(addr).await.unwrap();
 
-        let (out_sock, in_sock) = future::join(transport.dial(addr).unwrap(), listener.next()).await;
+        let (out_sock, in_sock) = future::join(transport.dial(addr), listener.next()).await;
 
         let out_sock = out_sock.unwrap();
-        let in_sock = in_sock.unwrap().map(|(f, _)| f).unwrap().await.unwrap();
+        let (in_sock, _) = in_sock.unwrap().unwrap();
 
         let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
         let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_CLIENT);
@@ -223,12 +223,12 @@ mod test {
     async fn fail_cases() {
         let transport = MemoryTransport;
         let addr = "/memory/0".parse().unwrap();
-        let (mut listener, addr) = transport.listen(addr).unwrap().await.unwrap();
+        let (mut listener, addr) = transport.listen(addr).await.unwrap();
 
-        let (out_sock, in_sock) = future::join(transport.dial(addr).unwrap(), listener.next()).await;
+        let (out_sock, in_sock) = future::join(transport.dial(addr), listener.next()).await;
 
         let out_sock = out_sock.unwrap();
-        let in_sock = in_sock.unwrap().map(|(f, _)| f).unwrap().await.unwrap();
+        let (in_sock, _) = in_sock.unwrap().unwrap();
 
         let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
         let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_CLIENT);

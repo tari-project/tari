@@ -120,10 +120,8 @@ where
                 loop {
                     futures::select! {
                         inbound_result = inbound.select_next_some() => {
-                            if let Some((inbound_future, peer_addr)) = log_if_error!(target: LOG_TARGET, inbound_result, "Inbound connection failed because '{error}'",) {
-                                if let Some(socket) = log_if_error!(target: LOG_TARGET, inbound_future.await,  "Inbound connection failed because '{error}'",) {
-                                    self.spawn_listen_task(socket, peer_addr).await;
-                                }
+                            if let Some((socket, peer_addr)) = log_if_error!(target: LOG_TARGET, inbound_result, "Inbound connection failed because '{error}'",) {
+                                self.spawn_listen_task(socket, peer_addr).await;
                             }
                         },
                         _ = shutdown_signal => {
@@ -382,7 +380,6 @@ where
         debug!(target: LOG_TARGET, "Attempting to listen on {}", listener_address);
         self.transport
             .listen(listener_address)
-            .map_err(|err| ConnectionManagerError::TransportError(err.to_string()))?
             .await
             .map_err(|err| ConnectionManagerError::TransportError(err.to_string()))
     }

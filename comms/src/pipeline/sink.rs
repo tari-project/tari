@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::PipelineError;
-use futures::{task::Context, Future, Sink, SinkExt};
+use futures::{future::BoxFuture, task::Context, FutureExt, Sink, SinkExt};
 use std::{pin::Pin, task::Poll};
 use tower::Service;
 
@@ -37,13 +37,13 @@ impl<TSink> SinkService<TSink> {
 
 impl<T, TSink> Service<T> for SinkService<TSink>
 where
-    TSink: Sink<T> + Unpin + Clone + 'static,
-    TSink::Error: Into<PipelineError> + Send + Sync + 'static,
+    T: Send + 'static,
+    TSink: Sink<T> + Unpin + Clone + Send + 'static,
+    TSink::Error: Into<PipelineError> + Send + 'static,
 {
     type Error = PipelineError;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
     type Response = ();
-
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Pin::new(&mut self.0).poll_ready(cx).map_err(Into::into)
@@ -51,6 +51,6 @@ where
 
     fn call(&mut self, item: T) -> Self::Future {
         let mut sink = self.0.clone();
-        async move { sink.send(item).await.map_err(Into::into) }
+        async move { sink.send(item).await.map_err(Into::into) }.boxed()
     }
 }

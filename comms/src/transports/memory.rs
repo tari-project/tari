@@ -28,7 +28,7 @@ use crate::{
     memsocket::{MemoryListener, MemorySocket},
     transports::Transport,
 };
-use futures::{future, stream::Stream, Future};
+use futures::stream::Stream;
 use multiaddr::{Multiaddr, Protocol};
 use std::{
     io,
@@ -55,29 +55,26 @@ impl MemoryTransport {
     }
 }
 
+#[crate::async_trait]
 impl Transport for MemoryTransport {
     type Error = io::Error;
-    type Inbound = future::Ready<Result<Self::Output, Self::Error>>;
     type Listener = Listener;
     type Output = MemorySocket;
 
-    type DialFuture = impl Future<Output = io::Result<Self::Output>>;
-    type ListenFuture = impl Future<Output = io::Result<(Self::Listener, Multiaddr)>>;
-
-    fn listen(&self, addr: Multiaddr) -> Result<Self::ListenFuture, Self::Error> {
+    async fn listen(&self, addr: Multiaddr) -> Result<(Self::Listener, Multiaddr), Self::Error> {
         // parse_addr is not used in the async block because of a rust ICE (internal compiler error)
         let port = parse_addr(&addr)?;
         let listener = MemoryListener::bind(port)?;
         let actual_port = listener.local_addr();
         let mut actual_addr = Multiaddr::empty();
         actual_addr.push(Protocol::Memory(u64::from(actual_port)));
-        Ok(future::ready(Ok((Listener { inner: listener }, actual_addr))))
+        Ok((Listener { inner: listener }, actual_addr))
     }
 
-    fn dial(&self, addr: Multiaddr) -> Result<Self::DialFuture, Self::Error> {
+    async fn dial(&self, addr: Multiaddr) -> Result<Self::Output, Self::Error> {
         // parse_addr is not used in the async block because of a rust ICE (internal compiler error)
         let port = parse_addr(&addr)?;
-        Ok(future::ready(Ok(MemorySocket::connect(port)?)))
+        Ok(MemorySocket::connect(port)?)
     }
 }
 
@@ -110,7 +107,7 @@ pub struct Listener {
 }
 
 impl Stream for Listener {
-    type Item = io::Result<(future::Ready<io::Result<MemorySocket>>, Multiaddr)>;
+    type Item = io::Result<(MemorySocket, Multiaddr)>;
 
     fn poll_next(mut self: Pin<&mut Self>, context: &mut Context) -> Poll<Option<Self::Item>> {
         let mut incoming = self.inner.incoming();
@@ -119,7 +116,7 @@ impl Stream for Listener {
                 // Dialer addresses for MemoryTransport don't make a ton of sense,
                 // so use port 0 to ensure they aren't used as an address to dial.
                 let dialer_addr = Protocol::Memory(0).into();
-                Poll::Ready(Some(Ok((future::ready(Ok(socket)), dialer_addr))))
+                Poll::Ready(Some(Ok((socket, dialer_addr))))
             },
             Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e))),
             Poll::Ready(None) => Poll::Ready(None),
@@ -132,29 +129,24 @@ impl Stream for Listener {
 mod test {
     use super::*;
     use crate::runtime;
-    use futures::{
-        future::join,
-        io::{AsyncReadExt, AsyncWriteExt},
-        stream::StreamExt,
-    };
+    use futures::{future::join, stream::StreamExt, AsyncReadExt, AsyncWriteExt};
 
     #[runtime::test]
     async fn simple_listen_and_dial() -> Result<(), ::std::io::Error> {
         let t = MemoryTransport::default();
 
-        let (listener, addr) = t.listen("/memory/0".parse().unwrap())?.await?;
+        let (listener, addr) = t.listen("/memory/0".parse().unwrap()).await?;
 
         let listener = async move {
             let (item, _listener) = listener.into_future().await;
-            let (inbound, _addr) = item.unwrap().unwrap();
-            let mut socket = inbound.await.unwrap();
+            let (mut socket, _addr) = item.unwrap().unwrap();
 
             let mut buf = Vec::new();
             socket.read_to_end(&mut buf).await.unwrap();
             assert_eq!(buf, b"hello world");
         };
 
-        let mut outbound = t.dial(addr)?.await?;
+        let mut outbound = t.dial(addr).await?;
 
         let dialer = async move {
             outbound.write_all(b"hello world").await.unwrap();
@@ -165,15 +157,15 @@ mod test {
         Ok(())
     }
 
-    #[test]
-    fn unsupported_multiaddrs() {
+    #[runtime::test]
+    async fn unsupported_multiaddrs() {
         let t = MemoryTransport::default();
 
-        let result = t.listen("/ip4/127.0.0.1/tcp/0".parse().unwrap());
-        assert!(result.is_err());
+        let err = t.listen("/ip4/127.0.0.1/tcp/0".parse().unwrap()).await.unwrap_err();
+        assert!(matches!(err.kind(), io::ErrorKind::InvalidInput));
 
-        let result = t.dial("/ip4/127.0.0.1/tcp/22".parse().unwrap());
-        assert!(result.is_err());
+        let err = t.dial("/ip4/127.0.0.1/tcp/22".parse().unwrap()).await.unwrap_err();
+        assert!(matches!(err.kind(), io::ErrorKind::InvalidInput));
     }
 
     #[test]

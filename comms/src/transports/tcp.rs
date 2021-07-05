@@ -25,7 +25,7 @@ use crate::{
     transports::dns::{DnsResolverRef, SystemDnsResolver},
     utils::multiaddr::socketaddr_to_multiaddr,
 };
-use futures::{future, io::Error, ready, AsyncRead, AsyncWrite, Future, Stream, TryFutureExt};
+use futures::{io::Error, ready, AsyncRead, AsyncWrite, Future, FutureExt, Stream};
 use multiaddr::Multiaddr;
 use std::{
     io,
@@ -118,37 +118,32 @@ impl Default for TcpTransport {
     }
 }
 
+#[crate::async_trait]
 impl Transport for TcpTransport {
     type Error = io::Error;
-    type Inbound = future::Ready<io::Result<Self::Output>>;
     type Listener = TcpInbound;
     type Output = TcpSocket;
 
-    type DialFuture = impl Future<Output = io::Result<Self::Output>>;
-    type ListenFuture = impl Future<Output = io::Result<(Self::Listener, Multiaddr)>>;
-
-    fn listen(&self, addr: Multiaddr) -> Result<Self::ListenFuture, Self::Error> {
-        let config = self.clone();
-        let dns_resolver = self.dns_resolver.clone();
-
-        Ok(Box::pin(async move {
-            let socket_addr = dns_resolver
-                .resolve(addr)
-                .await
-                .map_err(|err| io::Error::new(io::ErrorKind::Other, format!("Failed to resolve address: {}", err)))?;
-            let listener = TcpListener::bind(&socket_addr).await?;
-            let local_addr = socketaddr_to_multiaddr(&listener.local_addr()?);
-            Ok((TcpInbound::new(config, listener), local_addr))
-        }))
-    }
-
-    fn dial(&self, addr: Multiaddr) -> Result<Self::DialFuture, Self::Error> {
-        let config = self.clone();
-        Ok(config
+    async fn listen(&self, addr: Multiaddr) -> Result<(Self::Listener, Multiaddr), Self::Error> {
+        let socket_addr = self
             .dns_resolver
             .resolve(addr)
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, format!("Address resolution failed: {}", err)))
-            .and_then(|socket_addr| TcpOutbound::new(Box::pin(TcpStream::connect(socket_addr)), config)))
+            .await
+            .map_err(|err| io::Error::new(io::ErrorKind::Other, format!("Failed to resolve address: {}", err)))?;
+        let listener = TcpListener::bind(&socket_addr).await?;
+        let local_addr = socketaddr_to_multiaddr(&listener.local_addr()?);
+        Ok((TcpInbound::new(self.clone(), listener), local_addr))
+    }
+
+    async fn dial(&self, addr: Multiaddr) -> Result<Self::Output, Self::Error> {
+        let socket_addr = self
+            .dns_resolver
+            .resolve(addr)
+            .await
+            .map_err(|err| io::Error::new(io::ErrorKind::Other, format!("Address resolution failed: {}", err)))?;
+
+        let socket = TcpOutbound::new(TcpStream::connect(socket_addr).boxed(), self.clone()).await?;
+        Ok(socket)
     }
 }
 
@@ -189,15 +184,14 @@ impl TcpInbound {
 }
 
 impl Stream for TcpInbound {
-    type Item = io::Result<(future::Ready<io::Result<TcpSocket>>, Multiaddr)>;
+    type Item = io::Result<(TcpSocket, Multiaddr)>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let (socket, addr) = ready!(self.listener.poll_accept(cx))?;
         // Configure each socket
         self.config.configure(&socket)?;
         let peer_addr = socketaddr_to_multiaddr(&addr);
-        let fut = future::ready(Ok(TcpSocket::new(socket)));
-        Poll::Ready(Some(Ok((fut, peer_addr))))
+        Poll::Ready(Some(Ok((TcpSocket::new(socket), peer_addr))))
     }
 }
 
