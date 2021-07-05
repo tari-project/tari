@@ -7,7 +7,7 @@
     "dev": "nodemon --exec node ./bin/www"
   },
   "dependencies": {
-    "base-node-grpc-client": "git://github.com/mikethetike/base_node_grpc_client.git#master",
+    "base-node-grpc-client": "git://github.com/tari-project/base_node_grpc_client.git#mb-add-nft-data",
     "cookie-parser": "~1.4.4",
     "debug": "~2.6.9",
     "express": "~4.16.1",

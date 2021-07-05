@@ -31,6 +31,10 @@ hbs.registerHelper('timestamp', function(timestamp) {
       seconds.toString().padStart(2, '0');
 })
 
+hbs.registerHelper('json', function(obj) {
+  return JSON.stringify(obj);
+})
+
 var app = express();
 
 // view engine setup

@@ -41,6 +41,10 @@
         <th>Flags</th>
         <th>Maturity</th>
         <th>Metadata</th>
+        <th>Asset data</th>
+        <th>NFT data</th>
+        <th>Unique Id</th>
+        <td>Parent PK</td>
     </tr>
     </thead>
     <tbody>
@@ -51,6 +55,10 @@
          <td>{{features.flags}}</td>
          <td>{{features.maturity}}</td>
          <td>{{hex features.metadata}}</td>
+         <td>{{ features.asset }}</td>
+         <td>{{ json features.mint_non_fungible }}</td>
+         <td>{{ hex unique_id}}</td>
+         <td>{{ hex parent_public_key }}</td>
      </tr>
     {{/each}}
     </tbody>
