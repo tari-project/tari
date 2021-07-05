@@ -396,7 +396,7 @@ console_wallet_tor_identity_file = "config/console_wallet_tor.json"
 [merge_mining_proxy.weatherwax]
 
 # URL to monerod
-monerod_url = "http://18.133.55.120:38081" # stagenet
+monerod_url = "http://monero-stagenet.exan.tech:38081" # stagenet
 #monerod_url = "http://18.133.59.45:28081"  # testnet
 #monerod_url = "http://18.132.124.81:18081" # mainnet
 
