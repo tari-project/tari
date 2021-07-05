@@ -34,6 +34,7 @@ use crate::{
         ConnectionManagerEvent,
         ConnectionManagerRequester,
     },
+    connectivity::ConnectivityEventTx,
     peer_manager::NodeId,
     runtime::task,
     utils::datetime::format_duration,
@@ -41,7 +42,6 @@ use crate::{
     PeerConnection,
     PeerManager,
 };
-use futures::{channel::mpsc, stream::Fuse, StreamExt};
 use log::*;
 use nom::lib::std::collections::hash_map::Entry;
 use std::{
@@ -52,7 +52,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tari_shutdown::ShutdownSignal;
-use tokio::{sync::broadcast, task::JoinHandle, time};
+use tokio::{sync::mpsc, task::JoinHandle, time};
 use tracing::{span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::connectivity::manager";
@@ -72,7 +72,7 @@ const LOG_TARGET: &str = "comms::connectivity::manager";
 pub struct ConnectivityManager {
     pub config: ConnectivityConfig,
     pub request_rx: mpsc::Receiver<ConnectivityRequest>,
-    pub event_tx: broadcast::Sender<Arc<ConnectivityEvent>>,
+    pub event_tx: ConnectivityEventTx,
     pub connection_manager: ConnectionManagerRequester,
     pub peer_manager: Arc<PeerManager>,
     pub node_identity: Arc<NodeIdentity>,
@@ -84,7 +84,7 @@ impl ConnectivityManager {
         ConnectivityManagerActor {
             config: self.config,
             status: ConnectivityStatus::Initializing,
-            request_rx: self.request_rx.fuse(),
+            request_rx: self.request_rx,
             connection_manager: self.connection_manager,
             peer_manager: self.peer_manager.clone(),
             event_tx: self.event_tx,
@@ -140,12 +140,12 @@ impl fmt::Display for ConnectivityStatus {
 pub struct ConnectivityManagerActor {
     config: ConnectivityConfig,
     status: ConnectivityStatus,
-    request_rx: Fuse<mpsc::Receiver<ConnectivityRequest>>,
+    request_rx: mpsc::Receiver<ConnectivityRequest>,
     connection_manager: ConnectionManagerRequester,
     node_identity: Arc<NodeIdentity>,
     shutdown_signal: Option<ShutdownSignal>,
     peer_manager: Arc<PeerManager>,
-    event_tx: broadcast::Sender<Arc<ConnectivityEvent>>,
+    event_tx: ConnectivityEventTx,
     connection_stats: HashMap<NodeId, PeerConnectionStats>,
 
     managed_peers: Vec<NodeId>,
@@ -165,7 +165,7 @@ impl ConnectivityManagerActor {
             .take()
             .expect("ConnectivityManager initialized without a shutdown_signal");
 
-        let mut connection_manager_events = self.connection_manager.get_event_subscription().fuse();
+        let mut connection_manager_events = self.connection_manager.get_event_subscription();
 
         let interval = self.config.connection_pool_refresh_interval;
         let mut ticker = time::interval_at(
@@ -174,18 +174,17 @@ impl ConnectivityManagerActor {
                 .expect("connection_pool_refresh_interval cause overflow")
                 .into(),
             interval,
-        )
-        .fuse();
+        );
 
         self.publish_event(ConnectivityEvent::ConnectivityStateInitialized);
 
         loop {
-            futures::select! {
-                req = self.request_rx.select_next_some() => {
+            tokio::select! {
+                Some(req) = self.request_rx.recv() => {
                     self.handle_request(req).await;
                 },
 
-                event = connection_manager_events.select_next_some() => {
+                event = connection_manager_events.recv() => {
                     if let Ok(event) = event {
                         if let Err(err) = self.handle_connection_manager_event(&event).await {
                             error!(target:LOG_TARGET, "Error handling connection manager event: {:?}", err);
@@ -193,13 +192,13 @@ impl ConnectivityManagerActor {
                     }
                 },
 
-                _ = ticker.next() => {
+                _ = ticker.tick() => {
                     if let Err(err) = self.refresh_connection_pool().await {
                         error!(target: LOG_TARGET, "Error when refreshing connection pools: {:?}", err);
                     }
                 },
 
-                _ = shutdown_signal => {
+                _ = &mut shutdown_signal => {
                     info!(target: LOG_TARGET, "ConnectivityManager is shutting down because it received the shutdown signal");
                     self.disconnect_all().await;
                     break;
@@ -823,7 +822,7 @@ impl ConnectivityManagerActor {
 
     fn publish_event(&mut self, event: ConnectivityEvent) {
         // A send operation can only fail if there are no subscribers, so it is safe to ignore the error
-        let _ = self.event_tx.send(Arc::new(event));
+        let _ = self.event_tx.send(event);
     }
 
     async fn ban_peer(
@@ -863,7 +862,7 @@ impl ConnectivityManagerActor {
 
 fn delayed_close(conn: PeerConnection, delay: Duration) {
     task::spawn(async move {
-        time::delay_for(delay).await;
+        time::sleep(delay).await;
         debug!(
             target: LOG_TARGET,
             "Closing connection from peer `{}` after delay",

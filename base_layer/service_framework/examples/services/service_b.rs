@@ -31,7 +31,7 @@ use tari_service_framework::{
     ServiceInitializerContext,
 };
 use tari_shutdown::ShutdownSignal;
-use tokio::time::delay_for;
+use tokio::time::sleep;
 use tower::Service;
 
 pub struct ServiceB {
@@ -67,7 +67,7 @@ impl ServiceB {
         pin_mut!(request_stream);
 
         loop {
-            futures::select! {
+            tokio::select! {
                 //Incoming request
                 request_context = request_stream.select_next_some() => {
                     println!("Handling Service B API Request");
@@ -76,7 +76,7 @@ impl ServiceB {
                     response.push_str(request.clone().as_str());
                     let _ = reply_tx.send(response);
                 },
-                _ = shutdown_signal => {
+                _ = shutdown_signal.wait() => {
                     println!("Service B shutting down because the shutdown signal was received");
                     break;
                 }
@@ -134,7 +134,7 @@ impl ServiceInitializer for ServiceBInitializer {
             println!("Service B has shutdown and initializer spawned task is now ending");
         });
 
-        delay_for(Duration::from_secs(10)).await;
+        sleep(Duration::from_secs(10)).await;
         Ok(())
     }
 }

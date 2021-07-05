@@ -32,21 +32,19 @@ pub use peer_manager::{NodeIdentity, PeerManager};
 
 pub mod framing;
 
-mod common;
-pub use common::rate_limit;
+pub mod rate_limit;
 
 mod multiplexing;
 pub use multiplexing::Substream;
 
 mod noise;
 mod proto;
-mod runtime;
 
 pub mod backoff;
 pub mod bounded_executor;
-pub mod compat;
 pub mod memsocket;
 pub mod protocol;
+pub mod runtime;
 #[macro_use]
 pub mod message;
 pub mod net_address;

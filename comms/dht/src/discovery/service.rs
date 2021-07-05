@@ -27,11 +27,6 @@ use crate::{
     proto::dht::{DiscoveryMessage, DiscoveryResponseMessage},
     DhtConfig,
 };
-use futures::{
-    channel::{mpsc, oneshot},
-    future::FutureExt,
-    StreamExt,
-};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use std::{
@@ -47,7 +42,11 @@ use tari_comms::{
 };
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray};
-use tokio::{task, time};
+use tokio::{
+    sync::{mpsc, oneshot},
+    task,
+    time,
+};
 
 const LOG_TARGET: &str = "comms::dht::discovery_service";
 
@@ -72,8 +71,8 @@ pub struct DhtDiscoveryService {
     node_identity: Arc<NodeIdentity>,
     outbound_requester: OutboundMessageRequester,
     peer_manager: Arc<PeerManager>,
-    request_rx: Option<mpsc::Receiver<DhtDiscoveryRequest>>,
-    shutdown_signal: Option<ShutdownSignal>,
+    request_rx: mpsc::Receiver<DhtDiscoveryRequest>,
+    shutdown_signal: ShutdownSignal,
     inflight_discoveries: HashMap<u64, DiscoveryRequestState>,
 }
 
@@ -91,8 +90,8 @@ impl DhtDiscoveryService {
             outbound_requester,
             node_identity,
             peer_manager,
-            shutdown_signal: Some(shutdown_signal),
-            request_rx: Some(request_rx),
+            shutdown_signal,
+            request_rx,
             inflight_discoveries: HashMap::new(),
         }
     }
@@ -106,29 +105,19 @@ impl DhtDiscoveryService {
 
     pub async fn run(mut self) {
         info!(target: LOG_TARGET, "Dht discovery service started");
-        let mut shutdown_signal = self
-            .shutdown_signal
-            .take()
-            .expect("DiscoveryService initialized without shutdown_signal")
-            .fuse();
-
-        let mut request_rx = self
-            .request_rx
-            .take()
-            .expect("DiscoveryService initialized without request_rx")
-            .fuse();
-
         loop {
-            futures::select! {
-                request = request_rx.select_next_some() => {
-                    trace!(target: LOG_TARGET, "Received request '{}'", request);
-                    self.handle_request(request).await;
-                },
+            tokio::select! {
+                biased;
 
-                _ = shutdown_signal => {
+                _ = self.shutdown_signal.wait() => {
                     info!(target: LOG_TARGET, "Discovery service is shutting down because the shutdown signal was received");
                     break;
                 }
+
+                Some(request) = self.request_rx.recv() => {
+                    trace!(target: LOG_TARGET, "Received request '{}'", request);
+                    self.handle_request(request).await;
+                },
             }
         }
     }
@@ -153,7 +142,7 @@ impl DhtDiscoveryService {
         let mut remaining_requests = HashMap::new();
         for (nonce, request) in self.inflight_discoveries.drain() {
             // Exclude canceled requests
-            if request.reply_tx.is_canceled() {
+            if request.reply_tx.is_closed() {
                 continue;
             }
 
@@ -199,7 +188,7 @@ impl DhtDiscoveryService {
                         );
 
                         for request in self.collect_all_discovery_requests(&public_key) {
-                            if !reply_tx.is_canceled() {
+                            if !reply_tx.is_closed() {
                                 let _ = request.reply_tx.send(Ok(peer.clone()));
                             }
                         }
@@ -299,7 +288,7 @@ impl DhtDiscoveryService {
         self.inflight_discoveries = self
             .inflight_discoveries
             .drain()
-            .filter(|(_, state)| !state.reply_tx.is_canceled())
+            .filter(|(_, state)| !state.reply_tx.is_closed())
             .collect();
 
         trace!(
@@ -393,9 +382,10 @@ mod test {
         test_utils::{build_peer_manager, make_node_identity},
     };
     use std::time::Duration;
+    use tari_comms::runtime;
     use tari_shutdown::Shutdown;
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn send_discovery() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();

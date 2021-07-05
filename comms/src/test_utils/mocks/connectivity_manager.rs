@@ -22,32 +22,36 @@
 
 use crate::{
     connection_manager::{ConnectionManagerError, PeerConnection},
-    connectivity::{ConnectivityEvent, ConnectivityRequest, ConnectivityRequester, ConnectivityStatus},
+    connectivity::{
+        ConnectivityEvent,
+        ConnectivityEventTx,
+        ConnectivityRequest,
+        ConnectivityRequester,
+        ConnectivityStatus,
+    },
     peer_manager::NodeId,
     runtime::task,
 };
-use futures::{
-    channel::{mpsc, oneshot},
-    lock::Mutex,
-    stream::Fuse,
-    StreamExt,
-};
+use futures::lock::Mutex;
 use std::{collections::HashMap, sync::Arc, time::Duration};
-use tokio::{sync::broadcast, time};
+use tokio::{
+    sync::{broadcast, mpsc, oneshot},
+    time,
+};
 
 pub fn create_connectivity_mock() -> (ConnectivityRequester, ConnectivityManagerMock) {
     let (tx, rx) = mpsc::channel(10);
     let (event_tx, _) = broadcast::channel(10);
     (
         ConnectivityRequester::new(tx, event_tx.clone()),
-        ConnectivityManagerMock::new(rx.fuse(), event_tx),
+        ConnectivityManagerMock::new(rx, event_tx),
     )
 }
 
 #[derive(Debug, Clone)]
 pub struct ConnectivityManagerMockState {
     inner: Arc<Mutex<State>>,
-    event_tx: broadcast::Sender<Arc<ConnectivityEvent>>,
+    event_tx: ConnectivityEventTx,
 }
 
 #[derive(Debug, Default)]
@@ -61,7 +65,7 @@ struct State {
 }
 
 impl ConnectivityManagerMockState {
-    pub fn new(event_tx: broadcast::Sender<Arc<ConnectivityEvent>>) -> Self {
+    pub fn new(event_tx: ConnectivityEventTx) -> Self {
         Self {
             event_tx,
             inner: Default::default(),
@@ -132,7 +136,7 @@ impl ConnectivityManagerMockState {
                 count,
                 self.call_count().await
             );
-            time::delay_for(Duration::from_millis(100)).await;
+            time::sleep(Duration::from_millis(100)).await;
         }
     }
 
@@ -156,9 +160,8 @@ impl ConnectivityManagerMockState {
         .await
     }
 
-    #[allow(dead_code)]
     pub fn publish_event(&self, event: ConnectivityEvent) {
-        self.event_tx.send(Arc::new(event)).unwrap();
+        self.event_tx.send(event).unwrap();
     }
 
     pub(self) async fn with_state<F, R>(&self, f: F) -> R
@@ -169,15 +172,12 @@ impl ConnectivityManagerMockState {
 }
 
 pub struct ConnectivityManagerMock {
-    receiver: Fuse<mpsc::Receiver<ConnectivityRequest>>,
+    receiver: mpsc::Receiver<ConnectivityRequest>,
     state: ConnectivityManagerMockState,
 }
 
 impl ConnectivityManagerMock {
-    pub fn new(
-        receiver: Fuse<mpsc::Receiver<ConnectivityRequest>>,
-        event_tx: broadcast::Sender<Arc<ConnectivityEvent>>,
-    ) -> Self {
+    pub fn new(receiver: mpsc::Receiver<ConnectivityRequest>, event_tx: ConnectivityEventTx) -> Self {
         Self {
             receiver,
             state: ConnectivityManagerMockState::new(event_tx),
@@ -195,7 +195,7 @@ impl ConnectivityManagerMock {
     }
 
     pub async fn run(mut self) {
-        while let Some(req) = self.receiver.next().await {
+        while let Some(req) = self.receiver.recv().await {
             self.handle_request(req).await;
         }
     }

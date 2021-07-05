@@ -25,12 +25,8 @@ use crate::{
     connection_manager::manager::{ConnectionManagerEvent, ListenerInfo},
     peer_manager::NodeId,
 };
-use futures::{
-    channel::{mpsc, oneshot},
-    SinkExt,
-};
 use std::sync::Arc;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc, oneshot};
 
 /// Requests which are handled by the ConnectionManagerService
 #[derive(Debug)]

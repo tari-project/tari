@@ -27,8 +27,8 @@ use crate::{
     },
     types::ValidationRetryStrategy,
 };
-use futures::StreamExt;
 use log::*;
+use tokio::sync::broadcast;
 
 const LOG_TARGET: &str = "wallet::transaction_service::tasks::start_tx_validation_and_broadcast";
 
@@ -36,16 +36,16 @@ pub async fn start_transaction_validation_and_broadcast_protocols(
     mut handle: TransactionServiceHandle,
     retry_strategy: ValidationRetryStrategy,
 ) -> Result<(), TransactionServiceError> {
-    let mut event_stream = handle.get_event_stream_fused();
+    let mut event_stream = handle.get_event_stream();
     let our_id = handle.validate_transactions(retry_strategy).await?;
 
     // Now that its started we will spawn an task to monitor the event bus and when its successful we will start the
     // Broadcast protocols
 
     tokio::spawn(async move {
-        while let Some(event_item) = event_stream.next().await {
-            if let Ok(event) = event_item {
-                match (*event).clone() {
+        loop {
+            match event_stream.recv().await {
+                Ok(event) => match &*event {
                     TransactionEvent::TransactionValidationSuccess(_id) => {
                         info!(
                             target: LOG_TARGET,
@@ -59,19 +59,28 @@ pub async fn start_transaction_validation_and_broadcast_protocols(
                         }
                     },
                     TransactionEvent::TransactionValidationFailure(id) => {
-                        if our_id == id {
+                        if our_id == *id {
                             error!(target: LOG_TARGET, "Transaction Validation failed!");
                             break;
                         }
                     },
                     _ => (),
-                }
-            } else {
-                warn!(
-                    target: LOG_TARGET,
-                    "Error reading from Transaction Service Event Stream"
-                );
-                break;
+                },
+                Err(e @ broadcast::error::RecvError::Lagged(_)) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "start_transaction_validation_and_broadcast_protocols: {}", e
+                    );
+                    continue;
+                },
+                Err(broadcast::error::RecvError::Closed) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "start_transaction_validation_and_broadcast_protocols is exiting because the event stream \
+                         closed",
+                    );
+                    break;
+                },
             }
         }
     });

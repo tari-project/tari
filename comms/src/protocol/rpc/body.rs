@@ -27,7 +27,6 @@ use crate::{
 };
 use bytes::BytesMut;
 use futures::{
-    channel::mpsc,
     ready,
     stream::BoxStream,
     task::{Context, Poll},
@@ -37,6 +36,7 @@ use futures::{
 use pin_project::pin_project;
 use prost::bytes::Buf;
 use std::{fmt, marker::PhantomData, pin::Pin};
+use tokio::sync::mpsc;
 
 pub trait IntoBody {
     fn into_body(self) -> Body;
@@ -205,8 +205,8 @@ impl Buf for BodyBytes {
         self.0.as_ref().map(Buf::remaining).unwrap_or(0)
     }
 
-    fn bytes(&self) -> &[u8] {
-        self.0.as_ref().map(Buf::bytes).unwrap_or(&[])
+    fn chunk(&self) -> &[u8] {
+        self.0.as_ref().map(Buf::chunk).unwrap_or(&[])
     }
 
     fn advance(&mut self, cnt: usize) {
@@ -227,7 +227,7 @@ impl<T> Streaming<T> {
     }
 
     pub fn empty() -> Self {
-        let (_, rx) = mpsc::channel(0);
+        let (_, rx) = mpsc::channel(1);
         Self { inner: rx }
     }
 
@@ -240,7 +240,7 @@ impl<T: prost::Message> Stream for Streaming<T> {
     type Item = Result<Bytes, RpcStatus>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        match ready!(self.inner.poll_next_unpin(cx)) {
+        match ready!(Pin::new(&mut self.inner).poll_recv(cx)) {
             Some(result) => {
                 let result = result.map(|msg| msg.to_encoded_bytes().into());
                 Poll::Ready(Some(result))
@@ -275,7 +275,7 @@ impl<T: prost::Message + Default + Unpin> Stream for ClientStreaming<T> {
     type Item = Result<T, RpcStatus>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        match ready!(self.inner.poll_next_unpin(cx)) {
+        match ready!(Pin::new(&mut self.inner).poll_recv(cx)) {
             Some(Ok(resp)) => {
                 // The streaming protocol dictates that an empty finish flag MUST be sent to indicate a terminated
                 // stream. This empty response need not be emitted to downsteam consumers.
@@ -298,7 +298,7 @@ mod test {
     use futures::{stream, StreamExt};
     use prost::Message;
 
-    #[runtime::test_basic]
+    #[runtime::test]
     async fn single_body() {
         let mut body = Body::single(123u32.to_encoded_bytes());
         let bytes = body.next().await.unwrap().unwrap();
@@ -306,7 +306,7 @@ mod test {
         assert_eq!(u32::decode(bytes).unwrap(), 123u32);
     }
 
-    #[runtime::test_basic]
+    #[runtime::test]
     async fn streaming_body() {
         let body = Body::streaming(stream::repeat(Bytes::new()).map(Ok).take(10));
         let body = body.collect::<Vec<_>>().await;

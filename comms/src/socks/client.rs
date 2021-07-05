@@ -23,7 +23,6 @@
 // Acknowledgement to @sticnarf for tokio-socks on which this code is based
 use super::error::SocksError;
 use data_encoding::BASE32;
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use multiaddr::{Multiaddr, Protocol};
 use std::{
     borrow::Cow,
@@ -31,6 +30,7 @@ use std::{
     fmt::Formatter,
     net::{Ipv4Addr, Ipv6Addr},
 };
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 pub type Result<T> = std::result::Result<T, SocksError>;
 

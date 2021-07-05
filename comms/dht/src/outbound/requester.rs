@@ -32,12 +32,9 @@ use crate::{
         MessageSendStates,
     },
 };
-use futures::{
-    channel::{mpsc, oneshot},
-    SinkExt,
-};
 use log::*;
 use tari_comms::{message::MessageExt, peer_manager::NodeId, types::CommsPublicKey, wrap_in_envelope_body};
+use tokio::sync::{mpsc, oneshot};
 
 const LOG_TARGET: &str = "comms::dht::requests::outbound";
 

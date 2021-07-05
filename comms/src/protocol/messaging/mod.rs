@@ -27,9 +27,9 @@ mod extension;
 pub use extension::MessagingProtocolExtension;
 
 mod error;
+mod forward;
 mod inbound;
 mod outbound;
-
 mod protocol;
 pub use protocol::{
     MessagingEvent,

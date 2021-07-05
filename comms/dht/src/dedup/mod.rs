@@ -149,7 +149,7 @@ mod test {
 
     #[test]
     fn process_message() {
-        let mut rt = Runtime::new().unwrap();
+        let rt = Runtime::new().unwrap();
         let spy = service_spy();
 
         let (dht_requester, mock) = create_dht_actor_mock(1);

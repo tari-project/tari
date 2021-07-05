@@ -21,9 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::helpers::mock_state_machine::MockBaseNodeStateMachine;
-use futures::Sink;
 use rand::rngs::OsRng;
-use std::{error::Error, path::Path, sync::Arc, time::Duration};
+use std::{path::Path, sync::Arc, time::Duration};
 use tari_common::configuration::Network;
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
@@ -60,13 +59,12 @@ use tari_core::{
     },
 };
 use tari_p2p::{
-    comms_connector::{pubsub_connector, InboundDomainConnector, PeerMessage},
+    comms_connector::{pubsub_connector, InboundDomainConnector},
     initialization::initialize_local_test_comms,
     services::liveness::{LivenessConfig, LivenessHandle, LivenessInitializer},
 };
 use tari_service_framework::{RegisterHandle, StackBuilder};
 use tari_shutdown::Shutdown;
-use tokio::runtime::Runtime;
 
 /// The NodeInterfaces is used as a container for providing access to all the services and interfaces of a single node.
 pub struct NodeInterfaces {
@@ -91,7 +89,7 @@ pub struct NodeInterfaces {
 #[allow(dead_code)]
 impl NodeInterfaces {
     pub async fn shutdown(mut self) {
-        self.shutdown.trigger().unwrap();
+        self.shutdown.trigger();
         self.comms.wait_until_shutdown().await;
     }
 }
@@ -182,7 +180,7 @@ impl BaseNodeBuilder {
 
     /// Build the test base node and start its services.
     #[allow(clippy::redundant_closure)]
-    pub fn start(self, runtime: &mut Runtime, data_path: &str) -> (NodeInterfaces, ConsensusManager) {
+    pub async fn start(self, data_path: &str) -> (NodeInterfaces, ConsensusManager) {
         let validators = self.validators.unwrap_or_else(|| {
             Validators::new(
                 MockValidator::new(true),
@@ -199,7 +197,6 @@ impl BaseNodeBuilder {
         let mempool = Mempool::new(self.mempool_config.unwrap_or_default(), Arc::new(mempool_validator));
         let node_identity = self.node_identity.unwrap_or_else(|| random_node_identity());
         let node_interfaces = setup_base_node_services(
-            runtime,
             node_identity,
             self.peers.unwrap_or_default(),
             blockchain_db,
@@ -209,17 +206,19 @@ impl BaseNodeBuilder {
             self.mempool_service_config.unwrap_or_default(),
             self.liveness_service_config.unwrap_or_default(),
             data_path,
-        );
+        )
+        .await;
 
         (node_interfaces, consensus_manager)
     }
 }
 
-#[allow(dead_code)]
-pub fn wait_until_online(runtime: &mut Runtime, nodes: &[&NodeInterfaces]) {
+pub async fn wait_until_online(nodes: &[&NodeInterfaces]) {
     for node in nodes {
-        runtime
-            .block_on(node.comms.connectivity().wait_for_connectivity(Duration::from_secs(10)))
+        node.comms
+            .connectivity()
+            .wait_for_connectivity(Duration::from_secs(10))
+            .await
             .map_err(|err| format!("Node '{}' failed to go online {:?}", node.node_identity.node_id(), err))
             .unwrap();
     }
@@ -227,10 +226,7 @@ pub fn wait_until_online(runtime: &mut Runtime, nodes: &[&NodeInterfaces]) {
 
 // Creates a network with two Base Nodes where each node in the network knows the other nodes in the network.
 #[allow(dead_code)]
-pub fn create_network_with_2_base_nodes(
-    runtime: &mut Runtime,
-    data_path: &str,
-) -> (NodeInterfaces, NodeInterfaces, ConsensusManager) {
+pub async fn create_network_with_2_base_nodes(data_path: &str) -> (NodeInterfaces, NodeInterfaces, ConsensusManager) {
     let alice_node_identity = random_node_identity();
     let bob_node_identity = random_node_identity();
 
@@ -238,22 +234,23 @@ pub fn create_network_with_2_base_nodes(
     let (alice_node, consensus_manager) = BaseNodeBuilder::new(network.into())
         .with_node_identity(alice_node_identity.clone())
         .with_peers(vec![bob_node_identity.clone()])
-        .start(runtime, data_path);
+        .start(data_path)
+        .await;
     let (bob_node, consensus_manager) = BaseNodeBuilder::new(network.into())
         .with_node_identity(bob_node_identity)
         .with_peers(vec![alice_node_identity])
         .with_consensus_manager(consensus_manager)
-        .start(runtime, data_path);
+        .start(data_path)
+        .await;
 
-    wait_until_online(runtime, &[&alice_node, &bob_node]);
+    wait_until_online(&[&alice_node, &bob_node]).await;
 
     (alice_node, bob_node, consensus_manager)
 }
 
 // Creates a network with two Base Nodes where each node in the network knows the other nodes in the network.
 #[allow(dead_code)]
-pub fn create_network_with_2_base_nodes_with_config<P: AsRef<Path>>(
-    runtime: &mut Runtime,
+pub async fn create_network_with_2_base_nodes_with_config<P: AsRef<Path>>(
     base_node_service_config: BaseNodeServiceConfig,
     mempool_service_config: MempoolServiceConfig,
     liveness_service_config: LivenessConfig,
@@ -269,7 +266,8 @@ pub fn create_network_with_2_base_nodes_with_config<P: AsRef<Path>>(
         .with_mempool_service_config(mempool_service_config)
         .with_liveness_service_config(liveness_service_config.clone())
         .with_consensus_manager(consensus_manager)
-        .start(runtime, data_path.as_ref().join("alice").as_os_str().to_str().unwrap());
+        .start(data_path.as_ref().join("alice").as_os_str().to_str().unwrap())
+        .await;
     let (bob_node, consensus_manager) = BaseNodeBuilder::new(network.into())
         .with_node_identity(bob_node_identity)
         .with_peers(vec![alice_node_identity])
@@ -277,35 +275,34 @@ pub fn create_network_with_2_base_nodes_with_config<P: AsRef<Path>>(
         .with_mempool_service_config(mempool_service_config)
         .with_liveness_service_config(liveness_service_config)
         .with_consensus_manager(consensus_manager)
-        .start(runtime, data_path.as_ref().join("bob").as_os_str().to_str().unwrap());
+        .start(data_path.as_ref().join("bob").as_os_str().to_str().unwrap())
+        .await;
 
-    wait_until_online(runtime, &[&alice_node, &bob_node]);
+    wait_until_online(&[&alice_node, &bob_node]).await;
 
     (alice_node, bob_node, consensus_manager)
 }
 
 // Creates a network with three Base Nodes where each node in the network knows the other nodes in the network.
 #[allow(dead_code)]
-pub fn create_network_with_3_base_nodes(
-    runtime: &mut Runtime,
+pub async fn create_network_with_3_base_nodes(
     data_path: &str,
 ) -> (NodeInterfaces, NodeInterfaces, NodeInterfaces, ConsensusManager) {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     create_network_with_3_base_nodes_with_config(
-        runtime,
         BaseNodeServiceConfig::default(),
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
         consensus_manager,
         data_path,
     )
+    .await
 }
 
 // Creates a network with three Base Nodes where each node in the network knows the other nodes in the network.
 #[allow(dead_code)]
-pub fn create_network_with_3_base_nodes_with_config<P: AsRef<Path>>(
-    runtime: &mut Runtime,
+pub async fn create_network_with_3_base_nodes_with_config<P: AsRef<Path>>(
     base_node_service_config: BaseNodeServiceConfig,
     mempool_service_config: MempoolServiceConfig,
     liveness_service_config: LivenessConfig,
@@ -329,7 +326,8 @@ pub fn create_network_with_3_base_nodes_with_config<P: AsRef<Path>>(
         .with_mempool_service_config(mempool_service_config)
         .with_liveness_service_config(liveness_service_config.clone())
         .with_consensus_manager(consensus_manager)
-        .start(runtime, data_path.as_ref().join("carol").as_os_str().to_str().unwrap());
+        .start(data_path.as_ref().join("carol").as_os_str().to_str().unwrap())
+        .await;
     let (bob_node, consensus_manager) = BaseNodeBuilder::new(network.into())
         .with_node_identity(bob_node_identity.clone())
         .with_peers(vec![carol_node_identity.clone()])
@@ -337,7 +335,8 @@ pub fn create_network_with_3_base_nodes_with_config<P: AsRef<Path>>(
         .with_mempool_service_config(mempool_service_config)
         .with_liveness_service_config(liveness_service_config.clone())
         .with_consensus_manager(consensus_manager)
-        .start(runtime, data_path.as_ref().join("bob").as_os_str().to_str().unwrap());
+        .start(data_path.as_ref().join("bob").as_os_str().to_str().unwrap())
+        .await;
     let (alice_node, consensus_manager) = BaseNodeBuilder::new(network.into())
         .with_node_identity(alice_node_identity)
         .with_peers(vec![bob_node_identity, carol_node_identity])
@@ -345,9 +344,10 @@ pub fn create_network_with_3_base_nodes_with_config<P: AsRef<Path>>(
         .with_mempool_service_config(mempool_service_config)
         .with_liveness_service_config(liveness_service_config)
         .with_consensus_manager(consensus_manager)
-        .start(runtime, data_path.as_ref().join("alice").as_os_str().to_str().unwrap());
+        .start(data_path.as_ref().join("alice").as_os_str().to_str().unwrap())
+        .await;
 
-    wait_until_online(runtime, &[&alice_node, &bob_node, &carol_node]);
+    wait_until_online(&[&alice_node, &bob_node, &carol_node]).await;
 
     (alice_node, bob_node, carol_node, consensus_manager)
 }
@@ -365,16 +365,12 @@ pub fn random_node_identity() -> Arc<NodeIdentity> {
 
 // Helper function for starting the comms stack.
 #[allow(dead_code)]
-async fn setup_comms_services<TSink>(
+async fn setup_comms_services(
     node_identity: Arc<NodeIdentity>,
     peers: Vec<Arc<NodeIdentity>>,
-    publisher: InboundDomainConnector<TSink>,
+    publisher: InboundDomainConnector,
     data_path: &str,
-) -> (CommsNode, Dht, MessagingEventSender, Shutdown)
-where
-    TSink: Sink<Arc<PeerMessage>> + Clone + Unpin + Send + Sync + 'static,
-    TSink::Error: Error + Send + Sync,
-{
+) -> (CommsNode, Dht, MessagingEventSender, Shutdown) {
     let peers = peers.into_iter().map(|p| p.to_peer()).collect();
     let shutdown = Shutdown::new();
     let (comms, dht, messaging_events) = initialize_local_test_comms(
@@ -393,8 +389,7 @@ where
 
 // Helper function for starting the services of the Base node.
 #[allow(clippy::too_many_arguments)]
-fn setup_base_node_services(
-    runtime: &mut Runtime,
+async fn setup_base_node_services(
     node_identity: Arc<NodeIdentity>,
     peers: Vec<Arc<NodeIdentity>>,
     blockchain_db: BlockchainDatabase<TempDatabase>,
@@ -405,14 +400,14 @@ fn setup_base_node_services(
     liveness_service_config: LivenessConfig,
     data_path: &str,
 ) -> NodeInterfaces {
-    let (publisher, subscription_factory) = pubsub_connector(runtime.handle().clone(), 100, 20);
+    let (publisher, subscription_factory) = pubsub_connector(100, 20);
     let subscription_factory = Arc::new(subscription_factory);
     let (comms, dht, messaging_events, shutdown) =
-        runtime.block_on(setup_comms_services(node_identity.clone(), peers, publisher, data_path));
+        setup_comms_services(node_identity.clone(), peers, publisher, data_path).await;
 
     let mock_state_machine = MockBaseNodeStateMachine::new();
 
-    let fut = StackBuilder::new(shutdown.to_signal())
+    let handles = StackBuilder::new(shutdown.to_signal())
         .add_initializer(RegisterHandle::new(dht))
         .add_initializer(RegisterHandle::new(comms.connectivity()))
         .add_initializer(LivenessInitializer::new(
@@ -433,9 +428,9 @@ fn setup_base_node_services(
         ))
         .add_initializer(mock_state_machine.get_initializer())
         .add_initializer(ChainMetadataServiceInitializer)
-        .build();
-
-    let handles = runtime.block_on(fut).expect("Service initialization failed");
+        .build()
+        .await
+        .unwrap();
 
     let outbound_nci = handles.expect_handle::<OutboundNodeCommsInterface>();
     let local_nci = handles.expect_handle::<LocalNodeCommsInterface>();

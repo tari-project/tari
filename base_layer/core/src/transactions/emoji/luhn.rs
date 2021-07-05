@@ -45,7 +45,7 @@ pub fn is_valid(arr: &[usize], dict_len: usize) -> bool {
 
 #[cfg(test)]
 mod test {
-    use crate::util::luhn::*;
+    use super::*;
 
     #[test]
     fn luhn_6() {

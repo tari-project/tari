@@ -28,13 +28,17 @@ use crate::{
         MempoolServiceConfig,
     },
 };
-use futures::channel::mpsc;
+use log::*;
+use std::time::Duration;
 use tari_comms::{
     connectivity::ConnectivityRequester,
     protocol::{ProtocolExtension, ProtocolExtensionContext, ProtocolExtensionError, ProtocolNotification},
     Substream,
 };
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tokio::{sync::mpsc, time::sleep};
+
+const LOG_TARGET: &str = "c::mempool::sync_protocol";
 
 pub struct MempoolSyncInitializer {
     config: MempoolServiceConfig,
@@ -70,17 +74,29 @@ impl ServiceInitializer for MempoolSyncInitializer {
         let mempool = self.mempool.clone();
         let notif_rx = self.notif_rx.take().unwrap();
 
-        context.spawn_when_ready(move |handles| {
+        context.spawn_until_shutdown(move |handles| async move {
             let state_machine = handles.expect_handle::<StateMachineHandle>();
             let connectivity = handles.expect_handle::<ConnectivityRequester>();
-            MempoolSyncProtocol::new(
-                config,
-                notif_rx,
-                connectivity.get_event_subscription(),
-                mempool,
-                Some(state_machine),
-            )
-            .run()
+
+            let mut status_watch = state_machine.get_status_info_watch();
+            if !status_watch.borrow().bootstrapped {
+                debug!(target: LOG_TARGET, "Waiting for node to bootstrap...");
+                while status_watch.changed().await.is_ok() {
+                    if status_watch.borrow().bootstrapped {
+                        debug!(target: LOG_TARGET, "Node bootstrapped. Starting mempool sync protocol");
+                        break;
+                    }
+                    trace!(
+                        target: LOG_TARGET,
+                        "Mempool sync still on hold, waiting for bootstrap to finish",
+                    );
+                    sleep(Duration::from_secs(1)).await;
+                }
+            }
+
+            MempoolSyncProtocol::new(config, notif_rx, connectivity.get_event_subscription(), mempool)
+                .run()
+                .await;
         });
 
         Ok(())

@@ -24,8 +24,8 @@
 // Copyright (c) The Libra Core Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use futures::Stream;
 use multiaddr::Multiaddr;
+use tokio_stream::Stream;
 
 mod dns;
 mod helpers;
@@ -37,7 +37,7 @@ mod socks;
 pub use socks::{SocksConfig, SocksTransport};
 
 mod tcp;
-pub use tcp::{TcpSocket, TcpTransport};
+pub use tcp::TcpTransport;
 
 mod tcp_with_tor;
 pub use tcp_with_tor::TcpWithTorTransport;

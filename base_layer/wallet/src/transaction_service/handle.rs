@@ -28,7 +28,6 @@ use crate::{
     },
 };
 use aes_gcm::Aes256Gcm;
-use futures::{stream::Fuse, StreamExt};
 use std::{collections::HashMap, fmt, sync::Arc};
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction};
@@ -187,8 +186,8 @@ impl TransactionServiceHandle {
         }
     }
 
-    pub fn get_event_stream_fused(&self) -> Fuse<TransactionEventReceiver> {
-        self.event_stream_sender.subscribe().fuse()
+    pub fn get_event_stream(&self) -> TransactionEventReceiver {
+        self.event_stream_sender.subscribe()
     }
 
     pub async fn send_transaction(

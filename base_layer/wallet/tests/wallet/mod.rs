@@ -28,7 +28,6 @@ use aes_gcm::{
     Aes256Gcm,
 };
 use digest::Digest;
-use futures::{FutureExt, StreamExt};
 use rand::rngs::OsRng;
 use std::{panic, path::Path, sync::Arc, time::Duration};
 use tari_common_types::chain_metadata::ChainMetadata;
@@ -71,7 +70,7 @@ use tari_wallet::{
     WalletSqlite,
 };
 use tempfile::tempdir;
-use tokio::{runtime::Runtime, time::delay_for};
+use tokio::{runtime::Runtime, time::sleep};
 
 fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
     Peer::new(
@@ -163,7 +162,7 @@ async fn create_wallet(
     .await
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 async fn test_wallet() {
     let mut shutdown_a = Shutdown::new();
     let mut shutdown_b = Shutdown::new();
@@ -227,7 +226,7 @@ async fn test_wallet() {
         .await
         .unwrap();
 
-    let mut alice_event_stream = alice_wallet.transaction_service.get_event_stream_fused();
+    let mut alice_event_stream = alice_wallet.transaction_service.get_event_stream();
 
     let value = MicroTari::from(1000);
     let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment);
@@ -245,15 +244,16 @@ async fn test_wallet() {
         .await
         .unwrap();
 
-    let mut delay = delay_for(Duration::from_secs(60)).fuse();
+    let delay = sleep(Duration::from_secs(60));
+    tokio::pin!(delay);
     let mut reply_count = false;
     loop {
-        futures::select! {
-            event = alice_event_stream.select_next_some() => if let TransactionEvent::ReceivedTransactionReply(_) = &*event.unwrap() {
-                        reply_count = true;
-                        break;
-                    },
-            () = delay => {
+        tokio::select! {
+            event = alice_event_stream.recv() => if let TransactionEvent::ReceivedTransactionReply(_) = &*event.unwrap() {
+                reply_count = true;
+                break;
+            },
+            () = &mut delay => {
                 break;
             },
         }
@@ -298,7 +298,7 @@ async fn test_wallet() {
     }
 
     drop(alice_event_stream);
-    shutdown_a.trigger().unwrap();
+    shutdown_a.trigger();
     alice_wallet.wait_until_shutdown().await;
 
     let connection =
@@ -343,7 +343,7 @@ async fn test_wallet() {
 
     alice_wallet.remove_encryption().await.unwrap();
 
-    shutdown_a.trigger().unwrap();
+    shutdown_a.trigger();
     alice_wallet.wait_until_shutdown().await;
 
     let connection =
@@ -379,7 +379,7 @@ async fn test_wallet() {
         .await
         .unwrap();
 
-    shutdown_a.trigger().unwrap();
+    shutdown_a.trigger();
     alice_wallet.wait_until_shutdown().await;
 
     partial_wallet_backup(current_wallet_path.clone(), backup_wallet_path.clone())
@@ -400,12 +400,12 @@ async fn test_wallet() {
     let master_secret_key = backup_wallet_db.get_master_secret_key().await.unwrap();
     assert!(master_secret_key.is_none());
 
-    shutdown_b.trigger().unwrap();
+    shutdown_b.trigger();
 
     bob_wallet.wait_until_shutdown().await;
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 async fn test_do_not_overwrite_master_key() {
     let factories = CryptoFactories::default();
     let dir = tempdir().unwrap();
@@ -423,7 +423,7 @@ async fn test_do_not_overwrite_master_key() {
     )
     .await
     .unwrap();
-    shutdown.trigger().unwrap();
+    shutdown.trigger();
     wallet.wait_until_shutdown().await;
 
     // try to use a new master key to create a wallet using the existing wallet database
@@ -457,7 +457,7 @@ async fn test_do_not_overwrite_master_key() {
     .unwrap();
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 async fn test_sign_message() {
     let factories = CryptoFactories::default();
     let dir = tempdir().unwrap();
@@ -516,9 +516,9 @@ fn test_store_and_forward_send_tx() {
     let bob_db_tempdir = tempdir().unwrap();
     let carol_db_tempdir = tempdir().unwrap();
 
-    let mut alice_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
-    let mut bob_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
-    let mut carol_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
+    let alice_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
+    let bob_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
+    let carol_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
 
     let mut alice_wallet = alice_runtime
         .block_on(create_wallet(
@@ -554,7 +554,7 @@ fn test_store_and_forward_send_tx() {
         ))
         .unwrap();
     let carol_identity = (*carol_wallet.comms.node_identity()).clone();
-    shutdown_c.trigger().unwrap();
+    shutdown_c.trigger();
     carol_runtime.block_on(carol_wallet.wait_until_shutdown());
 
     alice_runtime
@@ -591,13 +591,13 @@ fn test_store_and_forward_send_tx() {
         .unwrap();
 
     // Waiting here for a while to make sure the discovery retry is over
-    alice_runtime.block_on(async { delay_for(Duration::from_secs(60)).await });
+    alice_runtime.block_on(async { sleep(Duration::from_secs(60)).await });
 
     alice_runtime
         .block_on(alice_wallet.transaction_service.cancel_transaction(tx_id))
         .unwrap();
 
-    alice_runtime.block_on(async { delay_for(Duration::from_secs(60)).await });
+    alice_runtime.block_on(async { sleep(Duration::from_secs(60)).await });
 
     let carol_wallet = carol_runtime
         .block_on(create_wallet(
@@ -610,7 +610,7 @@ fn test_store_and_forward_send_tx() {
         ))
         .unwrap();
 
-    let mut carol_event_stream = carol_wallet.transaction_service.get_event_stream_fused();
+    let mut carol_event_stream = carol_wallet.transaction_service.get_event_stream();
 
     carol_runtime
         .block_on(carol_wallet.comms.peer_manager().add_peer(create_peer(
@@ -623,13 +623,14 @@ fn test_store_and_forward_send_tx() {
         .unwrap();
 
     carol_runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let delay = sleep(Duration::from_secs(60));
+        tokio::pin!(delay);
 
         let mut tx_recv = false;
         let mut tx_cancelled = false;
         loop {
-            futures::select! {
-                event = carol_event_stream.select_next_some() => {
+            tokio::select! {
+                event = carol_event_stream.recv() => {
                     match &*event.unwrap() {
                         TransactionEvent::ReceivedTransaction(_) => tx_recv = true,
                         TransactionEvent::TransactionCancelled(_) => tx_cancelled = true,
@@ -639,7 +640,7 @@ fn test_store_and_forward_send_tx() {
                         break;
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -647,15 +648,15 @@ fn test_store_and_forward_send_tx() {
         assert!(tx_recv, "Must have received a tx from alice");
         assert!(tx_cancelled, "Must have received a cancel tx from alice");
     });
-    shutdown_a.trigger().unwrap();
-    shutdown_b.trigger().unwrap();
-    shutdown_c2.trigger().unwrap();
+    shutdown_a.trigger();
+    shutdown_b.trigger();
+    shutdown_c2.trigger();
     alice_runtime.block_on(alice_wallet.wait_until_shutdown());
     bob_runtime.block_on(bob_wallet.wait_until_shutdown());
     carol_runtime.block_on(carol_wallet.wait_until_shutdown());
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 async fn test_import_utxo() {
     let shutdown = Shutdown::new();
     let factories = CryptoFactories::default();

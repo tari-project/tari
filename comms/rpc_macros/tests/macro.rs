@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{channel::mpsc, SinkExt, StreamExt};
+use futures::StreamExt;
 use prost::Message;
 use std::{collections::HashMap, ops::AddAssign, sync::Arc};
 use tari_comms::{
@@ -34,7 +34,10 @@ use tari_comms::{
 };
 use tari_comms_rpc_macros::tari_rpc;
 use tari_test_utils::unpack_enum;
-use tokio::{sync::RwLock, task};
+use tokio::{
+    sync::{mpsc, RwLock},
+    task,
+};
 use tower_service::Service;
 
 #[tari_rpc(protocol_name = b"/test/protocol/123", server_struct = TestServer, client_struct = TestClient)]
@@ -80,7 +83,7 @@ impl Test for TestService {
 
     async fn server_streaming(&self, _: Request<CustomMessage>) -> Result<Streaming<u32>, RpcStatus> {
         self.add_call("server_streaming").await;
-        let (mut tx, rx) = mpsc::channel(1);
+        let (tx, rx) = mpsc::channel(1);
         tx.send(Ok(1)).await.unwrap();
         Ok(Streaming::new(rx))
     }
@@ -101,7 +104,7 @@ fn it_sets_the_protocol_name() {
     assert_eq!(TestClient::PROTOCOL_NAME, b"/test/protocol/123");
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 async fn it_returns_the_correct_type() {
     let mut server = TestServer::new(TestService::default());
     let resp = server
@@ -112,7 +115,7 @@ async fn it_returns_the_correct_type() {
     assert_eq!(u32::decode(v).unwrap(), 12);
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 async fn it_correctly_maps_the_method_nums() {
     let service = TestService::default();
     let spy = service.state.clone();
@@ -135,7 +138,7 @@ async fn it_correctly_maps_the_method_nums() {
     assert_eq!(*spy.read().await.get("unit").unwrap(), 1);
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 async fn it_returns_an_error_for_invalid_method_nums() {
     let service = TestService::default();
     let mut server = TestServer::new(service);
@@ -147,7 +150,7 @@ async fn it_returns_an_error_for_invalid_method_nums() {
     unpack_enum!(RpcStatusCode::UnsupportedMethod = err.status_code());
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 async fn it_generates_client_calls() {
     let (sock_client, sock_server) = MemorySocket::new_pair();
     let client = task::spawn(TestClient::connect(framing::canonical(sock_client, 1024)));

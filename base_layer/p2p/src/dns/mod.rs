@@ -4,6 +4,9 @@ pub use client::DnsClient;
 mod error;
 pub use error::DnsClientError;
 
+#[cfg(test)]
+pub(crate) mod mock;
+
 use trust_dns_client::proto::rr::dnssec::{public_key::Rsa, TrustAnchor};
 
 #[inline]

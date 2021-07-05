@@ -32,7 +32,7 @@ struct Key {
 /// UTXO generation is pretty slow (esp range proofs), so we'll use async threads to speed things up.
 /// We'll use blocking thread tasks to do the CPU intensive utxo generation, and then push the results
 /// through a channel where a file-writer is waiting to persist the results to disk.
-#[tokio::main(core_threads = 2, max_threads = 10)]
+#[tokio::main(worker_threads = 2)]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let num_keys: usize = std::env::args()
         .skip(1)
@@ -52,7 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Use Rust's awesome Iterator trait to produce a sequence of values and output features.
     for (value, feature) in values.take(num_keys).zip(features.take(num_keys)) {
         let fc = factories.clone();
-        let mut txc = tx.clone();
+        let txc = tx.clone();
         // Notice the `spawn(.. spawn_blocking)` nested call here. If we don't do this, we're basically queuing up
         // blocking tasks, `await`ing them to finish, and then queueing up the next one. In effect we're running things
         // synchronously.

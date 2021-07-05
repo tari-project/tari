@@ -26,13 +26,16 @@ use crate::{
     test_utils::build_peer_manager,
 };
 use futures::StreamExt;
-use std::{convert::TryInto, sync::Arc};
+use std::{convert::TryInto, sync::Arc, time::Duration};
 use tari_comms::{
-    peer_manager::{node_id::NodeDistance, PeerFeatures},
+    peer_manager::{node_id::NodeDistance, NodeId, Peer, PeerFeatures},
     protocol::rpc::{mock::RpcRequestMock, RpcStatusCode},
+    runtime,
     test_utils::node_identity::{build_node_identity, ordered_node_identities_by_distance},
     PeerManager,
 };
+use tari_test_utils::collect_recv;
+use tari_utilities::ByteArray;
 
 fn setup() -> (DhtRpcServiceImpl, RpcRequestMock, Arc<PeerManager>) {
     let peer_manager = build_peer_manager();
@@ -45,10 +48,8 @@ fn setup() -> (DhtRpcServiceImpl, RpcRequestMock, Arc<PeerManager>) {
 // Unit tests for get_closer_peers request
 mod get_closer_peers {
     use super::*;
-    use tari_comms::peer_manager::{NodeId, Peer};
-    use tari_utilities::ByteArray;
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn it_returns_empty_peer_stream() {
         let (service, mock, _) = setup();
         let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
@@ -66,7 +67,7 @@ mod get_closer_peers {
         assert!(next.is_none());
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn it_returns_closest_peers() {
         let (service, mock, peer_manager) = setup();
         let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
@@ -83,7 +84,7 @@ mod get_closer_peers {
 
         let req = mock.request_with_context(node_identity.node_id().clone(), req);
         let peers_stream = service.get_closer_peers(req).await.unwrap();
-        let results = peers_stream.into_inner().collect::<Vec<_>>().await;
+        let results = collect_recv!(peers_stream.into_inner(), timeout = Duration::from_secs(10));
         assert_eq!(results.len(), 10);
 
         let peers = results
@@ -101,7 +102,7 @@ mod get_closer_peers {
         }
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn it_returns_n_peers() {
         let (service, mock, peer_manager) = setup();
 
@@ -123,7 +124,7 @@ mod get_closer_peers {
         assert_eq!(results.len(), 5);
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn it_skips_excluded_peers() {
         let (service, mock, peer_manager) = setup();
 
@@ -142,12 +143,12 @@ mod get_closer_peers {
 
         let req = mock.request_with_context(node_identity.node_id().clone(), req);
         let peers_stream = service.get_closer_peers(req).await.unwrap();
-        let results = peers_stream.into_inner().collect::<Vec<_>>().await;
+        let results = collect_recv!(peers_stream.into_inner(), timeout = Duration::from_secs(10));
         let mut peers = results.into_iter().map(Result::unwrap).map(|r| r.peer.unwrap());
         assert!(peers.all(|p| p.public_key != excluded_peer.public_key().as_bytes()));
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn it_errors_if_maximum_n_exceeded() {
         let (service, mock, _) = setup();
         let req = GetCloserPeersRequest {
@@ -165,9 +166,10 @@ mod get_closer_peers {
 mod get_peers {
     use super::*;
     use crate::proto::rpc::GetPeersRequest;
+    use std::time::Duration;
     use tari_comms::{peer_manager::Peer, test_utils::node_identity::build_many_node_identities};
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn it_returns_empty_peer_stream() {
         let (service, mock, _) = setup();
         let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
@@ -183,7 +185,7 @@ mod get_peers {
         assert!(next.is_none());
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn it_returns_all_peers() {
         let (service, mock, peer_manager) = setup();
         let nodes = build_many_node_identities(3, PeerFeatures::COMMUNICATION_NODE);
@@ -200,7 +202,7 @@ mod get_peers {
             .get_peers(mock.request_with_context(Default::default(), req))
             .await
             .unwrap();
-        let results = peers_stream.into_inner().collect::<Vec<_>>().await;
+        let results = collect_recv!(peers_stream.into_inner(), timeout = Duration::from_secs(10));
         assert_eq!(results.len(), 5);
 
         let peers = results
@@ -214,7 +216,7 @@ mod get_peers {
         assert_eq!(peers.iter().filter(|p| p.features.is_node()).count(), 3);
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn it_excludes_clients() {
         let (service, mock, peer_manager) = setup();
         let nodes = build_many_node_identities(3, PeerFeatures::COMMUNICATION_NODE);
@@ -231,7 +233,7 @@ mod get_peers {
             .get_peers(mock.request_with_context(Default::default(), req))
             .await
             .unwrap();
-        let results = peers_stream.into_inner().collect::<Vec<_>>().await;
+        let results = collect_recv!(peers_stream.into_inner(), timeout = Duration::from_secs(10));
         assert_eq!(results.len(), 3);
 
         let peers = results
@@ -244,7 +246,7 @@ mod get_peers {
         assert!(peers.iter().all(|p| p.features.is_node()));
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn it_returns_n_peers() {
         let (service, mock, peer_manager) = setup();
 

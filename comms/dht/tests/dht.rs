@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{channel::mpsc, StreamExt};
 use rand::rngs::OsRng;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
@@ -55,13 +54,16 @@ use tari_storage::{
 };
 use tari_test_utils::{
     async_assert_eventually,
-    collect_stream,
+    collect_try_recv,
     paths::create_temporary_data_path,
     random,
     streams,
     unpack_enum,
 };
-use tokio::{sync::broadcast, time};
+use tokio::{
+    sync::{broadcast, mpsc},
+    time,
+};
 use tower::ServiceBuilder;
 
 struct TestNode {
@@ -87,11 +89,11 @@ impl TestNode {
     }
 
     pub async fn next_inbound_message(&mut self, timeout: Duration) -> Option<DecryptedDhtMessage> {
-        time::timeout(timeout, self.inbound_messages.next()).await.ok()?
+        time::timeout(timeout, self.inbound_messages.recv()).await.ok()?
     }
 
     pub async fn shutdown(mut self) {
-        self.shutdown.trigger().unwrap();
+        self.shutdown.trigger();
         self.comms.wait_until_shutdown().await;
     }
 }
@@ -230,7 +232,7 @@ fn dht_config() -> DhtConfig {
     config
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 #[allow(non_snake_case)]
 async fn dht_join_propagation() {
     // Create 3 nodes where only Node B knows A and C, but A and C want to talk to each other
@@ -299,7 +301,7 @@ async fn dht_join_propagation() {
     node_C.shutdown().await;
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 #[allow(non_snake_case)]
 async fn dht_discover_propagation() {
     // Create 4 nodes where A knows B, B knows A and C, C knows B and D, and D knows C
@@ -373,7 +375,7 @@ async fn dht_discover_propagation() {
     assert!(node_D_peer_manager.exists(node_A.node_identity().public_key()).await);
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 #[allow(non_snake_case)]
 async fn dht_store_forward() {
     let node_C_node_identity = make_node_identity(PeerFeatures::COMMUNICATION_NODE);
@@ -431,7 +433,7 @@ async fn dht_store_forward() {
         .unwrap();
 
     // Wait for node B to receive 2 propagation messages
-    collect_stream!(node_B_msg_events, take = 2, timeout = Duration::from_secs(20));
+    collect_try_recv!(node_B_msg_events, take = 2, timeout = Duration::from_secs(20));
 
     let mut node_C =
         make_node_with_node_identity("node_C", node_C_node_identity, dht_config(), Some(node_B.to_peer())).await;
@@ -451,8 +453,8 @@ async fn dht_store_forward() {
         .await
         .unwrap();
     // Wait for node C to and receive a response from the SAF request
-    let event = collect_stream!(node_C_msg_events, take = 1, timeout = Duration::from_secs(20));
-    unpack_enum!(MessagingEvent::MessageReceived(_node_id, _msg) = &**event.get(0).unwrap().as_ref().unwrap());
+    let event = collect_try_recv!(node_C_msg_events, take = 1, timeout = Duration::from_secs(20));
+    unpack_enum!(MessagingEvent::MessageReceived(_node_id, _msg) = &*event.get(0).unwrap().as_ref());
 
     let msg = node_C.next_inbound_message(Duration::from_secs(5)).await.unwrap();
     assert_eq!(
@@ -480,15 +482,15 @@ async fn dht_store_forward() {
     assert!(msgs.is_empty());
 
     // Check that Node C emitted the StoreAndForwardMessagesReceived event when it went Online
-    let event = collect_stream!(node_C_dht_events, take = 1, timeout = Duration::from_secs(20));
-    unpack_enum!(DhtEvent::StoreAndForwardMessagesReceived = &**event.get(0).unwrap().as_ref().unwrap());
+    let event = collect_try_recv!(node_C_dht_events, take = 1, timeout = Duration::from_secs(20));
+    unpack_enum!(DhtEvent::StoreAndForwardMessagesReceived = &*event.get(0).unwrap().as_ref());
 
     node_A.shutdown().await;
     node_B.shutdown().await;
     node_C.shutdown().await;
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 #[allow(non_snake_case)]
 async fn dht_propagate_dedup() {
     let mut config = dht_config();
@@ -599,28 +601,28 @@ async fn dht_propagate_dedup() {
     node_D.shutdown().await;
 
     // Check the message flow BEFORE deduping
-    let received = filter_received(collect_stream!(node_A_messaging, timeout = Duration::from_secs(20)));
+    let received = filter_received(collect_try_recv!(node_A_messaging, timeout = Duration::from_secs(20)));
     // Expected race condition: If A->(B|C)->(C|B) before A->(C|B) then (C|B)->A
     if !received.is_empty() {
         assert_eq!(count_messages_received(&received, &[&node_B_id, &node_C_id]), 1);
     }
 
-    let received = filter_received(collect_stream!(node_B_messaging, timeout = Duration::from_secs(20)));
+    let received = filter_received(collect_try_recv!(node_B_messaging, timeout = Duration::from_secs(20)));
     let recv_count = count_messages_received(&received, &[&node_A_id, &node_C_id]);
     // Expected race condition: If A->B->C before A->C then C->B does not happen
     assert!((1..=2).contains(&recv_count));
 
-    let received = filter_received(collect_stream!(node_C_messaging, timeout = Duration::from_secs(20)));
+    let received = filter_received(collect_try_recv!(node_C_messaging, timeout = Duration::from_secs(20)));
     let recv_count = count_messages_received(&received, &[&node_A_id, &node_B_id]);
     assert_eq!(recv_count, 2);
     assert_eq!(count_messages_received(&received, &[&node_D_id]), 0);
 
-    let received = filter_received(collect_stream!(node_D_messaging, timeout = Duration::from_secs(20)));
+    let received = filter_received(collect_try_recv!(node_D_messaging, timeout = Duration::from_secs(20)));
     assert_eq!(received.len(), 1);
     assert_eq!(count_messages_received(&received, &[&node_C_id]), 1);
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 #[allow(non_snake_case)]
 async fn dht_repropagate() {
     let mut config = dht_config();
@@ -723,7 +725,7 @@ async fn dht_repropagate() {
     node_C.shutdown().await;
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 #[allow(non_snake_case)]
 async fn dht_propagate_message_contents_not_malleable_ban() {
     let node_C = make_node("node_C", PeerFeatures::COMMUNICATION_NODE, dht_config(), None).await;
@@ -812,10 +814,10 @@ async fn dht_propagate_message_contents_not_malleable_ban() {
     let node_B_node_id = node_B.node_identity().node_id().clone();
 
     // Node C should ban node B
-    let banned_node_id = streams::assert_in_stream(
+    let banned_node_id = streams::assert_in_broadcast(
         &mut connectivity_events,
-        |r| match &*r.unwrap() {
-            ConnectivityEvent::PeerBanned(node_id) => Some(node_id.clone()),
+        |r| match r {
+            ConnectivityEvent::PeerBanned(node_id) => Some(node_id),
             _ => None,
         },
         Duration::from_secs(10),
@@ -828,12 +830,9 @@ async fn dht_propagate_message_contents_not_malleable_ban() {
     node_C.shutdown().await;
 }
 
-fn filter_received(
-    events: Vec<Result<Arc<MessagingEvent>, tokio::sync::broadcast::RecvError>>,
-) -> Vec<Arc<MessagingEvent>> {
+fn filter_received(events: Vec<Arc<MessagingEvent>>) -> Vec<Arc<MessagingEvent>> {
     events
         .into_iter()
-        .map(Result::unwrap)
         .filter(|e| match &**e {
             MessagingEvent::MessageReceived(_, _) => true,
             _ => unreachable!(),

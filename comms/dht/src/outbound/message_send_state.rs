@@ -250,9 +250,9 @@ impl Index<usize> for MessageSendStates {
 #[cfg(test)]
 mod test {
     use super::*;
-    use futures::channel::oneshot;
     use std::iter::repeat_with;
-    use tari_comms::message::MessagingReplyTx;
+    use tari_comms::{message::MessagingReplyTx, runtime};
+    use tokio::sync::oneshot;
 
     fn create_send_state() -> (MessageSendState, MessagingReplyTx) {
         let (reply_tx, reply_rx) = oneshot::channel();
@@ -269,7 +269,7 @@ mod test {
         assert!(!states.is_empty());
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn wait_single() {
         let (state, mut reply_tx) = create_send_state();
         let states = MessageSendStates::from(vec![state]);
@@ -284,7 +284,7 @@ mod test {
         assert!(!states.wait_single().await);
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     #[allow(clippy::redundant_closure)]
     async fn wait_percentage_success() {
         let states = repeat_with(|| create_send_state()).take(10).collect::<Vec<_>>();
@@ -300,7 +300,7 @@ mod test {
         assert_eq!(failed.len(), 4);
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     #[allow(clippy::redundant_closure)]
     async fn wait_n_timeout() {
         let states = repeat_with(|| create_send_state()).take(10).collect::<Vec<_>>();
@@ -329,7 +329,7 @@ mod test {
         assert_eq!(failed.len(), 6);
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     #[allow(clippy::redundant_closure)]
     async fn wait_all() {
         let states = repeat_with(|| create_send_state()).take(10).collect::<Vec<_>>();

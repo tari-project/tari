@@ -25,11 +25,11 @@ use crate::{
     proto,
     proto::base_node::{SyncUtxo, SyncUtxosRequest, SyncUtxosResponse},
 };
-use futures::{channel::mpsc, stream, SinkExt};
 use log::*;
 use std::{cmp, sync::Arc, time::Instant};
-use tari_comms::protocol::rpc::RpcStatus;
+use tari_comms::{protocol::rpc::RpcStatus, utils};
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+use tokio::sync::mpsc;
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc::sync_utxo_task";
 
@@ -147,8 +147,7 @@ where B: BlockchainBackend + 'static
                 utxos.len(),
                 deleted_diff.cardinality(),
             );
-            let mut utxos = stream::iter(
-                utxos
+            let utxos = utxos
                     .into_iter()
                     .enumerate()
                     // Only include pruned UTXOs if include_pruned_utxos is true
@@ -161,12 +160,10 @@ where B: BlockchainBackend + 'static
                             mmr_index: start + i  as u64,
                         }
                     })
-                    .map(Ok)
-                    .map(Ok),
-            );
+                    .map(Ok);
 
             // Ensure task stops if the peer prematurely stops their RPC session
-            if tx.send_all(&mut utxos).await.is_err() {
+            if utils::mpsc::send_all(&tx, utxos).await.is_err() {
                 break;
             }
 
