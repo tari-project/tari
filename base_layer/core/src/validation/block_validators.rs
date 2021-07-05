@@ -171,20 +171,20 @@ fn check_inputs_are_utxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result
                 );
                 return Err(ValidationError::ContainsSTxO);
             }
-        // TODO Do we keep the height validation?
-        // if height != input.height {
-        //     warn!(
-        //         target: LOG_TARGET,
-        //         "Block validation failed due to input not having correct mined height({}): {}", height, input
-        //     );
-        //     return Err(ValidationError::InvalidMinedHeight);
-        // }
         } else {
-            warn!(
-                target: LOG_TARGET,
-                "Block validation failed because the block has invalid input: {} which does not exist", input
-            );
-            return Err(ValidationError::BlockError(BlockValidationError::InvalidInput));
+            // lets check if the input exists in the output field
+            if !block
+                .body
+                .outputs()
+                .iter()
+                .any(|output| output.hash() == input.output_hash())
+            {
+                warn!(
+                    target: LOG_TARGET,
+                    "Block validation failed because the block has invalid input: {} which does not exist", input
+                );
+                return Err(ValidationError::BlockError(BlockValidationError::InvalidInput));
+            }
         }
     }
 

@@ -136,3 +136,36 @@ Feature: Mempool
     Then all nodes are at height 10
     When I mine 6 blocks on NODE_C
     Then all nodes are at height 16
+
+  @critical
+  Scenario: Zero-conf transactions
+    Given I have 1 seed nodes
+    And I have a base node SENDER connected to all seed nodes
+    When I mine a block on SENDER with coinbase CB1
+    When I mine a block on SENDER with coinbase CB2
+    When I mine 4 blocks on SENDER
+    When I create a custom fee transaction TX01 spending CB1 to UTX01 with fee 100
+    When I create a custom fee transaction TX02 spending UTX01 to UTX02 with fee 100
+    When I create a custom fee transaction TX03 spending UTX02 to UTX03 with fee 100
+    When I create a custom fee transaction TX11 spending CB2 to UTX11 with fee 100
+    When I create a custom fee transaction TX12 spending UTX11 to UTX12 with fee 100
+    When I create a custom fee transaction TX13 spending UTX12 to UTX13 with fee 100
+    When I submit transaction TX01 to SENDER
+    When I submit transaction TX02 to SENDER
+    When I submit transaction TX03 to SENDER
+    When I submit transaction TX11 to SENDER
+    When I submit transaction TX12 to SENDER
+    When I submit transaction TX13 to SENDER
+    Then SENDER has TX01 in MEMPOOL state
+    Then SENDER has TX02 in MEMPOOL state
+    Then SENDER has TX03 in MEMPOOL state
+    Then SENDER has TX11 in MEMPOOL state
+    Then SENDER has TX12 in MEMPOOL state
+    Then SENDER has TX13 in MEMPOOL state
+    When I mine 1 blocks on SENDER
+    Then SENDER has TX01 in MINED state
+    Then SENDER has TX02 in MINED state
+    Then SENDER has TX03 in MINED state
+    Then SENDER has TX11 in MINED state
+    Then SENDER has TX12 in MINED state
+    Then SENDER has TX13 in MINED state

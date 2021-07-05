@@ -1,6 +1,9 @@
 var tari_crypto = require("tari_crypto");
 var { blake2bInit, blake2bUpdate, blake2bFinal } = require("blakejs");
-const { toLittleEndian } = require("../helpers/util");
+const {
+  toLittleEndian,
+  littleEndianHexStringToBigEndianHexString,
+} = require("../helpers/util");
 
 class TransactionBuilder {
   constructor() {
@@ -231,7 +234,9 @@ class TransactionBuilder {
     );
 
     this.inputs.forEach((input) => {
-      totalPrivateKey -= BigInt("0x" + input.privateKey.toString());
+      totalPrivateKey -= BigInt(
+        littleEndianHexStringToBigEndianHexString(input.privateKey.toString())
+      );
 
       script_offset = tari_crypto.add_secret_keys(
         script_offset,
@@ -239,19 +244,38 @@ class TransactionBuilder {
       );
     });
     this.outputs.forEach((output) => {
-      totalPrivateKey += BigInt("0x" + output.privateKey.toString());
+      totalPrivateKey += BigInt(
+        littleEndianHexStringToBigEndianHexString(output.privateKey.toString())
+      );
       script_offset = tari_crypto.subtract_secret_keys(
         script_offset,
         output.scriptOffsetPrivateKey
       );
     });
-    // Assume low numbers....
 
-    let privateKey = totalPrivateKey.toString(16);
-    // we need to pad 0's in front
+    // We need to check for wrap around as these private keys are supposed to be unsigned integers,
+    // but in js these are floats. So we add the little endian number that is required to wrap the number so that it is
+    // again positive. This is the (max number -1) that tari_crypto can accommodate.
+    if (totalPrivateKey < 0) {
+      totalPrivateKey =
+        totalPrivateKey +
+        BigInt(
+          littleEndianHexStringToBigEndianHexString(
+            "edd3f55c1a631258d69cf7a2def9de1400000000000000000000000000000010"
+          )
+        );
+    }
+
+    let totalPrivateKeyHex = totalPrivateKey.toString(16);
+    while (totalPrivateKeyHex.length < 64) {
+      totalPrivateKeyHex = "0" + totalPrivateKeyHex;
+    }
+    let privateKey =
+      littleEndianHexStringToBigEndianHexString(totalPrivateKeyHex);
     while (privateKey.length < 64) {
       privateKey = "0" + privateKey;
     }
+
     const excess = tari_crypto.commit(privateKey, BigInt(0));
     this.kv.new_key("common_nonce");
     const publicNonce = this.kv.public_key("common_nonce");
@@ -266,7 +290,6 @@ class TransactionBuilder {
       privateNonce,
       challenge
     );
-
     return {
       offset: Buffer.from(toLittleEndian(0, 256), "hex"),
       script_offset: Buffer.from(script_offset, "hex"),
