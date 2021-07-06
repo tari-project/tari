@@ -209,7 +209,7 @@ use tari_wallet::{
     WalletConfig,
 };
 
-use tari_core::transactions::types::Signature;
+use tari_core::transactions::types::ComSignature;
 use tari_crypto::script::TariScript;
 use tari_p2p::Network;
 use tari_wallet::{
@@ -4499,7 +4499,8 @@ pub unsafe extern "C" fn wallet_import_utxo(
     source_public_key: *mut TariPublicKey,
     message: *const c_char,
     error_out: *mut c_int,
-    // TODO: Update this interface to add the sender signature, script private key and script offset public keys here.
+    /* TODO: Update this interface to add the metadata signature, script private key and script offset public keys
+     * here. */
 ) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
@@ -4537,8 +4538,8 @@ pub unsafe extern "C" fn wallet_import_utxo(
         &(*source_public_key).clone(),
         OutputFeatures::default(),
         message_string,
-        // TODO: Add the actual sender signature here.
-        Signature::default(),
+        // TODO: Add the actual metadata signature here.
+        ComSignature::default(),
         // TODO:Add the actual script private key here.
         &Default::default(),
         // TODO:Add the actual script offset public keys here.

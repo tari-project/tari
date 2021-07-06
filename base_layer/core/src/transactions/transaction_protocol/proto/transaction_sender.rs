@@ -92,18 +92,15 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
     fn try_from(data: proto::SingleRoundSenderData) -> Result<Self, Self::Error> {
         let public_excess = PublicKey::from_bytes(&data.public_excess).map_err(|err| err.to_string())?;
         let public_nonce = PublicKey::from_bytes(&data.public_nonce).map_err(|err| err.to_string())?;
-        let script_offset_public_key =
-            PublicKey::from_bytes(&data.script_offset_public_key).map_err(|err| err.to_string())?;
+        let sender_offset_public_key =
+            PublicKey::from_bytes(&data.sender_offset_public_key).map_err(|err| err.to_string())?;
         let metadata = data
             .metadata
             .map(Into::into)
             .ok_or_else(|| "Transaction metadata not provided".to_string())?;
         let message = data.message;
-        let sender_metadata_signature = data
-            .sender_metadata_signature
-            .map(TryInto::try_into)
-            .ok_or_else(|| "Sender metadata signature not provided".to_string())?
-            .map_err(|err| format!("{}", err))?;
+        let public_commitment_nonce =
+            PublicKey::from_bytes(&data.public_commitment_nonce).map_err(|err| err.to_string())?;
         let features = data
             .features
             .map(TryInto::try_into)
@@ -118,8 +115,8 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             message,
             features,
             script: TariScript::from_bytes(&data.script).map_err(|err| err.to_string())?,
-            script_offset_public_key,
-            sender_metadata_signature,
+            sender_offset_public_key,
+            public_commitment_nonce,
         })
     }
 }
@@ -137,8 +134,8 @@ impl From<SingleRoundSenderData> for proto::SingleRoundSenderData {
             message: sender_data.message,
             features: Some(sender_data.features.into()),
             script: sender_data.script.as_bytes(),
-            script_offset_public_key: sender_data.script_offset_public_key.to_vec(),
-            sender_metadata_signature: Some(sender_data.sender_metadata_signature.into()),
+            sender_offset_public_key: sender_data.sender_offset_public_key.to_vec(),
+            public_commitment_nonce: sender_data.public_commitment_nonce.to_vec(),
         }
     }
 }

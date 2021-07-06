@@ -580,7 +580,8 @@ mod test {
         );
         stx_builder
             .with_input(double_spend_utxo, double_spend_input)
-            .with_output(utxo, test_params.script_offset_pvt_key);
+            .with_output(utxo, test_params.sender_offset_private_key)
+            .unwrap();
 
         let factories = CryptoFactories::default();
         let mut stx_protocol = stx_builder.build::<HashDigest>(&factories).unwrap();

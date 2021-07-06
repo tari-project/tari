@@ -22,9 +22,9 @@ message SingleRoundSenderData {
     // Tari script serialised script
     bytes script = 7;
     // Tari script offset pubkey, K_O
-    bytes script_offset_public_key = 8;
-    // UTXO signature with the script offset private key, k_O
-    tari.types.Signature sender_metadata_signature = 9;
+    bytes sender_offset_public_key = 8;
+    // The sender's portion of the public commitment nonce
+    bytes public_commitment_nonce = 9;
     // Output features
     tari.types.OutputFeatures features = 10;
 }

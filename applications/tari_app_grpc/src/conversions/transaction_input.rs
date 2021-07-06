@@ -49,8 +49,8 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
             .try_into()
             .map_err(|_| "script_signature could not be converted".to_string())?;
 
-        let script_offset_public_key =
-            PublicKey::from_bytes(input.script_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+        let sender_offset_public_key =
+            PublicKey::from_bytes(input.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
         let script = TariScript::from_bytes(input.script.as_slice()).map_err(|err| format!("{:?}", err))?;
         let input_data = ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?;
 
@@ -60,7 +60,7 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
             script,
             input_data,
             script_signature,
-            script_offset_public_key,
+            sender_offset_public_key,
         })
     }
 }
@@ -82,7 +82,7 @@ impl From<TransactionInput> for grpc::TransactionInput {
                 signature_u: Vec::from(input.script_signature.u().as_bytes()),
                 signature_v: Vec::from(input.script_signature.v().as_bytes()),
             }),
-            script_offset_public_key: input.script_offset_public_key.as_bytes().to_vec(),
+            sender_offset_public_key: input.sender_offset_public_key.as_bytes().to_vec(),
         }
     }
 }

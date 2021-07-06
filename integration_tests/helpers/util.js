@@ -228,6 +228,30 @@ function pad(str, length, padLeft = true) {
   }
 }
 
+function combineTwoTariKeys(key1, key2) {
+  let total_key =
+    BigInt(littleEndianHexStringToBigEndianHexString(key1)) +
+    BigInt(littleEndianHexStringToBigEndianHexString(key2));
+  if (total_key < 0) {
+    total_key =
+      total_key +
+      BigInt(
+        littleEndianHexStringToBigEndianHexString(
+          "edd3f55c1a631258d69cf7a2def9de1400000000000000000000000000000010"
+        )
+      );
+  }
+  total_key = total_key.toString(16);
+  while (total_key.length < 64) {
+    total_key = "0" + total_key;
+  }
+  total_key = littleEndianHexStringToBigEndianHexString(total_key);
+  while (total_key.length < 64) {
+    total_key = "0" + total_key;
+  }
+  return total_key;
+}
+
 module.exports = {
   getRandomInt,
   sleep,
@@ -242,5 +266,6 @@ module.exports = {
   consoleLogBalance,
   consoleLogCoinbaseDetails,
   withTimeout,
+  combineTwoTariKeys,
   NO_CONNECTION,
 };

@@ -45,7 +45,7 @@ use rand::rngs::OsRng;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     inputs,
-    keys::PublicKey as PK,
+    keys::{PublicKey as PK, SecretKey},
     script,
     script::TariScript,
 };
@@ -185,15 +185,17 @@ impl CoinbaseBuilder {
         let sig = Signature::sign(spending_key.clone(), nonce, &challenge)
             .map_err(|_| CoinbaseBuildError::BuildError("Challenge could not be represented as a scalar".into()))?;
 
-        let (script_offset_pvt_key, script_offset_pub_key) = PublicKey::random_keypair(&mut OsRng);
-        let (sender_sig_pvt_nonce, sender_sig_pub_nonce) = PublicKey::random_keypair(&mut OsRng);
-        let e = TransactionOutput::build_sender_challenge(
+        let sender_offset_private_key = PrivateKey::random(&mut OsRng);
+        let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+
+        let metadata_sig = TransactionOutput::create_final_metadata_signature(
+            &total_reward,
+            &spending_key,
             &script,
             &output_features,
-            &script_offset_pub_key,
-            &sender_sig_pub_nonce,
-        );
-        let sender_sig = Signature::sign(script_offset_pvt_key, sender_sig_pvt_nonce, &e).unwrap();
+            &sender_offset_private_key,
+        )
+        .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
 
         let unblinded_output = UnblindedOutput::new(
             total_reward,
@@ -202,8 +204,8 @@ impl CoinbaseBuilder {
             script,
             inputs!(PublicKey::from_secret_key(&script_private_key)),
             script_private_key,
-            script_offset_pub_key,
-            sender_sig,
+            sender_offset_public_key,
+            metadata_sig,
         );
         let output = if let Some(rewind_data) = self.rewind_data.as_ref() {
             unblinded_output

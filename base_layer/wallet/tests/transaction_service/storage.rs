@@ -85,7 +85,13 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             input,
         )
         .with_change_secret(PrivateKey::random(&mut OsRng))
-        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng), Default::default())
+        .with_recipient_data(
+            0,
+            script!(Nop),
+            PrivateKey::random(&mut OsRng),
+            Default::default(),
+            PrivateKey::random(&mut OsRng),
+        )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
     let stp = builder.build::<HashDigest>(&factories).unwrap();

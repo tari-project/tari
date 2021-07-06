@@ -17,7 +17,7 @@ CREATE TABLE outputs (
     input_data BLOB NOT NULL,
     height INTEGER NOT NULL,
     script_private_key BLOB NOT NULL,
-    script_offset_public_key BLOB NOT NULL,
+    sender_offset_public_key BLOB NOT NULL,
     CONSTRAINT unique_commitment UNIQUE (commitment)
 );
 PRAGMA foreign_keys=on;

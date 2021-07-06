@@ -736,9 +736,9 @@ async fn test_import_utxo() {
             base_node_identity.public_key(),
             features,
             "Testing".to_string(),
-            utxo.sender_metadata_signature.clone(),
+            utxo.metadata_signature.clone(),
             &p.script_private_key,
-            &p.script_offset_pub_key,
+            &p.sender_offset_public_key,
         )
         .await
         .unwrap();

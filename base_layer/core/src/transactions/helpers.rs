@@ -77,16 +77,18 @@ pub struct TestParams {
     pub nonce: PrivateKey,
     pub public_nonce: PublicKey,
     pub script_private_key: PrivateKey,
-    pub script_offset_pub_key: PublicKey,
-    pub script_offset_pvt_key: PrivateKey,
-    pub sender_sig_pvt_nonce: PrivateKey,
-    pub sender_sig_pub_nonce: PublicKey,
+    pub sender_offset_public_key: PublicKey,
+    pub sender_offset_private_key: PrivateKey,
+    pub sender_sig_private_nonce: PrivateKey,
+    pub sender_sig_public_nonce: PublicKey,
+    pub sender_private_commitment_nonce: PrivateKey,
+    pub sender_public_commitment_nonce: PublicKey,
 }
 
 impl TestParams {
     pub fn new() -> TestParams {
         let r = PrivateKey::random(&mut OsRng);
-        let script_offset_pvt_key = PrivateKey::random(&mut OsRng);
+        let sender_offset_private_key = PrivateKey::random(&mut OsRng);
         let sender_sig_pvt_nonce = PrivateKey::random(&mut OsRng);
         TestParams {
             spend_key: PrivateKey::random(&mut OsRng),
@@ -95,10 +97,12 @@ impl TestParams {
             public_nonce: PublicKey::from_secret_key(&r),
             nonce: r,
             script_private_key: PrivateKey::random(&mut OsRng),
-            script_offset_pub_key: PublicKey::from_secret_key(&script_offset_pvt_key),
-            script_offset_pvt_key,
-            sender_sig_pvt_nonce: sender_sig_pvt_nonce.clone(),
-            sender_sig_pub_nonce: PublicKey::from_secret_key(&sender_sig_pvt_nonce),
+            sender_offset_public_key: PublicKey::from_secret_key(&sender_offset_private_key),
+            sender_offset_private_key,
+            sender_sig_private_nonce: sender_sig_pvt_nonce.clone(),
+            sender_sig_public_nonce: PublicKey::from_secret_key(&sender_sig_pvt_nonce),
+            sender_private_commitment_nonce: sender_sig_pvt_nonce.clone(),
+            sender_public_commitment_nonce: PublicKey::from_secret_key(&sender_sig_pvt_nonce),
         }
     }
 }
@@ -155,14 +159,14 @@ pub fn create_unblinded_output(
     test_params: TestParams,
     value: MicroTari,
 ) -> UnblindedOutput {
-    let e = TransactionOutput::build_sender_challenge(
+    let metadata_signature = TransactionOutput::create_final_metadata_signature(
+        &value,
+        &test_params.spend_key,
         &script,
         &output_features,
-        &test_params.script_offset_pub_key,
-        &test_params.sender_sig_pub_nonce,
-    );
-    let sender_sig = Signature::sign(test_params.script_offset_pvt_key, test_params.sender_sig_pvt_nonce, &e).unwrap();
-
+        &test_params.sender_offset_private_key,
+    )
+    .unwrap();
     UnblindedOutput::new(
         value,
         test_params.spend_key,
@@ -170,8 +174,8 @@ pub fn create_unblinded_output(
         script,
         inputs!(PublicKey::from_secret_key(&test_params.script_private_key)),
         test_params.script_private_key,
-        test_params.script_offset_pub_key,
-        sender_sig,
+        test_params.sender_offset_public_key,
+        metadata_signature,
     )
 }
 
@@ -312,7 +316,9 @@ pub fn create_tx(
             output_amount,
         );
         unblinded_outputs.push(utxo.clone());
-        stx_builder.with_output(utxo, test_params.script_offset_pvt_key.clone());
+        stx_builder
+            .with_output(utxo, test_params.sender_offset_private_key.clone())
+            .unwrap();
     }
 
     let mut stx_protocol = stx_builder.build::<Blake256>(&factories).unwrap();
@@ -361,25 +367,23 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
         let test_params = TestParams::new();
         let utxo = create_unblinded_output(script!(Nop), schema.features.clone(), test_params.clone(), val);
         outputs.push(utxo.clone());
-        stx_builder.with_output(utxo, test_params.script_offset_pvt_key.clone());
+        stx_builder
+            .with_output(utxo, test_params.sender_offset_private_key.clone())
+            .unwrap();
     }
 
     let mut stx_protocol = stx_builder.build::<Blake256>(&factories).unwrap();
     let change = stx_protocol.get_change_amount().unwrap();
     // The change output is assigned its own random script offset private key
-    let change_script_offset_public_key = stx_protocol.get_change_script_offset_public_key().unwrap().unwrap();
+    let change_sender_offset_public_key = stx_protocol.get_change_sender_offset_public_key().unwrap().unwrap();
 
     let script = script!(Nop);
-    let e = TransactionOutput::build_sender_challenge(
+    let metadata_sig = TransactionOutput::create_final_metadata_signature(
+        &change,
+        &test_params_change_and_txn.change_spend_key,
         &script,
         &schema.features,
-        &test_params_change_and_txn.script_offset_pub_key,
-        &test_params_change_and_txn.sender_sig_pub_nonce,
-    );
-    let sender_sig = Signature::sign(
-        test_params_change_and_txn.script_offset_pvt_key.clone(),
-        test_params_change_and_txn.sender_sig_pvt_nonce.clone(),
-        &e,
+        &test_params_change_and_txn.sender_offset_private_key,
     )
     .unwrap();
 
@@ -392,8 +396,8 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
             &test_params_change_and_txn.script_private_key
         )),
         test_params_change_and_txn.script_private_key.clone(),
-        change_script_offset_public_key,
-        sender_sig,
+        change_sender_offset_public_key,
+        metadata_sig,
     );
     outputs.push(change_output);
     match stx_protocol.finalize(KernelFeatures::empty(), &factories) {
@@ -428,8 +432,9 @@ pub fn create_utxo(
     let features = features.unwrap_or_default();
     let commitment = factories.commitment.commit_value(&keys.k, value.into());
     let proof = factories.range_proof.construct_proof(&keys.k, value.into()).unwrap();
-    let e = TransactionOutput::build_sender_challenge(&script, &features, &offset_keys.pk, &offset_keys.pr);
-    let sender_sig = Signature::sign(offset_keys.k.clone(), offset_keys.r, &e).unwrap();
+    let metadata_sig =
+        TransactionOutput::create_final_metadata_signature(&value, &keys.k, &script, &features, &offset_keys.k)
+            .unwrap();
 
     let utxo = TransactionOutput::new(
         features,
@@ -437,7 +442,7 @@ pub fn create_utxo(
         proof.into(),
         script.clone(),
         offset_keys.pk,
-        sender_sig,
+        metadata_sig,
     );
     (utxo, keys.k, offset_keys.k)
 }

@@ -750,13 +750,13 @@ where
 
         // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is converted to
         // bytes to enable conversion into a private key to be used as the spending key
-        let script_offset_private_key = stp
-            .get_recipient_script_offset_private_key(0)
+        let sender_offset_private_key = stp
+            .get_recipient_sender_offset_private_key(0)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         // TODO: Add a standardized Diffie-Hellman method to the tari_crypto library that will return a private key,
         // TODO: then come back and use it here.
         let spending_key = PrivateKey::from_bytes(
-            CommsPublicKey::shared_secret(&script_offset_private_key.clone(), &dest_pubkey.clone()).as_bytes(),
+            CommsPublicKey::shared_secret(&sender_offset_private_key.clone(), &dest_pubkey.clone()).as_bytes(),
         )
         .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 

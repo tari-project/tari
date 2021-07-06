@@ -145,9 +145,9 @@ pub fn get_stibbons_genesis_block_raw() -> Block {
             // For genesis block: A default script can never be spent, intentionally
             script: TariScript::default(),
             // Script offset never checked for coinbase, thus can use default
-            script_offset_public_key: Default::default(),
-            // For genesis block: Sender signature will never be checked
-            sender_metadata_signature: Default::default(),
+            sender_offset_public_key: Default::default(),
+            // For genesis block: Metadata signature will never be checked
+            metadata_signature: Default::default(),
         }],
         vec![TransactionKernel {
             features: KernelFeatures::COINBASE_KERNEL,
@@ -212,9 +212,9 @@ pub fn get_weatherwax_genesis_block_raw() -> Block {
             // For genesis block: A default script can never be spent, intentionally
             script: TariScript::default(),
             // Script offset never checked for coinbase, thus can use default
-            script_offset_public_key: Default::default(),
-            // For genesis block: Sender signature will never be checked
-            sender_metadata_signature: Default::default(),
+            sender_offset_public_key: Default::default(),
+            // For genesis block: Metadata signature will never be checked
+            metadata_signature: Default::default(),
         }],
         vec![TransactionKernel {
             features: KernelFeatures::COINBASE_KERNEL,
@@ -233,7 +233,7 @@ pub fn get_weatherwax_genesis_block_raw() -> Block {
             version: 0,
             height: 0,
             prev_hash: vec![0; BLOCK_HASH_LENGTH],
-            timestamp: 1_624_957_036.into(), // Tue Jun 29 2021 08:57:16 GMT+0000
+            timestamp: 1_625_125_650.into(), // Thu, 01 Jul 2021 07:47:30 GMT
             output_mr: from_hex("dcc44f39b65e5e1e526887e7d56f7b85e2ea44bd29bc5bc195e6e015d19e1c06").unwrap(),
             witness_mr: from_hex("e4d7dab49a66358379a901b9a36c10f070aa9d7bdc8ae752947b6fc4e55d255f").unwrap(),
             output_mmr_size: 1,
@@ -319,9 +319,9 @@ pub fn get_ridcully_genesis_block_raw() -> Block {
             // For genesis block: A default script can never be spent, intentionally
             script: TariScript::default(),
             // Script offset never checked for coinbase, thus can use default
-            script_offset_public_key: Default::default(),
-            // For genesis block: Sender signature will never be checked
-            sender_metadata_signature: Default::default()
+            sender_offset_public_key: Default::default(),
+            // For genesis block: Metadata signature will never be checked
+            metadata_signature: Default::default()
         }],
         vec![TransactionKernel {
             features: KernelFeatures::COINBASE_KERNEL,
