@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::types::{Challenge, CommsPublicKey};
+use blake2::digest::FixedOutput;
 use digest::Digest;
 use rand::{CryptoRng, Rng};
 use tari_crypto::{
@@ -38,9 +39,9 @@ where
     R: CryptoRng + Rng,
     B: AsRef<[u8]>,
 {
-    let challenge = Challenge::new().chain(body).result().to_vec();
+    let challenge = Challenge::new().chain(body).finalize_fixed();
     let nonce = <CommsPublicKey as PublicKey>::K::random(rng);
-    SchnorrSignature::sign(secret_key, nonce, &challenge)
+    SchnorrSignature::sign(secret_key, nonce, challenge.as_slice())
 }
 
 /// Verify that the signature is valid for the message body
@@ -48,8 +49,8 @@ pub fn verify<B>(public_key: &CommsPublicKey, signature: &[u8], body: B) -> bool
 where B: AsRef<[u8]> {
     match SchnorrSignature::<CommsPublicKey, <CommsPublicKey as PublicKey>::K>::from_binary(signature) {
         Ok(signature) => {
-            let challenge = Challenge::new().chain(body).result().to_vec();
-            signature.verify_challenge(public_key, &challenge)
+            let challenge = Challenge::new().chain(body).finalize_fixed();
+            signature.verify_challenge(public_key, challenge.as_slice())
         },
         Err(_) => false,
     }

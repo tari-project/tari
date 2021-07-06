@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{actor::DhtRequester, inbound::DhtInboundMessage};
-use digest::Input;
+use digest::Digest;
 use futures::{future::BoxFuture, task::Context};
 use log::*;
 use std::task::Poll;
@@ -32,7 +32,7 @@ use tower::{layer::Layer, Service, ServiceExt};
 const LOG_TARGET: &str = "comms::dht::dedup";
 
 fn hash_inbound_message(message: &DhtInboundMessage) -> Vec<u8> {
-    Challenge::new().chain(&message.body).result().to_vec()
+    Challenge::new().chain(&message.body).finalize().to_vec()
 }
 
 /// # DHT Deduplication middleware

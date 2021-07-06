@@ -24,7 +24,7 @@ use crate::{
     support::{
         comms_and_services::{create_dummy_message, get_next_memory_address, setup_comms_services},
         rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
-        utils::{make_input, random_string, TestParams},
+        utils::{make_input, TestParams},
     },
     transaction_service::transaction_protocols::add_transaction_to_database,
 };
@@ -91,6 +91,7 @@ use tari_crypto::{
 use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage, Network};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
+use tari_test_utils::random;
 use tari_wallet::{
     base_node_service::{
         config::BaseNodeServiceConfig,
@@ -369,9 +370,11 @@ pub fn setup_transaction_service_no_comms_and_oms_backend<
         outbound_message_requester,
         connectivity_manager,
         event_publisher,
-        Arc::new(
-            NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-        ),
+        Arc::new(NodeIdentity::random(
+            &mut OsRng,
+            get_next_memory_address(),
+            PeerFeatures::COMMUNICATION_NODE,
+        )),
         factories,
         shutdown.to_signal(),
     );
@@ -450,18 +453,24 @@ fn manage_single_transaction() {
 
     let factories = CryptoFactories::default();
     // Alice's parameters
-    let alice_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     // Bob's parameters
-    let bob_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let bob_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
-    let base_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let base_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     log::info!(
         "manage_single_transaction: Alice: '{}', Bob: '{}', Base: '{}'",
@@ -606,13 +615,17 @@ fn single_transaction_to_self() {
 
     let factories = CryptoFactories::default();
     // Alice's parameters
-    let alice_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
-    let base_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let base_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     log::info!(
         "manage_single_transaction: Alice: '{}', Base: '{}'",
@@ -686,18 +699,24 @@ fn send_one_sided_transaction_to_other() {
 
     let factories = CryptoFactories::default();
     // Alice's parameters
-    let alice_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     // Bob's parameters
-    let bob_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let bob_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
-    let base_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let base_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     log::info!(
         "manage_single_transaction: Alice: '{}', Bob: '{}', Base: '{}'",
@@ -798,18 +817,24 @@ fn recover_one_sided_transaction() {
 
     let factories = CryptoFactories::default();
     // Alice's parameters
-    let alice_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     // Bob's parameters
-    let bob_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let bob_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
-    let base_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let base_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     log::info!(
         "manage_single_transaction: Alice: '{}', Bob: '{}', Base: '{}'",
@@ -910,13 +935,17 @@ fn send_one_sided_transaction_to_self() {
 
     let factories = CryptoFactories::default();
     // Alice's parameters
-    let alice_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
-    let base_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let base_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     log::info!(
         "manage_single_transaction: Alice: '{}', Base: '{}'",
@@ -981,19 +1010,25 @@ fn manage_multiple_transactions() {
     let mut runtime = create_runtime();
     let factories = CryptoFactories::default();
     // Alice's parameters
-    let alice_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     // Bob's parameters
-    let bob_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let bob_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     // Carols's parameters
-    let carol_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let carol_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     log::info!(
         "wallet::manage_multiple_transactions: Alice: '{}', Bob: '{}', carol: '{}'",
@@ -1235,14 +1270,14 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
 
     let temp_dir = tempdir().unwrap();
     let path_string = temp_dir.path().to_str().unwrap().to_string();
-    let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let alice_db_name = format!("{}.sqlite3", random::string(8).as_str());
     let alice_db_path = format!("{}/{}", path_string, alice_db_name);
     let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
     let alice_backend = TransactionServiceSqliteDatabase::new(connection_alice.clone(), None);
     let oms_backend = OutputManagerSqliteDatabase::new(connection_alice, None);
 
     let bob_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     let (
         mut alice_ts,
         mut alice_output_manager,
@@ -1344,9 +1379,9 @@ fn finalize_tx_with_incorrect_pubkey() {
     let temp_dir = tempdir().unwrap();
     let path_string = temp_dir.path().to_str().unwrap().to_string();
 
-    let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let alice_db_name = format!("{}.sqlite3", random::string(8).as_str());
     let alice_db_path = format!("{}/{}", path_string, alice_db_name);
-    let bob_db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let bob_db_name = format!("{}.sqlite3", random::string(8).as_str());
     let bob_db_path = format!("{}/{}", path_string, bob_db_name);
     let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
     let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path).unwrap();
@@ -1374,7 +1409,7 @@ fn finalize_tx_with_incorrect_pubkey() {
     let mut alice_event_stream = alice_ts.get_event_stream_fused();
 
     let bob_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     let (
         _bob_ts,
         mut bob_output_manager,
@@ -1471,9 +1506,9 @@ fn finalize_tx_with_missing_output() {
     let temp_dir = tempdir().unwrap();
     let path_string = temp_dir.path().to_str().unwrap().to_string();
 
-    let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let alice_db_name = format!("{}.sqlite3", random::string(8).as_str());
     let alice_db_path = format!("{}/{}", path_string, alice_db_name);
-    let bob_db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let bob_db_name = format!("{}.sqlite3", random::string(8).as_str());
     let bob_db_path = format!("{}/{}", path_string, bob_db_name);
     let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
     let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path).unwrap();
@@ -1500,7 +1535,7 @@ fn finalize_tx_with_missing_output() {
     let mut alice_event_stream = alice_ts.get_event_stream_fused();
 
     let bob_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     let (
         _bob_ts,
         mut bob_output_manager,
@@ -1611,19 +1646,25 @@ fn discovery_async_return_test() {
     let factories = CryptoFactories::default();
 
     // Alice's parameters
-    let alice_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     // Bob's parameters
-    let bob_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let bob_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     // Carols's parameters
-    let carol_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let carol_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     log::info!(
         "discovery_async_return_test: Alice: '{}', Bob: '{}', Carol: '{}'",
@@ -1884,7 +1925,7 @@ fn test_set_num_confirmations() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
 
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_name = format!("{}.sqlite3", random::string(8).as_str());
     let temp_dir = tempdir().unwrap();
     let db_folder = temp_dir.path().to_str().unwrap().to_string();
     let connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();
@@ -1925,9 +1966,9 @@ fn test_transaction_cancellation() {
     let mut runtime = Runtime::new().unwrap();
 
     let bob_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
 
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_name = format!("{}.sqlite3", random::string(8).as_str());
     let temp_dir = tempdir().unwrap();
     let db_folder = temp_dir.path().to_str().unwrap().to_string();
     let connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();
@@ -2235,10 +2276,10 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
     let mut runtime = Runtime::new().unwrap();
 
     let alice_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
 
     let bob_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     let (_wallet_backend, tx_backend, oms_backend, _, _temp_dir) = make_wallet_databases(None);
 
     let (
@@ -2478,7 +2519,7 @@ fn test_tx_direct_send_behaviour() {
     let mut runtime = Runtime::new().unwrap();
 
     let bob_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     let (_wallet_backend, backend, oms_backend, _, _temp_dir) = make_wallet_databases(None);
 
     let (
@@ -2684,17 +2725,23 @@ fn test_restarting_transaction_protocols() {
     let (_wallet_backend, alice_backend, alice_oms_backend, _, _temp_dir) = make_wallet_databases(None);
     let (_, bob_backend, bob_oms_backend, _, _temp_dir2) = make_wallet_databases(None);
 
-    let base_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let base_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
-    let alice_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let alice_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
-    let bob_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let bob_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     // Bob is going to send a transaction to Alice
     let alice = TestParams::new(&mut OsRng);
@@ -3589,9 +3636,9 @@ fn test_transaction_resending() {
     let mut runtime = Runtime::new().unwrap();
 
     let alice_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     let bob_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     // Setup Alice wallet with no comms stack
     let (_, alice_backend, alice_oms_backend, _, _tempdir) = make_wallet_databases(None);
 
@@ -3786,7 +3833,7 @@ fn test_resend_on_startup() {
     let mut runtime = Runtime::new().unwrap();
 
     let alice_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
 
     // First we will check the Send Tranasction message
     let input = create_unblinded_output(
@@ -4027,9 +4074,9 @@ fn test_replying_to_cancelled_tx() {
     let mut runtime = Runtime::new().unwrap();
 
     let alice_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     let bob_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     // Testing if a Tx Reply is received for a Cancelled Outbound Tx that a Cancelled message is sent back:
     let (_, alice_backend, alice_oms_backend, _, _tempdir) = make_wallet_databases(None);
 
@@ -4161,7 +4208,7 @@ fn test_transaction_timeout_cancellation() {
     let mut runtime = Runtime::new().unwrap();
 
     let bob_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     // Testing if a Tx Reply is received for a Cancelled Outbound Tx that a Cancelled message is sent back:
     let (_, alice_backend, alice_oms_backend, _, _tempdir) = make_wallet_databases(None);
 
@@ -4402,10 +4449,10 @@ fn transaction_service_tx_broadcast() {
     let mut runtime = Runtime::new().unwrap();
 
     let alice_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
 
     let bob_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     let (_, backend, oms_backend, _, _temp_dir) = make_wallet_databases(None);
 
     let (
@@ -4837,10 +4884,10 @@ fn transaction_service_tx_broadcast_with_base_node_change() {
     let mut runtime = Runtime::new().unwrap();
 
     let alice_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
 
     let bob_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     let (_, backend, oms_backend, _, _temp_dir) = make_wallet_databases(None);
 
     let (
@@ -5042,7 +5089,7 @@ fn only_start_one_tx_broadcast_protocol_at_a_time() {
     let factories = CryptoFactories::default();
 
     let temp_dir = tempdir().unwrap();
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_name = format!("{}.sqlite3", random::string(8).as_str());
     let db_path = format!("{}/{}", temp_dir.path().to_str().unwrap(), db_name);
     let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
     let backend = TransactionServiceSqliteDatabase::new(connection.clone(), None);
@@ -5110,7 +5157,7 @@ fn dont_broadcast_invalid_transactions() {
     let factories = CryptoFactories::default();
 
     let temp_dir = tempdir().unwrap();
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_name = format!("{}.sqlite3", random::string(8).as_str());
     let db_path = format!("{}/{}", temp_dir.path().to_str().unwrap(), db_name);
     let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
     let backend = TransactionServiceSqliteDatabase::new(connection.clone(), None);
@@ -5177,7 +5224,7 @@ fn start_validation_protocol_then_broadcast_protocol_change_base_node() {
     let factories = CryptoFactories::default();
 
     let temp_dir = tempdir().unwrap();
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_name = format!("{}.sqlite3", random::string(8).as_str());
     let db_path = format!("{}/{}", temp_dir.path().to_str().unwrap(), db_name);
     let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
     let tx_backend = TransactionServiceSqliteDatabase::new(connection.clone(), None);

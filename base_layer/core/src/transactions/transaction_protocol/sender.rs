@@ -616,7 +616,10 @@ impl fmt::Display for SenderTransactionProtocol {
 }
 
 pub fn calculate_tx_id<D: Digest>(pub_nonce: &PublicKey, index: usize) -> u64 {
-    let hash = D::new().chain(pub_nonce.as_bytes()).chain(index.to_le_bytes()).result();
+    let hash = D::new()
+        .chain(pub_nonce.as_bytes())
+        .chain(index.to_le_bytes())
+        .finalize();
     let mut bytes: [u8; 8] = [0u8; 8];
     bytes.copy_from_slice(&hash[..8]);
     u64::from_le_bytes(bytes)

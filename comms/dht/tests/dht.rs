@@ -92,7 +92,11 @@ impl TestNode {
 
 fn make_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
     let port = MemoryTransport::acquire_next_memsocket_port();
-    Arc::new(NodeIdentity::random(&mut OsRng, format!("/memory/{}", port).parse().unwrap(), features).unwrap())
+    Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        format!("/memory/{}", port).parse().unwrap(),
+        features,
+    ))
 }
 
 fn create_peer_storage() -> CommsDatabase {

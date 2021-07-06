@@ -1707,8 +1707,8 @@ mod test {
     };
     use chrono::{Duration as ChronoDuration, Utc};
     use diesel::{Connection, SqliteConnection};
-    use rand::{distributions::Alphanumeric, rngs::OsRng, Rng, RngCore};
-    use std::{convert::TryFrom, iter, time::Duration};
+    use rand::{rngs::OsRng, RngCore};
+    use std::{convert::TryFrom, time::Duration};
     use tari_core::transactions::{
         helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
         tari_amount::MicroTari,
@@ -1716,11 +1716,8 @@ mod test {
         types::{CommitmentFactory, CryptoFactories, PrivateKey},
     };
     use tari_crypto::{keys::SecretKey, script};
+    use tari_test_utils::random;
     use tempfile::tempdir;
-
-    pub fn random_string(len: usize) -> String {
-        iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
-    }
 
     pub fn make_input(val: MicroTari) -> (TransactionInput, UnblindedOutput) {
         let test_params = TestParamsHelpers::new();
@@ -1734,7 +1731,7 @@ mod test {
 
     #[test]
     fn test_crud() {
-        let db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let db_name = format!("{}.sqlite3", random::string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);
@@ -1881,7 +1878,7 @@ mod test {
 
     #[test]
     fn test_key_manager_crud() {
-        let db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let db_name = format!("{}.sqlite3", random::string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);
@@ -1897,7 +1894,7 @@ mod test {
 
         let state1 = KeyManagerState {
             master_key: PrivateKey::random(&mut OsRng),
-            branch_seed: random_string(8),
+            branch_seed: random::string(8),
             primary_key_index: 0,
         };
 
@@ -1908,7 +1905,7 @@ mod test {
 
         let state2 = KeyManagerState {
             master_key: PrivateKey::random(&mut OsRng),
-            branch_seed: random_string(8),
+            branch_seed: random::string(8),
             primary_key_index: 0,
         };
 
@@ -1928,7 +1925,7 @@ mod test {
 
     #[test]
     fn test_output_encryption() {
-        let db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let db_name = format!("{}.sqlite3", random::string(8).as_str());
         let tempdir = tempdir().unwrap();
         let db_folder = tempdir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);
@@ -1987,7 +1984,7 @@ mod test {
 
     #[test]
     fn test_key_manager_encryption() {
-        let db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let db_name = format!("{}.sqlite3", random::string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);
@@ -2029,7 +2026,7 @@ mod test {
 
     #[test]
     fn test_apply_remove_encryption() {
-        let db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let db_name = format!("{}.sqlite3", random::string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);

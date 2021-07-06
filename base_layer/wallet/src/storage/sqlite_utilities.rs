@@ -150,7 +150,7 @@ pub fn initialize_sqlite_database_backends(
     WalletStorageError,
 > {
     let cipher = passphrase.map(|passphrase_str| {
-        let passphrase_hash = Blake256::new().chain(passphrase_str.as_bytes()).result();
+        let passphrase_hash = Blake256::new().chain(passphrase_str.as_bytes()).finalize();
         let key = GenericArray::from_slice(passphrase_hash.as_slice());
         Aes256Gcm::new(key)
     });

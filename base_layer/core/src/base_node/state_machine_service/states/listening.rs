@@ -346,7 +346,7 @@ mod test {
 
     fn random_node_id() -> NodeId {
         let (_secret_key, public_key) = CommsPublicKey::random_keypair(&mut OsRng);
-        NodeId::from_key(&public_key).unwrap()
+        NodeId::from_key(&public_key)
     }
 
     #[test]

@@ -159,8 +159,7 @@ where TBackend: TransactionBackend + 'static
             );
 
             // Get a base node RPC connection
-            let base_node_node_id = NodeId::from_key(&self.base_node_public_key.clone())
-                .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
+            let base_node_node_id = NodeId::from_key(&self.base_node_public_key);
             let mut connection: Option<PeerConnection> = None;
             debug!(
                 target: LOG_TARGET,

@@ -32,7 +32,7 @@ use tari_mmr::{Hash, HashSlice, MutableMmr};
 fn hash_with_bitmap(hash: &HashSlice, bitmap: &mut Bitmap) -> Hash {
     bitmap.run_optimize();
     let hasher = Hasher::new();
-    hasher.chain(hash).chain(&bitmap.serialize()).result().to_vec()
+    hasher.chain(hash).chain(&bitmap.serialize()).finalize().to_vec()
 }
 
 /// MMRs with no elements should provide sane defaults. The merkle root must be the hash of an empty string, b"".

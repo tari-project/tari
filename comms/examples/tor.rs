@@ -171,7 +171,7 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
         &mut OsRng,
         "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
         PeerFeatures::COMMUNICATION_CLIENT,
-    )?);
+    ));
 
     let comms_node = CommsBuilder::new()
         .with_node_identity(node_identity)

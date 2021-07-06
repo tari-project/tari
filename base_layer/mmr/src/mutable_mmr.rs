@@ -123,8 +123,8 @@ where
         // both sets.
         let mmr_root = self.mmr.get_merkle_root()?;
         let mut hasher = D::new();
-        hasher.input(&mmr_root);
-        Ok(self.hash_deleted(hasher).result().to_vec())
+        hasher.update(&mmr_root);
+        Ok(self.hash_deleted(hasher).finalize().to_vec())
     }
 
     /// Returns only the MMR merkle root without the compressed serialisation of the bitmap
@@ -197,7 +197,7 @@ where
     /// Hash the roaring bitmap of nodes that are marked for deletion
     fn hash_deleted(&self, mut hasher: D) -> D {
         let bitmap_ser = self.deleted.serialize();
-        hasher.input(&bitmap_ser);
+        hasher.update(&bitmap_ser);
         hasher
     }
 

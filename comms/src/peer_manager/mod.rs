@@ -79,7 +79,7 @@ pub mod node_id;
 pub use node_id::NodeId;
 
 mod node_identity;
-pub use node_identity::{NodeIdentity, NodeIdentityError};
+pub use node_identity::NodeIdentity;
 
 mod peer;
 pub use peer::{Peer, PeerFlags};

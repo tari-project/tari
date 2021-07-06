@@ -22,12 +22,7 @@
 
 use super::node_id::deserialize_node_id_from_hex;
 use crate::{
-    peer_manager::{
-        node_id::{NodeId, NodeIdError},
-        Peer,
-        PeerFeatures,
-        PeerFlags,
-    },
+    peer_manager::{node_id::NodeId, Peer, PeerFeatures, PeerFlags},
     types::{CommsPublicKey, CommsSecretKey},
 };
 use multiaddr::Multiaddr;
@@ -38,13 +33,6 @@ use tari_crypto::{
     keys::{PublicKey, SecretKey},
     tari_utilities::hex::serialize_to_hex,
 };
-use thiserror::Error;
-
-#[derive(Debug, Error)]
-pub enum NodeIdentityError {
-    #[error("NodeIdError: {0}")]
-    NodeIdError(#[from] NodeIdError),
-}
 
 /// The public and private identity of this node on the network
 #[derive(Debug, Serialize, Deserialize)]
@@ -60,43 +48,33 @@ pub struct NodeIdentity {
 
 impl NodeIdentity {
     /// Create a new NodeIdentity from the provided key pair and control service address
-    pub fn new(
-        secret_key: CommsSecretKey,
-        public_address: Multiaddr,
-        features: PeerFeatures,
-    ) -> Result<Self, NodeIdentityError> {
+    pub fn new(secret_key: CommsSecretKey, public_address: Multiaddr, features: PeerFeatures) -> Self {
         let public_key = CommsPublicKey::from_secret_key(&secret_key);
-        let node_id = NodeId::from_key(&public_key).map_err(NodeIdentityError::NodeIdError)?;
+        let node_id = NodeId::from_key(&public_key);
 
-        Ok(NodeIdentity {
+        NodeIdentity {
             node_id,
             public_key,
             features,
             secret_key,
             public_address: RwLock::new(public_address),
-        })
+        }
     }
 
     /// Generates a new random NodeIdentity for CommsPublicKey
-    pub fn random<R>(
-        rng: &mut R,
-        public_address: Multiaddr,
-        features: PeerFeatures,
-    ) -> Result<Self, NodeIdentityError>
-    where
-        R: CryptoRng + Rng,
-    {
+    pub fn random<R>(rng: &mut R, public_address: Multiaddr, features: PeerFeatures) -> Self
+    where R: CryptoRng + Rng {
         let secret_key = CommsSecretKey::random(rng);
         let public_key = CommsPublicKey::from_secret_key(&secret_key);
-        let node_id = NodeId::from_key(&public_key).map_err(NodeIdentityError::NodeIdError)?;
+        let node_id = NodeId::from_key(&public_key);
 
-        Ok(NodeIdentity {
+        NodeIdentity {
             node_id,
             public_key,
             features,
             secret_key,
             public_address: RwLock::new(public_address),
-        })
+        }
     }
 
     /// Retrieve the publicly accessible address that peers must connect to establish a connection
@@ -120,7 +98,6 @@ impl NodeIdentity {
                 .unwrap(),
             features,
         )
-        .unwrap()
     }
 
     #[inline]

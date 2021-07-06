@@ -22,7 +22,7 @@
 
 use crate::support::{
     rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
-    utils::{make_input, random_string},
+    utils::make_input,
 };
 use chrono::Utc;
 use futures::{FutureExt, StreamExt};
@@ -54,6 +54,7 @@ use tari_core::{
 };
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::Shutdown;
+use tari_test_utils::random;
 use tari_wallet::{
     output_manager_service::{
         error::OutputManagerError,
@@ -128,7 +129,7 @@ pub async fn setup(
         connectivity_mock_state.add_active_connection(connection).await;
     }
 
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_name = format!("{}.sqlite3", random::string(8).as_str());
     let temp_dir = tempdir().unwrap();
     let db_folder = temp_dir.path().to_str().unwrap().to_string();
     let db_connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();

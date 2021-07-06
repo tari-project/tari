@@ -73,7 +73,7 @@ where
 pub fn create_dummy_message<T>(inner: T, public_key: &CommsPublicKey) -> DomainMessage<T> {
     let peer_source = Peer::new(
         public_key.clone(),
-        NodeId::from_key(public_key).unwrap(),
+        NodeId::from_key(public_key),
         Vec::<Multiaddr>::new().into(),
         PeerFlags::empty(),
         PeerFeatures::COMMUNICATION_NODE,

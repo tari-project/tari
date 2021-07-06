@@ -13,7 +13,7 @@ edition = "2018"
 tari_comms = { version = "^0.8", path = "../../comms"}
 tari_comms_dht = { version = "^0.8", path = "../../comms/dht"}
 tari_common = { version= "^0.8", path = "../../common" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", rev = "ecd77ec2b" }
+tari_crypto = "0.11.1"
 tari_service_framework = { version = "^0.8", path = "../service_framework"}
 tari_shutdown = { version = "^0.8", path="../../infrastructure/shutdown" }
 tari_storage = { version = "^0.8", path = "../../infrastructure/storage"}
@@ -28,7 +28,7 @@ lmdb-zero = "0.4.4"
 log = "0.4.6"
 pgp = {version = "0.7.1", optional = true}
 prost = "0.6.1"
-rand = "0.7.2"
+rand = "0.8"
 reqwest = {version = "0.10", optional = true, default-features = false}
 semver = "1.0.1"
 serde = "1.0.90"

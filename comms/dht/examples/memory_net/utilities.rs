@@ -249,7 +249,7 @@ pub async fn network_connectivity_stats(nodes: &[TestNode], wallets: &[TestNode]
 pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_index: Option<usize>) -> (usize, usize) {
     let random_node = match origin_node_index {
         Some(n) if n < nodes.len() => &nodes[n],
-        Some(_) | None => &nodes[OsRng.gen_range(0, nodes.len() - 1)],
+        Some(_) | None => &nodes[OsRng.gen_range(0..nodes.len() - 1)],
     };
 
     let random_node_id = random_node.comms.node_identity().node_id().clone();
@@ -788,7 +788,11 @@ impl fmt::Display for TestNode {
 
 pub fn make_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
     let port = MemoryTransport::acquire_next_memsocket_port();
-    Arc::new(NodeIdentity::random(&mut OsRng, format!("/memory/{}", port).parse().unwrap(), features).unwrap())
+    Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        format!("/memory/{}", port).parse().unwrap(),
+        features,
+    ))
 }
 
 fn create_peer_storage() -> CommsDatabase {

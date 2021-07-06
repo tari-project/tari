@@ -22,8 +22,8 @@
 
 use crate::helpers::mock_state_machine::MockBaseNodeStateMachine;
 use futures::Sink;
-use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
-use std::{error::Error, iter, path::Path, sync::Arc, time::Duration};
+use rand::rngs::OsRng;
+use std::{error::Error, path::Path, sync::Arc, time::Duration};
 use tari_common::configuration::Network;
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
@@ -352,23 +352,15 @@ pub fn create_network_with_3_base_nodes_with_config<P: AsRef<Path>>(
     (alice_node, bob_node, carol_node, consensus_manager)
 }
 
-#[allow(dead_code)]
-fn random_string(len: usize) -> String {
-    iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
-}
-
 // Helper function for creating a random node indentity.
 #[allow(dead_code)]
 pub fn random_node_identity() -> Arc<NodeIdentity> {
     let next_port = MemoryTransport::acquire_next_memsocket_port();
-    Arc::new(
-        NodeIdentity::random(
-            &mut OsRng,
-            format!("/memory/{}", next_port).parse().unwrap(),
-            PeerFeatures::COMMUNICATION_NODE,
-        )
-        .unwrap(),
-    )
+    Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        format!("/memory/{}", next_port).parse().unwrap(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ))
 }
 
 // Helper function for starting the comms stack.
