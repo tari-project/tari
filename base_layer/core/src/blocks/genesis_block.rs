@@ -36,6 +36,7 @@ use crate::{
         types::{Commitment, PrivateKey, PublicKey, Signature},
     },
 };
+use chrono::DateTime;
 use std::sync::Arc;
 use tari_common_types::types::BLOCK_HASH_LENGTH;
 use tari_crypto::{
@@ -228,12 +229,15 @@ pub fn get_weatherwax_genesis_block_raw() -> Block {
         }],
     );
     body.sort();
+    // set genesis timestamp
+    let genesis = DateTime::parse_from_rfc2822("07 Jul 2021 06:00:00 +0200").unwrap();
+    let timestamp = genesis.timestamp() as u64;
     Block {
         header: BlockHeader {
             version: 0,
             height: 0,
             prev_hash: vec![0; BLOCK_HASH_LENGTH],
-            timestamp: 1_625_125_650.into(), // Thu, 01 Jul 2021 07:47:30 GMT
+            timestamp: timestamp.into(),
             output_mr: from_hex("dcc44f39b65e5e1e526887e7d56f7b85e2ea44bd29bc5bc195e6e015d19e1c06").unwrap(),
             witness_mr: from_hex("e4d7dab49a66358379a901b9a36c10f070aa9d7bdc8ae752947b6fc4e55d255f").unwrap(),
             output_mmr_size: 1,
