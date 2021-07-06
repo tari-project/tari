@@ -20,13 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::{TemplateId, InstructionId, TokenId};
 use crate::dan_layer::template_command::{TemplateCommand, ExecutionResult};
 use crate::types::PublicKey;
-use crate::dan_layer::TemplateId::EditableMetadata;
 use crate::dan_layer::templates::editable_metadata_template::EditableMetadataTemplate;
 use crate::digital_assets_error::DigitalAssetError;
 use crate::dan_layer::asset_data_store::{AssetDataStore, FileAssetDataStore};
+use crate::dan_layer::models::{TemplateId, InstructionId, InstructionCaller};
 
 pub struct TemplateService {
  template_factory: TemplateFactory,
@@ -67,16 +66,6 @@ impl TemplateFactory {
     }
 }
 
-pub struct InstructionCaller {
-    owner_token_id: TokenId
-}
-
-
-impl InstructionCaller {
-    pub fn owner_token_id(&self) -> &TokenId {
-        &self.owner_token_id
-    }
-}
 
 pub trait InstructionLog {
     fn store(&mut self, id: InstructionId, result: ExecutionResult);

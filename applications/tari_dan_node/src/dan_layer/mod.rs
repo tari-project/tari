@@ -23,21 +23,8 @@
 
 pub mod templates;
 pub mod template_command;
-pub mod template_service;
 pub mod asset_data_store;
 
+pub mod models;
+pub mod services;
 
-pub enum TemplateId {
-    EditableMetadata
-}
-
-#[derive(Clone)]
-pub struct TokenId(pub Vec<u8>);
-
-impl AsRef<[u8]> for TokenId {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_slice()
-    }
-}
-
-pub struct InstructionId(u64);

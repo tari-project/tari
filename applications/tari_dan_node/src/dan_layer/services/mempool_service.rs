@@ -19,33 +19,28 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-syntax = "proto3";
 
-package tari.dan.rpc;
+use crate::dan_layer::models::Instruction;
+use crate::digital_assets_error::DigitalAssetError;
 
-service DanNode {
-    rpc GetTokenData(GetTokenDataRequest) returns (GetTokenDataResponse);
-    rpc ExecuteInstruction(ExecuteInstructionRequest) returns (ExecuteInstructionResponse);
+pub trait MempoolService{
+ fn submit_instruction(&mut self, instruction: Instruction) -> Result<(), DigitalAssetError>;
 }
 
-message GetTokenDataRequest {
-  bytes asset_pub_key = 1;
-  bytes unique_id = 2;
+
+pub struct ConcreteMempoolService {
+    instructions: Vec<Instruction>
 }
 
-message GetTokenDataResponse {
-
+impl ConcreteMempoolService {
+    pub fn new() -> Self {
+        Self{instructions: vec![]}
+    }
 }
 
-message ExecuteInstructionRequest{
-    bytes asset_public_key =1;
-    string method =2;
-    repeated bytes args = 3;
-    bytes from = 4;
-    bytes signature = 5;
-    uint64 id = 6;
-}
-
-message ExecuteInstructionResponse {
-    string status = 1;
+impl MempoolService for ConcreteMempoolService {
+    fn submit_instruction(&mut self, instruction: Instruction)  -> Result<(), DigitalAssetError>{
+        self.instructions.push(instruction);
+        Ok(())
+    }
 }

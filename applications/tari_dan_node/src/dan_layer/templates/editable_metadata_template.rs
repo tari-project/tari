@@ -23,8 +23,8 @@
 use crate::dan_layer::template_command::{TemplateCommand, ExecutionResult};
 use crate::digital_assets_error::DigitalAssetError;
 use crate::dan_layer::asset_data_store::AssetDataStore;
-use crate::dan_layer::template_service::InstructionCaller;
-use crate::dan_layer::TokenId;
+use crate::dan_layer::models::InstructionCaller;
+use crate::dan_layer::models::TokenId;
 
 pub struct EditableMetadataTemplate {
 

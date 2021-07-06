@@ -26,6 +26,7 @@ mod dan_layer;
 mod digital_assets_error;
 mod types;
 
+
 use log::*;
 use thiserror::Error;
 use std::process;
@@ -41,6 +42,7 @@ use futures::FutureExt;
 use crate::grpc::dan_rpc::dan_node_server::DanNodeServer;
 use tokio::runtime::Runtime;
 use crate::cmd_args::OperationMode;
+use crate::dan_layer::services::{MempoolService, ConcreteMempoolService};
 
 const LOG_TARGET: &str = "dan_node::app";
 

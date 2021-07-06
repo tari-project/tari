@@ -21,12 +21,22 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::grpc::dan_rpc;
 use tonic::{Request, Response, Status};
+use crate::dan_layer::services::{MempoolService, ConcreteMempoolService};
+use crate::dan_layer::models::{Instruction, TokenId};
+use tokio::sync::RwLock;
+use std::sync::{Arc, Mutex};
+use crate::types::{PublicKey, ComSig, create_com_sig_from_bytes};
+use tari_crypto::tari_utilities::ByteArray;
 
-pub struct DanGrpcServer {}
+pub struct DanGrpcServer  {
+    mempool_service: Arc<Mutex<ConcreteMempoolService>>
+}
 
 impl DanGrpcServer {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            mempool_service: Arc::new(Mutex::new(ConcreteMempoolService::new()))
+        }
     }
 }
 
@@ -42,6 +52,16 @@ impl dan_rpc::dan_node_server::DanNode for DanGrpcServer {
     }
 
     async fn execute_instruction(&self, request: Request<dan_rpc::ExecuteInstructionRequest>) -> Result<Response<dan_rpc::ExecuteInstructionResponse>, Status> {
-       todo!();
+        dbg!(&request);
+        let request = request.into_inner();
+        let instruction = Instruction::new(PublicKey::from_bytes(&request.asset_public_key ).map_err(|err| Status::invalid_argument("asset_public_key was not a valid public key"))?, request.method.clone(), request.args.clone(), TokenId(request.from.clone()), create_com_sig_from_bytes(&request.signature).map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?);
+        match self.mempool_service.lock().unwrap().submit_instruction(instruction) {
+            Ok(_) => return Ok(Response::new(dan_rpc::ExecuteInstructionResponse{
+                status: "Accepted".to_string()
+            })),
+            Err(_) => return Ok(Response::new(dan_rpc::ExecuteInstructionResponse {
+                status: "Errored".to_string()
+            }))
+        }
     }
 }

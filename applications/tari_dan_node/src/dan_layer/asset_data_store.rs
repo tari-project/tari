@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::TokenId;
+use crate::dan_layer::models::TokenId;
 use patricia_tree::PatriciaMap;
 use patricia_tree::node::{NodeEncoder, NodeDecoder, Node};
 use bytecodec::null::{NullEncoder, NullDecoder};
@@ -92,7 +92,7 @@ mod test{
     use std::path::PathBuf;
     use std::env::consts::OS;
     use tari_test_utils::paths::{temp_tari_path, create_temporary_data_path};
-    use crate::dan_layer::TokenId;
+    use crate::dan_layer::models::TokenId;
 
     #[test]
     fn test_create() {

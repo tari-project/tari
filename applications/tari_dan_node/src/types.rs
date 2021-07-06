@@ -20,7 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_crypto::ristretto::RistrettoPublicKey;
+use tari_crypto::ristretto::{RistrettoPublicKey, RistrettoSecretKey};
+use tari_crypto::signatures::CommitmentSignature;
+use tari_crypto::commitment::HomomorphicCommitment;
+use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
 
 /// Define the explicit Public key implementation for the Tari base layer
-pub type PublicKey = RistrettoPublicKey;
+pub(crate) type PublicKey = RistrettoPublicKey;
+
+pub(crate) type ComSig = CommitmentSignature<RistrettoPublicKey, RistrettoSecretKey>;
+
+pub fn create_com_sig_from_bytes(bytes : &[u8]) -> Result<ComSig, ByteArrayError> {
+    Ok(ComSig::new(HomomorphicCommitment::from_bytes(&bytes[0..32])?,
+RistrettoSecretKey::from_bytes(&bytes[33..64])?, RistrettoSecretKey::from_bytes(&bytes[64..96])?))
+}
