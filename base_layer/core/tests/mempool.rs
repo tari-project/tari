@@ -1212,28 +1212,11 @@ fn block_event_and_reorg_event_handling() {
         );
         assert_eq!(
             alice.mempool.has_tx_with_excess_sig(tx2b_excess_sig.clone()).unwrap(),
-            TxStorageResponse::NotStored
+            TxStorageResponse::ReorgPool
         );
         assert_eq!(
             alice.mempool.has_tx_with_excess_sig(tx3b_excess_sig.clone()).unwrap(),
-            TxStorageResponse::NotStored
-        );
-
-        // Reorg chain by adding Block2b - tx2a and tx3a will be discarded as double spends.
-        assert!(bob
-            .local_nci
-            .submit_block(block2b.clone(), Broadcast::from(true))
-            .await
-            .is_ok());
-        async_assert_eventually!(
-            alice.mempool.has_tx_with_excess_sig(tx2a_excess_sig.clone()).unwrap(),
-            expect = TxStorageResponse::NotStored,
-            max_attempts = 20,
-            interval = Duration::from_millis(1000)
-        );
-        assert_eq!(
-            alice.mempool.has_tx_with_excess_sig(tx3a_excess_sig.clone()).unwrap(),
-            TxStorageResponse::NotStored
+            TxStorageResponse::ReorgPool
         );
     });
 }
