@@ -98,7 +98,7 @@ pub struct BlockHeader {
     pub output_mr: BlockHash,
     /// This is the MMR root of the range proofs
     #[serde(with = "hash_serializer")]
-    pub range_proof_mr: BlockHash,
+    pub witness_mr: BlockHash,
     /// The size (number  of leaves) of the output and range proof MMRs at the time of this header
     pub output_mmr_size: u64,
     /// This is the MMR root of the kernels
@@ -106,6 +106,9 @@ pub struct BlockHeader {
     pub kernel_mr: BlockHash,
     /// The number of MMR leaves in the kernel MMR
     pub kernel_mmr_size: u64,
+    /// This is the Merkle root of the inputs in this block
+    #[serde(with = "hash_serializer")]
+    pub input_mr: BlockHash,
     /// Sum of kernel offsets for all kernels in this block.
     pub total_kernel_offset: BlindingFactor,
     /// Sum of script offsets for all kernels in this block.
@@ -125,10 +128,11 @@ impl BlockHeader {
             prev_hash: vec![0; BLOCK_HASH_LENGTH],
             timestamp: EpochTime::now(),
             output_mr: vec![0; BLOCK_HASH_LENGTH],
-            range_proof_mr: vec![0; BLOCK_HASH_LENGTH],
+            witness_mr: vec![0; BLOCK_HASH_LENGTH],
             output_mmr_size: 0,
             kernel_mr: vec![0; BLOCK_HASH_LENGTH],
             kernel_mmr_size: 0,
+            input_mr: vec![0; BLOCK_HASH_LENGTH],
             total_kernel_offset: BlindingFactor::default(),
             total_script_offset: BlindingFactor::default(),
             nonce: 0,
@@ -147,10 +151,11 @@ impl BlockHeader {
             prev_hash,
             timestamp: EpochTime::now(),
             output_mr: vec![0; BLOCK_HASH_LENGTH],
-            range_proof_mr: vec![0; BLOCK_HASH_LENGTH],
+            witness_mr: vec![0; BLOCK_HASH_LENGTH],
             output_mmr_size: prev.output_mmr_size,
             kernel_mr: vec![0; BLOCK_HASH_LENGTH],
             kernel_mmr_size: prev.kernel_mmr_size,
+            input_mr: vec![0; BLOCK_HASH_LENGTH],
             total_kernel_offset: BlindingFactor::default(),
             total_script_offset: BlindingFactor::default(),
             nonce: 0,
@@ -200,14 +205,15 @@ impl BlockHeader {
             .chain(self.height.to_le_bytes())
             .chain(self.prev_hash.as_bytes())
             .chain(self.timestamp.as_u64().to_le_bytes())
+            .chain(self.input_mr.as_bytes())
             .chain(self.output_mr.as_bytes())
-            .chain(self.range_proof_mr.as_bytes())
             .chain(self.output_mmr_size.to_le_bytes())
+            .chain(self.witness_mr.as_bytes())
             .chain(self.kernel_mr.as_bytes())
             .chain(self.kernel_mmr_size.to_le_bytes())
             .chain(self.total_kernel_offset.as_bytes())
             .chain(self.total_script_offset.as_bytes())
-            .result()
+            .finalize()
             .to_vec()
     }
 
@@ -231,11 +237,12 @@ impl From<NewBlockHeaderTemplate> for BlockHeader {
             prev_hash: header_template.prev_hash,
             timestamp: EpochTime::now(),
             output_mr: vec![],
-            range_proof_mr: vec![],
+            witness_mr: vec![],
             // TODO: put  mmr sizes in template
             output_mmr_size: 0,
             kernel_mr: vec![],
             kernel_mmr_size: 0,
+            input_mr: vec![],
             total_kernel_offset: header_template.total_kernel_offset,
             total_script_offset: header_template.total_script_offset,
             nonce: 0,
@@ -250,7 +257,7 @@ impl Hashable for BlockHeader {
             .chain(self.merged_mining_hash())
             .chain(self.pow.to_bytes())
             .chain(self.nonce.to_le_bytes())
-            .result()
+            .finalize()
             .to_vec()
     }
 }
@@ -266,30 +273,32 @@ impl Eq for BlockHeader {}
 impl Display for BlockHeader {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
         let datetime: DateTime<Utc> = self.timestamp.into();
-        let msg = format!(
-            "Version: {}\nBlock height: {}\nPrevious block hash: {}\nTimestamp: {}\n",
+        writeln!(
+            fmt,
+            "Version: {}\nBlock height: {}\nPrevious block hash: {}\nTimestamp: {}",
             self.version,
             self.height,
             self.prev_hash.to_hex(),
             datetime.to_rfc2822()
-        );
-        fmt.write_str(&msg)?;
-        let msg = format!(
-            "Merkle roots:\nOutputs: {} ({})\nRange proofs: {}\nKernels: {} ({})\n",
+        )?;
+        writeln!(
+            fmt,
+            "Merkle roots:\nInputs: {},\n Outputs: {} ({})\nRange proofs: {}\nKernels: {} ({})\n",
+            self.input_mr.to_hex(),
             self.output_mr.to_hex(),
             self.output_mmr_size,
-            self.range_proof_mr.to_hex(),
+            self.witness_mr.to_hex(),
             self.kernel_mr.to_hex(),
             self.kernel_mmr_size
-        );
-        fmt.write_str(&msg)?;
-        fmt.write_str(&format!(
+        )?;
+        writeln!(
+            fmt,
             "Total offset: {}\nTotal script offset: {}\nNonce: {}\nProof of work:\n{}",
             self.total_kernel_offset.to_hex(),
             self.total_script_offset.to_hex(),
             self.nonce,
             self.pow
-        ))
+        )
     }
 }
 

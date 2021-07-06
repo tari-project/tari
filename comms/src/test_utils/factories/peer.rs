@@ -79,7 +79,7 @@ impl TestFactory for PeerFactory {
         let node_id = self
             .node_id
             .clone()
-            .or_else(|| Some(NodeId::from_key(&public_key).unwrap()))
+            .or_else(|| Some(NodeId::from_key(&public_key)))
             .unwrap();
 
         let default = self.net_addresses_factory.build().ok();

@@ -177,8 +177,7 @@ where TBackend: OutputManagerBackend + 'static
             // Assume base node is synced until we achieve a connection and it tells us it is not synced
             self.base_node_synced = true;
 
-            let base_node_node_id = NodeId::from_key(&self.base_node_public_key.clone())
-                .map_err(|e| OutputManagerProtocolError::new(self.id, OutputManagerError::from(e)))?;
+            let base_node_node_id = NodeId::from_key(&self.base_node_public_key.clone());
             let mut connection: Option<PeerConnection> = None;
 
             let delay = delay_for(self.resources.config.peer_dial_retry_timeout);

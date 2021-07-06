@@ -23,8 +23,8 @@
 use anyhow::anyhow;
 use log::*;
 use std::{cmp, fs, str::FromStr, sync::Arc, time::Duration};
-use tari_app_utilities::{identity_management, utilities};
-use tari_common::{CommsTransport, GlobalConfig, TorControlAuthentication};
+use tari_app_utilities::{consts, identity_management, utilities};
+use tari_common::{configuration::bootstrap::ApplicationType, CommsTransport, GlobalConfig, TorControlAuthentication};
 use tari_comms::{
     peer_manager::Peer,
     protocol::rpc::RpcServer,
@@ -60,10 +60,11 @@ use tari_core::{
     transactions::types::CryptoFactories,
 };
 use tari_p2p::{
+    auto_update::{AutoUpdateConfig, SoftwareUpdaterService},
     comms_connector::pubsub_connector,
     initialization,
     initialization::{CommsConfig, P2pInitializer},
-    seed_peer::SeedPeer,
+    peer_seeds::SeedPeer,
     services::liveness::{LivenessConfig, LivenessInitializer},
     transport::{TorConfig, TransportType},
 };
@@ -120,6 +121,21 @@ where B: BlockchainBackend + 'static
 
         let mut handles = StackBuilder::new(self.interrupt_signal)
             .add_initializer(P2pInitializer::new(comms_config, publisher))
+            .add_initializer(SoftwareUpdaterService::new(
+                ApplicationType::BaseNode,
+                consts::APP_VERSION_NUMBER
+                    .parse()
+                    .expect("Unable to parse application version. Not valid semver"),
+                AutoUpdateConfig {
+                    name_server: config.dns_seeds_name_server,
+                    update_uris: config.autoupdate_dns_hosts.clone(),
+                    use_dnssec: config.dns_seeds_use_dnssec,
+                    download_base_url: "https://tari-binaries.s3.amazonaws.com/latest".to_string(),
+                    hashes_url: config.autoupdate_hashes_url.clone(),
+                    hashes_sig_url: config.autoupdate_hashes_sig_url.clone(),
+                },
+                config.autoupdate_check_interval,
+            ))
             .add_initializer(BaseNodeServiceInitializer::new(
                 peer_message_subscriptions.clone(),
                 self.db.clone().into(),
@@ -226,6 +242,7 @@ where B: BlockchainBackend + 'static
 
     fn create_comms_config(&self) -> CommsConfig {
         CommsConfig {
+            network: self.config.network,
             node_identity: self.node_identity.clone(),
             transport_type: self.create_transport_type(),
             datastore_path: self.config.peer_db_path.clone(),
@@ -236,7 +253,6 @@ where B: BlockchainBackend + 'static
                 database_url: DbConnectionUrl::File(self.config.data_dir.join("dht.db")),
                 auto_join: true,
                 allow_test_addresses: self.config.allow_test_addresses,
-                network: self.config.network.into(),
                 flood_ban_max_msg_count: self.config.flood_ban_max_msg_count,
                 saf_msg_validity: self.config.saf_expiry_duration,
                 ..Default::default()

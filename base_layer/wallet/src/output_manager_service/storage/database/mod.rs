@@ -36,6 +36,7 @@ use std::{
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
+    transaction::TransactionOutput,
     types::{BlindingFactor, Commitment, PrivateKey},
 };
 
@@ -69,6 +70,7 @@ pub struct KeyManagerState {
 pub enum DbKey {
     SpentOutput(BlindingFactor),
     UnspentOutput(BlindingFactor),
+    AnyOutputByCommitment(Commitment),
     PendingTransactionOutputs(TxId),
     TimeLockedUnspentOutputs(u64),
     UnspentOutputs,
@@ -77,7 +79,6 @@ pub enum DbKey {
     KeyManagerState,
     InvalidOutputs,
     KnownOneSidedPaymentScripts,
-    CoinbaseOutput { commitment: Commitment, block_height: u64 },
 }
 
 #[derive(Debug)]
@@ -91,7 +92,7 @@ pub enum DbValue {
     AllPendingTransactionOutputs(HashMap<TxId, PendingTransactionOutputs>),
     KeyManagerState(KeyManagerState),
     KnownOneSidedPaymentScripts(Vec<KnownOneSidedPaymentScript>),
-    CoinbaseOutput(Box<DbUnblindedOutput>),
+    AnyOutput(Box<DbUnblindedOutput>),
 }
 
 pub enum DbKeyValuePair {
@@ -550,6 +551,17 @@ impl<T> OutputManagerDatabase<T>
             .and_then(|inner_result| inner_result)
     }
 
+    pub async fn update_output_metadata_signature(
+        &self,
+        output: TransactionOutput,
+    ) -> Result<(), OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.update_output_metadata_signature(&output))
+            .await
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
+            .and_then(|inner_result| inner_result)
+    }
+
     pub async fn revalidate_output(&self, commitment: Commitment) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.revalidate_unspent_output(&commitment))
@@ -575,54 +587,6 @@ impl<T> OutputManagerDatabase<T>
     ) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.cancel_pending_transaction_at_block_height(block_height))
-            .await
-            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
-            .and_then(|inner_result| inner_result)
-    }
-
-    pub async fn remove_coinbase_output_at_block_height(
-        &self,
-        commitment: Commitment,
-        block_height: u64,
-    ) -> Result<(), OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || {
-            match db_clone.write(WriteOperation::Remove(DbKey::CoinbaseOutput {
-                commitment: commitment.clone(),
-                block_height,
-            })) {
-                Ok(None) => log_error(
-                    DbKey::CoinbaseOutput {
-                        commitment,
-                        block_height,
-                    },
-                    OutputManagerStorageError::ValueNotFound,
-                ),
-                Ok(Some(DbValue::CoinbaseOutput(_))) => Ok(()),
-                Ok(Some(other)) => unexpected_result(
-                    DbKey::CoinbaseOutput {
-                        commitment,
-                        block_height,
-                    },
-                    other,
-                ),
-                Err(e) => log_error(
-                    DbKey::CoinbaseOutput {
-                        commitment,
-                        block_height,
-                    },
-                    e,
-                ),
-            }
-        })
-            .await
-            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
-        Ok(())
-    }
-
-    pub async fn update_output_mined_height(&self, tx_id: TxId, height: u64) -> Result<(), OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.update_mined_height(tx_id, height))
             .await
             .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)
@@ -678,6 +642,24 @@ impl<T> OutputManagerDatabase<T>
 
         Ok(())
     }
+
+    pub async fn remove_output_by_commitment(&self, commitment: Commitment) -> Result<(), OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || {
+            match db_clone.write(WriteOperation::Remove(DbKey::AnyOutputByCommitment(commitment.clone()))) {
+                Ok(None) => log_error(
+                    DbKey::AnyOutputByCommitment(commitment.clone()),
+                    OutputManagerStorageError::ValueNotFound,
+                ),
+                Ok(Some(DbValue::AnyOutput(_))) => Ok(()),
+                Ok(Some(other)) => unexpected_result(DbKey::AnyOutputByCommitment(commitment.clone()), other),
+                Err(e) => log_error(DbKey::AnyOutputByCommitment(commitment), e),
+            }
+        })
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(())
+    }
 }
 
 fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, OutputManagerStorageError> {
@@ -701,7 +683,7 @@ impl Display for DbKey {
             DbKey::InvalidOutputs => f.write_str(&"Invalid Outputs Key"),
             DbKey::TimeLockedUnspentOutputs(_t) => f.write_str(&"Timelocked Outputs"),
             DbKey::KnownOneSidedPaymentScripts => f.write_str(&"Known claiming scripts"),
-            DbKey::CoinbaseOutput { .. } => f.write_str("Coinbase Output"),
+            DbKey::AnyOutputByCommitment(_) => f.write_str(&"AnyOutputByCommitment"),
         }
     }
 }
@@ -718,7 +700,7 @@ impl Display for DbValue {
             DbValue::KeyManagerState(_) => f.write_str("Key Manager State"),
             DbValue::InvalidOutputs(_) => f.write_str("Invalid Outputs"),
             DbValue::KnownOneSidedPaymentScripts(_) => f.write_str(&"Known claiming scripts"),
-            DbValue::CoinbaseOutput(_) => f.write_str("Coinbase Output"),
+            DbValue::AnyOutput(_) => f.write_str(&"Any Output"),
         }
     }
 }

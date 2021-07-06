@@ -29,22 +29,19 @@ use rpassword::prompt_password_stdout;
 use rustyline::Editor;
 use std::{fs, path::PathBuf, str::FromStr, sync::Arc};
 use tari_app_utilities::utilities::{setup_wallet_transport_type, ExitCodes};
-use tari_common::{ConfigBootstrap, GlobalConfig, Network};
+use tari_common::{ConfigBootstrap, GlobalConfig};
 use tari_comms::{
     peer_manager::{Peer, PeerFeatures},
     types::CommsSecretKey,
     NodeIdentity,
 };
 use tari_comms_dht::{DbConnectionUrl, DhtConfig};
-use tari_core::{
-    consensus::Network as NetworkType,
-    transactions::types::{CryptoFactories, PrivateKey},
-};
+use tari_core::transactions::types::{CryptoFactories, PrivateKey};
 use tari_p2p::{
     initialization::CommsConfig,
-    seed_peer::SeedPeer,
+    peer_seeds::SeedPeer,
     transport::TransportType::Tor,
-    DEFAULT_DNS_SEED_RESOLVER,
+    DEFAULT_DNS_NAME_SERVER,
 };
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
@@ -303,10 +300,11 @@ pub async fn init_wallet(
         Some(nf) => nf,
     };
 
-    let node_identity = Arc::new(
-        NodeIdentity::new(CommsSecretKey::default(), node_address, node_features)
-            .map_err(|e| ExitCodes::NetworkError(e.to_string()))?,
-    );
+    let node_identity = Arc::new(NodeIdentity::new(
+        CommsSecretKey::default(),
+        node_address,
+        node_features,
+    ));
 
     let transport_type = setup_wallet_transport_type(&config);
     let transport_type = match transport_type {
@@ -318,6 +316,7 @@ pub async fn init_wallet(
     };
 
     let comms_config = CommsConfig {
+        network: config.network,
         node_identity,
         user_agent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
         transport_type,
@@ -330,7 +329,6 @@ pub async fn init_wallet(
             database_url: DbConnectionUrl::File(config.data_dir.join("dht-console-wallet.db")),
             auto_join: true,
             allow_test_addresses: config.allow_test_addresses,
-            network: config.network.into(),
             flood_ban_max_msg_count: config.flood_ban_max_msg_count,
             saf_msg_validity: config.saf_expiry_duration,
             ..Default::default()
@@ -339,19 +337,10 @@ pub async fn init_wallet(
         allow_test_addresses: config.allow_test_addresses,
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
-        dns_seeds_name_server: DEFAULT_DNS_SEED_RESOLVER.parse().unwrap(),
+        dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
         peer_seeds: Default::default(),
         dns_seeds: Default::default(),
         dns_seeds_use_dnssec: true,
-    };
-
-    let network = match &config.network {
-        Network::MainNet => NetworkType::MainNet,
-        Network::Ridcully => NetworkType::Ridcully,
-        Network::LocalNet => NetworkType::LocalNet,
-        Network::Stibbons => NetworkType::Stibbons,
-        Network::Weatherwax => NetworkType::Weatherwax,
-        Network::Rincewind => unimplemented!("Rincewind has been retired"),
     };
 
     let base_node_service_config = BaseNodeServiceConfig::new(
@@ -379,7 +368,7 @@ pub async fn init_wallet(
             prevent_fee_gt_amount: config.prevent_fee_gt_amount,
             ..Default::default()
         }),
-        network,
+        config.network.into(),
         Some(base_node_service_config),
         Some(config.buffer_size_base_node_wallet),
         Some(config.buffer_rate_limit_base_node_wallet),

@@ -36,6 +36,23 @@ function mapEnvs(options) {
     res.TARI_BASE_NODE__LOCALNET__TRANSPORT = options.transport;
     res.TARI_BASE_NODE__STIBBONS__TRANSPORT = options.transport;
   }
+  if (options.common && options.common.auto_update) {
+    let { auto_update } = options.common;
+    if (auto_update.enabled) {
+      res.TARI_COMMON__AUTO_UPDATE__ENABLED = auto_update.enabled
+        ? "true"
+        : "false";
+    }
+    if (auto_update.dns_hosts) {
+      res.TARI_COMMON__AUTO_UPDATE__DNS_HOSTS = auto_update.dns_hosts.join(",");
+    }
+    if (auto_update.hashes_url) {
+      res.TARI_COMMON__AUTO_UPDATE__HASHES_URL = auto_update.hashes_url;
+    }
+    if (auto_update.hashes_sig_url) {
+      res.TARI_COMMON__AUTO_UPDATE__HASHES_SIG_URL = auto_update.hashes_sig_url;
+    }
+  }
   return res;
 }
 
@@ -60,7 +77,7 @@ function baseEnvs(peerSeeds = []) {
     TARI_BASE_NODE__LOCALNET__GRPC_ENABLED: true,
     TARI_BASE_NODE__LOCALNET__ENABLE_WALLET: false,
     TARI_BASE_NODE__LOCALNET__DNS_SEEDS_NAME_SERVER: "1.1.1.1:53",
-    TARI_BASE_NODE__LOCALNET__DNS_SEEDS_USE_DNSSEC: "true",
+    TARI_BASE_NODE__LOCALNET__DNS_SEEDS_USE_DNSSEC: "false",
     TARI_BASE_NODE__LOCALNET__BLOCK_SYNC_STRATEGY: "ViaBestChainMetadata",
     TARI_BASE_NODE__LOCALNET__NUM_MINING_THREADS: "1",
     TARI_BASE_NODE__LOCALNET__ORPHAN_DB_CLEAN_OUT_THRESHOLD: "0",
@@ -68,7 +85,7 @@ function baseEnvs(peerSeeds = []) {
     TARI_BASE_NODE__LOCALNET__AUTO_PING_INTERVAL: "15",
     TARI_BASE_NODE__LOCALNET__FLOOD_BAN_MAX_MSG_COUNT: "100000",
     TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_URL:
-      "http://18.133.55.120:38081",
+      "http://monero-stagenet.exan.tech:38081",
     TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_USE_AUTH: false,
     TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_USERNAME: '""',
     TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_PASSWORD: '""',

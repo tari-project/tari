@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::utils::random_string;
 use aes_gcm::{
     aead::{generic_array::GenericArray, NewAead},
     Aes256Gcm,
@@ -28,8 +27,9 @@ use aes_gcm::{
 use chrono::Utc;
 use rand::rngs::OsRng;
 use tari_core::transactions::{
+    helpers::{create_unblinded_output, TestParams},
     tari_amount::{uT, MicroTari},
-    transaction::{OutputFeatures, Transaction, UnblindedOutput},
+    transaction::{OutputFeatures, Transaction},
     transaction_protocol::sender::TransactionSenderMessage,
     types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
     ReceiverTransactionProtocol,
@@ -40,6 +40,7 @@ use tari_crypto::{
     script,
     script::{ExecutionStack, TariScript},
 };
+use tari_test_utils::random;
 use tari_wallet::{
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     transaction_service::storage::{
@@ -62,18 +63,14 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut runtime = Runtime::new().unwrap();
     let mut db = TransactionDatabase::new(backend);
     let factories = CryptoFactories::default();
+    let input = create_unblinded_output(
+        TariScript::default(),
+        OutputFeatures::default(),
+        TestParams::new(),
+        MicroTari::from(100_000),
+    );
     let mut builder = SenderTransactionProtocol::builder(1);
     let amount = MicroTari::from(10_000);
-    let input = UnblindedOutput::new(
-        MicroTari::from(100_000),
-        PrivateKey::random(&mut OsRng),
-        None,
-        TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        PrivateKey::default(),
-        PublicKey::default(),
-    );
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177))
@@ -88,7 +85,13 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             input,
         )
         .with_change_secret(PrivateKey::random(&mut OsRng))
-        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng))
+        .with_recipient_data(
+            0,
+            script!(Nop),
+            PrivateKey::random(&mut OsRng),
+            Default::default(),
+            PrivateKey::random(&mut OsRng),
+        )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
     let stp = builder.build::<HashDigest>(&factories).unwrap();
@@ -553,7 +556,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
 
 #[test]
 pub fn test_transaction_service_sqlite_db() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_name = format!("{}.sqlite3", random::string(8));
     let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
@@ -564,7 +567,7 @@ pub fn test_transaction_service_sqlite_db() {
 
 #[test]
 pub fn test_transaction_service_sqlite_db_encrypted() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_name = format!("{}.sqlite3", random::string(8));
     let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);

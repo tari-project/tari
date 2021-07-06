@@ -23,6 +23,7 @@
 use croaring::Bitmap;
 use rand::{rngs::OsRng, RngCore};
 use std::{iter::repeat_with, sync::Arc};
+use tari_common::configuration::Network;
 use tari_core::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{
@@ -34,10 +35,18 @@ use tari_core::{
         ChainHeader,
         ChainStorageError,
     },
-    consensus::{emission::Emission, ConsensusConstants, ConsensusManager, ConsensusManagerBuilder, Network},
+    consensus::{emission::Emission, ConsensusConstants, ConsensusManager, ConsensusManagerBuilder},
     proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
-        helpers::{create_random_signature_from_s_key, create_signature, create_utxo, spend_utxos, TransactionSchema},
+        helpers::{
+            create_random_signature_from_s_key,
+            create_signature,
+            create_unblinded_output,
+            create_utxo,
+            spend_utxos,
+            TestParams,
+            TransactionSchema,
+        },
         tari_amount::MicroTari,
         transaction::{
             KernelBuilder,
@@ -52,7 +61,6 @@ use tari_core::{
     },
 };
 use tari_crypto::{
-    inputs,
     keys::PublicKey as PublicKeyTrait,
     script,
     script::TariScript,
@@ -60,36 +68,27 @@ use tari_crypto::{
 };
 use tari_mmr::MutableMmr;
 
-const _MAINNET: Network = Network::MainNet;
-const _WEATHERWAX: Network = Network::Weatherwax;
-
 pub fn create_coinbase(
     factories: &CryptoFactories,
     value: MicroTari,
     maturity_height: u64,
 ) -> (TransactionOutput, TransactionKernel, UnblindedOutput) {
-    let features = OutputFeatures::create_coinbase(maturity_height);
-    let script = script!(Nop);
-    let (utxo, key, _) = create_utxo(value, &factories, Some(features.clone()), &script);
-    let excess = Commitment::from_public_key(&PublicKey::from_secret_key(&key));
-    let sig = create_signature(key.clone(), 0.into(), 0);
+    let p = TestParams::new();
+
+    let excess = Commitment::from_public_key(&PublicKey::from_secret_key(&p.spend_key));
+    let sig = create_signature(p.spend_key.clone(), 0.into(), 0);
     let kernel = KernelBuilder::new()
         .with_signature(&sig)
         .with_excess(&excess)
         .with_features(KernelFeatures::COINBASE_KERNEL)
         .build()
         .unwrap();
-    let output = UnblindedOutput::new(
-        value,
-        key.clone(),
-        Some(features),
-        script!(Nop),
-        inputs!(PublicKey::from_secret_key(&key)),
-        0,
-        key,
-        utxo.script_offset_public_key.clone(),
-    );
-    (utxo, kernel, output)
+
+    let unblinded_output =
+        create_unblinded_output(script!(Nop), OutputFeatures::create_coinbase(maturity_height), p, value);
+    let output = unblinded_output.as_transaction_output(&factories).unwrap();
+
+    (output, kernel, unblinded_output)
 }
 
 fn genesis_template(
@@ -110,7 +109,7 @@ fn genesis_template(
 // This is a helper function to generate and print out a block that can be used as the genesis block.
 // #[test]
 pub fn _create_act_gen_block() {
-    let network = _WEATHERWAX;
+    let network = Network::Weatherwax;
     let consensus_manager: ConsensusManager = ConsensusManagerBuilder::new(network).build();
     let factories = CryptoFactories::default();
     let mut header = BlockHeader::new(consensus_manager.consensus_constants(0).blockchain_version());
@@ -127,11 +126,11 @@ pub fn _create_act_gen_block() {
         .unwrap();
 
     let utxo_hash = utxo.hash();
-    let rp = utxo.proof().hash();
+    let witness_hash = utxo.witness_hash();
     let kern = kernel.hash();
     header.kernel_mr = kern;
     header.output_mr = utxo_hash;
-    header.range_proof_mr = rp;
+    header.witness_mr = witness_hash;
     let block = header.into_builder().with_coinbase_utxo(utxo, kernel).build();
     println!("{}", &block);
     dbg!(&key.to_hex());
@@ -157,7 +156,7 @@ fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, C
     body.sort();
     let kernel_hashes: Vec<HashOutput> = body.kernels().iter().map(|k| k.hash()).collect();
     let out_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.hash()).collect();
-    let rp_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.proof().hash()).collect();
+    let rp_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.witness_hash()).collect();
 
     let mut header = BlockHeader::from(header);
     header.kernel_mr = MutableMmr::<HashDigest, _>::new(kernel_hashes, Bitmap::create())
@@ -166,7 +165,7 @@ fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, C
     header.output_mr = MutableMmr::<HashDigest, _>::new(out_hashes, Bitmap::create())
         .unwrap()
         .get_merkle_root()?;
-    header.range_proof_mr = MutableMmr::<HashDigest, _>::new(rp_hashes, Bitmap::create())
+    header.witness_mr = MutableMmr::<HashDigest, _>::new(rp_hashes, Bitmap::create())
         .unwrap()
         .get_merkle_root()?;
     Ok(Block { header, body })
@@ -189,7 +188,7 @@ pub fn create_genesis_block_with_coinbase_value(
             achieved_difficulty: 1.into(),
             total_accumulated_difficulty: 1,
             accumulated_monero_difficulty: 1.into(),
-            accumulated_blake_difficulty: 1.into(),
+            accumulated_sha_difficulty: 1.into(),
             target_difficulty: 1.into(),
         })
         .unwrap(),
@@ -207,19 +206,13 @@ pub fn create_genesis_block_with_utxos(
 ) -> (ChainBlock, Vec<UnblindedOutput>) {
     let (mut template, coinbase) = genesis_template(&factories, 100_000_000.into(), consensus_constants);
     let script = script!(Nop);
+    let output_features = OutputFeatures::default();
     let outputs = values.iter().fold(vec![coinbase], |mut secrets, v| {
-        let (t, k, _) = create_utxo(*v, factories, None, &script);
-        template.body.add_output(t.clone());
-        secrets.push(UnblindedOutput::new(
-            *v,
-            k.clone(),
-            None,
-            script.clone(),
-            inputs!(PublicKey::from_secret_key(&k)),
-            0,
-            k,
-            t.script_offset_public_key,
-        ));
+        let p = TestParams::new();
+        let unblinded_output = create_unblinded_output(script.clone(), output_features.clone(), p, *v);
+        secrets.push(unblinded_output.clone());
+        let output = unblinded_output.as_transaction_output(&factories).unwrap();
+        template.body.add_output(output);
         secrets
     });
     let mut block = update_genesis_block_mmr_roots(template).unwrap();
@@ -232,7 +225,7 @@ pub fn create_genesis_block_with_utxos(
             achieved_difficulty: 1.into(),
             total_accumulated_difficulty: 1,
             accumulated_monero_difficulty: 1.into(),
-            accumulated_blake_difficulty: 1.into(),
+            accumulated_sha_difficulty: 1.into(),
             target_difficulty: 1.into(),
         })
         .unwrap(),
@@ -511,11 +504,11 @@ pub fn generate_block_with_coinbase<B: BlockchainBackend>(
         consensus,
     );
     let new_block = db.prepare_block_merkle_roots(template)?;
-    let result = db.add_block(new_block.into());
-    if let Ok(BlockAddResult::Ok(ref b)) = result {
+    let result = db.add_block(new_block.into())?;
+    if let BlockAddResult::Ok(ref b) = result {
         blocks.push(b.as_ref().clone());
     }
-    result
+    Ok(result)
 }
 
 #[allow(dead_code)]

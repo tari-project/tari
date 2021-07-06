@@ -315,7 +315,7 @@ mod test {
         test_utils::mocks::create_connectivity_mock,
     };
     use tari_comms_dht::{
-        envelope::{DhtMessageHeader, DhtMessageType, Network},
+        envelope::{DhtMessageHeader, DhtMessageType},
         outbound::{DhtOutboundRequest, MessageSendState, SendMessageResponse},
     };
     use tari_crypto::keys::PublicKey;
@@ -394,7 +394,7 @@ mod test {
         task::spawn(service.run());
 
         let (_, pk) = CommsPublicKey::random_keypair(&mut rand::rngs::OsRng);
-        let node_id = NodeId::from_key(&pk).unwrap();
+        let node_id = NodeId::from_key(&pk);
         // Receive outbound request
         task::spawn(async move {
             match outbound_rx.select_next_some().await {
@@ -416,7 +416,7 @@ mod test {
         let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
         let source_peer = Peer::new(
             pk.clone(),
-            NodeId::from_key(&pk).unwrap(),
+            NodeId::from_key(&pk),
             Vec::<Multiaddr>::new().into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
@@ -425,12 +425,12 @@ mod test {
         );
         DomainMessage {
             dht_header: DhtMessageHeader {
-                version: 0,
+                major: 0,
+                minor: 0,
                 destination: Default::default(),
                 origin_mac: Vec::new(),
                 ephemeral_public_key: None,
                 message_type: DhtMessageType::None,
-                network: Network::LocalTest,
                 flags: Default::default(),
                 message_tag: MessageTag::new(),
                 expires: None,

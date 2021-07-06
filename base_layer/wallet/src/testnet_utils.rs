@@ -22,7 +22,7 @@
 use crate::{
     contacts_service::storage::{
         database::{Contact, ContactsBackend},
-        memory_db::ContactsServiceMemoryDatabase,
+        sqlite_db::ContactsServiceSqliteDatabase,
     },
     error::{WalletError, WalletStorageError},
     output_manager_service::{
@@ -47,9 +47,8 @@ use crate::{
 use chrono::{Duration as ChronoDuration, Utc};
 use futures::{FutureExt, StreamExt};
 use log::*;
-use rand::{distributions::Alphanumeric, rngs::OsRng, CryptoRng, Rng, RngCore};
+use rand::{rngs::OsRng, CryptoRng, Rng, RngCore};
 use std::{
-    iter,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -61,23 +60,21 @@ use tari_comms::{
     transports::MemoryTransport,
     types::{CommsPublicKey, CommsSecretKey},
 };
-use tari_comms_dht::{envelope::Network as DhtNetwork, DhtConfig};
-use tari_core::{
-    consensus::Network,
-    transactions::{
-        tari_amount::MicroTari,
-        transaction::{Transaction, TransactionInput, UnblindedOutput},
-        types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey},
-    },
+use tari_comms_dht::DhtConfig;
+use tari_core::transactions::{
+    helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
+    tari_amount::MicroTari,
+    transaction::{OutputFeatures, Transaction, TransactionInput, UnblindedOutput},
+    types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey},
 };
 use tari_crypto::{
-    inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
     script,
     tari_utilities::hex::Hex,
 };
-use tari_p2p::{initialization::CommsConfig, transport::TransportType};
+use tari_p2p::{initialization::CommsConfig, transport::TransportType, Network};
 use tari_shutdown::{Shutdown, ShutdownSignal};
+use tari_test_utils::random;
 use tokio::{runtime::Handle, time::delay_for};
 use tari_core::transactions::transaction_protocol::TxId;
 
@@ -104,39 +101,14 @@ impl TestParams {
         }
     }
 }
-pub fn make_input<R: Rng + CryptoRng>(
-    rng: &mut R,
-    val: MicroTari,
-    factories: &CryptoFactories,
-) -> (TransactionInput, UnblindedOutput) {
-    let key = PrivateKey::random(rng);
-    let script = script!(Nop);
-    let script_private_key = PrivateKey::random(rng);
-    let input_data = inputs!(PublicKey::from_secret_key(&script_private_key));
-    let offset_pub_key = PublicKey::default();
-
-    let utxo = UnblindedOutput::new(
-        val,
-        key,
-        None,
-        script,
-        input_data,
-        0,
-        script_private_key,
-        offset_pub_key,
-        None,
-        None
-    );
-
+pub fn make_input(val: MicroTari, factories: &CryptoFactories) -> (TransactionInput, UnblindedOutput) {
+    let test_params = TestParamsHelpers::new();
+    let utxo = create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params, val);
     (
         utxo.as_transaction_input(&factories.commitment)
             .expect("Should be able to make transaction input"),
         utxo,
     )
-}
-
-pub fn random_string(len: usize) -> String {
-    iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
 }
 
 /// Create a wallet for testing purposes
@@ -148,31 +120,28 @@ pub async fn create_wallet(
     WalletSqliteDatabase,
     TransactionServiceSqliteDatabase,
     OutputManagerSqliteDatabase,
-    ContactsServiceMemoryDatabase,
+    ContactsServiceSqliteDatabase,
 > {
     let factories = CryptoFactories::default();
 
-    let node_identity = Arc::new(
-        NodeIdentity::new(
-            CommsSecretKey::random(&mut OsRng),
-            public_address.clone(),
-            PeerFeatures::COMMUNICATION_NODE,
-        )
-        .expect("Could not construct Node Identity"),
-    );
+    let node_identity = Arc::new(NodeIdentity::new(
+        CommsSecretKey::random(&mut OsRng),
+        public_address.clone(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
     let comms_config = CommsConfig {
+        network: Network::Weatherwax,
         transport_type: TransportType::Memory {
             listener_address: public_address,
         },
         node_identity,
         datastore_path: datastore_path.clone(),
-        peer_database_name: random_string(8),
+        peer_database_name: random::string(8),
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
         user_agent: "/tari/wallet/test".to_string(),
         dht: DhtConfig {
             discovery_request_timeout: Duration::from_secs(30),
-            network: DhtNetwork::Weatherwax,
             allow_test_addresses: true,
             ..Default::default()
         },
@@ -190,14 +159,15 @@ pub async fn create_wallet(
         factories,
         None,
         None,
-        Network::Weatherwax,
+        Network::Weatherwax.into(),
         None,
         None,
         None,
         None,
     );
 
-    let (db, backend, oms_backend, _) = make_wallet_databases(Some(datastore_path.to_str().unwrap().to_string()));
+    let (db, backend, oms_backend, contacts_backend, _) =
+        make_wallet_databases(Some(datastore_path.to_str().unwrap().to_string()));
 
     let metadata = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
 
@@ -208,7 +178,7 @@ pub async fn create_wallet(
         WalletDatabase::new(db),
         backend,
         oms_backend,
-        ContactsServiceMemoryDatabase::new(),
+        contacts_backend,
         shutdown_signal,
         None,
     )
@@ -289,7 +259,7 @@ pub async fn generate_wallet_test_data<
     // Generate outputs
     let num_outputs = 75;
     for i in 0..num_outputs {
-        let (_ti, uo) = make_input(&mut OsRng.clone(), MicroTari::from(5_000_000 + i * 35_000), &factories);
+        let (_ti, uo) = make_input(MicroTari::from(5_000_000 + i * 35_000), &factories);
         wallet.output_manager_service.add_output(uo).await?;
     }
     info!(target: LOG_TARGET, "Added test outputs to wallet");
@@ -298,7 +268,7 @@ pub async fn generate_wallet_test_data<
         target: LOG_TARGET,
         "Spinning up Alice wallet to generate test transactions"
     );
-    let alice_temp_dir = data_path.as_ref().join(random_string(8));
+    let alice_temp_dir = data_path.as_ref().join(random::string(8));
     let _ = std::fs::create_dir(&alice_temp_dir);
 
     let mut shutdown_a = Shutdown::new();
@@ -313,7 +283,7 @@ pub async fn generate_wallet_test_data<
     contacts[0].public_key = wallet_alice.comms.node_identity().public_key().clone();
 
     for i in 0..20 {
-        let (_ti, uo) = make_input(&mut OsRng.clone(), MicroTari::from(1_500_000 + i * 530_500), &factories);
+        let (_ti, uo) = make_input(MicroTari::from(1_500_000 + i * 530_500), &factories);
         wallet_alice.output_manager_service.add_output(uo).await?;
     }
     info!(target: LOG_TARGET, "Alice Wallet created");
@@ -321,7 +291,7 @@ pub async fn generate_wallet_test_data<
         target: LOG_TARGET,
         "Spinning up Bob wallet to generate test transactions"
     );
-    let bob_temp_dir = data_path.as_ref().join(random_string(8));
+    let bob_temp_dir = data_path.as_ref().join(random::string(8));
     let _ = std::fs::create_dir(&bob_temp_dir);
 
     let mut wallet_bob = create_wallet(
@@ -334,11 +304,7 @@ pub async fn generate_wallet_test_data<
     contacts[1].public_key = wallet_bob.comms.node_identity().public_key().clone();
 
     for i in 0..20 {
-        let (_ti, uo) = make_input(
-            &mut OsRng.clone(),
-            MicroTari::from(2_000_000 + i * i * 61_050),
-            &factories,
-        );
+        let (_ti, uo) = make_input(MicroTari::from(2_000_000 + i * i * 61_050), &factories);
         wallet_bob.output_manager_service.add_output(uo).await?;
     }
     info!(target: LOG_TARGET, "Bob Wallet created");

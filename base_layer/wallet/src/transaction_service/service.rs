@@ -87,8 +87,6 @@ use tari_crypto::{keys::DiffieHellmanSharedSecret, script, tari_utilities::ByteA
 use tari_p2p::domain_message::DomainMessage;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
-#[cfg(feature = "test_harness")]
-use tokio::runtime::Handle;
 use tokio::{sync::broadcast, task::JoinHandle};
 use tari_core::transactions::transaction_protocol::TxId;
 
@@ -760,13 +758,13 @@ where
 
         // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is converted to
         // bytes to enable conversion into a private key to be used as the spending key
-        let script_offset_private_key = stp
-            .get_recipient_script_offset_private_key(0)
+        let sender_offset_private_key = stp
+            .get_recipient_sender_offset_private_key(0)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         // TODO: Add a standardized Diffie-Hellman method to the tari_crypto library that will return a private key,
         // TODO: then come back and use it here.
         let spending_key = PrivateKey::from_bytes(
-            CommsPublicKey::shared_secret(&script_offset_private_key.clone(), &dest_pubkey.clone()).as_bytes(),
+            CommsPublicKey::shared_secret(&sender_offset_private_key.clone(), &dest_pubkey.clone()).as_bytes(),
         )
         .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
@@ -1814,7 +1812,7 @@ where
                             MicroTari::from(0),
                             tx.clone(),
                             TransactionStatus::Coinbase,
-                            format!("Coinbase Transaction for Block {}", block_height),
+                            format!("Coinbase Transaction for Block #{}", block_height),
                             Utc::now().naive_utc(),
                             TransactionDirection::Inbound,
                             Some(block_height),
@@ -2063,112 +2061,122 @@ where
         _tx_id: TxId,
         _amount: MicroTari,
         _source_public_key: CommsPublicKey,
-        _handle: Handle,
+        _handle: tokio::runtime::Handle,
     ) -> Result<(), TransactionServiceError> {
-        // use crate::{
-        //     base_node_service::{handle::BaseNodeServiceHandle, mock_base_node_service::MockBaseNodeService},
-        //     output_manager_service::{
-        //         config::OutputManagerServiceConfig,
-        //         error::OutputManagerError,
-        //         service::OutputManagerService,
-        //         storage::{database::OutputManagerDatabase},
-        //     },
-        //     transaction_service::{handle::TransactionServiceHandle, storage::models::InboundTransaction},
-        // };
-        // use tari_comms::types::CommsSecretKey;
-        // use tari_core::consensus::{ConsensusConstantsBuilder, Network};
-        //
-        // let (_sender, receiver) = reply_channel::unbounded();
-        // let (oms_event_publisher, _oms_event_subscriber) = broadcast::channel(100);
-        // let (ts_request_sender, _ts_request_receiver) = reply_channel::unbounded();
-        // let (event_publisher, _) = broadcast::channel(100);
-        // let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher.clone());
-        // let constants = ConsensusConstantsBuilder::new(Network::Weatherwax).build();
-        // let shutdown_signal = self.resources.shutdown_signal.clone();
-        // let (sender, receiver_bns) = reply_channel::unbounded();
-        // let (event_publisher_bns, _) = broadcast::channel(100);
-        // let (connectivity_tx_publisher, _) = broadcast::channel(100);
-        // let (connectivity_tx, _) = mpsc::channel(20);
-        //
-        // let connectivity_manager = ConnectivityRequester::new(connectivity_tx, connectivity_tx_publisher);
-        //
-        // let basenode_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns);
-        // let mut mock_base_node_service = MockBaseNodeService::new(receiver_bns, shutdown_signal.clone());
-        // mock_base_node_service.set_default_base_node_state();
-        // handle.spawn(mock_base_node_service.run());
-        // let mut fake_oms = OutputManagerService::new(
-        //     OutputManagerServiceConfig::default(),
-        //     ts_handle,
-        //     receiver,
-        //     OutputManagerDatabase::new(OutputManagerMemoryDatabase::new()),
-        //     oms_event_publisher,
-        //     self.resources.factories.clone(),
-        //     constants,
-        //     shutdown_signal,
-        //     basenode_service_handle,
-        //     connectivity_manager,
-        //     CommsSecretKey::default(),
-        // )
-        // .await?;
-        //
-        // use crate::testnet_utils::make_input;
-        // let (_ti, uo) = make_input(&mut OsRng, amount + 100000 * uT, &self.resources.factories);
-        //
-        // fake_oms.add_output(None, uo).await?;
-        //
-        // let mut stp = fake_oms
-        //     .prepare_transaction_to_send(amount, None, MicroTari::from(25), None, "".to_string(), script!(Nop))
-        //     .await?;
-        //
-        // let msg = stp.build_single_round_message()?;
-        // let proto_msg = proto::TransactionSenderMessage::single(msg.into());
-        // let sender_message: TransactionSenderMessage = proto_msg
-        //     .try_into()
-        //     .map_err(TransactionServiceError::InvalidMessageError)?;
-        //
-        // let (tx_id, _amount) = match sender_message.clone() {
-        //     TransactionSenderMessage::Single(data) => (data.tx_id, data.amount),
-        //     _ => {
-        //         return Err(TransactionServiceError::OutputManagerError(
-        //             OutputManagerError::InvalidSenderMessage,
-        //         ))
-        //     },
-        // };
-        //
-        // let rtp = self
-        //     .output_manager_service
-        //     .get_recipient_transaction(sender_message)
-        //     .await?;
-        //
-        // let inbound_transaction = InboundTransaction::new(
-        //     tx_id,
-        //     source_public_key,
-        //     amount,
-        //     None,
-        //     rtp,
-        //     TransactionStatus::Pending,
-        //     "".to_string(),
-        //     Utc::now().naive_utc(),
-        // );
-        //
-        // self.db
-        //     .add_pending_inbound_transaction(tx_id, inbound_transaction.clone())
-        //     .await?;
-        //
-        // let _ = self
-        //     .event_publisher
-        //     .send(Arc::new(TransactionEvent::ReceivedTransaction(tx_id)))
-        //     .map_err(|e| {
-        //         trace!(
-        //             target: LOG_TARGET,
-        //             "Error sending event, usually because there are no subscribers: {:?}",
-        //             e
-        //         );
-        //         e
-        //     });
-        //
-        // Ok(())
-        unimplemented!("iTOD")
+        use crate::{
+            base_node_service::{handle::BaseNodeServiceHandle, mock_base_node_service::MockBaseNodeService},
+            output_manager_service::{
+                config::OutputManagerServiceConfig,
+                error::OutputManagerError,
+                service::OutputManagerService,
+                storage::{database::OutputManagerDatabase, sqlite_db::OutputManagerSqliteDatabase},
+            },
+            storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
+            transaction_service::{handle::TransactionServiceHandle, storage::models::InboundTransaction},
+        };
+        use tari_comms::types::CommsSecretKey;
+        use tari_core::consensus::ConsensusConstantsBuilder;
+        use tari_p2p::Network;
+        use tari_test_utils::random;
+        use tempfile::tempdir;
+
+        let (_sender, receiver) = reply_channel::unbounded();
+        let (oms_event_publisher, _oms_event_subscriber) = broadcast::channel(100);
+        let (ts_request_sender, _ts_request_receiver) = reply_channel::unbounded();
+        let (event_publisher, _) = broadcast::channel(100);
+        let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher.clone());
+        let constants = ConsensusConstantsBuilder::new(Network::Weatherwax).build();
+        let shutdown_signal = self.resources.shutdown_signal.clone();
+        let (sender, receiver_bns) = reply_channel::unbounded();
+        let (event_publisher_bns, _) = broadcast::channel(100);
+        let (connectivity_tx_publisher, _) = broadcast::channel(100);
+        let (connectivity_tx, _) = mpsc::channel(20);
+
+        let connectivity_manager = ConnectivityRequester::new(connectivity_tx, connectivity_tx_publisher);
+
+        let basenode_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns);
+        let mut mock_base_node_service = MockBaseNodeService::new(receiver_bns, shutdown_signal.clone());
+        mock_base_node_service.set_default_base_node_state();
+
+        let db_name = format!("{}.sqlite3", random::string(8).as_str());
+        let db_tempdir = tempdir().unwrap();
+        let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+        let db_path = format!("{}/{}", db_folder, db_name);
+        let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+        let backend = OutputManagerSqliteDatabase::new(connection, None);
+
+        handle.spawn(mock_base_node_service.run());
+        let mut fake_oms = OutputManagerService::new(
+            OutputManagerServiceConfig::default(),
+            ts_handle,
+            receiver,
+            OutputManagerDatabase::new(backend),
+            oms_event_publisher,
+            self.resources.factories.clone(),
+            constants,
+            shutdown_signal,
+            basenode_service_handle,
+            connectivity_manager,
+            CommsSecretKey::default(),
+        )
+        .await?;
+
+        use crate::testnet_utils::make_input;
+        let (_ti, uo) = make_input(amount + 100000 * uT, &self.resources.factories);
+
+        fake_oms.add_output(None, uo).await?;
+
+        let mut stp = fake_oms
+            .prepare_transaction_to_send(amount, MicroTari::from(25), None, "".to_string(), script!(Nop))
+            .await?;
+
+        let msg = stp.build_single_round_message()?;
+        let proto_msg = proto::TransactionSenderMessage::single(msg.into());
+        let sender_message: TransactionSenderMessage = proto_msg
+            .try_into()
+            .map_err(TransactionServiceError::InvalidMessageError)?;
+
+        let (tx_id, _amount) = match sender_message.clone() {
+            TransactionSenderMessage::Single(data) => (data.tx_id, data.amount),
+            _ => {
+                return Err(TransactionServiceError::OutputManagerError(
+                    OutputManagerError::InvalidSenderMessage,
+                ))
+            },
+        };
+
+        let rtp = self
+            .output_manager_service
+            .get_recipient_transaction(sender_message)
+            .await?;
+
+        let inbound_transaction = InboundTransaction::new(
+            tx_id,
+            source_public_key,
+            amount,
+            rtp,
+            TransactionStatus::Pending,
+            "".to_string(),
+            Utc::now().naive_utc(),
+        );
+
+        self.db
+            .add_pending_inbound_transaction(tx_id, inbound_transaction.clone())
+            .await?;
+
+        let _ = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::ReceivedTransaction(tx_id)))
+            .map_err(|e| {
+                trace!(
+                    target: LOG_TARGET,
+                    "Error sending event, usually because there are no subscribers: {:?}",
+                    e
+                );
+                e
+            });
+
+        Ok(())
     }
 
     /// This function is only available for testing by the client of LibWallet. This function simulates an external
@@ -2262,5 +2270,5 @@ pub struct PendingCoinbaseSpendingKey {
 }
 
 fn hash_secret_key(key: &PrivateKey) -> Vec<u8> {
-    HashDigest::new().chain(key.as_bytes()).result().to_vec()
+    HashDigest::new().chain(key.as_bytes()).finalize().to_vec()
 }

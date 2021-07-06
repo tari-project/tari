@@ -30,14 +30,15 @@ use crate::{
     },
     transaction_service::handle::TransactionServiceHandle,
 };
-use futures::{future, Future};
+use futures::future;
 use log::*;
 use tari_comms::{connectivity::ConnectivityRequester, types::CommsSecretKey};
 use tari_core::{
-    consensus::{ConsensusConstantsBuilder, Network},
+    consensus::{ConsensusConstantsBuilder, NetworkConsensus},
     transactions::types::CryptoFactories,
 };
 use tari_service_framework::{
+    async_trait,
     reply_channel,
     ServiceInitializationError,
     ServiceInitializer,
@@ -67,7 +68,7 @@ where T: OutputManagerBackend
     config: OutputManagerServiceConfig,
     backend: Option<T>,
     factories: CryptoFactories,
-    network: Network,
+    network: NetworkConsensus,
     master_secret_key: CommsSecretKey,
 }
 
@@ -78,7 +79,7 @@ where T: OutputManagerBackend + 'static
         config: OutputManagerServiceConfig,
         backend: T,
         factories: CryptoFactories,
-        network: Network,
+        network: NetworkConsensus,
         master_secret_key: CommsSecretKey,
     ) -> Self {
         Self {
@@ -91,12 +92,11 @@ where T: OutputManagerBackend + 'static
     }
 }
 
+#[async_trait]
 impl<T> ServiceInitializer for OutputManagerServiceInitializer<T>
 where T: OutputManagerBackend + 'static
 {
-    type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
-
-    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+    async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         trace!(
             target: LOG_TARGET,
             "Output manager initialization: Base node query timeout: {}s",
@@ -116,7 +116,7 @@ where T: OutputManagerBackend + 'static
             .expect("Cannot start Output Manager Service without setting a storage backend");
         let factories = self.factories.clone();
         let config = self.config.clone();
-        let constants = ConsensusConstantsBuilder::new(self.network).build();
+        let constants = ConsensusConstantsBuilder::new(self.network.as_network()).build();
         let master_secret_key = self.master_secret_key.clone();
         context.spawn_when_ready(move |handles| async move {
             let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
@@ -144,6 +144,6 @@ where T: OutputManagerBackend + 'static
             future::select(service, handles.get_shutdown_signal()).await;
             info!(target: LOG_TARGET, "Output manager service shutdown");
         });
-        future::ready(Ok(()))
+        Ok(())
     }
 }

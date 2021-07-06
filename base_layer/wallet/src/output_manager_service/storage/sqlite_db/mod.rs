@@ -146,6 +146,21 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     None
                 },
             },
+            DbKey::AnyOutputByCommitment(commitment) => {
+                match OutputSql::find_by_commitment(&commitment.to_vec(), &(*conn)) {
+                    Ok(mut o) => {
+                        self.decrypt_if_necessary(&mut o)?;
+                        Some(DbValue::SpentOutput(Box::new(DbUnblindedOutput::try_from(o)?)))
+                    },
+                    Err(e) => {
+                        match e {
+                            OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
+                            e => return Err(e),
+                        };
+                        None
+                    },
+                }
+            },
             DbKey::PendingTransactionOutputs(tx_id) => match PendingTransactionOutputSql::find(*tx_id, &(*conn)) {
                 Ok(p) => {
                     let mut outputs = OutputSql::find_by_tx_id_and_encumbered(*tx_id, &(*conn))?;
@@ -264,22 +279,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             },
-            DbKey::CoinbaseOutput {
-                commitment,
-                block_height,
-            } => match OutputSql::find_by_commitment_and_block_height(&commitment.to_vec(), *block_height, &(*conn)) {
-                Ok(mut o) => {
-                    self.decrypt_if_necessary(&mut o)?;
-                    Some(DbValue::CoinbaseOutput(Box::new(DbUnblindedOutput::try_from(o)?)))
-                },
-                Err(e) => {
-                    match e {
-                        OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
-                        e => return Err(e)
-                    };
-                    None
-                },
-            },
         };
 
         Ok(result)
@@ -312,28 +311,28 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         match op {
             WriteOperation::Insert(kvp) => match kvp {
                 DbKeyValuePair::SpentOutput(c, o) => {
-                    if OutputSql::find_by_commitment(&c.to_vec(), &(*conn)).is_ok() {
+                    if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, &(*conn)).is_ok() {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
-                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Spent, None);
+                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Spent, None)?;
 
                     self.encrypt_if_necessary(&mut new_output)?;
 
                     new_output.commit(&(*conn))?
                 },
                 DbKeyValuePair::UnspentOutput(c, o) => {
-                    if OutputSql::find_by_commitment(&c.to_vec(), &(*conn)).is_ok() {
+                    if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, &(*conn)).is_ok() {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
-                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, None);
+                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, None)?;
                     self.encrypt_if_necessary(&mut new_output)?;
                     new_output.commit(&(*conn))?
                 },
                 DbKeyValuePair::UnspentOutputWithTxId(c, (tx_id, o)) => {
-                    if OutputSql::find_by_commitment(&c.to_vec(), &(*conn)).is_ok() {
+                    if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, &(*conn)).is_ok() {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
-                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, Some(tx_id));
+                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, Some(tx_id))?;
                     self.encrypt_if_necessary(&mut new_output)?;
                     new_output.commit(&(*conn))?
                 },
@@ -350,12 +349,12 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     )
                     .commit(&(*conn))?;
                     for o in p.outputs_to_be_spent {
-                        let mut new_output = NewOutputSql::new(o, OutputStatus::EncumberedToBeSpent, Some(p.tx_id));
+                        let mut new_output = NewOutputSql::new(o, OutputStatus::EncumberedToBeSpent, Some(p.tx_id))?;
                         self.encrypt_if_necessary(&mut new_output)?;
                         new_output.commit(&(*conn))?;
                     }
                     for o in p.outputs_to_be_received {
-                        let mut new_output = NewOutputSql::new(o, OutputStatus::EncumberedToBeReceived, Some(p.tx_id));
+                        let mut new_output = NewOutputSql::new(o, OutputStatus::EncumberedToBeReceived, Some(p.tx_id))?;
                         self.encrypt_if_necessary(&mut new_output)?;
                         new_output.commit(&(*conn))?;
                     }
@@ -396,14 +395,11 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         };
                     },
                 },
-                DbKey::CoinbaseOutput {
-                    commitment,
-                    block_height,
-                } => {
-                    match OutputSql::find_by_commitment_and_block_height(&commitment.to_vec(), block_height, &(*conn)) {
+                DbKey::AnyOutputByCommitment(commitment) => {
+                    match OutputSql::find_by_commitment(&commitment.to_vec(), &(*conn)) {
                         Ok(o) => {
                             o.delete(&(*conn))?;
-                            return Ok(Some(DbValue::CoinbaseOutput(Box::new(DbUnblindedOutput::try_from(o)?))));
+                            return Ok(Some(DbValue::AnyOutput(Box::new(DbUnblindedOutput::try_from(o)?))));
                         },
                         Err(e) => {
                             match e {
@@ -463,7 +459,11 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         o.update(
                             UpdateOutput {
                                 status: Some(OutputStatus::Unspent),
-                                ..Default::default()
+                                tx_id: None,
+                                spending_key: None,
+                                script_private_key: None,
+                                metadata_signature_nonce: None,
+                                metadata_signature_u_key: None,
                             },
                             &(*conn),
                         )?;
@@ -471,7 +471,11 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         o.update(
                             UpdateOutput {
                                 status: Some(OutputStatus::Spent),
-                                ..Default::default()
+                                tx_id: None,
+                                spending_key: None,
+                                script_private_key: None,
+                                metadata_signature_nonce: None,
+                                metadata_signature_u_key: None,
                             },
                             &(*conn),
                         )?;
@@ -501,7 +505,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         let mut outputs_to_be_spent = Vec::with_capacity(outputs_to_send.len());
         for i in outputs_to_send {
-            let output = OutputSql::find_by_commitment(i.commitment.as_bytes(), &(*conn))?;
+            let output = OutputSql::find_by_commitment_and_cancelled(i.commitment.as_bytes(), false, &(*conn))?;
             if output.status == (OutputStatus::Spent as i32) {
                 return Err(OutputManagerStorageError::OutputAlreadySpent);
             }
@@ -525,7 +529,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         }
 
         for co in outputs_to_receive {
-            let mut new_output = NewOutputSql::new(co.clone(), OutputStatus::EncumberedToBeReceived, Some(tx_id));
+            let mut new_output = NewOutputSql::new(co.clone(), OutputStatus::EncumberedToBeReceived, Some(tx_id))?;
             self.encrypt_if_necessary(&mut new_output)?;
             new_output.commit(&(*conn))?;
         }
@@ -640,9 +644,9 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
     fn invalidate_unspent_output(&self, output: &DbUnblindedOutput) -> Result<Option<TxId>, OutputManagerStorageError> {
         let conn = self.database_connection.acquire_lock();
-        let output = OutputSql::find_by_commitment(&output.commitment.to_vec(), &conn)?;
+        let output = OutputSql::find_by_commitment_and_cancelled(&output.commitment.to_vec(), false, &conn)?;
         let tx_id = output.tx_id.map(|id| (id as u64).into());
-        let _ = output.update(
+        output.update(
             UpdateOutput {
                 status: Some(OutputStatus::Invalid),
                 ..Default::default()
@@ -653,14 +657,32 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(tx_id)
     }
 
+    fn update_output_metadata_signature(&self, output: &TransactionOutput) -> Result<(), OutputManagerStorageError> {
+        let conn = self.database_connection.acquire_lock();
+        let db_output = OutputSql::find_by_commitment_and_cancelled(&output.commitment.to_vec(), false, &conn)?;
+        db_output.update(
+            UpdateOutput {
+                status: None,
+                tx_id: None,
+                spending_key: None,
+                script_private_key: None,
+                metadata_signature_nonce: Some(output.metadata_signature.public_nonce().to_vec()),
+                metadata_signature_u_key: Some(output.metadata_signature.u().to_vec()),
+            },
+            &(*conn),
+        )?;
+
+        Ok(())
+    }
+
     fn revalidate_unspent_output(&self, commitment: &Commitment) -> Result<(), OutputManagerStorageError> {
         let conn = self.database_connection.acquire_lock();
-        let output = OutputSql::find_by_commitment(&commitment.to_vec(), &conn)?;
+        let output = OutputSql::find_by_commitment_and_cancelled(&commitment.to_vec(), false, &conn)?;
 
         if OutputStatus::try_from(output.status)? != OutputStatus::Invalid {
             return Err(OutputManagerStorageError::ValuesNotFound);
         }
-        let _ = output.update(
+        output.update(
             UpdateOutput {
                 status: Some(OutputStatus::Unspent),
                 ..Default::default()
@@ -675,7 +697,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         commitment: &Commitment,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
         let conn = self.database_connection.acquire_lock();
-        let output = OutputSql::find_by_commitment(&commitment.to_vec(), &conn)?;
+        let output = OutputSql::find_by_commitment_and_cancelled(&commitment.to_vec(), false, &conn)?;
 
         if OutputStatus::try_from(output.status)? != OutputStatus::Spent {
             return Err(OutputManagerStorageError::ValuesNotFound);
@@ -702,26 +724,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         for p in pending_txs {
             self.cancel_pending_transaction((p.tx_id as u64).into())?;
         }
-        Ok(())
-    }
-
-    fn update_mined_height(&self, tx_id: TxId, height: u64) -> Result<(), OutputManagerStorageError> {
-        let conn = self.database_connection.acquire_lock();
-        let output = OutputSql::find_by_tx_id(tx_id, &conn)?;
-
-        for o in output.iter() {
-            let _ = o.update(
-                UpdateOutput {
-                    status: None,
-                    tx_id: None,
-                    spending_key: None,
-                    height: Some(height),
-                    script_private_key: None,
-                },
-                &(*conn),
-            )?;
-        }
-
         Ok(())
     }
 
@@ -908,7 +910,6 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             features,
             TariScript::from_bytes(o.script.as_slice())?,
             ExecutionStack::from_bytes(o.input_data.as_slice())?,
-            o.height as u64,
             PrivateKey::from_vec(&o.script_private_key).map_err(|_| {
                 error!(
                     target: LOG_TARGET,
@@ -916,9 +917,36 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 );
                 OutputManagerStorageError::ConversionError
             })?,
-            PublicKey::from_vec(&o.script_offset_public_key).map_err(|_| {
+            PublicKey::from_vec(&o.sender_offset_public_key).map_err(|_| {
                 error!(
                     target: LOG_TARGET,
+                    "Could not create PublicKey from stored bytes, They might be encrypted"
+                );
+                OutputManagerStorageError::ConversionError
+            })?,
+            ComSignature::new(
+                Commitment::from_vec(&o.metadata_signature_nonce).map_err(|_| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not create PublicKey from stored bytes, They might be encrypted"
+                    );
+                    OutputManagerStorageError::ConversionError
+                })?,
+                PrivateKey::from_vec(&o.metadata_signature_u_key).map_err(|_| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not create PrivateKey from stored bytes, They might be encrypted"
+                    );
+                    OutputManagerStorageError::ConversionError
+                })?,
+                PrivateKey::from_vec(&o.metadata_signature_v_key).map_err(|_| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not create PrivateKey from stored bytes, They might be encrypted"
+                    );
+                    OutputManagerStorageError::ConversionError
+                })?,
+            ),
                     "Could not create PrivateKey from stored bytes, They might be encrypted"
                 );
                 OutputManagerStorageError::ConversionError
@@ -980,8 +1008,9 @@ pub struct UpdateOutput {
     status: Option<OutputStatus>,
     tx_id: Option<u64>,
     spending_key: Option<Vec<u8>>,
-    height: Option<u64>,
     script_private_key: Option<Vec<u8>>,
+    metadata_signature_nonce: Option<Vec<u8>>,
+    metadata_signature_u_key: Option<Vec<u8>>,
 }
 
 #[derive(AsChangeset)]
@@ -990,8 +1019,9 @@ pub struct UpdateOutputSql {
     status: Option<i32>,
     tx_id: Option<i64>,
     spending_key: Option<Vec<u8>>,
-    height: Option<i64>,
     script_private_key: Option<Vec<u8>>,
+    metadata_signature_nonce: Option<Vec<u8>>,
+    metadata_signature_u_key: Option<Vec<u8>>,
 }
 
 #[derive(AsChangeset)]
@@ -1009,8 +1039,9 @@ impl From<UpdateOutput> for UpdateOutputSql {
             status: u.status.map(|t| t as i32),
             tx_id: u.tx_id.map(|t| t as i64),
             spending_key: u.spending_key,
-            height: u.height.map(|t| t as i64),
             script_private_key: u.script_private_key,
+            metadata_signature_nonce: u.metadata_signature_nonce,
+            metadata_signature_u_key: u.metadata_signature_u_key,
         }
     }
 }
@@ -1467,30 +1498,11 @@ mod test {
     };
     use crate::output_manager_service::storage::sqlite_db::new_output_sql::NewOutputSql;
 
-    pub fn random_string(len: usize) -> String {
-        iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
-    }
-
-    pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: MicroTari) -> (TransactionInput, UnblindedOutput) {
-        let key = PrivateKey::random(rng);
-        let script_key = PrivateKey::random(rng);
-        let script_offset_private_key = PrivateKey::random(rng);
+    pub fn make_input(val: MicroTari) -> (TransactionInput, UnblindedOutput) {
+        let test_params = TestParamsHelpers::new();
         let factory = CommitmentFactory::default();
 
-        let script = script!(Nop);
-        let input_data = inputs!(PublicKey::from_secret_key(&script_key));
-        let height = 0;
-        let unblinded_output = UnblindedOutput::new(
-            val,
-            key,
-            None,
-            script,
-            input_data,
-            height,
-            script_key,
-            PublicKey::from_secret_key(&script_offset_private_key),
-        );
-
+        let unblinded_output = create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params, val);
         let input = unblinded_output.as_transaction_input(&factory).unwrap();
 
         (input, unblinded_output)
@@ -1498,7 +1510,7 @@ mod test {
 
     #[test]
     fn test_crud() {
-        let db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let db_name = format!("{}.sqlite3", random::string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);
@@ -1517,18 +1529,18 @@ mod test {
         let factories = CryptoFactories::default();
 
         for _i in 0..2 {
-            let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
+            let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
             let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
-            let o = NewOutputSql::new(uo, OutputStatus::Unspent, None);
+            let o = NewOutputSql::new(uo, OutputStatus::Unspent, None).unwrap();
             outputs.push(o.clone());
             outputs_unspent.push(o.clone());
             o.commit(&conn).unwrap();
         }
 
         for _i in 0..3 {
-            let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
+            let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
             let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
-            let o = NewOutputSql::new(uo, OutputStatus::Spent, None);
+            let o = NewOutputSql::new(uo, OutputStatus::Spent, None).unwrap();
             outputs.push(o.clone());
             outputs_spent.push(o.clone());
             o.commit(&conn).unwrap();
@@ -1587,8 +1599,9 @@ mod test {
                     status: Some(OutputStatus::Unspent),
                     tx_id: Some(44u64),
                     spending_key: None,
-                    height: None,
                     script_private_key: None,
+                    metadata_signature_nonce: None,
+                    metadata_signature_u_key: None,
                 },
                 &conn,
             )
@@ -1601,8 +1614,9 @@ mod test {
                     status: Some(OutputStatus::EncumberedToBeReceived),
                     tx_id: Some(44u64),
                     spending_key: None,
-                    height: None,
                     script_private_key: None,
+                    metadata_signature_nonce: None,
+                    metadata_signature_u_key: None,
                 },
                 &conn,
             )
@@ -1643,7 +1657,7 @@ mod test {
 
     #[test]
     fn test_key_manager_crud() {
-        let db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let db_name = format!("{}.sqlite3", random::string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);
@@ -1659,7 +1673,7 @@ mod test {
 
         let state1 = KeyManagerState {
             master_key: PrivateKey::random(&mut OsRng),
-            branch_seed: random_string(8),
+            branch_seed: random::string(8),
             primary_key_index: 0,
         };
 
@@ -1670,7 +1684,7 @@ mod test {
 
         let state2 = KeyManagerState {
             master_key: PrivateKey::random(&mut OsRng),
-            branch_seed: random_string(8),
+            branch_seed: random::string(8),
             primary_key_index: 0,
         };
 
@@ -1690,7 +1704,7 @@ mod test {
 
     #[test]
     fn test_output_encryption() {
-        let db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let db_name = format!("{}.sqlite3", random::string(8).as_str());
         let tempdir = tempdir().unwrap();
         let db_folder = tempdir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);
@@ -1703,9 +1717,9 @@ mod test {
         conn.execute("PRAGMA foreign_keys = ON").unwrap();
         let factories = CryptoFactories::default();
 
-        let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
+        let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
         let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
-        let output = NewOutputSql::new(uo, OutputStatus::Unspent, None);
+        let output = NewOutputSql::new(uo, OutputStatus::Unspent, None).unwrap();
 
         let key = GenericArray::from_slice(b"an example very very secret key.");
         let cipher = Aes256Gcm::new(key);
@@ -1749,7 +1763,7 @@ mod test {
 
     #[test]
     fn test_key_manager_encryption() {
-        let db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let db_name = format!("{}.sqlite3", random::string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);
@@ -1791,7 +1805,7 @@ mod test {
 
     #[test]
     fn test_apply_remove_encryption() {
-        let db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let db_name = format!("{}.sqlite3", random::string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);
@@ -1811,14 +1825,14 @@ mod test {
         let state_sql = KeyManagerStateSql::from(starting_state);
         state_sql.set_state(&conn).unwrap();
 
-        let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
+        let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
         let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
-        let output = NewOutputSql::new(uo, OutputStatus::Unspent, None);
+        let output = NewOutputSql::new(uo, OutputStatus::Unspent, None).unwrap();
         output.commit(&conn).unwrap();
 
-        let (_, uo2) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
+        let (_, uo2) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
         let uo2 = DbUnblindedOutput::from_unblinded_output(uo2, &factories).unwrap();
-        let output2 = NewOutputSql::new(uo2, OutputStatus::Unspent, None);
+        let output2 = NewOutputSql::new(uo2, OutputStatus::Unspent, None).unwrap();
         output2.commit(&conn).unwrap();
 
         let key = GenericArray::from_slice(b"an example very very secret key.");

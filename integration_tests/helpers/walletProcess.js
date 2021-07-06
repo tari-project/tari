@@ -148,8 +148,7 @@ class WalletProcess {
   }
 
   async start() {
-    let args;
-    args = [
+    const args = [
       "--base-path",
       ".",
       "--init",
@@ -169,37 +168,37 @@ class WalletProcess {
     return await this.run(await this.compile(), args, true);
   }
 
-  async export_spent_outputs() {
-    let args;
-    args = [
+  async exportSpentOutputs() {
+    const args = [
       "--init",
       "--base-path",
       ".",
+      "--auto-exit",
       "--password",
       "kensentme",
       "--command",
-      "export-spent-utxos  --csv-file exported_outputs.csv",
+      "export-spent-utxos --csv-file exported_outputs.csv",
     ];
     outputProcess = __dirname + "/../temp/out/tari_console_wallet";
     await this.run(outputProcess, args, true);
   }
 
-  async export_unspent_outputs() {
-    let args;
-    args = [
+  async exportUnspentOutputs() {
+    const args = [
       "--init",
       "--base-path",
       ".",
+      "--auto-exit",
       "--password",
       "kensentme",
       "--command",
-      "export-utxos  --csv-file exported_outputs.csv",
+      "export-utxos --csv-file exported_outputs.csv",
     ];
     outputProcess = __dirname + "/../temp/out/tari_console_wallet";
     await this.run(outputProcess, args, true);
   }
 
-  async read_exported_outputs() {
+  async readExportedOutputs() {
     const filePath = path.resolve(this.baseDir + "/exported_outputs.csv");
     expect(fs.existsSync(filePath)).to.equal(
       true,
@@ -220,12 +219,16 @@ class WalletProcess {
             },
             script: Buffer.from(row.script, "hex"),
             input_data: Buffer.from(row.input_data, "hex"),
-            height: parseInt(row.height),
             script_private_key: Buffer.from(row.script_private_key, "hex"),
-            script_offset_public_key: Buffer.from(
-              row.script_offset_public_key,
+            sender_offset_public_key: Buffer.from(
+              row.sender_offset_public_key,
               "hex"
             ),
+            metadata_signature: {
+              public_nonce_commitment: Buffer.from(row.public_nonce, "hex"),
+              signature_u: Buffer.from(row.signature_u, "hex"),
+              signature_v: Buffer.from(row.signature_v, "hex"),
+            },
           };
           unblinded_outputs.push(unblinded_output);
         })

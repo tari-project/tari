@@ -28,7 +28,7 @@ use crate::{
     outbound::OutboundMessageRequester,
     store_forward::StoreAndForwardRequester,
 };
-use futures::{channel::mpsc, task::Context, Future};
+use futures::{channel::mpsc, future::BoxFuture, task::Context};
 use std::{sync::Arc, task::Poll};
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerManager},
@@ -75,29 +75,32 @@ impl<S> MessageHandlerMiddleware<S> {
 }
 
 impl<S> Service<DecryptedDhtMessage> for MessageHandlerMiddleware<S>
-where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Clone + Sync + Send
+where
+    S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Clone + Send + 'static,
+    S::Future: Send,
 {
     type Error = PipelineError;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
     type Response = ();
-
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.next_service.poll_ready(cx)
     }
 
     fn call(&mut self, message: DecryptedDhtMessage) -> Self::Future {
-        MessageHandlerTask::new(
-            self.config.clone(),
-            self.next_service.clone(),
-            self.saf_requester.clone(),
-            self.dht_requester.clone(),
-            Arc::clone(&self.peer_manager),
-            self.outbound_service.clone(),
-            Arc::clone(&self.node_identity),
-            message,
-            self.saf_response_signal_sender.clone(),
+        Box::pin(
+            MessageHandlerTask::new(
+                self.config.clone(),
+                self.next_service.clone(),
+                self.saf_requester.clone(),
+                self.dht_requester.clone(),
+                Arc::clone(&self.peer_manager),
+                self.outbound_service.clone(),
+                Arc::clone(&self.node_identity),
+                message,
+                self.saf_response_signal_sender.clone(),
+            )
+            .run(),
         )
-        .run()
     }
 }

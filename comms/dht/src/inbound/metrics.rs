@@ -21,11 +21,11 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::connectivity::MetricsCollectorHandle;
-use futures::{task::Context, Future};
+use futures::task::Context;
 use log::*;
 use std::task::Poll;
-use tari_comms::{message::InboundMessage, pipeline::PipelineError};
-use tower::{layer::Layer, Service, ServiceExt};
+use tari_comms::message::InboundMessage;
+use tower::{layer::Layer, Service};
 
 const LOG_TARGET: &str = "comms::dht::metrics";
 
@@ -45,19 +45,17 @@ impl<S> Metrics<S> {
 }
 
 impl<S> Service<InboundMessage> for Metrics<S>
-where S: Service<InboundMessage, Response = (), Error = PipelineError> + Clone + 'static
+where S: Service<InboundMessage> + Clone + 'static
 {
-    type Error = PipelineError;
-    type Response = ();
+    type Error = S::Error;
+    type Future = S::Future;
+    type Response = S::Response;
 
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
-
-    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.next_service.poll_ready(cx)
     }
 
     fn call(&mut self, message: InboundMessage) -> Self::Future {
-        let next_service = self.next_service.clone();
         if !self
             .metric_collector
             .write_metric_message_received(message.source_peer.clone())
@@ -65,7 +63,7 @@ where S: Service<InboundMessage, Response = (), Error = PipelineError> + Clone +
             debug!(target: LOG_TARGET, "Unable to write metric");
         }
 
-        next_service.oneshot(message)
+        self.next_service.call(message)
     }
 }
 

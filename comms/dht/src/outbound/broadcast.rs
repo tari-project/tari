@@ -33,7 +33,7 @@ use crate::{
         message_send_state::MessageSendState,
         SendMessageResponse,
     },
-    proto::envelope::{DhtMessageType, Network, OriginMac},
+    proto::envelope::{DhtMessageType, OriginMac},
 };
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
@@ -41,13 +41,13 @@ use digest::Digest;
 use futures::{
     channel::oneshot,
     future,
+    future::BoxFuture,
     stream::{self, StreamExt},
     task::Context,
-    Future,
 };
 use log::*;
 use rand::rngs::OsRng;
-use std::{sync::Arc, task::Poll};
+use std::{sync::Arc, task::Poll, time::Duration};
 use tari_comms::{
     message::{MessageExt, MessageTag},
     peer_manager::{NodeId, NodeIdentity, Peer},
@@ -68,7 +68,6 @@ pub struct BroadcastLayer {
     dht_requester: DhtRequester,
     dht_discovery_requester: DhtDiscoveryRequester,
     node_identity: Arc<NodeIdentity>,
-    target_network: Network,
     message_validity_window: chrono::Duration,
 }
 
@@ -77,15 +76,14 @@ impl BroadcastLayer {
         node_identity: Arc<NodeIdentity>,
         dht_requester: DhtRequester,
         dht_discovery_requester: DhtDiscoveryRequester,
-        target_network: Network,
-        message_validity_window: chrono::Duration,
+        message_validity_window: Duration,
     ) -> Self {
         BroadcastLayer {
             dht_requester,
             dht_discovery_requester,
             node_identity,
-            target_network,
-            message_validity_window,
+            message_validity_window: chrono::Duration::from_std(message_validity_window)
+                .expect("message_validity_window is too large"),
         }
     }
 }
@@ -99,7 +97,6 @@ impl<S> Layer<S> for BroadcastLayer {
             Arc::clone(&self.node_identity),
             self.dht_requester.clone(),
             self.dht_discovery_requester.clone(),
-            self.target_network,
             self.message_validity_window,
         )
     }
@@ -109,11 +106,10 @@ impl<S> Layer<S> for BroadcastLayer {
 /// the worker task.
 #[derive(Clone)]
 pub struct BroadcastMiddleware<S> {
-    next: S,
+    next_service: S,
     dht_requester: DhtRequester,
     dht_discovery_requester: DhtDiscoveryRequester,
     node_identity: Arc<NodeIdentity>,
-    target_network: Network,
     message_validity_window: chrono::Duration,
 }
 
@@ -123,43 +119,43 @@ impl<S> BroadcastMiddleware<S> {
         node_identity: Arc<NodeIdentity>,
         dht_requester: DhtRequester,
         dht_discovery_requester: DhtDiscoveryRequester,
-        target_network: Network,
         message_validity_window: chrono::Duration,
     ) -> Self {
         Self {
-            next: service,
+            next_service: service,
             dht_requester,
             dht_discovery_requester,
             node_identity,
-            target_network,
             message_validity_window,
         }
     }
 }
 
 impl<S> Service<DhtOutboundRequest> for BroadcastMiddleware<S>
-where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError> + Clone
+where
+    S: Service<DhtOutboundMessage, Response = (), Error = PipelineError> + Clone + Send + 'static,
+    S::Future: Send,
 {
     type Error = PipelineError;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
     type Response = ();
-
-    type Future = impl Future<Output = Result<(), Self::Error>>;
 
     fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
     }
 
     fn call(&mut self, msg: DhtOutboundRequest) -> Self::Future {
-        BroadcastTask::new(
-            self.next.clone(),
-            Arc::clone(&self.node_identity),
-            self.dht_requester.clone(),
-            self.dht_discovery_requester.clone(),
-            self.target_network,
-            msg,
-            self.message_validity_window,
+        Box::pin(
+            BroadcastTask::new(
+                self.next_service.clone(),
+                Arc::clone(&self.node_identity),
+                self.dht_requester.clone(),
+                self.dht_discovery_requester.clone(),
+                msg,
+                self.message_validity_window,
+            )
+            .handle(),
         )
-        .handle()
     }
 }
 
@@ -169,7 +165,6 @@ struct BroadcastTask<S> {
     dht_requester: DhtRequester,
     dht_discovery_requester: DhtDiscoveryRequester,
     request: Option<DhtOutboundRequest>,
-    target_network: Network,
     message_validity_window: chrono::Duration,
 }
 type FinalMessageParts = (Option<Arc<CommsPublicKey>>, Option<Bytes>, Bytes);
@@ -182,7 +177,6 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         node_identity: Arc<NodeIdentity>,
         dht_requester: DhtRequester,
         dht_discovery_requester: DhtDiscoveryRequester,
-        target_network: Network,
         request: DhtOutboundRequest,
         message_validity_window: chrono::Duration,
     ) -> Self {
@@ -191,7 +185,6 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             node_identity,
             dht_requester,
             dht_discovery_requester,
-            target_network,
             request: Some(request),
             message_validity_window,
         }
@@ -438,7 +431,6 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                     destination_node_id: node_id,
                     destination: destination.clone(),
                     dht_message_type,
-                    network: self.target_network,
                     dht_flags,
                     custom_header: custom_header.clone(),
                     body: body.clone(),
@@ -456,7 +448,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
     }
 
     async fn add_to_dedup_cache(&mut self, body: &[u8]) -> Result<bool, DhtOutboundError> {
-        let hash = Challenge::new().chain(&body).result().to_vec();
+        let hash = Challenge::new().chain(&body).finalize().to_vec();
         trace!(
             target: LOG_TARGET,
             "Dedup added message hash {} to cache for message",
@@ -523,7 +515,14 @@ mod test {
     use super::*;
     use crate::{
         outbound::SendMessageParams,
-        test_utils::{create_dht_actor_mock, create_dht_discovery_mock, make_peer, service_spy, DhtDiscoveryMockState},
+        test_utils::{
+            assert_send_static_service,
+            create_dht_actor_mock,
+            create_dht_discovery_mock,
+            make_peer,
+            service_spy,
+            DhtDiscoveryMockState,
+        },
     };
     use futures::channel::oneshot;
     use rand::rngs::OsRng;
@@ -542,7 +541,7 @@ mod test {
         let pk = CommsPublicKey::default();
         let example_peer = Peer::new(
             pk.clone(),
-            NodeId::from_key(&pk).unwrap(),
+            NodeId::from_key(&pk),
             vec!["/ip4/127.0.0.1/tcp/9999".parse::<Multiaddr>().unwrap()].into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
@@ -553,19 +552,16 @@ mod test {
         let other_peer = {
             let mut p = example_peer.clone();
             let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
-            p.node_id = NodeId::from_key(&pk).unwrap();
+            p.node_id = NodeId::from_key(&pk);
             p.public_key = pk;
             p
         };
 
-        let node_identity = Arc::new(
-            NodeIdentity::random(
-                &mut OsRng,
-                "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
-                PeerFeatures::COMMUNICATION_NODE,
-            )
-            .unwrap(),
-        );
+        let node_identity = Arc::new(NodeIdentity::random(
+            &mut OsRng,
+            "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
+            PeerFeatures::COMMUNICATION_NODE,
+        ));
 
         let (dht_requester, dht_mock) = create_dht_actor_mock(10);
         let (dht_discover_requester, _) = create_dht_discovery_mock(10, Duration::from_secs(10));
@@ -582,9 +578,9 @@ mod test {
             node_identity,
             dht_requester,
             dht_discover_requester,
-            Network::LocalTest,
             chrono::Duration::seconds(10800),
         );
+        assert_send_static_service(&service);
         let (reply_tx, _reply_rx) = oneshot::channel();
 
         service
@@ -613,9 +609,7 @@ mod test {
             &mut OsRng,
             "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
             PeerFeatures::COMMUNICATION_NODE,
-        )
-        .unwrap();
-
+        );
         let (dht_requester, dht_mock) = create_dht_actor_mock(10);
         task::spawn(dht_mock.run());
         let (dht_discover_requester, _) = create_dht_discovery_mock(10, Duration::from_secs(10));
@@ -626,7 +620,6 @@ mod test {
             Arc::new(node_identity),
             dht_requester,
             dht_discover_requester,
-            Network::LocalTest,
             chrono::Duration::seconds(10800),
         );
         let (reply_tx, reply_rx) = oneshot::channel();
@@ -657,9 +650,7 @@ mod test {
             &mut OsRng,
             "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
             PeerFeatures::COMMUNICATION_NODE,
-        )
-        .unwrap();
-
+        );
         let (dht_requester, dht_mock) = create_dht_actor_mock(10);
         task::spawn(dht_mock.run());
         let (dht_discover_requester, mut discovery_mock) = create_dht_discovery_mock(10, Duration::from_secs(10));
@@ -677,7 +668,6 @@ mod test {
             Arc::new(node_identity),
             dht_requester,
             dht_discover_requester,
-            Network::LocalTest,
             chrono::Duration::seconds(10800),
         );
         let (reply_tx, reply_rx) = oneshot::channel();

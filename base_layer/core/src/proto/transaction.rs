@@ -115,17 +115,16 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
             .try_into()
             .map_err(|err: ByteArrayError| err.to_string())?;
 
-        let script_offset_public_key =
-            PublicKey::from_bytes(input.script_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+        let sender_offset_public_key =
+            PublicKey::from_bytes(input.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
 
         Ok(Self {
             features,
             commitment,
             script: TariScript::from_bytes(input.script.as_slice()).map_err(|err| format!("{:?}", err))?,
             input_data: ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
-            height: input.height,
             script_signature,
-            script_offset_public_key,
+            sender_offset_public_key,
         })
     }
 }
@@ -137,9 +136,8 @@ impl From<TransactionInput> for proto::types::TransactionInput {
             commitment: Some(input.commitment.into()),
             script: input.script.as_bytes(),
             input_data: input.input_data.as_bytes(),
-            height: input.height,
             script_signature: Some(input.script_signature.into()),
-            script_offset_public_key: input.script_offset_public_key.as_bytes().to_vec(),
+            sender_offset_public_key: input.sender_offset_public_key.as_bytes().to_vec(),
         }
     }
 }
@@ -153,7 +151,7 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
         let features = output
             .features
             .map(TryInto::try_into)
-            .ok_or_else(|| "transaction output features not provided".to_string())??;
+            .ok_or_else(|| "Transaction output features not provided".to_string())??;
 
         let commitment = output
             .commitment
@@ -161,10 +159,16 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
             .ok_or_else(|| "Transaction output commitment not provided".to_string())?
             .map_err(|err| err.to_string())?;
 
-        let script_offset_public_key =
-            PublicKey::from_bytes(output.script_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+        let sender_offset_public_key =
+            PublicKey::from_bytes(output.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
 
         let script = TariScript::from_bytes(&output.script.to_vec()).map_err(|err| err.to_string())?;
+
+        let metadata_signature = output
+            .metadata_signature
+            .ok_or_else(|| "Metadata signature not provided".to_string())?
+            .try_into()
+            .map_err(|_| "Metadata signature could not be converted".to_string())?;
 
         let unique_id = if output.unique_id.is_empty() {
             None
@@ -182,7 +186,8 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
             commitment,
             proof: BulletRangeProof(output.range_proof),
             script,
-            script_offset_public_key,
+            sender_offset_public_key,
+            metadata_signature,
             unique_id,
             parent_public_key
         })
@@ -196,7 +201,8 @@ impl From<TransactionOutput> for proto::types::TransactionOutput {
             commitment: Some(output.commitment.into()),
             range_proof: output.proof.to_vec(),
             script: output.script.as_bytes(),
-            script_offset_public_key: output.script_offset_public_key.as_bytes().to_vec(),
+            sender_offset_public_key: output.sender_offset_public_key.as_bytes().to_vec(),
+            metadata_signature: Some(output.metadata_signature.into()),
             unique_id: output.unique_id.unwrap_or_default(),
             parent_public_key: output.parent_public_key.map(|pp| pp.as_bytes().to_vec()).unwrap_or_default()
         }

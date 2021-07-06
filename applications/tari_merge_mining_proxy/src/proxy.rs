@@ -26,10 +26,10 @@ use crate::{
     error::MmProxyError,
 };
 use bytes::Bytes;
-use hyper::{service::Service, Body, Method, Request, Response, StatusCode, Uri};
+use hyper::{header::HeaderValue, service::Service, Body, Method, Request, Response, StatusCode, Uri};
 use json::json;
 use jsonrpc::error::StandardError;
-use reqwest::{header, ResponseBuilderExt, Url};
+use reqwest::{ResponseBuilderExt, Url};
 use serde_json as json;
 use std::{
     cmp,
@@ -37,6 +37,7 @@ use std::{
     convert::TryFrom,
     future::Future,
     net::SocketAddr,
+    pin::Pin,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -45,7 +46,7 @@ use std::{
     time::Instant,
 };
 use tari_app_grpc::{tari_rpc as grpc, tari_rpc::GetCoinbaseRequest};
-use tari_common::{GlobalConfig, Network};
+use tari_common::{configuration::Network, GlobalConfig};
 use tari_core::{
     blocks::{Block, NewBlockTemplate},
     proof_of_work::monero_rx,
@@ -116,11 +117,11 @@ impl MergeMiningProxyService {
     }
 }
 
+#[allow(clippy::type_complexity)]
 impl Service<Request<Body>> for MergeMiningProxyService {
     type Error = hyper::Error;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
     type Response = Response<Body>;
-
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
@@ -128,7 +129,7 @@ impl Service<Request<Body>> for MergeMiningProxyService {
 
     fn call(&mut self, req: Request<Body>) -> Self::Future {
         let inner = self.inner.clone();
-        async move {
+        let future = async move {
             match inner.handle(req).await {
                 Ok(resp) => Ok(resp),
                 Err(err) => {
@@ -145,7 +146,9 @@ impl Service<Request<Body>> for MergeMiningProxyService {
                     .expect("unexpected failure"))
                 },
             }
-        }
+        };
+
+        Box::pin(future)
     }
 }
 
@@ -642,19 +645,24 @@ impl InnerService {
     ) -> Result<(Request<Bytes>, Response<json::Value>), MmProxyError> {
         let monerod_uri = self.get_fully_qualified_monerod_url(request.uri())?;
 
+        let mut headers = request.headers().clone();
+        // Some public monerod setups (e.g. those that are reverse proxied by nginx) require the Host header.
+        // The mmproxy is the direct client of monerod and so is responsible for setting this header.
+        if let Some(host) = monerod_uri.host_str() {
+            let host: HeaderValue = match monerod_uri.port_or_known_default() {
+                Some(port) => format!("{}:{}", host, port).parse()?,
+                None => host.parse()?,
+            };
+            headers.insert("host", host);
+            debug!(
+                target: LOG_TARGET,
+                "Host header updated to match monerod_uri. Request headers: {:?}", headers
+            );
+        }
         let mut builder = self
             .http_client
             .request(request.method().clone(), monerod_uri.clone())
-            .headers(request.headers().clone());
-
-        // Some public monerod setups (e.g. those that are reverse proxied by nginx) require the Host header.
-        // The mmproxy is the direct client of monerod and so is responsible for setting this header.
-        if let Some(mut host) = monerod_uri.host_str().map(ToString::to_string) {
-            if let Some(port) = monerod_uri.port_or_known_default() {
-                host.push_str(&format!(":{}", port));
-            }
-            builder = builder.header(header::HOST, host);
-        }
+            .headers(headers);
 
         if self.config.monerod_use_auth {
             // Use HTTP basic auth. This is the only reason we are using `reqwest` over the standard hyper client.

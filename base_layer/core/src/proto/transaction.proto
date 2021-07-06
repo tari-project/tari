@@ -38,12 +38,10 @@ message TransactionInput {
     bytes script = 3;
     // The script input data, if any
     bytes input_data = 4;
-    // The block height that the UTXO was mined
-    uint64 height = 5;
     // A signature with k_s, signing the script, input data, and mined height
-    Signature script_signature = 6;
+    ComSignature script_signature = 6;
     // The offset pubkey, K_O
-    bytes script_offset_public_key = 7;
+    bytes sender_offset_public_key = 7;
 }
 
 // Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
@@ -59,11 +57,13 @@ message TransactionOutput {
     // Tari script serialised script
     bytes script = 4;
     // Tari script offset pubkey, K_O
-    bytes script_offset_public_key = 5;
+    bytes sender_offset_public_key = 5;
+    // UTXO signature with the script offset private key, k_O
+    ComSignature metadata_signature = 6;
     // A unique id field that can be used to ensure there is only one of a specific NFT or token in the Unspent set at a time
-    bytes unique_id = 6;
+    bytes unique_id = 7;
 
-    bytes parent_public_key = 7;
+    bytes parent_public_key = 8;
 }
 
 // Options for UTXO's

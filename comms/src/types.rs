@@ -28,10 +28,6 @@ use tari_storage::HashmapDatabase;
 #[cfg(not(test))]
 use tari_storage::LMDBWrapper;
 
-/// The default port that control services listen on
-pub const DEFAULT_CONTROL_PORT_ADDRESS: &str = "/ip4/0.0.0.0/tcp/7899";
-pub const DEFAULT_LISTENER_ADDRESS: &str = "/ip4/0.0.0.0/tcp/7898";
-
 /// Specify the digest type for the signature challenges
 pub type Challenge = Blake256;
 

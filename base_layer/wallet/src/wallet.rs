@@ -60,11 +60,11 @@ use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{OutputFeatures, UnblindedOutput},
-    types::{CryptoFactories, PrivateKey, PublicKey},
+    types::{ComSignature, CryptoFactories, PrivateKey, PublicKey},
 };
 use tari_crypto::{
     common::Blake256,
-    keys::{PublicKey as sk, SecretKey},
+    keys::SecretKey,
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
     script,
     script::{ExecutionStack, TariScript},
@@ -139,7 +139,7 @@ where
             comms_secret_key,
             config.comms_config.node_identity.public_address(),
             config.comms_config.node_identity.features(),
-        )?);
+        ));
 
         let mut comms_config = config.comms_config.clone();
         comms_config.node_identity = node_identity.clone();
@@ -263,7 +263,7 @@ where
         self.comms.clone().wait_until_shutdown().await;
     }
 
-    /// This function will set the base_node that the wallet uses to broadcast transactions, monitor outputs, and
+    /// This function will set the base node that the wallet uses to broadcast transactions, monitor outputs, and
     /// monitor the base node state.
     pub async fn set_base_node_peer(
         &mut self,
@@ -278,7 +278,7 @@ where
         let address = net_address.parse::<Multiaddr>()?;
         let peer = Peer::new(
             public_key.clone(),
-            NodeId::from_key(&public_key).unwrap(),
+            NodeId::from_key(&public_key),
             vec![address].into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
@@ -309,6 +309,13 @@ where
         Ok(())
     }
 
+    pub async fn get_base_node_peer(&mut self) -> Result<Option<Peer>, WalletError> {
+        self.base_node_service
+            .get_base_node_peer()
+            .await
+            .map_err(WalletError::BaseNodeServiceError)
+    }
+
     /// Import an external spendable UTXO into the wallet. The output will be added to the Output Manager and made
     /// spendable. A faux incoming transaction will be created to provide a record of the event. The TxId of the
     /// generated transaction is returned.
@@ -322,6 +329,9 @@ where
         source_public_key: &CommsPublicKey,
         features: OutputFeatures,
         message: String,
+        metadata_signature: ComSignature,
+        script_private_key: &PrivateKey,
+        sender_offset_public_key: &PublicKey,
     ) -> Result<TxId, WalletError> {
         let unblinded_output = UnblindedOutput::new(
             amount,
@@ -329,9 +339,9 @@ where
             Some(features.clone()),
             script,
             input_data,
-            0,
-            spending_key.clone(),
-            PublicKey::from_secret_key(&spending_key),
+            script_private_key.clone(),
+            sender_offset_public_key.clone(),
+            metadata_signature,
         // TODO: Allow importing of unique ids
         None,
             None
@@ -448,7 +458,7 @@ where
     /// in which case this will fail.
     pub async fn apply_encryption(&mut self, passphrase: String) -> Result<(), WalletError> {
         debug!(target: LOG_TARGET, "Applying wallet encryption.");
-        let passphrase_hash = Blake256::new().chain(passphrase.as_bytes()).result().to_vec();
+        let passphrase_hash = Blake256::new().chain(passphrase.as_bytes()).finalize();
         let key = GenericArray::from_slice(passphrase_hash.as_slice());
         let cipher = Aes256Gcm::new(key);
 
@@ -470,12 +480,8 @@ where
     /// Utility function to find out if there is data in the database indicating that there is an incomplete recovery
     /// process in progress
     pub async fn is_recovery_in_progress(&self) -> Result<bool, WalletError> {
-        use crate::utxo_scanner_service::utxo_scanning::RECOVERY_HEIGHT_KEY;
-        Ok(self
-            .db
-            .get_client_key_value(RECOVERY_HEIGHT_KEY.to_string())
-            .await?
-            .is_some())
+        use crate::utxo_scanner_service::utxo_scanning::RECOVERY_KEY;
+        Ok(self.db.get_client_key_value(RECOVERY_KEY.to_string()).await?.is_some())
     }
 }
 

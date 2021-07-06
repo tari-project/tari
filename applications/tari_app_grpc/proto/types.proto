@@ -44,23 +44,25 @@ message BlockHeader {
     // This is the UTXO merkle root of the outputs
     // This is calculated as Hash (txo MMR root  || roaring bitmap hash of UTXO indices)
     bytes output_mr = 6;
-    // This is the MMR root of the range proofs
-    bytes range_proof_mr = 7;
+    // This is the MMR root of the the output witness data
+    bytes witness_mr = 7;
     // This is the MMR root of the kernels
     bytes kernel_mr = 8;
+    // This is the Merkle root of the inputs in this block
+    bytes input_mr = 9;
     // Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
     // block from the total kernel offset of the previous block header.
-    bytes total_kernel_offset = 9;
+    bytes total_kernel_offset = 10;
     // Nonce increment used to mine this block.
-    uint64 nonce = 10;
+    uint64 nonce = 11;
     // Proof of work metadata
-    ProofOfWork pow = 11;
+    ProofOfWork pow = 12;
     // Kernel MMR size
-    uint64 kernel_mmr_size = 12;
+    uint64 kernel_mmr_size = 13;
     // Output MMR size
-    uint64 output_mmr_size = 13;
+    uint64 output_mmr_size = 14;
     // Sum of script offsets for all kernels in this block.
-    bytes total_script_offset = 14;
+    bytes total_script_offset = 15;
 }
 
 // Metadata required for validating the Proof of Work calculation
@@ -69,7 +71,7 @@ message ProofOfWork {
     // 1 = Blake
     uint64 pow_algo = 1;
 //    uint64 accumulated_monero_difficulty = 2;
-//    uint64 accumulated_blake_difficulty = 3;
+//    uint64 accumulated_sha_difficulty = 3;
     bytes pow_data = 4;
    // uint64 target_difficulty = 5;
 }
@@ -78,8 +80,7 @@ message ProofOfWork {
 message PowAlgo {
     enum PowAlgos {
         POW_ALGOS_MONERO = 0;
-        POW_ALGOS_BLAKE = 1;
-        POW_ALGOS_SHA3 = 2;
+        POW_ALGOS_SHA3 = 1;
     }
     PowAlgos pow_algo = 1;
 }
@@ -102,7 +103,7 @@ message HistoricalBlock {
 }
 
 
-// The NewBlockHeaderTemplate is used for the construction of a new mineable block. It contains all the metadata for the block that the Base Node is able to complete on behalf of a Miner.
+// The NewBlockHeaderTemplate is used for the construction of a new mine-able block. It contains all the metadata for the block that the Base Node is able to complete on behalf of a Miner.
 message NewBlockHeaderTemplate {
     // Version of the block
     uint32 version = 1;
@@ -164,12 +165,10 @@ message TransactionInput {
     bytes script = 4;
     // The script input data, if any
     bytes input_data = 5;
-    // The block height that the UTXO was mined
-    uint64 height = 6;
     // A signature with k_s, signing the script, input data, and mined height
-    Signature script_signature = 7;
-    // The offset pubkey, K_O
-    bytes script_offset_public_key = 8;
+    ComSignature script_signature = 7;
+    // The offset public key, K_O
+    bytes sender_offset_public_key = 8;
 }
 
 // Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
@@ -186,12 +185,16 @@ message TransactionOutput {
     bytes hash = 4;
     // Tari script serialised script
     bytes script = 5;
+    // Tari script offset public key, K_O
+    bytes sender_offset_public_key = 6;
+    // Metadata signature with the homomorphic commitment private values (amount and blinding factor) and the sender
+    // offset private key
+    ComSignature metadata_signature = 7;
     // Tari script offset pubkey, K_O
-    bytes script_offset_public_key = 6;
 
     // Unique id, e.g. for NFTs
-    bytes unique_id = 7;
-    bytes parent_public_key = 8;
+    bytes unique_id = 8;
+    bytes parent_public_key = 9;
 }
 
 // Options for UTXO's
@@ -242,6 +245,14 @@ message Transaction {
 message Signature {
     bytes public_nonce = 1;
     bytes signature = 2;
+}
+
+// Define the explicit ComSignature implementation for the Tari base layer. A different signature scheme can be
+// employed by redefining this type.
+message ComSignature {
+    bytes public_nonce_commitment = 1;
+    bytes signature_u = 2;
+    bytes signature_v = 3;
 }
 
 /// Consensus Constants response
@@ -315,13 +326,21 @@ message Peer{
 }
 
 message UnblindedOutput {
+    // Value of the output
     uint64 value = 1;
+    // Spending key of the output
     bytes spending_key = 2;
+    // Options for an output's structure or use
     OutputFeatures features = 3;
+    // Tari script serialised script
     bytes script = 4;
+    // Tari script input data for spending
     bytes input_data = 5;
-    uint64 height = 6;
+    // Tari script private key
     bytes script_private_key = 7;
-    bytes script_offset_public_key = 8;
-    bytes unique_id = 9;
+    // Tari script offset pubkey, K_O
+    bytes sender_offset_public_key = 8;
+    // UTXO signature with the script offset private key, k_O
+    ComSignature metadata_signature = 9;
+    bytes unique_id = 10;
 }

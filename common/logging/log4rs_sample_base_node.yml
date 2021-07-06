@@ -138,6 +138,12 @@ loggers:
     appenders:
       - other
     additive: false
+  # Route PGP log events
+  pgp:
+      level: warn
+      appenders:
+        - other
+      additive: false
   # Route log events sent to the "tari_mm_proxy" logger to the "base_layer" appender
   tari_mm_proxy:
     level: info

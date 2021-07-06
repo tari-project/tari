@@ -139,7 +139,7 @@ pub fn check_pow_data<B: BlockchainBackend>(
 
             Ok(())
         },
-        Blake | Sha3 => {
+        Sha3 => {
             if !block_header.pow.pow_data.is_empty() {
                 return Err(ValidationError::CustomError(
                     "Proof of work data must be empty for Sha3 blocks".to_string(),
@@ -157,7 +157,6 @@ pub fn check_target_difficulty(
 ) -> Result<AchievedTargetDifficulty, ValidationError> {
     let achieved = match block_header.pow_algo() {
         PowAlgorithm::Monero => monero_difficulty(block_header, randomx_factory)?,
-        PowAlgorithm::Blake => unimplemented!(),
         PowAlgorithm::Sha3 => sha3_difficulty(block_header),
     };
 

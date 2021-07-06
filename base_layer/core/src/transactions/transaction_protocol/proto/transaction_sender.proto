@@ -1,6 +1,8 @@
 syntax = "proto3";
 
 import "transaction_metadata.proto";
+import "types.proto";
+import "transaction.proto";
 
 package tari.transaction_protocol;
 
@@ -20,9 +22,13 @@ message SingleRoundSenderData {
     // Tari script serialised script
     bytes script = 7;
     // Tari script offset pubkey, K_O
-    bytes script_offset_public_key = 8;
+    bytes sender_offset_public_key = 8;
+    // The sender's portion of the public commitment nonce
+    bytes public_commitment_nonce = 9;
+    // Output features
+    tari.types.OutputFeatures features = 10;
     // Unique id for NFTs
-    bytes unique_id = 9;
+    bytes unique_id = 11;
 }
 
 message TransactionSenderMessage {

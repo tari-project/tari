@@ -39,15 +39,21 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
         let features = output
             .features
             .map(TryInto::try_into)
-            .ok_or_else(|| "transaction output features not provided".to_string())??;
+            .ok_or_else(|| "Transaction output features not provided".to_string())??;
 
         let commitment = Commitment::from_bytes(&output.commitment)
             .map_err(|err| format!("Invalid output commitment: {}", err.to_string()))?;
-        let script_offset_public_key = PublicKey::from_bytes(output.script_offset_public_key.as_bytes())
-            .map_err(|err| format!("script_offset_public_key {:?}", err))?;
+        let sender_offset_public_key = PublicKey::from_bytes(output.sender_offset_public_key.as_bytes())
+            .map_err(|err| format!("Invalid sender_offset_public_key {:?}", err))?;
 
         let script = TariScript::from_bytes(output.script.as_slice())
             .map_err(|err| format!("Script deserialization: {:?}", err))?;
+
+        let metadata_signature = output
+            .metadata_signature
+            .ok_or_else(|| "Metadata signature not provided".to_string())?
+            .try_into()
+            .map_err(|_| "Metadata signature could not be converted".to_string())?;
 
         let unique_id = if output.unique_id.is_empty()  { None} else { Some(output.unique_id.clone())};
 
@@ -64,7 +70,8 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
             commitment,
             proof: BulletRangeProof(output.range_proof),
             script,
-            script_offset_public_key,
+            sender_offset_public_key,
+            metadata_signature,
             parent_public_key
         })
     }
@@ -79,7 +86,12 @@ impl From<TransactionOutput> for grpc::TransactionOutput {
             commitment: Vec::from(output.commitment.as_bytes()),
             range_proof: Vec::from(output.proof.as_bytes()),
             script: output.script.as_bytes(),
-            script_offset_public_key: output.script_offset_public_key.as_bytes().to_vec(),
+            sender_offset_public_key: output.sender_offset_public_key.as_bytes().to_vec(),
+            metadata_signature: Some(grpc::ComSignature {
+                public_nonce_commitment: Vec::from(output.metadata_signature.public_nonce().as_bytes()),
+                signature_u: Vec::from(output.metadata_signature.u().as_bytes()),
+                signature_v: Vec::from(output.metadata_signature.v().as_bytes()),
+            }),
             unique_id: output.unique_id.unwrap_or_default(),
             parent_public_key: output.parent_public_key.map(|b| b.to_vec()).unwrap_or_default()
         }

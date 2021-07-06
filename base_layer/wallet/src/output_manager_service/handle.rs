@@ -54,6 +54,7 @@ pub enum OutputManagerRequest {
     GetBalance,
     AddOutput(Box<UnblindedOutput>),
     AddOutputWithTxId((TxId, Box<UnblindedOutput>)),
+    UpdateOutputMetadataSignature(Box<TransactionOutput>),
     GetRecipientTransaction(TransactionSenderMessage),
     GetCoinbaseTransaction((TxId, MicroTari, MicroTari, u64)),
     ConfirmPendingTransaction(TxId),
@@ -75,9 +76,8 @@ pub enum OutputManagerRequest {
     RemoveEncryption,
     GetPublicRewindKeys,
     FeeEstimate((MicroTari, MicroTari, u64, u64)),
-    ScanForRecoverableOutputs(Vec<TransactionOutput>, u64),
-    ScanOutputs(Vec<TransactionOutput>, u64),
-    UpdateMinedHeight(TxId, u64),
+    ScanForRecoverableOutputs(Vec<TransactionOutput>),
+    ScanOutputs(Vec<TransactionOutput>),
     AddKnownOneSidedPaymentScript(KnownOneSidedPaymentScript),
     CreateOutputWithFeatures { value: MicroTari, features: Box<OutputFeatures>, unique_id: Option<Vec<u8>>, parent_public_key: Box<Option<PublicKey>>},
 
@@ -90,6 +90,7 @@ impl fmt::Display for OutputManagerRequest {
             GetBalance => write!(f, "GetBalance"),
             AddOutput(v) => write!(f, "AddOutput ({})", v.value),
             AddOutputWithTxId((t, v)) => write!(f, "AddOutputWithTxId ({}: {})", t, v.value),
+            UpdateOutputMetadataSignature(v) => write!(f, "UpdateOutputMetadataSignature ({:?})", v.metadata_signature),
             GetRecipientTransaction(_) => write!(f, "GetRecipientTransaction"),
             ConfirmTransaction(v) => write!(f, "ConfirmTransaction ({})", v.0),
             ConfirmPendingTransaction(v) => write!(f, "ConfirmPendingTransaction ({})", v),
@@ -110,9 +111,8 @@ impl fmt::Display for OutputManagerRequest {
             GetCoinbaseTransaction(_) => write!(f, "GetCoinbaseTransaction"),
             GetPublicRewindKeys => write!(f, "GetPublicRewindKeys"),
             FeeEstimate(_) => write!(f, "FeeEstimate"),
-            ScanForRecoverableOutputs(_, _) => write!(f, "ScanForRecoverableOutputs"),
-            ScanOutputs(_, _) => write!(f, "ScanRewindAndImportOutputs"),
-            UpdateMinedHeight(_, _) => write!(f, "UpdateMinedHeight"),
+            ScanForRecoverableOutputs(_) => write!(f, "ScanForRecoverableOutputs"),
+            ScanOutputs(_) => write!(f, "ScanRewindAndImportOutputs"),
             AddKnownOneSidedPaymentScript(_) => write!(f, "AddKnownOneSidedPaymentScript"),
             CreateOutputWithFeatures { value, features, unique_id, parent_public_key } => write!(f, "CreateOutputWithFeatures({}, {}, {:?}, {:?})", value, features.to_string(), unique_id, parent_public_key),
             CreatePayToSelfWithOutputs { .. } => write!(f, "CreatePayToSelfWithOutputs" )
@@ -125,6 +125,7 @@ impl fmt::Display for OutputManagerRequest {
 pub enum OutputManagerResponse {
     Balance(Balance),
     OutputAdded,
+    OutputMetadataSignatureUpdated,
     RecipientTransactionGenerated(ReceiverTransactionProtocol),
     CoinbaseTransaction(Transaction),
     OutputConfirmed,
@@ -148,7 +149,6 @@ pub enum OutputManagerResponse {
     FeeEstimate(MicroTari),
     RewoundOutputs(Vec<UnblindedOutput>),
     ScanOutputs(Vec<UnblindedOutput>),
-    MinedHeightUpdated,
     AddKnownOneSidedPaymentScript,
     CreateOutputWithFeatures{ output: Box<UnblindedOutput>},
     CreatePayToSelfWithOutputs { transaction: Box<Transaction>, tx_id: TxId }
@@ -238,6 +238,20 @@ impl OutputManagerHandle {
         match self.handle.call(OutputManagerRequest::CreateOutputWithFeatures{ value, features: Box::new(features), unique_id, parent_public_key: Box::new(parent_public_key)}).await?? {
             OutputManagerResponse::CreateOutputWithFeatures{ output} => Ok(*output),
             _ => Err(OutputManagerError::UnexpectedApiResponse)
+        }
+    }
+
+    pub async fn update_output_metadata_signature(
+        &mut self,
+        output: TransactionOutput,
+    ) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::UpdateOutputMetadataSignature(Box::new(output)))
+            .await??
+        {
+            OutputManagerResponse::OutputMetadataSignatureUpdated => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
 
@@ -503,11 +517,10 @@ impl OutputManagerHandle {
     pub async fn scan_for_recoverable_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
-        height: u64,
     ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::ScanForRecoverableOutputs(outputs, height))
+            .call(OutputManagerRequest::ScanForRecoverableOutputs(outputs))
             .await??
         {
             OutputManagerResponse::RewoundOutputs(outputs) => Ok(outputs),
@@ -518,13 +531,8 @@ impl OutputManagerHandle {
     pub async fn scan_outputs_for_one_sided_payments(
         &mut self,
         outputs: Vec<TransactionOutput>,
-        height: u64,
     ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::ScanOutputs(outputs, height))
-            .await??
-        {
+        match self.handle.call(OutputManagerRequest::ScanOutputs(outputs)).await?? {
             OutputManagerResponse::ScanOutputs(outputs) => Ok(outputs),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
@@ -567,17 +575,6 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::PayToSelfTransaction(outputs) => Ok(outputs),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn update_mined_height(&mut self, tx_id: TxId, height: u64) -> Result<(), OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::UpdateMinedHeight(tx_id, height))
-            .await??
-        {
-            OutputManagerResponse::MinedHeightUpdated => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

@@ -34,11 +34,7 @@ use tari_core::transactions::{
     transaction::{TransactionOutput, UnblindedOutput},
     types::{CryptoFactories, PublicKey},
 };
-use tari_crypto::{
-    inputs,
-    keys::PublicKey as PublicKeyTrait,
-    tari_utilities::{hex::Hex, },
-};
+use tari_crypto::{inputs, keys::PublicKey as PublicKeyTrait, tari_utilities::hex::Hex};
 
 const LOG_TARGET: &str = "wallet::output_manager_service::recovery";
 
@@ -68,7 +64,6 @@ where TBackend: OutputManagerBackend + 'static
     pub async fn scan_and_recover_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
-        height: u64,
     ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         let mut rewound_outputs: Vec<UnblindedOutput> = outputs
             .into_iter()
@@ -80,22 +75,30 @@ where TBackend: OutputManagerBackend + 'static
                         &self.master_key_manager.rewind_data().rewind_blinding_key,
                     )
                     .ok()
-                    .map(|v| (v, output.features, output.script, output.script_offset_public_key, output.unique_id, output.parent_public_key))
+                    .map(|v| {
+                        (
+                            v,
+                            output.features,
+                            output.script,
+                            output.sender_offset_public_key,
+                            output.metadata_signature,
+                        )
+                    })
             })
-            .map(|(output, features, script, script_offset_public_key, unique_id, parent_public_key)| {
-                UnblindedOutput::new(
-                    output.committed_value,
-                    output.blinding_factor.clone(),
-                    Some(features),
-                    script,
-                    inputs!(PublicKey::from_secret_key(&output.blinding_factor)),
-                    height,
-                    output.blinding_factor,
-                    script_offset_public_key,
-                    unique_id,
-                    parent_public_key
-                )
-            })
+            .map(
+                |(output, features, script, sender_offset_public_key, metadata_signature)| {
+                    UnblindedOutput::new(
+                        output.committed_value,
+                        output.blinding_factor.clone(),
+                        Some(features),
+                        script,
+                        inputs!(PublicKey::from_secret_key(&output.blinding_factor)),
+                        output.blinding_factor,
+                        sender_offset_public_key,
+                        metadata_signature,
+                    )
+                },
+            )
             .collect();
 
         for output in rewound_outputs.iter_mut() {

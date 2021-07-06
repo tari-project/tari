@@ -28,13 +28,13 @@ use crate::{
         MempoolServiceConfig,
     },
 };
-use futures::{channel::mpsc, future};
+use futures::channel::mpsc;
 use tari_comms::{
     connectivity::ConnectivityRequester,
     protocol::{ProtocolExtension, ProtocolExtensionContext, ProtocolExtensionError, ProtocolNotification},
     Substream,
 };
-use tari_service_framework::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 
 pub struct MempoolSyncInitializer {
     config: MempoolServiceConfig,
@@ -63,10 +63,9 @@ impl MempoolSyncInitializer {
     }
 }
 
+#[async_trait]
 impl ServiceInitializer for MempoolSyncInitializer {
-    type Future = future::Ready<Result<(), ServiceInitializationError>>;
-
-    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+    async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let config = self.config;
         let mempool = self.mempool.clone();
         let notif_rx = self.notif_rx.take().unwrap();
@@ -84,6 +83,6 @@ impl ServiceInitializer for MempoolSyncInitializer {
             .run()
         });
 
-        future::ready(Ok(()))
+        Ok(())
     }
 }

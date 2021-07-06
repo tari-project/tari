@@ -1715,8 +1715,9 @@ mod test {
     use rand::rngs::OsRng;
     use std::convert::TryFrom;
     use tari_core::transactions::{
+        helpers::{create_unblinded_output, TestParams},
         tari_amount::MicroTari,
-        transaction::{OutputFeatures, Transaction, UnblindedOutput},
+        transaction::{OutputFeatures, Transaction},
         transaction_protocol::sender::TransactionSenderMessage,
         types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
         ReceiverTransactionProtocol,
@@ -1746,17 +1747,14 @@ mod test {
         conn.execute("PRAGMA foreign_keys = ON").unwrap();
 
         let mut builder = SenderTransactionProtocol::builder(1);
-        let amount = MicroTari::from(10_000);
-        let input = UnblindedOutput::new(
-            MicroTari::from(100_000),
-            PrivateKey::random(&mut OsRng),
-            None,
+        let test_params = TestParams::new();
+        let input = create_unblinded_output(
             TariScript::default(),
-            ExecutionStack::default(),
-            0,
-            PrivateKey::default(),
-            PublicKey::default(),
+            OutputFeatures::default(),
+            test_params,
+            MicroTari::from(100_000),
         );
+        let amount = MicroTari::from(10_000);
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroTari::from(177))
@@ -1771,7 +1769,13 @@ mod test {
                 input,
             )
             .with_change_secret(PrivateKey::random(&mut OsRng))
-            .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng))
+            .with_recipient_data(
+                0,
+                script!(Nop),
+                PrivateKey::random(&mut OsRng),
+                Default::default(),
+                PrivateKey::random(&mut OsRng),
+            )
             .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
         let mut stp = builder.build::<HashDigest>(&factories).unwrap();

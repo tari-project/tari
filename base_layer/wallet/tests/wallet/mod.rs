@@ -20,10 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{
-    comms_and_services::get_next_memory_address,
-    utils::{make_input, random_string},
-};
+use crate::support::{comms_and_services::get_next_memory_address, utils::make_input};
 use tari_core::transactions::transaction::OutputFeatures;
 
 use aes_gcm::{
@@ -41,25 +38,22 @@ use tari_comms::{
     types::{CommsPublicKey, CommsSecretKey},
 };
 use tari_comms_dht::DhtConfig;
-use tari_core::{
-    consensus::Network,
-    transactions::{
-        tari_amount::{uT, MicroTari},
-        transaction::UnblindedOutput,
-        types::{CryptoFactories, PrivateKey, PublicKey},
-    },
+use tari_core::transactions::{
+    helpers::{create_unblinded_output, TestParams},
+    tari_amount::{uT, MicroTari},
+    types::{CryptoFactories, PrivateKey, PublicKey},
 };
 use tari_crypto::{
     common::Blake256,
     inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
-    ristretto::RistrettoPublicKey,
     script,
 };
-use tari_p2p::{initialization::CommsConfig, transport::TransportType, DEFAULT_DNS_SEED_RESOLVER};
+use tari_p2p::{initialization::CommsConfig, transport::TransportType, Network, DEFAULT_DNS_NAME_SERVER};
 use tari_shutdown::{Shutdown, ShutdownSignal};
+use tari_test_utils::random;
 use tari_wallet::{
-    contacts_service::storage::{database::Contact, memory_db::ContactsServiceMemoryDatabase},
+    contacts_service::storage::database::Contact,
     error::{WalletError, WalletStorageError},
     storage::{
         database::{DbKeyValuePair, WalletBackend, WalletDatabase, WriteOperation},
@@ -82,7 +76,7 @@ use tokio::{runtime::Runtime, time::delay_for};
 fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
     Peer::new(
         public_key.clone(),
-        NodeId::from_key(&public_key).unwrap(),
+        NodeId::from_key(&public_key),
         net_address.into(),
         PeerFlags::empty(),
         PeerFeatures::COMMUNICATION_NODE,
@@ -99,15 +93,16 @@ async fn create_wallet(
     passphrase: Option<String>,
     recovery_master_key: Option<CommsSecretKey>,
 ) -> Result<WalletSqlite, WalletError> {
-    let node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+    const NETWORK: Network = Network::Weatherwax;
+    let node_identity = NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     let comms_config = CommsConfig {
+        network: NETWORK,
         node_identity: Arc::new(node_identity.clone()),
         transport_type: TransportType::Memory {
             listener_address: node_identity.public_address(),
         },
         datastore_path: data_path.to_path_buf(),
-        peer_database_name: random_string(8),
+        peer_database_name: random::string(8),
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
         dht: DhtConfig {
@@ -120,7 +115,7 @@ async fn create_wallet(
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
         user_agent: "tari/test-wallet".to_string(),
-        dns_seeds_name_server: DEFAULT_DNS_SEED_RESOLVER.parse().unwrap(),
+        dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
         peer_seeds: Default::default(),
         dns_seeds: Default::default(),
         dns_seeds_use_dnssec: false,
@@ -145,7 +140,7 @@ async fn create_wallet(
         factories,
         Some(transaction_service_config),
         None,
-        Network::Weatherwax,
+        NETWORK.into(),
         None,
         None,
         None,
@@ -177,7 +172,7 @@ async fn test_wallet() {
     let factories = CryptoFactories::default();
 
     let base_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
 
     let mut alice_wallet = create_wallet(
         &alice_db_tempdir.path(),
@@ -269,7 +264,7 @@ async fn test_wallet() {
         let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
 
         contacts.push(Contact {
-            alias: random_string(8),
+            alias: random::string(8),
             public_key,
         });
 
@@ -314,8 +309,7 @@ async fn test_wallet() {
 
     let passphrase_hash = Blake256::new()
         .chain("wrong passphrase".to_string().as_bytes())
-        .result()
-        .to_vec();
+        .finalize();
     let key = GenericArray::from_slice(passphrase_hash.as_slice());
     let cipher = Aes256Gcm::new(key);
     let result = WalletSqliteDatabase::new(connection.clone(), Some(cipher));
@@ -328,8 +322,7 @@ async fn test_wallet() {
 
     let passphrase_hash = Blake256::new()
         .chain("It's turtles all the way down".to_string().as_bytes())
-        .result()
-        .to_vec();
+        .finalize();
     let key = GenericArray::from_slice(passphrase_hash.as_slice());
     let cipher = Aes256Gcm::new(key);
     let db = WalletSqliteDatabase::new(connection, Some(cipher)).expect("Should be able to instantiate db with cipher");
@@ -667,24 +660,23 @@ async fn test_import_utxo() {
         &mut OsRng,
         "/ip4/127.0.0.1/tcp/24521".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
+    );
     let base_node_identity = NodeIdentity::random(
         &mut OsRng,
         "/ip4/127.0.0.1/tcp/24522".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
+    );
     let temp_dir = tempdir().unwrap();
-    let (wallet_backend, tx_backend, oms_backend, _temp_dir) = make_wallet_databases(None);
+    let (wallet_backend, tx_backend, oms_backend, contacts_backend, _temp_dir) = make_wallet_databases(None);
     let comms_config = CommsConfig {
+        network: Network::Weatherwax,
         node_identity: Arc::new(alice_identity.clone()),
         transport_type: TransportType::Tcp {
             listener_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             tor_socks_config: None,
         },
         datastore_path: temp_dir.path().to_path_buf(),
-        peer_database_name: random_string(8),
+        peer_database_name: random::string(8),
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
         dht: Default::default(),
@@ -692,7 +684,7 @@ async fn test_import_utxo() {
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
         user_agent: "tari/test-wallet".to_string(),
-        dns_seeds_name_server: DEFAULT_DNS_SEED_RESOLVER.parse().unwrap(),
+        dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
         peer_seeds: Default::default(),
         dns_seeds: Default::default(),
         dns_seeds_use_dnssec: false,
@@ -702,7 +694,7 @@ async fn test_import_utxo() {
         factories.clone(),
         None,
         None,
-        Network::Weatherwax,
+        Network::Weatherwax.into(),
         None,
         None,
         None,
@@ -713,7 +705,7 @@ async fn test_import_utxo() {
         WalletDatabase::new(wallet_backend),
         tx_backend,
         oms_backend,
-        ContactsServiceMemoryDatabase::new(),
+        contacts_backend,
         shutdown.to_signal(),
         None,
     )
@@ -725,16 +717,8 @@ async fn test_import_utxo() {
     let input = inputs!(claim);
     let features = OutputFeatures::create_coinbase(50);
 
-    let utxo = UnblindedOutput::new(
-        20000 * uT,
-        PrivateKey::random(&mut OsRng),
-        Some(features.clone()),
-        script.clone(),
-        input.clone(),
-        0,
-        key,
-        RistrettoPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-    );
+    let p = TestParams::new();
+    let utxo = create_unblinded_output(script.clone(), features.clone(), p.clone(), 20000 * uT);
 
     let tx_id = alice_wallet
         .import_utxo(
@@ -745,6 +729,9 @@ async fn test_import_utxo() {
             base_node_identity.public_key(),
             features,
             "Testing".to_string(),
+            utxo.metadata_signature.clone(),
+            &p.script_private_key,
+            &p.sender_offset_public_key,
         )
         .await
         .unwrap();
@@ -769,26 +756,23 @@ async fn test_import_utxo() {
 #[cfg(feature = "test_harness")]
 #[tokio_macros::test]
 async fn test_data_generation() {
-    use tari_comms_dht::envelope::Network as DhtNetwork;
-
     let mut shutdown = Shutdown::new();
     use tari_wallet::testnet_utils::generate_wallet_test_data;
     let factories = CryptoFactories::default();
-    let node_id =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+    let node_id = NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     let temp_dir = tempdir().unwrap();
     let comms_config = CommsConfig {
+        network: Network::Weatherwax,
         node_identity: Arc::new(node_id.clone()),
         transport_type: TransportType::Memory {
             listener_address: node_id.public_address(),
         },
         datastore_path: temp_dir.path().to_path_buf(),
-        peer_database_name: random_string(8),
+        peer_database_name: random::string(8),
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
         dht: DhtConfig {
             discovery_request_timeout: Duration::from_millis(500),
-            network: DhtNetwork::Weatherwax,
             allow_test_addresses: true,
             ..Default::default()
         },
@@ -796,7 +780,7 @@ async fn test_data_generation() {
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
         user_agent: "tari/test-wallet".to_string(),
-        dns_seeds_name_server: DEFAULT_DNS_SEED_RESOLVER.parse().unwrap(),
+        dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
         peer_seeds: Default::default(),
         dns_seeds: Default::default(),
         dns_seeds_use_dnssec: false,
@@ -807,14 +791,14 @@ async fn test_data_generation() {
         factories,
         None,
         None,
-        Network::Weatherwax,
+        Network::Weatherwax.into(),
         None,
         None,
         None,
         None,
     );
 
-    let (db, transaction_backend, oms_backend, _temp_dir) = make_wallet_databases(None);
+    let (db, transaction_backend, oms_backend, contacts_backend, _temp_dir) = make_wallet_databases(None);
 
     let metadata = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
 
@@ -826,7 +810,7 @@ async fn test_data_generation() {
         WalletDatabase::new(db),
         transaction_backend.clone(),
         oms_backend,
-        ContactsServiceMemoryDatabase::new(),
+        contacts_backend,
         shutdown.to_signal(),
         None,
     )

@@ -108,17 +108,26 @@ impl SingleReceiverTransactionProtocol {
                 .range_proof
                 .construct_proof(&spending_key, sender_info.amount.into())?
         };
-        // TODO: Add unique id if present
-        Ok(TransactionOutput::new(
+
+        let partial_metadata_signature = TransactionOutput::create_partial_metadata_signature(
+            &sender_info.amount,
+            &spending_key.clone(),
+            &sender_info.script,
+            &sender_info.features,
+            &sender_info.sender_offset_public_key,
+            &sender_info.public_commitment_nonce,
+        )?;
+
+        let output = TransactionOutput::new(
             features,
             commitment,
             RangeProof::from_bytes(&proof)
                 .map_err(|_| TPE::RangeProofError(RangeProofError::ProofConstructionError))?,
             sender_info.script.clone(),
-            sender_info.script_offset_public_key.clone(),
-            None,
-            None
-        ))
+            sender_info.sender_offset_public_key.clone(),
+            partial_metadata_signature,
+        );
+        Ok(output)
     }
 }
 
@@ -174,6 +183,11 @@ mod test {
             fee: MicroTari(100),
             lock_height: 0,
         };
+        let script_offset_secret_key = PrivateKey::random(&mut OsRng);
+        let sender_offset_public_key = PublicKey::from_secret_key(&script_offset_secret_key);
+        let private_commitment_nonce = PrivateKey::random(&mut OsRng);
+        let public_commitment_nonce = PublicKey::from_secret_key(&private_commitment_nonce);
+        let script = TariScript::default();
         let info = SingleRoundSenderData {
             tx_id: 500,
             amount: MicroTari(1500),
@@ -181,8 +195,10 @@ mod test {
             public_nonce: pub_rs.clone(),
             metadata: m.clone(),
             message: "".to_string(),
-            script: TariScript::default(),
-            script_offset_public_key: Default::default(),
+            features: of.clone(),
+            script,
+            sender_offset_public_key,
+            public_commitment_nonce,
         };
         let prot = SingleReceiverTransactionProtocol::create(&info, r, k.clone(), of, &factories, None).unwrap();
         assert_eq!(prot.tx_id, 500, "tx_id is incorrect");

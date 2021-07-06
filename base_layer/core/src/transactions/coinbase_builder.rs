@@ -34,13 +34,21 @@ use crate::{
             OutputFeatures,
             Transaction,
             TransactionBuilder,
+            TransactionOutput,
             UnblindedOutput,
         },
         transaction_protocol::{build_challenge, RewindData, TransactionMetadata},
         types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey, Signature},
     },
 };
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, inputs, keys::PublicKey as PK, script};
+use rand::rngs::OsRng;
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    inputs,
+    keys::{PublicKey as PK, SecretKey},
+    script,
+    script::TariScript,
+};
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error, PartialEq)]
@@ -67,6 +75,7 @@ pub struct CoinbaseBuilder {
     fees: Option<MicroTari>,
     spend_key: Option<PrivateKey>,
     script_key: Option<PrivateKey>,
+    script: Option<TariScript>,
     private_nonce: Option<PrivateKey>,
     rewind_data: Option<RewindData>,
 }
@@ -81,6 +90,7 @@ impl CoinbaseBuilder {
             fees: None,
             spend_key: None,
             script_key: None,
+            script: None,
             private_nonce: None,
             rewind_data: None,
         }
@@ -108,6 +118,12 @@ impl CoinbaseBuilder {
     /// instance.
     pub fn with_script_key(mut self, key: PrivateKey) -> Self {
         self.script_key = Some(key);
+        self
+    }
+
+    /// Provides the private script for this transaction, usually by a miner's wallet instance.
+    pub fn with_script(mut self, script: TariScript) -> Self {
+        self.script = Some(script);
         self
     }
 
@@ -158,24 +174,38 @@ impl CoinbaseBuilder {
         let total_reward = block_reward + self.fees.ok_or(CoinbaseBuildError::MissingFees)?;
         let nonce = self.private_nonce.ok_or(CoinbaseBuildError::MissingNonce)?;
         let public_nonce = PublicKey::from_secret_key(&nonce);
-        let key = self.spend_key.ok_or(CoinbaseBuildError::MissingSpendKey)?;
-        let script_key = self.script_key.unwrap_or_else(|| key.clone());
+        let spending_key = self.spend_key.ok_or(CoinbaseBuildError::MissingSpendKey)?;
+        let script_private_key = self.script_key.unwrap_or_else(|| spending_key.clone());
+        let script = self.script.unwrap_or_else(|| script!(Nop));
         let output_features = OutputFeatures::create_coinbase(height + constants.coinbase_lock_height());
-        let excess = self.factories.commitment.commit_value(&key, 0);
+        let excess = self.factories.commitment.commit_value(&spending_key, 0);
         let kernel_features = KernelFeatures::create_coinbase();
         let metadata = TransactionMetadata::default();
         let challenge = build_challenge(&public_nonce, &metadata);
-        let sig = Signature::sign(key.clone(), nonce, &challenge)
+        let sig = Signature::sign(spending_key.clone(), nonce, &challenge)
             .map_err(|_| CoinbaseBuildError::BuildError("Challenge could not be represented as a scalar".into()))?;
+
+        let sender_offset_private_key = PrivateKey::random(&mut OsRng);
+        let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+
+        let metadata_sig = TransactionOutput::create_final_metadata_signature(
+            &total_reward,
+            &spending_key,
+            &script,
+            &output_features,
+            &sender_offset_private_key,
+        )
+        .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
+
         let unblinded_output = UnblindedOutput::new(
             total_reward,
-            key,
+            spending_key,
             Some(output_features),
-            script!(Nop),
-            inputs!(PublicKey::from_secret_key(&script_key)),
-            height,
-            script_key,
-            PublicKey::default(),
+            script,
+            inputs!(PublicKey::from_secret_key(&script_private_key)),
+            script_private_key,
+            sender_offset_public_key,
+            metadata_sig,
             None,
             None
         );
@@ -215,23 +245,20 @@ impl CoinbaseBuilder {
 #[cfg(test)]
 mod test {
     use crate::{
-        consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder, Network},
+        consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder},
         transactions::{
             coinbase_builder::CoinbaseBuildError,
             helpers::TestParams,
             tari_amount::uT,
-            transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionError, UnblindedOutput},
+            transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionError},
             transaction_protocol::RewindData,
-            types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey},
+            types::{BlindingFactor, CryptoFactories, PrivateKey},
             CoinbaseBuilder,
         },
     };
     use rand::rngs::OsRng;
-    use tari_crypto::{
-        commitment::HomomorphicCommitmentFactory,
-        keys::SecretKey as SecretKeyTrait,
-        script::{ExecutionStack, TariScript},
-    };
+    use tari_common::configuration::Network;
+    use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as SecretKeyTrait};
 
     fn get_builder() -> (CoinbaseBuilder, ConsensusManager, CryptoFactories) {
         let network = Network::LocalNet;
@@ -287,22 +314,12 @@ mod test {
             .with_fees(145 * uT)
             .with_nonce(p.nonce.clone())
             .with_spend_key(p.spend_key.clone());
-        let (tx, unblinded_output) = builder
+        let (tx, _unblinded_output) = builder
             .build(rules.consensus_constants(42), rules.emission_schedule())
             .unwrap();
         let utxo = &tx.body.outputs()[0];
         let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
-        let unblinded_test = UnblindedOutput::new(
-            block_reward,
-            p.spend_key.clone(),
-            Some(utxo.features.clone()),
-            TariScript::default(),
-            ExecutionStack::default(),
-            0,
-            PrivateKey::default(),
-            PublicKey::default(),
-        );
-        assert_eq!(unblinded_output, unblinded_test);
+
         assert!(factories
             .commitment
             .open_value(&p.spend_key, block_reward.into(), utxo.commitment()));

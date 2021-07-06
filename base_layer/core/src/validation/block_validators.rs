@@ -163,7 +163,7 @@ fn check_inputs_are_utxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result
         .ok_or(ValidationError::PreviousHashNotFound)?;
 
     for input in block.body.inputs() {
-        if let Some((_, index, _height)) = db.fetch_output(&input.hash())? {
+        if let Some((_, index, _height)) = db.fetch_output(&input.output_hash())? {
             if data.deleted().contains(index) {
                 warn!(
                     target: LOG_TARGET,
@@ -171,20 +171,20 @@ fn check_inputs_are_utxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result
                 );
                 return Err(ValidationError::ContainsSTxO);
             }
-        // TODO Do we keep the height validation?
-        // if height != input.height {
-        //     warn!(
-        //         target: LOG_TARGET,
-        //         "Block validation failed due to input not having correct mined height({}): {}", height, input
-        //     );
-        //     return Err(ValidationError::InvalidMinedHeight);
-        // }
         } else {
-            warn!(
-                target: LOG_TARGET,
-                "Block validation failed because the block has invalid input: {} which does not exist", input
-            );
-            return Err(ValidationError::BlockError(BlockValidationError::InvalidInput));
+            // lets check if the input exists in the output field
+            if !block
+                .body
+                .outputs()
+                .iter()
+                .any(|output| output.hash() == input.output_hash())
+            {
+                warn!(
+                    target: LOG_TARGET,
+                    "Block validation failed because the block has invalid input: {} which does not exist", input
+                );
+                return Err(ValidationError::BlockError(BlockValidationError::InvalidInput));
+            }
         }
     }
 
@@ -208,6 +208,16 @@ fn check_not_duplicate_txos<B: BlockchainBackend>(block: &Block, db: &B) -> Resu
 fn check_mmr_roots<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), ValidationError> {
     let mmr_roots = chain_storage::calculate_mmr_roots(db, &block)?;
     let header = &block.header;
+    if header.input_mr != mmr_roots.input_mr {
+        warn!(
+            target: LOG_TARGET,
+            "Block header input merkle root in {} do not match calculated root. Expected: {}, Actual:{}",
+            block.hash().to_hex(),
+            header.input_mr.to_hex(),
+            mmr_roots.input_mr.to_hex()
+        );
+        return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));
+    }
     if header.kernel_mr != mmr_roots.kernel_mr {
         warn!(
             target: LOG_TARGET,
@@ -242,7 +252,7 @@ fn check_mmr_roots<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), Va
         );
         return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));
     };
-    if header.range_proof_mr != mmr_roots.range_proof_mr {
+    if header.witness_mr != mmr_roots.witness_mr {
         warn!(
             target: LOG_TARGET,
             "Block header range_proof MMR roots in {} do not match calculated roots",
@@ -404,7 +414,7 @@ impl<B: BlockchainBackend> BlockValidator<B> {
             );
             return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));
         }
-        if header.range_proof_mr != mmr_roots.range_proof_mr {
+        if header.witness_mr != mmr_roots.witness_mr {
             warn!(
                 target: LOG_TARGET,
                 "Block header range_proof MMR roots in {} do not match calculated roots",

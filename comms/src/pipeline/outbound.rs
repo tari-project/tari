@@ -44,7 +44,7 @@ pub struct Outbound<TPipeline, TStream> {
 
 impl<TPipeline, TStream> Outbound<TPipeline, TStream>
 where
-    TStream: Stream + FusedStream + Unpin + Send + 'static,
+    TStream: Stream + FusedStream + Unpin,
     TStream::Item: Send + 'static,
     TPipeline: Service<TStream::Item, Response = ()> + Clone + Send + 'static,
     TPipeline::Error: Display + Send,

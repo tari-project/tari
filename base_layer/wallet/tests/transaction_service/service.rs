@@ -24,7 +24,7 @@ use crate::{
     support::{
         comms_and_services::{create_dummy_message, get_next_memory_address, setup_comms_services},
         rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
-        utils::{make_input, random_string, TestParams},
+        utils::{make_input, TestParams},
     },
     transaction_service::transaction_protocols::add_transaction_to_database,
 };
@@ -67,12 +67,13 @@ use tari_core::{
         proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
         rpc::BaseNodeWalletRpcServer,
     },
-    consensus::{ConsensusConstantsBuilder, Network},
+    consensus::ConsensusConstantsBuilder,
     proto::base_node as base_node_proto,
     transactions::{
         fee::Fee,
+        helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
         tari_amount::*,
-        transaction::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction, UnblindedOutput},
+        transaction::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction},
         transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage},
         types::{CryptoFactories, PrivateKey, PublicKey, Signature},
         ReceiverTransactionProtocol,
@@ -87,9 +88,10 @@ use tari_crypto::{
     script,
     script::{ExecutionStack, TariScript},
 };
-use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage};
+use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage, Network};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
+use tari_test_utils::random;
 use tari_wallet::{
     base_node_service::{
         config::BaseNodeServiceConfig,
@@ -192,7 +194,7 @@ pub fn setup_transaction_service<
             OutputManagerServiceConfig::default(),
             oms_backend,
             factories.clone(),
-            Network::Weatherwax,
+            Network::Weatherwax.into(),
             CommsSecretKey::default(),
         ))
         .add_initializer(TransactionServiceInitializer::new(
@@ -368,9 +370,11 @@ pub fn setup_transaction_service_no_comms_and_oms_backend<
         outbound_message_requester,
         connectivity_manager,
         event_publisher,
-        Arc::new(
-            NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-        ),
+        Arc::new(NodeIdentity::random(
+            &mut OsRng,
+            get_next_memory_address(),
+            PeerFeatures::COMMUNICATION_NODE,
+        )),
         factories,
         shutdown.to_signal(),
     );
@@ -449,18 +453,24 @@ fn manage_single_transaction() {
 
     let factories = CryptoFactories::default();
     // Alice's parameters
-    let alice_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     // Bob's parameters
-    let bob_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let bob_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
-    let base_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let base_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     log::info!(
         "manage_single_transaction: Alice: '{}', Bob: '{}', Base: '{}'",
@@ -470,9 +480,9 @@ fn manage_single_transaction() {
     );
     let temp_dir = tempdir().unwrap();
     let database_path = temp_dir.path().to_str().unwrap().to_string();
-    let (alice_wallet_backend, alice_backend, alice_oms_backend, _tempdir) =
+    let (alice_wallet_backend, alice_backend, alice_oms_backend, _, _tempdir) =
         make_wallet_databases(Some(database_path.clone()));
-    let (bob_wallet_backend, bob_backend, bob_oms_backend, _tempdir) =
+    let (bob_wallet_backend, bob_backend, bob_oms_backend, _, _tempdir) =
         make_wallet_databases(Some(database_path.clone()));
 
     let shutdown = Shutdown::new();
@@ -549,6 +559,7 @@ fn manage_single_transaction() {
         loop {
             futures::select! {
                 _event = alice_event_stream.select_next_some() => {
+                    println!("alice: {:?}", &*_event.as_ref().unwrap());
                     count+=1;
                     if count>=2 {
                         break;
@@ -567,16 +578,17 @@ fn manage_single_transaction() {
         let mut finalized = 0;
         loop {
             futures::select! {
-                            event = bob_event_stream.select_next_some() => {
-            if let TransactionEvent::ReceivedFinalizedTransaction(id) = &*event.unwrap() {
-            tx_id = *id;
-            finalized+=1;
+                event = bob_event_stream.select_next_some() => {
+                    println!("bob: {:?}", &*event.as_ref().unwrap());
+                    if let TransactionEvent::ReceivedFinalizedTransaction(id) = &*event.unwrap() {
+                        tx_id = *id;
+                        finalized+=1;
+                    }
+                },
+                () = delay => {
+                    break;
+                },
             }
-                            },
-                            () = delay => {
-                                break;
-                            },
-                        }
         }
         assert_eq!(finalized, 1);
     });
@@ -603,13 +615,17 @@ fn single_transaction_to_self() {
 
     let factories = CryptoFactories::default();
     // Alice's parameters
-    let alice_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
-    let base_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let base_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     log::info!(
         "manage_single_transaction: Alice: '{}', Base: '{}'",
@@ -620,7 +636,7 @@ fn single_transaction_to_self() {
     let temp_dir = tempdir().unwrap();
     let database_path = temp_dir.path().to_str().unwrap().to_string();
 
-    let (alice_wallet_backend, alice_backend, alice_oms_backend, _tempdir) =
+    let (alice_wallet_backend, alice_backend, alice_oms_backend, _, _tempdir) =
         make_wallet_databases(Some(database_path.clone()));
 
     let shutdown = Shutdown::new();
@@ -683,18 +699,24 @@ fn send_one_sided_transaction_to_other() {
 
     let factories = CryptoFactories::default();
     // Alice's parameters
-    let alice_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     // Bob's parameters
-    let bob_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let bob_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
-    let base_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let base_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     log::info!(
         "manage_single_transaction: Alice: '{}', Bob: '{}', Base: '{}'",
@@ -706,7 +728,7 @@ fn send_one_sided_transaction_to_other() {
     let temp_dir = tempdir().unwrap();
     let database_path = temp_dir.path().to_str().unwrap().to_string();
 
-    let (alice_wallet_backend, alice_backend, alice_oms_backend, _tempdir) =
+    let (alice_wallet_backend, alice_backend, alice_oms_backend, _, _tempdir) =
         make_wallet_databases(Some(database_path.clone()));
 
     let shutdown = Shutdown::new();
@@ -795,18 +817,24 @@ fn recover_one_sided_transaction() {
 
     let factories = CryptoFactories::default();
     // Alice's parameters
-    let alice_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     // Bob's parameters
-    let bob_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let bob_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
-    let base_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let base_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     log::info!(
         "manage_single_transaction: Alice: '{}', Bob: '{}', Base: '{}'",
@@ -820,9 +848,9 @@ fn recover_one_sided_transaction() {
     let database_path = temp_dir.path().to_str().unwrap().to_string();
     let database_path2 = temp_dir2.path().to_str().unwrap().to_string();
 
-    let (alice_wallet_backend, alice_backend, alice_oms_backend, _tempdir) =
+    let (alice_wallet_backend, alice_backend, alice_oms_backend, _, _tempdir) =
         make_wallet_databases(Some(database_path.clone()));
-    let (bob_wallet_backend, bob_backend, bob_oms_backend, _tempdir) =
+    let (bob_wallet_backend, bob_backend, bob_oms_backend, _, _tempdir) =
         make_wallet_databases(Some(database_path2.clone()));
 
     let shutdown = Shutdown::new();
@@ -894,7 +922,7 @@ fn recover_one_sided_transaction() {
             .expect("Could not find completed one-sided tx");
         let outputs = completed_tx.transaction.body.outputs().clone();
 
-        let unblinded = bob_oms.scan_outputs_for_one_sided_payments(outputs, 0).await.unwrap();
+        let unblinded = bob_oms.scan_outputs_for_one_sided_payments(outputs).await.unwrap();
         // Bob should be able to claim 1 output.
         assert_eq!(1, unblinded.len());
         assert_eq!(value, unblinded[0].value);
@@ -907,13 +935,17 @@ fn send_one_sided_transaction_to_self() {
 
     let factories = CryptoFactories::default();
     // Alice's parameters
-    let alice_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
-    let base_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let base_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     log::info!(
         "manage_single_transaction: Alice: '{}', Base: '{}'",
@@ -924,7 +956,7 @@ fn send_one_sided_transaction_to_self() {
     let temp_dir = tempdir().unwrap();
     let database_path = temp_dir.path().to_str().unwrap().to_string();
 
-    let (alice_wallet_backend, alice_backend, alice_oms_backend, _tempdir) =
+    let (alice_wallet_backend, alice_backend, alice_oms_backend, _, _tempdir) =
         make_wallet_databases(Some(database_path.clone()));
 
     let shutdown = Shutdown::new();
@@ -978,19 +1010,25 @@ fn manage_multiple_transactions() {
     let mut runtime = create_runtime();
     let factories = CryptoFactories::default();
     // Alice's parameters
-    let alice_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     // Bob's parameters
-    let bob_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let bob_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     // Carols's parameters
-    let carol_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let carol_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     log::info!(
         "wallet::manage_multiple_transactions: Alice: '{}', Bob: '{}', carol: '{}'",
@@ -1003,11 +1041,11 @@ fn manage_multiple_transactions() {
 
     let database_path = temp_dir.path().to_str().unwrap().to_string();
 
-    let (alice_wallet_backend, alice_backend, alice_oms_backend, _tempdir) =
+    let (alice_wallet_backend, alice_backend, alice_oms_backend, _, _tempdir) =
         make_wallet_databases(Some(database_path.clone()));
-    let (bob_wallet_backend, bob_backend, bob_oms_backend, _tempdir) =
+    let (bob_wallet_backend, bob_backend, bob_oms_backend, _, _tempdir) =
         make_wallet_databases(Some(database_path.clone()));
-    let (carol_wallet_backend, carol_backend, carol_oms_backend, _tempdir) =
+    let (carol_wallet_backend, carol_backend, carol_oms_backend, _, _tempdir) =
         make_wallet_databases(Some(database_path.clone()));
 
     let mut shutdown = Shutdown::new();
@@ -1232,14 +1270,14 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
 
     let temp_dir = tempdir().unwrap();
     let path_string = temp_dir.path().to_str().unwrap().to_string();
-    let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let alice_db_name = format!("{}.sqlite3", random::string(8).as_str());
     let alice_db_path = format!("{}/{}", path_string, alice_db_name);
     let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
     let alice_backend = TransactionServiceSqliteDatabase::new(connection_alice.clone(), None);
     let oms_backend = OutputManagerSqliteDatabase::new(connection_alice, None);
 
     let bob_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     let (
         mut alice_ts,
         mut alice_output_manager,
@@ -1341,9 +1379,9 @@ fn finalize_tx_with_incorrect_pubkey() {
     let temp_dir = tempdir().unwrap();
     let path_string = temp_dir.path().to_str().unwrap().to_string();
 
-    let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let alice_db_name = format!("{}.sqlite3", random::string(8).as_str());
     let alice_db_path = format!("{}/{}", path_string, alice_db_name);
-    let bob_db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let bob_db_name = format!("{}.sqlite3", random::string(8).as_str());
     let bob_db_path = format!("{}/{}", path_string, bob_db_name);
     let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
     let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path).unwrap();
@@ -1371,7 +1409,7 @@ fn finalize_tx_with_incorrect_pubkey() {
     let mut alice_event_stream = alice_ts.get_event_stream_fused();
 
     let bob_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     let (
         _bob_ts,
         mut bob_output_manager,
@@ -1468,9 +1506,9 @@ fn finalize_tx_with_missing_output() {
     let temp_dir = tempdir().unwrap();
     let path_string = temp_dir.path().to_str().unwrap().to_string();
 
-    let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let alice_db_name = format!("{}.sqlite3", random::string(8).as_str());
     let alice_db_path = format!("{}/{}", path_string, alice_db_name);
-    let bob_db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let bob_db_name = format!("{}.sqlite3", random::string(8).as_str());
     let bob_db_path = format!("{}/{}", path_string, bob_db_name);
     let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
     let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path).unwrap();
@@ -1497,7 +1535,7 @@ fn finalize_tx_with_missing_output() {
     let mut alice_event_stream = alice_ts.get_event_stream_fused();
 
     let bob_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     let (
         _bob_ts,
         mut bob_output_manager,
@@ -1608,19 +1646,25 @@ fn discovery_async_return_test() {
     let factories = CryptoFactories::default();
 
     // Alice's parameters
-    let alice_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     // Bob's parameters
-    let bob_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let bob_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     // Carols's parameters
-    let carol_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let carol_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     log::info!(
         "discovery_async_return_test: Alice: '{}', Bob: '{}', Carol: '{}'",
@@ -1630,7 +1674,7 @@ fn discovery_async_return_test() {
     );
     let mut shutdown = Shutdown::new();
 
-    let (carol_wallet_backend, carol_db, carol_oms_db, _temp_dir1) = make_wallet_databases(None);
+    let (carol_wallet_backend, carol_db, carol_oms_db, _, _temp_dir1) = make_wallet_databases(None);
 
     let (_carol_ts, _carol_oms, carol_comms) = setup_transaction_service(
         &mut runtime,
@@ -1645,7 +1689,7 @@ fn discovery_async_return_test() {
         shutdown.to_signal(),
     );
 
-    let (alice_wallet_backend, alice_db, alice_oms_db, _temp_dir2) = make_wallet_databases(None);
+    let (alice_wallet_backend, alice_db, alice_oms_db, _, _temp_dir2) = make_wallet_databases(None);
 
     let (mut alice_ts, mut alice_oms, alice_comms) = setup_transaction_service(
         &mut runtime,
@@ -1767,7 +1811,7 @@ fn discovery_async_return_test() {
 fn test_power_mode_updates() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
-    let (_wallet_backend, tx_backend, oms_backend, _temp_dir) = make_wallet_databases(None);
+    let (_wallet_backend, tx_backend, oms_backend, _, _temp_dir) = make_wallet_databases(None);
 
     let kernel = KernelBuilder::new()
         .with_excess(&factories.commitment.zero())
@@ -1881,7 +1925,7 @@ fn test_set_num_confirmations() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
 
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_name = format!("{}.sqlite3", random::string(8).as_str());
     let temp_dir = tempdir().unwrap();
     let db_folder = temp_dir.path().to_str().unwrap().to_string();
     let connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();
@@ -1922,9 +1966,9 @@ fn test_transaction_cancellation() {
     let mut runtime = Runtime::new().unwrap();
 
     let bob_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
 
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_name = format!("{}.sqlite3", random::string(8).as_str());
     let temp_dir = tempdir().unwrap();
     let db_folder = temp_dir.path().to_str().unwrap().to_string();
     let connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();
@@ -2047,18 +2091,15 @@ fn test_transaction_cancellation() {
         .remove(&tx_id)
         .is_none());
 
+    let input = create_unblinded_output(
+        TariScript::default(),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(100_000),
+    );
+
     let mut builder = SenderTransactionProtocol::builder(1);
     let amount = MicroTari::from(10_000);
-    let input = UnblindedOutput::new(
-        MicroTari::from(100_000),
-        PrivateKey::random(&mut OsRng),
-        None,
-        TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        PrivateKey::default(),
-        PublicKey::default(),
-    );
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177))
@@ -2073,7 +2114,13 @@ fn test_transaction_cancellation() {
             input,
         )
         .with_change_secret(PrivateKey::random(&mut OsRng))
-        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng))
+        .with_recipient_data(
+            0,
+            script!(Nop),
+            PrivateKey::random(&mut OsRng),
+            Default::default(),
+            PrivateKey::random(&mut OsRng),
+        )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
     let mut stp = builder.build::<HashDigest>(&factories).unwrap();
@@ -2115,18 +2162,14 @@ fn test_transaction_cancellation() {
         .is_none());
 
     // Lets cancel the last one using a Comms stack message
+    let input = create_unblinded_output(
+        TariScript::default(),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(100_000),
+    );
     let mut builder = SenderTransactionProtocol::builder(1);
     let amount = MicroTari::from(10_000);
-    let input = UnblindedOutput::new(
-        MicroTari::from(100_000),
-        PrivateKey::random(&mut OsRng),
-        None,
-        TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        PrivateKey::default(),
-        PublicKey::default(),
-    );
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177))
@@ -2141,7 +2184,13 @@ fn test_transaction_cancellation() {
             input,
         )
         .with_change_secret(PrivateKey::random(&mut OsRng))
-        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng))
+        .with_recipient_data(
+            0,
+            script!(Nop),
+            PrivateKey::random(&mut OsRng),
+            Default::default(),
+            PrivateKey::random(&mut OsRng),
+        )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
     let mut stp = builder.build::<HashDigest>(&factories).unwrap();
@@ -2227,11 +2276,11 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
     let mut runtime = Runtime::new().unwrap();
 
     let alice_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
 
     let bob_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
-    let (_wallet_backend, tx_backend, oms_backend, _temp_dir) = make_wallet_databases(None);
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
+    let (_wallet_backend, tx_backend, oms_backend, _, _temp_dir) = make_wallet_databases(None);
 
     let (
         mut alice_ts,
@@ -2285,7 +2334,7 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
         },
     };
     assert_eq!(tx_id, msg_tx_id);
-    let (_wallet_backend, backend, oms_backend, _temp_dir) = make_wallet_databases(None);
+    let (_wallet_backend, backend, oms_backend, _, _temp_dir) = make_wallet_databases(None);
 
     // Test sending the Reply to a receiver with Direct and then with SAF and never both
     let (_bob_ts, _, bob_outbound_service, _, mut bob_tx_sender, _, _, _, _, _shutdown, _, _, _) =
@@ -2328,7 +2377,7 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
 
     runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
     assert_eq!(bob_outbound_service.call_count(), 0, "Should be no more calls");
-    let (_wallet_backend, backend, oms_backend, _temp_dir) = make_wallet_databases(None);
+    let (_wallet_backend, backend, oms_backend, _, _temp_dir) = make_wallet_databases(None);
 
     let (_bob2_ts, _, bob2_outbound_service, _, mut bob2_tx_sender, _, _, _, _, _shutdown, _, _, _) =
         setup_transaction_service_no_comms(
@@ -2470,8 +2519,8 @@ fn test_tx_direct_send_behaviour() {
     let mut runtime = Runtime::new().unwrap();
 
     let bob_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
-    let (_wallet_backend, backend, oms_backend, _temp_dir) = make_wallet_databases(None);
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
+    let (_wallet_backend, backend, oms_backend, _, _temp_dir) = make_wallet_databases(None);
 
     let (
         mut alice_ts,
@@ -2673,20 +2722,26 @@ fn test_tx_direct_send_behaviour() {
 fn test_restarting_transaction_protocols() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
-    let (_wallet_backend, alice_backend, alice_oms_backend, _temp_dir) = make_wallet_databases(None);
-    let (_, bob_backend, bob_oms_backend, _temp_dir2) = make_wallet_databases(None);
+    let (_wallet_backend, alice_backend, alice_oms_backend, _, _temp_dir) = make_wallet_databases(None);
+    let (_, bob_backend, bob_oms_backend, _, _temp_dir2) = make_wallet_databases(None);
 
-    let base_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let base_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
-    let alice_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let alice_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
-    let bob_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
+    let bob_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
 
     // Bob is going to send a transaction to Alice
     let alice = TestParams::new(&mut OsRng);
@@ -2702,7 +2757,13 @@ fn test_restarting_transaction_protocols() {
         .with_private_nonce(bob.nonce)
         .with_input(utxo, input)
         .with_amount(0, MicroTari(2000) - fee - MicroTari(10))
-        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng))
+        .with_recipient_data(
+            0,
+            script!(Nop),
+            PrivateKey::random(&mut OsRng),
+            Default::default(),
+            PrivateKey::random(&mut OsRng),
+        )
         .with_change_script(
             script!(Nop),
             inputs!(PublicKey::from_secret_key(&script_private_key)),
@@ -2859,7 +2920,7 @@ fn test_coinbase_transactions_rejection_same_height() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
 
-    let (_, backend, oms_backend, _temp_dir) = make_wallet_databases(None);
+    let (_, backend, oms_backend, _, _temp_dir) = make_wallet_databases(None);
 
     let (
         mut alice_ts,
@@ -2957,7 +3018,7 @@ fn test_coinbase_monitoring_stuck_in_mempool() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
 
-    let (_, backend, oms_backend, _temp_dir) = make_wallet_databases(None);
+    let (_, backend, oms_backend, _, _temp_dir) = make_wallet_databases(None);
 
     let (
         mut alice_ts,
@@ -3126,7 +3187,7 @@ fn test_coinbase_monitoring_with_base_node_change_and_mined() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
 
-    let (_, backend, oms_backend, _temp_dir) = make_wallet_databases(None);
+    let (_, backend, oms_backend, _, _temp_dir) = make_wallet_databases(None);
 
     let (
         mut alice_ts,
@@ -3324,7 +3385,7 @@ fn test_coinbase_monitoring_mined_not_synced() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
 
-    let (_, backend, oms_backend, _temp_dir) = make_wallet_databases(None);
+    let (_, backend, oms_backend, _, _temp_dir) = make_wallet_databases(None);
 
     let (
         mut alice_ts,
@@ -3493,7 +3554,7 @@ fn test_coinbase_monitoring_mined_not_synced() {
 fn test_coinbase_transaction_reused_for_same_height() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
-    let (_, backend, oms_backend, _temp_dir) = make_wallet_databases(None);
+    let (_, backend, oms_backend, _, _temp_dir) = make_wallet_databases(None);
 
     let (mut tx_service, mut output_service, _, _, _, _, _, _, _, _shutdown, _, _, _) =
         setup_transaction_service_no_comms(&mut runtime, factories, backend, oms_backend, None);
@@ -3575,11 +3636,11 @@ fn test_transaction_resending() {
     let mut runtime = Runtime::new().unwrap();
 
     let alice_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     let bob_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     // Setup Alice wallet with no comms stack
-    let (_, alice_backend, alice_oms_backend, _tempdir) = make_wallet_databases(None);
+    let (_, alice_backend, alice_oms_backend, _, _tempdir) = make_wallet_databases(None);
 
     let (
         mut alice_ts,
@@ -3640,7 +3701,7 @@ fn test_transaction_resending() {
     }
 
     // Setup Bob's wallet with no comms stack
-    let (_, bob_backend, bob_oms_backend, _tempdir) = make_wallet_databases(None);
+    let (_, bob_backend, bob_oms_backend, _, _tempdir) = make_wallet_databases(None);
 
     let (
         _bob_ts,
@@ -3772,22 +3833,17 @@ fn test_resend_on_startup() {
     let mut runtime = Runtime::new().unwrap();
 
     let alice_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
 
     // First we will check the Send Tranasction message
+    let input = create_unblinded_output(
+        script!(Nop),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(100_000),
+    );
     let mut builder = SenderTransactionProtocol::builder(1);
     let amount = MicroTari::from(10_000);
-    let script_private_key = PrivateKey::random(&mut OsRng);
-    let input = UnblindedOutput::new(
-        MicroTari::from(100_000),
-        PrivateKey::random(&mut OsRng),
-        None,
-        script!(Nop),
-        inputs!(PublicKey::from_secret_key(&script_private_key)),
-        0,
-        script_private_key,
-        PublicKey::default(),
-    );
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177))
@@ -3802,7 +3858,13 @@ fn test_resend_on_startup() {
             input,
         )
         .with_change_secret(PrivateKey::random(&mut OsRng))
-        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng))
+        .with_recipient_data(
+            0,
+            script!(Nop),
+            PrivateKey::random(&mut OsRng),
+            Default::default(),
+            PrivateKey::random(&mut OsRng),
+        )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
     let mut stp = builder.build::<HashDigest>(&factories).unwrap();
@@ -3824,7 +3886,7 @@ fn test_resend_on_startup() {
         send_count: 1,
         last_send_timestamp: Some(Utc::now().naive_utc()),
     };
-    let (_, alice_backend, oms_backend, _temp_dir) = make_wallet_databases(None);
+    let (_, alice_backend, oms_backend, _, _temp_dir) = make_wallet_databases(None);
     alice_backend
         .write(WriteOperation::Insert(DbKeyValuePair::PendingOutboundTransaction(
             tx_id,
@@ -3863,7 +3925,7 @@ fn test_resend_on_startup() {
     outbound_tx.send_count = 1;
     outbound_tx.last_send_timestamp = Utc::now().naive_utc().checked_sub_signed(ChronoDuration::seconds(20));
 
-    let (_, alice_backend2, oms_backend2, _temp_dir2) = make_wallet_databases(None);
+    let (_, alice_backend2, oms_backend2, _, _temp_dir2) = make_wallet_databases(None);
 
     alice_backend2
         .write(WriteOperation::Insert(DbKeyValuePair::PendingOutboundTransaction(
@@ -3928,7 +3990,7 @@ fn test_resend_on_startup() {
         send_count: 0,
         last_send_timestamp: Some(Utc::now().naive_utc()),
     };
-    let (_, bob_backend, bob_oms_backend, _temp_dir) = make_wallet_databases(None);
+    let (_, bob_backend, bob_oms_backend, _, _temp_dir) = make_wallet_databases(None);
 
     bob_backend
         .write(WriteOperation::Insert(DbKeyValuePair::PendingInboundTransaction(
@@ -3965,7 +4027,7 @@ fn test_resend_on_startup() {
     // Now we do it again with the timestamp prior to the cooldown and see that a message is sent
     inbound_tx.send_count = 1;
     inbound_tx.last_send_timestamp = Utc::now().naive_utc().checked_sub_signed(ChronoDuration::seconds(20));
-    let (_, bob_backend2, bob_oms_backend2, _temp_dir2) = make_wallet_databases(None);
+    let (_, bob_backend2, bob_oms_backend2, _, _temp_dir2) = make_wallet_databases(None);
 
     bob_backend2
         .write(WriteOperation::Insert(DbKeyValuePair::PendingInboundTransaction(
@@ -4012,11 +4074,11 @@ fn test_replying_to_cancelled_tx() {
     let mut runtime = Runtime::new().unwrap();
 
     let alice_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     let bob_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     // Testing if a Tx Reply is received for a Cancelled Outbound Tx that a Cancelled message is sent back:
-    let (_, alice_backend, alice_oms_backend, _tempdir) = make_wallet_databases(None);
+    let (_, alice_backend, alice_oms_backend, _, _tempdir) = make_wallet_databases(None);
 
     let (
         mut alice_ts,
@@ -4075,7 +4137,7 @@ fn test_replying_to_cancelled_tx() {
     runtime.block_on(alice_ts.cancel_transaction(tx_id)).unwrap();
 
     // Setup Bob's wallet with no comms stack
-    let (_, bob_backend, bob_oms_backend, _tempdir) = make_wallet_databases(None);
+    let (_, bob_backend, bob_oms_backend, _, _tempdir) = make_wallet_databases(None);
 
     let (
         _bob_ts,
@@ -4146,9 +4208,9 @@ fn test_transaction_timeout_cancellation() {
     let mut runtime = Runtime::new().unwrap();
 
     let bob_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     // Testing if a Tx Reply is received for a Cancelled Outbound Tx that a Cancelled message is sent back:
-    let (_, alice_backend, alice_oms_backend, _tempdir) = make_wallet_databases(None);
+    let (_, alice_backend, alice_oms_backend, _, _tempdir) = make_wallet_databases(None);
 
     let (
         mut alice_ts,
@@ -4223,18 +4285,14 @@ fn test_transaction_timeout_cancellation() {
 
     // Now to test if the timeout has elapsed during downtime and that it is honoured on startup
     // First we will check the Send Transction message
+    let input = create_unblinded_output(
+        TariScript::default(),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(100_000),
+    );
     let mut builder = SenderTransactionProtocol::builder(1);
     let amount = MicroTari::from(10_000);
-    let input = UnblindedOutput::new(
-        MicroTari::from(100_000),
-        PrivateKey::random(&mut OsRng),
-        None,
-        TariScript::default(),
-        ExecutionStack::default(),
-        0,
-        PrivateKey::default(),
-        PublicKey::default(),
-    );
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177))
@@ -4249,7 +4307,13 @@ fn test_transaction_timeout_cancellation() {
             input,
         )
         .with_change_secret(PrivateKey::random(&mut OsRng))
-        .with_recipient_script(0, script!(Nop), PrivateKey::random(&mut OsRng))
+        .with_recipient_data(
+            0,
+            script!(Nop),
+            PrivateKey::random(&mut OsRng),
+            Default::default(),
+            PrivateKey::random(&mut OsRng),
+        )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
     let mut stp = builder.build::<HashDigest>(&factories).unwrap();
@@ -4274,7 +4338,7 @@ fn test_transaction_timeout_cancellation() {
         send_count: 1,
         last_send_timestamp: Some(Utc::now().naive_utc()),
     };
-    let (_, bob_backend, bob_oms_backend, _temp_dir) = make_wallet_databases(None);
+    let (_, bob_backend, bob_oms_backend, _, _temp_dir) = make_wallet_databases(None);
 
     bob_backend
         .write(WriteOperation::Insert(DbKeyValuePair::PendingOutboundTransaction(
@@ -4315,7 +4379,7 @@ fn test_transaction_timeout_cancellation() {
     let call = bob_outbound_service.pop_call().unwrap();
     let bob_cancelled_message = try_decode_transaction_cancelled_message(call.1.to_vec()).unwrap();
     assert_eq!(bob_cancelled_message.tx_id, tx_id);
-    let (_, backend, oms_backend, _temp_dir) = make_wallet_databases(None);
+    let (_, backend, oms_backend, _, _temp_dir) = make_wallet_databases(None);
 
     // Now to do this for the Receiver
     let (carol_ts, _, carol_outbound_service, _, mut carol_tx_sender, _, _, _, _, _shutdown, _, _, _) =
@@ -4385,11 +4449,11 @@ fn transaction_service_tx_broadcast() {
     let mut runtime = Runtime::new().unwrap();
 
     let alice_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
 
     let bob_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
-    let (_, backend, oms_backend, _temp_dir) = make_wallet_databases(None);
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
+    let (_, backend, oms_backend, _, _temp_dir) = make_wallet_databases(None);
 
     let (
         mut alice_ts,
@@ -4412,7 +4476,7 @@ fn transaction_service_tx_broadcast() {
         .block_on(alice_ts.set_base_node_public_key(server_node_identity.public_key().clone()))
         .unwrap();
 
-    let (_, backend2, oms_backend2, _temp_dir2) = make_wallet_databases(None);
+    let (_, backend2, oms_backend2, _, _temp_dir2) = make_wallet_databases(None);
     let (_bob_ts, _bob_output_manager, bob_outbound_service, _, mut bob_tx_sender, _, _, _, _, _shutdown, _, _, _) =
         setup_transaction_service_no_comms(&mut runtime, factories.clone(), backend2, oms_backend2, None);
 
@@ -4691,7 +4755,7 @@ fn transaction_service_tx_broadcast() {
 fn broadcast_all_completed_transactions_on_startup() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
-    let (_, db, oms_db, _temp_dir) = make_wallet_databases(None);
+    let (_, db, oms_db, _, _temp_dir) = make_wallet_databases(None);
 
     let kernel = KernelBuilder::new()
         .with_excess(&factories.commitment.zero())
@@ -4820,11 +4884,11 @@ fn transaction_service_tx_broadcast_with_base_node_change() {
     let mut runtime = Runtime::new().unwrap();
 
     let alice_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
 
     let bob_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
-    let (_, backend, oms_backend, _temp_dir) = make_wallet_databases(None);
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
+    let (_, backend, oms_backend, _, _temp_dir) = make_wallet_databases(None);
 
     let (
         mut alice_ts,
@@ -4846,7 +4910,7 @@ fn transaction_service_tx_broadcast_with_base_node_change() {
     runtime
         .block_on(alice_ts.set_base_node_public_key(server_node_identity.public_key().clone()))
         .unwrap();
-    let (_, backend2, oms_backend2, _temp_dir2) = make_wallet_databases(None);
+    let (_, backend2, oms_backend2, _, _temp_dir2) = make_wallet_databases(None);
 
     let (_bob_ts, _bob_output_manager, bob_outbound_service, _, mut bob_tx_sender, _, _, _, _, _shutdown, _, _, _) =
         setup_transaction_service_no_comms(&mut runtime, factories.clone(), backend2, oms_backend2, None);
@@ -5025,7 +5089,7 @@ fn only_start_one_tx_broadcast_protocol_at_a_time() {
     let factories = CryptoFactories::default();
 
     let temp_dir = tempdir().unwrap();
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_name = format!("{}.sqlite3", random::string(8).as_str());
     let db_path = format!("{}/{}", temp_dir.path().to_str().unwrap(), db_name);
     let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
     let backend = TransactionServiceSqliteDatabase::new(connection.clone(), None);
@@ -5093,7 +5157,7 @@ fn dont_broadcast_invalid_transactions() {
     let factories = CryptoFactories::default();
 
     let temp_dir = tempdir().unwrap();
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_name = format!("{}.sqlite3", random::string(8).as_str());
     let db_path = format!("{}/{}", temp_dir.path().to_str().unwrap(), db_name);
     let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
     let backend = TransactionServiceSqliteDatabase::new(connection.clone(), None);
@@ -5160,7 +5224,7 @@ fn start_validation_protocol_then_broadcast_protocol_change_base_node() {
     let factories = CryptoFactories::default();
 
     let temp_dir = tempdir().unwrap();
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_name = format!("{}.sqlite3", random::string(8).as_str());
     let db_path = format!("{}/{}", temp_dir.path().to_str().unwrap(), db_name);
     let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
     let tx_backend = TransactionServiceSqliteDatabase::new(connection.clone(), None);

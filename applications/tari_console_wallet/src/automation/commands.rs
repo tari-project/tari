@@ -580,7 +580,6 @@ pub async fn command_runner(
             },
             SetCustomBaseNode => {
                 let (public_key, net_address) = set_base_node_peer(wallet.clone(), &parsed.args).await?;
-                println!("Saving custom base node peer in wallet database.");
                 wallet
                     .db
                     .set_client_key_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string(), public_key.to_string())
@@ -589,9 +588,9 @@ pub async fn command_runner(
                     .db
                     .set_client_key_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string(), net_address.to_string())
                     .await?;
+                println!("Custom base node peer saved in wallet database.");
             },
             ClearCustomBaseNode => {
-                println!("Clearing custom base node peer in wallet database.");
                 wallet
                     .db
                     .clear_client_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string())
@@ -600,6 +599,7 @@ pub async fn command_runner(
                     .db
                     .clear_client_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string())
                     .await?;
+                println!("Custom base node peer cleared from wallet database.");
             },
             RegisterAsset => {
                 println!("Registering asset.");
@@ -673,13 +673,13 @@ fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: String) -> Re
     let mut csv_file = LineWriter::new(file);
     writeln!(
         csv_file,
-        r##""index","value","spending_key","commitment","flags","maturity","script","input_data","height","script_private_key","script_offset_public_key""##
+        r##""index","value","spending_key","commitment","flags","maturity","script","input_data","script_private_key","sender_offset_public_key","public_nonce","signature_u","signature_v""##
     )
     .map_err(|e| CommandError::CSVFile(e.to_string()))?;
     for (i, utxo) in utxos.iter().enumerate() {
         writeln!(
             csv_file,
-            r##""{}","{}","{}","{}","{:?}","{}","{}","{}","{}","{}","{}""##,
+            r##""{}","{}","{}","{}","{:?}","{}","{}","{}","{}","{}","{}","{}","{}""##,
             i + 1,
             utxo.value.0,
             utxo.spending_key.to_hex(),
@@ -688,9 +688,11 @@ fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: String) -> Re
             utxo.features.maturity,
             utxo.script.to_hex(),
             utxo.input_data.to_hex(),
-            utxo.height,
             utxo.script_private_key.to_hex(),
-            utxo.script_offset_public_key.to_hex(),
+            utxo.sender_offset_public_key.to_hex(),
+            utxo.metadata_signature.public_nonce().to_hex(),
+            utxo.metadata_signature.u().to_hex(),
+            utxo.metadata_signature.v().to_hex(),
         )
         .map_err(|e| CommandError::CSVFile(e.to_string()))?;
     }

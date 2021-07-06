@@ -29,16 +29,16 @@ use crate::{
         },
         UiContact,
         UiError,
-        CUSTOM_BASE_NODE_ADDRESS_KEY,
-        CUSTOM_BASE_NODE_PUBLIC_KEY_KEY,
     },
+    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
     wallet_modes::PeerConfig,
 };
+use bitflags::bitflags;
 use futures::{stream::Fuse, StreamExt};
 use log::*;
 use qrcode::{render::unicode, QrCode};
 use std::{collections::HashMap, sync::Arc};
-use tari_common::{GlobalConfig, Network};
+use tari_common::{configuration::Network, GlobalConfig};
 use tari_comms::{
     connectivity::ConnectivityEventRx,
     multiaddr::Multiaddr,
@@ -76,6 +76,7 @@ const LOG_TARGET: &str = "wallet::console_wallet::app_state";
 pub struct AppState {
     inner: Arc<RwLock<AppStateInner>>,
     cached_data: AppStateData,
+    completed_tx_filter: TransactionFilter,
     node_config: GlobalConfig,
 }
 
@@ -90,9 +91,11 @@ impl AppState {
     ) -> Self {
         let inner = AppStateInner::new(node_identity, network, wallet, base_node_selected, base_node_config);
         let cached_data = inner.data.clone();
+
         Self {
             inner: Arc::new(RwLock::new(inner)),
             cached_data,
+            completed_tx_filter: TransactionFilter::ABANDONED_COINBASES,
             node_config,
         }
     }
@@ -109,27 +112,24 @@ impl AppState {
     pub async fn refresh_transaction_state(&mut self) -> Result<(), UiError> {
         let mut inner = self.inner.write().await;
         inner.refresh_full_transaction_state().await?;
-        if let Some(data) = inner.get_updated_app_state() {
-            self.cached_data = data;
-        }
+        drop(inner);
+        self.update_cache().await;
         Ok(())
     }
 
     pub async fn refresh_contacts_state(&mut self) -> Result<(), UiError> {
         let mut inner = self.inner.write().await;
         inner.refresh_contacts_state().await?;
-        if let Some(data) = inner.get_updated_app_state() {
-            self.cached_data = data;
-        }
+        drop(inner);
+        self.update_cache().await;
         Ok(())
     }
 
     pub async fn refresh_connected_peers_state(&mut self) -> Result<(), UiError> {
         let mut inner = self.inner.write().await;
         inner.refresh_connected_peers_state().await?;
-        if let Some(data) = inner.get_updated_app_state() {
-            self.cached_data = data;
-        }
+        drop(inner);
+        self.update_cache().await;
         Ok(())
     }
 
@@ -152,7 +152,8 @@ impl AppState {
     }
     pub async fn update_cache(&mut self) {
         let mut inner = self.inner.write().await;
-        if let Some(data) = inner.get_updated_app_state() {
+        let updated_state = inner.get_updated_app_state();
+        if let Some(data) = updated_state {
             self.cached_data = data;
         }
     }
@@ -171,9 +172,8 @@ impl AppState {
         inner.wallet.contacts_service.upsert_contact(contact).await?;
 
         inner.refresh_contacts_state().await?;
-        if let Some(data) = inner.get_updated_app_state() {
-            self.cached_data = data;
-        }
+        drop(inner);
+        self.update_cache().await;
         Ok(())
     }
 
@@ -187,9 +187,8 @@ impl AppState {
         inner.wallet.contacts_service.remove_contact(public_key).await?;
 
         inner.refresh_contacts_state().await?;
-        if let Some(data) = inner.get_updated_app_state() {
-            self.cached_data = data;
-        }
+        drop(inner);
+        self.update_cache().await;
         Ok(())
     }
 
@@ -316,16 +315,19 @@ impl AppState {
         }
     }
 
-    pub fn get_completed_txs_slice(&self, start: usize, end: usize) -> &[CompletedTransaction] {
-        if self.cached_data.completed_txs.is_empty() || start > end || end > self.cached_data.completed_txs.len() {
-            return &[];
+    pub fn get_completed_txs(&self) -> Vec<&CompletedTransaction> {
+        if self
+            .completed_tx_filter
+            .contains(TransactionFilter::ABANDONED_COINBASES)
+        {
+            self.cached_data
+                .completed_txs
+                .iter()
+                .filter(|tx| !(tx.cancelled && tx.status == TransactionStatus::Coinbase))
+                .collect()
+        } else {
+            self.cached_data.completed_txs.iter().collect()
         }
-
-        &self.cached_data.completed_txs[start..end]
-    }
-
-    pub fn get_completed_txs(&self) -> &Vec<CompletedTransaction> {
-        &self.cached_data.completed_txs
     }
 
     pub fn get_confirmations(&self, tx_id: &TxId) -> Option<&u64> {
@@ -333,8 +335,9 @@ impl AppState {
     }
 
     pub fn get_completed_tx(&self, index: usize) -> Option<&CompletedTransaction> {
-        if index < self.cached_data.completed_txs.len() {
-            Some(&self.cached_data.completed_txs[index])
+        let filtered_completed_txs = self.get_completed_txs();
+        if index < filtered_completed_txs.len() {
+            Some(filtered_completed_txs[index])
         } else {
             None
         }
@@ -377,7 +380,7 @@ impl AppState {
     pub async fn set_custom_base_node(&mut self, public_key: String, address: String) -> Result<Peer, UiError> {
         let pub_key = PublicKey::from_hex(public_key.as_str())?;
         let addr = address.parse::<Multiaddr>().map_err(|_| UiError::AddressParseError)?;
-        let node_id = NodeId::from_key(&pub_key)?;
+        let node_id = NodeId::from_key(&pub_key);
         let peer = Peer::new(
             pub_key,
             node_id,
@@ -404,6 +407,10 @@ impl AppState {
 
     pub fn get_required_confirmations(&self) -> u64 {
         (&self.node_config.transaction_num_confirmations_required).to_owned()
+    }
+
+    pub fn toggle_abandoned_coinbase_filter(&mut self) {
+        self.completed_tx_filter.toggle(TransactionFilter::ABANDONED_COINBASES);
     }
 }
 
@@ -941,4 +948,11 @@ pub enum UiTransactionSendStatus {
     DiscoveryInProgress,
     SentViaSaf,
     Error(String),
+}
+
+bitflags! {
+    pub struct TransactionFilter: u8 {
+        const NONE = 0b0000_0000;
+        const ABANDONED_COINBASES = 0b0000_0001;
+    }
 }

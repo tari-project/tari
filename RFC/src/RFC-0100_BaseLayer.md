@@ -67,9 +67,10 @@ The Tari Base Layer network comprises the following major pieces of software:
   Tari base layer and cryptocurrency. The base nodes validate and transmit transactions and blocks, and maintain
   consensus about the longest valid proof-of-work blockchain.
 * Mining software. Mining nodes perform proof-of-work to secure the base layer and compete to submit the
-  next valid block into the Tari blockchain. Tari is merge-mined with Monero. The Tari source provides two alternatives
-  for Tari miners:
-  * A standalone miner
+  next valid block into the Tari blockchain. Tari uses two Proof of Work (PoW) algorithms, the first is merge-mined with Monero and a second native SHA3 PoW. 
+  The Tari source provides three alternatives for Tari miners:
+  * A standalone miner for SHA3 mining
+  * A merge-mining proxy to be used with XMRig to merge mine Tari with Monero
   * A stratum-compatible pool miner.
 * Wallet software. Client software and Application Programming Interfaces (APIs) offering means to construct transactions, query nodes for information and
   maintain personal private keys.

@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 tari_comms = { version = "^0.8", path = "../../comms" }
 tari_comms_dht = { version = "^0.8", path = "../../comms/dht" }
-tari_crypto = { git = "ssh://git@github.com/tari-project/tari-crypto.git", branch = "main" }
+tari_crypto = "0.11.1"
 tari_key_manager = { version = "^0.8", path = "../key_manager" }
 tari_p2p = { version = "^0.8", path = "../p2p" }
 tari_wallet = { version = "^0.8", path = "../wallet", features = ["test_harness", "c_integration"]}
@@ -19,7 +19,7 @@ tari_utilities = "^0.3"
 futures =  { version = "^0.3.1", features =["compat", "std"]}
 tokio = "0.2.10"
 libc = "0.2.65"
-rand = "0.7.2"
+rand = "0.8"
 chrono = { version = "0.4.6", features = ["serde"]}
 thiserror = "1.0.20"
 log = "0.4.6"
@@ -40,4 +40,5 @@ lazy_static = "1.3.0"
 env_logger = "0.7.1"
 tari_key_manager = { version = "^0.8", path = "../key_manager" }
 tari_common_types = { version = "^0.8", path = "../../base_layer/common_types"}
+tari_test_utils = { version = "^0.8", path = "../../infrastructure/test_utils"}
 tokio = { version="0.2.10" }

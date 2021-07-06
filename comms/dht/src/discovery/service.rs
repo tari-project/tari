@@ -247,7 +247,7 @@ impl DhtDiscoveryService {
             .filter_map(|addr| addr.parse().ok())
             .collect::<Vec<_>>();
 
-        validate_peer_addresses(&addresses, self.config.network.is_localtest())
+        validate_peer_addresses(&addresses, self.config.allow_test_addresses)
             .map_err(|err| DhtDiscoveryError::InvalidPeerMultiaddr(err.to_string()))?;
 
         let peer = self
@@ -271,7 +271,7 @@ impl DhtDiscoveryService {
         // The reason that we check the given node id against what we expect instead of just using the given node id
         // is in future the NodeId may not necessarily be derived from the public key (i.e. DAN node is registered on
         // the base layer)
-        let expected_node_id = NodeId::from_key(public_key).map_err(|_| DhtDiscoveryError::InvalidNodeId)?;
+        let expected_node_id = NodeId::from_key(public_key);
         let node_id = NodeId::from_bytes(raw_node_id).map_err(|_| DhtDiscoveryError::InvalidNodeId)?;
         if expected_node_id == node_id {
             Ok(expected_node_id)

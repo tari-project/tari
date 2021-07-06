@@ -116,7 +116,7 @@ impl ProtobufCompiler {
         let mut file = File::open(file_path).unwrap();
         let mut file_hash = Sha256::default();
         io::copy(&mut file, &mut file_hash).map_err(|err| format!("Failed to hash file: '{}'", err))?;
-        Ok(file_hash.result().to_vec())
+        Ok(file_hash.finalize().to_vec())
     }
 
     fn compare_and_move<P: AsRef<Path>>(&self, tmp_out_dir: P, out_dir: P) {

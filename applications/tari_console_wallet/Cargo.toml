@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 tari_wallet = {  path = "../../base_layer/wallet" }
-tari_crypto = { git = "ssh://git@github.com/tari-project/tari-crypto.git", branch = "main" }
+tari_crypto = "0.11.1"
 tari_common = {  path = "../../common" }
 tari_app_utilities = { path = "../tari_app_utilities"}
 tari_comms = {  path = "../../comms"}
@@ -16,11 +16,12 @@ tari_app_grpc = {  path = "../tari_app_grpc" }
 tari_shutdown = {  path = "../../infrastructure/shutdown" }
 tari_key_manager = { path = "../../base_layer/key_manager"  }
 
+bitflags = "1.2.1"
 chrono = { version = "0.4.6", features = ["serde"]}
 chrono-english = "0.1"
 futures = { version = "^0.3.1", default-features = false, features = ["alloc"]}
 crossterm = { version = "0.17"}
-rand = "0.7.2"
+rand = "0.8"
 unicode-width = "0.1"
 unicode-segmentation = "1.6.0"
 log = { version = "0.4.8", features = ["std"] }
@@ -43,4 +44,3 @@ features = ["transactions", "mempool_proto", "base_node_proto"]
 version = "^0.15"
 default-features = false
 features = ["crossterm"]
-

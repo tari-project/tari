@@ -27,10 +27,6 @@
 #![deny(unused_must_use)]
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
-// Enable 'impl Trait' type aliases
-#![allow(incomplete_features)]
-#![feature(type_alias_impl_trait)]
-#![feature(min_type_alias_impl_trait)]
 
 /// ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣶⣿⣿⣿⣿⣶⣦⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 /// ⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣤⣾⣿⡿⠋⠀⠀⠀⠀⠉⠛⠿⣿⣿⣶⣤⣀⠀⠀⠀⠀⠀⠀⢰⣿⣾⣾⣾⣾⣾⣾⣾⣾⣾⣿⠀⠀⠀⣾⣾⣾⡀⠀⠀⠀⠀⢰⣾⣾⣾⣾⣿⣶⣶⡀⠀⠀⠀⢸⣾⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀
@@ -223,9 +219,10 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
         let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::new(
             ctx.local_node(),
             ctx.local_mempool(),
-            node_config.network.into(),
+            node_config.network,
             ctx.state_machine(),
             ctx.base_node_comms().peer_manager(),
+            ctx.software_updater(),
         );
 
         task::spawn(run_grpc(grpc, node_config.grpc_base_node_address, shutdown.to_signal()));
@@ -326,6 +323,7 @@ async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
 
     let mut shutdown_signal = shutdown.to_signal();
     let start_time = Instant::now();
+    let mut software_update_notif = command_handler.get_software_updater().new_update_notifier().clone();
     loop {
         let delay_time = if start_time.elapsed() < Duration::from_secs(120) {
             Duration::from_secs(2)
@@ -336,6 +334,7 @@ async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
         };
 
         let mut interval = time::delay_for(delay_time).fuse();
+
         futures::select! {
             res = read_command_fut => {
                 match res {
@@ -352,6 +351,17 @@ async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
                     }
                 }
             },
+            resp = software_update_notif.recv().fuse() => {
+                if let Some(Some(update)) = resp {
+                    println!(
+                        "Version {} of the {} is available: {} (sha: {})",
+                        update.version(),
+                        update.app(),
+                        update.download_url(),
+                        update.to_hash_hex()
+                    );
+                }
+            }
             _ = interval => {
                command_handler.status();
             },

@@ -140,7 +140,7 @@ pub fn to_short_str(peer: &Peer) -> String {
 pub fn parse_from_short_str(s: &String) -> Option<Peer> {
     let mut split = s.splitn(2, "::");
     let pk = split.next().and_then(|s| CommsPublicKey::from_hex(s).ok())?;
-    let node_id = NodeId::from_key(&pk).ok()?;
+    let node_id = NodeId::from_key(&pk);
     let address = split.next().and_then(|s| s.parse::<Multiaddr>().ok())?;
     Some(Peer::new(
         pk,

@@ -656,8 +656,9 @@ where B: BlockchainBackend
         let roots = self.calculate_mmr_roots(&block)?;
         block.header.kernel_mr = roots.kernel_mr;
         block.header.kernel_mmr_size = roots.kernel_mmr_size;
+        block.header.input_mr = roots.input_mr;
         block.header.output_mr = roots.output_mr;
-        block.header.range_proof_mr = roots.range_proof_mr;
+        block.header.witness_mr = roots.witness_mr;
         block.header.output_mmr_size = roots.output_mmr_size;
         Ok(block)
     }
@@ -899,8 +900,9 @@ fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, ChainStorageError
 pub struct MmrRoots {
     pub kernel_mr: BlockHash,
     pub kernel_mmr_size: u64,
+    pub input_mr: BlockHash,
     pub output_mr: BlockHash,
-    pub range_proof_mr: BlockHash,
+    pub witness_mr: BlockHash,
     pub output_mmr_size: u64,
 }
 
@@ -925,7 +927,8 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
     let deleted = deleted.deleted;
     let mut kernel_mmr = MerkleMountainRange::<HashDigest, _>::new(kernels);
     let mut output_mmr = MutableMmr::<HashDigest, _>::new(outputs, deleted)?;
-    let mut proof_mmr = MerkleMountainRange::<HashDigest, _>::new(range_proofs);
+    let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(range_proofs);
+    let mut input_mmr = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create())?;
 
     for kernel in body.kernels().iter() {
         kernel_mmr.push(kernel.hash())?;
@@ -933,17 +936,24 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
 
     for output in body.outputs().iter() {
         output_mmr.push(output.hash())?;
-        proof_mmr.push(output.proof().hash())?;
+        witness_mmr.push(output.witness_hash())?;
     }
 
     for input in body.inputs().iter() {
+        // Search the DB for the output leaf index so that it can be marked as spent/deleted.
+        // If the output hash is not found, check the current output_mmr. This allows zero-conf transactions
         let index =
-            db.fetch_mmr_leaf_index(MmrTree::Utxo, &input.hash())?
-                .ok_or_else(|| ChainStorageError::ValueNotFound {
-                    entity: "UTXO".to_string(),
-                    field: "hash".to_string(),
-                    value: input.hash().to_hex(),
-                })?;
+            match db.fetch_mmr_leaf_index(MmrTree::Utxo, &input.output_hash())? {
+                Some(index) => index,
+                None => output_mmr.find_leaf_index(&input.output_hash())?.ok_or_else(|| {
+                    ChainStorageError::ValueNotFound {
+                        entity: "UTXO".to_string(),
+                        field: "hash".to_string(),
+                        value: input.output_hash().to_hex(),
+                    }
+                })?,
+            };
+        input_mmr.push(input.hash())?;
 
         if !output_mmr.delete(index) {
             let len = output_mmr.len();
@@ -959,9 +969,11 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
     let mmr_roots = MmrRoots {
         kernel_mr: kernel_mmr.get_merkle_root()?,
         kernel_mmr_size: kernel_mmr.get_leaf_count()? as u64,
+        input_mr: input_mmr.get_merkle_root()?,
         output_mr: output_mmr.get_merkle_root()?,
-        output_mmr_size: proof_mmr.get_leaf_count()? as u64,
-        range_proof_mr: proof_mmr.get_merkle_root()?,
+        // witness mmr size and output mmr size should be the same size
+        output_mmr_size: witness_mmr.get_leaf_count()? as u64,
+        witness_mr: witness_mmr.get_merkle_root()?,
     };
     Ok(mmr_roots)
 }
@@ -1494,11 +1506,15 @@ fn handle_possible_reorg<T: BlockchainBackend>(
     // reorg is required when any blocks are removed or more than one are added
     // see https://github.com/tari-project/tari/issues/2101
     if num_removed_blocks > 0 || num_added_blocks > 1 {
-        info!(
+        log!(
             target: LOG_TARGET,
+            if num_removed_blocks > 1 {
+                Level::Warn
+            } else {
+                Level::Info
+            }, // We want a warning if the number of removed blocks is at least 2.
             "Chain reorg required from {} to {} (accum_diff:{}, hash:{}) to (accum_diff:{}, hash:{}). Number of \
-             blocks to remove: {}, to add: {}.
-            ",
+             blocks to remove: {}, to add: {}.",
             tip_header.header(),
             fork_header.header(),
             tip_header.accumulated_data().total_accumulated_difficulty,
@@ -1909,8 +1925,7 @@ mod test {
             chain_strength_comparer::strongest_chain,
             consensus_constants::PowAlgorithmConstants,
             ConsensusConstantsBuilder,
-            ConsensusManagerBuilder,
-            Network,
+            ConsensusManager,
         },
         proof_of_work::AchievedTargetDifficulty,
         test_helpers::{
@@ -1921,6 +1936,7 @@ mod test {
         validation::{header_validator::HeaderValidator, mocks::MockValidator},
     };
     use std::collections::HashMap;
+    use tari_common::configuration::Network;
 
     #[test]
     fn lmdb_fetch_monero_seeds() {
@@ -2399,6 +2415,60 @@ mod test {
         assert_target_difficulties_eq(&result[6], vec![10, 19, 23, 26]);
     }
 
+    #[test]
+    fn test_handle_possible_reorg_accum_difficulty_is_correct_case_1() {
+        let (result, _blocks) = test_case_handle_possible_reorg(&[
+            ("A0->GB", 1, 120), // Chain 0 at 2
+            ("B0->A0", 1, 120), // Chain 0 at 3
+            ("C0->B0", 1, 120), // Chain 0 at 4
+            ("A1->C0", 2, 120), // Chain 1 at 6
+            ("B1->A1", 2, 120), // Chain 1 at 8
+            ("C1->B1", 2, 120), // Chain 1 at 10
+            ("A2->C0", 2, 120), // Chain 2 at 6
+            ("B2->A2", 2, 120), // Chain 2 at 8
+            ("C2->B2", 2, 120), // Chain 2 at 10
+            ("D2->C2", 1, 120), // Chain 2 at 11
+            ("D1->C1", 1, 120), // Chain 1 at 11
+            ("E1->D1", 1, 120), // Chain 1 at 12
+            ("E2->D2", 1, 120), // Chain 2 at 12
+        ])
+        .unwrap();
+
+        result[0].assert_added();
+        result[1].assert_added();
+        result[2].assert_added();
+
+        assert_difficulty_eq(&result[0], vec![2]);
+        assert_difficulty_eq(&result[1], vec![3]);
+        assert_difficulty_eq(&result[2], vec![4]);
+
+        result[3].assert_added();
+        result[4].assert_added();
+        result[5].assert_added();
+
+        assert_difficulty_eq(&result[3], vec![6]);
+        assert_difficulty_eq(&result[4], vec![8]);
+        assert_difficulty_eq(&result[5], vec![10]);
+
+        result[6].assert_orphaned();
+        result[7].assert_orphaned();
+        result[8].assert_orphaned();
+
+        // ("D2->C2", 1, 120),   // Chain 2 at 11
+        result[9].assert_reorg(4, 3);
+        assert_difficulty_eq(&result[9], vec![6, 8, 10, 11]);
+
+        // ("D1->C1", 1, 120),   // Chain 1 at 11
+        result[10].assert_orphaned();
+
+        // ("E1->D1", 1, 120),   // Chain 1 at 12
+        result[11].assert_reorg(5, 4);
+        assert_difficulty_eq(&result[11], vec![6, 8, 10, 11, 12]);
+
+        // ("E2->D2", 1, 120),   // Chain 2 at 12
+        result[12].assert_orphaned();
+    }
+
     fn check_whole_chain(db: &mut TempDatabase) {
         let mut h = db.fetch_chain_metadata().unwrap().height_of_longest_chain();
         while h > 0 {
@@ -2451,7 +2521,7 @@ mod test {
         let mock_validator = Box::new(MockValidator::new(true));
         // A real validator is needed here to test target difficulties
 
-        let consensus = ConsensusManagerBuilder::new(Network::LocalNet)
+        let consensus = ConsensusManager::builder(Network::LocalNet)
             .with_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .clear_proof_of_work()

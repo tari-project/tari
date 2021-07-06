@@ -48,7 +48,7 @@ technological merits of the potential system outlined herein.
 
 ## Goals
 
-The aim of this Request for Comment (RFC) is to describe the syncing, seeding, pruning and cut-through process.
+The aim of this Request for Comment (RFC) is to describe the syncing, seeding and pruning process.
 
 ## Related Requests for Comment
 
@@ -123,14 +123,13 @@ To counter this problem, we use [pruning horizon]. This allows every node ([Base
 encounters a fork, it can easily rewind its state to apply the fork. If the fork is longer than the [pruning horizon], 
 the node will enter a sync state, where it will resync. 
 
-### Pruning and Cut-through
+### Pruning 
 
 In Mimblewimble, the state can be completely verified using the current [UTXO] set 
 (which contains the output commitments and range proofs), the set of excess signatures (contained in the transaction kernels) 
 and the PoW. The full block and transaction history is not required. This allows base layer nodes to remove old used 
-inputs from the [blockchain] and or the [mempool]. [Cut-through] happens in the [mempool] while pruning 
-happens in the [blockchain] with already confirmed transactions. This will remove the spent inputs and outputs, but will 
-retain the excesses of each [transaction]. 
+inputs from the [blockchain] and or the [mempool]. Pruning happens in the [blockchain] with already confirmed transactions.
+This will remove the spent inputs and outputs, but will retain the excesses of each [transaction]. 
 
 Pruning is only for the benefit of the local Base Node, as it reduces the local blockchain size. Pruning only happens 
 after the block is older than the [pruning horizon] height. A Base Node will either run in archive mode 
@@ -138,7 +137,6 @@ or prune mode. If the Base Node is running in archive mode, it MUST NOT prune.
 
 When running in pruning mode, [Base Node]s MUST remove all spent outputs that are older than the 
 [pruning horizon]in their current stored [UTXO] when a new block is received from another [Base Node].
-
 
 
 [archivenode]: Glossary.md#archive-node
@@ -153,10 +151,8 @@ When running in pruning mode, [Base Node]s MUST remove all spent outputs that ar
 [utxo]: Glossary.md#unspent-transaction-outputs
 [mimblewimble]: Glossary.md#mimblewimble
 [mempool]: Glossary.md#mempool
-[ValidationState]: Glossary.md#validationstate
 [BroadcastStrategy]: Glossary.md#broadcaststrategy
 [range proof]: Glossary.md#range-proof
 [SynchronizationStrategy]: Glossary.md#synchronisationstrategy
 [SynchronizationState]: Glossary.md#synchronisationstate
 [mining server]: Glossary.md#mining-server
-[cut-through]: RFC-0110_BaseNodes.md#Pruning-and-cut-through

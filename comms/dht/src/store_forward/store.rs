@@ -31,7 +31,7 @@ use crate::{
     },
     DhtConfig,
 };
-use futures::{task::Context, Future};
+use futures::{future::BoxFuture, task::Context};
 use log::*;
 use std::{sync::Arc, task::Poll};
 use tari_comms::{
@@ -109,26 +109,29 @@ impl<S> StoreMiddleware<S> {
 }
 
 impl<S> Service<DecryptedDhtMessage> for StoreMiddleware<S>
-where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Clone + 'static
+where
+    S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Clone + Send + Sync + 'static,
+    S::Future: Send,
 {
     type Error = PipelineError;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
     type Response = ();
-
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
     }
 
     fn call(&mut self, msg: DecryptedDhtMessage) -> Self::Future {
-        StoreTask::new(
-            self.next_service.clone(),
-            self.config.clone(),
-            Arc::clone(&self.peer_manager),
-            Arc::clone(&self.node_identity),
-            self.saf_requester.clone(),
+        Box::pin(
+            StoreTask::new(
+                self.next_service.clone(),
+                self.config.clone(),
+                Arc::clone(&self.peer_manager),
+                Arc::clone(&self.node_identity),
+                self.saf_requester.clone(),
+            )
+            .handle(msg),
         )
-        .handle(msg)
     }
 }
 
@@ -142,7 +145,9 @@ struct StoreTask<S> {
     saf_requester: StoreAndForwardRequester,
 }
 
-impl<S> StoreTask<S> {
+impl<S> StoreTask<S>
+where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Send + Sync
+{
     pub fn new(
         next_service: S,
         config: DhtConfig,
@@ -159,11 +164,7 @@ impl<S> StoreTask<S> {
             saf_requester,
         }
     }
-}
 
-impl<S> StoreTask<S>
-where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
-{
     /// Determine if this is a message we should store for our peers and, if so, store it.
     ///
     /// The criteria for storing a message is:
@@ -181,8 +182,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 message.tag,
                 message.dht_header.message_tag
             );
-            self.next_service.oneshot(message).await?;
-            return Ok(());
+            let service = self.next_service.ready_oneshot().await?;
+            return service.oneshot(message).await;
         }
 
         message.set_saf_stored(false);
@@ -198,9 +199,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             message.tag,
             message.dht_header.message_tag
         );
-        self.next_service.oneshot(message).await?;
 
-        Ok(())
+        let service = self.next_service.ready_oneshot().await?;
+        return service.oneshot(message).await;
     }
 
     async fn get_storage_priority(&self, message: &DecryptedDhtMessage) -> SafResult<Option<StoredMessagePriority>> {
@@ -436,6 +437,7 @@ mod test {
     use crate::{
         envelope::{DhtMessageFlags, NodeDestination},
         test_utils::{
+            assert_send_static_service,
             build_peer_manager,
             create_store_and_forward_mock,
             make_dht_inbound_message,
@@ -458,6 +460,7 @@ mod test {
         let node_identity = make_node_identity();
         let mut service = StoreLayer::new(Default::default(), peer_manager, node_identity, requester)
             .layer(spy.to_service::<PipelineError>());
+        assert_send_static_service(&service);
 
         let inbound_msg =
             make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::empty(), false);

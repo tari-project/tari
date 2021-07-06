@@ -49,6 +49,7 @@ use crate::helpers::{
     nodes::{BaseNodeBuilder, NodeInterfaces},
 };
 use std::convert::TryFrom;
+use tari_common::configuration::Network;
 use tari_comms::protocol::rpc::mock::RpcRequestMock;
 use tari_core::{
     base_node::{
@@ -64,7 +65,7 @@ use tari_core::{
         state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
     },
     chain_storage::ChainBlock,
-    consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
+    consensus::{ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
     crypto::tari_utilities::Hashable,
     proto::{
         base_node::{FetchMatchingUtxos, Signatures as SignaturesProto},
@@ -92,7 +93,7 @@ fn setup() -> (
     Runtime,
     TempDir,
 ) {
-    let network = Network::LocalNet;
+    let network = NetworkConsensus::from(Network::LocalNet);
     let consensus_constants = network.create_consensus_constants();
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
@@ -100,8 +101,7 @@ fn setup() -> (
 
     let (block0, utxo0) =
         create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants[0]);
-    let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants[0].clone())
+    let consensus_manager = ConsensusManagerBuilder::new(network.as_network())
         .with_block(block0.clone())
         .build();
 
@@ -145,7 +145,7 @@ fn test_base_node_wallet_rpc() {
         from: vec![utxos1[0].clone()],
         to: vec![400_000 * uT, 590_000 * uT]
     )]);
-    let mut tx2 = (*txs2[0]).clone();
+    let tx2 = (*txs2[0]).clone();
     let tx2_sig = tx2.first_kernel_excess_sig().unwrap().clone();
 
     // Query Tx1
@@ -193,10 +193,6 @@ fn test_base_node_wallet_rpc() {
         .block_on(base_node.local_nci.submit_block(block1.clone(), Broadcast::from(true)))
         .is_ok());
 
-    // fix tx mined height
-    for input in tx2.body.inputs_mut() {
-        input.height = 1;
-    }
     // Check that subitting Tx2 will now be accepted
     let msg = TransactionProto::from(tx2);
     let req = request_mock.request_with_context(Default::default(), msg);

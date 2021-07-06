@@ -47,14 +47,11 @@ pub struct TestNodeConfig {
 
 impl Default for TestNodeConfig {
     fn default() -> Self {
-        let node_identity = Arc::new(
-            NodeIdentity::random(
-                &mut OsRng,
-                "/memory/0".parse().unwrap(),
-                PeerFeatures::COMMUNICATION_NODE,
-            )
-            .unwrap(),
-        );
+        let node_identity = Arc::new(NodeIdentity::random(
+            &mut OsRng,
+            "/memory/0".parse().unwrap(),
+            PeerFeatures::COMMUNICATION_NODE,
+        ));
 
         Self {
             transport: MemoryTransport,
@@ -73,8 +70,7 @@ pub fn build_connection_manager(
     peer_manager: Arc<PeerManager>,
     protocols: Protocols<Substream>,
     shutdown: ShutdownSignal,
-) -> ConnectionManagerRequester
-{
+) -> ConnectionManagerRequester {
     let noise_config = NoiseConfig::new(config.node_identity.clone());
     let (request_tx, request_rx) = mpsc::channel(10);
     let (event_tx, _) = broadcast::channel(100);

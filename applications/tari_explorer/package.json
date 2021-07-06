@@ -7,11 +7,12 @@
     "dev": "nodemon --exec node ./bin/www"
   },
   "dependencies": {
+    "asciichart": "^1.5.25",
     "base-node-grpc-client": "git://github.com/tari-project/base_node_grpc_client.git#mb-add-nft-data",
     "cookie-parser": "~1.4.4",
     "debug": "~2.6.9",
     "express": "~4.16.1",
-    "hbs": "^4.1.1",
+    "hbs": "^4.1.2",
     "http-errors": "~1.6.3",
     "morgan": "~1.9.1"
   },

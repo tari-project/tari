@@ -156,8 +156,7 @@ where TBackend: TransactionBackend + 'static
             // Assume base node is synced until we achieve a connection and it tells us it is not synced
             self.base_node_synced = true;
 
-            let base_node_node_id = NodeId::from_key(&self.base_node_public_key.clone())
-                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+            let base_node_node_id = NodeId::from_key(&self.base_node_public_key);
             let mut connection: Option<PeerConnection> = None;
 
             let delay = delay_for(self.timeout);

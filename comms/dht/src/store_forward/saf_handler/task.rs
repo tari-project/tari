@@ -39,7 +39,7 @@ use crate::{
     store_forward::{error::StoreAndForwardError, service::FetchStoredMessageQuery, StoreAndForwardRequester},
 };
 use digest::Digest;
-use futures::{channel::mpsc, future, stream, Future, SinkExt, StreamExt};
+use futures::{channel::mpsc, future, stream, SinkExt, StreamExt};
 use log::*;
 use prost::Message;
 use std::{convert::TryInto, sync::Arc};
@@ -267,14 +267,15 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             message_tag
         );
 
-        let tasks = response
-            .messages
-            .into_iter()
-            // Map to futures which process the stored message
-            .map(|msg| self.process_incoming_stored_message(Arc::clone(&source_peer), msg));
+        let mut results = Vec::with_capacity(response.messages.len());
+        for msg in response.messages {
+            let result = self
+                .process_incoming_stored_message(Arc::clone(&source_peer), msg)
+                .await;
+            results.push(result);
+        }
 
-        let successful_msgs_iter = future::join_all(tasks)
-            .await
+        let successful_msgs_iter = results
             .into_iter()
             .map(|result| {
                 match &result {
@@ -352,75 +353,72 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         Ok(())
     }
 
-    fn process_incoming_stored_message(
-        &self,
+    async fn process_incoming_stored_message(
+        &mut self,
         source_peer: Arc<Peer>,
         message: ProtoStoredMessage,
-    ) -> impl Future<Output = Result<DecryptedDhtMessage, StoreAndForwardError>> {
-        let node_identity = Arc::clone(&self.node_identity);
-        let peer_manager = Arc::clone(&self.peer_manager);
-        let config = self.config.clone();
-        let mut dht_requester = self.dht_requester.clone();
+    ) -> Result<DecryptedDhtMessage, StoreAndForwardError> {
+        let node_identity = &self.node_identity;
+        let peer_manager = &self.peer_manager;
+        let config = &self.config;
 
-        async move {
-            if message.dht_header.is_none() {
-                return Err(StoreAndForwardError::DhtHeaderNotProvided);
-            }
-
-            let dht_header: DhtMessageHeader = message
-                .dht_header
-                .expect("previously checked")
-                .try_into()
-                .map_err(StoreAndForwardError::DhtMessageError)?;
-
-            if !dht_header.is_valid() {
-                return Err(StoreAndForwardError::InvalidDhtHeader);
-            }
-            let message_type = dht_header.message_type;
-
-            if message_type.is_dht_message() {
-                if !message_type.is_dht_discovery() {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Discarding {} message from peer '{}'",
-                        message_type,
-                        source_peer.node_id.short_str()
-                    );
-                    return Err(StoreAndForwardError::InvalidDhtMessageType);
-                }
-                if dht_header.destination.is_unknown() {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Discarding anonymous discovery message from peer '{}'",
-                        source_peer.node_id.short_str()
-                    );
-                    return Err(StoreAndForwardError::InvalidDhtMessageType);
-                }
-            }
-
-            // Check that the destination is either undisclosed, for us or for our network region
-            Self::check_destination(&config, &peer_manager, &node_identity, &dht_header).await?;
-            // Check that the message has not already been received.
-            Self::check_duplicate(&mut dht_requester, &message.body).await?;
-
-            // Attempt to decrypt the message (if applicable), and deserialize it
-            let (authenticated_pk, decrypted_body) =
-                Self::authenticate_and_decrypt_if_required(&node_identity, &dht_header, &message.body)?;
-
-            let mut inbound_msg =
-                DhtInboundMessage::new(MessageTag::new(), dht_header, Arc::clone(&source_peer), message.body);
-            inbound_msg.is_saf_message = true;
-
-            Ok(DecryptedDhtMessage::succeeded(
-                decrypted_body,
-                authenticated_pk,
-                inbound_msg,
-            ))
+        if message.dht_header.is_none() {
+            return Err(StoreAndForwardError::DhtHeaderNotProvided);
         }
+
+        let dht_header: DhtMessageHeader = message
+            .dht_header
+            .expect("previously checked")
+            .try_into()
+            .map_err(StoreAndForwardError::DhtMessageError)?;
+
+        if !dht_header.is_valid() {
+            return Err(StoreAndForwardError::InvalidDhtHeader);
+        }
+        let message_type = dht_header.message_type;
+
+        if message_type.is_dht_message() {
+            if !message_type.is_dht_discovery() {
+                debug!(
+                    target: LOG_TARGET,
+                    "Discarding {} message from peer '{}'",
+                    message_type,
+                    source_peer.node_id.short_str()
+                );
+                return Err(StoreAndForwardError::InvalidDhtMessageType);
+            }
+            if dht_header.destination.is_unknown() {
+                debug!(
+                    target: LOG_TARGET,
+                    "Discarding anonymous discovery message from peer '{}'",
+                    source_peer.node_id.short_str()
+                );
+                return Err(StoreAndForwardError::InvalidDhtMessageType);
+            }
+        }
+
+        // Check that the destination is either undisclosed, for us or for our network region
+        Self::check_destination(&config, &peer_manager, &node_identity, &dht_header).await?;
+        // Check that the message has not already been received.
+        Self::check_duplicate(&mut self.dht_requester, &message.body).await?;
+
+        // Attempt to decrypt the message (if applicable), and deserialize it
+        let (authenticated_pk, decrypted_body) =
+            Self::authenticate_and_decrypt_if_required(&node_identity, &dht_header, &message.body)?;
+
+        let mut inbound_msg =
+            DhtInboundMessage::new(MessageTag::new(), dht_header, Arc::clone(&source_peer), message.body);
+        inbound_msg.is_saf_message = true;
+
+        Ok(DecryptedDhtMessage::succeeded(
+            decrypted_body,
+            authenticated_pk,
+            inbound_msg,
+        ))
     }
 
     async fn check_duplicate(dht_requester: &mut DhtRequester, body: &[u8]) -> Result<(), StoreAndForwardError> {
-        let msg_hash = Challenge::new().chain(body).result().to_vec();
+        let msg_hash = Challenge::new().chain(body).finalize().to_vec();
         if dht_requester.insert_message_hash(msg_hash).await? {
             Err(StoreAndForwardError::DuplicateMessage)
         } else {
@@ -531,6 +529,7 @@ mod test {
     use prost::Message;
     use std::time::Duration;
     use tari_comms::{message::MessageExt, wrap_in_envelope_body};
+    use tari_crypto::tari_utilities::hex;
     use tari_test_utils::collect_stream;
     use tari_utilities::hex::Hex;
     use tokio::runtime::Handle;
@@ -539,7 +538,7 @@ mod test {
 
     fn make_stored_message(node_identity: &NodeIdentity, dht_header: DhtMessageHeader) -> StoredMessage {
         let body = b"A".to_vec();
-        let body_hash = Challenge::new().chain(body.clone()).result().to_vec().to_hex();
+        let body_hash = hex::to_hex(&Challenge::new().chain(body.clone()).finalize());
         StoredMessage {
             id: 1,
             version: 0,

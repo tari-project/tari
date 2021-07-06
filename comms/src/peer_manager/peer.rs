@@ -27,7 +27,6 @@ use super::{
     PeerFeatures,
 };
 use crate::{
-    consts::PEER_OFFLINE_COOLDOWN_PERIOD,
     net_address::MultiaddressesWithStats,
     protocol::ProtocolId,
     types::CommsPublicKey,
@@ -141,16 +140,6 @@ impl Peer {
     /// list of supported protocols
     pub fn supported_protocols(&self) -> &[ProtocolId] {
         &self.supported_protocols
-    }
-
-    /// Returns true if the last connection attempt has failed within the constant
-    /// [PEER_OFFLINE_COOLDOWN_PERIOD](crate::consts::PEER_OFFLINE_COOLDOWN_PERIOD).
-    pub fn is_recently_offline(&self) -> bool {
-        self.connection_stats.failed_attempts() > 1 &&
-            self.connection_stats
-                .time_since_last_failure()
-                .map(|last_failure| last_failure <= PEER_OFFLINE_COOLDOWN_PERIOD)
-                .unwrap_or(false)
     }
 
     /// Returns true if the peer is marked as offline
@@ -370,7 +359,7 @@ mod test {
     fn test_is_banned_and_ban_for() {
         let mut rng = rand::rngs::OsRng;
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
-        let node_id = NodeId::from_key(&pk).unwrap();
+        let node_id = NodeId::from_key(&pk);
         let addresses = MultiaddressesWithStats::from("/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap());
         let mut peer: Peer = Peer::new(
             pk,
@@ -409,7 +398,7 @@ mod test {
     fn test_update() {
         let mut rng = rand::rngs::OsRng;
         let (_sk, public_key1) = RistrettoPublicKey::random_keypair(&mut rng);
-        let node_id = NodeId::from_key(&public_key1).unwrap();
+        let node_id = NodeId::from_key(&public_key1);
         let net_address1 = "/ip4/124.0.0.124/tcp/7000".parse::<Multiaddr>().unwrap();
         let mut peer: Peer = Peer::new(
             public_key1.clone(),
@@ -461,7 +450,7 @@ mod test {
         let expected_pk_hex = "02622ace8f7303a31cafc63f8fc48fdc16e1c8c8d234b2f0d6685282a9076031";
         let expected_nodeid_hex = "c1a7552e5d9e9b257c4008b965";
         let pk = CommsPublicKey::from_hex(expected_pk_hex).unwrap();
-        let node_id = NodeId::from_key(&pk).unwrap();
+        let node_id = NodeId::from_key(&pk);
         let peer = Peer::new(
             pk,
             node_id,

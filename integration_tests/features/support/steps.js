@@ -16,6 +16,13 @@ const {
 const TransactionBuilder = require("../../helpers/transactionBuilder");
 let lastResult;
 
+const AUTOUPDATE_HASHES_TXT_URL =
+  "https://raw.githubusercontent.com/sdbondi/tari/autoupdate-test-branch/meta/hashes.txt";
+const AUTOUPDATE_HASHES_TXT_SIG_URL =
+  "https://github.com/sdbondi/tari/raw/base-node-auto-update/meta/good.sig";
+const AUTOUPDATE_HASHES_TXT_BAD_SIG_URL =
+  "https://github.com/sdbondi/tari/raw/base-node-auto-update/meta/bad.sig";
+
 Given(/I have a seed node (.*)/, { timeout: 20 * 1000 }, async function (name) {
   return await this.createSeedNode(name);
 });
@@ -54,6 +61,44 @@ Given(
       addresses.push(this.nodes[nodes[i]].peerAddress());
     }
     await this.createAndAddNode(name, addresses);
+  }
+);
+
+Given(
+  /I have a node (.*) with auto update enabled/,
+  { timeout: 20 * 1000 },
+  async function (name) {
+    const node = await this.createNode(name, {
+      common: {
+        auto_update: {
+          enabled: true,
+          dns_hosts: ["_test_autoupdate.tari.io"],
+          hashes_url: AUTOUPDATE_HASHES_TXT_URL,
+          hashes_sig_url: AUTOUPDATE_HASHES_TXT_SIG_URL,
+        },
+      },
+    });
+    await node.startNew();
+    this.addNode(name, node);
+  }
+);
+
+Given(
+  /I have a node (.*) with auto update configured with a bad signature/,
+  { timeout: 20 * 1000 },
+  async function (name) {
+    const node = await this.createNode(name, {
+      common: {
+        auto_update: {
+          enabled: true,
+          dns_hosts: ["_test_autoupdate.tari.io"],
+          hashes_url: AUTOUPDATE_HASHES_TXT_URL,
+          hashes_sig_url: AUTOUPDATE_HASHES_TXT_BAD_SIG_URL,
+        },
+      },
+    });
+    await node.startNew();
+    this.addNode(name, node);
   }
 );
 
@@ -379,8 +424,8 @@ When(
     let walletB = this.getWallet(walletNameB);
     let clientB = walletB.getClient();
 
-    await walletA.export_spent_outputs();
-    let spent_outputs = await walletA.read_exported_outputs();
+    await walletA.exportSpentOutputs();
+    let spent_outputs = await walletA.readExportedOutputs();
     let result = await clientB.importUtxos(spent_outputs);
     lastResult = result.tx_ids;
   }
@@ -393,8 +438,8 @@ When(
     let walletB = this.getWallet(walletNameB);
     let clientB = walletB.getClient();
 
-    await walletA.export_unspent_outputs();
-    let outputs = await walletA.read_exported_outputs();
+    await walletA.exportUnspentOutputs();
+    let outputs = await walletA.readExportedOutputs();
     let result = await clientB.importUtxos(outputs);
     lastResult = result.tx_ids;
   }
@@ -406,7 +451,7 @@ When(
     let wallet = this.getWallet(walletName);
     let client = wallet.getClient();
     let found_txs = await client.getCompletedTransactions();
-    console.log("Found: ", found_txs);
+    //console.log("Found: ", found_txs);
     let found_count = 0;
     for (let imported_tx = 0; imported_tx < lastResult.length; imported_tx++) {
       for (let found_tx = 0; found_tx < found_txs.length; found_tx++) {
@@ -702,11 +747,40 @@ Then(
   { timeout: 1200 * 1000 },
   async function (height) {
     await this.forEachClientAsync(async (client, name) => {
-      await waitFor(async () => client.getTipHeight(), height, 1150 * 1000);
+      await waitFor(async () => client.getTipHeight(), height, 60 * 1000);
       const currTip = await client.getTipHeight();
       console.log(`Node ${name} is at tip: ${currTip} (should be ${height})`);
       expect(currTip).to.equal(height);
     });
+  }
+);
+
+Then(
+  /(.*) does not have a new software update/,
+  { timeout: 1200 * 1000 },
+  async function (name) {
+    let client = this.getClient(name);
+    await sleep(5000);
+    await waitFor(
+      async () => client.checkForUpdates().has_update,
+      false,
+      60 * 1000
+    );
+  }
+);
+
+Then(
+  /(.+) has a new software update/,
+  { timeout: 1200 * 1000 },
+  async function (name) {
+    let client = this.getClient(name);
+    await waitFor(
+      async () => {
+        return client.checkForUpdates().has_update;
+      },
+      true,
+      1150 * 1000
+    );
   }
 );
 
@@ -889,21 +963,25 @@ Then(/(.*) has (.*) in (.*) state/, async function (node, txn, pool) {
   expect(this.lastResult.result).to.equal(pool);
 });
 
+// The number is rounded down. E.g. if 1% can fail out of 17, that is 16.83 have to succeed.
+// It's means at least 16 have to succeed.
 Then(
-  /(.*) is in the (.*) of all nodes/,
+  /(.*) is in the (.*) of all nodes(, where (\d+)% can fail)?/,
   { timeout: 1200 * 1000 },
-  async function (txn, pool) {
+  async function (txn, pool, canFail) {
     const sig = this.transactions[txn].body.kernels[0].excess_sig;
-    await this.forEachClientAsync(async (client, name) => {
-      await waitFor(
-        async () => client.transactionStateResult(sig),
-        pool,
-        1200 * 1000
-      );
-      this.lastResult = await client.transactionState(sig);
-      console.log(`Node ${name} response is: ${this.lastResult.result}`);
-      expect(this.lastResult.result).to.equal(pool);
-    });
+    await this.forEachClientAsync(
+      async (client, name) => {
+        await waitFor(
+          async () => client.transactionStateResult(sig),
+          pool,
+          1200 * 1000
+        );
+        this.lastResult = await client.transactionState(sig);
+        console.log(`Node ${name} response is: ${this.lastResult.result}`);
+      },
+      canFail ? parseInt(canFail) : 0
+    );
   }
 );
 
@@ -1153,6 +1231,12 @@ Then(
     const client = this.getClient(nodeName);
     const hash = getTransactionOutputHash(this.outputs[outputName].output);
     const lastResult = await client.fetchMatchingUtxos([hash]);
+
+    expect(
+      lastResult,
+      `UTXO (${outputName}) not found with hash ${hash.toString("hex")}`
+    ).to.be.an("array").that.is.not.empty;
+
     expect(lastResult[0].output.commitment.toString("hex")).to.equal(
       this.outputs[outputName].output.commitment.toString("hex")
     );
@@ -1227,21 +1311,24 @@ Then(
 
 Then(
   /wallet (.*) and wallet (.*) have the same balance/,
-  { timeout: 60 * 1000 },
+  { timeout: 65 * 1000 },
   async function (walletNameA, walletNameB) {
     const walletClientA = this.getWallet(walletNameA).getClient();
-    const balanceA = await walletClientA.getBalance();
-    console.log("\n");
-    console.log(walletNameA, "balance:");
+    var balanceA = await walletClientA.getBalance();
+    console.log("\n", walletNameA, "balance:");
     consoleLogBalance(balanceA);
     const walletClientB = this.getWallet(walletNameB).getClient();
-    await waitFor(
-      async () => walletClientB.isBalanceAtLeast(balanceA.available_balance),
-      true,
-      55 * 1000,
-      5 * 1000,
-      5
-    );
+    for (let i = 1; i <= 12; i++) {
+      await waitFor(
+        async () => walletClientB.isBalanceAtLeast(balanceA.available_balance),
+        true,
+        5 * 1000
+      );
+      balanceA = await walletClientA.getBalance();
+      if (walletClientB.isBalanceAtLeast(balanceA.available_balance) === true) {
+        break;
+      }
+    }
     const balanceB = await walletClientB.getBalance();
     console.log(walletNameB, "balance:");
     consoleLogBalance(balanceB);

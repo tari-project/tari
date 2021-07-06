@@ -55,34 +55,21 @@ use tari_crypto::{
 pub fn create_test_input(
     amount: MicroTari,
     maturity: u64,
-    mined_height: u64,
     factory: &CommitmentFactory,
-) -> (TransactionInput, UnblindedOutput, PrivateKey) {
-    let spending_key = PrivateKey::random(&mut OsRng);
-    let script_key = PrivateKey::random(&mut OsRng);
-    let features = OutputFeatures::with_maturity(maturity);
-    let script = script!(Nop);
-    let input_data = inputs!(PublicKey::from_secret_key(&script_key));
-    let offset_pvt_key = PrivateKey::random(&mut OsRng);
-    let offset_pub_key = PublicKey::from_secret_key(&offset_pvt_key);
+) -> (TransactionInput, UnblindedOutput) {
+    let test_params = TestParams::new();
 
-    let unblinded_output = UnblindedOutput::new(
+    let unblinded_output = create_unblinded_output(
+        script!(Nop),
+        OutputFeatures::with_maturity(maturity),
+        test_params,
         amount,
-        spending_key,
-        Some(features),
-        script,
-        input_data,
-        mined_height,
-        script_key,
-        offset_pub_key,
-        None,
-        None
     );
     let input = unblinded_output.as_transaction_input(factory).unwrap();
-    (input, unblinded_output, offset_pvt_key)
+    (input, unblinded_output)
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct TestParams {
     pub spend_key: PrivateKey,
     pub change_spend_key: PrivateKey,
@@ -90,14 +77,19 @@ pub struct TestParams {
     pub nonce: PrivateKey,
     pub public_nonce: PublicKey,
     pub script_private_key: PrivateKey,
-    pub script_offset_pub_key: PublicKey,
-    pub script_offset_pvt_key: PrivateKey,
+    pub sender_offset_public_key: PublicKey,
+    pub sender_offset_private_key: PrivateKey,
+    pub sender_sig_private_nonce: PrivateKey,
+    pub sender_sig_public_nonce: PublicKey,
+    pub sender_private_commitment_nonce: PrivateKey,
+    pub sender_public_commitment_nonce: PublicKey,
 }
 
 impl TestParams {
     pub fn new() -> TestParams {
         let r = PrivateKey::random(&mut OsRng);
-        let script_offset_pvt_key = PrivateKey::random(&mut OsRng);
+        let sender_offset_private_key = PrivateKey::random(&mut OsRng);
+        let sender_sig_pvt_nonce = PrivateKey::random(&mut OsRng);
         TestParams {
             spend_key: PrivateKey::random(&mut OsRng),
             change_spend_key: PrivateKey::random(&mut OsRng),
@@ -105,8 +97,12 @@ impl TestParams {
             public_nonce: PublicKey::from_secret_key(&r),
             nonce: r,
             script_private_key: PrivateKey::random(&mut OsRng),
-            script_offset_pub_key: PublicKey::from_secret_key(&script_offset_pvt_key),
-            script_offset_pvt_key,
+            sender_offset_public_key: PublicKey::from_secret_key(&sender_offset_private_key),
+            sender_offset_private_key,
+            sender_sig_private_nonce: sender_sig_pvt_nonce.clone(),
+            sender_sig_public_nonce: PublicKey::from_secret_key(&sender_sig_pvt_nonce),
+            sender_private_commitment_nonce: sender_sig_pvt_nonce.clone(),
+            sender_public_commitment_nonce: PublicKey::from_secret_key(&sender_sig_pvt_nonce),
         }
     }
 }
@@ -157,6 +153,32 @@ pub fn create_random_signature_from_s_key(
     (p, Signature::sign(s_key, r, &e).unwrap())
 }
 
+pub fn create_unblinded_output(
+    script: TariScript,
+    output_features: OutputFeatures,
+    test_params: TestParams,
+    value: MicroTari,
+) -> UnblindedOutput {
+    let metadata_signature = TransactionOutput::create_final_metadata_signature(
+        &value,
+        &test_params.spend_key,
+        &script,
+        &output_features,
+        &test_params.sender_offset_private_key,
+    )
+    .unwrap();
+    UnblindedOutput::new(
+        value,
+        test_params.spend_key,
+        Some(output_features),
+        script,
+        inputs!(PublicKey::from_secret_key(&test_params.script_private_key)),
+        test_params.script_private_key,
+        test_params.sender_offset_public_key,
+        metadata_signature,
+    )
+}
+
 /// The tx macro is a convenience wrapper around the [create_tx] function, making the arguments optional and explicit
 /// via keywords.
 #[macro_export]
@@ -192,12 +214,11 @@ macro_rules! tx {
 /// The output of this macro is intended to be used in [spend_utxos].
 #[macro_export]
 macro_rules! txn_schema {
-    (from: $input:expr, to: $outputs:expr, fee: $fee:expr, lock: $lock:expr, mined_height: $mined_height:expr, features: $features:expr) => {{
+    (from: $input:expr, to: $outputs:expr, fee: $fee:expr, lock: $lock:expr, features: $features:expr) => {{
         $crate::transactions::helpers::TransactionSchema {
             from: $input.clone(),
             to: $outputs.clone(),
             fee: $fee,
-            mined_height: $mined_height,
             lock_height: $lock,
             features: $features
         }
@@ -209,7 +230,6 @@ macro_rules! txn_schema {
             to:$outputs,
             fee:$fee,
             lock:$lock,
-            mined_height: 0,
             features: $features
         )
     }};
@@ -240,7 +260,6 @@ macro_rules! txn_schema {
 pub struct TransactionSchema {
     pub from: Vec<UnblindedOutput>,
     pub to: Vec<MicroTari>,
-    pub mined_height: u64,
     pub fee: MicroTari,
     pub lock_height: u64,
     pub features: OutputFeatures,
@@ -270,12 +289,12 @@ pub fn create_tx(
     let mut unblinded_outputs = Vec::with_capacity(output_count);
     let amount_per_input = amount / input_count as u64;
     for i in 0..input_count - 1 {
-        let (utxo, input, _) = create_test_input(amount_per_input, input_maturity, 0, &factories.commitment);
+        let (utxo, input) = create_test_input(amount_per_input, input_maturity, &factories.commitment);
         unblinded_inputs.resize(i + 1, input.clone());
         stx_builder.with_input(utxo, input);
     }
     let amount_for_last_input = amount - amount_per_input * (input_count as u64 - 1);
-    let (utxo, input, _) = create_test_input(amount_for_last_input, input_maturity, 0, &factories.commitment);
+    let (utxo, input) = create_test_input(amount_for_last_input, input_maturity, &factories.commitment);
     unblinded_inputs.push(input.clone());
     stx_builder.with_input(utxo, input);
 
@@ -289,20 +308,19 @@ pub fn create_tx(
             amount_for_last_output
         };
         let test_params = TestParams::new();
-        let utxo = UnblindedOutput::new(
-            output_amount,
-            test_params.spend_key.clone(),
-            None,
+
+        let utxo = create_unblinded_output(
             script!(Nop),
-            inputs!(PublicKey::from_secret_key(&test_params.script_private_key)),
-            0,
-            test_params.script_private_key.clone(),
-            test_params.script_offset_pub_key,
+            OutputFeatures::default(),
+            test_params.clone(),
+            output_amount,
             None,
             None
         );
         unblinded_outputs.push(utxo.clone());
-        stx_builder.with_output(utxo, test_params.script_offset_pvt_key.clone());
+        stx_builder
+            .with_output(utxo, test_params.sender_offset_private_key.clone())
+            .unwrap();
     }
 
     let mut stx_protocol = stx_builder.build::<Blake256>(&factories).unwrap();
@@ -340,8 +358,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
         );
 
     for tx_input in &schema.from {
-        let mut input = tx_input.clone();
-        input.height = schema.mined_height;
+        let input = tx_input.clone();
         let utxo = input
             .as_transaction_input(&factories.commitment)
             .expect("Should be able to make a transaction input");
@@ -350,36 +367,39 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
     let mut outputs = Vec::with_capacity(schema.to.len());
     for val in schema.to {
         let test_params = TestParams::new();
-        let utxo = UnblindedOutput::new(
-            val,
-            test_params.spend_key.clone(),
-            Some(schema.features.clone()),
-            script!(Nop),
-            inputs!(PublicKey::from_secret_key(&test_params.script_private_key)),
-            0,
-            test_params.script_private_key.clone(),
-            test_params.script_offset_pub_key,
-            None,
-            None
-        );
+        let utxo = create_unblinded_output(script!(Nop), schema.features.clone(), test_params.clone(), val);
         outputs.push(utxo.clone());
-        stx_builder.with_output(utxo, test_params.script_offset_pvt_key);
+        stx_builder
+            .with_output(utxo, test_params.sender_offset_private_key.clone())
+            .unwrap();
     }
 
     let mut stx_protocol = stx_builder.build::<Blake256>(&factories).unwrap();
     let change = stx_protocol.get_change_amount().unwrap();
-    let change_script_offset_public_key = stx_protocol.get_change_script_offset_public_key().unwrap().unwrap();
+    // The change output is assigned its own random script offset private key
+    let change_sender_offset_public_key = stx_protocol.get_change_sender_offset_public_key().unwrap().unwrap();
+
+    let script = script!(Nop);
+    let metadata_sig = TransactionOutput::create_final_metadata_signature(
+        &change,
+        &test_params_change_and_txn.change_spend_key,
+        &script,
+        &schema.features,
+        &test_params_change_and_txn.sender_offset_private_key,
+    )
+    .unwrap();
+
     let change_output = UnblindedOutput::new(
         change,
         test_params_change_and_txn.change_spend_key.clone(),
         Some(schema.features),
-        script!(Nop),
+        script,
         inputs!(PublicKey::from_secret_key(
             &test_params_change_and_txn.script_private_key
         )),
-        0,
         test_params_change_and_txn.script_private_key.clone(),
-        change_script_offset_public_key,
+        change_sender_offset_public_key,
+        metadata_sig,
         None,
         None,
     );
@@ -412,14 +432,23 @@ pub fn create_utxo(
     script: &TariScript,
 ) -> (TransactionOutput, PrivateKey, PrivateKey) {
     let keys = generate_keys();
-    let offset_private_key = generate_keys();
+    let offset_keys = generate_keys();
     let features = features.unwrap_or_default();
     let commitment = factories.commitment.commit_value(&keys.k, value.into());
-    let offset_pub_key = PublicKey::from_secret_key(&keys.k);
     let proof = factories.range_proof.construct_proof(&keys.k, value.into()).unwrap();
+    let metadata_sig =
+        TransactionOutput::create_final_metadata_signature(&value, &keys.k, &script, &features, &offset_keys.k)
+            .unwrap();
 
-    let utxo = TransactionOutput::new(features, commitment, proof.into(), script.clone(), offset_pub_key, None, None);
-    (utxo, keys.k, offset_private_key.k)
+    let utxo = TransactionOutput::new(
+        features,
+        commitment,
+        proof.into(),
+        script.clone(),
+        offset_keys.pk,
+        metadata_sig,
+    );
+    (utxo, keys.k, offset_keys.k)
 }
 
 pub fn schema_to_transaction(txns: &[TransactionSchema]) -> (Vec<Arc<Transaction>>, Vec<UnblindedOutput>) {

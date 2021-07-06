@@ -24,7 +24,7 @@ use crate::{
     envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
     inbound::DhtInboundMessage,
     outbound::message::DhtOutboundMessage,
-    proto::envelope::{DhtEnvelope, DhtMessageType, Network, OriginMac},
+    proto::envelope::{DhtEnvelope, DhtMessageType, OriginMac},
 };
 use rand::rngs::OsRng;
 use std::{convert::TryInto, sync::Arc};
@@ -48,7 +48,7 @@ pub fn make_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
     let public_addr = format!("/memory/{}", MemoryTransport::acquire_next_memsocket_port())
         .parse()
         .unwrap();
-    Arc::new(NodeIdentity::random(&mut OsRng, public_addr, features).unwrap())
+    Arc::new(NodeIdentity::random(&mut OsRng, public_addr, features))
 }
 
 pub fn make_node_identity() -> Arc<NodeIdentity> {
@@ -77,7 +77,8 @@ pub fn make_dht_header(
     trace: MessageTag,
 ) -> DhtMessageHeader {
     DhtMessageHeader {
-        version: 0,
+        major: 0,
+        minor: 0,
         destination: NodeDestination::Unknown,
         ephemeral_public_key: if flags.is_encrypted() { Some(e_pk.clone()) } else { None },
         origin_mac: if include_origin {
@@ -86,7 +87,6 @@ pub fn make_dht_header(
             Vec::new()
         },
         message_type: DhtMessageType::None,
-        network: Network::LocalTest,
         flags,
         message_tag: trace,
         expires: None,
@@ -184,7 +184,6 @@ pub fn create_outbound_message(body: &[u8]) -> DhtOutboundMessage {
         destination_node_id: NodeId::default(),
         destination: Default::default(),
         dht_message_type: Default::default(),
-        network: Network::LocalTest,
         dht_flags: Default::default(),
         custom_header: None,
         body: body.to_vec().into(),

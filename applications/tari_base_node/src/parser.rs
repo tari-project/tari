@@ -54,6 +54,7 @@ use tari_shutdown::Shutdown;
 pub enum BaseNodeCommand {
     Help,
     Version,
+    CheckForUpdates,
     Status,
     GetChainMetadata,
     GetPeer,
@@ -181,6 +182,9 @@ impl Parser {
             Version => {
                 self.command_handler.print_version();
             },
+            CheckForUpdates => {
+                self.command_handler.check_for_updates();
+            },
             GetChainMetadata => {
                 self.command_handler.get_chain_meta();
             },
@@ -278,6 +282,9 @@ impl Parser {
             },
             Version => {
                 println!("Gets the current application version");
+            },
+            CheckForUpdates => {
+                println!("Checks for software updates if auto update is enabled");
             },
             GetChainMetadata => {
                 println!("Gets your base node chain meta data");

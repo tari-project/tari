@@ -68,10 +68,13 @@ function dec2hex(n) {
 }
 
 function toLittleEndianInner(n) {
-  const hexar = dec2hex(n);
-  return hexar
-    .map((h) => (h < 16 ? "0" : "") + h.toString(16))
-    .concat(Array(4 - hexar.length).fill("00"));
+  let hexar = dec2hex(n);
+  hexar = hexar.map((h) => (h < 16 ? "0" : "") + h.toString(16));
+  if (hexar.length < 4) {
+    return hexar.concat(Array(4 - hexar.length).fill("00"));
+  } else {
+    return hexar;
+  }
 }
 
 function toLittleEndian(n, numBits) {
@@ -84,6 +87,16 @@ function toLittleEndian(n, numBits) {
   const arr = Buffer.from(s.join(""), "hex");
 
   return arr;
+}
+
+function littleEndianHexStringToBigEndianHexString(string) {
+  if (!string) return undefined;
+  var len = string.length;
+  var bigEndianHexString = "0x";
+  for (var i = 0; i < len / 2; i++) {
+    bigEndianHexString += string.substring(len - (i + 1) * 2, len - i * 2);
+  }
+  return bigEndianHexString;
 }
 
 function hexSwitchEndianness(val) {
@@ -157,7 +170,6 @@ const getTransactionOutputHash = function (output) {
   blake2bUpdate(context, buffer);
   blake2bUpdate(context, output.commitment);
   blake2bUpdate(context, nopScriptBytes);
-  blake2bUpdate(context, output.script_offset_public_key);
   let final = blake2bFinal(context);
   return Buffer.from(final);
 };
@@ -216,11 +228,36 @@ function pad(str, length, padLeft = true) {
   }
 }
 
+function combineTwoTariKeys(key1, key2) {
+  let total_key =
+    BigInt(littleEndianHexStringToBigEndianHexString(key1)) +
+    BigInt(littleEndianHexStringToBigEndianHexString(key2));
+  if (total_key < 0) {
+    total_key =
+      total_key +
+      BigInt(
+        littleEndianHexStringToBigEndianHexString(
+          "edd3f55c1a631258d69cf7a2def9de1400000000000000000000000000000010"
+        )
+      );
+  }
+  total_key = total_key.toString(16);
+  while (total_key.length < 64) {
+    total_key = "0" + total_key;
+  }
+  total_key = littleEndianHexStringToBigEndianHexString(total_key);
+  while (total_key.length < 64) {
+    total_key = "0" + total_key;
+  }
+  return total_key;
+}
+
 module.exports = {
   getRandomInt,
   sleep,
   waitFor,
   toLittleEndian,
+  littleEndianHexStringToBigEndianHexString,
   // portInUse,
   getFreePort,
   getTransactionOutputHash,
@@ -229,5 +266,6 @@ module.exports = {
   consoleLogBalance,
   consoleLogCoinbaseDetails,
   withTimeout,
+  combineTwoTariKeys,
   NO_CONNECTION,
 };

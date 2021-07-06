@@ -1,4 +1,4 @@
-//  Copyright 2019 The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,11 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
+use crate::dns::DnsClientError;
 
-/// The maximum number of peers to return from the flood_identities method in peer manager
-pub const PEER_MANAGER_MAX_FLOOD_PEERS: usize = 1000;
-
-/// The amount of time to consider a peer to be offline (i.e. dial to peer will fail without trying) after a failed
-/// connection attempt
-pub const PEER_OFFLINE_COOLDOWN_PERIOD: Duration = Duration::from_secs(60);
+#[derive(Debug, thiserror::Error)]
+pub enum AutoUpdateError {
+    #[error("DNS Client error: {0}")]
+    DnsClientError(#[from] DnsClientError),
+    #[error("Failed to download file: {0}")]
+    DownloadError(#[from] reqwest::Error),
+    #[error("Failed to verify signature: {0}")]
+    SignatureError(#[from] pgp::errors::Error),
+}

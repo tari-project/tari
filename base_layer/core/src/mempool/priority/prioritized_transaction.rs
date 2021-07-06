@@ -20,8 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{mempool::priority::PriorityError, transactions::transaction::Transaction};
-use std::{convert::TryFrom, sync::Arc};
+use crate::{
+    mempool::priority::PriorityError,
+    transactions::{transaction::Transaction, types::HashOutput},
+};
+use std::sync::Arc;
 use tari_crypto::tari_utilities::message_format::MessageFormat;
 
 /// Create a unique unspent transaction priority based on the transaction fee, maturity of the oldest input UTXO and the
@@ -54,20 +57,28 @@ impl Clone for FeePriority {
 }
 
 /// A prioritized transaction includes a transaction and the calculated priority of the transaction.
+#[derive(Clone)]
 pub struct PrioritizedTransaction {
     pub transaction: Arc<Transaction>,
     pub priority: FeePriority,
     pub weight: u64,
+    pub depended_output_hashes: Vec<HashOutput>,
 }
 
-impl TryFrom<Transaction> for PrioritizedTransaction {
-    type Error = PriorityError;
-
-    fn try_from(transaction: Transaction) -> Result<Self, Self::Error> {
+impl PrioritizedTransaction {
+    pub fn convert_from_transaction(
+        transaction: Transaction,
+        dependent_outputs: Option<Vec<HashOutput>>,
+    ) -> Result<PrioritizedTransaction, PriorityError> {
+        let depended_output_hashes = match dependent_outputs {
+            Some(v) => v,
+            None => Vec::new(),
+        };
         Ok(Self {
             priority: FeePriority::try_from(&transaction)?,
             weight: transaction.calculate_weight(),
             transaction: Arc::new(transaction),
+            depended_output_hashes,
         })
     }
 }

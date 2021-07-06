@@ -21,12 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    consensus::{network::Network, KERNEL_WEIGHT, WEIGHT_PER_OUTPUT},
+    consensus::{network::NetworkConsensus, KERNEL_WEIGHT, WEIGHT_PER_OUTPUT},
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::tari_amount::{uT, MicroTari, T},
 };
 use chrono::{DateTime, Duration, Utc};
 use std::{collections::HashMap, ops::Add};
+use tari_common::configuration::Network;
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 /// This is the inner struct used to control all consensus values.
@@ -400,7 +401,10 @@ impl ConsensusConstantsBuilder {
     pub fn new(network: Network) -> Self {
         Self {
             // TODO: Resolve this unwrap
-            consensus: network.create_consensus_constants().pop().unwrap(),
+            consensus: NetworkConsensus::from(network)
+                .create_consensus_constants()
+                .pop()
+                .expect("Empty consensus constants"),
         }
     }
 

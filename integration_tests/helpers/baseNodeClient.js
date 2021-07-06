@@ -6,6 +6,7 @@ const TransactionBuilder = require("./transactionBuilder");
 const { SHA3 } = require("sha3");
 const { toLittleEndian } = require("./util");
 const cloneDeep = require("clone-deep");
+const PowAlgo = { MONERO: 0, SHA3: 1 };
 
 class BaseNodeClient {
   constructor(clientOrPort) {
@@ -89,7 +90,7 @@ class BaseNodeClient {
   getBlockTemplate(weight) {
     return this.client
       .getNewBlockTemplate()
-      .sendMessage({ algo: { pow_algo: 2 }, max_weight: weight })
+      .sendMessage({ algo: { pow_algo: PowAlgo.SHA3 }, max_weight: weight })
       .then((template) => {
         const res = {
           minerData: template.miner_data,
@@ -153,6 +154,10 @@ class BaseNodeClient {
       });
   }
 
+  checkForUpdates() {
+    return this.client.checkForUpdates().sendMessage({});
+  }
+
   transactionStateResult(txn) {
     return this.client
       .transactionState()
@@ -198,9 +203,10 @@ class BaseNodeClient {
       .sendMessage({})
       .then((tip) => {
         currHeight = parseInt(tip.metadata.height_of_longest_chain);
-        return this.client
-          .getNewBlockTemplate()
-          .sendMessage({ algo: { pow_algo: 2 }, max_weight: weight });
+        return this.client.getNewBlockTemplate().sendMessage({
+          algo: { pow_algo: PowAlgo.SHA3 },
+          max_weight: weight,
+        });
       })
       .then((template) => {
         block = template.new_block_template;
@@ -361,8 +367,9 @@ class BaseNodeClient {
     hash.update(header.prev_hash);
     const timestamp = parseInt(header.timestamp.seconds);
     hash.update(toLittleEndian(timestamp, 64));
+    hash.update(header.input_mr);
     hash.update(header.output_mr);
-    hash.update(header.range_proof_mr);
+    hash.update(header.witness_mr);
     hash.update(header.kernel_mr);
     hash.update(header.total_kernel_offset);
     hash.update(toLittleEndian(parseInt(header.nonce), 64));
@@ -371,7 +378,7 @@ class BaseNodeClient {
       toLittleEndian(parseInt(header.pow.accumulated_monero_difficulty), 64)
     );
     hash.update(
-      toLittleEndian(parseInt(header.pow.accumulated_blake_difficulty), 64)
+      toLittleEndian(parseInt(header.pow.accumulated_sha_difficulty), 64)
     );
     hash.update(header.pow.pow_data);
     const first_round = hash.digest();
