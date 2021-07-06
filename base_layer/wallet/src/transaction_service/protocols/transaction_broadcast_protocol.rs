@@ -105,8 +105,7 @@ where TBackend: TransactionBackend + 'static
         let mut shutdown = self.resources.shutdown_signal.clone();
         // Main protocol loop
         loop {
-            let base_node_node_id = NodeId::from_key(&self.base_node_public_key.clone())
-                .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
+            let base_node_node_id = NodeId::from_key(&self.base_node_public_key);
             let mut connection: Option<PeerConnection> = None;
 
             let delay = delay_for(self.timeout);

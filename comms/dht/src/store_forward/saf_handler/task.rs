@@ -418,7 +418,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     }
 
     async fn check_duplicate(dht_requester: &mut DhtRequester, body: &[u8]) -> Result<(), StoreAndForwardError> {
-        let msg_hash = Challenge::new().chain(body).result().to_vec();
+        let msg_hash = Challenge::new().chain(body).finalize().to_vec();
         if dht_requester.insert_message_hash(msg_hash).await? {
             Err(StoreAndForwardError::DuplicateMessage)
         } else {
@@ -529,6 +529,7 @@ mod test {
     use prost::Message;
     use std::time::Duration;
     use tari_comms::{message::MessageExt, wrap_in_envelope_body};
+    use tari_crypto::tari_utilities::hex;
     use tari_test_utils::collect_stream;
     use tari_utilities::hex::Hex;
     use tokio::runtime::Handle;
@@ -537,7 +538,7 @@ mod test {
 
     fn make_stored_message(node_identity: &NodeIdentity, dht_header: DhtMessageHeader) -> StoredMessage {
         let body = b"A".to_vec();
-        let body_hash = Challenge::new().chain(body.clone()).result().to_vec().to_hex();
+        let body_hash = hex::to_hex(&Challenge::new().chain(body.clone()).finalize());
         StoredMessage {
             id: 1,
             version: 0,

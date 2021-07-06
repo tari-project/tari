@@ -50,14 +50,11 @@ macro_rules! unwrap_oms_send_msg {
 }
 
 pub fn make_node_identity() -> Arc<NodeIdentity> {
-    Arc::new(
-        NodeIdentity::random(
-            &mut OsRng,
-            "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
-            PeerFeatures::COMMUNICATION_NODE,
-        )
-        .unwrap(),
-    )
+    Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ))
 }
 
 pub fn make_dht_header(trace: MessageTag) -> DhtMessageHeader {

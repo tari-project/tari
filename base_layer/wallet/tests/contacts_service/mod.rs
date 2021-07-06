@@ -20,12 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{data::get_temp_sqlite_database_connection, utils::random_string};
+use crate::support::data::get_temp_sqlite_database_connection;
 use rand::rngs::OsRng;
 use tari_core::transactions::types::PublicKey;
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_service_framework::StackBuilder;
 use tari_shutdown::Shutdown;
+use tari_test_utils::random;
 use tari_wallet::contacts_service::{
     error::{ContactsServiceError, ContactsServiceStorageError},
     handle::ContactsServiceHandle,
@@ -66,7 +67,7 @@ pub fn test_contacts_service() {
         let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
 
         contacts.push(Contact {
-            alias: random_string(8),
+            alias: random::string(8),
             public_key,
         });
 

@@ -43,7 +43,7 @@ use crate::transactions::{
         Signature,
     },
 };
-use digest::Input;
+use blake2::Digest;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -420,7 +420,7 @@ impl TransactionInput {
             .chain(input_data.as_bytes().as_slice())
             .chain(script_public_key.as_bytes())
             .chain(commitment.as_bytes())
-            .result()
+            .finalize()
             .to_vec()
     }
 
@@ -490,7 +490,7 @@ impl TransactionInput {
             .chain(self.features.to_bytes())
             .chain(self.commitment.as_bytes())
             .chain(self.script.as_bytes())
-            .result()
+            .finalize()
             .to_vec()
     }
 }
@@ -507,7 +507,7 @@ impl Hashable for TransactionInput {
             .chain(self.script_signature.v().as_bytes())
             .chain(self.script_signature.public_nonce().as_bytes())
             .chain(self.input_data.as_bytes())
-            .result()
+            .finalize()
             .to_vec()
     }
 }
@@ -685,7 +685,7 @@ impl TransactionOutput {
             .chain(features.to_bytes())
             .chain(sender_offset_public_key.as_bytes())
             .chain(commitment.as_bytes())
-            .result()
+            .finalize()
             .to_vec()
     }
 
@@ -775,7 +775,7 @@ impl TransactionOutput {
             .chain(self.metadata_signature.u().as_bytes())
             .chain(self.metadata_signature.v().as_bytes())
             .chain(self.metadata_signature.public_nonce().as_bytes())
-            .result()
+            .finalize()
             .to_vec()
     }
 }
@@ -793,7 +793,7 @@ impl Hashable for TransactionOutput {
             .chain(self.commitment.as_bytes())
             // .chain(range proof) // See docs as to why we exclude this
             .chain(self.script.as_bytes())
-            .result()
+            .finalize()
             .to_vec()
     }
 }
@@ -1035,7 +1035,7 @@ impl Hashable for TransactionKernel {
             .chain(self.excess.as_bytes())
             .chain(self.excess_sig.get_public_nonce().as_bytes())
             .chain(self.excess_sig.get_signature().as_bytes())
-            .result()
+            .finalize()
             .to_vec()
     }
 }

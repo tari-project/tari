@@ -213,7 +213,7 @@ impl BlockHeader {
             .chain(self.kernel_mmr_size.to_le_bytes())
             .chain(self.total_kernel_offset.as_bytes())
             .chain(self.total_script_offset.as_bytes())
-            .result()
+            .finalize()
             .to_vec()
     }
 
@@ -257,7 +257,7 @@ impl Hashable for BlockHeader {
             .chain(self.merged_mining_hash())
             .chain(self.pow.to_bytes())
             .chain(self.nonce.to_le_bytes())
-            .result()
+            .finalize()
             .to_vec()
     }
 }

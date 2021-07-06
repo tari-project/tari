@@ -212,7 +212,7 @@ impl MerkleProof {
                     (hasher.chain(hash), peak_hashes)
                 }
             });
-        Ok(hasher.result().to_vec())
+        Ok(hasher.finalize().to_vec())
     }
 
     /// Consumes the Merkle proof while verifying it.

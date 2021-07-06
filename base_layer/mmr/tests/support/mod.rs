@@ -55,6 +55,6 @@ pub fn combine_hashes(hashes: &[&HashSlice]) -> Hash {
     hashes
         .iter()
         .fold(hasher, |hasher, h| hasher.chain(*h))
-        .result()
+        .finalize()
         .to_vec()
 }

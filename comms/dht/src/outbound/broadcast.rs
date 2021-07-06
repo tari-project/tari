@@ -448,7 +448,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
     }
 
     async fn add_to_dedup_cache(&mut self, body: &[u8]) -> Result<bool, DhtOutboundError> {
-        let hash = Challenge::new().chain(&body).result().to_vec();
+        let hash = Challenge::new().chain(&body).finalize().to_vec();
         trace!(
             target: LOG_TARGET,
             "Dedup added message hash {} to cache for message",
@@ -541,7 +541,7 @@ mod test {
         let pk = CommsPublicKey::default();
         let example_peer = Peer::new(
             pk.clone(),
-            NodeId::from_key(&pk).unwrap(),
+            NodeId::from_key(&pk),
             vec!["/ip4/127.0.0.1/tcp/9999".parse::<Multiaddr>().unwrap()].into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
@@ -552,19 +552,16 @@ mod test {
         let other_peer = {
             let mut p = example_peer.clone();
             let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
-            p.node_id = NodeId::from_key(&pk).unwrap();
+            p.node_id = NodeId::from_key(&pk);
             p.public_key = pk;
             p
         };
 
-        let node_identity = Arc::new(
-            NodeIdentity::random(
-                &mut OsRng,
-                "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
-                PeerFeatures::COMMUNICATION_NODE,
-            )
-            .unwrap(),
-        );
+        let node_identity = Arc::new(NodeIdentity::random(
+            &mut OsRng,
+            "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
+            PeerFeatures::COMMUNICATION_NODE,
+        ));
 
         let (dht_requester, dht_mock) = create_dht_actor_mock(10);
         let (dht_discover_requester, _) = create_dht_discovery_mock(10, Duration::from_secs(10));
@@ -612,9 +609,7 @@ mod test {
             &mut OsRng,
             "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
             PeerFeatures::COMMUNICATION_NODE,
-        )
-        .unwrap();
-
+        );
         let (dht_requester, dht_mock) = create_dht_actor_mock(10);
         task::spawn(dht_mock.run());
         let (dht_discover_requester, _) = create_dht_discovery_mock(10, Duration::from_secs(10));
@@ -655,9 +650,7 @@ mod test {
             &mut OsRng,
             "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
             PeerFeatures::COMMUNICATION_NODE,
-        )
-        .unwrap();
-
+        );
         let (dht_requester, dht_mock) = create_dht_actor_mock(10);
         task::spawn(dht_mock.run());
         let (dht_discover_requester, mut discovery_mock) = create_dht_discovery_mock(10, Duration::from_secs(10));

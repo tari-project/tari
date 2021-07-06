@@ -2061,12 +2061,12 @@ where
                 storage::{database::OutputManagerDatabase, sqlite_db::OutputManagerSqliteDatabase},
             },
             storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
-            test_utils::random_string,
             transaction_service::{handle::TransactionServiceHandle, storage::models::InboundTransaction},
         };
         use tari_comms::types::CommsSecretKey;
         use tari_core::consensus::ConsensusConstantsBuilder;
         use tari_p2p::Network;
+        use tari_test_utils::random;
         use tempfile::tempdir;
 
         let (_sender, receiver) = reply_channel::unbounded();
@@ -2087,7 +2087,7 @@ where
         let mut mock_base_node_service = MockBaseNodeService::new(receiver_bns, shutdown_signal.clone());
         mock_base_node_service.set_default_base_node_state();
 
-        let db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let db_name = format!("{}.sqlite3", random::string(8).as_str());
         let db_tempdir = tempdir().unwrap();
         let db_folder = db_tempdir.path().to_str().unwrap().to_string();
         let db_path = format!("{}/{}", db_folder, db_name);
@@ -2257,5 +2257,5 @@ pub struct PendingCoinbaseSpendingKey {
 }
 
 fn hash_secret_key(key: &PrivateKey) -> Vec<u8> {
-    HashDigest::new().chain(key.as_bytes()).result().to_vec()
+    HashDigest::new().chain(key.as_bytes()).finalize().to_vec()
 }

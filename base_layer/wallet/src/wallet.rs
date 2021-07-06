@@ -131,7 +131,7 @@ where
             comms_secret_key,
             config.comms_config.node_identity.public_address(),
             config.comms_config.node_identity.features(),
-        )?);
+        ));
 
         let mut comms_config = config.comms_config.clone();
         comms_config.node_identity = node_identity.clone();
@@ -265,7 +265,7 @@ where
         let address = net_address.parse::<Multiaddr>()?;
         let peer = Peer::new(
             public_key.clone(),
-            NodeId::from_key(&public_key).unwrap(),
+            NodeId::from_key(&public_key),
             vec![address].into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
@@ -442,7 +442,7 @@ where
     /// in which case this will fail.
     pub async fn apply_encryption(&mut self, passphrase: String) -> Result<(), WalletError> {
         debug!(target: LOG_TARGET, "Applying wallet encryption.");
-        let passphrase_hash = Blake256::new().chain(passphrase.as_bytes()).result().to_vec();
+        let passphrase_hash = Blake256::new().chain(passphrase.as_bytes()).finalize();
         let key = GenericArray::from_slice(passphrase_hash.as_slice());
         let cipher = Aes256Gcm::new(key);
 

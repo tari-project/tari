@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use log::*;
-use tari_comms::{
-    multiaddr,
-    peer_manager::{node_id::NodeIdError, NodeIdentityError},
-};
+use tari_comms::multiaddr;
 use tari_comms_dht::store_forward::StoreAndForwardError;
 use tari_crypto::{
     signatures::SchnorrSignatureError,
@@ -314,25 +311,6 @@ impl From<ByteArrayError> for LibWalletError {
             ByteArrayError::IncorrectLength => Self {
                 code: 601,
                 message: format!("{:?}", b),
-            },
-        }
-    }
-}
-
-impl From<NodeIdentityError> for LibWalletError {
-    fn from(n: NodeIdentityError) -> Self {
-        error!(target: LOG_TARGET, "{}", format!("{:?}", n));
-        match n {
-            NodeIdentityError::NodeIdError(NodeIdError::IncorrectByteCount) => Self {
-                code: 701,
-                message: format!("{:?}", n),
-            },
-            // No longer applicable:
-            // 702 NodeIdentityError::OutOfBounds
-            // 703 NodeIdentityError::AddressLockPoisoned
-            NodeIdentityError::NodeIdError(NodeIdError::InvalidDigestOutputSize) => Self {
-                code: 704,
-                message: format!("{:?}", n),
             },
         }
     }

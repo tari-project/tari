@@ -138,7 +138,7 @@ where
             return Ok(MerkleMountainRange::<D, B>::null_hash());
         }
         let hasher = D::new();
-        Ok(self.hash_to_root(hasher)?.result().to_vec())
+        Ok(self.hash_to_root(hasher)?.finalize().to_vec())
     }
 
     pub(crate) fn hash_to_root(&self, hasher: D) -> Result<D, MerkleMountainRangeError> {

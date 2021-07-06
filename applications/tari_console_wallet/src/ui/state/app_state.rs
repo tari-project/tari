@@ -339,7 +339,7 @@ impl AppState {
     pub async fn set_custom_base_node(&mut self, public_key: String, address: String) -> Result<Peer, UiError> {
         let pub_key = PublicKey::from_hex(public_key.as_str())?;
         let addr = address.parse::<Multiaddr>().map_err(|_| UiError::AddressParseError)?;
-        let node_id = NodeId::from_key(&pub_key)?;
+        let node_id = NodeId::from_key(&pub_key);
         let peer = Peer::new(
             pub_key,
             node_id,

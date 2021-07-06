@@ -2623,43 +2623,34 @@ pub unsafe extern "C" fn comms_config_create(
                 public_address,
                 PeerFeatures::COMMUNICATION_CLIENT,
             );
-            match ni {
-                Ok(ni) => {
-                    let config = TariCommsConfig {
-                        network: Network::Weatherwax,
-                        node_identity: Arc::new(ni),
-                        transport_type: (*transport_type).clone(),
-                        datastore_path,
-                        peer_database_name: database_name_string,
-                        max_concurrent_inbound_tasks: 100,
-                        outbound_buffer_size: 100,
-                        dht: DhtConfig {
-                            discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
-                            database_url: DbConnectionUrl::File(dht_database_path),
-                            auto_join: true,
-                            saf_msg_validity: Duration::from_secs(saf_message_duration_in_secs),
-                            ..Default::default()
-                        },
-                        // TODO: This should be set to false for non-test wallets. See the `allow_test_addresses` field
-                        //       docstring for more info.
-                        allow_test_addresses: true,
-                        listener_liveness_allowlist_cidrs: Vec::new(),
-                        listener_liveness_max_sessions: 0,
-                        user_agent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
-                        dns_seeds_name_server: "1.1.1.1:53".parse().unwrap(),
-                        peer_seeds: Default::default(),
-                        dns_seeds: Default::default(),
-                        dns_seeds_use_dnssec: true,
-                    };
+            let config = TariCommsConfig {
+                network: Network::Weatherwax,
+                node_identity: Arc::new(ni),
+                transport_type: (*transport_type).clone(),
+                datastore_path,
+                peer_database_name: database_name_string,
+                max_concurrent_inbound_tasks: 100,
+                outbound_buffer_size: 100,
+                dht: DhtConfig {
+                    discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
+                    database_url: DbConnectionUrl::File(dht_database_path),
+                    auto_join: true,
+                    saf_msg_validity: Duration::from_secs(saf_message_duration_in_secs),
+                    ..Default::default()
+                },
+                // TODO: This should be set to false for non-test wallets. See the `allow_test_addresses` field
+                //       docstring for more info.
+                allow_test_addresses: true,
+                listener_liveness_allowlist_cidrs: Vec::new(),
+                listener_liveness_max_sessions: 0,
+                user_agent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
+                dns_seeds_name_server: "1.1.1.1:53".parse().unwrap(),
+                peer_seeds: Default::default(),
+                dns_seeds: Default::default(),
+                dns_seeds_use_dnssec: true,
+            };
 
-                    Box::into_raw(Box::new(config))
-                },
-                Err(e) => {
-                    error = LibWalletError::from(e).code;
-                    ptr::swap(error_out, &mut error as *mut c_int);
-                    ptr::null_mut()
-                },
-            }
+            Box::into_raw(Box::new(config))
         },
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -5522,7 +5513,6 @@ pub unsafe extern "C" fn log_debug_message(msg: *const c_char) {
 
 #[cfg(test)]
 mod test {
-
     use crate::*;
     use libc::{c_char, c_uchar, c_uint};
     use std::{
@@ -5534,9 +5524,9 @@ mod test {
     };
     use tari_core::transactions::{fee::Fee, tari_amount::uT, types::PrivateKey};
     use tari_key_manager::mnemonic::Mnemonic;
+    use tari_test_utils::random;
     use tari_wallet::{
         storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
-        testnet_utils::random_string,
         transaction_service::{config::TransactionServiceConfig, storage::models::TransactionStatus},
         util::emoji,
     };
@@ -6086,7 +6076,7 @@ mod test {
             let error_ptr = &mut error as *mut c_int;
             let secret_key_alice = private_key_generate();
             let public_key_alice = public_key_from_private_key(secret_key_alice, error_ptr);
-            let db_name_alice = CString::new(random_string(8).as_str()).unwrap();
+            let db_name_alice = CString::new(random::string(8).as_str()).unwrap();
             let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice) as *const c_char;
             let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
@@ -6135,7 +6125,7 @@ mod test {
             );
             let secret_key_bob = private_key_generate();
             let public_key_bob = public_key_from_private_key(secret_key_bob, error_ptr);
-            let db_name_bob = CString::new(random_string(8).as_str()).unwrap();
+            let db_name_bob = CString::new(random::string(8).as_str()).unwrap();
             let db_name_bob_str: *const c_char = CString::into_raw(db_name_bob) as *const c_char;
             let bob_temp_dir = tempdir().unwrap();
             let db_path_bob = CString::new(bob_temp_dir.path().to_str().unwrap()).unwrap();
@@ -6647,7 +6637,7 @@ mod test {
 
             let secret_key_alice = private_key_generate();
             let public_key_alice = public_key_from_private_key(secret_key_alice, error_ptr);
-            let db_name = random_string(8);
+            let db_name = random::string(8);
             let db_name_alice = CString::new(db_name.as_str()).unwrap();
             let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice) as *const c_char;
             let alice_temp_dir = tempdir().unwrap();
@@ -6799,7 +6789,7 @@ mod test {
 
             let secret_key_alice = private_key_generate();
             let public_key_alice = public_key_from_private_key(secret_key_alice, error_ptr);
-            let db_name_alice = CString::new(random_string(8).as_str()).unwrap();
+            let db_name_alice = CString::new(random::string(8).as_str()).unwrap();
             let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice) as *const c_char;
             let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
@@ -7015,7 +7005,7 @@ mod test {
             let error_ptr = &mut error as *mut c_int;
 
             let secret_key_alice = private_key_generate();
-            let db_name_alice = CString::new(random_string(8).as_str()).unwrap();
+            let db_name_alice = CString::new(random::string(8).as_str()).unwrap();
             let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice) as *const c_char;
             let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
@@ -7158,7 +7148,7 @@ mod test {
             }
 
             // create a new wallet
-            let db_name = CString::new(random_string(8).as_str()).unwrap();
+            let db_name = CString::new(random::string(8).as_str()).unwrap();
             let db_name_str: *const c_char = CString::into_raw(db_name) as *const c_char;
             let temp_dir = tempdir().unwrap();
             let db_path = CString::new(temp_dir.path().to_str().unwrap()).unwrap();
@@ -7208,7 +7198,7 @@ mod test {
             assert_eq!(error, 0);
 
             // use seed words to create recovery wallet
-            let db_name = CString::new(random_string(8).as_str()).unwrap();
+            let db_name = CString::new(random::string(8).as_str()).unwrap();
             let db_name_str: *const c_char = CString::into_raw(db_name) as *const c_char;
             let temp_dir = tempdir().unwrap();
             let db_path = CString::new(temp_dir.path().to_str().unwrap()).unwrap();

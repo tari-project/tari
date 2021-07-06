@@ -48,9 +48,8 @@ use crate::{
 use chrono::{Duration as ChronoDuration, Utc};
 use futures::{FutureExt, StreamExt};
 use log::*;
-use rand::{distributions::Alphanumeric, rngs::OsRng, CryptoRng, Rng, RngCore};
+use rand::{rngs::OsRng, CryptoRng, Rng, RngCore};
 use std::{
-    iter,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -76,6 +75,7 @@ use tari_crypto::{
 };
 use tari_p2p::{initialization::CommsConfig, transport::TransportType, Network};
 use tari_shutdown::{Shutdown, ShutdownSignal};
+use tari_test_utils::random;
 use tokio::{runtime::Handle, time::delay_for};
 
 // Used to generate test wallet data
@@ -111,10 +111,6 @@ pub fn make_input(val: MicroTari, factories: &CryptoFactories) -> (TransactionIn
     )
 }
 
-pub fn random_string(len: usize) -> String {
-    iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
-}
-
 /// Create a wallet for testing purposes
 pub async fn create_wallet(
     public_address: Multiaddr,
@@ -128,14 +124,11 @@ pub async fn create_wallet(
 > {
     let factories = CryptoFactories::default();
 
-    let node_identity = Arc::new(
-        NodeIdentity::new(
-            CommsSecretKey::random(&mut OsRng),
-            public_address.clone(),
-            PeerFeatures::COMMUNICATION_NODE,
-        )
-        .expect("Could not construct Node Identity"),
-    );
+    let node_identity = Arc::new(NodeIdentity::new(
+        CommsSecretKey::random(&mut OsRng),
+        public_address.clone(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
     let comms_config = CommsConfig {
         network: Network::Weatherwax,
         transport_type: TransportType::Memory {
@@ -143,7 +136,7 @@ pub async fn create_wallet(
         },
         node_identity,
         datastore_path: datastore_path.clone(),
-        peer_database_name: random_string(8),
+        peer_database_name: random::string(8),
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
         user_agent: "/tari/wallet/test".to_string(),
@@ -275,7 +268,7 @@ pub async fn generate_wallet_test_data<
         target: LOG_TARGET,
         "Spinning up Alice wallet to generate test transactions"
     );
-    let alice_temp_dir = data_path.as_ref().join(random_string(8));
+    let alice_temp_dir = data_path.as_ref().join(random::string(8));
     let _ = std::fs::create_dir(&alice_temp_dir);
 
     let mut shutdown_a = Shutdown::new();
@@ -298,7 +291,7 @@ pub async fn generate_wallet_test_data<
         target: LOG_TARGET,
         "Spinning up Bob wallet to generate test transactions"
     );
-    let bob_temp_dir = data_path.as_ref().join(random_string(8));
+    let bob_temp_dir = data_path.as_ref().join(random::string(8));
     let _ = std::fs::create_dir(&bob_temp_dir);
 
     let mut wallet_bob = create_wallet(

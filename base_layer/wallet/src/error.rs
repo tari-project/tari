@@ -34,7 +34,7 @@ use serde_json::Error as SerdeJsonError;
 use tari_comms::{
     connectivity::ConnectivityError,
     multiaddr,
-    peer_manager::{node_id::NodeIdError, NodeIdentityError, PeerManagerError},
+    peer_manager::{node_id::NodeIdError, PeerManagerError},
 };
 use tari_comms_dht::store_forward::StoreAndForwardError;
 use tari_core::transactions::transaction::TransactionError;
@@ -73,8 +73,6 @@ pub enum WalletError {
     BaseNodeServiceError(#[from] BaseNodeServiceError),
     #[error("Node ID error: `{0}`")]
     NodeIdError(#[from] NodeIdError),
-    #[error("Node Identity error: `{0}`")]
-    NodeIdentityError(#[from] NodeIdentityError),
     #[error("Error performing wallet recovery: '{0}'")]
     WalletRecoveryError(String),
     #[error("Shutdown Signal Received")]

@@ -20,10 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{
-    comms_and_services::get_next_memory_address,
-    utils::{make_input, random_string},
-};
+use crate::support::{comms_and_services::get_next_memory_address, utils::make_input};
 use tari_core::transactions::transaction::OutputFeatures;
 
 use aes_gcm::{
@@ -54,6 +51,7 @@ use tari_crypto::{
 };
 use tari_p2p::{initialization::CommsConfig, transport::TransportType, Network, DEFAULT_DNS_NAME_SERVER};
 use tari_shutdown::{Shutdown, ShutdownSignal};
+use tari_test_utils::random;
 use tari_wallet::{
     contacts_service::storage::database::Contact,
     error::{WalletError, WalletStorageError},
@@ -78,7 +76,7 @@ use tokio::{runtime::Runtime, time::delay_for};
 fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
     Peer::new(
         public_key.clone(),
-        NodeId::from_key(&public_key).unwrap(),
+        NodeId::from_key(&public_key),
         net_address.into(),
         PeerFlags::empty(),
         PeerFeatures::COMMUNICATION_NODE,
@@ -96,8 +94,7 @@ async fn create_wallet(
     recovery_master_key: Option<CommsSecretKey>,
 ) -> Result<WalletSqlite, WalletError> {
     const NETWORK: Network = Network::Weatherwax;
-    let node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+    let node_identity = NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     let comms_config = CommsConfig {
         network: NETWORK,
         node_identity: Arc::new(node_identity.clone()),
@@ -105,7 +102,7 @@ async fn create_wallet(
             listener_address: node_identity.public_address(),
         },
         datastore_path: data_path.to_path_buf(),
-        peer_database_name: random_string(8),
+        peer_database_name: random::string(8),
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
         dht: DhtConfig {
@@ -175,7 +172,7 @@ async fn test_wallet() {
     let factories = CryptoFactories::default();
 
     let base_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
 
     let mut alice_wallet = create_wallet(
         &alice_db_tempdir.path(),
@@ -267,7 +264,7 @@ async fn test_wallet() {
         let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
 
         contacts.push(Contact {
-            alias: random_string(8),
+            alias: random::string(8),
             public_key,
         });
 
@@ -312,8 +309,7 @@ async fn test_wallet() {
 
     let passphrase_hash = Blake256::new()
         .chain("wrong passphrase".to_string().as_bytes())
-        .result()
-        .to_vec();
+        .finalize();
     let key = GenericArray::from_slice(passphrase_hash.as_slice());
     let cipher = Aes256Gcm::new(key);
     let result = WalletSqliteDatabase::new(connection.clone(), Some(cipher));
@@ -326,8 +322,7 @@ async fn test_wallet() {
 
     let passphrase_hash = Blake256::new()
         .chain("It's turtles all the way down".to_string().as_bytes())
-        .result()
-        .to_vec();
+        .finalize();
     let key = GenericArray::from_slice(passphrase_hash.as_slice());
     let cipher = Aes256Gcm::new(key);
     let db = WalletSqliteDatabase::new(connection, Some(cipher)).expect("Should be able to instantiate db with cipher");
@@ -665,14 +660,12 @@ async fn test_import_utxo() {
         &mut OsRng,
         "/ip4/127.0.0.1/tcp/24521".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
+    );
     let base_node_identity = NodeIdentity::random(
         &mut OsRng,
         "/ip4/127.0.0.1/tcp/24522".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
+    );
     let temp_dir = tempdir().unwrap();
     let (wallet_backend, tx_backend, oms_backend, contacts_backend, _temp_dir) = make_wallet_databases(None);
     let comms_config = CommsConfig {
@@ -683,7 +676,7 @@ async fn test_import_utxo() {
             tor_socks_config: None,
         },
         datastore_path: temp_dir.path().to_path_buf(),
-        peer_database_name: random_string(8),
+        peer_database_name: random::string(8),
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
         dht: Default::default(),
@@ -766,8 +759,7 @@ async fn test_data_generation() {
     let mut shutdown = Shutdown::new();
     use tari_wallet::testnet_utils::generate_wallet_test_data;
     let factories = CryptoFactories::default();
-    let node_id =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+    let node_id = NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     let temp_dir = tempdir().unwrap();
     let comms_config = CommsConfig {
         network: Network::Weatherwax,
@@ -776,7 +768,7 @@ async fn test_data_generation() {
             listener_address: node_id.public_address(),
         },
         datastore_path: temp_dir.path().to_path_buf(),
-        peer_database_name: random_string(8),
+        peer_database_name: random::string(8),
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
         dht: DhtConfig {

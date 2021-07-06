@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::utils::random_string;
 use aes_gcm::{
     aead::{generic_array::GenericArray, NewAead},
     Aes256Gcm,
@@ -41,6 +40,7 @@ use tari_crypto::{
     script,
     script::{ExecutionStack, TariScript},
 };
+use tari_test_utils::random;
 use tari_wallet::{
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     transaction_service::storage::{
@@ -556,7 +556,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
 
 #[test]
 pub fn test_transaction_service_sqlite_db() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_name = format!("{}.sqlite3", random::string(8));
     let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
@@ -567,7 +567,7 @@ pub fn test_transaction_service_sqlite_db() {
 
 #[test]
 pub fn test_transaction_service_sqlite_db_encrypted() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_name = format!("{}.sqlite3", random::string(8));
     let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);

@@ -152,6 +152,6 @@ pub fn build_challenge(sum_public_nonces: &PublicKey, metadata: &TransactionMeta
         .chain(sum_public_nonces.as_bytes())
         .chain(&u64::from(metadata.fee).to_le_bytes())
         .chain(&metadata.lock_height.to_le_bytes())
-        .result()
+        .finalize()
         .to_vec()
 }

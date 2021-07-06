@@ -74,16 +74,7 @@ pub async fn get_custom_base_node_peer_from_db(wallet: &mut WalletSqlite) -> Opt
                 },
             };
 
-            let node_id = match NodeId::from_key(&pub_key) {
-                Ok(n) => n,
-                Err(e) => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Problem converting stored base node public key to Node Id: {}", e
-                    );
-                    return None;
-                },
-            };
+            let node_id = NodeId::from_key(&pub_key);
             Some(Peer::new(
                 pub_key,
                 node_id,

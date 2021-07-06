@@ -300,10 +300,11 @@ pub async fn init_wallet(
         Some(nf) => nf,
     };
 
-    let node_identity = Arc::new(
-        NodeIdentity::new(CommsSecretKey::default(), node_address, node_features)
-            .map_err(|e| ExitCodes::NetworkError(e.to_string()))?,
-    );
+    let node_identity = Arc::new(NodeIdentity::new(
+        CommsSecretKey::default(),
+        node_address,
+        node_features,
+    ));
 
     let transport_type = setup_wallet_transport_type(&config);
     let transport_type = match transport_type {

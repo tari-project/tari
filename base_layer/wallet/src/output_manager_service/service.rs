@@ -39,8 +39,8 @@ use crate::{
     transaction_service::handle::TransactionServiceHandle,
     types::{HashDigest, ValidationRetryStrategy},
 };
+use blake2::Digest;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
-use digest::Digest;
 use futures::{pin_mut, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
@@ -1320,5 +1320,5 @@ impl fmt::Display for Balance {
 }
 
 fn hash_secret_key(key: &PrivateKey) -> Vec<u8> {
-    HashDigest::new().chain(key.as_bytes()).result().to_vec()
+    HashDigest::new().chain(key.as_bytes()).finalize().to_vec()
 }
