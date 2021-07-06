@@ -19,33 +19,25 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-syntax = "proto3";
 
-package tari.dan.rpc;
 
-service DanNode {
-    rpc GetTokenData(GetTokenDataRequest) returns (GetTokenDataResponse);
-    rpc ExecuteInstruction(ExecuteInstructionRequest) returns (ExecuteInstructionResponse);
+pub mod templates;
+pub mod template_command;
+pub mod template_service;
+pub mod asset_data_store;
+
+
+pub enum TemplateId {
+    EditableMetadata
 }
 
-message GetTokenDataRequest {
-  bytes asset_pub_key = 1;
-  bytes unique_id = 2;
+#[derive(Clone)]
+pub struct TokenId(pub Vec<u8>);
+
+impl AsRef<[u8]> for TokenId {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_slice()
+    }
 }
 
-message GetTokenDataResponse {
-
-}
-
-message ExecuteInstructionRequest{
-    bytes asset_public_key =1;
-    string method =2;
-    repeated string args = 3;
-    bytes from = 4;
-    bytes signature = 5;
-    uint64 id = 6;
-}
-
-message ExecuteInstructionResponse {
-    string status = 1;
-}
+pub struct InstructionId(u64);

@@ -40,4 +40,8 @@ impl dan_rpc::dan_node_server::DanNode for DanGrpcServer {
     ) -> Result<tonic::Response<dan_rpc::GetTokenDataResponse>, tonic::Status> {
         todo!()
     }
+
+    async fn execute_instruction(&self, request: Request<dan_rpc::ExecuteInstructionRequest>) -> Result<Response<dan_rpc::ExecuteInstructionResponse>, Status> {
+       todo!();
+    }
 }

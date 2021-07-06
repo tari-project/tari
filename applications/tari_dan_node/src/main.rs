@@ -21,6 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod grpc;
+mod cmd_args;
+mod dan_layer;
+mod digital_assets_error;
+mod types;
 
 use log::*;
 use thiserror::Error;
@@ -36,6 +40,7 @@ use futures::FutureExt;
 
 use crate::grpc::dan_rpc::dan_node_server::DanNodeServer;
 use tokio::runtime::Runtime;
+use crate::cmd_args::OperationMode;
 
 const LOG_TARGET: &str = "dan_node::app";
 
@@ -53,10 +58,13 @@ fn main() {
 }
 
 fn main_inner() -> Result<(), ExitCodes> {
-
-    let mut runtime = build_runtime()?;
-
-    runtime.block_on(run_node())?;
+    let operation_mode = cmd_args::get_operation_mode();
+    match operation_mode {
+        OperationMode::Run => {
+            let mut runtime = build_runtime()?;
+            runtime.block_on(run_node())?;
+        }
+    }
 
     Ok(())
 }

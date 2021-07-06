@@ -19,33 +19,8 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-syntax = "proto3";
 
-package tari.dan.rpc;
+use tari_crypto::ristretto::RistrettoPublicKey;
 
-service DanNode {
-    rpc GetTokenData(GetTokenDataRequest) returns (GetTokenDataResponse);
-    rpc ExecuteInstruction(ExecuteInstructionRequest) returns (ExecuteInstructionResponse);
-}
-
-message GetTokenDataRequest {
-  bytes asset_pub_key = 1;
-  bytes unique_id = 2;
-}
-
-message GetTokenDataResponse {
-
-}
-
-message ExecuteInstructionRequest{
-    bytes asset_public_key =1;
-    string method =2;
-    repeated string args = 3;
-    bytes from = 4;
-    bytes signature = 5;
-    uint64 id = 6;
-}
-
-message ExecuteInstructionResponse {
-    string status = 1;
-}
+/// Define the explicit Public key implementation for the Tari base layer
+pub type PublicKey = RistrettoPublicKey;

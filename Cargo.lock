@@ -407,6 +407,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3b5ca7a04898ad4bcd41c90c5285445ff5b791899bb1b0abdd2a2aa791211d7"
 
 [[package]]
+name = "bytecodec"
+version = "0.4.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9e02c3c3e576edc89c75de646b616b11a5d8eae83854f416899d1377cb62617d"
+dependencies = [
+ "byteorder",
+ "serde 1.0.126",
+ "serde_json",
+ "trackable 0.2.24",
+]
+
+[[package]]
 name = "bytemuck"
 version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2660,6 +2672,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ecba01bf2678719532c5e3059e0b5f0811273d94b397088b82e3bd0a78c78fdd"
 
 [[package]]
+name = "patricia_tree"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "826436b01a8f26e5b2247682146e490f15fbdd5fc34b37388dd329da298ca8bd"
+dependencies = [
+ "bitflags 1.2.1",
+ "bytecodec",
+ "trackable 0.2.24",
+]
+
+[[package]]
 name = "peeking_take_while"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3970,7 +3993,7 @@ dependencies = [
  "sha2",
  "structopt",
  "tari_storage",
- "tari_test_utils",
+ "tari_test_utils 0.8.11",
  "tempfile",
  "toml 0.5.8",
 ]
@@ -4018,7 +4041,7 @@ dependencies = [
  "tari_crypto",
  "tari_shutdown",
  "tari_storage",
- "tari_test_utils",
+ "tari_test_utils 0.8.11",
  "tempfile",
  "thiserror",
  "tokio",
@@ -4063,7 +4086,7 @@ dependencies = [
  "tari_crypto",
  "tari_shutdown",
  "tari_storage",
- "tari_test_utils",
+ "tari_test_utils 0.8.11",
  "tari_utilities",
  "tempfile",
  "thiserror",
@@ -4085,7 +4108,7 @@ dependencies = [
  "quote 1.0.9",
  "syn 1.0.73",
  "tari_comms",
- "tari_test_utils",
+ "tari_test_utils 0.8.11",
  "tokio",
  "tokio-macros",
  "tower-service",
@@ -4166,7 +4189,7 @@ dependencies = [
  "tari_service_framework",
  "tari_shutdown",
  "tari_storage",
- "tari_test_utils",
+ "tari_test_utils 0.8.11",
  "tempfile",
  "thiserror",
  "tokio",
@@ -4206,11 +4229,17 @@ name = "tari_dan_node"
 version = "0.8.11"
 dependencies = [
  "anyhow",
+ "bytecodec",
+ "clap",
  "futures 0.3.15",
  "log 0.4.14",
+ "patricia_tree",
  "prost",
  "prost-types",
+ "serde_json",
+ "tari_crypto",
  "tari_shutdown",
+ "tari_test_utils 0.8.1",
  "thiserror",
  "tokio",
  "tonic",
@@ -4350,7 +4379,7 @@ dependencies = [
  "tari_service_framework",
  "tari_shutdown",
  "tari_storage",
- "tari_test_utils",
+ "tari_test_utils 0.8.11",
  "tari_utilities",
  "tempfile",
  "thiserror",
@@ -4370,7 +4399,7 @@ dependencies = [
  "futures-test",
  "log 0.4.14",
  "tari_shutdown",
- "tari_test_utils",
+ "tari_test_utils 0.8.11",
  "thiserror",
  "tokio",
  "tokio-macros",
@@ -4402,6 +4431,20 @@ dependencies = [
  "serde_derive",
  "tari_utilities",
  "thiserror",
+]
+
+[[package]]
+name = "tari_test_utils"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f11c0804a3f136ad0f821981411215886f0039bf1519c4ec0ec0af8098a8def"
+dependencies = [
+ "futures 0.3.15",
+ "futures-test",
+ "lazy_static 1.4.0",
+ "rand 0.7.3",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]
@@ -4467,7 +4510,7 @@ dependencies = [
  "tari_service_framework",
  "tari_shutdown",
  "tari_storage",
- "tari_test_utils",
+ "tari_test_utils 0.8.11",
  "tempfile",
  "thiserror",
  "time",
@@ -5052,6 +5095,35 @@ dependencies = [
  "tracing-core",
  "tracing-log",
  "tracing-serde",
+]
+
+[[package]]
+name = "trackable"
+version = "0.2.24"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b98abb9e7300b9ac902cc04920945a874c1973e08c310627cc4458c04b70dd32"
+dependencies = [
+ "trackable 1.2.0",
+ "trackable_derive",
+]
+
+[[package]]
+name = "trackable"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "017e2a1a93718e4e8386d037cfb8add78f1d690467f4350fb582f55af1203167"
+dependencies = [
+ "trackable_derive",
+]
+
+[[package]]
+name = "trackable_derive"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ebeb235c5847e2f82cfe0f07eb971d1e5f6804b18dac2ae16349cc604380f82f"
+dependencies = [
+ "quote 1.0.9",
+ "syn 1.0.73",
 ]
 
 [[package]]
