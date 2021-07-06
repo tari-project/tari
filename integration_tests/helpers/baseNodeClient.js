@@ -6,6 +6,7 @@ const TransactionBuilder = require("./transactionBuilder");
 const { SHA3 } = require("sha3");
 const { toLittleEndian } = require("./util");
 const cloneDeep = require("clone-deep");
+const PowAlgo = { MONERO: 0, SHA3: 1 };
 
 class BaseNodeClient {
   constructor(clientOrPort) {
@@ -89,7 +90,7 @@ class BaseNodeClient {
   getBlockTemplate(weight) {
     return this.client
       .getNewBlockTemplate()
-      .sendMessage({ algo: { pow_algo: 2 }, max_weight: weight })
+      .sendMessage({ algo: { pow_algo: PowAlgo.SHA3 }, max_weight: weight })
       .then((template) => {
         const res = {
           minerData: template.miner_data,
@@ -202,9 +203,10 @@ class BaseNodeClient {
       .sendMessage({})
       .then((tip) => {
         currHeight = parseInt(tip.metadata.height_of_longest_chain);
-        return this.client
-          .getNewBlockTemplate()
-          .sendMessage({ algo: { pow_algo: 2 }, max_weight: weight });
+        return this.client.getNewBlockTemplate().sendMessage({
+          algo: { pow_algo: PowAlgo.SHA3 },
+          max_weight: weight,
+        });
       })
       .then((template) => {
         block = template.new_block_template;
