@@ -20,11 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::digital_assets_error::DigitalAssetError;
+use tari_app_utilities::identity_management::setup_node_identity;
 
-pub mod templates;
-pub mod template_command;
-pub mod asset_data_store;
+pub struct DanNode {
+    config: GlobalConfig
+}
 
-pub mod models;
-pub mod services;
-pub mod dan_node;
+impl DanNode {
+    pub fn new(config: GlobalConfig) -> Self {
+        Self {config}
+    }
+
+    pub fn start() -> Result<(), DigitalAssetError> {
+        setup_node_identity();
+       todo!()
+    }
+}

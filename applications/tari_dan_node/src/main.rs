@@ -43,6 +43,8 @@ use crate::grpc::dan_rpc::dan_node_server::DanNodeServer;
 use tokio::runtime::Runtime;
 use crate::cmd_args::OperationMode;
 use crate::dan_layer::services::{MempoolService, ConcreteMempoolService};
+use tari_app_utilities::initialization::init_configuration;
+use crate::dan_layer::dan_node::DanNode;
 
 const LOG_TARGET: &str = "dan_node::app";
 
@@ -60,25 +62,29 @@ fn main() {
 }
 
 fn main_inner() -> Result<(), ExitCodes> {
-    let operation_mode = cmd_args::get_operation_mode();
-    match operation_mode {
-        OperationMode::Run => {
+
+    let (bootstrap, node_config, _) = init_configuration(ApplicationType::DanNode)?;
+
+    // let operation_mode = cmd_args::get_operation_mode();
+    // match operation_mode {
+    //     OperationMode::Run => {
             let mut runtime = build_runtime()?;
-            runtime.block_on(run_node())?;
-        }
-    }
+            runtime.block_on(run_node(node_config))?;
+        // }
+    // }
 
     Ok(())
 }
 
-async fn run_node() -> Result<(), ExitCodes> {
+async fn run_node(config: GlobalConfig) -> Result<(), ExitCodes> {
     let shutdown = Shutdown::new();
 
     let grpc_server = DanGrpcServer::new();
     let grpc_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 18080);
     // task::spawn(run_grpc(grpc_server, grpc_addr,  shutdown.to_signal()));
 
-    run_grpc(grpc_server, grpc_addr, shutdown.to_signal()).await;
+    task::spawn(run_grpc(grpc_server, grpc_addr, shutdown.to_signal()));
+    run_dan_node(shutdown.to_signal(), config).await?;
     Ok(())
 }
 
@@ -89,6 +95,12 @@ fn build_runtime() -> Result<Runtime, ExitCodes> {
         .enable_all()
         .build()
         .map_err(|e| ExitCodes::CouldNotCreateRuntime {cause: e.to_string()})
+}
+
+
+async fn run_dan_node(shutdown_signal: ShutdownSignal, config: GlobalConfig) -> Result<(), ExitCodes> {
+ let node = DanNode::new(config);
+    node.start()
 }
 
 async fn run_grpc(grpc_server: DanGrpcServer, grpc_address: SocketAddr, shutdown_signal: ShutdownSignal)

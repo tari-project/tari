@@ -232,6 +232,12 @@ impl ConfigBootstrap {
                         Some(&self.base_path),
                     ))
                 },
+                ApplicationType::DanNode => {
+                    self.log_config = normalize_path(dir_utils::default_path(
+                        DEFAULT_BASE_NODE_LOG_CONFIG,
+                        Some(&self.base_path),
+                    ))
+                },
             }
         }
 
@@ -278,6 +284,9 @@ impl ConfigBootstrap {
                     ApplicationType::MiningNode => {
                         install_configuration(&self.log_config, logging::install_default_mining_node_logfile_config)
                     },
+                    ApplicationType::DanNode => {
+                        install_configuration(&self.log_config, logging::install_default_base_node_logfile_config)
+                    }
                 }
             }
         };
@@ -325,6 +334,7 @@ pub enum ApplicationType {
     ConsoleWallet,
     MergeMiningProxy,
     MiningNode,
+    DanNode
 }
 
 impl ApplicationType {
@@ -335,6 +345,7 @@ impl ApplicationType {
             ConsoleWallet => "Tari Console Wallet",
             MergeMiningProxy => "Tari Merge Mining Proxy",
             MiningNode => "Tari Mining Node",
+            DanNode => "Digital Assets Network Node"
         }
     }
 }
