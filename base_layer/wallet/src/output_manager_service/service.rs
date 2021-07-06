@@ -406,7 +406,6 @@ where TBackend: OutputManagerBackend + 'static
         &mut self,
         output: TransactionOutput,
     ) -> Result<(), OutputManagerError> {
-        debug!(target: LOG_TARGET, "Update metadata signature for output {}", output);
         self.resources.db.update_output_metadata_signature(output).await?;
         Ok(())
     }

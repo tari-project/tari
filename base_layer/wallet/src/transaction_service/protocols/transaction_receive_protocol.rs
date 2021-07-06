@@ -433,11 +433,26 @@ where TBackend: TransactionBackend + 'static
                 .find(|output| output.hash() == rtp_output.hash())
             {
                 if rtp_output.verify_metadata_signature().is_err() {
-                    self.resources
+                    match self
+                        .resources
                         .output_manager_service
                         .update_output_metadata_signature(v.clone())
                         .await
-                        .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+                        .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))
+                    {
+                        Ok(..) => {
+                            debug!(target: LOG_TARGET, "Updated metadata signature for output {}", v);
+                        },
+                        Err(e) => {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Could not updated metadata signature for output {} ({}, {})",
+                                v,
+                                e.id,
+                                e.error.to_string()
+                            );
+                        },
+                    }
                 }
             }
 
