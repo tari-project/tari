@@ -22,24 +22,24 @@
 
 use crate::helpers::{block_builders::chain_block_with_new_coinbase, test_blockchain::TestBlockchain};
 use monero::blockdata::block::Block as MoneroBlock;
-use rand::rngs::OsRng;
 use std::sync::Arc;
 use tari_common::configuration::Network;
 use tari_core::{
     blocks::{Block, BlockHeaderValidationError, BlockValidationError},
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
     consensus::{consensus_constants::PowAlgorithmConstants, ConsensusConstantsBuilder, ConsensusManagerBuilder},
-    crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex},
+    crypto::tari_utilities::hex::Hex,
     proof_of_work::{
         monero_rx,
         monero_rx::{FixedByteArray, MoneroPowData},
         PowAlgorithm,
     },
-    test_helpers::{
-        blockchain::{create_store_with_consensus_and_validators, create_test_db},
-        comsig_sign,
+    test_helpers::blockchain::{create_store_with_consensus_and_validators, create_test_db},
+    transactions::{
+        helpers::{schema_to_transaction, TestParams, UtxoTestParams},
+        tari_amount::T,
+        types::CryptoFactories,
     },
-    transactions::{helpers::schema_to_transaction, tari_amount::T, types::CryptoFactories},
     txn_schema,
     validation::{
         block_validators::{BlockValidator, BodyOnlyValidator, OrphanBlockValidator},
@@ -50,7 +50,7 @@ use tari_core::{
         ValidationError,
     },
 };
-use tari_crypto::{inputs, keys::PublicKey};
+use tari_crypto::inputs;
 
 mod helpers;
 
@@ -174,7 +174,7 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
 }
 
 #[test]
-fn inputs_are_not_maleable() {
+fn inputs_are_not_malleable() {
     let mut blockchain = TestBlockchain::with_genesis("GB");
     let blocks = blockchain.builder();
 
@@ -189,7 +189,7 @@ fn inputs_are_not_maleable() {
             .difficulty(1)
             .with_transactions(txs),
     );
-    let input = output;
+    let spent_output = output;
     let mut block = blockchain.get_block("A2").cloned().unwrap().block.block().clone();
 
     let validator = BlockValidator::new(blockchain.consensus_manager().clone(), CryptoFactories::default());
@@ -197,21 +197,34 @@ fn inputs_are_not_maleable() {
         .validate_body(&block, &*blockchain.store().db_read_access().unwrap())
         .unwrap();
 
-    let (script_private_key, malicious_pubkey) = RistrettoPublicKey::random_keypair(&mut OsRng);
+    let mut malicious_test_params = TestParams::new();
+
+    // New key which used to manipulate the input
+    let (malicious_script_private_key, malicious_script_public_key) = malicious_test_params.get_script_keypair();
 
     // Oh noes - they've managed to get hold of the private script and spend keys
+    malicious_test_params.spend_key = spent_output.spending_key;
+
     block.header.total_script_offset =
-        block.header.total_script_offset - &input.script_private_key + &script_private_key;
+        block.header.total_script_offset - &spent_output.script_private_key + &malicious_script_private_key;
+
+    let (malicious_input, _) = malicious_test_params.create_input(UtxoTestParams {
+        value: spent_output.value,
+        script: spent_output.script.clone(),
+        input_data: Some(inputs![malicious_script_public_key]),
+        output_features: spent_output.features,
+    });
 
     let input_mut = block.body.inputs_mut().get_mut(0).unwrap();
-    input_mut.input_data = inputs![StackItem::PublicKey(malicious_pubkey)];
-    input_mut.script_signature = comsig_sign(&input.spending_key, input.value, input_mut, script_private_key);
+    // Put the crafted input into the block
+    input_mut.input_data = malicious_input.input_data;
+    input_mut.script_signature = malicious_input.script_signature;
 
     let err = validator
         .validate_body(&block, &*blockchain.store().db_read_access().unwrap())
         .unwrap_err();
 
-    // Input MMR is no longer valid
+    // All validations pass, except the Input MMR.
     assert!(matches!(
         err,
         ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots)

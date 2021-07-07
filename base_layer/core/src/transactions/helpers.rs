@@ -140,11 +140,19 @@ impl TestParams {
             params.script.clone(),
             params
                 .input_data
-                .unwrap_or_else(|| inputs!(PublicKey::from_secret_key(&self.script_private_key))),
+                .unwrap_or_else(|| inputs!(self.get_script_public_key())),
             self.script_private_key.clone(),
             self.sender_offset_public_key.clone(),
             metadata_signature,
         )
+    }
+
+    pub fn get_script_public_key(&self) -> PublicKey {
+        PublicKey::from_secret_key(&self.script_private_key)
+    }
+
+    pub fn get_script_keypair(&self) -> (PrivateKey, PublicKey) {
+        (self.script_private_key.clone(), self.get_script_public_key())
     }
 
     /// Create a random transaction input for the given amount and maturity period. The input ,its unblinded

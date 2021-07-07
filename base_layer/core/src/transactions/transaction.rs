@@ -260,7 +260,7 @@ impl UnblindedOutput {
         );
         let script_signature = ComSignature::sign(
             self.value.into(),
-            self.script_private_key.clone() + self.spending_key.clone(),
+            &self.script_private_key + &self.spending_key,
             script_nonce_a,
             script_nonce_b,
             &challenge,
