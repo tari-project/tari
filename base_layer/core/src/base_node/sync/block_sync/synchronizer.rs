@@ -176,13 +176,13 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                 });
             }
 
+            prev_hash = header_hash.clone();
+
             let body = block
                 .body
                 .map(AggregateBody::try_from)
                 .ok_or_else(|| BlockSyncError::ReceivedInvalidBlockBody("Block body was empty".to_string()))?
                 .map_err(BlockSyncError::ReceivedInvalidBlockBody)?;
-
-            prev_hash = header.hash().clone();
 
             debug!(
                 target: LOG_TARGET,

@@ -121,6 +121,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     debug!(target: LOG_TARGET, "Block header validation failed: {}", err);
                     self.ban_peer_long(node_id, err.into()).await?;
                 },
+                Err(BlockHeaderSyncError::ChainSplitNotFound(peer)) => {
+                    debug!(target: LOG_TARGET, "Chain split not found for peer {}.", peer);
+                    self.ban_peer_long(peer, BanReason::ChainSplitNotFound).await?;
+                },
                 Err(err @ BlockHeaderSyncError::InvalidBlockHeight { .. }) => {
                     debug!(target: LOG_TARGET, "{}", err);
                     self.ban_peer_long(node_id, BanReason::GeneralHeaderSyncFailure(err))
@@ -289,7 +293,6 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         loop {
             iter_count += 1;
             if iter_count > MAX_CHAIN_SPLIT_ITERS {
-                self.ban_peer_long(peer.clone(), BanReason::ChainSplitNotFound).await?;
                 return Err(BlockHeaderSyncError::ChainSplitNotFound(peer.clone()));
             }
 
@@ -299,11 +302,17 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 .await?;
             debug!(
                 target: LOG_TARGET,
-                "Determining if chain splits between {} and {} headers back from peer `{}`",
+                "Determining if chain splits between {} and {} headers back from the tip (peer: `{}`, {} hashes sent)",
                 offset,
                 offset + NUM_CHAIN_SPLIT_HEADERS,
                 peer,
+                block_hashes.len()
             );
+
+            // No further hashes to send.
+            if block_hashes.is_empty() {
+                return Err(BlockHeaderSyncError::ChainSplitNotFound(peer.clone()));
+            }
 
             let request = FindChainSplitRequest {
                 block_hashes: block_hashes.clone(),
@@ -313,6 +322,11 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             let resp = match client.find_chain_split(request).await {
                 Ok(r) => r,
                 Err(RpcError::RequestFailed(err)) if err.status_code().is_not_found() => {
+                    // This round we sent less hashes than the max, so the next round will not have any more hashes to
+                    // send. Exit early in this case.
+                    if block_hashes.len() < NUM_CHAIN_SPLIT_HEADERS {
+                        return Err(BlockHeaderSyncError::ChainSplitNotFound(peer.clone()));
+                    }
                     // Chain split not found, let's go further back
                     offset = NUM_CHAIN_SPLIT_HEADERS * iter_count;
                     continue;
