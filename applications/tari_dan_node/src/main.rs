@@ -45,6 +45,9 @@ use crate::cmd_args::OperationMode;
 use crate::dan_layer::services::{MempoolService, ConcreteMempoolService};
 use tari_app_utilities::initialization::init_configuration;
 use crate::dan_layer::dan_node::DanNode;
+use tari_common::configuration::bootstrap::ApplicationType;
+use tari_common::GlobalConfig;
+use tari_app_utilities::utilities::ExitCodes;
 
 const LOG_TARGET: &str = "dan_node::app";
 
@@ -94,7 +97,7 @@ fn build_runtime() -> Result<Runtime, ExitCodes> {
         .threaded_scheduler()
         .enable_all()
         .build()
-        .map_err(|e| ExitCodes::CouldNotCreateRuntime {cause: e.to_string()})
+        .map_err(|e| ExitCodes::UnknownError)
 }
 
 
@@ -120,17 +123,3 @@ async fn run_grpc(grpc_server: DanGrpcServer, grpc_address: SocketAddr, shutdown
         Ok(())
     }
 
-/// Enum to show failure information
-#[derive(Debug, Clone, Error)]
-pub enum ExitCodes {
-    #[error("Could not create runtime: {cause}")]
-    CouldNotCreateRuntime{ cause: String}
-}
-
-impl ExitCodes {
-    fn as_i32(&self) -> i32 {
-        match self {
-            ExitCodes::CouldNotCreateRuntime { .. } => 501
-        }
-    }
-}

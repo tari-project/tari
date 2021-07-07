@@ -20,18 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    transaction_service::{
-        error::{TransactionServiceError, TransactionServiceProtocolError},
-        handle::TransactionEvent,
-        service::TransactionServiceResources,
-        storage::{
-            database::TransactionBackend,
-            models::{CompletedTransaction, TransactionStatus},
-        },
+use crate::{transaction_service::{
+    error::{TransactionServiceError, TransactionServiceProtocolError},
+    handle::TransactionEvent,
+    service::TransactionServiceResources,
+    storage::{
+        database::TransactionBackend,
+        models::{CompletedTransaction, TransactionStatus},
     },
-    types::ValidationRetryStrategy,
-};
+}, types::ValidationRetryStrategy, OperationId};
 use futures::{FutureExt, StreamExt};
 use log::*;
 use std::{cmp, convert::TryFrom, sync::Arc, time::Duration};
@@ -51,7 +48,7 @@ const LOG_TARGET: &str = "wallet::transaction_service::protocols::validation_pro
 pub struct TransactionValidationProtocol<TBackend>
 where TBackend: TransactionBackend + 'static
 {
-    id: TxId,
+    id: OperationId,
     resources: TransactionServiceResources<TBackend>,
     timeout: Duration,
     base_node_public_key: CommsPublicKey,
@@ -70,7 +67,7 @@ impl<TBackend> TransactionValidationProtocol<TBackend>
 where TBackend: TransactionBackend + 'static
 {
     pub fn new(
-        id: TxId,
+        id: OperationId,
         resources: TransactionServiceResources<TBackend>,
         base_node_public_key: CommsPublicKey,
         timeout: Duration,
@@ -91,7 +88,7 @@ where TBackend: TransactionBackend + 'static
     }
 
     /// The task that defines the execution of the protocol.
-    pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError> {
+    pub async fn execute(mut self) -> Result<OperationId, TransactionServiceProtocolError> {
         let mut timeout_update_receiver = self
             .timeout_update_receiver
             .take()

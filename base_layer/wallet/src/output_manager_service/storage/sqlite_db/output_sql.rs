@@ -29,13 +29,16 @@ pub struct OutputSql {
     pub script: Vec<u8>,
     pub input_data: Vec<u8>,
     pub script_private_key: Vec<u8>,
+    pub sender_offset_public_key: Vec<u8>,
+    pub metadata_signature_nonce : Vec<u8>,
+    pub metadata_signature_u_key: Vec<u8>,
+    pub metadata_signature_v_key: Vec<u8>,
     pub unique_id: Option<Vec<u8>>,
     pub metadata: Option<Vec<u8>>,
     pub features_asset_public_key: Option<Vec<u8>>,
-    pub parent_public_key: Option<Vec<u8>>,
     pub features_mint_asset_public_key: Option<Vec<u8>>,
-    pub features_mint_asset_owner_commitment: Option<Vec<u8>>
-
+    pub features_mint_asset_owner_commitment: Option<Vec<u8>>,
+    pub parent_public_key: Option<Vec<u8>>,
 }
 
 impl OutputSql {
@@ -82,6 +85,23 @@ impl OutputSql {
             .filter(columns::status.ne(cancelled))
             .filter(columns::commitment.eq(commitment))
             .first::<OutputSql>(conn)?)
+    }
+
+    pub fn find_by_commitment_and_cancelled(
+        commitment: &[u8],
+        cancelled: bool,
+        conn: &SqliteConnection,
+    ) -> Result<OutputSql, OutputManagerStorageError> {
+        let cancelled_flag = OutputStatus::CancelledInbound as i32;
+
+        let mut request = outputs::table.filter(outputs::commitment.eq(commitment)).into_boxed();
+        if cancelled {
+            request = request.filter(outputs::status.eq(cancelled_flag))
+        } else {
+            request = request.filter(outputs::status.ne(cancelled_flag))
+        };
+
+        Ok(request.first::<OutputSql>(conn)?)
     }
 
     /// Find outputs via tx_id

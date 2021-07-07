@@ -315,7 +315,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, &(*conn)).is_ok() {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
-                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Spent, None)?;
+                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Spent, None);
 
                     self.encrypt_if_necessary(&mut new_output)?;
 
@@ -325,7 +325,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, &(*conn)).is_ok() {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
-                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, None)?;
+                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, None);
                     self.encrypt_if_necessary(&mut new_output)?;
                     new_output.commit(&(*conn))?
                 },
@@ -333,7 +333,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, &(*conn)).is_ok() {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
-                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, Some(tx_id))?;
+                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, Some(tx_id));
                     self.encrypt_if_necessary(&mut new_output)?;
                     new_output.commit(&(*conn))?
                 },
@@ -350,12 +350,12 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     )
                     .commit(&(*conn))?;
                     for o in p.outputs_to_be_spent {
-                        let mut new_output = NewOutputSql::new(o, OutputStatus::EncumberedToBeSpent, Some(p.tx_id))?;
+                        let mut new_output = NewOutputSql::new(o, OutputStatus::EncumberedToBeSpent, Some(p.tx_id));
                         self.encrypt_if_necessary(&mut new_output)?;
                         new_output.commit(&(*conn))?;
                     }
                     for o in p.outputs_to_be_received {
-                        let mut new_output = NewOutputSql::new(o, OutputStatus::EncumberedToBeReceived, Some(p.tx_id))?;
+                        let mut new_output = NewOutputSql::new(o, OutputStatus::EncumberedToBeReceived, Some(p.tx_id));
                         self.encrypt_if_necessary(&mut new_output)?;
                         new_output.commit(&(*conn))?;
                     }
@@ -530,7 +530,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         }
 
         for co in outputs_to_receive {
-            let mut new_output = NewOutputSql::new(co.clone(), OutputStatus::EncumberedToBeReceived, Some(tx_id))?;
+            let mut new_output = NewOutputSql::new(co.clone(), OutputStatus::EncumberedToBeReceived, Some(tx_id));
             self.encrypt_if_necessary(&mut new_output)?;
             new_output.commit(&(*conn))?;
         }

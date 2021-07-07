@@ -411,7 +411,7 @@ where TBackend: TransactionBackend + 'static
                 self.source_pubkey.clone(),
                 self.resources.node_identity.public_key().clone(),
                 inbound_tx.amount,
-                rtp_output.unique_id,
+                rtp_output.unique_id.clone(),
                 finalized_transaction.body.get_total_fee(),
                 finalized_transaction.clone(),
                 TransactionStatus::Completed,

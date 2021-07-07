@@ -20,31 +20,27 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    output_manager_service::{handle::OutputManagerHandle, },
-    transaction_service::{
-        config::TransactionServiceConfig,
-        error::{TransactionServiceError, TransactionServiceProtocolError},
-        handle::{TransactionEvent, TransactionEventSender, TransactionServiceRequest, TransactionServiceResponse},
-        protocols::{
-            transaction_broadcast_protocol::TransactionBroadcastProtocol,
-            transaction_coinbase_monitoring_protocol::TransactionCoinbaseMonitoringProtocol,
-            transaction_receive_protocol::{TransactionReceiveProtocol, TransactionReceiveProtocolStage},
-            transaction_send_protocol::{TransactionSendProtocol, TransactionSendProtocolStage},
-            transaction_validation_protocol::TransactionValidationProtocol,
-        },
-        storage::{
-            database::{TransactionBackend, TransactionDatabase},
-            models::{CompletedTransaction, TransactionDirection, TransactionStatus},
-        },
-        tasks::{
-            send_finalized_transaction::send_finalized_transaction_message,
-            send_transaction_cancelled::send_transaction_cancelled_message,
-            send_transaction_reply::send_transaction_reply,
-        },
+use crate::{output_manager_service::{handle::OutputManagerHandle, }, transaction_service::{
+    config::TransactionServiceConfig,
+    error::{TransactionServiceError, TransactionServiceProtocolError},
+    handle::{TransactionEvent, TransactionEventSender, TransactionServiceRequest, TransactionServiceResponse},
+    protocols::{
+        transaction_broadcast_protocol::TransactionBroadcastProtocol,
+        transaction_coinbase_monitoring_protocol::TransactionCoinbaseMonitoringProtocol,
+        transaction_receive_protocol::{TransactionReceiveProtocol, TransactionReceiveProtocolStage},
+        transaction_send_protocol::{TransactionSendProtocol, TransactionSendProtocolStage},
+        transaction_validation_protocol::TransactionValidationProtocol,
     },
-    types::{HashDigest, ValidationRetryStrategy},
-};
+    storage::{
+        database::{TransactionBackend, TransactionDatabase},
+        models::{CompletedTransaction, TransactionDirection, TransactionStatus},
+    },
+    tasks::{
+        send_finalized_transaction::send_finalized_transaction_message,
+        send_transaction_cancelled::send_transaction_cancelled_message,
+        send_transaction_reply::send_transaction_reply,
+    },
+}, types::{HashDigest, ValidationRetryStrategy}, OperationId};
 use chrono::{NaiveDateTime, Utc};
 use digest::Digest;
 use futures::{
@@ -274,7 +270,7 @@ where
         > = FuturesUnordered::new();
 
         let mut transaction_validation_protocol_handles: FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError>>,
+            JoinHandle<Result<OperationId, TransactionServiceProtocolError>>,
         > = FuturesUnordered::new();
 
         info!(target: LOG_TARGET, "Transaction Service started");
@@ -456,7 +452,7 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError>>,
         >,
         transaction_validation_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError>>,
+            JoinHandle<Result<OperationId, TransactionServiceProtocolError>>,
         >,
     ) -> Result<TransactionServiceResponse, TransactionServiceError> {
         trace!(target: LOG_TARGET, "Handling Service Request: {}", request);
@@ -1009,8 +1005,8 @@ where
                 );
             },
             Err(TransactionServiceProtocolError { id, error }) => {
-                let _ = self.pending_transaction_reply_senders.remove(&id);
-                let _ = self.send_transaction_cancellation_senders.remove(&id);
+                let _ = self.pending_transaction_reply_senders.remove(&id.into());
+                let _ = self.send_transaction_cancellation_senders.remove(&id.into());
                 if let TransactionServiceError::Shutdown = error {
                     return;
                 }
@@ -1326,8 +1322,8 @@ where
                 );
             },
             Err(TransactionServiceProtocolError { id, error }) => {
-                let _ = self.finalized_transaction_senders.remove(&id);
-                let _ = self.receiver_transaction_cancellation_senders.remove(&id);
+                let _ = self.finalized_transaction_senders.remove(&id.into());
+                let _ = self.receiver_transaction_cancellation_senders.remove(&id.into());
                 match error {
                     TransactionServiceError::RepeatedMessageError => debug!(
                         target: LOG_TARGET,
@@ -1438,13 +1434,13 @@ where
     async fn start_transaction_validation_protocol(
         &mut self,
         retry_strategy: ValidationRetryStrategy,
-        join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError>>>,
-    ) -> Result<TxId, TransactionServiceError> {
+        join_handles: &mut FuturesUnordered<JoinHandle<Result<OperationId, TransactionServiceProtocolError>>>,
+    ) -> Result<OperationId, TransactionServiceError> {
         if self.base_node_public_key.is_none() {
             return Err(TransactionServiceError::NoBaseNodeKeysProvided);
         }
         trace!(target: LOG_TARGET, "Starting transaction validation protocols");
-        let id = TxId::new_random();
+        let id = OperationId::new_random();
         let timeout = match self.power_mode {
             PowerMode::Normal => self.config.broadcast_monitoring_timeout,
             PowerMode::Low => self.config.low_power_polling_timeout,
@@ -1472,7 +1468,7 @@ where
     /// Handle the final clean up after a Transaction Validation protocol completes
     async fn complete_transaction_validation_protocol(
         &mut self,
-        join_result: Result<TxId, TransactionServiceProtocolError>,
+        join_result: Result<OperationId, TransactionServiceProtocolError>,
     ) {
         match join_result {
             Ok(id) => {
@@ -1611,7 +1607,7 @@ where
                 let _ = self.active_transaction_broadcast_protocols.remove(&id);
             },
             Err(TransactionServiceProtocolError { id, error }) => {
-                let _ = self.active_transaction_broadcast_protocols.remove(&id);
+                let _ = self.active_transaction_broadcast_protocols.remove(&TxId::from(id));
 
                 if let TransactionServiceError::Shutdown = error {
                     return;
@@ -1919,7 +1915,7 @@ where
                 );
             },
             Err(TransactionServiceProtocolError { id, error }) => {
-                let _ = self.active_coinbase_monitoring_protocols.remove(&id);
+                let _ = self.active_coinbase_monitoring_protocols.remove(&TxId::from(id));
                 if let TransactionServiceError::Shutdown = error {
                     return;
                 }
@@ -2079,104 +2075,105 @@ where
         use tari_p2p::Network;
         use tari_test_utils::random;
         use tempfile::tempdir;
-
-        let (_sender, receiver) = reply_channel::unbounded();
-        let (oms_event_publisher, _oms_event_subscriber) = broadcast::channel(100);
-        let (ts_request_sender, _ts_request_receiver) = reply_channel::unbounded();
-        let (event_publisher, _) = broadcast::channel(100);
-        let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher.clone());
-        let constants = ConsensusConstantsBuilder::new(Network::Weatherwax).build();
-        let shutdown_signal = self.resources.shutdown_signal.clone();
-        let (sender, receiver_bns) = reply_channel::unbounded();
-        let (event_publisher_bns, _) = broadcast::channel(100);
-        let (connectivity_tx_publisher, _) = broadcast::channel(100);
-        let (connectivity_tx, _) = mpsc::channel(20);
-
-        let connectivity_manager = ConnectivityRequester::new(connectivity_tx, connectivity_tx_publisher);
-
-        let basenode_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns);
-        let mut mock_base_node_service = MockBaseNodeService::new(receiver_bns, shutdown_signal.clone());
-        mock_base_node_service.set_default_base_node_state();
-
-        let db_name = format!("{}.sqlite3", random::string(8).as_str());
-        let db_tempdir = tempdir().unwrap();
-        let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-        let db_path = format!("{}/{}", db_folder, db_name);
-        let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
-        let backend = OutputManagerSqliteDatabase::new(connection, None);
-
-        handle.spawn(mock_base_node_service.run());
-        let mut fake_oms = OutputManagerService::new(
-            OutputManagerServiceConfig::default(),
-            ts_handle,
-            receiver,
-            OutputManagerDatabase::new(backend),
-            oms_event_publisher,
-            self.resources.factories.clone(),
-            constants,
-            shutdown_signal,
-            basenode_service_handle,
-            connectivity_manager,
-            CommsSecretKey::default(),
-        )
-        .await?;
-
-        use crate::testnet_utils::make_input;
-        let (_ti, uo) = make_input(amount + 100000 * uT, &self.resources.factories);
-
-        fake_oms.add_output(None, uo).await?;
-
-        let mut stp = fake_oms
-            .prepare_transaction_to_send(amount, MicroTari::from(25), None, "".to_string(), script!(Nop))
-            .await?;
-
-        let msg = stp.build_single_round_message()?;
-        let proto_msg = proto::TransactionSenderMessage::single(msg.into());
-        let sender_message: TransactionSenderMessage = proto_msg
-            .try_into()
-            .map_err(TransactionServiceError::InvalidMessageError)?;
-
-        let (tx_id, _amount) = match sender_message.clone() {
-            TransactionSenderMessage::Single(data) => (data.tx_id, data.amount),
-            _ => {
-                return Err(TransactionServiceError::OutputManagerError(
-                    OutputManagerError::InvalidSenderMessage,
-                ))
-            },
-        };
-
-        let rtp = self
-            .output_manager_service
-            .get_recipient_transaction(sender_message)
-            .await?;
-
-        let inbound_transaction = InboundTransaction::new(
-            tx_id,
-            source_public_key,
-            amount,
-            rtp,
-            TransactionStatus::Pending,
-            "".to_string(),
-            Utc::now().naive_utc(),
-        );
-
-        self.db
-            .add_pending_inbound_transaction(tx_id, inbound_transaction.clone())
-            .await?;
-
-        let _ = self
-            .event_publisher
-            .send(Arc::new(TransactionEvent::ReceivedTransaction(tx_id)))
-            .map_err(|e| {
-                trace!(
-                    target: LOG_TARGET,
-                    "Error sending event, usually because there are no subscribers: {:?}",
-                    e
-                );
-                e
-            });
-
-        Ok(())
+        //
+        // let (_sender, receiver) = reply_channel::unbounded();
+        // let (oms_event_publisher, _oms_event_subscriber) = broadcast::channel(100);
+        // let (ts_request_sender, _ts_request_receiver) = reply_channel::unbounded();
+        // let (event_publisher, _) = broadcast::channel(100);
+        // let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher.clone());
+        // let constants = ConsensusConstantsBuilder::new(Network::Weatherwax).build();
+        // let shutdown_signal = self.resources.shutdown_signal.clone();
+        // let (sender, receiver_bns) = reply_channel::unbounded();
+        // let (event_publisher_bns, _) = broadcast::channel(100);
+        // let (connectivity_tx_publisher, _) = broadcast::channel(100);
+        // let (connectivity_tx, _) = mpsc::channel(20);
+        //
+        // let connectivity_manager = ConnectivityRequester::new(connectivity_tx, connectivity_tx_publisher);
+        //
+        // let basenode_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns);
+        // let mut mock_base_node_service = MockBaseNodeService::new(receiver_bns, shutdown_signal.clone());
+        // mock_base_node_service.set_default_base_node_state();
+        //
+        // let db_name = format!("{}.sqlite3", random::string(8).as_str());
+        // let db_tempdir = tempdir().unwrap();
+        // let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+        // let db_path = format!("{}/{}", db_folder, db_name);
+        // let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+        // let backend = OutputManagerSqliteDatabase::new(connection, None);
+        //
+        // handle.spawn(mock_base_node_service.run());
+        // let mut fake_oms = OutputManagerService::new(
+        //     OutputManagerServiceConfig::default(),
+        //     ts_handle,
+        //     receiver,
+        //     OutputManagerDatabase::new(backend),
+        //     oms_event_publisher,
+        //     self.resources.factories.clone(),
+        //     constants,
+        //     shutdown_signal,
+        //     basenode_service_handle,
+        //     connectivity_manager,
+        //     CommsSecretKey::default(),
+        // )
+        // .await?;
+        //
+        // use crate::testnet_utils::make_input;
+        // let (_ti, uo) = make_input(amount + 100000 * uT, &self.resources.factories);
+        //
+        // fake_oms.add_output(None, uo).await?;
+        //
+        // let mut stp = fake_oms
+        //     .prepare_transaction_to_send(amount, MicroTari::from(25), None, "".to_string(), script!(Nop))
+        //     .await?;
+        //
+        // let msg = stp.build_single_round_message()?;
+        // let proto_msg = proto::TransactionSenderMessage::single(msg.into());
+        // let sender_message: TransactionSenderMessage = proto_msg
+        //     .try_into()
+        //     .map_err(TransactionServiceError::InvalidMessageError)?;
+        //
+        // let (tx_id, _amount) = match sender_message.clone() {
+        //     TransactionSenderMessage::Single(data) => (data.tx_id, data.amount),
+        //     _ => {
+        //         return Err(TransactionServiceError::OutputManagerError(
+        //             OutputManagerError::InvalidSenderMessage,
+        //         ))
+        //     },
+        // };
+        //
+        // let rtp = self
+        //     .output_manager_service
+        //     .get_recipient_transaction(sender_message)
+        //     .await?;
+        //
+        // let inbound_transaction = InboundTransaction::new(
+        //     tx_id,
+        //     source_public_key,
+        //     amount,
+        //     rtp,
+        //     TransactionStatus::Pending,
+        //     "".to_string(),
+        //     Utc::now().naive_utc(),
+        // );
+        //
+        // self.db
+        //     .add_pending_inbound_transaction(tx_id, inbound_transaction.clone())
+        //     .await?;
+        //
+        // let _ = self
+        //     .event_publisher
+        //     .send(Arc::new(TransactionEvent::ReceivedTransaction(tx_id)))
+        //     .map_err(|e| {
+        //         trace!(
+        //             target: LOG_TARGET,
+        //             "Error sending event, usually because there are no subscribers: {:?}",
+        //             e
+        //         );
+        //         e
+        //     });
+        //
+        // Ok(())
+        unimplemented!()
     }
 
     /// This function is only available for testing by the client of LibWallet. This function simulates an external

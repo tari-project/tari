@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2021. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,51 +20,58 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_core::transactions::tari_amount::MicroTari;
-use tari_crypto::common::Blake256;
-use tari_core::transactions::types::{PublicKey, PrivateKey};
-use crate::error::WalletError;
-use tari_key_manager::key_manager::KeyManager;
+use std::fmt;
+use std::fmt::Formatter;
+use serde::{Serialize, Deserialize};
+use std::hash::{Hash, Hasher};
 use rand::rngs::OsRng;
-use tari_crypto::keys::PublicKey as OtherPublicKey;
-
-/// The default fee per gram that the wallet will use to build transactions.
-/// TODO discuss what the default fee value should actually be
-pub const DEFAULT_FEE_PER_GRAM: MicroTari = MicroTari(25);
-
-/// Specify the Hash function used by the key manager
-pub type KeyDigest = Blake256;
-
-/// Specify the Hash function used when constructing challenges during transaction building
-pub type HashDigest = Blake256;
-
-#[derive(Debug)]
-pub enum ValidationRetryStrategy {
-    Limited(u8),
-    UntilSuccess,
-}
+use rand::RngCore;
 
 
-pub (crate) trait PersistentKeyManager {
-    fn create_and_store_new(&mut self) -> Result<PublicKey, WalletError>;
-}
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Default)]
+pub struct OperationId(u64);
 
+impl OperationId {
+    pub fn new_random() -> Self {
+        OperationId(OsRng.next_u64())
+    }
 
-pub (crate) struct MockPersistentKeyManager {
-    key_manager: KeyManager<PrivateKey, KeyDigest>
-}
-
-impl MockPersistentKeyManager {
-   pub fn new() -> Self {
-      Self{
-        key_manager: KeyManager::new(&mut OsRng)
-      }
-   }
-}
-
-impl PersistentKeyManager for MockPersistentKeyManager {
-    fn create_and_store_new(&mut self) -> Result<PublicKey, WalletError> {
-        Ok(PublicKey::from_secret_key(&self.key_manager.next_key().unwrap().k))
+    pub fn as_u64(self) -> u64 {
+        self.0
     }
 }
 
+impl Hash for OperationId {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.hash(state)
+    }
+}
+
+impl PartialEq for OperationId {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq(&other.0)
+    }
+}
+
+
+impl Eq for OperationId {
+
+}
+
+impl From<u64> for OperationId {
+    fn from(s: u64) -> Self {
+        Self(s)
+    }
+}
+
+impl From<OperationId> for u64 {
+    fn from(s: OperationId) ->Self {
+        s.0
+    }
+}
+
+impl fmt::Display for OperationId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}

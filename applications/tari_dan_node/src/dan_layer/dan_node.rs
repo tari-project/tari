@@ -22,6 +22,8 @@
 
 use crate::digital_assets_error::DigitalAssetError;
 use tari_app_utilities::identity_management::setup_node_identity;
+use tari_common::GlobalConfig;
+use crate::ExitCodes;
 
 pub struct DanNode {
     config: GlobalConfig
@@ -32,8 +34,8 @@ impl DanNode {
         Self {config}
     }
 
-    pub fn start() -> Result<(), DigitalAssetError> {
-        setup_node_identity();
+    pub fn start(&self) -> Result<(), ExitCodes> {
+        // setup_node_identity();
        todo!()
     }
 }

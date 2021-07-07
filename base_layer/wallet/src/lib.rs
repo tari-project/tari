@@ -24,6 +24,8 @@ pub mod transaction_service;
 pub mod types;
 pub mod util;
 pub mod wallet;
+mod operation_id;
+pub use operation_id::OperationId;
 
 #[cfg(feature = "test_harness")]
 pub mod testnet_utils;

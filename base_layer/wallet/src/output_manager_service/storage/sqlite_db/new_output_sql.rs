@@ -51,7 +51,11 @@ pub struct NewOutputSql {
     metadata: Option<Vec<u8>>,
     features_asset_public_key: Option<Vec<u8>>,
     unique_id: Option<Vec<u8>>,
-    parent_public_key: Option<Vec<u8>>
+    parent_public_key: Option<Vec<u8>>,
+    sender_offset_public_key: Vec<u8>,
+    metadata_signature_nonce: Vec<u8>,
+    metadata_signature_u_key: Vec<u8>,
+    metadata_signature_v_key: Vec<u8>,
 }
 
 impl NewOutputSql {
@@ -67,13 +71,15 @@ impl NewOutputSql {
             hash: Some(output.hash),
             script: output.unblinded_output.script.as_bytes(),
             input_data: output.unblinded_output.input_data.as_bytes(),
-            height: output.unblinded_output.height as i64,
             script_private_key: output.unblinded_output.script_private_key.to_vec(),
-            script_offset_public_key: output.unblinded_output.script_offset_public_key.to_vec(),
             metadata: Some(output.unblinded_output.features.metadata),
             features_asset_public_key: output.unblinded_output.features.asset.map(|a| a.public_key.to_vec()),
             unique_id: output.unblinded_output.unique_id,
-            parent_public_key: output.unblinded_output.parent_public_key.map(|a| a.to_vec())
+            parent_public_key: output.unblinded_output.parent_public_key.map(|a| a.to_vec()),
+            sender_offset_public_key: output.unblinded_output.sender_offset_public_key.to_vec(),
+            metadata_signature_nonce: output.unblinded_output.metadata_signature.public_nonce().to_vec(),
+            metadata_signature_u_key: output.unblinded_output.metadata_signature.u().to_vec(),
+            metadata_signature_v_key: output.unblinded_output.metadata_signature.v().to_vec(),
         }
     }
 

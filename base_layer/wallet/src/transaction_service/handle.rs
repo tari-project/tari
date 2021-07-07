@@ -20,12 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    transaction_service::{
-        error::TransactionServiceError,
-        storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
-    },
-};
+use crate::{transaction_service::{
+    error::TransactionServiceError,
+    storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
+}, OperationId};
 use aes_gcm::Aes256Gcm;
 use futures::{stream::Fuse, StreamExt};
 use std::{collections::HashMap, fmt, sync::Arc};
@@ -40,6 +38,7 @@ use crate::types::ValidationRetryStrategy;
 use tokio::runtime::Handle;
 use tari_core::transactions::transaction_protocol::TxId;
 use std::fmt::Formatter;
+
 
 
 /// API Request enum
@@ -164,7 +163,7 @@ pub enum TransactionServiceResponse {
     AnyTransaction(Box<Option<WalletTransaction>>),
     NumConfirmationsRequired(u64),
     NumConfirmationsSet,
-    ValidationStarted(TxId),
+    ValidationStarted(OperationId),
     CompletedTransactionValidityChanged,
     #[cfg(feature = "test_harness")]
     CompletedPendingTransaction,
@@ -195,11 +194,11 @@ pub enum TransactionEvent {
     TransactionMined(TxId),
     TransactionMinedRequestTimedOut(TxId),
     TransactionMinedUnconfirmed(TxId, u64),
-    TransactionValidationTimedOut(TxId),
-    TransactionValidationSuccess(TxId),
-    TransactionValidationFailure(TxId),
-    TransactionValidationAborted(TxId),
-    TransactionValidationDelayed(TxId),
+    TransactionValidationTimedOut(OperationId),
+    TransactionValidationSuccess(OperationId),
+    TransactionValidationFailure(OperationId),
+    TransactionValidationAborted(OperationId),
+    TransactionValidationDelayed(OperationId),
     TransactionBaseNodeConnectionProblem(TxId),
     Error(String),
 }
@@ -582,7 +581,7 @@ impl TransactionServiceHandle {
     pub async fn validate_transactions(
         &mut self,
         retry_strategy: ValidationRetryStrategy,
-    ) -> Result<TxId, TransactionServiceError> {
+    ) -> Result<OperationId, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::ValidateTransactions(retry_strategy))

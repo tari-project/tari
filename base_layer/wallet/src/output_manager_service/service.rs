@@ -459,17 +459,9 @@ where TBackend: OutputManagerBackend + 'static
         let input_data = inputs!(PublicKey::from_secret_key(&script_private_key));
         let script = script!(Nop);
 
-        Ok(UnblindedOutputBuilder {
+        Ok(UnblindedOutputBuilder::new(
             value,
-            spending_key: spending_key.clone(),
-            features : Some(features),
-            script: Some(script.clone()),
-            input_data: Some(input_data),
-            script_private_key : Some(script_private_key),
-            unique_id,
-            parent_public_key,
-            .. Default::default()
-        })
+            spending_key.clone()).with_features(features).with_script(script.clone()).with_input_data(input_data).with_script_private_key(script_private_key).with_unique_id(unique_id).with_parent_public_key(parent_public_key))
     }
 
     async fn get_balance(&self, current_chain_tip: Option<u64>) -> Result<Balance, OutputManagerError> {
@@ -821,7 +813,7 @@ where TBackend: OutputManagerBackend + 'static
             unblinded_output.sign_as_sender(&sender_offset_private_key)?;
 
             let ub = unblinded_output.try_build()?;
-            builder.with_output(ub.clone(), sender_offset_private_key.clone());
+            builder.with_output(ub.clone(), sender_offset_private_key.clone()) .map_err(|e| OutputManagerError::BuildError(e.message))?;
             db_outputs.push(DbUnblindedOutput::from_unblinded_output(
                 ub,
                 &self.resources.factories,
@@ -864,15 +856,9 @@ where TBackend: OutputManagerBackend + 'static
             let public_offset_commitment_private_key = PrivateKey::random(&mut OsRng);
             let public_offset_commitment_pub_key = PublicKey::from_secret_key(&public_offset_commitment_private_key);
 
-            let mut output_builder = UnblindedOutputBuilder {
-                value: stp.get_change_amount()?,
-                spending_key,
-                features: None,
-                script: Some(script!(Nop)),
-                input_data: Some(inputs!(PublicKey::from_secret_key(&script_private_key))),
-                script_private_key: Some(script_private_key),
-                .. Default::default()
-            };
+            let mut output_builder = UnblindedOutputBuilder::new(
+                 stp.get_change_amount()?,
+                spending_key).with_script(script!(Nop)).with_input_data(inputs!(PublicKey::from_secret_key(&script_private_key))).with_script_private_key(script_private_key);
 
             output_builder.sign_as_receiver(sender_offset_public_key, public_offset_commitment_pub_key)?;
             output_builder.sign_as_sender(&sender_offset_private_key)?;
@@ -1419,7 +1405,7 @@ where TBackend: OutputManagerBackend + 'static
                         &known_one_sided_payment_scripts[i].private_key,
                         &output.sender_offset_public_key,
                     )
-                    .as_bytes(),
+                        .as_bytes(),
                 )?;
                 let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
                 let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_key))?;
@@ -1453,7 +1439,6 @@ where TBackend: OutputManagerBackend + 'static
                 }
             }
         }
-
         Ok(rewound_outputs)
     }
 }

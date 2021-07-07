@@ -4607,6 +4607,7 @@ dependencies = [
  "prost-types",
  "serde_json",
  "tari_app_utilities",
+ "tari_common",
  "tari_crypto 0.11.1 (git+ssh://git@github.com/tari-project/tari-crypto.git?branch=main)",
  "tari_shutdown",
  "tari_test_utils 0.8.1",

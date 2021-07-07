@@ -12,6 +12,7 @@ tari_shutdown = { path = "../../infrastructure/shutdown"}
 tari_crypto = { git = "ssh://git@github.com/tari-project/tari-crypto.git", branch = "main" }
 tari_test_utils = "0.8.1"
 tari_app_utilities = {path ="../tari_app_utilities"}
+tari_common = {path = "../../common"}
 
 thiserror = "^1.0.20"
 log = { version = "0.4.8", features = ["std"] }

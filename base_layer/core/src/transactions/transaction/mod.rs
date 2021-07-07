@@ -259,25 +259,40 @@ pub enum TransactionError {
 }
 
 //-----------------------------------------     UnblindedOutput   ----------------------------------------------------//
-#[derive(Debug, Default)]
+#[derive(Debug, Clone)]
 pub struct UnblindedOutputBuilder {
-    pub value: MicroTari,
-    pub spending_key: BlindingFactor,
-    pub features: Option<OutputFeatures>,
-    pub script: Option<TariScript>,
-    pub input_data: Option<ExecutionStack>,
-    pub script_private_key: Option<PrivateKey>,
-    pub sender_offset_public_key: Option<PublicKey>,
-    pub metadata_signature: Option<ComSignature>,
+    value: MicroTari,
+     spending_key: BlindingFactor,
+     features: Option<OutputFeatures>,
+     script: Option<TariScript>,
+     input_data: Option<ExecutionStack>,
+    script_private_key: Option<PrivateKey>,
+     sender_offset_public_key: Option<PublicKey>,
+     metadata_signature: Option<ComSignature>,
     metadata_signed_by_receiver: bool,
     metadata_signed_by_sender: bool,
-    pub unique_id: Option<Vec<u8>>,
-    pub parent_public_key: Option<PublicKey>
+     unique_id: Option<Vec<u8>>,
+     parent_public_key: Option<PublicKey>
 }
 
 
 impl UnblindedOutputBuilder {
 
+    pub fn new(value: MicroTari, spending_key: BlindingFactor) -> Self {
+        Self{
+            value, spending_key,
+            features: None,
+            script: None,
+            input_data: None,
+            script_private_key: None,
+            sender_offset_public_key: None,
+            metadata_signature: None,
+            metadata_signed_by_receiver: false,
+            metadata_signed_by_sender: false,
+            unique_id: None,
+            parent_public_key: None
+        }
+    }
 
     pub fn sign_as_receiver(&mut self, sender_offset_public_key: PublicKey, public_nonce_commitment: PublicKey) -> Result<(), TransactionError> {
         self.sender_offset_public_key = Some(sender_offset_public_key.clone());
@@ -323,6 +338,30 @@ impl UnblindedOutputBuilder {
             parent_public_key: self.parent_public_key
         };
         Ok(ub)
+    }
+    pub fn with_features(mut self, features: OutputFeatures) -> Self {
+        self.features =Some( features);
+        self
+    }
+    pub fn with_script(mut self, script: TariScript) -> Self {
+        self.script =Some( script);
+        self
+    }
+    pub fn with_input_data(mut self, input_data: ExecutionStack) -> Self {
+        self.input_data =Some( input_data);
+        self
+    }
+    pub fn with_script_private_key(mut self, script_private_key: PrivateKey) -> Self {
+        self.script_private_key =Some( script_private_key);
+        self
+    }
+    pub fn with_unique_id(mut self, unique_id: Option<Vec<u8>>)-> Self {
+        self.unique_id = unique_id;
+        self
+    }
+    pub fn with_parent_public_key(mut self, parent_public_key: Option<PublicKey>)-> Self {
+        self.parent_public_key = parent_public_key;
+        self
     }
 }
 
