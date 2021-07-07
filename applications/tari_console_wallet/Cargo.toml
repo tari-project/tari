@@ -1,6 +1,6 @@
 [package]
 name = "tari_console_wallet"
-version = "0.8.11"
+version = "0.9.0"
 authors = ["The Tari Development Community"]
 edition = "2018"
 
@@ -36,7 +36,7 @@ tonic = "0.2"
 
 [dependencies.tari_core]
 path = "../../base_layer/core"
-version = "^0.8"
+version = "^0.9"
 default-features = false
 features = ["transactions", "mempool_proto", "base_node_proto"]
 
