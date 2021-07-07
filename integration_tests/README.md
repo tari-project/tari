@@ -45,8 +45,8 @@
   npm test -- --tags "@critical"
   ./run-tests.sh --tags "@critical"
 
-   # Runs all critical tests, but not @long-running and not @to-be-fixed-currently-failing
-   npm test --tags "@critical and not @long-running and not @to-be-fixed-currently-failing"
+   # Runs all critical tests, but not @long-running and not @tbroken
+  npm test -- --tags "@critical and not @long-running and not @broken"
   ```
 
   # Runs all @critical tests, but not @long-running
@@ -70,12 +70,13 @@
 [Prettier](https://prettier.io/) is used for JS code formatting. To ensure that your code is correctly
 formatted, run the following to format or check your code in-place:
 
-- Enforce \*nix style line endings, i.e `lf` only:
-  - `npm run fmt`
-  - `npm run check-fmt`
-- Allow prevalent line endings, i.e. `lf`, `crlf` or `cr` (_this is useful if your git is configured to correctly manage
-  all line endings_):
-  - `npm run fmt-auto`
-  - `npm run check-fmt-auto`
+- `npm run fmt`
+- `npm run check-fmt`
 
 Alternatively, use a prettier plugin for your favourite IDE.
+
+[ESLint](https://eslint.org) is used to statically analyzes the code to quickly find problems. To ensure your code
+conforms to the linting standard, run the following to fix or check your code in-place:
+
+- `npm run lint-fix`
+- `npm run lint`

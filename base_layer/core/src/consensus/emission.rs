@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::transactions::tari_amount::MicroTari;
+use std::cmp;
 
 pub trait Emission {
     fn block_reward(&self, height: u64) -> MicroTari;
@@ -133,15 +134,12 @@ impl<'a> EmissionRate<'a> {
             .decay
             .iter()
             .fold(self.reward, |sum, i| sum - MicroTari::from(r >> *i));
-        if next > self.schedule.tail {
-            next
-        } else {
-            self.schedule.tail
-        }
+
+        cmp::max(next, self.schedule.tail)
     }
 }
 
-impl<'a> Iterator for EmissionRate<'a> {
+impl Iterator for EmissionRate<'_> {
     type Item = (u64, MicroTari, MicroTari);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -189,6 +187,7 @@ mod test {
         assert_eq!(r0, MicroTari::from(10_000_100));
         let s0 = schedule.supply_at_block(0);
         assert_eq!(s0, MicroTari::from(10_000_100));
+        // These values have been independently calculated
         assert_eq!(schedule.block_reward(100), MicroTari::from(9_999_800));
         assert_eq!(schedule.supply_at_block(100), MicroTari::from(1_009_994_950));
     }
@@ -259,6 +258,6 @@ mod test {
         assert_eq!(emission.supply(), 1333455 * uT);
         let schedule = EmissionSchedule::new(1 * T, &[1, 2], 100 * uT);
         assert_eq!(emission.block_reward(), schedule.block_reward(8));
-        assert_eq!(emission.supply(), schedule.supply_at_block(8));
+        assert_eq!(emission.supply(), schedule.supply_at_block(8))
     }
 }

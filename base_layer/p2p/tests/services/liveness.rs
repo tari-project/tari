@@ -43,8 +43,7 @@ pub async fn setup_liveness_service(
     node_identity: Arc<NodeIdentity>,
     peers: Vec<Arc<NodeIdentity>>,
     data_path: &str,
-) -> (LivenessHandle, CommsNode, Dht, Shutdown)
-{
+) -> (LivenessHandle, CommsNode, Dht, Shutdown) {
     let (publisher, subscription_factory) = pubsub_connector(runtime::Handle::current(), 100, 20);
     let subscription_factory = Arc::new(subscription_factory);
     let shutdown = Shutdown::new();
@@ -69,14 +68,11 @@ pub async fn setup_liveness_service(
 
 fn make_node_identity() -> Arc<NodeIdentity> {
     let next_port = MemoryTransport::acquire_next_memsocket_port();
-    Arc::new(
-        NodeIdentity::random(
-            &mut OsRng,
-            format!("/memory/{}", next_port).parse().unwrap(),
-            PeerFeatures::COMMUNICATION_NODE,
-        )
-        .unwrap(),
-    )
+    Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        format!("/memory/{}", next_port).parse().unwrap(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ))
 }
 
 #[tokio_macros::test_basic]

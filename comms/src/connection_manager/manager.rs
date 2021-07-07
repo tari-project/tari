@@ -32,10 +32,9 @@ use crate::{
     multiplexing::Substream,
     noise::NoiseConfig,
     peer_manager::{NodeId, NodeIdentity},
-    protocol::{ProtocolEvent, ProtocolId, Protocols},
+    protocol::{NodeNetworkInfo, ProtocolEvent, ProtocolId, Protocols},
     runtime,
     transports::Transport,
-    types::DEFAULT_LISTENER_ADDRESS,
     PeerManager,
 };
 use futures::{
@@ -107,24 +106,25 @@ pub struct ConnectionManagerConfig {
     /// Set to true to allow peers to send loopback, local-link and other addresses normally not considered valid for
     /// peer-to-peer comms. Default: false
     pub allow_test_addresses: bool,
+    /// Version information for this node
+    pub network_info: NodeNetworkInfo,
     /// The maximum time to wait for the first byte before closing the connection. Default: 7s
     pub time_to_first_byte: Duration,
     /// The number of liveness check sessions to allow. Default: 0
     pub liveness_max_sessions: usize,
     /// CIDR blocks that allowlist liveness checks. Default: Localhost only (127.0.0.1/32)
     pub liveness_cidr_allowlist: Vec<cidr::AnyIpCidr>,
-    /// The user agent string for this node
-    pub user_agent: String,
 }
 
 impl Default for ConnectionManagerConfig {
     fn default() -> Self {
         Self {
-            listener_address: DEFAULT_LISTENER_ADDRESS
+            listener_address: "/ip4/0.0.0.0/tcp/7898"
                 .parse()
                 .expect("DEFAULT_LISTENER_ADDRESS is malformed"),
             max_dial_attempts: 3,
             max_simultaneous_inbound_connects: 20,
+            network_info: Default::default(),
             #[cfg(not(test))]
             allow_test_addresses: false,
             // This must always be true for internal crate tests
@@ -133,7 +133,6 @@ impl Default for ConnectionManagerConfig {
             liveness_max_sessions: 0,
             time_to_first_byte: Duration::from_secs(7),
             liveness_cidr_allowlist: vec![cidr::AnyIpCidr::V4("127.0.0.1/32".parse().unwrap())],
-            user_agent: Default::default(),
         }
     }
 }
@@ -170,8 +169,7 @@ where
         peer_manager: Arc<PeerManager>,
         connection_manager_events_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
         shutdown_signal: ShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         let (internal_event_tx, internal_event_rx) = mpsc::channel(EVENT_CHANNEL_SIZE);
 
         let (dialer_tx, dialer_rx) = mpsc::channel(DIALER_REQUEST_CHANNEL_SIZE);
@@ -360,8 +358,7 @@ where
         &mut self,
         node_id: NodeId,
         reply: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
-    )
-    {
+    ) {
         match self.peer_manager.find_by_node_id(&node_id).await {
             Ok(peer) => {
                 self.send_dialer_request(DialerRequest::Dial(Box::new(peer), reply))

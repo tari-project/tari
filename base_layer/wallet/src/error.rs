@@ -26,6 +26,7 @@ use crate::{
     output_manager_service::error::OutputManagerError,
     storage::database::DbKey,
     transaction_service::error::TransactionServiceError,
+    utxo_scanner_service::error::UtxoScannerError,
 };
 use diesel::result::Error as DieselError;
 use log::SetLoggerError;
@@ -36,6 +37,7 @@ use tari_comms::{
     peer_manager::{node_id::NodeIdError, PeerManagerError},
 };
 use tari_comms_dht::store_forward::StoreAndForwardError;
+use tari_core::transactions::transaction::TransactionError;
 use tari_crypto::tari_utilities::{hex::HexError, ByteArrayError};
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
 use tari_service_framework::ServiceInitializationError;
@@ -75,6 +77,12 @@ pub enum WalletError {
     WalletRecoveryError(String),
     #[error("Shutdown Signal Received")]
     Shutdown,
+    #[error("Transaction Error: {0}")]
+    TransactionError(#[from] TransactionError),
+    #[error("Byte array error")]
+    ByteArrayError(#[from] tari_crypto::tari_utilities::ByteArrayError),
+    #[error("Utxo Scanner Error: {0}")]
+    UtxoScannerError(#[from] UtxoScannerError),
 }
 
 #[derive(Debug, Error)]
@@ -131,4 +139,6 @@ pub enum WalletStorageError {
     NoPasswordError,
     #[error("Incorrect password provided for encrypted wallet")]
     IncorrectPassword,
+    #[error("Deprecated operation error")]
+    DeprecatedOperation,
 }

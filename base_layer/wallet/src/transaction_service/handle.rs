@@ -52,10 +52,11 @@ pub enum TransactionServiceRequest {
     GetCompletedTransaction(TxId),
     GetAnyTransaction(TxId),
     SetBaseNodePublicKey(CommsPublicKey),
-    SendTransaction((CommsPublicKey, MicroTari, MicroTari, String)),
+    SendTransaction(CommsPublicKey, MicroTari, MicroTari, String),
+    SendOneSidedTransaction(CommsPublicKey, MicroTari, MicroTari, String),
     CancelTransaction(TxId),
-    ImportUtxo(MicroTari, CommsPublicKey, String),
-    SubmitTransaction((TxId, Transaction, MicroTari, MicroTari, String)),
+    ImportUtxo(MicroTari, CommsPublicKey, String, Option<u64>),
+    SubmitCoinSplitTransaction(TxId, Transaction, MicroTari, MicroTari, String),
     SetLowPowerMode,
     SetNormalPowerMode,
     ApplyEncryption(Box<Aes256Gcm>),
@@ -65,6 +66,7 @@ pub enum TransactionServiceRequest {
     RestartBroadcastProtocols,
     GetNumConfirmationsRequired,
     SetNumConfirmationsRequired(u64),
+    SetCompletedTransactionValidity(u64, bool),
     ValidateTransactions(ValidationRetryStrategy),
     #[cfg(feature = "test_harness")]
     CompletePendingOutboundTransaction(CompletedTransaction),
@@ -89,12 +91,21 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetCancelledCompletedTransactions => f.write_str("GetCancelledCompletedTransactions"),
             Self::GetCompletedTransaction(t) => f.write_str(&format!("GetCompletedTransaction({})", t)),
             Self::SetBaseNodePublicKey(k) => f.write_str(&format!("SetBaseNodePublicKey ({})", k)),
-            Self::SendTransaction((k, v, _, msg)) => {
-                f.write_str(&format!("SendTransaction (to {}, {}, {})", k, v, msg))
+            Self::SendTransaction(k, v, _, msg) => f.write_str(&format!("SendTransaction (to {}, {}, {})", k, v, msg)),
+            Self::SendOneSidedTransaction(k, v, _, msg) => {
+                f.write_str(&format!("SendOneSidedTransaction (to {}, {}, {})", k, v, msg))
             },
             Self::CancelTransaction(t) => f.write_str(&format!("CancelTransaction ({})", t)),
-            Self::ImportUtxo(v, k, msg) => f.write_str(&format!("ImportUtxo (from {}, {}, {})", k, v, msg)),
-            Self::SubmitTransaction((id, _, _, _, _)) => f.write_str(&format!("SubmitTransaction ({})", id)),
+            Self::ImportUtxo(v, k, msg, maturity) => f.write_str(&format!(
+                "ImportUtxo (from {}, {}, {} with maturity: {})",
+                k,
+                v,
+                msg,
+                maturity.unwrap_or(0)
+            )),
+            Self::SubmitCoinSplitTransaction(tx_id, _, _, _, _) => {
+                f.write_str(&format!("SubmitTransaction ({})", tx_id))
+            },
             Self::SetLowPowerMode => f.write_str("SetLowPowerMode "),
             Self::SetNormalPowerMode => f.write_str("SetNormalPowerMode"),
             Self::ApplyEncryption(_) => f.write_str("ApplyEncryption"),
@@ -122,6 +133,10 @@ impl fmt::Display for TransactionServiceRequest {
             Self::BroadcastTransaction(id) => f.write_str(&format!("BroadcastTransaction ({})", id)),
             Self::GetAnyTransaction(t) => f.write_str(&format!("GetAnyTransaction({})", t)),
             TransactionServiceRequest::ValidateTransactions(t) => f.write_str(&format!("ValidateTransaction({:?})", t)),
+            TransactionServiceRequest::SetCompletedTransactionValidity(tx_id, s) => f.write_str(&format!(
+                "SetCompletedTransactionValidity(TxId: {}, Validity: {:?})",
+                tx_id, s
+            )),
         }
     }
 }
@@ -148,6 +163,7 @@ pub enum TransactionServiceResponse {
     NumConfirmationsRequired(u64),
     NumConfirmationsSet,
     ValidationStarted(u64),
+    CompletedTransactionValidityChanged,
     #[cfg(feature = "test_harness")]
     CompletedPendingTransaction,
     #[cfg(feature = "test_harness")]
@@ -173,6 +189,7 @@ pub enum TransactionEvent {
     TransactionStoreForwardSendResult(TxId, bool),
     TransactionCancelled(TxId),
     TransactionBroadcast(TxId),
+    TransactionImported(TxId),
     TransactionMined(TxId),
     TransactionMinedRequestTimedOut(TxId),
     TransactionMinedUnconfirmed(TxId, u64),
@@ -199,8 +216,7 @@ impl TransactionServiceHandle {
     pub fn new(
         handle: SenderService<TransactionServiceRequest, Result<TransactionServiceResponse, TransactionServiceError>>,
         event_stream_sender: TransactionEventSender,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             handle,
             event_stream_sender,
@@ -217,16 +233,37 @@ impl TransactionServiceHandle {
         amount: MicroTari,
         fee_per_gram: MicroTari,
         message: String,
-    ) -> Result<TxId, TransactionServiceError>
-    {
+    ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::SendTransaction((
+            .call(TransactionServiceRequest::SendTransaction(
                 dest_pubkey,
                 amount,
                 fee_per_gram,
                 message,
-            )))
+            ))
+            .await??
+        {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn send_one_sided_transaction(
+        &mut self,
+        dest_pubkey: CommsPublicKey,
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        message: String,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SendOneSidedTransaction(
+                dest_pubkey,
+                amount,
+                fee_per_gram,
+                message,
+            ))
             .await??
         {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
@@ -326,8 +363,7 @@ impl TransactionServiceHandle {
     pub async fn get_completed_transaction(
         &mut self,
         tx_id: TxId,
-    ) -> Result<CompletedTransaction, TransactionServiceError>
-    {
+    ) -> Result<CompletedTransaction, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetCompletedTransaction(tx_id))
@@ -341,8 +377,7 @@ impl TransactionServiceHandle {
     pub async fn get_any_transaction(
         &mut self,
         tx_id: TxId,
-    ) -> Result<Option<WalletTransaction>, TransactionServiceError>
-    {
+    ) -> Result<Option<WalletTransaction>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetAnyTransaction(tx_id))
@@ -356,8 +391,7 @@ impl TransactionServiceHandle {
     pub async fn set_base_node_public_key(
         &mut self,
         public_key: CommsPublicKey,
-    ) -> Result<(), TransactionServiceError>
-    {
+    ) -> Result<(), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::SetBaseNodePublicKey(public_key))
@@ -373,14 +407,15 @@ impl TransactionServiceHandle {
         amount: MicroTari,
         source_public_key: CommsPublicKey,
         message: String,
-    ) -> Result<TxId, TransactionServiceError>
-    {
+        maturity: Option<u64>,
+    ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::ImportUtxo(
                 amount,
                 source_public_key,
                 message,
+                maturity,
             ))
             .await??
         {
@@ -391,18 +426,17 @@ impl TransactionServiceHandle {
 
     pub async fn submit_transaction(
         &mut self,
-        tx_id: u64,
+        tx_id: TxId,
         tx: Transaction,
         fee: MicroTari,
         amount: MicroTari,
         message: String,
-    ) -> Result<(), TransactionServiceError>
-    {
+    ) -> Result<(), TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::SubmitTransaction((
+            .call(TransactionServiceRequest::SubmitCoinSplitTransaction(
                 tx_id, tx, fee, amount, message,
-            )))
+            ))
             .await??
         {
             TransactionServiceResponse::TransactionSubmitted => Ok(()),
@@ -473,8 +507,7 @@ impl TransactionServiceHandle {
         rewards: MicroTari,
         fees: MicroTari,
         block_height: u64,
-    ) -> Result<Transaction, TransactionServiceError>
-    {
+    ) -> Result<Transaction, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GenerateCoinbaseTransaction(
@@ -514,8 +547,7 @@ impl TransactionServiceHandle {
     pub async fn validate_transactions(
         &mut self,
         retry_strategy: ValidationRetryStrategy,
-    ) -> Result<u64, TransactionServiceError>
-    {
+    ) -> Result<u64, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::ValidateTransactions(retry_strategy))
@@ -526,12 +558,22 @@ impl TransactionServiceHandle {
         }
     }
 
+    pub async fn set_transaction_validity(&mut self, tx_id: TxId, valid: bool) -> Result<(), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SetCompletedTransactionValidity(tx_id, valid))
+            .await??
+        {
+            TransactionServiceResponse::CompletedTransactionValidityChanged => Ok(()),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
     #[cfg(feature = "test_harness")]
     pub async fn test_complete_pending_transaction(
         &mut self,
         completed_tx: CompletedTransaction,
-    ) -> Result<(), TransactionServiceError>
-    {
+    ) -> Result<(), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::CompletePendingOutboundTransaction(
@@ -551,8 +593,7 @@ impl TransactionServiceHandle {
         amount: MicroTari,
         source_public_key: CommsPublicKey,
         handle: &Handle,
-    ) -> Result<(), TransactionServiceError>
-    {
+    ) -> Result<(), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::AcceptTestTransaction((

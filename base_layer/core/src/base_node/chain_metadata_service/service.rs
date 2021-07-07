@@ -33,7 +33,7 @@ use futures::stream::StreamExt;
 use log::*;
 use num_format::{Locale, ToFormattedString};
 use prost::Message;
-use std::{convert::TryFrom, sync::Arc, time::Instant};
+use std::{convert::TryFrom, sync::Arc};
 use tari_common::log_if_error;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::{
@@ -48,7 +48,6 @@ pub(super) struct ChainMetadataService {
     liveness: LivenessHandle,
     base_node: LocalNodeCommsInterface,
     peer_chain_metadata: Vec<PeerChainMetadata>,
-    last_chainstate_flushed_at: Option<Instant>,
     connectivity: ConnectivityRequester,
     event_publisher: broadcast::Sender<Arc<ChainMetadataEvent>>,
 }
@@ -64,13 +63,11 @@ impl ChainMetadataService {
         base_node: LocalNodeCommsInterface,
         connectivity: ConnectivityRequester,
         event_publisher: broadcast::Sender<Arc<ChainMetadataEvent>>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             liveness,
             base_node,
             peer_chain_metadata: Vec::new(),
-            last_chainstate_flushed_at: None,
             connectivity,
             event_publisher,
         }
@@ -216,8 +213,6 @@ impl ChainMetadataService {
             .event_publisher
             .send(Arc::new(ChainMetadataEvent::PeerChainMetadataReceived(chain_metadata)));
 
-        self.last_chainstate_flushed_at = Some(Instant::now());
-
         Ok(())
     }
 
@@ -238,8 +233,7 @@ impl ChainMetadataService {
         &mut self,
         node_id: &NodeId,
         metadata: &Metadata,
-    ) -> Result<(), ChainMetadataSyncError>
-    {
+    ) -> Result<(), ChainMetadataSyncError> {
         if let Some(chain_metadata_bytes) = metadata.get(MetadataKey::ChainMetadata) {
             let chain_metadata = proto::ChainMetadata::decode(chain_metadata_bytes.as_slice())?;
             let chain_metadata = ChainMetadata::try_from(chain_metadata)
@@ -270,11 +264,10 @@ impl ChainMetadataService {
         &mut self,
         node_id: &NodeId,
         metadata: &Metadata,
-    ) -> Result<(), ChainMetadataSyncError>
-    {
+    ) -> Result<(), ChainMetadataSyncError> {
         let chain_metadata_bytes = metadata
             .get(MetadataKey::ChainMetadata)
-            .ok_or_else(|| ChainMetadataSyncError::NoChainMetadata)?;
+            .ok_or(ChainMetadataSyncError::NoChainMetadata)?;
 
         let chain_metadata = ChainMetadata::try_from(proto::ChainMetadata::decode(chain_metadata_bytes.as_slice())?)
             .map_err(|err| ChainMetadataSyncError::ReceivedInvalidChainMetadata(node_id.clone(), err))?;

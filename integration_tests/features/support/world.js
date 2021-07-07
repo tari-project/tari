@@ -4,15 +4,21 @@ const BaseNodeProcess = require("../../helpers/baseNodeProcess");
 const MergeMiningProxyProcess = require("../../helpers/mergeMiningProxyProcess");
 const WalletProcess = require("../../helpers/walletProcess");
 const MiningNodeProcess = require("../../helpers/miningNodeProcess");
+const glob = require("glob");
+const fs = require("fs");
+const archiver = require("archiver");
 
 class CustomWorld {
-  constructor({ parameters }) {
+  constructor({ attach, parameters }) {
     // this.variable = 0;
+    this.attach = attach;
+
     this.seeds = {};
     this.nodes = {};
     this.proxies = {};
     this.miners = {};
     this.wallets = {};
+    this.walletPubkeys = {};
     this.clients = {};
     this.headers = {};
     this.outputs = {};
@@ -27,6 +33,8 @@ class CustomWorld {
     this.logFilePathBaseNode =
       parameters.logFilePathBaseNode || "./log4rs/base_node.yml";
     this.logFilePathProxy = parameters.logFilePathProxy || "./log4rs/proxy.yml";
+    this.logFilePathMiningNocde =
+      parameters.logFilePathMiningNocde || "./log4rs/mining_node.yml";
     this.logFilePathWallet =
       parameters.logFilePathWallet || "./log4rs/wallet.yml";
   }
@@ -83,7 +91,11 @@ class CustomWorld {
     const wallet = new WalletProcess(name, {}, this.logFilePathWallet);
     wallet.setPeerSeeds([nodeAddresses]);
     await wallet.startNew();
+
     this.addWallet(name, wallet);
+    let walletClient = wallet.getClient();
+    let walletInfo = await walletClient.identify();
+    this.walletPubkeys[name] = walletInfo.public_key;
   }
 
   addWallet(name, process) {
@@ -102,9 +114,32 @@ class CustomWorld {
     );
   }
 
-  async mergeMineBlock(name, weight) {
+  baseNodeMineBlocksUntilHeightIncreasedBy(baseNode, wallet, numBlocks) {
+    const promise = this.getClient(baseNode).mineBlocksUntilHeightIncreasedBy(
+      numBlocks,
+      wallet ? this.getWallet(wallet).getClient() : null
+    );
+    return promise;
+  }
+
+  sha3MineBlocksUntilHeightIncreasedBy(miner, numBlocks, minDifficulty) {
+    const promise = this.getMiningNode(miner).mineBlocksUntilHeightIncreasedBy(
+      numBlocks,
+      minDifficulty
+    );
+    return promise;
+  }
+
+  async mergeMineBlock(name) {
     const client = this.proxies[name].createClient();
-    await client.mineBlock(weight);
+    await client.mineBlock();
+  }
+
+  mergeMineBlocksUntilHeightIncreasedBy(mmProxy, numBlocks) {
+    const promise = this.getProxy(mmProxy)
+      .createClient()
+      .mineBlocksUntilHeightIncreasedBy(numBlocks);
+    return promise;
   }
 
   saveBlock(name, block) {
@@ -115,7 +150,7 @@ class CustomWorld {
     await this.clients[nodeName]
       .submitBlock(this.blocks[blockName].block)
       .catch((err) => {
-        console.log("submit block erro", err);
+        console.log("submit block error", err);
       });
     // console.log(result);
   }
@@ -136,6 +171,10 @@ class CustomWorld {
     return this.wallets[name];
   }
 
+  getWalletPubkey(name) {
+    return this.walletPubkeys[name];
+  }
+
   async getOrCreateWallet(name) {
     const wallet = this.getWallet(name);
     if (wallet) {
@@ -149,16 +188,39 @@ class CustomWorld {
     return this.proxies[name];
   }
 
-  async forEachClientAsync(f) {
+  async forEachClientAsync(f, canFailPercent = 0) {
     const promises = [];
+    let total = 0;
+    let succeeded = 0;
+    let failed = 0;
 
     for (const property in this.seeds) {
       promises.push(f(this.getClient(property), property));
+      ++total;
     }
     for (const property in this.nodes) {
       promises.push(f(this.getClient(property), property));
+      ++total;
     }
-    await Promise.all(promises);
+
+    // Round up the number of nodes that can fail.
+    let canFail = Math.ceil((total * canFailPercent) / 100);
+
+    return new Promise((resolve, reject) => {
+      for (let promise of promises) {
+        Promise.resolve(promise).then(
+          () => {
+            succeeded += 1;
+            console.log(`${succeeded} of ${total} (need ${total - canFail})`);
+            if (succeeded >= total - canFail) resolve();
+          },
+          () => {
+            failed += 1;
+            if (failed > canFail) reject("Too many failed.");
+          }
+        );
+      }
+    });
   }
 
   async stopNode(name) {
@@ -195,6 +257,7 @@ BeforeAll({ timeout: 1200000 }, async function () {
   const mmProxy = new MergeMiningProxyProcess(
     "compile",
     "127.0.0.1:9999",
+    null,
     "127.0.0.1:9998"
   );
   console.log("Compiling mmproxy...");
@@ -204,30 +267,76 @@ BeforeAll({ timeout: 1200000 }, async function () {
   const miningNode = new MiningNodeProcess(
     "compile",
     "127.0.0.1:9999",
-    "127.0.0.1:9998"
+    null,
+    "127.0.0.1:9998",
+    this.logFilePathMiningNocde
   );
   console.log("Compiling mining node...");
-  await miningNode.init(1, 1, 1, true);
+  await miningNode.init(1, 1, 1, 1, true, 1);
   await miningNode.compile();
 
   console.log("Finished compilation.");
 });
 
-After(async function () {
+After(async function (testCase) {
   console.log("Stopping nodes");
   for (const key in this.seeds) {
+    if (testCase.result.status === "failed") {
+      await attachLogs(`${this.seeds[key].baseDir}`, this);
+    }
     await this.stopNode(key);
   }
   for (const key in this.nodes) {
+    if (testCase.result.status === "failed") {
+      await attachLogs(`${this.nodes[key].baseDir}`, this);
+    }
     await this.stopNode(key);
   }
   for (const key in this.proxies) {
+    if (testCase.result.status === "failed") {
+      await attachLogs(`${this.proxies[key].baseDir}`, this);
+    }
     await this.proxies[key].stop();
   }
   for (const key in this.wallets) {
+    if (testCase.result.status === "failed") {
+      await attachLogs(`${this.wallets[key].baseDir}`, this);
+    }
     await this.wallets[key].stop();
   }
   for (const key in this.miners) {
+    if (testCase.result.status === "failed") {
+      await attachLogs(`${this.miners[key].baseDir}`, this);
+    }
     await this.miners[key].stop();
   }
 });
+
+function attachLogs(path, context) {
+  return new Promise((outerRes) => {
+    let zipFile = fs.createWriteStream("./temp/logzip.zip");
+    const archive = archiver("zip", {
+      zlib: { level: 9 },
+    });
+    archive.pipe(zipFile);
+
+    glob(path + "/**/*.log", {}, function (err, files) {
+      console.log(files);
+      for (let i = 0; i < files.length; i++) {
+        // Append the file name at the bottom
+        fs.appendFileSync(files[i], `>>>> End of ${files[i]}`);
+        archive.append(fs.createReadStream(files[i]), { name: files[i] });
+      }
+      archive.finalize().then(function () {
+        context.attach(
+          fs.createReadStream("./temp/logzip.zip"),
+          "application/zip",
+          function () {
+            fs.rmSync("./temp/logzip.zip");
+            outerRes();
+          }
+        );
+      });
+    });
+  });
+}

@@ -167,8 +167,7 @@ impl ConnectivityRequester {
     pub async fn select_connections(
         &mut self,
         selection: ConnectivitySelection,
-    ) -> Result<Vec<PeerConnection>, ConnectivityError>
-    {
+    ) -> Result<Vec<PeerConnection>, ConnectivityError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
             .send(ConnectivityRequest::SelectConnections(selection, reply_tx))
@@ -219,8 +218,7 @@ impl ConnectivityRequester {
         node_id: NodeId,
         duration: Duration,
         reason: String,
-    ) -> Result<(), ConnectivityError>
-    {
+    ) -> Result<(), ConnectivityError> {
         self.sender
             .send(ConnectivityRequest::BanPeer(node_id, duration, reason))
             .await
@@ -259,11 +257,11 @@ impl ConnectivityRequester {
             let recv_result = time::timeout(remaining, connectivity_events.next())
                 .await
                 .map_err(|_| ConnectivityError::OnlineWaitTimeout(last_known_peer_count))?
-                .ok_or_else(|| ConnectivityError::ConnectivityEventStreamClosed)?;
+                .ok_or(ConnectivityError::ConnectivityEventStreamClosed)?;
 
             remaining = timeout
                 .checked_sub(start.elapsed())
-                .ok_or_else(|| ConnectivityError::OnlineWaitTimeout(last_known_peer_count))?;
+                .ok_or(ConnectivityError::OnlineWaitTimeout(last_known_peer_count))?;
 
             match recv_result {
                 Ok(event) => match &*event {

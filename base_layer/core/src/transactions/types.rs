@@ -27,6 +27,7 @@ use tari_crypto::{
     ristretto::{
         dalek_range_proof::DalekRangeProofService,
         pedersen::{PedersenCommitment, PedersenCommitmentFactory},
+        RistrettoComSig,
         RistrettoPublicKey,
         RistrettoSchnorr,
         RistrettoSecretKey,
@@ -36,6 +37,8 @@ use tari_crypto::{
 /// Define the explicit Signature implementation for the Tari base layer. A different signature scheme can be
 /// employed by redefining this type.
 pub type Signature = RistrettoSchnorr;
+/// Define the explicit Commitment Signature implementation for the Tari base layer.
+pub type ComSignature = RistrettoComSig;
 
 /// Define the explicit Commitment implementation for the Tari base layer.
 pub type Commitment = PedersenCommitment;

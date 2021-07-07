@@ -46,7 +46,7 @@ pub fn coinbase_request(template_response: &NewBlockTemplateResponse) -> Result<
         .as_ref()
         .ok_or_else(|| err_empty("template.header"))?
         .height;
-    Ok(GetCoinbaseRequest { height, fee, reward })
+    Ok(GetCoinbaseRequest { reward, fee, height })
 }
 
 pub fn extract_outputs_and_kernels(

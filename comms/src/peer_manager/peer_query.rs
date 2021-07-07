@@ -224,7 +224,7 @@ mod test {
 
     fn create_test_peer(ban_flag: bool) -> Peer {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
-        let node_id = NodeId::from_key(&pk).unwrap();
+        let node_id = NodeId::from_key(&pk);
         let net_addresses = MultiaddressesWithStats::from("/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap());
         let mut peer = Peer::new(
             pk,
@@ -243,10 +243,7 @@ mod test {
 
     #[test]
     fn limit_query() {
-        // Create peer manager with random peers
-        let mut sample_peers = Vec::new();
         // Create 20 peers were the 1st and last one is bad
-        sample_peers.push(create_test_peer(true));
         let db = HashmapDatabase::new();
         let mut id_counter = 0;
 

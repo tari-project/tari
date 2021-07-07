@@ -57,7 +57,7 @@ pub struct BaseNodeStateMachineConfig {
 /// A Tari full node, aka Base Node.
 ///
 /// This service is essentially a finite state machine that synchronises its blockchain state with its peers and
-/// then listens for new blocks to add to the blockchain. See the [SynchronizationSate] documentation for more details.
+/// then listens for new blocks to add to the blockchain. See the [SynchronizationState] documentation for more details.
 ///
 /// This struct holds fields that will be used by all the various FSM state instances, including the local blockchain
 /// database and hooks to the p2p network
@@ -96,8 +96,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         randomx_factory: RandomXFactory,
         consensus_rules: ConsensusManager,
         interrupt_signal: ShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             db,
             local_node_interface,

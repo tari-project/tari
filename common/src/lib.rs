@@ -63,7 +63,7 @@
 //! # use tari_test_utils::random::string;
 //! # use tempfile::tempdir;
 //! # use structopt::StructOpt;
-//! # use tari_common::configuration::bootstrap::ApplicationType;
+//! # use tari_common::configuration::{Network, bootstrap::ApplicationType};
 //! let mut args = ConfigBootstrap::from_args();
 //! # let temp_dir = tempdir().unwrap();
 //! # args.base_path = temp_dir.path().to_path_buf();
@@ -71,25 +71,27 @@
 //! args.init_dirs(ApplicationType::BaseNode);
 //! let config = args.load_configuration().unwrap();
 //! let global = GlobalConfig::convert_from(config).unwrap();
-//! assert_eq!(global.network, Network::Stibbons);
+//! assert_eq!(global.network, Network::Weatherwax);
 //! assert!(global.max_threads.is_none());
 //! # std::fs::remove_dir_all(temp_dir).unwrap();
 //! ```
 
-pub mod configuration;
+#[cfg(feature = "build")]
+pub mod build;
 #[macro_use]
 mod logging;
 
-pub mod protobuf_build;
-pub use configuration::error::ConfigError;
-
-pub mod dir_utils;
+pub mod configuration;
 pub use configuration::{
     bootstrap::{install_configuration, ConfigBootstrap},
-    global::{CommsTransport, DatabaseType, GlobalConfig, Network, SocksAuthentication, TorControlAuthentication},
+    error::ConfigError,
+    global::{CommsTransport, DatabaseType, GlobalConfig, SocksAuthentication, TorControlAuthentication},
     loader::{ConfigLoader, ConfigPath, ConfigurationError, DefaultConfigLoader, NetworkConfigPath},
     utils::{default_config, install_default_config_file, load_configuration},
 };
+
+pub mod dir_utils;
+
 pub use logging::initialize_logging;
 
 pub const DEFAULT_CONFIG: &str = "config/config.toml";

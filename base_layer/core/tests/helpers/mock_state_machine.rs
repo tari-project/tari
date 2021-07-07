@@ -20,9 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::future;
 use tari_core::base_node::{state_machine_service::states::StatusInfo, StateMachineHandle};
-use tari_service_framework::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::sync::{broadcast, watch};
 
 pub struct MockBaseNodeStateMachine {
@@ -55,10 +54,9 @@ pub struct MockBaseNodeStateMachineInitializer {
     status_receiver: watch::Receiver<StatusInfo>,
 }
 
+#[async_trait]
 impl ServiceInitializer for MockBaseNodeStateMachineInitializer {
-    type Future = future::Ready<Result<(), ServiceInitializationError>>;
-
-    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+    async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (state_event_publisher, _) = broadcast::channel(10);
 
         let handle = StateMachineHandle::new(
@@ -67,6 +65,6 @@ impl ServiceInitializer for MockBaseNodeStateMachineInitializer {
             context.get_shutdown_signal(),
         );
         context.register_handle(handle);
-        future::ready(Ok(()))
+        Ok(())
     }
 }

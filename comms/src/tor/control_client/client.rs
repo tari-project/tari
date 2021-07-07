@@ -53,8 +53,7 @@ impl TorControlPortClient {
     pub async fn connect(
         addr: Multiaddr,
         event_tx: broadcast::Sender<TorControlEvent>,
-    ) -> Result<Self, TorClientError>
-    {
+    ) -> Result<Self, TorClientError> {
         let mut tcp = TcpTransport::new();
         tcp.set_nodelay(true);
         let socket = tcp.dial(addr)?.await?;
@@ -138,8 +137,7 @@ impl TorControlPortClient {
         flags: Vec<AddOnionFlag>,
         port: P,
         num_streams: Option<NonZeroU16>,
-    ) -> Result<AddOnionResponse, TorClientError>
-    {
+    ) -> Result<AddOnionResponse, TorClientError> {
         let command = commands::AddOnion::new(key_type, key_blob, flags, port.into(), num_streams);
         self.request_response(command).await
     }
@@ -150,8 +148,7 @@ impl TorControlPortClient {
         flags: Vec<AddOnionFlag>,
         port: P,
         num_streams: Option<NonZeroU16>,
-    ) -> Result<AddOnionResponse, TorClientError>
-    {
+    ) -> Result<AddOnionResponse, TorClientError> {
         self.add_onion_custom(KeyType::New, KeyBlob::Rsa1024, flags, port, num_streams)
             .await
     }
@@ -163,8 +160,7 @@ impl TorControlPortClient {
         flags: Vec<AddOnionFlag>,
         port: P,
         num_streams: Option<NonZeroU16>,
-    ) -> Result<AddOnionResponse, TorClientError>
-    {
+    ) -> Result<AddOnionResponse, TorClientError> {
         self.add_onion_custom(KeyType::New, KeyBlob::Best, flags, port, num_streams)
             .await
     }
@@ -176,8 +172,7 @@ impl TorControlPortClient {
         flags: Vec<AddOnionFlag>,
         port: P,
         num_streams: Option<NonZeroU16>,
-    ) -> Result<AddOnionResponse, TorClientError>
-    {
+    ) -> Result<AddOnionResponse, TorClientError> {
         let (key_type, key_blob) = match private_key {
             PrivateKey::Rsa1024(key) => (KeyType::Rsa1024, KeyBlob::String(key)),
             PrivateKey::Ed25519V3(key) => (KeyType::Ed25519V3, KeyBlob::String(key)),
@@ -237,11 +232,7 @@ impl TorControlPortClient {
     }
 
     async fn receive_line(&mut self) -> Result<ResponseLine, TorClientError> {
-        let line = self
-            .output_stream
-            .next()
-            .await
-            .ok_or_else(|| TorClientError::UnexpectedEof)?;
+        let line = self.output_stream.next().await.ok_or(TorClientError::UnexpectedEof)?;
 
         Ok(line)
     }

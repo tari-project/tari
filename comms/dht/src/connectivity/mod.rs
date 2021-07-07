@@ -96,8 +96,7 @@ impl DhtConnectivity {
         dht_events: broadcast::Receiver<Arc<DhtEvent>>,
         metrics_collector: MetricsCollectorHandle,
         shutdown_signal: ShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             neighbours: Vec::with_capacity(config.num_neighbouring_nodes),
             random_pool: Vec::with_capacity(config.num_random_nodes),
@@ -535,8 +534,7 @@ impl DhtConnectivity {
         &self,
         n: usize,
         excluded: &[NodeId],
-    ) -> Result<Vec<NodeId>, DhtConnectivityError>
-    {
+    ) -> Result<Vec<NodeId>, DhtConnectivityError> {
         let peer_manager = &self.peer_manager;
         let node_id = self.node_identity.node_id();
         // Fetch to all n nearest neighbour Communication Nodes

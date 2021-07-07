@@ -198,8 +198,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         &self,
         our_header: &ChainHeader,
         their_header: &ChainHeader,
-    ) -> Result<(), BlockHeaderSyncError>
-    {
+    ) -> Result<(), BlockHeaderSyncError> {
         debug!(
             target: LOG_TARGET,
             "Comparing PoW on remote header #{} and local header #{}",
@@ -236,11 +235,12 @@ mod test {
     use crate::{
         blocks::BlockHeader,
         chain_storage::{async_db::AsyncBlockchainDb, BlockHeaderAccumulatedData},
-        consensus::{ConsensusManager, Network},
+        consensus::ConsensusManager,
         crypto::tari_utilities::{hex::Hex, Hashable},
         proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
         test_helpers::blockchain::{create_new_blockchain, TempDatabase},
     };
+    use tari_common::configuration::Network;
     use tari_test_utils::unpack_enum;
 
     fn setup() -> (BlockHeaderSyncValidator<TempDatabase>, AsyncBlockchainDb<TempDatabase>) {

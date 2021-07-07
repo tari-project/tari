@@ -52,7 +52,7 @@ where K: SecretKey
 pub struct KeyManager<K: SecretKey, D: Digest> {
     master_key: K,
     pub branch_seed: String,
-    pub primary_key_index: u64,
+    primary_key_index: u64,
     digest_type: PhantomData<D>,
 }
 
@@ -86,8 +86,7 @@ where
         seed_phrase: String,
         branch_seed: String,
         primary_key_index: u64,
-    ) -> Result<KeyManager<K, D>, KeyManagerError>
-    {
+    ) -> Result<KeyManager<K, D>, KeyManagerError> {
         match K::from_bytes(D::digest(&seed_phrase.into_bytes()).as_slice()) {
             Ok(master_key) => Ok(KeyManager {
                 master_key,
@@ -105,8 +104,7 @@ where
         mnemonic_seq: &[String],
         branch_seed: String,
         primary_key_index: u64,
-    ) -> Result<KeyManager<K, D>, KeyManagerError>
-    {
+    ) -> Result<KeyManager<K, D>, KeyManagerError> {
         match K::from_mnemonic(mnemonic_seq) {
             Ok(master_key) => Ok(KeyManager {
                 master_key,
@@ -135,6 +133,14 @@ where
 
     pub fn master_key(&self) -> &K {
         &self.master_key
+    }
+
+    pub fn key_index(&self) -> u64 {
+        self.primary_key_index
+    }
+
+    pub fn update_key_index(&mut self, new_index: u64) {
+        self.primary_key_index = new_index;
     }
 }
 

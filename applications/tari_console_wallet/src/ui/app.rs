@@ -38,7 +38,7 @@ use crate::{
     },
     wallet_modes::PeerConfig,
 };
-use tari_common::{GlobalConfig, Network};
+use tari_common::{configuration::Network, GlobalConfig};
 use tari_comms::peer_manager::Peer;
 use tari_wallet::WalletSqlite;
 use tokio::runtime::Handle;
@@ -49,8 +49,6 @@ use tui::{
 };
 
 pub const LOG_TARGET: &str = "wallet::ui::app";
-pub const CUSTOM_BASE_NODE_PUBLIC_KEY_KEY: &str = "console_wallet_custom_base_node_public_key";
-pub const CUSTOM_BASE_NODE_ADDRESS_KEY: &str = "console_wallet_custom_base_node_address";
 
 pub struct App<B: Backend> {
     pub title: String,
@@ -73,8 +71,7 @@ impl<B: Backend> App<B> {
         base_node_config: PeerConfig,
         node_config: GlobalConfig,
         notifier: Notifier,
-    ) -> Self
-    {
+    ) -> Self {
         let app_state = AppState::new(
             wallet.comms.node_identity().as_ref(),
             network,

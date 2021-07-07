@@ -77,7 +77,7 @@ impl<'de> Deserialize<'de> for MutableMmrLeafNodes {
         enum Field {
             LeafHashes,
             Deleted,
-        };
+        }
 
         impl<'de> Deserialize<'de> for Field {
             fn deserialize<D>(deserializer: D) -> Result<Field, D::Error>

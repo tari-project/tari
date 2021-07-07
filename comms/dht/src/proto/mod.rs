@@ -20,10 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::proto::{dht::JoinMessage, envelope::Network};
+use crate::proto::dht::JoinMessage;
 use rand::{rngs::OsRng, RngCore};
 use std::{convert::TryInto, fmt};
-use tari_common::Network as GlobalNetwork;
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
@@ -50,34 +49,6 @@ pub mod store_forward {
 
 pub mod message_header {
     tari_comms::outdir_include!("tari.dht.message_header.rs");
-}
-
-//---------------------------------- Network impl --------------------------------------------//
-
-impl envelope::Network {
-    pub fn is_mainnet(self) -> bool {
-        matches!(self, Network::MainNet)
-    }
-
-    pub fn is_testnet(self) -> bool {
-        matches!(self, Network::TestNet)
-    }
-
-    pub fn is_localtest(self) -> bool {
-        matches!(self, Network::LocalTest)
-    }
-}
-
-impl From<GlobalNetwork> for Network {
-    fn from(gn: GlobalNetwork) -> Self {
-        match gn {
-            GlobalNetwork::MainNet => Network::MainNet,
-            GlobalNetwork::Rincewind => Network::TestNet,
-            GlobalNetwork::LocalNet => Network::LocalTest,
-            GlobalNetwork::Ridcully => Network::Ridcully,
-            GlobalNetwork::Stibbons => Network::Stibbons,
-        }
-    }
 }
 
 //---------------------------------- JoinMessage --------------------------------------------//

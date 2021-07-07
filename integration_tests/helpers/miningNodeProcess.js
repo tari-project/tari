@@ -1,5 +1,6 @@
 const dateFormat = require("dateformat");
 const fs = require("fs");
+const path = require("path");
 const { spawn } = require("child_process");
 const { expect } = require("chai");
 const { createEnv } = require("./config");
@@ -7,27 +8,47 @@ const { createEnv } = require("./config");
 let outputProcess;
 
 class MiningNodeProcess {
-  constructor(name, baseNodeAddress, walletAddress, mineOnTipOnly = true) {
+  constructor(
+    name,
+    baseNodeAddress,
+    baseNodeClient,
+    walletAddress,
+    logFilePath,
+    mineOnTipOnly = true
+  ) {
     this.name = `MiningNode-${name}`;
     this.maxBlocks = 1;
+    this.mineTillHeight = 1000000;
     this.minDiff = 0;
     this.maxDiff = 100000;
     this.nodeAddress = baseNodeAddress.split(":")[0];
     this.nodeGrpcPort = baseNodeAddress.split(":")[1];
+    this.baseNodeClient = baseNodeClient;
     this.walletAddress = walletAddress.split(":")[0];
     this.walletGrpcPort = walletAddress.split(":")[1];
+    this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath;
     this.mineOnTipOnly = mineOnTipOnly;
+    this.numMiningThreads = 1;
   }
 
-  async init(maxBlocks, minDiff, maxDiff, mineOnTipOnly) {
+  async init(
+    maxBlocks,
+    mineTillHeight,
+    minDiff,
+    maxDiff,
+    mineOnTipOnly,
+    numMiningThreads
+  ) {
     this.maxBlocks = maxBlocks || this.maxBlocks;
+    this.mineTillHeight = mineTillHeight || this.mineTillHeight;
     this.minDiff = minDiff || this.minDiff;
-    this.maxDiff = maxDiff || this.maxDiff;
+    this.maxDiff = Math.max(maxDiff || this.maxDiff, this.minDiff);
     this.baseDir = `./temp/base_nodes/${dateFormat(
       new Date(),
       "yyyymmddHHMM"
     )}/${this.name}`;
     this.mineOnTipOnly = mineOnTipOnly || this.mineOnTipOnly;
+    this.numMiningThreads = numMiningThreads || this.numMiningThreads;
   }
 
   run(cmd, args) {
@@ -48,7 +69,10 @@ class MiningNodeProcess {
         this.nodeGrpcPort,
         this.baseNodePort,
         "127.0.0.1:8084",
-        { mineOnTipOnly: this.mineOnTipOnly },
+        {
+          mineOnTipOnly: this.mineOnTipOnly,
+          numMiningThreads: this.numMiningThreads,
+        },
         []
       );
 
@@ -94,11 +118,16 @@ class MiningNodeProcess {
       "--daemon",
       "--max-blocks",
       this.maxBlocks,
+      "--mine-until-height",
+      this.mineTillHeight,
       "--min-difficulty",
       this.minDiff,
       "--max-difficulty",
       this.maxDiff,
     ];
+    if (this.logFilePath) {
+      args.push("--log-config", this.logFilePath);
+    }
     return await this.run(await this.compile(), args, true);
   }
 
@@ -132,6 +161,15 @@ class MiningNodeProcess {
       });
       this.ps.kill("SIGINT");
     });
+  }
+
+  async mineBlocksUntilHeightIncreasedBy(numBlocks, minDifficulty) {
+    const height =
+      parseInt(await this.baseNodeClient.getTipHeight()) + parseInt(numBlocks);
+    await this.init(numBlocks, height, minDifficulty, 9999999999, true, 1);
+    await this.startNew();
+    await this.stop();
+    return await this.baseNodeClient.getTipHeight();
   }
 }
 

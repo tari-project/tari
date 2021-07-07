@@ -23,7 +23,7 @@
 use crate::errors::{err_empty, MinerError};
 use sha3::{Digest, Sha3_256};
 use tari_app_grpc::tari_rpc::BlockHeader;
-use tari_core::large_ints::U256;
+use tari_core::{large_ints::U256, tari_utilities::ByteArray};
 
 pub type Difficulty = u64;
 
@@ -31,7 +31,6 @@ pub struct BlockHeaderSha3 {
     header: BlockHeader,
     pow_bytes: Vec<u8>,
     hash_before_timestamp: Sha3_256,
-    hash_before_nonce: Sha3_256,
     pub timestamp: u64,
     pub nonce: u64,
     pub hashes: u64,
@@ -49,19 +48,11 @@ impl BlockHeaderSha3 {
         let hash_before_timestamp = Sha3_256::new()
             .chain((header.version as u16).to_le_bytes())
             .chain(header.height.to_le_bytes())
-            .chain(&header.prev_hash);
-        let hash_before_nonce = hash_before_timestamp
-            .clone()
-            .chain((timestamp.seconds as u64).to_le_bytes())
-            .chain(&header.output_mr)
-            .chain(&header.range_proof_mr)
-            .chain(&header.kernel_mr)
-            .chain(&header.total_kernel_offset);
+            .chain(header.prev_hash.as_bytes());
 
         Ok(Self {
             pow_bytes: pow.to_bytes(),
             hash_before_timestamp,
-            hash_before_nonce,
             timestamp: timestamp.seconds as u64,
             nonce: header.nonce,
             header,
@@ -69,15 +60,22 @@ impl BlockHeaderSha3 {
         })
     }
 
-    pub fn set_timestamp(&mut self, timestamp: u64) {
-        self.hash_before_nonce = self
-            .hash_before_timestamp
+    #[inline]
+    fn get_hash_before_nonce(&self) -> Sha3_256 {
+        self.hash_before_timestamp
             .clone()
-            .chain(timestamp.to_le_bytes())
-            .chain(&self.header.output_mr)
-            .chain(&self.header.range_proof_mr)
-            .chain(&self.header.kernel_mr)
-            .chain(&self.header.total_kernel_offset);
+            .chain(self.timestamp.to_le_bytes())
+            .chain(self.header.input_mr.as_bytes())
+            .chain(self.header.output_mr.as_bytes())
+            .chain(self.header.output_mmr_size.to_le_bytes())
+            .chain(self.header.witness_mr.as_bytes())
+            .chain(self.header.kernel_mr.as_bytes())
+            .chain(self.header.kernel_mmr_size.to_le_bytes())
+            .chain(self.header.total_kernel_offset.as_bytes())
+            .chain(self.header.total_script_offset.as_bytes())
+    }
+
+    pub fn set_timestamp(&mut self, timestamp: u64) {
         self.timestamp = timestamp;
     }
 
@@ -95,8 +93,7 @@ impl BlockHeaderSha3 {
     pub fn difficulty(&mut self) -> Difficulty {
         self.hashes = self.hashes.saturating_add(1);
         let hash = self
-            .hash_before_nonce
-            .clone()
+            .get_hash_before_nonce()
             .chain(self.nonce.to_le_bytes())
             .chain(&self.pow_bytes)
             .finalize();

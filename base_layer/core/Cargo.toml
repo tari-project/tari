@@ -23,7 +23,7 @@ tari_common_types = { version = "^0.8", path = "../../base_layer/common_types"}
 tari_comms = { version = "^0.8", path = "../../comms"}
 tari_comms_dht = { version = "^0.8", path = "../../comms/dht"}
 tari_comms_rpc_macros = { version = "^0.8", path = "../../comms/rpc_macros"}
-tari_crypto = "^0.8"
+tari_crypto = "0.11.1"
 tari_mmr = { version = "^0.8", path = "../../base_layer/mmr", optional = true }
 tari_p2p = { version = "^0.8", path = "../../base_layer/p2p" }
 tari_service_framework = { version = "^0.8", path = "../service_framework"}
@@ -33,23 +33,23 @@ tari_test_utils = { version = "^0.8", path = "../../infrastructure/test_utils" }
 
 bincode = "1.1.4"
 bitflags = "1.0.4"
-blake2 = "^0.8.0"
+blake2 = "^0.9.0"
 sha3 = "0.9"
 bytes = "0.4.12"
 chrono = { version = "0.4.6", features = ["serde"]}
 croaring = { version = "=0.4.5", optional = true }
-digest = "0.8.0"
+digest = "0.9.0"
 futures = {version = "^0.3.1", features = ["async-await"] }
 fs2 = "0.3.0"
 hex = "0.4.2"
 lmdb-zero = "0.4.4"
 log = "0.4"
-monero = { version = "^0.9.1", features= ["serde_support"], optional = true }
+monero = { version = "^0.13.0", features= ["serde_support"], optional = true }
 newtype-ops = "0.1.4"
 num = "0.3"
 prost = "0.6.1"
 prost-types = "0.6.1"
-rand = "0.7.2"
+rand = "0.8"
 randomx-rs = { version = "0.5.0", optional = true }
 serde = { version = "1.0.106", features = ["derive"] }
 serde_json = "1.0"
@@ -70,4 +70,4 @@ tempfile = "3.1.0"
 tokio-macros = "0.2.4"
 
 [build-dependencies]
-tari_common = { version = "^0.8", path="../../common"}
+tari_common = { version = "^0.8", path="../../common", features = ["build"]}

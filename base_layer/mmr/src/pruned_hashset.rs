@@ -98,7 +98,7 @@ impl ArrayLike for PrunedHashSet {
                 Err(_) => None,
             });
         }
-        Ok(self.hashes.get(index - self.base_offset)?)
+        self.hashes.get(index - self.base_offset)
     }
 
     fn clear(&mut self) -> Result<(), Self::Error> {

@@ -110,8 +110,7 @@ where T: BlockchainBackend + 'static
         mempool: Mempool,
         consensus_manager: ConsensusManager,
         outbound_nci: OutboundNodeCommsInterface,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             block_event_sender,
             blockchain_db,
@@ -195,7 +194,7 @@ where T: BlockchainBackend + 'static
                         .blockchain_db
                         .fetch_header(0)
                         .await?
-                        .ok_or_else(|| CommsInterfaceError::BlockHeaderNotFound(0))?,
+                        .ok_or(CommsInterfaceError::BlockHeaderNotFound(0))?,
                 };
                 let mut headers = vec![];
                 for i in 1..MAX_HEADERS_PER_RESPONSE {
@@ -225,11 +224,12 @@ where T: BlockchainBackend + 'static
             },
             NodeCommsRequest::FetchMatchingUtxos(utxo_hashes) => {
                 let mut res = Vec::with_capacity(utxo_hashes.len());
-                for item in self.blockchain_db.fetch_utxos(utxo_hashes, None).await? {
-                    if let Some((output, spent)) = item {
-                        if !spent {
-                            res.push(output);
-                        }
+                for (output, spent) in (self.blockchain_db.fetch_utxos(utxo_hashes, None).await?)
+                    .into_iter()
+                    .flatten()
+                {
+                    if !spent {
+                        res.push(output);
                     }
                 }
                 Ok(NodeCommsResponse::TransactionOutputs(res))
@@ -377,6 +377,7 @@ where T: BlockchainBackend + 'static
                     target: LOG_TARGET,
                     "New block template requested at height {}", block_template.header.height,
                 );
+                trace!(target: LOG_TARGET, "{}", block_template);
                 Ok(NodeCommsResponse::NewBlockTemplate(block_template))
             },
             NodeCommsRequest::GetNewBlock(block_template) => {
@@ -416,8 +417,7 @@ where T: BlockchainBackend + 'static
         &mut self,
         new_block: NewBlock,
         source_peer: NodeId,
-    ) -> Result<(), CommsInterfaceError>
-    {
+    ) -> Result<(), CommsInterfaceError> {
         let NewBlock { block_hash } = new_block;
 
         // Only a single block request can complete at a time.
@@ -473,8 +473,7 @@ where T: BlockchainBackend + 'static
         block: Arc<Block>,
         broadcast: Broadcast,
         source_peer: Option<NodeId>,
-    ) -> Result<BlockHash, CommsInterfaceError>
-    {
+    ) -> Result<BlockHash, CommsInterfaceError> {
         let block_hash = block.hash();
         let block_height = block.header.height;
         info!(
@@ -542,8 +541,7 @@ where T: BlockchainBackend + 'static
         pow_algo: PowAlgorithm,
         constants: &ConsensusConstants,
         current_block_hash: HashOutput,
-    ) -> Result<Difficulty, CommsInterfaceError>
-    {
+    ) -> Result<Difficulty, CommsInterfaceError> {
         let target_difficulty = self
             .blockchain_db
             .fetch_target_difficulty_for_next_block(pow_algo, current_block_hash)

@@ -30,6 +30,7 @@ use tari_crypto::tari_utilities::ByteArray;
 // The generated _oneof_ enum
 use crate::transactions::types::PublicKey;
 use proto::transaction_sender_message::Message as ProtoTxnSenderMessage;
+use tari_crypto::script::TariScript;
 
 impl proto::TransactionSenderMessage {
     pub fn none() -> Self {
@@ -91,11 +92,19 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
     fn try_from(data: proto::SingleRoundSenderData) -> Result<Self, Self::Error> {
         let public_excess = PublicKey::from_bytes(&data.public_excess).map_err(|err| err.to_string())?;
         let public_nonce = PublicKey::from_bytes(&data.public_nonce).map_err(|err| err.to_string())?;
+        let sender_offset_public_key =
+            PublicKey::from_bytes(&data.sender_offset_public_key).map_err(|err| err.to_string())?;
         let metadata = data
             .metadata
             .map(Into::into)
             .ok_or_else(|| "Transaction metadata not provided".to_string())?;
         let message = data.message;
+        let public_commitment_nonce =
+            PublicKey::from_bytes(&data.public_commitment_nonce).map_err(|err| err.to_string())?;
+        let features = data
+            .features
+            .map(TryInto::try_into)
+            .ok_or_else(|| "Transaction output features not provided".to_string())??;
 
         Ok(Self {
             tx_id: data.tx_id,
@@ -104,6 +113,10 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             public_nonce,
             metadata,
             message,
+            features,
+            script: TariScript::from_bytes(&data.script).map_err(|err| err.to_string())?,
+            sender_offset_public_key,
+            public_commitment_nonce,
         })
     }
 }
@@ -119,6 +132,10 @@ impl From<SingleRoundSenderData> for proto::SingleRoundSenderData {
             public_nonce: sender_data.public_nonce.to_vec(),
             metadata: Some(sender_data.metadata.into()),
             message: sender_data.message,
+            features: Some(sender_data.features.into()),
+            script: sender_data.script.as_bytes(),
+            sender_offset_public_key: sender_data.sender_offset_public_key.to_vec(),
+            public_commitment_nonce: sender_data.public_commitment_nonce.to_vec(),
         }
     }
 }

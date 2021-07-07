@@ -62,20 +62,21 @@ use crate::{
     DEFAULT_WALLET_LOG_CONFIG,
 };
 use std::{
+    fmt,
+    fmt::{Display, Formatter},
     io,
     path::{Path, PathBuf},
+    str::FromStr,
 };
 use structopt::StructOpt;
 
-#[derive(StructOpt, Debug)]
+#[derive(StructOpt, Debug, Clone)]
 pub struct ConfigBootstrap {
     /// A path to a directory to store your files
     #[structopt(
         short,
         long,
-        alias("base_path"),
-        alias("base_dir"),
-        alias("base-dir"),
+        aliases = &["base_path", "base_dir", "base-dir"],
         hide_default_value(true),
         default_value = ""
     )]
@@ -87,7 +88,7 @@ pub struct ConfigBootstrap {
     #[structopt(
         short,
         long,
-        alias("log_config"),
+        alias = "log_config",
         env = "TARI_LOG_CONFIGURATION",
         hide_default_value(true),
         default_value = ""
@@ -97,46 +98,52 @@ pub struct ConfigBootstrap {
     #[structopt(long)]
     pub init: bool,
     /// Create and save new node identity if one doesn't exist
-    #[structopt(long, alias("create_id"))]
+    #[structopt(long, alias = "create_id")]
     pub create_id: bool,
     /// Run in daemon mode, with no interface
-    #[structopt(short, long, alias("daemon"))]
+    #[structopt(short, long, alias = "daemon")]
     pub daemon_mode: bool,
     /// This will rebuild the db, adding block for block in
-    #[structopt(long, alias("rebuild_db"))]
+    #[structopt(long, alias = "rebuild_db")]
     pub rebuild_db: bool,
     /// Path to input file of commands
-    #[structopt(short, long, alias("input"), alias("script"), parse(from_os_str))]
+    #[structopt(short, long, aliases = &["input", "script"], parse(from_os_str))]
     pub input_file: Option<PathBuf>,
     /// Single input command
     #[structopt(long)]
     pub command: Option<String>,
     /// This will clean out the orphans db at startup
-    #[structopt(long, alias("clean_orphans_db"))]
+    #[structopt(long, alias = "clean_orphans_db")]
     pub clean_orphans_db: bool,
     /// Supply the password for the console wallet
     #[structopt(long)]
     pub password: Option<String>,
     /// Change the password for the console wallet
-    #[structopt(long, alias("update-password"))]
+    #[structopt(long, alias = "update-password")]
     pub change_password: bool,
     /// Force wallet recovery
-    #[structopt(long, alias("recover"))]
+    #[structopt(long, alias = "recover")]
     pub recovery: bool,
     /// Supply the optional wallet seed words for recovery on the command line
-    #[structopt(long, alias("seed_words"))]
+    #[structopt(long, alias = "seed_words")]
     pub seed_words: Option<String>,
     /// Supply the optional file name to save the wallet seed words into
-    #[structopt(long, alias("seed_words_file_name"), parse(from_os_str))]
+    #[structopt(long, aliases = &["seed_words_file_name", "seed-words-file"], parse(from_os_str))]
     pub seed_words_file_name: Option<PathBuf>,
     /// Wallet notify script
-    #[structopt(long, alias("notify"))]
+    #[structopt(long, alias = "notify")]
     pub wallet_notify: Option<PathBuf>,
-    #[structopt(long, alias("max-blocks"))]
+    /// Automatically exit wallet command/script mode when done
+    #[structopt(long, alias = "auto-exit")]
+    pub command_mode_auto_exit: bool,
+    /// Mining node options
+    #[structopt(long, alias = "mine-until-height")]
+    pub mine_until_height: Option<u64>,
+    #[structopt(long, alias = "max-blocks")]
     pub miner_max_blocks: Option<u64>,
-    #[structopt(long, alias("min-difficulty"))]
+    #[structopt(long, alias = "min-difficulty")]
     pub miner_min_diff: Option<u64>,
-    #[structopt(long, alias("max-difficulty"))]
+    #[structopt(long, alias = "max-difficulty")]
     pub miner_max_diff: Option<u64>,
 }
 
@@ -167,6 +174,8 @@ impl Default for ConfigBootstrap {
             seed_words: None,
             seed_words_file_name: None,
             wallet_notify: None,
+            command_mode_auto_exit: false,
+            mine_until_height: None,
             miner_max_blocks: None,
             miner_min_diff: None,
             miner_max_diff: None,
@@ -314,11 +323,56 @@ where F: Fn(&Path) -> Result<(), std::io::Error> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ApplicationType {
     BaseNode,
     ConsoleWallet,
     MergeMiningProxy,
     MiningNode,
+}
+
+impl ApplicationType {
+    pub const fn as_str(&self) -> &'static str {
+        use ApplicationType::*;
+        match self {
+            BaseNode => "Tari Base Node",
+            ConsoleWallet => "Tari Console Wallet",
+            MergeMiningProxy => "Tari Merge Mining Proxy",
+            MiningNode => "Tari Mining Node",
+        }
+    }
+
+    pub const fn as_tag_str(&self) -> &'static str {
+        use ApplicationType::*;
+        match self {
+            BaseNode => "base-node",
+            ConsoleWallet => "console-wallet",
+            MergeMiningProxy => "mm-proxy",
+            MiningNode => "miner",
+        }
+    }
+}
+
+impl FromStr for ApplicationType {
+    type Err = ConfigError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        use ApplicationType::*;
+        match s {
+            "base-node" => Ok(BaseNode),
+            "console-wallet" => Ok(ConsoleWallet),
+            "mm-proxy" => Ok(MergeMiningProxy),
+            "miner" => Ok(MiningNode),
+            _ => Err(ConfigError::new("Invalid ApplicationType", None)),
+        }
+    }
+}
+
+impl Display for ApplicationType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#![feature(type_alias_impl_trait)]
 #![cfg_attr(not(debug_assertions), deny(unused_variables))]
 #![cfg_attr(not(debug_assertions), deny(unused_imports))]
 #![cfg_attr(not(debug_assertions), deny(dead_code))]
@@ -41,14 +40,14 @@ use futures::future;
 use hyper::{service::make_service_fn, Server};
 use proxy::{MergeMiningProxyConfig, MergeMiningProxyService};
 use std::convert::Infallible;
-use structopt::StructOpt;
 use tari_app_grpc::tari_rpc as grpc;
-use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
+use tari_app_utilities::initialization::init_configuration;
+use tari_common::configuration::bootstrap::ApplicationType;
 use tokio::time::Duration;
 
 #[tokio_macros::main]
-async fn main() -> Result<(), MmProxyError> {
-    let config = initialize()?;
+async fn main() -> Result<(), anyhow::Error> {
+    let (_, config, _) = init_configuration(ApplicationType::MergeMiningProxy)?;
 
     let config = MergeMiningProxyConfig::from(config);
     let addr = config.proxy_host_address;
@@ -87,24 +86,4 @@ async fn main() -> Result<(), MmProxyError> {
             Err(err.into())
         },
     }
-}
-
-/// Loads the configuration and sets up logging
-fn initialize() -> Result<GlobalConfig, MmProxyError> {
-    // Parse and validate command-line arguments
-    let mut bootstrap = ConfigBootstrap::from_args();
-    // Check and initialize configuration files
-    bootstrap.init_dirs(ApplicationType::MergeMiningProxy)?;
-
-    // Load and apply configuration file
-    let cfg = bootstrap.load_configuration()?;
-
-    #[cfg(feature = "envlog")]
-    let _ = env_logger::try_init();
-    // Initialise the logger
-    #[cfg(not(feature = "envlog"))]
-    bootstrap.initialize_logging()?;
-
-    let cfg = GlobalConfig::convert_from(cfg)?;
-    Ok(cfg)
 }

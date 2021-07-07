@@ -266,7 +266,7 @@ mod test {
         assert!(states.is_empty());
         let (state, _) = create_send_state();
         let states = MessageSendStates::from(vec![state]);
-        assert_eq!(states.is_empty(), false);
+        assert!(!states.is_empty());
     }
 
     #[tokio_macros::test_basic]
@@ -275,13 +275,13 @@ mod test {
         let states = MessageSendStates::from(vec![state]);
         reply_tx.reply_success();
         assert_eq!(states.len(), 1);
-        assert_eq!(states.wait_single().await, true);
+        assert!(states.wait_single().await);
 
         let (state, mut reply_tx) = create_send_state();
         let states = MessageSendStates::from(vec![state]);
         reply_tx.reply_fail(SendFailReason::Dropped);
         assert_eq!(states.len(), 1);
-        assert_eq!(states.wait_single().await, false);
+        assert!(!states.wait_single().await);
     }
 
     #[tokio_macros::test_basic]

@@ -188,6 +188,7 @@ impl From<u32> for RpcMethod {
     }
 }
 
+#[allow(clippy::from_over_into)]
 impl Into<u32> for RpcMethod {
     fn into(self) -> u32 {
         self.0
@@ -263,8 +264,9 @@ impl proto::rpc::RpcSessionReply {
         match self.session_result.as_ref() {
             Some(SessionResult::AcceptedVersion(v)) => Ok(*v),
             Some(SessionResult::Rejected(_)) => {
-                let reason = HandshakeRejectReason::from_i32(self.reject_reason)
-                    .unwrap_or_else(|| HandshakeRejectReason::Unknown("server returned unrecognised rejection reason"));
+                let reason = HandshakeRejectReason::from_i32(self.reject_reason).unwrap_or(
+                    HandshakeRejectReason::Unknown("server returned unrecognised rejection reason"),
+                );
                 Err(reason)
             },
             None => Err(HandshakeRejectReason::Unknown(

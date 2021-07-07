@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use chrono::Utc;
+use chrono::Local;
 use std::{fmt, fmt::Display};
 
 #[derive(Debug, Clone, Default)]
@@ -41,13 +41,37 @@ impl StatusLine {
 
 impl Display for StatusLine {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: ", Utc::now().format("%H:%M"))?;
-        let s = self
-            .fields
-            .iter()
-            .map(|(k, v)| format!("{}: {}", k, v))
-            .collect::<Vec<_>>();
+        write!(f, "{} ", Local::now().format("%H:%M"))?;
+        let s = self.fields.iter().map(|(k, v)| format(k, v)).collect::<Vec<_>>();
 
         write!(f, "{}", s.join(", "))
+    }
+}
+
+fn format(k: &&str, v: &str) -> String {
+    if k.is_empty() {
+        v.to_string()
+    } else {
+        format!("{}: {}", k, v)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::StatusLine;
+
+    #[test]
+    fn test_do_not_display_empty_keys() {
+        let mut status = StatusLine::new();
+        status.add_field("key", "val");
+        let display = status.to_string();
+        assert!(display.contains("key: val"));
+        assert_eq!(display.matches(':').count(), 2);
+
+        let mut status = StatusLine::new();
+        status.add_field("", "val");
+        let display = status.to_string();
+        assert!(display.contains("val"));
+        assert_eq!(display.matches(':').count(), 1);
     }
 }

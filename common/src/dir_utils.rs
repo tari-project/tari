@@ -91,9 +91,9 @@ mod test {
                 "/",
         );
 
-        assert_eq!(std::path::Path::new(&dir.display().to_string()).exists(), false);
+        assert!(!std::path::Path::new(&dir.display().to_string()).exists());
         dir_utils::create_data_directory(Some(&dir)).unwrap();
-        assert_eq!(std::path::Path::new(&dir.display().to_string()).exists(), true);
+        assert!(std::path::Path::new(&dir.display().to_string()).exists());
     }
 
     #[test]

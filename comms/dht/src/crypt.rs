@@ -20,16 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::outbound::DhtOutboundError;
+use chacha20::{
+    cipher::{NewCipher, StreamCipher},
+    ChaCha20,
+    Key,
+    Nonce,
+};
+use rand::{rngs::OsRng, RngCore};
+use std::mem::size_of;
 use tari_comms::types::CommsPublicKey;
 use tari_crypto::{
     keys::{DiffieHellmanSharedSecret, PublicKey},
-    tari_utilities::{
-        ciphers::{
-            chacha20::ChaCha20,
-            cipher::{Cipher, CipherError},
-        },
-        ByteArray,
-    },
+    tari_utilities::ByteArray,
 };
 
 pub fn generate_ecdh_secret<PK>(secret_key: &PK::K, public_key: &PK) -> PK
@@ -37,12 +40,42 @@ where PK: PublicKey + DiffieHellmanSharedSecret<PK = PK> {
     PK::shared_secret(secret_key, public_key)
 }
 
-pub fn decrypt(cipher_key: &CommsPublicKey, cipher_text: &[u8]) -> Result<Vec<u8>, CipherError> {
-    ChaCha20::open_with_integral_nonce(&cipher_text.to_vec(), cipher_key.as_bytes())
+pub fn decrypt(cipher_key: &CommsPublicKey, cipher_text: &[u8]) -> Result<Vec<u8>, DhtOutboundError> {
+    if cipher_text.len() < size_of::<Nonce>() {
+        return Err(DhtOutboundError::CipherError(
+            "Cipher text is not long enough to include nonce".to_string(),
+        ));
+    }
+    let (nonce, cipher_text) = cipher_text.split_at(size_of::<Nonce>());
+    let nonce = Nonce::from_slice(nonce);
+    let mut cipher_text = cipher_text.to_vec();
+
+    let key = Key::from_slice(cipher_key.as_bytes()); // 32-bytes
+    let mut cipher = ChaCha20::new(&key, &nonce);
+
+    cipher.apply_keystream(cipher_text.as_mut_slice());
+
+    Ok(cipher_text)
 }
 
-pub fn encrypt(cipher_key: &CommsPublicKey, plain_text: &[u8]) -> Result<Vec<u8>, CipherError> {
-    ChaCha20::seal_with_integral_nonce(&plain_text.to_vec(), cipher_key.as_bytes())
+pub fn encrypt(cipher_key: &CommsPublicKey, plain_text: &[u8]) -> Result<Vec<u8>, DhtOutboundError> {
+    let mut nonce = [0u8; size_of::<Nonce>()];
+
+    OsRng.fill_bytes(&mut nonce);
+    let nonce_ga = Nonce::from_slice(&nonce);
+
+    let key = Key::from_slice(cipher_key.as_bytes()); // 32-bytes
+    let mut cipher = ChaCha20::new(&key, &nonce_ga);
+
+    // Cloning the plain text to avoid a caller thinking we have encrypted in place and losing the integral nonce added
+    // below
+    let mut plain_text_clone = plain_text.to_vec();
+
+    cipher.apply_keystream(plain_text_clone.as_mut_slice());
+
+    let mut ciphertext_integral_nonce = nonce.to_vec();
+    ciphertext_integral_nonce.append(&mut plain_text_clone);
+    Ok(ciphertext_integral_nonce)
 }
 
 #[cfg(test)]
@@ -63,7 +96,7 @@ mod test {
     fn decrypt_fn() {
         let key = CommsPublicKey::default();
         let cipher_text =
-            from_hex("7ecafb4c0a88325c984517fca1c529b3083e9976290a50c43ff90b2ccb361aeaabfaf680e744b96fc3649a447b")
+            from_hex("24bf9e698e14938e93c09e432274af7c143f8fb831f344f244ef02ca78a07ddc28b46fec536a0ca5c04737a604")
                 .unwrap();
         let plain_text = decrypt(&key, &cipher_text).unwrap();
         let secret_msg = "Last enemy position 0830h AJ 9863".as_bytes().to_vec();

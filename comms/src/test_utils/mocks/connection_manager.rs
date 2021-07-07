@@ -105,8 +105,7 @@ impl ConnectionManagerMock {
     pub fn new(
         receiver: Fuse<mpsc::Receiver<ConnectionManagerRequest>>,
         event_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             receiver,
             state: ConnectionManagerMockState::new(event_tx),
@@ -141,7 +140,7 @@ impl ConnectionManagerMock {
                         .await
                         .get(&node_id)
                         .map(Clone::clone)
-                        .ok_or_else(|| ConnectionManagerError::DialConnectFailedAllAddresses),
+                        .ok_or(ConnectionManagerError::DialConnectFailedAllAddresses),
                 );
             },
             CancelDial(_) => {},

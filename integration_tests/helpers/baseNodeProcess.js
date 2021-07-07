@@ -3,7 +3,7 @@ const { expect } = require("chai");
 const fs = require("fs");
 const path = require("path");
 const BaseNodeClient = require("./baseNodeClient");
-const { getFreePort } = require("./util");
+const { sleep, getFreePort } = require("./util");
 const dateFormat = require("dateformat");
 const { createEnv } = require("./config");
 
@@ -21,10 +21,17 @@ class BaseNodeProcess {
     this.grpcPort = await getFreePort(19000, 25000);
     this.name = `Basenode${this.port}-${this.name}`;
     this.nodeFile = this.nodeFile || "nodeid.json";
-    this.baseDir = `./temp/base_nodes/${dateFormat(
-      new Date(),
-      "yyyymmddHHMM"
-    )}/${this.name}`;
+    do {
+      this.baseDir = `./temp/base_nodes/${dateFormat(
+        new Date(),
+        "yyyymmddHHMM"
+      )}/${this.name}`;
+      // Some tests failed during testing because the next base node process started in the previous process
+      // directory therefore using the previous blockchain database
+      if (fs.existsSync(this.baseDir)) {
+        sleep(1000);
+      }
+    } while (fs.existsSync(this.baseDir));
     const args = ["--base-path", ".", "--init", "--create-id"];
     if (this.logFilePath) {
       args.push("--log-config", this.logFilePath);
@@ -111,12 +118,23 @@ class BaseNodeProcess {
       });
 
       ps.stdout.on("data", (data) => {
-        // console.log(`stdout: ${data}`);
+        //console.log(`stdout: ${data}`);
         fs.appendFileSync(`${this.baseDir}/log/stdout.log`, data.toString());
         if (
+          // Make this resilient by comparing uppercase and making provisioning that the first print message in the
+          // base node console is not always 'State: Starting up'
           data
             .toString()
-            .match(/Copyright 2019-2021. The Tari Development Community/)
+            .toUpperCase()
+            .match(/STATE: STARTING/) ||
+          data
+            .toString()
+            .toUpperCase()
+            .match(/STATE: LISTENING/) ||
+          data
+            .toString()
+            .toUpperCase()
+            .match(/STATE: SYNCING/)
         ) {
           resolve(ps);
         }
@@ -145,7 +163,8 @@ class BaseNodeProcess {
 
   async startNew() {
     await this.init();
-    return await this.start();
+    const start = await this.start();
+    return start;
   }
 
   async startAndConnect() {

@@ -51,11 +51,10 @@ impl HistoricalBlock {
         accumulated_data: BlockHeaderAccumulatedData,
         pruned_outputs: Vec<(HashOutput, HashOutput)>,
         pruned_input_count: u64,
-    ) -> Self
-    {
+    ) -> Self {
         HistoricalBlock {
-            block,
             confirmations,
+            block,
             accumulated_data,
             pruned_outputs,
             pruned_input_count,

@@ -54,14 +54,20 @@ impl TestFactory for NodeIdentityFactory {
 
     fn build(self) -> Result<Self::Object, TestFactoryError> {
         // Generate a test identity, set it and return it
-        let secret_key = self.secret_key.or_else(|| Some(CommsSecretKey::random(&mut OsRng))).unwrap();
+        let secret_key = self
+            .secret_key
+            .or_else(|| Some(CommsSecretKey::random(&mut OsRng)))
+            .unwrap();
 
         let control_service_address = self
             .control_service_address
             .or(Some(super::net_address::create().build()?))
             .unwrap();
 
-        NodeIdentity::new(secret_key, control_service_address, self.peer_features)
-            .map_err(TestFactoryError::build_failed())
+        Ok(NodeIdentity::new(
+            secret_key,
+            control_service_address,
+            self.peer_features,
+        ))
     }
 }

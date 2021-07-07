@@ -30,7 +30,7 @@ use std::{
     sync::Arc,
 };
 use tari_app_utilities::utilities::ExitCodes;
-use tari_common::{DatabaseType, GlobalConfig};
+use tari_common::{configuration::Network, DatabaseType, GlobalConfig};
 use tari_core::{
     chain_storage::{
         async_db::AsyncBlockchainDb,
@@ -41,7 +41,7 @@ use tari_core::{
         BlockchainDatabaseConfig,
         Validators,
     },
-    consensus::{ConsensusManagerBuilder, Network as NetworkType},
+    consensus::ConsensusManager,
     proof_of_work::randomx_factory::{RandomXConfig, RandomXFactory},
     transactions::types::CryptoFactories,
     validation::{
@@ -92,7 +92,7 @@ pub async fn run_recovery(node_config: &GlobalConfig) -> Result<(), anyhow::Erro
             return Err(anyhow!("Recovery mode is only available for LMDB"));
         },
     };
-    let rules = ConsensusManagerBuilder::new(node_config.network.into()).build();
+    let rules = ConsensusManager::builder(node_config.network).build();
     let factories = CryptoFactories::default();
     let randomx_factory = RandomXFactory::new(RandomXConfig::default(), node_config.max_randomx_vms);
     let validators = Validators::new(
@@ -138,10 +138,9 @@ pub async fn run_recovery(node_config: &GlobalConfig) -> Result<(), anyhow::Erro
 async fn do_recovery<D: BlockchainBackend + 'static>(
     db: AsyncBlockchainDb<D>,
     source_backend: D,
-) -> Result<(), anyhow::Error>
-{
+) -> Result<(), anyhow::Error> {
     // We dont care about the values, here, so we just use mock validators, and a mainnet CM.
-    let rules = ConsensusManagerBuilder::new(NetworkType::LocalNet).build();
+    let rules = ConsensusManager::builder(Network::LocalNet).build();
     let validators = Validators::new(
         MockValidator::new(true),
         MockValidator::new(true),

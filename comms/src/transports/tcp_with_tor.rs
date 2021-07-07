@@ -126,7 +126,7 @@ mod test {
 
         expect_false.iter().for_each(|addr| {
             let addr = addr.parse().unwrap();
-            assert_eq!(TcpWithTorTransport::is_onion_address(&addr).unwrap(), false);
+            assert!(!TcpWithTorTransport::is_onion_address(&addr).unwrap());
         });
     }
 }

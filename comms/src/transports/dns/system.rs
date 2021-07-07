@@ -65,7 +65,7 @@ where T: ToSocketAddrs + Display + Send + Sync + 'static {
                 address_str: addr.to_string(),
             })?
             .next()
-            .ok_or_else(|| DnsResolverError::DnsAddressNotFound)
+            .ok_or(DnsResolverError::DnsAddressNotFound)
     })
     .await?
 }

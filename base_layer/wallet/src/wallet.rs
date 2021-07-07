@@ -21,23 +21,25 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
+    base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
+    config::{WalletConfig, KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY},
     contacts_service::{handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer},
     error::WalletError,
     output_manager_service::{
-        config::OutputManagerServiceConfig,
+        error::OutputManagerError,
         handle::OutputManagerHandle,
-        storage::database::OutputManagerBackend,
+        storage::{database::OutputManagerBackend, models::KnownOneSidedPaymentScript},
         OutputManagerServiceInitializer,
         TxId,
     },
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
-        config::TransactionServiceConfig,
         handle::TransactionServiceHandle,
         storage::database::TransactionBackend,
         TransactionServiceInitializer,
     },
+    types::KeyDigest,
+    utxo_scanner_service::{handle::UtxoScannerHandle, UtxoScannerServiceInitializer},
 };
 use aes_gcm::{
     aead::{generic_array::GenericArray, NewAead},
@@ -45,77 +47,38 @@ use aes_gcm::{
 };
 use digest::Digest;
 use log::*;
+use rand::rngs::OsRng;
 use std::{marker::PhantomData, sync::Arc};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
-    types::CommsPublicKey,
+    types::{CommsPublicKey, CommsSecretKey},
     CommsNode,
+    NodeIdentity,
     UnspawnedCommsNode,
 };
 use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
-use tari_core::{
-    consensus::Network,
-    transactions::{
-        tari_amount::MicroTari,
-        transaction::{OutputFeatures, UnblindedOutput},
-        types::{CryptoFactories, PrivateKey},
-    },
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction::{OutputFeatures, UnblindedOutput},
+    types::{ComSignature, CryptoFactories, PrivateKey, PublicKey},
 };
 use tari_crypto::{
     common::Blake256,
+    keys::SecretKey,
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
+    script,
+    script::{ExecutionStack, TariScript},
     signatures::{SchnorrSignature, SchnorrSignatureError},
     tari_utilities::hex::Hex,
 };
-use tari_p2p::{
-    comms_connector::pubsub_connector,
-    initialization,
-    initialization::{CommsConfig, P2pInitializer},
-};
+use tari_key_manager::key_manager::KeyManager;
+use tari_p2p::{comms_connector::pubsub_connector, initialization, initialization::P2pInitializer};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 use tokio::runtime;
 
 const LOG_TARGET: &str = "wallet";
-
-#[derive(Clone)]
-pub struct WalletConfig {
-    pub comms_config: CommsConfig,
-    pub factories: CryptoFactories,
-    pub transaction_service_config: Option<TransactionServiceConfig>,
-    pub output_manager_service_config: Option<OutputManagerServiceConfig>,
-    pub buffer_size: usize,
-    pub rate_limit: usize,
-    pub network: Network,
-    pub base_node_service_config: BaseNodeServiceConfig,
-}
-
-impl WalletConfig {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        comms_config: CommsConfig,
-        factories: CryptoFactories,
-        transaction_service_config: Option<TransactionServiceConfig>,
-        output_manager_service_config: Option<OutputManagerServiceConfig>,
-        network: Network,
-        base_node_service_config: Option<BaseNodeServiceConfig>,
-        buffer_size: Option<usize>,
-        rate_limit: Option<usize>,
-    ) -> Self
-    {
-        Self {
-            comms_config,
-            factories,
-            transaction_service_config,
-            output_manager_service_config,
-            buffer_size: buffer_size.unwrap_or_else(|| 1500),
-            rate_limit: rate_limit.unwrap_or_else(|| 50),
-            network,
-            base_node_service_config: base_node_service_config.unwrap_or_default(),
-        }
-    }
-}
 
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
@@ -134,6 +97,7 @@ where
     pub transaction_service: TransactionServiceHandle,
     pub contacts_service: ContactsServiceHandle,
     pub base_node_service: BaseNodeServiceHandle,
+    pub utxo_scanner_service: UtxoScannerHandle,
     pub db: WalletDatabase<T>,
     pub factories: CryptoFactories,
     #[cfg(feature = "test_harness")]
@@ -150,20 +114,29 @@ where
     V: OutputManagerBackend + 'static,
     W: ContactsBackend + 'static,
 {
-    pub async fn new(
+    pub async fn start(
         config: WalletConfig,
-        wallet_backend: T,
+        wallet_database: WalletDatabase<T>,
         transaction_backend: U,
         output_manager_backend: V,
         contacts_backend: W,
         shutdown_signal: ShutdownSignal,
-    ) -> Result<Wallet<T, U, V, W>, WalletError>
-    {
-        let db = WalletDatabase::new(wallet_backend);
-        // Persist the Comms Private Key provided to this function
-        db.set_comms_secret_key(config.comms_config.node_identity.secret_key().clone())
-            .await?;
-        let bn_service_db = db.clone();
+        recovery_master_key: Option<CommsSecretKey>,
+    ) -> Result<Wallet<T, U, V, W>, WalletError> {
+        let master_secret_key =
+            read_or_create_master_secret_key(recovery_master_key, &mut wallet_database.clone()).await?;
+        let comms_secret_key = derive_comms_secret_key(&master_secret_key)?;
+
+        let node_identity = Arc::new(NodeIdentity::new(
+            comms_secret_key,
+            config.comms_config.node_identity.public_address(),
+            config.comms_config.node_identity.features(),
+        ));
+
+        let mut comms_config = config.comms_config.clone();
+        comms_config.node_identity = node_identity.clone();
+
+        let bn_service_db = wallet_database.clone();
         #[cfg(feature = "test_harness")]
         let transaction_backend_handle = transaction_backend.clone();
 
@@ -172,7 +145,6 @@ where
             pubsub_connector(runtime::Handle::current(), config.buffer_size, config.rate_limit);
         let peer_message_subscription_factory = Arc::new(subscription_factory);
         let transport_type = config.comms_config.transport_type.clone();
-        let node_identity = config.comms_config.node_identity.clone();
 
         debug!(target: LOG_TARGET, "Wallet Initializing");
         info!(
@@ -194,12 +166,13 @@ where
             config.rate_limit
         );
         let stack = StackBuilder::new(shutdown_signal)
-            .add_initializer(P2pInitializer::new(config.comms_config, publisher))
+            .add_initializer(P2pInitializer::new(comms_config, publisher))
             .add_initializer(OutputManagerServiceInitializer::new(
                 config.output_manager_service_config.unwrap_or_default(),
                 output_manager_backend,
                 factories.clone(),
                 config.network,
+                master_secret_key,
             ))
             .add_initializer(TransactionServiceInitializer::new(
                 config.transaction_service_config.unwrap_or_default(),
@@ -212,6 +185,12 @@ where
             .add_initializer(BaseNodeServiceInitializer::new(
                 config.base_node_service_config,
                 bn_service_db,
+            ))
+            .add_initializer(UtxoScannerServiceInitializer::new(
+                config.scan_for_utxo_interval,
+                wallet_database.clone(),
+                factories.clone(),
+                node_identity.clone(),
             ));
 
         let mut handles = stack.build().await?;
@@ -221,13 +200,30 @@ where
             .expect("P2pInitializer was not added to the stack");
         let comms = initialization::spawn_comms_using_transport(comms, transport_type).await?;
 
-        let output_manager_handle = handles.expect_handle::<OutputManagerHandle>();
+        let mut output_manager_handle = handles.expect_handle::<OutputManagerHandle>();
         let transaction_service_handle = handles.expect_handle::<TransactionServiceHandle>();
         let contacts_handle = handles.expect_handle::<ContactsServiceHandle>();
         let dht = handles.expect_handle::<Dht>();
         let store_and_forward_requester = dht.store_and_forward_requester();
 
         let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
+        let utxo_scanner_service_handle = handles.expect_handle::<UtxoScannerHandle>();
+
+        persist_one_sided_payment_script_for_node_identity(&mut output_manager_handle, comms.node_identity())
+            .await
+            .map_err(|e| {
+                error!(target: LOG_TARGET, "{:?}", e);
+                e
+            })?;
+
+        // Persist the comms node address and features after it has been spawned to capture any modifications made
+        // during comms startup. In the case of a Tor Transport the public address could have been generated
+        wallet_database
+            .set_node_address(comms.node_identity().public_address())
+            .await?;
+        wallet_database
+            .set_node_features(comms.node_identity().features())
+            .await?;
 
         Ok(Wallet {
             comms,
@@ -237,7 +233,8 @@ where
             transaction_service: transaction_service_handle,
             contacts_service: contacts_handle,
             base_node_service: base_node_service_handle,
-            db,
+            utxo_scanner_service: utxo_scanner_service_handle,
+            db: wallet_database,
             factories,
             #[cfg(feature = "test_harness")]
             transaction_backend: transaction_backend_handle,
@@ -253,14 +250,13 @@ where
         self.comms.clone().wait_until_shutdown().await;
     }
 
-    /// This function will set the base_node that the wallet uses to broadcast transactions, monitor outputs, and
+    /// This function will set the base node that the wallet uses to broadcast transactions, monitor outputs, and
     /// monitor the base node state.
     pub async fn set_base_node_peer(
         &mut self,
         public_key: CommsPublicKey,
         net_address: String,
-    ) -> Result<(), WalletError>
-    {
+    ) -> Result<(), WalletError> {
         info!(
             "Wallet setting base node peer, public key: {}, net address: {}.",
             public_key, net_address
@@ -269,7 +265,7 @@ where
         let address = net_address.parse::<Multiaddr>()?;
         let peer = Peer::new(
             public_key.clone(),
-            NodeId::from_key(&public_key).unwrap(),
+            NodeId::from_key(&public_key),
             vec![address].into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
@@ -291,37 +287,99 @@ where
             .set_base_node_public_key(peer.public_key.clone())
             .await?;
 
+        self.utxo_scanner_service
+            .set_base_node_public_key(peer.public_key.clone())
+            .await?;
+
         self.base_node_service.set_base_node_peer(peer).await?;
 
         Ok(())
     }
 
+    pub async fn get_base_node_peer(&mut self) -> Result<Option<Peer>, WalletError> {
+        self.base_node_service
+            .get_base_node_peer()
+            .await
+            .map_err(WalletError::BaseNodeServiceError)
+    }
+
     /// Import an external spendable UTXO into the wallet. The output will be added to the Output Manager and made
     /// spendable. A faux incoming transaction will be created to provide a record of the event. The TxId of the
     /// generated transaction is returned.
+    #[allow(clippy::too_many_arguments)]
     pub async fn import_utxo(
         &mut self,
         amount: MicroTari,
         spending_key: &PrivateKey,
+        script: TariScript,
+        input_data: ExecutionStack,
         source_public_key: &CommsPublicKey,
         features: OutputFeatures,
         message: String,
-    ) -> Result<TxId, WalletError>
-    {
-        let unblinded_output = UnblindedOutput::new(amount, spending_key.clone(), Some(features));
-
-        self.output_manager_service.add_output(unblinded_output.clone()).await?;
+        metadata_signature: ComSignature,
+        script_private_key: &PrivateKey,
+        sender_offset_public_key: &PublicKey,
+    ) -> Result<TxId, WalletError> {
+        let unblinded_output = UnblindedOutput::new(
+            amount,
+            spending_key.clone(),
+            Some(features.clone()),
+            script,
+            input_data,
+            script_private_key.clone(),
+            sender_offset_public_key.clone(),
+            metadata_signature,
+        );
 
         let tx_id = self
             .transaction_service
-            .import_utxo(amount, source_public_key.clone(), message)
+            .import_utxo(amount, source_public_key.clone(), message, Some(features.maturity))
+            .await?;
+
+        self.output_manager_service
+            .add_output_with_tx_id(tx_id, unblinded_output.clone())
             .await?;
 
         info!(
             target: LOG_TARGET,
             "UTXO (Commitment: {}) imported into wallet",
             unblinded_output
-                .as_transaction_input(&self.factories.commitment, OutputFeatures::default())
+                .as_transaction_input(&self.factories.commitment)?
+                .commitment
+                .to_hex()
+        );
+
+        Ok(tx_id)
+    }
+
+    /// Import an external spendable UTXO into the wallet. The output will be added to the Output Manager and made
+    /// spendable. A faux incoming transaction will be created to provide a record of the event. The TxId of the
+    /// generated transaction is returned.
+    pub async fn import_unblinded_utxo(
+        &mut self,
+        unblinded_output: UnblindedOutput,
+        source_public_key: &CommsPublicKey,
+        message: String,
+    ) -> Result<TxId, WalletError> {
+        let tx_id = self
+            .transaction_service
+            .import_utxo(
+                unblinded_output.value,
+                source_public_key.clone(),
+                message,
+                Some(unblinded_output.features.maturity),
+            )
+            .await?;
+
+        self.output_manager_service
+            .add_output_with_tx_id(tx_id, unblinded_output.clone())
+            .await?;
+
+        info!(
+            target: LOG_TARGET,
+            "UTXO (Commitment: {}) imported into wallet",
+            unblinded_output
+                .as_transaction_input(&self.factories.commitment)?
                 .commitment
                 .to_hex()
         );
@@ -334,10 +392,9 @@ where
         secret: RistrettoSecretKey,
         nonce: RistrettoSecretKey,
         message: &str,
-    ) -> Result<SchnorrSignature<RistrettoPublicKey, RistrettoSecretKey>, SchnorrSignatureError>
-    {
+    ) -> Result<SchnorrSignature<RistrettoPublicKey, RistrettoSecretKey>, SchnorrSignatureError> {
         let challenge = Blake256::digest(message.as_bytes());
-        RistrettoSchnorr::sign(secret, nonce, challenge.clone().as_slice())
+        RistrettoSchnorr::sign(secret, nonce, &challenge)
     }
 
     pub fn verify_message_signature(
@@ -346,8 +403,7 @@ where
         public_nonce: RistrettoPublicKey,
         signature: RistrettoSecretKey,
         message: String,
-    ) -> bool
-    {
+    ) -> bool {
         let signature = RistrettoSchnorr::new(public_nonce, signature);
         let challenge = Blake256::digest(message.as_bytes());
         signature.verify_challenge(&public_key, challenge.clone().as_slice())
@@ -361,8 +417,7 @@ where
         fee_per_gram: MicroTari,
         message: String,
         lock_height: Option<u64>,
-    ) -> Result<TxId, WalletError>
-    {
+    ) -> Result<TxId, WalletError> {
         let coin_split_tx = self
             .output_manager_service
             .create_coin_split(amount_per_split, split_count, fee_per_gram, lock_height)
@@ -387,7 +442,7 @@ where
     /// in which case this will fail.
     pub async fn apply_encryption(&mut self, passphrase: String) -> Result<(), WalletError> {
         debug!(target: LOG_TARGET, "Applying wallet encryption.");
-        let passphrase_hash = Blake256::new().chain(passphrase.as_bytes()).result().to_vec();
+        let passphrase_hash = Blake256::new().chain(passphrase.as_bytes()).finalize();
         let key = GenericArray::from_slice(passphrase_hash.as_slice());
         let cipher = Aes256Gcm::new(key);
 
@@ -409,11 +464,72 @@ where
     /// Utility function to find out if there is data in the database indicating that there is an incomplete recovery
     /// process in progress
     pub async fn is_recovery_in_progress(&self) -> Result<bool, WalletError> {
-        use crate::tasks::wallet_recovery::RECOVERY_HEIGHT_KEY;
-        Ok(self
-            .db
-            .get_client_key_value(RECOVERY_HEIGHT_KEY.to_string())
-            .await?
-            .is_some())
+        use crate::utxo_scanner_service::utxo_scanning::RECOVERY_KEY;
+        Ok(self.db.get_client_key_value(RECOVERY_KEY.to_string()).await?.is_some())
     }
+}
+
+async fn read_or_create_master_secret_key<T: WalletBackend + 'static>(
+    recovery_master_key: Option<CommsSecretKey>,
+    db: &mut WalletDatabase<T>,
+) -> Result<CommsSecretKey, WalletError> {
+    let db_master_secret_key = db.get_master_secret_key().await?;
+
+    let master_secret_key = match recovery_master_key {
+        None => match db_master_secret_key {
+            None => {
+                let secret_key = CommsSecretKey::random(&mut OsRng);
+                db.set_master_secret_key(secret_key.clone()).await?;
+                secret_key
+            },
+            Some(secret_key) => secret_key,
+        },
+        Some(recovery_key) => {
+            if db_master_secret_key.is_none() {
+                db.set_master_secret_key(recovery_key.clone()).await?;
+                recovery_key
+            } else {
+                error!(
+                    target: LOG_TARGET,
+                    "Attempted recovery would overwrite the existing wallet database master secret key, causing a \
+                     `MasterSecretKeyMismatch` error."
+                );
+                let msg = "Wallet already exists! Move the existing wallet database file.".to_string();
+                return Err(WalletError::WalletRecoveryError(msg));
+            }
+        },
+    };
+
+    Ok(master_secret_key)
+}
+
+fn derive_comms_secret_key(master_secret_key: &CommsSecretKey) -> Result<CommsSecretKey, WalletError> {
+    let comms_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
+        master_secret_key.clone(),
+        KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY.to_string(),
+        0,
+    );
+    Ok(comms_key_manager.derive_key(0)?.k)
+}
+
+/// Persist the one-sided payment script for the current wallet NodeIdentity for use during scanning for One-sided
+/// payment outputs. This is peristed so that if the Node Identity changes the wallet will still scan for outputs
+/// using old node identities.
+pub async fn persist_one_sided_payment_script_for_node_identity(
+    output_manager_service: &mut OutputManagerHandle,
+    node_identity: Arc<NodeIdentity>,
+) -> Result<(), WalletError> {
+    let script = script!(PushPubKey(Box::new(node_identity.public_key().clone())));
+    let known_script = KnownOneSidedPaymentScript {
+        script_hash: script
+            .as_hash::<Blake256>()
+            .map_err(|e| WalletError::OutputManagerError(OutputManagerError::ScriptError(e)))?
+            .to_vec(),
+        private_key: node_identity.secret_key().clone(),
+        script,
+        input: ExecutionStack::default(),
+    };
+
+    output_manager_service.add_known_script(known_script).await?;
+    Ok(())
 }

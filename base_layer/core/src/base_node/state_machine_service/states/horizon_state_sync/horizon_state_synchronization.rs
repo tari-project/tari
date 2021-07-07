@@ -72,8 +72,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         sync_peer: PeerConnection,
         horizon_sync_height: u64,
         prover: &'a RangeProofService,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             shared,
             sync_peer,
@@ -118,8 +117,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         &mut self,
         client: &mut rpc::BaseNodeSyncRpcClient,
         to_header: &BlockHeader,
-    ) -> Result<(), HorizonSyncError>
-    {
+    ) -> Result<(), HorizonSyncError> {
         debug!(target: LOG_TARGET, "Synchronizing kernels");
         self.synchronize_kernels(client, to_header).await?;
         debug!(target: LOG_TARGET, "Synchronizing outputs");
@@ -131,8 +129,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         &mut self,
         client: &mut rpc::BaseNodeSyncRpcClient,
         to_header: &BlockHeader,
-    ) -> Result<(), HorizonSyncError>
-    {
+    ) -> Result<(), HorizonSyncError> {
         let local_num_kernels = self.db().fetch_mmr_size(MmrTree::Kernel).await?;
 
         let remote_num_kernels = to_header.kernel_mmr_size;
@@ -259,8 +256,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         &mut self,
         client: &mut rpc::BaseNodeSyncRpcClient,
         to_header: &BlockHeader,
-    ) -> Result<(), HorizonSyncError>
-    {
+    ) -> Result<(), HorizonSyncError> {
         let local_num_outputs = self.db().fetch_mmr_size(MmrTree::Utxo).await?;
 
         let remote_num_outputs = to_header.output_mmr_size;
@@ -317,7 +313,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let db = self.db().clone();
 
         let mut output_hashes = vec![];
-        let mut rp_hashes = vec![];
+        let mut witness_hashes = vec![];
         let mut txn = db.write_transaction();
         let mut unpruned_outputs = vec![];
         let mut mmr_position = start;
@@ -330,7 +326,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let (_, output_pruned_set, rp_pruned_set, mut deleted) = block_data.dissolve();
 
         let mut output_mmr = MerkleMountainRange::<HashDigest, _>::new(output_pruned_set);
-        let mut proof_mmr = MerkleMountainRange::<HashDigest, _>::new(rp_pruned_set);
+        let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(rp_pruned_set);
 
         while let Some(response) = output_stream.next().await {
             let res: SyncUtxosResponse = response?;
@@ -359,11 +355,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     height_utxo_counter += 1;
                     let output = TransactionOutput::try_from(output).map_err(HorizonSyncError::ConversionError)?;
                     output_hashes.push(output.hash());
-                    rp_hashes.push(output.proof().hash());
+                    witness_hashes.push(output.witness_hash());
                     unpruned_outputs.push(output.clone());
                     txn.insert_output_via_horizon_sync(
                         output,
                         current_header.hash().clone(),
+                        current_header.height(),
                         u32::try_from(mmr_position)?,
                     );
                     mmr_position += 1;
@@ -379,11 +376,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     );
                     height_txo_counter += 1;
                     output_hashes.push(utxo.hash.clone());
-                    rp_hashes.push(utxo.rangeproof_hash.clone());
+                    witness_hashes.push(utxo.rangeproof_hash.clone());
                     txn.insert_pruned_output_via_horizon_sync(
                         utxo.hash,
                         utxo.rangeproof_hash,
                         current_header.hash().clone(),
+                        current_header.height(),
                         u32::try_from(mmr_position)?,
                     );
                     mmr_position += 1;
@@ -414,8 +412,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         output_mmr.push(hash)?;
                     }
 
-                    for hash in rp_hashes.drain(..) {
-                        proof_mmr.push(hash)?;
+                    for hash in witness_hashes.drain(..) {
+                        witness_mmr.push(hash)?;
                     }
 
                     // Add in the changes
@@ -436,12 +434,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         });
                     }
 
-                    let mmr_root = proof_mmr.get_merkle_root()?;
-                    if mmr_root != current_header.header().range_proof_mr {
+                    let mmr_root = witness_mmr.get_merkle_root()?;
+                    if mmr_root != current_header.header().witness_mr {
                         return Err(HorizonSyncError::InvalidMmrRoot {
-                            mmr_tree: MmrTree::RangeProof,
+                            mmr_tree: MmrTree::Witness,
                             at_height: current_header.height(),
-                            expected_hex: current_header.header().range_proof_mr.to_hex(),
+                            expected_hex: current_header.header().witness_mr.to_hex(),
                             actual_hex: mmr_root.to_hex(),
                         });
                     }
@@ -454,9 +452,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
                     txn.update_pruned_hash_set(MmrTree::Utxo, current_header.hash().clone(), pruned_output_set);
                     txn.update_pruned_hash_set(
-                        MmrTree::RangeProof,
+                        MmrTree::Witness,
                         current_header.hash().clone(),
-                        proof_mmr.get_pruned_hash_set()?,
+                        witness_mmr.get_pruned_hash_set()?,
                     );
                     txn.update_deleted_with_diff(current_header.hash().clone(), output_mmr.deleted().clone());
 

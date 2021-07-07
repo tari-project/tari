@@ -110,8 +110,7 @@ impl TransactionServiceSqliteDatabase {
         &self,
         key: DbKey,
         conn: MutexGuard<SqliteConnection>,
-    ) -> Result<Option<DbValue>, TransactionStorageError>
-    {
+    ) -> Result<Option<DbValue>, TransactionStorageError> {
         match key {
             DbKey::PendingOutboundTransaction(k) => match OutboundTransactionSql::find_by_cancelled(k, false, &(*conn))
             {
@@ -426,8 +425,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
     fn get_pending_transaction_counterparty_pub_key_by_tx_id(
         &self,
         tx_id: u64,
-    ) -> Result<CommsPublicKey, TransactionStorageError>
-    {
+    ) -> Result<CommsPublicKey, TransactionStorageError> {
         let conn = self.database_connection.acquire_lock();
 
         if let Ok(mut outbound_tx_sql) = OutboundTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
@@ -448,8 +446,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         &self,
         tx_id: u64,
         completed_transaction: CompletedTransaction,
-    ) -> Result<(), TransactionStorageError>
-    {
+    ) -> Result<(), TransactionStorageError> {
         let conn = self.database_connection.acquire_lock();
 
         if CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)).is_ok() {
@@ -477,8 +474,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         &self,
         tx_id: u64,
         completed_transaction: CompletedTransaction,
-    ) -> Result<(), TransactionStorageError>
-    {
+    ) -> Result<(), TransactionStorageError> {
         let conn = self.database_connection.acquire_lock();
 
         if CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)).is_ok() {
@@ -645,8 +641,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         &self,
         tx_id: u64,
         timestamp: NaiveDateTime,
-    ) -> Result<(), TransactionStorageError>
-    {
+    ) -> Result<(), TransactionStorageError> {
         let conn = self.database_connection.acquire_lock();
 
         if let Ok(tx) = CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
@@ -785,8 +780,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         &self,
         block_height: u64,
         amount: MicroTari,
-    ) -> Result<Option<CompletedTransaction>, TransactionStorageError>
-    {
+    ) -> Result<Option<CompletedTransaction>, TransactionStorageError> {
         let conn = self.database_connection.acquire_lock();
 
         let mut coinbase_txs = CompletedTransactionSql::index_coinbase_at_block_height(block_height as i64, &conn)?;
@@ -971,8 +965,7 @@ impl InboundTransactionSql {
     pub fn index_by_cancelled(
         conn: &SqliteConnection,
         cancelled: bool,
-    ) -> Result<Vec<InboundTransactionSql>, TransactionStorageError>
-    {
+    ) -> Result<Vec<InboundTransactionSql>, TransactionStorageError> {
         Ok(inbound_transactions::table
             .filter(inbound_transactions::cancelled.eq(cancelled as i32))
             .load::<InboundTransactionSql>(conn)?)
@@ -988,8 +981,7 @@ impl InboundTransactionSql {
         tx_id: TxId,
         cancelled: bool,
         conn: &SqliteConnection,
-    ) -> Result<InboundTransactionSql, TransactionStorageError>
-    {
+    ) -> Result<InboundTransactionSql, TransactionStorageError> {
         Ok(inbound_transactions::table
             .filter(inbound_transactions::tx_id.eq(tx_id as i64))
             .filter(inbound_transactions::cancelled.eq(cancelled as i32))
@@ -1012,8 +1004,7 @@ impl InboundTransactionSql {
         &self,
         update: UpdateInboundTransactionSql,
         conn: &SqliteConnection,
-    ) -> Result<(), TransactionStorageError>
-    {
+    ) -> Result<(), TransactionStorageError> {
         let num_updated =
             diesel::update(inbound_transactions::table.filter(inbound_transactions::tx_id.eq(&self.tx_id)))
                 .set(update)
@@ -1157,8 +1148,7 @@ impl OutboundTransactionSql {
     pub fn index_by_cancelled(
         conn: &SqliteConnection,
         cancelled: bool,
-    ) -> Result<Vec<OutboundTransactionSql>, TransactionStorageError>
-    {
+    ) -> Result<Vec<OutboundTransactionSql>, TransactionStorageError> {
         Ok(outbound_transactions::table
             .filter(outbound_transactions::cancelled.eq(cancelled as i32))
             .load::<OutboundTransactionSql>(conn)?)
@@ -1174,8 +1164,7 @@ impl OutboundTransactionSql {
         tx_id: TxId,
         cancelled: bool,
         conn: &SqliteConnection,
-    ) -> Result<OutboundTransactionSql, TransactionStorageError>
-    {
+    ) -> Result<OutboundTransactionSql, TransactionStorageError> {
         Ok(outbound_transactions::table
             .filter(outbound_transactions::tx_id.eq(tx_id as i64))
             .filter(outbound_transactions::cancelled.eq(cancelled as i32))
@@ -1198,8 +1187,7 @@ impl OutboundTransactionSql {
         &self,
         update: UpdateOutboundTransactionSql,
         conn: &SqliteConnection,
-    ) -> Result<(), TransactionStorageError>
-    {
+    ) -> Result<(), TransactionStorageError> {
         let num_updated =
             diesel::update(outbound_transactions::table.filter(outbound_transactions::tx_id.eq(&self.tx_id)))
                 .set(update)
@@ -1351,8 +1339,7 @@ impl CompletedTransactionSql {
     pub fn index_by_cancelled(
         conn: &SqliteConnection,
         cancelled: bool,
-    ) -> Result<Vec<CompletedTransactionSql>, TransactionStorageError>
-    {
+    ) -> Result<Vec<CompletedTransactionSql>, TransactionStorageError> {
         Ok(completed_transactions::table
             .filter(completed_transactions::cancelled.eq(cancelled as i32))
             .load::<CompletedTransactionSql>(conn)?)
@@ -1361,8 +1348,7 @@ impl CompletedTransactionSql {
     pub fn index_coinbase_at_block_height(
         block_height: i64,
         conn: &SqliteConnection,
-    ) -> Result<Vec<CompletedTransactionSql>, TransactionStorageError>
-    {
+    ) -> Result<Vec<CompletedTransactionSql>, TransactionStorageError> {
         Ok(completed_transactions::table
             .filter(completed_transactions::status.eq(TransactionStatus::Coinbase as i32))
             .filter(completed_transactions::coinbase_block_height.eq(block_height))
@@ -1379,8 +1365,7 @@ impl CompletedTransactionSql {
         tx_id: TxId,
         cancelled: bool,
         conn: &SqliteConnection,
-    ) -> Result<CompletedTransactionSql, TransactionStorageError>
-    {
+    ) -> Result<CompletedTransactionSql, TransactionStorageError> {
         Ok(completed_transactions::table
             .filter(completed_transactions::tx_id.eq(tx_id as i64))
             .filter(completed_transactions::cancelled.eq(cancelled as i32))
@@ -1403,8 +1388,7 @@ impl CompletedTransactionSql {
         &self,
         updated_tx: UpdateCompletedTransactionSql,
         conn: &SqliteConnection,
-    ) -> Result<(), TransactionStorageError>
-    {
+    ) -> Result<(), TransactionStorageError> {
         let num_updated =
             diesel::update(completed_transactions::table.filter(completed_transactions::tx_id.eq(&self.tx_id)))
                 .set(updated_tx)
@@ -1523,8 +1507,7 @@ impl CompletedTransactionSql {
         &self,
         confirmations: u64,
         conn: &SqliteConnection,
-    ) -> Result<(), TransactionStorageError>
-    {
+    ) -> Result<(), TransactionStorageError> {
         self.update(
             UpdateCompletedTransactionSql {
                 status: None,
@@ -1548,8 +1531,7 @@ impl CompletedTransactionSql {
         &self,
         mined_height: u64,
         conn: &SqliteConnection,
-    ) -> Result<(), TransactionStorageError>
-    {
+    ) -> Result<(), TransactionStorageError> {
         self.update(
             UpdateCompletedTransactionSql {
                 status: None,
@@ -1723,14 +1705,19 @@ mod test {
     use rand::rngs::OsRng;
     use std::convert::TryFrom;
     use tari_core::transactions::{
+        helpers::{create_unblinded_output, TestParams},
         tari_amount::MicroTari,
-        transaction::{OutputFeatures, Transaction, UnblindedOutput},
+        transaction::{OutputFeatures, Transaction},
         transaction_protocol::sender::TransactionSenderMessage,
         types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     };
-    use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
+    use tari_crypto::{
+        keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+        script,
+        script::{ExecutionStack, TariScript},
+    };
     use tari_test_utils::random::string;
     use tempfile::tempdir;
 
@@ -1750,8 +1737,14 @@ mod test {
         conn.execute("PRAGMA foreign_keys = ON").unwrap();
 
         let mut builder = SenderTransactionProtocol::builder(1);
+        let test_params = TestParams::new();
+        let input = create_unblinded_output(
+            TariScript::default(),
+            OutputFeatures::default(),
+            test_params,
+            MicroTari::from(100_000),
+        );
         let amount = MicroTari::from(10_000);
-        let input = UnblindedOutput::new(MicroTari::from(100_000), PrivateKey::random(&mut OsRng), None);
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroTari::from(177))
@@ -1760,10 +1753,20 @@ mod test {
             .with_amount(0, amount)
             .with_message("Yo!".to_string())
             .with_input(
-                input.as_transaction_input(&factories.commitment, OutputFeatures::default()),
+                input
+                    .as_transaction_input(&factories.commitment)
+                    .expect("Should be able to make transaction input"),
                 input,
             )
-            .with_change_secret(PrivateKey::random(&mut OsRng));
+            .with_change_secret(PrivateKey::random(&mut OsRng))
+            .with_recipient_data(
+                0,
+                script!(Nop),
+                PrivateKey::random(&mut OsRng),
+                Default::default(),
+                PrivateKey::random(&mut OsRng),
+            )
+            .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
         let mut stp = builder.build::<HashDigest>(&factories).unwrap();
 
@@ -1870,7 +1873,13 @@ mod test {
             InboundTransactionSql::try_from(inbound_tx1.clone()).unwrap()
         );
 
-        let tx = Transaction::new(vec![], vec![], vec![], PrivateKey::random(&mut OsRng));
+        let tx = Transaction::new(
+            vec![],
+            vec![],
+            vec![],
+            PrivateKey::random(&mut OsRng),
+            PrivateKey::random(&mut OsRng),
+        );
 
         let completed_tx1 = CompletedTransaction {
             tx_id: 2,
@@ -2178,7 +2187,13 @@ mod test {
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount: MicroTari::from(100),
             fee: MicroTari::from(100),
-            transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::random(&mut OsRng)),
+            transaction: Transaction::new(
+                vec![],
+                vec![],
+                vec![],
+                PrivateKey::random(&mut OsRng),
+                PrivateKey::random(&mut OsRng),
+            ),
             status: TransactionStatus::MinedUnconfirmed,
             message: "Yo!".to_string(),
             timestamp: Utc::now().naive_utc(),
@@ -2253,7 +2268,13 @@ mod test {
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount: MicroTari::from(100),
             fee: MicroTari::from(100),
-            transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::random(&mut OsRng)),
+            transaction: Transaction::new(
+                vec![],
+                vec![],
+                vec![],
+                PrivateKey::random(&mut OsRng),
+                PrivateKey::random(&mut OsRng),
+            ),
             status: TransactionStatus::MinedUnconfirmed,
             message: "Yo!".to_string(),
             timestamp: Utc::now().naive_utc(),

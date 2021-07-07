@@ -64,8 +64,7 @@ impl DhtDatabase {
         &self,
         key: DhtMetadataKey,
         value: T,
-    ) -> Result<(), StorageError>
-    {
+    ) -> Result<(), StorageError> {
         let bytes = value.to_binary()?;
         self.set_metadata_value_bytes(key, bytes).await
     }

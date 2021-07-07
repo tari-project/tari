@@ -70,10 +70,6 @@
 //! [ServiceHandlesFuture]: ./handles/future/struct.ServiceHandlesFuture.html
 //! [SenderService]: ./reply_channel/struct.SenderService.html
 
-// Used to eliminate the need for boxing futures in many cases.
-// Tracking issue: https://github.com/rust-lang/rust/issues/63063
-#![feature(type_alias_impl_trait)]
-
 mod context;
 pub use context::{LazyService, ServiceHandles, ServiceInitializerContext};
 
@@ -90,4 +86,5 @@ mod utilities;
 pub use utilities::RegisterHandle;
 
 // Re-export
+pub use async_trait::async_trait;
 pub use tower_service::Service;

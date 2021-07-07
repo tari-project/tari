@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use hex::FromHexError;
+use hyper::header::InvalidHeaderValue;
 use std::io;
 use tari_common::{ConfigError, ConfigurationError};
 use tari_core::{proof_of_work::monero_rx::MergeMineError, transactions::CoinbaseBuildError};
@@ -74,6 +75,10 @@ pub enum MmProxyError {
     CoinbaseBuilderError(#[from] CoinbaseBuildError),
     #[error("Unexpected Tari base node response: {0}")]
     UnexpectedTariBaseNodeResponse(String),
+    #[error("Invalid RandomX seed")]
+    InvalidRandomXSeed,
+    #[error("Invalid header value")]
+    InvalidHeaderValue(#[from] InvalidHeaderValue),
 }
 
 impl From<tonic::Status> for MmProxyError {

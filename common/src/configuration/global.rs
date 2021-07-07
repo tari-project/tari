@@ -22,12 +22,11 @@
 //
 //! # Global configuration of tari base layer system
 
-use super::ConfigurationError;
+use crate::{configuration::Network, ConfigurationError};
 use config::{Config, ConfigError, Environment};
 use multiaddr::Multiaddr;
 use std::{
     convert::TryInto,
-    fmt::{Display, Formatter, Result as FormatResult},
     net::SocketAddr,
     num::{NonZeroU16, TryFromIntError},
     path::PathBuf,
@@ -48,6 +47,10 @@ const DB_RESIZE_MIN_MB: i64 = 10;
 
 #[derive(Debug, Clone)]
 pub struct GlobalConfig {
+    pub autoupdate_check_interval: Option<Duration>,
+    pub autoupdate_dns_hosts: Vec<String>,
+    pub autoupdate_hashes_url: String,
+    pub autoupdate_hashes_sig_url: String,
     pub network: Network,
     pub comms_transport: CommsTransport,
     pub allow_test_addresses: bool,
@@ -90,6 +93,7 @@ pub struct GlobalConfig {
     pub fetch_utxos_timeout: Duration,
     pub service_request_timeout: Duration,
     pub base_node_query_timeout: Duration,
+    pub scan_for_utxo_interval: Duration,
     pub saf_expiry_duration: Duration,
     pub transaction_broadcast_monitoring_timeout: Duration,
     pub transaction_chain_monitoring_timeout: Duration,
@@ -118,6 +122,7 @@ pub struct GlobalConfig {
     pub blocks_behind_before_considered_lagging: u64,
     pub flood_ban_max_msg_count: usize,
     pub mine_on_tip_only: bool,
+    pub validate_tip_timeout_sec: u64,
 }
 
 impl GlobalConfig {
@@ -416,6 +421,11 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         cfg.get_int(&key)
             .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as u64,
     );
+    let key = "wallet.scan_for_utxo_interval";
+    let scan_for_utxo_interval = Duration::from_secs(
+        cfg.get_int(&key)
+            .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as u64,
+    );
 
     let key = "wallet.saf_expiry_duration";
     let saf_expiry_duration = Duration::from_secs(optional(cfg.get_int(&key))?.unwrap_or(10800) as u64);
@@ -591,12 +601,44 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
     let key = config_string("merge_mining_proxy", &net_str, "proxy_submit_to_origin");
-    let proxy_submit_to_origin = cfg.get_bool(&key).unwrap_or_else(|_| true);
+    let proxy_submit_to_origin = cfg.get_bool(&key).unwrap_or(true);
 
     let key = "mining_node.mine_on_tip_only";
     let mine_on_tip_only = cfg.get_bool(key).unwrap_or(true);
 
+    let key = "mining_node.validate_tip_timeout_sec";
+    let validate_tip_timeout_sec = optional(cfg.get_int(&key))?.unwrap_or(0) as u64;
+
+    // Auto update
+    let key = "common.auto_update.check_interval";
+    let autoupdate_check_interval = optional(cfg.get_int(&key))?.and_then(|secs| {
+        if secs > 0 {
+            Some(Duration::from_secs(secs as u64))
+        } else {
+            None
+        }
+    });
+
+    let key = "common.auto_update.dns_hosts";
+    let autoupdate_dns_hosts = cfg
+        .get_array(key)
+        .and_then(|arr| arr.into_iter().map(|s| s.into_str()).collect::<Result<Vec<_>, _>>())
+        .or_else(|_| {
+            cfg.get_str(key)
+                .map(|s| s.split(',').map(ToString::to_string).collect())
+        })?;
+
+    let key = "common.auto_update.hashes_url";
+    let autoupdate_hashes_url = cfg.get_str(&key)?;
+
+    let key = "common.auto_update.hashes_sig_url";
+    let autoupdate_hashes_sig_url = cfg.get_str(&key)?;
+
     Ok(GlobalConfig {
+        autoupdate_check_interval,
+        autoupdate_dns_hosts,
+        autoupdate_hashes_url,
+        autoupdate_hashes_sig_url,
         network,
         comms_transport,
         allow_test_addresses,
@@ -639,6 +681,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         fetch_utxos_timeout,
         service_request_timeout,
         base_node_query_timeout,
+        scan_for_utxo_interval,
         saf_expiry_duration,
         transaction_broadcast_monitoring_timeout,
         transaction_chain_monitoring_timeout,
@@ -667,6 +710,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         blocks_behind_before_considered_lagging,
         flood_ban_max_msg_count,
         mine_on_tip_only,
+        validate_tip_timeout_sec,
     })
 }
 
@@ -772,47 +816,6 @@ fn network_transport_config(cfg: &Config, network: &str) -> Result<CommsTranspor
 
 fn config_string(prefix: &str, network: &str, key: &str) -> String {
     format!("{}.{}.{}", prefix, network, key)
-}
-
-//---------------------------------------------       Network type        ------------------------------------------//
-#[derive(Clone, Debug, PartialEq, Copy)]
-pub enum Network {
-    MainNet,
-    Rincewind,
-    LocalNet,
-    Ridcully,
-    Stibbons,
-}
-
-impl FromStr for Network {
-    type Err = ConfigurationError;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        match value.to_lowercase().as_str() {
-            "rincewind" => Ok(Self::Rincewind),
-            "ridcully" => Ok(Self::Ridcully),
-            "stibbons" => Ok(Self::Stibbons),
-            "mainnet" => Ok(Self::MainNet),
-            "localnet" => Ok(Self::LocalNet),
-            invalid => Err(ConfigurationError::new(
-                "network",
-                &format!("Invalid network option: {}", invalid),
-            )),
-        }
-    }
-}
-
-impl Display for Network {
-    fn fmt(&self, f: &mut Formatter) -> FormatResult {
-        let msg = match self {
-            Self::MainNet => "mainnet",
-            Self::Rincewind => "rincewind",
-            Self::Ridcully => "ridcully",
-            Self::Stibbons => "stibbons",
-            Self::LocalNet => "localnet",
-        };
-        f.write_str(msg)
-    }
 }
 
 //---------------------------------------------      Database type        ------------------------------------------//

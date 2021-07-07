@@ -22,9 +22,10 @@
 
 use crate::{
     comms_connector::{InboundDomainConnector, PeerMessage, PubsubDomainConnector},
-    dns_seed::DnsSeedResolver,
-    seed_peer::SeedPeer,
+    peer_seeds::{DnsSeedResolver, SeedPeer},
     transport::{TorConfig, TransportType},
+    MAJOR_NETWORK_VERSION,
+    MINOR_NETWORK_VERSION,
 };
 use fs2::FileExt;
 use futures::{channel::mpsc, future, Sink};
@@ -33,14 +34,14 @@ use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use std::{
     error::Error,
     fs::File,
-    future::Future,
     iter,
     net::SocketAddr,
-    path::PathBuf,
+    path::{Path, PathBuf},
     str::FromStr,
     sync::Arc,
     time::{Duration, Instant},
 };
+use tari_common::configuration::Network;
 use tari_comms::{
     backoff::ConstantBackoff,
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerManagerError},
@@ -49,6 +50,7 @@ use tari_comms::{
     protocol::{
         messaging::{MessagingEventSender, MessagingProtocolExtension},
         rpc::RpcServer,
+        NodeNetworkInfo,
     },
     tor,
     tor::HiddenServiceControllerError,
@@ -61,7 +63,7 @@ use tari_comms::{
     UnspawnedCommsNode,
 };
 use tari_comms_dht::{Dht, DhtBuilder, DhtConfig, DhtInitializationError};
-use tari_service_framework::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tari_shutdown::ShutdownSignal;
 use tari_storage::{
     lmdb_store::{LMDBBuilder, LMDBConfig},
@@ -121,6 +123,8 @@ pub struct CommsConfig {
     pub outbound_buffer_size: usize,
     /// Configuration for DHT
     pub dht: DhtConfig,
+    /// The p2p network currently being connected to.
+    pub network: Network,
     /// The identity of this node on the network
     pub node_identity: Arc<NodeIdentity>,
     /// The type of transport to use
@@ -164,7 +168,7 @@ where
     let peer_database_name = {
         let mut rng = thread_rng();
         iter::repeat(())
-            .map(|_| rng.sample(Alphanumeric))
+            .map(|_| rng.sample(Alphanumeric) as char)
             .take(8)
             .collect::<String>()
     };
@@ -236,8 +240,7 @@ where
 pub async fn spawn_comms_using_transport(
     comms: UnspawnedCommsNode,
     transport_type: TransportType,
-) -> Result<CommsNode, CommsInitializationError>
-{
+) -> Result<CommsNode, CommsInitializationError> {
     let comms = match transport_type {
         TransportType::Memory { listener_address } => {
             debug!(target: LOG_TARGET, "Building in-memory comms stack");
@@ -341,15 +344,19 @@ where
         .with_peer_storage(peer_database, Some(file_lock))
         .build()?;
 
+    let peer_manager = comms.peer_manager();
+    let connectivity = comms.connectivity();
+    let node_identity = comms.node_identity();
+    let shutdown_signal = comms.shutdown_signal();
     // Create outbound channel
     let (outbound_tx, outbound_rx) = mpsc::channel(config.outbound_buffer_size);
 
     let dht = DhtBuilder::new(
-        comms.node_identity(),
-        comms.peer_manager(),
+        node_identity.clone(),
+        peer_manager,
         outbound_tx,
-        comms.connectivity(),
-        comms.shutdown_signal(),
+        connectivity,
+        shutdown_signal,
     )
     .with_config(config.dht.clone())
     .build()
@@ -358,10 +365,7 @@ where
     let dht_outbound_layer = dht.outbound_middleware_layer();
 
     // DHT RPC service is only available for communication nodes
-    if comms
-        .node_identity()
-        .has_peer_features(PeerFeatures::COMMUNICATION_NODE)
-    {
+    if node_identity.has_peer_features(PeerFeatures::COMMUNICATION_NODE) {
         comms = comms.add_rpc_server(RpcServer::new().add_service(dht.rpc_service()));
     }
 
@@ -396,7 +400,7 @@ where
 ///
 /// ## Returns
 /// Returns a File handle that must be retained to keep the file lock active.
-pub fn acquire_exclusive_file_lock(db_path: &PathBuf) -> Result<File, CommsInitializationError> {
+pub fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, CommsInitializationError> {
     let lock_file_path = db_path.join(".p2p_file.lock");
 
     let file = File::create(lock_file_path)?;
@@ -424,8 +428,7 @@ async fn add_all_peers(
     peer_manager: &PeerManager,
     node_identity: &NodeIdentity,
     peers: Vec<Peer>,
-) -> Result<(), CommsInitializationError>
-{
+) -> Result<(), CommsInitializationError> {
     for peer in peers {
         if &peer.public_key == node_identity.public_key() {
             debug!(
@@ -473,8 +476,7 @@ impl P2pInitializer {
         resolver_addr: SocketAddr,
         dns_seeds: &[String],
         use_dnssec: bool,
-    ) -> Result<Vec<Peer>, ServiceInitializationError>
-    {
+    ) -> Result<Vec<Peer>, ServiceInitializationError> {
         if dns_seeds.is_empty() {
             return Ok(Vec::new());
         }
@@ -485,19 +487,19 @@ impl P2pInitializer {
         let resolver = if use_dnssec {
             debug!(
                 target: LOG_TARGET,
-                "Using {} to resove DNS seeds. DNSSEC is enabled", resolver_addr
+                "Using {} to resolve DNS seeds. DNSSEC is enabled", resolver_addr
             );
             DnsSeedResolver::connect_secure(resolver_addr).await?
         } else {
             debug!(
                 target: LOG_TARGET,
-                "Using {} to resove DNS seeds. DNSSEC is disabled", resolver_addr
+                "Using {} to resolve DNS seeds. DNSSEC is disabled", resolver_addr
             );
             DnsSeedResolver::connect(resolver_addr).await?
         };
         let resolving = dns_seeds.iter().map(|addr| {
             let mut resolver = resolver.clone();
-            async move { (resolver.resolve(addr.clone()).await, addr) }
+            async move { (resolver.resolve(addr).await, addr) }
         });
 
         let peers = future::join_all(resolving)
@@ -528,42 +530,46 @@ impl P2pInitializer {
     }
 }
 
+#[async_trait]
 impl ServiceInitializer for P2pInitializer {
-    type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
-
-    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+    async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let config = self.config.clone();
         let connector = self.connector.take().expect("P2pInitializer called more than once");
 
-        async move {
-            let mut builder = CommsBuilder::new()
-                .with_shutdown_signal(context.get_shutdown_signal())
-                .with_node_identity(config.node_identity.clone())
-                .with_user_agent(&config.user_agent);
+        let mut builder = CommsBuilder::new()
+            .with_shutdown_signal(context.get_shutdown_signal())
+            .with_node_identity(config.node_identity.clone())
+            .with_node_info(NodeNetworkInfo {
+                major_version: MAJOR_NETWORK_VERSION,
+                minor_version: MINOR_NETWORK_VERSION,
+                network_byte: config.network.as_byte(),
+                user_agent: config.user_agent.clone(),
+            });
 
-            if config.allow_test_addresses {
-                builder = builder.allow_test_addresses();
-            }
-
-            let (comms, dht) = configure_comms_and_dht(builder, &config, connector).await?;
-
-            let peers = Self::try_parse_seed_peers(&config.peer_seeds)?;
-            add_all_peers(&comms.peer_manager(), &comms.node_identity(), peers).await?;
-
-            let peers = Self::try_resolve_dns_seeds(
-                config.dns_seeds_name_server,
-                &config.dns_seeds,
-                config.dns_seeds_use_dnssec,
-            )
-            .await?;
-            add_all_peers(&comms.peer_manager(), &comms.node_identity(), peers).await?;
-
-            context.register_handle(comms.connectivity());
-            context.register_handle(comms.peer_manager());
-            context.register_handle(comms);
-            context.register_handle(dht);
-
-            Ok(())
+        if config.allow_test_addresses {
+            builder = builder.allow_test_addresses();
         }
+
+        let (comms, dht) = configure_comms_and_dht(builder, &config, connector).await?;
+
+        let peers = Self::try_parse_seed_peers(&config.peer_seeds)?;
+        let peer_manager = comms.peer_manager();
+        let node_identity = comms.node_identity();
+        add_all_peers(&peer_manager, &node_identity, peers).await?;
+
+        let peers = Self::try_resolve_dns_seeds(
+            config.dns_seeds_name_server,
+            &config.dns_seeds,
+            config.dns_seeds_use_dnssec,
+        )
+        .await?;
+        add_all_peers(&peer_manager, &node_identity, peers).await?;
+
+        context.register_handle(comms.connectivity());
+        context.register_handle(peer_manager);
+        context.register_handle(comms);
+        context.register_handle(dht);
+
+        Ok(())
     }
 }

@@ -30,9 +30,10 @@ use crate::helpers::{
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use std::{collections::HashMap, sync::Arc};
+use tari_common::configuration::Network;
 use tari_core::{
     chain_storage::{BlockAddResult, BlockchainDatabase},
-    consensus::{ConsensusManager, Network},
+    consensus::ConsensusManager,
     test_helpers::blockchain::TempDatabase,
     transactions::types::CryptoFactories,
 };
@@ -63,8 +64,8 @@ impl TestBlockchain {
         Self {
             store,
             blocks,
-            consensus_manager,
             hash_to_block,
+            consensus_manager,
         }
     }
 

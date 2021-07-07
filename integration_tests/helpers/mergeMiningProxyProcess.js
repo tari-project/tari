@@ -13,6 +13,7 @@ class MergeMiningProxyProcess {
   constructor(
     name,
     baseNodeAddress,
+    baseNodeClient,
     walletAddress,
     logFilePath,
     submitOrigin = true
@@ -20,6 +21,7 @@ class MergeMiningProxyProcess {
     this.name = name;
     this.nodeAddress = baseNodeAddress.split(":")[0];
     this.nodeGrpcPort = baseNodeAddress.split(":")[1];
+    this.baseNodeClient = baseNodeClient;
     this.walletAddress = walletAddress.split(":")[0];
     this.walletGrpcPort = walletAddress.split(":")[1];
     this.submitOrigin = submitOrigin;
@@ -59,8 +61,8 @@ class MergeMiningProxyProcess {
         []
       );
       const extraEnvs = {
-        TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_SUBMIT_TO_ORIGIN: this
-          .submitOrigin,
+        TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_SUBMIT_TO_ORIGIN:
+          this.submitOrigin,
       };
       const completeEnvs = { ...envs, ...extraEnvs };
       const ps = spawn(cmd, args, {
@@ -142,7 +144,7 @@ class MergeMiningProxyProcess {
   createClient() {
     const address = "http://127.0.0.1:" + this.port;
     // console.log("MergeMiningProxyProcess createClient - client address:", address);
-    return new MergeMiningProxyClient(address);
+    return new MergeMiningProxyClient(address, this.baseNodeClient);
   }
 }
 

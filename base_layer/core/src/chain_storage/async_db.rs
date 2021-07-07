@@ -150,9 +150,9 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(fetch_kernels_by_mmr_position(start: u64, end: u64) -> Vec<TransactionKernel>, "fetch_kernels_by_mmr_position");
 
     //---------------------------------- MMR --------------------------------------------//
-    make_async_fn!(prepare_block_merkle_roots(template: NewBlockTemplate) -> Block, "create_block");
+    make_async_fn!(prepare_block_merkle_roots(template: NewBlockTemplate) -> Block, "prepare_block_merkle_roots");
 
-    make_async_fn!(fetch_mmr_size(tree: MmrTree) -> u64, "fetch_mmr_node_count");
+    make_async_fn!(fetch_mmr_size(tree: MmrTree) -> u64, "fetch_mmr_size");
 
     make_async_fn!(rewind_to_height(height: u64) -> Vec<Arc<ChainBlock>>, "rewind_to_height");
 
@@ -264,8 +264,7 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         kernel: TransactionKernel,
         header_hash: HashOutput,
         mmr_position: u32,
-    ) -> &mut Self
-    {
+    ) -> &mut Self {
         self.transaction.insert_kernel(kernel, header_hash, mmr_position);
         self
     }
@@ -274,10 +273,11 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         &mut self,
         output: TransactionOutput,
         header_hash: HashOutput,
+        header_height: u64,
         mmr_position: u32,
-    ) -> &mut Self
-    {
-        self.transaction.insert_utxo(output, header_hash, mmr_position);
+    ) -> &mut Self {
+        self.transaction
+            .insert_utxo(output, header_hash, header_height, mmr_position);
         self
     }
 
@@ -286,11 +286,11 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         output_hash: HashOutput,
         proof_hash: HashOutput,
         header_hash: HashOutput,
+        header_height: u64,
         mmr_position: u32,
-    ) -> &mut Self
-    {
+    ) -> &mut Self {
         self.transaction
-            .insert_pruned_utxo(output_hash, proof_hash, header_hash, mmr_position);
+            .insert_pruned_utxo(output_hash, proof_hash, header_hash, header_height, mmr_position);
         self
     }
 
@@ -299,8 +299,7 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         mmr_tree: MmrTree,
         header_hash: HashOutput,
         pruned_hash_set: PrunedHashSet,
-    ) -> &mut Self
-    {
+    ) -> &mut Self {
         self.transaction
             .update_pruned_hash_set(mmr_tree, header_hash, pruned_hash_set);
         self

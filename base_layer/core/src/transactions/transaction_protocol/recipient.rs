@@ -34,6 +34,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum RecipientState {
     Finalized(Box<RecipientSignedMessage>),
     Failed(TransactionProtocolError),
@@ -104,8 +105,7 @@ impl ReceiverTransactionProtocol {
         spending_key: PrivateKey,
         features: OutputFeatures,
         factories: &CryptoFactories,
-    ) -> ReceiverTransactionProtocol
-    {
+    ) -> ReceiverTransactionProtocol {
         let state = match info {
             TransactionSenderMessage::None => RecipientState::Failed(TransactionProtocolError::InvalidStateError),
             TransactionSenderMessage::Single(v) => {
@@ -125,8 +125,7 @@ impl ReceiverTransactionProtocol {
         features: OutputFeatures,
         factories: &CryptoFactories,
         rewind_data: &RewindData,
-    ) -> ReceiverTransactionProtocol
-    {
+    ) -> ReceiverTransactionProtocol {
         let state = match info {
             TransactionSenderMessage::None => RecipientState::Failed(TransactionProtocolError::InvalidStateError),
             TransactionSenderMessage::Single(v) => ReceiverTransactionProtocol::single_round(
@@ -176,8 +175,7 @@ impl ReceiverTransactionProtocol {
         data: &SD,
         factories: &CryptoFactories,
         rewind_data: Option<&RewindData>,
-    ) -> RecipientState
-    {
+    ) -> RecipientState {
         let signer = SingleReceiverTransactionProtocol::create(data, nonce, key, features, factories, rewind_data);
         match signer {
             Ok(signed_data) => RecipientState::Finalized(Box::new(signed_data)),
@@ -204,18 +202,21 @@ impl ReceiverTransactionProtocol {
 
 #[cfg(test)]
 mod test {
-    use crate::transactions::{
-        helpers::TestParams,
-        tari_amount::*,
-        transaction::OutputFeatures,
-        transaction_protocol::{
-            build_challenge,
-            sender::{SingleRoundSenderData, TransactionSenderMessage},
-            RewindData,
-            TransactionMetadata,
+    use crate::{
+        crypto::script::TariScript,
+        transactions::{
+            helpers::TestParams,
+            tari_amount::*,
+            transaction::OutputFeatures,
+            transaction_protocol::{
+                build_challenge,
+                sender::{SingleRoundSenderData, TransactionSenderMessage},
+                RewindData,
+                TransactionMetadata,
+            },
+            types::{CryptoFactories, PrivateKey, PublicKey, Signature},
+            ReceiverTransactionProtocol,
         },
-        types::{CryptoFactories, PrivateKey, PublicKey, Signature},
-        ReceiverTransactionProtocol,
     };
     use rand::rngs::OsRng;
     use tari_crypto::{
@@ -231,23 +232,25 @@ mod test {
             fee: MicroTari(125),
             lock_height: 0,
         };
+        let script = TariScript::default();
+        let features = OutputFeatures::default();
+        let amount = MicroTari(500);
         let msg = SingleRoundSenderData {
             tx_id: 15,
-            amount: MicroTari(500),
+            amount,
             public_excess: PublicKey::from_secret_key(&p.spend_key), // any random key will do
-            public_nonce: PublicKey::from_secret_key(&p.change_key), // any random key will do
+            public_nonce: PublicKey::from_secret_key(&p.change_spend_key), // any random key will do
             metadata: m.clone(),
             message: "".to_string(),
+            features: features.clone(),
+            script,
+            sender_offset_public_key: p.sender_offset_public_key,
+            public_commitment_nonce: p.sender_public_commitment_nonce,
         };
         let sender_info = TransactionSenderMessage::Single(Box::new(msg.clone()));
         let pubkey = PublicKey::from_secret_key(&p.spend_key);
-        let receiver = ReceiverTransactionProtocol::new(
-            sender_info,
-            p.nonce.clone(),
-            p.spend_key.clone(),
-            OutputFeatures::default(),
-            &factories,
-        );
+        let receiver =
+            ReceiverTransactionProtocol::new(sender_info, p.nonce.clone(), p.spend_key.clone(), features, &factories);
         assert!(receiver.is_finalized());
         let data = receiver.get_signed_data().unwrap();
         assert_eq!(data.tx_id, 15);
@@ -277,13 +280,19 @@ mod test {
             fee: MicroTari(125),
             lock_height: 0,
         };
+        let script = TariScript::default();
+        let features = OutputFeatures::default();
         let msg = SingleRoundSenderData {
             tx_id: 15,
             amount,
             public_excess: PublicKey::from_secret_key(&p.spend_key), // any random key will do
-            public_nonce: PublicKey::from_secret_key(&p.change_key), // any random key will do
+            public_nonce: PublicKey::from_secret_key(&p.change_spend_key), // any random key will do
             metadata: m,
             message: "".to_string(),
+            features: features.clone(),
+            script,
+            sender_offset_public_key: p.sender_offset_public_key,
+            public_commitment_nonce: p.sender_public_commitment_nonce,
         };
         let sender_info = TransactionSenderMessage::Single(Box::new(msg));
         let rewind_data = RewindData {
@@ -295,7 +304,7 @@ mod test {
             sender_info,
             p.nonce.clone(),
             p.spend_key.clone(),
-            OutputFeatures::default(),
+            features,
             &factories,
             &rewind_data,
         );
@@ -312,7 +321,6 @@ mod test {
             .output
             .full_rewind_range_proof(&factories.range_proof, &rewind_key, &rewind_blinding_key)
             .unwrap();
-
         assert_eq!(full_rewind_result.committed_value, amount);
         assert_eq!(&full_rewind_result.proof_message, message);
         assert_eq!(full_rewind_result.blinding_factor, p.spend_key);

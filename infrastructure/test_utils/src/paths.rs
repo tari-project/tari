@@ -66,6 +66,6 @@ mod test {
             path.to_str().unwrap().to_string()
         });
 
-        assert_eq!(PathBuf::from_str(&path).unwrap().exists(), false);
+        assert!(!PathBuf::from_str(&path).unwrap().exists());
     }
 }

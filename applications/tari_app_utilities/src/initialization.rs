@@ -1,4 +1,4 @@
-use crate::utilities::ExitCodes;
+use crate::{consts, utilities::ExitCodes};
 use config::Config;
 use std::path::PathBuf;
 use structopt::StructOpt;
@@ -20,6 +20,8 @@ pub fn init_configuration(
 
     // Initialise the logger
     bootstrap.initialize_logging()?;
+
+    log::info!(target: LOG_TARGET, "{} ({})", application_type, consts::APP_VERSION);
 
     // Populate the configuration struct
     let mut global_config =

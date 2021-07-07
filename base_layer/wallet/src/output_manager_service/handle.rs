@@ -23,9 +23,9 @@
 use crate::{
     output_manager_service::{
         error::OutputManagerError,
-        protocols::txo_validation_protocol::TxoValidationType,
         service::Balance,
-        storage::database::PendingTransactionOutputs,
+        storage::{database::PendingTransactionOutputs, models::KnownOneSidedPaymentScript},
+        tasks::TxoValidationType,
         TxId,
     },
     types::ValidationRetryStrategy,
@@ -42,6 +42,7 @@ use tari_core::transactions::{
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
+use tari_crypto::script::TariScript;
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
@@ -49,12 +50,14 @@ use tower::Service;
 /// API Request enum
 pub enum OutputManagerRequest {
     GetBalance,
-    AddOutput(UnblindedOutput),
+    AddOutput(Box<UnblindedOutput>),
+    AddOutputWithTxId((TxId, Box<UnblindedOutput>)),
+    UpdateOutputMetadataSignature(Box<TransactionOutput>),
     GetRecipientTransaction(TransactionSenderMessage),
     GetCoinbaseTransaction((u64, MicroTari, MicroTari, u64)),
     ConfirmPendingTransaction(u64),
     ConfirmTransaction((u64, Vec<TransactionInput>, Vec<TransactionOutput>)),
-    PrepareToSendTransaction((MicroTari, MicroTari, Option<u64>, String)),
+    PrepareToSendTransaction((MicroTari, MicroTari, Option<u64>, String, TariScript)),
     CreatePayToSelfTransaction((MicroTari, MicroTari, Option<u64>, String)),
     CancelTransaction(u64),
     TimeoutTransactions(Duration),
@@ -70,7 +73,9 @@ pub enum OutputManagerRequest {
     RemoveEncryption,
     GetPublicRewindKeys,
     FeeEstimate((MicroTari, MicroTari, u64, u64)),
-    RewindOutputs(Vec<TransactionOutput>),
+    ScanForRecoverableOutputs(Vec<TransactionOutput>),
+    ScanOutputs(Vec<TransactionOutput>),
+    AddKnownOneSidedPaymentScript(KnownOneSidedPaymentScript),
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -79,10 +84,12 @@ impl fmt::Display for OutputManagerRequest {
         match self {
             GetBalance => write!(f, "GetBalance"),
             AddOutput(v) => write!(f, "AddOutput ({})", v.value),
+            AddOutputWithTxId((t, v)) => write!(f, "AddOutputWithTxId ({}: {})", t, v.value),
+            UpdateOutputMetadataSignature(v) => write!(f, "UpdateOutputMetadataSignature ({:?})", v.metadata_signature),
             GetRecipientTransaction(_) => write!(f, "GetRecipientTransaction"),
             ConfirmTransaction(v) => write!(f, "ConfirmTransaction ({})", v.0),
             ConfirmPendingTransaction(v) => write!(f, "ConfirmPendingTransaction ({})", v),
-            PrepareToSendTransaction((_, _, _, msg)) => write!(f, "PrepareToSendTransaction ({})", msg),
+            PrepareToSendTransaction((_, _, _, msg, _)) => write!(f, "PrepareToSendTransaction ({})", msg),
             CreatePayToSelfTransaction((_, _, _, msg)) => write!(f, "CreatePayToSelfTransaction ({})", msg),
             CancelTransaction(v) => write!(f, "CancelTransaction ({})", v),
             TimeoutTransactions(d) => write!(f, "TimeoutTransactions ({}s)", d.as_secs()),
@@ -99,7 +106,9 @@ impl fmt::Display for OutputManagerRequest {
             GetCoinbaseTransaction(_) => write!(f, "GetCoinbaseTransaction"),
             GetPublicRewindKeys => write!(f, "GetPublicRewindKeys"),
             FeeEstimate(_) => write!(f, "FeeEstimate"),
-            RewindOutputs(_) => write!(f, "RewindAndImportOutputs"),
+            ScanForRecoverableOutputs(_) => write!(f, "ScanForRecoverableOutputs"),
+            ScanOutputs(_) => write!(f, "ScanRewindAndImportOutputs"),
+            AddKnownOneSidedPaymentScript(_) => write!(f, "AddKnownOneSidedPaymentScript"),
         }
     }
 }
@@ -109,6 +118,7 @@ impl fmt::Display for OutputManagerRequest {
 pub enum OutputManagerResponse {
     Balance(Balance),
     OutputAdded,
+    OutputMetadataSignatureUpdated,
     RecipientTransactionGenerated(ReceiverTransactionProtocol),
     CoinbaseTransaction(Transaction),
     OutputConfirmed,
@@ -130,7 +140,9 @@ pub enum OutputManagerResponse {
     EncryptionRemoved,
     PublicRewindKeys(Box<PublicRewindKeys>),
     FeeEstimate(MicroTari),
-    RewindOutputs(Vec<UnblindedOutput>),
+    RewoundOutputs(Vec<UnblindedOutput>),
+    ScanOutputs(Vec<UnblindedOutput>),
+    AddKnownOneSidedPaymentScript,
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -163,8 +175,7 @@ impl OutputManagerHandle {
     pub fn new(
         handle: SenderService<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>,
         event_stream_sender: OutputManagerEventSender,
-    ) -> Self
-    {
+    ) -> Self {
         OutputManagerHandle {
             handle,
             event_stream_sender,
@@ -176,8 +187,41 @@ impl OutputManagerHandle {
     }
 
     pub async fn add_output(&mut self, output: UnblindedOutput) -> Result<(), OutputManagerError> {
-        match self.handle.call(OutputManagerRequest::AddOutput(output)).await?? {
+        match self
+            .handle
+            .call(OutputManagerRequest::AddOutput(Box::new(output)))
+            .await??
+        {
             OutputManagerResponse::OutputAdded => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn add_output_with_tx_id(
+        &mut self,
+        tx_id: TxId,
+        output: UnblindedOutput,
+    ) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::AddOutputWithTxId((tx_id, Box::new(output))))
+            .await??
+        {
+            OutputManagerResponse::OutputAdded => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn update_output_metadata_signature(
+        &mut self,
+        output: TransactionOutput,
+    ) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::UpdateOutputMetadataSignature(Box::new(output)))
+            .await??
+        {
+            OutputManagerResponse::OutputMetadataSignatureUpdated => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
@@ -192,8 +236,7 @@ impl OutputManagerHandle {
     pub async fn get_recipient_transaction(
         &mut self,
         sender_message: TransactionSenderMessage,
-    ) -> Result<ReceiverTransactionProtocol, OutputManagerError>
-    {
+    ) -> Result<ReceiverTransactionProtocol, OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::GetRecipientTransaction(sender_message))
@@ -210,8 +253,7 @@ impl OutputManagerHandle {
         reward: MicroTari,
         fees: MicroTari,
         block_height: u64,
-    ) -> Result<Transaction, OutputManagerError>
-    {
+    ) -> Result<Transaction, OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::GetCoinbaseTransaction((
@@ -233,8 +275,8 @@ impl OutputManagerHandle {
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
-    ) -> Result<SenderTransactionProtocol, OutputManagerError>
-    {
+        recipient_script: TariScript,
+    ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::PrepareToSendTransaction((
@@ -242,6 +284,7 @@ impl OutputManagerHandle {
                 fee_per_gram,
                 lock_height,
                 message,
+                recipient_script,
             )))
             .await??
         {
@@ -258,8 +301,7 @@ impl OutputManagerHandle {
         fee_per_gram: MicroTari,
         num_kernels: u64,
         num_outputs: u64,
-    ) -> Result<MicroTari, OutputManagerError>
-    {
+    ) -> Result<MicroTari, OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::FeeEstimate((
@@ -291,8 +333,7 @@ impl OutputManagerHandle {
         tx_id: u64,
         spent_outputs: Vec<TransactionInput>,
         received_outputs: Vec<TransactionOutput>,
-    ) -> Result<(), OutputManagerError>
-    {
+    ) -> Result<(), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::ConfirmTransaction((
@@ -389,8 +430,7 @@ impl OutputManagerHandle {
         &mut self,
         validation_type: TxoValidationType,
         retries: ValidationRetryStrategy,
-    ) -> Result<u64, OutputManagerError>
-    {
+    ) -> Result<u64, OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::ValidateUtxos(validation_type, retries))
@@ -409,8 +449,7 @@ impl OutputManagerHandle {
         split_count: usize,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
-    ) -> Result<(u64, Transaction, MicroTari, MicroTari), OutputManagerError>
-    {
+    ) -> Result<(u64, Transaction, MicroTari, MicroTari), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::CreateCoinSplit((
@@ -444,13 +483,37 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn rewind_outputs(
+    pub async fn scan_for_recoverable_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
-    ) -> Result<Vec<UnblindedOutput>, OutputManagerError>
-    {
-        match self.handle.call(OutputManagerRequest::RewindOutputs(outputs)).await?? {
-            OutputManagerResponse::RewindOutputs(outputs) => Ok(outputs),
+    ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::ScanForRecoverableOutputs(outputs))
+            .await??
+        {
+            OutputManagerResponse::RewoundOutputs(outputs) => Ok(outputs),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn scan_outputs_for_one_sided_payments(
+        &mut self,
+        outputs: Vec<TransactionOutput>,
+    ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
+        match self.handle.call(OutputManagerRequest::ScanOutputs(outputs)).await?? {
+            OutputManagerResponse::ScanOutputs(outputs) => Ok(outputs),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn add_known_script(&mut self, script: KnownOneSidedPaymentScript) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::AddKnownOneSidedPaymentScript(script))
+            .await??
+        {
+            OutputManagerResponse::AddKnownOneSidedPaymentScript => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
@@ -461,8 +524,7 @@ impl OutputManagerHandle {
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
-    ) -> Result<(TxId, MicroTari, Transaction), OutputManagerError>
-    {
+    ) -> Result<(TxId, MicroTari, Transaction), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::CreatePayToSelfTransaction((

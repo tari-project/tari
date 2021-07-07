@@ -174,8 +174,7 @@ impl DhtNetworkDiscovery {
         connectivity: ConnectivityRequester,
         event_tx: broadcast::Sender<Arc<DhtEvent>>,
         shutdown_signal: ShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             context: NetworkDiscoveryContext {
                 config,

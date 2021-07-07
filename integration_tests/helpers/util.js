@@ -51,11 +51,14 @@ async function waitFor(
       await sleep(timeOut);
       i++;
     } catch (e) {
-      if (e && e.code && e.code === NO_CONNECTION) {
-        console.log("No connection yet (waitFor)...");
-      } else {
-        console.error("Error in waitFor: ", e);
+      if (i > 1) {
+        if (e && e.code && e.code === NO_CONNECTION) {
+          console.log("No connection yet (waitFor)...");
+        } else {
+          console.error("Error in waitFor: ", e);
+        }
       }
+      await sleep(timeOut);
     }
   }
 }
@@ -65,10 +68,13 @@ function dec2hex(n) {
 }
 
 function toLittleEndianInner(n) {
-  const hexar = dec2hex(n);
-  return hexar
-    .map((h) => (h < 16 ? "0" : "") + h.toString(16))
-    .concat(Array(4 - hexar.length).fill("00"));
+  let hexar = dec2hex(n);
+  hexar = hexar.map((h) => (h < 16 ? "0" : "") + h.toString(16));
+  if (hexar.length < 4) {
+    return hexar.concat(Array(4 - hexar.length).fill("00"));
+  } else {
+    return hexar;
+  }
 }
 
 function toLittleEndian(n, numBits) {
@@ -81,6 +87,16 @@ function toLittleEndian(n, numBits) {
   const arr = Buffer.from(s.join(""), "hex");
 
   return arr;
+}
+
+function littleEndianHexStringToBigEndianHexString(string) {
+  if (!string) return undefined;
+  var len = string.length;
+  var bigEndianHexString = "0x";
+  for (var i = 0; i < len / 2; i++) {
+    bigEndianHexString += string.substring(len - (i + 1) * 2, len - i * 2);
+  }
+  return bigEndianHexString;
 }
 
 function hexSwitchEndianness(val) {
@@ -139,7 +155,6 @@ const getFreePort = async function (from, to) {
   }
 };
 
-// WIP  this doesn't hash properly
 const getTransactionOutputHash = function (output) {
   const KEY = null; // optional key
   const OUTPUT_LENGTH = 32; // bytes
@@ -150,9 +165,12 @@ const getTransactionOutputHash = function (output) {
     flags,
     toLittleEndian(parseInt(output.features.maturity), 64),
   ]);
+  let nopScriptBytes = Buffer.from([0x73]);
+
   blake2bUpdate(context, buffer);
   blake2bUpdate(context, output.commitment);
-  const final = blake2bFinal(context);
+  blake2bUpdate(context, nopScriptBytes);
+  let final = blake2bFinal(context);
   return Buffer.from(final);
 };
 
@@ -210,11 +228,36 @@ function pad(str, length, padLeft = true) {
   }
 }
 
+function combineTwoTariKeys(key1, key2) {
+  let total_key =
+    BigInt(littleEndianHexStringToBigEndianHexString(key1)) +
+    BigInt(littleEndianHexStringToBigEndianHexString(key2));
+  if (total_key < 0) {
+    total_key =
+      total_key +
+      BigInt(
+        littleEndianHexStringToBigEndianHexString(
+          "edd3f55c1a631258d69cf7a2def9de1400000000000000000000000000000010"
+        )
+      );
+  }
+  total_key = total_key.toString(16);
+  while (total_key.length < 64) {
+    total_key = "0" + total_key;
+  }
+  total_key = littleEndianHexStringToBigEndianHexString(total_key);
+  while (total_key.length < 64) {
+    total_key = "0" + total_key;
+  }
+  return total_key;
+}
+
 module.exports = {
   getRandomInt,
   sleep,
   waitFor,
   toLittleEndian,
+  littleEndianHexStringToBigEndianHexString,
   // portInUse,
   getFreePort,
   getTransactionOutputHash,
@@ -223,5 +266,6 @@ module.exports = {
   consoleLogBalance,
   consoleLogCoinbaseDetails,
   withTimeout,
+  combineTwoTariKeys,
   NO_CONNECTION,
 };

@@ -30,6 +30,7 @@ use helpers::{
     nodes::{create_network_with_2_base_nodes_with_config, wait_until_online, BaseNodeBuilder},
 };
 use std::{thread, time::Duration};
+use tari_common::configuration::Network;
 use tari_core::{
     base_node::{
         chain_metadata_service::PeerChainMetadata,
@@ -42,8 +43,7 @@ use tari_core::{
         },
         SyncValidators,
     },
-    chain_storage::BlockchainDatabaseConfig,
-    consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
+    consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder},
     mempool::MempoolServiceConfig,
     proof_of_work::randomx_factory::RandomXFactory,
     test_helpers::blockchain::create_test_blockchain_db,
@@ -76,7 +76,6 @@ fn test_listening_lagging() {
         .build();
     let (alice_node, bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
-        BlockchainDatabaseConfig::default(),
         BaseNodeServiceConfig::default(),
         MempoolServiceConfig::default(),
         LivenessConfig {
@@ -143,7 +142,7 @@ fn test_event_channel() {
     let temp_dir = tempdir().unwrap();
     let mut runtime = Runtime::new().unwrap();
     let (node, consensus_manager) =
-        BaseNodeBuilder::new(Network::Stibbons).start(&mut runtime, temp_dir.path().to_str().unwrap());
+        BaseNodeBuilder::new(Network::Weatherwax.into()).start(&mut runtime, temp_dir.path().to_str().unwrap());
     // let shutdown = Shutdown::new();
     let db = create_test_blockchain_db();
     let shutdown = Shutdown::new();

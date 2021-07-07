@@ -59,7 +59,10 @@ async fn main_inner() -> Result<(), ExitCodes> {
     let (bootstrap, global, cfg) = init_configuration(ApplicationType::MiningNode)?;
     let mut config = <MinerConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
     config.mine_on_tip_only = global.mine_on_tip_only;
-    debug!("mine_on_tip_only is {}", config.mine_on_tip_only);
+    config.num_mining_threads = global.num_mining_threads;
+    config.validate_tip_timeout_sec = global.validate_tip_timeout_sec;
+    debug!("{:?}", bootstrap);
+    debug!("{:?}", config);
 
     let (mut node_conn, mut wallet_conn) = connect(&config, &global).await.map_err(ExitCodes::grpc)?;
 
@@ -86,6 +89,10 @@ async fn main_inner() -> Result<(), ExitCodes> {
                     }
                 }
             },
+            Err(MinerError::MineUntilHeightReached(h)) => {
+                info!("Prescribed blockchain height {} reached. Aborting ...", h);
+                return Ok(());
+            },
             Err(MinerError::MinerLostBlock(h)) => {
                 info!("Height {} already mined by other node. Restarting ...", h);
             },
@@ -111,8 +118,7 @@ async fn main_inner() -> Result<(), ExitCodes> {
 async fn connect(
     config: &MinerConfig,
     global: &GlobalConfig,
-) -> Result<(BaseNodeClient<Channel>, WalletClient<Channel>), MinerError>
-{
+) -> Result<(BaseNodeClient<Channel>, WalletClient<Channel>), MinerError> {
     let base_node_addr = config.base_node_addr(&global);
     info!("Connecting to base node at {}", base_node_addr);
     let node_conn = BaseNodeClient::connect(base_node_addr.clone()).await?;
@@ -128,8 +134,7 @@ async fn mining_cycle(
     wallet_conn: &mut WalletClient<Channel>,
     config: &MinerConfig,
     bootstrap: &ConfigBootstrap,
-) -> Result<bool, MinerError>
-{
+) -> Result<bool, MinerError> {
     // 1. Receive new block template
     let template = node_conn
         .get_new_block_template(config.pow_algo_request())
@@ -147,7 +152,7 @@ async fn mining_cycle(
             .as_ref()
             .ok_or_else(|| err_empty("header"))?
             .height;
-        validate_tip(node_conn, height).await?;
+        validate_tip(node_conn, height, bootstrap.mine_until_height).await?;
     }
 
     // 2. Get coinbase from wallet and add it to new block template body
@@ -216,7 +221,7 @@ async fn mining_cycle(
             display_report(&report, config, template_time).await;
         }
         if config.mine_on_tip_only && reporting_timeout.elapsed() > config.validate_tip_timeout_sec() {
-            validate_tip(node_conn, report.height).await?;
+            validate_tip(node_conn, report.height, bootstrap.mine_until_height).await?;
             reporting_timeout = Instant::now();
         }
     }
@@ -245,15 +250,27 @@ async fn display_report(report: &MiningReport, config: &MinerConfig, template_ti
 }
 
 /// If config
-async fn validate_tip(node_conn: &mut BaseNodeClient<Channel>, height: u64) -> Result<(), MinerError> {
+async fn validate_tip(
+    node_conn: &mut BaseNodeClient<Channel>,
+    height: u64,
+    mine_until_height: Option<u64>,
+) -> Result<(), MinerError> {
     let tip = node_conn
         .get_tip_info(tari_app_grpc::tari_rpc::Empty {})
         .await?
         .into_inner();
+    let longest_height = tip.clone().metadata.unwrap().height_of_longest_chain;
+    if let Some(height) = mine_until_height {
+        if longest_height >= height {
+            return Err(MinerError::MineUntilHeightReached(height));
+        }
+    }
+    if height <= longest_height {
+        return Err(MinerError::MinerLostBlock(height));
+    }
     if !tip.initial_sync_achieved || tip.metadata.is_none() {
         return Err(MinerError::NodeNotReady);
     }
-    let longest_height = tip.metadata.unwrap().height_of_longest_chain;
     if height <= longest_height {
         return Err(MinerError::MinerLostBlock(height));
     }

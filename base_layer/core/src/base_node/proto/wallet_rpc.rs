@@ -25,6 +25,7 @@ use crate::{
     proto::{base_node as proto, types},
     transactions::types::Signature,
 };
+
 use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom,

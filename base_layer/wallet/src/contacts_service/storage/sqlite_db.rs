@@ -140,8 +140,7 @@ impl ContactSql {
         &self,
         updated_contact: UpdateContact,
         conn: &SqliteConnection,
-    ) -> Result<ContactSql, ContactsServiceStorageError>
-    {
+    ) -> Result<ContactSql, ContactsServiceStorageError> {
         let num_updated = diesel::update(contacts::table.filter(contacts::public_key.eq(&self.public_key)))
             .set(updated_contact)
             .execute(conn)?;
@@ -152,7 +151,7 @@ impl ContactSql {
             ));
         }
 
-        Ok(ContactSql::find(&self.public_key, conn)?)
+        ContactSql::find(&self.public_key, conn)
     }
 }
 
@@ -242,10 +241,9 @@ mod test {
             let retrieved_contacts = ContactSql::index(&conn).unwrap();
             assert_eq!(retrieved_contacts.len(), 2);
 
-            assert!(retrieved_contacts
+            assert!(!retrieved_contacts
                 .iter()
-                .find(|v| v == &&ContactSql::from(contacts[0].clone()))
-                .is_none());
+                .any(|v| v == &ContactSql::from(contacts[0].clone())));
 
             let c = ContactSql::find(&contacts[1].public_key.to_vec(), &conn).unwrap();
             c.update(

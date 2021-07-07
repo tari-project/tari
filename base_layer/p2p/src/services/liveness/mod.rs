@@ -70,12 +70,13 @@ use crate::{
     },
     tari_message::TariMessageType,
 };
-use futures::{future, Future, Stream, StreamExt};
+use futures::{Stream, StreamExt};
 use log::*;
 use std::sync::Arc;
 use tari_comms::connectivity::ConnectivityRequester;
 use tari_comms_dht::Dht;
 use tari_service_framework::{
+    async_trait,
     reply_channel,
     ServiceInitializationError,
     ServiceInitializer,
@@ -96,8 +97,7 @@ impl LivenessInitializer {
     pub fn new(
         config: LivenessConfig,
         inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             config: Some(config),
             inbound_message_subscription_factory,
@@ -113,10 +113,9 @@ impl LivenessInitializer {
     }
 }
 
+#[async_trait]
 impl ServiceInitializer for LivenessInitializer {
-    type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
-
-    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+    async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (sender, receiver) = reply_channel::unbounded();
 
         let (publisher, _) = broadcast::channel(200);
@@ -153,6 +152,6 @@ impl ServiceInitializer for LivenessInitializer {
             debug!(target: LOG_TARGET, "Liveness service has shut down");
         });
 
-        future::ready(Ok(()))
+        Ok(())
     }
 }

@@ -2,15 +2,18 @@
 
 The Tari Console Wallet is a terminal based wallet for sending and receiving Tari. It can be run in a few different modes.
 
-### Terminal UI (TUI) mode
+## Terminal UI (TUI) mode
+
 The standard operating mode, TUI mode is the default when starting `tari_console_wallet`. Displays a UI in the terminal to interact with the wallet.
 
 ![](./docs/img/tui.png)
 
-### Daemon (GRPC) mode
+## Daemon (GRPC) mode
+
 Run as a server with no UI, but exposing the GRPC interface with `tari_console_wallet --daemon`.
 
-### Command mode
+## Command mode
+
 Run a once off command with the `--command` argument:
 
 - **get-balance**
@@ -20,6 +23,7 @@ Get your wallet balance
 `tari_console_wallet --command "get-balance"`
 
 example output:
+
 ```
 Available balance: 1268922.299856 T
 Pending incoming balance: 6010 µT
@@ -33,6 +37,7 @@ Send an amount of Tari to a public key or emoji id.
 `tari_console_wallet --command "send-tari <amount> <pubkey> <optional message>"`
 
 example:
+
 ```
 $ tari_console_wallet --command "send-tari 1T c69fbe5f05a304eaec65d5f234a6aa258a90b8bb5b9ceffea779653667ef2108 coffee"
 
@@ -49,8 +54,9 @@ Make it rain! Send many transactions to a public key or emoji id.
 `tari_console_wallet --command "make-it-rain <tx/sec> <duration> <amount> <increment> <start time or now> <pubkey> <optional message>"`
 
 example:
+
 ```
-$ tari_console_wallet  --command "make-it-rain 1 10 8000 100 now c69fbe5f05a304eaec65d5f234a6aa258a90b8bb5b9ceffea779653667ef2108 makin it rain yo"
+$ tari_console_wallet --command "make-it-rain 1 10 8000 100 now c69fbe5f05a304eaec65d5f234a6aa258a90b8bb5b9ceffea779653667ef2108 makin it rain yo"
 
 1. make-it-rain 1 10 8000 µT 100 µT 2021-03-26 10:03:30.459157 UTC c69fbe5f05a304eaec65d5f234a6aa258a90b8bb5b9ceffea779653667ef2108 makin it rain yo
 
@@ -64,11 +70,11 @@ Split one or more unspent transaction outputs into many.
 Creates a transaction that must be mined before the new outputs can be spent.
 
 `tari_console_wallet --command "coin-split <amount per coin> <number of coins>"`
+
 example:
-$ tari_console_wallet --command "coin-split 10000 9"
-example output:
+
 ```
-$ tari_console_wallet  --command "coin-split 10000 µT 9"
+$ tari_console_wallet --command "coin-split 10000 9"
 
 1. coin-split 10000 µT 9
 
@@ -77,10 +83,61 @@ Monitoring 1 sent transactions to Broadcast stage...
 Done! All transactions monitored to Broadcast stage.
 ```
 
+- **set-base-node**
+
+Sets the base node peer that the wallet should connect to (not persisted after exit, normally used in a script).
+
+`tari_console_wallet --command "set-base-node <public key or emoji id> <network address>"`
+
+example:
+
+```
+$ tari_console_wallet --command "set-base-node 3883ab92d91eb70155d1d471c9e569d2bcae10ee3f196b8dfdaade1e7546c520 /onion3/wlyt2p4ft4mtj6zs2fdgw6hwfqvf5i4hhia4y6ffk6oybfsbrwqcpead:18141"
+
+1. set-base-node 3883ab92d91eb70155d1d471c9e569d2bcae10ee3f196b8dfdaade1e7546c520 /onion3/wlyt2p4ft4mtj6zs2fdgw6hwfqvf5i4hhia4y6ffk6oybfsbrwqcpead:18141
+
+Setting base node peer...
+3883ab92d91eb70155d1d471c9e569d2bcae10ee3f196b8dfdaade1e7546c520::/onion3/wlyt2p4ft4mtj6zs2fdgw6hwfqvf5i4hhia4y6ffk6oybfsbrwqcpead:18141
+```
+
+- **set-custom-base-node**
+
+Sets the custom base node peer that the wallet should connect to, and persists the peer to the wallet database.
+
+`tari_console_wallet --command "set-custom-base-node <public key or emoji id> <network address>"`
+
+example:
+
+```
+$ tari_console_wallet --command "set-custom-base-node 3883ab92d91eb70155d1d471c9e569d2bcae10ee3f196b8dfdaade1e7546c520 /onion3/wlyt2p4ft4mtj6zs2fdgw6hwfqvf5i4hhia4y6ffk6oybfsbrwqcpead:18141"
+
+1. set-custom-base-node 3883ab92d91eb70155d1d471c9e569d2bcae10ee3f196b8dfdaade1e7546c520 /onion3/wlyt2p4ft4mtj6zs2fdgw6hwfqvf5i4hhia4y6ffk6oybfsbrwqcpead:18141
+
+Setting base node peer...
+3883ab92d91eb70155d1d471c9e569d2bcae10ee3f196b8dfdaade1e7546c520::/onion3/wlyt2p4ft4mtj6zs2fdgw6hwfqvf5i4hhia4y6ffk6oybfsbrwqcpead:18141
+Saving custom base node peer in wallet database.
+```
+
+- **clear-custom-base-node**
+
+Clears the custom base node peer from the wallet database.
+
+`tari_console_wallet --command "clear-custom-base-node"`
+
+example:
+
+```
+$ tari_console_wallet --command clear-custom-base-node
+
+1. clear-custom-base-node
+
+Clearing custom base node peer in wallet database.
+```
+
 - **export-utxos**
 
-Export all the unspent transaction outputs (UTXOs) in the wallet. This can either list the UTXOs directly in the 
-console, or write them to file. In the latter case the complete unblinded set of information will be exported. 
+Export all the unspent transaction outputs (UTXOs) in the wallet. This can either list the UTXOs directly in the
+console, or write them to file. In the latter case the complete unblinded set of information will be exported.
 
 ```
 tari_console_wallet --command "export-utxos"
@@ -88,8 +145,9 @@ tari_console_wallet --command "export-utxos --csv-file <file name>"
 ```
 
 example output - console only:
+
 ```
-$ tari_console_wallet  --command "export-utxos"
+$ tari_console_wallet --command "export-utxos"
 
 1. export-utxos
 
@@ -103,8 +161,9 @@ Total value of UTXOs: 1268921.295856 T
 ```
 
 example output - `--csv-file` (console output):
+
 ```
-$ tari_console_wallet  --command "export-utxos --csv-file utxos.csv"
+$ tari_console_wallet --command "export-utxos --csv-file utxos.csv"
 
 1. export-utxos --csv-file utxos.csv
 
@@ -113,6 +172,7 @@ Total value of UTXOs: 36105.165440 T
 ```
 
 example output - `--csv-file` (contents of `utxos.csv`)
+
 ```
 "#","Value (uT)","Spending Key","Commitment","Flags","Maturity"
 "1","121999250","0b0ce2add569845ec8bb84256b731e644e2224580b568e75666399e868ea5701","22514e279bd7e7e0a6e45905e07323b16f6114e300bcc02f36b2baf44a17b43d","(empty)","0"
@@ -130,6 +190,7 @@ Count the number of unspent transaction outputs (UTXOs) in the wallet.
 `tari_console_wallet --command "count-utxos"`
 
 example output:
+
 ```
 1. count-utxos
 
@@ -147,6 +208,7 @@ Discover a peer on the network by public key or emoji id.
 `tari_console_wallet --command "discover-peer <public key or emoji id>"`
 
 example output:
+
 ```
 1. discover-peer c69fbe5f05a304eaec65d5f234a6aa258a90b8bb5b9ceffea779653667ef2108
 
@@ -163,6 +225,7 @@ Look up a public key or emoji id, useful for converting between the two formats.
 `tari_console_wallet --command "whois <public key or emoji id>"`
 
 example output:
+
 ```
 1. whois c69fbe5f05a304eaec65d5f234a6aa258a90b8bb5b9ceffea779653667ef2108
 
@@ -170,11 +233,12 @@ Public Key: c69fbe5f05a304eaec65d5f234a6aa258a90b8bb5b9ceffea779653667ef2108
 Emoji ID  : 📈👛💭🎾🌍👡🌋😻🚀🏉🔥🚓🍳👹👿🍕🐵🐼💡💦🎺👘🚌🚿👻🐛🏉🍵🏥🚌🍑🌞🍹
 ```
 
-### Script mode
+## Script mode
 
-Run a series of commands from a given script.
+Run a series of commands from a given script. The commands should be formatted the same way as Command mode, one per line in a text file.
 
 `tari_console_wallet --script /path/to/script`
 
-### Recovery mode
+## Recovery mode
+
 todo docs

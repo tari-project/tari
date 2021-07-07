@@ -71,7 +71,7 @@ pub fn run_migration_and_create_sqlite_connection<P: AsRef<Path>>(
     let path_str = db_path
         .as_ref()
         .to_str()
-        .ok_or_else(|| WalletStorageError::InvalidUnicodePath)?;
+        .ok_or(WalletStorageError::InvalidUnicodePath)?;
     let connection = SqliteConnection::establish(path_str)?;
     connection.execute("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 60000;")?;
 
@@ -82,29 +82,30 @@ pub fn run_migration_and_create_sqlite_connection<P: AsRef<Path>>(
     Ok(WalletDbConnection::new(connection, Some(file_lock)))
 }
 
-/// This function will copy a wallet database to the provided path and then clear the CommsPrivateKey from the database.
+/// This function will copy a wallet database to the provided path and then clear the Master Private Key from the
+/// database.
 pub async fn partial_wallet_backup<P: AsRef<Path>>(current_db: P, backup_path: P) -> Result<(), WalletStorageError> {
     // Copy the current db to the backup path
     let db_path = current_db
         .as_ref()
         .to_str()
-        .ok_or_else(|| WalletStorageError::InvalidUnicodePath)?;
+        .ok_or(WalletStorageError::InvalidUnicodePath)?;
     let backup_path = backup_path
         .as_ref()
         .to_str()
-        .ok_or_else(|| WalletStorageError::InvalidUnicodePath)?;
+        .ok_or(WalletStorageError::InvalidUnicodePath)?;
     std::fs::copy(db_path, backup_path)
         .map_err(|_| WalletStorageError::FileError("Could not copy database file for backup".to_string()))?;
 
-    // open a connection and clear the Comms Private Key
+    // open a connection and clear the Master Secret Key
     let connection = run_migration_and_create_sqlite_connection(backup_path)?;
     let db = WalletDatabase::new(WalletSqliteDatabase::new(connection, None)?);
-    db.clear_comms_secret_key().await?;
+    db.clear_master_secret_key().await?;
 
     Ok(())
 }
 
-pub fn acquire_exclusive_file_lock(db_path: &PathBuf) -> Result<File, WalletStorageError> {
+pub fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, WalletStorageError> {
     let lock_file_path = match db_path.file_name() {
         None => {
             return Err(WalletStorageError::FileError(
@@ -147,10 +148,9 @@ pub fn initialize_sqlite_database_backends(
         ContactsServiceSqliteDatabase,
     ),
     WalletStorageError,
->
-{
+> {
     let cipher = passphrase.map(|passphrase_str| {
-        let passphrase_hash = Blake256::new().chain(passphrase_str.as_bytes()).result();
+        let passphrase_hash = Blake256::new().chain(passphrase_str.as_bytes()).finalize();
         let key = GenericArray::from_slice(passphrase_hash.as_slice());
         Aes256Gcm::new(key)
     });

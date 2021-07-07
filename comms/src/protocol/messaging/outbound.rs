@@ -58,8 +58,7 @@ impl OutboundMessaging {
         request_rx: mpsc::UnboundedReceiver<OutboundMessage>,
         peer_node_id: NodeId,
         inactivity_timeout: Option<Duration>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             connectivity,
             request_rx,
@@ -186,8 +185,7 @@ impl OutboundMessaging {
     async fn try_open_substream(
         &mut self,
         mut conn: PeerConnection,
-    ) -> Result<NegotiatedSubstream<Substream>, MessagingProtocolError>
-    {
+    ) -> Result<NegotiatedSubstream<Substream>, MessagingProtocolError> {
         match conn.open_substream(&MESSAGING_PROTOCOL).await {
             Ok(substream) => Ok(substream),
             Err(err) => {
@@ -205,8 +203,7 @@ impl OutboundMessaging {
     async fn start_forwarding_messages(
         self,
         substream: NegotiatedSubstream<Substream>,
-    ) -> Result<(), MessagingProtocolError>
-    {
+    ) -> Result<(), MessagingProtocolError> {
         debug!(
             target: LOG_TARGET,
             "Starting direct message forwarding for peer `{}`",

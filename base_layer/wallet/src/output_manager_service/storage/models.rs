@@ -27,9 +27,10 @@ use tari_core::{
     transactions::{
         transaction::UnblindedOutput,
         transaction_protocol::RewindData,
-        types::{Commitment, CryptoFactories, HashOutput},
+        types::{Commitment, CryptoFactories, HashOutput, PrivateKey},
     },
 };
+use tari_crypto::script::{ExecutionStack, TariScript};
 
 #[derive(Debug, Clone)]
 pub struct DbUnblindedOutput {
@@ -42,8 +43,7 @@ impl DbUnblindedOutput {
     pub fn from_unblinded_output(
         output: UnblindedOutput,
         factory: &CryptoFactories,
-    ) -> Result<DbUnblindedOutput, OutputManagerStorageError>
-    {
+    ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
         let tx_out = output.as_transaction_output(factory)?;
         Ok(DbUnblindedOutput {
             hash: tx_out.hash(),
@@ -56,8 +56,7 @@ impl DbUnblindedOutput {
         output: UnblindedOutput,
         factory: &CryptoFactories,
         rewind_data: &RewindData,
-    ) -> Result<DbUnblindedOutput, OutputManagerStorageError>
-    {
+    ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
         let tx_out = output.as_rewindable_transaction_output(factory, rewind_data)?;
         Ok(DbUnblindedOutput {
             hash: tx_out.hash(),
@@ -92,3 +91,17 @@ impl Ord for DbUnblindedOutput {
 }
 
 impl Eq for DbUnblindedOutput {}
+
+#[derive(Debug, Clone)]
+pub struct KnownOneSidedPaymentScript {
+    pub script_hash: Vec<u8>,
+    pub private_key: PrivateKey,
+    pub script: TariScript,
+    pub input: ExecutionStack,
+}
+
+impl PartialEq for KnownOneSidedPaymentScript {
+    fn eq(&self, other: &KnownOneSidedPaymentScript) -> bool {
+        self.script_hash == other.script_hash
+    }
+}

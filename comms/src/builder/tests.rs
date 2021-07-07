@@ -64,8 +64,7 @@ async fn spawn_node(
     mpsc::Receiver<InboundMessage>,
     mpsc::Sender<OutboundMessage>,
     MessagingEventSender,
-)
-{
+) {
     let addr = format!("/memory/{}", memsocket::acquire_next_memsocket_port())
         .parse::<Multiaddr>()
         .unwrap();

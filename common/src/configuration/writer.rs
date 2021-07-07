@@ -45,7 +45,7 @@
 //! };
 //! // Merging configs into resulting structure, accounting preset network params
 //! let mut config = Config::new();
-//! config.set(&MyNodeConfig::network_config_key(), "rincewind");
+//! config.set(&MyNodeConfig::network_config_key(), "weatherwax");
 //! main_config.merge_into(&mut config).unwrap();
 //! node_config.merge_into(&mut config).unwrap();
 //!
@@ -57,15 +57,15 @@
 //! name = "test_server"
 //!
 //! [my_node]
-//! network = "rincewind"
+//! network = "weatherwax"
 //!
-//! [my_node.rincewind]
+//! [my_node.weatherwax]
 //! address = "localhost"
 //! port = 3001
 //! "#
 //! );
 //! ```
-use super::{loader::ConfigPath, ConfigurationError};
+use super::loader::{ConfigPath, ConfigurationError};
 use config::Config;
 
 /// Configuration writer based on ConfigPath selectors

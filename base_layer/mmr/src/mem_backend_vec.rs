@@ -72,12 +72,11 @@ impl<T: Clone + PartialEq> ArrayLike for MemBackendVec<T> {
     }
 
     fn get(&self, index: usize) -> Result<Option<Self::Value>, Self::Error> {
-        Ok(self
-            .db
+        self.db
             .read()
             .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?
             .get(index)
-            .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?)
+            .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))
     }
 
     fn clear(&mut self) -> Result<(), Self::Error> {

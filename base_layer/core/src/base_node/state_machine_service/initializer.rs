@@ -37,11 +37,10 @@ use crate::{
     proof_of_work::randomx_factory::{RandomXConfig, RandomXFactory},
     transactions::types::CryptoFactories,
 };
-use futures::{future, Future};
 use log::*;
 use std::sync::Arc;
 use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
-use tari_service_framework::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::sync::{broadcast, watch};
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::initializer";
@@ -61,8 +60,7 @@ where B: BlockchainBackend + 'static
         config: BaseNodeStateMachineConfig,
         rules: ConsensusManager,
         factories: CryptoFactories,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             db,
             config,
@@ -72,12 +70,11 @@ where B: BlockchainBackend + 'static
     }
 }
 
+#[async_trait]
 impl<B> ServiceInitializer for BaseNodeStateMachineInitializer<B>
 where B: BlockchainBackend + 'static
 {
-    type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
-
-    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+    async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         trace!(target: LOG_TARGET, "init of base_node");
         let (state_event_publisher, _) = broadcast::channel(500);
         let (status_event_sender, status_event_receiver) = watch::channel(StatusInfo::new());
@@ -124,6 +121,6 @@ where B: BlockchainBackend + 'static
             info!(target: LOG_TARGET, "Base Node State Machine Service has shut down");
         });
 
-        future::ready(Ok(()))
+        Ok(())
     }
 }

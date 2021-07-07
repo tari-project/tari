@@ -76,8 +76,7 @@ impl<'a> AddOnion<'a> {
         flags: Vec<AddOnionFlag>,
         port_mapping: PortMapping,
         num_streams: Option<NonZeroU16>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             key_type,
             key_blob,
@@ -118,7 +117,7 @@ impl TorCommand for AddOnion<'_> {
     }
 
     fn parse_responses(&self, mut responses: Vec<ResponseLine>) -> Result<Self::Output, Self::Error> {
-        let last_response = responses.pop().ok_or_else(|| TorClientError::UnexpectedEof)?;
+        let last_response = responses.pop().ok_or(TorClientError::UnexpectedEof)?;
         if let Some(err) = last_response.err() {
             if err.contains("Onion address collision") {
                 return Err(TorClientError::OnionAddressCollision);
@@ -131,10 +130,7 @@ impl TorCommand for AddOnion<'_> {
 
         for response in responses {
             let (key, values) = parsers::key_value(&response.value)?;
-            let value = values
-                .into_iter()
-                .next()
-                .ok_or_else(|| TorClientError::KeyValueNoValue)?;
+            let value = values.into_iter().next().ok_or(TorClientError::KeyValueNoValue)?;
             match &*key {
                 "ServiceID" => {
                     service_id = Some(value.into_owned());
@@ -166,7 +162,7 @@ impl TorCommand for AddOnion<'_> {
             }
         }
 
-        let service_id = service_id.ok_or_else(|| TorClientError::AddOnionNoServiceId)?;
+        let service_id = service_id.ok_or(TorClientError::AddOnionNoServiceId)?;
 
         Ok(AddOnionResponse {
             service_id,

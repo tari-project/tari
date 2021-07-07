@@ -19,10 +19,9 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
 
-// Import the auto-generated const values from the Manifest and Git
-include!(concat!(env!("OUT_DIR"), "/consts.rs"));
+use chrono::{Datelike, Utc};
+use tari_app_utilities::consts;
 
 /// returns the top or bottom box line of the specified length
 fn box_line(length: usize, is_top: bool) -> String {
@@ -66,8 +65,7 @@ fn box_tabular_data_rows(
     sizes: Vec<usize>,
     target_length: usize,
     spacing: usize,
-) -> Vec<String>
-{
+) -> Vec<String> {
     let max_cell_length = sizes.iter().max().unwrap();
     let mut result = Vec::new();
     for items in data {
@@ -156,9 +154,15 @@ pub fn print_banner(commands: Vec<String>, chunk_size: i32) {
     println!("{}", box_data("~~~~~~~~~~~~~~".to_string(), target_line_length));
     println!(
         "{}",
-        box_data(format!("Copyright 2019-2021. {}", AUTHOR), target_line_length)
+        box_data(
+            format!("Copyright 2019-{}. {}", Utc::now().year(), consts::APP_AUTHOR),
+            target_line_length
+        )
     );
-    println!("{}", box_data(format!("Version {}", VERSION), target_line_length));
+    println!(
+        "{}",
+        box_data(format!("Version {}", consts::APP_VERSION), target_line_length)
+    );
     println!("{}", box_separator(target_line_length));
     println!("{}", box_data("Commands".to_string(), target_line_length));
     println!("{}", box_data("~~~~~~~~".to_string(), target_line_length));

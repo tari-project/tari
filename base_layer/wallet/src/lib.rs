@@ -7,7 +7,6 @@
 #![deny(unknown_lints)]
 #![recursion_limit = "2048"]
 #![feature(drain_filter)]
-#![feature(type_alias_impl_trait)]
 
 #[macro_use]
 mod macros;
@@ -32,9 +31,11 @@ extern crate diesel_migrations;
 #[macro_use]
 extern crate lazy_static;
 
+mod config;
 pub mod schema;
-pub mod tasks;
+pub mod utxo_scanner_service;
 
+pub use config::WalletConfig;
 pub use wallet::Wallet;
 
 use crate::{

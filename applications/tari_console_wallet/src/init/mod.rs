@@ -25,56 +25,37 @@ use crate::{
     wallet_modes::{PeerConfig, WalletMode},
 };
 use log::*;
-use rand::rngs::OsRng;
 use rpassword::prompt_password_stdout;
 use rustyline::Editor;
 use std::{fs, path::PathBuf, str::FromStr, sync::Arc};
 use tari_app_utilities::utilities::{setup_wallet_transport_type, ExitCodes};
-use tari_common::{ConfigBootstrap, GlobalConfig, Network};
+use tari_common::{ConfigBootstrap, GlobalConfig};
 use tari_comms::{
     peer_manager::{Peer, PeerFeatures},
+    types::CommsSecretKey,
     NodeIdentity,
 };
 use tari_comms_dht::{DbConnectionUrl, DhtConfig};
-use tari_core::{
-    consensus::Network as NetworkType,
-    transactions::types::{CryptoFactories, PrivateKey},
-};
-use tari_crypto::keys::SecretKey;
+use tari_core::transactions::types::{CryptoFactories, PrivateKey};
 use tari_p2p::{
     initialization::CommsConfig,
-    seed_peer::SeedPeer,
+    peer_seeds::SeedPeer,
     transport::TransportType::Tor,
-    DEFAULT_DNS_SEED_RESOLVER,
+    DEFAULT_DNS_NAME_SERVER,
 };
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     base_node_service::config::BaseNodeServiceConfig,
     error::{WalletError, WalletStorageError},
-    output_manager_service::{
-        config::OutputManagerServiceConfig,
-        protocols::txo_validation_protocol::TxoValidationType,
-        storage::{
-            database::{
-                DbKeyValuePair as OutputDbKeyValuePair,
-                KeyManagerState,
-                OutputManagerBackend,
-                WriteOperation as OutputWriteOperation,
-            },
-            sqlite_db::OutputManagerSqliteDatabase,
-        },
-    },
-    storage::{
-        database::{DbKey, DbKeyValuePair, DbValue, WalletBackend, WriteOperation},
-        sqlite_utilities::initialize_sqlite_database_backends,
-    },
+    output_manager_service::{config::OutputManagerServiceConfig, TxoValidationType},
+    storage::{database::WalletDatabase, sqlite_utilities::initialize_sqlite_database_backends},
     transaction_service::{
         config::{TransactionRoutingMechanism, TransactionServiceConfig},
         tasks::start_transaction_validation_and_broadcast_protocols::start_transaction_validation_and_broadcast_protocols,
     },
     types::ValidationRetryStrategy,
-    wallet::WalletConfig,
     Wallet,
+    WalletConfig,
     WalletSqlite,
 };
 
@@ -95,8 +76,7 @@ pub enum WalletBoot {
 pub fn get_or_prompt_password(
     arg_password: Option<String>,
     config_password: Option<String>,
-) -> Result<Option<String>, ExitCodes>
-{
+) -> Result<Option<String>, ExitCodes> {
     if arg_password.is_some() {
         return Ok(arg_password);
     }
@@ -138,8 +118,7 @@ pub async fn change_password(
     config: &GlobalConfig,
     arg_password: Option<String>,
     shutdown_signal: ShutdownSignal,
-) -> Result<(), ExitCodes>
-{
+) -> Result<(), ExitCodes> {
     let mut wallet = init_wallet(config, arg_password, None, None, shutdown_signal).await?;
 
     let passphrase = prompt_password("New wallet password: ")?;
@@ -165,8 +144,7 @@ pub async fn change_password(
 pub async fn get_base_node_peer_config(
     config: &GlobalConfig,
     wallet: &mut WalletSqlite,
-) -> Result<PeerConfig, ExitCodes>
-{
+) -> Result<PeerConfig, ExitCodes> {
     // custom
     let base_node_custom = get_custom_base_node_peer_from_db(wallet).await;
 
@@ -198,7 +176,11 @@ pub async fn get_base_node_peer_config(
 pub fn wallet_mode(bootstrap: &ConfigBootstrap, boot_mode: WalletBoot) -> WalletMode {
     // Recovery mode
     if matches!(boot_mode, WalletBoot::Recovery) {
-        return WalletMode::Recovery;
+        if bootstrap.daemon_mode {
+            return WalletMode::RecoveryDaemon;
+        } else {
+            return WalletMode::RecoveryTui;
+        }
     }
 
     match (
@@ -211,9 +193,9 @@ pub fn wallet_mode(bootstrap: &ConfigBootstrap, boot_mode: WalletBoot) -> Wallet
         // GRPC daemon mode
         (true, None, None) => WalletMode::Grpc,
         // Script mode
-        (false, Some(path), None) => WalletMode::Script(path),
+        (_, Some(path), None) => WalletMode::Script(path),
         // Command mode
-        (false, None, Some(command)) => WalletMode::Command(command),
+        (_, None, Some(command)) => WalletMode::Command(command),
         // Invalid combinations
         _ => WalletMode::Invalid,
     }
@@ -265,10 +247,9 @@ pub async fn init_wallet(
     config: &GlobalConfig,
     arg_password: Option<String>,
     seed_words_file_name: Option<PathBuf>,
-    master_key: Option<PrivateKey>,
+    recovery_master_key: Option<PrivateKey>,
     shutdown_signal: ShutdownSignal,
-) -> Result<WalletSqlite, ExitCodes>
-{
+) -> Result<WalletSqlite, ExitCodes> {
     fs::create_dir_all(
         &config
             .console_wallet_db_file
@@ -283,6 +264,7 @@ pub async fn init_wallet(
 
     // test encryption by initializing with no passphrase...
     let db_path = config.console_wallet_db_file.clone();
+
     let result = initialize_sqlite_database_backends(db_path.clone(), None);
     let (backends, wallet_encrypted) = match result {
         Ok(backends) => {
@@ -301,49 +283,40 @@ pub async fn init_wallet(
         },
     };
     let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend) = backends;
+    let wallet_db = WalletDatabase::new(wallet_backend);
 
     debug!(
         target: LOG_TARGET,
         "Databases Initialized. Wallet encrypted? {}.", wallet_encrypted
     );
-    let node_identity = match wallet_backend
-        .fetch(&DbKey::Identity)
-        .map_err(|e| ExitCodes::WalletError(format!("Error creating Wallet database backends. {}", e)))?
-    {
-        Some(DbValue::Identity(v)) => Arc::new(v),
-        _ => {
-            let private_key = PrivateKey::random(&mut OsRng);
-            let node_id = NodeIdentity::new(
-                private_key,
-                config.public_address.clone(),
-                PeerFeatures::COMMUNICATION_CLIENT,
-            )
-            .map_err(|e| ExitCodes::WalletError(format!("We were unable to construct a node identity. {}", e)))?;
-            wallet_backend
-                .write(WriteOperation::Insert(DbKeyValuePair::Identity(Box::new(
-                    node_id.clone(),
-                ))))
-                .map_err(|e| ExitCodes::WalletError(format!("Error creating Wallet database backends. {}", e)))?;
-            Arc::new(node_id)
-        },
+
+    let node_address = match wallet_db.get_node_address().await? {
+        None => config.public_address.clone(),
+        Some(a) => a,
     };
+
+    let node_features = match wallet_db.get_node_features().await? {
+        None => PeerFeatures::COMMUNICATION_CLIENT,
+        Some(nf) => nf,
+    };
+
+    let node_identity = Arc::new(NodeIdentity::new(
+        CommsSecretKey::default(),
+        node_address,
+        node_features,
+    ));
 
     let transport_type = setup_wallet_transport_type(&config);
     let transport_type = match transport_type {
         Tor(mut tor_config) => {
-            tor_config.identity = match wallet_backend
-                .fetch(&DbKey::TorId)
-                .map_err(|e| ExitCodes::WalletError(format!("Error creating Wallet database backends. {}", e)))?
-            {
-                Some(DbValue::TorId(v)) => Some(Box::new(v)),
-                _ => None,
-            };
+            tor_config.identity = wallet_db.get_tor_id().await?.map(Box::new);
             Tor(tor_config)
         },
         _ => transport_type,
     };
 
     let comms_config = CommsConfig {
+        network: config.network,
         node_identity,
         user_agent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
         transport_type,
@@ -356,7 +329,6 @@ pub async fn init_wallet(
             database_url: DbConnectionUrl::File(config.data_dir.join("dht-console-wallet.db")),
             auto_join: true,
             allow_test_addresses: config.allow_test_addresses,
-            network: config.network.into(),
             flood_ban_max_msg_count: config.flood_ban_max_msg_count,
             saf_msg_validity: config.saf_expiry_duration,
             ..Default::default()
@@ -365,18 +337,10 @@ pub async fn init_wallet(
         allow_test_addresses: config.allow_test_addresses,
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
-        dns_seeds_name_server: DEFAULT_DNS_SEED_RESOLVER.parse().unwrap(),
+        dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
         peer_seeds: Default::default(),
         dns_seeds: Default::default(),
         dns_seeds_use_dnssec: true,
-    };
-
-    let network = match &config.network {
-        Network::MainNet => NetworkType::MainNet,
-        Network::Ridcully => NetworkType::Ridcully,
-        Network::LocalNet => NetworkType::LocalNet,
-        Network::Stibbons => NetworkType::Stibbons,
-        Network::Rincewind => unimplemented!("Rincewind has been retired"),
     };
 
     let base_node_service_config = BaseNodeServiceConfig::new(
@@ -404,22 +368,22 @@ pub async fn init_wallet(
             prevent_fee_gt_amount: config.prevent_fee_gt_amount,
             ..Default::default()
         }),
-        network,
+        config.network.into(),
         Some(base_node_service_config),
         Some(config.buffer_size_base_node_wallet),
         Some(config.buffer_rate_limit_base_node_wallet),
+        Some(config.scan_for_utxo_interval),
     );
     wallet_config.buffer_size = std::cmp::max(BASE_NODE_BUFFER_MIN_SIZE, config.buffer_size_base_node);
 
-    let recovery = set_master_key(&output_manager_backend, master_key).await?;
-
-    let mut wallet = Wallet::new(
+    let mut wallet = Wallet::start(
         wallet_config,
-        wallet_backend,
+        wallet_db,
         transaction_backend,
         output_manager_backend,
         contacts_backend,
         shutdown_signal,
+        recovery_master_key.clone(),
     )
     .await
     .map_err(|e| {
@@ -461,7 +425,7 @@ pub async fn init_wallet(
 
         debug!(target: LOG_TARGET, "Wallet encrypted.");
 
-        if interactive && !recovery {
+        if interactive && recovery_master_key.is_none() {
             confirm_seed_words(&mut wallet).await?;
         }
         if let Some(file_name) = seed_words_file_name {
@@ -474,39 +438,12 @@ pub async fn init_wallet(
     Ok(wallet)
 }
 
-/// If a master key is provided, set the initial key manager state to use that master key.
-/// Returns true if the master key was provided, which means recovery is required.
-async fn set_master_key(
-    output_manager_backend: &OutputManagerSqliteDatabase,
-    master_key: Option<PrivateKey>,
-) -> Result<bool, ExitCodes>
-{
-    if let Some(master_key) = master_key {
-        let state = KeyManagerState {
-            master_key,
-            branch_seed: "".to_string(),
-            primary_key_index: 0,
-        };
-
-        output_manager_backend
-            .write(OutputWriteOperation::Insert(OutputDbKeyValuePair::KeyManagerState(
-                state,
-            )))
-            .map_err(|e| ExitCodes::IOError(e.to_string()))?;
-
-        Ok(true)
-    } else {
-        Ok(false)
-    }
-}
-
 /// Starts the wallet by setting the base node peer, and restarting the transaction and broadcast protocols.
 pub async fn start_wallet(
     wallet: &mut WalletSqlite,
     base_node: &Peer,
     wallet_mode: &WalletMode,
-) -> Result<(), ExitCodes>
-{
+) -> Result<(), ExitCodes> {
     // TODO gRPC interfaces for setting base node
     debug!(target: LOG_TARGET, "Setting base node peer");
 

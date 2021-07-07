@@ -36,8 +36,7 @@ pub async fn wait_on_dial(
     destination_pubkey: CommsPublicKey,
     message: &str,
     direct_send_timeout: Duration,
-) -> bool
-{
+) -> bool {
     if send_states.len() == 1 {
         debug!(
             target: LOG_TARGET,

@@ -46,8 +46,7 @@ pub fn setup_node_identity<P: AsRef<Path>>(
     public_address: &Multiaddr,
     create_id: bool,
     peer_features: PeerFeatures,
-) -> Result<Arc<NodeIdentity>, ExitCodes>
-{
+) -> Result<Arc<NodeIdentity>, ExitCodes> {
     match load_identity(&identity_file) {
         Ok(id) => Ok(Arc::new(id)),
         Err(e) => {
@@ -138,11 +137,9 @@ pub fn create_new_identity<P: AsRef<Path>>(
     path: P,
     public_addr: Multiaddr,
     features: PeerFeatures,
-) -> Result<NodeIdentity, String>
-{
+) -> Result<NodeIdentity, String> {
     let private_key = PrivateKey::random(&mut OsRng);
-    let node_identity = NodeIdentity::new(private_key, public_addr, features)
-        .map_err(|e| format!("We were unable to construct a node identity. {}", e.to_string()))?;
+    let node_identity = NodeIdentity::new(private_key, public_addr, features);
     save_as_json(path, &node_identity)?;
     Ok(node_identity)
 }
@@ -161,16 +158,9 @@ pub fn recover_node_identity<P: AsRef<Path>>(
     path: P,
     public_addr: &Multiaddr,
     features: PeerFeatures,
-) -> Result<Arc<NodeIdentity>, ExitCodes>
-{
-    let node_identity = NodeIdentity::new(private_key, public_addr.clone(), features).map_err(|e| {
-        ExitCodes::ConfigError(format!(
-            "We were unable to construct a node identity. {}",
-            e.to_string()
-        ))
-    })?;
+) -> Result<Arc<NodeIdentity>, ExitCodes> {
+    let node_identity = NodeIdentity::new(private_key, public_addr.clone(), features);
     save_as_json(path, &node_identity).map_err(ExitCodes::IOError)?;
-
     Ok(Arc::new(node_identity))
 }
 

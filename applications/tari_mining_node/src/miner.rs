@@ -162,8 +162,7 @@ pub fn mining_task(
     sender: Sender<MiningReport>,
     waker: Waker,
     miner: usize,
-)
-{
+) {
     let start = Instant::now();
     let mut hasher = BlockHeaderSha3::new(header).unwrap();
     hasher.random_nonce();

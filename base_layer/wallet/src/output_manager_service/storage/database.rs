@@ -23,7 +23,7 @@
 use crate::output_manager_service::{
     error::OutputManagerStorageError,
     service::Balance,
-    storage::models::DbUnblindedOutput,
+    storage::models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
     TxId,
 };
 use aes_gcm::Aes256Gcm;
@@ -37,8 +37,8 @@ use std::{
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction::{OutputFeatures, UnblindedOutput},
-    types::{BlindingFactor, Commitment, CryptoFactories, PrivateKey},
+    transaction::TransactionOutput,
+    types::{BlindingFactor, Commitment, PrivateKey},
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database";
@@ -81,9 +81,13 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     /// This method will increment the currently stored key index for the key manager config. Increment this after each
     /// key is generated
     fn increment_key_index(&self) -> Result<(), OutputManagerStorageError>;
+    /// This method will set the currently stored key index for the key manager
+    fn set_key_index(&self, index: u64) -> Result<(), OutputManagerStorageError>;
     /// If an unspent output is detected as invalid (i.e. not available on the blockchain) then it should be moved to
     /// the invalid outputs collection. The function will return the last recorded TxId associated with this output.
     fn invalidate_unspent_output(&self, output: &DbUnblindedOutput) -> Result<Option<TxId>, OutputManagerStorageError>;
+    /// This method will update an output's metadata signature, akin to 'finalize output'
+    fn update_output_metadata_signature(&self, output: &TransactionOutput) -> Result<(), OutputManagerStorageError>;
     /// If an invalid output is found to be valid this function will turn it back into an unspent output
     fn revalidate_unspent_output(&self, spending_key: &Commitment) -> Result<(), OutputManagerStorageError>;
     /// Check to see if there exist any pending transaction with a blockheight equal that provided and cancel those
@@ -122,6 +126,7 @@ pub struct KeyManagerState {
 pub enum DbKey {
     SpentOutput(BlindingFactor),
     UnspentOutput(BlindingFactor),
+    AnyOutputByCommitment(Commitment),
     PendingTransactionOutputs(TxId),
     TimeLockedUnspentOutputs(u64),
     UnspentOutputs,
@@ -129,6 +134,7 @@ pub enum DbKey {
     AllPendingTransactionOutputs,
     KeyManagerState,
     InvalidOutputs,
+    KnownOneSidedPaymentScripts,
 }
 
 #[derive(Debug)]
@@ -141,13 +147,17 @@ pub enum DbValue {
     InvalidOutputs(Vec<DbUnblindedOutput>),
     AllPendingTransactionOutputs(HashMap<TxId, PendingTransactionOutputs>),
     KeyManagerState(KeyManagerState),
+    KnownOneSidedPaymentScripts(Vec<KnownOneSidedPaymentScript>),
+    AnyOutput(Box<DbUnblindedOutput>),
 }
 
 pub enum DbKeyValuePair {
     SpentOutput(Commitment, Box<DbUnblindedOutput>),
     UnspentOutput(Commitment, Box<DbUnblindedOutput>),
+    UnspentOutputWithTxId(Commitment, (TxId, Box<DbUnblindedOutput>)),
     PendingTransactionOutputs(TxId, Box<PendingTransactionOutputs>),
     KeyManagerState(KeyManagerState),
+    KnownOneSidedPaymentScripts(KnownOneSidedPaymentScript),
 }
 
 pub enum WriteOperation {
@@ -160,7 +170,7 @@ macro_rules! fetch {
     ($db:ident, $key_val:expr, $key_var:ident) => {{
         let key = DbKey::$key_var($key_val);
         match $db.fetch(&key) {
-            Ok(None) => Err(OutputManagerStorageError::ValueNotFound(key)),
+            Ok(None) => Err(OutputManagerStorageError::ValueNotFound),
             Ok(Some(DbValue::$key_var(k))) => Ok(*k),
             Ok(Some(other)) => unexpected_result(key, other),
             Err(e) => log_error(key, e),
@@ -216,12 +226,38 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
+    pub async fn set_key_index(&self, index: u64) -> Result<(), OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.set_key_index(index))
+            .await
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(())
+    }
+
     pub async fn add_unspent_output(&self, output: DbUnblindedOutput) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || {
             db_clone.write(WriteOperation::Insert(DbKeyValuePair::UnspentOutput(
                 output.commitment.clone(),
                 Box::new(output),
+            )))
+        })
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+
+        Ok(())
+    }
+
+    pub async fn add_unspent_output_with_tx_id(
+        &self,
+        tx_id: TxId,
+        output: DbUnblindedOutput,
+    ) -> Result<(), OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || {
+            db_clone.write(WriteOperation::Insert(DbKeyValuePair::UnspentOutputWithTxId(
+                output.commitment.clone(),
+                (tx_id, Box::new(output)),
             )))
         })
         .await
@@ -311,8 +347,7 @@ where T: OutputManagerBackend + 'static
     pub async fn add_pending_transaction_outputs(
         &self,
         pending_transaction_outputs: PendingTransactionOutputs,
-    ) -> Result<(), OutputManagerStorageError>
-    {
+    ) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || {
             db_clone.write(WriteOperation::Insert(DbKeyValuePair::PendingTransactionOutputs(
@@ -329,8 +364,7 @@ where T: OutputManagerBackend + 'static
     pub async fn fetch_pending_transaction_outputs(
         &self,
         tx_id: TxId,
-    ) -> Result<PendingTransactionOutputs, OutputManagerStorageError>
-    {
+    ) -> Result<PendingTransactionOutputs, OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || fetch!(db_clone, tx_id, PendingTransactionOutputs))
             .await
@@ -354,18 +388,11 @@ where T: OutputManagerBackend + 'static
     pub async fn accept_incoming_pending_transaction(
         &self,
         tx_id: TxId,
-        amount: MicroTari,
-        spending_key: PrivateKey,
-        output_features: OutputFeatures,
-        factory: &CryptoFactories,
+        output: DbUnblindedOutput,
         coinbase_block_height: Option<u64>,
-    ) -> Result<(), OutputManagerStorageError>
-    {
+    ) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
-        let output = DbUnblindedOutput::from_unblinded_output(
-            UnblindedOutput::new(amount, spending_key.clone(), Some(output_features)),
-            factory,
-        )?;
+
         tokio::task::spawn_blocking(move || {
             db_clone.write(WriteOperation::Insert(DbKeyValuePair::PendingTransactionOutputs(
                 tx_id,
@@ -390,8 +417,7 @@ where T: OutputManagerBackend + 'static
         tx_id: TxId,
         outputs_to_send: Vec<DbUnblindedOutput>,
         outputs_to_receive: Vec<DbUnblindedOutput>,
-    ) -> Result<(), OutputManagerStorageError>
-    {
+    ) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || {
             db_clone.short_term_encumber_outputs(tx_id, &outputs_to_send, &outputs_to_receive)
@@ -570,10 +596,20 @@ where T: OutputManagerBackend + 'static
     pub async fn invalidate_output(
         &self,
         output: DbUnblindedOutput,
-    ) -> Result<Option<TxId>, OutputManagerStorageError>
-    {
+    ) -> Result<Option<TxId>, OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.invalidate_unspent_output(&output))
+            .await
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
+            .and_then(|inner_result| inner_result)
+    }
+
+    pub async fn update_output_metadata_signature(
+        &self,
+        output: TransactionOutput,
+    ) -> Result<(), OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.update_output_metadata_signature(&output))
             .await
             .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)
@@ -590,8 +626,7 @@ where T: OutputManagerBackend + 'static
     pub async fn update_spent_output_to_unspent(
         &self,
         commitment: Commitment,
-    ) -> Result<DbUnblindedOutput, OutputManagerStorageError>
-    {
+    ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.update_spent_output_to_unspent(&commitment))
             .await
@@ -602,8 +637,7 @@ where T: OutputManagerBackend + 'static
     pub async fn cancel_pending_transaction_at_block_height(
         &self,
         block_height: u64,
-    ) -> Result<(), OutputManagerStorageError>
-    {
+    ) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.cancel_pending_transaction_at_block_height(block_height))
             .await
@@ -625,6 +659,59 @@ where T: OutputManagerBackend + 'static
             .await
             .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)
+    }
+
+    pub async fn get_all_known_one_sided_payment_scripts(
+        &self,
+    ) -> Result<Vec<KnownOneSidedPaymentScript>, OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+
+        let scripts = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::KnownOneSidedPaymentScripts) {
+            Ok(None) => log_error(
+                DbKey::KnownOneSidedPaymentScripts,
+                OutputManagerStorageError::UnexpectedResult("Could not retrieve known scripts".to_string()),
+            ),
+            Ok(Some(DbValue::KnownOneSidedPaymentScripts(scripts))) => Ok(scripts),
+            Ok(Some(other)) => unexpected_result(DbKey::KnownOneSidedPaymentScripts, other),
+            Err(e) => log_error(DbKey::KnownOneSidedPaymentScripts, e),
+        })
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(scripts)
+    }
+
+    pub async fn add_known_script(
+        &self,
+        known_script: KnownOneSidedPaymentScript,
+    ) -> Result<(), OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || {
+            db_clone.write(WriteOperation::Insert(DbKeyValuePair::KnownOneSidedPaymentScripts(
+                known_script,
+            )))
+        })
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+
+        Ok(())
+    }
+
+    pub async fn remove_output_by_commitment(&self, commitment: Commitment) -> Result<(), OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || {
+            match db_clone.write(WriteOperation::Remove(DbKey::AnyOutputByCommitment(commitment.clone()))) {
+                Ok(None) => log_error(
+                    DbKey::AnyOutputByCommitment(commitment.clone()),
+                    OutputManagerStorageError::ValueNotFound,
+                ),
+                Ok(Some(DbValue::AnyOutput(_))) => Ok(()),
+                Ok(Some(other)) => unexpected_result(DbKey::AnyOutputByCommitment(commitment.clone()), other),
+                Err(e) => log_error(DbKey::AnyOutputByCommitment(commitment), e),
+            }
+        })
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(())
     }
 }
 
@@ -648,6 +735,8 @@ impl Display for DbKey {
             DbKey::KeyManagerState => f.write_str(&"Key Manager State".to_string()),
             DbKey::InvalidOutputs => f.write_str(&"Invalid Outputs Key"),
             DbKey::TimeLockedUnspentOutputs(_t) => f.write_str(&"Timelocked Outputs"),
+            DbKey::KnownOneSidedPaymentScripts => f.write_str(&"Known claiming scripts"),
+            DbKey::AnyOutputByCommitment(_) => f.write_str(&"AnyOutputByCommitment"),
         }
     }
 }
@@ -663,6 +752,8 @@ impl Display for DbValue {
             DbValue::AllPendingTransactionOutputs(_) => f.write_str("All Pending Transaction Outputs"),
             DbValue::KeyManagerState(_) => f.write_str("Key Manager State"),
             DbValue::InvalidOutputs(_) => f.write_str("Invalid Outputs"),
+            DbValue::KnownOneSidedPaymentScripts(_) => f.write_str(&"Known claiming scripts"),
+            DbValue::AnyOutput(_) => f.write_str(&"Any Output"),
         }
     }
 }

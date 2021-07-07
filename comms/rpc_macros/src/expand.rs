@@ -233,35 +233,33 @@ impl TraitInfoCollector {
                     }) => {
                         let arg = args.args.first().ok_or_else(invalid_return_type)?;
                         match arg {
-                            GenericArgument::Type(ty) => match ty {
-                                Type::Path(syn::TypePath { path, .. }) => {
-                                    let ret_ty = path.segments.first().ok_or_else(invalid_return_type)?;
-                                    // Check if the response is streaming
-                                    match ret_ty.ident.to_string().as_str() {
-                                        "Response" => {
-                                            info.is_server_streaming = false;
-                                        },
-                                        "Streaming" => {
-                                            info.is_server_streaming = true;
-                                        },
-                                        _ => return Err(invalid_return_type()),
-                                    }
-                                    // Store the return type
-                                    match &ret_ty.arguments {
-                                        PathArguments::AngleBracketed(args) => {
-                                            let arg = args.args.first().ok_or_else(invalid_return_type)?;
-                                            match arg {
-                                                GenericArgument::Type(ty) => {
-                                                    info.return_type = Some((*ty).clone());
-                                                },
-                                                _ => return Err(invalid_return_type()),
-                                            }
-                                        },
-                                        _ => return Err(invalid_return_type()),
-                                    }
-                                },
-                                _ => return Err(invalid_return_type()),
+                            GenericArgument::Type(Type::Path(syn::TypePath { path, .. })) => {
+                                let ret_ty = path.segments.first().ok_or_else(invalid_return_type)?;
+                                // Check if the response is streaming
+                                match ret_ty.ident.to_string().as_str() {
+                                    "Response" => {
+                                        info.is_server_streaming = false;
+                                    },
+                                    "Streaming" => {
+                                        info.is_server_streaming = true;
+                                    },
+                                    _ => return Err(invalid_return_type()),
+                                }
+                                // Store the return type
+                                match &ret_ty.arguments {
+                                    PathArguments::AngleBracketed(args) => {
+                                        let arg = args.args.first().ok_or_else(invalid_return_type)?;
+                                        match arg {
+                                            GenericArgument::Type(ty) => {
+                                                info.return_type = Some((*ty).clone());
+                                            },
+                                            _ => return Err(invalid_return_type()),
+                                        }
+                                    },
+                                    _ => return Err(invalid_return_type()),
+                                }
                             },
+
                             _ => return Err(invalid_return_type()),
                         }
                     },

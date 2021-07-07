@@ -31,7 +31,7 @@ pub fn build_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
     let public_addr = format!("/memory/{}", MemoryTransport::acquire_next_memsocket_port())
         .parse()
         .unwrap();
-    Arc::new(NodeIdentity::random(&mut OsRng, public_addr, features).unwrap())
+    Arc::new(NodeIdentity::random(&mut OsRng, public_addr, features))
 }
 
 pub fn ordered_node_identities(n: usize, features: PeerFeatures) -> Vec<Arc<NodeIdentity>> {
@@ -48,8 +48,7 @@ pub fn ordered_node_identities_by_distance(
     node_id: &NodeId,
     n: usize,
     features: PeerFeatures,
-) -> Vec<Arc<NodeIdentity>>
-{
+) -> Vec<Arc<NodeIdentity>> {
     let mut ids = build_many_node_identities(n, features);
     ids.sort_unstable_by_key(|a| a.node_id().distance(node_id));
     ids

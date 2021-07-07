@@ -159,7 +159,7 @@ pub struct TcpOutbound<F> {
 
 impl<F> TcpOutbound<F> {
     pub fn new(future: F, config: TcpTransport) -> Self {
-        Self { config, future }
+        Self { future, config }
     }
 }
 

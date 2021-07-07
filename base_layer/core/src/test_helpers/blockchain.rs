@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{genesis_block::get_ridcully_genesis_block, Block, BlockHeader},
+    blocks::{genesis_block::get_weatherwax_genesis_block, Block, BlockHeader},
     chain_storage::{
         create_lmdb_database,
         BlockAccumulatedData,
@@ -41,13 +41,7 @@ use crate::{
         PrunedOutput,
         Validators,
     },
-    consensus::{
-        chain_strength_comparer::ChainStrengthComparerBuilder,
-        ConsensusConstantsBuilder,
-        ConsensusManager,
-        ConsensusManagerBuilder,
-        Network,
-    },
+    consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
         types::{CryptoFactories, HashOutput, Signature},
@@ -64,16 +58,17 @@ use std::{
     ops::Deref,
     path::{Path, PathBuf},
 };
+use tari_common::configuration::Network;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
 
 /// Create a new blockchain database containing no blocks.
 pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {
-    let network = Network::Stibbons;
+    let network = Network::Weatherwax;
     let consensus_constants = ConsensusConstantsBuilder::new(network).build();
-    let genesis = get_ridcully_genesis_block();
-    let consensus_manager = ConsensusManagerBuilder::new(network)
+    let genesis = get_weatherwax_genesis_block();
+    let consensus_manager = ConsensusManager::builder(network)
         .with_consensus_constants(consensus_constants)
         .with_block(genesis)
         .on_ties(ChainStrengthComparerBuilder::new().by_height().build())
@@ -89,8 +84,7 @@ pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {
 pub fn create_store_with_consensus_and_validators(
     rules: ConsensusManager,
     validators: Validators<TempDatabase>,
-) -> BlockchainDatabase<TempDatabase>
-{
+) -> BlockchainDatabase<TempDatabase> {
     create_store_with_consensus_and_validators_and_config(rules, validators, BlockchainDatabaseConfig::default())
 }
 
@@ -98,8 +92,7 @@ pub fn create_store_with_consensus_and_validators_and_config(
     rules: ConsensusManager,
     validators: Validators<TempDatabase>,
     config: BlockchainDatabaseConfig,
-) -> BlockchainDatabase<TempDatabase>
-{
+) -> BlockchainDatabase<TempDatabase> {
     let backend = create_test_db();
     BlockchainDatabase::new(
         backend,
@@ -122,8 +115,8 @@ pub fn create_store_with_consensus(rules: ConsensusManager) -> BlockchainDatabas
     create_store_with_consensus_and_validators(rules, validators)
 }
 pub fn create_test_blockchain_db() -> BlockchainDatabase<TempDatabase> {
-    let network = Network::Stibbons;
-    let rules = ConsensusManagerBuilder::new(network).build();
+    let network = Network::Weatherwax;
+    let rules = ConsensusManager::builder(network).build();
     create_store_with_consensus(rules)
 }
 
@@ -185,8 +178,7 @@ impl BlockchainBackend for TempDatabase {
     fn fetch_header_accumulated_data(
         &self,
         hash: &HashOutput,
-    ) -> Result<Option<BlockHeaderAccumulatedData>, ChainStorageError>
-    {
+    ) -> Result<Option<BlockHeaderAccumulatedData>, ChainStorageError> {
         self.db.fetch_header_accumulated_data(hash)
     }
 
@@ -209,16 +201,14 @@ impl BlockchainBackend for TempDatabase {
     fn fetch_block_accumulated_data(
         &self,
         header_hash: &HashOutput,
-    ) -> Result<Option<BlockAccumulatedData>, ChainStorageError>
-    {
+    ) -> Result<Option<BlockAccumulatedData>, ChainStorageError> {
         self.db.fetch_block_accumulated_data(header_hash)
     }
 
     fn fetch_block_accumulated_data_by_height(
         &self,
         height: u64,
-    ) -> Result<Option<BlockAccumulatedData>, ChainStorageError>
-    {
+    ) -> Result<Option<BlockAccumulatedData>, ChainStorageError> {
         self.db.fetch_block_accumulated_data_by_height(height)
     }
 
@@ -229,16 +219,14 @@ impl BlockchainBackend for TempDatabase {
     fn fetch_kernel_by_excess(
         &self,
         excess: &[u8],
-    ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError>
-    {
+    ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
         self.db.fetch_kernel_by_excess(excess)
     }
 
     fn fetch_kernel_by_excess_sig(
         &self,
         excess_sig: &Signature,
-    ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError>
-    {
+    ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
         self.db.fetch_kernel_by_excess_sig(excess_sig)
     }
 
@@ -251,12 +239,14 @@ impl BlockchainBackend for TempDatabase {
         start: u64,
         end: u64,
         deleted: &Bitmap,
-    ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError>
-    {
+    ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError> {
         self.db.fetch_utxos_by_mmr_position(start, end, deleted)
     }
 
-    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(TransactionOutput, u32)>, ChainStorageError> {
+    fn fetch_output(
+        &self,
+        output_hash: &HashOutput,
+    ) -> Result<Option<(TransactionOutput, u32, u64)>, ChainStorageError> {
         self.db.fetch_output(output_hash)
     }
 
@@ -316,13 +306,12 @@ impl BlockchainBackend for TempDatabase {
         &mut self,
         horizon_height: u64,
         orphan_storage_capacity: usize,
-    ) -> Result<(), ChainStorageError>
-    {
+    ) -> Result<(), ChainStorageError> {
         self.db.delete_oldest_orphans(horizon_height, orphan_storage_capacity)
     }
 
-    fn fetch_monero_seed_first_seen_height(&self, seed: &str) -> Result<u64, ChainStorageError> {
-        self.db.fetch_monero_seed_first_seen_height(seed)
+    fn fetch_monero_seed_first_seen_height(&self, seed: &[u8]) -> Result<u64, ChainStorageError> {
+        self.db.fetch_monero_seed_first_seen_height(&seed)
     }
 
     fn fetch_horizon_data(&self) -> Result<Option<HorizonData>, ChainStorageError> {

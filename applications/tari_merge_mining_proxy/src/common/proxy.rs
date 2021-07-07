@@ -32,8 +32,7 @@ pub async fn convert_json_to_hyper_json_response(
     resp: json::Value,
     code: StatusCode,
     url: Url,
-) -> Result<Response<json::Value>, MmProxyError>
-{
+) -> Result<Response<json::Value>, MmProxyError> {
     let mut builder = Response::builder();
 
     let headers = builder

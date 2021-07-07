@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use log::*;
-use tari_comms::{
-    multiaddr,
-    peer_manager::{node_id::NodeIdError, NodeIdentityError},
-};
+use tari_comms::multiaddr;
 use tari_comms_dht::store_forward::StoreAndForwardError;
 use tari_crypto::{
     signatures::SchnorrSignatureError,
@@ -52,8 +49,6 @@ pub enum InterfaceError {
     TokioError(String),
     #[error("Emoji ID is invalid")]
     InvalidEmojiId,
-    #[error("Comms Private Key is not present while Db appears to be encrypted which should not happen")]
-    MissingCommsPrivateKey,
 }
 
 /// This struct is meant to hold an error for use by FFI client applications. The error has an integer code and string
@@ -86,10 +81,6 @@ impl From<InterfaceError> for LibWalletError {
             },
             InterfaceError::InvalidEmojiId => Self {
                 code: 6,
-                message: format!("{:?}", v),
-            },
-            InterfaceError::MissingCommsPrivateKey => Self {
-                code: 7,
                 message: format!("{:?}", v),
             },
         }
@@ -144,7 +135,7 @@ impl From<WalletError> for LibWalletError {
                 message: format!("{:?}", w),
             },
             WalletError::OutputManagerError(OutputManagerError::OutputManagerStorageError(
-                OutputManagerStorageError::ValueNotFound(_),
+                OutputManagerStorageError::ValueNotFound,
             )) => Self {
                 code: 108,
                 message: format!("{:?}", w),
@@ -268,7 +259,7 @@ impl From<WalletError> for LibWalletError {
                 code: 426,
                 message: format!("{:?}", w),
             },
-            WalletError::WalletRecoveryError(_) => Self {
+            WalletError::UtxoScannerError(_) => Self {
                 code: 427,
                 message: format!("{:?}", w),
             },
@@ -320,25 +311,6 @@ impl From<ByteArrayError> for LibWalletError {
             ByteArrayError::IncorrectLength => Self {
                 code: 601,
                 message: format!("{:?}", b),
-            },
-        }
-    }
-}
-
-impl From<NodeIdentityError> for LibWalletError {
-    fn from(n: NodeIdentityError) -> Self {
-        error!(target: LOG_TARGET, "{}", format!("{:?}", n));
-        match n {
-            NodeIdentityError::NodeIdError(NodeIdError::IncorrectByteCount) => Self {
-                code: 701,
-                message: format!("{:?}", n),
-            },
-            // No longer applicable:
-            // 702 NodeIdentityError::OutOfBounds
-            // 703 NodeIdentityError::AddressLockPoisoned
-            NodeIdentityError::NodeIdError(NodeIdError::InvalidDigestOutputSize) => Self {
-                code: 704,
-                message: format!("{:?}", n),
             },
         }
     }
