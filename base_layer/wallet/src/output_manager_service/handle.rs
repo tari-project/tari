@@ -45,7 +45,7 @@ use tari_crypto::script::TariScript;
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
-use tari_core::transactions::transaction::OutputFeatures;
+use tari_core::transactions::transaction::{OutputFeatures, UnblindedOutputBuilder};
 use tari_core::transactions::transaction_protocol::TxId;
 use std::fmt::Formatter;
 
@@ -61,7 +61,7 @@ pub enum OutputManagerRequest {
     ConfirmTransaction((TxId, Vec<TransactionInput>, Vec<TransactionOutput>)),
     PrepareToSendTransaction{ amount: MicroTari, unique_id: Option<Vec<u8>>, fee_per_gram: MicroTari, lock_height: Option<u64>, message: String, script: TariScript},
     CreatePayToSelfTransaction { amount : MicroTari, unique_id: Option<Vec<u8>>, fee_per_gram: MicroTari, lock_height: Option<u64>,message:  String},
-    CreatePayToSelfWithOutputs{ amount: MicroTari, outputs: Vec<UnblindedOutput>, fee_per_gram: MicroTari},
+    CreatePayToSelfWithOutputs{ amount: MicroTari, outputs: Vec<UnblindedOutputBuilder>, fee_per_gram: MicroTari},
     CancelTransaction(TxId),
     TimeoutTransactions(Duration),
     GetPendingTransactions,
@@ -150,7 +150,7 @@ pub enum OutputManagerResponse {
     RewoundOutputs(Vec<UnblindedOutput>),
     ScanOutputs(Vec<UnblindedOutput>),
     AddKnownOneSidedPaymentScript,
-    CreateOutputWithFeatures{ output: Box<UnblindedOutput>},
+    CreateOutputWithFeatures{ output: Box<UnblindedOutputBuilder>},
     CreatePayToSelfWithOutputs { transaction: Box<Transaction>, tx_id: TxId }
 }
 
@@ -234,7 +234,7 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn create_output_with_features(&mut self, value: MicroTari, features: OutputFeatures, unique_id: Option<Vec<u8>>, parent_public_key: Option<PublicKey>) -> Result<UnblindedOutput, OutputManagerError> {
+    pub async fn create_output_with_features(&mut self, value: MicroTari, features: OutputFeatures, unique_id: Option<Vec<u8>>, parent_public_key: Option<PublicKey>) -> Result<UnblindedOutputBuilder, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::CreateOutputWithFeatures{ value, features: Box::new(features), unique_id, parent_public_key: Box::new(parent_public_key)}).await?? {
             OutputManagerResponse::CreateOutputWithFeatures{ output} => Ok(*output),
             _ => Err(OutputManagerError::UnexpectedApiResponse)
@@ -549,7 +549,7 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn create_send_to_self_with_output(&mut self,  amount: MicroTari, outputs: Vec<UnblindedOutput>, fee_per_gram: MicroTari) -> Result<(TxId, Transaction), OutputManagerError >{
+    pub async fn create_send_to_self_with_output(&mut self,  amount: MicroTari, outputs: Vec<UnblindedOutputBuilder>, fee_per_gram: MicroTari) -> Result<(TxId, Transaction), OutputManagerError >{
         match self.handle.call(OutputManagerRequest::CreatePayToSelfWithOutputs {amount,outputs, fee_per_gram }).await?? {
             OutputManagerResponse::CreatePayToSelfWithOutputs {transaction, tx_id} => Ok((tx_id, *transaction)),
             _ => Err(OutputManagerError::UnexpectedApiResponse)

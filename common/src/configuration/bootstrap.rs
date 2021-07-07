@@ -360,6 +360,7 @@ impl ApplicationType {
             ConsoleWallet => "console-wallet",
             MergeMiningProxy => "mm-proxy",
             MiningNode => "miner",
+            DanNode =>"dan-node"
         }
     }
 }
@@ -374,6 +375,7 @@ impl FromStr for ApplicationType {
             "console-wallet" => Ok(ConsoleWallet),
             "mm-proxy" => Ok(MergeMiningProxy),
             "miner" => Ok(MiningNode),
+            "dan-node" => Ok(DanNode),
             _ => Err(ConfigError::new("Invalid ApplicationType", None)),
         }
     }

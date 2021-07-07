@@ -38,6 +38,9 @@ use tari_service_framework::{
     ServiceInitializerContext,
 };
 
+use tari_service_framework::{
+    async_trait,
+};
 use crate::output_manager_service::handle::OutputManagerHandle;
 
 
@@ -61,12 +64,11 @@ impl<T> TokenManagerServiceInitializer<T>
     }
 }
 
+#[async_trait]
 impl<T> ServiceInitializer for TokenManagerServiceInitializer<T>
     where T: OutputManagerBackend + 'static
 {
-    type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
-
-    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+    async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
 
         let (sender, receiver) = reply_channel::unbounded();
 
@@ -87,7 +89,7 @@ impl<T> ServiceInitializer for TokenManagerServiceInitializer<T>
             future::select(running, handles.get_shutdown_signal()).await;
             info!(target: LOG_TARGET, "Token Manager Service shutdown");
         });
-        future::ready(Ok(()))
+        Ok(())
     }
 }
 

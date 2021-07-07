@@ -67,7 +67,7 @@ use tari_core::{
             TransactionOutput,
             UnblindedOutput,
         },
-        transaction_protocol::sender::TransactionSenderMessage,
+        transaction_protocol::{sender::TransactionSenderMessage, TxId},
         types::{CryptoFactories, PrivateKey, PublicKey},
         CoinbaseBuilder,
         ReceiverTransactionProtocol,
@@ -84,7 +84,8 @@ use tari_crypto::{
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::broadcast;
-use tari_core::transactions::transaction_protocol::TxId;
+use tari_core::transactions::types::Commitment;
+use tari_core::transactions::transaction::UnblindedOutputBuilder;
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
 const LOG_TARGET_STRESS: &str = "stress_test::output_manager_service";
@@ -350,16 +351,32 @@ where TBackend: OutputManagerBackend + 'static
                 .add_known_script(known_script)
                 .await
                 .map(|_| OutputManagerResponse::AddKnownOneSidedPaymentScript),
-             OutputManagerRequest::CreateOutputWithFeatures { value, features, unique_id, parent_public_key } => {
-                let unblinded_output = self.create_output_with_features(value, *features, unique_id, *parent_public_key).await?;
+            OutputManagerRequest::CreateOutputWithFeatures {
+                value,
+                features,
+                unique_id,
+                parent_public_key,
+            } => {
+                let unblinded_output = self
+                    .create_output_with_features(value, *features, unique_id, *parent_public_key)
+                    .await?;
                 Ok(OutputManagerResponse::CreateOutputWithFeatures {
                     output: Box::new(unblinded_output),
                 })
             },
-            OutputManagerRequest::CreatePayToSelfWithOutputs { amount: _, outputs, fee_per_gram } => {
-                let (tx_id, transaction) = self.create_pay_to_self_containing_outputs(outputs, fee_per_gram).await?;
-                Ok(OutputManagerResponse::CreatePayToSelfWithOutputs {transaction: Box::new(transaction), tx_id})
-            }
+            OutputManagerRequest::CreatePayToSelfWithOutputs {
+                amount: _,
+                outputs,
+                fee_per_gram,
+            } => {
+                let (tx_id, transaction) = self
+                    .create_pay_to_self_containing_outputs(outputs, fee_per_gram)
+                    .await?;
+                Ok(OutputManagerResponse::CreatePayToSelfWithOutputs {
+                    transaction: Box::new(transaction),
+                    tx_id,
+                })
+            },
         }
     }
 
@@ -432,26 +449,26 @@ where TBackend: OutputManagerBackend + 'static
         value: MicroTari,
         features: OutputFeatures,
         unique_id: Option<Vec<u8>>,
-        parent_public_key: Option<PublicKey>
-    ) -> Result<UnblindedOutput, OutputManagerError> {
+        parent_public_key: Option<PublicKey>,
+    ) -> Result<UnblindedOutputBuilder, OutputManagerError> {
         let (spending_key, script_private_key) = self
             .resources
             .master_key_manager
             .get_next_spend_and_script_key()
             .await?;
         let input_data = inputs!(PublicKey::from_secret_key(&script_private_key));
-        Ok(UnblindedOutput {
+        let script = script!(Nop);
+
+        Ok(UnblindedOutputBuilder {
             value,
-            spending_key,
-            features,
-            script: script!(Nop),
-            input_data,
-            height: 0,
-            script_private_key,
-            // To be completed in processing
-            script_offset_public_key: Default::default(),
+            spending_key: spending_key.clone(),
+            features : Some(features),
+            script: Some(script.clone()),
+            input_data: Some(input_data),
+            script_private_key : Some(script_private_key),
             unique_id,
-            parent_public_key
+            parent_public_key,
+            .. Default::default()
         })
     }
 
@@ -501,6 +518,9 @@ where TBackend: OutputManagerBackend + 'static
                     &single_round_sender_data.sender_offset_public_key.clone(),
                     &single_round_sender_data.public_commitment_nonce.clone(),
                 )?,
+                single_round_sender_data.unique_id.clone(),
+                // TODO: put data in
+                None,
             ),
             &self.resources.factories,
         )?;
@@ -764,7 +784,7 @@ where TBackend: OutputManagerBackend + 'static
 
     async fn create_pay_to_self_containing_outputs(
         &mut self,
-        outputs: Vec<UnblindedOutput>,
+        outputs: Vec<UnblindedOutputBuilder>,
         fee_per_gram: MicroTari,
     ) -> Result<(TxId, Transaction), OutputManagerError> {
         let (inputs, _, total) = self
@@ -791,11 +811,19 @@ where TBackend: OutputManagerBackend + 'static
         }
         let mut db_outputs = vec![];
         for mut unblinded_output in outputs {
-            let script_offset_private_key = PrivateKey::random(&mut OsRng);
-            unblinded_output.script_offset_public_key = PublicKey::from_secret_key(&script_offset_private_key);
-            builder.with_output(unblinded_output.clone(), script_offset_private_key.clone());
+            let sender_offset_private_key = PrivateKey::random(&mut OsRng);
+            let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+
+            let public_offset_commitment_private_key = PrivateKey::random(&mut OsRng);
+            let public_offset_commitment_pub_key = PublicKey::from_secret_key(&public_offset_commitment_private_key);
+
+            unblinded_output.sign_as_receiver(sender_offset_public_key, public_offset_commitment_pub_key)?;
+            unblinded_output.sign_as_sender(&sender_offset_private_key)?;
+
+            let ub = unblinded_output.try_build()?;
+            builder.with_output(ub.clone(), sender_offset_private_key.clone());
             db_outputs.push(DbUnblindedOutput::from_unblinded_output(
-                unblinded_output,
+                ub,
                 &self.resources.factories,
             )?)
         }
@@ -824,24 +852,33 @@ where TBackend: OutputManagerBackend + 'static
             .build::<HashDigest>(&self.resources.factories)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
         if let Some((spending_key, script_private_key)) = change_keys {
-            let change_script_offset_public_key = stp.get_change_script_offset_public_key()?.ok_or_else(|| {
+            let change_script_offset_public_key = stp.get_change_sender_offset_public_key()?.ok_or_else(|| {
                 OutputManagerError::BuildError(
                     "There should be a change script offset public key available".to_string(),
                 )
             })?;
+
+            let sender_offset_private_key = PrivateKey::random(&mut OsRng);
+            let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+
+            let public_offset_commitment_private_key = PrivateKey::random(&mut OsRng);
+            let public_offset_commitment_pub_key = PublicKey::from_secret_key(&public_offset_commitment_private_key);
+
+            let mut output_builder = UnblindedOutputBuilder {
+                value: stp.get_change_amount()?,
+                spending_key,
+                features: None,
+                script: Some(script!(Nop)),
+                input_data: Some(inputs!(PublicKey::from_secret_key(&script_private_key))),
+                script_private_key: Some(script_private_key),
+                .. Default::default()
+            };
+
+            output_builder.sign_as_receiver(sender_offset_public_key, public_offset_commitment_pub_key)?;
+            output_builder.sign_as_sender(&sender_offset_private_key)?;
+
             let change_output = DbUnblindedOutput::from_unblinded_output(
-                UnblindedOutput::new(
-                    stp.get_change_amount()?,
-                    spending_key,
-                    None,
-                    script!(Nop),
-                    inputs!(PublicKey::from_secret_key(&script_private_key)),
-                    0,
-                    script_private_key,
-                    change_script_offset_public_key,
-                    None,
-                    None
-                ),
+                output_builder.try_build()?,
                 &self.resources.factories,
             )?;
 
@@ -918,7 +955,7 @@ where TBackend: OutputManagerBackend + 'static
                 PublicKey::from_secret_key(&sender_offset_private_key),
                 metadata_signature,
                 unique_id.clone(),
-                None
+                None,
             ),
             &self.resources.factories,
         )?;
@@ -1218,7 +1255,6 @@ where TBackend: OutputManagerBackend + 'static
         Ok(self.resources.db.fetch_spent_outputs().await?)
     }
 
-
     pub async fn fetch_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
         Ok(self.resources.db.fetch_all_unspent_outputs().await?)
     }
@@ -1317,7 +1353,7 @@ where TBackend: OutputManagerBackend + 'static
                     sender_offset_public_key,
                     metadata_signature,
                     None,
-                    None
+                    None,
                 ),
                 &self.resources.factories,
             )?;
@@ -1401,7 +1437,7 @@ where TBackend: OutputManagerBackend + 'static
                         output.sender_offset_public_key,
                         output.metadata_signature,
                         output.unique_id,
-                        output.parent_public_key
+                        output.parent_public_key,
                     );
                     let db_output =
                         DbUnblindedOutput::from_unblinded_output(rewound_output.clone(), &self.resources.factories)?;

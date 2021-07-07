@@ -259,6 +259,73 @@ pub enum TransactionError {
 }
 
 //-----------------------------------------     UnblindedOutput   ----------------------------------------------------//
+#[derive(Debug, Default)]
+pub struct UnblindedOutputBuilder {
+    pub value: MicroTari,
+    pub spending_key: BlindingFactor,
+    pub features: Option<OutputFeatures>,
+    pub script: Option<TariScript>,
+    pub input_data: Option<ExecutionStack>,
+    pub script_private_key: Option<PrivateKey>,
+    pub sender_offset_public_key: Option<PublicKey>,
+    pub metadata_signature: Option<ComSignature>,
+    metadata_signed_by_receiver: bool,
+    metadata_signed_by_sender: bool,
+    pub unique_id: Option<Vec<u8>>,
+    pub parent_public_key: Option<PublicKey>
+}
+
+
+impl UnblindedOutputBuilder {
+
+
+    pub fn sign_as_receiver(&mut self, sender_offset_public_key: PublicKey, public_nonce_commitment: PublicKey) -> Result<(), TransactionError> {
+        self.sender_offset_public_key = Some(sender_offset_public_key.clone());
+
+        let metadata_partial = TransactionOutput::create_partial_metadata_signature(&self.value, &self.spending_key,
+        self.script.as_ref().ok_or_else(||TransactionError::ValidationError("script must be set".to_string()))?,
+        self.features.as_ref().ok_or_else(|| TransactionError::ValidationError("features must be set".to_string()))?,
+            &sender_offset_public_key,
+            &public_nonce_commitment
+        )?;
+        self.metadata_signature = Some(metadata_partial);
+        self.metadata_signed_by_receiver = true;
+        Ok(())
+    }
+
+    pub fn sign_as_sender(&mut self, sender_offset_private_key: &PrivateKey) -> Result<(), TransactionError> {
+       let metadata_sig = TransactionOutput::create_final_metadata_signature(&self.value,&self.spending_key, self.script.as_ref().ok_or_else(||TransactionError::ValidationError("script must be set".to_string()))?,
+                                                                                 self.features.as_ref().ok_or_else(|| TransactionError::ValidationError("features must be set".to_string()))?,
+           &sender_offset_private_key
+       )?;
+        self.metadata_signature = Some(metadata_sig);
+        self.metadata_signed_by_sender = true;
+        Ok(())
+    }
+
+    pub fn try_build(self) -> Result<UnblindedOutput,TransactionError > {
+        if !self.metadata_signed_by_receiver {
+            return Err(TransactionError::ValidationError("Cannot build output because it has not been signed by the receiver".to_string()));
+        }
+        if !self.metadata_signed_by_sender {
+            return Err(TransactionError::ValidationError("Cannot build output because it has not been signed by the sender".to_string()));
+        }
+        let ub = UnblindedOutput{
+            value: self.value,
+            spending_key: self.spending_key,
+            features:self.features.ok_or_else(|| TransactionError::ValidationError("features must be set".to_string()))?,
+            script:self.script.ok_or_else(||TransactionError::ValidationError("script must be set".to_string()))?,
+            input_data: self.input_data.ok_or_else(||TransactionError::ValidationError("input_data must be set".to_string()))?,
+            script_private_key: self.script_private_key.ok_or_else(||TransactionError::ValidationError("script_private_key must be set".to_string()))?,
+            sender_offset_public_key: self.sender_offset_public_key.ok_or_else(||TransactionError::ValidationError("sender_offset_public_key must be set".to_string()))?,
+            metadata_signature: self.metadata_signature.ok_or_else(||TransactionError::ValidationError("metadata_signature must be set".to_string()))?,
+            unique_id: self.unique_id,
+            parent_public_key: self.parent_public_key
+        };
+        Ok(ub)
+    }
+}
+
 
 /// An unblinded output is one where the value and spending key (blinding factor) are known. This can be used to
 /// build both inputs and outputs (every input comes from an output)

@@ -28,9 +28,7 @@ pub struct OutputSql {
     pub hash: Option<Vec<u8>>,
     pub script: Vec<u8>,
     pub input_data: Vec<u8>,
-    pub height: i64,
     pub script_private_key: Vec<u8>,
-    pub script_offset_public_key: Vec<u8>,
     pub unique_id: Option<Vec<u8>>,
     pub metadata: Option<Vec<u8>>,
     pub features_asset_public_key: Option<Vec<u8>>,
@@ -83,17 +81,6 @@ impl OutputSql {
         Ok(outputs::table
             .filter(columns::status.ne(cancelled))
             .filter(columns::commitment.eq(commitment))
-            .first::<OutputSql>(conn)?)
-    }
-
-    pub fn find_by_commitment_and_block_height(
-        commitment: &[u8],
-        height: u64,
-        conn: &SqliteConnection,
-    ) -> Result<OutputSql, OutputManagerStorageError> {
-        Ok(outputs::table
-            .filter(columns::commitment.eq(commitment))
-            .filter(columns::height.eq(height as i64))
             .first::<OutputSql>(conn)?)
     }
 

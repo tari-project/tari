@@ -39,7 +39,9 @@ use tari_service_framework::{
 };
 
 use crate::output_manager_service::handle::OutputManagerHandle;
-
+use tari_service_framework::{
+    async_trait,
+};
 
 const LOG_TARGET: &str = "wallet::assets::infrastructure::initializer";
 
@@ -61,12 +63,11 @@ impl<T> AssetManagerServiceInitializer<T>
     }
 }
 
+#[async_trait]
 impl<T> ServiceInitializer for AssetManagerServiceInitializer<T>
     where T: OutputManagerBackend + 'static
 {
-    type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
-
-    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+    async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
 
         let (sender, receiver) = reply_channel::unbounded();
 
@@ -87,7 +88,7 @@ impl<T> ServiceInitializer for AssetManagerServiceInitializer<T>
             future::select(running, handles.get_shutdown_signal()).await;
             info!(target: LOG_TARGET, "Asset Manager Service shutdown");
         });
-        future::ready(Ok(()))
+        Ok(())
     }
 }
 

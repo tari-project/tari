@@ -4,7 +4,7 @@ use crate::output_manager_service::storage::models::DbUnblindedOutput;
 use std::time::Duration;
 use tari_core::transactions::types::{Commitment, PublicKey};
 use aes_gcm::Aes256Gcm;
-use tari_core::transactions::transaction::OutputFlags;
+use tari_core::transactions::transaction::{OutputFlags, TransactionOutput};
 use tari_core::transactions::transaction_protocol::TxId;
 
 /// This trait defines the required behaviour that a storage backend must provide for the Output Manager service.
@@ -73,6 +73,6 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
         &self,
         commitment: &Commitment,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError>;
-    /// Update the mined height for all outputs for this tx_id
-    fn update_mined_height(&self, tx_id: TxId, height: u64) -> Result<(), OutputManagerStorageError>;
+
+    fn update_output_metadata_signature(&self, output: &TransactionOutput) -> Result<(), OutputManagerStorageError>;
 }

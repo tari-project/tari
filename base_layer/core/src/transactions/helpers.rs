@@ -176,6 +176,8 @@ pub fn create_unblinded_output(
         test_params.script_private_key,
         test_params.sender_offset_public_key,
         metadata_signature,
+        None,
+        None
     )
 }
 
@@ -314,8 +316,6 @@ pub fn create_tx(
             OutputFeatures::default(),
             test_params.clone(),
             output_amount,
-            None,
-            None
         );
         unblinded_outputs.push(utxo.clone());
         stx_builder
@@ -447,6 +447,8 @@ pub fn create_utxo(
         script.clone(),
         offset_keys.pk,
         metadata_sig,
+        None,
+        None
     );
     (utxo, keys.k, offset_keys.k)
 }

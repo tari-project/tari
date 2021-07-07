@@ -52,7 +52,7 @@ use tari_core::{
         types::{Commitment, CryptoFactories, PrivateKey, PublicKey},
     },
 };
-use tari_core::transactions::transaction::{AssetOutputFeatures, MintNonFungibleFeatures};
+use tari_core::transactions::transaction::{AssetOutputFeatures, MintNonFungibleFeatures, TransactionOutput};
 
 use crate::{
     output_manager_service::{
@@ -76,6 +76,7 @@ use crate::{
     util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
 };
 use crate::schema::outputs::columns;
+use tari_core::transactions::types::ComSignature;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database::sqlite_db";
 
@@ -662,12 +663,9 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let db_output = OutputSql::find_by_commitment_and_cancelled(&output.commitment.to_vec(), false, &conn)?;
         db_output.update(
             UpdateOutput {
-                status: None,
-                tx_id: None,
-                spending_key: None,
-                script_private_key: None,
                 metadata_signature_nonce: Some(output.metadata_signature.public_nonce().to_vec()),
                 metadata_signature_u_key: Some(output.metadata_signature.u().to_vec()),
+                .. Default::default()
             },
             &(*conn),
         )?;
@@ -947,10 +945,6 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                     OutputManagerStorageError::ConversionError
                 })?,
             ),
-                    "Could not create PrivateKey from stored bytes, They might be encrypted"
-                );
-                OutputManagerStorageError::ConversionError
-            })?,
             o.unique_id.clone(),
             o.parent_public_key.map(|p| PublicKey::from_bytes(&p)).transpose()?
         );
