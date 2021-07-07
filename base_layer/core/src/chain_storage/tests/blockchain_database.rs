@@ -264,7 +264,7 @@ mod find_headers_after_hash {
     fn it_errors_for_hashes_with_an_invalid_length() {
         let db = setup();
         let err = db.find_headers_after_hash(vec![vec![]], 1).unwrap_err();
-        unpack_enum!(ChainStorageError::InvalidArguments {..} = err);
+        unpack_enum!(ChainStorageError::InvalidArguments { .. } = err);
     }
 }
 

@@ -76,8 +76,7 @@ where TBackend: TransactionBackend + 'static
         base_node_update_receiver: broadcast::Receiver<CommsPublicKey>,
         timeout_update_receiver: broadcast::Receiver<Duration>,
         retry_strategy: ValidationRetryStrategy,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             id,
             resources,
@@ -156,8 +155,7 @@ where TBackend: TransactionBackend + 'static
             // Assume base node is synced until we achieve a connection and it tells us it is not synced
             self.base_node_synced = true;
 
-            let base_node_node_id = NodeId::from_key(&self.base_node_public_key.clone())
-                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+            let base_node_node_id = NodeId::from_key(&self.base_node_public_key);
             let mut connection: Option<PeerConnection> = None;
 
             let delay = delay_for(self.timeout);
@@ -423,14 +421,13 @@ where TBackend: TransactionBackend + 'static
         &mut self,
         batch: Vec<CompletedTransaction>,
         client: &mut BaseNodeWalletRpcClient,
-    ) -> Result<bool, TransactionServiceError>
-    {
+    ) -> Result<bool, TransactionServiceError> {
         let mut batch_signatures = Vec::new();
         for tx in batch.iter() {
             let signature = tx
                 .transaction
                 .first_kernel_excess_sig()
-                .ok_or_else(|| TransactionServiceError::InvalidTransaction)?;
+                .ok_or(TransactionServiceError::InvalidTransaction)?;
             batch_signatures.push(SignatureProto::from(signature.clone()));
         }
 

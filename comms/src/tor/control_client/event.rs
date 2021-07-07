@@ -44,11 +44,11 @@ impl TorControlEvent {
         debug_assert!(resp.is_event());
 
         let mut parts = resp.value.splitn(2, ' ');
-        let event_type = parts.next().ok_or_else(|| ControlEventError::EmptyResponse)?;
+        let event_type = parts.next().ok_or(ControlEventError::EmptyResponse)?;
 
         match event_type {
             "NETWORK_LIVENESS" => {
-                let up_or_down = parts.next().ok_or_else(|| ControlEventError::InvalidEventData)?;
+                let up_or_down = parts.next().ok_or(ControlEventError::InvalidEventData)?;
 
                 match up_or_down.trim() {
                     "UP" => Ok(TorControlEvent::NetworkLivenessUp),

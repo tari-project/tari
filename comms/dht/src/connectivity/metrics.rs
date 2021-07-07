@@ -308,8 +308,7 @@ impl MetricsCollectorHandle {
         &mut self,
         counts: usize,
         timespan: Duration,
-    ) -> Result<Vec<(NodeId, f32)>, MetricsError>
-    {
+    ) -> Result<Vec<(NodeId, f32)>, MetricsError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.inner
             .send(MetricOp::Read(MetricRead::MessagesReceivedRateExceeding(

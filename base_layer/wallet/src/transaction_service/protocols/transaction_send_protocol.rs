@@ -93,8 +93,7 @@ where TBackend: TransactionBackend + 'static
         message: String,
         sender_protocol: SenderTransactionProtocol,
         stage: TransactionSendProtocolStage,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             id,
             resources,
@@ -488,8 +487,7 @@ where TBackend: TransactionBackend + 'static
     async fn send_transaction(
         &mut self,
         msg: SingleRoundSenderData,
-    ) -> Result<SendResult, TransactionServiceProtocolError>
-    {
+    ) -> Result<SendResult, TransactionServiceProtocolError> {
         let mut result = SendResult {
             direct_send_result: false,
             store_and_forward_send_result: false,
@@ -514,8 +512,7 @@ where TBackend: TransactionBackend + 'static
     async fn send_transaction_direct(
         &mut self,
         msg: SingleRoundSenderData,
-    ) -> Result<SendResult, TransactionServiceProtocolError>
-    {
+    ) -> Result<SendResult, TransactionServiceProtocolError> {
         let proto_message = proto::TransactionSenderMessage::single(msg.clone().into());
         let mut store_and_forward_send_result = false;
         let mut direct_send_result = false;
@@ -623,8 +620,7 @@ where TBackend: TransactionBackend + 'static
     async fn send_transaction_store_and_forward(
         &mut self,
         msg: SingleRoundSenderData,
-    ) -> Result<bool, TransactionServiceProtocolError>
-    {
+    ) -> Result<bool, TransactionServiceProtocolError> {
         if self.resources.config.transaction_routing_mechanism == TransactionRoutingMechanism::DirectOnly {
             return Ok(false);
         }

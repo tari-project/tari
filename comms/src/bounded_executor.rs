@@ -239,7 +239,7 @@ mod test {
         let task2_fut = executor
             .spawn(async move {
                 // This will panic if this task is spawned before task1 completes (e.g if num_permitted > 1)
-                assert_eq!(flag.load(Ordering::SeqCst), true);
+                assert!(flag.load(Ordering::SeqCst));
             })
             .await;
 

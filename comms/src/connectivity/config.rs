@@ -51,7 +51,7 @@ impl Default for ConnectivityConfig {
             connection_pool_refresh_interval: Duration::from_secs(30),
             reaper_min_inactive_age: Duration::from_secs(60),
             is_connection_reaping_enabled: true,
-            max_failures_mark_offline: 1,
+            max_failures_mark_offline: 2,
             connection_tie_break_linger: Duration::from_secs(2),
         }
     }

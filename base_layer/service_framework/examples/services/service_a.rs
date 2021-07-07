@@ -21,7 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::services::ServiceBHandle;
-use futures::{future, pin_mut, Future, StreamExt};
+use async_trait::async_trait;
+use futures::{pin_mut, StreamExt};
 use tari_service_framework::{
     reply_channel,
     reply_channel::SenderService,
@@ -45,8 +46,7 @@ impl ServiceA {
         request_stream: reply_channel::Receiver<String, String>,
         service_b_handle: ServiceBHandle,
         shutdown_signal: ShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             response_msg,
             request_stream: Some(request_stream),
@@ -118,10 +118,9 @@ impl ServiceAInitializer {
     }
 }
 
+#[async_trait]
 impl ServiceInitializer for ServiceAInitializer {
-    type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
-
-    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+    async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (sender, receiver) = reply_channel::unbounded();
 
         let service_a_handle = ServiceAHandle::new(sender);
@@ -141,6 +140,6 @@ impl ServiceInitializer for ServiceAInitializer {
             service.run().await;
             println!("Service A has shutdown and initializer spawned task is now ending");
         });
-        future::ready(Ok(()))
+        Ok(())
     }
 }

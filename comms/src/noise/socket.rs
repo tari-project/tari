@@ -363,8 +363,7 @@ where TSocket: AsyncWrite + Unpin
         &mut self,
         mut context: &mut Context,
         buf: Option<&[u8]>,
-    ) -> Poll<io::Result<Option<usize>>>
-    {
+    ) -> Poll<io::Result<Option<usize>>> {
         loop {
             trace!(
                 target: LOG_TARGET,
@@ -676,8 +675,7 @@ mod test {
     async fn perform_handshake(
         dialer: Handshake<MemorySocket>,
         listener: Handshake<MemorySocket>,
-    ) -> io::Result<(NoiseSocket<MemorySocket>, NoiseSocket<MemorySocket>)>
-    {
+    ) -> io::Result<(NoiseSocket<MemorySocket>, NoiseSocket<MemorySocket>)> {
         let (dialer_result, listener_result) = join(dialer.handshake_1rt(), listener.handshake_1rt()).await;
 
         Ok((dialer_result?, listener_result?))

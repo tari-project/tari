@@ -23,10 +23,7 @@
 use crate::outbound::message::SendFailure;
 use futures::channel::mpsc::SendError;
 use tari_comms::message::MessageError;
-use tari_crypto::{
-    signatures::SchnorrSignatureError,
-    tari_utilities::{ciphers::cipher::CipherError, message_format::MessageFormatError},
-};
+use tari_crypto::{signatures::SchnorrSignatureError, tari_utilities::message_format::MessageFormatError};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -39,8 +36,6 @@ pub enum DhtOutboundError {
     MessageFormatError(#[from] MessageFormatError),
     #[error("SignatureError: {0}")]
     SignatureError(#[from] SchnorrSignatureError),
-    #[error("CipherError: {0}")]
-    CipherError(#[from] CipherError),
     #[error("Requester reply channel closed before response was received")]
     RequesterReplyChannelClosed,
     #[error("Peer selection failed")]
@@ -59,6 +54,8 @@ pub enum DhtOutboundError {
     SendMessageFailed(SendFailure),
     #[error("No messages were queued for sending")]
     NoMessagesQueued,
+    #[error("Cipher error: `{0}`")]
+    CipherError(String),
 }
 
 impl From<SendFailure> for DhtOutboundError {

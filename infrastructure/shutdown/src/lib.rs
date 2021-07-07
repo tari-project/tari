@@ -73,10 +73,10 @@ impl Shutdown {
     }
 
     /// Trigger any listening signals
-    pub fn trigger(&mut self) -> Result<(), ()> {
+    pub fn trigger(&mut self) -> Result<(), ShutdownError> {
         match self.trigger.take() {
             Some(trigger) => {
-                trigger.send(())?;
+                trigger.send(()).map_err(|_| ShutdownError)?;
 
                 if let Some(on_triggered) = self.on_triggered.take() {
                     on_triggered();
@@ -165,6 +165,9 @@ impl FusedFuture for OptionalShutdownSignal {
     }
 }
 
+#[derive(Debug)]
+pub struct ShutdownError;
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -179,14 +182,14 @@ mod test {
         let rt = Runtime::new().unwrap();
         let mut shutdown = Shutdown::new();
         let signal = shutdown.to_signal();
-        assert_eq!(shutdown.is_triggered(), false);
+        assert!(!shutdown.is_triggered());
         rt.spawn(async move {
             signal.await.unwrap();
         });
         shutdown.trigger().unwrap();
         // Shutdown::trigger is idempotent
         shutdown.trigger().unwrap();
-        assert_eq!(shutdown.is_triggered(), true);
+        assert!(shutdown.is_triggered());
     }
 
     #[test]
@@ -229,6 +232,6 @@ mod test {
             signal.await.unwrap();
         });
         shutdown.trigger().unwrap();
-        assert_eq!(spy.load(Ordering::SeqCst), true);
+        assert!(spy.load(Ordering::SeqCst));
     }
 }

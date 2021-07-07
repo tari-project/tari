@@ -43,9 +43,10 @@ use crate::{
             send_transaction_reply::send_transaction_reply,
         },
     },
-    types::ValidationRetryStrategy,
+    types::{HashDigest, ValidationRetryStrategy},
 };
 use chrono::{NaiveDateTime, Utc};
+use digest::Digest;
 use futures::{
     channel::{mpsc, mpsc::Sender, oneshot},
     pin_mut,
@@ -67,19 +68,25 @@ use tari_comms_dht::outbound::OutboundMessageRequester;
 #[cfg(feature = "test_harness")]
 use tari_core::transactions::{tari_amount::uT, types::BlindingFactor};
 use tari_core::{
+    crypto::keys::SecretKey,
     proto::base_node as base_node_proto,
     transactions::{
         tari_amount::MicroTari,
-        transaction::Transaction,
-        transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage},
+        transaction::{KernelFeatures, OutputFeatures, Transaction},
+        transaction_protocol::{
+            proto,
+            recipient::RecipientSignedMessage,
+            sender::TransactionSenderMessage,
+            RewindData,
+        },
         types::{CryptoFactories, PrivateKey},
+        ReceiverTransactionProtocol,
     },
 };
+use tari_crypto::{keys::DiffieHellmanSharedSecret, script, tari_utilities::ByteArray};
 use tari_p2p::domain_message::DomainMessage;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
-#[cfg(feature = "test_harness")]
-use tokio::runtime::Handle;
 use tokio::{sync::broadcast, task::JoinHandle};
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
@@ -163,8 +170,7 @@ where
         node_identity: Arc<NodeIdentity>,
         factories: CryptoFactories,
         shutdown_signal: ShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         // Collect the resources that all protocols will need so that they can be neatly cloned as the protocols are
         // spawned.
         let resources = TransactionServiceResources {
@@ -451,11 +457,10 @@ where
         transaction_validation_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<u64, TransactionServiceProtocolError>>,
         >,
-    ) -> Result<TransactionServiceResponse, TransactionServiceError>
-    {
+    ) -> Result<TransactionServiceResponse, TransactionServiceError> {
         trace!(target: LOG_TARGET, "Handling Service Request: {}", request);
         match request {
-            TransactionServiceRequest::SendTransaction((dest_pubkey, amount, fee_per_gram, message)) => self
+            TransactionServiceRequest::SendTransaction(dest_pubkey, amount, fee_per_gram, message) => self
                 .send_transaction(
                     dest_pubkey,
                     amount,
@@ -466,8 +471,18 @@ where
                 )
                 .await
                 .map(TransactionServiceResponse::TransactionSent),
+            TransactionServiceRequest::SendOneSidedTransaction(dest_pubkey, amount, fee_per_gram, message) => self
+                .send_one_sided_transaction(
+                    dest_pubkey,
+                    amount,
+                    fee_per_gram,
+                    message,
+                    transaction_broadcast_join_handles,
+                )
+                .await
+                .map(TransactionServiceResponse::TransactionSent),
             TransactionServiceRequest::CancelTransaction(tx_id) => self
-                .cancel_transaction(tx_id)
+                .cancel_pending_transaction(tx_id)
                 .await
                 .map(|_| TransactionServiceResponse::TransactionCancelled),
             TransactionServiceRequest::GetPendingInboundTransactions => {
@@ -511,12 +526,12 @@ where
                 self.set_base_node_public_key(public_key).await;
                 Ok(TransactionServiceResponse::BaseNodePublicKeySet)
             },
-            TransactionServiceRequest::ImportUtxo(value, source_public_key, message) => self
-                .add_utxo_import_transaction(value, source_public_key, message)
+            TransactionServiceRequest::ImportUtxo(value, source_public_key, message, maturity) => self
+                .add_utxo_import_transaction(value, source_public_key, message, maturity)
                 .await
                 .map(TransactionServiceResponse::UtxoImported),
-            TransactionServiceRequest::SubmitTransaction((tx_id, tx, fee, amount, message)) => self
-                .submit_transaction(transaction_broadcast_join_handles, tx_id, tx, fee, amount, message)
+            TransactionServiceRequest::SubmitCoinSplitTransaction(tx_id, tx, fee, amount, message) => self
+                .submit_coin_split_transaction(transaction_broadcast_join_handles, tx_id, tx, fee, amount, message)
                 .await
                 .map(|_| TransactionServiceResponse::TransactionSubmitted),
             TransactionServiceRequest::GenerateCoinbaseTransaction(reward, fees, block_height) => self
@@ -592,6 +607,10 @@ where
                 .start_transaction_validation_protocol(retry_strategy, transaction_validation_join_handles)
                 .await
                 .map(TransactionServiceResponse::ValidationStarted),
+            TransactionServiceRequest::SetCompletedTransactionValidity(tx_id, validity) => self
+                .set_completed_transaction_validity(tx_id, validity)
+                .await
+                .map(|_| TransactionServiceResponse::CompletedTransactionValidityChanged),
         }
     }
 
@@ -610,8 +629,7 @@ where
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<u64, TransactionServiceProtocolError>>,
         >,
-    ) -> Result<TxId, TransactionServiceError>
-    {
+    ) -> Result<TxId, TransactionServiceError> {
         // If we're paying ourselves, let's complete and submit the transaction immediately
         if self.node_identity.public_key() == &dest_pubkey {
             debug!(
@@ -631,11 +649,19 @@ where
 
             self.submit_transaction(
                 transaction_broadcast_join_handles,
-                tx_id,
-                transaction,
-                fee,
-                amount,
-                message,
+                CompletedTransaction::new(
+                    tx_id,
+                    self.node_identity.public_key().clone(),
+                    self.node_identity.public_key().clone(),
+                    amount,
+                    fee,
+                    transaction,
+                    TransactionStatus::Completed,
+                    message,
+                    Utc::now().naive_utc(),
+                    TransactionDirection::Inbound,
+                    None,
+                ),
             )
             .await?;
 
@@ -644,7 +670,7 @@ where
 
         let sender_protocol = self
             .output_manager_service
-            .prepare_transaction_to_send(amount, fee_per_gram, None, message.clone())
+            .prepare_transaction_to_send(amount, fee_per_gram, None, message.clone(), script!(Nop))
             .await?;
 
         let tx_id = sender_protocol.get_tx_id()?;
@@ -673,6 +699,139 @@ where
         Ok(tx_id)
     }
 
+    /// Sends a one side payment transaction to a recipient
+    /// # Arguments
+    /// 'dest_pubkey': The Comms pubkey of the recipient node
+    /// 'amount': The amount of Tari to send to the recipient
+    /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
+    pub async fn send_one_sided_transaction(
+        &mut self,
+        dest_pubkey: CommsPublicKey,
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        message: String,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<u64, TransactionServiceProtocolError>>,
+        >,
+    ) -> Result<TxId, TransactionServiceError> {
+        if self.node_identity.public_key() == &dest_pubkey {
+            warn!(target: LOG_TARGET, "One-sided spend-to-self transactions not supported");
+            return Err(TransactionServiceError::OneSidedTransactionError(
+                "One-sided spend-to-self transactions not supported".to_string(),
+            ));
+        }
+
+        // Prepare sender part of the transaction
+
+        let mut stp = self
+            .output_manager_service
+            .prepare_transaction_to_send(
+                amount,
+                fee_per_gram,
+                None,
+                message.clone(),
+                script!(PushPubKey(Box::new(dest_pubkey.clone()))),
+            )
+            .await?;
+        let tx_id = stp.get_tx_id()?;
+
+        // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
+        // but the returned value is not used
+        let _ = stp
+            .build_single_round_message()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        self.output_manager_service
+            .confirm_pending_transaction(tx_id)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        // Prepare receiver part of the transaction
+
+        // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is converted to
+        // bytes to enable conversion into a private key to be used as the spending key
+        let sender_offset_private_key = stp
+            .get_recipient_sender_offset_private_key(0)
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        // TODO: Add a standardized Diffie-Hellman method to the tari_crypto library that will return a private key,
+        // TODO: then come back and use it here.
+        let spending_key = PrivateKey::from_bytes(
+            CommsPublicKey::shared_secret(&sender_offset_private_key.clone(), &dest_pubkey.clone()).as_bytes(),
+        )
+        .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
+        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
+        let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_key))?;
+        let rewind_data = RewindData {
+            rewind_key: rewind_key.clone(),
+            rewind_blinding_key: blinding_key.clone(),
+            proof_message: [0u8; 21],
+        };
+
+        let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(
+            sender_message,
+            PrivateKey::random(&mut OsRng),
+            spending_key,
+            OutputFeatures::default(),
+            &self.resources.factories,
+            &rewind_data,
+        );
+
+        let recipient_reply = rtp.get_signed_data()?.clone();
+
+        // Start finalizing
+
+        stp.add_single_recipient_info(recipient_reply, &self.resources.factories.range_proof)
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        // Finalize
+
+        stp.finalize(KernelFeatures::empty(), &self.resources.factories)
+            .map_err(|e| {
+                error!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
+                );
+                TransactionServiceProtocolError::new(tx_id, e.into())
+            })?;
+        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", tx_id);
+
+        // This event being sent is important, but not critical to the protocol being successful. Send only fails if
+        // there are no subscribers.
+        let _ = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+
+        // Broadcast one-sided transaction
+
+        let tx = stp
+            .get_transaction()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        let fee = stp
+            .get_fee_amount()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        self.submit_transaction(
+            transaction_broadcast_join_handles,
+            CompletedTransaction::new(
+                tx_id,
+                self.resources.node_identity.public_key().clone(),
+                dest_pubkey.clone(),
+                amount,
+                fee,
+                tx.clone(),
+                TransactionStatus::Completed,
+                message.clone(),
+                Utc::now().naive_utc(),
+                TransactionDirection::Outbound,
+                None,
+            ),
+        )
+        .await?;
+
+        Ok(tx_id)
+    }
+
     /// Accept the public reply from a recipient and apply the reply to the relevant transaction protocol
     /// # Arguments
     /// 'recipient_reply' - The public response from a recipient with data required to complete the transaction
@@ -680,8 +839,7 @@ where
         &mut self,
         source_pubkey: CommsPublicKey,
         recipient_reply: proto::RecipientSignedMessage,
-    ) -> Result<(), TransactionServiceError>
-    {
+    ) -> Result<(), TransactionServiceError> {
         let recipient_reply: RecipientSignedMessage = recipient_reply
             .try_into()
             .map_err(TransactionServiceError::InvalidMessageError)?;
@@ -810,8 +968,7 @@ where
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<u64, TransactionServiceProtocolError>>,
         >,
-    )
-    {
+    ) {
         match join_result {
             Ok(id) => {
                 let _ = self.pending_transaction_reply_senders.remove(&id);
@@ -860,7 +1017,7 @@ where
     }
 
     /// Cancel a pending transaction
-    async fn cancel_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
+    async fn cancel_pending_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
         self.db.cancel_pending_transaction(tx_id).await.map_err(|e| {
             warn!(
                 target: LOG_TARGET,
@@ -898,20 +1055,32 @@ where
         Ok(())
     }
 
+    async fn set_completed_transaction_validity(
+        &mut self,
+        tx_id: TxId,
+        valid: bool,
+    ) -> Result<(), TransactionServiceError> {
+        self.resources
+            .db
+            .set_completed_transaction_validity(tx_id, valid)
+            .await?;
+
+        Ok(())
+    }
+
     /// Handle a Transaction Cancelled message received from the Comms layer
     pub async fn handle_transaction_cancelled_message(
         &mut self,
         source_pubkey: CommsPublicKey,
         transaction_cancelled: proto::TransactionCancelledMessage,
-    ) -> Result<(), TransactionServiceError>
-    {
+    ) -> Result<(), TransactionServiceError> {
         let tx_id = transaction_cancelled.tx_id;
 
         // Check that an inbound transaction exists to be cancelled and that the Source Public key for that transaction
         // is the same as the cancellation message
         if let Ok(inbound_tx) = self.db.get_pending_inbound_transaction(tx_id).await {
             if inbound_tx.source_public_key == source_pubkey {
-                self.cancel_transaction(tx_id).await?;
+                self.cancel_pending_transaction(tx_id).await?;
             } else {
                 trace!(
                     target: LOG_TARGET,
@@ -928,8 +1097,7 @@ where
     async fn restart_all_send_transaction_protocols(
         &mut self,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
-    ) -> Result<(), TransactionServiceError>
-    {
+    ) -> Result<(), TransactionServiceError> {
         let outbound_txs = self.db.get_pending_outbound_transactions().await?;
         for (tx_id, tx) in outbound_txs {
             if !self.pending_transaction_reply_senders.contains_key(&tx_id) {
@@ -972,8 +1140,7 @@ where
         sender_message: proto::TransactionSenderMessage,
         traced_message_tag: u64,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
-    ) -> Result<(), TransactionServiceError>
-    {
+    ) -> Result<(), TransactionServiceError> {
         let sender_message: TransactionSenderMessage = sender_message
             .try_into()
             .map_err(TransactionServiceError::InvalidMessageError)?;
@@ -1080,8 +1247,7 @@ where
         &mut self,
         source_pubkey: CommsPublicKey,
         finalized_transaction: proto::TransactionFinalizedMessage,
-    ) -> Result<(), TransactionServiceError>
-    {
+    ) -> Result<(), TransactionServiceError> {
         let tx_id = finalized_transaction.tx_id;
         let transaction: Transaction = finalized_transaction
             .transaction
@@ -1117,8 +1283,7 @@ where
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<u64, TransactionServiceProtocolError>>,
         >,
-    )
-    {
+    ) {
         match join_result {
             Ok(id) => {
                 let _ = self.finalized_transaction_senders.remove(&id);
@@ -1180,8 +1345,7 @@ where
     async fn restart_all_receive_transaction_protocols(
         &mut self,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
-    ) -> Result<(), TransactionServiceError>
-    {
+    ) -> Result<(), TransactionServiceError> {
         let inbound_txs = self.db.get_pending_inbound_transactions().await?;
         for (tx_id, tx) in inbound_txs {
             if !self.pending_transaction_reply_senders.contains_key(&tx_id) {
@@ -1237,8 +1401,7 @@ where
         receive_transaction_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<u64, TransactionServiceProtocolError>>,
         >,
-    ) -> Result<(), TransactionServiceError>
-    {
+    ) -> Result<(), TransactionServiceError> {
         trace!(target: LOG_TARGET, "Restarting transaction negotiation protocols");
         self.restart_all_send_transaction_protocols(send_transaction_join_handles)
             .await
@@ -1267,8 +1430,7 @@ where
         &mut self,
         retry_strategy: ValidationRetryStrategy,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
-    ) -> Result<u64, TransactionServiceError>
-    {
+    ) -> Result<u64, TransactionServiceError> {
         if self.base_node_public_key.is_none() {
             return Err(TransactionServiceError::NoBaseNodeKeysProvided);
         }
@@ -1302,8 +1464,7 @@ where
     async fn complete_transaction_validation_protocol(
         &mut self,
         join_result: Result<u64, TransactionServiceProtocolError>,
-    )
-    {
+    ) {
         match join_result {
             Ok(id) => {
                 debug!(
@@ -1332,8 +1493,7 @@ where
         coinbase_transaction_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<u64, TransactionServiceProtocolError>>,
         >,
-    ) -> Result<(), TransactionServiceError>
-    {
+    ) -> Result<(), TransactionServiceError> {
         if self.base_node_public_key.is_none() {
             return Err(TransactionServiceError::NoBaseNodeKeysProvided);
         }
@@ -1367,8 +1527,7 @@ where
         &mut self,
         completed_tx: CompletedTransaction,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
-    ) -> Result<(), TransactionServiceError>
-    {
+    ) -> Result<(), TransactionServiceError> {
         let tx_id = completed_tx.tx_id;
         if !(completed_tx.status == TransactionStatus::Completed ||
             completed_tx.status == TransactionStatus::Broadcast ||
@@ -1413,8 +1572,7 @@ where
     async fn broadcast_all_completed_transactions(
         &mut self,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
-    ) -> Result<(), TransactionServiceError>
-    {
+    ) -> Result<(), TransactionServiceError> {
         trace!(target: LOG_TARGET, "Attempting to Broadcast all Completed Transactions");
         let completed_txs = self.db.get_completed_transactions().await?;
         for (_, completed_tx) in completed_txs {
@@ -1434,8 +1592,7 @@ where
     async fn complete_transaction_broadcast_protocol(
         &mut self,
         join_result: Result<u64, TransactionServiceProtocolError>,
-    )
-    {
+    ) {
         match join_result {
             Ok(id) => {
                 debug!(
@@ -1465,8 +1622,7 @@ where
     pub async fn handle_base_node_response(
         &mut self,
         response: base_node_proto::BaseNodeServiceResponse,
-    ) -> Result<(), TransactionServiceError>
-    {
+    ) -> Result<(), TransactionServiceError> {
         let sender = match self.base_node_response_senders.get_mut(&response.request_key) {
             None => {
                 trace!(
@@ -1509,8 +1665,8 @@ where
         value: MicroTari,
         source_public_key: CommsPublicKey,
         message: String,
-    ) -> Result<TxId, TransactionServiceError>
-    {
+        maturity: Option<u64>,
+    ) -> Result<TxId, TransactionServiceError> {
         let tx_id = OsRng.next_u64();
         self.db
             .add_utxo_import_transaction(
@@ -1519,42 +1675,35 @@ where
                 source_public_key,
                 self.node_identity.public_key().clone(),
                 message,
+                maturity,
             )
             .await?;
+        let _ = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionImported(tx_id)))
+            .map_err(|e| {
+                trace!(
+                    target: LOG_TARGET,
+                    "Error sending event, usually because there are no subscribers: {:?}",
+                    e
+                );
+                e
+            });
         Ok(tx_id)
     }
 
     /// Submit a completed transaction to the Transaction Manager
-    pub async fn submit_transaction(
+    async fn submit_transaction(
         &mut self,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<u64, TransactionServiceProtocolError>>,
         >,
-        tx_id: TxId,
-        tx: Transaction,
-        fee: MicroTari,
-        amount: MicroTari,
-        message: String,
-    ) -> Result<(), TransactionServiceError>
-    {
+        completed_transaction: CompletedTransaction,
+    ) -> Result<(), TransactionServiceError> {
+        let tx_id = completed_transaction.tx_id;
         trace!(target: LOG_TARGET, "Submit transaction ({}) to db.", tx_id);
         self.db
-            .insert_completed_transaction(
-                tx_id,
-                CompletedTransaction::new(
-                    tx_id,
-                    self.node_identity.public_key().clone(),
-                    self.node_identity.public_key().clone(),
-                    amount,
-                    fee,
-                    tx,
-                    TransactionStatus::Completed,
-                    message,
-                    Utc::now().naive_utc(),
-                    TransactionDirection::Inbound,
-                    None,
-                ),
-            )
+            .insert_completed_transaction(tx_id, completed_transaction)
             .await?;
         trace!(
             target: LOG_TARGET,
@@ -1566,6 +1715,39 @@ where
         Ok(())
     }
 
+    /// Submit a completed coin split transaction to the Transaction Manager. This is different from
+    /// `submit_transaction` in that it will expose less information about the completed transaction.
+    pub async fn submit_coin_split_transaction(
+        &mut self,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<u64, TransactionServiceProtocolError>>,
+        >,
+        tx_id: TxId,
+        tx: Transaction,
+        fee: MicroTari,
+        amount: MicroTari,
+        message: String,
+    ) -> Result<(), TransactionServiceError> {
+        self.submit_transaction(
+            transaction_broadcast_join_handles,
+            CompletedTransaction::new(
+                tx_id,
+                self.node_identity.public_key().clone(),
+                self.node_identity.public_key().clone(),
+                amount,
+                fee,
+                tx,
+                TransactionStatus::Completed,
+                message,
+                Utc::now().naive_utc(),
+                TransactionDirection::Inbound,
+                None,
+            ),
+        )
+        .await?;
+        Ok(())
+    }
+
     async fn generate_coinbase_transaction(
         &mut self,
         reward: MicroTari,
@@ -1574,8 +1756,7 @@ where
         coinbase_monitoring_protocol_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<u64, TransactionServiceProtocolError>>,
         >,
-    ) -> Result<Transaction, TransactionServiceError>
-    {
+    ) -> Result<Transaction, TransactionServiceError> {
         let amount = reward + fees;
 
         // first check if we already have a coinbase tx for this height and amount
@@ -1620,7 +1801,7 @@ where
                             MicroTari::from(0),
                             tx.clone(),
                             TransactionStatus::Coinbase,
-                            format!("Coinbase Transaction for Block {}", block_height),
+                            format!("Coinbase Transaction for Block #{}", block_height),
                             Utc::now().naive_utc(),
                             TransactionDirection::Inbound,
                             Some(block_height),
@@ -1668,8 +1849,7 @@ where
         &mut self,
         tx_id: TxId,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
-    ) -> Result<(), TransactionServiceError>
-    {
+    ) -> Result<(), TransactionServiceError> {
         let completed_tx = self.db.get_completed_transaction(tx_id).await?;
 
         if completed_tx.status != TransactionStatus::Coinbase || completed_tx.coinbase_block_height.is_none() {
@@ -1716,8 +1896,7 @@ where
     fn complete_coinbase_transaction_monitoring_protocol(
         &mut self,
         join_result: Result<u64, TransactionServiceProtocolError>,
-    )
-    {
+    ) {
         match join_result {
             Ok(id) => {
                 // Cleanup any registered senders
@@ -1749,8 +1928,7 @@ where
     async fn restart_chain_monitoring_for_all_coinbase_transactions(
         &mut self,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
-    ) -> Result<(), TransactionServiceError>
-    {
+    ) -> Result<(), TransactionServiceError> {
         trace!(
             target: LOG_TARGET,
             "Starting Coinbase monitoring for all Broadcast Transactions"
@@ -1773,8 +1951,7 @@ where
     pub async fn complete_pending_outbound_transaction(
         &mut self,
         completed_tx: CompletedTransaction,
-    ) -> Result<(), TransactionServiceError>
-    {
+    ) -> Result<(), TransactionServiceError> {
         self.db
             .complete_outbound_transaction(completed_tx.tx_id, completed_tx.clone())
             .await?;
@@ -1814,8 +1991,6 @@ where
     /// the outputs
     #[cfg(feature = "test_harness")]
     pub async fn mine_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
-        use tari_core::transactions::transaction::OutputFeatures;
-
         let completed_txs = self.db.get_completed_transactions().await?;
         let _found_tx = completed_txs.get(&tx_id).ok_or_else(|| {
             TransactionServiceError::TestHarnessError("Could not find Completed TX to mine.".to_string())
@@ -1834,7 +2009,8 @@ where
                     .iter()
                     .map(|o| {
                         o.unblinded_output
-                            .as_transaction_input(&self.resources.factories.commitment, OutputFeatures::default())
+                            .as_transaction_input(&self.resources.factories.commitment)
+                            .expect("Should be able to make transaction input")
                     })
                     .collect(),
                 pending_tx
@@ -1874,27 +2050,31 @@ where
         _tx_id: TxId,
         amount: MicroTari,
         source_public_key: CommsPublicKey,
-        handle: Handle,
-    ) -> Result<(), TransactionServiceError>
-    {
+        handle: tokio::runtime::Handle,
+    ) -> Result<(), TransactionServiceError> {
         use crate::{
             base_node_service::{handle::BaseNodeServiceHandle, mock_base_node_service::MockBaseNodeService},
             output_manager_service::{
                 config::OutputManagerServiceConfig,
                 error::OutputManagerError,
                 service::OutputManagerService,
-                storage::{database::OutputManagerDatabase, memory_db::OutputManagerMemoryDatabase},
+                storage::{database::OutputManagerDatabase, sqlite_db::OutputManagerSqliteDatabase},
             },
+            storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
             transaction_service::{handle::TransactionServiceHandle, storage::models::InboundTransaction},
         };
-        use tari_core::consensus::{ConsensusConstantsBuilder, Network};
+        use tari_comms::types::CommsSecretKey;
+        use tari_core::consensus::ConsensusConstantsBuilder;
+        use tari_p2p::Network;
+        use tari_test_utils::random;
+        use tempfile::tempdir;
 
         let (_sender, receiver) = reply_channel::unbounded();
         let (oms_event_publisher, _oms_event_subscriber) = broadcast::channel(100);
         let (ts_request_sender, _ts_request_receiver) = reply_channel::unbounded();
         let (event_publisher, _) = broadcast::channel(100);
         let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher.clone());
-        let constants = ConsensusConstantsBuilder::new(Network::Stibbons).build();
+        let constants = ConsensusConstantsBuilder::new(Network::Weatherwax).build();
         let shutdown_signal = self.resources.shutdown_signal.clone();
         let (sender, receiver_bns) = reply_channel::unbounded();
         let (event_publisher_bns, _) = broadcast::channel(100);
@@ -1906,28 +2086,37 @@ where
         let basenode_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns);
         let mut mock_base_node_service = MockBaseNodeService::new(receiver_bns, shutdown_signal.clone());
         mock_base_node_service.set_default_base_node_state();
+
+        let db_name = format!("{}.sqlite3", random::string(8).as_str());
+        let db_tempdir = tempdir().unwrap();
+        let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+        let db_path = format!("{}/{}", db_folder, db_name);
+        let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+        let backend = OutputManagerSqliteDatabase::new(connection, None);
+
         handle.spawn(mock_base_node_service.run());
         let mut fake_oms = OutputManagerService::new(
             OutputManagerServiceConfig::default(),
             ts_handle,
             receiver,
-            OutputManagerDatabase::new(OutputManagerMemoryDatabase::new()),
+            OutputManagerDatabase::new(backend),
             oms_event_publisher,
             self.resources.factories.clone(),
             constants,
             shutdown_signal,
             basenode_service_handle,
             connectivity_manager,
+            CommsSecretKey::default(),
         )
         .await?;
 
         use crate::testnet_utils::make_input;
-        let (_ti, uo) = make_input(&mut OsRng, amount + 100000 * uT, &self.resources.factories);
+        let (_ti, uo) = make_input(amount + 100000 * uT, &self.resources.factories);
 
-        fake_oms.add_output(uo).await?;
+        fake_oms.add_output(None, uo).await?;
 
         let mut stp = fake_oms
-            .prepare_transaction_to_send(amount, MicroTari::from(25), None, "".to_string())
+            .prepare_transaction_to_send(amount, MicroTari::from(25), None, "".to_string(), script!(Nop))
             .await?;
 
         let msg = stp.build_single_round_message()?;
@@ -2006,7 +2195,13 @@ where
             self.node_identity.public_key().clone(),
             found_tx.amount,
             MicroTari::from(2000), // a placeholder fee for this test function
-            Transaction::new(Vec::new(), Vec::new(), vec![kernel], BlindingFactor::default()),
+            Transaction::new(
+                Vec::new(),
+                Vec::new(),
+                vec![kernel],
+                BlindingFactor::default(),
+                BlindingFactor::default(),
+            ),
             TransactionStatus::Completed,
             found_tx.message.clone(),
             found_tx.timestamp,
@@ -2059,4 +2254,8 @@ enum PowerMode {
 pub struct PendingCoinbaseSpendingKey {
     pub tx_id: TxId,
     pub spending_key: PrivateKey,
+}
+
+fn hash_secret_key(key: &PrivateKey) -> Vec<u8> {
+    HashDigest::new().chain(key.as_bytes()).finalize().to_vec()
 }

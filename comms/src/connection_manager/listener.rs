@@ -52,7 +52,6 @@ use std::{
     },
     time::Duration,
 };
-use tari_crypto::tari_utilities::hex::Hex;
 use tari_shutdown::ShutdownSignal;
 use tokio::time;
 
@@ -67,7 +66,6 @@ pub struct PeerListener<TTransport> {
     noise_config: NoiseConfig,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
-    listening_address: Option<Multiaddr>,
     our_supported_protocols: Vec<ProtocolId>,
     liveness_session_count: Arc<AtomicUsize>,
 }
@@ -86,8 +84,7 @@ where
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
         shutdown_signal: ShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             transport,
             noise_config,
@@ -95,7 +92,6 @@ where
             peer_manager,
             node_identity,
             shutdown_signal,
-            listening_address: None,
             our_supported_protocols: Vec::new(),
             bounded_executor: BoundedExecutor::from_current(config.max_simultaneous_inbound_connects),
             liveness_session_count: Arc::new(AtomicUsize::new(config.liveness_max_sessions)),
@@ -118,7 +114,6 @@ where
                 futures::pin_mut!(inbound);
 
                 info!(target: LOG_TARGET, "Listening for peer connections on '{}'", address);
-                self.listening_address = Some(address.clone());
 
                 self.send_event(ConnectionManagerEvent::Listening(address)).await;
 
@@ -182,8 +177,7 @@ where
         socket: TTransport::Output,
         permit: Arc<AtomicUsize>,
         shutdown_signal: ShutdownSignal,
-    )
-    {
+    ) {
         permit.fetch_sub(1, Ordering::SeqCst);
         let liveness = LivenessSession::new(socket);
         debug!(target: LOG_TARGET, "Started liveness session");
@@ -200,14 +194,12 @@ where
         let noise_config = self.noise_config.clone();
         let config = self.config.clone();
         let our_supported_protocols = self.our_supported_protocols.clone();
-        let allow_test_addresses = self.config.allow_test_addresses;
         let liveness_session_count = self.liveness_session_count.clone();
-        let user_agent = self.config.user_agent.clone();
         let shutdown_signal = self.shutdown_signal.clone();
 
         let inbound_fut = async move {
             match Self::read_wire_format(&mut socket, config.time_to_first_byte).await {
-                Some(WireMode::Comms) => {
+                Some(WireMode::Comms(byte)) if byte == config.network_info.network_byte => {
                     let this_node_id_str = node_identity.node_id().short_str();
                     let result = Self::perform_socket_upgrade_procedure(
                         node_identity,
@@ -217,8 +209,7 @@ where
                         socket,
                         peer_addr,
                         our_supported_protocols,
-                        user_agent,
-                        allow_test_addresses,
+                        &config,
                     )
                     .await;
 
@@ -248,6 +239,15 @@ where
                             );
                         },
                     }
+                },
+                Some(WireMode::Comms(byte)) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Peer at address '{}' sent invalid wire format byte. Expected {:x?} got: {:x?} ",
+                        peer_addr,
+                        config.network_info.network_byte,
+                        byte,
+                    );
                 },
                 Some(WireMode::Liveness) => {
                     if liveness_session_count.load(Ordering::SeqCst) > 0 &&
@@ -298,10 +298,8 @@ where
         socket: TTransport::Output,
         peer_addr: Multiaddr,
         our_supported_protocols: Vec<ProtocolId>,
-        user_agent: String,
-        allow_test_addresses: bool,
-    ) -> Result<PeerConnection, ConnectionManagerError>
-    {
+        config: &ConnectionManagerConfig,
+    ) -> Result<PeerConnection, ConnectionManagerError> {
         static CONNECTION_DIRECTION: ConnectionDirection = ConnectionDirection::Inbound;
         debug!(
             target: LOG_TARGET,
@@ -317,7 +315,7 @@ where
 
         let authenticated_public_key = noise_socket
             .get_remote_public_key()
-            .ok_or_else(|| ConnectionManagerError::InvalidStaticPublicKey)?;
+            .ok_or(ConnectionManagerError::InvalidStaticPublicKey)?;
 
         // Check if we know the peer and if it is banned
         let known_peer = common::find_unbanned_peer(&peer_manager, &authenticated_public_key).await?;
@@ -337,7 +335,7 @@ where
             &node_identity,
             CONNECTION_DIRECTION,
             &our_supported_protocols,
-            user_agent,
+            config.network_info.clone(),
         )
         .await?;
 
@@ -345,7 +343,7 @@ where
         debug!(
             target: LOG_TARGET,
             "Peer identity exchange succeeded on Inbound connection for peer '{}' (Features = {:?})",
-            peer_identity.node_id.to_hex(),
+            authenticated_public_key,
             features
         );
         trace!(target: LOG_TARGET, "{:?}", peer_identity);
@@ -356,7 +354,7 @@ where
             authenticated_public_key,
             peer_identity,
             None,
-            allow_test_addresses,
+            config.allow_test_addresses,
         )
         .await?;
 

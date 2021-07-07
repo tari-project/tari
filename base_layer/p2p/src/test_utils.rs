@@ -28,7 +28,7 @@ use tari_comms::{
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags},
 };
 use tari_comms_dht::{
-    envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, Network, NodeDestination},
+    envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, NodeDestination},
     inbound::DhtInboundMessage,
 };
 
@@ -50,24 +50,21 @@ macro_rules! unwrap_oms_send_msg {
 }
 
 pub fn make_node_identity() -> Arc<NodeIdentity> {
-    Arc::new(
-        NodeIdentity::random(
-            &mut OsRng,
-            "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
-            PeerFeatures::COMMUNICATION_NODE,
-        )
-        .unwrap(),
-    )
+    Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ))
 }
 
 pub fn make_dht_header(trace: MessageTag) -> DhtMessageHeader {
     DhtMessageHeader {
-        version: 0,
+        major: 0,
+        minor: 0,
         destination: NodeDestination::Unknown,
         origin_mac: Vec::new(),
         ephemeral_public_key: None,
         message_type: DhtMessageType::None,
-        network: Network::LocalTest,
         flags: DhtMessageFlags::NONE,
         message_tag: trace,
         expires: None,

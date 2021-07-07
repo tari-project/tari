@@ -93,8 +93,7 @@ impl DbTransaction {
         kernel: TransactionKernel,
         header_hash: HashOutput,
         mmr_position: u32,
-    ) -> &mut Self
-    {
+    ) -> &mut Self {
         self.operations.push(WriteOperation::InsertKernel {
             header_hash,
             kernel: Box::new(kernel),
@@ -112,9 +111,16 @@ impl DbTransaction {
     }
 
     /// Adds a UTXO into the current transaction and update the TXO MMR.
-    pub fn insert_utxo(&mut self, utxo: TransactionOutput, header_hash: HashOutput, mmr_leaf_index: u32) -> &mut Self {
+    pub fn insert_utxo(
+        &mut self,
+        utxo: TransactionOutput,
+        header_hash: HashOutput,
+        header_height: u64,
+        mmr_leaf_index: u32,
+    ) -> &mut Self {
         self.operations.push(WriteOperation::InsertOutput {
             header_hash,
+            header_height,
             output: Box::new(utxo),
             mmr_position: mmr_leaf_index,
         });
@@ -126,11 +132,12 @@ impl DbTransaction {
         output_hash: HashOutput,
         proof_hash: HashOutput,
         header_hash: HashOutput,
+        header_height: u64,
         mmr_leaf_index: u32,
-    ) -> &mut Self
-    {
+    ) -> &mut Self {
         self.operations.push(WriteOperation::InsertPrunedOutput {
             header_hash,
+            header_height,
             output_hash,
             proof_hash,
             mmr_position: mmr_leaf_index,
@@ -152,8 +159,7 @@ impl DbTransaction {
         mmr_tree: MmrTree,
         header_hash: HashOutput,
         pruned_hash_set: PrunedHashSet,
-    ) -> &mut Self
-    {
+    ) -> &mut Self {
         self.operations.push(WriteOperation::UpdatePrunedHashSet {
             mmr_tree,
             header_hash,
@@ -254,9 +260,9 @@ impl DbTransaction {
 
     /// This will store the seed key with the height. This is called when a block is accepted into the main chain.
     /// This will only update the hieght of the seed, if its lower then currently stored.
-    pub fn insert_monero_seed_height(&mut self, monero_seed: &str, height: u64) {
+    pub fn insert_monero_seed_height(&mut self, monero_seed: Vec<u8>, height: u64) {
         self.operations
-            .push(WriteOperation::InsertMoneroSeedHeight(monero_seed.to_string(), height));
+            .push(WriteOperation::InsertMoneroSeedHeight(monero_seed, height));
     }
 }
 
@@ -283,11 +289,13 @@ pub enum WriteOperation {
     },
     InsertOutput {
         header_hash: HashOutput,
+        header_height: u64,
         output: Box<TransactionOutput>,
         mmr_position: u32,
     },
     InsertPrunedOutput {
         header_hash: HashOutput,
+        header_height: u64,
         output_hash: HashOutput,
         proof_hash: HashOutput,
         mmr_position: u32,
@@ -297,7 +305,7 @@ pub enum WriteOperation {
     DeleteBlock(HashOutput),
     DeleteOrphanChainTip(HashOutput),
     InsertOrphanChainTip(HashOutput),
-    InsertMoneroSeedHeight(String, u64),
+    InsertMoneroSeedHeight(Vec<u8>, u64),
     UpdatePrunedHashSet {
         mmr_tree: MmrTree,
         header_hash: HashOutput,
@@ -361,13 +369,15 @@ impl fmt::Display for WriteOperation {
             ),
             InsertOutput {
                 header_hash,
+                header_height,
                 output,
                 mmr_position,
             } => write!(
                 f,
-                "Insert output {} in block:{} position: {}",
+                "Insert output {} in block:{},#{} position: {}",
                 output.hash().to_hex(),
                 header_hash.to_hex(),
+                header_height,
                 mmr_position
             ),
             InsertInput {
@@ -377,7 +387,7 @@ impl fmt::Display for WriteOperation {
             } => write!(
                 f,
                 "Insert input {} in block: {} position: {}",
-                input.hash().to_hex(),
+                input.output_hash().to_hex(),
                 header_hash.to_hex(),
                 mmr_position
             ),
@@ -385,7 +395,7 @@ impl fmt::Display for WriteOperation {
             InsertOrphanChainTip(hash) => write!(f, "InsertOrphanChainTip({})", hash.to_hex()),
             DeleteBlock(hash) => write!(f, "DeleteBlock({})", hash.to_hex()),
             InsertMoneroSeedHeight(data, height) => {
-                write!(f, "Insert Monero seed string {} for height: {}", data, height)
+                write!(f, "Insert Monero seed string {} for height: {}", data.to_hex(), height)
             },
             InsertChainOrphanBlock(block) => write!(f, "InsertChainOrphanBlock({})", block.hash().to_hex()),
             UpdatePrunedHashSet {
@@ -398,6 +408,7 @@ impl fmt::Display for WriteOperation {
             ),
             InsertPrunedOutput {
                 header_hash: _,
+                header_height: _,
                 output_hash: _,
                 proof_hash: _,
                 mmr_position: _,

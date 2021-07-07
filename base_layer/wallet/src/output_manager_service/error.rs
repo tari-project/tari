@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{base_node_service::error::BaseNodeServiceError, output_manager_service::storage::database::DbKey};
+use crate::base_node_service::error::BaseNodeServiceError;
 use diesel::result::Error as DieselError;
 use tari_comms::{peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
@@ -29,7 +29,7 @@ use tari_core::transactions::{
     transaction_protocol::TransactionProtocolError,
     CoinbaseBuildError,
 };
-use tari_crypto::tari_utilities::ByteArrayError;
+use tari_crypto::{script::ScriptError, tari_utilities::ByteArrayError};
 use tari_key_manager::{key_manager::KeyManagerError, mnemonic::MnemonicError};
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
@@ -101,14 +101,26 @@ pub enum OutputManagerError {
     RpcError(#[from] RpcError),
     #[error("Node ID error: `{0}`")]
     NodeIdError(#[from] NodeIdError),
+    #[error("Script hash does not match expected script")]
+    InvalidScriptHash,
+    #[error("Tari script error : {0}")]
+    ScriptError(#[from] ScriptError),
+    #[error("Master secret key does not match persisted key manager state")]
+    MasterSecretKeyMismatch,
+    #[error("Private Key is not found in the current Key Chain")]
+    KeyNotFoundInKeyChain,
 }
 
 #[derive(Debug, Error, PartialEq)]
 pub enum OutputManagerStorageError {
     #[error("Tried to insert an output that already exists in the database")]
     DuplicateOutput,
-    #[error("Value not found: `{0}`")]
-    ValueNotFound(DbKey),
+    #[error(
+        "Tried to insert an pending transaction encumberance for a transaction ID that already exists in the database"
+    )]
+    DuplicateTransaction,
+    #[error("Value not found")]
+    ValueNotFound,
     #[error("Unexpected result: `{0}`")]
     UnexpectedResult(String),
     #[error("If an pending transaction does not exist to be confirmed")]
@@ -143,6 +155,8 @@ pub enum OutputManagerStorageError {
     ByteArrayError(#[from] ByteArrayError),
     #[error("Aead error: `{0}`")]
     AeadError(String),
+    #[error("Tari script error : {0}")]
+    ScriptError(#[from] ScriptError),
 }
 
 /// This error type is used to return OutputManagerError from inside a Output Manager Service protocol but also

@@ -23,7 +23,7 @@ use futures::channel::{mpsc::SendError, oneshot};
 use std::io;
 use tari_comms::{
     connectivity::ConnectivityError,
-    peer_manager::{NodeIdentityError, PeerManagerError},
+    peer_manager::PeerManagerError,
     tor,
     CommsBuilderError,
     PeerConnectionError,
@@ -34,8 +34,6 @@ use tokio::{task, time};
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("NodeIdentityError: {0}")]
-    NodeIdentityError(#[from] NodeIdentityError),
     #[error("HiddenServiceBuilderError: {0}")]
     HiddenServiceBuilderError(#[from] tor::HiddenServiceBuilderError),
     #[error("HiddenServiceControllerError: {0}")]

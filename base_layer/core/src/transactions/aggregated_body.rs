@@ -23,13 +23,14 @@ use crate::transactions::{
     fee::Fee,
     tari_amount::*,
     transaction::*,
-    types::{BlindingFactor, Commitment, CommitmentFactory, CryptoFactories, PrivateKey, RangeProofService},
+    types::{BlindingFactor, Commitment, CommitmentFactory, CryptoFactories, PrivateKey, PublicKey, RangeProofService},
 };
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
+    keys::PublicKey as PublicKeyTrait,
     ristretto::pedersen::PedersenCommitment,
     tari_utilities::hex::Hex,
 };
@@ -65,8 +66,7 @@ impl AggregateBody {
         inputs: Vec<TransactionInput>,
         outputs: Vec<TransactionOutput>,
         kernels: Vec<TransactionKernel>,
-    ) -> AggregateBody
-    {
+    ) -> AggregateBody {
         AggregateBody {
             sorted: false,
             inputs,
@@ -138,36 +138,6 @@ impl AggregateBody {
     /// Set the kernel of the aggregate body, replacing any previous kernels
     pub fn set_kernel(&mut self, kernel: TransactionKernel) {
         self.kernels = vec![kernel];
-    }
-
-    /// This will perform cut-through on the aggregate body. It will remove all outputs (and inputs) that are being
-    /// spent as inputs.
-    pub fn do_cut_through(&mut self) {
-        let double_inputs: Vec<TransactionInput> = self
-            .inputs
-            .iter()
-            .filter(|input| self.outputs.iter().any(|o| o.is_equal_to(input)))
-            .cloned()
-            .collect();
-
-        for input in double_inputs {
-            trace!(
-                target: LOG_TARGET,
-                "removing the following utxo for cut-through: {}",
-                input
-            );
-            self.outputs.retain(|x| !input.is_equal_to(x));
-            self.inputs.retain(|x| *x != input);
-        }
-    }
-
-    /// This will perform a check that cut-through was performed on the aggregate body. It will return true if there are
-    /// no outputs that are being spent as inputs.
-    pub fn check_cut_through(&self) -> bool {
-        !self
-            .inputs
-            .iter()
-            .any(|input| self.outputs.iter().any(|o| o.is_equal_to(input)))
     }
 
     pub fn contains_duplicated_inputs(&self) -> bool {
@@ -263,8 +233,7 @@ impl AggregateBody {
         coinbase_lock_height: u64,
         factories: &CryptoFactories,
         height: u64,
-    ) -> Result<(), TransactionError>
-    {
+    ) -> Result<(), TransactionError> {
         let mut coinbase_utxo = None;
         let mut coinbase_kernel = None;
         let mut coinbase_counter = 0; // there should be exactly 1 coinbase
@@ -336,16 +305,20 @@ impl AggregateBody {
     /// for a transaction
     pub fn validate_internal_consistency(
         &self,
-        offset: &BlindingFactor,
+        tx_offset: &BlindingFactor,
+        script_offset: &BlindingFactor,
         total_reward: MicroTari,
         factories: &CryptoFactories,
-    ) -> Result<(), TransactionError>
-    {
-        let total_offset = factories.commitment.commit_value(&offset, total_reward.0);
+    ) -> Result<(), TransactionError> {
+        let total_offset = factories.commitment.commit_value(&tx_offset, total_reward.0);
+        let script_offset_g = PublicKey::from_secret_key(&script_offset);
 
         self.verify_kernel_signatures()?;
         self.validate_kernel_sum(total_offset, &factories.commitment)?;
-        self.validate_range_proofs(&factories.range_proof)
+
+        self.validate_range_proofs(&factories.range_proof)?;
+        self.verify_metadata_signatures()?;
+        self.validate_script_offset(script_offset_g, &factories.commitment)
     }
 
     pub fn dissolve(self) -> (Vec<TransactionInput>, Vec<TransactionOutput>, Vec<TransactionKernel>) {
@@ -382,8 +355,7 @@ impl AggregateBody {
         &self,
         offset_and_reward: Commitment,
         factory: &CommitmentFactory,
-    ) -> Result<(), TransactionError>
-    {
+    ) -> Result<(), TransactionError> {
         trace!(target: LOG_TARGET, "Checking kernel total");
         let KernelSum { sum: excess, fees } = self.sum_kernels(offset_and_reward);
         let sum_io = self.sum_commitments();
@@ -405,6 +377,34 @@ impl AggregateBody {
         Ok(())
     }
 
+    /// this will validate the script offset of the aggregate body.
+    fn validate_script_offset(
+        &self,
+        script_offset: PublicKey,
+        factory: &CommitmentFactory,
+    ) -> Result<(), TransactionError> {
+        trace!(target: LOG_TARGET, "Checking script offset");
+        // lets count up the input script public keys
+        let mut input_keys = PublicKey::default();
+        for input in &self.inputs {
+            input_keys = input_keys + input.run_and_verify_script(factory)?;
+        }
+
+        // Now lets gather the output public keys and hashes.
+        let mut output_keys = PublicKey::default();
+        for output in &self.outputs {
+            // We should not count the coinbase tx here
+            if !output.is_coinbase() {
+                output_keys = output_keys + output.sender_offset_public_key.clone();
+            }
+        }
+        let lhs = input_keys - output_keys;
+        if lhs != script_offset {
+            return Err(TransactionError::ScriptOffset);
+        }
+        Ok(())
+    }
+
     fn validate_range_proofs(&self, range_proof_service: &RangeProofService) -> Result<(), TransactionError> {
         trace!(target: LOG_TARGET, "Checking range proofs");
         for o in &self.outputs {
@@ -413,6 +413,14 @@ impl AggregateBody {
                     "Range proof could not be verified".into(),
                 ));
             }
+        }
+        Ok(())
+    }
+
+    fn verify_metadata_signatures(&self) -> Result<(), TransactionError> {
+        trace!(target: LOG_TARGET, "Checking sender signatures");
+        for o in &self.outputs {
+            o.verify_metadata_signature()?;
         }
         Ok(())
     }

@@ -104,7 +104,7 @@ where
 
     /// Returns the number of leaf nodes in the MMR.
     pub fn get_leaf_count(&self) -> Result<usize, MerkleMountainRangeError> {
-        let nleaves = checked_n_leaves(self.len()?).ok_or_else(|| MerkleMountainRangeError::MaximumSizeReached)?;
+        let nleaves = checked_n_leaves(self.len()?).ok_or(MerkleMountainRangeError::MaximumSizeReached)?;
         Ok(nleaves)
     }
 
@@ -138,7 +138,7 @@ where
             return Ok(MerkleMountainRange::<D, B>::null_hash());
         }
         let hasher = D::new();
-        Ok(self.hash_to_root(hasher)?.result().to_vec())
+        Ok(self.hash_to_root(hasher)?.finalize().to_vec())
     }
 
     pub(crate) fn hash_to_root(&self, hasher: D) -> Result<D, MerkleMountainRangeError> {
@@ -207,15 +207,15 @@ where
             if height > 0 {
                 let hash = self
                     .get_node_hash(n)?
-                    .ok_or_else(|| MerkleMountainRangeError::CorruptDataStructure)?;
+                    .ok_or(MerkleMountainRangeError::CorruptDataStructure)?;
                 let left_pos = n - (1 << height);
                 let right_pos = n - 1;
                 let left_child_hash = self
                     .get_node_hash(left_pos)?
-                    .ok_or_else(|| MerkleMountainRangeError::CorruptDataStructure)?;
+                    .ok_or(MerkleMountainRangeError::CorruptDataStructure)?;
                 let right_child_hash = self
                     .get_node_hash(right_pos)?
-                    .ok_or_else(|| MerkleMountainRangeError::CorruptDataStructure)?;
+                    .ok_or(MerkleMountainRangeError::CorruptDataStructure)?;
                 // hash the two child nodes together with parent_pos and compare
                 let hash_check = hash_together::<D>(&left_child_hash, &right_child_hash);
                 if hash_check != hash {

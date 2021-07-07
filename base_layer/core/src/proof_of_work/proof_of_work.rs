@@ -73,7 +73,6 @@ impl Display for PowAlgorithm {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
         let algo = match self {
             PowAlgorithm::Monero => "Monero",
-            PowAlgorithm::Blake => "Blake",
             PowAlgorithm::Sha3 => "Sha3",
         };
         fmt.write_str(&algo.to_string())
@@ -100,8 +99,10 @@ mod test {
 
     #[test]
     fn to_bytes() {
-        let mut pow = ProofOfWork::default();
-        pow.pow_algo = PowAlgorithm::Sha3;
-        assert_eq!(pow.to_bytes(), vec![2]);
+        let pow = ProofOfWork {
+            pow_algo: PowAlgorithm::Sha3,
+            ..Default::default()
+        };
+        assert_eq!(pow.to_bytes(), vec![1]);
     }
 }

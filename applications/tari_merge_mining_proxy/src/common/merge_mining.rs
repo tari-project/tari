@@ -21,51 +21,17 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::error::MmProxyError;
-use monero::{
-    blockdata::{transaction::SubField, Block},
-    consensus::{deserialize, serialize},
-    cryptonote::hash::Hash,
-};
 use std::convert::TryFrom;
 use tari_app_grpc::tari_rpc as grpc;
 use tari_core::{
     blocks::NewBlockTemplate,
-    proof_of_work::{monero_rx, monero_rx::MoneroData},
     transactions::transaction::{TransactionKernel, TransactionOutput},
 };
-
-pub fn deserialize_monero_block_from_hex<T>(data: T) -> Result<Block, MmProxyError>
-where T: AsRef<[u8]> {
-    let bytes = hex::decode(data)?;
-    let obj = deserialize::<Block>(&bytes)
-        .map_err(|_| MmProxyError::MissingDataError("blocktemplate blob invalid".to_string()))?;
-    Ok(obj)
-}
-
-pub fn serialize_monero_block_to_hex(obj: &Block) -> Result<String, MmProxyError> {
-    let data = serialize::<Block>(obj);
-    let bytes = hex::encode(data);
-    Ok(bytes)
-}
-
-pub fn construct_monero_data(block: Block, seed: String) -> Result<MoneroData, MmProxyError> {
-    let hashes = monero_rx::create_ordered_transaction_hashes_from_block(&block);
-    let root = monero_rx::tree_hash(&hashes)?;
-    Ok(MoneroData {
-        header: block.header,
-        key: seed,
-        count: hashes.len() as u16,
-        transaction_root: root.to_fixed_bytes(),
-        transaction_hashes: hashes.into_iter().map(|h| h.to_fixed_bytes()).collect(),
-        coinbase_tx: block.miner_tx,
-    })
-}
 
 pub fn add_coinbase(
     coinbase: Option<grpc::Transaction>,
     mut block: NewBlockTemplate,
-) -> Result<grpc::NewBlockTemplate, MmProxyError>
-{
+) -> Result<grpc::NewBlockTemplate, MmProxyError> {
     if let Some(tx) = coinbase {
         let output = TransactionOutput::try_from(tx.clone().body.unwrap().outputs[0].clone())
             .map_err(MmProxyError::MissingDataError)?;
@@ -81,13 +47,4 @@ pub fn add_coinbase(
     } else {
         Err(MmProxyError::MissingDataError("Coinbase Invalid".to_string()))
     }
-}
-
-pub fn extract_tari_hash(monero: &Block) -> Option<&Hash> {
-    for item in monero.miner_tx.prefix.extra.0.iter() {
-        if let SubField::MergeMining(_depth, merge_mining_hash) = item {
-            return Some(merge_mining_hash);
-        }
-    }
-    None
 }

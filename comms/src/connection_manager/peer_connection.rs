@@ -67,8 +67,7 @@ pub fn create(
     event_notifier: mpsc::Sender<ConnectionManagerEvent>,
     our_supported_protocols: Vec<ProtocolId>,
     their_supported_protocols: Vec<ProtocolId>,
-) -> Result<PeerConnection, ConnectionManagerError>
-{
+) -> Result<PeerConnection, ConnectionManagerError> {
     trace!(
         target: LOG_TARGET,
         "(Peer={}) Socket successfully upgraded to multiplexed socket",
@@ -136,8 +135,7 @@ impl PeerConnection {
         address: Multiaddr,
         direction: ConnectionDirection,
         substream_counter: SubstreamCounter,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             id,
             request_tx,
@@ -185,8 +183,7 @@ impl PeerConnection {
     pub async fn open_substream(
         &mut self,
         protocol_id: &ProtocolId,
-    ) -> Result<NegotiatedSubstream<Substream>, PeerConnectionError>
-    {
+    ) -> Result<NegotiatedSubstream<Substream>, PeerConnectionError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.request_tx
             .send(PeerConnectionRequest::OpenSubstream(protocol_id.clone(), reply_tx))
@@ -200,8 +197,7 @@ impl PeerConnection {
         &mut self,
         protocol_id: &ProtocolId,
         max_frame_size: usize,
-    ) -> Result<CanonicalFraming<Substream>, PeerConnectionError>
-    {
+    ) -> Result<CanonicalFraming<Substream>, PeerConnectionError> {
         let substream = self.open_substream(protocol_id).await?;
         Ok(framing::canonical(substream.stream, max_frame_size))
     }
@@ -295,8 +291,7 @@ impl PeerConnectionActor {
         event_notifier: mpsc::Sender<ConnectionManagerEvent>,
         our_supported_protocols: Vec<ProtocolId>,
         their_supported_protocols: Vec<ProtocolId>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             id,
             peer_node_id,
@@ -387,8 +382,7 @@ impl PeerConnectionActor {
     async fn open_negotiated_protocol_stream(
         &mut self,
         protocol: ProtocolId,
-    ) -> Result<NegotiatedSubstream<Substream>, PeerConnectionError>
-    {
+    ) -> Result<NegotiatedSubstream<Substream>, PeerConnectionError> {
         debug!(
             target: LOG_TARGET,
             "[{}] Negotiating protocol '{}' on new substream for peer '{}'",

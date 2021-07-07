@@ -33,7 +33,7 @@ use crate::{
     proto as shared_protos,
     proto::base_node as proto,
 };
-use futures::{channel::mpsc, future, Future, Stream, StreamExt};
+use futures::{channel::mpsc, future, Stream, StreamExt};
 use log::*;
 use std::{convert::TryFrom, sync::Arc};
 use tari_comms_dht::Dht;
@@ -44,6 +44,7 @@ use tari_p2p::{
     tari_message::TariMessageType,
 };
 use tari_service_framework::{
+    async_trait,
     reply_channel,
     ServiceInitializationError,
     ServiceInitializer,
@@ -73,8 +74,7 @@ where T: BlockchainBackend
         mempool: Mempool,
         consensus_manager: ConsensusManager,
         config: BaseNodeServiceConfig,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             inbound_message_subscription_factory,
             blockchain_db,
@@ -140,12 +140,11 @@ async fn extract_block(msg: Arc<PeerMessage>) -> Option<DomainMessage<NewBlock>>
     }
 }
 
+#[async_trait]
 impl<T> ServiceInitializer for BaseNodeServiceInitializer<T>
 where T: BlockchainBackend + 'static
 {
-    type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
-
-    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+    async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         // Create streams for receiving Base Node requests and response messages from comms
         let inbound_request_stream = self.inbound_request_stream();
         let inbound_response_stream = self.inbound_response_stream();
@@ -198,6 +197,6 @@ where T: BlockchainBackend + 'static
             info!(target: LOG_TARGET, "Base Node Service shutdown");
         });
 
-        future::ready(Ok(()))
+        Ok(())
     }
 }

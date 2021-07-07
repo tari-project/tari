@@ -163,14 +163,14 @@ mod test {
         assert!(state.last_failed_at().is_none());
         assert_eq!(state.failed_attempts(), 0);
         assert!(state.time_since_last_failure().is_none());
-        assert_eq!(state.has_ever_connected(), false);
+        assert!(!state.has_ever_connected());
 
         let mut state = PeerConnectionStats::new();
         state.set_connection_success();
         assert!(state.last_failed_at().is_none());
         assert_eq!(state.failed_attempts(), 0);
         assert!(state.time_since_last_failure().is_none());
-        assert_eq!(state.has_ever_connected(), true);
+        assert!(state.has_ever_connected());
 
         let mut state = PeerConnectionStats::new();
         state.set_connection_failed();
@@ -180,8 +180,8 @@ mod test {
         assert_eq!(state.failed_attempts(), 3);
         assert!(state.time_since_last_failure().unwrap().as_millis() < 100);
 
-        assert_eq!(state.has_ever_connected(), false);
+        assert!(!state.has_ever_connected());
         state.set_connection_success();
-        assert_eq!(state.has_ever_connected(), true);
+        assert!(state.has_ever_connected());
     }
 }

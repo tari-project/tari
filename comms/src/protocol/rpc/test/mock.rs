@@ -157,8 +157,7 @@ impl MockRpcClient {
         &mut self,
         request: T,
         method: RpcMethod,
-    ) -> Result<R, RpcError>
-    {
+    ) -> Result<R, RpcError> {
         self.inner.request_response(request, method).await
     }
 
@@ -166,8 +165,7 @@ impl MockRpcClient {
         &mut self,
         request: T,
         method: RpcMethod,
-    ) -> Result<ClientStreaming<R>, RpcError>
-    {
+    ) -> Result<ClientStreaming<R>, RpcError> {
         self.inner.server_streaming(request, method).await
     }
 }

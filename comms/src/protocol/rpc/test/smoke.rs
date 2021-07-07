@@ -83,8 +83,7 @@ async fn setup_service<T: GreetingRpc>(
     task::JoinHandle<Result<(), RpcError>>,
     RpcCommsBackend,
     Shutdown,
-)
-{
+) {
     let (notif_tx, notif_rx) = mpsc::channel(1);
     let shutdown = Shutdown::new();
     let (context, _) = create_mocked_rpc_context();
@@ -108,8 +107,7 @@ async fn setup<T: GreetingRpc>(
     task::JoinHandle<Result<(), RpcError>>,
     Arc<NodeIdentity>,
     Shutdown,
-)
-{
+) {
     let (mut notif_tx, server_hnd, context, shutdown) = setup_service(service, num_concurrent_sessions).await;
     let (inbound, outbound) = MemorySocket::new_pair();
     let node_identity = build_node_identity(Default::default());

@@ -375,13 +375,13 @@ impl MemorySocket {
         let mut switchboard = (&*SWITCHBOARD).lock().unwrap();
 
         // Find port to connect to
-        let port = NonZeroU16::new(port).ok_or_else(|| ErrorKind::AddrNotAvailable)?;
+        let port = NonZeroU16::new(port).ok_or(ErrorKind::AddrNotAvailable)?;
 
         let sender = switchboard
             .0
             .get_mut(&port)
             .and_then(|slot| slot.in_use())
-            .ok_or_else(|| ErrorKind::AddrNotAvailable)?;
+            .ok_or(ErrorKind::AddrNotAvailable)?;
 
         let (socket_a, socket_b) = Self::new_pair();
         // Send the socket to the listener

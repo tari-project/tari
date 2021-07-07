@@ -39,7 +39,7 @@ use tari_comms::{
 use tari_crypto::tari_utilities::message_format::MessageFormat;
 
 fn random_address() -> Multiaddr {
-    let port = OsRng.gen_range(9000, std::u16::MAX);
+    let port = OsRng.gen_range(9000..std::u16::MAX);
     let socket_addr: SocketAddr = (Ipv4Addr::LOCALHOST, port).into();
     socketaddr_to_multiaddr(&socket_addr)
 }
@@ -71,7 +71,7 @@ fn main() {
         .get_matches();
 
     let address = random_address();
-    let node_identity = NodeIdentity::random(&mut OsRng, address, PeerFeatures::COMMUNICATION_NODE).unwrap();
+    let node_identity = NodeIdentity::random(&mut OsRng, address, PeerFeatures::COMMUNICATION_NODE);
     let json = node_identity.to_json().unwrap();
     let out_path = to_abs_path(matches.value_of("output").unwrap());
     fs::write(out_path, json).unwrap();

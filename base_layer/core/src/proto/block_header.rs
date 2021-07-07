@@ -31,12 +31,16 @@ use std::convert::TryFrom;
 use tari_crypto::tari_utilities::ByteArray;
 
 //---------------------------------- BlockHeader --------------------------------------------//
+
 impl TryFrom<proto::BlockHeader> for BlockHeader {
     type Error = String;
 
     fn try_from(header: proto::BlockHeader) -> Result<Self, Self::Error> {
         let total_kernel_offset =
             BlindingFactor::from_bytes(&header.total_kernel_offset).map_err(|err| err.to_string())?;
+
+        let total_script_offset =
+            BlindingFactor::from_bytes(&header.total_script_offset).map_err(|err| err.to_string())?;
 
         let timestamp = header
             .timestamp
@@ -53,11 +57,13 @@ impl TryFrom<proto::BlockHeader> for BlockHeader {
             prev_hash: header.prev_hash,
             timestamp,
             output_mr: header.output_mr,
-            range_proof_mr: header.range_proof_mr,
+            witness_mr: header.witness_mr,
             output_mmr_size: header.output_mmr_size,
             kernel_mr: header.kernel_mr,
             kernel_mmr_size: header.kernel_mmr_size,
+            input_mr: header.input_mr,
             total_kernel_offset,
+            total_script_offset,
             nonce: header.nonce,
             pow,
         })
@@ -72,9 +78,11 @@ impl From<BlockHeader> for proto::BlockHeader {
             prev_hash: header.prev_hash,
             timestamp: Some(datetime_to_timestamp(header.timestamp)),
             output_mr: header.output_mr,
-            range_proof_mr: header.range_proof_mr,
+            witness_mr: header.witness_mr,
             kernel_mr: header.kernel_mr,
+            input_mr: header.input_mr,
             total_kernel_offset: header.total_kernel_offset.to_vec(),
+            total_script_offset: header.total_script_offset.to_vec(),
             nonce: header.nonce,
             pow: Some(proto::ProofOfWork::from(header.pow)),
             kernel_mmr_size: header.kernel_mmr_size,

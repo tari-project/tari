@@ -26,5 +26,5 @@ use tari_crypto::keys::PublicKey;
 
 pub fn random() -> NodeId {
     let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
-    NodeId::from_key(&pk).unwrap()
+    NodeId::from_key(&pk)
 }

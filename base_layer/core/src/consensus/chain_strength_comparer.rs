@@ -26,8 +26,7 @@ impl ThenComparer {
     pub fn new(
         before: Box<dyn ChainStrengthComparer + Send + Sync>,
         after: Box<dyn ChainStrengthComparer + Send + Sync>,
-    ) -> Self
-    {
+    ) -> Self {
         ThenComparer { before, after }
     }
 }
@@ -59,8 +58,8 @@ pub struct Sha3DifficultyComparer {}
 impl ChainStrengthComparer for Sha3DifficultyComparer {
     fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
         a.accumulated_data()
-            .accumulated_blake_difficulty
-            .cmp(&b.accumulated_data().accumulated_blake_difficulty)
+            .accumulated_sha_difficulty
+            .cmp(&b.accumulated_data().accumulated_sha_difficulty)
     }
 }
 

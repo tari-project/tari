@@ -21,12 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    consensus::{network::Network, KERNEL_WEIGHT, WEIGHT_PER_OUTPUT},
+    consensus::{network::NetworkConsensus, KERNEL_WEIGHT, WEIGHT_PER_OUTPUT},
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::tari_amount::{uT, MicroTari, T},
 };
 use chrono::{DateTime, Duration, Utc};
 use std::{collections::HashMap, ops::Add};
+use tari_common::configuration::Network;
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 /// This is the inner struct used to control all consensus values.
@@ -323,6 +324,38 @@ impl ConsensusConstants {
         ]
     }
 
+    pub fn weatherwax() -> Vec<Self> {
+        let mut algos = HashMap::new();
+        // seting sha3/monero to 40/60 split
+        algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
+            max_target_time: 1800,
+            min_difficulty: 60_000_000.into(),
+            max_difficulty: u64::MAX.into(),
+            target_time: 300,
+        });
+        algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
+            max_target_time: 1200,
+            min_difficulty: 60_000.into(),
+            max_difficulty: u64::MAX.into(),
+            target_time: 200,
+        });
+        vec![ConsensusConstants {
+            effective_from_height: 0,
+            coinbase_lock_height: 6,
+            blockchain_version: 1,
+            future_time_limit: 540,
+            difficulty_block_window: 90,
+            max_block_transaction_weight: 19500,
+            median_timestamp_count: 11,
+            emission_initial: 5_538_846_115 * uT,
+            emission_decay: &EMISSION_DECAY,
+            emission_tail: 100.into(),
+            max_randomx_seed_height: std::u64::MAX,
+            proof_of_work: algos,
+            faucet_value: (5000 * 4000) * T,
+        }]
+    }
+
     pub fn mainnet() -> Vec<Self> {
         // Note these values are all placeholders for final values
         let difficulty_block_window = 90;
@@ -368,7 +401,10 @@ impl ConsensusConstantsBuilder {
     pub fn new(network: Network) -> Self {
         Self {
             // TODO: Resolve this unwrap
-            consensus: network.create_consensus_constants().pop().unwrap(),
+            consensus: NetworkConsensus::from(network)
+                .create_consensus_constants()
+                .pop()
+                .expect("Empty consensus constants"),
         }
     }
 
@@ -384,6 +420,11 @@ impl ConsensusConstantsBuilder {
 
     pub fn with_coinbase_lockheight(mut self, height: u64) -> Self {
         self.consensus.coinbase_lock_height = height;
+        self
+    }
+
+    pub fn with_max_block_transaction_weight(mut self, weight: u64) -> Self {
+        self.consensus.max_block_transaction_weight = weight;
         self
     }
 
@@ -407,8 +448,7 @@ impl ConsensusConstantsBuilder {
         intial_amount: MicroTari,
         decay: &'static [u64],
         tail_amount: MicroTari,
-    ) -> Self
-    {
+    ) -> Self {
         self.consensus.emission_initial = intial_amount;
         self.consensus.emission_decay = decay;
         self.consensus.emission_tail = tail_amount;

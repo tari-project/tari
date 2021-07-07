@@ -92,7 +92,11 @@ impl TestNode {
 
 fn make_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
     let port = MemoryTransport::acquire_next_memsocket_port();
-    Arc::new(NodeIdentity::random(&mut OsRng, format!("/memory/{}", port).parse().unwrap(), features).unwrap())
+    Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        format!("/memory/{}", port).parse().unwrap(),
+        features,
+    ))
 }
 
 fn create_peer_storage() -> CommsDatabase {
@@ -142,8 +146,7 @@ async fn setup_comms_dht(
     inbound_tx: mpsc::Sender<DecryptedDhtMessage>,
     peers: Vec<Peer>,
     shutdown_signal: ShutdownSignal,
-) -> (CommsNode, Dht, MessagingEventSender)
-{
+) -> (CommsNode, Dht, MessagingEventSender) {
     // Create inbound and outbound channels
     let (outbound_tx, outbound_rx) = mpsc::channel(10);
 
@@ -179,24 +182,22 @@ async fn setup_comms_dht(
     }
 
     let dht_outbound_layer = dht.outbound_middleware_layer();
+    let pipeline = pipeline::Builder::new()
+        .outbound_buffer_size(10)
+        .with_outbound_pipeline(outbound_rx, |sink| {
+            ServiceBuilder::new().layer(dht_outbound_layer).service(sink)
+        })
+        .max_concurrent_inbound_tasks(10)
+        .with_inbound_pipeline(
+            ServiceBuilder::new()
+                .layer(dht.inbound_middleware_layer())
+                .service(SinkService::new(inbound_tx)),
+        )
+        .build();
 
     let (event_tx, _) = broadcast::channel(100);
     let comms = comms
-        .add_protocol_extension(MessagingProtocolExtension::new(
-            event_tx.clone(),
-            pipeline::Builder::new()
-                .outbound_buffer_size(10)
-                .with_outbound_pipeline(outbound_rx, |sink| {
-                    ServiceBuilder::new().layer(dht_outbound_layer).service(sink)
-                })
-                .max_concurrent_inbound_tasks(10)
-                .with_inbound_pipeline(
-                    ServiceBuilder::new()
-                        .layer(dht.inbound_middleware_layer())
-                        .service(SinkService::new(inbound_tx)),
-                )
-                .build(),
-        ))
+        .add_protocol_extension(MessagingProtocolExtension::new(event_tx.clone(), pipeline))
         .spawn_with_transport(MemoryTransport)
         .await
         .unwrap();
@@ -523,7 +524,7 @@ async fn dht_propagate_dedup() {
     let received = filter_received(collect_stream!(node_B_messaging, timeout = Duration::from_secs(20)));
     let recv_count = count_messages_received(&received, &[&node_A_id, &node_C_id]);
     // Expected race condition: If A->B->C before A->C then C->B does not happen
-    assert!(recv_count >= 1 && recv_count <= 2);
+    assert!((1..=2).contains(&recv_count));
 
     let received = filter_received(collect_stream!(node_C_messaging, timeout = Duration::from_secs(20)));
     let recv_count = count_messages_received(&received, &[&node_A_id, &node_B_id]);

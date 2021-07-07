@@ -73,7 +73,7 @@ impl Default for BaseNodeState {
     }
 }
 
-/// The wallet base node service is responsible for handling requests to be sent to the connected base node.
+/// The base node service is responsible for handling requests to be sent to the connected base node.
 pub struct BaseNodeService<T>
 where T: WalletBackend + 'static
 {
@@ -96,8 +96,7 @@ where T: WalletBackend + 'static
         event_publisher: BaseNodeEventSender,
         shutdown_signal: ShutdownSignal,
         db: WalletDatabase<T>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             config,
             request_stream: Some(request_stream),
@@ -160,8 +159,10 @@ where T: WalletBackend + 'static
     }
 
     async fn set_base_node_peer(&self, peer: Peer) {
-        let mut new_state = BaseNodeState::default();
-        new_state.base_node_peer = Some(peer.clone());
+        let new_state = BaseNodeState {
+            base_node_peer: Some(peer.clone()),
+            ..Default::default()
+        };
 
         {
             let mut lock = self.state.write().await;
@@ -176,8 +177,7 @@ where T: WalletBackend + 'static
     async fn handle_request(
         &mut self,
         request: BaseNodeServiceRequest,
-    ) -> Result<BaseNodeServiceResponse, BaseNodeServiceError>
-    {
+    ) -> Result<BaseNodeServiceResponse, BaseNodeServiceError> {
         debug!(
             target: LOG_TARGET,
             "Handling Wallet Base Node Service Request: {:?}", request
@@ -186,6 +186,10 @@ where T: WalletBackend + 'static
             BaseNodeServiceRequest::SetBaseNodePeer(peer) => {
                 self.set_base_node_peer(*peer).await;
                 Ok(BaseNodeServiceResponse::BaseNodePeerSet)
+            },
+            BaseNodeServiceRequest::GetBaseNodePeer => {
+                let peer = self.get_state().await.base_node_peer.map(Box::new);
+                Ok(BaseNodeServiceResponse::BaseNodePeer(peer))
             },
             BaseNodeServiceRequest::GetChainMetadata => match self.get_state().await.chain_metadata.clone() {
                 Some(metadata) => Ok(BaseNodeServiceResponse::ChainMetadata(Some(metadata))),

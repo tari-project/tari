@@ -102,7 +102,10 @@ pub trait BlockchainBackend: Send + Sync {
     ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError>;
 
     /// Fetch a specific output. Returns the output and the leaf index in the output MMR
-    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(TransactionOutput, u32)>, ChainStorageError>;
+    fn fetch_output(
+        &self,
+        output_hash: &HashOutput,
+    ) -> Result<Option<(TransactionOutput, u32, u64)>, ChainStorageError>;
 
     /// Fetch all outputs in a block
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError>;
@@ -145,7 +148,7 @@ pub trait BlockchainBackend: Send + Sync {
     ) -> Result<(), ChainStorageError>;
 
     /// This gets the monero seed_height. This will return 0, if the seed is unkown
-    fn fetch_monero_seed_first_seen_height(&self, seed: &str) -> Result<u64, ChainStorageError>;
+    fn fetch_monero_seed_first_seen_height(&self, seed: &[u8]) -> Result<u64, ChainStorageError>;
 
     fn fetch_horizon_data(&self) -> Result<Option<HorizonData>, ChainStorageError>;
 }

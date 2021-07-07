@@ -51,7 +51,7 @@ pub struct ProtocolNotification<TSubstream> {
 
 impl<TSubstream> ProtocolNotification<TSubstream> {
     pub fn new(protocol: ProtocolId, event: ProtocolEvent<TSubstream>) -> Self {
-        Self { protocol, event }
+        Self { event, protocol }
     }
 }
 
@@ -88,8 +88,7 @@ impl<TSubstream> Protocols<TSubstream> {
         &mut self,
         protocols: I,
         notifier: ProtocolNotificationTx<TSubstream>,
-    ) -> &mut Self
-    {
+    ) -> &mut Self {
         self.protocols
             .extend(protocols.as_ref().iter().map(|p| (p.clone(), notifier.clone())));
         self
@@ -111,8 +110,7 @@ impl<TSubstream> Protocols<TSubstream> {
         &mut self,
         protocol: &ProtocolId,
         event: ProtocolEvent<TSubstream>,
-    ) -> Result<(), ProtocolError>
-    {
+    ) -> Result<(), ProtocolError> {
         match self.protocols.get_mut(protocol) {
             Some(sender) => {
                 sender

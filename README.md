@@ -17,12 +17,12 @@ Only the first four applications will be discussed in this README.
 ### Download
 
 [Download binaries](https://tari.com/downloads) from <www.tari.com>. This is the easiest way to run a Tari node, but you're
-essentially trusting the person that built and uploaded them that nothing untoward has happened. 
+essentially trusting the person that built and uploaded them that nothing untoward has happened.
 
-We've limited the risks by publishing hashes of the binaries alongside the binaries on our website. You can check 
+We've limited the risks by publishing hashes of the binaries alongside the binaries on our website. You can check
 that the binaries match the hash by opening a terminal (or command prompt) and by running
 
- (*nix)
+(\*nix)
 
     sha256sum <PATH_TO_BINARY_INSTALL_FILE>
 
@@ -34,27 +34,27 @@ that the binaries match the hash by opening a terminal (or command prompt) and b
 
 After you have downloaded the binaries, you need to install them. This is easy to do, and works as follows:
 
-#### On *Nix
+#### On \*Nix
 
 Assuming you want to install the Tari applications into your home folder, then, from within a terminal:
 
     cd ~
     tar -xf <PATH_TO_BINARY_INSTALL_FILE>
 
-After this, the Tari applications will be located in `~/tari_stibbons_testnet` with a selection of 
+After this, the Tari applications will be located in `~/tari_stibbons_testnet` with a selection of
 soft links to run them.
 
 #### On Windows
 
-Just double-click the installer and accept all the default prompts. The Tari applications will be located in the folder 
-you selected during installation, and can be run by double-clicking the various shortcuts or via the Windows menu 
+Just double-click the installer and accept all the default prompts. The Tari applications will be located in the folder
+you selected during installation, and can be run by double-clicking the various shortcuts or via the Windows menu
 (`Tari Testnet`).
 
 ### Runtime links
 
 #### Use the one-click miner
 
-Execute the `start_all` soft link/shortcut; this will start everything you need 
+Execute the `start_all` soft link/shortcut; this will start everything you need
 depending on the choices you make when prompted:
 
 - Tor services started by default
@@ -65,17 +65,17 @@ depending on the choices you make when prompted:
 
 #### Start all applications individually
 
-- Execute the `start_tari_base_node` soft link/shortcut; this will also start the Tor 
-  services if not running already that needs to be running before the base node 
+- Execute the `start_tari_base_node` soft link/shortcut; this will also start the Tor
+  services if not running already that needs to be running before the base node
   can run (do not close the Tor console).
-  
-- Execute the `start_tari_console_wallet` soft link/shortcut; this will also start the 
-  Tor services that needs to be running before the base node can run (do not 
+
+- Execute the `start_tari_console_wallet` soft link/shortcut; this will also start the
+  Tor services that needs to be running before the base node can run (do not
   close the Tor console).
-  
-  **Note**: The Tor console will output `[notice] Bootstrapped 100% (done): Done` 
+
+  **Note**: The Tor console will output `[notice] Bootstrapped 100% (done): Done`
   when the Tor services have fully started.
-  
+
 - Depending on your choice of mining:
 
   - SHA3 stand-alone mining
@@ -84,13 +84,11 @@ depending on the choices you make when prompted:
     - Execute the `start_tari_merge_mining_proxy` soft link/shortcut.
     - Execute the `start_xmrig` shortcut.
 
-
-
 ## Building from source
 
 To build the Tari codebase from source, there are a few dependencies you need to have installed.
 
-### Install development packages 
+### Install development packages
 
 First you'll need to make sure you have a full development environment set up:
 
@@ -120,30 +118,31 @@ sudo apt-get install -y powershell
 First you'll need to make sure you have a full development environment set up:
 
 - git
-  
+
 - https://git-scm.com/downloads
-  
+
 - LLVM
+
   - https://releases.llvm.org/
-  - Create a `LIBCLANG_PATH` environment variable pointing to the LLVM lib path, e.g. 
+  - Create a `LIBCLANG_PATH` environment variable pointing to the LLVM lib path, e.g.
     ```
     setx LIBCLANG_PATH "C:\Program Files\LLVM\lib"
     ```
 
 - Build Tools
-  - Microsoft Visual Studio Version 2019 or later 
+
+  - Microsoft Visual Studio Version 2019 or later
     - C++ CMake tools for Windows
     - MSVC build tools (latest version for your platform ARM, ARM64 or x64.x86)
     - Spectre-mitigated libs (latest version for your platform ARM, ARM64 or x64.x86)
 
-   or
+  or
 
   - [CMake](https://cmake.org/download/)
-  - [Build Tools for Visual Studio 2019](
-https://visualstudio.microsoft.com/thank-you-downloading-visual-studio/?sku=BuildTools&rel=16)
+  - [Build Tools for Visual Studio 2019](https://visualstudio.microsoft.com/thank-you-downloading-visual-studio/?sku=BuildTools&rel=16)
 
 - SQLite:
-  - Download 32bit/64bit Precompiled Binaries for Windows for [SQL Lite](https://www.sqlite.org/index.html) and unzip 
+  - Download 32bit/64bit Precompiled Binaries for Windows for [SQL Lite](https://www.sqlite.org/index.html) and unzip
     to local path, e.g. `%USERPROFILE%\.sqlite`
   - Open the appropriate x64\x86 `Native Tools Command Prompt for VS 2019` in `%USERPROFILE%\.sqlite`
     - Run either of these, depending on your environment (32bit/64bit):
@@ -154,16 +153,18 @@ https://visualstudio.microsoft.com/thank-you-downloading-visual-studio/?sku=Buil
       lib /DEF:sqlite3.def /OUT:sqlite3.lib /MACHINE:x86
       ```
   - Ensure the directory containing `sqlite3.dll`, e.g. `%USERPROFILE%\.sqlite`, is in the path
-  - Create a `SQLITE3_LIB_DIR` environment variable pointing to the SQLite lib path, e.g. 
+  - Create a `SQLITE3_LIB_DIR` environment variable pointing to the SQLite lib path, e.g.
     ```
     setx SQLITE3_LIB_DIR "%USERPROFILE%\.sqlite"
     ```
 - OpenSSL:
+
   - Download full version of the 64bit Precompiled Binaries for Windows for
     [OpenSSL](https://slproweb.com/products/Win32OpenSSL.html)
   - Install using all the default prompts
-  
+
     **Note**: It is important that the dlls are available in the path. To test:
+
     ```
     where libcrypto-1_1-x64.dll
     where libssl-1_1-x64.dll
@@ -174,8 +175,7 @@ https://visualstudio.microsoft.com/thank-you-downloading-visual-studio/?sku=Buil
   - Extract to local path, e.g. `C:\Program Files (x86)\Tor Services`
   - Ensure the directory containing the Tor executable, e.g. `C:\Program Files (x86)\Tor Services\Tor`, is in the path
 
-
-#### Install Rust (*nix)
+#### Install Rust (\*nix)
 
 You can follow along at [The Rust Website](https://www.rust-lang.org/tools/install) or just follow these steps to get
 Rust installed on your machine.
@@ -188,7 +188,7 @@ Then make sure that `cargo` has been added to your path.
 
 #### Install Rust (Windows 10)
 
-Follow the installation process for Windows at [The Rust Website](https://www.rust-lang.org/tools/install). Then make 
+Follow the installation process for Windows at [The Rust Website](https://www.rust-lang.org/tools/install). Then make
 sure that `cargo` and `rustc` has been added to your path:
 
     cargo --version
@@ -200,26 +200,26 @@ In your directory of choice (e.g. `%USERPROFILE%\Code` on Windows), clone the Ta
 
     git clone https://github.com/tari-project/tari.git
 
-
 ### Build
 
 Grab a cup of coffee and begin the Tari build
 
- (*nix)
+(\*nix)
 
     cd tari
     cargo build --release
 
 (Windows)
 
-This is similar to building in Ubuntu, except the Microsoft Visual Studio environment must be sourced. Open the 
-appropriate _x64\x86 Native Tools Command Prompt for VS 2019_, and in your main Tari directory perform the 
+This is similar to building in Ubuntu, except the Microsoft Visual Studio environment must be sourced. Open the
+appropriate _x64\x86 Native Tools Command Prompt for VS 2019_, and in your main Tari directory perform the
 build, which will create the executable inside your `%USERPROFILE%\Code\tari\target\release` directory:
 
     cd %USERPROFILE%\Code\tari
     cargo build --release
 
 A successful build should output something as follows
+
 ```
    Compiling tari_wallet v0.0.9 (.../tari/base_layer/wallet)
    Compiling test_faucet v0.0.1 (.../tari/applications/test_faucet)
@@ -235,7 +235,7 @@ Compiled executable can be found by following path:
     ./target/release/tari_merge_mining_proxy
     ./target/release/tari_mining_node
 
-Alternatively, cargo can build and install the executable into `~/.cargo/bin` (`%USERPROFILE%\.cargo\bin` on Windows), so it will be executable from anywhere 
+Alternatively, cargo can build and install the executable into `~/.cargo/bin` (`%USERPROFILE%\.cargo\bin` on Windows), so it will be executable from anywhere
 on your system.
 
     cargo install --path=applications/tari_base_node --force
@@ -244,7 +244,6 @@ on your system.
     cargo install --path=applications/tari_mining_node --force
 
 ---
-
 
 Alternatively, cargo can build and install the executable into `%USERPROFILE%\.cargo\bin`, so it will be executable from
 anywhere on your system.
@@ -268,21 +267,21 @@ To run from any directory of your choice, where the executable is visible in the
 
     tari_base_node --init --create-id
     tari_base_node
-    
+
     tari_console_wallet --init
-    
+
     tari_merge_mining_proxy
-    
+
     tari_mining_node --init
 
 Consecutive runs:
 
     tari_base_node
-    
+
     tari_console_wallet
-    
+
     tari_merge_mining_proxy
-    
+
     tari_mining_node
 
 Alternatively, you can run the Tari applications from your source directory using `cargo`, and just omit the `--release`
@@ -290,21 +289,21 @@ flag if you want to run in debug mode (first time use):
 
     cargo run --bin tari_base_node --release --  --init --create-id
     cargo run --bin tari_base_node --release
-    
+
     cargo run --bin tari_merge_mining_proxy --release
-    
+
     cargo run --bin tari_console_wallet --release --  --init
-    
+
     cargo run --bin tari_mining_node --release
 
 Consecutive runs:
 
     cargo run --bin tari_base_node --release
-    
+
     cargo run --bin tari_console_wallet --release
-    
+
     cargo run --bin tari_merge_mining_proxy --release
-    
+
     cargo run --bin tari_mining_node --release
 
 Using all the default options, the blockchain database, wallet database, console wallet database, log files and all
@@ -322,7 +321,8 @@ directory.
 
 Tari Base Node Docker images can be found at https://quay.io/repository/tarilabs/tari_base_node
 
-Using ```docker-compose.yaml```
+Using `docker-compose.yaml`
+
 ```
 version: "3"
 
@@ -340,25 +340,31 @@ services:
     ports:
       - "18142:18142"
 ```
-Then run ```docker-compose up -d``` to start your docker service.
 
-Check the running state with ```docker-compose ps```
+Then run `docker-compose up -d` to start your docker service.
+
+Check the running state with `docker-compose ps`
+
 ```
         Name           Command    State            Ports
 ------------------------------------------------------------------
 tbn_tari_base_node_1   start.sh   Up      0.0.0.0:18142->18142/tcp
 ```
-To connect to the console, use ```docker ps``` to get the container ID which to attach to the tari_base_node in docker
+
+To connect to the console, use `docker ps` to get the container ID which to attach to the tari_base_node in docker
+
 ```
 CONTAINER ID        IMAGE                                    COMMAND             CREATED             STATUS              PORTS                      NAMES
 73427509a4bb        quay.io/tarilabs/tari_base_node:v0.5.4   "start.sh"          45 minutes ago      Up 26 minutes       0.0.0.0:18142->18142/tcp   tbn_tari_base_node_1
 ```
-With the container ID ```73427509a4bb```, connect to the tari_base_node console as follows ```docker attach 73427509a4bb```
+
+With the container ID `73427509a4bb`, connect to the tari_base_node console as follows `docker attach 73427509a4bb`
+
 ```
 >> help
 Available commands are:
-help, version, get-chain-metadata, list-peers, reset-offline-peers, ban-peer, unban-peer, list-connections, list-headers, 
-check-db, calc-timing, discover-peer, get-block, search-utxo, search-kernel, search-stxo, get-mempool-stats, 
+help, version, get-chain-metadata, list-peers, reset-offline-peers, ban-peer, unban-peer, list-connections, list-headers,
+check-db, calc-timing, discover-peer, get-block, search-utxo, search-kernel, search-stxo, get-mempool-stats,
 get-mempool-state, whoami, get-state-info, quit, exit
 >> get-chain-metadata
 Height of longest chain : 5228
@@ -374,11 +380,13 @@ Syncing 5229/5233
 ```
 
 ---
+
 ### Building a docker image
 
 If you don't want to use the docker images provided by the community, you can roll your own!
 
 First, clone the Tari repo
+
 ```bash
 git clone git@github.com:tari-project/tari.git
 ```
@@ -404,98 +412,104 @@ Default docker builds for base x86-64 CPU. Better performing builds can be creat
 
 ## Mining
 
-The Tari protocol supports hybrid mining; stand-alone SHA3 mining using the Tari Mining Node or merged mining with 
-Monero using the Tari Merge Mining Proxy in conjunction with XMRig (RandomX based mining). Blocks to be won by 
-stand-alone SHA3 mining has been apportioned to approximately 40% and with Monero merged mining to approximately 60%. 
-This apportionment is deeply baked into the Tari protocol and part of the consensus rules. The 40/60 split is determined 
-by slightly different block target times for each algorithm, that when combined will give an average block time of 
-approximately 120s. Each mining algorithms make use of Linear Weighted Moving Average (LWMA) maths to gracefully adjust 
-the target difficulties to adhere to the respective target block times. Any block won by either mining algorithm will be 
-accepted, and when there is a tie a geometric mean calculation will be used to decide the winner. This system is 
+The Tari protocol supports hybrid mining; stand-alone SHA3 mining using the Tari Mining Node or merged mining with
+Monero using the Tari Merge Mining Proxy in conjunction with XMRig (RandomX based mining). Blocks to be won by
+stand-alone SHA3 mining has been apportioned to approximately 40% and with Monero merged mining to approximately 60%.
+This apportionment is deeply baked into the Tari protocol and part of the consensus rules. The 40/60 split is determined
+by slightly different block target times for each algorithm, that when combined will give an average block time of
+approximately 120s. Each mining algorithms make use of Linear Weighted Moving Average (LWMA) maths to gracefully adjust
+the target difficulties to adhere to the respective target block times. Any block won by either mining algorithm will be
+accepted, and when there is a tie a geometric mean calculation will be used to decide the winner. This system is
 completely fair without any additional empirical meddling to try and force a certain outcome.
 
 ### Tari SHA3 mining
 
 In order to perform SHA3 mining with Tari, the following applications are needed:
+
 - A Tari Base Node [_to supply blockchain metadata information_];
 - A Tari Console Wallet [_to collect the Tari block rewards (coinbase transactions)_];
 - A Tari Mining Node [_to perform the mining_];
 
 #### Runtime prerequisites
 
-The Tari Base Node, Tari Console Wallet and Tari Mining Node can all run in the same directory. By performing the 
-default installation as described in [Installing using binaries](#installing-using-binaries), all these applications 
+The Tari Base Node, Tari Console Wallet and Tari Mining Node can all run in the same directory. By performing the
+default installation as described in [Installing using binaries](#installing-using-binaries), all these applications
 will be available.
 
 #### Configuration prerequisites
 
-The configuration prerequisites are the same for all three Tari applications. After performing a 
-[default installation](#installing-using-binaries), locate the main configuration file (`config.toml`), which 
-will be created in the `~/tari_stibbons_testnet/config` (on Linux) or `%USERPROFILE%\.tari-testnet\config` (on Windows) 
-directory. 
+The configuration prerequisites are the same for all three Tari applications. After performing a
+[default installation](#installing-using-binaries), locate the main configuration file (`config.toml`), which
+will be created in the `~/tari_stibbons_testnet/config` (on Linux) or `%USERPROFILE%\.tari-testnet\config` (on Windows)
+directory.
 
-With the main configuration file, in addition to the settings already present, the following must also be enabled for 
+With the main configuration file, in addition to the settings already present, the following must also be enabled for
 the Tari Base Node and the Tari Console Wallet, if they are not enabled already. Under section **`base_node.stibbons`**:
-  ```
-  [base_node.stibbons]
-  transport = "tor"
-  allow_test_addresses = false
-  grpc_enabled = true
-  grpc_base_node_address = "127.0.0.1:18142"
-  grpc_console_wallet_address = "127.0.0.1:18143"
-  ```
+
+```
+[base_node.stibbons]
+transport = "tor"
+allow_test_addresses = false
+grpc_enabled = true
+grpc_base_node_address = "127.0.0.1:18142"
+grpc_console_wallet_address = "127.0.0.1:18143"
+```
 
 For the Tari Mining Node there are some additional settings under section **`mining_node`** that can be changed:
-  ```
-  [mining_node]
-  # Number of mining threads
-  # Default: number of logical CPU cores
-  #num_mining_threads=8
 
-  # GRPC address of base node
-  # Default: value from `base_node.grpc_base_node_address`
-  #base_node_grpc_address = "127.0.0.1:18142"
+```
+[mining_node]
+# Number of mining threads
+# Default: number of logical CPU cores
+#num_mining_threads=8
 
-  # GRPC address of console wallet
-  # Default: value from `base_node.grpc_console_wallet_address`
-  #wallet_grpc_address = "127.0.0.1:18143"
+# GRPC address of base node
+# Default: value from `base_node.grpc_base_node_address`
+#base_node_grpc_address = "127.0.0.1:18142"
 
-  # Start mining only when base node is bootstrapped
-  # and current block height is on the tip of network
-  # Default: true
-  #mine_on_tip_only=true
+# GRPC address of console wallet
+# Default: value from `base_node.grpc_console_wallet_address`
+#wallet_grpc_address = "127.0.0.1:18143"
 
-  # Will check tip with node every N seconds and restart mining
-  # if height already taken and option `mine_on_tip_only` is set
-  # to true
-  # Default: 30 seconds
-  #validate_tip_timeout_sec=30
-  ```
+# Start mining only when base node is bootstrapped
+# and current block height is on the tip of network
+# Default: true
+#mine_on_tip_only=true
+
+# Will check tip with node every N seconds and restart mining
+# if height already taken and option `mine_on_tip_only` is set
+# to true
+# Default: 30 seconds
+#validate_tip_timeout_sec=30
+```
 
 #### Perform SHA3 mining
 
 Tor and the required Tari applications must be started and preferably in this order:
 
 - Tor:
+
   - Linux/OSX: Execute `start_tor.sh`.
   - Windows: `Start Tor Serviecs` menu item or `start_tor` shortcut in the Tari installation folder.
 
 - Tari Base Node:
+
   - Linux/OSX: As per [Runtime links](#runtime-links).
   - Windows: As per [Runtime links](#runtime-links) or `Start Base Node` menu item or
     `start_tari_base_node` shortcut in the Tari installation folder.
 
 - Tari Console Wallet:
+
   - Linux/OSX: As per [Runtime links](#runtime-links).
   - Windows: As per [Runtime links](#runtime-links) or `Start Console Wallet` menu item or
     `start_tari_console_wallet` shortcut in the Tari installation folder.
 
 - Tari Mining Node:
   - Linux/OSX: As per [Runtime links](#runtime-links).
-  - Windows: As per [Runtime links](#runtime-links) or `Start Mining Node` menu item 
+  - Windows: As per [Runtime links](#runtime-links) or `Start Mining Node` menu item
     or `start_tari_mining_node` shortcut in the Tari installation folder.
 
-Look out for the following types of messages on the Tari Mining Node console to confirm that it is connected properly 
+Look out for the following types of messages on the Tari Mining Node console to confirm that it is connected properly
 and performing mining:
 
 ```
@@ -505,30 +519,31 @@ and performing mining:
 2021-02-26 11:24:23.722287800 [tari_mining_node::miner] INFO  Mining thread 1 started
 2021-02-26 11:24:23.722505500 [tari_mining_node::miner] INFO  Mining thread 2 started
 2021-02-26 11:28:19.687855700 [tari_mining_node::miner] INFO  Mining thread 2 stopped
-2021-02-26 11:28:19.688251200 [tari_mining_node] INFO  Miner 2 found block header BlockHeader { hash: [...], version: 1, 
+2021-02-26 11:28:19.688251200 [tari_mining_node] INFO  Miner 2 found block header BlockHeader { hash: [...], version: 1,
   height: 8493, prev_hash: [...], timestamp: Some(Timestamp { seconds: 1614331698, nanos: 0 }), output_mr: [...],
-  range_proof_mr: [...], total_kernel_offset: [...], nonce: 8415580256943728281, pow: Some(ProofOfWork { pow_algo: 2, 
+  witness_mr: [...], total_kernel_offset: [...], nonce: 8415580256943728281, pow: Some(ProofOfWork { pow_algo: 2,
   pow_data: [] }), kernel_mmr_size: 24983, output_mmr_size: 125474 } with difficulty 7316856839
 ```
 
 ### Tari merge mining
 
 In order to perform merge mining with Tari, the following applications are needed:
+
 - A Tari Base Node [_to supply blockchain metadata information_];
 - A Tari Console Wallet [_to collect the Tari block rewards (coinbase transactions)_];
 - A Tari Merge Mining Proxy [_to enable communication between all applications_];
 - XMRig [_to perform the mining_];
-- Monero wallet (specifically a stagenet wallet address during testnet; the one provided can be used, or a custom 
+- Monero wallet (specifically a stagenet wallet address during testnet; the one provided can be used, or a custom
   one can be set up) [_to collect Monero block rewards (coinbase transactions)_].
 
-The Tari Merge Mining Proxy will be the communication gateway between all these applications and will coordinate all 
-activities. It will also submit finalized Tari and Monero blocks to the respective networks when RandomX is solved at 
+The Tari Merge Mining Proxy will be the communication gateway between all these applications and will coordinate all
+activities. It will also submit finalized Tari and Monero blocks to the respective networks when RandomX is solved at
 the respective difficulties.
 
 #### Runtime prerequisites
 
-The Tari Base Node, Tari Console Wallet and Tari Merge Mining Proxy can all run in the same directory, whereas XMRig 
-will run in its own directory. By performing the default installation as described in 
+The Tari Base Node, Tari Console Wallet and Tari Merge Mining Proxy can all run in the same directory, whereas XMRig
+will run in its own directory. By performing the default installation as described in
 [Installing using binaries](#installing-using-binaries), all these applications will be available.
 
 XMRig can also be build from sources. If that is your preference, follow these instructions: <https://xmrig.com/docs/miner/>.
@@ -537,12 +552,12 @@ XMRig can also be build from sources. If that is your preference, follow these i
 
 ##### Tari applications
 
-The configuration prerequisites are the same for all three Tari applications. After performing a 
-[default installation](#installing-using-binaries), locate the main configuration file (`config.toml`), which 
-will be created in the `~/tari_stibbons_testnet/config` (on Linux) or `%USERPROFILE%\.tari-testnet\config` (on Windows) 
-directory. 
+The configuration prerequisites are the same for all three Tari applications. After performing a
+[default installation](#installing-using-binaries), locate the main configuration file (`config.toml`), which
+will be created in the `~/tari_stibbons_testnet/config` (on Linux) or `%USERPROFILE%\.tari-testnet\config` (on Windows)
+directory.
 
-With the main configuration file, in addition to the settings already present, the following must also be enabled if 
+With the main configuration file, in addition to the settings already present, the following must also be enabled if
 they are not enabled already:
 
 - For the Tari Base Node and the Tari Console Wallet, under section **`base_node.stibbons`**
@@ -556,18 +571,22 @@ they are not enabled already:
   ```
 
 And then depending on if you are using solo mining or self-select mining you will use one of the following:
+
 ###### Solo mining
+
 - For the Tari Merge Mining Proxy, under section **`merge_mining_proxy.stibbons`**
   ```
   [merge_mining_proxy.stibbons]
-  monerod_url = "http://18.133.55.120:38081"
+  monerod_url = "http://monero-stagenet.exan.tech:38081"
   proxy_host_address = "127.0.0.1:7878"
   proxy_submit_to_origin = true
   monerod_use_auth = false
   monerod_username = ""
   monerod_password = ""
   ```
+
 ###### Self-Select mining
+
 - For the Tari Merge Mining Proxy, under section **`merge_mining_proxy.stibbons`**
   ```
   [merge_mining_proxy.stibbons]
@@ -579,18 +598,20 @@ And then depending on if you are using solo mining or self-select mining you wil
   monerod_password = ""
   ```
 
-**Note:** The ports `7878`, `18142` and `18143` shown in the example above should not be in use by other processes. If 
-they are, choose different ports. You will need to update the ports in the steps below as well. 
+**Note:** The ports `7878`, `18142` and `18143` shown in the example above should not be in use by other processes. If
+they are, choose different ports. You will need to update the ports in the steps below as well.
 
-The `monerod_url` must be set to a valid address (`host:port`) for `monerod` that is running Monero mainnet (e.g. 
-`http://18.132.124.81:18081`) or stagenet (e.g. `http://18.133.55.120:38081`), which can be a 
-[public node hosted by XMR.to](https://community.xmr.to/nodes.html), or to a local instance. To test if the 
+The `monerod_url` must be set to a valid address (`host:port`) for `monerod` that is running Monero mainnet (e.g.
+`http://18.132.124.81:18081`) or stagenet (e.g. `http://monero-stagenet.exan.tech:38081`), which can be a
+[public node hosted by XMR.to](https://community.xmr.to/nodes.html), or to a local instance. To test if the
 `monerod_url` address is working properly, try to paste `host:port/get_height` in an internet browser, for example:
 
 ```
 http://18.132.124.81:18081/get_height
 ```
+
 A typical response would be:
+
 ```
 {
   "hash": "ce32dd0a6e3220d57c368f2cd01e5980a9b4d70f02b27274d67142d5b26cb4d6",
@@ -600,39 +621,41 @@ A typical response would be:
 }
 ```
 
-_**Note:** A guide to setting up a local Monero stagenet on Linux can be found 
+_**Note:** A guide to setting up a local Monero stagenet on Linux can be found
 [here](https://github.com/tari-project/tari/blob/development/applications/tari_merge_mining_proxy/monero_stagenet_setup.md)._
 
 ##### XMRig configuration
 
-The XMRig configuration must be prepared for either solo or pool merged mining with Monero. It is advisable to use a 
-configuration file for XMRig as this offers more flexibility, otherwise, the configuration parameters can be passed 
+The XMRig configuration must be prepared for either solo or pool merged mining with Monero. It is advisable to use a
+configuration file for XMRig as this offers more flexibility, otherwise, the configuration parameters can be passed
 in via the command line upon runtime.
 
-**Notes:** 
-* Monero mainnet and stagenet wallet addresses can only be used with the corresponding network. The `monerod_url` 
-configuration setting (see [Tari applications](#tari-applications)) must also correspond to the chosen network. 
-* For the solo mining configuration, Monero doesn't currently support requesting templates to mine on with the address 
-being a subaddress. It is possible to do with the self-select configuration since the template is requested by the miner 
-with the wallet address of the pool.
+**Notes:**
+
+- Monero mainnet and stagenet wallet addresses can only be used with the corresponding network. The `monerod_url`
+  configuration setting (see [Tari applications](#tari-applications)) must also correspond to the chosen network.
+- For the solo mining configuration, Monero doesn't currently support requesting templates to mine on with the address
+  being a subaddress. It is possible to do with the self-select configuration since the template is requested by the miner
+  with the wallet address of the pool.
 
 ###### Solo mining
 
-The [XMRig configuration wizard](https://xmrig.com/wizard) can be used to create a solo mining configuration file 
+The [XMRig configuration wizard](https://xmrig.com/wizard) can be used to create a solo mining configuration file
 in JSON format:
 
 - Start -> `+ New configuration`
 
 - Pools -> `+ Add daemon`
+
   - With `Add new daemon for Solo mining`, complete the required information, then `+ Add daemon`:
-     - `Host`, `Port`: This must correspond to the `proxy_host_address` in the Tari configuration file.
-     - `Secure connection (TLS)`: Uncheck.
-     - `Coin`: Monero.
-     - `Wallet address`: This must be your own stagenet or mainnet wallet address, or you can use these donation 
-       addresses:
-       - Public stagenet address at https://coin.fyi/news/monero/stagenet-wallet-8jyt89#!
-         `55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt`
-       - Mainnet address `<Enter your own mainnet wallet address here>`
+    - `Host`, `Port`: This must correspond to the `proxy_host_address` in the Tari configuration file.
+    - `Secure connection (TLS)`: Uncheck.
+    - `Coin`: Monero.
+    - `Wallet address`: This must be your own stagenet or mainnet wallet address, or you can use these donation
+      addresses:
+      - Public stagenet address at https://coin.fyi/news/monero/stagenet-wallet-8jyt89#!
+        `55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt`
+      - Mainnet address `<Enter your own mainnet wallet address here>`
 
 - Backends -> Select `CPU` (`OpenCL` or `CUDA` also possible depending on your computer hardware).
 
@@ -659,9 +682,10 @@ Using the public stagenet wallet address above the resulting configuration file 
     ]
 }
 ```
+
 ###### Pool mining with Self-Select
 
-For pool mining, the configuration file obtained from the [XMRig configuration wizard](https://xmrig.com/wizard) must 
+For pool mining, the configuration file obtained from the [XMRig configuration wizard](https://xmrig.com/wizard) must
 be augmented with Tari specific settings. Using the wizard, create the following:
 
 - Start -> `+ New configuration`
@@ -674,8 +698,8 @@ be augmented with Tari specific settings. Using the wizard, create the following
     - `keepalive`: Check.
     - `nicehash`: Uncheck.
     - `User`: This must be your own mainnet wallet address, or you can use this address to donate to Monero:
-       - Public mainnet address at https://www.getmonero.org/get-started/contributing/
-       `888tNkZrPN6JsEgekjMnABU4TBzc2Dt29EPAvkRxbANsAnjyPbb3iQ1YBRk1UXcdRsiKc9dhwMVgN5S9cQUiyoogDavup3H`
+      - Public mainnet address at https://www.getmonero.org/get-started/contributing/
+        `888tNkZrPN6JsEgekjMnABU4TBzc2Dt29EPAvkRxbANsAnjyPbb3iQ1YBRk1UXcdRsiKc9dhwMVgN5S9cQUiyoogDavup3H`
     - `Password`: A custom field that could be your wallet name or some other pool settings.
     - `Coin`: Monero.
     - `Algorithm`: rx/0.
@@ -688,10 +712,10 @@ be augmented with Tari specific settings. Using the wizard, create the following
 
 - Add custom entries for `"self-select": "127.0.0.1:7878"` and `"submit-to-origin": true` in the `"pools"` section.
 
-Mining pool `cryptonote.social` requires you to add a personalized handle to the wallet address so that you can 
+Mining pool `cryptonote.social` requires you to add a personalized handle to the wallet address so that you can
 query your own pool statistics, separated by a full stop, i.e. `<YOUR WALLET ADDRESS>.<pool specific user name>`. For
 demonstration purposes, `donatemonero` has been associated with the public mainnet wallet address above. If you go to
-<https://cryptonote.social/xmr> and enter `donatemonero` in the `Username:` text box you will see some merge mining 
+<https://cryptonote.social/xmr> and enter `donatemonero` in the `Username:` text box you will see some merge mining
 activity for that address. The configuration file used for this exercise is shown below:
 
 ```
@@ -722,64 +746,69 @@ activity for that address. The configuration file used for this exercise is show
 Tor and the required Tari applications must be started and preferably in this order:
 
 - Tor:
+
   - Linux/OSX: Execute `start_tor.sh`.
   - Windows: `Start Tor Serviecs` menu item or `start_tor` shortcut in the Tari installation folder.
 
 - Tari Base Node:
+
   - Linux/OSX: As per [Runtime links](#runtime-links).
   - Windows: As per [Runtime links](#runtime-links) or `Start Base Node` menu item or
     `start_tari_base_node` shortcut in the Tari installation folder.
 
 - Tari Console Wallet:
+
   - Linux/OSX: As per [Runtime links](#runtime-links).
   - Windows: As per [Runtime links](#runtime-links) or `Start Console Wallet` menu item or
     `start_tari_console_wallet` shortcut in the Tari installation folder.
 
 - Tari Merge Mining Proxy:
   - Linux/OSX: As per [Runtime links](#runtime-links).
-  - Windows: As per [Runtime links](#runtime-links) or `Start Merge Mining Proxy` menu item 
+  - Windows: As per [Runtime links](#runtime-links) or `Start Merge Mining Proxy` menu item
     or `start_tari_merge_mining_proxy` shortcut in the Tari installation folder.
 
 In addition, select one of the merge mining options as outlined in solo or pool mining in the next paragraphs.
 
 ##### Solo merged mining with Monero
 
-This paragraph is applicable to solo mining Monero on mainnet or stagenet and solo mining Tari on testnet. 
+This paragraph is applicable to solo mining Monero on mainnet or stagenet and solo mining Tari on testnet.
 
 Solo merged mining with Monero is supported using the `daemon` option.
 
 ###### Merge Mining Proxy configuration
 
-As mentioned previously, the `monerod_url` field in the `config.toml` should be enabled for the corresponding mainnet or stagenet network 
+As mentioned previously, the `monerod_url` field in the `config.toml` should be enabled for the corresponding mainnet or stagenet network
 Monero wallet address:
 
 ```
 # URL to monerod
 #monerod_url = "http://18.132.124.81:18081" # mainnet
-monerod_url = "http://18.133.55.120:38081" # stagenet
+monerod_url = "http://monero-stagenet.exan.tech:38081" # stagenet
 ```
 
 ###### Runtime
 
-Ensure the `config.json` configuration file discussed in [Solo mining](#solo-mining) is copied to the XMRig build or 
+Ensure the `config.json` configuration file discussed in [Solo mining](#solo-mining) is copied to the XMRig build or
 install folder, then start XMRig:
 
 - Linux/OSX: Execute `./xmrig` in the XMRig build or install folder.
-- Windows: Execute `xmrig` in the XMRig build or install folder, or `Start XMRig` menu item or `start_xmrig` 
+- Windows: Execute `xmrig` in the XMRig build or install folder, or `Start XMRig` menu item or `start_xmrig`
   shortcut in the Tari installation folder.
-      
-  **Note**: On modern Windows versions, coin mining software is blocked by default, for example by Windows Defender. 
+
+  **Note**: On modern Windows versions, coin mining software is blocked by default, for example by Windows Defender.
   Ensure that these processes are allowed to run when challenged:
+
   - `PUA:Win32/CoinMiner`
   - `PUA:Win64/CoinMiner`
   - `App:XMRigMiner`
 
-Look out for the following outputs in the XMRig console to confirm that it is connected to the Merge Mining Proxy 
+Look out for the following outputs in the XMRig console to confirm that it is connected to the Merge Mining Proxy
 and accepting jobs:
 
 ```
 * POOL #1      127.0.0.1:7878 coin monero
 ```
+
 ```
 [2021-01-21 12:10:18.960]  net      use daemon 127.0.0.1:7878  127.0.0.1
 [2021-01-21 12:10:18.960]  net      new job from 127.0.0.1:7878 diff 286811 algo rx/0 height 756669
@@ -789,21 +818,21 @@ and accepting jobs:
 [2021-01-21 12:12:57.983]  cpu      accepted (1/1) diff 293330 (594 ms)
 ```
 
-The `cpu: rejected` and `cpu: accepted` messages originates from stagenet or mainnet `monerod`, and shows the Monero 
+The `cpu: rejected` and `cpu: accepted` messages originates from stagenet or mainnet `monerod`, and shows the Monero
 statistics. At this point, the mined and rejected Tari coinbases should be visible in the Tari Console Wallet.
 
 ##### Pool merged mining with Monero (self select)
 
-This paragraph is applicable to pool mining Monero on mainnet and solo mining Tari on testnet. 
+This paragraph is applicable to pool mining Monero on mainnet and solo mining Tari on testnet.
 
-Pool merged mining with Monero is supported using the 
-[Stratum mode self-select](https://github.com/jtgrassie/monero-pool/blob/master/sss.md) option via XMRig. Two mining 
-pools we have tried out that support this feature are [monero-pool](https://github.com/jtgrassie/monero-pool), with 
-its reference pool implementation running [here](http://monerop.com/),  and 
-[cryptonote.social](https://cryptonote.social/xmr). With normal self select mode, XMRig requests a Monero block  
-template from a third party and submits the solution to the mining pool. Tari added a `submit-to-origin` option to the 
-self select mode whereby, if a solution has been found that only matches the pool difficulty, XMRig will submit the 
-solution to the pool only, but if the achieved difficulty meets both that of the pool and Tari, it will be submitted to 
+Pool merged mining with Monero is supported using the
+[Stratum mode self-select](https://github.com/jtgrassie/monero-pool/blob/master/sss.md) option via XMRig. Two mining
+pools we have tried out that support this feature are [monero-pool](https://github.com/jtgrassie/monero-pool), with
+its reference pool implementation running [here](http://monerop.com/), and
+[cryptonote.social](https://cryptonote.social/xmr). With normal self select mode, XMRig requests a Monero block
+template from a third party and submits the solution to the mining pool. Tari added a `submit-to-origin` option to the
+self select mode whereby, if a solution has been found that only matches the pool difficulty, XMRig will submit the
+solution to the pool only, but if the achieved difficulty meets both that of the pool and Tari, it will be submitted to
 the Merge Mining Proxy as well as to the mining pool.
 
 ###### Merge Mining Proxy configuration
@@ -813,20 +842,21 @@ The `monerod_url` field in the `config.toml` should be enabled for the mainnet v
 ```
 # URL to monerod
 monerod_url = "http://18.132.124.81:18081" # mainnet
-#monerod_url = "http://18.133.55.120:38081" # stagenet
+#monerod_url = "http://monero-stagenet.exan.tech:38081" # stagenet
 ```
 
 ###### Runtime
 
-Ensure the `config.json` configuration file discussed in [Pool mining with self select](#pool-mining-with-self-select) 
+Ensure the `config.json` configuration file discussed in [Pool mining with self select](#pool-mining-with-self-select)
 is copied to the XMRig build or install folder, then start XMRig as before for solo mining.
 
-Look out for the following outputs in the XMRig console to confirm that it is connected to the pool and the Merge 
+Look out for the following outputs in the XMRig console to confirm that it is connected to the pool and the Merge
 Mining Proxy and accepting jobs:
 
 ```
 * POOL #1      cryptonote.social:5555 coin monero self-select 127.0.0.1:7878 submit-to-origin
 ```
+
 ```
 [2021-01-18 11:40:48.392]  net      new job from cryptonote.social:5555 diff 220006 algo rx/0 height 2277084
 [2021-01-18 11:41:22.378]  origin   submitted to origin daemon (1/0)  diff 284557 vs. 371742
@@ -835,18 +865,18 @@ Mining Proxy and accepting jobs:
 [2021-01-18 11:42:06.320]  cpu      accepted (2/0) diff 220006 (482 ms)
 ```
 
-Status essages `origin: submitted to origin daemon (1/0)` and 
+Status essages `origin: submitted to origin daemon (1/0)` and
 `origin: not submitted to origin daemon, difficulty too low (1/1)` pertains to submissions to the Tari network,
-and `cpu: accepted (1/0)` to the pool. 
+and `cpu: accepted (1/0)` to the pool.
 
 Mined and rejected Tari coinbases should be visible in the Tari Console Wallet, and pool shares in the pool interface.
-If you are using `cryptonote.social:5555` as in the example above, go to <https://cryptonote.social/xmr> and type in 
+If you are using `cryptonote.social:5555` as in the example above, go to <https://cryptonote.social/xmr> and type in
 your wallet identity under `Username:` to see your shares, or try `taritest` if you used this configuration example.
 
 # Project documentation
 
-* [RFC documents](https://rfc.tari.com) are hosted on Github Pages. The source markdown is in the `RFC` directory.
-* Source code documentation is hosted on [docs.rs](https://docs.rs)
+- [RFC documents](https://rfc.tari.com) are hosted on Github Pages. The source markdown is in the `RFC` directory.
+- Source code documentation is hosted on [docs.rs](https://docs.rs)
 
 ## RFC documents
 

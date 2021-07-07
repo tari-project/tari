@@ -25,25 +25,24 @@ use crate::{
     message::MessageExt,
     peer_manager::NodeIdentity,
     proto::identity::PeerIdentityMsg,
-    protocol::{ProtocolError, ProtocolId, ProtocolNegotiation},
+    protocol::{NodeNetworkInfo, ProtocolError, ProtocolId, ProtocolNegotiation},
 };
 use futures::{AsyncRead, AsyncWrite, SinkExt, StreamExt};
 use log::*;
 use prost::Message;
 use std::{io, time::Duration};
-use tari_crypto::tari_utilities::ByteArray;
 use thiserror::Error;
 use tokio::time;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
-pub static IDENTITY_PROTOCOL: ProtocolId = ProtocolId::from_static(b"/tari/identity/1.0.0");
+pub static IDENTITY_PROTOCOL: ProtocolId = ProtocolId::from_static(b"t/identity/1.0");
 const LOG_TARGET: &str = "comms::protocol::identity";
 
 pub async fn identity_exchange<'p, TSocket, P>(
     node_identity: &NodeIdentity,
     direction: ConnectionDirection,
     our_supported_protocols: P,
-    user_agent: String,
+    network_info: NodeNetworkInfo,
     mut socket: TSocket,
 ) -> Result<PeerIdentityMsg, IdentityProtocolError>
 where
@@ -85,11 +84,12 @@ where
 
     // Send this node's identity
     let msg_bytes = PeerIdentityMsg {
-        node_id: node_identity.node_id().to_vec(),
-        addresses: vec![node_identity.public_address().to_string()],
+        addresses: vec![node_identity.public_address().to_vec()],
         features: node_identity.features().bits(),
         supported_protocols,
-        user_agent,
+        major: network_info.major_version,
+        minor: network_info.minor_version,
+        user_agent: network_info.user_agent,
     }
     .to_encoded_bytes();
 
@@ -99,8 +99,19 @@ where
     // Receive the connecting nodes identity
     let msg_bytes = time::timeout(Duration::from_secs(10), stream.next())
         .await?
-        .ok_or_else(|| IdentityProtocolError::PeerUnexpectedCloseConnection)??;
+        .ok_or(IdentityProtocolError::PeerUnexpectedCloseConnection)??;
     let identity_msg = PeerIdentityMsg::decode(msg_bytes)?;
+
+    if identity_msg.major != network_info.major_version {
+        warn!(
+            target: LOG_TARGET,
+            "Peer sent mismatching major protocol version '{}'. This node has version '{}.{}'",
+            identity_msg.major,
+            network_info.major_version,
+            network_info.minor_version
+        );
+        return Err(IdentityProtocolError::ProtocolVersionMismatch);
+    }
 
     Ok(identity_msg)
 }
@@ -119,6 +130,8 @@ pub enum IdentityProtocolError {
     PeerUnexpectedCloseConnection,
     #[error("Timeout waiting for peer to send identity information")]
     Timeout,
+    #[error("Protocol version mismatch")]
+    ProtocolVersionMismatch,
 }
 
 impl From<time::Elapsed> for IdentityProtocolError {
@@ -150,12 +163,12 @@ mod test {
     use crate::{
         connection_manager::ConnectionDirection,
         peer_manager::PeerFeatures,
+        protocol::{IdentityProtocolError, NodeNetworkInfo},
         runtime,
         test_utils::node_identity::build_node_identity,
         transports::{MemoryTransport, Transport},
     };
     use futures::{future, StreamExt};
-    use tari_crypto::tari_utilities::ByteArray;
 
     #[runtime::test_basic]
     async fn identity_exchange() {
@@ -176,14 +189,20 @@ mod test {
                 &node_identity1,
                 ConnectionDirection::Inbound,
                 &[],
-                Default::default(),
+                NodeNetworkInfo {
+                    minor_version: 1,
+                    ..Default::default()
+                },
                 in_sock,
             ),
             super::identity_exchange(
                 &node_identity2,
                 ConnectionDirection::Outbound,
                 &[],
-                Default::default(),
+                NodeNetworkInfo {
+                    minor_version: 2,
+                    ..Default::default()
+                },
                 out_sock,
             ),
         )
@@ -193,12 +212,55 @@ mod test {
         let identity2 = result1.unwrap();
         let identity1 = result2.unwrap();
 
-        assert_eq!(identity1.node_id, node_identity1.node_id().to_vec());
         assert_eq!(identity1.features, node_identity1.features().bits());
-        assert_eq!(identity1.addresses, vec![node_identity1.public_address().to_string()]);
+        assert_eq!(identity1.addresses, vec![node_identity1.public_address().to_vec()]);
 
-        assert_eq!(identity2.node_id, node_identity2.node_id().to_vec());
         assert_eq!(identity2.features, node_identity2.features().bits());
-        assert_eq!(identity2.addresses, vec![node_identity2.public_address().to_string()]);
+        assert_eq!(identity2.addresses, vec![node_identity2.public_address().to_vec()]);
+    }
+
+    #[runtime::test_basic]
+    async fn fail_cases() {
+        let transport = MemoryTransport;
+        let addr = "/memory/0".parse().unwrap();
+        let (mut listener, addr) = transport.listen(addr).unwrap().await.unwrap();
+
+        let (out_sock, in_sock) = future::join(transport.dial(addr).unwrap(), listener.next()).await;
+
+        let out_sock = out_sock.unwrap();
+        let in_sock = in_sock.unwrap().map(|(f, _)| f).unwrap().await.unwrap();
+
+        let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+        let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_CLIENT);
+
+        let (result1, result2) = future::join(
+            super::identity_exchange(
+                &node_identity1,
+                ConnectionDirection::Inbound,
+                &[],
+                NodeNetworkInfo {
+                    major_version: 0,
+                    ..Default::default()
+                },
+                in_sock,
+            ),
+            super::identity_exchange(
+                &node_identity2,
+                ConnectionDirection::Outbound,
+                &[],
+                NodeNetworkInfo {
+                    major_version: 1,
+                    ..Default::default()
+                },
+                out_sock,
+            ),
+        )
+        .await;
+
+        let err = result1.unwrap_err();
+        assert!(matches!(err, IdentityProtocolError::ProtocolVersionMismatch));
+
+        let err = result2.unwrap_err();
+        assert!(matches!(err, IdentityProtocolError::ProtocolVersionMismatch));
     }
 }

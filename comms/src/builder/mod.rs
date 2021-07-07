@@ -47,7 +47,7 @@ use crate::{
     connectivity::{ConnectivityConfig, ConnectivityRequester},
     multiaddr::Multiaddr,
     peer_manager::{NodeIdentity, PeerManager},
-    protocol::ProtocolExtensions,
+    protocol::{NodeNetworkInfo, ProtocolExtensions},
     tor,
     types::CommsDatabase,
 };
@@ -106,7 +106,26 @@ impl CommsBuilder {
 
     /// Set the user agent string for this comms node. This string is sent once when establishing a connection.
     pub fn with_user_agent<T: ToString>(mut self, user_agent: T) -> Self {
-        self.connection_manager_config.user_agent = user_agent.to_string();
+        self.connection_manager_config.network_info.user_agent = user_agent.to_string();
+        self
+    }
+
+    /// Set a network byte as per [RFC-173 Versioning](https://rfc.tari.com/RFC-0173_Versioning.html)
+    pub fn with_network_byte(mut self, network_byte: u8) -> Self {
+        self.connection_manager_config.network_info.network_byte = network_byte;
+        self
+    }
+
+    /// Set a network info (versions etc) as per [RFC-173 Versioning](https://rfc.tari.com/RFC-0173_Versioning.html)
+    pub fn with_node_info(mut self, node_info: NodeNetworkInfo) -> Self {
+        self.connection_manager_config.network_info = node_info;
+        self
+    }
+
+    /// Set a network major and minor version as per [RFC-173 Versioning](https://rfc.tari.com/RFC-0173_Versioning.html)
+    pub fn with_node_version(mut self, major_version: u32, minor_version: u32) -> Self {
+        self.connection_manager_config.network_info.major_version = major_version;
+        self.connection_manager_config.network_info.minor_version = minor_version;
         self
     }
 
@@ -195,14 +214,11 @@ impl CommsBuilder {
 
     /// Build comms services and handles. Services will not be started.
     pub fn build(mut self) -> Result<UnspawnedCommsNode, CommsBuilderError> {
-        let node_identity = self
-            .node_identity
-            .take()
-            .ok_or_else(|| CommsBuilderError::NodeIdentityNotSet)?;
+        let node_identity = self.node_identity.take().ok_or(CommsBuilderError::NodeIdentityNotSet)?;
         let shutdown_signal = self
             .shutdown_signal
             .take()
-            .ok_or_else(|| CommsBuilderError::ShutdownSignalNotSet)?;
+            .ok_or(CommsBuilderError::ShutdownSignalNotSet)?;
 
         let peer_manager = self.make_peer_manager()?;
 

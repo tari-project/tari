@@ -53,8 +53,7 @@ async fn setup(
     Arc<PeerManager>,
     Arc<NodeIdentity>,
     Shutdown,
-)
-{
+) {
     let peer_manager = build_peer_manager();
     for peer in initial_peers {
         peer_manager.add_peer(peer).await.unwrap();

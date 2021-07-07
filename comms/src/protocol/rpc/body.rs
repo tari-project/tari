@@ -179,17 +179,21 @@ impl BodyBytes {
     }
 }
 
+#[allow(clippy::from_over_into)]
 impl Into<Bytes> for BodyBytes {
     fn into(self) -> Bytes {
         self.0.map(Bytes::from).unwrap_or_else(Bytes::new)
     }
 }
+
+#[allow(clippy::from_over_into)]
 impl Into<Vec<u8>> for BodyBytes {
     fn into(self) -> Vec<u8> {
         self.into_vec()
     }
 }
 
+#[allow(clippy::from_over_into)]
 impl Into<BytesMut> for BodyBytes {
     fn into(self) -> BytesMut {
         self.into_bytes_mut()

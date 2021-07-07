@@ -45,7 +45,7 @@ impl<'a> TorCommand for DelOnion<'a> {
     }
 
     fn parse_responses(&self, mut responses: Vec<ResponseLine>) -> Result<Self::Output, Self::Error> {
-        let last_response = responses.pop().ok_or_else(|| TorClientError::UnexpectedEof)?;
+        let last_response = responses.pop().ok_or(TorClientError::UnexpectedEof)?;
         if let Some(err) = last_response.err() {
             return Err(TorClientError::TorCommandFailed(err.to_owned()));
         }

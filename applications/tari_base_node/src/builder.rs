@@ -29,7 +29,7 @@ use tari_comms_dht::Dht;
 use tari_core::{
     base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface, StateMachineHandle},
     chain_storage::{create_lmdb_database, BlockchainDatabase, BlockchainDatabaseConfig, LMDBDatabase, Validators},
-    consensus::ConsensusManagerBuilder,
+    consensus::ConsensusManager,
     mempool::{service::LocalMempoolService, Mempool, MempoolConfig},
     proof_of_work::randomx_factory::{RandomXConfig, RandomXFactory},
     transactions::types::CryptoFactories,
@@ -45,6 +45,7 @@ use tari_core::{
         DifficultyCalculator,
     },
 };
+use tari_p2p::auto_update::SoftwareUpdaterHandle;
 use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::watch;
@@ -97,7 +98,7 @@ impl BaseNodeContext {
         &self.base_node_comms
     }
 
-    /// Returns the wallet CommsNode.
+    /// Returns the base node state machine
     pub fn state_machine(&self) -> StateMachineHandle {
         self.base_node_handles.expect_handle()
     }
@@ -110,6 +111,11 @@ impl BaseNodeContext {
     /// Returns the base node DHT
     pub fn base_node_dht(&self) -> &Dht {
         &self.base_node_dht
+    }
+
+    /// Returns a software update handle
+    pub fn software_updater(&self) -> SoftwareUpdaterHandle {
+        self.base_node_handles.expect_handle()
     }
 
     /// Returns a handle to the comms RPC server
@@ -143,8 +149,7 @@ pub async fn configure_and_initialize_node(
     node_identity: Arc<NodeIdentity>,
     interrupt_signal: ShutdownSignal,
     cleanup_orphans_at_startup: bool,
-) -> Result<BaseNodeContext, anyhow::Error>
-{
+) -> Result<BaseNodeContext, anyhow::Error> {
     let result = match &config.db_type {
         DatabaseType::Memory => {
             // let backend = MemoryDatabase::<HashDigest>::default();
@@ -191,11 +196,10 @@ async fn build_node_context(
     config: Arc<GlobalConfig>,
     interrupt_signal: ShutdownSignal,
     cleanup_orphans_at_startup: bool,
-) -> Result<BaseNodeContext, anyhow::Error>
-{
+) -> Result<BaseNodeContext, anyhow::Error> {
     //---------------------------------- Blockchain --------------------------------------------//
 
-    let rules = ConsensusManagerBuilder::new(config.network.into()).build();
+    let rules = ConsensusManager::builder(config.network).build();
     let factories = CryptoFactories::default();
     let randomx_factory = RandomXFactory::new(RandomXConfig::default(), config.max_randomx_vms);
     let validators = Validators::new(

@@ -1,8 +1,9 @@
 use crate::ui::{components::Component, state::AppState};
+use tari_app_utilities::consts;
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     text::{Span, Spans},
     widgets::{Block, Paragraph},
     Frame,
@@ -21,45 +22,37 @@ impl<B: Backend> Component<B> for Menu {
     where B: Backend {
         let columns = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Ratio(4, 5), Constraint::Ratio(1, 5)].as_ref())
+            .constraints(
+                [
+                    Constraint::Ratio(1, 5),
+                    Constraint::Ratio(3, 5),
+                    Constraint::Ratio(1, 5),
+                ]
+                .as_ref(),
+            )
             .split(area);
 
-        let others = Spans::from(vec![
-            Span::styled("LeftArrow", Style::default().fg(Color::Green)),
-            Span::styled(":", Style::default().fg(Color::White)),
-            Span::styled(
-                " PrevTab ",
-                Style::default()
-                    .fg(Color::Magenta)
-                    .bg(Color::LightGreen)
-                    .add_modifier(Modifier::BOLD),
-            ),
+        let version = Spans::from(vec![
+            Span::styled(" Version: ", Style::default().fg(Color::White)),
+            Span::styled(consts::APP_VERSION_NUMBER, Style::default().fg(Color::Magenta)),
+        ]);
+        let tabs = Spans::from(vec![
+            Span::styled("LeftArrow: ", Style::default().fg(Color::White)),
+            Span::styled("Previous Tab ", Style::default().fg(Color::Magenta)),
             Span::raw(" "),
-            Span::styled("Tab/RightArrow", Style::default().fg(Color::Green)),
-            Span::styled(":", Style::default().fg(Color::White)),
-            Span::styled(
-                " NextTab ",
-                Style::default()
-                    .fg(Color::Magenta)
-                    .bg(Color::LightGreen)
-                    .add_modifier(Modifier::BOLD),
-            ),
+            Span::styled("Tab/RightArrow: ", Style::default().fg(Color::White)),
+            Span::styled("Next Tab ", Style::default().fg(Color::Magenta)),
         ]);
         let quit = Spans::from(vec![
-            Span::styled("F10/Ctrl-Q", Style::default().fg(Color::Green)),
-            Span::styled(":", Style::default().fg(Color::White)),
-            Span::styled(
-                " Quit    ",
-                Style::default()
-                    .fg(Color::Magenta)
-                    .bg(Color::LightGreen)
-                    .add_modifier(Modifier::BOLD),
-            ),
+            Span::styled("          F10/Ctrl-Q: ", Style::default().fg(Color::White)),
+            Span::styled("Quit    ", Style::default().fg(Color::Magenta)),
         ]);
 
-        let paragraph1 = Paragraph::new(others).block(Block::default());
-        f.render_widget(paragraph1, columns[0]);
-        let paragraph2 = Paragraph::new(quit).block(Block::default());
-        f.render_widget(paragraph2, columns[1]);
+        let paragraph = Paragraph::new(version).block(Block::default());
+        f.render_widget(paragraph, columns[0]);
+        let paragraph = Paragraph::new(tabs).block(Block::default());
+        f.render_widget(paragraph, columns[1]);
+        let paragraph = Paragraph::new(quit).block(Block::default());
+        f.render_widget(paragraph, columns[2]);
     }
 }

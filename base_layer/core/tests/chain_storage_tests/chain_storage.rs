@@ -38,6 +38,7 @@ use crate::helpers::{
     test_blockchain::TestBlockchain,
 };
 use rand::{rngs::OsRng, RngCore};
+use tari_common::configuration::Network;
 use tari_common_types::types::BlockHash;
 use tari_core::{
     blocks::{genesis_block, Block, BlockHeader},
@@ -51,7 +52,7 @@ use tari_core::{
         DbTransaction,
         Validators,
     },
-    consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
+    consensus::{emission::Emission, ConsensusConstantsBuilder, ConsensusManagerBuilder},
     proof_of_work::Difficulty,
     test_helpers::blockchain::{
         create_store_with_consensus,
@@ -207,13 +208,13 @@ fn rewind_to_height() {
     // Block 1
     let schema = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![6 * T, 3 * T])];
     unpack_enum!(
-        BlockAddResult::Ok(b1) =
+        BlockAddResult::Ok(_b1) =
             generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap()
     );
     // Block 2
     let schema = vec![txn_schema!(from: vec![outputs[1][0].clone()], to: vec![3 * T, 1 * T])];
     unpack_enum!(
-        BlockAddResult::Ok(b2) =
+        BlockAddResult::Ok(_b2) =
             generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap()
     );
     // Block 3
@@ -222,7 +223,7 @@ fn rewind_to_height() {
         txn_schema!(from: vec![outputs[1][1].clone()], to: vec![500_000 * uT]),
     ];
     unpack_enum!(
-        BlockAddResult::Ok(b3) =
+        BlockAddResult::Ok(_b3) =
             generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap()
     );
 
@@ -1054,13 +1055,13 @@ fn store_and_retrieve_blocks_from_contents() {
     // Block 1
     let schema = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![6 * T, 3 * T])];
     unpack_enum!(
-        BlockAddResult::Ok(b1) =
+        BlockAddResult::Ok(_b1) =
             generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap()
     );
     // Block 2
     let schema = vec![txn_schema!(from: vec![outputs[1][0].clone()], to: vec![3 * T, 1 * T])];
     unpack_enum!(
-        BlockAddResult::Ok(b2) =
+        BlockAddResult::Ok(_b2) =
             generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap()
     );
     let kernel_sig = blocks[1].block().body.kernels()[0].clone().excess_sig;
@@ -1205,7 +1206,7 @@ fn invalid_block() {
     )];
     let coinbase_value = consensus_manager.emission_schedule().block_reward(1);
     unpack_enum!(
-        BlockAddResult::Ok(b1) = generate_new_block_with_coinbase(
+        BlockAddResult::Ok(_b1) = generate_new_block_with_coinbase(
             &mut store,
             &factories,
             &mut blocks,
@@ -1229,7 +1230,7 @@ fn invalid_block() {
     let txs = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![20 * T, 20 * T])];
     let coinbase_value = consensus_manager.emission_schedule().block_reward(2);
     unpack_enum!(
-        ChainStorageError::InvalidOperation(msg) = generate_new_block_with_coinbase(
+        ChainStorageError::InvalidOperation(_msg) = generate_new_block_with_coinbase(
             &mut store,
             &factories,
             &mut blocks,
@@ -1252,7 +1253,7 @@ fn invalid_block() {
     let txs = vec![txn_schema!(from: vec![outputs[1][0].clone()], to: vec![4 * T, 4 * T])];
     let coinbase_value = consensus_manager.emission_schedule().block_reward(2);
     unpack_enum!(
-        BlockAddResult::Ok(b1) = generate_new_block_with_coinbase(
+        BlockAddResult::Ok(_b1) = generate_new_block_with_coinbase(
             &mut store,
             &factories,
             &mut blocks,
@@ -1705,7 +1706,7 @@ fn fails_validation() {
 #[test]
 fn pruned_mode_cleanup_and_fetch_block() {
     let network = Network::LocalNet;
-    let block0 = genesis_block::get_ridcully_genesis_block();
+    let block0 = genesis_block::get_weatherwax_genesis_block();
     let consensus_manager = ConsensusManagerBuilder::new(network).with_block(block0.clone()).build();
     let validators = Validators::new(
         MockValidator::new(true),

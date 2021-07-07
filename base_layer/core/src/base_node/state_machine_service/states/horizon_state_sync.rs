@@ -61,8 +61,7 @@ impl HorizonStateSync {
     pub async fn next_event<B: BlockchainBackend + 'static>(
         &mut self,
         shared: &mut BaseNodeStateMachine<B>,
-    ) -> StateEvent
-    {
+    ) -> StateEvent {
         let local_metadata = match shared.db.get_chain_metadata().await {
             Ok(metadata) => metadata,
             Err(err) => return StateEvent::FatalError(err.to_string()),

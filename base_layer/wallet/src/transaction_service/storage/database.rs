@@ -184,8 +184,7 @@ where T: TransactionBackend + 'static
         &self,
         tx_id: TxId,
         inbound_tx: InboundTransaction,
-    ) -> Result<(), TransactionStorageError>
-    {
+    ) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || {
             db_clone.write(WriteOperation::Insert(DbKeyValuePair::PendingInboundTransaction(
@@ -203,8 +202,7 @@ where T: TransactionBackend + 'static
         &self,
         tx_id: TxId,
         outbound_tx: OutboundTransaction,
-    ) -> Result<(), TransactionStorageError>
-    {
+    ) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || {
             db_clone.write(WriteOperation::Insert(DbKeyValuePair::PendingOutboundTransaction(
@@ -241,8 +239,7 @@ where T: TransactionBackend + 'static
         &self,
         tx_id: TxId,
         transaction: CompletedTransaction,
-    ) -> Result<Option<DbValue>, TransactionStorageError>
-    {
+    ) -> Result<Option<DbValue>, TransactionStorageError> {
         let db_clone = self.db.clone();
 
         tokio::task::spawn_blocking(move || {
@@ -259,16 +256,14 @@ where T: TransactionBackend + 'static
     pub async fn get_pending_outbound_transaction(
         &self,
         tx_id: TxId,
-    ) -> Result<OutboundTransaction, TransactionStorageError>
-    {
+    ) -> Result<OutboundTransaction, TransactionStorageError> {
         self.get_pending_outbound_transaction_by_cancelled(tx_id, false).await
     }
 
     pub async fn get_cancelled_pending_outbound_transaction(
         &self,
         tx_id: TxId,
-    ) -> Result<OutboundTransaction, TransactionStorageError>
-    {
+    ) -> Result<OutboundTransaction, TransactionStorageError> {
         self.get_pending_outbound_transaction_by_cancelled(tx_id, true).await
     }
 
@@ -276,8 +271,7 @@ where T: TransactionBackend + 'static
         &self,
         tx_id: TxId,
         cancelled: bool,
-    ) -> Result<OutboundTransaction, TransactionStorageError>
-    {
+    ) -> Result<OutboundTransaction, TransactionStorageError> {
         let db_clone = self.db.clone();
         let key = if cancelled {
             DbKey::CancelledPendingOutboundTransaction(tx_id)
@@ -298,16 +292,14 @@ where T: TransactionBackend + 'static
     pub async fn get_pending_inbound_transaction(
         &self,
         tx_id: TxId,
-    ) -> Result<InboundTransaction, TransactionStorageError>
-    {
+    ) -> Result<InboundTransaction, TransactionStorageError> {
         self.get_pending_inbound_transaction_by_cancelled(tx_id, false).await
     }
 
     pub async fn get_cancelled_pending_inbound_transaction(
         &self,
         tx_id: TxId,
-    ) -> Result<InboundTransaction, TransactionStorageError>
-    {
+    ) -> Result<InboundTransaction, TransactionStorageError> {
         self.get_pending_inbound_transaction_by_cancelled(tx_id, true).await
     }
 
@@ -315,8 +307,7 @@ where T: TransactionBackend + 'static
         &self,
         tx_id: TxId,
         cancelled: bool,
-    ) -> Result<InboundTransaction, TransactionStorageError>
-    {
+    ) -> Result<InboundTransaction, TransactionStorageError> {
         let db_clone = self.db.clone();
         let key = if cancelled {
             DbKey::CancelledPendingInboundTransaction(tx_id)
@@ -337,16 +328,14 @@ where T: TransactionBackend + 'static
     pub async fn get_completed_transaction(
         &self,
         tx_id: TxId,
-    ) -> Result<CompletedTransaction, TransactionStorageError>
-    {
+    ) -> Result<CompletedTransaction, TransactionStorageError> {
         self.get_completed_transaction_by_cancelled(tx_id, false).await
     }
 
     pub async fn get_cancelled_completed_transaction(
         &self,
         tx_id: TxId,
-    ) -> Result<CompletedTransaction, TransactionStorageError>
-    {
+    ) -> Result<CompletedTransaction, TransactionStorageError> {
         self.get_completed_transaction_by_cancelled(tx_id, true).await
     }
 
@@ -354,8 +343,7 @@ where T: TransactionBackend + 'static
         &self,
         tx_id: TxId,
         cancelled: bool,
-    ) -> Result<CompletedTransaction, TransactionStorageError>
-    {
+    ) -> Result<CompletedTransaction, TransactionStorageError> {
         let db_clone = self.db.clone();
         let key = DbKey::CompletedTransaction(tx_id);
         let t = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::CompletedTransaction(tx_id)) {
@@ -378,8 +366,7 @@ where T: TransactionBackend + 'static
     pub async fn get_completed_transaction_cancelled_or_not(
         &self,
         tx_id: TxId,
-    ) -> Result<CompletedTransaction, TransactionStorageError>
-    {
+    ) -> Result<CompletedTransaction, TransactionStorageError> {
         let db_clone = self.db.clone();
         let key = DbKey::CompletedTransaction(tx_id);
         let t = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::CompletedTransaction(tx_id)) {
@@ -408,8 +395,7 @@ where T: TransactionBackend + 'static
     async fn get_pending_inbound_transactions_by_cancelled(
         &self,
         cancelled: bool,
-    ) -> Result<HashMap<TxId, InboundTransaction>, TransactionStorageError>
-    {
+    ) -> Result<HashMap<TxId, InboundTransaction>, TransactionStorageError> {
         let db_clone = self.db.clone();
 
         let key = if cancelled {
@@ -449,8 +435,7 @@ where T: TransactionBackend + 'static
     async fn get_pending_outbound_transactions_by_cancelled(
         &self,
         cancelled: bool,
-    ) -> Result<HashMap<TxId, OutboundTransaction>, TransactionStorageError>
-    {
+    ) -> Result<HashMap<TxId, OutboundTransaction>, TransactionStorageError> {
         let db_clone = self.db.clone();
 
         let key = if cancelled {
@@ -478,8 +463,7 @@ where T: TransactionBackend + 'static
     pub async fn get_pending_transaction_counterparty_pub_key_by_tx_id(
         &mut self,
         tx_id: TxId,
-    ) -> Result<CommsPublicKey, TransactionStorageError>
-    {
+    ) -> Result<CommsPublicKey, TransactionStorageError> {
         let db_clone = self.db.clone();
         let pub_key =
             tokio::task::spawn_blocking(move || db_clone.get_pending_transaction_counterparty_pub_key_by_tx_id(tx_id))
@@ -518,8 +502,7 @@ where T: TransactionBackend + 'static
     async fn get_completed_transactions_by_cancelled(
         &self,
         cancelled: bool,
-    ) -> Result<HashMap<TxId, CompletedTransaction>, TransactionStorageError>
-    {
+    ) -> Result<HashMap<TxId, CompletedTransaction>, TransactionStorageError> {
         let db_clone = self.db.clone();
 
         let key = if cancelled {
@@ -547,8 +530,7 @@ where T: TransactionBackend + 'static
         &self,
         tx_id: TxId,
         transaction: CompletedTransaction,
-    ) -> Result<(), TransactionStorageError>
-    {
+    ) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
 
         tokio::task::spawn_blocking(move || db_clone.complete_outbound_transaction(tx_id, transaction))
@@ -562,8 +544,7 @@ where T: TransactionBackend + 'static
         &self,
         tx_id: TxId,
         transaction: CompletedTransaction,
-    ) -> Result<(), TransactionStorageError>
-    {
+    ) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
 
         tokio::task::spawn_blocking(move || db_clone.complete_inbound_transaction(tx_id, transaction))
@@ -623,20 +604,26 @@ where T: TransactionBackend + 'static
         source_public_key: CommsPublicKey,
         comms_public_key: CommsPublicKey,
         message: String,
-    ) -> Result<(), TransactionStorageError>
-    {
+        maturity: Option<u64>,
+    ) -> Result<(), TransactionStorageError> {
         let transaction = CompletedTransaction::new(
             tx_id,
             source_public_key.clone(),
             comms_public_key.clone(),
             amount,
             MicroTari::from(0),
-            Transaction::new(Vec::new(), Vec::new(), Vec::new(), BlindingFactor::default()),
+            Transaction::new(
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                BlindingFactor::default(),
+                BlindingFactor::default(),
+            ),
             TransactionStatus::Imported,
             message,
             Utc::now().naive_utc(),
             TransactionDirection::Inbound,
-            None,
+            maturity,
         );
 
         let db_clone = self.db.clone();
@@ -654,8 +641,7 @@ where T: TransactionBackend + 'static
     pub async fn cancel_coinbase_transaction_at_block_height(
         &self,
         block_height: u64,
-    ) -> Result<(), TransactionStorageError>
-    {
+    ) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
 
         tokio::task::spawn_blocking(move || db_clone.cancel_coinbase_transaction_at_block_height(block_height))
@@ -668,8 +654,7 @@ where T: TransactionBackend + 'static
         &self,
         block_height: u64,
         amount: MicroTari,
-    ) -> Result<Option<CompletedTransaction>, TransactionStorageError>
-    {
+    ) -> Result<Option<CompletedTransaction>, TransactionStorageError> {
         let db_clone = self.db.clone();
 
         tokio::task::spawn_blocking(move || db_clone.find_coinbase_transaction_at_block_height(block_height, amount))
@@ -722,8 +707,7 @@ where T: TransactionBackend + 'static
         &self,
         tx_id: TxId,
         valid: bool,
-    ) -> Result<(), TransactionStorageError>
-    {
+    ) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.set_completed_transaction_validity(tx_id, valid))
             .await
@@ -735,8 +719,7 @@ where T: TransactionBackend + 'static
         &self,
         tx_id: TxId,
         confirmations: u64,
-    ) -> Result<(), TransactionStorageError>
-    {
+    ) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.update_confirmations(tx_id, confirmations))
             .await
@@ -748,8 +731,7 @@ where T: TransactionBackend + 'static
         &self,
         tx_id: TxId,
         mined_height: u64,
-    ) -> Result<(), TransactionStorageError>
-    {
+    ) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.update_mined_height(tx_id, mined_height))
             .await

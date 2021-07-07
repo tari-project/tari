@@ -38,9 +38,9 @@ use log::*;
 use std::sync::Arc;
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
-pub const LOG_TARGET: &str = "c::mp::mempool";
+pub const LOG_TARGET: &str = "c::mp::mempool_storage";
 
-/// The Mempool consists of an Unconfirmed Transaction Pool, Pending Pool, Orphan Pool and Reorg Pool and is responsible
+/// The Mempool consists of an Unconfirmed Transaction Pool and Reorg Pool and is responsible
 /// for managing and maintaining all unconfirmed transactions have not yet been included in a block, and transactions
 /// that have recently been included in a block.
 pub struct MempoolStorage {
@@ -50,7 +50,7 @@ pub struct MempoolStorage {
 }
 
 impl MempoolStorage {
-    /// Create a new Mempool with an UnconfirmedPool, OrphanPool, PendingPool and ReOrgPool.
+    /// Create a new Mempool with an UnconfirmedPool and ReOrgPool.
     pub fn new(config: MempoolConfig, validators: Arc<dyn MempoolTransactionValidation>) -> Self {
         Self {
             unconfirmed_pool: UnconfirmedPool::new(config.unconfirmed_pool),
@@ -71,15 +71,19 @@ impl MempoolStorage {
                 .map(|k| k.excess_sig.get_signature().to_hex())
                 .unwrap_or_else(|| "None".into())
         );
-
         match self.validator.validate(&tx) {
             Ok(()) => {
-                self.unconfirmed_pool.insert(tx)?;
+                self.unconfirmed_pool.insert(tx, None)?;
                 Ok(TxStorageResponse::UnconfirmedPool)
             },
-            Err(ValidationError::UnknownInputs) => {
-                warn!(target: LOG_TARGET, "Validation failed due to unknown inputs");
-                Ok(TxStorageResponse::NotStoredOrphan)
+            Err(ValidationError::UnknownInputs(dependent_outputs)) => {
+                if self.unconfirmed_pool.verify_outputs_exist(&dependent_outputs) {
+                    self.unconfirmed_pool.insert(tx, Some(dependent_outputs))?;
+                    Ok(TxStorageResponse::UnconfirmedPool)
+                } else {
+                    warn!(target: LOG_TARGET, "Validation failed due to unknown inputs");
+                    Ok(TxStorageResponse::NotStoredOrphan)
+                }
             },
             Err(ValidationError::ContainsSTxO) => {
                 warn!(target: LOG_TARGET, "Validation failed due to already spent output");
@@ -110,17 +114,9 @@ impl MempoolStorage {
         // Move published txs to ReOrgPool and discard double spends
         self.reorg_pool.insert_txs(
             self.unconfirmed_pool
-                .remove_published_and_discard_double_spends(&published_block),
+                .remove_published_and_discard_deprecated_transactions(&published_block),
         )?;
 
-        Ok(())
-    }
-
-    // Update the Mempool based on the received set of published blocks.
-    fn process_published_blocks(&mut self, published_blocks: Vec<Arc<Block>>) -> Result<(), MempoolError> {
-        for published_block in published_blocks {
-            self.process_published_block(published_block)?;
-        }
         Ok(())
     }
 
@@ -130,8 +126,7 @@ impl MempoolStorage {
         &mut self,
         removed_blocks: Vec<Arc<Block>>,
         new_blocks: Vec<Arc<Block>>,
-    ) -> Result<(), MempoolError>
-    {
+    ) -> Result<(), MempoolError> {
         debug!(target: LOG_TARGET, "Mempool processing reorg");
         for block in &removed_blocks {
             debug!(
@@ -153,11 +148,20 @@ impl MempoolStorage {
         let previous_tip = removed_blocks.last().map(|block| block.header.height);
         let new_tip = new_blocks.last().map(|block| block.header.height);
 
+        // Clear out all transactions from the unconfirmed pool and re-submit them to the unconfirmed mempool for
+        // validation. This is important as invalid transactions that have not been mined yet may remain in the mempool
+        // after a reorg.
+        let removed_txs = self.unconfirmed_pool.drain_all_mempool_transactions();
+        self.insert_txs(removed_txs)?;
+        // Remove re-orged transactions from reorg  pool and re-submit them to the unconfirmed mempool
         self.insert_txs(
             self.reorg_pool
                 .remove_reorged_txs_and_discard_double_spends(removed_blocks, &new_blocks)?,
         )?;
-        self.process_published_blocks(new_blocks)?;
+        // Update the Mempool based on the received set of new blocks.
+        for block in new_blocks {
+            self.process_published_block(block)?;
+        }
 
         if let (Some(previous_tip_height), Some(new_tip_height)) = (previous_tip, new_tip) {
             if new_tip_height < previous_tip_height {
@@ -192,8 +196,10 @@ impl MempoolStorage {
 
     /// Returns a list of transaction ranked by transaction priority up to a given weight.
     /// Will only return transactions that will fit into a block
-    pub fn retrieve(&self, total_weight: u64) -> Result<Vec<Arc<Transaction>>, MempoolError> {
-        Ok(self.unconfirmed_pool.highest_priority_txs(total_weight)?)
+    pub fn retrieve(&mut self, total_weight: u64) -> Result<Vec<Arc<Transaction>>, MempoolError> {
+        let results = self.unconfirmed_pool.highest_priority_txs(total_weight)?;
+        self.insert_txs(results.transactions_to_insert)?;
+        Ok(results.retrieved_transactions)
     }
 
     /// Check if the specified transaction is stored in the Mempool.

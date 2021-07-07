@@ -37,12 +37,14 @@ pub type BaseNodeEventReceiver = broadcast::Receiver<Arc<BaseNodeEvent>>;
 pub enum BaseNodeServiceRequest {
     GetChainMetadata,
     SetBaseNodePeer(Box<Peer>),
+    GetBaseNodePeer,
 }
 /// API Response enum
 #[derive(Debug)]
 pub enum BaseNodeServiceResponse {
     ChainMetadata(Option<ChainMetadata>),
     BaseNodePeerSet,
+    BaseNodePeer(Option<Box<Peer>>),
 }
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum BaseNodeEvent {
@@ -62,8 +64,7 @@ impl BaseNodeServiceHandle {
     pub fn new(
         handle: SenderService<BaseNodeServiceRequest, Result<BaseNodeServiceResponse, BaseNodeServiceError>>,
         event_stream_sender: BaseNodeEventSender,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             handle,
             event_stream_sender,
@@ -88,6 +89,13 @@ impl BaseNodeServiceHandle {
             .await??
         {
             BaseNodeServiceResponse::BaseNodePeerSet => Ok(()),
+            _ => Err(BaseNodeServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_base_node_peer(&mut self) -> Result<Option<Peer>, BaseNodeServiceError> {
+        match self.handle.call(BaseNodeServiceRequest::GetBaseNodePeer).await?? {
+            BaseNodeServiceResponse::BaseNodePeer(peer) => Ok(peer.map(|p| *p)),
             _ => Err(BaseNodeServiceError::UnexpectedApiResponse),
         }
     }

@@ -21,7 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::error::CommandError;
-use crate::automation::command_parser::{ParsedArgument, ParsedCommand};
+use crate::{
+    automation::command_parser::{ParsedArgument, ParsedCommand},
+    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
+};
 use chrono::{DateTime, Utc};
 use futures::{FutureExt, StreamExt};
 use log::*;
@@ -33,13 +36,18 @@ use std::{
 };
 use strum_macros::{Display, EnumIter, EnumString};
 use tari_common::GlobalConfig;
-use tari_comms::connectivity::{ConnectivityEvent, ConnectivityRequester};
+use tari_comms::{
+    connectivity::{ConnectivityEvent, ConnectivityRequester},
+    multiaddr::Multiaddr,
+    types::CommsPublicKey,
+};
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::{
     tari_utilities::hex::Hex,
     transactions::{
         tari_amount::{uT, MicroTari, Tari},
-        transaction::OutputFeatures,
+        transaction::UnblindedOutput,
+        types::PublicKey,
     },
 };
 use tari_crypto::ristretto::pedersen::PedersenCommitmentFactory;
@@ -62,12 +70,17 @@ pub const LOG_TARGET: &str = "wallet::automation::commands";
 pub enum WalletCommand {
     GetBalance,
     SendTari,
+    SendOneSided,
     MakeItRain,
     CoinSplit,
     DiscoverPeer,
     Whois,
     ExportUtxos,
+    ExportSpentUtxos,
     CountUtxos,
+    SetBaseNode,
+    SetCustomBaseNode,
+    ClearCustomBaseNode,
 }
 
 #[derive(Debug, EnumString, PartialEq, Clone)]
@@ -87,12 +100,10 @@ pub struct SentTransaction {
     stage: TransactionStage,
 }
 
-pub async fn send_tari(
-    mut wallet_transaction_service: TransactionServiceHandle,
+fn get_transaction_parameters(
     args: Vec<ParsedArgument>,
-) -> Result<TxId, CommandError>
-{
-    // todo: consolidate "fee per gram" in codebase
+) -> Result<(MicroTari, MicroTari, PublicKey, String), CommandError> {
+    // TODO: Consolidate "fee per gram" in codebase
     let fee_per_gram = 25 * uT;
 
     use ParsedArgument::*;
@@ -111,18 +122,38 @@ pub async fn send_tari(
         _ => Err(CommandError::Argument),
     }?;
 
+    Ok((fee_per_gram, amount, dest_pubkey, message))
+}
+
+/// Send a normal negotiated transaction to a recipient
+pub async fn send_tari(
+    mut wallet_transaction_service: TransactionServiceHandle,
+    args: Vec<ParsedArgument>,
+) -> Result<TxId, CommandError> {
+    let (fee_per_gram, amount, dest_pubkey, message) = get_transaction_parameters(args)?;
     wallet_transaction_service
         .send_transaction(dest_pubkey, amount, fee_per_gram, message)
         .await
-        .map_err(CommandError::Transaction)
+        .map_err(CommandError::TransactionServiceError)
+}
+
+/// Send a one-sided transaction to a recipient
+pub async fn send_one_sided(
+    mut wallet_transaction_service: TransactionServiceHandle,
+    args: Vec<ParsedArgument>,
+) -> Result<TxId, CommandError> {
+    let (fee_per_gram, amount, dest_pubkey, message) = get_transaction_parameters(args)?;
+    wallet_transaction_service
+        .send_one_sided_transaction(dest_pubkey, amount, fee_per_gram, message)
+        .await
+        .map_err(CommandError::TransactionServiceError)
 }
 
 pub async fn coin_split(
     args: &[ParsedArgument],
     output_service: &mut OutputManagerHandle,
     transaction_service: &mut TransactionServiceHandle,
-) -> Result<TxId, CommandError>
-{
+) -> Result<TxId, CommandError> {
     use ParsedArgument::*;
     let amount_per_split = match args[0] {
         Amount(s) => Ok(s),
@@ -165,12 +196,33 @@ async fn wait_for_comms(connectivity_requester: &ConnectivityRequester) -> Resul
         }
     }
 }
+async fn set_base_node_peer(
+    mut wallet: WalletSqlite,
+    args: &[ParsedArgument],
+) -> Result<(CommsPublicKey, Multiaddr), CommandError> {
+    let public_key = match args[0].clone() {
+        ParsedArgument::PublicKey(s) => Ok(s),
+        _ => Err(CommandError::Argument),
+    }?;
+
+    let net_address = match args[1].clone() {
+        ParsedArgument::Address(a) => Ok(a),
+        _ => Err(CommandError::Argument),
+    }?;
+
+    println!("Setting base node peer...");
+    println!("{}::{}", public_key, net_address);
+    wallet
+        .set_base_node_peer(public_key.clone(), net_address.to_string())
+        .await?;
+
+    Ok((public_key, net_address))
+}
 
 pub async fn discover_peer(
     mut dht_service: DhtDiscoveryRequester,
     args: Vec<ParsedArgument>,
-) -> Result<(), CommandError>
-{
+) -> Result<(), CommandError> {
     use ParsedArgument::*;
     let dest_public_key = match args[0].clone() {
         PublicKey(key) => Ok(Box::new(key)),
@@ -199,8 +251,7 @@ pub async fn make_it_rain(
     handle: Handle,
     wallet_transaction_service: TransactionServiceHandle,
     args: Vec<ParsedArgument>,
-) -> Result<Vec<TxId>, CommandError>
-{
+) -> Result<Vec<TxId>, CommandError> {
     use ParsedArgument::*;
 
     let txps = match args[0].clone() {
@@ -293,8 +344,7 @@ pub async fn monitor_transactions(
     transaction_service: TransactionServiceHandle,
     tx_ids: Vec<TxId>,
     wait_stage: TransactionStage,
-) -> Vec<SentTransaction>
-{
+) -> Vec<SentTransaction> {
     let mut event_stream = transaction_service.get_event_stream_fused();
     let mut results = Vec::new();
     debug!(target: LOG_TARGET, "monitor transactions wait_stage: {:?}", wait_stage);
@@ -414,8 +464,7 @@ pub async fn command_runner(
     commands: Vec<ParsedCommand>,
     wallet: WalletSqlite,
     config: GlobalConfig,
-) -> Result<(), CommandError>
-{
+) -> Result<(), CommandError> {
     let wait_stage = TransactionStage::from_str(&config.wallet_command_send_wait_stage)
         .map_err(|e| CommandError::Config(e.to_string()))?;
 
@@ -452,6 +501,11 @@ pub async fn command_runner(
                 debug!(target: LOG_TARGET, "send-tari tx_id {}", tx_id);
                 tx_ids.push(tx_id);
             },
+            SendOneSided => {
+                let tx_id = send_one_sided(transaction_service.clone(), parsed.args).await?;
+                debug!(target: LOG_TARGET, "send-one-sided tx_id {}", tx_id);
+                tx_ids.push(tx_id);
+            },
             MakeItRain => {
                 let rain_ids = make_it_rain(handle.clone(), transaction_service.clone(), parsed.args).await?;
                 tx_ids.extend(rain_ids);
@@ -480,29 +534,21 @@ pub async fn command_runner(
                         println!("{}. Value: {} {}", i + 1, utxo.value, utxo.features);
                     }
                 } else if let ParsedArgument::CSVFileName(file) = parsed.args[1].clone() {
-                    let factory = PedersenCommitmentFactory::default();
-                    let file = File::create(file).map_err(|e| CommandError::CSVFile(e.to_string()))?;
-                    let mut csv_file = LineWriter::new(file);
-                    writeln!(
-                        csv_file,
-                        r##""#","Value (uT)","Spending Key","Commitment","Flags","Maturity""##
-                    )
-                    .map_err(|e| CommandError::CSVFile(e.to_string()))?;
+                    write_utxos_to_csv_file(utxos, file)?;
+                }
+                println!("Total number of UTXOs: {}", count);
+                println!("Total value of UTXOs: {}", sum);
+            },
+            ExportSpentUtxos => {
+                let utxos = output_service.get_spent_outputs().await?;
+                let count = utxos.len();
+                let sum: MicroTari = utxos.iter().map(|utxo| utxo.value).sum();
+                if parsed.args.is_empty() {
                     for (i, utxo) in utxos.iter().enumerate() {
-                        writeln!(
-                            csv_file,
-                            r##""{}","{}","{}","{}","{:?}","{}""##,
-                            i + 1,
-                            utxo.value.0,
-                            utxo.spending_key.to_hex(),
-                            utxo.as_transaction_input(&factory, OutputFeatures::default())
-                                .commitment
-                                .to_hex(),
-                            utxo.features.flags,
-                            utxo.features.maturity,
-                        )
-                        .map_err(|e| CommandError::CSVFile(e.to_string()))?;
+                        println!("{}. Value: {} {}", i + 1, utxo.value, utxo.features);
                     }
+                } else if let ParsedArgument::CSVFileName(file) = parsed.args[1].clone() {
+                    write_utxos_to_csv_file(utxos, file)?;
                 }
                 println!("Total number of UTXOs: {}", count);
                 println!("Total value of UTXOs: {}", sum);
@@ -525,6 +571,32 @@ pub async fn command_runner(
                 if let Some(max) = values.iter().max() {
                     println!("Maximum value UTXO   : {}", max);
                 }
+            },
+            SetBaseNode => {
+                set_base_node_peer(wallet.clone(), &parsed.args).await?;
+            },
+            SetCustomBaseNode => {
+                let (public_key, net_address) = set_base_node_peer(wallet.clone(), &parsed.args).await?;
+                wallet
+                    .db
+                    .set_client_key_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string(), public_key.to_string())
+                    .await?;
+                wallet
+                    .db
+                    .set_client_key_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string(), net_address.to_string())
+                    .await?;
+                println!("Custom base node peer saved in wallet database.");
+            },
+            ClearCustomBaseNode => {
+                wallet
+                    .db
+                    .clear_client_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string())
+                    .await?;
+                wallet
+                    .db
+                    .clear_client_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string())
+                    .await?;
+                println!("Custom base node peer cleared from wallet database.");
             },
         }
     }
@@ -564,5 +636,37 @@ pub async fn command_runner(
         );
     }
 
+    Ok(())
+}
+
+fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: String) -> Result<(), CommandError> {
+    let factory = PedersenCommitmentFactory::default();
+    let file = File::create(file_path).map_err(|e| CommandError::CSVFile(e.to_string()))?;
+    let mut csv_file = LineWriter::new(file);
+    writeln!(
+        csv_file,
+        r##""index","value","spending_key","commitment","flags","maturity","script","input_data","script_private_key","sender_offset_public_key","public_nonce","signature_u","signature_v""##
+    )
+    .map_err(|e| CommandError::CSVFile(e.to_string()))?;
+    for (i, utxo) in utxos.iter().enumerate() {
+        writeln!(
+            csv_file,
+            r##""{}","{}","{}","{}","{:?}","{}","{}","{}","{}","{}","{}","{}","{}""##,
+            i + 1,
+            utxo.value.0,
+            utxo.spending_key.to_hex(),
+            utxo.as_transaction_input(&factory)?.commitment.to_hex(),
+            utxo.features.flags,
+            utxo.features.maturity,
+            utxo.script.to_hex(),
+            utxo.input_data.to_hex(),
+            utxo.script_private_key.to_hex(),
+            utxo.sender_offset_public_key.to_hex(),
+            utxo.metadata_signature.public_nonce().to_hex(),
+            utxo.metadata_signature.u().to_hex(),
+            utxo.metadata_signature.v().to_hex(),
+        )
+        .map_err(|e| CommandError::CSVFile(e.to_string()))?;
+    }
     Ok(())
 }

@@ -45,8 +45,7 @@ impl DialState {
         peer: Box<Peer>,
         reply_tx: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
         cancel_signal: ShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             peer,
             attempts: 0,

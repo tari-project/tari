@@ -66,8 +66,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
     async fn sync_blocks(
         &self,
         request: Request<SyncBlocksRequest>,
-    ) -> Result<Streaming<proto::base_node::BlockBodyResponse>, RpcStatus>
-    {
+    ) -> Result<Streaming<proto::base_node::BlockBodyResponse>, RpcStatus> {
         let peer_node_id = request.context().peer_node_id().clone();
         let message = request.into_message();
 
@@ -172,8 +171,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
     async fn sync_headers(
         &self,
         request: Request<SyncHeadersRequest>,
-    ) -> Result<Streaming<proto::core::BlockHeader>, RpcStatus>
-    {
+    ) -> Result<Streaming<proto::core::BlockHeader>, RpcStatus> {
         let db = self.db();
         let peer_node_id = request.context().peer_node_id().clone();
         let message = request.into_message();
@@ -254,8 +252,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
     async fn get_header_by_height(
         &self,
         request: Request<u64>,
-    ) -> Result<Response<proto::core::BlockHeader>, RpcStatus>
-    {
+    ) -> Result<Response<proto::core::BlockHeader>, RpcStatus> {
         let height = request.into_message();
         let header = self
             .db()
@@ -270,8 +267,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
     async fn find_chain_split(
         &self,
         request: Request<FindChainSplitRequest>,
-    ) -> Result<Response<FindChainSplitResponse>, RpcStatus>
-    {
+    ) -> Result<Response<FindChainSplitResponse>, RpcStatus> {
         const MAX_ALLOWED_BLOCK_HASHES: usize = 1000;
         const MAX_ALLOWED_HEADER_COUNT: u64 = 1000;
 
@@ -342,8 +338,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
     async fn sync_kernels(
         &self,
         request: Request<SyncKernelsRequest>,
-    ) -> Result<Streaming<proto::types::TransactionKernel>, RpcStatus>
-    {
+    ) -> Result<Streaming<proto::types::TransactionKernel>, RpcStatus> {
         let req = request.into_message();
         const BATCH_SIZE: usize = 1000;
         let (mut tx, rx) = mpsc::channel(BATCH_SIZE);
@@ -441,8 +436,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             async fn start_streaming(
                 &self,
                 tx: &mut mpsc::Sender<Result<SyncUtxosResponse, RpcStatus>>,
-            ) -> Result<(), RpcStatus>
-            {
+            ) -> Result<(), RpcStatus> {
                 let end_header = self
                     .db
                     .fetch_header_by_block_hash(self.request.end_header_hash.clone())

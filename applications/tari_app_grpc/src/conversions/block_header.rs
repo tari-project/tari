@@ -30,21 +30,24 @@ use tari_crypto::tari_utilities::{ByteArray, Hashable};
 
 impl From<BlockHeader> for grpc::BlockHeader {
     fn from(h: BlockHeader) -> Self {
+        let pow_algo = h.pow_algo();
         Self {
             hash: h.hash(),
             version: h.version as u32,
             height: h.height,
-            prev_hash: h.prev_hash.clone(),
+            prev_hash: h.prev_hash,
             timestamp: Some(datetime_to_timestamp(h.timestamp)),
-            output_mr: h.output_mr.clone(),
-            range_proof_mr: h.range_proof_mr.clone(),
+            input_mr: h.input_mr,
+            output_mr: h.output_mr,
             output_mmr_size: h.output_mmr_size,
-            kernel_mr: h.kernel_mr.clone(),
+            kernel_mr: h.kernel_mr,
             kernel_mmr_size: h.kernel_mmr_size,
-            total_kernel_offset: Vec::from(h.total_kernel_offset.as_bytes()),
+            witness_mr: h.witness_mr,
+            total_kernel_offset: h.total_kernel_offset.to_vec(),
+            total_script_offset: h.total_script_offset.to_vec(),
             nonce: h.nonce,
             pow: Some(grpc::ProofOfWork {
-                pow_algo: h.pow_algo().as_u64(),
+                pow_algo: pow_algo.as_u64(),
                 pow_data: h.pow.pow_data,
             }),
         }
@@ -57,6 +60,9 @@ impl TryFrom<grpc::BlockHeader> for BlockHeader {
     fn try_from(header: grpc::BlockHeader) -> Result<Self, Self::Error> {
         let total_kernel_offset =
             BlindingFactor::from_bytes(&header.total_kernel_offset).map_err(|err| err.to_string())?;
+
+        let total_script_offset =
+            BlindingFactor::from_bytes(&header.total_script_offset).map_err(|err| err.to_string())?;
 
         let timestamp = header
             .timestamp
@@ -72,12 +78,14 @@ impl TryFrom<grpc::BlockHeader> for BlockHeader {
             height: header.height,
             prev_hash: header.prev_hash,
             timestamp,
+            input_mr: header.input_mr,
             output_mr: header.output_mr,
-            range_proof_mr: header.range_proof_mr,
+            witness_mr: header.witness_mr,
             output_mmr_size: header.output_mmr_size,
             kernel_mr: header.kernel_mr,
             kernel_mmr_size: header.kernel_mmr_size,
             total_kernel_offset,
+            total_script_offset,
             nonce: header.nonce,
             pow,
         })

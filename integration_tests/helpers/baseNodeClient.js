@@ -6,6 +6,7 @@ const TransactionBuilder = require("./transactionBuilder");
 const { SHA3 } = require("sha3");
 const { toLittleEndian } = require("./util");
 const cloneDeep = require("clone-deep");
+const PowAlgo = { MONERO: 0, SHA3: 1 };
 
 class BaseNodeClient {
   constructor(clientOrPort) {
@@ -89,7 +90,7 @@ class BaseNodeClient {
   getBlockTemplate(weight) {
     return this.client
       .getNewBlockTemplate()
-      .sendMessage({ algo: { pow_algo: 2 }, max_weight: weight })
+      .sendMessage({ algo: { pow_algo: PowAlgo.SHA3 }, max_weight: weight })
       .then((template) => {
         const res = {
           minerData: template.miner_data,
@@ -153,6 +154,10 @@ class BaseNodeClient {
       });
   }
 
+  checkForUpdates() {
+    return this.client.checkForUpdates().sendMessage({});
+  }
+
   transactionStateResult(txn) {
     return this.client
       .transactionState()
@@ -171,26 +176,12 @@ class BaseNodeClient {
       });
   }
 
-  async mineBlockBeforeSubmit(walletClient, weight) {
-    // Empty template from base node
-    const emptyTemplate = await this.client
-      .getNewBlockTemplate()
-      .sendMessage({ algo: { pow_algo: 2 }, max_weight: weight });
-    // Coinbase from wallet
-    const coinbase = await walletClient.client.inner.getCoinbase().sendMessage({
-      reward: emptyTemplate.miner_data.reward,
-      fee: emptyTemplate.miner_data.total_fees,
-      height: emptyTemplate.new_block_template.header.height,
-    });
+  async mineBlockBeforeSubmit(weight) {
     // New block from base node including coinbase
-    const block = emptyTemplate.new_block_template;
-    block.body.outputs = block.body.outputs.concat(
-      coinbase.transaction.body.outputs
-    );
-    block.body.kernels = block.body.kernels.concat(
-      coinbase.transaction.body.kernels
-    );
-    const newBlock = await this.client.getNewBlock().sendMessage(block);
+    const block = await this.getMinedCandidateBlock(weight);
+    const newBlock = await this.client
+      .getNewBlock()
+      .sendMessage(block.template);
     return newBlock;
   }
 
@@ -212,9 +203,10 @@ class BaseNodeClient {
       .sendMessage({})
       .then((tip) => {
         currHeight = parseInt(tip.metadata.height_of_longest_chain);
-        return this.client
-          .getNewBlockTemplate()
-          .sendMessage({ algo: { pow_algo: 2 }, max_weight: weight });
+        return this.client.getNewBlockTemplate().sendMessage({
+          algo: { pow_algo: PowAlgo.SHA3 },
+          max_weight: weight,
+        });
       })
       .then((template) => {
         block = template.new_block_template;
@@ -244,30 +236,56 @@ class BaseNodeClient {
       });
   }
 
-  async getMinedCandidateBlock(weight, existingBlockTemplate) {
+  async getMinedCandidateBlock(weight, existingBlockTemplate, walletClient) {
     const builder = new TransactionBuilder();
     const blockTemplate =
       existingBlockTemplate || (await this.getBlockTemplate(weight));
-    const privateKey = Buffer.from(
-      toLittleEndian(blockTemplate.block.header.height, 256)
+    const privateKey = toLittleEndian(
+      blockTemplate.block.header.height,
+      256
     ).toString("hex");
-    const cb = builder.generateCoinbase(
-      parseInt(blockTemplate.minerData.reward),
-      privateKey,
-      parseInt(blockTemplate.minerData.total_fees),
-      parseInt(blockTemplate.block.header.height) + 2
-    );
+    const height = parseInt(blockTemplate.block.header.height) + 2;
+
+    let cb_outputs;
+    let cb_kernels;
+    if (!walletClient) {
+      const cb_builder = builder.generateCoinbase(
+        parseInt(blockTemplate.minerData.reward),
+        privateKey,
+        parseInt(blockTemplate.minerData.total_fees),
+        height
+      );
+      cb_outputs = cb_builder.outputs;
+      cb_kernels = cb_builder.kernels;
+    } else {
+      const cb_wallet = await walletClient.client.inner
+        .getCoinbase()
+        .sendMessage({
+          reward: parseInt(blockTemplate.minerData.reward),
+          fee: parseInt(blockTemplate.minerData.total_fees),
+          height: height,
+        });
+      cb_outputs = cb_wallet.transaction.body.outputs;
+      cb_kernels = cb_wallet.transaction.body.kernels;
+    }
+
     const template = blockTemplate.block;
-    template.body.outputs = template.body.outputs.concat(cb.outputs);
-    template.body.kernels = template.body.kernels.concat(cb.kernels);
+    template.body.outputs = template.body.outputs.concat(cb_outputs);
+    template.body.kernels = template.body.kernels.concat(cb_kernels);
     return {
       template: template,
       coinbase: {
-        output: cb.outputs[0],
+        output: cb_outputs[0],
         privateKey: privateKey,
         amount:
           parseInt(blockTemplate.minerData.reward) +
           parseInt(blockTemplate.minerData.total_fees),
+        scriptPrivateKey: privateKey,
+        scriptOffsetPrivateKey: Buffer.from(
+          "0000000000000000000000000000000000000000000000000000000000000000",
+          "hex"
+        ),
+        height: blockTemplate.block.header.height,
       },
     };
   }
@@ -293,6 +311,55 @@ class BaseNodeClient {
     );
   }
 
+  async mineBlockWithWallet(weight, walletClient, onError) {
+    const template = await this.getMinedCandidateBlock(
+      weight,
+      null,
+      walletClient
+    );
+    return this.submitTemplate(template).then(
+      async () => {
+        // let tip = await this.getTipHeight();
+        // console.log("Node is at tip:", tip);
+      },
+      (err) => {
+        console.log("err submitting block:", err);
+        if (onError) {
+          if (!onError(err)) {
+            throw err;
+          }
+          // handled
+        } else {
+          throw err;
+        }
+      }
+    );
+  }
+
+  async mineBlocksUntilHeightIncreasedBy(numBlocks, walletClient) {
+    let tipHeight = parseInt(await this.getTipHeight());
+    const height = (await this.getTipHeight()) + numBlocks;
+    const weight = 0;
+    let i = 0;
+    do {
+      if (i % 25 === 0) {
+        console.log(
+          "[base node client] Tip at",
+          tipHeight,
+          "...(stopping at " + height + ")"
+        );
+      }
+      i += 1;
+      if (!walletClient) {
+        await this.mineBlockWithoutWallet(null, weight, null);
+      } else {
+        await this.mineBlockWithWallet(weight, walletClient);
+      }
+      tipHeight = await this.getTipHeight();
+    } while (tipHeight < height);
+    return await this.getTipHeight();
+  }
+
   getSha3Difficulty(header) {
     const hash = new SHA3(256);
     hash.update(toLittleEndian(header.version, 16));
@@ -300,8 +367,9 @@ class BaseNodeClient {
     hash.update(header.prev_hash);
     const timestamp = parseInt(header.timestamp.seconds);
     hash.update(toLittleEndian(timestamp, 64));
+    hash.update(header.input_mr);
     hash.update(header.output_mr);
-    hash.update(header.range_proof_mr);
+    hash.update(header.witness_mr);
     hash.update(header.kernel_mr);
     hash.update(header.total_kernel_offset);
     hash.update(toLittleEndian(parseInt(header.nonce), 64));
@@ -310,7 +378,7 @@ class BaseNodeClient {
       toLittleEndian(parseInt(header.pow.accumulated_monero_difficulty), 64)
     );
     hash.update(
-      toLittleEndian(parseInt(header.pow.accumulated_blake_difficulty), 64)
+      toLittleEndian(parseInt(header.pow.accumulated_sha_difficulty), 64)
     );
     hash.update(header.pow.pow_data);
     const first_round = hash.digest();

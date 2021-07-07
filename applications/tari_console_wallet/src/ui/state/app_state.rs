@@ -1,19 +1,44 @@
+// Copyright 2020. The Tari Project
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 use crate::{
     notifier::Notifier,
     ui::{
-        state::wallet_event_monitor::WalletEventMonitor,
+        state::{
+            tasks::{send_one_sided_transaction_task, send_transaction_task},
+            wallet_event_monitor::WalletEventMonitor,
+        },
         UiContact,
         UiError,
-        CUSTOM_BASE_NODE_ADDRESS_KEY,
-        CUSTOM_BASE_NODE_PUBLIC_KEY_KEY,
     },
+    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
     wallet_modes::PeerConfig,
 };
+use bitflags::bitflags;
 use futures::{stream::Fuse, StreamExt};
 use log::*;
 use qrcode::{render::unicode, QrCode};
 use std::{collections::HashMap, sync::Arc};
-use tari_common::{GlobalConfig, Network};
+use tari_common::{configuration::Network, GlobalConfig};
 use tari_comms::{
     connectivity::ConnectivityEventRx,
     multiaddr::Multiaddr,
@@ -30,14 +55,9 @@ use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
     contacts_service::storage::database::Contact,
-    output_manager_service::{
-        handle::OutputManagerEventReceiver,
-        protocols::txo_validation_protocol::TxoValidationType,
-        service::Balance,
-        TxId,
-    },
+    output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, TxId, TxoValidationType},
     transaction_service::{
-        handle::{TransactionEvent, TransactionEventReceiver, TransactionServiceHandle},
+        handle::TransactionEventReceiver,
         storage::models::{CompletedTransaction, TransactionStatus},
     },
     types::ValidationRetryStrategy,
@@ -52,6 +72,7 @@ const LOG_TARGET: &str = "wallet::console_wallet::app_state";
 pub struct AppState {
     inner: Arc<RwLock<AppStateInner>>,
     cached_data: AppStateData,
+    completed_tx_filter: TransactionFilter,
     node_config: GlobalConfig,
 }
 
@@ -63,13 +84,14 @@ impl AppState {
         base_node_selected: Peer,
         base_node_config: PeerConfig,
         node_config: GlobalConfig,
-    ) -> Self
-    {
+    ) -> Self {
         let inner = AppStateInner::new(node_identity, network, wallet, base_node_selected, base_node_config);
         let cached_data = inner.data.clone();
+
         Self {
             inner: Arc::new(RwLock::new(inner)),
             cached_data,
+            completed_tx_filter: TransactionFilter::ABANDONED_COINBASES,
             node_config,
         }
     }
@@ -82,33 +104,31 @@ impl AppState {
     pub async fn refresh_transaction_state(&mut self) -> Result<(), UiError> {
         let mut inner = self.inner.write().await;
         inner.refresh_full_transaction_state().await?;
-        if let Some(data) = inner.get_updated_app_state() {
-            self.cached_data = data;
-        }
+        drop(inner);
+        self.update_cache().await;
         Ok(())
     }
 
     pub async fn refresh_contacts_state(&mut self) -> Result<(), UiError> {
         let mut inner = self.inner.write().await;
         inner.refresh_contacts_state().await?;
-        if let Some(data) = inner.get_updated_app_state() {
-            self.cached_data = data;
-        }
+        drop(inner);
+        self.update_cache().await;
         Ok(())
     }
 
     pub async fn refresh_connected_peers_state(&mut self) -> Result<(), UiError> {
         let mut inner = self.inner.write().await;
         inner.refresh_connected_peers_state().await?;
-        if let Some(data) = inner.get_updated_app_state() {
-            self.cached_data = data;
-        }
+        drop(inner);
+        self.update_cache().await;
         Ok(())
     }
 
     pub async fn update_cache(&mut self) {
         let mut inner = self.inner.write().await;
-        if let Some(data) = inner.get_updated_app_state() {
+        let updated_state = inner.get_updated_app_state();
+        if let Some(data) = updated_state {
             self.cached_data = data;
         }
     }
@@ -127,9 +147,8 @@ impl AppState {
         inner.wallet.contacts_service.upsert_contact(contact).await?;
 
         inner.refresh_contacts_state().await?;
-        if let Some(data) = inner.get_updated_app_state() {
-            self.cached_data = data;
-        }
+        drop(inner);
+        self.update_cache().await;
         Ok(())
     }
 
@@ -143,9 +162,8 @@ impl AppState {
         inner.wallet.contacts_service.remove_contact(public_key).await?;
 
         inner.refresh_contacts_state().await?;
-        if let Some(data) = inner.get_updated_app_state() {
-            self.cached_data = data;
-        }
+        drop(inner);
+        self.update_cache().await;
         Ok(())
     }
 
@@ -156,8 +174,7 @@ impl AppState {
         fee_per_gram: u64,
         message: String,
         result_tx: watch::Sender<UiTransactionSendStatus>,
-    ) -> Result<(), UiError>
-    {
+    ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
         let public_key = match CommsPublicKey::from_hex(public_key.as_str()) {
             Ok(pk) => pk,
@@ -167,6 +184,34 @@ impl AppState {
         let fee_per_gram = fee_per_gram * uT;
         let tx_service_handle = inner.wallet.transaction_service.clone();
         tokio::spawn(send_transaction_task(
+            public_key,
+            MicroTari::from(amount),
+            message,
+            fee_per_gram,
+            tx_service_handle,
+            result_tx,
+        ));
+
+        Ok(())
+    }
+
+    pub async fn send_one_sided_transaction(
+        &mut self,
+        public_key: String,
+        amount: u64,
+        fee_per_gram: u64,
+        message: String,
+        result_tx: watch::Sender<UiTransactionSendStatus>,
+    ) -> Result<(), UiError> {
+        let inner = self.inner.write().await;
+        let public_key = match CommsPublicKey::from_hex(public_key.as_str()) {
+            Ok(pk) => pk,
+            Err(_) => EmojiId::str_to_pubkey(public_key.as_str()).map_err(|_| UiError::PublicKeyParseError)?,
+        };
+
+        let fee_per_gram = fee_per_gram * uT;
+        let tx_service_handle = inner.wallet.transaction_service.clone();
+        tokio::spawn(send_one_sided_transaction_task(
             public_key,
             MicroTari::from(amount),
             message,
@@ -229,16 +274,19 @@ impl AppState {
         }
     }
 
-    pub fn get_completed_txs_slice(&self, start: usize, end: usize) -> &[CompletedTransaction] {
-        if self.cached_data.completed_txs.is_empty() || start > end || end > self.cached_data.completed_txs.len() {
-            return &[];
+    pub fn get_completed_txs(&self) -> Vec<&CompletedTransaction> {
+        if self
+            .completed_tx_filter
+            .contains(TransactionFilter::ABANDONED_COINBASES)
+        {
+            self.cached_data
+                .completed_txs
+                .iter()
+                .filter(|tx| !(tx.cancelled && tx.status == TransactionStatus::Coinbase))
+                .collect()
+        } else {
+            self.cached_data.completed_txs.iter().collect()
         }
-
-        &self.cached_data.completed_txs[start..end]
-    }
-
-    pub fn get_completed_txs(&self) -> &Vec<CompletedTransaction> {
-        &self.cached_data.completed_txs
     }
 
     pub fn get_confirmations(&self, tx_id: &TxId) -> Option<&u64> {
@@ -246,8 +294,9 @@ impl AppState {
     }
 
     pub fn get_completed_tx(&self, index: usize) -> Option<&CompletedTransaction> {
-        if index < self.cached_data.completed_txs.len() {
-            Some(&self.cached_data.completed_txs[index])
+        let filtered_completed_txs = self.get_completed_txs();
+        if index < filtered_completed_txs.len() {
+            Some(filtered_completed_txs[index])
         } else {
             None
         }
@@ -290,7 +339,7 @@ impl AppState {
     pub async fn set_custom_base_node(&mut self, public_key: String, address: String) -> Result<Peer, UiError> {
         let pub_key = PublicKey::from_hex(public_key.as_str())?;
         let addr = address.parse::<Multiaddr>().map_err(|_| UiError::AddressParseError)?;
-        let node_id = NodeId::from_key(&pub_key)?;
+        let node_id = NodeId::from_key(&pub_key);
         let peer = Peer::new(
             pub_key,
             node_id,
@@ -318,6 +367,10 @@ impl AppState {
     pub fn get_required_confirmations(&self) -> u64 {
         (&self.node_config.transaction_num_confirmations_required).to_owned()
     }
+
+    pub fn toggle_abandoned_coinbase_filter(&mut self) {
+        self.completed_tx_filter.toggle(TransactionFilter::ABANDONED_COINBASES);
+    }
 }
 
 pub struct AppStateInner {
@@ -333,8 +386,7 @@ impl AppStateInner {
         wallet: WalletSqlite,
         base_node_selected: Peer,
         base_node_config: PeerConfig,
-    ) -> Self
-    {
+    ) -> Self {
         let data = AppStateData::new(node_identity, network, base_node_selected, base_node_config);
 
         AppStateInner {
@@ -574,7 +626,7 @@ impl AppStateInner {
                 peer.clone()
                     .addresses
                     .first()
-                    .ok_or_else(|| UiError::NoAddressError)?
+                    .ok_or(UiError::NoAddressError)?
                     .to_string(),
             )
             .await?;
@@ -597,10 +649,7 @@ impl AppStateInner {
             target: LOG_TARGET,
             "Setting new base node peer for wallet: {}::{}",
             peer.public_key,
-            peer.addresses
-                .first()
-                .ok_or_else(|| UiError::NoAddressError)?
-                .to_string(),
+            peer.addresses.first().ok_or(UiError::NoAddressError)?.to_string(),
         );
 
         Ok(())
@@ -613,7 +662,7 @@ impl AppStateInner {
                 peer.clone()
                     .addresses
                     .first()
-                    .ok_or_else(|| UiError::NoAddressError)?
+                    .ok_or(UiError::NoAddressError)?
                     .to_string(),
             )
             .await?;
@@ -645,10 +694,7 @@ impl AppStateInner {
             .db
             .set_client_key_value(
                 CUSTOM_BASE_NODE_ADDRESS_KEY.to_string(),
-                peer.addresses
-                    .first()
-                    .ok_or_else(|| UiError::NoAddressError)?
-                    .to_string(),
+                peer.addresses.first().ok_or(UiError::NoAddressError)?.to_string(),
             )
             .await?;
 
@@ -656,10 +702,7 @@ impl AppStateInner {
             target: LOG_TARGET,
             "Setting custom base node peer for wallet: {}::{}",
             peer.public_key,
-            peer.addresses
-                .first()
-                .ok_or_else(|| UiError::NoAddressError)?
-                .to_string(),
+            peer.addresses.first().ok_or(UiError::NoAddressError)?.to_string(),
         );
 
         Ok(())
@@ -670,11 +713,7 @@ impl AppStateInner {
         self.wallet
             .set_base_node_peer(
                 previous.public_key.clone(),
-                previous
-                    .addresses
-                    .first()
-                    .ok_or_else(|| UiError::NoAddressError)?
-                    .to_string(),
+                previous.addresses.first().ok_or(UiError::NoAddressError)?.to_string(),
             )
             .await?;
 
@@ -757,8 +796,7 @@ impl AppStateData {
         network: Network,
         base_node_selected: Peer,
         base_node_config: PeerConfig,
-    ) -> Self
-    {
+    ) -> Self {
         let eid = EmojiId::from_pubkey(node_identity.public_key()).to_string();
         let qr_link = format!("tari://{}/pubkey/{}", network, &node_identity.public_key().to_hex());
         let code = QrCode::new(qr_link).unwrap();
@@ -825,79 +863,6 @@ pub struct MyIdentity {
     pub qr_code: String,
 }
 
-pub async fn send_transaction_task(
-    public_key: CommsPublicKey,
-    amount: MicroTari,
-    message: String,
-    fee_per_gram: MicroTari,
-    mut transaction_service_handle: TransactionServiceHandle,
-    result_tx: watch::Sender<UiTransactionSendStatus>,
-)
-{
-    let _ = result_tx.broadcast(UiTransactionSendStatus::Initiated);
-    let mut event_stream = transaction_service_handle.get_event_stream_fused();
-    let mut send_direct_received_result = (false, false);
-    let mut send_saf_received_result = (false, false);
-    match transaction_service_handle
-        .send_transaction(public_key, amount, fee_per_gram, message)
-        .await
-    {
-        Err(e) => {
-            let _ = result_tx.broadcast(UiTransactionSendStatus::Error(UiError::from(e).to_string()));
-        },
-        Ok(our_tx_id) => {
-            while let Some(event_result) = event_stream.next().await {
-                match event_result {
-                    Ok(event) => match &*event {
-                        TransactionEvent::TransactionDiscoveryInProgress(tx_id) => {
-                            if our_tx_id == *tx_id {
-                                let _ = result_tx.broadcast(UiTransactionSendStatus::DiscoveryInProgress);
-                            }
-                        },
-                        TransactionEvent::TransactionDirectSendResult(tx_id, result) => {
-                            if our_tx_id == *tx_id {
-                                send_direct_received_result = (true, *result);
-                                if send_saf_received_result.0 {
-                                    break;
-                                }
-                            }
-                        },
-                        TransactionEvent::TransactionStoreForwardSendResult(tx_id, result) => {
-                            if our_tx_id == *tx_id {
-                                send_saf_received_result = (true, *result);
-                                if send_direct_received_result.0 {
-                                    break;
-                                }
-                            }
-                        },
-                        TransactionEvent::TransactionCompletedImmediately(tx_id) => {
-                            if our_tx_id == *tx_id {
-                                let _ = result_tx.broadcast(UiTransactionSendStatus::TransactionComplete);
-                                return;
-                            }
-                        },
-                        _ => (),
-                    },
-                    Err(e) => {
-                        log::warn!(target: LOG_TARGET, "Error reading from event broadcast channel {:?}", e);
-                        break;
-                    },
-                }
-            }
-
-            if send_direct_received_result.1 {
-                let _ = result_tx.broadcast(UiTransactionSendStatus::SentDirect);
-            } else if send_saf_received_result.1 {
-                let _ = result_tx.broadcast(UiTransactionSendStatus::SentViaSaf);
-            } else {
-                let _ = result_tx.broadcast(UiTransactionSendStatus::Error(
-                    "Transaction could not be sent".to_string(),
-                ));
-            }
-        },
-    }
-}
-
 #[derive(Clone)]
 pub enum UiTransactionSendStatus {
     Initiated,
@@ -906,4 +871,11 @@ pub enum UiTransactionSendStatus {
     DiscoveryInProgress,
     SentViaSaf,
     Error(String),
+}
+
+bitflags! {
+    pub struct TransactionFilter: u8 {
+        const NONE = 0b0000_0000;
+        const ABANDONED_COINBASES = 0b0000_0001;
+    }
 }

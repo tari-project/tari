@@ -82,7 +82,10 @@ impl BroadcastStrategy {
     /// Returns true if this strategy will send multiple messages, otherwise false
     pub fn is_multi_message(&self) -> bool {
         use BroadcastStrategy::*;
-        matches!(self, Closest(_) | Flood(_) | Broadcast(_) | Random(_, _) | Propagate(_, _))
+        matches!(
+            self,
+            Closest(_) | Flood(_) | Broadcast(_) | Random(_, _) | Propagate(_, _)
+        )
     }
 
     pub fn is_direct(&self) -> bool {
@@ -123,22 +126,16 @@ mod test {
     fn is_direct() {
         assert!(BroadcastStrategy::DirectPublicKey(Box::new(CommsPublicKey::default())).is_direct());
         assert!(BroadcastStrategy::DirectNodeId(Box::new(NodeId::default())).is_direct());
-        assert_eq!(BroadcastStrategy::Broadcast(Default::default()).is_direct(), false);
-        assert_eq!(
-            BroadcastStrategy::Propagate(Default::default(), Default::default()).is_direct(),
-            false
-        );
-        assert_eq!(BroadcastStrategy::Flood(Default::default()).is_direct(), false);
-        assert_eq!(
-            BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
-                node_id: NodeId::default(),
-                excluded_peers: Default::default(),
-                connected_only: false
-            }))
-            .is_direct(),
-            false
-        );
-        assert_eq!(BroadcastStrategy::Random(0, vec![]).is_direct(), false);
+        assert!(!BroadcastStrategy::Broadcast(Default::default()).is_direct());
+        assert!(!BroadcastStrategy::Propagate(Default::default(), Default::default()).is_direct(),);
+        assert!(!BroadcastStrategy::Flood(Default::default()).is_direct());
+        assert!(!BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
+            node_id: NodeId::default(),
+            excluded_peers: Default::default(),
+            connected_only: false
+        }))
+        .is_direct(),);
+        assert!(!BroadcastStrategy::Random(0, vec![]).is_direct());
     }
 
     #[test]
@@ -162,10 +159,7 @@ mod test {
         }))
         .direct_public_key()
         .is_none(),);
-        assert!(
-            BroadcastStrategy::Random(0, vec![]).direct_public_key().is_none(),
-            false
-        );
+        assert!(BroadcastStrategy::Random(0, vec![]).direct_public_key().is_none());
     }
 
     #[test]
@@ -187,6 +181,6 @@ mod test {
         }))
         .direct_node_id()
         .is_none(),);
-        assert!(BroadcastStrategy::Random(0, vec![]).direct_node_id().is_none(), false);
+        assert!(BroadcastStrategy::Random(0, vec![]).direct_node_id().is_none());
     }
 }

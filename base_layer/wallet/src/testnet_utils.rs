@@ -22,18 +22,18 @@
 use crate::{
     contacts_service::storage::{
         database::{Contact, ContactsBackend},
-        memory_db::ContactsServiceMemoryDatabase,
+        sqlite_db::ContactsServiceSqliteDatabase,
     },
     error::{WalletError, WalletStorageError},
     output_manager_service::{
-        storage::{database::OutputManagerBackend, memory_db::OutputManagerMemoryDatabase},
+        storage::{database::OutputManagerBackend, sqlite_db::OutputManagerSqliteDatabase},
         TxId,
     },
     storage::{
-        database::{DbKeyValuePair, WalletBackend, WriteOperation},
-        memory_db::WalletMemoryDatabase,
+        database::{DbKeyValuePair, WalletBackend, WalletDatabase, WriteOperation},
+        sqlite_db::WalletSqliteDatabase,
     },
-    test_utils::make_transaction_database,
+    test_utils::make_wallet_databases,
     transaction_service::{
         handle::TransactionEvent,
         storage::{
@@ -42,15 +42,14 @@ use crate::{
             sqlite_db::TransactionServiceSqliteDatabase,
         },
     },
-    wallet::WalletConfig,
     Wallet,
+    WalletConfig,
 };
 use chrono::{Duration as ChronoDuration, Utc};
 use futures::{FutureExt, StreamExt};
 use log::*;
-use rand::{distributions::Alphanumeric, rngs::OsRng, CryptoRng, Rng, RngCore};
+use rand::{rngs::OsRng, CryptoRng, Rng, RngCore};
 use std::{
-    iter,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -62,22 +61,21 @@ use tari_comms::{
     transports::MemoryTransport,
     types::{CommsPublicKey, CommsSecretKey},
 };
-use tari_comms_dht::{envelope::Network as DhtNetwork, DhtConfig};
-use tari_core::{
-    consensus::Network,
-    transactions::{
-        tari_amount::MicroTari,
-        transaction::{OutputFeatures, Transaction, TransactionInput, UnblindedOutput},
-        types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey},
-    },
+use tari_comms_dht::DhtConfig;
+use tari_core::transactions::{
+    helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
+    tari_amount::MicroTari,
+    transaction::{OutputFeatures, Transaction, TransactionInput, UnblindedOutput},
+    types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey},
 };
 use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+    script,
     tari_utilities::hex::Hex,
 };
-use tari_p2p::{initialization::CommsConfig, transport::TransportType};
+use tari_p2p::{initialization::CommsConfig, transport::TransportType, Network};
 use tari_shutdown::{Shutdown, ShutdownSignal};
+use tari_test_utils::random;
 use tokio::{runtime::Handle, time::delay_for};
 
 // Used to generate test wallet data
@@ -103,54 +101,48 @@ impl TestParams {
         }
     }
 }
-pub fn make_input<R: Rng + CryptoRng>(
-    rng: &mut R,
-    val: MicroTari,
-    factories: &CryptoFactories,
-) -> (TransactionInput, UnblindedOutput)
-{
-    let key = PrivateKey::random(rng);
-    let commitment = factories.commitment.commit_value(&key, val.into());
-    let input = TransactionInput::new(OutputFeatures::default(), commitment);
-    (input, UnblindedOutput::new(val, key, None))
-}
-
-pub fn random_string(len: usize) -> String {
-    iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
+pub fn make_input(val: MicroTari, factories: &CryptoFactories) -> (TransactionInput, UnblindedOutput) {
+    let test_params = TestParamsHelpers::new();
+    let utxo = create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params, val);
+    (
+        utxo.as_transaction_input(&factories.commitment)
+            .expect("Should be able to make transaction input"),
+        utxo,
+    )
 }
 
 /// Create a wallet for testing purposes
 pub async fn create_wallet(
-    secret_key: CommsSecretKey,
     public_address: Multiaddr,
     datastore_path: PathBuf,
     shutdown_signal: ShutdownSignal,
 ) -> Wallet<
-    WalletMemoryDatabase,
+    WalletSqliteDatabase,
     TransactionServiceSqliteDatabase,
-    OutputManagerMemoryDatabase,
-    ContactsServiceMemoryDatabase,
->
-{
+    OutputManagerSqliteDatabase,
+    ContactsServiceSqliteDatabase,
+> {
     let factories = CryptoFactories::default();
 
-    let node_identity = Arc::new(
-        NodeIdentity::new(secret_key, public_address.clone(), PeerFeatures::COMMUNICATION_NODE)
-            .expect("Could not construct Node Identity"),
-    );
+    let node_identity = Arc::new(NodeIdentity::new(
+        CommsSecretKey::random(&mut OsRng),
+        public_address.clone(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
     let comms_config = CommsConfig {
+        network: Network::Weatherwax,
         transport_type: TransportType::Memory {
             listener_address: public_address,
         },
         node_identity,
         datastore_path: datastore_path.clone(),
-        peer_database_name: random_string(8),
+        peer_database_name: random::string(8),
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
         user_agent: "/tari/wallet/test".to_string(),
         dht: DhtConfig {
             discovery_request_timeout: Duration::from_secs(30),
-            network: DhtNetwork::Stibbons,
+            allow_test_addresses: true,
             ..Default::default()
         },
         allow_test_addresses: true,
@@ -162,21 +154,33 @@ pub async fn create_wallet(
         peer_seeds: Default::default(),
     };
 
-    let config = WalletConfig::new(comms_config, factories, None, None, Network::Stibbons, None, None, None);
-    let db = WalletMemoryDatabase::new();
-    let (backend, _) = make_transaction_database(Some(datastore_path.to_str().unwrap().to_string()));
+    let config = WalletConfig::new(
+        comms_config,
+        factories,
+        None,
+        None,
+        Network::Weatherwax.into(),
+        None,
+        None,
+        None,
+        None,
+    );
+
+    let (db, backend, oms_backend, contacts_backend, _) =
+        make_wallet_databases(Some(datastore_path.to_str().unwrap().to_string()));
 
     let metadata = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
 
     db.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(metadata)))
         .unwrap();
-    Wallet::new(
+    Wallet::start(
         config,
-        db,
+        WalletDatabase::new(db),
         backend,
-        OutputManagerMemoryDatabase::new(),
-        ContactsServiceMemoryDatabase::new(),
+        oms_backend,
+        contacts_backend,
         shutdown_signal,
+        None,
     )
     .await
     .expect("Could not create Wallet")
@@ -198,8 +202,7 @@ pub async fn generate_wallet_test_data<
     wallet: &mut Wallet<T, U, V, W>,
     data_path: P,
     transaction_service_backend: U,
-) -> Result<(), WalletError>
-{
+) -> Result<(), WalletError> {
     let factories = CryptoFactories::default();
     let names = ["Alice", "Bob", "Carol", "Dave"];
     let private_keys = [
@@ -249,14 +252,14 @@ pub async fn generate_wallet_test_data<
         let addr = get_next_memory_address();
         generated_contacts.push((secret_key, addr));
     }
-    let contacts = wallet.contacts_service.get_contacts().await?;
+    let mut contacts = wallet.contacts_service.get_contacts().await?;
     assert_eq!(contacts.len(), names.len());
     info!(target: LOG_TARGET, "Added test contacts to wallet");
 
     // Generate outputs
     let num_outputs = 75;
     for i in 0..num_outputs {
-        let (_ti, uo) = make_input(&mut OsRng.clone(), MicroTari::from(5_000_000 + i * 35_000), &factories);
+        let (_ti, uo) = make_input(MicroTari::from(5_000_000 + i * 35_000), &factories);
         wallet.output_manager_service.add_output(uo).await?;
     }
     info!(target: LOG_TARGET, "Added test outputs to wallet");
@@ -265,21 +268,22 @@ pub async fn generate_wallet_test_data<
         target: LOG_TARGET,
         "Spinning up Alice wallet to generate test transactions"
     );
-    let alice_temp_dir = data_path.as_ref().join(random_string(8));
+    let alice_temp_dir = data_path.as_ref().join(random::string(8));
     let _ = std::fs::create_dir(&alice_temp_dir);
 
     let mut shutdown_a = Shutdown::new();
     let mut shutdown_b = Shutdown::new();
     let mut wallet_alice = create_wallet(
-        generated_contacts[0].0.clone(),
         generated_contacts[0].1.clone(),
         alice_temp_dir.clone(),
         shutdown_a.to_signal(),
     )
     .await;
     let mut alice_event_stream = wallet_alice.transaction_service.get_event_stream_fused();
+    contacts[0].public_key = wallet_alice.comms.node_identity().public_key().clone();
+
     for i in 0..20 {
-        let (_ti, uo) = make_input(&mut OsRng.clone(), MicroTari::from(1_500_000 + i * 530_500), &factories);
+        let (_ti, uo) = make_input(MicroTari::from(1_500_000 + i * 530_500), &factories);
         wallet_alice.output_manager_service.add_output(uo).await?;
     }
     info!(target: LOG_TARGET, "Alice Wallet created");
@@ -287,24 +291,20 @@ pub async fn generate_wallet_test_data<
         target: LOG_TARGET,
         "Spinning up Bob wallet to generate test transactions"
     );
-    let bob_temp_dir = data_path.as_ref().join(random_string(8));
+    let bob_temp_dir = data_path.as_ref().join(random::string(8));
     let _ = std::fs::create_dir(&bob_temp_dir);
 
     let mut wallet_bob = create_wallet(
-        generated_contacts[1].0.clone(),
         generated_contacts[1].1.clone(),
         bob_temp_dir.clone(),
         shutdown_b.to_signal(),
     )
     .await;
     let mut bob_event_stream = wallet_bob.transaction_service.get_event_stream_fused();
+    contacts[1].public_key = wallet_bob.comms.node_identity().public_key().clone();
 
     for i in 0..20 {
-        let (_ti, uo) = make_input(
-            &mut OsRng.clone(),
-            MicroTari::from(2_000_000 + i * i * 61_050),
-            &factories,
-        );
+        let (_ti, uo) = make_input(MicroTari::from(2_000_000 + i * i * 61_050), &factories);
         wallet_bob.output_manager_service.add_output(uo).await?;
     }
     info!(target: LOG_TARGET, "Bob Wallet created");
@@ -738,8 +738,7 @@ pub async fn complete_sent_transaction<
 >(
     wallet: &mut Wallet<T, U, V, W>,
     tx_id: TxId,
-) -> Result<(), WalletError>
-{
+) -> Result<(), WalletError> {
     let pending_outbound_tx = wallet.transaction_service.get_pending_outbound_transactions().await?;
     match pending_outbound_tx.get(&tx_id) {
         Some(p) => {
@@ -749,7 +748,13 @@ pub async fn complete_sent_transaction<
                 p.destination_public_key.clone(),
                 p.amount,
                 p.fee,
-                Transaction::new(Vec::new(), Vec::new(), Vec::new(), BlindingFactor::default()),
+                Transaction::new(
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    BlindingFactor::default(),
+                    BlindingFactor::default(),
+                ),
                 TransactionStatus::Completed,
                 p.message.clone(),
                 Utc::now().naive_utc(),
@@ -782,8 +787,7 @@ pub async fn receive_test_transaction<
 >(
     wallet: &mut Wallet<T, U, V, W>,
     handle: &Handle,
-) -> Result<(), WalletError>
-{
+) -> Result<(), WalletError> {
     let contacts = wallet.contacts_service.get_contacts().await.unwrap();
     let (_secret_key, mut public_key): (CommsSecretKey, CommsPublicKey) = PublicKey::random_keypair(&mut OsRng);
 
@@ -816,8 +820,7 @@ pub async fn finalize_received_transaction<
 >(
     wallet: &mut Wallet<T, U, V, W>,
     tx_id: TxId,
-) -> Result<(), WalletError>
-{
+) -> Result<(), WalletError> {
     wallet.transaction_service.test_finalize_transaction(tx_id).await?;
 
     Ok(())
@@ -835,8 +838,7 @@ pub async fn broadcast_transaction<
 >(
     wallet: &mut Wallet<T, U, V, W>,
     tx_id: TxId,
-) -> Result<(), WalletError>
-{
+) -> Result<(), WalletError> {
     wallet.transaction_service.test_broadcast_transaction(tx_id).await?;
 
     Ok(())
@@ -849,8 +851,7 @@ pub async fn broadcast_transaction<
 pub async fn mine_transaction<T: WalletBackend, U: TransactionBackend, V: OutputManagerBackend, W: ContactsBackend>(
     wallet: &mut Wallet<T, U, V, W>,
     tx_id: TxId,
-) -> Result<(), WalletError>
-{
+) -> Result<(), WalletError> {
     wallet.transaction_service.test_mine_transaction(tx_id).await?;
 
     Ok(())

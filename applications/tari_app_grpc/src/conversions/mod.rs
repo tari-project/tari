@@ -24,6 +24,7 @@ mod aggregate_body;
 mod block;
 mod block_header;
 mod chain_metadata;
+mod com_signature;
 mod consensus_constants;
 mod historical_block;
 mod new_block_template;
@@ -35,12 +36,14 @@ mod transaction;
 mod transaction_input;
 mod transaction_kernel;
 mod transaction_output;
+mod unblinded_output;
 
 pub use self::{
     aggregate_body::*,
     block::*,
     block_header::*,
     chain_metadata::*,
+    com_signature::*,
     consensus_constants::*,
     historical_block::*,
     new_block_template::*,

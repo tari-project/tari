@@ -39,13 +39,13 @@ impl DhtHandlerLayer {
         peer_manager: Arc<PeerManager>,
         discovery_requester: DhtDiscoveryRequester,
         outbound_service: OutboundMessageRequester,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
-            node_identity,
             peer_manager,
-            discovery_requester,
+            node_identity,
+
             outbound_service,
+            discovery_requester,
         }
     }
 }

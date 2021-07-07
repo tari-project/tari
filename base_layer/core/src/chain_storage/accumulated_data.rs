@@ -74,8 +74,7 @@ impl BlockAccumulatedData {
         range_proofs: PrunedHashSet,
         deleted: Bitmap,
         total_kernel_sum: Commitment,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             kernels,
             outputs,
@@ -167,7 +166,7 @@ impl<'de> Visitor<'de> for DeletedBitmapVisitor {
         #[serde(field_identifier, rename_all = "lowercase")]
         enum Field {
             Deleted,
-        };
+        }
         let mut deleted = None;
         while let Some(key) = map.next_key()? {
             match key {
@@ -240,12 +239,11 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
         let (monero_diff, blake_diff) = match achieved_target.pow_algo() {
             PowAlgorithm::Monero => (
                 previous_accum.accumulated_monero_difficulty + achieved_target.achieved(),
-                previous_accum.accumulated_blake_difficulty,
+                previous_accum.accumulated_sha_difficulty,
             ),
-            PowAlgorithm::Blake => unimplemented!(),
             PowAlgorithm::Sha3 => (
                 previous_accum.accumulated_monero_difficulty,
-                previous_accum.accumulated_blake_difficulty + achieved_target.achieved(),
+                previous_accum.accumulated_sha_difficulty + achieved_target.achieved(),
             ),
         };
 
@@ -260,7 +258,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             achieved_difficulty: achieved_target.achieved(),
             total_accumulated_difficulty: monero_diff.as_u64() as u128 * blake_diff.as_u64() as u128,
             accumulated_monero_difficulty: monero_diff,
-            accumulated_blake_difficulty: blake_diff,
+            accumulated_sha_difficulty: blake_diff,
             target_difficulty: achieved_target.target(),
         };
         trace!(
@@ -268,7 +266,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             "Calculated: Tot_acc_diff {}, Monero {}, SHA3 {}",
             result.total_accumulated_difficulty.to_formatted_string(&Locale::en),
             result.accumulated_monero_difficulty,
-            result.accumulated_blake_difficulty,
+            result.accumulated_sha_difficulty,
         );
         Ok(result)
     }
@@ -281,11 +279,12 @@ pub struct BlockHeaderAccumulatedData {
     pub total_kernel_offset: BlindingFactor,
     pub achieved_difficulty: Difficulty,
     pub total_accumulated_difficulty: u128,
-    /// The total accumulated difficulty for each proof of work algorithms for all blocks since Genesis,
+    /// The total accumulated difficulty for monero proof of work for all blocks since Genesis,
     /// but not including this block, tracked separately.
     pub accumulated_monero_difficulty: Difficulty,
-    // TODO: Rename #testnetreset
-    pub accumulated_blake_difficulty: Difficulty,
+    /// The total accumulated difficulty for SHA3 proof of work for all blocks since Genesis,
+    /// but not including this block, tracked separately.
+    pub accumulated_sha_difficulty: Difficulty,
     /// The target difficulty for solving the current block using the specified proof of work algorithm.
     pub target_difficulty: Difficulty,
 }
@@ -306,7 +305,7 @@ impl Display for BlockHeaderAccumulatedData {
             "Accumulated monero difficulty: {}",
             self.accumulated_monero_difficulty
         )?;
-        writeln!(f, "Accumulated sha3 difficulty: {}", self.accumulated_blake_difficulty)?;
+        writeln!(f, "Accumulated sha3 difficulty: {}", self.accumulated_sha_difficulty)?;
         writeln!(f, "Target difficulty: {}", self.target_difficulty)?;
         Ok(())
     }
@@ -386,6 +385,14 @@ pub struct ChainBlock {
     block: Arc<Block>,
 }
 
+impl Display for ChainBlock {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{}", self.accumulated_data)?;
+        writeln!(f, "{}", self.block)?;
+        Ok(())
+    }
+}
+
 impl ChainBlock {
     /// Attempts to construct a `ChainBlock` from a `Block` and associate `BlockHeaderAccumulatedData`. Returns None if
     /// the Block and the BlockHeaderAccumulatedData do not correspond (i.e have different hashes)
@@ -395,8 +402,8 @@ impl ChainBlock {
         }
 
         Some(Self {
-            block,
             accumulated_data,
+            block,
         })
     }
 
@@ -444,14 +451,14 @@ impl ChainBlock {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::blocks::genesis_block::get_ridcully_genesis_block;
+    use crate::blocks::genesis_block::get_weatherwax_genesis_block;
 
     mod chain_block {
         use super::*;
 
         #[test]
         fn it_converts_to_a_chain_header() {
-            let genesis = get_ridcully_genesis_block();
+            let genesis = get_weatherwax_genesis_block();
             let header = genesis.to_chain_header();
             assert_eq!(header.header(), genesis.header());
             assert_eq!(header.accumulated_data(), genesis.accumulated_data());
@@ -459,7 +466,7 @@ mod test {
 
         #[test]
         fn it_provides_guarantees_about_data_integrity() {
-            let mut genesis = get_ridcully_genesis_block();
+            let mut genesis = get_weatherwax_genesis_block();
             // Mess with the header, only possible using the non-public fields
             genesis.block = Arc::new({
                 let mut b = (*genesis.block).clone();

@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#[cfg(feature = "base_node")]
+use crate::proof_of_work::monero_rx::MergeMineError;
 use crate::proof_of_work::Difficulty;
 use thiserror::Error;
 
@@ -33,7 +35,7 @@ pub enum PowError {
     InvalidTargetDifficulty { expected: Difficulty, got: Difficulty },
     #[cfg(feature = "base_node")]
     #[error("Invalid merge mining data or operation: {0}")]
-    MergeMineError(#[from] super::monero_rx::MergeMineError),
+    MergeMineError(#[from] MergeMineError),
 }
 
 #[derive(Debug, Error, Clone, PartialEq)]

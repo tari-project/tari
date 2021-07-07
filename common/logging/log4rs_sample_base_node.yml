@@ -75,6 +75,15 @@ root:
     - base_layer
 
 loggers:
+  # Route log events common to every application to all appenders
+  tari::application:
+    level: info
+    appenders:
+      - base_layer
+      - network
+      - other
+    additive: false
+
   # Route log events sent to the "core" logger to the "base_layer" appender
   c:
     level: info
@@ -129,6 +138,12 @@ loggers:
     appenders:
       - other
     additive: false
+  # Route PGP log events
+  pgp:
+      level: warn
+      appenders:
+        - other
+      additive: false
   # Route log events sent to the "tari_mm_proxy" logger to the "base_layer" appender
   tari_mm_proxy:
     level: info

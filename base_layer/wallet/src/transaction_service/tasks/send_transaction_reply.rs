@@ -45,8 +45,7 @@ pub async fn send_transaction_reply(
     mut outbound_message_service: OutboundMessageRequester,
     direct_send_timeout: Duration,
     transaction_routing_mechanism: TransactionRoutingMechanism,
-) -> Result<bool, TransactionServiceError>
-{
+) -> Result<bool, TransactionServiceError> {
     let send_result;
     let recipient_reply = inbound_transaction.receiver_protocol.get_signed_data()?.clone();
     let proto_message: proto::RecipientSignedMessage = recipient_reply.into();
@@ -81,8 +80,7 @@ pub async fn send_transaction_reply_direct(
     mut outbound_message_service: OutboundMessageRequester,
     direct_send_timeout: Duration,
     transaction_routing_mechanism: TransactionRoutingMechanism,
-) -> Result<bool, TransactionServiceError>
-{
+) -> Result<bool, TransactionServiceError> {
     let recipient_reply = inbound_transaction.receiver_protocol.get_signed_data()?.clone();
 
     let mut store_and_forward_send_result = false;
@@ -192,8 +190,7 @@ async fn send_transaction_reply_store_and_forward(
     destination_pubkey: CommsPublicKey,
     msg: proto::RecipientSignedMessage,
     outbound_message_service: &mut OutboundMessageRequester,
-) -> Result<bool, TransactionServiceError>
-{
+) -> Result<bool, TransactionServiceError> {
     match outbound_message_service
         .closest_broadcast(
             NodeId::from_public_key(&destination_pubkey),

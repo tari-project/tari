@@ -22,7 +22,7 @@
 
 use crate::types::CommsPublicKey;
 use blake2::{
-    digest::{Input, VariableOutput},
+    digest::{Update, VariableOutput},
     VarBlake2b,
 };
 use serde::{de, Deserialize, Deserializer, Serialize};
@@ -230,19 +230,22 @@ impl NodeId {
     }
 
     /// Derive a node id from a public key: node_id=hash(public_key)
-    pub fn from_key<K: ByteArray>(key: &K) -> Result<Self, NodeIdError> {
+    pub fn from_key<K: ByteArray>(key: &K) -> Self {
         let bytes = key.as_bytes();
-        let mut hasher = VarBlake2b::new(NODE_ID_ARRAY_SIZE).map_err(|_| NodeIdError::InvalidDigestOutputSize)?;
-        hasher.input(bytes);
-        let v = hasher.vec_result();
-        Self::try_from(v.as_slice())
+        let mut buf = [0u8; NODE_ID_ARRAY_SIZE];
+        VarBlake2b::new(NODE_ID_ARRAY_SIZE)
+            .expect("NODE_ID_ARRAY_SIZE is invalid")
+            .chain(bytes)
+            .finalize_variable(|hash| {
+                // Safety: output size and buf size are equal
+                buf.copy_from_slice(hash)
+            });
+        NodeId(buf)
     }
 
-    /// Derive a node id from a public key: node_id=hash(public_key)
-    /// This function uses `NodeId::from_key` internally but is infallible because `NodeId::from_key` cannot fail when
-    /// used with a `CommsPublicKey`.
+    /// Derive a node id from a public key: node_id = hash(public_key)
     pub fn from_public_key(key: &CommsPublicKey) -> Self {
-        Self::from_key(key).expect("NodeId::from_key is implemented incorrectly for CommsPublicKey")
+        Self::from_key(key)
     }
 
     /// Calculate the distance between the current node id and the provided node id using the XOR metric
@@ -383,7 +386,7 @@ pub fn deserialize_node_id_from_hex<'de, D>(des: D) -> Result<NodeId, D::Error>
 where D: Deserializer<'de> {
     struct KeyStringVisitor<K> {
         marker: PhantomData<K>,
-    };
+    }
 
     impl<'de> de::Visitor<'de> for KeyStringVisitor<NodeId> {
         type Value = NodeId;
@@ -423,7 +426,7 @@ mod test {
         let mut rng = rand::rngs::OsRng;
         let sk = CommsSecretKey::random(&mut rng);
         let pk = CommsPublicKey::from_secret_key(&sk);
-        let node_id = NodeId::from_key(&pk).unwrap();
+        let node_id = NodeId::from_key(&pk);
         assert_ne!(node_id.0.to_vec(), NodeId::new().0.to_vec());
         // Ensure node id is different to original public key
         let mut pk_array: [u8; 32] = [0; 32];
@@ -502,6 +505,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::vec_init_then_push)]
     fn test_closest() {
         let mut node_ids: Vec<NodeId> = Vec::new();
         node_ids.push(NodeId::try_from(&[144, 28, 106, 112, 220, 197, 216, 119, 9, 217, 42, 77, 159][..]).unwrap());

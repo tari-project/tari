@@ -29,8 +29,7 @@ impl HeaderValidator {
         &self,
         db: &B,
         block_header: &BlockHeader,
-    ) -> Result<(), ValidationError>
-    {
+    ) -> Result<(), ValidationError> {
         if block_header.height == 0 {
             return Ok(()); // Its the genesis block, so we dont have to check median
         }
@@ -63,8 +62,7 @@ impl<TBackend: BlockchainBackend> HeaderValidation<TBackend> for HeaderValidator
         backend: &TBackend,
         header: &BlockHeader,
         difficulty_calculator: &DifficultyCalculator,
-    ) -> Result<AchievedTargetDifficulty, ValidationError>
-    {
+    ) -> Result<AchievedTargetDifficulty, ValidationError> {
         check_timestamp_ftl(&header, &self.rules)?;
         let header_id = format!("header #{} ({})", header.height, header.hash().to_hex());
         trace!(

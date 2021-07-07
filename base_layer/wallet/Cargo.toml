@@ -10,7 +10,7 @@ edition = "2018"
 tari_common_types = { version = "^0.8", path = "../../base_layer/common_types"}
 tari_comms = { version = "^0.8", path = "../../comms"}
 tari_comms_dht = { version = "^0.8", path = "../../comms/dht" }
-tari_crypto = "^0.8"
+tari_crypto = "0.11.1"
 tari_key_manager = { version = "^0.8", path = "../key_manager" }
 tari_p2p = { version = "^0.8", path = "../p2p" }
 tari_service_framework = { version = "^0.8", path = "../service_framework"}
@@ -19,10 +19,10 @@ tari_storage = { version = "^0.8", path = "../../infrastructure/storage"}
 tari_test_utils = { version = "^0.8", path = "../../infrastructure/test_utils", optional = true}
 
 aes-gcm = "^0.8"
-blake2 = "0.8.0"
+blake2 = "0.9.0"
 chrono = { version = "0.4.6", features = ["serde"]}
 crossbeam-channel = "0.3.8"
-digest = "0.8.0"
+digest = "0.9.0"
 diesel_migrations =  "1.4"
 diesel = {version="1.4", features = ["sqlite", "serde_json", "chrono"]}
 fs2 = "0.3.0"
@@ -31,7 +31,7 @@ lazy_static = "1.4.0"
 log = "0.4.6"
 log4rs = {version = "0.8.3", features = ["console_appender", "file_appender", "file", "yaml_format"]}
 lmdb-zero = "0.4.4"
-rand = "0.7.2"
+rand = "0.8"
 serde = {version = "1.0.89", features = ["derive"] }
 serde_json = "1.0.39"
 tokio = { version = "0.2.10", features = ["blocking", "sync"]}

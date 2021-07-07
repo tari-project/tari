@@ -42,8 +42,7 @@ impl DifficultyCalculator {
         &self,
         db: &B,
         block_header: &BlockHeader,
-    ) -> Result<AchievedTargetDifficulty, ValidationError>
-    {
+    ) -> Result<AchievedTargetDifficulty, ValidationError> {
         let difficulty_window =
             fetch_target_difficulty_for_next_block(db, &self.rules, block_header.pow_algo(), &block_header.prev_hash)?;
         let constants = self.rules.consensus_constants(block_header.height);
