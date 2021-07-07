@@ -1292,7 +1292,8 @@ mod test {
     use super::*;
     use crate::{
         transactions::{
-            helpers::{create_test_kernel, create_tx, create_unblinded_output, spend_utxos, TestParams},
+            helpers,
+            helpers::{TestParams, UtxoTestParams},
             tari_amount::T,
             transaction::OutputFeatures,
             types::{BlindingFactor, PrivateKey, PublicKey, RangeProof},
@@ -1312,7 +1313,7 @@ mod test {
         let test_params = TestParams::new();
         let factory = PedersenCommitmentFactory::default();
 
-        let i = create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params, 10.into());
+        let i = test_params.create_unblinded_output(Default::default());
         let output = i.as_transaction_output(&CryptoFactories::default()).unwrap();
         let input = i.as_transaction_input(&factory).unwrap();
         assert_eq!(output.hash(), input.output_hash());
@@ -1323,7 +1324,7 @@ mod test {
         let test_params = TestParams::new();
         let factory = PedersenCommitmentFactory::default();
 
-        let i = create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params, 10.into());
+        let i = test_params.create_unblinded_output(Default::default());
         let input = i
             .as_transaction_input(&factory)
             .expect("Should be able to create transaction input");
@@ -1344,25 +1345,21 @@ mod test {
         // Directly test the tx_output verification
         let test_params_1 = TestParams::new();
         let test_params_2 = TestParams::new();
-        let script = script!(Nop);
         let output_features = OutputFeatures::default();
 
         // For testing the max range has been limited to 2^32 so this value is too large.
-        let unblinded_output1 = create_unblinded_output(
-            script.clone(),
-            output_features.clone(),
-            test_params_1,
-            (2u64.pow(32) - 1u64).into(),
-        );
+        let unblinded_output1 = test_params_1.create_unblinded_output(UtxoTestParams {
+            value: (2u64.pow(32) - 1u64).into(),
+            ..Default::default()
+        });
+        let script = unblinded_output1.script.clone();
         let tx_output1 = unblinded_output1.as_transaction_output(&factories).unwrap();
         assert!(tx_output1.verify_range_proof(&factories.range_proof).unwrap());
 
-        let unblinded_output2 = create_unblinded_output(
-            script.clone(),
-            output_features.clone(),
-            test_params_2.clone(),
-            (2u64.pow(32) + 1u64).into(),
-        );
+        let unblinded_output2 = test_params_2.create_unblinded_output(UtxoTestParams {
+            value: (2u64.pow(32) + 1u64).into(),
+            ..Default::default()
+        });
         let tx_output2 = unblinded_output2.as_transaction_output(&factories);
         match tx_output2 {
             Ok(_) => panic!("Range proof should have failed to verify"),
@@ -1402,9 +1399,7 @@ mod test {
     fn sender_signature_verification() {
         let test_params = TestParams::new();
         let factories = CryptoFactories::new(32);
-        let script = script!(Nop);
-        let output_features = OutputFeatures::default();
-        let unblinded_output = create_unblinded_output(script, output_features, test_params, 100.into());
+        let unblinded_output = test_params.create_unblinded_output(Default::default());
 
         let mut tx_output = unblinded_output.as_transaction_output(&factories).unwrap();
         assert!(tx_output.verify_metadata_signature().is_ok());
@@ -1480,7 +1475,7 @@ mod test {
             offset_pub_key,
         );
 
-        let mut kernel = create_test_kernel(0.into(), 0);
+        let mut kernel = helpers::create_test_kernel(0.into(), 0);
         let mut tx = Transaction::new(Vec::new(), Vec::new(), Vec::new(), 0.into(), 0.into());
 
         // lets add time locks
@@ -1516,7 +1511,7 @@ mod test {
 
     #[test]
     fn test_validate_internal_consistency() {
-        let (tx, _, _) = create_tx(5000.into(), 15.into(), 1, 2, 1, 4);
+        let (tx, _, _) = helpers::create_tx(5000.into(), 15.into(), 1, 2, 1, 4);
 
         let factories = CryptoFactories::default();
         assert!(tx.validate_internal_consistency(&factories, None).is_ok());
@@ -1525,7 +1520,7 @@ mod test {
     #[test]
     #[allow(clippy::identity_op)]
     fn check_cut_through() {
-        let (tx, _, outputs) = create_tx(50000000.into(), 15.into(), 1, 2, 1, 2);
+        let (tx, _, outputs) = helpers::create_tx(50000000.into(), 15.into(), 1, 2, 1, 2);
 
         assert_eq!(tx.body.inputs().len(), 2);
         assert_eq!(tx.body.outputs().len(), 2);
@@ -1535,7 +1530,7 @@ mod test {
         assert!(tx.validate_internal_consistency(&factories, None).is_ok());
 
         let schema = txn_schema!(from: vec![outputs[1].clone()], to: vec![1 * T, 2 * T]);
-        let (tx2, _outputs, _) = spend_utxos(schema);
+        let (tx2, _outputs, _) = helpers::spend_utxos(schema);
 
         assert_eq!(tx2.body.inputs().len(), 1);
         assert_eq!(tx2.body.outputs().len(), 3);
@@ -1571,7 +1566,7 @@ mod test {
 
     #[test]
     fn check_duplicate_inputs_outputs() {
-        let (tx, _, _outputs) = create_tx(50000000.into(), 15.into(), 1, 2, 1, 2);
+        let (tx, _, _outputs) = helpers::create_tx(50000000.into(), 15.into(), 1, 2, 1, 2);
         assert!(!tx.body.contains_duplicated_outputs());
         assert!(!tx.body.contains_duplicated_inputs());
 
@@ -1586,6 +1581,25 @@ mod test {
 
         assert!(broken_tx_1.body.contains_duplicated_inputs());
         assert!(broken_tx_2.body.contains_duplicated_outputs());
+    }
+
+    #[test]
+    fn inputs_not_malleable() {
+        let (mut inputs, outputs) = helpers::create_unblinded_txos(5000.into(), 1, 1, 2, 15.into());
+        let mut stack = inputs[0].input_data.clone();
+        inputs[0].script = script!(Drop Nop);
+        inputs[0].input_data.push(StackItem::Hash([0; 32])).unwrap();
+        let mut tx = helpers::create_transaction_with(1, 15.into(), inputs, outputs);
+
+        stack
+            .push(StackItem::Hash(*b"Pls put this on tha tari network"))
+            .unwrap();
+
+        tx.body.inputs_mut()[0].input_data = stack;
+
+        let factories = CryptoFactories::default();
+        let err = tx.validate_internal_consistency(&factories, None).unwrap_err();
+        assert!(matches!(err, TransactionError::InvalidSignatureError(_)));
     }
 
     #[test]
@@ -1607,7 +1621,10 @@ mod test {
             proof_message: proof_message.to_owned(),
         };
 
-        let unblinded_output = create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params.clone(), v);
+        let unblinded_output = test_params.create_unblinded_output(UtxoTestParams {
+            value: v,
+            ..Default::default()
+        });
         let output = unblinded_output
             .as_rewindable_transaction_output(&factories, &rewind_data)
             .unwrap();

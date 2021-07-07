@@ -20,30 +20,37 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::helpers::block_builders::chain_block_with_new_coinbase;
+use crate::helpers::{block_builders::chain_block_with_new_coinbase, test_blockchain::TestBlockchain};
 use monero::blockdata::block::Block as MoneroBlock;
+use rand::rngs::OsRng;
 use std::sync::Arc;
 use tari_common::configuration::Network;
 use tari_core::{
-    blocks::{Block, BlockHeaderValidationError},
+    blocks::{Block, BlockHeaderValidationError, BlockValidationError},
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
     consensus::{consensus_constants::PowAlgorithmConstants, ConsensusConstantsBuilder, ConsensusManagerBuilder},
-    crypto::tari_utilities::hex::Hex,
+    crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex},
     proof_of_work::{
         monero_rx,
         monero_rx::{FixedByteArray, MoneroPowData},
         PowAlgorithm,
     },
-    test_helpers::blockchain::{create_store_with_consensus_and_validators, create_test_db},
-    transactions::types::CryptoFactories,
+    test_helpers::{
+        blockchain::{create_store_with_consensus_and_validators, create_test_db},
+        comsig_sign,
+    },
+    transactions::{helpers::schema_to_transaction, tari_amount::T, types::CryptoFactories},
+    txn_schema,
     validation::{
-        block_validators::{BodyOnlyValidator, OrphanBlockValidator},
+        block_validators::{BlockValidator, BodyOnlyValidator, OrphanBlockValidator},
         header_validator::HeaderValidator,
         mocks::MockValidator,
+        CandidateBlockBodyValidation,
         DifficultyCalculator,
         ValidationError,
     },
 };
+use tari_crypto::{inputs, keys::PublicKey};
 
 mod helpers;
 
@@ -164,4 +171,49 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
     let serialized = monero_rx::serialize(&monero_data);
     tblock.header.pow.pow_algo = PowAlgorithm::Monero;
     tblock.header.pow.pow_data = serialized;
+}
+
+#[test]
+fn inputs_are_not_maleable() {
+    let mut blockchain = TestBlockchain::with_genesis("GB");
+    let blocks = blockchain.builder();
+
+    let (_, output) = blockchain.add_block(blocks.new_block("A1").child_of("GB").difficulty(1));
+
+    let (txs, _) = schema_to_transaction(&[txn_schema!(from: vec![output.clone()], to: vec![50 * T])]);
+    let txs = txs.into_iter().map(|tx| Clone::clone(&*tx)).collect();
+    blockchain.add_block(
+        blocks
+            .new_block("A2")
+            .child_of("A1")
+            .difficulty(1)
+            .with_transactions(txs),
+    );
+    let input = output;
+    let mut block = blockchain.get_block("A2").cloned().unwrap().block.block().clone();
+
+    let validator = BlockValidator::new(blockchain.consensus_manager().clone(), CryptoFactories::default());
+    validator
+        .validate_body(&block, &*blockchain.store().db_read_access().unwrap())
+        .unwrap();
+
+    let (script_private_key, malicious_pubkey) = RistrettoPublicKey::random_keypair(&mut OsRng);
+
+    // Oh noes - they've managed to get hold of the private script and spend keys
+    block.header.total_script_offset =
+        block.header.total_script_offset - &input.script_private_key + &script_private_key;
+
+    let input_mut = block.body.inputs_mut().get_mut(0).unwrap();
+    input_mut.input_data = inputs![StackItem::PublicKey(malicious_pubkey)];
+    input_mut.script_signature = comsig_sign(&input.spending_key, input.value, input_mut, script_private_key);
+
+    let err = validator
+        .validate_body(&block, &*blockchain.store().db_read_access().unwrap())
+        .unwrap_err();
+
+    // Input MMR is no longer valid
+    assert!(matches!(
+        err,
+        ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots)
+    ));
 }

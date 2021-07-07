@@ -382,60 +382,6 @@ impl<B: BlockchainBackend> BlockValidator<B> {
 
         Ok(())
     }
-
-    fn check_mmr_roots(&self, db: &B, block: &Block) -> Result<(), ValidationError> {
-        let mmr_roots = chain_storage::calculate_mmr_roots(db, block)?;
-        let header = &block.header;
-        if header.kernel_mr != mmr_roots.kernel_mr {
-            warn!(
-                target: LOG_TARGET,
-                "Block header kernel MMR roots in {} do not match calculated roots",
-                block.hash().to_hex()
-            );
-            return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));
-        }
-        if header.kernel_mmr_size != mmr_roots.kernel_mmr_size {
-            warn!(
-                target: LOG_TARGET,
-                "Block header kernel MMR size in {} does not match MMR size",
-                block.hash().to_hex()
-            );
-            return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrSize {
-                mmr_tree: MmrTree::Kernel,
-                expected: header.kernel_mmr_size,
-                actual: mmr_roots.kernel_mmr_size,
-            }));
-        }
-        if header.output_mr != mmr_roots.output_mr {
-            warn!(
-                target: LOG_TARGET,
-                "Block header output MMR roots in {} do not match calculated roots",
-                block.hash().to_hex()
-            );
-            return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));
-        }
-        if header.witness_mr != mmr_roots.witness_mr {
-            warn!(
-                target: LOG_TARGET,
-                "Block header range_proof MMR roots in {} do not match calculated roots",
-                block.hash().to_hex()
-            );
-            return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));
-        }
-        if header.output_mmr_size != mmr_roots.output_mmr_size {
-            warn!(
-                target: LOG_TARGET,
-                "Block header output MMR size in {} does not match MMR size",
-                block.hash().to_hex()
-            );
-            return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrSize {
-                mmr_tree: MmrTree::Utxo,
-                expected: header.output_mmr_size,
-                actual: mmr_roots.output_mmr_size,
-            }));
-        }
-        Ok(())
-    }
 }
 
 impl<B: BlockchainBackend> CandidateBlockBodyValidation<B> for BlockValidator<B> {
@@ -460,7 +406,7 @@ impl<B: BlockchainBackend> CandidateBlockBodyValidation<B> for BlockValidator<B>
             "{} has PASSED stateless VALIDATION check.", &block_id
         );
 
-        self.check_mmr_roots(backend, &block)?;
+        check_mmr_roots(&block, backend)?;
         trace!(
             target: LOG_TARGET,
             "Block validation: MMR roots are valid for {}",
