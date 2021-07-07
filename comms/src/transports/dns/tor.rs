@@ -55,7 +55,7 @@ impl TorDnsResolver {
 }
 
 async fn connect_inner(addr: Multiaddr) -> io::Result<TcpSocks5Client> {
-    let socket = SocksTransport::get_tcp_transport().dial(addr)?.await?;
+    let socket = SocksTransport::get_tcp_transport().dial(addr).await?;
     Ok(Socks5Client::new(socket))
 }
 

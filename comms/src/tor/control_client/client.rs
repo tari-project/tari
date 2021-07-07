@@ -56,7 +56,7 @@ impl TorControlPortClient {
     ) -> Result<Self, TorClientError> {
         let mut tcp = TcpTransport::new();
         tcp.set_nodelay(true);
-        let socket = tcp.dial(addr)?.await?;
+        let socket = tcp.dial(addr).await?;
         Ok(Self::new(socket, event_tx))
     }
 
@@ -273,7 +273,7 @@ mod test {
         runtime,
         tor::control_client::{test_server, test_server::canned_responses, types::PrivateKey},
     };
-    use futures::future;
+    use futures::{future, AsyncWriteExt};
     use std::net::SocketAddr;
     use tari_test_utils::unpack_enum;
 
@@ -288,7 +288,6 @@ mod test {
     async fn connect() {
         let (mut listener, addr) = TcpTransport::default()
             .listen("/ip4/127.0.0.1/tcp/0".parse().unwrap())
-            .unwrap()
             .await
             .unwrap();
         let (event_tx, _) = broadcast::channel(1);
@@ -296,8 +295,10 @@ mod test {
             future::join(TorControlPortClient::connect(addr, event_tx), listener.next()).await;
 
         // Check that the connection is successfully made
-        result_out.unwrap();
-        result_in.unwrap().unwrap().0.await.unwrap();
+        let _out_sock = result_out.unwrap();
+        let (mut in_sock, _) = result_in.unwrap().unwrap();
+        in_sock.write(b"test123").await.unwrap();
+        in_sock.close().await.unwrap();
     }
 
     #[runtime::test]
