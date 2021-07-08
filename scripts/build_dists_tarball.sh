@@ -4,13 +4,15 @@
 #
 
 #shopt -s extglob
+#set -e
 
 # ToDo
 #  Check options
 #
 
 if [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
-  echo "$0 (clean|latest-tag|latest-tagv|'any-string-version')"
+  echo "$0 (noBuild|clean|latest-tag|latest-tagv|'any-string-version')"
+  echo " 'noBuild' skip cargo build"
   echo " 'clean' cargo clean and lock remove"
   echo " 'latest-tag' pull and switch to latest git tag"
   echo " 'latest-tagv' pull and switch to latest git tag starting with 'v'"
@@ -32,6 +34,12 @@ if [ -f "$envFile" ]; then
   source "$envFile"
 fi
 
+if [ "$1" == "noBuild" ]; then
+  shift
+  echo "Setting noBuild option ... "
+  noBuild=${noBuild:-"true"}
+fi
+
 if [ -f "Cargo.toml" ]; then
   if [ "$1" == "clean" ]; then
     shift
@@ -43,6 +51,7 @@ else
   exit 2
 fi
 
+# OS Check
 if [ "$(uname)" == "Darwin" ]; then
   osname="osx"
   osversion="catalina"
@@ -165,8 +174,25 @@ gitCommitHash="$(git rev-parse --short HEAD)"
 #git branch --set-upstream-to=origin/$gitTagVersion $gitTagVersion-build
 #git pull
 
-# Build
-cargo build --release
+# Cargo Build
+if [ "$noBuild" == "true" ]; then
+  echo "no Build has been setup"
+else
+  echo "Cargo ..."
+  cargoBin=$(which cargo)
+  if [ -z ${cargoBin} ]; then
+    echo "No cargo in the current path!"
+    exit 6
+  else
+    if [ -e ${cargoBin} ]; then
+      echo "Executing cargo build ..."
+      cargo build --release
+    else
+      echo "cargo is not executable!"
+      exit 7
+    fi
+  fi
+fi
 
 # ToDo: Might have multiple consts.rs files?
 rustConsts=$(find target -name "consts.rs" | grep -i "tari_base_node")
@@ -190,15 +216,14 @@ else
 fi
 
 shaSumVal="256"
-
 #archiveBase="$distFullName-$rustVer-$gitTagVersion-$gitclean"
 hashFile="$archiveBase.sha${shaSumVal}sum"
 archiveFile="$archiveBase.zip"
-echo "Archive Base $archiveBase"
+echo "Archive base $archiveBase"
 echo "Hash file $hashFile"
 echo "Archive file $archiveFile"
 
-distDir=$(mktemp -d)
+distDir=${distDir:-$(mktemp -d)}
 if [ -d $distDir ]; then
   echo "Temporary directory $distDir exists"
 else
@@ -235,16 +260,16 @@ if [ "$osname" == "osx" ]  && [ -n "${osxsign}" ]; then
     spctl -a -v "$SIGN_FILE"
   done
 fi
-shasum -a $shaSumVal * >> "$distDir/$hashFile"
-#echo "$(cat $distDir/$hashFile)" | shasum -a $shaSumVal --check --status
-echo "$(cat $distDir/$hashFile)" | shasum -a $shaSumVal --check
-mv "$distDir/$hashFile" "$distDir/dist/"
+
+shasum -a $shaSumVal * > "../$hashFile"
+echo "$(cat ../$hashFile)" | shasum -a $shaSumVal --check
+cp -v "../$hashFile" .
 #tar -cjpf "$distDir/$archiveFile" .
-zip -j "$distDir/$archiveFile" *
+zip -j "../$archiveFile" *
 cd ..
-shasum -a $shaSumVal "$archiveFile" >> "$distDir/$archiveFile.sha${shaSumVal}sum"
-#echo "$(cat $distDir/$archiveFile.sha${shaSumVal}sum) $distDir/$archiveFile" | shasum -a $shaSumVal --check
-echo "$(cat $distDir/$archiveFile.sha${shaSumVal}sum)" | shasum -a $shaSumVal --check
+shasum -a $shaSumVal "$archiveFile" >> "$archiveFile.sha${shaSumVal}sum"
+echo "SHASum verification ..."
+echo "$(cat $archiveFile.sha${shaSumVal}sum)" | shasum -a $shaSumVal --check
 popd
-echo "Delete $distDir"
+echo "Delete $distDir when done."
 #rm -fr $distDir
