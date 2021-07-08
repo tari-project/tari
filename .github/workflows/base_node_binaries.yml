@@ -27,17 +27,23 @@ jobs:
 #        os: [ubuntu-18.04, ubuntu-20.04, macos-10.15, macos-11.0, windows-2019]
 #        os: [ubuntu-latest, macos-latest, windows-latest, self-hosted]
 #        os: [ubuntu-18.04, ubuntu-20.04, macos-10.15, macos-11.0, windows-2016, windows-2019]
-        os: [ubuntu-18.04, macos-10.15, windows-2016, self-hosted]
+        os: [ubuntu-18.04, macos-10.15, windows-2019, self-hosted]
 #        os: [ubuntu-20.04]
         # https://gcc.gnu.org/onlinedocs/gcc/x86-Options.html
 #        features: ["safe", "avx2"]
 #        features: ["safe"]
 #        target_cpu: ["x86-64", "broadwell", "skylake"]
-        target_cpu: ["haswell"]
+        target_cpu: ["x86-64", "haswell"]
 #        target_release: ["release", "debug"]
-#        exclude:
-#          - target_cpu: "x86-64"
-#            features: "avx2"
+        exclude:
+          - os: "macos-10.15"
+            target_cpu: "haswell"
+          - os: "ubuntu-18.04"
+            target_cpu: "x86-64"
+          - os: "windows-2019"
+            target_cpu: "x86-64"
+          - os: "self-hosted"
+            target_cpu: "x86-64"
 
     runs-on: ${{ matrix.os }}
 
@@ -65,7 +71,7 @@ jobs:
       uses: actions-rs/toolchain@v1
       with:
 #        toolchain: stable
-        toolchain: nightly-2020-08-13
+        toolchain: nightly-2021-05-09
         components: rustfmt
 #        target: ${{ matrix.target }}
         override: true
@@ -96,7 +102,7 @@ jobs:
       if: startsWith(matrix.os,'windows')
       run: |
         vcpkg.exe install sqlite3:x64-windows zlib:x64-windows
-        choco upgrade llvm zip psutils openssl -y
+        choco upgrade llvm zip psutils openssl strawberryperl -y
 
     - name: Set environment variables - Nix
       if: "!startsWith(matrix.os,'Windows')"
