@@ -65,7 +65,7 @@ jobs:
       uses: actions-rs/toolchain@v1
       with:
 #        toolchain: stable
-        toolchain: nightly-2021-05-06
+        toolchain: nightly-2021-05-09
         components: rustfmt
 #        target: ${{ matrix.target }}
         override: true
