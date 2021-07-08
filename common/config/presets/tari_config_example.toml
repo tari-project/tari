@@ -142,7 +142,7 @@ scan_for_utxo_interval=60
 
 # The default values are:
 #command_send_wait_stage = "Broadcast"
-#command_send_wait_timeout = 600
+#command_send_wait_timeout = 300
 
 # The base nodes that the wallet should use for service requests and tracking chain state.
 # base_node_service_peers = ["public_key::net_address", ...]

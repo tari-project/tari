@@ -47,18 +47,37 @@ Monitoring 1 sent transactions to Broadcast stage...
 Done! All transactions monitored to Broadcast stage.
 ```
 
-- **make-it-rain**
+- **send-one-sided**
 
-Make it rain! Send many transactions to a public key or emoji id.
+Send an amount of Tari to a public key or emoji id in a one-sided transaction.
 
-`tari_console_wallet --command "make-it-rain <tx/sec> <duration> <amount> <increment> <start time or now> <pubkey> <optional message>"`
+`tari_console_wallet --command send-one-sided <amount> <pubkey> <optional message>"`
 
 example:
 
 ```
-$ tari_console_wallet --command "make-it-rain 1 10 8000 100 now c69fbe5f05a304eaec65d5f234a6aa258a90b8bb5b9ceffea779653667ef2108 makin it rain yo"
+$ tari_console_wallet --command "send-one-sided 1T c69fbe5f05a304eaec65d5f234a6aa258a90b8bb5b9ceffea779653667ef2108 coffee"
 
-1. make-it-rain 1 10 8000 µT 100 µT 2021-03-26 10:03:30.459157 UTC c69fbe5f05a304eaec65d5f234a6aa258a90b8bb5b9ceffea779653667ef2108 makin it rain yo
+1. send-tari 1.000000 T c69fbe5f05a304eaec65d5f234a6aa258a90b8bb5b9ceffea779653667ef2108 coffee
+
+Monitoring 1 sent transactions to Broadcast stage...
+Done! All transactions monitored to Broadcast stage.
+```
+
+- **make-it-rain**
+
+Make it rain! Send many transactions to a public key or emoji id.
+
+`tari_console_wallet --command "make-it-rain <tx/sec> <duration> <amount> <increment> <start time or now> <pubkey> <transaction type> <optional message>"`
+
+`<type>` can be `negotiated` or `one_sided`
+
+example:
+
+```
+$ tari_console_wallet --command "make-it-rain 1 10 8000 100 now c69fbe5f05a304eaec65d5f234a6aa258a90b8bb5b9ceffea779653667ef2108 negotiated makin it rain yo"
+
+1. make-it-rain 1 10 8000 µT 100 µT 2021-03-26 10:03:30.459157 UTC c69fbe5f05a304eaec65d5f234a6aa258a90b8bb5b9ceffea779653667ef2108 negotiated makin it rain yo
 
 Monitoring 10 sent transactions to Broadcast stage...
 Done! All transactions monitored to Broadcast stage.

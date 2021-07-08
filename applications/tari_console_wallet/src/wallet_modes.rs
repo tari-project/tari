@@ -134,7 +134,7 @@ pub fn command_mode(config: WalletModeConfig, wallet: WalletSqlite, command: Str
     } = config.clone();
     let commands = vec![parse_command(&command)?];
     info!(target: LOG_TARGET, "Starting wallet command mode");
-    handle.block_on(command_runner(handle.clone(), commands, wallet.clone(), global_config))?;
+    handle.block_on(command_runner(commands, wallet.clone(), global_config))?;
 
     info!(target: LOG_TARGET, "Completed wallet command mode");
 
@@ -166,7 +166,7 @@ pub fn script_mode(config: WalletModeConfig, wallet: WalletSqlite, path: PathBuf
     println!("{} commands parsed successfully.", commands.len());
 
     println!("Starting the command runner!");
-    handle.block_on(command_runner(handle.clone(), commands, wallet.clone(), global_config))?;
+    handle.block_on(command_runner(commands, wallet.clone(), global_config))?;
 
     info!(target: LOG_TARGET, "Completed wallet script mode");
 

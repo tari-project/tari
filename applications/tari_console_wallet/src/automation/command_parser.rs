@@ -81,6 +81,7 @@ pub enum ParsedArgument {
     OutputToCSVFile(String),
     CSVFileName(String),
     Address(Multiaddr),
+    Negotiated(bool),
 }
 
 impl Display for ParsedArgument {
@@ -96,6 +97,7 @@ impl Display for ParsedArgument {
             OutputToCSVFile(v) => write!(f, "{}", v.to_string()),
             CSVFileName(v) => write!(f, "{}", v.to_string()),
             Address(v) => write!(f, "{}", v.to_string()),
+            Negotiated(v) => write!(f, "{}", v.to_string()),
         }
     }
 }
@@ -181,7 +183,7 @@ fn parse_make_it_rain(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, 
     let txps = txps.parse::<f64>().map_err(ParseError::Float)?;
     if txps > 25.0 {
         println!("Maximum transaction rate is 25/sec");
-        return Err(ParseError::Invalid);
+        return Err(ParseError::Invalid("Maximum transaction rate is 25/sec".to_string()));
     }
     parsed_args.push(ParsedArgument::Float(txps));
 
@@ -192,7 +194,9 @@ fn parse_make_it_rain(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, 
 
     if (txps * duration as f64) < 1.0 {
         println!("Invalid data provided for [number of Txs/s] * [test duration (s)], must be >= 1\n");
-        return Err(ParseError::Invalid);
+        return Err(ParseError::Invalid(
+            "Invalid data provided for [number of Txs/s] * [test duration (s)], must be >= 1".to_string(),
+        ));
     }
 
     // start amount
@@ -225,6 +229,22 @@ fn parse_make_it_rain(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, 
         .ok_or_else(|| ParseError::Empty("public key or emoji id".to_string()))?;
     let pubkey = parse_emoji_id_or_public_key(pubkey).ok_or(ParseError::PublicKey)?;
     parsed_args.push(ParsedArgument::PublicKey(pubkey));
+
+    // transaction type
+    let txn_type = args
+        .next()
+        .ok_or_else(|| ParseError::Empty("transaction type".to_string()))?;
+    let negotiated = match txn_type {
+        "negotiated" => true,
+        "one_sided" => false,
+        _ => {
+            println!("Invalid data provided for <transaction type>, must be 'negotiated' or 'one_sided'\n");
+            return Err(ParseError::Invalid(
+                "Invalid data provided for <transaction type>, must be 'negotiated' or 'one_sided'".to_string(),
+            ));
+        },
+    };
+    parsed_args.push(ParsedArgument::Negotiated(negotiated));
 
     // message
     let message = args.collect::<Vec<&str>>().join(" ");
@@ -322,7 +342,10 @@ fn parse_coin_split(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, Pa
 
 #[cfg(test)]
 mod test {
-    use crate::automation::command_parser::{parse_command, ParsedArgument};
+    use crate::automation::{
+        command_parser::{parse_command, ParsedArgument},
+        error::ParseError,
+    };
     use rand::rngs::OsRng;
     use std::str::FromStr;
     use tari_core::transactions::{tari_amount::MicroTari, types::PublicKey};
@@ -401,6 +424,59 @@ mod test {
             assert_eq!(file, "utxo_list.csv".to_string());
         } else {
             panic!("Parsed csv file name is not the same as provided.");
+        }
+
+        let transaction_type = "negotiated";
+        let message = "Testing the network!";
+        let command_str = format!(
+            "make-it-rain 20 225 9000 0 now {} {} {}",
+            public_key, transaction_type, message
+        );
+        let parsed = parse_command(&command_str).unwrap();
+
+        if let ParsedArgument::PublicKey(pk) = parsed.args[5].clone() {
+            assert_eq!(pk, public_key);
+        } else {
+            panic!("Parsed public key is not the same as provided.");
+        }
+        if let ParsedArgument::Negotiated(negotiated) = parsed.args[6].clone() {
+            assert!(negotiated);
+        } else {
+            panic!("Parsed <transaction type> is not the same as provided.");
+        }
+        if let ParsedArgument::Text(msg) = parsed.args[7].clone() {
+            assert_eq!(message, msg);
+        } else {
+            panic!("Parsed message is not the same as provided.");
+        }
+
+        let transaction_type = "one_sided";
+        let command_str = format!(
+            "make-it-rain 20 225 9000 0 now {} {} {}",
+            public_key, transaction_type, message
+        );
+        let parsed = parse_command(&command_str).unwrap();
+
+        if let ParsedArgument::Negotiated(negotiated) = parsed.args[6].clone() {
+            assert!(!negotiated);
+        } else {
+            panic!("Parsed <transaction type> is not the same as provided.");
+        }
+
+        let transaction_type = "what_ever";
+        let command_str = format!(
+            "make-it-rain 20 225 9000 0 now {} {} {}",
+            public_key, transaction_type, message
+        );
+        match parse_command(&command_str) {
+            Ok(_) => panic!("<transaction type> argument '{}' not allowed", transaction_type),
+            Err(e) => match e {
+                ParseError::Invalid(e) => assert_eq!(
+                    e,
+                    "Invalid data provided for <transaction type>, must be 'negotiated' or 'one_sided'".to_string()
+                ),
+                _ => panic!("Expected parsing <transaction type> to return an error here"),
+            },
         }
     }
 }

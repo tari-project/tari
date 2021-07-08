@@ -58,7 +58,7 @@ use tari_wallet::{
     WalletSqlite,
 };
 use tokio::{
-    runtime::Handle,
+    sync::mpsc,
     time::{delay_for, timeout},
 };
 
@@ -248,10 +248,9 @@ pub async fn discover_peer(
 }
 
 pub async fn make_it_rain(
-    handle: Handle,
     wallet_transaction_service: TransactionServiceHandle,
     args: Vec<ParsedArgument>,
-) -> Result<Vec<TxId>, CommandError> {
+) -> Result<(), CommandError> {
     use ParsedArgument::*;
 
     let txps = match args[0].clone() {
@@ -284,60 +283,148 @@ pub async fn make_it_rain(
         _ => Err(CommandError::Argument),
     }?;
 
-    let message = match args[6].clone() {
+    let negotiated = match args[6].clone() {
+        Negotiated(val) => Ok(val),
+        _ => Err(CommandError::Argument),
+    }?;
+
+    let message = match args[7].clone() {
         Text(m) => Ok(m),
         _ => Err(CommandError::Argument),
     }?;
 
-    // Wait until specified test start time
-    let now = Utc::now();
-    let delay_ms = if start_time > now {
-        println!(
-            "`make-it-rain` scheduled to start at {}: msg \"{}\"",
-            start_time, message
+    // We are spawning this command in parallel, thus not collecting transaction IDs
+    tokio::task::spawn(async move {
+        // Wait until specified test start time
+        let now = Utc::now();
+        let delay_ms = if start_time > now {
+            println!(
+                "`make-it-rain` scheduled to start at {}: msg \"{}\"",
+                start_time, message
+            );
+            (start_time - now).num_milliseconds() as u64
+        } else {
+            0
+        };
+
+        debug!(
+            target: LOG_TARGET,
+            "make-it-rain delaying for {:?} ms - scheduled to start at {}", delay_ms, start_time
         );
-        (start_time - now).num_milliseconds() as u64
-    } else {
-        0
-    };
+        delay_for(Duration::from_millis(delay_ms)).await;
 
-    debug!(
-        target: LOG_TARGET,
-        "make-it-rain delaying for {:?} ms - scheduled to start at {}", delay_ms, start_time
-    );
-    delay_for(Duration::from_millis(delay_ms)).await;
+        let num_txs = (txps * duration as f64) as usize;
+        let started_at = Utc::now();
 
-    let num_txs = (txps * duration as f64) as usize;
-
-    let mut tx_ids = Vec::new();
-    let started_at = Utc::now();
-
-    for i in 0..num_txs {
-        // Manage Tx rate
-        let actual_ms = (Utc::now() - started_at).num_milliseconds();
-        let target_ms = (i as f64 / (txps / 1000.0)) as i64;
-        if target_ms - actual_ms > 0 {
-            // Maximum delay between Txs set to 120 s
-            delay_for(Duration::from_millis((target_ms - actual_ms).min(120_000i64) as u64)).await;
+        struct TransactionSendStats {
+            i: usize,
+            tx_id: Result<TxId, CommandError>,
+            delayed_for: Duration,
+            submit_time: Duration,
         }
-        // Send Tx
-        let amount = start_amount + inc_amount * (i as u64);
-        let send_args = vec![
-            ParsedArgument::Amount(amount),
-            ParsedArgument::PublicKey(public_key.clone()),
-            ParsedArgument::Text(message.clone()),
-        ];
-        let tx_service = wallet_transaction_service.clone();
-        let tx_id = handle
-            .spawn(send_tari(tx_service, send_args))
-            .await
-            .map_err(CommandError::Join)??;
+        let transaction_type = if negotiated { "negotiated" } else { "one-sided" };
+        println!(
+            "\n`make-it-rain` starting {} {} transactions \"{}\"\n",
+            num_txs, transaction_type, message
+        );
+        let (sender, mut receiver) = mpsc::channel(num_txs);
+        {
+            let sender = sender;
+            for i in 0..num_txs {
+                debug!(
+                    target: LOG_TARGET,
+                    "make-it-rain starting {} of {} {} transactions",
+                    i + 1,
+                    num_txs,
+                    transaction_type
+                );
+                let loop_started_at = Instant::now();
+                let tx_service = wallet_transaction_service.clone();
+                // Transaction details
+                let amount = start_amount + inc_amount * (i as u64);
+                let send_args = vec![
+                    ParsedArgument::Amount(amount),
+                    ParsedArgument::PublicKey(public_key.clone()),
+                    ParsedArgument::Text(message.clone()),
+                ];
+                // Manage transaction submission rate
+                let actual_ms = (Utc::now() - started_at).num_milliseconds();
+                let target_ms = (i as f64 / (txps / 1000.0)) as i64;
+                if target_ms - actual_ms > 0 {
+                    // Maximum delay between Txs set to 120 s
+                    delay_for(Duration::from_millis((target_ms - actual_ms).min(120_000i64) as u64)).await;
+                }
+                let delayed_for = Instant::now();
+                let mut sender_clone = sender.clone();
+                tokio::task::spawn(async move {
+                    let spawn_start = Instant::now();
+                    // Send transaction
+                    let tx_id = if negotiated {
+                        send_tari(tx_service, send_args).await
+                    } else {
+                        send_one_sided(tx_service, send_args).await
+                    };
+                    let submit_time = Instant::now();
+                    tokio::task::spawn(async move {
+                        print!("{} ", i + 1);
+                    });
+                    if let Err(e) = sender_clone
+                        .send(TransactionSendStats {
+                            i: i + 1,
+                            tx_id,
+                            delayed_for: delayed_for.duration_since(loop_started_at),
+                            submit_time: submit_time.duration_since(spawn_start),
+                        })
+                        .await
+                    {
+                        warn!(
+                            target: LOG_TARGET,
+                            "make-it-rain: Error sending transaction send stats to channel: {}",
+                            e.to_string()
+                        );
+                    }
+                });
+            }
+        }
+        while let Some(send_stats) = receiver.recv().await {
+            match send_stats.tx_id {
+                Ok(tx_id) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "make-it-rain transaction {} ({}) submitted to queue, tx_id: {}, delayed for ({}ms), submit \
+                         time ({}ms)",
+                        send_stats.i,
+                        transaction_type,
+                        tx_id,
+                        send_stats.delayed_for.as_millis(),
+                        send_stats.submit_time.as_millis()
+                    );
+                },
+                Err(e) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "make-it-rain transaction {} ({}) error: {}",
+                        send_stats.i,
+                        transaction_type,
+                        e.to_string(),
+                    );
+                },
+            }
+        }
+        debug!(
+            target: LOG_TARGET,
+            "make-it-rain concluded {} {} transactions", num_txs, transaction_type
+        );
+        println!(
+            "\n`make-it-rain` concluded {} {} transactions (\"{}\") at {}",
+            num_txs,
+            transaction_type,
+            message,
+            Utc::now()
+        );
+    });
 
-        debug!(target: LOG_TARGET, "make-it-rain tx_id: {}", tx_id);
-        tx_ids.push(tx_id);
-    }
-
-    Ok(tx_ids)
+    Ok(())
 }
 
 pub async fn monitor_transactions(
@@ -460,7 +547,6 @@ pub async fn monitor_transactions(
 }
 
 pub async fn command_runner(
-    handle: Handle,
     commands: Vec<ParsedCommand>,
     wallet: WalletSqlite,
     config: GlobalConfig,
@@ -507,8 +593,7 @@ pub async fn command_runner(
                 tx_ids.push(tx_id);
             },
             MakeItRain => {
-                let rain_ids = make_it_rain(handle.clone(), transaction_service.clone(), parsed.args).await?;
-                tx_ids.extend(rain_ids);
+                make_it_rain(transaction_service.clone(), parsed.args).await?;
             },
             CoinSplit => {
                 let tx_id = coin_split(&parsed.args, &mut output_service, &mut transaction_service.clone()).await?;
@@ -623,7 +708,7 @@ pub async fn command_runner(
             },
             Err(_e) => {
                 println!(
-                    "The configured timeout ({:#?}s) was reached before all transactions reached the {:?} stage. See \
+                    "The configured timeout ({:#?}) was reached before all transactions reached the {:?} stage. See \
                      the logs for more info.",
                     duration, wait_stage
                 );
