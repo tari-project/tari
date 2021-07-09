@@ -76,7 +76,7 @@
 //! # std::fs::remove_dir_all(temp_dir).unwrap();
 //! ```
 
-#[cfg(feature = "build")]
+#[cfg(any(feature = "build", feature = "static-application-info"))]
 pub mod build;
 #[macro_use]
 mod logging;
