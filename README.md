@@ -142,6 +142,7 @@ First you'll need to make sure you have a full development environment set up:
   - [Build Tools for Visual Studio 2019](https://visualstudio.microsoft.com/thank-you-downloading-visual-studio/?sku=BuildTools&rel=16)
 
 - SQLite:
+
   - Download 32bit/64bit Precompiled Binaries for Windows for [SQL Lite](https://www.sqlite.org/index.html) and unzip
     to local path, e.g. `%USERPROFILE%\.sqlite`
   - Open the appropriate x64\x86 `Native Tools Command Prompt for VS 2019` in `%USERPROFILE%\.sqlite`
@@ -157,18 +158,11 @@ First you'll need to make sure you have a full development environment set up:
     ```
     setx SQLITE3_LIB_DIR "%USERPROFILE%\.sqlite"
     ```
-- OpenSSL:
 
-  - Download full version of the 64bit Precompiled Binaries for Windows for
-    [OpenSSL](https://slproweb.com/products/Win32OpenSSL.html)
-  - Install using all the default prompts
+- Perl for OpenSSL:
 
-    **Note**: It is important that the dlls are available in the path. To test:
-
-    ```
-    where libcrypto-1_1-x64.dll
-    where libssl-1_1-x64.dll
-    ```
+  - OpenSSL is compiled and statically linked by the included [rust-openssl](https://github.com/sfackler/rust-openssl) crate
+  - Perl is required to compile this source on Windows, please download and install [StrawberryPerl](https://strawberryperl.com/)
 
 - Tor
   - Download [Tor Windows Expert Bundle](https://www.torproject.org/download/tor/)
@@ -258,7 +252,7 @@ anywhere on your system.
 The executables will either be inside your `~/tari/target/release` (on Linux) or `%USERPROFILE%\Code\tari\target\release`
 (on Windows) directory, or alternatively, inside your `~/.cargo/bin` (on Linux) `%USERPROFILE%\.cargo\bin` (on Windows)
 directory, depending on the build choice above, and must be run from the command line. If the former build method was
-used, you can run it from that directory, or you more likely want to copy it somewhere more convenient. Make sure to 
+used, you can run it from that directory, or you more likely want to copy it somewhere more convenient. Make sure to
 start Tor service `~/tari/applications/tari_base_node/osx/start_tor` (on Mac),
 `~/tari/applications/tari_base_node/ubuntu/start_tor` (on Linux) or
 `%USERPROFILE%\Code\tari\applications\tari_base_node\windows\start_tor.lnk` (on Windows).
