@@ -42,6 +42,7 @@ class CustomWorld {
   async createSeedNode(name) {
     const proc = new BaseNodeProcess(
       `seed-${name}`,
+      false,
       null,
       this.logFilePathBaseNode
     );
@@ -60,7 +61,7 @@ class CustomWorld {
 
   /// Create but don't add the node
   createNode(name, options) {
-    return new BaseNodeProcess(name, options, this.logFilePathBaseNode);
+    return new BaseNodeProcess(name, false, options, this.logFilePathBaseNode);
   }
 
   async createAndAddNode(name, addresses) {
@@ -88,7 +89,7 @@ class CustomWorld {
   }
 
   async createAndAddWallet(name, nodeAddresses) {
-    const wallet = new WalletProcess(name, {}, this.logFilePathWallet);
+    const wallet = new WalletProcess(name, false, {}, this.logFilePathWallet);
     wallet.setPeerSeeds([nodeAddresses]);
     await wallet.startNew();
 
