@@ -1,5 +1,5 @@
 #FROM rust:1.42.0 as builder
-FROM quay.io/tarilabs/rust_tari-build-with-deps:nightly-2020-08-13 as builder
+FROM quay.io/tarilabs/rust_tari-build-with-deps:nightly-2021-05-09 as builder
 
 # Copy the dependency lists
 #ADD Cargo.toml ./
@@ -19,7 +19,7 @@ RUN cargo fetch && \
   cargo build --bin tari_base_node --release --features $TBN_FEATURES --locked
 
 # Create a base minimal image for adding our executables to
-FROM quay.io/bitnami/minideb:stretch as base
+FROM quay.io/bitnami/minideb:buster as base
 # Disable Prompt During Packages Installation
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt -y install \
@@ -33,8 +33,11 @@ RUN apt update && apt -y install \
     gpg \
     apt-transport-https \
     ca-certificates && \
-    # Add Sources for the latest tor
-    printf "deb https://deb.torproject.org/torproject.org stretch main\ndeb-src https://deb.torproject.org/torproject.org stretch main" > /etc/apt/sources.list.d/tor.list && \
+    # Add Sources for the latest tor - https://support.torproject.org/apt/tor-deb-repo/
+    printf \
+"deb https://deb.torproject.org/torproject.org buster main\n\
+deb-src https://deb.torproject.org/torproject.org buster main\n"\
+     > /etc/apt/sources.list.d/tor.list && \
     curl https://deb.torproject.org/torproject.org/A3C4F0F979CAA22CDBA8F512EE8CBC9E886DDD89.asc | gpg --import 1>&2 && \
     gpg --export A3C4F0F979CAA22CDBA8F512EE8CBC9E886DDD89 | apt-key add - 1>&2 &&\
     apt update 1>&2 && \
