@@ -147,4 +147,10 @@ if not exist "%config_path%\log4rs_console_wallet.yml" (
 echo.
 
 cd "%base_path%"
+rem check if Windows Terminal is in path, if so, run it there, to see emojis properly.
+where /q wt
+if errorlevel 1 (
 "%console_wallet%" %INIT_FLAG% --config "%config_path%\config.toml" --log_config "%config_path%\log4rs_console_wallet.yml" --base-path "%base_path%"
+) else (
+wt "%console_wallet%" %INIT_FLAG% --config "%config_path%\config.toml" --log_config "%config_path%\log4rs_console_wallet.yml" --base-path "%base_path%"
+)
