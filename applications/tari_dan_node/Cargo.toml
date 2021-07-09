@@ -13,6 +13,10 @@ tari_crypto = { git = "ssh://git@github.com/tari-project/tari-crypto.git", branc
 tari_test_utils = "0.8.1"
 tari_app_utilities = {path ="../tari_app_utilities"}
 tari_common = {path = "../../common"}
+tari_comms = {path = "../../comms"}
+tari_service_framework = { path= "../../base_layer/service_framework"}
+tari_p2p = {path = "../../base_layer/p2p"}
+tari_comms_dht = {path= "../../comms/dht"}
 
 thiserror = "^1.0.20"
 log = { version = "0.4.8", features = ["std"] }

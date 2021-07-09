@@ -103,7 +103,7 @@ fn build_runtime() -> Result<Runtime, ExitCodes> {
 
 async fn run_dan_node(shutdown_signal: ShutdownSignal, config: GlobalConfig) -> Result<(), ExitCodes> {
  let node = DanNode::new(config);
-    node.start()
+    node.start(true, shutdown_signal).await
 }
 
 async fn run_grpc(grpc_server: DanGrpcServer, grpc_address: SocketAddr, shutdown_signal: ShutdownSignal)
