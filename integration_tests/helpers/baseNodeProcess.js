@@ -9,11 +9,12 @@ const { createEnv } = require("./config");
 
 let outputProcess;
 class BaseNodeProcess {
-  constructor(name, options, logFilePath, nodeFile) {
+  constructor(name, excludeTestEnvars, options, logFilePath, nodeFile) {
     this.name = name;
     this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath;
     this.nodeFile = nodeFile;
     this.options = options;
+    this.excludeTestEnvars = excludeTestEnvars;
   }
 
   async init() {
@@ -21,6 +22,7 @@ class BaseNodeProcess {
     this.grpcPort = await getFreePort(19000, 25000);
     this.name = `Basenode${this.port}-${this.name}`;
     this.nodeFile = this.nodeFile || "nodeid.json";
+
     do {
       this.baseDir = `./temp/base_nodes/${dateFormat(
         new Date(),
@@ -53,9 +55,9 @@ class BaseNodeProcess {
         "-Z",
         "unstable-options",
         "--out-dir",
-        __dirname + "/../temp/out",
+        process.cwd() + "/temp/out",
       ]);
-      outputProcess = __dirname + "/../temp/out/tari_base_node";
+      outputProcess = process.cwd() + "/temp/out/tari_base_node";
     }
     return outputProcess;
   }
@@ -96,20 +98,23 @@ class BaseNodeProcess {
         fs.mkdirSync(this.baseDir + "/log", { recursive: true });
       }
 
-      const envs = createEnv(
-        this.name,
-        false,
-        this.nodeFile,
-        "127.0.0.1",
-        "8082",
-        "8081",
-        "127.0.0.1",
-        this.grpcPort,
-        this.port,
-        "127.0.0.1:8080",
-        this.options,
-        this.peerSeeds
-      );
+      let envs = [];
+      if (!this.excludeTestEnvars) {
+        envs = createEnv(
+          this.name,
+          false,
+          this.nodeFile,
+          "127.0.0.1",
+          "8082",
+          "8081",
+          "127.0.0.1",
+          this.grpcPort,
+          this.port,
+          "127.0.0.1:8080",
+          this.options,
+          this.peerSeeds
+        );
+      }
 
       const ps = spawn(cmd, args, {
         cwd: this.baseDir,
