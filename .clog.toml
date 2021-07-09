@@ -5,5 +5,5 @@ repository = "https://github.com/tari-project/tari"
 
 # specify the style of commit links to generate, defaults to "github" if omitted
 link-style = "github"
-changelog = "changelog.md"
+#changelog = "changelog.md"
 from-latest-tag = true
