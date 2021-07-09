@@ -5,16 +5,20 @@ var router = express.Router()
 
 /* GET home page. */
 router.get('/', async function (req, res, next) {
+  try {
   let client = createClient()
   let from = parseInt(req.query.from || 0)
   let limit = parseInt(req.query.limit || '20')
 
   let tipInfo = await client.getTipInfo({})
 
+    console.log("Getting headers");
   // Algo split
   let last100Headers = await client.listHeaders({ from_height: 0, num_headers: 101 })
   let monero = [0, 0, 0, 0]
   let sha = [0, 0, 0, 0]
+
+    console.log(last100Headers);
 
   for (let i = 0; i < last100Headers.length - 1; i++) {
     let arr = last100Headers[i].pow.pow_algo === '0' ? monero : sha
@@ -41,9 +45,7 @@ router.get('/', async function (req, res, next) {
     sha100: sha[3]
   }
 
-
-
-
+  console.log(algoSplit);
   // Get one more header than requested so we can work out the difference in MMR_size
   let headers = await client.listHeaders({ from_height: from, num_headers: limit + 1 })
   for (var i = headers.length - 2; i >= 0; i--) {
@@ -73,7 +75,6 @@ router.get('/', async function (req, res, next) {
     }
     mempool[i].transaction.body.total_fees = sum
   }
-  console.log(getBlockTimes(last100Headers, "0"))
   res.render('index', {
     title: 'Blocks',
     tipInfo: tipInfo,
@@ -87,19 +88,28 @@ router.get('/', async function (req, res, next) {
     algoSplit: algoSplit,
     blockTimes: getBlockTimes(last100Headers),
     moneroTimes: getBlockTimes(last100Headers, "0"),
-    shaTimes: getBlockTimes(last100Headers, "2")
+    shaTimes: getBlockTimes(last100Headers, "1")
   })
+
+} catch (error) {
+  res.status(500)
+  res.render('error', { error: error })
+}
 })
 
 
 function getBlockTimes(last100Headers, algo) {
   let blocktimes = []
   let i = 0
-  if (algo === '0' || algo === '2') {
-    while (last100Headers[i].pow.pow_algo !== algo) {
+  if (algo === '0' || algo === '1') {
+    while (i < last100Headers.length && last100Headers[i].pow.pow_algo !== algo) {
       i++;
       blocktimes.push(0)
     }
+  }
+  if (i >= last100Headers.length) {
+    // This happens if there are no blocks for a specific algorithm in last100headers
+    return blocktimes;
   }
   let lastBlockTime = parseInt(last100Headers[i].timestamp.seconds);
   i++;

@@ -263,7 +263,7 @@ pub enum TransactionError {
 pub struct UnblindedOutputBuilder {
     value: MicroTari,
      spending_key: BlindingFactor,
-     features: Option<OutputFeatures>,
+     features: OutputFeatures,
      script: Option<TariScript>,
      input_data: Option<ExecutionStack>,
     script_private_key: Option<PrivateKey>,
@@ -281,7 +281,7 @@ impl UnblindedOutputBuilder {
     pub fn new(value: MicroTari, spending_key: BlindingFactor) -> Self {
         Self{
             value, spending_key,
-            features: None,
+            features: OutputFeatures::default(),
             script: None,
             input_data: None,
             script_private_key: None,
@@ -299,7 +299,7 @@ impl UnblindedOutputBuilder {
 
         let metadata_partial = TransactionOutput::create_partial_metadata_signature(&self.value, &self.spending_key,
         self.script.as_ref().ok_or_else(||TransactionError::ValidationError("script must be set".to_string()))?,
-        self.features.as_ref().ok_or_else(|| TransactionError::ValidationError("features must be set".to_string()))?,
+        &self.features,
             &sender_offset_public_key,
             &public_nonce_commitment
         )?;
@@ -310,7 +310,7 @@ impl UnblindedOutputBuilder {
 
     pub fn sign_as_sender(&mut self, sender_offset_private_key: &PrivateKey) -> Result<(), TransactionError> {
        let metadata_sig = TransactionOutput::create_final_metadata_signature(&self.value,&self.spending_key, self.script.as_ref().ok_or_else(||TransactionError::ValidationError("script must be set".to_string()))?,
-                                                                                 self.features.as_ref().ok_or_else(|| TransactionError::ValidationError("features must be set".to_string()))?,
+                                                                             &self.features,
            &sender_offset_private_key
        )?;
         self.metadata_signature = Some(metadata_sig);
@@ -328,7 +328,7 @@ impl UnblindedOutputBuilder {
         let ub = UnblindedOutput{
             value: self.value,
             spending_key: self.spending_key,
-            features:self.features.ok_or_else(|| TransactionError::ValidationError("features must be set".to_string()))?,
+            features:self.features,
             script:self.script.ok_or_else(||TransactionError::ValidationError("script must be set".to_string()))?,
             input_data: self.input_data.ok_or_else(||TransactionError::ValidationError("input_data must be set".to_string()))?,
             script_private_key: self.script_private_key.ok_or_else(||TransactionError::ValidationError("script_private_key must be set".to_string()))?,
@@ -340,7 +340,7 @@ impl UnblindedOutputBuilder {
         Ok(ub)
     }
     pub fn with_features(mut self, features: OutputFeatures) -> Self {
-        self.features =Some( features);
+        self.features = features;
         self
     }
     pub fn with_script(mut self, script: TariScript) -> Self {
