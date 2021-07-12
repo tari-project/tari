@@ -4,8 +4,8 @@ on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
-#    branches:
-#      - leet-*
+    # branches:
+    #   - leet-*
   schedule:
     - cron: '05 00 * * *'
   workflow_dispatch:
@@ -33,16 +33,13 @@ jobs:
 #        features: ["safe", "avx2"]
 #        features: ["safe"]
 #        target_cpu: ["x86-64", "broadwell", "skylake"]
-        target_cpu: ["x86-64", "haswell"]
+        target_cpu: ["haswell"]
 #        target_release: ["release", "debug"]
         exclude:
           - os: "macos-10.15"
             target_cpu: "haswell"
-          - os: "ubuntu-18.04"
-            target_cpu: "x86-64"
-          - os: "windows-2019"
-            target_cpu: "x86-64"
-          - os: "self-hosted"
+        include:
+          - os: "macos-10.15"
             target_cpu: "x86-64"
 
     runs-on: ${{ matrix.os }}
@@ -129,6 +126,7 @@ jobs:
         echo "SQLITE3_LIB_DIR=C:\vcpkg\installed\x64-windows\lib" >> $GITHUB_ENV
         echo "OPENSSL_DIR=C:\Program Files\OpenSSL-Win64" >> $GITHUB_ENV
         echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $GITHUB_ENV
+        echo "C:\Strawberry\perl\bin" >> $GITHUB_PATH
 
     # this is a hack to fix an issue with building libclang in MSVC
     # it should be fixed in release 16.9 of MSVC
@@ -154,7 +152,6 @@ jobs:
       env:
         RUSTFLAGS: '-C target_cpu=${{ matrix.target_cpu }}'
         ROARING_ARCH: '${{ matrix.target_cpu }}'
-      shell: bash
       run: |
         #cd applications/tari_base_node
         #cargo build --release --bin tari_base_node --features ${{ matrix.features}}
