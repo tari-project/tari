@@ -79,7 +79,7 @@ impl TryFrom<proto::HistoricalBlock> for HistoricalBlock {
         let pruned = historical_block
             .pruned_output_hashes
             .into_iter()
-            .zip(historical_block.pruned_proof_hashes)
+            .zip(historical_block.pruned_witness_hash)
             .collect();
 
         Ok(HistoricalBlock::new(
@@ -95,14 +95,14 @@ impl TryFrom<proto::HistoricalBlock> for HistoricalBlock {
 impl From<HistoricalBlock> for proto::HistoricalBlock {
     fn from(block: HistoricalBlock) -> Self {
         let pruned_output_hashes = block.pruned_outputs().iter().map(|x| x.0.clone()).collect();
-        let pruned_proof_hashes = block.pruned_outputs().iter().map(|x| x.1.clone()).collect();
+        let pruned_witness_hash = block.pruned_outputs().iter().map(|x| x.1.clone()).collect();
         let (block, accumulated_data, confirmations, pruned_input_count) = block.dissolve();
         Self {
             confirmations,
             accumulated_data: Some(accumulated_data.into()),
             block: Some(block.into()),
             pruned_output_hashes,
-            pruned_proof_hashes,
+            pruned_witness_hash,
             pruned_input_count,
         }
     }
