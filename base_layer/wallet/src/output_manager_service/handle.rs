@@ -42,7 +42,7 @@ use tari_core::transactions::{
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
-use tari_crypto::script::TariScript;
+use tari_crypto::{script::TariScript, tari_utilities::hex::Hex};
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
@@ -85,7 +85,13 @@ impl fmt::Display for OutputManagerRequest {
             GetBalance => write!(f, "GetBalance"),
             AddOutput(v) => write!(f, "AddOutput ({})", v.value),
             AddOutputWithTxId((t, v)) => write!(f, "AddOutputWithTxId ({}: {})", t, v.value),
-            UpdateOutputMetadataSignature(v) => write!(f, "UpdateOutputMetadataSignature ({:?})", v.metadata_signature),
+            UpdateOutputMetadataSignature(v) => write!(
+                f,
+                "UpdateOutputMetadataSignature ({}, {}, {})",
+                v.metadata_signature.public_nonce().to_hex(),
+                v.metadata_signature.u().to_hex(),
+                v.metadata_signature.v().to_hex()
+            ),
             GetRecipientTransaction(_) => write!(f, "GetRecipientTransaction"),
             ConfirmTransaction(v) => write!(f, "ConfirmTransaction ({})", v.0),
             ConfirmPendingTransaction(v) => write!(f, "ConfirmPendingTransaction ({})", v),

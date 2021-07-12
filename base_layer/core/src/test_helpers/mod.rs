@@ -29,20 +29,11 @@ use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{BlockHeaderAccumulatedData, ChainHeader},
     consensus::ConsensusManager,
-    crypto::{
-        commitment::HomomorphicCommitmentFactory,
-        keys::{PublicKey, SecretKey},
-        tari_utilities::Hashable,
-    },
+    crypto::tari_utilities::Hashable,
     proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty},
-    transactions::{
-        tari_amount::MicroTari,
-        transaction::{Transaction, TransactionInput},
-        types::{ComSignature, CommitmentFactory, CryptoFactories, PrivateKey},
-        CoinbaseBuilder,
-    },
+    transactions::{transaction::Transaction, types::CryptoFactories, CoinbaseBuilder},
 };
-use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
+use rand::{distributions::Alphanumeric, Rng};
 use std::{iter, path::Path, sync::Arc};
 use tari_common::configuration::Network;
 use tari_comms::PeerManager;
@@ -118,35 +109,4 @@ pub fn create_chain_header(header: BlockHeader, prev_accum: &BlockHeaderAccumula
         .build()
         .unwrap();
     ChainHeader::try_construct(header, accumulated_data).unwrap()
-}
-
-pub fn comsig_sign(
-    spending_key: &PrivateKey,
-    value: MicroTari,
-    input: &TransactionInput,
-    script_private_key: PrivateKey,
-) -> ComSignature {
-    let factory = CommitmentFactory::default();
-    let commitment = factory.commit(spending_key, &value.into());
-    let script_nonce_a = PrivateKey::random(&mut OsRng);
-    let script_nonce_b = PrivateKey::random(&mut OsRng);
-    let nonce_commitment = factory.commit(&script_nonce_b, &script_nonce_a);
-
-    let e = TransactionInput::build_script_challenge(
-        &nonce_commitment,
-        &input.script,
-        &input.input_data,
-        &PublicKey::from_secret_key(&script_private_key),
-        &commitment,
-    );
-
-    ComSignature::sign(
-        value.into(),
-        script_private_key + spending_key.clone(),
-        script_nonce_a,
-        script_nonce_b,
-        &e,
-        &factory,
-    )
-    .unwrap()
 }

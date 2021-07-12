@@ -271,6 +271,7 @@ Given(
   async function (walletName, seedName, timeout) {
     const wallet = new WalletProcess(
       walletName,
+      false,
       { broadcastMonitoringTimeout: timeout },
       this.logFilePathWallet
     );
@@ -286,6 +287,7 @@ Given(
   async function (name, timeout) {
     const wallet = new WalletProcess(
       name,
+      false,
       { broadcastMonitoringTimeout: timeout },
       this.logFilePathWallet
     );
@@ -332,6 +334,7 @@ Given(
     // mechanism: DirectOnly, StoreAndForwardOnly, DirectAndStoreAndForward
     const wallet = new WalletProcess(
       name,
+      false,
       { routingMechanism: mechanism },
       this.logFilePathWallet
     );
@@ -352,6 +355,7 @@ Given(
       if (i < 10) {
         const wallet = new WalletProcess(
           "Wallet_0" + String(i),
+          false,
           { routingMechanism: mechanism },
           this.logFilePathWallet
         );
@@ -365,6 +369,7 @@ Given(
       } else {
         const wallet = new WalletProcess(
           "Wallet_0" + String(i),
+          false,
           { routingMechanism: mechanism },
           this.logFilePathWallet
         );
@@ -396,6 +401,7 @@ Given(
     );
     const walletB = new WalletProcess(
       walletNameB,
+      false,
       {},
       this.logFilePathWallet,
       seedWords

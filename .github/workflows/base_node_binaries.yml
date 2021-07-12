@@ -29,6 +29,7 @@ jobs:
 #        os: [ubuntu-latest, macos-latest, windows-latest, self-hosted]
 #        os: [ubuntu-18.04, ubuntu-20.04, macos-10.15, macos-11.0, windows-2016, windows-2019]
         os: [ubuntu-18.04, macos-10.15, windows-2019, self-hosted]
+#        os: [ubuntu-20.04]
         # https://gcc.gnu.org/onlinedocs/gcc/x86-Options.html
 #        features: ["safe", "avx2"]
 #        features: ["safe"]
@@ -41,13 +42,9 @@ jobs:
         exclude:
           - os: "macos-10.15"
             target_cpu: "haswell"
-          - os: "ubuntu-18.04"
+        include:
+          - os: "macos-10.15"
             target_cpu: "x86-64"
-          - os: "windows-2019"
-            target_cpu: "x86-64"
-          - os: "self-hosted"
-            target_cpu: "haswell"
-#            target_cpu: "x86-64"
 
     runs-on: ${{ matrix.os }}
 
@@ -136,6 +133,7 @@ jobs:
         echo "SQLITE3_LIB_DIR=C:\vcpkg\installed\x64-windows\lib" >> $GITHUB_ENV
         echo "OPENSSL_DIR=C:\Program Files\OpenSSL-Win64" >> $GITHUB_ENV
         echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $GITHUB_ENV
+        echo "C:\Strawberry\perl\bin" >> $GITHUB_PATH
 
     # this is a hack to fix an issue with building libclang in MSVC
     # it should be fixed in release 16.9 of MSVC
@@ -154,14 +152,11 @@ jobs:
           ~/.cargo/git
           target
         key: ${{ runner.os }}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
-# ToDo: Look at making caching less strict
-#        key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
     - name: Build binaries
       env:
         RUSTFLAGS: '-C target_cpu=${{ matrix.target_cpu }}'
         ROARING_ARCH: '${{ matrix.target_cpu }}'
-      shell: bash
       run: |
         echo "Cache Key: ${{ runner.os }}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}"
         #cd applications/tari_base_node
@@ -219,6 +214,7 @@ jobs:
 
     - name: Sync dist to S3 - Bash
       continue-on-error: true  # Don't break if s3 upload fails
+      if: ${{ env.AWS_SECRET_ACCESS_KEY != '' }}
       shell: bash
       run: |
         echo "Starting upload ... ${{ env.SOURCE }}"
