@@ -20,10 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod mempool_service;
-mod template_service;
-mod bft_replica_service;
+use crate::dan_layer::workers::states::ConsensusWorkerStateEvent;
+use crate::digital_assets_error::DigitalAssetError;
 
-pub use mempool_service::{MempoolService, ConcreteMempoolService};
-pub use template_service::TemplateService;
-pub use bft_replica_service::{BftReplicaService, ConcreteBftReplicaService};
+pub struct Prepare {
+
+}
+impl Prepare{
+
+    pub async fn next_event(&self) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
+        unimplemented!()
+    }
+}

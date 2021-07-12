@@ -52,3 +52,16 @@ impl AsRef<[u8]> for TokenId {
         self.0.as_slice()
     }
 }
+
+#[derive(Copy, Clone)]
+pub struct ViewId(pub u64);
+
+impl ViewId{
+    pub fn current_leader(&self, committee_size: usize) -> usize {
+        (self.0 % committee_size as u64) as usize
+    }
+}
+
+// TODO: Encapsulate
+#[derive()]
+pub struct View{ pub view_id: ViewId,  pub is_leader: bool}

@@ -20,10 +20,29 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod mempool_service;
-mod template_service;
-mod bft_replica_service;
+mod starting;
+mod prepare;
 
-pub use mempool_service::{MempoolService, ConcreteMempoolService};
-pub use template_service::TemplateService;
-pub use bft_replica_service::{BftReplicaService, ConcreteBftReplicaService};
+pub use starting::Starting;
+pub use prepare::Prepare;
+
+
+pub enum ConsensusWorkerStateEvent {
+ Initialized,
+    Errored{reason: String}
+}
+
+impl ConsensusWorkerStateEvent {
+    pub fn must_shutdown(&self) -> bool {
+        match self {
+            ConsensusWorkerStateEvent::Errored{ ..} => true,
+            _ => false
+        }
+    }
+    pub fn shutdown_reason(&self) -> Option<&str> {
+        match self {
+            ConsensusWorkerStateEvent::Errored { reason } => Some(reason.as_str()),
+            _ => None
+        }
+    }
+}

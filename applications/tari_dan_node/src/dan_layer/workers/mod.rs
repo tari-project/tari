@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod mempool_service;
-mod template_service;
-mod bft_replica_service;
+mod consensus_worker;
+pub mod states;
 
-pub use mempool_service::{MempoolService, ConcreteMempoolService};
-pub use template_service::TemplateService;
-pub use bft_replica_service::{BftReplicaService, ConcreteBftReplicaService};
+pub use consensus_worker::ConsensusWorker;

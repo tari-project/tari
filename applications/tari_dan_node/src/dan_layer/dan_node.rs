@@ -40,6 +40,8 @@ use tari_comms::tor::TorIdentity;
 use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use log::*;
 use std::fs;
+use crate::dan_layer::workers::ConsensusWorker;
+use crate::dan_layer::services::{ConcreteMempoolService, ConcreteBftReplicaService};
 
 
 const LOG_TARGET: &str = "tari::dan::dan_node";
@@ -62,13 +64,18 @@ impl DanNode {
             PeerFeatures::NONE
         )?;
 
-        let comms_config = self.create_comms_config(node_identity);
+        let comms_config = self.create_comms_config(node_identity.clone());
 
         let (publisher, peer_message_subscriptions) =
             pubsub_connector(Handle::current(), 100, self.config.buffer_rate_limit_base_node);
-        let mut handles = StackBuilder::new(shutdown).add_initializer(P2pInitializer::new(comms_config, publisher)).build().await.map_err(|err| ExitCodes::ConfigError(err.to_string()))?;
+        let mut handles = StackBuilder::new(shutdown.clone()).add_initializer(P2pInitializer::new(comms_config, publisher)).build().await.map_err(|err| ExitCodes::ConfigError(err.to_string()))?;
 
-        todo!("Finish this impl")
+        let mempool = ConcreteMempoolService::new();
+        let bft_replica_service = ConcreteBftReplicaService::new(node_identity.as_ref().clone(), vec![]);
+
+        let mut consensus_worker = ConsensusWorker::new(mempool, bft_replica_service);
+        consensus_worker.run(shutdown.clone()).await.map_err(|err| ExitCodes::ConfigError(err.to_string()))?;
+        Ok(())
     }
 
     fn create_comms_config(&self, node_identity: Arc<NodeIdentity>) -> CommsConfig {

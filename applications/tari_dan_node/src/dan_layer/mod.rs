@@ -28,3 +28,4 @@ pub mod asset_data_store;
 pub mod models;
 pub mod services;
 pub mod dan_node;
+pub mod workers;
