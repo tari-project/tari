@@ -20,33 +20,40 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::template_command::{TemplateCommand, ExecutionResult};
-use crate::types::PublicKey;
-use crate::dan_layer::templates::editable_metadata_template::EditableMetadataTemplate;
-use crate::digital_assets_error::DigitalAssetError;
-use crate::dan_layer::asset_data_store::{AssetDataStore, FileAssetDataStore};
-use crate::dan_layer::models::{TemplateId, InstructionId, InstructionCaller};
+use crate::{
+    dan_layer::{
+        models::{InstructionCaller, InstructionId, TemplateId},
+        storage::{AssetDataStore, FileAssetDataStore},
+        template_command::{ExecutionResult, TemplateCommand},
+        templates::editable_metadata_template::EditableMetadataTemplate,
+    },
+    digital_assets_error::DigitalAssetError,
+    types::PublicKey,
+};
 
 pub struct TemplateService {
- template_factory: TemplateFactory,
+    template_factory: TemplateFactory,
     instruction_log: Box<dyn InstructionLog>,
-    data_store: Box<dyn AssetDataStore>
+    data_store: Box<dyn AssetDataStore>,
 }
 
-
-
-
 impl TemplateService {
-
     pub fn new(data_store: Box<dyn AssetDataStore>) -> Self {
-        Self{
-            template_factory: TemplateFactory{},
+        Self {
+            template_factory: TemplateFactory {},
             instruction_log: Box::new(MemoryInstructionLog::default()),
-            data_store
+            data_store,
         }
     }
 
-    pub fn execute_instruction(&mut self, template: TemplateId, method: String, args: Vec<Vec<u8>>, caller: InstructionCaller, id : InstructionId) -> Result<(), DigitalAssetError>{
+    pub fn execute_instruction(
+        &mut self,
+        template: TemplateId,
+        method: String,
+        args: Vec<Vec<u8>>,
+        caller: InstructionCaller,
+        id: InstructionId,
+    ) -> Result<(), DigitalAssetError> {
         let instruction = self.template_factory.create_command(template, method, args, caller)?;
         let result = instruction.try_execute(self.data_store.as_mut())?;
         self.instruction_log.store(id, result);
@@ -54,18 +61,21 @@ impl TemplateService {
     }
 }
 
-pub struct TemplateFactory {
-
-}
+pub struct TemplateFactory {}
 
 impl TemplateFactory {
-    pub fn create_command(&self, template: TemplateId, method: String, args: Vec<Vec<u8>>, caller: InstructionCaller) -> Result<impl TemplateCommand, DigitalAssetError> {
+    pub fn create_command(
+        &self,
+        template: TemplateId,
+        method: String,
+        args: Vec<Vec<u8>>,
+        caller: InstructionCaller,
+    ) -> Result<impl TemplateCommand, DigitalAssetError> {
         match template {
-           TemplateId::EditableMetadata => EditableMetadataTemplate::create_command(method, args, caller)
+            TemplateId::EditableMetadata => EditableMetadataTemplate::create_command(method, args, caller),
         }
     }
 }
-
 
 pub trait InstructionLog {
     fn store(&mut self, id: InstructionId, result: ExecutionResult);
@@ -73,10 +83,8 @@ pub trait InstructionLog {
 
 #[derive(Default)]
 pub struct MemoryInstructionLog {
-    log: Vec<(InstructionId, ExecutionResult)>
+    log: Vec<(InstructionId, ExecutionResult)>,
 }
-
-
 
 impl InstructionLog for MemoryInstructionLog {
     fn store(&mut self, id: InstructionId, result: ExecutionResult) {

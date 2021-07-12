@@ -20,12 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-
-pub mod templates;
 pub mod template_command;
-pub mod asset_data_store;
+pub mod templates;
 
+pub mod dan_node;
 pub mod models;
 pub mod services;
-pub mod dan_node;
+pub mod storage;
 pub mod workers;

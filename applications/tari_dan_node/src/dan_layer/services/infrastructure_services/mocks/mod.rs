@@ -20,43 +20,40 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod prepare;
-mod starting;
-
-use crate::{dan_layer::models::View, digital_assets_error::DigitalAssetError};
+use crate::dan_layer::{models::HotStuffMessage, services::infrastructure_services::InboundConnectionService};
 use async_trait::async_trait;
-pub use prepare::Prepare;
-pub use starting::Starting;
-use tari_shutdown::ShutdownSignal;
+use std::collections::VecDeque;
+use tokio::sync::mpsc::{channel, Receiver, Sender};
+
+pub fn mock_inbound() -> MockInboundConnectionService {
+    MockInboundConnectionService::new()
+}
+
+#[derive()]
+pub struct MockInboundConnectionService {
+    messages: (Sender<HotStuffMessage>, Receiver<HotStuffMessage>),
+}
+
+impl Clone for MockInboundConnectionService {
+    fn clone(&self) -> Self {
+        // Not a true clone
+        MockInboundConnectionService::new()
+    }
+}
 
 #[async_trait]
-pub trait State {
-    async fn next_event(
-        &mut self,
-        current_view: &View,
-        shutdown: &ShutdownSignal,
-    ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError>;
+impl InboundConnectionService for MockInboundConnectionService {
+    async fn receive_message(&mut self) -> HotStuffMessage {
+        self.messages.1.recv().await.unwrap()
+    }
 }
 
-pub enum ConsensusWorkerStateEvent {
-    Initialized,
-    Errored { reason: String },
-    Prepared,
-    ShutdownReceived,
-}
-
-impl ConsensusWorkerStateEvent {
-    pub fn must_shutdown(&self) -> bool {
-        match self {
-            ConsensusWorkerStateEvent::Errored { .. } => true,
-            _ => false,
-        }
+impl MockInboundConnectionService {
+    pub fn new() -> Self {
+        Self { messages: channel(10) }
     }
 
-    pub fn shutdown_reason(&self) -> Option<&str> {
-        match self {
-            ConsensusWorkerStateEvent::Errored { reason } => Some(reason.as_str()),
-            _ => None,
-        }
+    pub fn push(&mut self, message: HotStuffMessage) {
+        self.messages.0.try_send(message).unwrap()
     }
 }

@@ -4598,6 +4598,7 @@ name = "tari_dan_node"
 version = "0.8.11"
 dependencies = [
  "anyhow",
+ "async-trait",
  "bytecodec",
  "clap",
  "futures 0.3.15",

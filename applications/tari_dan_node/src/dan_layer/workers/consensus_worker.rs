@@ -20,48 +20,73 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-
-use crate::dan_layer::services::{MempoolService, BftReplicaService};
-use tari_shutdown::ShutdownSignal;
-use crate::digital_assets_error::DigitalAssetError;
-use crate::dan_layer::workers::states::{Starting, ConsensusWorkerStateEvent, Prepare};
+use crate::{
+    dan_layer::{
+        models::View,
+        services::{infrastructure_services::InboundConnectionService, BftReplicaService, MempoolService},
+        workers::{
+            states,
+            states::{ConsensusWorkerStateEvent, Prepare, Starting, State},
+        },
+    },
+    digital_assets_error::DigitalAssetError,
+};
 use log::*;
-use crate::dan_layer::workers::states;
+use tari_shutdown::ShutdownSignal;
 
 const LOG_TARGET: &str = "tari::dan::consensus_worker";
 
-pub struct ConsensusWorker<TMempoolService: MempoolService, TBftReplicaService: BftReplicaService> {
-  mempool_service: TMempoolService,
+pub struct ConsensusWorker<TMempoolService, TBftReplicaService, TInboundConnectionService>
+where
+    TMempoolService: MempoolService,
+    TBftReplicaService: BftReplicaService,
+    TInboundConnectionService: InboundConnectionService + Clone,
+{
+    mempool_service: TMempoolService,
     bft_replica_service: TBftReplicaService,
-    state: ConsensusWorkerState
+    inbound_connections: TInboundConnectionService,
+    state: ConsensusWorkerState,
+    current_view: Option<View>,
 }
 
 pub enum ConsensusWorkerState {
     Starting(Starting),
-    Prepare(Prepare),
+    Prepare(Box<dyn State + Send + Sync>),
 }
 
-
-
-impl<TMempoolService:MempoolService, TBftReplicaService:BftReplicaService> ConsensusWorker<TMempoolService, TBftReplicaService> {
-
-    pub fn new(mempool_service: TMempoolService, bft_replica_service: TBftReplicaService) -> Self {
+impl<TMempoolService, TBftReplicaService, TInboundConnectionService>
+    ConsensusWorker<TMempoolService, TBftReplicaService, TInboundConnectionService>
+where
+    TMempoolService: MempoolService,
+    TBftReplicaService: BftReplicaService,
+    TInboundConnectionService: InboundConnectionService + Clone + 'static + Send + Sync,
+{
+    pub fn new(
+        mempool_service: TMempoolService,
+        bft_replica_service: TBftReplicaService,
+        inbound_connections: TInboundConnectionService,
+    ) -> Self {
         Self {
             mempool_service,
             bft_replica_service,
-            state : ConsensusWorkerState::Starting(Starting{})
+            inbound_connections,
+            state: ConsensusWorkerState::Starting(Starting {}),
+            current_view: None,
         }
     }
 
-    pub async fn run(&mut self, shutdown: ShutdownSignal) -> Result<(), DigitalAssetError>{
-        let view = self.bft_replica_service.current_view();
-use ConsensusWorkerState::*;
-
+    pub async fn run(&mut self, shutdown: ShutdownSignal) -> Result<(), DigitalAssetError> {
+        self.current_view = Some(self.bft_replica_service.current_view());
+        use ConsensusWorkerState::*;
 
         loop {
-            let next_event = self.next_state_event().await?;
+            let next_event = self.next_state_event(&shutdown).await?;
             if next_event.must_shutdown() {
-                info!(target: LOG_TARGET, "Consensus worker is shutting down because {}", next_event.shutdown_reason().unwrap_or_default());
+                info!(
+                    target: LOG_TARGET,
+                    "Consensus worker is shutting down because {}",
+                    next_event.shutdown_reason().unwrap_or_default()
+                );
                 break;
             }
             self.transition(next_event)?
@@ -70,23 +95,53 @@ use ConsensusWorkerState::*;
         Ok(())
     }
 
-    async fn next_state_event(&self) -> Result<ConsensusWorkerStateEvent, DigitalAssetError>{
+    async fn next_state_event(
+        &mut self,
+        shutdown: &ShutdownSignal,
+    ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         use ConsensusWorkerState::*;
-        match &self.state {
+        match &mut self.state {
             Starting(s) => s.next_event().await,
-            Prepare(p) => p.next_event().await,
+            Prepare(p) => {
+                p.next_event(self.current_view.as_ref().expect("Need to handle option"), shutdown)
+                    .await
+            },
         }
     }
 
     fn transition(&mut self, event: ConsensusWorkerStateEvent) -> Result<(), DigitalAssetError> {
         use ConsensusWorkerState::*;
         self.state = match (&self.state, event) {
-            (Starting(_), Initialized) => Prepare(states::Prepare{}),
+            (Starting(_), Initialized) => Prepare(Box::new(states::Prepare::new(self.inbound_connections.clone()))),
             _ => {
                 unimplemented!("State machine transition not implemented")
-            }
+            },
         };
         Ok(())
     }
+}
 
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::dan_layer::services::{
+        infrastructure_services::mocks::mock_inbound,
+        mocks::{mock_bft, mock_mempool},
+    };
+
+    use futures::task;
+    use tari_shutdown::Shutdown;
+
+    #[tokio::test(threaded_scheduler)]
+    async fn test_simple_case() {
+        let mut replica = ConsensusWorker::new(mock_mempool(), mock_bft(), mock_inbound());
+        let mut shutdown = Shutdown::new();
+        let signal = shutdown.to_signal();
+
+        let task = tokio::spawn(async move {
+            let res = replica.run(signal).await;
+        });
+        shutdown.trigger().unwrap();
+        task.await.unwrap()
+    }
 }

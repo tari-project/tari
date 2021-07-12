@@ -20,39 +20,46 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::digital_assets_error::DigitalAssetError;
-use tari_app_utilities::identity_management::setup_node_identity;
-use tari_common::{GlobalConfig, ConfigBootstrap, CommsTransport, TorControlAuthentication};
-use crate::ExitCodes;
-use std::sync::Arc;
-use tari_comms::peer_manager::PeerFeatures;
+use crate::{
+    dan_layer::{
+        services::{ConcreteBftReplicaService, ConcreteMempoolService},
+        workers::ConsensusWorker,
+    },
+    digital_assets_error::DigitalAssetError,
+    ExitCodes,
+};
+use log::*;
+use std::{fs, sync::Arc};
+use tari_app_utilities::{identity_management, identity_management::setup_node_identity, utilities};
+use tari_common::{CommsTransport, ConfigBootstrap, GlobalConfig, TorControlAuthentication};
+use tari_comms::{
+    peer_manager::PeerFeatures,
+    socks,
+    tor,
+    tor::TorIdentity,
+    transports::SocksConfig,
+    utils::multiaddr::multiaddr_to_socketaddr,
+    NodeIdentity,
+};
+use tari_comms_dht::{DbConnectionUrl, DhtConfig};
+use tari_p2p::{
+    comms_connector::pubsub_connector,
+    initialization::{CommsConfig, P2pInitializer},
+    transport::{TorConfig, TransportType},
+};
+use tari_service_framework::StackBuilder;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::runtime::Handle;
-use tari_service_framework::StackBuilder;
-use tari_p2p::initialization::{P2pInitializer, CommsConfig};
-use tari_p2p::comms_connector::pubsub_connector;
-use tari_comms_dht::{DhtConfig, DbConnectionUrl};
-use tari_comms::{NodeIdentity, tor, socks};
-use tari_p2p::transport::{TransportType, TorConfig};
-use tari_comms::transports::SocksConfig;
-use tari_app_utilities::{utilities, identity_management};
-use tari_comms::tor::TorIdentity;
-use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
-use log::*;
-use std::fs;
-use crate::dan_layer::workers::ConsensusWorker;
-use crate::dan_layer::services::{ConcreteMempoolService, ConcreteBftReplicaService};
-
 
 const LOG_TARGET: &str = "tari::dan::dan_node";
 
 pub struct DanNode {
-    config: GlobalConfig
+    config: GlobalConfig,
 }
 
 impl DanNode {
     pub fn new(config: GlobalConfig) -> Self {
-        Self {config}
+        Self { config }
     }
 
     pub async fn start(&self, create_id: bool, shutdown: ShutdownSignal) -> Result<(), ExitCodes> {
@@ -61,21 +68,26 @@ impl DanNode {
             &self.config.base_node_identity_file,
             &self.config.public_address,
             create_id,
-            PeerFeatures::NONE
+            PeerFeatures::NONE,
         )?;
 
         let comms_config = self.create_comms_config(node_identity.clone());
 
         let (publisher, peer_message_subscriptions) =
             pubsub_connector(Handle::current(), 100, self.config.buffer_rate_limit_base_node);
-        let mut handles = StackBuilder::new(shutdown.clone()).add_initializer(P2pInitializer::new(comms_config, publisher)).build().await.map_err(|err| ExitCodes::ConfigError(err.to_string()))?;
+        let mut handles = StackBuilder::new(shutdown.clone())
+            .add_initializer(P2pInitializer::new(comms_config, publisher))
+            .build()
+            .await
+            .map_err(|err| ExitCodes::ConfigError(err.to_string()))?;
 
         let mempool = ConcreteMempoolService::new();
         let bft_replica_service = ConcreteBftReplicaService::new(node_identity.as_ref().clone(), vec![]);
 
-        let mut consensus_worker = ConsensusWorker::new(mempool, bft_replica_service);
-        consensus_worker.run(shutdown.clone()).await.map_err(|err| ExitCodes::ConfigError(err.to_string()))?;
-        Ok(())
+        // let mut consensus_worker = ConsensusWorker::new(mempool, bft_replica_service);
+        // consensus_worker.run(shutdown.clone()).await.map_err(|err| ExitCodes::ConfigError(err.to_string()))?;
+        unimplemented!()
+        // Ok(())
     }
 
     fn create_comms_config(&self, node_identity: Arc<NodeIdentity>) -> CommsConfig {
@@ -113,8 +125,6 @@ impl DanNode {
         }
     }
 
-
-
     // COPIed from base node
     /// Creates a transport type from the given configuration
     ///
@@ -124,8 +134,10 @@ impl DanNode {
     /// ##Returns
     /// TransportType based on the configuration
     fn create_transport_type(&self) -> TransportType {
-
-        debug!(target: LOG_TARGET, "Transport is set to '{:?}'", self.config.comms_transport);
+        debug!(
+            target: LOG_TARGET,
+            "Transport is set to '{:?}'", self.config.comms_transport
+        );
         match self.config.comms_transport.clone() {
             CommsTransport::Tcp {
                 listener_address,

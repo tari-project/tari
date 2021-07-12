@@ -20,43 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod prepare;
-mod starting;
+use crate::dan_layer::models::HotStuffTreeNode;
 
-use crate::{dan_layer::models::View, digital_assets_error::DigitalAssetError};
-use async_trait::async_trait;
-pub use prepare::Prepare;
-pub use starting::Starting;
-use tari_shutdown::ShutdownSignal;
-
-#[async_trait]
-pub trait State {
-    async fn next_event(
-        &mut self,
-        current_view: &View,
-        shutdown: &ShutdownSignal,
-    ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError>;
+#[derive(Debug, Clone)]
+pub struct QuorumCertificate {
+    node: HotStuffTreeNode,
 }
 
-pub enum ConsensusWorkerStateEvent {
-    Initialized,
-    Errored { reason: String },
-    Prepared,
-    ShutdownReceived,
-}
-
-impl ConsensusWorkerStateEvent {
-    pub fn must_shutdown(&self) -> bool {
-        match self {
-            ConsensusWorkerStateEvent::Errored { .. } => true,
-            _ => false,
+impl QuorumCertificate {
+    pub fn new() -> Self {
+        Self {
+            node: HotStuffTreeNode {},
         }
     }
 
-    pub fn shutdown_reason(&self) -> Option<&str> {
-        match self {
-            ConsensusWorkerStateEvent::Errored { reason } => Some(reason.as_str()),
-            _ => None,
-        }
+    pub fn node(&self) -> &HotStuffTreeNode {
+        &self.node
     }
 }

@@ -20,43 +20,54 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::template_command::{TemplateCommand, ExecutionResult};
-use crate::digital_assets_error::DigitalAssetError;
-use crate::dan_layer::asset_data_store::AssetDataStore;
-use crate::dan_layer::models::InstructionCaller;
-use crate::dan_layer::models::TokenId;
+use crate::{
+    dan_layer::{
+        models::{InstructionCaller, TokenId},
+        storage::AssetDataStore,
+        template_command::{ExecutionResult, TemplateCommand},
+    },
+    digital_assets_error::DigitalAssetError,
+};
 
-pub struct EditableMetadataTemplate {
-
-}
+pub struct EditableMetadataTemplate {}
 
 impl EditableMetadataTemplate {
-    pub fn create_command(method : String, args: Vec<Vec<u8>>, caller: InstructionCaller) -> Result<impl TemplateCommand, DigitalAssetError> {
- match method.as_str() {
-     "update" => {
-         let token_id = caller.owner_token_id().clone();
-         let metadata = args.first().ok_or_else(|| DigitalAssetError::MissingArgument{argument_name: "metadata".to_string(), position: 0})?;
-         // TODO: check for too many args
+    pub fn create_command(
+        method: String,
+        args: Vec<Vec<u8>>,
+        caller: InstructionCaller,
+    ) -> Result<impl TemplateCommand, DigitalAssetError> {
+        match method.as_str() {
+            "update" => {
+                let token_id = caller.owner_token_id().clone();
+                let metadata = args.first().ok_or_else(|| DigitalAssetError::MissingArgument {
+                    argument_name: "metadata".to_string(),
+                    position: 0,
+                })?;
+                // TODO: check for too many args
 
-         Ok(UpdateMetadataCommand::new(token_id, metadata.clone(), caller))
-     },
-     _ => Err(DigitalAssetError::UnknownMethod{ method_name: method.clone()})
-     }
+                Ok(UpdateMetadataCommand::new(token_id, metadata.clone(), caller))
+            },
+            _ => Err(DigitalAssetError::UnknownMethod {
+                method_name: method.clone(),
+            }),
+        }
     }
 }
 pub struct UpdateMetadataCommand {
     token_id: TokenId,
     metadata: Vec<u8>,
-    caller: InstructionCaller
+    caller: InstructionCaller,
 }
 
 impl UpdateMetadataCommand {
-   pub fn new(token_id: TokenId, metadata: Vec<u8>,  caller: InstructionCaller) -> Self {
-       Self {
-           token_id, metadata,
-           caller
-       }
-   }
+    pub fn new(token_id: TokenId, metadata: Vec<u8>, caller: InstructionCaller) -> Self {
+        Self {
+            token_id,
+            metadata,
+            caller,
+        }
+    }
 }
 impl TemplateCommand for UpdateMetadataCommand {
     fn try_execute(&self, data_store: &mut AssetDataStore) -> Result<ExecutionResult, DigitalAssetError> {

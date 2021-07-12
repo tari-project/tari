@@ -20,19 +20,27 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+mod hot_stuff_message;
+mod hot_stuff_tree_node;
 mod instruction;
+mod proposal;
+mod quorum_certificate;
+mod replica_info;
+mod view;
 
+pub use hot_stuff_message::HotStuffMessage;
+pub use hot_stuff_tree_node::HotStuffTreeNode;
 pub use instruction::Instruction;
-
+pub use proposal::Proposal;
+pub use quorum_certificate::QuorumCertificate;
+pub use replica_info::ReplicaInfo;
+pub use view::View;
 
 pub struct InstructionId(u64);
 
-
-
 pub struct InstructionCaller {
-    owner_token_id: TokenId
+    owner_token_id: TokenId,
 }
-
 
 impl InstructionCaller {
     pub fn owner_token_id(&self) -> &TokenId {
@@ -41,7 +49,7 @@ impl InstructionCaller {
 }
 
 pub enum TemplateId {
-    EditableMetadata
+    EditableMetadata,
 }
 
 #[derive(Clone)]
@@ -53,15 +61,16 @@ impl AsRef<[u8]> for TokenId {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct ViewId(pub u64);
 
-impl ViewId{
+impl ViewId {
     pub fn current_leader(&self, committee_size: usize) -> usize {
         (self.0 % committee_size as u64) as usize
     }
 }
 
-// TODO: Encapsulate
-#[derive()]
-pub struct View{ pub view_id: ViewId,  pub is_leader: bool}
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum HotStuffMessageType {
+    Prepare,
+}

@@ -88,7 +88,7 @@ impl AssetDataStore for FileAssetDataStore {
 
 #[cfg(test)]
 mod test{
-    use crate::dan_layer::asset_data_store::{FileAssetDataStore, AssetDataStore};
+    use super::*;
     use std::path::PathBuf;
     use std::env::consts::OS;
     use tari_test_utils::paths::{temp_tari_path, create_temporary_data_path};

@@ -21,12 +21,13 @@ tari_comms_dht = {path= "../../comms/dht"}
 thiserror = "^1.0.20"
 log = { version = "0.4.8", features = ["std"] }
 anyhow = "1.0.32"
-tokio = { version="0.2.10" }
+tokio = { version="0.2.10", features = ["macros", "sync"]}
 tonic = "0.2"
 prost = "0.6"
 prost-types = "0.6.1"
 futures = { version = "^0.3.1"}
 clap = "2.33.3"
+async-trait = "0.1.50"
 
 # saving of patricia tree
 patricia_tree =  {version = "0.3.0", features =["binary-format"] }

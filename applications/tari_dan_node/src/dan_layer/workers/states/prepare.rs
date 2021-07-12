@@ -20,15 +20,96 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::workers::states::ConsensusWorkerStateEvent;
-use crate::digital_assets_error::DigitalAssetError;
+use crate::{
+    dan_layer::{
+        models::{HotStuffMessage, HotStuffMessageType, HotStuffTreeNode, Proposal, QuorumCertificate, View},
+        services::{infrastructure_services::InboundConnectionService, BftReplicaService},
+        workers::states::{ConsensusWorkerStateEvent, State},
+    },
+    digital_assets_error::DigitalAssetError,
+};
+use async_trait::async_trait;
+use futures::StreamExt;
+use tari_shutdown::{Shutdown, ShutdownSignal};
 
-pub struct Prepare {
-
+pub struct Prepare<TInboundConnectionService: InboundConnectionService + Send> {
+    // bft_service: Box<dyn BftReplicaService>,
+    locked_qc: QuorumCertificate,
+    inbound_connection: TInboundConnectionService,
 }
-impl Prepare{
 
-    pub async fn next_event(&self) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
+#[async_trait]
+impl<TInboundConnectionService: InboundConnectionService + Send + Sync> State for Prepare<TInboundConnectionService> {
+    async fn next_event(
+        &mut self,
+        current_view: &View,
+        shutdown: &ShutdownSignal,
+    ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
+        // let peekable_shutdown = shutdown.peekable();
+        if current_view.is_leader {
+            self.wait_for_new_view_messages().await;
+            let high_qc = self.find_highest_qc();
+            let proposal = self.create_proposal();
+            self.broadcast_proposal(proposal, high_qc);
+        }
+        // while peekable_shutdown.peek().await {
+        // As replica
+        let m = self.wait_for_message().await;
+        if !m.matches(HotStuffMessageType::Prepare, current_view.view_id) {
+            unimplemented!("Wrong message type received, log");
+        }
+        if self.does_extend(m.node(), m.justify().node()) {
+            if !self.is_safe_node(m.node(), m.justify()) {
+                unimplemented!("Node is not safe")
+            }
+
+            self.send_vote_to_leader(m.node());
+            return Ok(ConsensusWorkerStateEvent::Prepared);
+        } else {
+            unimplemented!("Did not extend from qc.justify.node")
+        }
+        // }
+
+        Ok(ConsensusWorkerStateEvent::ShutdownReceived)
+    }
+}
+impl<TInboundConnectionService: InboundConnectionService + Send> Prepare<TInboundConnectionService> {
+    pub fn new(inbound_connection: TInboundConnectionService) -> Self {
+        Self {
+            locked_qc: QuorumCertificate::new(),
+            inbound_connection,
+        }
+    }
+
+    async fn wait_for_new_view_messages(&self) -> HotStuffMessage {
+        unimplemented!()
+    }
+
+    fn find_highest_qc(&self) -> QuorumCertificate {
+        unimplemented!()
+    }
+
+    fn create_proposal(&self) -> Proposal {
+        unimplemented!()
+    }
+
+    async fn wait_for_message(&mut self) -> HotStuffMessage {
+        self.inbound_connection.receive_message().await
+    }
+
+    fn broadcast_proposal(&self, proposal: Proposal, high_qc: QuorumCertificate) {
+        unimplemented!()
+    }
+
+    fn does_extend(&self, node: &HotStuffTreeNode, from: &HotStuffTreeNode) -> bool {
+        unimplemented!()
+    }
+
+    fn is_safe_node(&self, node: &HotStuffTreeNode, quorum_certificate: &QuorumCertificate) -> bool {
+        self.does_extend(node, quorum_certificate.node())
+    }
+
+    fn send_vote_to_leader(&self, node: &HotStuffTreeNode) {
         unimplemented!()
     }
 }
