@@ -20,45 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::models::{HotStuffMessageType, HotStuffTreeNode, Payload, QuorumCertificate, ViewId};
-use std::hash::Hash;
+use crate::dan_layer::models::Instruction;
 
-#[derive(Debug, Clone)]
-pub struct HotStuffMessage<TPayload: Payload> {
-    view_number: ViewId,
-    message_type: HotStuffMessageType,
-    justify: QuorumCertificate<TPayload>,
-    node: Option<HotStuffTreeNode<TPayload>>,
+pub struct Block {
+    instructions: Vec<Instruction>,
 }
 
-impl<TPayload: Payload> HotStuffMessage<TPayload> {
-    pub fn new_view(prepare_qc: QuorumCertificate<TPayload>, view_number: ViewId) -> Self {
-        Self {
-            message_type: HotStuffMessageType::NewView,
-            view_number,
-            justify: prepare_qc,
-            node: None,
-        }
-    }
-
-    pub fn view_number(&self) -> ViewId {
-        self.view_number
-    }
-
-    pub fn node(&self) -> Option<&HotStuffTreeNode<TPayload>> {
-        self.node.as_ref()
-    }
-
-    pub fn message_type(&self) -> &HotStuffMessageType {
-        &self.message_type
-    }
-
-    pub fn justify(&self) -> &QuorumCertificate<TPayload> {
-        &self.justify
-    }
-
-    pub fn matches(&self, message_type: HotStuffMessageType, view_id: ViewId) -> bool {
-        // from hotstuf spec
-        self.message_type() == &message_type && view_id == self.view_number()
+impl Block {
+    pub fn new() -> Self {
+        Self { instructions: vec![] }
     }
 }

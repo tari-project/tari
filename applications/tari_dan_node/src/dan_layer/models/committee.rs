@@ -37,6 +37,16 @@ impl<TAddr: NodeAddressable> Committee<TAddr> {
         let pos = view_id.current_leader(self.members.len());
         &self.members[pos]
     }
+
+    pub fn consensus_threshold(&self) -> usize {
+        let len = self.members.len();
+        let max_failures = (len - 1) / 3;
+        len - max_failures
+    }
+
+    pub fn len(&self) -> usize {
+        self.members.len()
+    }
 }
 
 impl<TAddr: NodeAddressable> IntoIterator for Committee<TAddr> {

@@ -20,4 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub struct Proposal {}
+use crate::dan_layer::models::Payload;
+
+pub trait PayloadProvider<TPayload: Payload> {
+    fn create_payload(&self) -> TPayload;
+    fn create_genesis_payload(&self) -> TPayload;
+}

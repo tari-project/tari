@@ -31,49 +31,53 @@ use async_trait::async_trait;
 use std::collections::{HashMap, VecDeque};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 
-pub fn mock_inbound() -> MockInboundConnectionService {
+pub fn mock_inbound<TAddr: NodeAddressable, TPayload: Payload>() -> MockInboundConnectionService<TAddr, TPayload> {
     MockInboundConnectionService::new()
 }
 
 #[derive()]
-pub struct MockInboundConnectionService {
-    messages: (Sender<HotStuffMessage>, Receiver<HotStuffMessage>),
-}
-
-impl Clone for MockInboundConnectionService {
-    fn clone(&self) -> Self {
-        // Not a true clone
-        MockInboundConnectionService::new()
-    }
+pub struct MockInboundConnectionService<TAddr: NodeAddressable, TPayload: Payload> {
+    messages: (
+        Sender<(TAddr, HotStuffMessage<TPayload>)>,
+        Receiver<(TAddr, HotStuffMessage<TPayload>)>,
+    ),
 }
 
 #[async_trait]
-impl InboundConnectionService for MockInboundConnectionService {
-    async fn receive_message(&mut self) -> HotStuffMessage {
+impl<TAddr: NodeAddressable + Send, TPayload: Payload> InboundConnectionService<TAddr, TPayload>
+    for MockInboundConnectionService<TAddr, TPayload>
+{
+    async fn receive_message(&mut self) -> (TAddr, HotStuffMessage<TPayload>) {
         self.messages.1.recv().await.unwrap()
     }
 }
 
-impl MockInboundConnectionService {
+impl<TAddr: NodeAddressable, TPayload: Payload> MockInboundConnectionService<TAddr, TPayload> {
     pub fn new() -> Self {
         Self { messages: channel(10) }
     }
 
-    pub fn push(&mut self, message: HotStuffMessage) {
-        self.messages.0.try_send(message).unwrap()
+    pub fn push(&mut self, from: TAddr, message: HotStuffMessage<TPayload>) {
+        self.messages.0.try_send((from, message)).unwrap()
+    }
+
+    pub fn create_sender(&self) -> Sender<(TAddr, HotStuffMessage<TPayload>)> {
+        self.messages.0.clone()
     }
 }
 
-pub fn mock_outbound<TAddr: NodeAddressable>(committee: Vec<TAddr>) -> MockOutboundService<TAddr> {
+pub fn mock_outbound<TAddr: NodeAddressable, TPayload: Payload>(
+    committee: Vec<TAddr>,
+) -> MockOutboundService<TAddr, TPayload> {
     MockOutboundService::new(committee)
 }
 
-pub struct MockOutboundService<TAddr: NodeAddressable> {
-    inbound_senders: HashMap<TAddr, Sender<HotStuffMessage>>,
-    inbounds: HashMap<TAddr, MockInboundConnectionService>,
+pub struct MockOutboundService<TAddr: NodeAddressable, TPayload: Payload> {
+    inbound_senders: HashMap<TAddr, Sender<(TAddr, HotStuffMessage<TPayload>)>>,
+    inbounds: HashMap<TAddr, MockInboundConnectionService<TAddr, TPayload>>,
 }
 
-impl<TAddr: NodeAddressable> Clone for MockOutboundService<TAddr> {
+impl<TAddr: NodeAddressable, TPayload: Payload> Clone for MockOutboundService<TAddr, TPayload> {
     fn clone(&self) -> Self {
         MockOutboundService {
             inbound_senders: self.inbound_senders.clone(),
@@ -81,7 +85,7 @@ impl<TAddr: NodeAddressable> Clone for MockOutboundService<TAddr> {
         }
     }
 }
-impl<TAddr: NodeAddressable> MockOutboundService<TAddr> {
+impl<TAddr: NodeAddressable, TPayload: Payload> MockOutboundService<TAddr, TPayload> {
     pub fn new(committee: Vec<TAddr>) -> Self {
         let mut inbounds = HashMap::new();
         let mut inbound_senders = HashMap::new();
@@ -96,19 +100,32 @@ impl<TAddr: NodeAddressable> MockOutboundService<TAddr> {
         }
     }
 
-    pub fn take_inbound(&mut self, member: &TAddr) -> Option<MockInboundConnectionService> {
+    pub fn take_inbound(&mut self, member: &TAddr) -> Option<MockInboundConnectionService<TAddr, TPayload>> {
         self.inbounds.remove(member)
     }
 }
 
-use std::fmt::Debug;
+use crate::dan_layer::models::Payload;
+use std::{fmt::Debug, hash::Hash};
 
 #[async_trait]
-impl<TAddr: NodeAddressable + Send + Sync + Debug> OutboundService<TAddr> for MockOutboundService<TAddr> {
-    async fn send(&mut self, to: TAddr, message: HotStuffMessage) -> Result<(), DigitalAssetError> {
+impl<TAddr: NodeAddressable + Send + Sync + Debug, TPayload: Payload> OutboundService<TAddr, TPayload>
+    for MockOutboundService<TAddr, TPayload>
+{
+    async fn send(
+        &mut self,
+        from: TAddr,
+        to: TAddr,
+        message: HotStuffMessage<TPayload>,
+    ) -> Result<(), DigitalAssetError> {
         let t = &to;
         dbg!("Sending message: ", &to, &message);
-        self.inbound_senders.get_mut(t).unwrap().send(message).await.unwrap();
+        self.inbound_senders
+            .get_mut(t)
+            .unwrap()
+            .send((from, message))
+            .await
+            .unwrap();
         Ok(())
     }
 }

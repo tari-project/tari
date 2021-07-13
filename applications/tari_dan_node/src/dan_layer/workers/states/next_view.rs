@@ -22,7 +22,7 @@
 
 use crate::{
     dan_layer::{
-        models::{Committee, HotStuffMessage, QuorumCertificate, View},
+        models::{Committee, HotStuffMessage, Payload, QuorumCertificate, View},
         services::infrastructure_services::{NodeAddressable, OutboundService},
         workers::states::ConsensusWorkerStateEvent,
     },
@@ -37,18 +37,23 @@ impl NextViewState {
         Self {}
     }
 
-    pub async fn next_event<TOutboundService: OutboundService<TAddr>, TAddr: NodeAddressable + Clone + Send>(
+    pub async fn next_event<
+        TPayload: Payload,
+        TOutboundService: OutboundService<TAddr, TPayload>,
+        TAddr: NodeAddressable + Clone + Send,
+    >(
         &mut self,
         current_view: &View,
-        prepare_qc: QuorumCertificate,
+        prepare_qc: QuorumCertificate<TPayload>,
         broadcast: &mut TOutboundService,
         committee: &Committee<TAddr>,
+        node_id: TAddr,
         shutdown: &ShutdownSignal,
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
+        let message = HotStuffMessage::new_view(prepare_qc, current_view.view_id);
         let next_view = current_view.view_id.next();
-        let message = HotStuffMessage::new_view(prepare_qc, next_view);
         let leader = committee.leader_for_view(next_view);
-        broadcast.send(leader.clone(), message).await?;
+        broadcast.send(node_id, leader.clone(), message).await?;
         Ok(ConsensusWorkerStateEvent::NewView { new_view: next_view })
     }
 }

@@ -25,9 +25,9 @@ mod outbound_service;
 
 pub use inbound_connection_service::InboundConnectionService;
 pub use outbound_service::OutboundService;
-use std::hash::Hash;
+use std::{fmt::Debug, hash::Hash};
 
-pub trait NodeAddressable: Eq + Hash + Clone {}
+pub trait NodeAddressable: Eq + Hash + Clone + Debug {}
 
 impl NodeAddressable for String {}
 

@@ -46,7 +46,7 @@ use tari_shutdown::ShutdownSignal;
 //     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError>;
 // }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ConsensusWorkerStateEvent {
     Initialized,
     Errored { reason: String },

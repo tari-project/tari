@@ -20,23 +20,28 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::cmp::Ordering;
+
+mod block;
 mod committee;
 mod hot_stuff_message;
 mod hot_stuff_tree_node;
 mod instruction;
-mod proposal;
 mod quorum_certificate;
 mod replica_info;
 mod view;
+mod view_id;
 
+pub use block::Block;
 pub use committee::Committee;
 pub use hot_stuff_message::HotStuffMessage;
 pub use hot_stuff_tree_node::HotStuffTreeNode;
 pub use instruction::Instruction;
-pub use proposal::Proposal;
 pub use quorum_certificate::QuorumCertificate;
 pub use replica_info::ReplicaInfo;
+use std::{fmt::Debug, hash::Hash};
 pub use view::View;
+pub use view_id::ViewId;
 
 pub struct InstructionId(u64);
 
@@ -64,20 +69,16 @@ impl AsRef<[u8]> for TokenId {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct ViewId(pub u64);
-
-impl ViewId {
-    pub fn current_leader(&self, committee_size: usize) -> usize {
-        (self.0 % committee_size as u64) as usize
-    }
-
-    pub fn next(&self) -> ViewId {
-        ViewId(self.0 + 1)
-    }
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum HotStuffMessageType {
     NewView,
     Prepare,
 }
+
+#[derive(Debug, Clone, Hash)]
+pub struct TreeNodeHash(pub Vec<u8>);
+
+pub trait Payload: Hash + Debug + Clone + AsRef<[u8]> + Send + Sync {}
+
+impl Payload for &str {}
+
+impl Payload for String {}

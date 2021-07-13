@@ -20,45 +20,29 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::models::{HotStuffMessageType, HotStuffTreeNode, Payload, QuorumCertificate, ViewId};
-use std::hash::Hash;
+use std::cmp::Ordering;
 
-#[derive(Debug, Clone)]
-pub struct HotStuffMessage<TPayload: Payload> {
-    view_number: ViewId,
-    message_type: HotStuffMessageType,
-    justify: QuorumCertificate<TPayload>,
-    node: Option<HotStuffTreeNode<TPayload>>,
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct ViewId(pub u64);
+
+impl ViewId {
+    pub fn current_leader(&self, committee_size: usize) -> usize {
+        (self.0 % committee_size as u64) as usize
+    }
+
+    pub fn next(&self) -> ViewId {
+        ViewId(self.0 + 1)
+    }
 }
 
-impl<TPayload: Payload> HotStuffMessage<TPayload> {
-    pub fn new_view(prepare_qc: QuorumCertificate<TPayload>, view_number: ViewId) -> Self {
-        Self {
-            message_type: HotStuffMessageType::NewView,
-            view_number,
-            justify: prepare_qc,
-            node: None,
-        }
+impl PartialOrd for ViewId {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.0.partial_cmp(&other.0)
     }
+}
 
-    pub fn view_number(&self) -> ViewId {
-        self.view_number
-    }
-
-    pub fn node(&self) -> Option<&HotStuffTreeNode<TPayload>> {
-        self.node.as_ref()
-    }
-
-    pub fn message_type(&self) -> &HotStuffMessageType {
-        &self.message_type
-    }
-
-    pub fn justify(&self) -> &QuorumCertificate<TPayload> {
-        &self.justify
-    }
-
-    pub fn matches(&self, message_type: HotStuffMessageType, view_id: ViewId) -> bool {
-        // from hotstuf spec
-        self.message_type() == &message_type && view_id == self.view_number()
+impl From<u64> for ViewId {
+    fn from(v: u64) -> Self {
+        Self(v)
     }
 }

@@ -22,7 +22,10 @@
 
 mod bft_replica_service;
 mod mempool_service;
+mod payload_provider;
 mod template_service;
+
+pub use payload_provider::PayloadProvider;
 
 pub mod infrastructure_services;
 

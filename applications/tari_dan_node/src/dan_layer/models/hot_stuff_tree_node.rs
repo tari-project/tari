@@ -20,5 +20,40 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[derive(Debug, Clone)]
-pub struct HotStuffTreeNode {}
+use crate::dan_layer::models::{Payload, TreeNodeHash};
+use digest::Digest;
+use std::{
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
+};
+use tari_crypto::common::Blake256;
+
+#[derive(Debug, Clone, Hash)]
+pub struct HotStuffTreeNode<TPayload: Payload> {
+    parent: TreeNodeHash,
+    payload: TPayload,
+}
+
+impl<TPayload: Payload> HotStuffTreeNode<TPayload> {
+    pub fn genesis(payload: TPayload) -> HotStuffTreeNode<TPayload> {
+        Self {
+            parent: TreeNodeHash(vec![0u8; 32]),
+            payload,
+        }
+    }
+
+    pub fn from_parent(parent: &HotStuffTreeNode<TPayload>, payload: TPayload) -> HotStuffTreeNode<TPayload> {
+        Self {
+            parent: parent.calculate_hash(),
+            payload,
+        }
+    }
+
+    pub fn calculate_hash(&self) -> TreeNodeHash {
+        let result = Blake256::new()
+            .chain(self.parent.0.as_slice())
+            .chain(self.payload.as_ref())
+            .finalize();
+        TreeNodeHash(result.to_vec())
+    }
+}

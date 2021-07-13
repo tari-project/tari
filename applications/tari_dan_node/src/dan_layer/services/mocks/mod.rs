@@ -22,8 +22,8 @@
 
 use crate::{
     dan_layer::{
-        models::{Instruction, View, ViewId},
-        services::{BftReplicaService, MempoolService},
+        models::{Instruction, Payload, View, ViewId},
+        services::{BftReplicaService, MempoolService, PayloadProvider},
     },
     digital_assets_error::DigitalAssetError,
 };
@@ -63,4 +63,30 @@ impl BftReplicaService for MockBftReplicaService {
 
 pub fn mock_bft() -> MockBftReplicaService {
     MockBftReplicaService::new()
+}
+
+pub fn mock_static_payload_provider<TPayload: Payload>(
+    static_payload: TPayload,
+) -> MockStaticPayloadProvider<TPayload> {
+    MockStaticPayloadProvider { static_payload }
+}
+
+pub struct MockStaticPayloadProvider<TPayload: Payload> {
+    static_payload: TPayload,
+}
+
+impl<TPayload: Payload> PayloadProvider<TPayload> for MockStaticPayloadProvider<TPayload> {
+    fn create_payload(&self) -> TPayload {
+        self.static_payload.clone()
+    }
+
+    fn create_genesis_payload(&self) -> TPayload {
+        self.static_payload.clone()
+    }
+}
+
+pub fn mock_payload_provider() -> MockStaticPayloadProvider<&'static str> {
+    MockStaticPayloadProvider {
+        static_payload: "<Empty>",
+    }
 }

@@ -22,11 +22,12 @@
 
 use crate::{
     dan_layer::{
-        models::{Committee, QuorumCertificate, View, ViewId},
+        models::{Committee, Payload, QuorumCertificate, View, ViewId},
         services::{
             infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
             BftReplicaService,
             MempoolService,
+            PayloadProvider,
         },
         workers::{
             states,
@@ -36,18 +37,31 @@ use crate::{
     digital_assets_error::DigitalAssetError,
 };
 use log::*;
+use std::{
+    marker::PhantomData,
+    sync::{Arc, Mutex},
+};
 use tari_shutdown::ShutdownSignal;
 use tokio::time::Duration;
 
 const LOG_TARGET: &str = "tari::dan::consensus_worker";
 
-pub struct ConsensusWorker<TMempoolService, TBftReplicaService, TInboundConnectionService, TOutboundService, TAddr>
-where
+pub struct ConsensusWorker<
+    TMempoolService,
+    TBftReplicaService,
+    TInboundConnectionService,
+    TOutboundService,
+    TAddr,
+    TPayload,
+    TPayloadProvider,
+> where
     TMempoolService: MempoolService,
     TBftReplicaService: BftReplicaService,
-    TInboundConnectionService: InboundConnectionService + Clone,
-    TOutboundService: OutboundService<TAddr>,
+    TInboundConnectionService: InboundConnectionService<TAddr, TPayload>,
+    TOutboundService: OutboundService<TAddr, TPayload>,
     TAddr: NodeAddressable + Clone + Send,
+    TPayload: Payload,
+    TPayloadProvider: PayloadProvider<TPayload>,
 {
     mempool_service: TMempoolService,
     bft_replica_service: TBftReplicaService,
@@ -58,6 +72,8 @@ where
     committee: Committee<TAddr>,
     timeout: Duration,
     node_id: TAddr,
+    payload_provider: TPayloadProvider,
+    prepare_qc: QuorumCertificate<TPayload>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -67,14 +83,32 @@ pub enum ConsensusWorkerState {
     NextView,
 }
 
-impl<TMempoolService, TBftReplicaService, TInboundConnectionService, TOutboundService, TAddr>
-    ConsensusWorker<TMempoolService, TBftReplicaService, TInboundConnectionService, TOutboundService, TAddr>
+impl<
+        TMempoolService,
+        TBftReplicaService,
+        TInboundConnectionService,
+        TOutboundService,
+        TAddr,
+        TPayload,
+        TPayloadProvider,
+    >
+    ConsensusWorker<
+        TMempoolService,
+        TBftReplicaService,
+        TInboundConnectionService,
+        TOutboundService,
+        TAddr,
+        TPayload,
+        TPayloadProvider,
+    >
 where
     TMempoolService: MempoolService,
     TBftReplicaService: BftReplicaService,
-    TInboundConnectionService: InboundConnectionService + Clone + 'static + Send + Sync,
-    TOutboundService: OutboundService<TAddr>,
+    TInboundConnectionService: InboundConnectionService<TAddr, TPayload> + 'static + Send + Sync,
+    TOutboundService: OutboundService<TAddr, TPayload>,
     TAddr: NodeAddressable + Clone + Send + Sync,
+    TPayload: Payload,
+    TPayloadProvider: PayloadProvider<TPayload>,
 {
     pub fn new(
         mempool_service: TMempoolService,
@@ -83,6 +117,7 @@ where
         outbound_service: TOutboundService,
         committee: Committee<TAddr>,
         node_id: TAddr,
+        payload_provider: TPayloadProvider,
     ) -> Self {
         Self {
             mempool_service,
@@ -90,10 +125,12 @@ where
             inbound_connections,
             state: ConsensusWorkerState::Starting,
             current_view_id: ViewId(0),
-            timeout: Duration::from_secs(10),
+            timeout: Duration::from_secs(20),
             outbound_service,
             committee,
             node_id,
+            prepare_qc: QuorumCertificate::genesis(payload_provider.create_genesis_payload()),
+            payload_provider,
         }
     }
 
@@ -107,14 +144,14 @@ where
     pub async fn run(
         &mut self,
         shutdown: ShutdownSignal,
-        max_views_to_process: Option<usize>,
+        max_views_to_process: Option<u64>,
     ) -> Result<(), DigitalAssetError> {
         use ConsensusWorkerState::*;
 
-        let mut views_processed = 0;
+        let starting_view = self.current_view_id;
         loop {
             if let Some(max) = max_views_to_process {
-                if max <= views_processed {
+                if max <= self.current_view_id.0 - starting_view.0 {
                     break;
                 }
             }
@@ -130,7 +167,6 @@ where
             let trns = self.transition(next_event)?;
             dbg!(&trns);
             info!(target: LOG_TARGET, "Transitioning from {:?} to {:?}", trns.0, trns.1);
-            views_processed += 1;
         }
 
         Ok(())
@@ -144,18 +180,25 @@ where
         match &mut self.state {
             Starting => states::Starting {}.next_event().await,
             Prepare => {
-                let mut p = states::Prepare::new(self.inbound_connections.clone());
-                p.next_event(&self.get_current_view(), self.timeout, shutdown).await
+                let mut p = states::Prepare::new();
+                p.next_event(
+                    &self.get_current_view(),
+                    self.timeout,
+                    &self.committee,
+                    &mut self.inbound_connections,
+                    &self.payload_provider,
+                )
+                .await
             },
             NextView => {
                 let mut state = states::NextViewState::new();
-                let prepare_qc = QuorumCertificate::new();
                 state
                     .next_event(
                         &self.get_current_view(),
-                        prepare_qc,
+                        self.prepare_qc.clone(),
                         &mut self.outbound_service,
                         &self.committee,
+                        self.node_id.clone(),
                         shutdown,
                     )
                     .await
@@ -198,10 +241,9 @@ mod test {
         mocks::{mock_bft, mock_mempool},
     };
 
-    use crate::dan_layer::services::infrastructure_services::mocks::{
-        mock_outbound,
-        MockInboundConnectionService,
-        MockOutboundService,
+    use crate::dan_layer::services::{
+        infrastructure_services::mocks::{mock_outbound, MockInboundConnectionService, MockOutboundService},
+        mocks::mock_static_payload_provider,
     };
     use futures::task;
     use std::collections::HashMap;
@@ -209,15 +251,23 @@ mod test {
     use tokio::task::JoinHandle;
 
     fn start_replica(
-        inbound: MockInboundConnectionService,
-        outbound: MockOutboundService<&'static str>,
+        inbound: MockInboundConnectionService<&'static str, &'static str>,
+        outbound: MockOutboundService<&'static str, &'static str>,
         committee: Committee<&'static str>,
         node_id: &'static str,
         shutdown_signal: ShutdownSignal,
     ) -> JoinHandle<()> {
-        let mut replica_a = ConsensusWorker::new(mock_mempool(), mock_bft(), inbound, outbound, committee, node_id);
+        let mut replica_a = ConsensusWorker::new(
+            mock_mempool(),
+            mock_bft(),
+            inbound,
+            outbound,
+            committee,
+            node_id,
+            mock_static_payload_provider("Hello"),
+        );
         tokio::spawn(async move {
-            let res = replica_a.run(shutdown_signal, Some(10)).await;
+            let res = replica_a.run(shutdown_signal, Some(2)).await;
         })
     }
 
@@ -238,7 +288,7 @@ mod test {
         let task_b = start_replica(inbound_b, outbound.clone(), committee.clone(), "B", signal.clone());
         let task_c = start_replica(inbound_c, outbound.clone(), committee.clone(), "C", signal.clone());
         let task_d = start_replica(inbound_d, outbound.clone(), committee.clone(), "D", signal.clone());
-        shutdown.trigger().unwrap();
+        // shutdown.trigger().unwrap();
         task_a.await.unwrap();
         task_b.await.unwrap();
         task_c.await.unwrap();

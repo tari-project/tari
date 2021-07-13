@@ -4601,6 +4601,7 @@ dependencies = [
  "async-trait",
  "bytecodec",
  "clap",
+ "digest",
  "futures 0.3.15",
  "log 0.4.14",
  "patricia_tree",

@@ -21,12 +21,20 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    dan_layer::{models::HotStuffMessage, services::infrastructure_services::NodeAddressable},
+    dan_layer::{
+        models::{HotStuffMessage, Payload},
+        services::infrastructure_services::NodeAddressable,
+    },
     digital_assets_error::DigitalAssetError,
 };
 use async_trait::async_trait;
 
 #[async_trait]
-pub trait OutboundService<TAddr: NodeAddressable + Send> {
-    async fn send(&mut self, to: TAddr, message: HotStuffMessage) -> Result<(), DigitalAssetError>;
+pub trait OutboundService<TAddr: NodeAddressable + Send, TPayload: Payload> {
+    async fn send(
+        &mut self,
+        from: TAddr,
+        to: TAddr,
+        message: HotStuffMessage<TPayload>,
+    ) -> Result<(), DigitalAssetError>;
 }

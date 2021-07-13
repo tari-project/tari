@@ -20,11 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::models::HotStuffMessage;
+use crate::dan_layer::models::{HotStuffMessage, Payload};
 
+use crate::dan_layer::services::infrastructure_services::NodeAddressable;
 use async_trait::async_trait;
 
 #[async_trait]
-pub trait InboundConnectionService {
-    async fn receive_message(&mut self) -> HotStuffMessage;
+pub trait InboundConnectionService<TAddr: NodeAddressable, TPayload: Payload> {
+    async fn receive_message(&mut self) -> (TAddr, HotStuffMessage<TPayload>);
 }

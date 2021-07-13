@@ -20,21 +20,31 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::models::HotStuffTreeNode;
+use crate::dan_layer::models::{HotStuffTreeNode, Payload, ViewId};
 
 #[derive(Debug, Clone)]
-pub struct QuorumCertificate {
-    node: HotStuffTreeNode,
+pub struct QuorumCertificate<TPayload: Payload> {
+    node: HotStuffTreeNode<TPayload>,
+    view_number: ViewId,
 }
 
-impl QuorumCertificate {
-    pub fn new() -> Self {
+impl<TPayload: Payload> QuorumCertificate<TPayload> {
+    pub fn new(view_number: ViewId, node: HotStuffTreeNode<TPayload>) -> Self {
+        Self { node, view_number }
+    }
+
+    pub fn genesis(payload: TPayload) -> Self {
         Self {
-            node: HotStuffTreeNode {},
+            node: HotStuffTreeNode::genesis(payload),
+            view_number: 0.into(),
         }
     }
 
-    pub fn node(&self) -> &HotStuffTreeNode {
+    pub fn node(&self) -> &HotStuffTreeNode<TPayload> {
         &self.node
+    }
+
+    pub fn view_number(&self) -> ViewId {
+        self.view_number
     }
 }
