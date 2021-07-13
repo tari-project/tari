@@ -93,13 +93,14 @@ impl<TAddr: NodeAddressable> MockOutboundService<TAddr> {
     }
 }
 
+use std::fmt::Debug;
+
 #[async_trait]
-impl<TAddr: NodeAddressable + Send> OutboundService for MockOutboundService<TAddr> {
-    async fn send<TAddr2: NodeAddressable + Send>(
-        &mut self,
-        to: TAddr2,
-        message: HotStuffMessage,
-    ) -> Result<(), DigitalAssetError> {
-        todo!()
+impl<TAddr: NodeAddressable + Send + Sync + Debug> OutboundService<TAddr> for MockOutboundService<TAddr> {
+    async fn send(&mut self, to: TAddr, message: HotStuffMessage) -> Result<(), DigitalAssetError> {
+        let t = &to;
+        dbg!("Sending message: ", &to, &message);
+        self.inbound_senders.get_mut(t).unwrap().send(message).await.unwrap();
+        Ok(())
     }
 }

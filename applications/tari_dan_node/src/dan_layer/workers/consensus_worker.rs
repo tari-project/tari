@@ -22,7 +22,7 @@
 
 use crate::{
     dan_layer::{
-        models::{Committee, QuorumCertificate, View},
+        models::{Committee, QuorumCertificate, View, ViewId},
         services::{
             infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
             BftReplicaService,
@@ -46,17 +46,18 @@ where
     TMempoolService: MempoolService,
     TBftReplicaService: BftReplicaService,
     TInboundConnectionService: InboundConnectionService + Clone,
-    TOutboundService: OutboundService,
-    TAddr: NodeAddressable + Clone,
+    TOutboundService: OutboundService<TAddr>,
+    TAddr: NodeAddressable + Clone + Send,
 {
     mempool_service: TMempoolService,
     bft_replica_service: TBftReplicaService,
     inbound_connections: TInboundConnectionService,
     outbound_service: TOutboundService,
     state: ConsensusWorkerState,
-    current_view: Option<View>,
+    current_view_id: ViewId,
     committee: Committee<TAddr>,
     timeout: Duration,
+    node_id: TAddr,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -72,7 +73,7 @@ where
     TMempoolService: MempoolService,
     TBftReplicaService: BftReplicaService,
     TInboundConnectionService: InboundConnectionService + Clone + 'static + Send + Sync,
-    TOutboundService: OutboundService,
+    TOutboundService: OutboundService<TAddr>,
     TAddr: NodeAddressable + Clone + Send + Sync,
 {
     pub fn new(
@@ -81,24 +82,42 @@ where
         inbound_connections: TInboundConnectionService,
         outbound_service: TOutboundService,
         committee: Committee<TAddr>,
+        node_id: TAddr,
     ) -> Self {
         Self {
             mempool_service,
             bft_replica_service,
             inbound_connections,
             state: ConsensusWorkerState::Starting,
-            current_view: None,
+            current_view_id: ViewId(0),
             timeout: Duration::from_secs(10),
             outbound_service,
             committee,
+            node_id,
         }
     }
 
-    pub async fn run(&mut self, shutdown: ShutdownSignal) -> Result<(), DigitalAssetError> {
-        self.current_view = Some(self.bft_replica_service.current_view());
+    fn get_current_view(&self) -> View {
+        View {
+            view_id: self.current_view_id,
+            is_leader: self.committee.leader_for_view(self.current_view_id) == &self.node_id,
+        }
+    }
+
+    pub async fn run(
+        &mut self,
+        shutdown: ShutdownSignal,
+        max_views_to_process: Option<usize>,
+    ) -> Result<(), DigitalAssetError> {
         use ConsensusWorkerState::*;
 
+        let mut views_processed = 0;
         loop {
+            if let Some(max) = max_views_to_process {
+                if max <= views_processed {
+                    break;
+                }
+            }
             let next_event = self.next_state_event(&shutdown).await?;
             if next_event.must_shutdown() {
                 info!(
@@ -111,6 +130,7 @@ where
             let trns = self.transition(next_event)?;
             dbg!(&trns);
             info!(target: LOG_TARGET, "Transitioning from {:?} to {:?}", trns.0, trns.1);
+            views_processed += 1;
         }
 
         Ok(())
@@ -125,19 +145,14 @@ where
             Starting => states::Starting {}.next_event().await,
             Prepare => {
                 let mut p = states::Prepare::new(self.inbound_connections.clone());
-                p.next_event(
-                    self.current_view.as_ref().expect("Need to handle option"),
-                    self.timeout,
-                    shutdown,
-                )
-                .await
+                p.next_event(&self.get_current_view(), self.timeout, shutdown).await
             },
             NextView => {
                 let mut state = states::NextViewState::new();
                 let prepare_qc = QuorumCertificate::new();
                 state
                     .next_event(
-                        self.current_view.as_ref().expect("TODO fix"),
+                        &self.get_current_view(),
                         prepare_qc,
                         &mut self.outbound_service,
                         &self.committee,
@@ -160,6 +175,10 @@ where
             (_, TimedOut) => {
                 dbg!("timing out?");
                 NextView
+            },
+            (NextView, NewView { .. }) => {
+                self.current_view_id = self.current_view_id.next();
+                Prepare
             },
             (s, e) => {
                 dbg!(&s);
@@ -198,12 +217,13 @@ mod test {
             outbound.take_inbound(&"A").unwrap(),
             outbound,
             committee,
+            "A",
         );
         let mut shutdown = Shutdown::new();
         let signal = shutdown.to_signal();
 
         let task = tokio::spawn(async move {
-            let res = replica_a.run(signal).await;
+            let res = replica_a.run(signal, Some(10)).await;
         });
         shutdown.trigger().unwrap();
         task.await.unwrap()

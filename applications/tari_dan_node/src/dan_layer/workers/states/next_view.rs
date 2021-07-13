@@ -37,7 +37,7 @@ impl NextViewState {
         Self {}
     }
 
-    pub async fn next_event<TOutboundService: OutboundService, TAddr: NodeAddressable + Clone + Send>(
+    pub async fn next_event<TOutboundService: OutboundService<TAddr>, TAddr: NodeAddressable + Clone + Send>(
         &mut self,
         current_view: &View,
         prepare_qc: QuorumCertificate,

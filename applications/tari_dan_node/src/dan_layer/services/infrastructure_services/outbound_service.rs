@@ -27,10 +27,6 @@ use crate::{
 use async_trait::async_trait;
 
 #[async_trait]
-pub trait OutboundService {
-    async fn send<TAddr: NodeAddressable + Send>(
-        &mut self,
-        to: TAddr,
-        message: HotStuffMessage,
-    ) -> Result<(), DigitalAssetError>;
+pub trait OutboundService<TAddr: NodeAddressable + Send> {
+    async fn send(&mut self, to: TAddr, message: HotStuffMessage) -> Result<(), DigitalAssetError>;
 }
