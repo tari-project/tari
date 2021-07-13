@@ -1,0 +1,15 @@
+{
+  "name": "@tari/wallet-grpc-client",
+  "version": "0.0.1",
+  "description": "GRPC client for Tari wallet",
+  "main": "./src/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Tari development community",
+  "dependencies": {
+    "@grpc/grpc-js": "^1.2.3",
+    "@grpc/proto-loader": "^0.5.5",
+    "grpc-promise": "^1.4.0"
+  }
+}
