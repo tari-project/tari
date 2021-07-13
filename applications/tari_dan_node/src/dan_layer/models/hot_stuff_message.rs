@@ -41,6 +41,19 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
         }
     }
 
+    pub fn prepare(
+        proposal: HotStuffTreeNode<TPayload>,
+        high_qc: QuorumCertificate<TPayload>,
+        view_number: ViewId,
+    ) -> Self {
+        Self {
+            message_type: HotStuffMessageType::Prepare,
+            node: Some(proposal),
+            justify: high_qc,
+            view_number,
+        }
+    }
+
     pub fn view_number(&self) -> ViewId {
         self.view_number
     }

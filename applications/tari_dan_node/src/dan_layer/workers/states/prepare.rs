@@ -35,7 +35,7 @@ use crate::{
             ViewId,
         },
         services::{
-            infrastructure_services::{InboundConnectionService, NodeAddressable},
+            infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
             BftReplicaService,
             MempoolService,
             PayloadProvider,
@@ -55,32 +55,38 @@ use std::{
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::time::{delay_for, Duration};
 
-pub struct Prepare<TInboundConnectionService, TAddr, TPayloadProvider, TPayload>
+pub struct Prepare<TInboundConnectionService, TOutboundService, TAddr, TPayloadProvider, TPayload>
 where
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload> + Send,
+    TOutboundService: OutboundService<TAddr, TPayload>,
     TAddr: NodeAddressable,
     TPayload: Payload,
     TPayloadProvider: PayloadProvider<TPayload>,
 {
+    node_id: TAddr,
     // bft_service: Box<dyn BftReplicaService>,
     // TODO remove this hack
     phantom: PhantomData<TInboundConnectionService>,
     phantom_payload_provider: PhantomData<TPayloadProvider>,
+    phantom_outbound: PhantomData<TOutboundService>,
     received_new_view_messages: HashMap<TAddr, HotStuffMessage<TPayload>>,
 }
 
-impl<TInboundConnectionService, TAddr, TPayloadProvider, TPayload>
-    Prepare<TInboundConnectionService, TAddr, TPayloadProvider, TPayload>
+impl<TInboundConnectionService, TOutboundService, TAddr, TPayloadProvider, TPayload>
+    Prepare<TInboundConnectionService, TOutboundService, TAddr, TPayloadProvider, TPayload>
 where
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload> + Send,
+    TOutboundService: OutboundService<TAddr, TPayload>,
     TAddr: NodeAddressable,
     TPayload: Payload,
     TPayloadProvider: PayloadProvider<TPayload>,
 {
-    pub fn new() -> Self {
+    pub fn new(node_id: TAddr) -> Self {
         Self {
+            node_id,
             phantom: PhantomData,
             phantom_payload_provider: PhantomData,
+            phantom_outbound: PhantomData,
             received_new_view_messages: HashMap::new(),
         }
     }
@@ -91,6 +97,7 @@ where
         timeout: Duration,
         committee: &Committee<TAddr>,
         inbound_services: &mut TInboundConnectionService,
+        outbound_service: &mut TOutboundService,
         payload_provider: &TPayloadProvider,
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         self.received_new_view_messages.clear();
@@ -104,7 +111,7 @@ where
                 (from, message) = self.wait_for_message(inbound_services) => {
                     dbg!("Received message: ", &message);
                     if current_view.is_leader() {
-                        if let Some(result) = self.process_leader_message(message.clone(), from, &committee, &payload_provider).await?{
+                        if let Some(result) = self.process_leader_message(&current_view, message.clone(), from, &committee, &payload_provider, outbound_service).await?{
                            next_event_result = result;
                             break;
                         }
@@ -135,15 +142,18 @@ where
 
     async fn process_leader_message(
         &mut self,
+        current_view: &View,
         message: HotStuffMessage<TPayload>,
         sender: TAddr,
         committee: &Committee<TAddr>,
         payload_provider: &TPayloadProvider,
+        outbound: &mut TOutboundService,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
         if message.message_type() != &HotStuffMessageType::NewView {
             return Ok(None);
         }
 
+        // TODO: This might need to be checked in the QC rather
         if self.received_new_view_messages.contains_key(&sender) {
             dbg!("Already received message from {:?}", &sender);
             return Ok(None);
@@ -159,7 +169,7 @@ where
             );
             let high_qc = self.find_highest_qc();
             let proposal = self.create_proposal(high_qc.node(), payload_provider);
-            self.broadcast_proposal(proposal, high_qc);
+            self.broadcast_proposal(outbound, proposal, high_qc, current_view.view_id);
             Ok(Some(ConsensusWorkerStateEvent::Prepared))
         } else {
             dbg!(
@@ -229,8 +239,15 @@ where
         inbound_connection.receive_message().await
     }
 
-    fn broadcast_proposal(&self, proposal: HotStuffTreeNode<TPayload>, high_qc: QuorumCertificate<TPayload>) {
-        unimplemented!()
+    async fn broadcast_proposal(
+        &self,
+        outbound: &mut TOutboundService,
+        proposal: HotStuffTreeNode<TPayload>,
+        high_qc: QuorumCertificate<TPayload>,
+        view_number: ViewId,
+    ) -> Result<(), DigitalAssetError> {
+        let message = HotStuffMessage::prepare(proposal, high_qc, view_number);
+        outbound.broadcast(self.node_id.clone(), message).await
     }
 
     fn does_extend(&self, node: &HotStuffTreeNode<TPayload>, from: &HotStuffTreeNode<TPayload>) -> bool {
@@ -256,40 +273,56 @@ mod test {
     use super::*;
     use crate::dan_layer::{
         models::ViewId,
-        services::{infrastructure_services::mocks::mock_inbound, mocks::mock_payload_provider},
+        services::{
+            infrastructure_services::mocks::{mock_inbound, mock_outbound},
+            mocks::mock_payload_provider,
+        },
     };
     use tokio::time::Duration;
 
     #[tokio::test(threaded_scheduler)]
     async fn basic_test_as_leader() {
-        let mut inbound = mock_inbound();
-        let mut sender = inbound.create_sender();
-        let mut state = Prepare::new();
+        // let mut inbound = mock_inbound();
+        // let mut sender = inbound.create_sender();
+        let mut state = Prepare::new("B");
         let view = View {
             view_id: ViewId(1),
             is_leader: true,
         };
         let committee = Committee::new(vec!["A", "B", "C", "D"]);
+        let mut outbound = mock_outbound(committee.members.clone());
+        let mut outbound2 = outbound.clone();
+        let mut inbound = outbound.take_inbound(&"B").unwrap();
         let payload_provider = mock_payload_provider();
         let task = state.next_event(
             &view,
             Duration::from_secs(10),
             &committee,
             &mut inbound,
+            &mut outbound,
             &payload_provider,
         );
-        sender.try_send((
-            "A",
-            HotStuffMessage::new_view(QuorumCertificate::genesis("empty"), ViewId(0)),
-        ));
-        sender.try_send((
-            "B",
-            HotStuffMessage::new_view(QuorumCertificate::genesis("empty"), ViewId(0)),
-        ));
-        sender.try_send((
-            "C",
-            HotStuffMessage::new_view(QuorumCertificate::genesis("empty"), ViewId(0)),
-        ));
+        outbound2
+            .send(
+                "A",
+                "B",
+                HotStuffMessage::new_view(QuorumCertificate::genesis("empty"), ViewId(0)),
+            )
+            .await;
+        outbound2
+            .send(
+                "C",
+                "B",
+                HotStuffMessage::new_view(QuorumCertificate::genesis("empty"), ViewId(0)),
+            )
+            .await;
+        outbound2
+            .send(
+                "D",
+                "B",
+                HotStuffMessage::new_view(QuorumCertificate::genesis("empty"), ViewId(0)),
+            )
+            .await;
         let event = task.await.unwrap();
         assert_eq!(event, ConsensusWorkerStateEvent::Prepared);
     }

@@ -128,4 +128,12 @@ impl<TAddr: NodeAddressable + Send + Sync + Debug, TPayload: Payload> OutboundSe
             .unwrap();
         Ok(())
     }
+
+    async fn broadcast(&mut self, from: TAddr, message: HotStuffMessage<TPayload>) -> Result<(), DigitalAssetError> {
+        let receivers: Vec<TAddr> = self.inbound_senders.keys().map(|k| k.clone()).collect();
+        for receiver in receivers {
+            self.send(from.clone(), receiver.clone(), message.clone()).await?
+        }
+        Ok(())
+    }
 }

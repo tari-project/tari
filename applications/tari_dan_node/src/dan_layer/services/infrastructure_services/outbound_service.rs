@@ -37,4 +37,6 @@ pub trait OutboundService<TAddr: NodeAddressable + Send, TPayload: Payload> {
         to: TAddr,
         message: HotStuffMessage<TPayload>,
     ) -> Result<(), DigitalAssetError>;
+
+    async fn broadcast(&mut self, from: TAddr, message: HotStuffMessage<TPayload>) -> Result<(), DigitalAssetError>;
 }

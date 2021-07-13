@@ -180,12 +180,13 @@ where
         match &mut self.state {
             Starting => states::Starting {}.next_event().await,
             Prepare => {
-                let mut p = states::Prepare::new();
+                let mut p = states::Prepare::new(self.node_id.clone());
                 p.next_event(
                     &self.get_current_view(),
                     self.timeout,
                     &self.committee,
                     &mut self.inbound_connections,
+                    &mut self.outbound_service,
                     &self.payload_provider,
                 )
                 .await
