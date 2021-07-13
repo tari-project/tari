@@ -86,6 +86,13 @@ kernels and headers up to that block height from the genesis block.
 A strategy for propagating messages amongst nodes in a peer-to-peer network. Example implementations of
 `BroadcastStrategy` include the Gossip protocol and flood fill.
 
+## Chain Reorganization
+[reorg]: #chain-reorg "After a chain split occurs nodes on the poorer chain must resync to the best chain"
+
+A chain reorganization occurs after a chain split occurs on the network, which commonly occurs due to network latency
+and connectivity issues. When a chain split occurs one chain will have the higher accumulated proof-of-work, this chain
+is considered the best chain. Nodes on the poorer chain will need to rewind and resync their chains to best chain. In 
+this process transaction in the mempool could become orphaned or invalid.
 
 ## Checkpoint
 [checkpoint]: #checkpoint "A summary of the state of a Digital Asset that is recorded on the base layer"
@@ -289,7 +296,7 @@ can be processed or attempts to spend [UTXO]s with time-locks.
 
 
 ## Pruning horizon
-[pruninghorizon]: #pruning-horizon	"Block height at which pruning will commence"
+[pruning horizon]: #pruning-horizon	"Block height at which pruning will commence"
 
 This is a local setting for each node to help reduce syncing time and bandwidth. This is the number of blocks from the 
 chain tip beyond which a chain will be pruned.
@@ -373,10 +380,13 @@ The public key, \\(P = k.G\\) is known as the _public_ spending key.
 [SynchronisationState]: #synchronisationstate
 
 The current synchronisation state of a [Base Node]. This can either be
-* `new` - The blockchain state is empty and is waiting for synchronisation to begin.
-* `synchronising` - The blockchain state is in the process of synchronising with the rest of the network.
-* `synchronised` - The blockchain state has synchronised with the rest of the network and is in a position to validate
-  transactions.
+* `starting` - The node has freshly started up and is still waiting for first round of chain_metadata responses from its 
+  neighbours on which to base its next state change.
+* `header_sync` - The node is in the process of synchronising headers with chosen sync peer.
+* `horizon_sync` - The node is in the process of syncing blocks from the tip to its [pruning horizon]
+* `block_sync` -   The node is in the process of syncing all blocks back to the genesis block
+* `listening` - The node has completed its syncing strategy and will continue to listen for new blocks and monitor
+  its neighbours to detect if it falls behind.
 
 
 ## SynchronisationStrategy
