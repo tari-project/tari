@@ -20,9 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::{models::HotStuffMessage, services::infrastructure_services::InboundConnectionService};
+use crate::{
+    dan_layer::{
+        models::{Committee, HotStuffMessage},
+        services::infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
+    },
+    digital_assets_error::DigitalAssetError,
+};
 use async_trait::async_trait;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 
 pub fn mock_inbound() -> MockInboundConnectionService {
@@ -55,5 +61,45 @@ impl MockInboundConnectionService {
 
     pub fn push(&mut self, message: HotStuffMessage) {
         self.messages.0.try_send(message).unwrap()
+    }
+}
+
+pub fn mock_outbound<TAddr: NodeAddressable>(committee: Vec<TAddr>) -> MockOutboundService<TAddr> {
+    MockOutboundService::new(committee)
+}
+
+pub struct MockOutboundService<TAddr: NodeAddressable> {
+    inbound_senders: HashMap<TAddr, Sender<HotStuffMessage>>,
+    inbounds: HashMap<TAddr, MockInboundConnectionService>,
+}
+
+impl<TAddr: NodeAddressable> MockOutboundService<TAddr> {
+    pub fn new(committee: Vec<TAddr>) -> Self {
+        let mut inbounds = HashMap::new();
+        let mut inbound_senders = HashMap::new();
+        for member in committee {
+            let inbound = mock_inbound();
+            inbound_senders.insert(member.clone(), inbound.messages.0.clone());
+            inbounds.insert(member.clone(), inbound);
+        }
+        Self {
+            inbounds,
+            inbound_senders,
+        }
+    }
+
+    pub fn take_inbound(&mut self, member: &TAddr) -> Option<MockInboundConnectionService> {
+        self.inbounds.remove(member)
+    }
+}
+
+#[async_trait]
+impl<TAddr: NodeAddressable + Send> OutboundService for MockOutboundService<TAddr> {
+    async fn send<TAddr2: NodeAddressable + Send>(
+        &mut self,
+        to: TAddr2,
+        message: HotStuffMessage,
+    ) -> Result<(), DigitalAssetError> {
+        todo!()
     }
 }

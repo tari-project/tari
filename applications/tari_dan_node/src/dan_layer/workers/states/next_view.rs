@@ -20,64 +20,35 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod committee;
-mod hot_stuff_message;
-mod hot_stuff_tree_node;
-mod instruction;
-mod proposal;
-mod quorum_certificate;
-mod replica_info;
-mod view;
+use crate::{
+    dan_layer::{
+        models::{Committee, HotStuffMessage, QuorumCertificate, View},
+        services::infrastructure_services::{NodeAddressable, OutboundService},
+        workers::states::ConsensusWorkerStateEvent,
+    },
+    digital_assets_error::DigitalAssetError,
+};
+use tari_shutdown::ShutdownSignal;
 
-pub use committee::Committee;
-pub use hot_stuff_message::HotStuffMessage;
-pub use hot_stuff_tree_node::HotStuffTreeNode;
-pub use instruction::Instruction;
-pub use proposal::Proposal;
-pub use quorum_certificate::QuorumCertificate;
-pub use replica_info::ReplicaInfo;
-pub use view::View;
+pub struct NextViewState {}
 
-pub struct InstructionId(u64);
-
-pub struct InstructionCaller {
-    owner_token_id: TokenId,
-}
-
-impl InstructionCaller {
-    pub fn owner_token_id(&self) -> &TokenId {
-        &self.owner_token_id
-    }
-}
-
-pub enum TemplateId {
-    EditableMetadata,
-}
-
-#[derive(Clone)]
-pub struct TokenId(pub Vec<u8>);
-
-impl AsRef<[u8]> for TokenId {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_slice()
-    }
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct ViewId(pub u64);
-
-impl ViewId {
-    pub fn current_leader(&self, committee_size: usize) -> usize {
-        (self.0 % committee_size as u64) as usize
+impl NextViewState {
+    pub fn new() -> Self {
+        Self {}
     }
 
-    pub fn next(&self) -> ViewId {
-        ViewId(self.0 + 1)
+    pub async fn next_event<TOutboundService: OutboundService, TAddr: NodeAddressable + Clone + Send>(
+        &mut self,
+        current_view: &View,
+        prepare_qc: QuorumCertificate,
+        broadcast: &mut TOutboundService,
+        committee: &Committee<TAddr>,
+        shutdown: &ShutdownSignal,
+    ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
+        let next_view = current_view.view_id.next();
+        let message = HotStuffMessage::new_view(prepare_qc, next_view);
+        let leader = committee.leader_for_view(next_view);
+        broadcast.send(leader.clone(), message).await?;
+        Ok(ConsensusWorkerStateEvent::NewView { new_view: next_view })
     }
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum HotStuffMessageType {
-    NewView,
-    Prepare,
 }

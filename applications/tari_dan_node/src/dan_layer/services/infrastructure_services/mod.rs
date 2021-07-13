@@ -21,7 +21,17 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod inbound_connection_service;
+mod outbound_service;
+
 pub use inbound_connection_service::InboundConnectionService;
+pub use outbound_service::OutboundService;
+use std::hash::Hash;
+
+pub trait NodeAddressable: Eq + Hash + Clone {}
+
+impl NodeAddressable for String {}
+
+impl NodeAddressable for &str {}
 
 #[cfg(test)]
 pub mod mocks;

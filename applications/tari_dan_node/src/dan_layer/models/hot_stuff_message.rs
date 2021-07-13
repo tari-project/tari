@@ -24,19 +24,28 @@ use crate::dan_layer::models::{HotStuffMessageType, HotStuffTreeNode, QuorumCert
 
 #[derive(Debug, Clone)]
 pub struct HotStuffMessage {
-    viewNumber: ViewId,
+    view_number: ViewId,
     message_type: HotStuffMessageType,
     justify: QuorumCertificate,
-    node: HotStuffTreeNode,
+    node: Option<HotStuffTreeNode>,
 }
 
 impl HotStuffMessage {
-    pub fn viewNumber(&self) -> ViewId {
-        self.viewNumber
+    pub fn new_view(prepare_qc: QuorumCertificate, view_number: ViewId) -> Self {
+        Self {
+            message_type: HotStuffMessageType::NewView,
+            view_number,
+            justify: prepare_qc,
+            node: None,
+        }
     }
 
-    pub fn node(&self) -> &HotStuffTreeNode {
-        &self.node
+    pub fn view_number(&self) -> ViewId {
+        self.view_number
+    }
+
+    pub fn node(&self) -> Option<&HotStuffTreeNode> {
+        self.node.as_ref()
     }
 
     pub fn message_type(&self) -> &HotStuffMessageType {
@@ -49,6 +58,6 @@ impl HotStuffMessage {
 
     pub fn matches(&self, message_type: HotStuffMessageType, view_id: ViewId) -> bool {
         // from hotstuf spec
-        self.message_type() == &message_type && view_id == self.viewNumber()
+        self.message_type() == &message_type && view_id == self.view_number()
     }
 }

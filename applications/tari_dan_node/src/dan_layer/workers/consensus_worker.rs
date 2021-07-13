@@ -22,56 +22,75 @@
 
 use crate::{
     dan_layer::{
-        models::View,
-        services::{infrastructure_services::InboundConnectionService, BftReplicaService, MempoolService},
+        models::{Committee, QuorumCertificate, View},
+        services::{
+            infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
+            BftReplicaService,
+            MempoolService,
+        },
         workers::{
             states,
-            states::{ConsensusWorkerStateEvent, Prepare, Starting, State},
+            states::{ConsensusWorkerStateEvent, Prepare, Starting},
         },
     },
     digital_assets_error::DigitalAssetError,
 };
 use log::*;
 use tari_shutdown::ShutdownSignal;
+use tokio::time::Duration;
 
 const LOG_TARGET: &str = "tari::dan::consensus_worker";
 
-pub struct ConsensusWorker<TMempoolService, TBftReplicaService, TInboundConnectionService>
+pub struct ConsensusWorker<TMempoolService, TBftReplicaService, TInboundConnectionService, TOutboundService, TAddr>
 where
     TMempoolService: MempoolService,
     TBftReplicaService: BftReplicaService,
     TInboundConnectionService: InboundConnectionService + Clone,
+    TOutboundService: OutboundService,
+    TAddr: NodeAddressable + Clone,
 {
     mempool_service: TMempoolService,
     bft_replica_service: TBftReplicaService,
     inbound_connections: TInboundConnectionService,
+    outbound_service: TOutboundService,
     state: ConsensusWorkerState,
     current_view: Option<View>,
+    committee: Committee<TAddr>,
+    timeout: Duration,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum ConsensusWorkerState {
-    Starting(Starting),
-    Prepare(Box<dyn State + Send + Sync>),
+    Starting,
+    Prepare,
+    NextView,
 }
 
-impl<TMempoolService, TBftReplicaService, TInboundConnectionService>
-    ConsensusWorker<TMempoolService, TBftReplicaService, TInboundConnectionService>
+impl<TMempoolService, TBftReplicaService, TInboundConnectionService, TOutboundService, TAddr>
+    ConsensusWorker<TMempoolService, TBftReplicaService, TInboundConnectionService, TOutboundService, TAddr>
 where
     TMempoolService: MempoolService,
     TBftReplicaService: BftReplicaService,
     TInboundConnectionService: InboundConnectionService + Clone + 'static + Send + Sync,
+    TOutboundService: OutboundService,
+    TAddr: NodeAddressable + Clone + Send + Sync,
 {
     pub fn new(
         mempool_service: TMempoolService,
         bft_replica_service: TBftReplicaService,
         inbound_connections: TInboundConnectionService,
+        outbound_service: TOutboundService,
+        committee: Committee<TAddr>,
     ) -> Self {
         Self {
             mempool_service,
             bft_replica_service,
             inbound_connections,
-            state: ConsensusWorkerState::Starting(Starting {}),
+            state: ConsensusWorkerState::Starting,
             current_view: None,
+            timeout: Duration::from_secs(10),
+            outbound_service,
+            committee,
         }
     }
 
@@ -89,7 +108,9 @@ where
                 );
                 break;
             }
-            self.transition(next_event)?
+            let trns = self.transition(next_event)?;
+            dbg!(&trns);
+            info!(target: LOG_TARGET, "Transitioning from {:?} to {:?}", trns.0, trns.1);
         }
 
         Ok(())
@@ -101,23 +122,52 @@ where
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         use ConsensusWorkerState::*;
         match &mut self.state {
-            Starting(s) => s.next_event().await,
-            Prepare(p) => {
-                p.next_event(self.current_view.as_ref().expect("Need to handle option"), shutdown)
+            Starting => states::Starting {}.next_event().await,
+            Prepare => {
+                let mut p = states::Prepare::new(self.inbound_connections.clone());
+                p.next_event(
+                    self.current_view.as_ref().expect("Need to handle option"),
+                    self.timeout,
+                    shutdown,
+                )
+                .await
+            },
+            NextView => {
+                let mut state = states::NextViewState::new();
+                let prepare_qc = QuorumCertificate::new();
+                state
+                    .next_event(
+                        self.current_view.as_ref().expect("TODO fix"),
+                        prepare_qc,
+                        &mut self.outbound_service,
+                        &self.committee,
+                        shutdown,
+                    )
                     .await
             },
         }
     }
 
-    fn transition(&mut self, event: ConsensusWorkerStateEvent) -> Result<(), DigitalAssetError> {
+    fn transition(
+        &mut self,
+        event: ConsensusWorkerStateEvent,
+    ) -> Result<(ConsensusWorkerState, ConsensusWorkerState), DigitalAssetError> {
         use ConsensusWorkerState::*;
+        use ConsensusWorkerStateEvent::*;
+        let from = self.state;
         self.state = match (&self.state, event) {
-            (Starting(_), Initialized) => Prepare(Box::new(states::Prepare::new(self.inbound_connections.clone()))),
-            _ => {
+            (Starting, Initialized) => Prepare,
+            (_, TimedOut) => {
+                dbg!("timing out?");
+                NextView
+            },
+            (s, e) => {
+                dbg!(&s);
+                dbg!(&e);
                 unimplemented!("State machine transition not implemented")
             },
         };
-        Ok(())
+        Ok((from, self.state))
     }
 }
 
@@ -129,17 +179,31 @@ mod test {
         mocks::{mock_bft, mock_mempool},
     };
 
+    use crate::dan_layer::services::infrastructure_services::mocks::{
+        mock_outbound,
+        MockInboundConnectionService,
+        MockOutboundService,
+    };
     use futures::task;
+    use std::collections::HashMap;
     use tari_shutdown::Shutdown;
 
     #[tokio::test(threaded_scheduler)]
     async fn test_simple_case() {
-        let mut replica = ConsensusWorker::new(mock_mempool(), mock_bft(), mock_inbound());
+        let committee = Committee::new(vec!["A", "B", "C", "D"]);
+        let mut outbound = mock_outbound(committee.members.clone());
+        let mut replica_a = ConsensusWorker::new(
+            mock_mempool(),
+            mock_bft(),
+            outbound.take_inbound(&"A").unwrap(),
+            outbound,
+            committee,
+        );
         let mut shutdown = Shutdown::new();
         let signal = shutdown.to_signal();
 
         let task = tokio::spawn(async move {
-            let res = replica.run(signal).await;
+            let res = replica_a.run(signal).await;
         });
         shutdown.trigger().unwrap();
         task.await.unwrap()

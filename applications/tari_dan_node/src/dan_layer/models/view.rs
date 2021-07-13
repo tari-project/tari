@@ -28,3 +28,9 @@ pub struct View {
     pub view_id: ViewId,
     pub is_leader: bool,
 }
+
+impl View {
+    pub fn is_leader(&self) -> bool {
+        self.is_leader
+    }
+}

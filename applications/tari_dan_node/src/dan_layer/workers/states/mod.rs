@@ -20,29 +20,40 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+mod next_view;
 mod prepare;
 mod starting;
 
-use crate::{dan_layer::models::View, digital_assets_error::DigitalAssetError};
+use crate::{
+    dan_layer::{
+        models::{View, ViewId},
+        workers::ConsensusWorker,
+    },
+    digital_assets_error::DigitalAssetError,
+};
 use async_trait::async_trait;
+pub use next_view::NextViewState;
 pub use prepare::Prepare;
 pub use starting::Starting;
 use tari_shutdown::ShutdownSignal;
 
-#[async_trait]
-pub trait State {
-    async fn next_event(
-        &mut self,
-        current_view: &View,
-        shutdown: &ShutdownSignal,
-    ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError>;
-}
+// #[async_trait]
+// pub trait State {
+//     async fn next_event(
+//         &mut self,
+//         current_view: &View,
+//         shutdown: &ShutdownSignal,
+//     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError>;
+// }
 
+#[derive(Debug)]
 pub enum ConsensusWorkerStateEvent {
     Initialized,
     Errored { reason: String },
     Prepared,
     ShutdownReceived,
+    TimedOut,
+    NewView { new_view: ViewId },
 }
 
 impl ConsensusWorkerStateEvent {

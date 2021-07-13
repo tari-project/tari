@@ -20,64 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod committee;
-mod hot_stuff_message;
-mod hot_stuff_tree_node;
-mod instruction;
-mod proposal;
-mod quorum_certificate;
-mod replica_info;
-mod view;
+use crate::{
+    dan_layer::{models::HotStuffMessage, services::infrastructure_services::NodeAddressable},
+    digital_assets_error::DigitalAssetError,
+};
+use async_trait::async_trait;
 
-pub use committee::Committee;
-pub use hot_stuff_message::HotStuffMessage;
-pub use hot_stuff_tree_node::HotStuffTreeNode;
-pub use instruction::Instruction;
-pub use proposal::Proposal;
-pub use quorum_certificate::QuorumCertificate;
-pub use replica_info::ReplicaInfo;
-pub use view::View;
-
-pub struct InstructionId(u64);
-
-pub struct InstructionCaller {
-    owner_token_id: TokenId,
-}
-
-impl InstructionCaller {
-    pub fn owner_token_id(&self) -> &TokenId {
-        &self.owner_token_id
-    }
-}
-
-pub enum TemplateId {
-    EditableMetadata,
-}
-
-#[derive(Clone)]
-pub struct TokenId(pub Vec<u8>);
-
-impl AsRef<[u8]> for TokenId {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_slice()
-    }
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct ViewId(pub u64);
-
-impl ViewId {
-    pub fn current_leader(&self, committee_size: usize) -> usize {
-        (self.0 % committee_size as u64) as usize
-    }
-
-    pub fn next(&self) -> ViewId {
-        ViewId(self.0 + 1)
-    }
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum HotStuffMessageType {
-    NewView,
-    Prepare,
+#[async_trait]
+pub trait OutboundService {
+    async fn send<TAddr: NodeAddressable + Send>(
+        &mut self,
+        to: TAddr,
+        message: HotStuffMessage,
+    ) -> Result<(), DigitalAssetError>;
 }

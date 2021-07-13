@@ -24,13 +24,15 @@ use crate::{
     dan_layer::{
         models::{HotStuffMessage, HotStuffMessageType, HotStuffTreeNode, Proposal, QuorumCertificate, View},
         services::{infrastructure_services::InboundConnectionService, BftReplicaService},
-        workers::states::{ConsensusWorkerStateEvent, State},
+        workers::states::ConsensusWorkerStateEvent,
     },
     digital_assets_error::DigitalAssetError,
 };
 use async_trait::async_trait;
 use futures::StreamExt;
+use std::any::Any;
 use tari_shutdown::{Shutdown, ShutdownSignal};
+use tokio::time::{delay_for, Duration};
 
 pub struct Prepare<TInboundConnectionService: InboundConnectionService + Send> {
     // bft_service: Box<dyn BftReplicaService>,
@@ -38,41 +40,6 @@ pub struct Prepare<TInboundConnectionService: InboundConnectionService + Send> {
     inbound_connection: TInboundConnectionService,
 }
 
-#[async_trait]
-impl<TInboundConnectionService: InboundConnectionService + Send + Sync> State for Prepare<TInboundConnectionService> {
-    async fn next_event(
-        &mut self,
-        current_view: &View,
-        shutdown: &ShutdownSignal,
-    ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
-        // let peekable_shutdown = shutdown.peekable();
-        if current_view.is_leader {
-            self.wait_for_new_view_messages().await;
-            let high_qc = self.find_highest_qc();
-            let proposal = self.create_proposal();
-            self.broadcast_proposal(proposal, high_qc);
-        }
-        // while peekable_shutdown.peek().await {
-        // As replica
-        let m = self.wait_for_message().await;
-        if !m.matches(HotStuffMessageType::Prepare, current_view.view_id) {
-            unimplemented!("Wrong message type received, log");
-        }
-        if self.does_extend(m.node(), m.justify().node()) {
-            if !self.is_safe_node(m.node(), m.justify()) {
-                unimplemented!("Node is not safe")
-            }
-
-            self.send_vote_to_leader(m.node());
-            return Ok(ConsensusWorkerStateEvent::Prepared);
-        } else {
-            unimplemented!("Did not extend from qc.justify.node")
-        }
-        // }
-
-        Ok(ConsensusWorkerStateEvent::ShutdownReceived)
-    }
-}
 impl<TInboundConnectionService: InboundConnectionService + Send> Prepare<TInboundConnectionService> {
     pub fn new(inbound_connection: TInboundConnectionService) -> Self {
         Self {
@@ -81,8 +48,86 @@ impl<TInboundConnectionService: InboundConnectionService + Send> Prepare<TInboun
         }
     }
 
+    pub async fn next_event(
+        &mut self,
+        current_view: &View,
+        timeout: Duration,
+        shutdown: &ShutdownSignal,
+    ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
+        let mut next_event_result = ConsensusWorkerStateEvent::Errored {
+            reason: "loop ended without setting this event".to_string(),
+        };
+
+        loop {
+            tokio::select! {
+                message = self.wait_for_message() => {
+                    if current_view.is_leader() {
+                        if let Some(result) = self.process_leader_message(&message).await?{
+                           next_event_result = result;
+                            break;
+                        }
+
+                    }
+                    if let Some(result) = self.process_replica_message(&message, &current_view).await? {
+                        next_event_result = result;
+                        break;
+                    }
+
+                },
+                _ = delay_for(timeout) =>  {
+                    dbg!("Time out");
+                    // TODO: perhaps this should be from the time the state was entered
+                    next_event_result = ConsensusWorkerStateEvent::TimedOut;
+                    break;
+                }
+                // _ = shutdown => {
+                //     return Ok(ConsensusWorkerStateEvent::ShutdownReceived)
+                // }
+            }
+        }
+        Ok(next_event_result)
+    }
+
     async fn wait_for_new_view_messages(&self) -> HotStuffMessage {
         unimplemented!()
+    }
+
+    async fn process_leader_message(
+        &self,
+        message: &HotStuffMessage,
+    ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
+        if message.message_type() != &HotStuffMessageType::NewView {
+            return Ok(None);
+        }
+        let high_qc = self.find_highest_qc();
+        let proposal = self.create_proposal();
+        self.broadcast_proposal(proposal, high_qc);
+        Ok(Some(ConsensusWorkerStateEvent::Prepared))
+    }
+
+    async fn process_replica_message(
+        &self,
+        message: &HotStuffMessage,
+        current_view: &View,
+    ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
+        if !message.matches(HotStuffMessageType::Prepare, current_view.view_id) {
+            dbg!("Wrong message type received, log");
+            return Ok(None);
+        }
+        if message.node().is_none() {
+            unimplemented!("Empty message");
+        }
+        let node = message.node().unwrap();
+        if self.does_extend(node, message.justify().node()) {
+            if !self.is_safe_node(node, message.justify()) {
+                unimplemented!("Node is not safe")
+            }
+
+            self.send_vote_to_leader(node);
+            return Ok(Some(ConsensusWorkerStateEvent::Prepared));
+        } else {
+            unimplemented!("Did not extend from qc.justify.node")
+        }
     }
 
     fn find_highest_qc(&self) -> QuorumCertificate {

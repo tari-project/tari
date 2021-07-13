@@ -20,64 +20,29 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod committee;
-mod hot_stuff_message;
-mod hot_stuff_tree_node;
-mod instruction;
-mod proposal;
-mod quorum_certificate;
-mod replica_info;
-mod view;
+use crate::dan_layer::{models::ViewId, services::infrastructure_services::NodeAddressable};
 
-pub use committee::Committee;
-pub use hot_stuff_message::HotStuffMessage;
-pub use hot_stuff_tree_node::HotStuffTreeNode;
-pub use instruction::Instruction;
-pub use proposal::Proposal;
-pub use quorum_certificate::QuorumCertificate;
-pub use replica_info::ReplicaInfo;
-pub use view::View;
-
-pub struct InstructionId(u64);
-
-pub struct InstructionCaller {
-    owner_token_id: TokenId,
+pub struct Committee<TAddr: NodeAddressable> {
+    // TODO: encapsulate
+    pub members: Vec<TAddr>,
 }
 
-impl InstructionCaller {
-    pub fn owner_token_id(&self) -> &TokenId {
-        &self.owner_token_id
+impl<TAddr: NodeAddressable> Committee<TAddr> {
+    pub fn new(members: Vec<TAddr>) -> Self {
+        Self { members }
+    }
+
+    pub fn leader_for_view(&self, view_id: ViewId) -> &TAddr {
+        let pos = view_id.current_leader(self.members.len());
+        &self.members[pos]
     }
 }
 
-pub enum TemplateId {
-    EditableMetadata,
-}
+impl<TAddr: NodeAddressable> IntoIterator for Committee<TAddr> {
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+    type Item = TAddr;
 
-#[derive(Clone)]
-pub struct TokenId(pub Vec<u8>);
-
-impl AsRef<[u8]> for TokenId {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_slice()
+    fn into_iter(self) -> Self::IntoIter {
+        self.members.into_iter()
     }
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct ViewId(pub u64);
-
-impl ViewId {
-    pub fn current_leader(&self, committee_size: usize) -> usize {
-        (self.0 % committee_size as u64) as usize
-    }
-
-    pub fn next(&self) -> ViewId {
-        ViewId(self.0 + 1)
-    }
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum HotStuffMessageType {
-    NewView,
-    Prepare,
 }
