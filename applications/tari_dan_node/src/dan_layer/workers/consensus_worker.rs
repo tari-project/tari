@@ -206,26 +206,42 @@ mod test {
     use futures::task;
     use std::collections::HashMap;
     use tari_shutdown::Shutdown;
+    use tokio::task::JoinHandle;
+
+    fn start_replica(
+        inbound: MockInboundConnectionService,
+        outbound: MockOutboundService<&'static str>,
+        committee: Committee<&'static str>,
+        node_id: &'static str,
+        shutdown_signal: ShutdownSignal,
+    ) -> JoinHandle<()> {
+        let mut replica_a = ConsensusWorker::new(mock_mempool(), mock_bft(), inbound, outbound, committee, node_id);
+        tokio::spawn(async move {
+            let res = replica_a.run(shutdown_signal, Some(10)).await;
+        })
+    }
 
     #[tokio::test(threaded_scheduler)]
     async fn test_simple_case() {
-        let committee = Committee::new(vec!["A", "B", "C", "D"]);
-        let mut outbound = mock_outbound(committee.members.clone());
-        let mut replica_a = ConsensusWorker::new(
-            mock_mempool(),
-            mock_bft(),
-            outbound.take_inbound(&"A").unwrap(),
-            outbound,
-            committee,
-            "A",
-        );
         let mut shutdown = Shutdown::new();
         let signal = shutdown.to_signal();
 
-        let task = tokio::spawn(async move {
-            let res = replica_a.run(signal, Some(10)).await;
-        });
+        let committee = Committee::new(vec!["A", "B", "C", "D"]);
+        let mut outbound = mock_outbound(committee.members.clone());
+
+        let inbound_a = outbound.take_inbound(&"A").unwrap();
+        let inbound_b = outbound.take_inbound(&"B").unwrap();
+        let inbound_c = outbound.take_inbound(&"C").unwrap();
+        let inbound_d = outbound.take_inbound(&"D").unwrap();
+
+        let task_a = start_replica(inbound_a, outbound.clone(), committee.clone(), "A", signal.clone());
+        let task_b = start_replica(inbound_b, outbound.clone(), committee.clone(), "B", signal.clone());
+        let task_c = start_replica(inbound_c, outbound.clone(), committee.clone(), "C", signal.clone());
+        let task_d = start_replica(inbound_d, outbound.clone(), committee.clone(), "D", signal.clone());
         shutdown.trigger().unwrap();
-        task.await.unwrap()
+        task_a.await.unwrap();
+        task_b.await.unwrap();
+        task_c.await.unwrap();
+        task_d.await.unwrap();
     }
 }

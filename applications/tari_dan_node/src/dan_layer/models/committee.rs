@@ -22,6 +22,7 @@
 
 use crate::dan_layer::{models::ViewId, services::infrastructure_services::NodeAddressable};
 
+#[derive(Clone)]
 pub struct Committee<TAddr: NodeAddressable> {
     // TODO: encapsulate
     pub members: Vec<TAddr>,

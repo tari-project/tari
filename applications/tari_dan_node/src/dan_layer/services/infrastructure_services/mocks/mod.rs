@@ -73,6 +73,14 @@ pub struct MockOutboundService<TAddr: NodeAddressable> {
     inbounds: HashMap<TAddr, MockInboundConnectionService>,
 }
 
+impl<TAddr: NodeAddressable> Clone for MockOutboundService<TAddr> {
+    fn clone(&self) -> Self {
+        MockOutboundService {
+            inbound_senders: self.inbound_senders.clone(),
+            inbounds: HashMap::new(),
+        }
+    }
+}
 impl<TAddr: NodeAddressable> MockOutboundService<TAddr> {
     pub fn new(committee: Vec<TAddr>) -> Self {
         let mut inbounds = HashMap::new();
