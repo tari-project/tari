@@ -1,0 +1,26 @@
+on:
+  push:
+    branches:
+      - development
+  pull_request:
+    types: [opened]
+
+name: Test RFC Docs
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout 🛎️
+        uses: actions/checkout@v2.3.1
+
+      - name: Install 🦀
+        run: |
+          cd RFC
+          curl -L https://github.com/rust-lang/mdBook/releases/download/v0.4.8/mdbook-v0.4.8-x86_64-unknown-linux-gnu.tar.gz | tar xvz
+
+      - name: Test 🧪
+        run: |
+          cd RFC
+          ./mdbook test
+          ./mdbook build
