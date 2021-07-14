@@ -77,6 +77,8 @@ impl AsRef<[u8]> for TokenId {
 pub enum HotStuffMessageType {
     NewView,
     Prepare,
+    PreCommit,
+    Commit,
     // Special type
     Genesis,
 }
@@ -86,6 +88,8 @@ impl HotStuffMessageType {
         match self {
             HotStuffMessageType::NewView => 1,
             HotStuffMessageType::Prepare => 2,
+            HotStuffMessageType::PreCommit => 3,
+            HotStuffMessageType::Commit => 4,
             HotStuffMessageType::Genesis => 255,
         }
     }
@@ -114,6 +118,7 @@ pub enum ConsensusWorkerState {
     Prepare,
     PreCommit,
     Commit,
+    Decide,
     NextView,
 }
 

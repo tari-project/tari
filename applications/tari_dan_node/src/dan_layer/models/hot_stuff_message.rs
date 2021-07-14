@@ -65,9 +65,37 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
         view_number: ViewId,
     ) -> Self {
         Self {
-            message_type: HotStuffMessageType::Prepare,
+            message_type: HotStuffMessageType::PreCommit,
             node,
             justify: prepare_qc,
+            view_number,
+            partial_sig: None,
+        }
+    }
+
+    pub fn commit(
+        node: Option<HotStuffTreeNode<TPayload>>,
+        pre_commit_qc: Option<QuorumCertificate<TPayload>>,
+        view_number: ViewId,
+    ) -> Self {
+        Self {
+            message_type: HotStuffMessageType::Commit,
+            node,
+            justify: pre_commit_qc,
+            view_number,
+            partial_sig: None,
+        }
+    }
+
+    pub fn decide(
+        node: Option<HotStuffTreeNode<TPayload>>,
+        commit_qc: Option<QuorumCertificate<TPayload>>,
+        view_number: ViewId,
+    ) -> Self {
+        Self {
+            message_type: HotStuffMessageType::Commit,
+            node,
+            justify: commit_qc,
             view_number,
             partial_sig: None,
         }

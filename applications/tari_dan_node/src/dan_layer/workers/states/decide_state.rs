@@ -43,7 +43,8 @@ use crate::{
 use std::{any::Any, collections::HashMap, marker::PhantomData};
 use tokio::time::{delay_for, Duration};
 
-pub struct PreCommitState<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService>
+// TODO: This is very similar to pre-commit, and commit state
+pub struct DecideState<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService>
 where
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload>,
     TAddr: NodeAddressable,
@@ -59,11 +60,12 @@ where
     p_p: PhantomData<TPayload>,
     p_s: PhantomData<TSigningService>,
     received_new_view_messages: HashMap<TAddr, HotStuffMessage<TPayload>>,
-    prepare_qc: Option<QuorumCertificate<TPayload>>,
+    commit_qc: Option<QuorumCertificate<TPayload>>,
+    locked_qc: Option<QuorumCertificate<TPayload>>,
 }
 
 impl<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService>
-    PreCommitState<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService>
+    DecideState<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService>
 where
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload>,
     TOutboundService: OutboundService<TAddr, TPayload>,
@@ -80,7 +82,8 @@ where
             ta: PhantomData,
             p_p: PhantomData,
             received_new_view_messages: HashMap::new(),
-            prepare_qc: None,
+            commit_qc: None,
+            locked_qc: None,
             p_s: PhantomData,
         }
     }
@@ -92,7 +95,7 @@ where
         inbound_services: &mut TInboundConnectionService,
         outbound_service: &mut TOutboundService,
         signing_service: &TSigningService,
-    ) -> Result<(ConsensusWorkerStateEvent, Option<QuorumCertificate<TPayload>>), DigitalAssetError> {
+    ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         let mut next_event_result = ConsensusWorkerStateEvent::Errored {
             reason: "loop ended without setting this event".to_string(),
         };
@@ -102,7 +105,7 @@ where
         loop {
             tokio::select! {
                            (from, message) = self.wait_for_message(inbound_services) => {
-                              dbg!("[PreCommit] Received message: ", &message.message_type(), &from);
+                              dbg!("[Decide] Received message: ", &message.message_type(), &from);
             if current_view.is_leader() {
                                   if let Some(result) = self.process_leader_message(&current_view, message.clone(), &from, outbound_service
                             ).await?{
@@ -125,7 +128,7 @@ where
                                 }
                             }
         }
-        Ok((next_event_result, self.prepare_qc.clone()))
+        Ok(next_event_result)
     }
 
     async fn wait_for_message(
@@ -142,7 +145,7 @@ where
         sender: &TAddr,
         outbound: &mut TOutboundService,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
-        if !message.matches(HotStuffMessageType::Prepare, current_view.view_id) {
+        if !message.matches(HotStuffMessageType::Commit, current_view.view_id) {
             return Ok(None);
         }
 
@@ -162,10 +165,10 @@ where
             );
 
             if let Some(qc) = self.create_qc(&current_view) {
-                self.prepare_qc = Some(qc.clone());
+                self.commit_qc = Some(qc.clone());
                 self.broadcast(outbound, qc, current_view.view_id).await?;
                 // return Ok(Some(ConsensusWorkerStateEvent::PreCommitted));
-                return Ok(None);
+                return Ok(None); // Replica will move this on
             }
             dbg!("committee did not agree on node");
             return Ok(None);
@@ -188,10 +191,10 @@ where
     async fn broadcast(
         &self,
         outbound: &mut TOutboundService,
-        prepare_qc: QuorumCertificate<TPayload>,
+        commit_qc: QuorumCertificate<TPayload>,
         view_number: ViewId,
     ) -> Result<(), DigitalAssetError> {
-        let message = HotStuffMessage::pre_commit(None, Some(prepare_qc), view_number);
+        let message = HotStuffMessage::decide(None, Some(commit_qc), view_number);
         outbound.broadcast(self.node_id.clone(), message).await
     }
 
@@ -215,7 +218,7 @@ where
         }
 
         let node = node.unwrap();
-        let mut qc = QuorumCertificate::new(HotStuffMessageType::Prepare, current_view.view_id, node);
+        let mut qc = QuorumCertificate::new(HotStuffMessageType::Commit, current_view.view_id, node);
         for message in self.received_new_view_messages.values() {
             qc.combine_sig(message.partial_sig().unwrap())
         }
@@ -232,7 +235,7 @@ where
         signing_service: &TSigningService,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
         if let Some(justify) = message.justify() {
-            if !justify.matches(HotStuffMessageType::Prepare, current_view.view_id) {
+            if !justify.matches(HotStuffMessageType::Commit, current_view.view_id) {
                 dbg!(
                     "Wrong justify message type received, log",
                     &self.node_id,
@@ -250,7 +253,7 @@ where
                 return Ok(None);
             }
 
-            self.prepare_qc = Some(justify.clone());
+            self.locked_qc = Some(justify.clone());
             self.send_vote_to_leader(
                 justify.node(),
                 outbound,
@@ -259,7 +262,7 @@ where
                 &signing_service,
             )
             .await?;
-            return Ok(Some(ConsensusWorkerStateEvent::PreCommitted));
+            return Ok(Some(ConsensusWorkerStateEvent::Decided));
         } else {
             dbg!("received non justify message");
             Ok(None)
@@ -274,7 +277,7 @@ where
         view_number: ViewId,
         signing_service: &TSigningService,
     ) -> Result<(), DigitalAssetError> {
-        let mut message = HotStuffMessage::pre_commit(Some(node.clone()), None, view_number);
+        let mut message = HotStuffMessage::commit(Some(node.clone()), None, view_number);
         message.add_partial_sig(signing_service.sign(&self.node_id, &message.create_signature_challenge())?);
         outbound.send(self.node_id.clone(), view_leader.clone(), message).await
     }

@@ -57,10 +57,19 @@ impl<TPayload: Payload> QuorumCertificate<TPayload> {
         self.view_number
     }
 
+    pub fn message_type(&self) -> HotStuffMessageType {
+        self.message_type
+    }
+
     pub fn combine_sig(&mut self, partial_sig: &Signature) {
         self.signature = match &self.signature {
             None => Some(partial_sig.clone()),
             Some(s) => Some(s.combine(partial_sig)),
         };
+    }
+
+    pub fn matches(&self, message_type: HotStuffMessageType, view_id: ViewId) -> bool {
+        // from hotstuf spec
+        self.message_type() == message_type && view_id == self.view_number()
     }
 }

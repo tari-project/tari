@@ -39,13 +39,17 @@ use tari_shutdown::ShutdownSignal;
 //         shutdown: &ShutdownSignal,
 //     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError>;
 // }
+use crate::dan_layer::models::QuorumCertificate;
 
+mod commit_state;
+mod decide_state;
 mod next_view;
 mod pre_commit_state;
 mod prepare;
 mod starting;
 
-use crate::dan_layer::models::QuorumCertificate;
+pub use commit_state::CommitState;
+pub use decide_state::DecideState;
 pub use next_view::NextViewState;
 pub use pre_commit_state::PreCommitState;
 pub use prepare::Prepare;
@@ -57,6 +61,8 @@ pub enum ConsensusWorkerStateEvent {
     Errored { reason: String },
     Prepared,
     PreCommitted,
+    Committed,
+    Decided,
     ShutdownReceived,
     TimedOut,
     NewView { new_view: ViewId },

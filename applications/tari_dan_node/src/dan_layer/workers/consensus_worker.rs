@@ -221,18 +221,48 @@ where
             },
             PreCommit => {
                 let mut state = states::PreCommitState::new(self.node_id.clone(), self.committee.clone());
+                let (res, prepare_qc) = state
+                    .next_event(
+                        self.timeout,
+                        &self.get_current_view(),
+                        &mut self.inbound_connections,
+                        &mut self.outbound_service,
+                        &self.signing_service,
+                    )
+                    .await?;
+                if let Some(prepare_qc) = prepare_qc {
+                    self.prepare_qc = Arc::new(prepare_qc);
+                }
+                Ok(res)
+            },
+
+            Commit => {
+                let mut state = states::CommitState::new(self.node_id.clone(), self.committee.clone());
+                let (res, locked_qc) = state
+                    .next_event(
+                        self.timeout,
+                        &self.get_current_view(),
+                        &mut self.inbound_connections,
+                        &mut self.outbound_service,
+                        &self.signing_service,
+                    )
+                    .await?;
+                if let Some(locked_qc) = locked_qc {
+                    self.locked_qc = Arc::new(locked_qc);
+                }
+                Ok(res)
+            },
+            Decide => {
+                let mut state = states::DecideState::new(self.node_id.clone(), self.committee.clone());
                 state
                     .next_event(
                         self.timeout,
                         &self.get_current_view(),
                         &mut self.inbound_connections,
                         &mut self.outbound_service,
+                        &self.signing_service,
                     )
                     .await
-            },
-
-            Commit => {
-                unimplemented!("No commit stage")
             },
             NextView => {
                 let mut state = states::NextViewState::new();
@@ -269,6 +299,8 @@ where
             },
             (Prepare, Prepared) => PreCommit,
             (PreCommit, PreCommitted) => Commit,
+            (Commit, Committed) => Decide,
+            (Decide, Decided) => NextView,
             (s, e) => {
                 dbg!(&s);
                 dbg!(&e);
@@ -384,8 +416,14 @@ mod test {
         // new: Prepare
         // }]);
 
-        // assert_state_change(&events[0].to_vec(), vec![Prepare, NextView, Prepare, PreCommit, Commit]);
-        assert_state_change(&events[1].to_vec(), vec![Prepare, NextView, Prepare, PreCommit, Commit]);
+        assert_state_change(&events[0].to_vec(), vec![
+            Prepare, NextView, Prepare, PreCommit, Commit, Decide, NextView, Prepare, PreCommit, Commit, Decide,
+            NextView,
+        ]);
+        assert_state_change(&events[1].to_vec(), vec![
+            Prepare, NextView, Prepare, PreCommit, Commit, Decide, NextView, Prepare, PreCommit, Commit, Decide,
+            NextView,
+        ]);
     }
 
     fn assert_state_change(events: &[ConsensusWorkerDomainEvent], states: Vec<ConsensusWorkerState>) {
