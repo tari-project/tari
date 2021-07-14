@@ -136,8 +136,11 @@ where
         Ok(next_event_result)
     }
 
-    async fn wait_for_new_view_messages(&self) -> HotStuffMessage<TPayload> {
-        unimplemented!()
+    async fn wait_for_message(
+        &self,
+        inbound_connection: &mut TInboundConnectionService,
+    ) -> (TAddr, HotStuffMessage<TPayload>) {
+        inbound_connection.receive_message().await
     }
 
     async fn process_leader_message(
@@ -230,13 +233,6 @@ where
     ) -> HotStuffTreeNode<TPayload> {
         let payload = payload_provider.create_payload();
         HotStuffTreeNode::from_parent(parent, payload)
-    }
-
-    async fn wait_for_message(
-        &self,
-        inbound_connection: &mut TInboundConnectionService,
-    ) -> (TAddr, HotStuffMessage<TPayload>) {
-        inbound_connection.receive_message().await
     }
 
     async fn broadcast_proposal(

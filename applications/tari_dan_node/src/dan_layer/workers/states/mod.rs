@@ -20,10 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod next_view;
-mod prepare;
-mod starting;
-
 use crate::{
     dan_layer::{
         models::{View, ViewId},
@@ -32,9 +28,7 @@ use crate::{
     digital_assets_error::DigitalAssetError,
 };
 use async_trait::async_trait;
-pub use next_view::NextViewState;
-pub use prepare::Prepare;
-pub use starting::Starting;
+
 use tari_shutdown::ShutdownSignal;
 
 // #[async_trait]
@@ -45,6 +39,16 @@ use tari_shutdown::ShutdownSignal;
 //         shutdown: &ShutdownSignal,
 //     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError>;
 // }
+
+mod next_view;
+mod pre_commit_state;
+mod prepare;
+mod starting;
+
+pub use next_view::NextViewState;
+pub use pre_commit_state::PreCommitState;
+pub use prepare::Prepare;
+pub use starting::Starting;
 
 #[derive(Debug, PartialEq)]
 pub enum ConsensusWorkerStateEvent {

@@ -80,6 +80,7 @@ pub struct ConsensusWorker<
 pub enum ConsensusWorkerState {
     Starting,
     Prepare,
+    PreCommit,
     NextView,
 }
 
@@ -191,6 +192,10 @@ where
                 )
                 .await
             },
+            PreCommit => {
+                let mut state = states::PreCommitState::new();
+                state.next_event(self.timeout, &mut self.inbound_connections).await
+            },
             NextView => {
                 let mut state = states::NextViewState::new();
                 state
@@ -224,6 +229,7 @@ where
                 self.current_view_id = self.current_view_id.next();
                 Prepare
             },
+            (Prepare, Prepared) => PreCommit,
             (s, e) => {
                 dbg!(&s);
                 dbg!(&e);
