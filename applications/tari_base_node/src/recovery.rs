@@ -42,7 +42,7 @@ use tari_core::{
         Validators,
     },
     consensus::ConsensusManager,
-    proof_of_work::randomx_factory::{RandomXConfig, RandomXFactory},
+    proof_of_work::randomx_factory::RandomXFactory,
     transactions::types::CryptoFactories,
     validation::{
         block_validators::{BodyOnlyValidator, OrphanBlockValidator},
@@ -94,7 +94,7 @@ pub async fn run_recovery(node_config: &GlobalConfig) -> Result<(), anyhow::Erro
     };
     let rules = ConsensusManager::builder(node_config.network).build();
     let factories = CryptoFactories::default();
-    let randomx_factory = RandomXFactory::new(RandomXConfig::default(), node_config.max_randomx_vms);
+    let randomx_factory = RandomXFactory::new(node_config.max_randomx_vms);
     let validators = Validators::new(
         BodyOnlyValidator::default(),
         HeaderValidator::new(rules.clone()),
