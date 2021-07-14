@@ -118,15 +118,15 @@ where
         loop {
             tokio::select! {
                 (from, message) = self.wait_for_message(inbound_services) => {
-                    dbg!("Received message: ", &message);
+                    dbg!("Received message: ", &message.message_type(), &from);
                     if current_view.is_leader() {
-                        if let Some(result) = self.process_leader_message(&current_view, message.clone(), from, &committee, &payload_provider, outbound_service).await?{
+                        if let Some(result) = self.process_leader_message(&current_view, message.clone(), &from, &committee, &payload_provider, outbound_service).await?{
                            next_event_result = result;
                             break;
                         }
 
                     }
-                    if let Some(result) = self.process_replica_message(&message, &current_view, committee.leader_for_view(current_view.view_id),  outbound_service, &signing_service).await? {
+                    if let Some(result) = self.process_replica_message(&message, &current_view, &from,  committee.leader_for_view(current_view.view_id),  outbound_service, &signing_service).await? {
                         next_event_result = result;
                         break;
                     }
@@ -156,7 +156,7 @@ where
         &mut self,
         current_view: &View,
         message: HotStuffMessage<TPayload>,
-        sender: TAddr,
+        sender: &TAddr,
         committee: &Committee<TAddr>,
         payload_provider: &TPayloadProvider,
         outbound: &mut TOutboundService,
@@ -171,7 +171,7 @@ where
             return Ok(None);
         }
 
-        self.received_new_view_messages.insert(sender, message);
+        self.received_new_view_messages.insert(sender.clone(), message);
 
         if self.received_new_view_messages.len() >= committee.consensus_threshold() {
             dbg!(
@@ -183,7 +183,8 @@ where
             let proposal = self.create_proposal(high_qc.node(), payload_provider);
             self.broadcast_proposal(outbound, proposal, high_qc, current_view.view_id)
                 .await?;
-            Ok(Some(ConsensusWorkerStateEvent::Prepared))
+            // Ok(Some(ConsensusWorkerStateEvent::Prepared))
+            Ok(None) // Will move to pre-commit when it receives the message as a replica
         } else {
             dbg!(
                 "Consensus has NOT YET been reached with {:?} out of {} votes",
@@ -198,17 +199,26 @@ where
         &self,
         message: &HotStuffMessage<TPayload>,
         current_view: &View,
+        from: &TAddr,
         view_leader: &TAddr,
         outbound: &mut TOutboundService,
         signing_service: &TSigningService,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
-        dbg!("Processing message: {:?}", message);
         if !message.matches(HotStuffMessageType::Prepare, current_view.view_id) {
-            dbg!("Wrong message type received, log");
+            dbg!(
+                "Wrong message type received, log",
+                &self.node_id,
+                &message.message_type(),
+                current_view.view_id
+            );
             return Ok(None);
         }
         if message.node().is_none() {
             unimplemented!("Empty message");
+        }
+        if from != view_leader {
+            dbg!("Message not from leader");
+            return Ok(None);
         }
         let node = message.node().unwrap();
         if let Some(justify) = message.justify() {
@@ -217,7 +227,8 @@ where
                     unimplemented!("Node is not safe")
                 }
 
-                self.send_vote_to_leader(node, outbound, view_leader, current_view.view_id, &signing_service);
+                self.send_vote_to_leader(node, outbound, view_leader, current_view.view_id, &signing_service)
+                    .await?;
                 return Ok(Some(ConsensusWorkerStateEvent::Prepared));
             } else {
                 unimplemented!("Did not extend from qc.justify.node")

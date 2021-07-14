@@ -59,6 +59,20 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
         }
     }
 
+    pub fn pre_commit(
+        node: Option<HotStuffTreeNode<TPayload>>,
+        prepare_qc: Option<QuorumCertificate<TPayload>>,
+        view_number: ViewId,
+    ) -> Self {
+        Self {
+            message_type: HotStuffMessageType::Prepare,
+            node,
+            justify: prepare_qc,
+            view_number,
+            partial_sig: None,
+        }
+    }
+
     pub fn create_signature_challenge(&self) -> Vec<u8> {
         let mut b = Blake256::new()
             .chain(&[self.message_type.as_u8()])
@@ -92,5 +106,9 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
 
     pub fn add_partial_sig(&mut self, signature: Signature) {
         self.partial_sig = Some(signature)
+    }
+
+    pub fn partial_sig(&self) -> Option<&Signature> {
+        self.partial_sig.as_ref()
     }
 }

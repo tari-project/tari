@@ -189,7 +189,6 @@ where
                 break;
             }
             let trns = self.transition(next_event)?;
-            dbg!(&trns);
             info!(target: LOG_TARGET, "Transitioning from {:?} to {:?}", trns.0, trns.1);
             self.events_publisher.publish(ConsensusWorkerDomainEvent::StateChanged {
                 old: trns.0,
@@ -221,8 +220,19 @@ where
                 .await
             },
             PreCommit => {
-                let mut state = states::PreCommitState::new();
-                state.next_event(self.timeout, &mut self.inbound_connections).await
+                let mut state = states::PreCommitState::new(self.node_id.clone(), self.committee.clone());
+                state
+                    .next_event(
+                        self.timeout,
+                        &self.get_current_view(),
+                        &mut self.inbound_connections,
+                        &mut self.outbound_service,
+                    )
+                    .await
+            },
+
+            Commit => {
+                unimplemented!("No commit stage")
             },
             NextView => {
                 let mut state = states::NextViewState::new();
@@ -258,6 +268,7 @@ where
                 Prepare
             },
             (Prepare, Prepared) => PreCommit,
+            (PreCommit, PreCommitted) => Commit,
             (s, e) => {
                 dbg!(&s);
                 dbg!(&e);
@@ -373,8 +384,8 @@ mod test {
         // new: Prepare
         // }]);
 
-        assert_state_change(&events[0].to_vec(), vec![Prepare, NextView, Prepare, PreCommit]);
-        assert_state_change(&events[1].to_vec(), vec![Prepare, NextView, Prepare, PreCommit]);
+        // assert_state_change(&events[0].to_vec(), vec![Prepare, NextView, Prepare, PreCommit, Commit]);
+        assert_state_change(&events[1].to_vec(), vec![Prepare, NextView, Prepare, PreCommit, Commit]);
     }
 
     fn assert_state_change(events: &[ConsensusWorkerDomainEvent], states: Vec<ConsensusWorkerState>) {

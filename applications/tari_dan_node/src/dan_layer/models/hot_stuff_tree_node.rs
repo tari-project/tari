@@ -28,7 +28,7 @@ use std::{
 };
 use tari_crypto::common::Blake256;
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq)]
 pub struct HotStuffTreeNode<TPayload: Payload> {
     parent: TreeNodeHash,
     payload: TPayload,

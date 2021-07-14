@@ -20,23 +20,32 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::models::{HotStuffTreeNode, Payload, ViewId};
+use crate::dan_layer::models::{HotStuffMessageType, HotStuffTreeNode, Payload, Signature, ViewId};
 
 #[derive(Debug, Clone)]
 pub struct QuorumCertificate<TPayload: Payload> {
+    message_type: HotStuffMessageType,
     node: HotStuffTreeNode<TPayload>,
     view_number: ViewId,
+    signature: Option<Signature>,
 }
 
 impl<TPayload: Payload> QuorumCertificate<TPayload> {
-    pub fn new(view_number: ViewId, node: HotStuffTreeNode<TPayload>) -> Self {
-        Self { node, view_number }
+    pub fn new(message_type: HotStuffMessageType, view_number: ViewId, node: HotStuffTreeNode<TPayload>) -> Self {
+        Self {
+            message_type,
+            node,
+            view_number,
+            signature: None,
+        }
     }
 
     pub fn genesis(payload: TPayload) -> Self {
         Self {
+            message_type: HotStuffMessageType::Genesis,
             node: HotStuffTreeNode::genesis(payload),
             view_number: 0.into(),
+            signature: None,
         }
     }
 
@@ -46,5 +55,12 @@ impl<TPayload: Payload> QuorumCertificate<TPayload> {
 
     pub fn view_number(&self) -> ViewId {
         self.view_number
+    }
+
+    pub fn combine_sig(&mut self, partial_sig: &Signature) {
+        self.signature = match &self.signature {
+            None => Some(partial_sig.clone()),
+            Some(s) => Some(s.combine(partial_sig)),
+        };
     }
 }

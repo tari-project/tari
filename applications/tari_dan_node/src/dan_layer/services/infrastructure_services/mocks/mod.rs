@@ -119,7 +119,12 @@ impl<TAddr: NodeAddressable + Send + Sync + Debug, TPayload: Payload> OutboundSe
         message: HotStuffMessage<TPayload>,
     ) -> Result<(), DigitalAssetError> {
         let t = &to;
-        dbg!("Sending message: ", &to, &message);
+        dbg!(
+            "Sending message: ",
+            &to,
+            &message.message_type(),
+            &message.partial_sig()
+        );
         // intentionally swallow error here because the other end can die in tests
         let _ = self.inbound_senders.get_mut(t).unwrap().send((from, message)).await;
         Ok(())

@@ -77,6 +77,8 @@ impl AsRef<[u8]> for TokenId {
 pub enum HotStuffMessageType {
     NewView,
     Prepare,
+    // Special type
+    Genesis,
 }
 
 impl HotStuffMessageType {
@@ -84,6 +86,7 @@ impl HotStuffMessageType {
         match self {
             HotStuffMessageType::NewView => 1,
             HotStuffMessageType::Prepare => 2,
+            HotStuffMessageType::Genesis => 255,
         }
     }
 }
@@ -97,7 +100,7 @@ impl TreeNodeHash {
     }
 }
 
-pub trait Payload: Hash + Debug + Clone + AsRef<[u8]> + Send + Sync {}
+pub trait Payload: Hash + Debug + Clone + AsRef<[u8]> + Send + Sync + PartialEq {}
 
 impl Payload for &str {}
 
@@ -110,8 +113,15 @@ pub enum ConsensusWorkerState {
     Starting,
     Prepare,
     PreCommit,
+    Commit,
     NextView,
 }
 
 #[derive(Clone, Debug)]
 pub struct Signature {}
+
+impl Signature {
+    pub fn combine(&self, other: &Signature) -> Signature {
+        other.clone()
+    }
+}

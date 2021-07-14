@@ -45,6 +45,7 @@ mod pre_commit_state;
 mod prepare;
 mod starting;
 
+use crate::dan_layer::models::QuorumCertificate;
 pub use next_view::NextViewState;
 pub use pre_commit_state::PreCommitState;
 pub use prepare::Prepare;
@@ -55,6 +56,7 @@ pub enum ConsensusWorkerStateEvent {
     Initialized,
     Errored { reason: String },
     Prepared,
+    PreCommitted,
     ShutdownReceived,
     TimedOut,
     NewView { new_view: ViewId },
