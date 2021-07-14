@@ -134,6 +134,9 @@ impl LivenessMock {
             GetAvgLatency(_) => {
                 reply.send(Ok(LivenessResponse::AvgLatency(None))).unwrap();
             },
+            GetNetworkAvgLatency => {
+                reply.send(Ok(LivenessResponse::AvgLatency(None))).unwrap();
+            },
             SetMetadataEntry(_, _) => {
                 reply.send(Ok(LivenessResponse::Ok)).unwrap();
             },
