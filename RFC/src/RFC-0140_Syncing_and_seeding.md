@@ -4,7 +4,7 @@
 
 ![status: draft](theme/images/status-draft.svg)
 
-**Maintainer(s)**: [S W van Heerden](https://github.com/SWvheerden)
+**Maintainer(s)**: [S W van Heerden](https://github.com/SWvheerden), [Philip Robinson](https://github.com/philipr-za)
 
 # Licence
 
@@ -60,83 +60,95 @@ The aim of this Request for Comment (RFC) is to describe the syncing, seeding an
 
 When a new node comes online, loses connection or encounters a chain reorganization that is longer than it can tolerate, 
 it must enter syncing mode. This will allow it to recover its state to the newest up-to-date state. Syncing can be 
-divided into two [SynchronizationStrategy]s: complete sync and sync. Complete sync means that the node communicates with 
-an archive node to get the complete history of every single block from genesis block. Sync involves the node getting 
-every block from its [pruning horizon] to [current head], as well as every block header 
-from genesis block. 
+divided into two [SynchronizationStrategy]s: complete sync and horizon sync. Complete sync means that the node 
+communicates with an archive node to get the complete history of every single block from genesis block. Horizon Sync 
+involves the node getting every block from its [pruning horizon] to [current head], as well as every block header 
+up to the genesis block. 
+
+To determine if the node needs to synchronise the node will monitor the broadcast chain_metadata provided by its neighbours.
 
 #### Complete Sync
 
-Complete sync is only available from archive nodes, as these will be the only nodes that will be able to supply the 
+Complete sync is only available from archival nodes, as these will be the only nodes that will be able to supply the 
 complete history required to sync every block with every transaction from genesis block up onto [current head]. 
 
+#### Complete Sync Process
 
-
-#### Syncing Process
+Once the base node has determined that it is lagging behind the network tip it will start to synchronise with the peer
+it determines to have all the data required to synchronise.
 
 The syncing process MUST be done in the following steps:
 
-1. Set [SynchronizationState] to `Synchronizing`.
-2. Ask peers for their latest block, so it can get the total Proof-of-Work (PoW). 
-3. Choose the longest chain based on total PoW done on that chain.
-4. Select a connected peer with the longest chain to sync from. This is based on the following criteria:
-   - Does the peer have a high enough [pruning horizon]?
-   - Does the peer allow syncing?
-   - Does the peer have a low latency?
-5. Download all headers from genesis block up onto [current head], and validate the headers as you receive them.
-6. Download Unspent Transaction Output ([UTXO]) set at [pruning horizon]. 
-7. Download all blocks from [pruning horizon] up to [current head]. If the node is doing a 
-complete sync, the [pruning horizon] will be infinite, which means you will download all blocks ever 
-created.
-8. Validate blocks as if they were just mined and then received, in chronological order. 
+1. Set [SynchronizationState] to `header_sync`.
+2. Sync all missing headers from the genesis block to the current chain tip. The initial header sync allows the node to
+   confirm that the syncing peer does indeed have a fully intact chain from which to sync that adheres to this node's
+   consensus rules and has a valid proof-of-work that is higher than any competing chains.
+3. Set [SynchronizationState] to `block_sync`.
+4. Start downloading blocks from sync peer starting with the oldest block in our database. A fresh node will start from 
+   the genesis block.
+5. Download all block up to [current head], validating and adding the blocks to the local chain storage as we go.
+6. Once all blocks have been downloaded up and including the current network tip set the [SynchronizationState] to 
+   `listening`.
 
-After this process, the node will be in sync, and will be able to process blocks and transactions normally. 
+After this process, the node will be in sync, and will be able to process blocks and transactions normally as they 
+arrive.  
+
+#### Horizon Sync Process
+
+The horizon sync process MUST be done in the following steps:
+
+1. Set [SynchronizationState] to `header_sync`.
+2. Sync all missing headers from the genesis block to the current chain tip. The initial header sync allows the node to
+   confirm that the syncing peer does indeed have a fully intact chain from which to sync that adheres to this nodes
+   consensus rules and has a valid proof-of-work that is higher than any competing chains.
+3. Set [SynchronizationState] to `horizon_sync`.
+4. Download all kernels from the current network tip back to this node's [pruning horizon].
+5. Validate kernel MMR root against headers.
+6. Download all [utxo]'s from the current network tip back to this node's [pruning horizon].
+7. Validate outputs and [utxo] MMR.
+8. Validate the chain balances with the expect total emission that the final sync height.  
+9. Once all kernels and [utxo]s have been downloaded from the network tip back to this node's [pruning horizon] set 
+   the [SynchronizationState] to `block_sync`. This hands over further syncing to the standard sync protocol which 
+   should return to the `listening` state if no further data has been received from peers.
+
+After this process, the node will be in sync, and will be able to process blocks and transactions normally as they
+arrive.
 
 #### Keeping in Sync
 
-The node SHOULD periodically test its peers with ping messages to ensure that they are alive. When a node sends a ping 
-message, it MUST include the current total PoW, hash of the [current head] and genesis block hash of its 
-own current longest chain in the ping message. The receiving node MUST reply with a pong message, also including the total 
-PoW, [current head] and genesis block hash of its longest chain. If the two chains do not match up, the node 
-with the lowest PoW is responsible for asking the peer for syncing information and set [SynchronizationState] to `Synchronizing`. 
+The node that is in the `listening` state SHOULD periodically test a subset of its peers with ping messages to ensure 
+that they are alive. When a node sends a ping message, it MUST include the height of the current longest chain, current 
+accumulated PoW difficulty, hash of the [current head], it's pruning horizon and it's current pruned height. The 
+receiving node MUST reply with a pong message, which should include it's version of the information contained within the
+ping message.
 
-If the genesis block hashes do not match, the node is removed from its peer list, as this node is running a different 
-blockchain. 
-
-This will be handled by the node asking for each block header from the [current head], going backward for 
-older blocks, until a known block is found. If a known block is found, and if it has missing blocks, it MUST set 
-[SynchronizationState] to `Synchronizing` while it is busy catching up those blocks.
-
-If no block is found, the node will enter sync mode and resync. It cannot recover from its state, as the fork is older 
-than its [pruning horizon].
+When a node receives pong replies from the current ping round, or the timeout expires, the collected chain_metadata
+replies will be examined to determine what the current best chain is, i.e. the chain with the most accumulated work.
+If the best chain is longer than out chain data the node will set [SynchronizationState] to `header_sync` and catch up
+with the network.
 
 #### Chain Forks
 
-Chain forks can be a problem, since in Mimblewimble not all nodes keep the complete transaction history. The design 
-philosophy is more along the lines of only keeping the current [Blockchain state]. However, if such a 
-node only maintains the current [Blockchain state], it is not possible for the node to "rewind" its 
-state to handle forks in the chain history. In this case, a mode must resync its chain to recover the necessary 
-transaction history up onto its [pruning horizon].
-
-To counter this problem, we use [pruning horizon]. This allows every node ([Base Node]) to be a "light" 
-[archival node](archivenode). This in effect means that the node will keep a full history for a short while. If the node 
-encounters a fork, it can easily rewind its state to apply the fork. If the fork is longer than the [pruning horizon], 
-the node will enter a sync state, where it will resync. 
+Chain forks occur in all decentralized proof-of-work blockchains. When the local node is in the `listening` state it 
+will detect that it has fallen behind other nodes in the network. It will then perform a header sync and during the 
+header sync process will be able to detect that a chain fork has occurred. The header sync process will then determine
+which chain is the correct chain with the highest accumulated work. If required this node will switch the best chain
+and proceed to sync the new blocks required to catch up to the correct chain. This process is called a chain 
+reorganization or [reorg]. 
 
 ### Pruning 
 
-In Mimblewimble, the state can be completely verified using the current [UTXO] set 
-(which contains the output commitments and range proofs), the set of excess signatures (contained in the transaction kernels) 
-and the PoW. The full block and transaction history is not required. This allows base layer nodes to remove old used 
-inputs from the [blockchain] and or the [mempool]. Pruning happens in the [blockchain] with already confirmed transactions.
-This will remove the spent inputs and outputs, but will retain the excesses of each [transaction]. 
+In Mimblewimble, the state can be completely verified using the current [UTXO] set (which contains the output 
+commitments and range proofs), the set of excess signatures (contained in the transaction kernels) and the PoW. The full
+block and transaction history is not required. This allows base layer nodes to remove old spent inputs from the 
+[blockchain] storage. 
 
 Pruning is only for the benefit of the local Base Node, as it reduces the local blockchain size. Pruning only happens 
-after the block is older than the [pruning horizon] height. A Base Node will either run in archive mode 
-or prune mode. If the Base Node is running in archive mode, it MUST NOT prune. 
+after the block is older than the [pruning horizon] height. A Base Node will either run in archival mode or pruned mode.
+If the Base Node is running in archive mode, it MUST NOT prune. 
 
 When running in pruning mode, [Base Node]s MUST remove all spent outputs that are older than the 
-[pruning horizon]in their current stored [UTXO] when a new block is received from another [Base Node].
+[pruning horizon] in their current stored [UTXO] set when a new block is received from another [Base Node].
 
 
 [archivenode]: Glossary.md#archive-node
@@ -153,6 +165,7 @@ When running in pruning mode, [Base Node]s MUST remove all spent outputs that ar
 [mempool]: Glossary.md#mempool
 [BroadcastStrategy]: Glossary.md#broadcaststrategy
 [range proof]: Glossary.md#range-proof
+[reorg]: Glossary.md#chain-reorg
 [SynchronizationStrategy]: Glossary.md#synchronisationstrategy
 [SynchronizationState]: Glossary.md#synchronisationstate
 [mining server]: Glossary.md#mining-server
