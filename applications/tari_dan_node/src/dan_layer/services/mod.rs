@@ -21,13 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod bft_replica_service;
+mod events_publisher;
+pub mod infrastructure_services;
 mod mempool_service;
 mod payload_provider;
+mod signing_service;
 mod template_service;
 
+pub use events_publisher::EventsPublisher;
 pub use payload_provider::PayloadProvider;
-
-pub mod infrastructure_services;
+pub use signing_service::SigningService;
 
 pub use bft_replica_service::{BftReplicaService, ConcreteBftReplicaService};
 pub use mempool_service::{ConcreteMempoolService, MempoolService};

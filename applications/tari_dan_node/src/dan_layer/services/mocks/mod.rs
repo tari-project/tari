@@ -22,10 +22,22 @@
 
 use crate::{
     dan_layer::{
-        models::{Instruction, Payload, View, ViewId},
-        services::{BftReplicaService, MempoolService, PayloadProvider},
+        models::{Event, Instruction, Payload, Signature, View, ViewId},
+        services::{
+            infrastructure_services::NodeAddressable,
+            BftReplicaService,
+            EventsPublisher,
+            MempoolService,
+            PayloadProvider,
+            SigningService,
+        },
     },
     digital_assets_error::DigitalAssetError,
+};
+use std::{
+    collections::{vec_deque::Iter, VecDeque},
+    marker::PhantomData,
+    sync::{Arc, Mutex},
 };
 
 pub struct MockMempoolService {}
@@ -88,5 +100,46 @@ impl<TPayload: Payload> PayloadProvider<TPayload> for MockStaticPayloadProvider<
 pub fn mock_payload_provider() -> MockStaticPayloadProvider<&'static str> {
     MockStaticPayloadProvider {
         static_payload: "<Empty>",
+    }
+}
+
+pub fn mock_events_publisher<TEvent: Event>() -> MockEventsPublisher<TEvent> {
+    MockEventsPublisher::new()
+}
+
+#[derive(Clone)]
+pub struct MockEventsPublisher<TEvent: Event> {
+    events: Arc<Mutex<VecDeque<TEvent>>>,
+}
+
+impl<TEvent: Event> MockEventsPublisher<TEvent> {
+    pub fn new() -> Self {
+        Self {
+            events: Arc::new(Mutex::new(VecDeque::new())),
+        }
+    }
+
+    pub fn to_vec(&self) -> Vec<TEvent> {
+        self.events.lock().unwrap().iter().map(|s| s.clone()).collect()
+    }
+}
+
+impl<TEvent: Event> EventsPublisher<TEvent> for MockEventsPublisher<TEvent> {
+    fn publish(&mut self, event: TEvent) {
+        self.events.lock().unwrap().push_back(event)
+    }
+}
+
+pub fn mock_signing_service<TAddr: NodeAddressable>() -> MockSigningService<TAddr> {
+    MockSigningService::<TAddr> { p: PhantomData }
+}
+
+pub struct MockSigningService<TAddr: NodeAddressable> {
+    p: PhantomData<TAddr>,
+}
+
+impl<TAddr: NodeAddressable> SigningService<TAddr> for MockSigningService<TAddr> {
+    fn sign(&self, identity: &TAddr, challenge: &[u8]) -> Result<Signature, DigitalAssetError> {
+        Ok(Signature {})
     }
 }

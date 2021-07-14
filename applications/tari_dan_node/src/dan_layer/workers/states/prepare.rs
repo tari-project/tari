@@ -39,6 +39,7 @@ use crate::{
             BftReplicaService,
             MempoolService,
             PayloadProvider,
+            SigningService,
         },
         workers::states::ConsensusWorkerStateEvent,
     },
@@ -49,44 +50,51 @@ use futures::StreamExt;
 use std::{
     any::Any,
     collections::HashMap,
+    hash::Hash,
     marker::PhantomData,
     sync::{Arc, Mutex},
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::time::{delay_for, Duration};
 
-pub struct Prepare<TInboundConnectionService, TOutboundService, TAddr, TPayloadProvider, TPayload>
+pub struct Prepare<TInboundConnectionService, TOutboundService, TAddr, TSigningService, TPayloadProvider, TPayload>
 where
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload> + Send,
     TOutboundService: OutboundService<TAddr, TPayload>,
     TAddr: NodeAddressable,
+    TSigningService: SigningService<TAddr>,
     TPayload: Payload,
     TPayloadProvider: PayloadProvider<TPayload>,
 {
     node_id: TAddr,
+    locked_qc: Arc<QuorumCertificate<TPayload>>,
     // bft_service: Box<dyn BftReplicaService>,
     // TODO remove this hack
     phantom: PhantomData<TInboundConnectionService>,
     phantom_payload_provider: PhantomData<TPayloadProvider>,
     phantom_outbound: PhantomData<TOutboundService>,
+    phantom_signing: PhantomData<TSigningService>,
     received_new_view_messages: HashMap<TAddr, HotStuffMessage<TPayload>>,
 }
 
-impl<TInboundConnectionService, TOutboundService, TAddr, TPayloadProvider, TPayload>
-    Prepare<TInboundConnectionService, TOutboundService, TAddr, TPayloadProvider, TPayload>
+impl<TInboundConnectionService, TOutboundService, TAddr, TSigningService, TPayloadProvider, TPayload>
+    Prepare<TInboundConnectionService, TOutboundService, TAddr, TSigningService, TPayloadProvider, TPayload>
 where
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload> + Send,
     TOutboundService: OutboundService<TAddr, TPayload>,
     TAddr: NodeAddressable,
+    TSigningService: SigningService<TAddr>,
     TPayload: Payload,
     TPayloadProvider: PayloadProvider<TPayload>,
 {
-    pub fn new(node_id: TAddr) -> Self {
+    pub fn new(node_id: TAddr, locked_qc: Arc<QuorumCertificate<TPayload>>) -> Self {
         Self {
             node_id,
+            locked_qc,
             phantom: PhantomData,
             phantom_payload_provider: PhantomData,
             phantom_outbound: PhantomData,
+            phantom_signing: PhantomData,
             received_new_view_messages: HashMap::new(),
         }
     }
@@ -99,6 +107,7 @@ where
         inbound_services: &mut TInboundConnectionService,
         outbound_service: &mut TOutboundService,
         payload_provider: &TPayloadProvider,
+        signing_service: &TSigningService,
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         self.received_new_view_messages.clear();
 
@@ -117,7 +126,7 @@ where
                         }
 
                     }
-                    if let Some(result) = self.process_replica_message(&message, &current_view).await? {
+                    if let Some(result) = self.process_replica_message(&message, &current_view, committee.leader_for_view(current_view.view_id),  outbound_service, &signing_service).await? {
                         next_event_result = result;
                         break;
                     }
@@ -172,7 +181,8 @@ where
             );
             let high_qc = self.find_highest_qc();
             let proposal = self.create_proposal(high_qc.node(), payload_provider);
-            self.broadcast_proposal(outbound, proposal, high_qc, current_view.view_id);
+            self.broadcast_proposal(outbound, proposal, high_qc, current_view.view_id)
+                .await?;
             Ok(Some(ConsensusWorkerStateEvent::Prepared))
         } else {
             dbg!(
@@ -188,6 +198,9 @@ where
         &self,
         message: &HotStuffMessage<TPayload>,
         current_view: &View,
+        view_leader: &TAddr,
+        outbound: &mut TOutboundService,
+        signing_service: &TSigningService,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
         dbg!("Processing message: {:?}", message);
         if !message.matches(HotStuffMessageType::Prepare, current_view.view_id) {
@@ -198,15 +211,19 @@ where
             unimplemented!("Empty message");
         }
         let node = message.node().unwrap();
-        if self.does_extend(node, message.justify().node()) {
-            if !self.is_safe_node(node, message.justify()) {
-                unimplemented!("Node is not safe")
-            }
+        if let Some(justify) = message.justify() {
+            if self.does_extend(node, justify.node()) {
+                if !self.is_safe_node(node, justify) {
+                    unimplemented!("Node is not safe")
+                }
 
-            self.send_vote_to_leader(node);
-            return Ok(Some(ConsensusWorkerStateEvent::Prepared));
+                self.send_vote_to_leader(node, outbound, view_leader, current_view.view_id, &signing_service);
+                return Ok(Some(ConsensusWorkerStateEvent::Prepared));
+            } else {
+                unimplemented!("Did not extend from qc.justify.node")
+            }
         } else {
-            unimplemented!("Did not extend from qc.justify.node")
+            unimplemented!("unexpected Null justify ")
         }
     }
 
@@ -214,10 +231,12 @@ where
         let mut max_qc = None;
         for (sender, message) in &self.received_new_view_messages {
             match &max_qc {
-                None => max_qc = Some(message.justify().clone()),
+                None => max_qc = message.justify().map(|qc| qc.clone()),
                 Some(qc) => {
-                    if qc.view_number() < message.justify().view_number() {
-                        max_qc = Some(message.justify().clone())
+                    if let Some(justify) = message.justify() {
+                        if qc.view_number() < justify.view_number() {
+                            max_qc = Some(justify.clone())
+                        }
                     }
                 },
             }
@@ -242,12 +261,12 @@ where
         high_qc: QuorumCertificate<TPayload>,
         view_number: ViewId,
     ) -> Result<(), DigitalAssetError> {
-        let message = HotStuffMessage::prepare(proposal, high_qc, view_number);
+        let message = HotStuffMessage::prepare(proposal, Some(high_qc), view_number);
         outbound.broadcast(self.node_id.clone(), message).await
     }
 
     fn does_extend(&self, node: &HotStuffTreeNode<TPayload>, from: &HotStuffTreeNode<TPayload>) -> bool {
-        unimplemented!()
+        &from.calculate_hash() == node.parent()
     }
 
     fn is_safe_node(
@@ -255,11 +274,20 @@ where
         node: &HotStuffTreeNode<TPayload>,
         quorum_certificate: &QuorumCertificate<TPayload>,
     ) -> bool {
-        self.does_extend(node, quorum_certificate.node())
+        self.does_extend(node, self.locked_qc.node()) || quorum_certificate.view_number() > self.locked_qc.view_number()
     }
 
-    fn send_vote_to_leader(&self, node: &HotStuffTreeNode<TPayload>) {
-        unimplemented!()
+    async fn send_vote_to_leader(
+        &self,
+        node: &HotStuffTreeNode<TPayload>,
+        outbound: &mut TOutboundService,
+        view_leader: &TAddr,
+        view_number: ViewId,
+        signing_service: &TSigningService,
+    ) -> Result<(), DigitalAssetError> {
+        let mut message = HotStuffMessage::prepare(node.clone(), None, view_number);
+        message.add_partial_sig(signing_service.sign(&self.node_id, &message.create_signature_challenge())?);
+        outbound.send(self.node_id.clone(), view_leader.clone(), message).await
     }
 }
 
@@ -271,7 +299,7 @@ mod test {
         models::ViewId,
         services::{
             infrastructure_services::mocks::{mock_inbound, mock_outbound},
-            mocks::mock_payload_provider,
+            mocks::{mock_payload_provider, mock_signing_service},
         },
     };
     use tokio::time::Duration;
@@ -280,7 +308,8 @@ mod test {
     async fn basic_test_as_leader() {
         // let mut inbound = mock_inbound();
         // let mut sender = inbound.create_sender();
-        let mut state = Prepare::new("B");
+        let locked_qc = QuorumCertificate::genesis("Hello world");
+        let mut state = Prepare::new("B", Arc::new(locked_qc));
         let view = View {
             view_id: ViewId(1),
             is_leader: true,
@@ -290,6 +319,7 @@ mod test {
         let mut outbound2 = outbound.clone();
         let mut inbound = outbound.take_inbound(&"B").unwrap();
         let payload_provider = mock_payload_provider();
+        let signing = mock_signing_service();
         let task = state.next_event(
             &view,
             Duration::from_secs(10),
@@ -297,6 +327,7 @@ mod test {
             &mut inbound,
             &mut outbound,
             &payload_provider,
+            &signing,
         );
         outbound2
             .send(

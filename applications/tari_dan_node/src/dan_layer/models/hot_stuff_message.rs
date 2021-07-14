@@ -20,15 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::models::{HotStuffMessageType, HotStuffTreeNode, Payload, QuorumCertificate, ViewId};
+use crate::dan_layer::models::{HotStuffMessageType, HotStuffTreeNode, Payload, QuorumCertificate, Signature, ViewId};
+use digest::Digest;
 use std::hash::Hash;
+use tari_crypto::common::Blake256;
 
 #[derive(Debug, Clone)]
 pub struct HotStuffMessage<TPayload: Payload> {
     view_number: ViewId,
     message_type: HotStuffMessageType,
-    justify: QuorumCertificate<TPayload>,
+    justify: Option<QuorumCertificate<TPayload>>,
     node: Option<HotStuffTreeNode<TPayload>>,
+    partial_sig: Option<Signature>,
 }
 
 impl<TPayload: Payload> HotStuffMessage<TPayload> {
@@ -36,14 +39,15 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
         Self {
             message_type: HotStuffMessageType::NewView,
             view_number,
-            justify: prepare_qc,
+            justify: Some(prepare_qc),
             node: None,
+            partial_sig: None,
         }
     }
 
     pub fn prepare(
         proposal: HotStuffTreeNode<TPayload>,
-        high_qc: QuorumCertificate<TPayload>,
+        high_qc: Option<QuorumCertificate<TPayload>>,
         view_number: ViewId,
     ) -> Self {
         Self {
@@ -51,7 +55,18 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             node: Some(proposal),
             justify: high_qc,
             view_number,
+            partial_sig: None,
         }
+    }
+
+    pub fn create_signature_challenge(&self) -> Vec<u8> {
+        let mut b = Blake256::new()
+            .chain(&[self.message_type.as_u8()])
+            .chain(self.view_number.as_u64().to_le_bytes());
+        if let Some(ref node) = self.node {
+            b = b.chain(node.calculate_hash().as_bytes());
+        }
+        b.finalize().to_vec()
     }
 
     pub fn view_number(&self) -> ViewId {
@@ -66,12 +81,16 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
         &self.message_type
     }
 
-    pub fn justify(&self) -> &QuorumCertificate<TPayload> {
-        &self.justify
+    pub fn justify(&self) -> Option<&QuorumCertificate<TPayload>> {
+        self.justify.as_ref()
     }
 
     pub fn matches(&self, message_type: HotStuffMessageType, view_id: ViewId) -> bool {
         // from hotstuf spec
         self.message_type() == &message_type && view_id == self.view_number()
+    }
+
+    pub fn add_partial_sig(&mut self, signature: Signature) {
+        self.partial_sig = Some(signature)
     }
 }

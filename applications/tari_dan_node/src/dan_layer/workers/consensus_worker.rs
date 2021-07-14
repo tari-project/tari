@@ -22,12 +22,22 @@
 
 use crate::{
     dan_layer::{
-        models::{Committee, Payload, QuorumCertificate, View, ViewId},
+        models::{
+            domain_events::ConsensusWorkerDomainEvent,
+            Committee,
+            ConsensusWorkerState,
+            Payload,
+            QuorumCertificate,
+            View,
+            ViewId,
+        },
         services::{
             infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
             BftReplicaService,
+            EventsPublisher,
             MempoolService,
             PayloadProvider,
+            SigningService,
         },
         workers::{
             states,
@@ -54,6 +64,8 @@ pub struct ConsensusWorker<
     TAddr,
     TPayload,
     TPayloadProvider,
+    TEventsPublisher,
+    TSigningService,
 > where
     TMempoolService: MempoolService,
     TBftReplicaService: BftReplicaService,
@@ -62,6 +74,8 @@ pub struct ConsensusWorker<
     TAddr: NodeAddressable + Clone + Send,
     TPayload: Payload,
     TPayloadProvider: PayloadProvider<TPayload>,
+    TEventsPublisher: EventsPublisher<ConsensusWorkerDomainEvent>,
+    TSigningService: SigningService<TAddr>,
 {
     mempool_service: TMempoolService,
     bft_replica_service: TBftReplicaService,
@@ -73,15 +87,10 @@ pub struct ConsensusWorker<
     timeout: Duration,
     node_id: TAddr,
     payload_provider: TPayloadProvider,
-    prepare_qc: QuorumCertificate<TPayload>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum ConsensusWorkerState {
-    Starting,
-    Prepare,
-    PreCommit,
-    NextView,
+    prepare_qc: Arc<QuorumCertificate<TPayload>>,
+    events_publisher: TEventsPublisher,
+    locked_qc: Arc<QuorumCertificate<TPayload>>,
+    signing_service: TSigningService,
 }
 
 impl<
@@ -92,6 +101,8 @@ impl<
         TAddr,
         TPayload,
         TPayloadProvider,
+        TEventsPublisher,
+        TSigningService,
     >
     ConsensusWorker<
         TMempoolService,
@@ -101,6 +112,8 @@ impl<
         TAddr,
         TPayload,
         TPayloadProvider,
+        TEventsPublisher,
+        TSigningService,
     >
 where
     TMempoolService: MempoolService,
@@ -110,6 +123,8 @@ where
     TAddr: NodeAddressable + Clone + Send + Sync,
     TPayload: Payload,
     TPayloadProvider: PayloadProvider<TPayload>,
+    TEventsPublisher: EventsPublisher<ConsensusWorkerDomainEvent>,
+    TSigningService: SigningService<TAddr>,
 {
     pub fn new(
         mempool_service: TMempoolService,
@@ -119,19 +134,27 @@ where
         committee: Committee<TAddr>,
         node_id: TAddr,
         payload_provider: TPayloadProvider,
+        events_publisher: TEventsPublisher,
+        signing_service: TSigningService,
+        timeout: Duration,
     ) -> Self {
+        let prepare_qc = Arc::new(QuorumCertificate::genesis(payload_provider.create_genesis_payload()));
+
         Self {
             mempool_service,
             bft_replica_service,
             inbound_connections,
             state: ConsensusWorkerState::Starting,
             current_view_id: ViewId(0),
-            timeout: Duration::from_secs(20),
+            timeout,
             outbound_service,
             committee,
             node_id,
-            prepare_qc: QuorumCertificate::genesis(payload_provider.create_genesis_payload()),
+            locked_qc: prepare_qc.clone(),
+            prepare_qc,
             payload_provider,
+            events_publisher,
+            signing_service,
         }
     }
 
@@ -168,6 +191,10 @@ where
             let trns = self.transition(next_event)?;
             dbg!(&trns);
             info!(target: LOG_TARGET, "Transitioning from {:?} to {:?}", trns.0, trns.1);
+            self.events_publisher.publish(ConsensusWorkerDomainEvent::StateChanged {
+                old: trns.0,
+                new: trns.1,
+            });
         }
 
         Ok(())
@@ -181,7 +208,7 @@ where
         match &mut self.state {
             Starting => states::Starting {}.next_event().await,
             Prepare => {
-                let mut p = states::Prepare::new(self.node_id.clone());
+                let mut p = states::Prepare::new(self.node_id.clone(), self.locked_qc.clone());
                 p.next_event(
                     &self.get_current_view(),
                     self.timeout,
@@ -189,6 +216,7 @@ where
                     &mut self.inbound_connections,
                     &mut self.outbound_service,
                     &self.payload_provider,
+                    &self.signing_service,
                 )
                 .await
             },
@@ -201,7 +229,7 @@ where
                 state
                     .next_event(
                         &self.get_current_view(),
-                        self.prepare_qc.clone(),
+                        self.prepare_qc.as_ref().clone(),
                         &mut self.outbound_service,
                         &self.committee,
                         self.node_id.clone(),
@@ -250,7 +278,7 @@ mod test {
 
     use crate::dan_layer::services::{
         infrastructure_services::mocks::{mock_outbound, MockInboundConnectionService, MockOutboundService},
-        mocks::mock_static_payload_provider,
+        mocks::{mock_events_publisher, mock_signing_service, mock_static_payload_provider, MockEventsPublisher},
     };
     use futures::task;
     use std::collections::HashMap;
@@ -263,6 +291,7 @@ mod test {
         committee: Committee<&'static str>,
         node_id: &'static str,
         shutdown_signal: ShutdownSignal,
+        events_publisher: MockEventsPublisher<ConsensusWorkerDomainEvent>,
     ) -> JoinHandle<()> {
         let mut replica_a = ConsensusWorker::new(
             mock_mempool(),
@@ -272,6 +301,9 @@ mod test {
             committee,
             node_id,
             mock_static_payload_provider("Hello"),
+            events_publisher,
+            mock_signing_service(),
+            Duration::from_secs(5),
         );
         tokio::spawn(async move {
             let res = replica_a.run(shutdown_signal, Some(2)).await;
@@ -283,22 +315,76 @@ mod test {
         let mut shutdown = Shutdown::new();
         let signal = shutdown.to_signal();
 
-        let committee = Committee::new(vec!["A", "B", "C", "D"]);
+        let committee = Committee::new(vec!["A", "B"]);
         let mut outbound = mock_outbound(committee.members.clone());
 
         let inbound_a = outbound.take_inbound(&"A").unwrap();
         let inbound_b = outbound.take_inbound(&"B").unwrap();
-        let inbound_c = outbound.take_inbound(&"C").unwrap();
-        let inbound_d = outbound.take_inbound(&"D").unwrap();
+        // let inbound_c = outbound.take_inbound(&"C").unwrap();
+        // let inbound_d = outbound.take_inbound(&"D").unwrap();
 
-        let task_a = start_replica(inbound_a, outbound.clone(), committee.clone(), "A", signal.clone());
-        let task_b = start_replica(inbound_b, outbound.clone(), committee.clone(), "B", signal.clone());
-        let task_c = start_replica(inbound_c, outbound.clone(), committee.clone(), "C", signal.clone());
-        let task_d = start_replica(inbound_d, outbound.clone(), committee.clone(), "D", signal.clone());
-        // shutdown.trigger().unwrap();
+        let events = [
+            mock_events_publisher(),
+            mock_events_publisher(),
+            mock_events_publisher(),
+            mock_events_publisher(),
+        ];
+
+        let task_a = start_replica(
+            inbound_a,
+            outbound.clone(),
+            committee.clone(),
+            "A",
+            signal.clone(),
+            events[0].clone(),
+        );
+        let task_b = start_replica(
+            inbound_b,
+            outbound.clone(),
+            committee.clone(),
+            "B",
+            signal.clone(),
+            events[1].clone(),
+        );
+        // let task_c = start_replica(
+        //     inbound_c,
+        //     outbound.clone(),
+        //     committee.clone(),
+        //     "C",
+        //     signal.clone(),
+        //     events[2].clone(),
+        // );
+        // let task_d = start_replica(
+        //     inbound_d,
+        //     outbound.clone(),
+        //     committee.clone(),
+        //     "D",
+        //     signal.clone(),
+        //     events[3].clone(),
+        // );
+        shutdown.trigger().unwrap();
         task_a.await.unwrap();
         task_b.await.unwrap();
-        task_c.await.unwrap();
-        task_d.await.unwrap();
+        // task_c.await.unwrap();
+        // task_d.await.unwrap();
+        use crate::dan_layer::models::ConsensusWorkerState::*;
+        // assert_eq!(events[0].to_vec(), vec![ConsensusWorkerDomainEvent::StateChanged {
+        //     old: Starting,
+        // new: Prepare
+        // }]);
+
+        assert_state_change(&events[0].to_vec(), vec![Prepare, NextView, Prepare, PreCommit]);
+        assert_state_change(&events[1].to_vec(), vec![Prepare, NextView, Prepare, PreCommit]);
+    }
+
+    fn assert_state_change(events: &[ConsensusWorkerDomainEvent], states: Vec<ConsensusWorkerState>) {
+        dbg!(events);
+        let mapped_events = events.iter().filter_map(|e| match e {
+            ConsensusWorkerDomainEvent::StateChanged { old, new } => Some(new),
+            _ => None,
+        });
+        for (state, event) in states.iter().zip(mapped_events) {
+            assert_eq!(state, event)
+        }
     }
 }

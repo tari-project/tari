@@ -56,4 +56,8 @@ impl<TPayload: Payload> HotStuffTreeNode<TPayload> {
             .finalize();
         TreeNodeHash(result.to_vec())
     }
+
+    pub fn parent(&self) -> &TreeNodeHash {
+        &self.parent
+    }
 }

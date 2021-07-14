@@ -120,12 +120,8 @@ impl<TAddr: NodeAddressable + Send + Sync + Debug, TPayload: Payload> OutboundSe
     ) -> Result<(), DigitalAssetError> {
         let t = &to;
         dbg!("Sending message: ", &to, &message);
-        self.inbound_senders
-            .get_mut(t)
-            .unwrap()
-            .send((from, message))
-            .await
-            .unwrap();
+        // intentionally swallow error here because the other end can die in tests
+        let _ = self.inbound_senders.get_mut(t).unwrap().send((from, message)).await;
         Ok(())
     }
 

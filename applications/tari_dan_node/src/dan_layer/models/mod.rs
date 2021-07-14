@@ -24,6 +24,7 @@ use std::cmp::Ordering;
 
 mod block;
 mod committee;
+pub mod domain_events;
 mod hot_stuff_message;
 mod hot_stuff_tree_node;
 mod instruction;
@@ -39,7 +40,11 @@ pub use hot_stuff_tree_node::HotStuffTreeNode;
 pub use instruction::Instruction;
 pub use quorum_certificate::QuorumCertificate;
 pub use replica_info::ReplicaInfo;
-use std::{fmt::Debug, hash::Hash};
+use std::{
+    fmt,
+    fmt::{Debug, Formatter},
+    hash::Hash,
+};
 pub use view::View;
 pub use view_id::ViewId;
 
@@ -74,11 +79,39 @@ pub enum HotStuffMessageType {
     Prepare,
 }
 
-#[derive(Debug, Clone, Hash)]
+impl HotStuffMessageType {
+    pub fn as_u8(&self) -> u8 {
+        match self {
+            HotStuffMessageType::NewView => 1,
+            HotStuffMessageType::Prepare => 2,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Hash, PartialEq)]
 pub struct TreeNodeHash(pub Vec<u8>);
+
+impl TreeNodeHash {
+    fn as_bytes(&self) -> &[u8] {
+        self.0.as_slice()
+    }
+}
 
 pub trait Payload: Hash + Debug + Clone + AsRef<[u8]> + Send + Sync {}
 
 impl Payload for &str {}
 
 impl Payload for String {}
+
+pub trait Event: Clone + Send + Sync {}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ConsensusWorkerState {
+    Starting,
+    Prepare,
+    PreCommit,
+    NextView,
+}
+
+#[derive(Clone, Debug)]
+pub struct Signature {}
