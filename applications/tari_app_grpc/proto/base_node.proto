@@ -74,6 +74,12 @@ service BaseNode {
     rpc GetPeers(GetPeersRequest) returns (stream GetPeersResponse);
     rpc GetMempoolTransactions(GetMempoolTransactionsRequest) returns (stream GetMempoolTransactionsResponse);
     rpc TransactionState(TransactionStateRequest) returns (TransactionStateResponse);
+    // This returns the node's network identity
+    rpc Identify (Empty) returns (NodeIdentity);
+    // Get Base Node network connectivity status
+    rpc GetNetworkStatus(Empty) returns (NetworkStatusResponse);
+    // List currently connected peers
+    rpc ListConnectedPeers(Empty) returns (ListConnectedPeersResponse);
 }
 
 message SubmitBlockResponse {

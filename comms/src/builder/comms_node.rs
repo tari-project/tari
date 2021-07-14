@@ -277,8 +277,7 @@ impl UnspawnedCommsNode {
 
 /// CommsNode is a handle to a comms node.
 ///
-/// It allows communication with the internals of tari_comms. Note that if this handle is dropped, tari_comms will shut
-/// down.
+/// It allows communication with the internals of tari_comms.
 #[derive(Clone)]
 pub struct CommsNode {
     /// The `ShutdownSignal` for this node. Use `wait_until_shutdown` to asynchronously block until the

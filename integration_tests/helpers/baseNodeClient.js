@@ -4,9 +4,9 @@ const protoLoader = require("@grpc/proto-loader");
 const grpc_promise = require("grpc-promise");
 const TransactionBuilder = require("./transactionBuilder");
 const { SHA3 } = require("sha3");
-const { toLittleEndian } = require("./util");
+const { toLittleEndian, byteArrayToHex } = require("./util");
+const { PowAlgo } = require("./types");
 const cloneDeep = require("clone-deep");
-const PowAlgo = { MONERO: 0, SHA3: 1 };
 
 class BaseNodeClient {
   constructor(clientOrPort) {
@@ -386,6 +386,38 @@ class BaseNodeClient {
     hash2.update(first_round);
     const res = hash2.digest("hex");
     return res;
+  }
+
+  async identify() {
+    const info = await this.client.identify().sendMessage({});
+    return {
+      public_key: byteArrayToHex(info.public_key),
+      public_address: info.public_address,
+      node_id: byteArrayToHex(info.node_id),
+    };
+  }
+
+  async listConnectedPeers() {
+    const { connected_peers } = await this.client
+      .listConnectedPeers()
+      .sendMessage({});
+    return connected_peers.map((peer) => ({
+      ...peer,
+      public_key: byteArrayToHex(peer.public_key),
+      node_id: byteArrayToHex(peer.node_id),
+      supported_protocols: peer.supported_protocols.map((p) =>
+        p.toString("utf8")
+      ),
+      features: +peer.features,
+    }));
+  }
+
+  async getNetworkStatus() {
+    let resp = await this.client.getNetworkStatus().sendMessage({});
+    return {
+      ...resp,
+      num_node_connections: +resp.num_node_connections,
+    };
   }
 }
 

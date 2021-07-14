@@ -271,14 +271,31 @@ message ConsensusConstants {
     uint64 block_weight_kernels = 16;
 }
 
+message UnblindedOutput {
+    // Value of the output
+    uint64 value = 1;
+    // Spending key of the output
+    bytes spending_key = 2;
+    // Options for an output's structure or use
+    OutputFeatures features = 3;
+    // Tari script serialised script
+    bytes script = 4;
+    // Tari script input data for spending
+    bytes input_data = 5;
+    // Tari script private key
+    bytes script_private_key = 7;
+    // Tari script offset pubkey, K_O
+    bytes sender_offset_public_key = 8;
+    // UTXO signature with the script offset private key, k_O
+    ComSignature metadata_signature = 9;
+}
 
+// ----------------------------- Network Types ----------------------------- //
 
-message Address{
-    bytes address =1;
-    string last_seen = 2;
-    uint32 connection_attempts = 3;
-    uint32 rejected_message_count = 4;
-    uint64 avg_latency = 5;
+message NodeIdentity {
+    bytes public_key = 1;
+    string public_address = 2;
+    bytes node_id = 3;
 }
 
 message Peer{
@@ -305,21 +322,33 @@ message Peer{
     string user_agent = 12;
 }
 
-message UnblindedOutput {
-    // Value of the output
-    uint64 value = 1;
-    // Spending key of the output
-    bytes spending_key = 2;
-    // Options for an output's structure or use
-    OutputFeatures features = 3;
-    // Tari script serialised script
-    bytes script = 4;
-    // Tari script input data for spending
-    bytes input_data = 5;
-    // Tari script private key
-    bytes script_private_key = 7;
-    // Tari script offset pubkey, K_O
-    bytes sender_offset_public_key = 8;
-    // UTXO signature with the script offset private key, k_O
-    ComSignature metadata_signature = 9;
+enum ConnectivityStatus {
+    Initializing = 0;
+    Online = 1;
+    Degraded = 2;
+    Offline = 3;
 }
+
+message NetworkStatusResponse {
+    ConnectivityStatus status = 1;
+    uint32 avg_latency_ms = 2;
+    uint32 num_node_connections = 3;
+    // TODO: Implement these
+    //    uint32 incoming_bps = 4;
+    //    uint32 outgoing_bps = 5;
+    //    uint64 total_bytes_read = 6;
+    //    uint64 total_bytes_written = 7;
+}
+
+message Address{
+    bytes address =1;
+    string last_seen = 2;
+    uint32 connection_attempts = 3;
+    uint32 rejected_message_count = 4;
+    uint64 avg_latency = 5;
+}
+
+message ListConnectedPeersResponse {
+    repeated Peer connected_peers = 1;
+}
+
