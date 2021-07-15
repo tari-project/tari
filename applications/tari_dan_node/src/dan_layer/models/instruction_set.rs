@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::dan_layer::models::{Instruction, Payload};
+use std::hash::{Hash, Hasher};
 use tari_crypto::common::Blake256;
 use tari_mmr::MerkleMountainRange;
 
@@ -33,6 +34,7 @@ impl InstructionSetHash {
     }
 }
 
+// TODO: Implement hash properly
 #[derive(Clone, Debug, Hash)]
 pub struct InstructionSet {
     hash: InstructionSetHash,

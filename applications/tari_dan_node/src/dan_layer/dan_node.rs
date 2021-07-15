@@ -62,7 +62,7 @@ use tari_p2p::{
 };
 use tari_service_framework::{ServiceHandles, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::runtime::Handle;
+use tokio::{runtime::Handle, task};
 
 const LOG_TARGET: &str = "tari::dan::dan_node";
 
@@ -84,16 +84,23 @@ impl DanNode {
             PeerFeatures::NONE,
         )?;
 
-        let (handles, pubsub_connector, subscription_factory) =
-            self.build_service_and_comms_stack(shutdown, node_identity).await?;
+        let (handles, subscription_factory) = self
+            .build_service_and_comms_stack(shutdown.clone(), node_identity.clone())
+            .await?;
 
         let mempool = ConcreteMempoolService::new();
         let bft_replica_service = ConcreteBftReplicaService::new(node_identity.as_ref().clone(), vec![]);
 
         let mempool_payload_provider = MempoolPayloadProvider::new(mempool);
-        let topic_subscription =
-            subscription_factory.get_subscription(TariMessageType::DanConsensusMessage, "HotStufMessages");
-        let inbound = TariCommsInboundConnectionService::<InstructionSet>::new(topic_subscription);
+
+        let mut inbound = TariCommsInboundConnectionService::<InstructionSet>::new();
+        let receiver = inbound.take_receiver().unwrap();
+        let shutdown_2 = shutdown.clone();
+        task::spawn(async move {
+            let topic_subscription =
+                subscription_factory.get_subscription(TariMessageType::DanConsensusMessage, "HotStufMessages");
+            inbound.run(shutdown_2, topic_subscription).await
+        });
         let dht = handles.expect_handle::<Dht>();
         let outbound = TariCommsOutboundService::new(dht.outbound_requester());
 
@@ -117,7 +124,7 @@ impl DanNode {
         let signing_service = NodeIdentitySigningService::new(node_identity.as_ref().clone());
         let mut consensus_worker = ConsensusWorker::new(
             bft_replica_service,
-            inbound,
+            receiver,
             outbound,
             committee,
             node_identity.public_key().clone(),
@@ -127,7 +134,7 @@ impl DanNode {
             dan_config.phase_timeout,
         );
         consensus_worker
-            .run(shutdown.clone())
+            .run(shutdown.clone(), None)
             .await
             .map_err(|err| ExitCodes::ConfigError(err.to_string()))
     }
@@ -136,7 +143,7 @@ impl DanNode {
         &self,
         shutdown: ShutdownSignal,
         node_identity: Arc<NodeIdentity>,
-    ) -> Result<(ServiceHandles, PubsubDomainConnector, SubscriptionFactory), ExitCodes> {
+    ) -> Result<(ServiceHandles, SubscriptionFactory), ExitCodes> {
         // this code is duplicated from the base node
         let comms_config = self.create_comms_config(node_identity.clone());
 
@@ -165,7 +172,7 @@ impl DanNode {
         }
 
         handles.register(comms);
-        Ok((handles, publisher, peer_message_subscriptions))
+        Ok((handles, peer_message_subscriptions))
     }
 
     fn create_comms_config(&self, node_identity: Arc<NodeIdentity>) -> CommsConfig {
