@@ -569,8 +569,8 @@ $$
 $$
 
 Next Alice next uses Bulletproof rewinding, see [RFC 180](RFC-0180_BulletproofRewinding.md), to encrypt the value
-\\( v*b \\) into the the Bulletproof for the commitment \\( C_b \\). For this she uses
-\\( k*{rewind} = \hash{k*{b}} \\) as the rewind_key and \\( k*{blinding} = \hash{\hash{k\_{b}}} \\) as the blinding
+\\( v*b \\) into the the Bulletproof for the commitment \\( C_b \\). For this she uses \\( k_{rewind} = \hash{k_{b}} \\) 
+as the rewind key and \\( k_{blinding} = \hash{\hash{k\_{b}}} \\) as the blinding
 key.
 
 Alice knows the script-redeeming private key \\( k\_{Sa}\\) for the transaction input.
@@ -587,8 +587,8 @@ $$
 
 She also provides a script that locks the output to Bob's public key, `PushPubkey(K_Sb)`.
 This will only be spendable if the sender can provide a valid signature as input that demonstrates proof
-of knowledge of \\( k*{Sb}\\) as well as the value and blinding factor of the output \\(C_b\\). Although Alice knowns
-the value and blinding factor of the output \\(C_b\\) only Bob knows \\( k*{Sb}\\).
+of knowledge of \\( k_{Sb}\\) as well as the value and blinding factor of the output \\(C_b\\). Although Alice knows
+the value and blinding factor of the output \\(C_b\\) only Bob knows \\( k_{Sb}\\).
 
 Any base node can now verify that the transaction is complete, verify the signature on the script, and verify the
 script offset.
