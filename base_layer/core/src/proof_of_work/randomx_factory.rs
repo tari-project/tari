@@ -34,9 +34,40 @@ impl RandomXVMInstance {
                 (flags, cache)
             },
         };
+        debug!(target: LOG_TARGET, "RandomX cache initialized with flags {:?}.", flags);
 
-        let dataset = RandomXDataset::new(flags, &cache, 0)?;
-        let vm = RandomXVM::new(flags, Some(&cache), Some(&dataset))?;
+        let (flags, dataset) = match RandomXDataset::new(flags, &cache, 0) {
+            Ok(dataset) => (flags, dataset),
+            Err(err) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Error initializing randomx dataset with flags {:?}. {}. Fallback to default flags", flags, err
+                );
+                let flags = RandomXFlag::FLAG_DEFAULT;
+                let dataset = RandomXDataset::new(flags, &cache, 0)?;
+                (flags, dataset)
+            },
+        };
+
+        debug!(
+            target: LOG_TARGET,
+            "RandomX dataset initialized with flags {:?}.", flags
+        );
+
+        let (flags, vm) = match RandomXVM::new(flags, Some(&cache), Some(&dataset)) {
+            Ok(vm) => (flags, vm),
+            Err(err) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Error initializing randomx VM with flags {:?}. {}. Fallback to default flags", flags, err
+                );
+                let flags = RandomXFlag::FLAG_DEFAULT;
+                let vm = RandomXVM::new(flags, Some(&cache), Some(&dataset))?;
+                (flags, vm)
+            },
+        };
+
+        debug!(target: LOG_TARGET, "RandomX VM initialized with flags {:?}.", flags);
 
         Ok(Self {
             instance: Arc::new(Mutex::new((vm, cache, dataset))),
@@ -102,26 +133,41 @@ impl RandomXFactoryInner {
     }
 
     pub fn create(&mut self, key: &[u8]) -> Result<RandomXVMInstance, MergeMineError> {
-        if let Some(entry) = self.vms.get_mut(key) {
-            let vm = entry.1.clone();
-            entry.0 = Instant::now();
-            return Ok(vm);
+        debug!(
+            target: LOG_TARGET,
+            "RandomXFactoryInner::create fn called with key: {:?}", key
+        );
+
+        debug!(target: LOG_TARGET, "Checking RandomX VMs cache");
+        if let Some((instant, vm)) = self.vms.get_mut(key) {
+            debug!(target: LOG_TARGET, "RandomX VM cache found, updating instant.");
+            *instant = Instant::now();
+            return Ok(vm.clone());
         }
 
         if self.vms.len() >= self.max_vms {
+            debug!(target: LOG_TARGET, "RandomX max VMs exceeded");
             let mut oldest_value = Instant::now();
             let mut oldest_key = None;
-            for (k, v) in self.vms.iter() {
-                if v.0 < oldest_value {
-                    oldest_key = Some(k.clone());
-                    oldest_value = v.0;
+            for (key, (instant, _)) in self.vms.iter() {
+                if instant < &oldest_value {
+                    oldest_key = Some(key.clone());
+                    oldest_value = *instant;
                 }
             }
-            if let Some(k) = oldest_key {
-                self.vms.remove(&k);
+            if let Some(key) = oldest_key {
+                debug!(
+                    target: LOG_TARGET,
+                    "Removing RandomX VM from cache with oldest key: {:?}", key
+                );
+                self.vms.remove(&key);
             }
         }
 
+        debug!(
+            target: LOG_TARGET,
+            "Creating a new RandomXVMInstance with flags: {:?}", self.flags
+        );
         let vm = RandomXVMInstance::create(&key, self.flags)?;
 
         self.vms.insert(Vec::from(key), (Instant::now(), vm.clone()));

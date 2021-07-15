@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{chain_storage::ChainStorageError, validation::ValidationError};
+use randomx_rs::RandomXError;
 use tari_comms::{
     connectivity::ConnectivityError,
     peer_manager::NodeId,
@@ -63,4 +64,6 @@ pub enum BlockHeaderSyncError {
     InvalidProtocolResponse(String),
     #[error("Headers did not form a chain. Expected {actual} to equal the previous hash {expected}")]
     ChainLinkBroken { actual: String, expected: String },
+    #[error("RandomX Error: {0}")]
+    RandomXError(#[from] RandomXError),
 }

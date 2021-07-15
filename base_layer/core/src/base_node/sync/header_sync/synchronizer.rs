@@ -26,7 +26,7 @@ use crate::{
     blocks::BlockHeader,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainBlock, ChainHeader},
     consensus::ConsensusManager,
-    proof_of_work::randomx_factory::RandomXFactory,
+    proof_of_work::{monero_rx::MergeMineError, randomx_factory::RandomXFactory},
     proto::{
         base_node as proto,
         base_node::{FindChainSplitRequest, SyncHeadersRequest},
@@ -37,6 +37,7 @@ use crate::{
 };
 use futures::{future, stream::FuturesUnordered, StreamExt};
 use log::*;
+use randomx_rs::RandomXError;
 use std::{
     convert::TryFrom,
     sync::Arc,
@@ -108,18 +109,27 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             );
             match self.attempt_sync(peer_conn.clone()).await {
                 Ok(()) => return Ok(peer_conn),
-                // Try another peer
                 Err(err @ BlockHeaderSyncError::NotInSync) => {
                     debug!(target: LOG_TARGET, "{}", err);
                 },
-
                 Err(err @ BlockHeaderSyncError::RpcError(RpcError::HandshakeError(RpcHandshakeError::TimedOut))) => {
                     debug!(target: LOG_TARGET, "{}", err);
                     self.ban_peer_short(node_id, BanReason::RpcNegotiationTimedOut).await?;
                 },
                 Err(BlockHeaderSyncError::ValidationFailed(err)) => {
-                    debug!(target: LOG_TARGET, "Block header validation failed: {}", err);
-                    self.ban_peer_long(node_id, err.into()).await?;
+                    warn!(target: LOG_TARGET, "Block header validation failed: {}", err);
+                    if let ValidationError::MergeMineError(MergeMineError::RandomXError(RandomXError::CreationError(
+                        msg,
+                    ))) = err
+                    {
+                        error!(
+                            target: LOG_TARGET,
+                            "RandomX VM can't be created due to memory constraints. '{}'", msg
+                        );
+                        return Err(RandomXError::CreationError(msg).into());
+                    } else {
+                        self.ban_peer_long(node_id, err.into()).await?;
+                    }
                 },
                 Err(BlockHeaderSyncError::ChainSplitNotFound(peer)) => {
                     debug!(target: LOG_TARGET, "Chain split not found for peer {}.", peer);
