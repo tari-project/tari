@@ -38,7 +38,7 @@ use crate::{
 };
 use anyhow::anyhow;
 use log::*;
-use std::{fs, sync::Arc};
+use std::{fs, sync::Arc, time::Duration};
 use tari_app_utilities::{identity_management, identity_management::setup_node_identity, utilities};
 use tari_common::{CommsTransport, ConfigBootstrap, GlobalConfig, TorControlAuthentication};
 use tari_comms::{
@@ -131,7 +131,7 @@ impl DanNode {
             mempool_payload_provider,
             events_publisher,
             signing_service,
-            dan_config.phase_timeout,
+            Duration::from_secs(dan_config.phase_timeout),
         );
         consensus_worker
             .run(shutdown.clone(), None)

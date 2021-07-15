@@ -23,12 +23,11 @@
 use crate::ConfigurationError;
 use config::{Config, ConfigError};
 use serde::Deserialize;
-use std::time::Duration;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct DanNodeConfig {
     pub committee: Vec<String>,
-    pub phase_timeout: Duration,
+    pub phase_timeout: u64,
 }
 
 impl DanNodeConfig {
