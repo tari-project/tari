@@ -24,7 +24,29 @@ use crate::{
     dan_layer::{models::Signature, services::infrastructure_services::NodeAddressable},
     digital_assets_error::DigitalAssetError,
 };
+use tari_comms::{types::CommsPublicKey, NodeIdentity};
 
 pub trait SigningService<TAddr: NodeAddressable> {
     fn sign(&self, identity: &TAddr, challenge: &[u8]) -> Result<Signature, DigitalAssetError>;
+}
+
+pub struct NodeIdentitySigningService {
+    node_identity: NodeIdentity,
+}
+
+impl NodeIdentitySigningService {
+    pub fn new(node_identity: NodeIdentity) -> Self {
+        Self { node_identity }
+    }
+}
+
+impl SigningService<CommsPublicKey> for NodeIdentitySigningService {
+    fn sign(&self, identity: &CommsPublicKey, challenge: &[u8]) -> Result<Signature, DigitalAssetError> {
+        if identity != self.node_identity.public_key() {
+            return Err(DigitalAssetError::InvalidSignature);
+        }
+
+        // TODO better sig
+        Ok(Signature {})
+    }
 }

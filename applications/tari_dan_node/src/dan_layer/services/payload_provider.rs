@@ -20,9 +20,32 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::models::Payload;
+use crate::dan_layer::{
+    models::{InstructionSet, Payload},
+    services::MempoolService,
+};
 
 pub trait PayloadProvider<TPayload: Payload> {
     fn create_payload(&self) -> TPayload;
     fn create_genesis_payload(&self) -> TPayload;
+}
+
+pub struct MempoolPayloadProvider<TMempoolService: MempoolService> {
+    mempool: TMempoolService,
+}
+
+impl<TMempoolService: MempoolService> MempoolPayloadProvider<TMempoolService> {
+    pub fn new(mempool: TMempoolService) -> Self {
+        Self { mempool }
+    }
+}
+
+impl<TMempoolService: MempoolService> PayloadProvider<InstructionSet> for MempoolPayloadProvider<TMempoolService> {
+    fn create_payload(&self) -> InstructionSet {
+        todo!()
+    }
+
+    fn create_genesis_payload(&self) -> InstructionSet {
+        InstructionSet::empty()
+    }
 }

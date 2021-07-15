@@ -22,7 +22,10 @@
 //
 //! # Global configuration of tari base layer system
 
-use crate::{configuration::Network, ConfigurationError};
+use crate::{
+    configuration::{DanNodeConfig, Network},
+    ConfigurationError,
+};
 use config::{Config, ConfigError, Environment};
 use multiaddr::Multiaddr;
 use std::{
@@ -123,6 +126,7 @@ pub struct GlobalConfig {
     pub flood_ban_max_msg_count: usize,
     pub mine_on_tip_only: bool,
     pub validate_tip_timeout_sec: u64,
+    pub dan_node: Option<DanNodeConfig>,
 }
 
 impl GlobalConfig {
@@ -711,6 +715,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         flood_ban_max_msg_count,
         mine_on_tip_only,
         validate_tip_timeout_sec,
+        dan_node: DanNodeConfig::convert_if_present(cfg)?,
     })
 }
 

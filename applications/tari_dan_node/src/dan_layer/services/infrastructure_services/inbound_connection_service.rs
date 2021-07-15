@@ -20,12 +20,40 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::models::{HotStuffMessage, Payload};
+use crate::dan_layer::models::{HotStuffMessage, InstructionSet, Payload};
 
 use crate::dan_layer::services::infrastructure_services::NodeAddressable;
 use async_trait::async_trait;
+use futures::Stream;
+use std::{marker::PhantomData, sync::Arc};
+use tari_comms::types::CommsPublicKey;
+use tari_p2p::{comms_connector::PeerMessage, domain_message::DomainMessage};
 
 #[async_trait]
 pub trait InboundConnectionService<TAddr: NodeAddressable, TPayload: Payload> {
     async fn receive_message(&mut self) -> (TAddr, HotStuffMessage<TPayload>);
+}
+
+pub struct TariCommsInboundConnectionService<TPayload: Payload> {
+    stream: Box<dyn Stream<Item = Arc<PeerMessage>>>,
+    // TODO: remove
+    phantom: PhantomData<TPayload>,
+}
+
+impl<TPayload: Payload> TariCommsInboundConnectionService<TPayload> {
+    pub fn new(stream: impl Stream<Item = Arc<PeerMessage>>) -> Self {
+        Self {
+            stream: Box::new(stream),
+            phantom: PhantomData,
+        }
+    }
+}
+
+#[async_trait]
+impl<TPayload: Payload> InboundConnectionService<CommsPublicKey, TPayload>
+    for TariCommsInboundConnectionService<TPayload>
+{
+    async fn receive_message(&mut self) -> (CommsPublicKey, HotStuffMessage<TPayload>) {
+        todo!()
+    }
 }

@@ -21,17 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod inbound_connection_service;
+mod node_addressable;
 mod outbound_service;
 
-pub use inbound_connection_service::InboundConnectionService;
-pub use outbound_service::OutboundService;
+pub use inbound_connection_service::{InboundConnectionService, TariCommsInboundConnectionService};
+pub use node_addressable::NodeAddressable;
+pub use outbound_service::{OutboundService, TariCommsOutboundService};
 use std::{fmt::Debug, hash::Hash};
-
-pub trait NodeAddressable: Eq + Hash + Clone + Debug + Send + Sync {}
-
-impl NodeAddressable for String {}
-
-impl NodeAddressable for &str {}
 
 #[cfg(test)]
 pub mod mocks;

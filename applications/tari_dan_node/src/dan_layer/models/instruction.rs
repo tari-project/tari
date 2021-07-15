@@ -20,21 +20,47 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::types::{PublicKey, ComSig};
-use crate::dan_layer::models::TokenId;
+use crate::{
+    dan_layer::models::TokenId,
+    types::{com_sig_to_bytes, ComSig, PublicKey},
+};
+use digest::Digest;
+use tari_crypto::{common::Blake256, tari_utilities::ByteArray};
 
-pub struct Instruction{
+#[derive(Clone, Debug, Hash)]
+pub struct Instruction {
     asset_id: PublicKey,
     method: String,
     args: Vec<Vec<u8>>,
     from: TokenId,
-    signature: ComSig
+    signature: ComSig,
+    hash: Vec<u8>,
 }
 
 impl Instruction {
-    pub fn new(asset_id: PublicKey, method: String, args: Vec<Vec<u8>>, from: TokenId, signature: ComSig) ->  Self {
-        Self {
-            asset_id, method, args, from, signature
+    pub fn new(asset_id: PublicKey, method: String, args: Vec<Vec<u8>>, from: TokenId, signature: ComSig) -> Self {
+        let mut s = Self {
+            asset_id,
+            method,
+            args,
+            from,
+            signature,
+            hash: vec![],
+        };
+        s.hash = s.calculate_hash();
+        s
+    }
+
+    pub fn calculate_hash(&self) -> Vec<u8> {
+        let mut b = Blake256::new()
+            .chain(self.asset_id.as_bytes())
+            .chain(self.method.as_bytes());
+        for a in &self.args {
+            b = b.chain(a);
         }
+        b.chain(self.from.as_bytes())
+            .chain(com_sig_to_bytes(&self.signature))
+            .finalize()
+            .to_vec()
     }
 }

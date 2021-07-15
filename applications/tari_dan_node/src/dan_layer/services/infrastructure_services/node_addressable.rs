@@ -20,25 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::models::Event;
-use std::{fmt::Debug, marker::PhantomData};
+use std::{fmt::Debug, hash::Hash};
+use tari_comms::types::CommsPublicKey;
 
-pub trait EventsPublisher<TEvent: Event> {
-    fn publish(&mut self, event: TEvent);
-}
+pub trait NodeAddressable: Eq + Hash + Clone + Debug + Send + Sync {}
 
-pub struct LoggingEventsPublisher<TEvent: Event> {
-    // TODO: remove
-    phantom: PhantomData<TEvent>,
-}
+impl NodeAddressable for String {}
 
-impl<TEvent: Event> LoggingEventsPublisher<TEvent> {
-    pub fn new() -> Self {
-        Self { phantom: PhantomData }
-    }
-}
-impl<TEvent: Event + Debug> EventsPublisher<TEvent> for LoggingEventsPublisher<TEvent> {
-    fn publish(&mut self, event: TEvent) {
-        dbg!("Event received:{:?}", event);
-    }
-}
+impl NodeAddressable for &str {}
+
+impl NodeAddressable for CommsPublicKey {}

@@ -57,7 +57,6 @@ use tokio::time::Duration;
 const LOG_TARGET: &str = "tari::dan::consensus_worker";
 
 pub struct ConsensusWorker<
-    TMempoolService,
     TBftReplicaService,
     TInboundConnectionService,
     TOutboundService,
@@ -67,7 +66,6 @@ pub struct ConsensusWorker<
     TEventsPublisher,
     TSigningService,
 > where
-    TMempoolService: MempoolService,
     TBftReplicaService: BftReplicaService,
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload>,
     TOutboundService: OutboundService<TAddr, TPayload>,
@@ -77,7 +75,6 @@ pub struct ConsensusWorker<
     TEventsPublisher: EventsPublisher<ConsensusWorkerDomainEvent>,
     TSigningService: SigningService<TAddr>,
 {
-    mempool_service: TMempoolService,
     bft_replica_service: TBftReplicaService,
     inbound_connections: TInboundConnectionService,
     outbound_service: TOutboundService,
@@ -94,7 +91,6 @@ pub struct ConsensusWorker<
 }
 
 impl<
-        TMempoolService,
         TBftReplicaService,
         TInboundConnectionService,
         TOutboundService,
@@ -105,7 +101,6 @@ impl<
         TSigningService,
     >
     ConsensusWorker<
-        TMempoolService,
         TBftReplicaService,
         TInboundConnectionService,
         TOutboundService,
@@ -116,7 +111,6 @@ impl<
         TSigningService,
     >
 where
-    TMempoolService: MempoolService,
     TBftReplicaService: BftReplicaService,
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload> + 'static + Send + Sync,
     TOutboundService: OutboundService<TAddr, TPayload>,
@@ -127,7 +121,6 @@ where
     TSigningService: SigningService<TAddr>,
 {
     pub fn new(
-        mempool_service: TMempoolService,
         bft_replica_service: TBftReplicaService,
         inbound_connections: TInboundConnectionService,
         outbound_service: TOutboundService,
@@ -141,7 +134,6 @@ where
         let prepare_qc = Arc::new(QuorumCertificate::genesis(payload_provider.create_genesis_payload()));
 
         Self {
-            mempool_service,
             bft_replica_service,
             inbound_connections,
             state: ConsensusWorkerState::Starting,
@@ -337,7 +329,6 @@ mod test {
         events_publisher: MockEventsPublisher<ConsensusWorkerDomainEvent>,
     ) -> JoinHandle<()> {
         let mut replica_a = ConsensusWorker::new(
-            mock_mempool(),
             mock_bft(),
             inbound,
             outbound,

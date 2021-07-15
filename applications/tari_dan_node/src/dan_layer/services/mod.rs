@@ -28,9 +28,9 @@ mod payload_provider;
 mod signing_service;
 mod template_service;
 
-pub use events_publisher::EventsPublisher;
-pub use payload_provider::PayloadProvider;
-pub use signing_service::SigningService;
+pub use events_publisher::{EventsPublisher, LoggingEventsPublisher};
+pub use payload_provider::{MempoolPayloadProvider, PayloadProvider};
+pub use signing_service::{NodeIdentitySigningService, SigningService};
 
 pub use bft_replica_service::{BftReplicaService, ConcreteBftReplicaService};
 pub use mempool_service::{ConcreteMempoolService, MempoolService};

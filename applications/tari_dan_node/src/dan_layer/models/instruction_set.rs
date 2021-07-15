@@ -20,25 +20,55 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::models::Event;
-use std::{fmt::Debug, marker::PhantomData};
+use crate::dan_layer::models::{Instruction, Payload};
+use tari_crypto::common::Blake256;
+use tari_mmr::MerkleMountainRange;
 
-pub trait EventsPublisher<TEvent: Event> {
-    fn publish(&mut self, event: TEvent);
-}
+#[derive(PartialEq, Clone, Debug, Hash)]
+pub struct InstructionSetHash(Vec<u8>);
 
-pub struct LoggingEventsPublisher<TEvent: Event> {
-    // TODO: remove
-    phantom: PhantomData<TEvent>,
-}
-
-impl<TEvent: Event> LoggingEventsPublisher<TEvent> {
-    pub fn new() -> Self {
-        Self { phantom: PhantomData }
+impl InstructionSetHash {
+    pub fn as_bytes(&self) -> &[u8] {
+        self.0.as_slice()
     }
 }
-impl<TEvent: Event + Debug> EventsPublisher<TEvent> for LoggingEventsPublisher<TEvent> {
-    fn publish(&mut self, event: TEvent) {
-        dbg!("Event received:{:?}", event);
+
+#[derive(Clone, Debug, Hash)]
+pub struct InstructionSet {
+    hash: InstructionSetHash,
+    instructions: Vec<Instruction>,
+}
+
+impl InstructionSet {
+    pub fn empty() -> Self {
+        Self {
+            instructions: vec![],
+            hash: InstructionSetHash(vec![]),
+        }
+    }
+
+    pub fn calculate_hash(&self) -> InstructionSetHash {
+        let mut mmr = MerkleMountainRange::<Blake256, _>::new(Vec::default());
+        // assume instructions are sorted
+        for instruction in &self.instructions {
+            mmr.push(instruction.calculate_hash());
+        }
+
+        InstructionSetHash(mmr.get_merkle_root().unwrap())
+    }
+}
+
+impl Payload for InstructionSet {}
+
+// TODO: Not really the correct trait, it should be AsHash
+impl AsRef<[u8]> for InstructionSet {
+    fn as_ref(&self) -> &[u8] {
+        self.hash.as_bytes()
+    }
+}
+
+impl PartialEq for InstructionSet {
+    fn eq(&self, other: &Self) -> bool {
+        self.hash.eq(&other.hash)
     }
 }

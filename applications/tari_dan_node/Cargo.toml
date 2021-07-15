@@ -17,6 +17,7 @@ tari_comms = {path = "../../comms"}
 tari_service_framework = { path= "../../base_layer/service_framework"}
 tari_p2p = {path = "../../base_layer/p2p"}
 tari_comms_dht = {path= "../../comms/dht"}
+tari_mmr = {path = "../../base_layer/mmr"}
 
 thiserror = "^1.0.20"
 log = { version = "0.4.8", features = ["std"] }

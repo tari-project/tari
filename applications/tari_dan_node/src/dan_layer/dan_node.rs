@@ -22,12 +22,21 @@
 
 use crate::{
     dan_layer::{
-        services::{ConcreteBftReplicaService, ConcreteMempoolService},
+        models::{Committee, HotStuffMessage, InstructionSet},
+        services::{
+            infrastructure_services::{TariCommsInboundConnectionService, TariCommsOutboundService},
+            ConcreteBftReplicaService,
+            ConcreteMempoolService,
+            LoggingEventsPublisher,
+            MempoolPayloadProvider,
+            NodeIdentitySigningService,
+        },
         workers::ConsensusWorker,
     },
     digital_assets_error::DigitalAssetError,
     ExitCodes,
 };
+use anyhow::anyhow;
 use log::*;
 use std::{fs, sync::Arc};
 use tari_app_utilities::{identity_management, identity_management::setup_node_identity, utilities};
@@ -38,16 +47,20 @@ use tari_comms::{
     tor,
     tor::TorIdentity,
     transports::SocksConfig,
+    types::CommsPublicKey,
     utils::multiaddr::multiaddr_to_socketaddr,
     NodeIdentity,
+    UnspawnedCommsNode,
 };
-use tari_comms_dht::{DbConnectionUrl, DhtConfig};
+use tari_comms_dht::{DbConnectionUrl, Dht, DhtConfig};
+use tari_crypto::tari_utilities::hex::{Hex, HexError};
 use tari_p2p::{
-    comms_connector::pubsub_connector,
-    initialization::{CommsConfig, P2pInitializer},
+    comms_connector::{pubsub_connector, PubsubDomainConnector, SubscriptionFactory},
+    initialization::{spawn_comms_using_transport, CommsConfig, P2pInitializer},
+    tari_message::TariMessageType,
     transport::{TorConfig, TransportType},
 };
-use tari_service_framework::StackBuilder;
+use tari_service_framework::{ServiceHandles, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::runtime::Handle;
 
@@ -71,6 +84,60 @@ impl DanNode {
             PeerFeatures::NONE,
         )?;
 
+        let (handles, pubsub_connector, subscription_factory) =
+            self.build_service_and_comms_stack(shutdown, node_identity).await?;
+
+        let mempool = ConcreteMempoolService::new();
+        let bft_replica_service = ConcreteBftReplicaService::new(node_identity.as_ref().clone(), vec![]);
+
+        let mempool_payload_provider = MempoolPayloadProvider::new(mempool);
+        let topic_subscription =
+            subscription_factory.get_subscription(TariMessageType::DanConsensusMessage, "HotStufMessages");
+        let inbound = TariCommsInboundConnectionService::<InstructionSet>::new(topic_subscription);
+        let dht = handles.expect_handle::<Dht>();
+        let outbound = TariCommsOutboundService::new(dht.outbound_requester());
+
+        let dan_config = self
+            .config
+            .dan_node
+            .as_ref()
+            .ok_or(ExitCodes::ConfigError("Missing dan section".to_string()))?;
+
+        let committee: Vec<CommsPublicKey> = dan_config
+            .committee
+            .iter()
+            .map(|s| {
+                CommsPublicKey::from_hex(s)
+                    .map_err(|e| ExitCodes::ConfigError(format!("could not convert to hex:{}", e)))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let committee = Committee::new(committee);
+        let events_publisher = LoggingEventsPublisher::new();
+        let signing_service = NodeIdentitySigningService::new(node_identity.as_ref().clone());
+        let mut consensus_worker = ConsensusWorker::new(
+            bft_replica_service,
+            inbound,
+            outbound,
+            committee,
+            node_identity.public_key().clone(),
+            mempool_payload_provider,
+            events_publisher,
+            signing_service,
+            dan_config.phase_timeout,
+        );
+        consensus_worker
+            .run(shutdown.clone())
+            .await
+            .map_err(|err| ExitCodes::ConfigError(err.to_string()))
+    }
+
+    async fn build_service_and_comms_stack(
+        &self,
+        shutdown: ShutdownSignal,
+        node_identity: Arc<NodeIdentity>,
+    ) -> Result<(ServiceHandles, PubsubDomainConnector, SubscriptionFactory), ExitCodes> {
+        // this code is duplicated from the base node
         let comms_config = self.create_comms_config(node_identity.clone());
 
         let (publisher, peer_message_subscriptions) =
@@ -81,13 +148,24 @@ impl DanNode {
             .await
             .map_err(|err| ExitCodes::ConfigError(err.to_string()))?;
 
-        let mempool = ConcreteMempoolService::new();
-        let bft_replica_service = ConcreteBftReplicaService::new(node_identity.as_ref().clone(), vec![]);
+        let comms = handles
+            .take_handle::<UnspawnedCommsNode>()
+            .expect("P2pInitializer was not added to the stack or did not add UnspawnedCommsNode");
+        let comms = spawn_comms_using_transport(comms, self.create_transport_type())
+            .await
+            .map_err(|e| ExitCodes::ConfigError(format!("Could not spawn using transport:{}", e)))?;
 
-        // let mut consensus_worker = ConsensusWorker::new(mempool, bft_replica_service);
-        // consensus_worker.run(shutdown.clone()).await.map_err(|err| ExitCodes::ConfigError(err.to_string()))?;
-        unimplemented!()
-        // Ok(())
+        // Save final node identity after comms has initialized. This is required because the public_address can be
+        // changed by comms during initialization when using tor.
+        identity_management::save_as_json(&self.config.base_node_identity_file, &*comms.node_identity())
+            .map_err(|e| ExitCodes::ConfigError(format!("Failed to save node identity: {}", e)))?;
+        if let Some(hs) = comms.hidden_service() {
+            identity_management::save_as_json(&self.config.base_node_tor_identity_file, hs.tor_identity())
+                .map_err(|e| ExitCodes::ConfigError(format!("Failed to save tor identity: {}", e)))?;
+        }
+
+        handles.register(comms);
+        Ok((handles, publisher, peer_message_subscriptions))
     }
 
     fn create_comms_config(&self, node_identity: Arc<NodeIdentity>) -> CommsConfig {

@@ -28,6 +28,7 @@ pub mod domain_events;
 mod hot_stuff_message;
 mod hot_stuff_tree_node;
 mod instruction;
+mod instruction_set;
 mod quorum_certificate;
 mod replica_info;
 mod view;
@@ -38,6 +39,7 @@ pub use committee::Committee;
 pub use hot_stuff_message::HotStuffMessage;
 pub use hot_stuff_tree_node::HotStuffTreeNode;
 pub use instruction::Instruction;
+pub use instruction_set::InstructionSet;
 pub use quorum_certificate::QuorumCertificate;
 pub use replica_info::ReplicaInfo;
 use std::{
@@ -64,12 +66,18 @@ pub enum TemplateId {
     EditableMetadata,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Hash)]
 pub struct TokenId(pub Vec<u8>);
+
+impl TokenId {
+    fn as_bytes(&self) -> &[u8] {
+        self.0.as_slice()
+    }
+}
 
 impl AsRef<[u8]> for TokenId {
     fn as_ref(&self) -> &[u8] {
-        self.0.as_slice()
+        self.as_bytes()
     }
 }
 
@@ -104,6 +112,7 @@ impl TreeNodeHash {
     }
 }
 
+// TODO: Perhaps should be CoW instead of Clone
 pub trait Payload: Hash + Debug + Clone + AsRef<[u8]> + Send + Sync + PartialEq {}
 
 impl Payload for &str {}

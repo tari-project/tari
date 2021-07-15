@@ -28,6 +28,9 @@ use crate::{
     digital_assets_error::DigitalAssetError,
 };
 use async_trait::async_trait;
+use std::marker::PhantomData;
+use tari_comms::types::CommsPublicKey;
+use tari_comms_dht::outbound::OutboundMessageRequester;
 
 #[async_trait]
 pub trait OutboundService<TAddr: NodeAddressable + Send, TPayload: Payload> {
@@ -39,4 +42,39 @@ pub trait OutboundService<TAddr: NodeAddressable + Send, TPayload: Payload> {
     ) -> Result<(), DigitalAssetError>;
 
     async fn broadcast(&mut self, from: TAddr, message: HotStuffMessage<TPayload>) -> Result<(), DigitalAssetError>;
+}
+
+pub struct TariCommsOutboundService<TPayload: Payload> {
+    outbound_message_requester: OutboundMessageRequester,
+    // TODO: Remove
+    phantom: PhantomData<TPayload>,
+}
+
+impl<TPayload: Payload> TariCommsOutboundService<TPayload> {
+    pub fn new(outbound_message_requester: OutboundMessageRequester) -> Self {
+        Self {
+            outbound_message_requester,
+            phantom: PhantomData,
+        }
+    }
+}
+
+#[async_trait]
+impl<TPayload: Payload> OutboundService<CommsPublicKey, TPayload> for TariCommsOutboundService<TPayload> {
+    async fn send(
+        &mut self,
+        from: CommsPublicKey,
+        to: CommsPublicKey,
+        message: HotStuffMessage<TPayload>,
+    ) -> Result<(), DigitalAssetError> {
+        todo!()
+    }
+
+    async fn broadcast(
+        &mut self,
+        from: CommsPublicKey,
+        message: HotStuffMessage<TPayload>,
+    ) -> Result<(), DigitalAssetError> {
+        todo!()
+    }
 }
