@@ -43,6 +43,7 @@ pub use instruction_set::InstructionSet;
 pub use quorum_certificate::QuorumCertificate;
 pub use replica_info::ReplicaInfo;
 use std::{
+    convert::TryFrom,
     fmt,
     fmt::{Debug, Formatter},
     hash::Hash,
@@ -99,6 +100,21 @@ impl HotStuffMessageType {
             HotStuffMessageType::PreCommit => 3,
             HotStuffMessageType::Commit => 4,
             HotStuffMessageType::Genesis => 255,
+        }
+    }
+}
+
+impl TryFrom<u8> for HotStuffMessageType {
+    type Error = String;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(HotStuffMessageType::NewView),
+            2 => Ok(otStuffMessageType::Prepare),
+            3 => Ok(otStuffMessageType::PreCommit),
+            4 => Ok(otStuffMessageType::Commit),
+            255 => Ok(otStuffMessageType::Genesis),
+            _ => Err("Not a value message type".to_string()),
         }
     }
 }

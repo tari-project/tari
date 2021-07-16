@@ -20,27 +20,31 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::models::Instruction;
-use crate::digital_assets_error::DigitalAssetError;
+use crate::{dan_layer::models::Instruction, digital_assets_error::DigitalAssetError};
 
-pub trait MempoolService{
- fn submit_instruction(&mut self, instruction: Instruction) -> Result<(), DigitalAssetError>;
+pub trait MempoolService {
+    fn submit_instruction(&mut self, instruction: Instruction) -> Result<(), DigitalAssetError>;
+    fn read_block(&self, limit: usize) -> Result<&[Instruction], DigitalAssetError>;
 }
 
-
 pub struct ConcreteMempoolService {
-    instructions: Vec<Instruction>
+    instructions: Vec<Instruction>,
 }
 
 impl ConcreteMempoolService {
     pub fn new() -> Self {
-        Self{instructions: vec![]}
+        Self { instructions: vec![] }
     }
 }
 
 impl MempoolService for ConcreteMempoolService {
-    fn submit_instruction(&mut self, instruction: Instruction)  -> Result<(), DigitalAssetError>{
+    fn submit_instruction(&mut self, instruction: Instruction) -> Result<(), DigitalAssetError> {
         self.instructions.push(instruction);
         Ok(())
+    }
+
+    fn read_block(&self, limit: usize) -> Result<&[Instruction], DigitalAssetError> {
+        // TODO: add limit, man I'm so lazy
+        Ok(&self.instructions.as_slice())
     }
 }

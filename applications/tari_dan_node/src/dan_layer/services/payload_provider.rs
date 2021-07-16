@@ -20,13 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::{
-    models::{InstructionSet, Payload},
-    services::MempoolService,
+use crate::{
+    dan_layer::{
+        models::{InstructionSet, Payload},
+        services::MempoolService,
+    },
+    digital_assets_error::DigitalAssetError,
 };
 
 pub trait PayloadProvider<TPayload: Payload> {
-    fn create_payload(&self) -> TPayload;
+    fn create_payload(&self) -> Result<TPayload, DigitalAssetError>;
     fn create_genesis_payload(&self) -> TPayload;
 }
 
@@ -41,8 +44,9 @@ impl<TMempoolService: MempoolService> MempoolPayloadProvider<TMempoolService> {
 }
 
 impl<TMempoolService: MempoolService> PayloadProvider<InstructionSet> for MempoolPayloadProvider<TMempoolService> {
-    fn create_payload(&self) -> InstructionSet {
-        todo!()
+    fn create_payload(&self) -> Result<InstructionSet, DigitalAssetError> {
+        let instructions = self.mempool.read_block(100)?;
+        Ok(InstructionSet::from_slice(instructions))
     }
 
     fn create_genesis_payload(&self) -> InstructionSet {

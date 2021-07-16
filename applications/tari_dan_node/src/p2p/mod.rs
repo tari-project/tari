@@ -22,13 +22,16 @@
 
 use crate::dan_layer::models::{
     HotStuffMessage,
+    HotStuffMessageType,
     HotStuffTreeNode,
     Instruction,
     InstructionSet,
     Payload,
     QuorumCertificate,
     Signature,
+    ViewId,
 };
+use std::convert::TryFrom;
 
 #[allow(clippy::large_enum_variant)]
 pub mod dan_p2p {
@@ -84,5 +87,19 @@ impl From<&InstructionSet> for dan_p2p::InstructionSet {
 impl From<&Instruction> for dan_p2p::Instruction {
     fn from(source: &Instruction) -> Self {
         Self {}
+    }
+}
+
+impl TryFrom<dan_p2p::HotStuffMessage> for HotStuffMessage<InstructionSet> {
+    type Error = String;
+
+    fn try_from(value: dan_p2p::HotStuffMessage) -> Result<Self, Self::Error> {
+        Ok(Self {
+            view_number: ViewId(value.view_number),
+            message_type: HotStuffMessageType::try_from(value.message_type)?,
+            justify: value.justify.try_into()?,
+            node: value.node.try_into()?,
+            partial_sig: value.partial_sig.try_into(),
+        })
     }
 }

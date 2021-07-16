@@ -23,7 +23,7 @@
 use crate::{
     dan_layer::{
         models::{HotStuffMessage, InstructionSet, Payload},
-        services::infrastructure_services::NodeAddressable,
+        services::infrastructure_services::{InboundConnectionService, NodeAddressable},
     },
     digital_assets_error::DigitalAssetError,
     p2p,
@@ -33,6 +33,7 @@ use std::marker::PhantomData;
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundMessageRequester};
 use tari_p2p::tari_message::TariMessageType;
+use tokio::sync::mpsc::Sender;
 
 #[async_trait]
 pub trait OutboundService<TAddr: NodeAddressable + Send, TPayload: Payload> {
@@ -53,14 +54,19 @@ pub trait OutboundService<TAddr: NodeAddressable + Send, TPayload: Payload> {
 
 pub struct TariCommsOutboundService<TPayload: Payload> {
     outbound_message_requester: OutboundMessageRequester,
+    loopback_service: Sender<(CommsPublicKey, HotStuffMessage<TPayload>)>,
     // TODO: Remove
     phantom: PhantomData<TPayload>,
 }
 
 impl<TPayload: Payload> TariCommsOutboundService<TPayload> {
-    pub fn new(outbound_message_requester: OutboundMessageRequester) -> Self {
+    pub fn new(
+        outbound_message_requester: OutboundMessageRequester,
+        loopback_service: Sender<(CommsPublicKey, HotStuffMessage<TPayload>)>,
+    ) -> Self {
         Self {
             outbound_message_requester,
+            loopback_service,
             phantom: PhantomData,
         }
     }
@@ -74,8 +80,15 @@ impl OutboundService<CommsPublicKey, InstructionSet> for TariCommsOutboundServic
         to: CommsPublicKey,
         message: HotStuffMessage<InstructionSet>,
     ) -> Result<(), DigitalAssetError> {
+        // Tari comms does allow sending to itself
+        if from == to {
+            self.loopback_service.send((from, message)).await.unwrap();
+            return Ok(());
+        }
+
         let inner: p2p::dan_p2p::HotStuffMessage = (&message).into();
         let tari_message = OutboundDomainMessage::new(TariMessageType::DanConsensusMessage, inner);
+
         self.outbound_message_requester
             .send_direct(to, tari_message)
             .await

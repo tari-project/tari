@@ -93,8 +93,9 @@ impl DanNode {
 
         let mempool_payload_provider = MempoolPayloadProvider::new(mempool);
 
-        let mut inbound = TariCommsInboundConnectionService::<InstructionSet>::new();
+        let mut inbound = TariCommsInboundConnectionService::new();
         let receiver = inbound.take_receiver().unwrap();
+        let loopback = inbound.clone_sender();
         let shutdown_2 = shutdown.clone();
         task::spawn(async move {
             let topic_subscription =
@@ -102,7 +103,7 @@ impl DanNode {
             inbound.run(shutdown_2, topic_subscription).await
         });
         let dht = handles.expect_handle::<Dht>();
-        let outbound = TariCommsOutboundService::new(dht.outbound_requester());
+        let outbound = TariCommsOutboundService::new(dht.outbound_requester(), loopback);
 
         let dan_config = self
             .config

@@ -46,6 +46,10 @@ impl MempoolService for MockMempoolService {
     fn submit_instruction(&mut self, instruction: Instruction) -> Result<(), DigitalAssetError> {
         todo!()
     }
+
+    fn read_block(&self, limit: usize) -> Result<&[Instruction], DigitalAssetError> {
+        todo!()
+    }
 }
 
 pub fn mock_mempool() -> MockMempoolService {
@@ -88,8 +92,8 @@ pub struct MockStaticPayloadProvider<TPayload: Payload> {
 }
 
 impl<TPayload: Payload> PayloadProvider<TPayload> for MockStaticPayloadProvider<TPayload> {
-    fn create_payload(&self) -> TPayload {
-        self.static_payload.clone()
+    fn create_payload(&self) -> Result<TPayload, DigitalAssetError> {
+        Ok(self.static_payload.clone())
     }
 
     fn create_genesis_payload(&self) -> TPayload {

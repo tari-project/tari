@@ -22,7 +22,11 @@
 
 use crate::dan_layer::models::{HotStuffMessage, InstructionSet, Payload, ViewId};
 
-use crate::{dan_layer::services::infrastructure_services::NodeAddressable, digital_assets_error::DigitalAssetError};
+use crate::{
+    dan_layer::services::infrastructure_services::NodeAddressable,
+    digital_assets_error::DigitalAssetError,
+    p2p::dan_p2p,
+};
 use async_trait::async_trait;
 use futures::{self, pin_mut, Stream, StreamExt};
 use std::{marker::PhantomData, sync::Arc};
@@ -36,24 +40,26 @@ pub trait InboundConnectionService<TAddr: NodeAddressable, TPayload: Payload> {
     async fn receive_message(&mut self) -> (TAddr, HotStuffMessage<TPayload>);
 }
 
-pub struct TariCommsInboundConnectionService<TPayload: Payload> {
+pub struct TariCommsInboundConnectionService {
     // TODO: remove
-    phantom: PhantomData<TPayload>,
-    receiver: Option<TariCommsInboundReceiver<TPayload>>,
-    sender: Sender<(CommsPublicKey, HotStuffMessage<TPayload>)>,
+    receiver: Option<TariCommsInboundReceiver<InstructionSet>>,
+    sender: Sender<(CommsPublicKey, HotStuffMessage<InstructionSet>)>,
 }
 
-impl<TPayload: Payload> TariCommsInboundConnectionService<TPayload> {
+impl TariCommsInboundConnectionService {
     pub fn new() -> Self {
         let (receiver, sender) = TariCommsInboundReceiver::new();
         Self {
-            phantom: PhantomData,
             receiver: Some(receiver),
             sender,
         }
     }
 
-    pub fn take_receiver(&mut self) -> Option<TariCommsInboundReceiver<TPayload>> {
+    pub fn clone_sender(&self) -> Sender<(CommsPublicKey, HotStuffMessage<InstructionSet>)> {
+        self.sender.clone()
+    }
+
+    pub fn take_receiver(&mut self) -> Option<TariCommsInboundReceiver<InstructionSet>> {
         // Takes the receiver, can only be done once
         if let Some(receiver) = self.receiver.take() {
             Some(receiver)
@@ -87,9 +93,11 @@ impl<TPayload: Payload> TariCommsInboundConnectionService<TPayload> {
     }
 
     async fn forward_message(&mut self, message: Arc<PeerMessage>) -> Result<(), DigitalAssetError> {
-        let from = message.authenticated_origin.as_ref().unwrap().clone();
+        // let from = message.authenticated_origin.as_ref().unwrap().clone();
+        let from = message.source_peer.public_key.clone();
         // TODO: Convert hotstuff
-        let hotstuff_message = HotStuffMessage::<TPayload>::pre_commit(None, None, ViewId(999));
+        let proto_message: dan_p2p::HotStuffMessage = message.decode_message().unwrap();
+        let hotstuff_message = proto_message.try_into()?;
         self.sender.send((from, hotstuff_message)).await.unwrap();
         Ok(())
     }

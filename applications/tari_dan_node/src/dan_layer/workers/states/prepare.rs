@@ -180,7 +180,7 @@ where
                 committee.len()
             );
             let high_qc = self.find_highest_qc();
-            let proposal = self.create_proposal(high_qc.node(), payload_provider);
+            let proposal = self.create_proposal(high_qc.node(), payload_provider).await?;
             self.broadcast_proposal(outbound, &committee, proposal, high_qc, current_view.view_id)
                 .await?;
             // Ok(Some(ConsensusWorkerStateEvent::Prepared))
@@ -256,13 +256,16 @@ where
         max_qc.unwrap()
     }
 
-    fn create_proposal(
+    async fn create_proposal(
         &self,
         parent: &HotStuffTreeNode<TPayload>,
         payload_provider: &TPayloadProvider,
-    ) -> HotStuffTreeNode<TPayload> {
-        let payload = payload_provider.create_payload();
-        HotStuffTreeNode::from_parent(parent, payload)
+    ) -> Result<HotStuffTreeNode<TPayload>, DigitalAssetError> {
+        // TODO: Artificial delay here to set the block time
+        delay_for(Duration::from_secs(3)).await;
+
+        let payload = payload_provider.create_payload()?;
+        Ok(HotStuffTreeNode::from_parent(parent, payload))
     }
 
     async fn broadcast_proposal(

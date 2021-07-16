@@ -49,6 +49,16 @@ impl InstructionSet {
         }
     }
 
+    pub fn from_slice(instructions: &[Instruction]) -> Self {
+        let ins = Vec::from(instructions);
+        let mut result = Self {
+            instructions: ins,
+            hash: InstructionSetHash(vec![]),
+        };
+        result.hash = result.calculate_hash();
+        result
+    }
+
     pub fn calculate_hash(&self) -> InstructionSetHash {
         let mut mmr = MerkleMountainRange::<Blake256, _>::new(Vec::default());
         // assume instructions are sorted
