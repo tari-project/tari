@@ -20,34 +20,37 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod grpc;
 mod cmd_args;
 mod dan_layer;
 mod digital_assets_error;
+mod grpc;
+mod p2p;
 mod types;
 
-
-use log::*;
-use thiserror::Error;
-use std::process;
-use anyhow;
 use crate::grpc::dan_grpc_server::DanGrpcServer;
-use std::net::{SocketAddr, IpAddr, Ipv4Addr};
-use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::{task, runtime};
-use tonic::transport::Server;
-use tokio::stream::StreamExt;
+use anyhow;
 use futures::FutureExt;
+use log::*;
+use std::{
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    process,
+};
+use tari_shutdown::{Shutdown, ShutdownSignal};
+use thiserror::Error;
+use tokio::{runtime, stream::StreamExt, task};
+use tonic::transport::Server;
 
-use crate::grpc::dan_rpc::dan_node_server::DanNodeServer;
+use crate::{
+    cmd_args::OperationMode,
+    dan_layer::{
+        dan_node::DanNode,
+        services::{ConcreteMempoolService, MempoolService},
+    },
+    grpc::dan_rpc::dan_node_server::DanNodeServer,
+};
+use tari_app_utilities::{initialization::init_configuration, utilities::ExitCodes};
+use tari_common::{configuration::bootstrap::ApplicationType, GlobalConfig};
 use tokio::runtime::Runtime;
-use crate::cmd_args::OperationMode;
-use crate::dan_layer::services::{MempoolService, ConcreteMempoolService};
-use tari_app_utilities::initialization::init_configuration;
-use crate::dan_layer::dan_node::DanNode;
-use tari_common::configuration::bootstrap::ApplicationType;
-use tari_common::GlobalConfig;
-use tari_app_utilities::utilities::ExitCodes;
 
 const LOG_TARGET: &str = "dan_node::app";
 
@@ -65,15 +68,14 @@ fn main() {
 }
 
 fn main_inner() -> Result<(), ExitCodes> {
-
     let (bootstrap, node_config, _) = init_configuration(ApplicationType::DanNode)?;
 
     // let operation_mode = cmd_args::get_operation_mode();
     // match operation_mode {
     //     OperationMode::Run => {
-            let mut runtime = build_runtime()?;
-            runtime.block_on(run_node(node_config))?;
-        // }
+    let mut runtime = build_runtime()?;
+    runtime.block_on(run_node(node_config))?;
+    // }
     // }
 
     Ok(())
@@ -100,26 +102,27 @@ fn build_runtime() -> Result<Runtime, ExitCodes> {
         .map_err(|e| ExitCodes::UnknownError)
 }
 
-
 async fn run_dan_node(shutdown_signal: ShutdownSignal, config: GlobalConfig) -> Result<(), ExitCodes> {
- let node = DanNode::new(config);
+    let node = DanNode::new(config);
     node.start(true, shutdown_signal).await
 }
 
-async fn run_grpc(grpc_server: DanGrpcServer, grpc_address: SocketAddr, shutdown_signal: ShutdownSignal)
-     -> Result<(), anyhow::Error> {
-        info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_address);
+async fn run_grpc(
+    grpc_server: DanGrpcServer,
+    grpc_address: SocketAddr,
+    shutdown_signal: ShutdownSignal,
+) -> Result<(), anyhow::Error> {
+    info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_address);
 
-        Server::builder()
-            .add_service(DanNodeServer::new(grpc_server))
-            .serve_with_shutdown(grpc_address, shutdown_signal.map(|_| ()))
-            .await
-            .map_err(|err| {
-                error!(target: LOG_TARGET, "GRPC encountered an  error:{}", err);
-                err
-            })?;
+    Server::builder()
+        .add_service(DanNodeServer::new(grpc_server))
+        .serve_with_shutdown(grpc_address, shutdown_signal.map(|_| ()))
+        .await
+        .map_err(|err| {
+            error!(target: LOG_TARGET, "GRPC encountered an  error:{}", err);
+            err
+        })?;
 
-        info!(target: LOG_TARGET, "Stopping GRPC");
-        Ok(())
-    }
-
+    info!(target: LOG_TARGET, "Stopping GRPC");
+    Ok(())
+}

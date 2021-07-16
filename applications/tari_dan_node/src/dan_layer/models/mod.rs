@@ -107,7 +107,7 @@ impl HotStuffMessageType {
 pub struct TreeNodeHash(pub Vec<u8>);
 
 impl TreeNodeHash {
-    fn as_bytes(&self) -> &[u8] {
+    pub(crate) fn as_bytes(&self) -> &[u8] {
         self.0.as_slice()
     }
 }

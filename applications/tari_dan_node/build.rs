@@ -25,5 +25,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build_server(true)
         .format(false)
         .compile(&["proto/dan_node.proto"], &["proto"])?;
+
+    tari_common::build::ProtobufCompiler::new()
+        .proto_paths(&["src/p2p/proto"])
+        .emit_rerun_if_changed_directives()
+        .compile()
+        .unwrap();
     Ok(())
 }

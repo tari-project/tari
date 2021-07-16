@@ -163,7 +163,8 @@ where
 
             if let Some(qc) = self.create_qc(&current_view) {
                 self.prepare_qc = Some(qc.clone());
-                self.broadcast(outbound, qc, current_view.view_id).await?;
+                self.broadcast(outbound, &self.committee, qc, current_view.view_id)
+                    .await?;
                 // return Ok(Some(ConsensusWorkerStateEvent::PreCommitted));
                 return Ok(None);
             }
@@ -188,11 +189,14 @@ where
     async fn broadcast(
         &self,
         outbound: &mut TOutboundService,
+        committee: &Committee<TAddr>,
         prepare_qc: QuorumCertificate<TPayload>,
         view_number: ViewId,
     ) -> Result<(), DigitalAssetError> {
         let message = HotStuffMessage::pre_commit(None, Some(prepare_qc), view_number);
-        outbound.broadcast(self.node_id.clone(), message).await
+        outbound
+            .broadcast(self.node_id.clone(), committee.members.as_slice(), message)
+            .await
     }
 
     fn create_qc(&self, current_view: &View) -> Option<QuorumCertificate<TPayload>> {

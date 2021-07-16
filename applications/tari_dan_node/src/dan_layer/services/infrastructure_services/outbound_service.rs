@@ -22,15 +22,17 @@
 
 use crate::{
     dan_layer::{
-        models::{HotStuffMessage, Payload},
+        models::{HotStuffMessage, InstructionSet, Payload},
         services::infrastructure_services::NodeAddressable,
     },
     digital_assets_error::DigitalAssetError,
+    p2p,
 };
 use async_trait::async_trait;
 use std::marker::PhantomData;
 use tari_comms::types::CommsPublicKey;
-use tari_comms_dht::outbound::OutboundMessageRequester;
+use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundMessageRequester};
+use tari_p2p::tari_message::TariMessageType;
 
 #[async_trait]
 pub trait OutboundService<TAddr: NodeAddressable + Send, TPayload: Payload> {
@@ -41,7 +43,12 @@ pub trait OutboundService<TAddr: NodeAddressable + Send, TPayload: Payload> {
         message: HotStuffMessage<TPayload>,
     ) -> Result<(), DigitalAssetError>;
 
-    async fn broadcast(&mut self, from: TAddr, message: HotStuffMessage<TPayload>) -> Result<(), DigitalAssetError>;
+    async fn broadcast(
+        &mut self,
+        from: TAddr,
+        committee: &[TAddr],
+        message: HotStuffMessage<TPayload>,
+    ) -> Result<(), DigitalAssetError>;
 }
 
 pub struct TariCommsOutboundService<TPayload: Payload> {
@@ -60,21 +67,33 @@ impl<TPayload: Payload> TariCommsOutboundService<TPayload> {
 }
 
 #[async_trait]
-impl<TPayload: Payload> OutboundService<CommsPublicKey, TPayload> for TariCommsOutboundService<TPayload> {
+impl OutboundService<CommsPublicKey, InstructionSet> for TariCommsOutboundService<InstructionSet> {
     async fn send(
         &mut self,
         from: CommsPublicKey,
         to: CommsPublicKey,
-        message: HotStuffMessage<TPayload>,
+        message: HotStuffMessage<InstructionSet>,
     ) -> Result<(), DigitalAssetError> {
-        todo!()
+        let inner: p2p::dan_p2p::HotStuffMessage = (&message).into();
+        let tari_message = OutboundDomainMessage::new(TariMessageType::DanConsensusMessage, inner);
+        self.outbound_message_requester
+            .send_direct(to, tari_message)
+            .await
+            .unwrap();
+        Ok(())
     }
 
     async fn broadcast(
         &mut self,
         from: CommsPublicKey,
-        message: HotStuffMessage<TPayload>,
+        committee: &[CommsPublicKey],
+        message: HotStuffMessage<InstructionSet>,
     ) -> Result<(), DigitalAssetError> {
-        todo!()
+        for committee_member in committee {
+            // TODO: send in parallel
+            self.send(from.clone(), committee_member.clone(), message.clone())
+                .await?;
+        }
+        Ok(())
     }
 }

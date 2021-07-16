@@ -181,7 +181,7 @@ where
             );
             let high_qc = self.find_highest_qc();
             let proposal = self.create_proposal(high_qc.node(), payload_provider);
-            self.broadcast_proposal(outbound, proposal, high_qc, current_view.view_id)
+            self.broadcast_proposal(outbound, &committee, proposal, high_qc, current_view.view_id)
                 .await?;
             // Ok(Some(ConsensusWorkerStateEvent::Prepared))
             Ok(None) // Will move to pre-commit when it receives the message as a replica
@@ -268,12 +268,15 @@ where
     async fn broadcast_proposal(
         &self,
         outbound: &mut TOutboundService,
+        committee: &Committee<TAddr>,
         proposal: HotStuffTreeNode<TPayload>,
         high_qc: QuorumCertificate<TPayload>,
         view_number: ViewId,
     ) -> Result<(), DigitalAssetError> {
         let message = HotStuffMessage::prepare(proposal, Some(high_qc), view_number);
-        outbound.broadcast(self.node_id.clone(), message).await
+        outbound
+            .broadcast(self.node_id.clone(), committee.members.as_slice(), message)
+            .await
     }
 
     fn does_extend(&self, node: &HotStuffTreeNode<TPayload>, from: &HotStuffTreeNode<TPayload>) -> bool {

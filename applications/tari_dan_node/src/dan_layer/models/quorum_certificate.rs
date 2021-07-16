@@ -61,6 +61,10 @@ impl<TPayload: Payload> QuorumCertificate<TPayload> {
         self.message_type
     }
 
+    pub fn signature(&self) -> Option<&Signature> {
+        self.signature.as_ref()
+    }
+
     pub fn combine_sig(&mut self, partial_sig: &Signature) {
         self.signature = match &self.signature {
             None => Some(partial_sig.clone()),

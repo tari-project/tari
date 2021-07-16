@@ -195,7 +195,9 @@ where
         view_number: ViewId,
     ) -> Result<(), DigitalAssetError> {
         let message = HotStuffMessage::decide(None, Some(commit_qc), view_number);
-        outbound.broadcast(self.node_id.clone(), message).await
+        outbound
+            .broadcast(self.node_id.clone(), self.committee.members.as_slice(), message)
+            .await
     }
 
     fn create_qc(&self, current_view: &View) -> Option<QuorumCertificate<TPayload>> {

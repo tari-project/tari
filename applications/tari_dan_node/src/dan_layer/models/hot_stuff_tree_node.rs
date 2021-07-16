@@ -60,4 +60,8 @@ impl<TPayload: Payload> HotStuffTreeNode<TPayload> {
     pub fn parent(&self) -> &TreeNodeHash {
         &self.parent
     }
+
+    pub fn payload(&self) -> &TPayload {
+        &self.payload
+    }
 }

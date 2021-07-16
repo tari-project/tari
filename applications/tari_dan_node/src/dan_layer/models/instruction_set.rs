@@ -58,6 +58,10 @@ impl InstructionSet {
 
         InstructionSetHash(mmr.get_merkle_root().unwrap())
     }
+
+    pub fn instructions(&self) -> &[Instruction] {
+        self.instructions.as_slice()
+    }
 }
 
 impl Payload for InstructionSet {}
