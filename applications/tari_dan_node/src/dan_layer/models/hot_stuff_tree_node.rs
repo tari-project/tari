@@ -35,6 +35,10 @@ pub struct HotStuffTreeNode<TPayload: Payload> {
 }
 
 impl<TPayload: Payload> HotStuffTreeNode<TPayload> {
+    pub fn new(parent: TreeNodeHash, payload: TPayload) -> Self {
+        HotStuffTreeNode { parent, payload }
+    }
+
     pub fn genesis(payload: TPayload) -> HotStuffTreeNode<TPayload> {
         Self {
             parent: TreeNodeHash(vec![0u8; 32]),

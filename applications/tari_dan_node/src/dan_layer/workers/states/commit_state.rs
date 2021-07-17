@@ -220,7 +220,7 @@ where
         }
 
         let node = node.unwrap();
-        let mut qc = QuorumCertificate::new(HotStuffMessageType::PreCommit, current_view.view_id, node);
+        let mut qc = QuorumCertificate::new(HotStuffMessageType::PreCommit, current_view.view_id, node, None);
         for message in self.received_new_view_messages.values() {
             qc.combine_sig(message.partial_sig().unwrap())
         }

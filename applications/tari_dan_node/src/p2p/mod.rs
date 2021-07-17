@@ -20,18 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::models::{
-    HotStuffMessage,
-    HotStuffMessageType,
-    HotStuffTreeNode,
-    Instruction,
-    InstructionSet,
-    Payload,
-    QuorumCertificate,
-    Signature,
-    ViewId,
+use crate::{
+    dan_layer::models::{
+        HotStuffMessage,
+        HotStuffMessageType,
+        HotStuffTreeNode,
+        Instruction,
+        InstructionSet,
+        Payload,
+        QuorumCertificate,
+        Signature,
+        TokenId,
+        TreeNodeHash,
+        ViewId,
+    },
+    types::{com_sig_to_bytes, create_com_sig_from_bytes, PublicKey},
 };
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
+use tari_crypto::tari_utilities::ByteArray;
 
 #[allow(clippy::large_enum_variant)]
 pub mod dan_p2p {
@@ -86,7 +92,13 @@ impl From<&InstructionSet> for dan_p2p::InstructionSet {
 
 impl From<&Instruction> for dan_p2p::Instruction {
     fn from(source: &Instruction) -> Self {
-        Self {}
+        Self {
+            asset_id: Vec::from(source.asset_id().as_bytes()),
+            method: source.method().to_string(),
+            args: Vec::from(source.args()),
+            from: Vec::from(source.from_owner().as_bytes()),
+            signature: com_sig_to_bytes(source.signature()),
+        }
     }
 }
 
@@ -94,12 +106,84 @@ impl TryFrom<dan_p2p::HotStuffMessage> for HotStuffMessage<InstructionSet> {
     type Error = String;
 
     fn try_from(value: dan_p2p::HotStuffMessage) -> Result<Self, Self::Error> {
-        Ok(Self {
-            view_number: ViewId(value.view_number),
-            message_type: HotStuffMessageType::try_from(value.message_type)?,
-            justify: value.justify.try_into()?,
-            node: value.node.try_into()?,
-            partial_sig: value.partial_sig.try_into(),
-        })
+        Ok(Self::new(
+            ViewId(value.view_number),
+            HotStuffMessageType::try_from(value.message_type as u8)?,
+            value.justify.map(|j| j.try_into()).transpose()?,
+            value.node.map(|n| n.try_into()).transpose()?,
+            value.partial_sig.map(|p| p.try_into()).transpose()?,
+        ))
+    }
+}
+
+impl TryFrom<dan_p2p::QuorumCertificate> for QuorumCertificate<InstructionSet> {
+    type Error = String;
+
+    fn try_from(value: dan_p2p::QuorumCertificate) -> Result<Self, Self::Error> {
+        Ok(Self::new(
+            HotStuffMessageType::try_from(value.message_type as u8)?,
+            ViewId(value.view_number),
+            value
+                .node
+                .map(|n| n.try_into())
+                .transpose()?
+                .ok_or_else(|| "node not provided on Quorum Certificate".to_string())?,
+            value.signature.map(|s| s.try_into()).transpose()?,
+        ))
+    }
+}
+
+impl TryFrom<dan_p2p::HotStuffTreeNode> for HotStuffTreeNode<InstructionSet> {
+    type Error = String;
+
+    fn try_from(value: dan_p2p::HotStuffTreeNode) -> Result<Self, Self::Error> {
+        if value.parent.is_empty() {
+            return Err("parent not provided".to_string());
+        }
+        Ok(Self::new(
+            TreeNodeHash(value.parent),
+            value
+                .payload
+                .map(|p| p.try_into())
+                .transpose()?
+                .ok_or_else(|| "payload not provided".to_string())?,
+        ))
+    }
+}
+
+impl TryFrom<dan_p2p::Signature> for Signature {
+    type Error = String;
+
+    fn try_from(_value: dan_p2p::Signature) -> Result<Self, Self::Error> {
+        Ok(Self {})
+    }
+}
+
+impl TryFrom<dan_p2p::InstructionSet> for InstructionSet {
+    type Error = String;
+
+    fn try_from(value: dan_p2p::InstructionSet) -> Result<Self, Self::Error> {
+        let instructions: Vec<Instruction> = value
+            .instructions
+            .into_iter()
+            .map(|i| i.try_into())
+            .collect::<Result<_, String>>()?;
+        Ok(Self::from_slice(&instructions))
+    }
+}
+
+impl TryFrom<dan_p2p::Instruction> for Instruction {
+    type Error = String;
+
+    fn try_from(value: dan_p2p::Instruction) -> Result<Self, Self::Error> {
+        Ok(Self::new(
+            PublicKey::from_bytes(&value.asset_id)
+                .map_err(|e| format!("asset_id was not a valid public key: {}", e))?,
+            value.method,
+            value.args,
+            TokenId(value.from),
+            create_com_sig_from_bytes(&value.signature)
+                .map_err(|e| format!("Could not convert signature bytes to comsig: {}", e))?,
+        ))
     }
 }

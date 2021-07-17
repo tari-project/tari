@@ -31,12 +31,17 @@ pub struct QuorumCertificate<TPayload: Payload> {
 }
 
 impl<TPayload: Payload> QuorumCertificate<TPayload> {
-    pub fn new(message_type: HotStuffMessageType, view_number: ViewId, node: HotStuffTreeNode<TPayload>) -> Self {
+    pub fn new(
+        message_type: HotStuffMessageType,
+        view_number: ViewId,
+        node: HotStuffTreeNode<TPayload>,
+        signature: Option<Signature>,
+    ) -> Self {
         Self {
             message_type,
             node,
             view_number,
-            signature: None,
+            signature,
         }
     }
 

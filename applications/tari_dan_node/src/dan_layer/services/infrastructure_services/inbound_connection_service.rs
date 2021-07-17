@@ -29,7 +29,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use futures::{self, pin_mut, Stream, StreamExt};
-use std::{marker::PhantomData, sync::Arc};
+use std::{convert::TryInto, marker::PhantomData, sync::Arc};
 use tari_comms::types::CommsPublicKey;
 use tari_p2p::{comms_connector::PeerMessage, domain_message::DomainMessage};
 use tari_shutdown::ShutdownSignal;
@@ -97,8 +97,10 @@ impl TariCommsInboundConnectionService {
         let from = message.source_peer.public_key.clone();
         // TODO: Convert hotstuff
         let proto_message: dan_p2p::HotStuffMessage = message.decode_message().unwrap();
-        let hotstuff_message = proto_message.try_into()?;
-        self.sender.send((from, hotstuff_message)).await.unwrap();
+        let hot_stuff_message = proto_message
+            .try_into()
+            .map_err(|s| DigitalAssetError::ConversionError(s))?;
+        self.sender.send((from, hot_stuff_message)).await.unwrap();
         Ok(())
     }
 }

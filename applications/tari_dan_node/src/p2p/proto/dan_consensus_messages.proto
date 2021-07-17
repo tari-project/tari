@@ -45,5 +45,9 @@ message InstructionSet{
     repeated Instruction instructions = 1;
 }
 message Instruction {
-
+    bytes asset_id = 1;
+    string method = 2;
+    repeated bytes args = 3;
+    bytes from = 4;
+    bytes signature = 5;
 }

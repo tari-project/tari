@@ -51,6 +51,31 @@ impl Instruction {
         s
     }
 
+    pub fn asset_id(&self) -> &PublicKey {
+        &self.asset_id
+    }
+
+    pub fn method(&self) -> &str {
+        &self.method
+    }
+
+    pub fn args(&self) -> &[Vec<u8>] {
+        &self.args
+    }
+
+    // TODO: rename to avoid use of from
+    pub fn from_owner(&self) -> &TokenId {
+        &self.from
+    }
+
+    pub fn signature(&self) -> &ComSig {
+        &self.signature
+    }
+
+    pub fn hash(&self) -> &[u8] {
+        &self.hash
+    }
+
     pub fn calculate_hash(&self) -> Vec<u8> {
         let mut b = Blake256::new()
             .chain(self.asset_id.as_bytes())

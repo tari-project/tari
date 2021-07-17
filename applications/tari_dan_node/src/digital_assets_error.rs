@@ -28,4 +28,6 @@ pub enum DigitalAssetError {
     MissingArgument { argument_name: String, position: usize },
     #[error("Invalid sig, tODO: fill in deets")]
     InvalidSignature,
+    #[error("Error converting something: {0}")]
+    ConversionError(String),
 }

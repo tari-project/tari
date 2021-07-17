@@ -35,6 +35,22 @@ pub struct HotStuffMessage<TPayload: Payload> {
 }
 
 impl<TPayload: Payload> HotStuffMessage<TPayload> {
+    pub fn new(
+        view_number: ViewId,
+        message_type: HotStuffMessageType,
+        justify: Option<QuorumCertificate<TPayload>>,
+        node: Option<HotStuffTreeNode<TPayload>>,
+        partial_sig: Option<Signature>,
+    ) -> Self {
+        HotStuffMessage {
+            view_number,
+            message_type,
+            justify,
+            node,
+            partial_sig,
+        }
+    }
+
     pub fn new_view(prepare_qc: QuorumCertificate<TPayload>, view_number: ViewId) -> Self {
         Self {
             message_type: HotStuffMessageType::NewView,

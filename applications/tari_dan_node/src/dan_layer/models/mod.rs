@@ -71,7 +71,7 @@ pub enum TemplateId {
 pub struct TokenId(pub Vec<u8>);
 
 impl TokenId {
-    fn as_bytes(&self) -> &[u8] {
+    pub fn as_bytes(&self) -> &[u8] {
         self.0.as_slice()
     }
 }
@@ -110,10 +110,10 @@ impl TryFrom<u8> for HotStuffMessageType {
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             1 => Ok(HotStuffMessageType::NewView),
-            2 => Ok(otStuffMessageType::Prepare),
-            3 => Ok(otStuffMessageType::PreCommit),
-            4 => Ok(otStuffMessageType::Commit),
-            255 => Ok(otStuffMessageType::Genesis),
+            2 => Ok(HotStuffMessageType::Prepare),
+            3 => Ok(HotStuffMessageType::PreCommit),
+            4 => Ok(HotStuffMessageType::Commit),
+            255 => Ok(HotStuffMessageType::Genesis),
             _ => Err("Not a value message type".to_string()),
         }
     }
