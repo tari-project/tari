@@ -239,6 +239,10 @@ where
         &self.deleted
     }
 
+    pub fn set_deleted(&mut self, deleted: Bitmap) {
+        self.deleted = deleted;
+    }
+
     pub fn clear(&mut self) -> Result<(), MerkleMountainRangeError> {
         self.mmr.clear()?;
         self.deleted = Bitmap::create();

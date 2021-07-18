@@ -52,12 +52,6 @@ use tari_mmr::{pruned_hashset::PrunedHashSet, ArrayLike};
 
 const LOG_TARGET: &str = "c::bn::acc_data";
 
-#[derive(Debug)]
-// Helper struct to serialize and deserialize Bitmap
-pub struct DeletedBitmap {
-    pub(super) deleted: Bitmap,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BlockAccumulatedData {
     pub(super) kernels: PrunedHashSet,
@@ -84,7 +78,6 @@ impl BlockAccumulatedData {
         }
     }
 
-    #[inline(always)]
     pub fn deleted(&self) -> &Bitmap {
         &self.deleted.deleted
     }
@@ -116,12 +109,38 @@ impl Display for BlockAccumulatedData {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         write!(
             f,
-            "{} output(s), {} spent, {} kernel(s), {} rangeproof(s)",
+            "{} output(s), {} spends this block, {} kernel(s), {} rangeproof(s)",
             self.outputs.len().unwrap_or(0),
             self.deleted.deleted.cardinality(),
             self.kernels.len().unwrap_or(0),
             self.range_proofs.len().unwrap_or(0)
         )
+    }
+}
+
+/// Wrapper struct to serialize and deserialize Bitmap
+#[derive(Debug, Clone)]
+pub struct DeletedBitmap {
+    deleted: Bitmap,
+}
+
+impl DeletedBitmap {
+    pub fn into_bitmap(self) -> Bitmap {
+        self.deleted
+    }
+
+    pub fn bitmap(&self) -> &Bitmap {
+        &self.deleted
+    }
+
+    pub(super) fn bitmap_mut(&mut self) -> &mut Bitmap {
+        &mut self.deleted
+    }
+}
+
+impl From<Bitmap> for DeletedBitmap {
+    fn from(deleted: Bitmap) -> Self {
+        Self { deleted }
     }
 }
 
@@ -341,32 +360,26 @@ impl ChainHeader {
         })
     }
 
-    #[inline]
     pub fn height(&self) -> u64 {
         self.header.height
     }
 
-    #[inline]
     pub fn hash(&self) -> &HashOutput {
         &self.accumulated_data.hash
     }
 
-    #[inline]
     pub fn header(&self) -> &BlockHeader {
         &self.header
     }
 
-    #[inline]
     pub fn accumulated_data(&self) -> &BlockHeaderAccumulatedData {
         &self.accumulated_data
     }
 
-    #[inline]
     pub fn into_parts(self) -> (BlockHeader, BlockHeaderAccumulatedData) {
         (self.header, self.accumulated_data)
     }
 
-    #[inline]
     pub fn into_header(self) -> BlockHeader {
         self.header
     }
@@ -407,36 +420,30 @@ impl ChainBlock {
         })
     }
 
-    #[inline]
     pub fn height(&self) -> u64 {
         self.block.header.height
     }
 
-    #[inline]
     pub fn hash(&self) -> &HashOutput {
         &self.accumulated_data.hash
     }
 
     /// Returns a reference to the inner block
-    #[inline]
     pub fn block(&self) -> &Block {
         &self.block
     }
 
     /// Returns a reference to the inner block's header
-    #[inline]
     pub fn header(&self) -> &BlockHeader {
         &self.block.header
     }
 
     /// Returns the inner block wrapped in an atomically reference counted (ARC) pointer. This call is cheap and does
     /// not copy the block in memory.
-    #[inline]
     pub fn to_arc_block(&self) -> Arc<Block> {
         self.block.clone()
     }
 
-    #[inline]
     pub fn accumulated_data(&self) -> &BlockHeaderAccumulatedData {
         &self.accumulated_data
     }

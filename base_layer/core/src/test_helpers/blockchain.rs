@@ -35,6 +35,7 @@ use crate::{
         DbKey,
         DbTransaction,
         DbValue,
+        DeletedBitmap,
         HorizonData,
         LMDBDatabase,
         MmrTree,
@@ -300,6 +301,10 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_orphan_chain_block(&self, hash: HashOutput) -> Result<Option<ChainBlock>, ChainStorageError> {
         self.db.fetch_orphan_chain_block(hash)
+    }
+
+    fn fetch_deleted_bitmap(&self) -> Result<DeletedBitmap, ChainStorageError> {
+        self.db.fetch_deleted_bitmap()
     }
 
     fn delete_oldest_orphans(

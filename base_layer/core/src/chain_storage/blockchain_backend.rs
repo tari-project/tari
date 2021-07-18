@@ -1,6 +1,7 @@
 use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{
+        accumulated_data::DeletedBitmap,
         pruned_output::PrunedOutput,
         BlockAccumulatedData,
         BlockHeaderAccumulatedData,
@@ -139,6 +140,9 @@ pub trait BlockchainBackend: Send + Sync {
     fn fetch_orphan_children_of(&self, hash: HashOutput) -> Result<Vec<Block>, ChainStorageError>;
 
     fn fetch_orphan_chain_block(&self, hash: HashOutput) -> Result<Option<ChainBlock>, ChainStorageError>;
+
+    /// Returns the full deleted bitmap at the current blockchain tip
+    fn fetch_deleted_bitmap(&self) -> Result<DeletedBitmap, ChainStorageError>;
 
     /// Delete orphans according to age. Used to keep the orphan pool at a certain capacity
     fn delete_oldest_orphans(

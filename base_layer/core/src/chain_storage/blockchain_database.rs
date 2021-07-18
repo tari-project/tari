@@ -910,11 +910,25 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
     let header = &block.header;
     let body = &block.body;
 
+    let metadata = db.fetch_chain_metadata()?;
+    if header.prev_hash != *metadata.best_block() {
+        return Err(ChainStorageError::InvalidOperation(format!(
+            "Cannot calculate MMR roots for block that does not form a chain with the current tip. Block (#{}) \
+             previous hash is {} but the current tip is #{} {}",
+            header.height,
+            header.prev_hash.to_hex(),
+            metadata.height_of_longest_chain(),
+            metadata.best_block().to_hex()
+        )));
+    }
+
+    let deleted = db.fetch_deleted_bitmap()?;
+    let deleted = deleted.into_bitmap();
+
     let BlockAccumulatedData {
         kernels,
         outputs,
         range_proofs,
-        deleted,
         ..
     } = db
         .fetch_block_accumulated_data(&header.prev_hash)?
@@ -924,7 +938,6 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
             value: header.prev_hash.to_hex(),
         })?;
 
-    let deleted = deleted.deleted;
     let mut kernel_mmr = MerkleMountainRange::<HashDigest, _>::new(kernels);
     let mut output_mmr = MutableMmr::<HashDigest, _>::new(outputs, deleted)?;
     let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(range_proofs);
@@ -971,8 +984,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
         kernel_mmr_size: kernel_mmr.get_leaf_count()? as u64,
         input_mr: input_mmr.get_merkle_root()?,
         output_mr: output_mmr.get_merkle_root()?,
-        // witness mmr size and output mmr size should be the same size
-        output_mmr_size: witness_mmr.get_leaf_count()? as u64,
+        output_mmr_size: output_mmr.get_leaf_count() as u64,
         witness_mr: witness_mmr.get_merkle_root()?,
     };
     Ok(mmr_roots)
@@ -1871,7 +1883,7 @@ fn prune_database_if_needed<T: BlockchainBackend>(
             )?;
             // Note, this could actually be done in one step instead of each block, since deleted is
             // accumulated
-            let inputs_to_prune = curr_block.deleted.deleted.clone() - last_block.deleted.deleted;
+            let inputs_to_prune = curr_block.deleted.bitmap().clone() - last_block.deleted.bitmap();
             last_block = curr_block;
 
             txn.prune_outputs_and_update_horizon(inputs_to_prune.to_vec(), block_to_prune);
