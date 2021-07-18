@@ -101,5 +101,11 @@ mod test {
             .await
             .unwrap();
         assert_eq!(addr.port(), 443);
+
+        let addr = resolver
+            .resolve("/dns/tari.com/tcp/443".parse().unwrap())
+            .await
+            .unwrap();
+        assert_eq!(addr.port(), 443);
     }
 }

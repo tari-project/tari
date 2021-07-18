@@ -26,7 +26,7 @@ use std::net::SocketAddr;
 
 pub fn is_dns4_addr(addr: &Multiaddr) -> bool {
     let proto = addr.iter().next();
-    matches!(proto, Some(Protocol::Dns4(_)))
+    matches!(proto, Some(Protocol::Dns4(_))) || matches!(proto, Some(Protocol::Dns(_)))
 }
 
 pub fn convert_tcpip_multiaddr_to_socketaddr(addr: &Multiaddr) -> Result<SocketAddr, DnsResolverError> {
