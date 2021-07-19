@@ -19,9 +19,11 @@ pub fn load_configuration(bootstrap: &ConfigBootstrap) -> Result<Config, ConfigE
         .to_str()
         .ok_or_else(|| ConfigError::new("Invalid config file path", None))?;
     let config_file = config::File::with_name(filename);
+
     cfg.merge(config_file)
         .map_err(|e| ConfigError::new("Failed to parse the configuration file", Some(e.to_string())))?;
     info!(target: LOG_TARGET, "Configuration file loaded.");
+
     Ok(cfg)
 }
 
@@ -89,7 +91,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     )
     .unwrap();
     cfg.set_default("wallet.base_node_query_timeout", 60).unwrap();
-    // 60 sec * 60 mintues * 12 hours.
+    // 60 sec * 60 minutes * 12 hours.
     cfg.set_default("wallet.scan_for_utxo_interval", 60 * 60 * 12).unwrap();
     cfg.set_default("wallet.transaction_broadcast_monitoring_timeout", 60)
         .unwrap();
@@ -164,7 +166,6 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.mainnet.grpc_console_wallet_address", "127.0.0.1:18143")
         .unwrap();
     cfg.set_default("base_node.mainnet.enable_wallet", true).unwrap();
-    cfg.set_default("base_node.mainnet.num_mining_threads", 1).unwrap();
     cfg.set_default("base_node.mainnet.flood_ban_max_msg_count", 10000)
         .unwrap();
 
@@ -221,7 +222,6 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.weatherwax.grpc_console_wallet_address", "127.0.0.1:18143")
         .unwrap();
     cfg.set_default("base_node.weatherwax.enable_wallet", true).unwrap();
-    cfg.set_default("base_node.weatherwax.num_mining_threads", 1).unwrap();
 
     cfg.set_default("base_node.weatherwax.dns_seeds_name_server", "1.1.1.1:53")
         .unwrap();
@@ -234,6 +234,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
 
     set_transport_defaults(&mut cfg);
     set_merge_mining_defaults(&mut cfg);
+    set_mining_node_defaults(&mut cfg);
 
     cfg
 }
@@ -272,6 +273,12 @@ fn set_merge_mining_defaults(cfg: &mut Config) {
         .unwrap();
     cfg.set_default("merge_mining_proxy.weatherwax.wait_for_initial_sync_at_startup", true)
         .unwrap();
+}
+
+fn set_mining_node_defaults(cfg: &mut Config) {
+    cfg.set_default("mining_node.num_mining_threads", 1).unwrap();
+    cfg.set_default("mining_node.mine_on_tip_only", true).unwrap();
+    cfg.set_default("mining_node.validate_tip_timeout_sec", 0).unwrap();
 }
 
 fn set_transport_defaults(cfg: &mut Config) {
