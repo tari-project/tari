@@ -416,6 +416,18 @@ where TBackend: TransactionBackend + 'static
                 .mine_completed_transaction(self.tx_id)
                 .await
                 .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
+            let _ = self
+                .resources
+                .event_publisher
+                .send(Arc::new(TransactionEvent::TransactionMined(self.tx_id)))
+                .map_err(|e| {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Error sending event because there are no subscribers: {:?}",
+                        e
+                    );
+                    e
+                });
         } else {
             info!(
                 target: LOG_TARGET,
