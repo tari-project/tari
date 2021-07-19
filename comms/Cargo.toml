@@ -39,7 +39,7 @@ thiserror = "1.0.20"
 tokio = {version="~0.2.19", features=["blocking", "time", "tcp", "dns", "sync", "stream", "signal"]}
 tokio-util = {version="0.2.0", features=["codec"]}
 tower= "0.3.1"
-yamux = "=0.4.7"
+yamux = "=0.9.0"
 
 # RPC dependencies
 async-trait = {version="0.1.36", optional=true}
