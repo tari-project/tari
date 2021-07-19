@@ -51,17 +51,13 @@ pub fn setup_node_identity<P: AsRef<Path>>(
         Ok(id) => Ok(Arc::new(id)),
         Err(e) => {
             if !create_id {
-                error!(
-                    target: LOG_TARGET,
+                let msg =format!(
                     "Node identity information not found. {}. You can update the configuration file to point to a \
                      valid node identity file, or re-run the node with the --create-id flag to create a new identity.",
                     e
                 );
-                return Err(ExitCodes::ConfigError(format!(
-                    "Node identity information not found. {}. You can update the configuration file to point to a \
-                     valid node identity file, or re-run the node with the --create-id flag to create a new identity.",
-                    e
-                )));
+                error!(target: LOG_TARGET, "{}", msg);
+                return Err(ExitCodes::ConfigError(msg));
             }
 
             debug!(target: LOG_TARGET, "Node id not found. {}. Creating new ID", e);

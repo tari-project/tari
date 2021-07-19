@@ -1,0 +1,69 @@
+version: "3.9"
+services:
+  tor:
+    image: quay.io/tarilabs/tor:latest
+    build:
+      context: .
+      dockerfile: tor.Dockerfile
+    ports:
+      - 9050:9050
+      - 9051:9051
+  wallet:
+    image: quay.io/tarilabs/tari_console_wallet
+    build:
+      context: ./../..
+      dockerfile: buildtools/docker_rig/console_wallet.Dockerfile
+      args:
+        ARG WALLET_ARCH: x86-64
+    ports:
+      - 18189:18189
+    environment:
+      TARI_LOG_CONFIGURATION: "/var/tari/config/log4rs.yml"
+      WAIT_FOR_TOR: 0
+      SHELL: "/bin/bash"
+      TERM: "linux"
+    command: []
+    depends_on:
+      - tor
+    volumes:
+      - $HOME/.tari/config:/var/tari/config
+      - $HOME/.tari/wallet:/var/tari/wallet
+      - $HOME/.tari/wallet/log:/var/tari/log
+  base_node:
+    image: quay.io/tarilabs/tari_base_node
+    build:
+      context: ./../..
+      dockerfile: buildtools/docker_rig/base_node.Dockerfile
+      args:
+        ARG WALLET_ARCH: x86-64
+    environment:
+      TARI_LOG_CONFIGURATION: "/var/tari/config/log4rs.yml"
+      WAIT_FOR_TOR: 0
+      TARI_NETWORK: weatherwax
+    ports:
+      - 18189:18189
+    command: []
+    depends_on:
+      - tor
+    volumes:
+      - $HOME/.tari/config:/var/tari/config
+      - $HOME/.tari/base_node:/var/tari/base_node
+      - $HOME/.tari/base_node/log:/var/tari/log
+#  xmrig:
+#  sha3-miner:
+#  pool-worker:
+#  pool-operator:
+
+#volumes:
+#  config:
+#    driver: local
+#    driver_opts:
+#      o: bind
+#      type: none
+#      device: $HOME/.tari/config
+#  data:
+#    driver: local
+#    driver_opts:
+#      o: bind
+#      type: none
+#      device: $HOME/.tari/data
