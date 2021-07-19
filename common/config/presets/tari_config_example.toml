@@ -53,6 +53,9 @@ network = "weatherwax"
 #buffer_rate_limit_base_node = 20
 # - Rate limit for the base node wallet (min value = 5, default value = 20).
 #buffer_rate_limit_base_node_wallet = 20
+# The message deduplication persistent cache size - messages with these hashes in the cache will only be processed once.
+# The cache will also be trimmed down to size periodically (min value = 0, default value = 2500).
+#dedup_cache_capacity = 2500
 
 # The timeout (s) for requesting blocks from a peer during blockchain sync (min value = 10 s, default value = 150 s).
 #fetch_blocks_timeout = 150
@@ -136,7 +139,8 @@ base_node_query_timeout = 120
 # (options: "DirectOnly", "StoreAndForwardOnly", DirectAndStoreAndForward". default: "DirectAndStoreAndForward").
 #transaction_routing_mechanism = "DirectAndStoreAndForward"
 
-scan_for_utxo_interval=60
+# UTXO scanning service interval (default = 12 hours, i.e. 60 * 60 * 12 seconds)
+scan_for_utxo_interval = 60
 
 # When running the console wallet in command mode, use these values to determine what "stage" and timeout to wait
 # for sent transactions.

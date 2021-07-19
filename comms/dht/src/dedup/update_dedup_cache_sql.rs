@@ -20,24 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_utilities::message_format::MessageFormatError;
-use thiserror::Error;
-use tokio::task;
+use crate::schema::dedup_cache;
+use chrono::NaiveDateTime;
 
-#[derive(Debug, Error)]
-pub enum StorageError {
-    #[error("Database path contained non-UTF8 characters that are not supported by the host OS")]
-    InvalidUnicodePath,
-    #[error("ConnectionError: {0}")]
-    ConnectionError(#[from] diesel::ConnectionError),
-    #[error("UniqueViolation")]
-    UniqueViolation(String),
-    #[error("Error when joining to tokio task : {0}")]
-    JoinError(#[from] task::JoinError),
-    #[error("DatabaseMigrationFailed: {0}")]
-    DatabaseMigrationFailed(String),
-    #[error("ResultError: {0}")]
-    ResultError(#[from] diesel::result::Error),
-    #[error("MessageFormatError: {0}")]
-    MessageFormatError(#[from] MessageFormatError),
+#[derive(Clone, Debug, Insertable, Default, AsChangeset)]
+#[table_name = "dedup_cache"]
+pub struct UpdateDedupCacheSql {
+    pub body_hash: Option<String>,
+    pub sender_public_key: Option<String>,
+    pub number_of_hits: Option<i32>,
+    pub last_hit_at: Option<NaiveDateTime>,
 }
