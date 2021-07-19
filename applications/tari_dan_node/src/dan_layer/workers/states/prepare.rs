@@ -223,6 +223,8 @@ where
         let node = message.node().unwrap();
         if let Some(justify) = message.justify() {
             if self.does_extend(node, justify.node()) {
+                dbg!(node);
+                dbg!(justify);
                 if !self.is_safe_node(node, justify) {
                     unimplemented!("Node is not safe")
                 }
@@ -291,6 +293,7 @@ where
         node: &HotStuffTreeNode<TPayload>,
         quorum_certificate: &QuorumCertificate<TPayload>,
     ) -> bool {
+        dbg!(&self.locked_qc);
         self.does_extend(node, self.locked_qc.node()) || quorum_certificate.view_number() > self.locked_qc.view_number()
     }
 
