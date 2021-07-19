@@ -21,20 +21,23 @@ FROM quay.io/bitnami/minideb:buster as base
 # Disable Prompt During Packages Installation
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt -y install \
-    openssl \
-    libsqlite3-0 \
-    curl \
+    apt-transport-https \
     bash \
+    ca-certificates \
+    curl \
+    gpg \
     iputils-ping \
     less \
-    gpg \
-    apt-transport-https \
-    ca-certificates
+    libreadline7 \
+    libreadline-dev \
+    libsqlite3-0 \
+    openssl
 
 # Now create a new image with only the essentials and throw everything else away
 FROM base
 
-COPY --from=builder /tari/buildtools/docker/start_wallet.sh /usr/bin/start_wallet.sh
+COPY --from=builder /tari/buildtools/docker_rig/start_wallet.sh /usr/bin/start_wallet.sh
 COPY --from=builder /tari/target/release/tari_console_wallet /usr/bin/
 
-CMD ["start_wallet.sh", "-c", "/var/tari/config/config.toml", "-b", "/var/tari/node"]
+ENV SHELL=/bin/bash
+ENTRYPOINT ["start_wallet.sh", "-c", "/var/tari/config/config.toml", "-b", "/var/tari/wallet"]
