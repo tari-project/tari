@@ -1008,16 +1008,14 @@ where TBackend: OutputManagerBackend + 'static
             }
         }
 
-        let current_chain_tip = chain_metadata.map(|cm| cm.height_of_longest_chain());
-        let balance = self.get_balance(current_chain_tip).await?;
-        let pending_incoming = balance.pending_incoming_balance;
-
         let perfect_utxo_selection = utxos_total_value == amount + fee_without_change;
-        let not_enough_spendable = utxos_total_value < amount + fee_with_change;
-        let enough_with_pending = utxos_total_value + pending_incoming >= amount + fee_with_change;
+        let enough_spendable = utxos_total_value > amount + fee_with_change;
 
-        if !perfect_utxo_selection && not_enough_spendable {
-            if enough_with_pending {
+        if !perfect_utxo_selection && !enough_spendable {
+            let current_chain_tip = chain_metadata.map(|cm| cm.height_of_longest_chain());
+            let balance = self.get_balance(current_chain_tip).await?;
+            let pending_incoming = balance.pending_incoming_balance;
+            if utxos_total_value + pending_incoming >= amount + fee_with_change {
                 return Err(OutputManagerError::FundsPending);
             } else {
                 return Err(OutputManagerError::NotEnoughFunds);
@@ -1243,12 +1241,26 @@ where TBackend: OutputManagerBackend + 'static
                     let db_output =
                         DbUnblindedOutput::from_unblinded_output(rewound_output.clone(), &self.resources.factories)?;
 
-                    rewound_outputs.push(rewound_output);
-                    self.resources.db.add_unspent_output(db_output).await?;
+                    let output_hex = output.commitment.to_hex();
+                    match self.resources.db.add_unspent_output(db_output).await {
+                        Ok(_) => {
+                            rewound_outputs.push(rewound_output);
+                        },
+                        Err(OutputManagerStorageError::DuplicateOutput) => {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Attempt to add scanned output {} that already exists. Ignoring the output.",
+                                output_hex
+                            );
+                        },
+                        Err(err) => {
+                            return Err(err.into());
+                        },
+                    }
                     trace!(
                         target: LOG_TARGET,
                         "One-sided payment Output {} with value {} recovered",
-                        output.commitment.to_hex(),
+                        output_hex,
                         rewound_result.committed_value,
                     );
                 }

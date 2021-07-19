@@ -372,11 +372,6 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .get_bool(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
-    let key = config_string("base_node", &net_str, "num_mining_threads");
-    let num_mining_threads = cfg
-        .get_int(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
-
     let key = config_string("base_node", &net_str, "flood_ban_max_msg_count");
     let flood_ban_max_msg_count = cfg
         .get_int(&key)
@@ -602,6 +597,9 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
 
     let key = config_string("merge_mining_proxy", &net_str, "proxy_submit_to_origin");
     let proxy_submit_to_origin = cfg.get_bool(&key).unwrap_or(true);
+
+    let key = "mining_node.num_mining_threads";
+    let num_mining_threads = optional(cfg.get_int(&key))?.unwrap_or(1) as usize;
 
     let key = "mining_node.mine_on_tip_only";
     let mine_on_tip_only = cfg.get_bool(key).unwrap_or(true);
