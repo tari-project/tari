@@ -1,7 +1,7 @@
 on:
   push:
   pull_request:
-    types: [opened]
+    types: [opened, synchronize, reopened ]
 
 name: CI
 
