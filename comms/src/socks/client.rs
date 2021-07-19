@@ -394,7 +394,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                 self.len = 7 + len;
             },
             // Special case for Tor resolve
-            (Protocol::Dns4(domain), None) => {
+            (Protocol::Dns4(domain), None) | (Protocol::Dns(domain), None) => {
                 self.buf[3] = 0x03;
                 let domain = domain.as_bytes();
                 let len = domain.len();
