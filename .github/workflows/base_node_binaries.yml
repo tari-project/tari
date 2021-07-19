@@ -11,12 +11,12 @@ on:
   workflow_dispatch:
     inputs:
       customTag:
-        description: 'Development Tag'
+        description: "Development Tag"
         required: true
-        default: 'development-tag'
+        default: "development-tag"
 
 env:
-  TBN_FILENAME: 'tari_base_node'
+  TBN_FILENAME: "tari_base_node"
 
 jobs:
   builds:
