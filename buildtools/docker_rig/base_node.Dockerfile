@@ -22,22 +22,24 @@ FROM quay.io/bitnami/minideb:buster as base
 # Disable Prompt During Packages Installation
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt -y install \
-    openssl \
-    libsqlite3-0 \
-    curl \
+    apt-transport-https \
     bash \
+    ca-certificates \
+    curl \
+    gpg \
     iputils-ping \
     less \
-    telnet \
-    gpg \
-    apt-transport-https \
-    ca-certificates
+    libreadline7 \
+    libreadline-dev \
+    libsqlite3-0 \
+    openssl \
+    telnet
 
 # Now create a new image with only the essentials and throw everything else away
 FROM base
 
 COPY --from=builder /tari/target/release/tari_base_node /usr/bin/
-COPY --from=builder /tari/buildtools/docker/start_base_node.sh /usr/bin/start_base_node.sh
+COPY --from=builder /tari/buildtools/docker_rig/start_base_node.sh /usr/bin/start_base_node.sh
 
-# Use start.sh to run tor then the base node or tari_base_node for the executable
-CMD ["start_base_node.sh", "-c", "/var/tari/config/config.toml", "-b", "/var/tari/base_node"]
+ENTRYPOINT [ "start_base_node.sh", "-c", "/var/tari/config/config.toml", "-b", "/var/tari/base_node" ]
+CMD [ "-d" ]
