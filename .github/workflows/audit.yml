@@ -1,8 +1,8 @@
-# Runs daily at 12:10
+# Runs daily
 name: Security audit
 on:
   schedule:
-    - cron:  '11 15 * * *'
+    - cron: "43 05 * * *"
 jobs:
   security_audit:
     runs-on: ubuntu-latest

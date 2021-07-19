@@ -231,25 +231,25 @@ workflows:
           filters:
             branches:
               ignore: gh-pages
-      - test-docs:
-          filters:
-            branches:
-              ignore: gh-pages
-      - deploy-docs:
-          requires:
-            - test-docs
-          filters:
-            branches:
-              only: development
-      - build-tari-release:
-          filters:
-            branches:
-              ignore: gh-pages
-      - test-tari-release:
-          filters:
-            branches:
-              ignore: gh-pages
-      - clippy:
-          filters:
-            branches:
-              ignore: gh-pages
+      # - test-docs:
+      #     filters:
+      #       branches:
+      #         ignore: gh-pages
+      # - deploy-docs:
+      #     requires:
+      #       - test-docs
+      #     filters:
+      #       branches:
+      #         only: development
+      # - build-tari-release:
+      #     filters:
+      #       branches:
+      #         ignore: gh-pages
+      # - test-tari-release:
+      #     filters:
+      #       branches:
+      #         ignore: gh-pages
+      # - clippy:
+      #     filters:
+      #       branches:
+      #         ignore: gh-pages
