@@ -7,7 +7,6 @@ const MiningNodeProcess = require("../../helpers/miningNodeProcess");
 const glob = require("glob");
 const fs = require("fs");
 const archiver = require("archiver");
-
 class CustomWorld {
   constructor({ attach, parameters }) {
     // this.variable = 0;
@@ -281,37 +280,25 @@ BeforeAll({ timeout: 1200000 }, async function () {
 
 After(async function (testCase) {
   console.log("Stopping nodes");
-  for (const key in this.seeds) {
-    if (testCase.result.status === "failed") {
-      await attachLogs(`${this.seeds[key].baseDir}`, this);
-    }
-    await this.stopNode(key);
-  }
-  for (const key in this.nodes) {
-    if (testCase.result.status === "failed") {
-      await attachLogs(`${this.nodes[key].baseDir}`, this);
-    }
-    await this.stopNode(key);
-  }
-  for (const key in this.proxies) {
-    if (testCase.result.status === "failed") {
-      await attachLogs(`${this.proxies[key].baseDir}`, this);
-    }
-    await this.proxies[key].stop();
-  }
-  for (const key in this.wallets) {
-    if (testCase.result.status === "failed") {
-      await attachLogs(`${this.wallets[key].baseDir}`, this);
-    }
-    await this.wallets[key].stop();
-  }
-  for (const key in this.miners) {
-    if (testCase.result.status === "failed") {
-      await attachLogs(`${this.miners[key].baseDir}`, this);
-    }
-    await this.miners[key].stop();
+  await stopHandleLogs(this.seeds, testCase, this);
+  await stopHandleLogs(this.nodes, testCase, this);
+  await stopHandleLogs(this.proxies, testCase, this);
+  await stopHandleLogs(this.wallets, testCase, this);
+  await stopHandleLogs(this.miners, testCase, this);
+  if (testCase.result.status === "failed") {
+    throw "Logs contain atleast one Error message";
   }
 });
+
+async function stopHandleLogs(objects, testCase, context) {
+  for (const key in objects) {
+    scanForError(`${objects[key].baseDir}`, testCase);
+    if (testCase.result.status === "failed") {
+      await attachLogs(`${objects[key].baseDir}`, context);
+    }
+    await objects[key].stop();
+  }
+}
 
 function attachLogs(path, context) {
   return new Promise((outerRes) => {
@@ -339,5 +326,20 @@ function attachLogs(path, context) {
         );
       });
     });
+  });
+}
+
+function scanForError(path, testCase) {
+  glob(path + "/**/*.log", {}, function (err, files) {
+    for (let i = 0; i < files.length; i++) {
+      let fs = require("fs");
+      let data = fs.readFileSync(files[i]).toString("UTF8");
+      // we onbly search for the word error in the log file
+      var regExp = RegExp("] ERROR ");
+      if (regExp.test(data)) {
+        testCase.result.status = "failed";
+        console.log("The file: " + files[i] + " contains an error");
+      }
+    }
   });
 }

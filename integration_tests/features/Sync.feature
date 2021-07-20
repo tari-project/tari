@@ -25,6 +25,15 @@ Feature: Block Sync
     # All nodes should sync to tip
     Then all nodes are at height 20
 
+  @critical 
+  Scenario: Pruned mode simple sync
+    Given I have 1 seed nodes
+    Given I have a SHA3 miner NODE1 connected to all seed nodes
+    Given mining node NODE1 mines 20 blocks
+    Given I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
+    Then all nodes are at height 20
+
+@critical
   Scenario: When a new node joins the network, it should receive all peers
     Given I have 10 seed nodes
     And I have a base node NODE1 connected to all seed nodes
