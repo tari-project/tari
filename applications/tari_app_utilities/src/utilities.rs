@@ -172,6 +172,7 @@ pub fn create_transport_type(config: &GlobalConfig) -> TransportType {
             tor_socks_config: tor_socks_address.map(|proxy_address| SocksConfig {
                 proxy_address,
                 authentication: tor_socks_auth.map(convert_socks_authentication).unwrap_or_default(),
+                proxy_bypass_addresses: vec![],
             }),
         },
         CommsTransport::TorHiddenService {
@@ -180,6 +181,7 @@ pub fn create_transport_type(config: &GlobalConfig) -> TransportType {
             forward_address,
             auth,
             onion_port,
+            tor_proxy_bypass_addresses,
         } => {
             let identity = Some(&config.base_node_tor_identity_file)
                 .filter(|p| p.exists())
@@ -211,6 +213,7 @@ pub fn create_transport_type(config: &GlobalConfig) -> TransportType {
                 port_mapping: (onion_port, forward_addr).into(),
                 socks_address_override,
                 socks_auth: socks::Authentication::None,
+                tor_proxy_bypass_addresses,
             })
         },
         CommsTransport::Socks5 {
@@ -221,6 +224,7 @@ pub fn create_transport_type(config: &GlobalConfig) -> TransportType {
             socks_config: SocksConfig {
                 proxy_address,
                 authentication: convert_socks_authentication(auth),
+                proxy_bypass_addresses: vec![],
             },
             listener_address,
         },

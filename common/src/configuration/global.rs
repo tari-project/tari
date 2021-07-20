@@ -58,6 +58,7 @@ pub struct GlobalConfig {
     pub autoupdate_hashes_sig_url: String,
     pub network: Network,
     pub comms_transport: CommsTransport,
+    pub auxilary_tcp_listener_address: Option<Multiaddr>,
     pub allow_test_addresses: bool,
     pub listnener_liveness_max_sessions: usize,
     pub listener_liveness_allowlist_cidrs: Vec<String>,
@@ -300,6 +301,14 @@ fn convert_node_config(
 
     // Transport
     let comms_transport = network_transport_config(&cfg, application, &net_str)?;
+
+    let key = config_string("base_node", &net_str, "auxilary_tcp_listener_address");
+    let auxilary_tcp_listener_address = optional(cfg.get_str(&key))?
+        .map(|addr| {
+            addr.parse::<Multiaddr>()
+                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+        })
+        .transpose()?;
 
     let key = config_string("base_node", &net_str, "allow_test_addresses");
     let allow_test_addresses = cfg
@@ -650,6 +659,7 @@ fn convert_node_config(
         autoupdate_hashes_sig_url,
         network,
         comms_transport,
+        auxilary_tcp_listener_address,
         allow_test_addresses,
         listnener_liveness_max_sessions: liveness_max_sessions,
         listener_liveness_allowlist_cidrs: liveness_allowlist_cidrs,
@@ -803,6 +813,20 @@ fn network_transport_config(
                 .get::<NonZeroU16>(&key)
                 .map_err(|err| ConfigurationError::new(&key, &err.to_string()))?;
 
+            // TODO
+            let key = config_string(app_str, network, "tor_proxy_bypass_addresses");
+            let tor_proxy_bypass_addresses = optional(cfg.get_array(&key))?
+                .unwrap_or_default()
+                .into_iter()
+                .map(|v| {
+                    v.into_str()
+                        .map_err(|err| ConfigurationError::new(&key, &err.to_string()))
+                        .and_then(|s| {
+                            Multiaddr::from_str(&s).map_err(|err| ConfigurationError::new(&key, &err.to_string()))
+                        })
+                })
+                .collect::<Result<_, _>>()?;
+
             let key = config_string(app_str, network, "tor_socks_address_override");
             let socks_address_override = match get_conf_str(&key).ok() {
                 Some(addr) => Some(
@@ -818,6 +842,7 @@ fn network_transport_config(
                 socks_address_override,
                 forward_address,
                 onion_port,
+                tor_proxy_bypass_addresses,
             })
         },
         "socks5" => {
@@ -957,6 +982,7 @@ pub enum CommsTransport {
         forward_address: Multiaddr,
         auth: TorControlAuthentication,
         onion_port: NonZeroU16,
+        tor_proxy_bypass_addresses: Vec<Multiaddr>,
     },
     /// Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
     Socks5 {

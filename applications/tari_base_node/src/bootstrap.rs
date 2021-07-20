@@ -234,6 +234,7 @@ where B: BlockchainBackend + 'static
             network: self.config.network,
             node_identity: self.node_identity.clone(),
             transport_type: create_transport_type(self.config),
+            auxilary_tcp_listener_address: self.config.auxilary_tcp_listener_address.clone(),
             datastore_path: self.config.peer_db_path.clone(),
             peer_database_name: "peers".to_string(),
             max_concurrent_inbound_tasks: 100,
