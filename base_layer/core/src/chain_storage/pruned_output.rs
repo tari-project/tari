@@ -25,7 +25,7 @@ use crate::transactions::{transaction::TransactionOutput, types::HashOutput};
 pub enum PrunedOutput {
     Pruned {
         output_hash: HashOutput,
-        range_proof_hash: HashOutput,
+        witness_hash: HashOutput,
     },
     NotPruned {
         output: TransactionOutput,
