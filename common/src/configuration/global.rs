@@ -27,6 +27,8 @@ use config::{Config, ConfigError, Environment};
 use multiaddr::Multiaddr;
 use std::{
     convert::TryInto,
+    fmt,
+    fmt::Formatter,
     net::SocketAddr,
     num::{NonZeroU16, TryFromIntError},
     path::PathBuf,
@@ -824,7 +826,7 @@ pub enum DatabaseType {
 }
 
 //---------------------------------------------     Network Transport     ------------------------------------------//
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum TorControlAuthentication {
     None,
     Password(String),
@@ -857,6 +859,16 @@ impl FromStr for TorControlAuthentication {
                 Ok(TorControlAuthentication::Password(password.to_string()))
             },
             s => Err(format!("Invalid tor auth type '{}'", s)),
+        }
+    }
+}
+
+impl fmt::Debug for TorControlAuthentication {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        use TorControlAuthentication::*;
+        match self {
+            None => write!(f, "None"),
+            Password(_) => write!(f, "Password(...)"),
         }
     }
 }
