@@ -121,7 +121,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     let base_node_config = runtime.block_on(get_base_node_peer_config(&global_config, &mut wallet))?;
     let base_node_selected = base_node_config.get_base_node_peer()?;
 
-    let wallet_mode = wallet_mode(&bootstrap, boot_mode);
+    let (wallet_mode, tui_backend) = wallet_mode(&bootstrap, boot_mode);
 
     // start wallet
     runtime.block_on(start_wallet(&mut wallet, &base_node_selected, &wallet_mode))?;
@@ -140,6 +140,7 @@ fn main_inner() -> Result<(), ExitCodes> {
         handle,
         notify_script,
         wallet_mode: wallet_mode.clone(),
+        tui_backend: tui_backend.clone(),
     };
     let result = match wallet_mode {
         WalletMode::Tui => tui_mode(config, wallet.clone()),

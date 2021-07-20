@@ -30,9 +30,11 @@ rpassword = "5.0"
 rustyline = "6.0"
 strum = "^0.19"
 strum_macros = "^0.19"
+termion = "1.5.6"
 tokio = { version="0.2.10", features = ["signal"] }
 thiserror = "1.0.20"
 tonic = "0.2"
+
 
 [dependencies.tari_core]
 path = "../../base_layer/core"
@@ -43,4 +45,4 @@ features = ["transactions", "mempool_proto", "base_node_proto"]
 [dependencies.tui]
 version = "^0.12"
 default-features = false
-features = ["crossterm"]
+features = ["crossterm", "termion"]

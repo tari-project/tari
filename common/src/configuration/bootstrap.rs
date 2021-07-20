@@ -136,6 +136,9 @@ pub struct ConfigBootstrap {
     /// Automatically exit wallet command/script mode when done
     #[structopt(long, alias = "auto-exit")]
     pub command_mode_auto_exit: bool,
+    /// Tui backend selection
+    #[structopt(long, alias = "termion")]
+    pub console_termion: bool,
     /// Mining node options
     #[structopt(long, alias = "mine-until-height")]
     pub mine_until_height: Option<u64>,
@@ -175,6 +178,7 @@ impl Default for ConfigBootstrap {
             seed_words_file_name: None,
             wallet_notify: None,
             command_mode_auto_exit: false,
+            console_termion: false,
             mine_until_height: None,
             miner_max_blocks: None,
             miner_min_diff: None,

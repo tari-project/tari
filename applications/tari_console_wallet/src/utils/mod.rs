@@ -24,5 +24,4 @@ pub mod crossterm_events;
 pub mod db;
 pub mod events;
 pub mod formatting;
-
-// pub mod termion_events;
+pub mod termion_events;

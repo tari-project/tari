@@ -25,19 +25,17 @@ use crate::{
     notifier::Notifier,
     recovery::wallet_recovery,
     ui,
-    ui::App,
     utils::db::get_custom_base_node_peer_from_db,
 };
 use log::*;
 use rand::{rngs::OsRng, seq::SliceRandom};
-use std::{fs, io::Stdout, net::SocketAddr, path::PathBuf};
+use std::{fs, net::SocketAddr, path::PathBuf};
 use tari_app_utilities::utilities::ExitCodes;
 use tari_common::{ConfigBootstrap, GlobalConfig};
 use tari_comms::peer_manager::Peer;
 use tari_wallet::WalletSqlite;
 use tokio::runtime::Handle;
 use tonic::transport::Server;
-use tui::backend::CrosstermBackend;
 
 pub const LOG_TARGET: &str = "wallet::app::main";
 
@@ -53,6 +51,12 @@ pub enum WalletMode {
 }
 
 #[derive(Debug, Clone)]
+pub enum TuiBackend {
+    Termion,
+    Crossterm,
+}
+
+#[derive(Debug, Clone)]
 pub struct WalletModeConfig {
     pub base_node_config: PeerConfig,
     pub base_node_selected: Peer,
@@ -61,6 +65,7 @@ pub struct WalletModeConfig {
     pub handle: Handle,
     pub notify_script: Option<PathBuf>,
     pub wallet_mode: WalletMode,
+    pub tui_backend: TuiBackend,
 }
 
 #[derive(Debug, Clone)]
@@ -211,6 +216,7 @@ pub fn tui_mode(config: WalletModeConfig, mut wallet: WalletSqlite) -> Result<()
         global_config,
         handle,
         notify_script,
+        tui_backend,
         ..
     } = config;
     let grpc = WalletGrpcServer::new(wallet.clone());
@@ -227,19 +233,20 @@ pub fn tui_mode(config: WalletModeConfig, mut wallet: WalletSqlite) -> Result<()
         base_node_selected = peer;
     }
 
-    let app = App::<CrosstermBackend<Stdout>>::new(
-        "Tari Console Wallet".into(),
-        wallet,
-        global_config.network,
-        base_node_selected,
-        base_node_config,
-        global_config,
-        notifier,
-    );
-
     info!(target: LOG_TARGET, "Starting app");
 
-    handle.enter(|| ui::run(app))?;
+    handle.enter(|| {
+        ui::run(
+            "Tari Console Wallet".into(),
+            wallet,
+            global_config.network,
+            base_node_selected,
+            base_node_config,
+            global_config,
+            notifier,
+            tui_backend,
+        )
+    })?;
 
     info!(
         target: LOG_TARGET,

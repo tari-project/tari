@@ -22,7 +22,7 @@
 
 use crate::{
     utils::db::get_custom_base_node_peer_from_db,
-    wallet_modes::{PeerConfig, WalletMode},
+    wallet_modes::{PeerConfig, TuiBackend, WalletMode},
 };
 use log::*;
 use rpassword::prompt_password_stdout;
@@ -173,22 +173,28 @@ pub async fn get_base_node_peer_config(
 }
 
 /// Determines which mode the wallet should run in.
-pub fn wallet_mode(bootstrap: &ConfigBootstrap, boot_mode: WalletBoot) -> WalletMode {
+pub fn wallet_mode(bootstrap: &ConfigBootstrap, boot_mode: WalletBoot) -> (WalletMode, TuiBackend) {
+    let tui_backend = if bootstrap.console_termion {
+        TuiBackend::Termion
+    } else {
+        TuiBackend::Crossterm
+    };
+
     // Recovery mode
     if matches!(boot_mode, WalletBoot::Recovery) {
         if bootstrap.daemon_mode {
-            return WalletMode::RecoveryDaemon;
+            return (WalletMode::RecoveryDaemon, tui_backend);
         } else {
-            return WalletMode::RecoveryTui;
+            return (WalletMode::RecoveryTui, tui_backend);
         }
     }
 
-    match (
+    let mode = match (
         bootstrap.daemon_mode,
         bootstrap.input_file.clone(),
         bootstrap.command.clone(),
     ) {
-        // TUI mode
+        // TUI mode, default backend
         (false, None, None) => WalletMode::Tui,
         // GRPC daemon mode
         (true, None, None) => WalletMode::Grpc,
@@ -198,7 +204,8 @@ pub fn wallet_mode(bootstrap: &ConfigBootstrap, boot_mode: WalletBoot) -> Wallet
         (_, None, Some(command)) => WalletMode::Command(command),
         // Invalid combinations
         _ => WalletMode::Invalid,
-    }
+    };
+    (mode, tui_backend)
 }
 
 /// Get the notify program script path from config bootstrap or global config if provided
