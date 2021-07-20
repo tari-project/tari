@@ -342,12 +342,12 @@ impl ApplicationType {
         }
     }
 
-    pub const fn as_tag_str(&self) -> &'static str {
+    pub const fn as_config_str(&self) -> &'static str {
         use ApplicationType::*;
         match self {
-            BaseNode => "base-node",
-            ConsoleWallet => "console-wallet",
-            MergeMiningProxy => "mm-proxy",
+            BaseNode => "base_node",
+            ConsoleWallet => "wallet",
+            MergeMiningProxy => "mm_proxy",
             MiningNode => "miner",
         }
     }
@@ -359,9 +359,9 @@ impl FromStr for ApplicationType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         use ApplicationType::*;
         match s {
-            "base-node" => Ok(BaseNode),
-            "console-wallet" => Ok(ConsoleWallet),
-            "mm-proxy" => Ok(MergeMiningProxy),
+            "base-node" | "base_node" => Ok(BaseNode),
+            "console-wallet" | "console_wallet" => Ok(ConsoleWallet),
+            "mm-proxy" | "mm_proxy" => Ok(MergeMiningProxy),
             "miner" => Ok(MiningNode),
             _ => Err(ConfigError::new("Invalid ApplicationType", None)),
         }
