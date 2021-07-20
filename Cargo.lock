@@ -4701,6 +4701,7 @@ version = "0.1.0"
 dependencies = [
  "jsonrpc-http-server",
  "tari_app_grpc",
+ "tari_utilities",
 ]
 
 [[package]]

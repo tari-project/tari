@@ -50,7 +50,7 @@ service Wallet {
     // Mint base layer tokens for an asset
     rpc MintTokens(MintTokensRequest) returns (MintTokensResponse);
 
-    rpc GetTokens(GetTokensRequest) returns (GetTokensResponse);
+    rpc GetOwnedTokens(GetOwnedTokensRequest) returns (GetOwnedTokensResponse);
 }
 
 message GetVersionRequest { }
@@ -194,11 +194,11 @@ message MintTokensResponse {
     repeated bytes owner_commitments =1;
 }
 
-message GetTokensRequest {
+message GetOwnedTokensRequest {
     bytes asset_public_key = 1;
 }
 
-message GetTokensResponse {
+message GetOwnedTokensResponse {
     repeated TokenUtxo tokens =1;
 }
 

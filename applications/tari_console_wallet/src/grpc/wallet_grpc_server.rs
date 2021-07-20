@@ -1,9 +1,11 @@
+use crate::wallet_modes::grpc_mode;
 use futures::future;
 use log::*;
 use std::convert::TryFrom;
 use tari_app_grpc::{
     conversions::naive_datetime_to_timestamp,
     tari_rpc::{
+        self,
         payment_recipient::PaymentType,
         wallet_server,
         CoinSplitRequest,
@@ -22,20 +24,24 @@ use tari_app_grpc::{
         GetVersionResponse,
         ImportUtxosRequest,
         ImportUtxosResponse,
+        MintTokensRequest,
+        MintTokensResponse,
         TransactionDirection,
         TransactionInfo,
         TransactionStatus,
         TransferRequest,
         TransferResponse,
         TransferResult,
-        MintTokensRequest,
-        MintTokensResponse
     },
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
     tari_utilities::{hex::Hex, ByteArray},
-    transactions::{tari_amount::MicroTari, transaction::UnblindedOutput, types::Signature},
+    transactions::{
+        tari_amount::MicroTari,
+        transaction::UnblindedOutput,
+        types::{PublicKey, Signature},
+    },
 };
 use tari_wallet::{
     output_manager_service::handle::OutputManagerHandle,
@@ -44,7 +50,6 @@ use tari_wallet::{
 };
 use tokio::{sync::mpsc, task};
 use tonic::{Request, Response, Status};
-use tari_core::transactions::types::PublicKey;
 
 const LOG_TARGET: &str = "wallet::ui::grpc";
 
@@ -336,7 +341,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 wallet
                     .import_unblinded_utxo(o.clone(), &CommsPublicKey::default(), "Imported via gRPC".to_string())
                     .await
-                    .map_err(|e| Status::internal(format!("{:?}", e)))?.into(),
+                    .map_err(|e| Status::internal(format!("{:?}", e)))?
+                    .into(),
             );
         }
 
@@ -350,19 +356,58 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         // TODO: Clean up unwrap
         let asset_public_key = PublicKey::from_bytes(message.asset_public_key.as_slice()).unwrap();
-        let asset = asset_manager.get_owned_asset_by_pub_key(&asset_public_key).await.map_err(|e| Status::internal(e.to_string()))?;
+        let asset = asset_manager
+            .get_owned_asset_by_pub_key(&asset_public_key)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
 
-        let (tx_id, transaction) = asset_manager.create_minting_transaction(&asset_public_key, asset.owner_commitment(), message.unique_ids).await.map_err(|e| Status::internal(e.to_string()))?;
+        let (tx_id, transaction) = asset_manager
+            .create_minting_transaction(&asset_public_key, asset.owner_commitment(), message.unique_ids)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
         let fee = transaction.body.get_total_fee();
 
+        let owner_commitments = transaction
+            .body
+            .outputs()
+            .iter()
+            .filter_map(|o| o.unique_id.as_ref().map(|_| o.commitment.to_vec()))
+            .collect();
+        let _result = transaction_service
+            .submit_transaction(tx_id, transaction, fee, 0.into(), "test mint transaction".to_string())
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
 
-        let owner_commitments = transaction.body.outputs().iter().filter_map(|o| o.unique_id.as_ref().map(|_| o.commitment.to_vec())).collect();
-        let _result = transaction_service.submit_transaction(tx_id, transaction, fee, 0.into(), "test mint transaction".to_string()).await.map_err(|e| Status::internal(e.to_string()))?;
+        Ok(Response::new(MintTokensResponse { owner_commitments }))
+    }
 
-
-        Ok(Response::new(MintTokensResponse {
-            owner_commitments
-        }))
+    async fn get_owned_tokens(
+        &self,
+        request: Request<tari_rpc::GetOwnedTokensRequest>,
+    ) -> Result<Response<tari_rpc::GetOwnedTokensResponse>, Status> {
+        let request = request.into_inner();
+        let request_public_key = PublicKey::from_bytes(&request.asset_public_key)
+            .map_err(|e| Status::invalid_argument(format!("asset_public key was not a valid public key: {}", e)))?;
+        let mut token_manager = self.wallet.token_manager.clone();
+        let owned = token_manager
+            .list_owned_tokens()
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        let owned = owned
+            .into_iter()
+            .filter_map(|t| {
+                if t.asset_public_key() == &request_public_key {
+                    Some(tari_rpc::TokenUtxo {
+                        asset_public_key: Vec::from(t.asset_public_key().as_bytes()),
+                        unique_id: Vec::from(t.unique_id()),
+                        commitment: Vec::from(t.owner_commitment().as_bytes()),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+        Ok(Response::new(tari_rpc::GetOwnedTokensResponse { tokens: owned }))
     }
 }
 

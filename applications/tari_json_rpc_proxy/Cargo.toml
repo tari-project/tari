@@ -7,5 +7,6 @@ edition = "2018"
 
 [dependencies]
 tari_app_grpc = {path="../tari_app_grpc"}
+tari_utilities = "^0.3"
 
 jsonrpc-http-server = "17.1.0"
