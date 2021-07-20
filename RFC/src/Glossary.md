@@ -252,6 +252,15 @@ The mempool consists of the transaction pool, pending pool, orphan pool and reor
 unconfirmed transactions that have not yet been included in the longest proof-of-work chain. Miners usually draw
 verified transactions from the mempool to build up transaction [block]s.
 
+## Metadata Signature
+
+[metadata signature]: #metadata-signature
+
+The metadata signature is an aggregated Commitment Signature ("ComSig") signature, attached to a transaction output and
+signed with a combination of the homomorphic commitment private values \\( (v\_i \\, , \\, k\_i )\\), the spending key
+known only to the receiver, and sender offset private key \\(k\_{Oi}\\) known only to the sender. This prevents
+malleability of the UTXO metadata.
+
 ## Mimblewimble
 
 [mimblewimble]: #mimblewimble "a privacy-centric cryptocurrency protocol"
@@ -364,13 +373,6 @@ the script public key.
 
 The script offset provides a proof that every script public key \\( K\_{Si} \\) and sender offset public key
 \\( K\_{Oi} \\) provided for the a transaction's inputs and outputs are correct.
-
-## Sender Metadata Signature
-
-[sender metadata signature]: #sender-metadata-signature
-
-The sender metadata signature is used to sign the metadata of the UTXO with the [sender offset] private key
-\\( k\_{Oi} \\) and this stops malleability of the UTXO metadata.
 
 ## Sender Offset Keypair
 
