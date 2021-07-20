@@ -36,11 +36,11 @@ impl From<PrunedOutput> for proto::SyncUtxo {
         match output {
             PrunedOutput::Pruned {
                 output_hash,
-                range_proof_hash,
+                witness_hash,
             } => proto::SyncUtxo {
                 utxo: Some(proto::sync_utxo::Utxo::PrunedOutput(proto::PrunedOutput {
                     hash: output_hash,
-                    rangeproof_hash: range_proof_hash,
+                    witness_hash,
                 })),
             },
             PrunedOutput::NotPruned { output } => proto::SyncUtxo {

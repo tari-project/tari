@@ -1138,9 +1138,9 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64) -> Result<HistoricalBl
         match output {
             PrunedOutput::Pruned {
                 output_hash,
-                range_proof_hash,
+                witness_hash,
             } => {
-                pruned.push((output_hash, range_proof_hash));
+                pruned.push((output_hash, witness_hash));
             },
             PrunedOutput::NotPruned { output } => unpruned.push(output),
         }
@@ -1844,6 +1844,13 @@ fn prune_database_if_needed<T: BlockchainBackend>(
     let db_height = metadata.height_of_longest_chain();
     let abs_pruning_horizon = db_height.saturating_sub(pruning_horizon);
 
+    debug!(
+        target: LOG_TARGET,
+        "Current pruned height is: {}, pruning horizon is: {}, while the pruning interval is: {}",
+        metadata.pruned_height(),
+        abs_pruning_horizon,
+        pruning_interval,
+    );
     if metadata.pruned_height() < abs_pruning_horizon.saturating_sub(pruning_interval) {
         let last_pruned = metadata.pruned_height();
         info!(

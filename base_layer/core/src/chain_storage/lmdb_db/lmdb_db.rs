@@ -96,6 +96,24 @@ type DatabaseRef = Arc<Database<'static>>;
 
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb_db";
 
+struct OutputKey {
+    header_hash: HashOutput,
+    mmr_position: u32,
+}
+
+impl OutputKey {
+    pub fn new(header_hash: HashOutput, mmr_position: u32) -> OutputKey {
+        OutputKey {
+            header_hash,
+            mmr_position,
+        }
+    }
+
+    pub fn get_key(&self) -> String {
+        format!("{}-{:010}", self.header_hash.to_hex(), self.mmr_position)
+    }
+}
+
 /// This is a lmdb-based blockchain database for persistent storage of the chain state.
 pub struct LMDBDatabase {
     env: Arc<Environment>,
@@ -196,7 +214,7 @@ impl LMDBDatabase {
                     header_hash,
                     header_height,
                     output_hash,
-                    proof_hash,
+                    witness_hash,
                     mmr_position,
                 } => {
                     self.insert_pruned_output(
@@ -204,7 +222,7 @@ impl LMDBDatabase {
                         header_hash,
                         header_height,
                         output_hash,
-                        proof_hash,
+                        witness_hash,
                         mmr_position,
                     )?;
                 },
@@ -323,13 +341,18 @@ impl LMDBDatabase {
     fn prune_output(
         &self,
         txn: &WriteTransaction<'_>,
-        key: &str,
+        key: &OutputKey,
     ) -> Result<Option<TransactionOutput>, ChainStorageError> {
-        let mut output: TransactionOutputRowData =
-            lmdb_get(txn, &self.utxos_db, key).or_not_found("TransactionOutput", "key", key.to_string())?;
+        let key = key.get_key();
+        let key_string = key.as_str();
+        let mut output: TransactionOutputRowData = lmdb_get(txn, &self.utxos_db, key_string).or_not_found(
+            "TransactionOutput",
+            "key",
+            key_string.to_string(),
+        )?;
         let result = output.output.take();
         // output.output is None
-        lmdb_replace(txn, &self.utxos_db, key, &output)?;
+        lmdb_replace(txn, &self.utxos_db, key_string, &output)?;
         Ok(result)
     }
 
@@ -342,25 +365,28 @@ impl LMDBDatabase {
         mmr_position: u32,
     ) -> Result<(), ChainStorageError> {
         let output_hash = output.hash();
-        let proof_hash = output.proof.hash();
-        let key = format!("{}-{:010}", header_hash.to_hex(), mmr_position,);
+        let witness_hash = output.witness_hash();
+
+        let key = OutputKey::new(header_hash.clone(), mmr_position);
+        let key_string = key.get_key();
+
         lmdb_insert(
             txn,
             &*self.txos_hash_to_index_db,
             output_hash.as_slice(),
-            &(mmr_position, key.clone()),
+            &(mmr_position, key_string.clone()),
             "txos_hash_to_index_db",
         )?;
         lmdb_insert(
             txn,
             &*self.utxos_db,
-            key.as_str(),
+            key_string.as_str(),
             &TransactionOutputRowData {
                 output: Some(output),
                 header_hash,
                 mmr_position,
                 hash: output_hash,
-                range_proof_hash: proof_hash,
+                witness_hash,
                 mined_height: header_height,
             },
             "utxos_db",
@@ -373,39 +399,34 @@ impl LMDBDatabase {
         header_hash: HashOutput,
         header_height: u64,
         output_hash: HashOutput,
-        proof_hash: HashOutput,
+        witness_hash: HashOutput,
         mmr_position: u32,
     ) -> Result<(), ChainStorageError> {
-        if !lmdb_exists(txn, &self.headers_db, header_hash.as_slice())? {
+        if !lmdb_exists(txn, &self.block_hashes_db, header_hash.as_slice())? {
             return Err(ChainStorageError::InvalidOperation(format!(
                 "Unable to insert pruned output because header {} does not exist",
-                header_hash.to_hex()
+                header_hash.to_hex(),
             )));
         }
-        let key = format!(
-            "{}-{:010}-{}-{}",
-            header_hash.to_hex(),
-            mmr_position,
-            output_hash.to_hex(),
-            proof_hash.to_hex()
-        );
+        let key = OutputKey::new(header_hash.clone(), mmr_position);
+        let key_string = key.get_key();
         lmdb_insert(
             txn,
             &*self.txos_hash_to_index_db,
             output_hash.as_slice(),
-            &(mmr_position, key.clone()),
+            &(mmr_position, key_string.clone()),
             "txos_hash_to_index_db",
         )?;
         lmdb_insert(
             txn,
             &*self.utxos_db,
-            key.as_str(),
+            key_string.as_str(),
             &TransactionOutputRowData {
                 output: None,
                 header_hash,
                 mmr_position,
                 hash: output_hash,
-                range_proof_hash: proof_hash,
+                witness_hash,
                 mined_height: header_height,
             },
             "utxos_db",
@@ -974,11 +995,11 @@ impl LMDBDatabase {
             let (_height, hash) = lmdb_first_after::<_, (u64, Vec<u8>)>(
                 &write_txn,
                 &self.output_mmr_size_index,
-                &(pos as u64).to_be_bytes(),
+                &((pos + 1) as u64).to_be_bytes(),
             )
             .or_not_found("BlockHeader", "mmr_position", pos.to_string())?;
-            let key = format!("{}-{:010}", hash.to_hex(), pos);
-            debug!(target: LOG_TARGET, "Pruning output: {}", key);
+            let key = OutputKey::new(hash, pos);
+            debug!(target: LOG_TARGET, "Pruning output: {}", key.get_key());
             self.prune_output(&write_txn, &key)?;
         }
 
@@ -1538,7 +1559,7 @@ impl BlockchainBackend for LMDBDatabase {
                     if deleted.contains(row.mmr_position) {
                         return PrunedOutput::Pruned {
                             output_hash: row.hash,
-                            range_proof_hash: row.range_proof_hash,
+                            witness_hash: row.witness_hash,
                         };
                     }
                     if let Some(output) = row.output {
@@ -1546,7 +1567,7 @@ impl BlockchainBackend for LMDBDatabase {
                     } else {
                         PrunedOutput::Pruned {
                             output_hash: row.hash,
-                            range_proof_hash: row.range_proof_hash,
+                            witness_hash: row.witness_hash,
                         }
                     }
                 }),
@@ -1625,7 +1646,7 @@ impl BlockchainBackend for LMDBDatabase {
                     Some(o) => PrunedOutput::NotPruned { output: o },
                     None => PrunedOutput::Pruned {
                         output_hash: f.hash,
-                        range_proof_hash: f.range_proof_hash,
+                        witness_hash: f.witness_hash,
                     },
                 })
                 .collect(),
