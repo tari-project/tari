@@ -182,6 +182,12 @@ impl DbTransaction {
         self
     }
 
+    /// Updates the deleted tip bitmap with the indexes of the given bitmap.
+    pub fn update_deleted_bitmap(&mut self, deleted: Bitmap) -> &mut Self {
+        self.operations.push(WriteOperation::UpdateDeletedBitmap { deleted });
+        self
+    }
+
     /// Add the BlockHeader and contents of a `Block` (i.e. inputs, outputs and kernels) to the database.
     /// If the `BlockHeader` already exists, then just the contents are updated along with the relevant accumulated
     /// data.
@@ -315,6 +321,9 @@ pub enum WriteOperation {
         header_hash: HashOutput,
         deleted: Bitmap,
     },
+    UpdateDeletedBitmap {
+        deleted: Bitmap,
+    },
     PruneOutputsAndUpdateHorizon {
         output_positions: Vec<u32>,
         horizon: u64,
@@ -417,6 +426,9 @@ impl fmt::Display for WriteOperation {
                 header_hash: _,
                 deleted: _,
             } => write!(f, "Add deleted data for block"),
+            UpdateDeletedBitmap { deleted } => {
+                write!(f, "Merge deleted bitmap at tip ({} new indexes)", deleted.cardinality())
+            },
             PruneOutputsAndUpdateHorizon {
                 output_positions,
                 horizon,

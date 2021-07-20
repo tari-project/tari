@@ -305,8 +305,18 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
-    pub fn update_deleted_with_diff(&mut self, header_hash: HashOutput, deleted: Bitmap) -> &mut Self {
+    pub fn update_block_accumulated_data_with_deleted_diff(
+        &mut self,
+        header_hash: HashOutput,
+        deleted: Bitmap,
+    ) -> &mut Self {
         self.transaction.update_deleted_with_diff(header_hash, deleted);
+        self
+    }
+
+    /// Updates the deleted tip bitmap with the indexes of the given bitmap.
+    pub fn update_deleted_bitmap(&mut self, deleted: Bitmap) -> &mut Self {
+        self.transaction.update_deleted_bitmap(deleted);
         self
     }
 

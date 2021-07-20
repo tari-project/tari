@@ -36,6 +36,7 @@ pub use accumulated_data::{
     BlockHeaderAccumulatedDataBuilder,
     ChainBlock,
     ChainHeader,
+    DeletedBitmap,
 };
 
 pub mod async_db;

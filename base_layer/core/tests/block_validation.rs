@@ -191,11 +191,7 @@ fn inputs_are_not_malleable() {
     );
     let spent_output = output;
     let mut block = blockchain.get_block("A2").cloned().unwrap().block.block().clone();
-
-    let validator = BlockValidator::new(blockchain.consensus_manager().clone(), CryptoFactories::default());
-    validator
-        .validate_body(&block, &*blockchain.store().db_read_access().unwrap())
-        .unwrap();
+    blockchain.store().rewind_to_height(block.header.height - 1).unwrap();
 
     let mut malicious_test_params = TestParams::new();
 
@@ -220,6 +216,7 @@ fn inputs_are_not_malleable() {
     input_mut.input_data = malicious_input.input_data;
     input_mut.script_signature = malicious_input.script_signature;
 
+    let validator = BlockValidator::new(blockchain.consensus_manager().clone(), CryptoFactories::default());
     let err = validator
         .validate_body(&block, &*blockchain.store().db_read_access().unwrap())
         .unwrap_err();

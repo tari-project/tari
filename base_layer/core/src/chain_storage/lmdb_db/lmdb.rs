@@ -114,6 +114,7 @@ where
     })
 }
 
+/// Inserts or replaces the item at the given key
 pub fn lmdb_replace<K, V>(txn: &WriteTransaction<'_>, db: &Database, key: &K, val: &V) -> Result<(), ChainStorageError>
 where
     K: AsLmdbBytes + ?Sized,
