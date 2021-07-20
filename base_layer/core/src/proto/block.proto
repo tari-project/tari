@@ -72,7 +72,7 @@ message HistoricalBlock {
     Block block = 3;
     BlockHeaderAccumulatedData accumulated_data = 4;
     repeated bytes pruned_output_hashes = 5;
-    repeated bytes pruned_proof_hashes = 6;
+    repeated bytes pruned_witness_hash = 6;
     uint64 pruned_input_count = 7;
 }
 
