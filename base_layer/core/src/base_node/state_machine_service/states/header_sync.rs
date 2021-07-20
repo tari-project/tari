@@ -102,6 +102,11 @@ impl HeaderSync {
                 self.is_synced = true;
                 StateEvent::NetworkSilence
             },
+            Err(BlockHeaderSyncError::RandomXError(err)) => {
+                let msg = format!("A fatal RandomX error has occurred: {}", err);
+                error!(target: LOG_TARGET, "{}", msg);
+                StateEvent::FatalError(msg)
+            },
             Err(err) => {
                 debug!(target: LOG_TARGET, "Header sync failed: {}", err);
                 StateEvent::HeaderSyncFailed
