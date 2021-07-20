@@ -69,11 +69,13 @@ It's worth noting that a Tari base node never has to contact or download data fr
 
 ## Merge Mining on Tari
 
-A new Tari block template is obtained from a Tari base node by calling the `get_new_block_template` GRPC method, setting `Monero` as the chosen PoW algorithm.
+A new Tari block template is obtained from a Tari base node by calling the `get_new_block_template` gRPC method, setting `Monero` as the chosen PoW algorithm.
 The `Monero` algorithm must be selected so that the correct mining difficulty for the Monero algorithm is returned. Remember, that Monero and SHA difficulties 
-are independent (See [RFC-0131_Mining.html](/RFC-0131_Mining.html)).
+are independent (See [RFC-0131_Mining.html](/RFC-0131_Mining.html)). Next, a coinbase transaction is requested from a Tari Wallet for a give height by calling 
+the `get_coinbase` gRPC function. 
 
-Next, construct a _Blake256_ hash of _some_ of the Tari header fields. We'll call this hash the merge mining hash \\( h_m \\) that commits to 
+Next, the coinbase transaction is added to the new block template and passed back to the base node for the new MMR roots to be calculated.
+Furthermore, the base node constructs a _Blake256_ hash of _some_ of the Tari header fields. We'll call this hash the merge mining hash \\( h_m \\) that commits to 
 the following header fields in order: `version`, `height`,`prev_hash`,`timestamp`,`output_mr`,`range_proof_mr`,`output_mmr_size`,`kernel_mr`,
 `kernel_mmr_size`,`total_kernel_offset`,`total_script_offset`. Note, this hash does not include the `pow` and `nonce` fields, as these fields are set as part of mining.
 
@@ -118,7 +120,7 @@ pub struct MoneroPowData {
     coinbase_tx: MoneroTransaction,
 }
 ```
-_fig 2. Monero PoW data struct serialized in Tari blocks
+_fig 2. Monero PoW data struct serialized in Tari blocks_
 
 ```rust,ignore
 pub struct MerkleProof {
@@ -127,7 +129,7 @@ pub struct MerkleProof {
    path: u32,
 }
 ```
-_fig 3. Merkle proof struct
+_fig 3. Merkle proof struct_
 
 A verifier may now check that the `coinbase_tx` contains the merge mining hash \\( h_m \\), and validate the `coinbase_merkle_proof` against the `transaction_root`.
 The `coinbase_merkle_proof` contains the minimal proof required to construct the `transaction_root`.

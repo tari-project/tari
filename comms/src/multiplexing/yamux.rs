@@ -51,8 +51,8 @@ pub struct Yamux {
     substream_counter: SubstreamCounter,
 }
 
-const MAX_BUFFER_SIZE: u32 = 8 * 1024 * 1024; // 8MB
-const RECEIVE_WINDOW: u32 = 4 * 1024 * 1024; // 4MB
+const MAX_BUFFER_SIZE: u32 = 8 * 1024 * 1024; // 8MiB
+const RECEIVE_WINDOW: u32 = 5 * 1024 * 1024; // 5MiB
 
 impl Yamux {
     /// Upgrade the underlying socket to use yamux

@@ -426,7 +426,14 @@ pub async fn init_wallet(
         debug!(target: LOG_TARGET, "Wallet encrypted.");
 
         if interactive && recovery_master_key.is_none() {
-            confirm_seed_words(&mut wallet).await?;
+            match confirm_seed_words(&mut wallet).await {
+                Ok(()) => {
+                    print!("\x1Bc"); // Clear the screen
+                },
+                Err(error) => {
+                    return Err(error);
+                },
+            };
         }
         if let Some(file_name) = seed_words_file_name {
             let seed_words = wallet.output_manager_service.get_seed_words().await?.join(" ");

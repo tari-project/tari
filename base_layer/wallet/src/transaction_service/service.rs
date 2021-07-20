@@ -61,7 +61,7 @@ use std::{
     collections::{HashMap, HashSet},
     convert::TryInto,
     sync::Arc,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -281,8 +281,11 @@ where
             futures::select! {
                 //Incoming request
                 request_context = request_stream.select_next_some() => {
-                    trace!(target: LOG_TARGET, "Handling Service API Request");
+                    // TODO: Remove time measurements; this is to aid in system testing only
+                    let start = Instant::now();
                     let (request, reply_tx) = request_context.split();
+                    let event = format!("Handling Service API Request ({})", request);
+                    trace!(target: LOG_TARGET, "{}", event);
                     let response = self.handle_request(request,
                         &mut send_transaction_protocol_handles,
                         &mut receive_transaction_protocol_handles,
@@ -297,9 +300,17 @@ where
                         warn!(target: LOG_TARGET, "Failed to send reply");
                         e
                     });
+                    let finish = Instant::now();
+                    trace!(target: LOG_TARGET,
+                        "{}, processed in {}ms",
+                        event,
+                        finish.duration_since(start).as_millis()
+                    );
                 },
                 // Incoming Transaction messages from the Comms layer
                 msg = transaction_stream.select_next_some() => {
+                    // TODO: Remove time measurements; this is to aid in system testing only
+                    let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
                     trace!(target: LOG_TARGET, "Handling Transaction Message, Trace: {}", msg.dht_header.message_tag);
 
@@ -319,9 +330,17 @@ where
                         }
                         _ => (),
                     }
+                    let finish = Instant::now();
+                    trace!(target: LOG_TARGET,
+                        "Handling Transaction Message, Trace: {}, processed in {}ms",
+                        msg.dht_header.message_tag,
+                        finish.duration_since(start).as_millis(),
+                    );
                 },
                  // Incoming Transaction Reply messages from the Comms layer
                 msg = transaction_reply_stream.select_next_some() => {
+                    // TODO: Remove time measurements; this is to aid in system testing only
+                    let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
                     trace!(target: LOG_TARGET, "Handling Transaction Reply Message, Trace: {}", msg.dht_header.message_tag);
                     let result = self.accept_recipient_reply(origin_public_key, inner_msg).await;
@@ -342,12 +361,22 @@ where
                         },
                         Ok(_) => (),
                     }
+                    let finish = Instant::now();
+                    trace!(target: LOG_TARGET,
+                        "Handling Transaction Reply Message, Trace: {}, processed in {}ms",
+                        msg.dht_header.message_tag,
+                        finish.duration_since(start).as_millis(),
+                    );
                 },
                // Incoming Finalized Transaction messages from the Comms layer
                 msg = transaction_finalized_stream.select_next_some() => {
+                    // TODO: Remove time measurements; this is to aid in system testing only
+                    let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
-                    trace!(target: LOG_TARGET, "Handling Transaction Finalized Message, Trace: {}",
-                    msg.dht_header.message_tag.as_value());
+                    trace!(target: LOG_TARGET,
+                        "Handling Transaction Finalized Message, Trace: {}",
+                        msg.dht_header.message_tag.as_value()
+                    );
                     let result = self.accept_finalized_transaction(origin_public_key, inner_msg, ).await;
 
                     match result {
@@ -366,9 +395,17 @@ where
                        },
                        Ok(_) => ()
                     }
+                    let finish = Instant::now();
+                    trace!(target: LOG_TARGET,
+                        "Handling Transaction Finalized Message, Trace: {}, processed in {}ms",
+                        msg.dht_header.message_tag.as_value(),
+                        finish.duration_since(start).as_millis(),
+                    );
                 },
                 // Incoming messages from the Comms layer
                 msg = base_node_response_stream.select_next_some() => {
+                    // TODO: Remove time measurements; this is to aid in system testing only
+                    let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
                     trace!(target: LOG_TARGET, "Handling Base Node Response, Trace: {}", msg.dht_header.message_tag);
                     let _ = self.handle_base_node_response(inner_msg).await.map_err(|e| {
@@ -377,28 +414,46 @@ where
                         msg.dht_header.message_tag.as_value());
                         e
                     });
+                    let finish = Instant::now();
+                    trace!(target: LOG_TARGET,
+                        "Handling Base Node Response, Trace: {}, processed in {}ms",
+                        msg.dht_header.message_tag,
+                        finish.duration_since(start).as_millis(),
+                    );
                 }
                 // Incoming messages from the Comms layer
                 msg = transaction_cancelled_stream.select_next_some() => {
+                    // TODO: Remove time measurements; this is to aid in system testing only
+                    let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
                     trace!(target: LOG_TARGET, "Handling Transaction Cancelled message, Trace: {}", msg.dht_header.message_tag);
                     if let Err(e) = self.handle_transaction_cancelled_message(origin_public_key, inner_msg, ).await {
                         warn!(target: LOG_TARGET, "Error handing Transaction Cancelled Message: {:?}", e);
                     }
+                    let finish = Instant::now();
+                    trace!(target: LOG_TARGET,
+                        "Handling Transaction Cancelled message, Trace: {}, processed in {}ms",
+                        msg.dht_header.message_tag,
+                        finish.duration_since(start).as_millis(),
+                    );
                 }
                 join_result = send_transaction_protocol_handles.select_next_some() => {
                     trace!(target: LOG_TARGET, "Send Protocol for Transaction has ended with result {:?}", join_result);
                     match join_result {
-                        Ok(join_result_inner) => self.complete_send_transaction_protocol(join_result_inner,
-                        &mut transaction_broadcast_protocol_handles).await,
+                        Ok(join_result_inner) => self.complete_send_transaction_protocol(
+                            join_result_inner,
+                            &mut transaction_broadcast_protocol_handles
+                        ).await,
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Send Transaction Protocol: {:?}", e),
                     };
                 }
                 join_result = receive_transaction_protocol_handles.select_next_some() => {
                     trace!(target: LOG_TARGET, "Receive Transaction Protocol has ended with result {:?}", join_result);
                     match join_result {
-                        Ok(join_result_inner) => self.complete_receive_transaction_protocol(join_result_inner,
-                        &mut transaction_broadcast_protocol_handles).await,
+                        Ok(join_result_inner) => self.complete_receive_transaction_protocol(
+                            join_result_inner,
+                            &mut transaction_broadcast_protocol_handles
+                        ).await,
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Send Transaction Protocol: {:?}", e),
                     };
                 }
@@ -420,9 +475,7 @@ where
                 join_result = transaction_validation_protocol_handles.select_next_some() => {
                     trace!(target: LOG_TARGET, "Transaction Validation protocol has ended with result {:?}", join_result);
                     match join_result {
-                        Ok(join_result_inner) => self.complete_transaction_validation_protocol(
-                                join_result_inner,
-                            ).await,
+                        Ok(join_result_inner) => self.complete_transaction_validation_protocol(join_result_inner).await,
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Transaction Validation protocol: {:?}", e),
                     };
                 }
