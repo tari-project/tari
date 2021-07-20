@@ -46,7 +46,9 @@ impl DnsResolver for SystemDnsResolver {
         };
 
         match protos {
-            (Protocol::Dns4(domain), Protocol::Tcp(port)) => dns_lookup(format!("{}:{}", domain, port)).boxed(),
+            (Protocol::Dns(domain), Protocol::Tcp(port)) | (Protocol::Dns4(domain), Protocol::Tcp(port)) => {
+                dns_lookup(format!("{}:{}", domain, port)).boxed()
+            },
             (Protocol::Ip4(host), Protocol::Tcp(port)) => boxed_ready(Ok((host, port).into())),
             (Protocol::Ip6(host), Protocol::Tcp(port)) => boxed_ready(Ok((host, port).into())),
             _ => boxed_ready(Err(DnsResolverError::UnsupportedAddress(addr))),
