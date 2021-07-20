@@ -234,6 +234,10 @@ where
                 let latency = self.state.get_avg_latency_ms(&node_id);
                 Ok(LivenessResponse::AvgLatency(latency))
             },
+            GetNetworkAvgLatency => {
+                let latency = self.state.get_network_avg_latency();
+                Ok(LivenessResponse::AvgLatency(latency))
+            },
             SetMetadataEntry(key, value) => {
                 self.state.set_metadata_entry(key, value);
                 Ok(LivenessResponse::Ok)

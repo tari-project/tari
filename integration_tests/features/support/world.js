@@ -33,13 +33,14 @@ class CustomWorld {
     this.logFilePathBaseNode =
       parameters.logFilePathBaseNode || "./log4rs/base_node.yml";
     this.logFilePathProxy = parameters.logFilePathProxy || "./log4rs/proxy.yml";
-    this.logFilePathMiningNocde =
-      parameters.logFilePathMiningNocde || "./log4rs/mining_node.yml";
+    this.logFilePathMiningNode =
+      parameters.logFilePathMiningNode || "./log4rs/mining_node.yml";
     this.logFilePathWallet =
       parameters.logFilePathWallet || "./log4rs/wallet.yml";
   }
 
   async createSeedNode(name) {
+    console.log(`seed:`, name);
     const proc = new BaseNodeProcess(
       `seed-${name}`,
       false,
@@ -176,6 +177,22 @@ class CustomWorld {
     return this.walletPubkeys[name];
   }
 
+  getNodeOrWalletClient(name) {
+    let client = this.getClient(name.trim());
+    if (client) {
+      client.isNode = true;
+      client.isWallet = false;
+      return client;
+    }
+    let wallet = this.getWallet(name.trim());
+    if (wallet) {
+      let client = wallet.getClient();
+      client.isNode = false;
+      client.isWallet = true;
+      return client;
+    }
+  }
+
   async getOrCreateWallet(name) {
     const wallet = this.getWallet(name);
     if (wallet) {
@@ -269,8 +286,8 @@ BeforeAll({ timeout: 1200000 }, async function () {
     "compile",
     "127.0.0.1:9999",
     null,
-    "127.0.0.1:9998",
-    this.logFilePathMiningNocde
+    "127.0.0.1:9998"
+    // this.logFilePathMiningNode
   );
   console.log("Compiling mining node...");
   await miningNode.init(1, 1, 1, 1, true, 1);
@@ -333,7 +350,7 @@ function attachLogs(path, context) {
           fs.createReadStream("./temp/logzip.zip"),
           "application/zip",
           function () {
-            fs.rmSync("./temp/logzip.zip");
+            fs.rmSync && fs.rmSync("./temp/logzip.zip");
             outerRes();
           }
         );

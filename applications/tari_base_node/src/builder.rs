@@ -23,7 +23,7 @@
 use crate::bootstrap::BaseNodeBootstrapper;
 use log::*;
 use std::sync::Arc;
-use tari_common::{DatabaseType, GlobalConfig};
+use tari_common::{configuration::Network, DatabaseType, GlobalConfig};
 use tari_comms::{peer_manager::NodeIdentity, protocol::rpc::RpcServerHandle, CommsNode};
 use tari_comms_dht::Dht;
 use tari_core::{
@@ -45,7 +45,7 @@ use tari_core::{
         DifficultyCalculator,
     },
 };
-use tari_p2p::auto_update::SoftwareUpdaterHandle;
+use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::watch;
@@ -57,6 +57,7 @@ const LOG_TARGET: &str = "c::bn::initialization";
 /// on the comms stack.
 pub struct BaseNodeContext {
     config: Arc<GlobalConfig>,
+    consensus_rules: ConsensusManager,
     blockchain_db: BlockchainDatabase<LMDBDatabase>,
     base_node_comms: CommsNode,
     base_node_dht: Dht,
@@ -98,6 +99,11 @@ impl BaseNodeContext {
         &self.base_node_comms
     }
 
+    /// Returns the liveness service handle
+    pub fn liveness(&self) -> LivenessHandle {
+        self.base_node_handles.expect_handle()
+    }
+
     /// Returns the base node state machine
     pub fn state_machine(&self) -> StateMachineHandle {
         self.base_node_handles.expect_handle()
@@ -126,6 +132,16 @@ impl BaseNodeContext {
     /// Returns a BlockchainDatabase handle
     pub fn blockchain_db(&self) -> BlockchainDatabase<LMDBDatabase> {
         self.blockchain_db.clone()
+    }
+
+    /// Returns the configured network
+    pub fn network(&self) -> Network {
+        self.config.network
+    }
+
+    /// Returns the consensus rules
+    pub fn consensus_rules(&self) -> &ConsensusManager {
+        &self.consensus_rules
     }
 
     /// Return the state machine channel to provide info updates
@@ -247,6 +263,7 @@ async fn build_node_context(
 
     Ok(BaseNodeContext {
         config,
+        consensus_rules: rules,
         blockchain_db,
         base_node_comms,
         base_node_dht,

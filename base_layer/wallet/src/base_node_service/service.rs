@@ -199,6 +199,9 @@ where T: WalletBackend + 'static
                     Ok(BaseNodeServiceResponse::ChainMetadata(metadata))
                 },
             },
+            BaseNodeServiceRequest::GetBaseNodeLatency => {
+                Ok(BaseNodeServiceResponse::Latency(self.state.read().await.latency))
+            },
         }
     }
 

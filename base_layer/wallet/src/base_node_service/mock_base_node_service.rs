@@ -128,6 +128,7 @@ impl MockBaseNodeService {
             BaseNodeServiceRequest::GetChainMetadata => Ok(BaseNodeServiceResponse::ChainMetadata(
                 self.state.chain_metadata.clone(),
             )),
+            BaseNodeServiceRequest::GetBaseNodeLatency => Ok(BaseNodeServiceResponse::Latency(None)),
         }
     }
 }

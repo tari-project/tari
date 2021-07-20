@@ -1,4 +1,5 @@
 const { Client } = require("wallet-grpc-client");
+const { byteArrayToHex } = require("./util");
 
 function transactionStatus() {
   return [
@@ -145,8 +146,8 @@ class WalletClient {
     return await this.client.getTransactionInfo(args);
   }
 
-  async identify(args) {
-    const info = await this.client.identify(args);
+  async identify() {
+    const info = await this.client.identify();
     return {
       public_key: info.public_key.toString("utf8"),
       public_address: info.public_address,
@@ -321,6 +322,27 @@ class WalletClient {
 
   async coin_split(args) {
     return await this.client.coinSplit(args);
+  }
+
+  async listConnectedPeers() {
+    const { connected_peers } = await this.client.listConnectedPeers();
+    return connected_peers.map((peer) => ({
+      ...peer,
+      public_key: byteArrayToHex(peer.public_key),
+      node_id: byteArrayToHex(peer.node_id),
+      supported_protocols: peer.supported_protocols.map((p) =>
+        p.toString("utf8")
+      ),
+      features: +peer.features,
+    }));
+  }
+
+  async getNetworkStatus() {
+    let resp = await this.client.getNetworkStatus();
+    return {
+      ...resp,
+      num_node_connections: +resp.num_node_connections,
+    };
   }
 }
 

@@ -7,12 +7,14 @@ const WalletProcess = require("../../helpers/walletProcess");
 const expect = require("chai").expect;
 const {
   waitFor,
+  waitForPredicate,
   getTransactionOutputHash,
   sleep,
   consoleLogBalance,
   consoleLogCoinbaseDetails,
   withTimeout,
 } = require("../../helpers/util");
+const { ConnectivityStatus } = require("../../helpers/types");
 const TransactionBuilder = require("../../helpers/transactionBuilder");
 let lastResult;
 
@@ -136,7 +138,7 @@ Given(
       node.getGrpcAddress(),
       this.getClient(name),
       wallet.getGrpcAddress(),
-      this.logFilePathMiningNocde
+      this.logFilePathMiningNode
     );
     this.addMiningNode(name, miningNode);
   }
@@ -160,7 +162,7 @@ Given(
       node.getGrpcAddress(),
       this.getClient(name),
       wallet.getGrpcAddress(),
-      this.logFilePathMiningNocde
+      this.logFilePathMiningNode
     );
     this.addMiningNode(name, miningNode);
   }
@@ -184,7 +186,7 @@ Given(
       node.getGrpcAddress(),
       this.getClient(name),
       wallet.getGrpcAddress(),
-      this.logFilePathMiningNocde
+      this.logFilePathMiningNode
     );
     this.addMiningNode(name, miningNode);
   }
@@ -564,7 +566,7 @@ Given(
       baseNode.getGrpcAddress(),
       this.getClient(node),
       walletNode.getGrpcAddress(),
-      this.logFilePathMiningNocde,
+      this.logFilePathMiningNode,
       true
     );
     this.addMiningNode(miner, miningNode);
@@ -581,7 +583,7 @@ Given(
       baseNode.getGrpcAddress(),
       this.getClient(node),
       walletNode.getGrpcAddress(),
-      this.logFilePathMiningNocde,
+      this.logFilePathMiningNode,
       false
     );
     this.addMiningNode(miner, miningNode);
@@ -2682,5 +2684,67 @@ Then(
         is_not === "not" ? "Incorrect password" : undefined
       );
     }
+  }
+);
+
+When(
+  /I wait for (.*) to connect to (.*)/,
+  { timeout: 30 * 1000 },
+  async function (firstNode, secondNode) {
+    const firstNodeClient = this.getNodeOrWalletClient(firstNode);
+    const secondNodeClient = this.getNodeOrWalletClient(secondNode);
+    const secondNodeIdentity = await secondNodeClient.identify();
+
+    await waitForPredicate(async () => {
+      let peers = await firstNodeClient.listConnectedPeers();
+      return peers.some((p) => secondNodeIdentity.public_key === p.public_key);
+    }, 50 * 1000);
+  }
+);
+
+Then(
+  /(.*) is connected to (.*)/,
+  { timeout: 30 * 1000 },
+  async function (firstNode, secondNode) {
+    const firstNodeClient = this.getNodeOrWalletClient(firstNode);
+    const secondNodeClient = this.getNodeOrWalletClient(secondNode);
+    const secondNodeIdentity = await secondNodeClient.identify();
+    let peers = await firstNodeClient.listConnectedPeers();
+    assert(peers.some((p) => secondNodeIdentity.public_key === p.public_key));
+  }
+);
+
+When(
+  /I wait for (.*) to have (.*) connectivity/,
+  { timeout: 30 * 1000 },
+  async function (nodeName, expectedStatus) {
+    const node = this.getNodeOrWalletClient(nodeName);
+    const expected = ConnectivityStatus[expectedStatus.toUpperCase()];
+    assert(
+      expected !== undefined,
+      `Invalid connectivity state ${expectedStatus}`
+    );
+    await waitForPredicate(async () => {
+      let info = await node.getNetworkStatus();
+      return info.status === expected;
+    }, 50 * 1000);
+  }
+);
+
+When(
+  /I wait for (.*) to have (\d+) node connections/,
+  { timeout: 30 * 1000 },
+  async function (nodeName, numConnections) {
+    const node = this.getNodeOrWalletClient(nodeName);
+    numConnections = +numConnections;
+    await waitForPredicate(async () => {
+      let info = await node.getNetworkStatus();
+      if (info.num_node_connections > numConnections) {
+        console.warn(
+          `Node ${nodeName} has more connections than expected. Expected = ${numConnections} Got = ${info.num_node_connections}`
+        );
+      }
+      return info.num_node_connections === numConnections;
+    }, 50 * 1000);
   }
 );

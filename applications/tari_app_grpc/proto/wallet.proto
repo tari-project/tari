@@ -46,6 +46,10 @@ service Wallet {
     rpc CoinSplit (CoinSplitRequest) returns (CoinSplitResponse);
     // Import Utxo to wallet
     rpc ImportUtxos (ImportUtxosRequest) returns (ImportUtxosResponse);
+    // Get Base Node network connectivity status
+    rpc GetNetworkStatus(Empty) returns (NetworkStatusResponse);
+    // List currently connected peers
+    rpc ListConnectedPeers(Empty) returns (ListConnectedPeersResponse);
 }
 
 message GetVersionRequest { }
@@ -179,3 +183,4 @@ message ImportUtxosRequest {
 message ImportUtxosResponse {
     repeated uint64 tx_ids = 1;
 }
+
