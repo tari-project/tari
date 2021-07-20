@@ -2660,3 +2660,27 @@ When(
     console.log(numTransactions, " transactions successfully sent.");
   }
 );
+
+Given(
+  /I change the password of wallet (.*) to (.*)/,
+  { timeout: 20 * 1000 },
+  async function (name, newPassword) {
+    let wallet = this.getWallet(name);
+    await wallet.changePassword("kensentme", newPassword);
+  }
+);
+
+Then(
+  /the password of wallet (.*) is (not)? ?(.*)/,
+  { timeout: 20 * 1000 },
+  async function (name, is_not, password) {
+    let wallet = this.getWallet(name);
+    try {
+      await wallet.start(password);
+    } catch (error) {
+      expect(error).to.equal(
+        is_not === "not" ? "Incorrect password" : undefined
+      );
+    }
+  }
+);
