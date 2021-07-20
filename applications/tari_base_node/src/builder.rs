@@ -31,7 +31,7 @@ use tari_core::{
     chain_storage::{create_lmdb_database, BlockchainDatabase, BlockchainDatabaseConfig, LMDBDatabase, Validators},
     consensus::ConsensusManager,
     mempool::{service::LocalMempoolService, Mempool, MempoolConfig},
-    proof_of_work::randomx_factory::{RandomXConfig, RandomXFactory},
+    proof_of_work::randomx_factory::RandomXFactory,
     transactions::types::CryptoFactories,
     validation::{
         block_validators::{BodyOnlyValidator, OrphanBlockValidator},
@@ -201,7 +201,7 @@ async fn build_node_context(
 
     let rules = ConsensusManager::builder(config.network).build();
     let factories = CryptoFactories::default();
-    let randomx_factory = RandomXFactory::new(RandomXConfig::default(), config.max_randomx_vms);
+    let randomx_factory = RandomXFactory::new(config.max_randomx_vms);
     let validators = Validators::new(
         BodyOnlyValidator::default(),
         HeaderValidator::new(rules.clone()),

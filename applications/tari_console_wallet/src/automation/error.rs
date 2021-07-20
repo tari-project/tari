@@ -86,8 +86,8 @@ pub enum ParseError {
     Date(#[from] DateError),
     #[error("Failed to parse a net address.")]
     Address,
-    #[error("Invalid combination of arguments.")]
-    Invalid,
+    #[error("Invalid combination of arguments ({0}).")]
+    Invalid(String),
     #[error("Parsing not yet implemented for {0}.")]
     Unimplemented(String),
 }

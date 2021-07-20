@@ -50,7 +50,7 @@ use tari_core::transactions::{
     tari_amount::{uT, MicroTari},
     types::PublicKey,
 };
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
@@ -150,6 +150,24 @@ impl AppState {
         drop(inner);
         self.update_cache().await;
         Ok(())
+    }
+
+    // Return alias or pub key if the contact is not in the list.
+    pub fn get_alias(&self, pub_key: &RistrettoPublicKey) -> String {
+        let pub_key_hex = format!("{}", pub_key);
+        // TODO: We can uncomment this to indicated unknown origin, otherwise there is our pub key.
+        // if self.get_identity().public_key == pub_key_hex {
+        //     return "Unknown".to_string();
+        // }
+        match self
+            .cached_data
+            .contacts
+            .iter()
+            .find(|&contact| contact.public_key.eq(&pub_key_hex))
+        {
+            Some(contact) => contact.alias.clone(),
+            None => pub_key_hex,
+        }
     }
 
     pub async fn delete_contact(&mut self, public_key: String) -> Result<(), UiError> {

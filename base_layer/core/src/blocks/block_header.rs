@@ -96,7 +96,7 @@ pub struct BlockHeader {
     /// This is calculated as Hash (txo MMR root  || roaring bitmap hash of UTXO indices)
     #[serde(with = "hash_serializer")]
     pub output_mr: BlockHash,
-    /// This is the MMR root of the range proofs
+    /// This is the MMR root of the witness proofs
     #[serde(with = "hash_serializer")]
     pub witness_mr: BlockHash,
     /// The size (number  of leaves) of the output and range proof MMRs at the time of this header

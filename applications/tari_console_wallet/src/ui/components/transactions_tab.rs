@@ -98,7 +98,7 @@ impl TransactionsTab {
             let text_color = text_colors.get(&t.cancelled).unwrap_or(&Color::Reset).to_owned();
             if t.direction == TransactionDirection::Outbound {
                 column0_items.push(ListItem::new(Span::styled(
-                    format!("{}", t.destination_public_key),
+                    app_state.get_alias(&t.destination_public_key),
                     Style::default().fg(text_color),
                 )));
                 let amount_style = if t.cancelled {
@@ -109,7 +109,7 @@ impl TransactionsTab {
                 column1_items.push(ListItem::new(Span::styled(format!("{}", t.amount), amount_style)));
             } else {
                 column0_items.push(ListItem::new(Span::styled(
-                    format!("{}", t.source_public_key),
+                    app_state.get_alias(&t.source_public_key),
                     Style::default().fg(text_color),
                 )));
                 let amount_style = if t.cancelled {
@@ -183,7 +183,7 @@ impl TransactionsTab {
             let text_color = text_colors.get(&cancelled).unwrap_or(&Color::Reset).to_owned();
             if t.direction == TransactionDirection::Outbound {
                 column0_items.push(ListItem::new(Span::styled(
-                    format!("{}", t.destination_public_key),
+                    app_state.get_alias(&t.destination_public_key),
                     Style::default().fg(text_color),
                 )));
                 let amount_style = if t.cancelled {
@@ -194,7 +194,7 @@ impl TransactionsTab {
                 column1_items.push(ListItem::new(Span::styled(format!("{}", t.amount), amount_style)));
             } else {
                 column0_items.push(ListItem::new(Span::styled(
-                    format!("{}", t.source_public_key),
+                    app_state.get_alias(&t.source_public_key),
                     Style::default().fg(text_color),
                 )));
                 let maturity = if let Some(output) = t.transaction.body.outputs().first() {
