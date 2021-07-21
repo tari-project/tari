@@ -2748,3 +2748,13 @@ When(
     }, 50 * 1000);
   }
 );
+
+Given(
+  /change base node of (.*) to (.*)/,
+  { timeout: 20 * 1000 },
+  async function (wallet_name, base_node_name) {
+    let wallet = this.getWallet(wallet_name);
+    let base_node = this.getNode(base_node_name);
+    await wallet.setBaseNode(base_node.peerAddress().replace("::", "  "));
+  }
+);

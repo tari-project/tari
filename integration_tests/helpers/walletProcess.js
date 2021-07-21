@@ -212,6 +212,23 @@ class WalletProcess {
     );
   }
 
+  async setBaseNode(baseNode) {
+    const args = [
+      "--base-path",
+      ".",
+      "--password",
+      "kensentme",
+      "--command",
+      `set-base-node ${baseNode}`,
+      "--daemon",
+    ];
+    if (this.logFilePath) {
+      args.push("--log-config", this.logFilePath);
+    }
+    // After the change of base node, the console is awaiting confirmation (Enter) or quit (q).
+    return await this.run(await this.compile(), args, true, "\n");
+  }
+
   async exportSpentOutputs() {
     const args = [
       "--init",
