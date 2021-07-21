@@ -83,7 +83,7 @@ use fs2::FileExt;
 use lmdb_zero::{ConstTransaction, Database, Environment, ReadTransaction, WriteTransaction};
 use log::*;
 use serde::{Deserialize, Serialize};
-use std::{convert::TryFrom, fmt, fs, fs::File, path::Path, sync::Arc, time::Instant};
+use std::{convert::TryFrom, fmt, fs, fs::File, ops::Deref, path::Path, sync::Arc, time::Instant};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{BlockHash, BLOCK_HASH_LENGTH},
@@ -281,6 +281,11 @@ impl LMDBDatabase {
                 },
                 UpdateDeletedBlockAccumulatedDataWithDiff { header_hash, deleted } => {
                     self.update_deleted_block_accumulated_data_with_diff(&write_txn, header_hash, deleted)?;
+                },
+                UpdateDeletedBitmap { deleted } => {
+                    let mut bitmap = self.load_deleted_bitmap_model(&write_txn)?;
+                    bitmap.merge(&deleted)?;
+                    bitmap.finish()?;
                 },
                 PruneOutputsAndUpdateHorizon {
                     output_positions,
@@ -505,7 +510,7 @@ impl LMDBDatabase {
         k: MetadataKey,
         v: MetadataValue,
     ) -> Result<(), ChainStorageError> {
-        lmdb_replace(txn, &self.metadata_db, &(k as u32), &v)?;
+        lmdb_replace(txn, &self.metadata_db, &k.as_u32(), &v)?;
         Ok(())
     }
 
@@ -687,6 +692,17 @@ impl LMDBDatabase {
         let height = self
             .fetch_height_from_hash(&write_txn, &hash)
             .or_not_found("Block", "hash", hash.to_hex())?;
+        let block_accum_data =
+            self.fetch_block_accumulated_data(write_txn, height)?
+                .ok_or_else(|| ChainStorageError::ValueNotFound {
+                    entity: "BlockAccumulatedData".to_string(),
+                    field: "height".to_string(),
+                    value: height.to_string(),
+                })?;
+        let mut bitmap = self.load_deleted_bitmap_model(write_txn)?;
+        bitmap.remove(block_accum_data.deleted())?;
+        bitmap.finish()?;
+
         lmdb_delete(&write_txn, &self.block_accumulated_data_db, &height)?;
         let rows = lmdb_delete_keys_starting_with::<TransactionOutputRowData>(&write_txn, &self.utxos_db, &hash_hex)?;
 
@@ -808,7 +824,6 @@ impl LMDBDatabase {
         let BlockAccumulatedData {
             kernels: pruned_kernel_set,
             outputs: pruned_output_set,
-            deleted,
             range_proofs: pruned_proof_set,
             ..
         } = data;
@@ -826,7 +841,7 @@ impl LMDBDatabase {
             self.insert_kernel(txn, block_hash.clone(), kernel, pos as u32)?;
         }
 
-        let mut output_mmr = MutableMmr::<HashDigest, _>::new(pruned_output_set, deleted.deleted)?;
+        let mut output_mmr = MutableMmr::<HashDigest, _>::new(pruned_output_set, Bitmap::create())?;
         let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(pruned_proof_set);
         for output in outputs {
             total_utxo_sum = &total_utxo_sum + &output.commitment;
@@ -864,7 +879,19 @@ impl LMDBDatabase {
             );
             self.insert_input(txn, block_hash.clone(), input, index)?;
         }
+
+        // Merge current deletions with the tip bitmap
+        let deleted = output_mmr.deleted().clone();
+        // Merge the new indexes with the blockchain deleted bitmap
+        let mut deleted_bitmap = self.load_deleted_bitmap_model(txn)?;
+        deleted_bitmap.merge(&deleted)?;
+
+        // Set the output MMR to the complete map so that the complete state can be committed to in the final MR
+        output_mmr.set_deleted(deleted_bitmap.get().clone().into_bitmap());
         output_mmr.compress();
+
+        // Save the bitmap
+        deleted_bitmap.finish()?;
 
         self.insert_block_accumulated_data(
             txn,
@@ -873,7 +900,7 @@ impl LMDBDatabase {
                 kernel_mmr.get_pruned_hash_set()?,
                 output_mmr.mmr().get_pruned_hash_set()?,
                 witness_mmr.get_pruned_hash_set()?,
-                output_mmr.deleted().clone(),
+                deleted,
                 total_kernel_sum,
             ),
         )?;
@@ -928,23 +955,24 @@ impl LMDBDatabase {
             "hash",
             header_hash.to_hex(),
         )?;
-        let prev_block_accum_data = if height > 0 {
-            self.fetch_block_accumulated_data(&write_txn, height - 1)?
-                .unwrap_or_else(BlockAccumulatedData::default)
-        } else {
-            return Err(ChainStorageError::InvalidOperation(
-                "Tried to update genesis block delete bitmap".to_string(),
-            ));
-        };
+
         let mut block_accum_data = self
             .fetch_block_accumulated_data(&write_txn, height)?
             .unwrap_or_else(BlockAccumulatedData::default);
 
-        let mut deleted = deleted;
-        deleted.or_inplace(&prev_block_accum_data.deleted.deleted);
-        block_accum_data.deleted = DeletedBitmap { deleted };
+        block_accum_data.deleted = deleted.into();
         lmdb_replace(&write_txn, &self.block_accumulated_data_db, &height, &block_accum_data)?;
         Ok(())
+    }
+
+    fn load_deleted_bitmap_model<'a, 'b, T>(
+        &'a self,
+        txn: &'a T,
+    ) -> Result<DeletedBitmapModel<'a, T>, ChainStorageError>
+    where
+        T: Deref<Target = ConstTransaction<'b>>,
+    {
+        DeletedBitmapModel::load(txn, &self.metadata_db)
     }
 
     fn insert_monero_seed_height(
@@ -1074,7 +1102,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Resu
         .set_path(path)
         .set_env_config(config)
         .set_max_number_of_databases(20)
-        .add_database(LMDB_DB_METADATA, flags)
+        .add_database(LMDB_DB_METADATA, flags | db::INTEGERKEY)
         .add_database(LMDB_DB_HEADERS, flags | db::INTEGERKEY)
         .add_database(LMDB_DB_HEADER_ACCUMULATED_DATA, flags | db::INTEGERKEY)
         .add_database(LMDB_DB_BLOCK_ACCUMULATED_DATA, flags | db::INTEGERKEY)
@@ -1574,19 +1602,11 @@ impl BlockchainBackend for LMDBDatabase {
             );
 
             // Builds a BitMap of the deleted UTXO MMR indexes that occurred at the current height
-            let mut diff_bitmap = self
+            let diff_bitmap = self
                 .fetch_block_accumulated_data(&txn, height)
                 .or_not_found("BlockAccumulatedData", "height", height.to_string())?
                 .deleted()
                 .clone();
-            if height > 0 {
-                let prev_accum = self.fetch_block_accumulated_data(&txn, height - 1).or_not_found(
-                    "BlockAccumulatedData",
-                    "height",
-                    height.to_string(),
-                )?;
-                diff_bitmap.xor_inplace(prev_accum.deleted());
-            }
             difference_bitmap.or_inplace(&diff_bitmap);
 
             skip_amount = 0;
@@ -1819,6 +1839,12 @@ impl BlockchainBackend for LMDBDatabase {
         }
     }
 
+    fn fetch_deleted_bitmap(&self) -> Result<DeletedBitmap, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        let deleted_bitmap = self.load_deleted_bitmap_model(&txn)?;
+        Ok(deleted_bitmap.get().clone())
+    }
+
     fn delete_oldest_orphans(
         &mut self,
         horizon_height: u64,
@@ -1890,7 +1916,7 @@ fn fetch_metadata(txn: &ConstTransaction<'_>, db: &Database) -> Result<ChainMeta
 // Fetches the chain height from the provided metadata db.
 fn fetch_chain_height(txn: &ConstTransaction<'_>, db: &Database) -> Result<u64, ChainStorageError> {
     let k = MetadataKey::ChainHeight;
-    let val: Option<MetadataValue> = lmdb_get(&txn, &db, &(k as u32))?;
+    let val: Option<MetadataValue> = lmdb_get(&txn, &db, &k.as_u32())?;
     match val {
         Some(MetadataValue::ChainHeight(height)) => Ok(height),
         _ => Err(ChainStorageError::ValueNotFound {
@@ -1904,7 +1930,7 @@ fn fetch_chain_height(txn: &ConstTransaction<'_>, db: &Database) -> Result<u64, 
 // // Fetches the effective pruned height from the provided metadata db.
 fn fetch_pruned_height(txn: &ConstTransaction<'_>, db: &Database) -> Result<u64, ChainStorageError> {
     let k = MetadataKey::PrunedHeight;
-    let val: Option<MetadataValue> = lmdb_get(&txn, &db, &(k as u32))?;
+    let val: Option<MetadataValue> = lmdb_get(&txn, &db, &k.as_u32())?;
     match val {
         Some(MetadataValue::PrunedHeight(height)) => Ok(height),
         _ => Ok(0),
@@ -1913,7 +1939,7 @@ fn fetch_pruned_height(txn: &ConstTransaction<'_>, db: &Database) -> Result<u64,
 // Fetches the best block hash from the provided metadata db.
 fn fetch_horizon_data(txn: &ConstTransaction<'_>, db: &Database) -> Result<Option<HorizonData>, ChainStorageError> {
     let k = MetadataKey::HorizonData;
-    let val: Option<MetadataValue> = lmdb_get(&txn, &db, &(k as u32))?;
+    let val: Option<MetadataValue> = lmdb_get(&txn, &db, &k.as_u32())?;
     match val {
         Some(MetadataValue::HorizonData(data)) => Ok(Some(data)),
         None => Ok(None),
@@ -1927,7 +1953,7 @@ fn fetch_horizon_data(txn: &ConstTransaction<'_>, db: &Database) -> Result<Optio
 // Fetches the best block hash from the provided metadata db.
 fn fetch_best_block(txn: &ConstTransaction<'_>, db: &Database) -> Result<BlockHash, ChainStorageError> {
     let k = MetadataKey::BestBlock;
-    let val: Option<MetadataValue> = lmdb_get(&txn, &db, &(k as u32))?;
+    let val: Option<MetadataValue> = lmdb_get(&txn, &db, &k.as_u32())?;
     match val {
         Some(MetadataValue::BestBlock(best_block)) => Ok(best_block),
         _ => Err(ChainStorageError::ValueNotFound {
@@ -1941,7 +1967,7 @@ fn fetch_best_block(txn: &ConstTransaction<'_>, db: &Database) -> Result<BlockHa
 // Fetches the accumulated work from the provided metadata db.
 fn fetch_accumulated_work(txn: &ConstTransaction<'_>, db: &Database) -> Result<u128, ChainStorageError> {
     let k = MetadataKey::AccumulatedWork;
-    let val: Option<MetadataValue> = lmdb_get(&txn, &db, &(k as u32))?;
+    let val: Option<MetadataValue> = lmdb_get(&txn, &db, &k.as_u32())?;
     match val {
         Some(MetadataValue::AccumulatedWork(accumulated_difficulty)) => Ok(accumulated_difficulty),
         _ => Err(ChainStorageError::ValueNotFound {
@@ -1952,10 +1978,25 @@ fn fetch_accumulated_work(txn: &ConstTransaction<'_>, db: &Database) -> Result<u
     }
 }
 
+// Fetches the deleted bitmap from the provided metadata db.
+fn fetch_deleted_bitmap(txn: &ConstTransaction<'_>, db: &Database) -> Result<DeletedBitmap, ChainStorageError> {
+    let k = MetadataKey::DeletedBitmap.as_u32();
+    let val: Option<MetadataValue> = lmdb_get(&txn, &db, &k)?;
+    match val {
+        Some(MetadataValue::DeletedBitmap(bitmap)) => Ok(bitmap),
+        None => Ok(Bitmap::create().into()),
+        _ => Err(ChainStorageError::ValueNotFound {
+            entity: "ChainMetadata".to_string(),
+            field: "DeletedBitmap".to_string(),
+            value: "".to_string(),
+        }),
+    }
+}
+
 // Fetches the pruning horizon from the provided metadata db.
 fn fetch_pruning_horizon(txn: &ConstTransaction<'_>, db: &Database) -> Result<u64, ChainStorageError> {
     let k = MetadataKey::PruningHorizon;
-    let val: Option<MetadataValue> = lmdb_get(&txn, &db, &(k as u32))?;
+    let val: Option<MetadataValue> = lmdb_get(&txn, &db, &k.as_u32())?;
     match val {
         Some(MetadataValue::PruningHorizon(pruning_horizon)) => Ok(pruning_horizon),
         _ => Ok(0),
@@ -1977,6 +2018,14 @@ enum MetadataKey {
     PruningHorizon,
     PrunedHeight,
     HorizonData,
+    DeletedBitmap,
+}
+
+impl MetadataKey {
+    #[inline]
+    pub fn as_u32(self) -> u32 {
+        self as u32
+    }
 }
 
 impl fmt::Display for MetadataKey {
@@ -1988,6 +2037,7 @@ impl fmt::Display for MetadataKey {
             MetadataKey::PrunedHeight => f.write_str("Effective pruned height"),
             MetadataKey::BestBlock => f.write_str("Chain tip block hash"),
             MetadataKey::HorizonData => f.write_str("Database info"),
+            MetadataKey::DeletedBitmap => f.write_str("Deleted bitmap"),
         }
     }
 }
@@ -2001,6 +2051,7 @@ enum MetadataValue {
     PruningHorizon(u64),
     PrunedHeight(u64),
     HorizonData(HorizonData),
+    DeletedBitmap(DeletedBitmap),
 }
 
 impl fmt::Display for MetadataValue {
@@ -2012,6 +2063,72 @@ impl fmt::Display for MetadataValue {
             MetadataValue::PrunedHeight(height) => write!(f, "Effective pruned height is {}", height),
             MetadataValue::BestBlock(hash) => write!(f, "Chain tip block hash is {}", hash.to_hex()),
             MetadataValue::HorizonData(_) => write!(f, "Horizon data"),
+            MetadataValue::DeletedBitmap(deleted) => {
+                write!(f, "Deleted Bitmap ({} indexes)", deleted.bitmap().cardinality())
+            },
         }
+    }
+}
+
+/// A struct that wraps a LMDB transaction and provides an interface to valid operations that can be performed
+/// on the current deleted bitmap state of the blockchain.
+/// A deleted bitmap contains the MMR leaf indexes of spent TXOs.
+struct DeletedBitmapModel<'a, T> {
+    txn: &'a T,
+    db: &'a Database<'static>,
+    bitmap: DeletedBitmap,
+    is_dirty: bool,
+}
+
+impl<'a, 'b, T> DeletedBitmapModel<'a, T>
+where T: Deref<Target = ConstTransaction<'b>>
+{
+    pub fn load(txn: &'a T, db: &'a Database<'static>) -> Result<Self, ChainStorageError> {
+        let bitmap = fetch_deleted_bitmap(txn, db)?;
+        Ok(Self {
+            txn,
+            db,
+            bitmap,
+            is_dirty: false,
+        })
+    }
+
+    /// Returns a reference to the `DeletedBitmap`
+    pub fn get(&self) -> &DeletedBitmap {
+        &self.bitmap
+    }
+}
+
+impl<'a, 'b> DeletedBitmapModel<'a, WriteTransaction<'b>> {
+    /// Merge (union) the given bitmap into this instance.
+    /// `finish` must be called to persist the bitmap.
+    pub fn merge(&mut self, deleted: &Bitmap) -> Result<&mut Self, ChainStorageError> {
+        self.bitmap.bitmap_mut().or_inplace(deleted);
+        self.is_dirty = true;
+        Ok(self)
+    }
+
+    /// Remove (difference) the given bitmap from this instance.
+    /// `finish` must be called to persist the bitmap.
+    pub fn remove(&mut self, deleted: &Bitmap) -> Result<&mut Self, ChainStorageError> {
+        self.bitmap.bitmap_mut().andnot_inplace(deleted);
+        self.is_dirty = true;
+        Ok(self)
+    }
+
+    /// Persist the bitmap if required. This is a no-op if the bitmap has not been modified.
+    pub fn finish(mut self) -> Result<(), ChainStorageError> {
+        if !self.is_dirty {
+            return Ok(());
+        }
+
+        self.bitmap.bitmap_mut().run_optimize();
+        lmdb_replace(
+            self.txn,
+            self.db,
+            &MetadataKey::DeletedBitmap.as_u32(),
+            &MetadataValue::DeletedBitmap(self.bitmap),
+        )?;
+        Ok(())
     }
 }
