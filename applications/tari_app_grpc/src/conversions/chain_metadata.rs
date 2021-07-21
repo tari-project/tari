@@ -29,7 +29,7 @@ impl From<ChainMetadata> for grpc::MetaData {
         Self {
             height_of_longest_chain: meta.height_of_longest_chain(),
             best_block: meta.best_block().clone(),
-            pruning_horizon: meta.pruning_horizon(),
+            pruned_height: meta.pruned_height(),
             accumulated_difficulty: diff.to_be_bytes().to_vec(),
         }
     }
