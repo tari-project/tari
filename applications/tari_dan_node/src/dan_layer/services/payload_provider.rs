@@ -31,6 +31,7 @@ use crate::{
 pub trait PayloadProvider<TPayload: Payload> {
     fn create_payload(&self) -> Result<TPayload, DigitalAssetError>;
     fn create_genesis_payload(&self) -> TPayload;
+    fn get_payload_queue(&self) -> usize;
 }
 
 pub struct MempoolPayloadProvider<TMempoolService: MempoolService> {
@@ -46,10 +47,14 @@ impl<TMempoolService: MempoolService> MempoolPayloadProvider<TMempoolService> {
 impl<TMempoolService: MempoolService> PayloadProvider<InstructionSet> for MempoolPayloadProvider<TMempoolService> {
     fn create_payload(&self) -> Result<InstructionSet, DigitalAssetError> {
         let instructions = self.mempool.read_block(100)?;
-        Ok(InstructionSet::from_slice(instructions))
+        Ok(InstructionSet::from_slice(&instructions))
     }
 
     fn create_genesis_payload(&self) -> InstructionSet {
         InstructionSet::empty()
+    }
+
+    fn get_payload_queue(&self) -> usize {
+        self.mempool.size()
     }
 }

@@ -32,20 +32,20 @@ use tari_crypto::tari_utilities::ByteArray;
 use tokio::sync::RwLock;
 use tonic::{Request, Response, Status};
 
-pub struct DanGrpcServer {
-    mempool_service: Arc<Mutex<ConcreteMempoolService>>,
+pub struct DanGrpcServer<TMempoolService: MempoolService> {
+    mempool_service: TMempoolService,
 }
 
-impl DanGrpcServer {
-    pub fn new() -> Self {
-        Self {
-            mempool_service: Arc::new(Mutex::new(ConcreteMempoolService::new())),
-        }
+impl<TMempoolService: MempoolService> DanGrpcServer<TMempoolService> {
+    pub fn new(mempool_service: TMempoolService) -> Self {
+        Self { mempool_service }
     }
 }
 
 #[tonic::async_trait]
-impl dan_rpc::dan_node_server::DanNode for DanGrpcServer {
+impl<TMempoolService: MempoolService + Clone + Sync + Send + 'static> dan_rpc::dan_node_server::DanNode
+    for DanGrpcServer<TMempoolService>
+{
     async fn get_token_data(
         &self,
         request: tonic::Request<dan_rpc::GetTokenDataRequest>,
@@ -71,7 +71,10 @@ impl dan_rpc::dan_node_server::DanNode for DanGrpcServer {
             // create_com_sig_from_bytes(&request.signature)
             //     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?,
         );
-        match self.mempool_service.lock().unwrap().submit_instruction(instruction) {
+
+        // TODO: Find a way to get around this clone
+        let mut mempool_service = self.mempool_service.clone();
+        match mempool_service.submit_instruction(instruction) {
             Ok(_) => {
                 return Ok(Response::new(dan_rpc::ExecuteInstructionResponse {
                     status: "Accepted".to_string(),

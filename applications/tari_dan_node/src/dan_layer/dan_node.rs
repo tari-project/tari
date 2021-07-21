@@ -32,6 +32,7 @@ use crate::{
             LoggingEventsPublisher,
             MemoryInstructionLog,
             MempoolPayloadProvider,
+            MempoolService,
             NodeIdentitySigningService,
         },
         storage::FileAssetDataStore,
@@ -42,7 +43,11 @@ use crate::{
 };
 use anyhow::anyhow;
 use log::*;
-use std::{fs, sync::Arc, time::Duration};
+use std::{
+    fs,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 use tari_app_utilities::{identity_management, identity_management::setup_node_identity, utilities};
 use tari_common::{CommsTransport, ConfigBootstrap, GlobalConfig, TorControlAuthentication};
 use tari_comms::{
@@ -79,7 +84,12 @@ impl DanNode {
         Self { config }
     }
 
-    pub async fn start(&self, create_id: bool, shutdown: ShutdownSignal) -> Result<(), ExitCodes> {
+    pub async fn start<TMempoolService: MempoolService + Clone + Send>(
+        &self,
+        create_id: bool,
+        shutdown: ShutdownSignal,
+        mempool_service: TMempoolService,
+    ) -> Result<(), ExitCodes> {
         fs::create_dir_all(&self.config.peer_db_path).map_err(|err| ExitCodes::ConfigError(err.to_string()))?;
         let node_identity = setup_node_identity(
             &self.config.base_node_identity_file,
@@ -92,10 +102,9 @@ impl DanNode {
             .build_service_and_comms_stack(shutdown.clone(), node_identity.clone())
             .await?;
 
-        let mempool = ConcreteMempoolService::new();
         let bft_replica_service = ConcreteBftReplicaService::new(node_identity.as_ref().clone(), vec![]);
 
-        let mempool_payload_provider = MempoolPayloadProvider::new(mempool);
+        let mempool_payload_provider = MempoolPayloadProvider::new(mempool_service.clone());
 
         let mut inbound = TariCommsInboundConnectionService::new();
         let receiver = inbound.take_receiver().unwrap();
@@ -131,7 +140,7 @@ impl DanNode {
         let instruction_log = MemoryInstructionLog::default();
         let template_service =
             ConcreteTemplateService::new(data_store, instruction_log, TemplateId::parse(&dan_config.template_id));
-        let payload_processor = InstructionSetProcessor::new(template_service);
+        let payload_processor = InstructionSetProcessor::new(template_service, mempool_service);
         let mut consensus_worker = ConsensusWorker::new(
             bft_replica_service,
             receiver,

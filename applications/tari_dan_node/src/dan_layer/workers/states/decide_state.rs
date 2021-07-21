@@ -269,6 +269,7 @@ where
             //     &signing_service,
             // )
             // .await?;
+            dbg!("Going to apply txs: ", justify.node().payload());
 
             payload_processor.process_payload(justify.node().payload()).await?;
 

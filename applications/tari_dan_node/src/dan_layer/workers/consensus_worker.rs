@@ -191,6 +191,7 @@ where
             }
             let trns = self.transition(next_event)?;
             info!(target: LOG_TARGET, "Transitioning from {:?} to {:?}", trns.0, trns.1);
+
             self.events_publisher.publish(ConsensusWorkerDomainEvent::StateChanged {
                 old: trns.0,
                 new: trns.1,
@@ -267,6 +268,7 @@ where
                     .await
             },
             NextView => {
+                println!("Status: {} in mempool ", self.payload_provider.get_payload_queue(),);
                 let mut state = states::NextViewState::new();
                 state
                     .next_event(

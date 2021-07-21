@@ -97,7 +97,7 @@ impl From<&Instruction> for dan_p2p::Instruction {
             method: source.method().to_string(),
             args: Vec::from(source.args()),
             from: Vec::from(source.from_owner().as_bytes()),
-            signature: com_sig_to_bytes(source.signature()),
+            signature: vec![], // com_sig_to_bytes(source.signature()),
         }
     }
 }

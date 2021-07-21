@@ -23,7 +23,7 @@
 use crate::{
     dan_layer::{
         models::{InstructionSet, Payload},
-        services::TemplateService,
+        services::{MempoolService, TemplateService},
     },
     digital_assets_error::DigitalAssetError,
 };
@@ -34,19 +34,25 @@ pub trait PayloadProcessor<TPayload: Payload> {
     async fn process_payload(&mut self, payload: &TPayload) -> Result<(), DigitalAssetError>;
 }
 
-pub struct InstructionSetProcessor<TTemplateService: TemplateService> {
+pub struct InstructionSetProcessor<TTemplateService: TemplateService, TMempoolService: MempoolService> {
     template_service: TTemplateService,
+    mempool_service: TMempoolService,
 }
 
-impl<TTemplateService: TemplateService> InstructionSetProcessor<TTemplateService> {
-    pub fn new(template_service: TTemplateService) -> Self {
-        Self { template_service }
+impl<TTemplateService: TemplateService, TMempoolService: MempoolService>
+    InstructionSetProcessor<TTemplateService, TMempoolService>
+{
+    pub fn new(template_service: TTemplateService, mempool_service: TMempoolService) -> Self {
+        Self {
+            template_service,
+            mempool_service,
+        }
     }
 }
 
 #[async_trait]
-impl<TTemplateService: TemplateService + Send> PayloadProcessor<InstructionSet>
-    for InstructionSetProcessor<TTemplateService>
+impl<TTemplateService: TemplateService + Send, TMempoolService: MempoolService + Send> PayloadProcessor<InstructionSet>
+    for InstructionSetProcessor<TTemplateService, TMempoolService>
 {
     async fn process_payload(&mut self, payload: &InstructionSet) -> Result<(), DigitalAssetError> {
         for instruction in payload.instructions() {
@@ -55,6 +61,8 @@ impl<TTemplateService: TemplateService + Send> PayloadProcessor<InstructionSet>
             // TODO: Should we swallow + log the error instead of propagating it?
             self.template_service.execute_instruction(instruction).await?;
         }
+
+        self.mempool_service.remove_instructions(payload.instructions())?;
 
         Ok(())
     }

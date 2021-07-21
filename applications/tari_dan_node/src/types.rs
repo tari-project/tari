@@ -33,11 +33,12 @@ pub(crate) type PublicKey = RistrettoPublicKey;
 pub(crate) type ComSig = CommitmentSignature<RistrettoPublicKey, RistrettoSecretKey>;
 
 pub fn create_com_sig_from_bytes(bytes: &[u8]) -> Result<ComSig, ByteArrayError> {
-    Ok(ComSig::new(
-        HomomorphicCommitment::from_bytes(&bytes[0..32])?,
-        RistrettoSecretKey::from_bytes(&bytes[33..64])?,
-        RistrettoSecretKey::from_bytes(&bytes[64..96])?,
-    ))
+    Ok(ComSig::default())
+    // Ok(ComSig::new(
+    //  HomomorphicCommitment::from_bytes(&bytes[0..32])?,
+    // RistrettoSecretKey::from_bytes(&bytes[33..64])?,
+    // RistrettoSecretKey::from_bytes(&bytes[64..96])?,
+    // ))
 }
 
 pub fn com_sig_to_bytes(comsig: &ComSig) -> Vec<u8> {

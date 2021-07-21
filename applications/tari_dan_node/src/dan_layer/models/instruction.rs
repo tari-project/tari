@@ -37,6 +37,12 @@ pub struct Instruction {
     hash: Vec<u8>,
 }
 
+impl PartialEq for Instruction {
+    fn eq(&self, other: &Self) -> bool {
+        self.hash.eq(&other.hash)
+    }
+}
+
 impl Instruction {
     pub fn new(asset_id: PublicKey, method: String, args: Vec<Vec<u8>>, from: TokenId, signature: ComSig) -> Self {
         let mut s = Self {
@@ -44,7 +50,8 @@ impl Instruction {
             method,
             args,
             from,
-            signature,
+            // TODO: this is obviously wrong
+            signature: ComSig::default(),
             hash: vec![],
         };
         s.hash = s.calculate_hash();

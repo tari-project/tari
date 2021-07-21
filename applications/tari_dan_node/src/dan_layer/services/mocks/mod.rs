@@ -50,8 +50,16 @@ impl MempoolService for MockMempoolService {
         todo!()
     }
 
-    fn read_block(&self, limit: usize) -> Result<&[Instruction], DigitalAssetError> {
+    fn read_block(&self, limit: usize) -> Result<Vec<Instruction>, DigitalAssetError> {
         todo!()
+    }
+
+    fn remove_instructions(&mut self, instructions: &[Instruction]) -> Result<(), DigitalAssetError> {
+        todo!()
+    }
+
+    fn size(&self) -> usize {
+        0
     }
 }
 
@@ -101,6 +109,10 @@ impl<TPayload: Payload> PayloadProvider<TPayload> for MockStaticPayloadProvider<
 
     fn create_genesis_payload(&self) -> TPayload {
         self.static_payload.clone()
+    }
+
+    fn get_payload_queue(&self) -> usize {
+        1
     }
 }
 

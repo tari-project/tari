@@ -21,10 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{dan_layer::models::Instruction, digital_assets_error::DigitalAssetError};
+use std::{
+    ops::Index,
+    sync::{Arc, Mutex},
+};
 
 pub trait MempoolService {
     fn submit_instruction(&mut self, instruction: Instruction) -> Result<(), DigitalAssetError>;
-    fn read_block(&self, limit: usize) -> Result<&[Instruction], DigitalAssetError>;
+    fn read_block(&self, limit: usize) -> Result<Vec<Instruction>, DigitalAssetError>;
+    fn remove_instructions(&mut self, instructions: &[Instruction]) -> Result<(), DigitalAssetError>;
+    fn size(&self) -> usize;
 }
 
 pub struct ConcreteMempoolService {
@@ -43,8 +49,51 @@ impl MempoolService for ConcreteMempoolService {
         Ok(())
     }
 
-    fn read_block(&self, limit: usize) -> Result<&[Instruction], DigitalAssetError> {
-        // TODO: add limit, man I'm so lazy
-        Ok(&self.instructions.as_slice())
+    fn read_block(&self, limit: usize) -> Result<Vec<Instruction>, DigitalAssetError> {
+        Ok(self.instructions.clone())
+    }
+
+    fn remove_instructions(&mut self, instructions: &[Instruction]) -> Result<(), DigitalAssetError> {
+        let mut result = self.instructions.clone();
+        for i in instructions {
+            if let Some(position) = result.iter().position(|r| r == i) {
+                result.remove(position);
+            }
+        }
+        self.instructions = result;
+        Ok(())
+    }
+
+    fn size(&self) -> usize {
+        self.instructions.len()
+    }
+}
+
+#[derive(Clone)]
+pub struct MempoolServiceHandle {
+    mempool: Arc<Mutex<ConcreteMempoolService>>,
+}
+
+impl MempoolServiceHandle {
+    pub fn new(mempool: Arc<Mutex<ConcreteMempoolService>>) -> Self {
+        Self { mempool }
+    }
+}
+
+impl MempoolService for MempoolServiceHandle {
+    fn submit_instruction(&mut self, instruction: Instruction) -> Result<(), DigitalAssetError> {
+        self.mempool.lock().unwrap().submit_instruction(instruction)
+    }
+
+    fn read_block(&self, limit: usize) -> Result<Vec<Instruction>, DigitalAssetError> {
+        self.mempool.lock().unwrap().read_block(limit)
+    }
+
+    fn remove_instructions(&mut self, instructions: &[Instruction]) -> Result<(), DigitalAssetError> {
+        self.mempool.lock().unwrap().remove_instructions(instructions)
+    }
+
+    fn size(&self) -> usize {
+        self.mempool.lock().unwrap().size()
     }
 }
