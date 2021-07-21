@@ -3,6 +3,7 @@ use log::*;
 use std::convert::TryFrom;
 use tari_app_grpc::{
     conversions::naive_datetime_to_timestamp,
+    tari_rpc,
     tari_rpc::{
         payment_recipient::PaymentType,
         wallet_server,
@@ -30,7 +31,7 @@ use tari_app_grpc::{
         TransferResult,
     },
 };
-use tari_comms::types::CommsPublicKey;
+use tari_comms::{types::CommsPublicKey, CommsNode};
 use tari_core::{
     tari_utilities::{hex::Hex, ByteArray},
     transactions::{tari_amount::MicroTari, transaction::UnblindedOutput, types::Signature},
@@ -60,6 +61,10 @@ impl WalletGrpcServer {
 
     fn get_output_manager_service(&self) -> OutputManagerHandle {
         self.wallet.output_manager_service.clone()
+    }
+
+    fn comms(&self) -> &CommsNode {
+        &self.wallet.comms
     }
 }
 
@@ -337,6 +342,60 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }
 
         Ok(Response::new(ImportUtxosResponse { tx_ids }))
+    }
+
+    async fn get_network_status(
+        &self,
+        _: Request<tari_rpc::Empty>,
+    ) -> Result<Response<tari_rpc::NetworkStatusResponse>, Status> {
+        let status = self
+            .comms()
+            .connectivity()
+            .get_connectivity_status()
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
+        let mut base_node_service = self.wallet.base_node_service.clone();
+
+        let resp = tari_rpc::NetworkStatusResponse {
+            status: tari_rpc::ConnectivityStatus::from(status) as i32,
+            avg_latency_ms: base_node_service
+                .get_base_node_latency()
+                .await
+                .map_err(|err| Status::internal(err.to_string()))?
+                .map(|d| u32::try_from(d.as_millis()).unwrap_or(u32::MAX))
+                .unwrap_or_default(),
+            num_node_connections: status.num_connected_nodes() as u32,
+        };
+
+        Ok(Response::new(resp))
+    }
+
+    async fn list_connected_peers(
+        &self,
+        _: Request<tari_rpc::Empty>,
+    ) -> Result<Response<tari_rpc::ListConnectedPeersResponse>, Status> {
+        let mut connectivity = self.comms().connectivity();
+        let peer_manager = self.comms().peer_manager();
+        let connected_peers = connectivity
+            .get_active_connections()
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
+
+        let mut peers = Vec::with_capacity(connected_peers.len());
+        for peer in connected_peers {
+            peers.push(
+                peer_manager
+                    .find_by_node_id(peer.peer_node_id())
+                    .await
+                    .map_err(|err| Status::internal(err.to_string()))?,
+            );
+        }
+
+        let resp = tari_rpc::ListConnectedPeersResponse {
+            connected_peers: peers.into_iter().map(Into::into).collect(),
+        };
+
+        Ok(Response::new(resp))
     }
 }
 

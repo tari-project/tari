@@ -39,6 +39,8 @@ pub enum LivenessRequest {
     GetPongCount,
     /// Get average latency for node ID
     GetAvgLatency(NodeId),
+    /// Get average latency for all connected nodes
+    GetNetworkAvgLatency,
     /// Set the metadata attached to each ping/pong message
     SetMetadataEntry(MetadataKey, Vec<u8>),
 }
@@ -50,7 +52,7 @@ pub enum LivenessResponse {
     Ok,
     /// Used to return a counter value from `GetPingCount` and `GetPongCount`
     Count(usize),
-    /// Response for GetAvgLatency
+    /// Response for GetAvgLatency and GetNetworkAvgLatency
     AvgLatency(Option<u32>),
     /// The number of active neighbouring peers
     NumActiveNeighbours(usize),
@@ -145,6 +147,22 @@ impl LivenessHandle {
             .await??
         {
             LivenessResponse::Ok => Ok(()),
+            _ => Err(LivenessError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Retrieve the average latency for a given node
+    pub async fn get_avg_latency(&mut self, node_id: NodeId) -> Result<Option<u32>, LivenessError> {
+        match self.handle.call(LivenessRequest::GetAvgLatency(node_id)).await?? {
+            LivenessResponse::AvgLatency(v) => Ok(v),
+            _ => Err(LivenessError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Retrieve the mean average latency for all connected nodes
+    pub async fn get_network_avg_latency(&mut self) -> Result<Option<u32>, LivenessError> {
+        match self.handle.call(LivenessRequest::GetNetworkAvgLatency).await?? {
+            LivenessResponse::AvgLatency(v) => Ok(v),
             _ => Err(LivenessError::UnexpectedApiResponse),
         }
     }
