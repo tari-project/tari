@@ -22,7 +22,7 @@
 
 use crate::{
     dan_layer::{
-        models::{InstructionCaller, InstructionId, TemplateId},
+        models::{Instruction, InstructionCaller, InstructionId, TemplateId},
         storage::{AssetDataStore, FileAssetDataStore},
         template_command::{ExecutionResult, TemplateCommand},
         templates::editable_metadata_template::EditableMetadataTemplate,
@@ -30,14 +30,21 @@ use crate::{
     digital_assets_error::DigitalAssetError,
     types::PublicKey,
 };
+use async_trait::async_trait;
 
-pub struct TemplateService {
+// TODO: Better name needed
+#[async_trait]
+pub trait TemplateService {
+    async fn execute_instruction(&mut self, instruction: &Instruction) -> Result<(), DigitalAssetError>;
+}
+
+pub struct ConcreteTemplateService {
     template_factory: TemplateFactory,
     instruction_log: Box<dyn InstructionLog>,
     data_store: Box<dyn AssetDataStore>,
 }
 
-impl TemplateService {
+impl ConcreteTemplateService {
     pub fn new(data_store: Box<dyn AssetDataStore>) -> Self {
         Self {
             template_factory: TemplateFactory {},

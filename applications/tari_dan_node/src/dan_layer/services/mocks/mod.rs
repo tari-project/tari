@@ -28,12 +28,15 @@ use crate::{
             BftReplicaService,
             EventsPublisher,
             MempoolService,
+            PayloadProcessor,
             PayloadProvider,
             SigningService,
+            TemplateService,
         },
     },
     digital_assets_error::DigitalAssetError,
 };
+use async_trait::async_trait;
 use std::{
     collections::{vec_deque::Iter, VecDeque},
     marker::PhantomData,
@@ -145,5 +148,32 @@ pub struct MockSigningService<TAddr: NodeAddressable> {
 impl<TAddr: NodeAddressable> SigningService<TAddr> for MockSigningService<TAddr> {
     fn sign(&self, identity: &TAddr, challenge: &[u8]) -> Result<Signature, DigitalAssetError> {
         Ok(Signature {})
+    }
+}
+
+pub fn mock_template_service() -> MockTemplateService {
+    MockTemplateService {}
+}
+
+pub struct MockTemplateService {}
+
+#[async_trait]
+impl TemplateService for MockTemplateService {
+    async fn execute_instruction(&mut self, instruction: &Instruction) -> Result<(), DigitalAssetError> {
+        dbg!("Executing instruction as mock");
+        Ok(())
+    }
+}
+
+pub fn mock_payload_processor() -> MockPayloadProcessor {
+    MockPayloadProcessor {}
+}
+
+pub struct MockPayloadProcessor {}
+
+#[async_trait]
+impl<TPayload: Payload> PayloadProcessor<TPayload> for MockPayloadProcessor {
+    async fn process_payload(&mut self, _payload: &TPayload) -> Result<(), DigitalAssetError> {
+        Ok(())
     }
 }

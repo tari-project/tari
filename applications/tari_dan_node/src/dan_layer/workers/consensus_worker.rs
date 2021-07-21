@@ -38,6 +38,7 @@ use crate::{
             MempoolService,
             PayloadProvider,
             SigningService,
+            TemplateService,
         },
         workers::{
             states,
@@ -65,6 +66,7 @@ pub struct ConsensusWorker<
     TPayloadProvider,
     TEventsPublisher,
     TSigningService,
+    TTemplateService,
 > where
     TBftReplicaService: BftReplicaService,
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload>,
@@ -74,6 +76,7 @@ pub struct ConsensusWorker<
     TPayloadProvider: PayloadProvider<TPayload>,
     TEventsPublisher: EventsPublisher<ConsensusWorkerDomainEvent>,
     TSigningService: SigningService<TAddr>,
+    TTemplateService: TemplateService,
 {
     bft_replica_service: TBftReplicaService,
     inbound_connections: TInboundConnectionService,
@@ -88,6 +91,7 @@ pub struct ConsensusWorker<
     events_publisher: TEventsPublisher,
     locked_qc: Arc<QuorumCertificate<TPayload>>,
     signing_service: TSigningService,
+    template_service: TTemplateService,
 }
 
 impl<
@@ -99,6 +103,7 @@ impl<
         TPayloadProvider,
         TEventsPublisher,
         TSigningService,
+        TTemplateService,
     >
     ConsensusWorker<
         TBftReplicaService,
@@ -109,6 +114,7 @@ impl<
         TPayloadProvider,
         TEventsPublisher,
         TSigningService,
+        TTemplateService,
     >
 where
     TBftReplicaService: BftReplicaService,
@@ -119,6 +125,7 @@ where
     TPayloadProvider: PayloadProvider<TPayload>,
     TEventsPublisher: EventsPublisher<ConsensusWorkerDomainEvent>,
     TSigningService: SigningService<TAddr>,
+    TTemplateService: TemplateService,
 {
     pub fn new(
         bft_replica_service: TBftReplicaService,
@@ -129,6 +136,7 @@ where
         payload_provider: TPayloadProvider,
         events_publisher: TEventsPublisher,
         signing_service: TSigningService,
+        template_service: TTemplateService,
         timeout: Duration,
     ) -> Self {
         let prepare_qc = Arc::new(QuorumCertificate::genesis(payload_provider.create_genesis_payload()));
@@ -147,6 +155,7 @@ where
             payload_provider,
             events_publisher,
             signing_service,
+            template_service,
         }
     }
 
@@ -253,6 +262,7 @@ where
                         &mut self.inbound_connections,
                         &mut self.outbound_service,
                         &self.signing_service,
+                        &mut self.template_service,
                     )
                     .await
             },

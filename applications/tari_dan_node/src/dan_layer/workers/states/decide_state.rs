@@ -34,6 +34,7 @@ use crate::{
         },
         services::{
             infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
+            PayloadProcessor,
             SigningService,
         },
         workers::states::ConsensusWorkerStateEvent,
@@ -44,13 +45,14 @@ use std::{any::Any, collections::HashMap, marker::PhantomData, time::Instant};
 use tokio::time::{delay_for, Duration};
 
 // TODO: This is very similar to pre-commit, and commit state
-pub struct DecideState<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService>
+pub struct DecideState<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService, TPayloadProcessor>
 where
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload>,
     TAddr: NodeAddressable,
     TPayload: Payload,
     TOutboundService: OutboundService<TAddr, TPayload>,
     TSigningService: SigningService<TAddr>,
+    TPayloadProcessor: PayloadProcessor,
 {
     node_id: TAddr,
     committee: Committee<TAddr>,
@@ -59,19 +61,21 @@ where
     ta: PhantomData<TAddr>,
     p_p: PhantomData<TPayload>,
     p_s: PhantomData<TSigningService>,
+    p_t: PhantomData<TPayloadProcessor>,
     received_new_view_messages: HashMap<TAddr, HotStuffMessage<TPayload>>,
     commit_qc: Option<QuorumCertificate<TPayload>>,
     locked_qc: Option<QuorumCertificate<TPayload>>,
 }
 
-impl<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService>
-    DecideState<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService>
+impl<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService, TPayloadProcessor>
+    DecideState<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService, TPayloadProcessor>
 where
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload>,
     TOutboundService: OutboundService<TAddr, TPayload>,
     TAddr: NodeAddressable,
     TPayload: Payload,
     TSigningService: SigningService<TAddr>,
+    TPayloadProcessor: PayloadProcessor,
 {
     pub fn new(node_id: TAddr, committee: Committee<TAddr>) -> Self {
         Self {
@@ -85,6 +89,7 @@ where
             commit_qc: None,
             locked_qc: None,
             p_s: PhantomData,
+            p_t: PhantomData,
         }
     }
 
@@ -95,6 +100,7 @@ where
         inbound_services: &mut TInboundConnectionService,
         outbound_service: &mut TOutboundService,
         signing_service: &TSigningService,
+        payload_processor: &mut TPayloadProcessor,
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         let mut next_event_result = ConsensusWorkerStateEvent::Errored {
             reason: "loop ended without setting this event".to_string(),
@@ -116,7 +122,7 @@ where
 
                               }
                     let leader= self.committee.leader_for_view(current_view.view_id).clone();
-                              if let Some(result) = self.process_replica_message(&message, &current_view, &from, &leader,  outbound_service, &signing_service).await? {
+                              if let Some(result) = self.process_replica_message(&message, &current_view, &from, &leader, payload_processor).await? {
                                   next_event_result = result;
                                   break;
                               }
@@ -234,8 +240,7 @@ where
         current_view: &View,
         from: &TAddr,
         view_leader: &TAddr,
-        outbound: &mut TOutboundService,
-        signing_service: &TSigningService,
+        payload_processor: &mut TPayloadProcessor,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
         if let Some(justify) = message.justify() {
             if !justify.matches(HotStuffMessageType::Commit, current_view.view_id) {
@@ -256,15 +261,24 @@ where
                 return Ok(None);
             }
 
-            self.locked_qc = Some(justify.clone());
-            self.send_vote_to_leader(
-                justify.node(),
-                outbound,
-                view_leader,
-                current_view.view_id,
-                &signing_service,
-            )
-            .await?;
+            // self.locked_qc = Some(justify.clone());
+            // self.send_vote_to_leader(
+            //     justify.node(),
+            //     outbound,
+            //     view_leader,
+            //     current_view.view_id,
+            //     &signing_service,
+            // )
+            // .await?;
+            // for instruction in justify.node().payload() {
+            //     dbg!("Executing instruction");
+            //     dbg!(&instruction);
+            //     // TODO: Should we swallow + log the error instead of propagating it?
+            //     template_service.execute_instruction(instruction)?;
+            // }
+
+            payload_processor.process(justify.node().payload())?;
+
             return Ok(Some(ConsensusWorkerStateEvent::Decided));
         } else {
             dbg!("received non justify message");

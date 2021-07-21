@@ -120,24 +120,26 @@ impl DanNode {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let committee = Committee::new(committee);
-        let events_publisher = LoggingEventsPublisher::new();
-        let signing_service = NodeIdentitySigningService::new(node_identity.as_ref().clone());
-        let mut consensus_worker = ConsensusWorker::new(
-            bft_replica_service,
-            receiver,
-            outbound,
-            committee,
-            node_identity.public_key().clone(),
-            mempool_payload_provider,
-            events_publisher,
-            signing_service,
-            Duration::from_secs(dan_config.phase_timeout),
-        );
-        consensus_worker
-            .run(shutdown.clone(), None)
-            .await
-            .map_err(|err| ExitCodes::ConfigError(err.to_string()))
+        // let committee = Committee::new(committee);
+        // let events_publisher = LoggingEventsPublisher::new();
+        // let signing_service = NodeIdentitySigningService::new(node_identity.as_ref().clone());
+        unimplemented!()
+        // let mut consensus_worker = ConsensusWorker::new(
+        //     bft_replica_service,
+        //     receiver,
+        //     outbound,
+        //     committee,
+        //     node_identity.public_key().clone(),
+        //     mempool_payload_provider,
+        //     events_publisher,
+        //     signing_service,
+        //     unimplemented!(),
+        //     Duration::from_secs(dan_config.phase_timeout),
+        // );
+        // consensus_worker
+        //     .run(shutdown.clone(), None)
+        //     .await
+        //     .map_err(|err| ExitCodes::ConfigError(err.to_string()))
     }
 
     async fn build_service_and_comms_stack(

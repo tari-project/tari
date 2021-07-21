@@ -20,22 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod bft_replica_service;
-mod events_publisher;
-pub mod infrastructure_services;
-mod mempool_service;
-mod payload_processor;
-mod payload_provider;
-mod signing_service;
-mod template_service;
+use crate::{dan_layer::models::Payload, digital_assets_error::DigitalAssetError};
+use async_trait::async_trait;
 
-pub use bft_replica_service::{BftReplicaService, ConcreteBftReplicaService};
-pub use events_publisher::{EventsPublisher, LoggingEventsPublisher};
-pub use mempool_service::{ConcreteMempoolService, MempoolService};
-pub use payload_processor::PayloadProcessor;
-pub use payload_provider::{MempoolPayloadProvider, PayloadProvider};
-pub use signing_service::{NodeIdentitySigningService, SigningService};
-pub use template_service::TemplateService;
-
-#[cfg(test)]
-pub mod mocks;
+#[async_trait]
+pub trait PayloadProcessor<TPayload: Payload> {
+    async fn process_payload(&mut self, payload: &TPayload) -> Result<(), DigitalAssetError>;
+}

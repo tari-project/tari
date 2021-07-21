@@ -66,8 +66,10 @@ impl dan_rpc::dan_node_server::DanNode for DanGrpcServer {
             request.method.clone(),
             request.args.clone(),
             TokenId(request.from.clone()),
-            create_com_sig_from_bytes(&request.signature)
-                .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?,
+            // TODO: put signature in here
+            ComSig::default()
+            // create_com_sig_from_bytes(&request.signature)
+            //     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?,
         );
         match self.mempool_service.lock().unwrap().submit_instruction(instruction) {
             Ok(_) => {
