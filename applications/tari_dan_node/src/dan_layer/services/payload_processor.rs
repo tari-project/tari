@@ -20,10 +20,42 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{dan_layer::models::Payload, digital_assets_error::DigitalAssetError};
+use crate::{
+    dan_layer::{
+        models::{InstructionSet, Payload},
+        services::TemplateService,
+    },
+    digital_assets_error::DigitalAssetError,
+};
 use async_trait::async_trait;
 
 #[async_trait]
 pub trait PayloadProcessor<TPayload: Payload> {
     async fn process_payload(&mut self, payload: &TPayload) -> Result<(), DigitalAssetError>;
+}
+
+pub struct InstructionSetProcessor<TTemplateService: TemplateService> {
+    template_service: TTemplateService,
+}
+
+impl<TTemplateService: TemplateService> InstructionSetProcessor<TTemplateService> {
+    pub fn new(template_service: TTemplateService) -> Self {
+        Self { template_service }
+    }
+}
+
+#[async_trait]
+impl<TTemplateService: TemplateService + Send> PayloadProcessor<InstructionSet>
+    for InstructionSetProcessor<TTemplateService>
+{
+    async fn process_payload(&mut self, payload: &InstructionSet) -> Result<(), DigitalAssetError> {
+        for instruction in payload.instructions() {
+            dbg!("Executing instruction");
+            dbg!(&instruction);
+            // TODO: Should we swallow + log the error instead of propagating it?
+            self.template_service.execute_instruction(instruction).await?;
+        }
+
+        Ok(())
+    }
 }

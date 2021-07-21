@@ -22,15 +22,19 @@
 
 use crate::{
     dan_layer::{
-        models::{Committee, HotStuffMessage, InstructionSet},
+        models::{Committee, HotStuffMessage, InstructionSet, TemplateId},
         services::{
             infrastructure_services::{TariCommsInboundConnectionService, TariCommsOutboundService},
             ConcreteBftReplicaService,
             ConcreteMempoolService,
+            ConcreteTemplateService,
+            InstructionSetProcessor,
             LoggingEventsPublisher,
+            MemoryInstructionLog,
             MempoolPayloadProvider,
             NodeIdentitySigningService,
         },
+        storage::FileAssetDataStore,
         workers::ConsensusWorker,
     },
     digital_assets_error::DigitalAssetError,
@@ -120,26 +124,30 @@ impl DanNode {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        // let committee = Committee::new(committee);
-        // let events_publisher = LoggingEventsPublisher::new();
-        // let signing_service = NodeIdentitySigningService::new(node_identity.as_ref().clone());
-        unimplemented!()
-        // let mut consensus_worker = ConsensusWorker::new(
-        //     bft_replica_service,
-        //     receiver,
-        //     outbound,
-        //     committee,
-        //     node_identity.public_key().clone(),
-        //     mempool_payload_provider,
-        //     events_publisher,
-        //     signing_service,
-        //     unimplemented!(),
-        //     Duration::from_secs(dan_config.phase_timeout),
-        // );
-        // consensus_worker
-        //     .run(shutdown.clone(), None)
-        //     .await
-        //     .map_err(|err| ExitCodes::ConfigError(err.to_string()))
+        let committee = Committee::new(committee);
+        let events_publisher = LoggingEventsPublisher::new();
+        let signing_service = NodeIdentitySigningService::new(node_identity.as_ref().clone());
+        let data_store = FileAssetDataStore::load_or_create(self.config.data_dir.join("asset_data"));
+        let instruction_log = MemoryInstructionLog::default();
+        let template_service =
+            ConcreteTemplateService::new(data_store, instruction_log, TemplateId::parse(&dan_config.template_id));
+        let payload_processor = InstructionSetProcessor::new(template_service);
+        let mut consensus_worker = ConsensusWorker::new(
+            bft_replica_service,
+            receiver,
+            outbound,
+            committee,
+            node_identity.public_key().clone(),
+            mempool_payload_provider,
+            events_publisher,
+            signing_service,
+            payload_processor,
+            Duration::from_secs(dan_config.phase_timeout),
+        );
+        consensus_worker
+            .run(shutdown.clone(), None)
+            .await
+            .map_err(|err| ExitCodes::ConfigError(err.to_string()))
     }
 
     async fn build_service_and_comms_stack(

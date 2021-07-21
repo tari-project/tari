@@ -106,7 +106,6 @@ where
         loop {
             tokio::select! {
                            (from, message) = self.wait_for_message(inbound_services) => {
-                              dbg!("[Commit] Received message: ", &message.message_type(), &from);
             if current_view.is_leader() {
                                   if let Some(result) = self.process_leader_message(&current_view, message.clone(), &from, outbound_service
                             ).await?{
@@ -159,8 +158,8 @@ where
         self.received_new_view_messages.insert(sender.clone(), message);
 
         if self.received_new_view_messages.len() >= self.committee.consensus_threshold() {
-            dbg!(
-                "Consensus has been reached with {:?} out of {} votes",
+            println!(
+                "[COMMIT] Consensus has been reached with {:?} out of {} votes",
                 self.received_new_view_messages.len(),
                 self.committee.len()
             );
@@ -180,8 +179,8 @@ where
             //     .await?;
             // Ok(Some(ConsensusWorkerStateEvent::Prepared))
         } else {
-            dbg!(
-                "Consensus has NOT YET been reached with {:?} out of {} votes",
+            println!(
+                "[COMMIT] Consensus has NOT YET been reached with {:?} out of {} votes",
                 self.received_new_view_messages.len(),
                 self.committee.len()
             );

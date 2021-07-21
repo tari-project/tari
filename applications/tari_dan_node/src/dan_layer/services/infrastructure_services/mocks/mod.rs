@@ -119,8 +119,8 @@ impl<TAddr: NodeAddressable + Send + Sync + Debug, TPayload: Payload> OutboundSe
         message: HotStuffMessage<TPayload>,
     ) -> Result<(), DigitalAssetError> {
         let t = &to;
-        dbg!(
-            "Sending message: ",
+        println!(
+            "[mock] Sending message: {:?} {:?} sig:{:?}",
             &to,
             &message.message_type(),
             &message.partial_sig()

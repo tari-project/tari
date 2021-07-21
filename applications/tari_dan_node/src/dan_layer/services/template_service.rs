@@ -38,31 +38,53 @@ pub trait TemplateService {
     async fn execute_instruction(&mut self, instruction: &Instruction) -> Result<(), DigitalAssetError>;
 }
 
-pub struct ConcreteTemplateService {
+pub struct ConcreteTemplateService<TAssetDataStore: AssetDataStore, TInstructionLog: InstructionLog> {
+    template_id: TemplateId,
     template_factory: TemplateFactory,
-    instruction_log: Box<dyn InstructionLog>,
-    data_store: Box<dyn AssetDataStore>,
+    instruction_log: TInstructionLog,
+    data_store: TAssetDataStore,
 }
 
-impl ConcreteTemplateService {
-    pub fn new(data_store: Box<dyn AssetDataStore>) -> Self {
+#[async_trait]
+impl<TAssetDataStore: AssetDataStore + Send, TInstructionLog: InstructionLog + Send> TemplateService
+    for ConcreteTemplateService<TAssetDataStore, TInstructionLog>
+{
+    async fn execute_instruction(&mut self, instruction: &Instruction) -> Result<(), DigitalAssetError> {
+        self.execute(
+            instruction.method().to_owned(),
+            instruction.args().to_owned(),
+            InstructionCaller {
+                owner_token_id: instruction.from_owner().to_owned(),
+            },
+            // TODO: put in instruction
+            InstructionId(0),
+        )
+    }
+}
+
+impl<TAssetDataStore: AssetDataStore, TInstructionLog: InstructionLog>
+    ConcreteTemplateService<TAssetDataStore, TInstructionLog>
+{
+    pub fn new(data_store: TAssetDataStore, instruction_log: TInstructionLog, template_id: TemplateId) -> Self {
         Self {
             template_factory: TemplateFactory {},
-            instruction_log: Box::new(MemoryInstructionLog::default()),
+            instruction_log,
+            template_id,
             data_store,
         }
     }
 
-    pub fn execute_instruction(
+    pub fn execute(
         &mut self,
-        template: TemplateId,
         method: String,
         args: Vec<Vec<u8>>,
         caller: InstructionCaller,
         id: InstructionId,
     ) -> Result<(), DigitalAssetError> {
-        let instruction = self.template_factory.create_command(template, method, args, caller)?;
-        let result = instruction.try_execute(self.data_store.as_mut())?;
+        let instruction = self
+            .template_factory
+            .create_command(self.template_id, method, args, caller)?;
+        let result = instruction.try_execute(&mut self.data_store)?;
         self.instruction_log.store(id, result);
         Ok(())
     }

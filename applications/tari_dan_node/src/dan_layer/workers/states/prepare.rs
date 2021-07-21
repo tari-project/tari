@@ -122,7 +122,6 @@ where
         loop {
             tokio::select! {
                 (from, message) = self.wait_for_message(inbound_services) => {
-                    dbg!("Received message: ", &message.message_type(), &from);
                     if current_view.is_leader() {
                         if let Some(result) = self.process_leader_message(&current_view, message.clone(), &from, &committee, &payload_provider, outbound_service).await?{
                            next_event_result = result;
@@ -178,8 +177,8 @@ where
         self.received_new_view_messages.insert(sender.clone(), message);
 
         if self.received_new_view_messages.len() >= committee.consensus_threshold() {
-            dbg!(
-                "Consensus has been reached with {:?} out of {} votes",
+            println!(
+                "[PREPARE] Consensus has been reached with {:?} out of {} votes",
                 self.received_new_view_messages.len(),
                 committee.len()
             );
@@ -190,8 +189,8 @@ where
             // Ok(Some(ConsensusWorkerStateEvent::Prepared))
             Ok(None) // Will move to pre-commit when it receives the message as a replica
         } else {
-            dbg!(
-                "Consensus has NOT YET been reached with {:?} out of {} votes",
+            println!(
+                "[PREPARE] Consensus has NOT YET been reached with {:?} out of {} votes",
                 self.received_new_view_messages.len(),
                 committee.len()
             );
@@ -209,12 +208,12 @@ where
         signing_service: &TSigningService,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
         if !message.matches(HotStuffMessageType::Prepare, current_view.view_id) {
-            dbg!(
-                "Wrong message type received, log",
-                &self.node_id,
-                &message.message_type(),
-                current_view.view_id
-            );
+            // println!(
+            //     "Wrong message type received, log. {:?} {:?} View {:?}",
+            //     &self.node_id,
+            //     &message.message_type(),
+            //     current_view.view_id
+            // );
             return Ok(None);
         }
         if message.node().is_none() {
@@ -227,8 +226,6 @@ where
         let node = message.node().unwrap();
         if let Some(justify) = message.justify() {
             if self.does_extend(node, justify.node()) {
-                dbg!(node);
-                dbg!(justify);
                 if !self.is_safe_node(node, justify) {
                     unimplemented!("Node is not safe")
                 }
@@ -268,7 +265,7 @@ where
         payload_provider: &TPayloadProvider,
     ) -> Result<HotStuffTreeNode<TPayload>, DigitalAssetError> {
         // TODO: Artificial delay here to set the block time
-        delay_for(Duration::from_secs(5)).await;
+        delay_for(Duration::from_secs(3)).await;
 
         let payload = payload_provider.create_payload()?;
         Ok(HotStuffTreeNode::from_parent(parent, payload))
@@ -297,7 +294,6 @@ where
         node: &HotStuffTreeNode<TPayload>,
         quorum_certificate: &QuorumCertificate<TPayload>,
     ) -> bool {
-        dbg!(&self.locked_qc);
         self.does_extend(node, self.locked_qc.node()) || quorum_certificate.view_number() > self.locked_qc.view_number()
     }
 

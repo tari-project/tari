@@ -28,6 +28,7 @@ use serde::Deserialize;
 pub struct DanNodeConfig {
     pub committee: Vec<String>,
     pub phase_timeout: u64,
+    pub template_id: String,
 }
 
 impl DanNodeConfig {

@@ -36,9 +36,9 @@ use crate::{
             BftReplicaService,
             EventsPublisher,
             MempoolService,
+            PayloadProcessor,
             PayloadProvider,
             SigningService,
-            TemplateService,
         },
         workers::{
             states,
@@ -66,7 +66,7 @@ pub struct ConsensusWorker<
     TPayloadProvider,
     TEventsPublisher,
     TSigningService,
-    TTemplateService,
+    TPayloadProcessor,
 > where
     TBftReplicaService: BftReplicaService,
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload>,
@@ -76,7 +76,7 @@ pub struct ConsensusWorker<
     TPayloadProvider: PayloadProvider<TPayload>,
     TEventsPublisher: EventsPublisher<ConsensusWorkerDomainEvent>,
     TSigningService: SigningService<TAddr>,
-    TTemplateService: TemplateService,
+    TPayloadProcessor: PayloadProcessor<TPayload>,
 {
     bft_replica_service: TBftReplicaService,
     inbound_connections: TInboundConnectionService,
@@ -91,7 +91,7 @@ pub struct ConsensusWorker<
     events_publisher: TEventsPublisher,
     locked_qc: Arc<QuorumCertificate<TPayload>>,
     signing_service: TSigningService,
-    template_service: TTemplateService,
+    payload_processor: TPayloadProcessor,
 }
 
 impl<
@@ -103,7 +103,7 @@ impl<
         TPayloadProvider,
         TEventsPublisher,
         TSigningService,
-        TTemplateService,
+        TPayloadProcessor,
     >
     ConsensusWorker<
         TBftReplicaService,
@@ -114,7 +114,7 @@ impl<
         TPayloadProvider,
         TEventsPublisher,
         TSigningService,
-        TTemplateService,
+        TPayloadProcessor,
     >
 where
     TBftReplicaService: BftReplicaService,
@@ -125,7 +125,7 @@ where
     TPayloadProvider: PayloadProvider<TPayload>,
     TEventsPublisher: EventsPublisher<ConsensusWorkerDomainEvent>,
     TSigningService: SigningService<TAddr>,
-    TTemplateService: TemplateService,
+    TPayloadProcessor: PayloadProcessor<TPayload>,
 {
     pub fn new(
         bft_replica_service: TBftReplicaService,
@@ -136,7 +136,7 @@ where
         payload_provider: TPayloadProvider,
         events_publisher: TEventsPublisher,
         signing_service: TSigningService,
-        template_service: TTemplateService,
+        payload_processor: TPayloadProcessor,
         timeout: Duration,
     ) -> Self {
         let prepare_qc = Arc::new(QuorumCertificate::genesis(payload_provider.create_genesis_payload()));
@@ -155,7 +155,7 @@ where
             payload_provider,
             events_publisher,
             signing_service,
-            template_service,
+            payload_processor,
         }
     }
 
@@ -262,7 +262,7 @@ where
                         &mut self.inbound_connections,
                         &mut self.outbound_service,
                         &self.signing_service,
-                        &mut self.template_service,
+                        &mut self.payload_processor,
                     )
                     .await
             },
@@ -291,10 +291,7 @@ where
         let from = self.state;
         self.state = match (&self.state, event) {
             (Starting, Initialized) => Prepare,
-            (_, TimedOut) => {
-                dbg!("timing out?");
-                NextView
-            },
+            (_, TimedOut) => NextView,
             (NextView, NewView { .. }) => {
                 self.current_view_id = self.current_view_id.next();
                 Prepare
@@ -323,7 +320,13 @@ mod test {
 
     use crate::dan_layer::services::{
         infrastructure_services::mocks::{mock_outbound, MockInboundConnectionService, MockOutboundService},
-        mocks::{mock_events_publisher, mock_signing_service, mock_static_payload_provider, MockEventsPublisher},
+        mocks::{
+            mock_events_publisher,
+            mock_payload_processor,
+            mock_signing_service,
+            mock_static_payload_provider,
+            MockEventsPublisher,
+        },
     };
     use futures::task;
     use std::collections::HashMap;
@@ -347,6 +350,7 @@ mod test {
             mock_static_payload_provider("Hello"),
             events_publisher,
             mock_signing_service(),
+            mock_payload_processor(),
             Duration::from_secs(5),
         );
         tokio::spawn(async move {

@@ -54,6 +54,8 @@ impl NextViewState {
         let next_view = current_view.view_id.next();
         let leader = committee.leader_for_view(next_view);
         broadcast.send(node_id, leader.clone(), message).await?;
+        println!("End of view: {}", current_view.view_id.0);
+        println!("--------------------------------");
         Ok(ConsensusWorkerStateEvent::NewView { new_view: next_view })
     }
 }

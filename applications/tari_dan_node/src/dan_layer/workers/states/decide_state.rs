@@ -52,7 +52,7 @@ where
     TPayload: Payload,
     TOutboundService: OutboundService<TAddr, TPayload>,
     TSigningService: SigningService<TAddr>,
-    TPayloadProcessor: PayloadProcessor,
+    TPayloadProcessor: PayloadProcessor<TPayload>,
 {
     node_id: TAddr,
     committee: Committee<TAddr>,
@@ -75,7 +75,7 @@ where
     TAddr: NodeAddressable,
     TPayload: Payload,
     TSigningService: SigningService<TAddr>,
-    TPayloadProcessor: PayloadProcessor,
+    TPayloadProcessor: PayloadProcessor<TPayload>,
 {
     pub fn new(node_id: TAddr, committee: Committee<TAddr>) -> Self {
         Self {
@@ -112,7 +112,6 @@ where
         loop {
             tokio::select! {
                            (from, message) = self.wait_for_message(inbound_services) => {
-                              dbg!("[Decide] Received message: ", &message.message_type(), &from);
             if current_view.is_leader() {
                                   if let Some(result) = self.process_leader_message(&current_view, message.clone(), &from, outbound_service
                             ).await?{
@@ -165,8 +164,8 @@ where
         self.received_new_view_messages.insert(sender.clone(), message);
 
         if self.received_new_view_messages.len() >= self.committee.consensus_threshold() {
-            dbg!(
-                "Consensus has been reached with {:?} out of {} votes",
+            println!(
+                "[DECIDE] Consensus has been reached with {:?} out of {} votes",
                 self.received_new_view_messages.len(),
                 self.committee.len()
             );
@@ -186,8 +185,8 @@ where
             //     .await?;
             // Ok(Some(ConsensusWorkerStateEvent::Prepared))
         } else {
-            dbg!(
-                "Consensus has NOT YET been reached with {:?} out of {} votes",
+            println!(
+                "[DECIDE] Consensus has NOT YET been reached with {:?} out of {} votes",
                 self.received_new_view_messages.len(),
                 self.committee.len()
             );
@@ -270,14 +269,8 @@ where
             //     &signing_service,
             // )
             // .await?;
-            // for instruction in justify.node().payload() {
-            //     dbg!("Executing instruction");
-            //     dbg!(&instruction);
-            //     // TODO: Should we swallow + log the error instead of propagating it?
-            //     template_service.execute_instruction(instruction)?;
-            // }
 
-            payload_processor.process(justify.node().payload())?;
+            payload_processor.process_payload(justify.node().payload()).await?;
 
             return Ok(Some(ConsensusWorkerStateEvent::Decided));
         } else {

@@ -32,10 +32,10 @@ mod template_service;
 pub use bft_replica_service::{BftReplicaService, ConcreteBftReplicaService};
 pub use events_publisher::{EventsPublisher, LoggingEventsPublisher};
 pub use mempool_service::{ConcreteMempoolService, MempoolService};
-pub use payload_processor::PayloadProcessor;
+pub use payload_processor::{InstructionSetProcessor, PayloadProcessor};
 pub use payload_provider::{MempoolPayloadProvider, PayloadProvider};
 pub use signing_service::{NodeIdentitySigningService, SigningService};
-pub use template_service::TemplateService;
+pub use template_service::{ConcreteTemplateService, MemoryInstructionLog, TemplateService};
 
 #[cfg(test)]
 pub mod mocks;

@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::dan_layer::models::{ConsensusWorkerState, Event};
+use std::{fmt, fmt::Formatter};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConsensusWorkerDomainEvent {
@@ -31,3 +32,13 @@ pub enum ConsensusWorkerDomainEvent {
 }
 
 impl Event for ConsensusWorkerDomainEvent {}
+
+impl fmt::Display for ConsensusWorkerDomainEvent {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ConsensusWorkerDomainEvent::StateChanged { old, new } => {
+                write!(f, "State changed from {:?} to {:?}", old, new)
+            },
+        }
+    }
+}

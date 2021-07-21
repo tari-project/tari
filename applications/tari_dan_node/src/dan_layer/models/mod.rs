@@ -51,10 +51,12 @@ use std::{
 pub use view::View;
 pub use view_id::ViewId;
 
-pub struct InstructionId(u64);
+// TODO: encapsulate
+pub struct InstructionId(pub u64);
 
+// TODO: encapsulate
 pub struct InstructionCaller {
-    owner_token_id: TokenId,
+    pub owner_token_id: TokenId,
 }
 
 impl InstructionCaller {
@@ -63,8 +65,22 @@ impl InstructionCaller {
     }
 }
 
+#[derive(Copy, Clone)]
 pub enum TemplateId {
     EditableMetadata,
+}
+
+impl TemplateId {
+    pub fn parse(s: &str) -> TemplateId {
+        match s {
+            "EditableMetadata" => TemplateId::EditableMetadata,
+            _ => {
+                // TODO: Propagate errr instead
+                dbg!("Unrecognised template");
+                TemplateId::EditableMetadata
+            },
+        }
+    }
 }
 
 #[derive(Clone, Debug, Hash)]

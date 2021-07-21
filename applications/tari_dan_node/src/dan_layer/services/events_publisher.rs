@@ -21,7 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::dan_layer::models::Event;
-use std::{fmt::Debug, marker::PhantomData};
+use std::{
+    fmt::{Debug, Display},
+    marker::PhantomData,
+};
 
 pub trait EventsPublisher<TEvent: Event> {
     fn publish(&mut self, event: TEvent);
@@ -37,8 +40,8 @@ impl<TEvent: Event> LoggingEventsPublisher<TEvent> {
         Self { phantom: PhantomData }
     }
 }
-impl<TEvent: Event + Debug> EventsPublisher<TEvent> for LoggingEventsPublisher<TEvent> {
+impl<TEvent: Event + Debug + Display> EventsPublisher<TEvent> for LoggingEventsPublisher<TEvent> {
     fn publish(&mut self, event: TEvent) {
-        dbg!("Event received:{:?}", event);
+        println!("[Event] Event received:{}", event);
     }
 }
