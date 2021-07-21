@@ -2,9 +2,9 @@
 name: Build libwallet
 on:
   push:
-    branches:
-      - development
-      - libwallet
+#    branches:
+#      - development
+#      - libwallet
     tags:
       - "libwallet-*"
 jobs:
