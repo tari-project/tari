@@ -29,14 +29,14 @@ function withTimeout(ms, promise, message = "") {
 async function waitFor(
   asyncTestFn,
   toBe,
-  maxTime,
+  maxTimeMs,
   timeOut = 500,
   skipLog = 50
 ) {
   const now = new Date();
 
   let i = 0;
-  while (new Date() - now < maxTime) {
+  while (new Date() - now < maxTimeMs) {
     try {
       const value = await asyncTestFn();
       if (value === toBe) {
@@ -61,6 +61,18 @@ async function waitFor(
       await sleep(timeOut);
     }
   }
+}
+
+async function waitForPredicate(predicate, timeOut, sleep_ms = 500) {
+  const now = new Date();
+  while (new Date() - now < timeOut) {
+    const val = await predicate();
+    if (val) {
+      return val;
+    }
+    await sleep(sleep_ms);
+  }
+  throw new Error(`Predicate was not true after ${timeOut} ms`);
 }
 
 function dec2hex(n) {
@@ -252,6 +264,9 @@ function combineTwoTariKeys(key1, key2) {
   return total_key;
 }
 
+const byteArrayToHex = (bytes) =>
+  bytes.reduce((str, byte) => str + byte.toString(16).padStart(2, "0"), "");
+
 module.exports = {
   getRandomInt,
   sleep,
@@ -267,5 +282,8 @@ module.exports = {
   consoleLogCoinbaseDetails,
   withTimeout,
   combineTwoTariKeys,
+  byteArrayToHex,
+  waitForPredicate,
+
   NO_CONNECTION,
 };

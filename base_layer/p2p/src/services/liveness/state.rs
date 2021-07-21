@@ -178,6 +178,19 @@ impl LivenessState {
     pub fn get_avg_latency_ms(&self, node_id: &NodeId) -> Option<u32> {
         self.peer_latency.get(node_id).map(|latency| latency.calc_average())
     }
+
+    pub fn get_network_avg_latency(&self) -> Option<u32> {
+        let num_peers = self.peer_latency.len();
+        self.peer_latency
+            .values()
+            .map(|latency| latency.calc_average())
+            .fold(None, |acc, latency| {
+                let current = acc.unwrap_or(0);
+                Some(current + latency)
+            })
+            // num_peers in map will always be > 0
+            .map(|latency| latency / num_peers as u32)
+    }
 }
 
 /// Convert `chrono::Duration` to `std::time::Duration`
