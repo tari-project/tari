@@ -376,7 +376,6 @@ The script offset provides a proof that every script public key \\( K\_{Si} \\) 
 
 ## Sender Offset Keypair
 
-[sender offset]: #sender-offset-keypair
 
 The sender offset private - public keypair, (\\( k\_{Oi} \\),\\( K\_{Oi} \\)), is used by the sender of an output to
 lock all its metadata by virtue of a [sender metadata signature].
@@ -435,7 +434,7 @@ is a list of instructions linked in a non&nbsp;malleable way to each output, spe
 [transaction]: #transaction "Base layer tari coin transfers."
 
 Transactions are activities recorded on the Tari [blockchain] running on the [base layer]. Transactions always involve a
-transfer of [Tari coin]s.
+transfer of [Tari coin]s. A [mimblewimble](#mimblewimble) transaction body consists of one or more blinded inputs and outputs.
 
 ## Transaction Pool
 
