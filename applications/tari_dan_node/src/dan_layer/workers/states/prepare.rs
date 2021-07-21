@@ -53,6 +53,7 @@ use std::{
     hash::Hash,
     marker::PhantomData,
     sync::{Arc, Mutex},
+    time::Instant,
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::time::{delay_for, Duration};
@@ -115,6 +116,9 @@ where
             reason: "loop ended without setting this event".to_string(),
         };
 
+        // TODO: rather change the loop below to inside the wait for message
+        let started = Instant::now();
+
         loop {
             tokio::select! {
                 (from, message) = self.wait_for_message(inbound_services) => {
@@ -132,7 +136,7 @@ where
                     }
 
                 },
-                _ = delay_for(timeout) =>  {
+                _ = delay_for(timeout.saturating_sub(Instant::now() - started)) =>  {
                     // TODO: perhaps this should be from the time the state was entered
                     next_event_result = ConsensusWorkerStateEvent::TimedOut;
                     break;
@@ -264,7 +268,7 @@ where
         payload_provider: &TPayloadProvider,
     ) -> Result<HotStuffTreeNode<TPayload>, DigitalAssetError> {
         // TODO: Artificial delay here to set the block time
-        delay_for(Duration::from_secs(3)).await;
+        delay_for(Duration::from_secs(5)).await;
 
         let payload = payload_provider.create_payload()?;
         Ok(HotStuffTreeNode::from_parent(parent, payload))

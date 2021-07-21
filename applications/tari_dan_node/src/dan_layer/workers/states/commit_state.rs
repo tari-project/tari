@@ -40,7 +40,7 @@ use crate::{
     },
     digital_assets_error::DigitalAssetError,
 };
-use std::{any::Any, collections::HashMap, marker::PhantomData};
+use std::{any::Any, collections::HashMap, marker::PhantomData, time::Instant};
 use tokio::time::{delay_for, Duration};
 
 // TODO: This is very similar to pre-commit state
@@ -101,7 +101,8 @@ where
         };
 
         self.received_new_view_messages.clear();
-
+        // TODO: rather change the loop below to inside the wait for message
+        let started = Instant::now();
         loop {
             tokio::select! {
                            (from, message) = self.wait_for_message(inbound_services) => {
@@ -121,7 +122,7 @@ where
                               }
 
                               }
-                      _ = delay_for(timeout) =>  {
+                      _ = delay_for(timeout.saturating_sub(Instant::now() - started)) =>  {
                                     // TODO: perhaps this should be from the time the state was entered
                                     next_event_result = ConsensusWorkerStateEvent::TimedOut;
                                     break;

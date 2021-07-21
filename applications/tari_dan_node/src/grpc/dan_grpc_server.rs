@@ -19,28 +19,30 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::grpc::dan_rpc;
-use tonic::{Request, Response, Status};
-use crate::dan_layer::services::{MempoolService, ConcreteMempoolService};
-use crate::dan_layer::models::{Instruction, TokenId};
-use tokio::sync::RwLock;
+use crate::{
+    dan_layer::{
+        models::{Instruction, TokenId},
+        services::{ConcreteMempoolService, MempoolService},
+    },
+    grpc::dan_rpc,
+    types::{create_com_sig_from_bytes, ComSig, PublicKey},
+};
 use std::sync::{Arc, Mutex};
-use crate::types::{PublicKey, ComSig, create_com_sig_from_bytes};
 use tari_crypto::tari_utilities::ByteArray;
+use tokio::sync::RwLock;
+use tonic::{Request, Response, Status};
 
-pub struct DanGrpcServer  {
-    mempool_service: Arc<Mutex<ConcreteMempoolService>>
+pub struct DanGrpcServer {
+    mempool_service: Arc<Mutex<ConcreteMempoolService>>,
 }
 
 impl DanGrpcServer {
     pub fn new() -> Self {
         Self {
-            mempool_service: Arc::new(Mutex::new(ConcreteMempoolService::new()))
+            mempool_service: Arc::new(Mutex::new(ConcreteMempoolService::new())),
         }
     }
 }
-
-
 
 #[tonic::async_trait]
 impl dan_rpc::dan_node_server::DanNode for DanGrpcServer {
@@ -48,20 +50,36 @@ impl dan_rpc::dan_node_server::DanNode for DanGrpcServer {
         &self,
         request: tonic::Request<dan_rpc::GetTokenDataRequest>,
     ) -> Result<tonic::Response<dan_rpc::GetTokenDataResponse>, tonic::Status> {
-        todo!()
+        dbg!(&request);
+        Err(Status::internal("Oh noes"))
     }
 
-    async fn execute_instruction(&self, request: Request<dan_rpc::ExecuteInstructionRequest>) -> Result<Response<dan_rpc::ExecuteInstructionResponse>, Status> {
+    async fn execute_instruction(
+        &self,
+        request: Request<dan_rpc::ExecuteInstructionRequest>,
+    ) -> Result<Response<dan_rpc::ExecuteInstructionResponse>, Status> {
         dbg!(&request);
         let request = request.into_inner();
-        let instruction = Instruction::new(PublicKey::from_bytes(&request.asset_public_key ).map_err(|err| Status::invalid_argument("asset_public_key was not a valid public key"))?, request.method.clone(), request.args.clone(), TokenId(request.from.clone()), create_com_sig_from_bytes(&request.signature).map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?);
+        let instruction = Instruction::new(
+            PublicKey::from_bytes(&request.asset_public_key)
+                .map_err(|err| Status::invalid_argument("asset_public_key was not a valid public key"))?,
+            request.method.clone(),
+            request.args.clone(),
+            TokenId(request.from.clone()),
+            create_com_sig_from_bytes(&request.signature)
+                .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?,
+        );
         match self.mempool_service.lock().unwrap().submit_instruction(instruction) {
-            Ok(_) => return Ok(Response::new(dan_rpc::ExecuteInstructionResponse{
-                status: "Accepted".to_string()
-            })),
-            Err(_) => return Ok(Response::new(dan_rpc::ExecuteInstructionResponse {
-                status: "Errored".to_string()
-            }))
+            Ok(_) => {
+                return Ok(Response::new(dan_rpc::ExecuteInstructionResponse {
+                    status: "Accepted".to_string(),
+                }))
+            },
+            Err(_) => {
+                return Ok(Response::new(dan_rpc::ExecuteInstructionResponse {
+                    status: "Errored".to_string(),
+                }))
+            },
         }
     }
 }

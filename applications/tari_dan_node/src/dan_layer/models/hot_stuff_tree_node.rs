@@ -32,25 +32,32 @@ use tari_crypto::common::Blake256;
 pub struct HotStuffTreeNode<TPayload: Payload> {
     parent: TreeNodeHash,
     payload: TPayload,
+    hash: TreeNodeHash,
 }
 
 impl<TPayload: Payload> HotStuffTreeNode<TPayload> {
     pub fn new(parent: TreeNodeHash, payload: TPayload) -> Self {
-        HotStuffTreeNode { parent, payload }
+        let mut s = HotStuffTreeNode {
+            parent,
+            payload,
+            hash: TreeNodeHash(vec![]),
+        };
+        s.hash = s.calculate_hash();
+        s
     }
 
     pub fn genesis(payload: TPayload) -> HotStuffTreeNode<TPayload> {
-        Self {
+        let mut s = Self {
             parent: TreeNodeHash(vec![0u8; 32]),
             payload,
-        }
+            hash: TreeNodeHash(vec![]),
+        };
+        s.hash = s.calculate_hash();
+        s
     }
 
     pub fn from_parent(parent: &HotStuffTreeNode<TPayload>, payload: TPayload) -> HotStuffTreeNode<TPayload> {
-        Self {
-            parent: parent.calculate_hash(),
-            payload,
-        }
+        Self::new(parent.calculate_hash(), payload)
     }
 
     pub fn calculate_hash(&self) -> TreeNodeHash {
