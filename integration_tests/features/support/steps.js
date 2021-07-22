@@ -14,7 +14,7 @@ const {
   consoleLogCoinbaseDetails,
   withTimeout,
 } = require("../../helpers/util");
-const { ConnectivityStatus } = require("../../helpers/types");
+const { ConnectivityStatus, PaymentType } = require("../../helpers/types");
 const TransactionBuilder = require("../../helpers/transactionBuilder");
 let lastResult;
 
@@ -1654,7 +1654,7 @@ When(
           amount: amount,
           fee_per_gram: feePerGram,
           message: "msg",
-          payment_type: 1,
+          payment_type: PaymentType.ONE_SIDED,
         },
       ],
     });
