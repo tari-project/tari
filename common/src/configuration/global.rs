@@ -762,9 +762,17 @@ where
 
 fn network_transport_config(
     cfg: &Config,
-    application: ApplicationType,
+    mut application: ApplicationType,
     network: &str,
 ) -> Result<CommsTransport, ConfigurationError> {
+    const P2P_APPS: &[ApplicationType] = &[ApplicationType::BaseNode, ApplicationType::ConsoleWallet];
+    if !P2P_APPS.contains(&application) {
+        // TODO: If/when we split the configs by app, this hack can be removed
+        //       This removed the need to setup defaults for apps that dont use the network,
+        //       assuming base node has been set up
+        application = ApplicationType::BaseNode;
+    }
+
     let get_conf_str = |key| {
         cfg.get_str(key)
             .map_err(|err| ConfigurationError::new(key, &err.to_string()))
