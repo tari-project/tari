@@ -1,4 +1,10 @@
-use crate::{dir_utils::default_subdir, ConfigBootstrap, ConfigError, LOG_TARGET};
+use crate::{
+    configuration::bootstrap::ApplicationType,
+    dir_utils::default_subdir,
+    ConfigBootstrap,
+    ConfigError,
+    LOG_TARGET,
+};
 use config::Config;
 use log::{debug, info};
 use multiaddr::{Multiaddr, Protocol};
@@ -110,7 +116,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
 
     //---------------------------------- Mainnet Defaults --------------------------------------------//
 
-    cfg.set_default("base_node.network", "mainnet").unwrap();
+    cfg.set_default("common.network", "mainnet").unwrap();
 
     // Mainnet base node defaults
     cfg.set_default("base_node.mainnet.db_type", "lmdb").unwrap();
@@ -232,7 +238,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("wallet.base_node_service_peers", Vec::<String>::new())
         .unwrap();
 
-    set_transport_defaults(&mut cfg);
+    set_transport_defaults(&mut cfg).unwrap();
     set_merge_mining_defaults(&mut cfg);
     set_mining_node_defaults(&mut cfg);
 
@@ -281,45 +287,83 @@ fn set_mining_node_defaults(cfg: &mut Config) {
     cfg.set_default("mining_node.validate_tip_timeout_sec", 0).unwrap();
 }
 
-fn set_transport_defaults(cfg: &mut Config) {
-    // Mainnet
-    // Default transport for mainnet is tcp
-    cfg.set_default("base_node.mainnet.transport", "tcp").unwrap();
-    cfg.set_default("base_node.mainnet.tcp_listener_address", "/ip4/0.0.0.0/tcp/18089")
-        .unwrap();
+fn set_transport_defaults(cfg: &mut Config) -> Result<(), config::ConfigError> {
+    // Defaults that should not conflict across apps
+    cfg.set_default(
+        &format!("{}.mainnet.tcp_listener_address", ApplicationType::BaseNode),
+        "/ip4/0.0.0.0/tcp/18089",
+    )?;
+    cfg.set_default(
+        &format!("{}.mainnet.tcp_listener_address", ApplicationType::ConsoleWallet),
+        "/ip4/0.0.0.0/tcp/18088",
+    )?;
+    cfg.set_default(
+        &format!("{}.weatherwax.tcp_listener_address", ApplicationType::BaseNode),
+        "/ip4/0.0.0.0/tcp/18199",
+    )?;
+    cfg.set_default(
+        &format!("{}.weatherwax.tcp_listener_address", ApplicationType::ConsoleWallet),
+        "/ip4/0.0.0.0/tcp/18198",
+    )?;
+    cfg.set_default(
+        &format!("{}.mainnet.socks5_listener_address", ApplicationType::BaseNode),
+        "/ip4/0.0.0.0/tcp/18099",
+    )?;
+    cfg.set_default(
+        &format!("{}.mainnet.socks5_listener_address", ApplicationType::ConsoleWallet),
+        "/ip4/0.0.0.0/tcp/18098",
+    )?;
+    cfg.set_default(
+        &format!("{}.weatherwax.socks5_listener_address", ApplicationType::BaseNode),
+        "/ip4/0.0.0.0/tcp/18199",
+    )?;
+    cfg.set_default(
+        &format!("{}.weatherwax.socks5_listener_address", ApplicationType::ConsoleWallet),
+        "/ip4/0.0.0.0/tcp/18198",
+    )?;
 
-    cfg.set_default("base_node.mainnet.tor_control_address", "/ip4/127.0.0.1/tcp/9051")
-        .unwrap();
-    cfg.set_default("base_node.mainnet.tor_control_auth", "none").unwrap();
-    cfg.set_default("base_node.mainnet.tor_forward_address", "/ip4/127.0.0.1/tcp/0")
-        .unwrap();
-    cfg.set_default("base_node.mainnet.tor_onion_port", "18141").unwrap();
+    let apps = &[ApplicationType::BaseNode, ApplicationType::ConsoleWallet];
+    for app in apps {
+        let app = app.as_config_str();
 
-    cfg.set_default("base_node.mainnet.socks5_proxy_address", "/ip4/0.0.0.0/tcp/9050")
-        .unwrap();
-    cfg.set_default("base_node.mainnet.socks5_listener_address", "/ip4/0.0.0.0/tcp/18099")
-        .unwrap();
-    cfg.set_default("base_node.mainnet.socks5_auth", "none").unwrap();
+        // Mainnet
+        cfg.set_default(&format!("{}.mainnet.transport", app), "tor")?;
+        cfg.set_default(
+            &format!("{}.mainnet.tor_control_address", app),
+            "/ip4/127.0.0.1/tcp/9051",
+        )?;
+        cfg.set_default(&format!("{}.mainnet.tor_control_auth", app), "none")?;
+        cfg.set_default(&format!("{}.mainnet.tor_forward_address", app), "/ip4/127.0.0.1/tcp/0")?;
+        cfg.set_default(&format!("{}.mainnet.tor_onion_port", app), "18141")?;
 
-    // weatherwax
-    // Default transport for weatherwax is tcp
-    cfg.set_default("base_node.weatherwax.transport", "tcp").unwrap();
-    cfg.set_default("base_node.weatherwax.tcp_listener_address", "/ip4/0.0.0.0/tcp/18189")
-        .unwrap();
+        cfg.set_default(
+            &format!("{}.mainnet.socks5_proxy_address", app),
+            "/ip4/0.0.0.0/tcp/9050",
+        )?;
+        cfg.set_default(&format!("{}.mainnet.socks5_auth", app), "none")?;
 
-    cfg.set_default("base_node.weatherwax.tor_control_address", "/ip4/127.0.0.1/tcp/9051")
-        .unwrap();
-    cfg.set_default("base_node.weatherwax.tor_control_auth", "none")
-        .unwrap();
-    cfg.set_default("base_node.weatherwax.tor_forward_address", "/ip4/127.0.0.1/tcp/0")
-        .unwrap();
-    cfg.set_default("base_node.weatherwax.tor_onion_port", "18141").unwrap();
+        // weatherwax
+        cfg.set_default(&format!("{}.weatherwax.transport", app), "tor")?;
 
-    cfg.set_default("base_node.weatherwax.socks5_proxy_address", "/ip4/0.0.0.0/tcp/9150")
-        .unwrap();
-    cfg.set_default("base_node.weatherwax.socks5_listener_address", "/ip4/0.0.0.0/tcp/18199")
-        .unwrap();
-    cfg.set_default("base_node.weatherwax.socks5_auth", "none").unwrap();
+        cfg.set_default(
+            &format!("{}.weatherwax.tor_control_address", app),
+            "/ip4/127.0.0.1/tcp/9051",
+        )?;
+        cfg.set_default(&format!("{}.weatherwax.tor_control_auth", app), "none")?;
+        cfg.set_default(
+            &format!("{}.weatherwax.tor_forward_address", app),
+            "/ip4/127.0.0.1/tcp/0",
+        )?;
+        cfg.set_default(&format!("{}.weatherwax.tor_onion_port", app), "18141")?;
+
+        cfg.set_default(
+            &format!("{}.weatherwax.socks5_proxy_address", app),
+            "/ip4/0.0.0.0/tcp/9150",
+        )?;
+
+        cfg.set_default(&format!("{}.weatherwax.socks5_auth", app), "none")?;
+    }
+    Ok(())
 }
 
 fn get_local_ip() -> Option<Multiaddr> {
