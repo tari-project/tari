@@ -26,9 +26,7 @@ pub use builder::{HiddenServiceBuilder, HiddenServiceBuilderError, HsFlags};
 mod controller;
 use crate::{
     multiaddr::Multiaddr,
-    socks,
     tor::{PrivateKey, TorClientError},
-    transports::{SocksConfig, SocksTransport},
 };
 pub use controller::{HiddenServiceController, HiddenServiceControllerError};
 use serde_derive::{Deserialize, Serialize};
@@ -41,10 +39,6 @@ use tari_shutdown::OptionalShutdownSignal;
 pub struct HiddenService {
     /// The identity of the hidden service
     pub(super) identity: TorIdentity,
-    /// The SOCKS5 address obtained by querying the Tor control port and used to configure the `SocksTransport`.
-    pub(super) socks_addr: Multiaddr,
-    /// SOCKS5 authentication details used to configure the `SocksTransport`.
-    pub(super) socks_auth: socks::Authentication,
     /// The address where incoming traffic to the `onion_addr` will be forwarded to.
     pub(super) proxied_addr: Multiaddr,
     /// Shutdown signal for hidden service
@@ -64,13 +58,6 @@ impl HiddenService {
 
     pub fn proxied_address(&self) -> &Multiaddr {
         &self.proxied_addr
-    }
-
-    pub fn get_transport(&self) -> SocksTransport {
-        SocksTransport::new(SocksConfig {
-            proxy_address: self.socks_addr.clone(),
-            authentication: self.socks_auth.clone(),
-        })
     }
 
     pub fn tor_identity(&self) -> &TorIdentity {

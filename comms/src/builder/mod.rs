@@ -145,6 +145,11 @@ impl CommsBuilder {
         self
     }
 
+    pub fn with_auxilary_tcp_listener_address(mut self, listener_address: Multiaddr) -> Self {
+        self.connection_manager_config.auxilary_tcp_listener_address = Some(listener_address);
+        self
+    }
+
     pub fn with_listener_liveness_max_sessions(mut self, max_sessions: usize) -> Self {
         self.connection_manager_config.liveness_max_sessions = max_sessions;
         self

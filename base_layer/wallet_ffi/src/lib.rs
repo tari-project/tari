@@ -2486,6 +2486,7 @@ pub unsafe extern "C" fn transport_tor_create(
         port_mapping: tor::PortMapping::new(tor_port, "127.0.0.1:0".parse().unwrap()),
         socks_address_override: None,
         socks_auth: authentication,
+        tor_proxy_bypass_addresses: vec![],
     };
     let transport = TariTransportType::Tor(tor_config);
 
@@ -2627,6 +2628,7 @@ pub unsafe extern "C" fn comms_config_create(
                 network: Network::Weatherwax,
                 node_identity: Arc::new(ni),
                 transport_type: (*transport_type).clone(),
+                auxilary_tcp_listener_address: None,
                 datastore_path,
                 peer_database_name: database_name_string,
                 max_concurrent_inbound_tasks: 100,

@@ -21,7 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::{error::ConnectionManagerError, peer_connection::PeerConnection};
-use crate::{connection_manager::manager::ConnectionManagerEvent, multiaddr::Multiaddr, peer_manager::NodeId};
+use crate::{
+    connection_manager::manager::{ConnectionManagerEvent, ListenerInfo},
+    peer_manager::NodeId,
+};
 use futures::{
     channel::{mpsc, oneshot},
     SinkExt,
@@ -37,7 +40,7 @@ pub enum ConnectionManagerRequest {
     /// Cancels a pending dial if one exists
     CancelDial(NodeId),
     /// Register a oneshot to get triggered when the node is listening, or has failed to listen
-    NotifyListening(oneshot::Sender<Multiaddr>),
+    NotifyListening(oneshot::Sender<ListenerInfo>),
 }
 
 /// Responsible for constructing requests to the ConnectionManagerService
@@ -108,12 +111,11 @@ impl ConnectionManagerRequester {
         Ok(())
     }
 
-    /// Return the listening address of this node's listener. This will asynchronously block until the listener has
-    /// initialized and a listening address has been established.
+    /// Return the ListenerInfo for the configured listener once the listener(s) are bound to the socket.
     ///
     /// This is useful when using "assigned port" addresses, such as /ip4/0.0.0.0/tcp/0 or /memory/0 for listening and
     /// you wish to know the final assigned port.
-    pub async fn wait_until_listening(&mut self) -> Result<Multiaddr, ConnectionManagerError> {
+    pub async fn wait_until_listening(&mut self) -> Result<ListenerInfo, ConnectionManagerError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
             .send(ConnectionManagerRequest::NotifyListening(reply_tx))

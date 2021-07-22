@@ -632,7 +632,6 @@ fn connection_manager_logger(
                     node_name, err
                 );
             },
-            Listening(_) | ListenFailed(_) => unreachable!(),
             NewInboundSubstream(node_id, protocol, _) => {
                 println!(
                     "'{}' negotiated protocol '{}' to '{}'",
