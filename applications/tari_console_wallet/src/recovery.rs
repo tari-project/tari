@@ -168,6 +168,9 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfi
                 debug!(target: LOG_TARGET, "Error receiving Wallet recovery events: {}", e);
                 continue;
             },
+            Ok(UtxoScannerEvent::ScanningFailed) => {
+                error!(target: LOG_TARGET, "Wallet Recovery process failed and is exiting");
+            },
         }
     }
 
