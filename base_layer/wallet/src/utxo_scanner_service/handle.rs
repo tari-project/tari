@@ -62,6 +62,8 @@ pub enum UtxoScannerEvent {
         value_received: MicroTari,
         time_taken: Duration,
     },
+    /// Scanning process has failed and scanning process has exited
+    ScanningFailed,
 }
 
 #[derive(Clone)]
