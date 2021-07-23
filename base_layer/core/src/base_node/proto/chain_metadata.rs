@@ -40,14 +40,20 @@ impl TryFrom<proto::ChainMetadata> for ChainMetadata {
         let mut acc_diff = [0; ACC_DIFFICULTY_ARRAY_LEN];
         acc_diff.copy_from_slice(&metadata.accumulated_difficulty[0..ACC_DIFFICULTY_ARRAY_LEN]);
         let accumulated_difficulty = u128::from_be_bytes(acc_diff);
+        let height_of_longest_chain = metadata
+            .height_of_longest_chain
+            .ok_or_else(|| "Height of longest chain is missing".to_string())?;
+        let pruning_horizon = if metadata.pruned_height == 0 {
+            metadata.pruned_height
+        } else {
+            height_of_longest_chain.saturating_sub(metadata.pruned_height)
+        };
 
         Ok(ChainMetadata::new(
-            metadata
-                .height_of_longest_chain
-                .ok_or_else(|| "Height of longest chain is missing".to_string())?,
+            height_of_longest_chain,
             metadata.best_block.ok_or_else(|| "Best block is missing".to_string())?,
-            metadata.pruning_horizon,
-            metadata.effective_pruned_height,
+            pruning_horizon,
+            metadata.pruned_height,
             accumulated_difficulty,
         ))
     }
@@ -59,8 +65,7 @@ impl From<ChainMetadata> for proto::ChainMetadata {
         Self {
             height_of_longest_chain: Some(metadata.height_of_longest_chain()),
             best_block: Some(metadata.best_block().clone()),
-            pruning_horizon: metadata.pruning_horizon(),
-            effective_pruned_height: metadata.pruned_height(),
+            pruned_height: metadata.pruned_height(),
             accumulated_difficulty,
         }
     }

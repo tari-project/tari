@@ -91,3 +91,17 @@ Feature: Block Propagation
     Then node MINER is at height 7
     When I wait 20 seconds
     Then all nodes are at height 7
+
+    Scenario: Pruned node should prune outputs
+    Given I have 1 seed nodes
+    And I have a base node SENDER connected to all seed nodes
+    Given I have a pruned node PNODE1 connected to node SENDER with pruning horizon set to 5
+    When I mine a block on SENDER with coinbase CB1
+    When I mine 2 blocks on SENDER
+    When I create a transaction TX1 spending CB1 to UTX1
+    When I submit transaction TX1 to SENDER
+    When I mine 1 blocks on SENDER
+    Then TX1 is in the MINED of all nodes
+    When I mine 17 blocks on SENDER
+    Then all nodes are on the same chain at height 21
+    Then node PNODE1 has a pruned height of 15

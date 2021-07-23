@@ -114,8 +114,7 @@ impl BaseNodeWalletRpcMockState {
                     height_of_longest_chain: Some(std::u64::MAX),
                     best_block: Some(Vec::new()),
                     accumulated_difficulty: Vec::new(),
-                    pruning_horizon: 0,
-                    effective_pruned_height: 0,
+                    pruned_height: 0,
                 }),
                 is_synced: true,
             })),
@@ -537,8 +536,7 @@ mod test {
             height_of_longest_chain: Some(444),
             best_block: Some(Vec::new()),
             accumulated_difficulty: Vec::new(),
-            pruning_horizon: 0,
-            effective_pruned_height: 0,
+            pruned_height: 0,
         };
         service_state.set_tip_info_response(TipInfoResponse {
             metadata: Some(chain_metadata),

@@ -83,6 +83,13 @@ class BaseNodeClient {
       .then((tip) => parseInt(tip.metadata.height_of_longest_chain));
   }
 
+  getPrunedHeight() {
+    return this.client
+      .getTipInfo()
+      .sendMessage({})
+      .then((tip) => parseInt(tip.metadata.pruned_height));
+  }
+
   getPreviousBlockTemplate(height) {
     return cloneDeep(this.blockTemplates["height" + height]);
   }

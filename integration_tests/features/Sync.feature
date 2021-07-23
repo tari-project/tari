@@ -25,6 +25,18 @@ Feature: Block Sync
     # All nodes should sync to tip
     Then all nodes are at height 20
 
+  @critical 
+  Scenario: Pruned mode simple sync
+    Given I have 1 seed nodes
+    Given I have a SHA3 miner NODE1 connected to all seed nodes
+    When I mine a block on NODE1 with coinbase CB1
+    And I mine 4 blocks on NODE1
+    When I spend outputs CB1 via NODE1
+    Given mining node NODE1 mines 15 blocks
+    Given I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
+    Then all nodes are at height 20
+
+@critical
   Scenario: When a new node joins the network, it should receive all peers
     Given I have 10 seed nodes
     And I have a base node NODE1 connected to all seed nodes
