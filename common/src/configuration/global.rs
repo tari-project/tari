@@ -22,13 +22,16 @@
 //
 //! # Global configuration of tari base layer system
 
-use crate::{configuration::Network, ConfigurationError};
+use crate::{
+    configuration::{bootstrap::ApplicationType, Network},
+    ConfigurationError,
+};
 use config::{Config, ConfigError, Environment};
 use multiaddr::Multiaddr;
 use std::{
     convert::TryInto,
     fmt,
-    fmt::Formatter,
+    fmt::{Display, Formatter},
     net::SocketAddr,
     num::{NonZeroU16, TryFromIntError},
     path::PathBuf,
@@ -55,6 +58,7 @@ pub struct GlobalConfig {
     pub autoupdate_hashes_sig_url: String,
     pub network: Network,
     pub comms_transport: CommsTransport,
+    pub auxilary_tcp_listener_address: Option<Multiaddr>,
     pub allow_test_addresses: bool,
     pub listnener_liveness_max_sessions: usize,
     pub listener_liveness_allowlist_cidrs: Vec<String>,
@@ -128,24 +132,30 @@ pub struct GlobalConfig {
 }
 
 impl GlobalConfig {
-    pub fn convert_from(mut cfg: Config) -> Result<Self, ConfigurationError> {
+    pub fn convert_from(application: ApplicationType, mut cfg: Config) -> Result<Self, ConfigurationError> {
         // Add in settings from the environment (with a prefix of TARI_NODE)
         // Eg.. `TARI_NODE_DEBUG=1 ./target/app` would set the `debug` key
         let env = Environment::with_prefix("tari").separator("__");
         cfg.merge(env)
             .map_err(|e| ConfigurationError::new("environment variable", &e.to_string()))?;
 
-        let network = cfg
-            .get_str("base_node.network")
-            .map_err(|e| ConfigurationError::new("base_node.network", &e.to_string()))?
-            .parse()?;
+        let network = one_of::<Network>(&cfg, &[
+            &format!("{}.network", application.as_config_str()),
+            "common.network",
+            // TODO: Remove this once some time has passed and folks have upgraded their configs
+            "base_node.network",
+        ])?;
 
-        convert_node_config(network, cfg)
+        convert_node_config(application, network, cfg)
     }
 }
 
-fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, ConfigurationError> {
-    let net_str = network.to_string().to_lowercase();
+fn convert_node_config(
+    application: ApplicationType,
+    network: Network,
+    cfg: Config,
+) -> Result<GlobalConfig, ConfigurationError> {
+    let net_str = network.as_str();
 
     let key = config_string("base_node", &net_str, "data_dir");
     let data_dir: PathBuf = cfg
@@ -290,7 +300,15 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .into();
 
     // Transport
-    let comms_transport = network_transport_config(&cfg, &net_str)?;
+    let comms_transport = network_transport_config(&cfg, application, &net_str)?;
+
+    let key = config_string("base_node", &net_str, "auxilary_tcp_listener_address");
+    let auxilary_tcp_listener_address = optional(cfg.get_str(&key))?
+        .map(|addr| {
+            addr.parse::<Multiaddr>()
+                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+        })
+        .transpose()?;
 
     let key = config_string("base_node", &net_str, "allow_test_addresses");
     let allow_test_addresses = cfg
@@ -641,6 +659,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         autoupdate_hashes_sig_url,
         network,
         comms_transport,
+        auxilary_tcp_listener_address,
         allow_test_addresses,
         listnener_liveness_max_sessions: liveness_max_sessions,
         listener_liveness_allowlist_cidrs: liveness_allowlist_cidrs,
@@ -723,7 +742,37 @@ fn optional<T>(result: Result<T, ConfigError>) -> Result<Option<T>, ConfigError>
     }
 }
 
-fn network_transport_config(cfg: &Config, network: &str) -> Result<CommsTransport, ConfigurationError> {
+fn one_of<T>(cfg: &Config, keys: &[&str]) -> Result<T, ConfigError>
+where
+    T: FromStr,
+    T::Err: Display,
+{
+    for k in keys {
+        if let Some(v) = optional(cfg.get_str(k))? {
+            return v
+                .parse()
+                .map_err(|err| ConfigError::Message(format!("Failed to parse {}: {}", k, err)));
+        }
+    }
+    Err(ConfigError::NotFound(format!(
+        "None of the config keys [{}] were found",
+        keys.join(", ")
+    )))
+}
+
+fn network_transport_config(
+    cfg: &Config,
+    mut application: ApplicationType,
+    network: &str,
+) -> Result<CommsTransport, ConfigurationError> {
+    const P2P_APPS: &[ApplicationType] = &[ApplicationType::BaseNode, ApplicationType::ConsoleWallet];
+    if !P2P_APPS.contains(&application) {
+        // TODO: If/when we split the configs by app, this hack can be removed
+        //       This removed the need to setup defaults for apps that dont use the network,
+        //       assuming base node has been set up
+        application = ApplicationType::BaseNode;
+    }
+
     let get_conf_str = |key| {
         cfg.get_str(key)
             .map_err(|err| ConfigurationError::new(key, &err.to_string()))
@@ -736,16 +785,17 @@ fn network_transport_config(cfg: &Config, network: &str) -> Result<CommsTranspor
             .map_err(|err| ConfigurationError::new(key, &err.to_string()))
     };
 
-    let transport_key = config_string("base_node", network, "transport");
+    let app_str = application.as_config_str();
+    let transport_key = config_string(app_str, network, "transport");
     let transport = get_conf_str(&transport_key)?;
 
     match transport.to_lowercase().as_str() {
         "tcp" => {
-            let key = config_string("base_node", network, "tcp_listener_address");
+            let key = config_string(app_str, network, "tcp_listener_address");
             let listener_address = get_conf_multiaddr(&key)?;
-            let key = config_string("base_node", network, "tcp_tor_socks_address");
+            let key = config_string(app_str, network, "tcp_tor_socks_address");
             let tor_socks_address = get_conf_multiaddr(&key).ok();
-            let key = config_string("base_node", network, "tcp_tor_socks_auth");
+            let key = config_string(app_str, network, "tcp_tor_socks_auth");
             let tor_socks_auth = get_conf_str(&key).ok().and_then(|auth_str| auth_str.parse().ok());
 
             Ok(CommsTransport::Tcp {
@@ -755,23 +805,37 @@ fn network_transport_config(cfg: &Config, network: &str) -> Result<CommsTranspor
             })
         },
         "tor" => {
-            let key = config_string("base_node", network, "tor_control_address");
+            let key = config_string(app_str, network, "tor_control_address");
             let control_server_address = get_conf_multiaddr(&key)?;
 
-            let key = config_string("base_node", network, "tor_control_auth");
+            let key = config_string(app_str, network, "tor_control_auth");
             let auth_str = get_conf_str(&key)?;
             let auth = auth_str
                 .parse()
                 .map_err(|err: String| ConfigurationError::new(&key, &err))?;
 
-            let key = config_string("base_node", network, "tor_forward_address");
+            let key = config_string(app_str, network, "tor_forward_address");
             let forward_address = get_conf_multiaddr(&key)?;
-            let key = config_string("base_node", network, "tor_onion_port");
+            let key = config_string(app_str, network, "tor_onion_port");
             let onion_port = cfg
                 .get::<NonZeroU16>(&key)
                 .map_err(|err| ConfigurationError::new(&key, &err.to_string()))?;
 
-            let key = config_string("base_node", network, "tor_socks_address_override");
+            // TODO
+            let key = config_string(app_str, network, "tor_proxy_bypass_addresses");
+            let tor_proxy_bypass_addresses = optional(cfg.get_array(&key))?
+                .unwrap_or_default()
+                .into_iter()
+                .map(|v| {
+                    v.into_str()
+                        .map_err(|err| ConfigurationError::new(&key, &err.to_string()))
+                        .and_then(|s| {
+                            Multiaddr::from_str(&s).map_err(|err| ConfigurationError::new(&key, &err.to_string()))
+                        })
+                })
+                .collect::<Result<_, _>>()?;
+
+            let key = config_string(app_str, network, "tor_socks_address_override");
             let socks_address_override = match get_conf_str(&key).ok() {
                 Some(addr) => Some(
                     addr.parse::<Multiaddr>()
@@ -786,19 +850,20 @@ fn network_transport_config(cfg: &Config, network: &str) -> Result<CommsTranspor
                 socks_address_override,
                 forward_address,
                 onion_port,
+                tor_proxy_bypass_addresses,
             })
         },
         "socks5" => {
-            let key = config_string("base_node", network, "socks5_proxy_address");
+            let key = config_string(app_str, network, "socks5_proxy_address");
             let proxy_address = get_conf_multiaddr(&key)?;
 
-            let key = config_string("base_node", network, "socks5_auth");
+            let key = config_string(app_str, network, "socks5_auth");
             let auth_str = get_conf_str(&key)?;
             let auth = auth_str
                 .parse()
                 .map_err(|err: String| ConfigurationError::new(&key, &err))?;
 
-            let key = config_string("base_node", network, "socks5_listener_address");
+            let key = config_string(app_str, network, "socks5_listener_address");
             let listener_address = get_conf_multiaddr(&key)?;
 
             Ok(CommsTransport::Socks5 {
@@ -925,6 +990,7 @@ pub enum CommsTransport {
         forward_address: Multiaddr,
         auth: TorControlAuthentication,
         onion_port: NonZeroU16,
+        tor_proxy_bypass_addresses: Vec<Multiaddr>,
     },
     /// Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
     Socks5 {

@@ -44,6 +44,7 @@ use std::{
 use tari_common::configuration::Network;
 use tari_comms::{
     backoff::ConstantBackoff,
+    multiaddr::Multiaddr,
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerManagerError},
     pipeline,
     pipeline::SinkService,
@@ -150,6 +151,10 @@ pub struct CommsConfig {
     pub dns_seeds_name_server: SocketAddr,
     /// All DNS seed records must pass DNSSEC validation
     pub dns_seeds_use_dnssec: bool,
+    /// The address to bind on using the TCP transport _in addition to_ the primary transport. This is typically useful
+    /// for direct comms between a wallet and base node. If this is set to None, no listener will be bound.
+    /// Default: None
+    pub auxilary_tcp_listener_address: Option<Multiaddr>,
 }
 
 /// Initialize Tari Comms configured for tests
@@ -304,7 +309,8 @@ async fn initialize_hidden_service(
         .with_socks_address_override(config.socks_address_override)
         .with_socks_authentication(config.socks_auth)
         .with_control_server_auth(config.control_server_auth)
-        .with_control_server_address(config.control_server_addr);
+        .with_control_server_address(config.control_server_addr)
+        .with_bypass_proxy_addresses(config.tor_proxy_bypass_addresses);
 
     if let Some(identity) = config.identity {
         builder = builder.with_tor_identity(*identity);
@@ -337,12 +343,16 @@ where
     let listener_liveness_allowlist_cidrs = parse_cidrs(&config.listener_liveness_allowlist_cidrs)
         .map_err(CommsInitializationError::InvalidLivenessCidrs)?;
 
-    let mut comms = builder
+    let builder = builder
         .with_listener_liveness_max_sessions(config.listener_liveness_max_sessions)
         .with_listener_liveness_allowlist_cidrs(listener_liveness_allowlist_cidrs)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
-        .with_peer_storage(peer_database, Some(file_lock))
-        .build()?;
+        .with_peer_storage(peer_database, Some(file_lock));
+
+    let mut comms = match config.auxilary_tcp_listener_address {
+        Some(ref addr) => builder.with_auxilary_tcp_listener_address(addr.clone()).build()?,
+        None => builder.build()?,
+    };
 
     let peer_manager = comms.peer_manager();
     let connectivity = comms.connectivity();

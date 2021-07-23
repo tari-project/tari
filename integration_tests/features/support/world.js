@@ -7,7 +7,6 @@ const MiningNodeProcess = require("../../helpers/miningNodeProcess");
 const glob = require("glob");
 const fs = require("fs");
 const archiver = require("archiver");
-
 class CustomWorld {
   constructor({ attach, parameters }) {
     // this.variable = 0;
@@ -298,37 +297,21 @@ BeforeAll({ timeout: 1200000 }, async function () {
 
 After(async function (testCase) {
   console.log("Stopping nodes");
-  for (const key in this.seeds) {
-    if (testCase.result.status === "failed") {
-      await attachLogs(`${this.seeds[key].baseDir}`, this);
-    }
-    await this.stopNode(key);
-  }
-  for (const key in this.nodes) {
-    if (testCase.result.status === "failed") {
-      await attachLogs(`${this.nodes[key].baseDir}`, this);
-    }
-    await this.stopNode(key);
-  }
-  for (const key in this.proxies) {
-    if (testCase.result.status === "failed") {
-      await attachLogs(`${this.proxies[key].baseDir}`, this);
-    }
-    await this.proxies[key].stop();
-  }
-  for (const key in this.wallets) {
-    if (testCase.result.status === "failed") {
-      await attachLogs(`${this.wallets[key].baseDir}`, this);
-    }
-    await this.wallets[key].stop();
-  }
-  for (const key in this.miners) {
-    if (testCase.result.status === "failed") {
-      await attachLogs(`${this.miners[key].baseDir}`, this);
-    }
-    await this.miners[key].stop();
-  }
+  await stopAndHandleLogs(this.seeds, testCase, this);
+  await stopAndHandleLogs(this.nodes, testCase, this);
+  await stopAndHandleLogs(this.proxies, testCase, this);
+  await stopAndHandleLogs(this.wallets, testCase, this);
+  await stopAndHandleLogs(this.miners, testCase, this);
 });
+
+async function stopAndHandleLogs(objects, testCase, context) {
+  for (const key in objects) {
+    if (testCase.result.status === "failed") {
+      await attachLogs(`${objects[key].baseDir}`, context);
+    }
+    await objects[key].stop();
+  }
+}
 
 function attachLogs(path, context) {
   return new Promise((outerRes) => {

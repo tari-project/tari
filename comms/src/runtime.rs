@@ -23,7 +23,8 @@
 use tokio::runtime;
 
 // Re-export
-pub use tokio::task;
+pub use tokio::{runtime::Handle, task};
+
 #[cfg(test)]
 pub use tokio_macros::test;
 #[cfg(test)]

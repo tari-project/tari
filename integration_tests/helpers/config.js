@@ -7,6 +7,7 @@ function mapEnvs(options) {
   if (options.pruningHorizon) {
     // In the config toml file: `base_node.network.pruning_horizon` with `network = localnet`
     res.TARI_BASE_NODE__LOCALNET__PRUNING_HORIZON = options.pruningHorizon;
+    res.TARI_BASE_NODE__LOCALNET__PRUNED_MODE_CLEANUP_INTERVAL = 1;
   }
   if ("num_confirmations" in options) {
     res.TARI_WALLET__TRANSACTION_NUM_CONFIRMATIONS_REQUIRED =

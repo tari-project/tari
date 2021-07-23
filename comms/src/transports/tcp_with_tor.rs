@@ -21,9 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::Transport;
-use crate::{
-    multiaddr::Protocol,
-    transports::{dns::TorDnsResolver, SocksConfig, SocksTransport, TcpSocket, TcpTransport},
+use crate::transports::{
+    dns::TorDnsResolver,
+    helpers::is_onion_address,
+    SocksConfig,
+    SocksTransport,
+    TcpSocket,
+    TcpTransport,
 };
 use multiaddr::Multiaddr;
 use std::io;
@@ -59,18 +63,6 @@ impl TcpWithTorTransport {
     pub fn tcp_transport_mut(&mut self) -> &mut TcpTransport {
         &mut self.tcp_transport
     }
-
-    fn is_onion_address(addr: &Multiaddr) -> io::Result<bool> {
-        let protocol = addr
-            .iter()
-            .next()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, format!("Invalid address '{}'", addr)))?;
-
-        match protocol {
-            Protocol::Onion(_, _) | Protocol::Onion3(_) => Ok(true),
-            _ => Ok(false),
-        }
-    }
 }
 
 #[crate::async_trait]
@@ -84,7 +76,14 @@ impl Transport for TcpWithTorTransport {
     }
 
     async fn dial(&self, addr: Multiaddr) -> Result<Self::Output, Self::Error> {
-        if Self::is_onion_address(&addr)? {
+        if addr.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("Invalid address '{}'", addr),
+            ));
+        }
+
+        if is_onion_address(&addr) {
             match self.socks_transport {
                 Some(ref transport) => {
                     let socket = transport.dial(addr).await?;
@@ -99,30 +98,5 @@ impl Transport for TcpWithTorTransport {
             let socket = self.tcp_transport.dial(addr).await?;
             Ok(socket)
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn is_onion_address() {
-        let expect_true = [
-            "/onion/aaimaq4ygg2iegci:1234",
-            "/onion3/vww6ybal4bd7szmgncyruucpgfkqahzddi37ktceo3ah7ngmcopnpyyd:1234",
-        ];
-
-        let expect_false = ["/dns4/mikes-node-nook.com:80", "/ip4/1.2.3.4/tcp/1234"];
-
-        expect_true.iter().for_each(|addr| {
-            let addr = addr.parse().unwrap();
-            assert!(TcpWithTorTransport::is_onion_address(&addr).unwrap());
-        });
-
-        expect_false.iter().for_each(|addr| {
-            let addr = addr.parse().unwrap();
-            assert!(!TcpWithTorTransport::is_onion_address(&addr).unwrap());
-        });
     }
 }

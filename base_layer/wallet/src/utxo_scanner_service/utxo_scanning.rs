@@ -588,7 +588,10 @@ where TBackend: WalletBackend + 'static
                             target: LOG_TARGET,
                             "Failed to scan UTXO's from base node {}: {}", peer, e
                         );
-
+                        self.publish_event(UtxoScannerEvent::ScanningRoundFailed {
+                            num_retries: self.num_retries,
+                            retry_limit: self.retry_limit,
+                        });
                         continue;
                     },
                 },
@@ -599,6 +602,7 @@ where TBackend: WalletBackend + 'static
                     });
 
                     if self.num_retries >= self.retry_limit {
+                        self.publish_event(UtxoScannerEvent::ScanningFailed);
                         return Err(UtxoScannerError::UtxoScanningError(format!(
                             "Failed to scan UTXO's after {} attempt(s) using all {} sync peer(s). Aborting...",
                             self.num_retries,

@@ -60,6 +60,7 @@ pub struct HiddenServiceBuilder {
     port_mapping: Option<PortMapping>,
     socks_addr_override: Option<Multiaddr>,
     control_server_addr: Option<Multiaddr>,
+    proxy_bypass_addresses: Vec<Multiaddr>,
     control_server_auth: Authentication,
     socks_auth: socks::Authentication,
     hs_flags: HsFlags,
@@ -73,23 +74,48 @@ impl HiddenServiceBuilder {
 }
 
 impl HiddenServiceBuilder {
-    #[doc("The address of the Tor Control Port. An error will result if this is not provided.")]
-    setter!(with_control_server_address, control_server_addr, Option<Multiaddr>);
+    setter!(
+        /// The address of the Tor Control Port. An error will result if this is not provided.
+        with_control_server_address,
+        control_server_addr,
+        Option<Multiaddr>
+    );
 
-    #[doc("Authentication settings for the Tor Control Port.")]
-    setter!(with_control_server_auth, control_server_auth, Authentication);
+    setter!(
+        /// Configure the underlying SOCKS transport to bypass the proxy and connect directly to these addresses
+        with_bypass_proxy_addresses,
+        proxy_bypass_addresses,
+        Vec<Multiaddr>
+    );
 
-    #[doc("Authentication to use for the SOCKS5 proxy.")]
-    setter!(with_socks_authentication, socks_auth, socks::Authentication);
+    setter!(
+        /// Authentication settings for the Tor Control Port.
+        with_control_server_auth,
+        control_server_auth,
+        Authentication
+    );
 
-    #[doc(
-        "The identity of the hidden service. When set, this key is used to enable routing from the Tor network to \
-         this address. If this is not set, a new service will be requested from the Tor Control Port."
-    )]
-    setter!(with_tor_identity, identity, Option<TorIdentity>);
+    setter!(
+        /// Authentication to use for the SOCKS5 proxy.
+        with_socks_authentication,
+        socks_auth,
+        socks::Authentication
+    );
 
-    #[doc("Configuration flags for the hidden service")]
-    setter!(with_hs_flags, hs_flags, HsFlags);
+    setter!(
+        /// The identity of the hidden service. When set, this key is used to enable routing from the Tor network to
+        /// this address. If this is not set, a new service will be requested from the Tor Control Port.
+        with_tor_identity,
+        identity,
+        Option<TorIdentity>
+    );
+
+    setter!(
+        /// Configuration flags for the hidden service
+        with_hs_flags,
+        hs_flags,
+        HsFlags
+    );
 
     /// The address of the SOCKS5 server. If an address is None, the hidden service builder will use the SOCKS
     /// listener address as given by the tor control port.
@@ -138,6 +164,7 @@ impl HiddenServiceBuilder {
             self.socks_auth,
             self.identity,
             self.hs_flags,
+            self.proxy_bypass_addresses,
             self.shutdown_signal,
         );
 

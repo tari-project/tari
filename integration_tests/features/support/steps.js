@@ -219,7 +219,7 @@ Given(
   /I have a pruned node (.*) connected to node (.*) with pruning horizon set to (.*)/,
   { timeout: 20 * 1000 },
   async function (name, node, horizon) {
-    const miner = this.createNode(name, { horizon });
+    const miner = this.createNode(name, { pruningHorizon: horizon });
     miner.setPeerSeeds([this.nodes[node].peerAddress()]);
     await miner.startNew();
     this.addNode(name, miner);
@@ -693,6 +693,22 @@ Then(
     const currentHeight = await client.getTipHeight();
     console.log(
       `Node ${name} is at tip: ${currentHeight} (should be`,
+      height,
+      `)`
+    );
+    expect(currentHeight).to.equal(height);
+  }
+);
+
+Then(
+  /node (.*) has a pruned height of (\d+)/,
+  { timeout: 120 * 1000 },
+  async function (name, height) {
+    const client = this.getClient(name);
+    await waitFor(async () => client.getPrunedHeight(), height, 115 * 1000);
+    const currentHeight = await client.getPrunedHeight();
+    console.log(
+      `Node ${name} has a pruned height: ${currentHeight} (should be`,
       height,
       `)`
     );

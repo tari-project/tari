@@ -30,7 +30,7 @@ use super::{
 };
 use crate::{
     bounded_executor::BoundedExecutor,
-    connection_manager::{liveness::LivenessSession, wire_mode::WireMode},
+    connection_manager::{liveness::LivenessSession, types::OneshotTrigger, wire_mode::WireMode},
     multiaddr::Multiaddr,
     multiplexing::Yamux,
     noise::NoiseConfig,
@@ -41,11 +41,21 @@ use crate::{
     utils::multiaddr::multiaddr_to_socketaddr,
     PeerManager,
 };
-use futures::{channel::mpsc, future, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, SinkExt, StreamExt};
+use futures::{
+    channel::mpsc,
+    future,
+    AsyncRead,
+    AsyncReadExt,
+    AsyncWrite,
+    AsyncWriteExt,
+    FutureExt,
+    SinkExt,
+    StreamExt,
+};
 use log::*;
 use std::{
     convert::TryInto,
-    mem,
+    future::Future,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -59,6 +69,7 @@ const LOG_TARGET: &str = "comms::connection_manager::listener";
 
 pub struct PeerListener<TTransport> {
     config: ConnectionManagerConfig,
+    bind_address: Multiaddr,
     bounded_executor: BoundedExecutor,
     conn_man_notifier: mpsc::Sender<ConnectionManagerEvent>,
     shutdown_signal: ShutdownSignal,
@@ -68,16 +79,18 @@ pub struct PeerListener<TTransport> {
     node_identity: Arc<NodeIdentity>,
     our_supported_protocols: Vec<ProtocolId>,
     liveness_session_count: Arc<AtomicUsize>,
+    on_listening: OneshotTrigger<Result<Multiaddr, ConnectionManagerError>>,
 }
 
 impl<TTransport> PeerListener<TTransport>
 where
-    TTransport: Transport,
+    TTransport: Transport + Send + Sync + 'static,
     TTransport::Output: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: ConnectionManagerConfig,
+        bind_address: Multiaddr,
         transport: TTransport,
         noise_config: NoiseConfig,
         conn_man_notifier: mpsc::Sender<ConnectionManagerEvent>,
@@ -87,6 +100,7 @@ where
     ) -> Self {
         Self {
             transport,
+            bind_address,
             noise_config,
             conn_man_notifier,
             peer_manager,
@@ -96,7 +110,17 @@ where
             bounded_executor: BoundedExecutor::from_current(config.max_simultaneous_inbound_connects),
             liveness_session_count: Arc::new(AtomicUsize::new(config.liveness_max_sessions)),
             config,
+            on_listening: OneshotTrigger::new(),
         }
+    }
+
+    /// Returns a future that resolves once the listener has either succeeded (`Ok(bind_addr)`) or failed (`Err(...)`)
+    /// in binding the listener socket
+    // This returns an impl Future and is not async because we want to exclude &self from the future so that it has a
+    // 'static lifetime as well as to flatten the oneshot result for ergonomics
+    pub fn on_listening(&self) -> impl Future<Output = Result<Multiaddr, ConnectionManagerError>> + 'static {
+        let signal = self.on_listening.to_signal();
+        signal.map(|r| r.map_err(|_| ConnectionManagerError::ListenerOneshotCancelled)?)
     }
 
     /// Set the supported protocols of this node to send to peers during the peer identity exchange
@@ -105,17 +129,23 @@ where
         self
     }
 
+    pub async fn listen(self) -> Result<Multiaddr, ConnectionManagerError> {
+        let on_listening = self.on_listening();
+        runtime::current().spawn(self.run());
+        on_listening.await
+    }
+
     pub async fn run(mut self) {
         let mut shutdown_signal = self.shutdown_signal.clone();
 
-        match self.listen().await {
+        match self.bind().await {
             Ok((inbound, address)) => {
-                let inbound = inbound.fuse();
-                futures::pin_mut!(inbound);
-
                 info!(target: LOG_TARGET, "Listening for peer connections on '{}'", address);
 
-                self.send_event(ConnectionManagerEvent::Listening(address)).await;
+                self.on_listening.trigger(Ok(address));
+
+                let inbound = inbound.fuse();
+                futures::pin_mut!(inbound);
 
                 loop {
                     futures::select! {
@@ -133,7 +163,7 @@ where
             },
             Err(err) => {
                 warn!(target: LOG_TARGET, "PeerListener was unable to start because '{}'", err);
-                self.send_event(ConnectionManagerEvent::ListenFailed(err)).await;
+                self.on_listening.trigger(Err(err));
             },
         }
     }
@@ -279,14 +309,6 @@ where
         self.bounded_executor.spawn(inbound_fut).await;
     }
 
-    async fn send_event(&mut self, event: ConnectionManagerEvent) {
-        log_if_error_fmt!(
-            target: LOG_TARGET,
-            self.conn_man_notifier.send(event).await,
-            "Failed to send connection manager event in listener",
-        );
-    }
-
     #[allow(clippy::too_many_arguments)]
     async fn perform_socket_upgrade_procedure(
         node_identity: Arc<NodeIdentity>,
@@ -375,11 +397,11 @@ where
         )
     }
 
-    async fn listen(&mut self) -> Result<(TTransport::Listener, Multiaddr), ConnectionManagerError> {
-        let listener_address = mem::replace(&mut self.config.listener_address, Multiaddr::empty());
-        debug!(target: LOG_TARGET, "Attempting to listen on {}", listener_address);
+    async fn bind(&mut self) -> Result<(TTransport::Listener, Multiaddr), ConnectionManagerError> {
+        let bind_address = self.bind_address.clone();
+        debug!(target: LOG_TARGET, "Attempting to listen on {}", bind_address);
         self.transport
-            .listen(listener_address)
+            .listen(bind_address)
             .await
             .map_err(|err| ConnectionManagerError::TransportError(err.to_string()))
     }
