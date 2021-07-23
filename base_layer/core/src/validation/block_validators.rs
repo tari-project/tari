@@ -255,7 +255,7 @@ fn check_mmr_roots<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), Va
     if header.witness_mr != mmr_roots.witness_mr {
         warn!(
             target: LOG_TARGET,
-            "Block header range_proof MMR roots in {} do not match calculated roots",
+            "Block header witness MMR roots in {} do not match calculated roots",
             block.hash().to_hex()
         );
         return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));
