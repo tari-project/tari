@@ -27,15 +27,19 @@ use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use multiaddr::{Multiaddr, Protocol};
 use std::{
     borrow::Cow,
+    fmt,
+    fmt::Formatter,
     net::{Ipv4Addr, Ipv6Addr},
 };
 
 pub type Result<T> = std::result::Result<T, SocksError>;
 
 /// Authentication methods
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Authentication {
+    /// No auth
     None,
+    /// Password auth (username, password)
     Password(String, String),
 }
 
@@ -51,6 +55,16 @@ impl Authentication {
 impl Default for Authentication {
     fn default() -> Self {
         Authentication::None
+    }
+}
+
+impl fmt::Debug for Authentication {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        use Authentication::*;
+        match self {
+            None => write!(f, "None"),
+            Password(username, _) => write!(f, "Password({}, ...)", username),
+        }
     }
 }
 

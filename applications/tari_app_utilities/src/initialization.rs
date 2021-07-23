@@ -24,8 +24,8 @@ pub fn init_configuration(
     log::info!(target: LOG_TARGET, "{} ({})", application_type, consts::APP_VERSION);
 
     // Populate the configuration struct
-    let mut global_config =
-        GlobalConfig::convert_from(cfg.clone()).map_err(|err| ExitCodes::ConfigError(err.to_string()))?;
+    let mut global_config = GlobalConfig::convert_from(application_type, cfg.clone())
+        .map_err(|err| ExitCodes::ConfigError(err.to_string()))?;
     check_file_paths(&mut global_config, &bootstrap);
     Ok((bootstrap, global_config, cfg))
 }
