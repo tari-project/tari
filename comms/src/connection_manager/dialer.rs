@@ -34,6 +34,7 @@ use crate::{
     noise::{NoiseConfig, NoiseSocket},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerManager},
     protocol::ProtocolId,
+    runtime,
     transports::Transport,
     types::CommsPublicKey,
 };
@@ -53,7 +54,7 @@ use futures::{
 use log::*;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::time;
+use tokio::{task::JoinHandle, time};
 
 const LOG_TARGET: &str = "comms::connection_manager::dialer";
 
@@ -123,6 +124,10 @@ where
     pub fn set_supported_protocols(&mut self, our_supported_protocols: Vec<ProtocolId>) -> &mut Self {
         self.our_supported_protocols = our_supported_protocols;
         self
+    }
+
+    pub fn spawn(self) -> JoinHandle<()> {
+        runtime::current().spawn(self.run())
     }
 
     pub async fn run(mut self) {

@@ -78,6 +78,8 @@ pub enum ConnectionManagerError {
     WireFormatSendFailed,
     #[error("Noise protocol handshake timed out")]
     NoiseProtocolTimeout,
+    #[error("Listener oneshot cancelled")]
+    ListenerOneshotCancelled,
 }
 
 impl From<yamux::ConnectionError> for ConnectionManagerError {

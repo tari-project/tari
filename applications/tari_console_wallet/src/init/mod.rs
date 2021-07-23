@@ -28,7 +28,7 @@ use log::*;
 use rpassword::prompt_password_stdout;
 use rustyline::Editor;
 use std::{fs, path::PathBuf, str::FromStr, sync::Arc};
-use tari_app_utilities::utilities::{setup_wallet_transport_type, ExitCodes};
+use tari_app_utilities::utilities::{create_transport_type, ExitCodes};
 use tari_common::{ConfigBootstrap, GlobalConfig};
 use tari_comms::{
     peer_manager::{Peer, PeerFeatures},
@@ -306,7 +306,7 @@ pub async fn init_wallet(
         node_features,
     ));
 
-    let transport_type = setup_wallet_transport_type(&config);
+    let transport_type = create_transport_type(&config);
     let transport_type = match transport_type {
         Tor(mut tor_config) => {
             tor_config.identity = wallet_db.get_tor_id().await?.map(Box::new);
@@ -320,6 +320,7 @@ pub async fn init_wallet(
         node_identity,
         user_agent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
         transport_type,
+        auxilary_tcp_listener_address: None,
         datastore_path: config.console_wallet_peer_db_path.clone(),
         peer_database_name: "peers".to_string(),
         max_concurrent_inbound_tasks: 100,

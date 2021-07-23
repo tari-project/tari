@@ -134,6 +134,7 @@ pub async fn create_wallet(
         transport_type: TransportType::Memory {
             listener_address: public_address,
         },
+        auxilary_tcp_listener_address: None,
         node_identity,
         datastore_path: datastore_path.clone(),
         peer_database_name: random::string(8),
