@@ -180,7 +180,7 @@ fn wallet_or_exit(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), 
         return Ok(());
     }
 
-    if config.bootstrap.daemon_mode {
+    if config.bootstrap.non_interactive_mode {
         info!(target: LOG_TARGET, "Starting GRPC server.");
         grpc_mode(config, wallet)
     } else {
