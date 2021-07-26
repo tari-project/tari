@@ -294,25 +294,14 @@ where B: BlockchainBackend
     pub fn fetch_utxos(
         &self,
         hashes: Vec<HashOutput>,
-        is_spent_as_of: Option<HashOutput>,
     ) -> Result<Vec<Option<(TransactionOutput, bool)>>, ChainStorageError> {
         let db = self.db_read_access()?;
-        let is_spent_as_of = match is_spent_as_of {
-            Some(hash) => hash,
-            None => db.fetch_chain_metadata()?.best_block().clone(),
-        };
-        let data =
-            db.fetch_block_accumulated_data(&is_spent_as_of)?
-                .ok_or_else(|| ChainStorageError::ValueNotFound {
-                    entity: "BlockAccumulatedData".to_string(),
-                    field: "header_hash".to_string(),
-                    value: is_spent_as_of.to_hex(),
-                })?;
+        let deleted = db.fetch_deleted_bitmap()?;
 
         let mut result = Vec::with_capacity(hashes.len());
         for hash in hashes {
             let output = db.fetch_output(&hash)?;
-            result.push(output.map(|(out, mmr_index, _)| (out, data.deleted().contains(mmr_index))));
+            result.push(output.map(|(out, mmr_index, _)| (out, deleted.bitmap().contains(mmr_index))));
         }
         Ok(result)
     }
