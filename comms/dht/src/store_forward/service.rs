@@ -177,8 +177,7 @@ impl StoreAndForwardService {
         saf_response_signal_rx: mpsc::Receiver<()>,
         event_publisher: DhtEventSender,
         shutdown_signal: ShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             config,
             database: StoreAndForwardDatabase::new(conn),

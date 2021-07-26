@@ -90,8 +90,7 @@ impl DhtConnectivity {
         dht_events: broadcast::Receiver<Arc<DhtEvent>>,
         metrics_collector: MetricsCollectorHandle,
         shutdown_signal: ShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         let mut peer_buckets = Vec::with_capacity(config.num_network_buckets as usize);
         for _i in 0..(config.num_network_buckets + 1) as usize {
             peer_buckets.push(vec![]);
@@ -239,8 +238,7 @@ impl DhtConnectivity {
         min_distance: NodeDistance,
         max_distance: NodeDistance,
         num_nodes: usize,
-    ) -> Result<(), DhtConnectivityError>
-    {
+    ) -> Result<(), DhtConnectivityError> {
         let mut new_neighbours = self
             .fetch_peers_in_bucket(num_nodes, min_distance, max_distance, &[])
             .await?;
@@ -398,8 +396,7 @@ impl DhtConnectivity {
         node_id: NodeId,
         bucket_number: usize,
         bucket_size: usize,
-    ) -> Result<(), ConnectivityError>
-    {
+    ) -> Result<(), ConnectivityError> {
         if self.peer_buckets[bucket_number].len() + 1 > bucket_size {
             // Sort by last seed to remove the least connected peer
             let mut peer_last_connected: Vec<(usize, Peer)> = vec![];
@@ -446,8 +443,7 @@ impl DhtConnectivity {
         min_distance: NodeDistance,
         max_distance: NodeDistance,
         excluded: &[NodeId],
-    ) -> Result<Vec<NodeId>, DhtConnectivityError>
-    {
+    ) -> Result<Vec<NodeId>, DhtConnectivityError> {
         let peer_manager = &self.peer_manager;
         let node_id = self.node_identity.node_id();
         // Fetch to all n nearest neighbour Communication Nodes

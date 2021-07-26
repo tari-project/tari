@@ -143,8 +143,7 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
     database_path: &Path,
     port_mapping: P,
     tor_identity: Option<tor::TorIdentity>,
-) -> Result<(CommsNode, mpsc::Receiver<InboundMessage>, mpsc::Sender<OutboundMessage>), Error>
-{
+) -> Result<(CommsNode, mpsc::Receiver<InboundMessage>, mpsc::Sender<OutboundMessage>), Error> {
     let datastore = LMDBBuilder::new()
         .set_path(database_path.to_str().unwrap())
         .set_env_config(LMDBConfig::default())
@@ -172,7 +171,7 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
         &mut OsRng,
         "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
         PeerFeatures::COMMUNICATION_CLIENT,
-    )?);
+    ));
 
     let comms_node = CommsBuilder::new()
         .with_node_identity(node_identity)
@@ -210,8 +209,7 @@ async fn start_ping_ponger(
     dest_node_id: NodeId,
     mut inbound_rx: mpsc::Receiver<InboundMessage>,
     mut outbound_tx: mpsc::Sender<OutboundMessage>,
-) -> Result<usize, Error>
-{
+) -> Result<usize, Error> {
     let mut inflight_pings = HashMap::new();
     let mut counter = 0;
     while let Some(msg) = inbound_rx.next().await {

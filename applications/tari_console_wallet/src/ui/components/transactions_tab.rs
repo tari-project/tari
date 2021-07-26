@@ -6,6 +6,7 @@ use crate::ui::{
     widgets::{draw_dialog, MultiColumnList, WindowedListState},
     MAX_WIDTH,
 };
+use chrono::{DateTime, Local};
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_wallet::transaction_service::storage::models::{
     CompletedTransaction,
@@ -70,11 +71,17 @@ impl TransactionsTab {
             .title(Span::styled("(P)ending Transactions", style));
         f.render_widget(block, list_areas[0]);
 
+        self.draw_pending_transactions(f, list_areas[0], app_state);
+        self.draw_completed_transactions(f, list_areas[1], app_state);
+    }
+
+    fn draw_pending_transactions<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
+    where B: Backend {
         // Pending Transactions
         self.pending_list_state.set_num_items(app_state.get_pending_txs().len());
         let mut pending_list_state = self
             .pending_list_state
-            .get_list_state((list_areas[0].height as usize).saturating_sub(3));
+            .get_list_state((area.height as usize).saturating_sub(3));
         let window = self.pending_list_state.get_start_end();
         let windowed_view = app_state.get_pending_txs_slice(window.0, window.1);
 
@@ -91,7 +98,7 @@ impl TransactionsTab {
             let text_color = text_colors.get(&t.cancelled).unwrap_or(&Color::Reset).to_owned();
             if t.direction == TransactionDirection::Outbound {
                 column0_items.push(ListItem::new(Span::styled(
-                    format!("{}", t.destination_public_key),
+                    app_state.get_alias(&t.destination_public_key),
                     Style::default().fg(text_color),
                 )));
                 let amount_style = if t.cancelled {
@@ -102,7 +109,7 @@ impl TransactionsTab {
                 column1_items.push(ListItem::new(Span::styled(format!("{}", t.amount), amount_style)));
             } else {
                 column0_items.push(ListItem::new(Span::styled(
-                    format!("{}", t.source_public_key),
+                    app_state.get_alias(&t.source_public_key),
                     Style::default().fg(text_color),
                 )));
                 let amount_style = if t.cancelled {
@@ -112,8 +119,9 @@ impl TransactionsTab {
                 };
                 column1_items.push(ListItem::new(Span::styled(format!("{}", t.amount), amount_style)));
             }
+            let local_time = DateTime::<Local>::from_utc(t.timestamp, Local::now().offset().to_owned());
             column2_items.push(ListItem::new(Span::styled(
-                format!("{}", t.timestamp.format("%Y-%m-%d %H:%M:%S")),
+                format!("{}", local_time.format("%Y-%m-%d %H:%M:%S")),
                 Style::default().fg(text_color),
             )));
             column3_items.push(ListItem::new(Span::styled(
@@ -128,10 +136,13 @@ impl TransactionsTab {
             .max_width(MAX_WIDTH)
             .add_column(Some("Source/Destination Public Key"), Some(67), column0_items)
             .add_column(Some("Amount"), Some(18), column1_items)
-            .add_column(Some("Timestamp"), Some(20), column2_items)
+            .add_column(Some("Local Date/Time"), Some(20), column2_items)
             .add_column(Some("Message"), None, column3_items);
-        column_list.render(f, list_areas[0], &mut pending_list_state);
+        column_list.render(f, area, &mut pending_list_state);
+    }
 
+    fn draw_completed_transactions<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
+    where B: Backend {
         //  Completed Transactions
         let style = if self.selected_tx_list == SelectedTransactionList::CompletedTxs {
             Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)
@@ -141,15 +152,26 @@ impl TransactionsTab {
         let block = Block::default()
             .borders(Borders::ALL)
             .title(Span::styled("Completed (T)ransactions", style));
-        f.render_widget(block, list_areas[1]);
+        f.render_widget(block, area);
 
-        self.completed_list_state
-            .set_num_items(app_state.get_completed_txs().len());
+        let completed_txs = app_state.get_completed_txs();
+        self.completed_list_state.set_num_items(completed_txs.len());
         let mut completed_list_state = self
             .completed_list_state
-            .get_list_state((list_areas[1].height as usize).saturating_sub(3));
-        let window = self.completed_list_state.get_start_end();
-        let windowed_view = app_state.get_completed_txs_slice(window.0, window.1);
+            .get_list_state((area.height as usize).saturating_sub(3));
+        let (start, end) = self.completed_list_state.get_start_end();
+        let windowed_view = &completed_txs[start..end];
+
+        let text_colors: HashMap<bool, Color> = [(true, Color::DarkGray), (false, Color::Reset)]
+            .iter()
+            .cloned()
+            .collect();
+
+        let base_node_state = app_state.get_base_node_state();
+        let chain_height = base_node_state
+            .chain_metadata
+            .as_ref()
+            .map(|cm| cm.height_of_longest_chain());
 
         let mut column0_items = Vec::new();
         let mut column1_items = Vec::new();
@@ -157,10 +179,11 @@ impl TransactionsTab {
         let mut column3_items = Vec::new();
 
         for t in windowed_view.iter() {
-            let text_color = text_colors.get(&t.cancelled).unwrap_or(&Color::Reset).to_owned();
+            let cancelled = t.cancelled || !t.valid;
+            let text_color = text_colors.get(&cancelled).unwrap_or(&Color::Reset).to_owned();
             if t.direction == TransactionDirection::Outbound {
                 column0_items.push(ListItem::new(Span::styled(
-                    format!("{}", t.destination_public_key),
+                    app_state.get_alias(&t.destination_public_key),
                     Style::default().fg(text_color),
                 )));
                 let amount_style = if t.cancelled {
@@ -171,21 +194,33 @@ impl TransactionsTab {
                 column1_items.push(ListItem::new(Span::styled(format!("{}", t.amount), amount_style)));
             } else {
                 column0_items.push(ListItem::new(Span::styled(
-                    format!("{}", t.source_public_key),
+                    app_state.get_alias(&t.source_public_key),
                     Style::default().fg(text_color),
                 )));
-                let amount_style = if t.cancelled {
-                    Style::default().fg(Color::Green).add_modifier(Modifier::DIM)
+                let maturity = if let Some(output) = t.transaction.body.outputs().first() {
+                    output.features.maturity
                 } else {
-                    Style::default().fg(Color::Green)
+                    0
                 };
+                let color = match (t.cancelled, chain_height) {
+                    // cancelled
+                    (true, _) => Color::DarkGray,
+                    // not mature yet
+                    (_, Some(height)) if maturity > height => Color::Yellow,
+                    // default
+                    _ => Color::Green,
+                };
+                let amount_style = Style::default().fg(color);
                 column1_items.push(ListItem::new(Span::styled(format!("{}", t.amount), amount_style)));
             }
+            let local_time = DateTime::<Local>::from_utc(t.timestamp, Local::now().offset().to_owned());
             column2_items.push(ListItem::new(Span::styled(
-                format!("{}", t.timestamp.format("%Y-%m-%d %H:%M:%S")),
+                format!("{}", local_time.format("%Y-%m-%d %H:%M:%S")),
                 Style::default().fg(text_color),
             )));
-            let status = if t.cancelled {
+            let status = if t.cancelled && t.status == TransactionStatus::Coinbase {
+                "Abandoned".to_string()
+            } else if t.cancelled {
                 "Cancelled".to_string()
             } else if !t.valid {
                 "Invalid".to_string()
@@ -201,10 +236,10 @@ impl TransactionsTab {
             .max_width(MAX_WIDTH)
             .add_column(Some("Source/Destination Public Key"), Some(67), column0_items)
             .add_column(Some("Amount"), Some(18), column1_items)
-            .add_column(Some("Timestamp"), Some(20), column2_items)
+            .add_column(Some("Local Date/Time"), Some(20), column2_items)
             .add_column(Some("Status"), None, column3_items);
 
-        column_list.render(f, list_areas[1], &mut completed_list_state);
+        column_list.render(f, area, &mut completed_list_state);
     }
 
     fn draw_detailed_transaction<B>(&self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
@@ -221,26 +256,9 @@ impl TransactionsTab {
             .margin(1)
             .split(area);
 
-        // Labels:
-        let label_layout = Layout::default()
-            .constraints(
-                [
-                    Constraint::Length(1),
-                    Constraint::Length(1),
-                    Constraint::Length(1),
-                    Constraint::Length(1),
-                    Constraint::Length(1),
-                    Constraint::Length(1),
-                    Constraint::Length(1),
-                    Constraint::Length(1),
-                    Constraint::Length(1),
-                    Constraint::Length(1),
-                    Constraint::Length(1),
-                    Constraint::Length(1),
-                ]
-                .as_ref(),
-            )
-            .split(columns[0]);
+        // Labels
+        let constraints = [Constraint::Length(1); 13];
+        let label_layout = Layout::default().constraints(constraints).split(columns[0]);
 
         let tx_id = Span::styled("TxID:", Style::default().fg(Color::Magenta));
         let source_public_key = Span::styled("Source Public Key:", Style::default().fg(Color::Magenta));
@@ -250,53 +268,45 @@ impl TransactionsTab {
         let fee = Span::styled("Fee:", Style::default().fg(Color::Magenta));
         let status = Span::styled("Status:", Style::default().fg(Color::Magenta));
         let message = Span::styled("Message:", Style::default().fg(Color::Magenta));
-        let timestamp = Span::styled("Timestamp:", Style::default().fg(Color::Magenta));
+        let timestamp = Span::styled("Local Date/Time:", Style::default().fg(Color::Magenta));
         let excess = Span::styled("Excess:", Style::default().fg(Color::Magenta));
         let confirmations = Span::styled("Confirmations:", Style::default().fg(Color::Magenta));
-        let paragraph = Paragraph::new(tx_id).wrap(Wrap { trim: true });
+        let mined_height = Span::styled("Mined Height:", Style::default().fg(Color::Magenta));
+        let maturity = Span::styled("Maturity:", Style::default().fg(Color::Magenta));
+
+        let trim = Wrap { trim: true };
+        let paragraph = Paragraph::new(tx_id).wrap(trim);
         f.render_widget(paragraph, label_layout[0]);
-        let paragraph = Paragraph::new(source_public_key).wrap(Wrap { trim: true });
+        let paragraph = Paragraph::new(source_public_key).wrap(trim);
         f.render_widget(paragraph, label_layout[1]);
-        let paragraph = Paragraph::new(destination_public_key).wrap(Wrap { trim: true });
+        let paragraph = Paragraph::new(destination_public_key).wrap(trim);
         f.render_widget(paragraph, label_layout[2]);
-        let paragraph = Paragraph::new(direction).wrap(Wrap { trim: true });
+        let paragraph = Paragraph::new(direction).wrap(trim);
         f.render_widget(paragraph, label_layout[3]);
-        let paragraph = Paragraph::new(amount).wrap(Wrap { trim: true });
+        let paragraph = Paragraph::new(amount).wrap(trim);
         f.render_widget(paragraph, label_layout[4]);
-        let paragraph = Paragraph::new(fee).wrap(Wrap { trim: true });
+        let paragraph = Paragraph::new(fee).wrap(trim);
         f.render_widget(paragraph, label_layout[5]);
-        let paragraph = Paragraph::new(status).wrap(Wrap { trim: true });
+        let paragraph = Paragraph::new(status).wrap(trim);
         f.render_widget(paragraph, label_layout[6]);
-        let paragraph = Paragraph::new(message).wrap(Wrap { trim: true });
+        let paragraph = Paragraph::new(message).wrap(trim);
         f.render_widget(paragraph, label_layout[7]);
-        let paragraph = Paragraph::new(timestamp).wrap(Wrap { trim: true });
+        let paragraph = Paragraph::new(timestamp).wrap(trim);
         f.render_widget(paragraph, label_layout[8]);
-        let paragraph = Paragraph::new(excess).wrap(Wrap { trim: true });
+        let paragraph = Paragraph::new(excess).wrap(trim);
         f.render_widget(paragraph, label_layout[9]);
-        let paragraph = Paragraph::new(confirmations).wrap(Wrap { trim: true });
+        let paragraph = Paragraph::new(confirmations).wrap(trim);
         f.render_widget(paragraph, label_layout[10]);
-        // Content:
+        let paragraph = Paragraph::new(mined_height).wrap(trim);
+        f.render_widget(paragraph, label_layout[11]);
+        let paragraph = Paragraph::new(maturity).wrap(trim);
+        f.render_widget(paragraph, label_layout[12]);
+
+        // Content
         let required_confirmations = app_state.get_required_confirmations();
         if let Some(tx) = self.detailed_transaction.as_ref() {
-            let content_layout = Layout::default()
-                .constraints(
-                    [
-                        Constraint::Length(1),
-                        Constraint::Length(1),
-                        Constraint::Length(1),
-                        Constraint::Length(1),
-                        Constraint::Length(1),
-                        Constraint::Length(1),
-                        Constraint::Length(1),
-                        Constraint::Length(1),
-                        Constraint::Length(1),
-                        Constraint::Length(1),
-                        Constraint::Length(1),
-                        Constraint::Length(1),
-                    ]
-                    .as_ref(),
-                )
-                .split(columns[1]);
+            let constraints = [Constraint::Length(1); 13];
+            let content_layout = Layout::default().constraints(constraints).split(columns[1]);
             let tx_id = Span::styled(format!("{}", tx.tx_id), Style::default().fg(Color::White));
 
             let source_public_key =
@@ -326,8 +336,9 @@ impl TransactionsTab {
             };
             let status = Span::styled(status_msg, Style::default().fg(Color::White));
             let message = Span::styled(tx.message.as_str(), Style::default().fg(Color::White));
+            let local_time = DateTime::<Local>::from_utc(tx.timestamp, Local::now().offset().to_owned());
             let timestamp = Span::styled(
-                format!("{}", tx.timestamp.format("%Y-%m-%d %H:%M:%S")),
+                format!("{}", local_time.format("%Y-%m-%d %H:%M:%S")),
                 Style::default().fg(Color::White),
             );
             let excess_hex = if tx.transaction.body.kernels().is_empty() {
@@ -349,28 +360,52 @@ impl TransactionsTab {
                 "N/A".to_string()
             };
             let confirmations = Span::styled(confirmations_msg.as_str(), Style::default().fg(Color::White));
-            let paragraph = Paragraph::new(tx_id).wrap(Wrap { trim: true });
+            let mined_height = Span::styled(
+                tx.mined_height
+                    .map(|m| m.to_string())
+                    .unwrap_or_else(|| "N/A".to_string()),
+                Style::default().fg(Color::White),
+            );
+            let maturity = tx
+                .transaction
+                .body
+                .outputs()
+                .first()
+                .map(|o| o.features.maturity)
+                .unwrap_or_else(|| 0);
+            let maturity = if maturity > 0 {
+                format!("Spendable at Block #{}", maturity)
+            } else {
+                "N/A".to_string()
+            };
+            let maturity = Span::styled(maturity, Style::default().fg(Color::White));
+
+            let paragraph = Paragraph::new(tx_id).wrap(trim);
             f.render_widget(paragraph, content_layout[0]);
-            let paragraph = Paragraph::new(source_public_key).wrap(Wrap { trim: true });
+            let paragraph = Paragraph::new(source_public_key).wrap(trim);
             f.render_widget(paragraph, content_layout[1]);
-            let paragraph = Paragraph::new(destination_public_key).wrap(Wrap { trim: true });
+            let paragraph = Paragraph::new(destination_public_key).wrap(trim);
             f.render_widget(paragraph, content_layout[2]);
-            let paragraph = Paragraph::new(direction).wrap(Wrap { trim: true });
+            let paragraph = Paragraph::new(direction).wrap(trim);
             f.render_widget(paragraph, content_layout[3]);
-            let paragraph = Paragraph::new(amount).wrap(Wrap { trim: true });
+            let paragraph = Paragraph::new(amount).wrap(trim);
             f.render_widget(paragraph, content_layout[4]);
-            let paragraph = Paragraph::new(fee).wrap(Wrap { trim: true });
+            let paragraph = Paragraph::new(fee).wrap(trim);
             f.render_widget(paragraph, content_layout[5]);
-            let paragraph = Paragraph::new(status).wrap(Wrap { trim: true });
+            let paragraph = Paragraph::new(status).wrap(trim);
             f.render_widget(paragraph, content_layout[6]);
-            let paragraph = Paragraph::new(message).wrap(Wrap { trim: true });
+            let paragraph = Paragraph::new(message).wrap(trim);
             f.render_widget(paragraph, content_layout[7]);
-            let paragraph = Paragraph::new(timestamp).wrap(Wrap { trim: true });
+            let paragraph = Paragraph::new(timestamp).wrap(trim);
             f.render_widget(paragraph, content_layout[8]);
-            let paragraph = Paragraph::new(excess).wrap(Wrap { trim: true });
+            let paragraph = Paragraph::new(excess).wrap(trim);
             f.render_widget(paragraph, content_layout[9]);
-            let paragraph = Paragraph::new(confirmations).wrap(Wrap { trim: true });
+            let paragraph = Paragraph::new(confirmations).wrap(trim);
             f.render_widget(paragraph, content_layout[10]);
+            let paragraph = Paragraph::new(mined_height).wrap(trim);
+            f.render_widget(paragraph, content_layout[11]);
+            let paragraph = Paragraph::new(maturity).wrap(trim);
+            f.render_widget(paragraph, content_layout[12]);
         }
     }
 }
@@ -383,7 +418,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
                     Constraint::Length(3),
                     Constraint::Length(1),
                     Constraint::Min(10),
-                    Constraint::Length(13),
+                    Constraint::Length(15),
                 ]
                 .as_ref(),
             )
@@ -407,6 +442,8 @@ impl<B: Backend> Component<B> for TransactionsTab {
         span_vec.push(Span::raw(" selects a transaction, "));
         span_vec.push(Span::styled("C", Style::default().add_modifier(Modifier::BOLD)));
         span_vec.push(Span::raw(" cancels a selected Pending Tx, "));
+        span_vec.push(Span::styled("A", Style::default().add_modifier(Modifier::BOLD)));
+        span_vec.push(Span::raw(" shows abandoned coinbase Txs, "));
         span_vec.push(Span::styled("Esc", Style::default().add_modifier(Modifier::BOLD)));
         span_vec.push(Span::raw(" exits the list."));
 
@@ -492,9 +529,9 @@ impl<B: Backend> Component<B> for TransactionsTab {
             'c' => {
                 if self.selected_tx_list == SelectedTransactionList::PendingTxs {
                     self.confirmation_dialog = true;
-                    return;
                 }
             },
+            'a' => app_state.toggle_abandoned_coinbase_filter(),
             '\n' => match self.selected_tx_list {
                 SelectedTransactionList::None => {},
                 SelectedTransactionList::PendingTxs => {

@@ -78,20 +78,25 @@ impl Mul<MicroTari> for u64 {
 }
 
 impl MicroTari {
+    pub fn checked_add(self, v: MicroTari) -> Option<MicroTari> {
+        self.as_u64().checked_add(v.as_u64()).map(Into::into)
+    }
+
     pub fn checked_sub(self, v: MicroTari) -> Option<MicroTari> {
-        if self.0 >= v.0 {
+        if self >= v {
             return Some(self - v);
         }
         None
     }
 
     pub fn saturating_sub(self, v: MicroTari) -> MicroTari {
-        if self.0 >= v.0 {
+        if self >= v {
             return self - v;
         }
         Self(0)
     }
 
+    #[inline]
     pub fn as_u64(&self) -> u64 {
         self.0
     }

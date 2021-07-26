@@ -61,8 +61,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         node_identity: Arc<NodeIdentity>,
         discovery_requester: DhtDiscoveryRequester,
         message: DecryptedDhtMessage,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             next_service,
             peer_manager,
@@ -119,7 +118,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         // The reason that we check the given node id against what we expect instead of just using the given node id
         // is in future the NodeId may not necessarily be derived from the public key (i.e. DAN node is registered on
         // the base layer)
-        let expected_node_id = NodeId::from_key(public_key).map_err(|_| DhtInboundError::InvalidNodeId)?;
+        let expected_node_id = NodeId::from_key(public_key);
         let node_id = NodeId::from_bytes(raw_node_id).map_err(|_| DhtInboundError::InvalidNodeId)?;
         if expected_node_id == node_id {
             Ok(expected_node_id)
@@ -149,7 +148,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let body = decryption_result.expect("already checked that this message decrypted successfully");
         let join_msg = body
             .decode_part::<JoinMessage>(0)?
-            .ok_or_else(|| DhtInboundError::InvalidMessageBody)?;
+            .ok_or(DhtInboundError::InvalidMessageBody)?;
 
         debug!(
             target: LOG_TARGET,
@@ -200,7 +199,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         let discover_msg = msg
             .decode_part::<DiscoveryResponseMessage>(0)?
-            .ok_or_else(|| DhtInboundError::InvalidMessageBody)?;
+            .ok_or(DhtInboundError::InvalidMessageBody)?;
 
         self.discovery_requester
             .notify_discovery_response_received(discover_msg)
@@ -216,7 +215,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         let discover_msg = msg
             .decode_part::<DiscoveryMessage>(0)?
-            .ok_or_else(|| DhtInboundError::InvalidMessageBody)?;
+            .ok_or(DhtInboundError::InvalidMessageBody)?;
 
         let authenticated_pk = message.authenticated_origin.ok_or_else(|| {
             DhtInboundError::OriginRequired("Origin header required for Discovery message".to_string())
@@ -270,8 +269,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         &mut self,
         dest_public_key: CommsPublicKey,
         nonce: u64,
-    ) -> Result<(), DhtInboundError>
-    {
+    ) -> Result<(), DhtInboundError> {
         let response = DiscoveryResponseMessage {
             node_id: self.node_identity.node_id().to_vec(),
             addresses: vec![self.node_identity.public_address().to_string()],

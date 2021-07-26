@@ -1,6 +1,6 @@
 # RFC-0202/TariScriptOpcodes
 
-## Tari Script Opcodes
+## TariScript Opcodes
 
 ![status: draft](theme/images/status-draft.svg)
 
@@ -61,11 +61,11 @@ examples and applicaitons.
 ## Introduction
 
 
-## Tari Script semantics
+## TariScript semantics
 
 The proposal for TariScript is straightforward. It is based on Bitcoin script and inherits most of its ideas.
 
-The main properties of Tari script are
+The main properties of [TariScript] are
 
 * The scripting language is stack-based. At redeem time, the UTXO spender must supply an input stack. The script runs by
   operating on the stack contents.
@@ -74,7 +74,7 @@ The main properties of Tari script are
   on the stack. The script fails if the stack is empty, or contains more than one element, or aborts early.
 * It is not Turing complete, so there are no loops or timing functions.
 * The opcodes enforce type safety. e.g. A public key cannot be added to an integer scalar. Errors of this kind MUST cause
-  the script to fail. The Rust implementation of Tari Script automatically applies the type safety rules.
+  the script to fail. The Rust implementation of [TariScript] automatically applies the type safety rules.
 
 ### Failure modes
 
@@ -112,7 +112,7 @@ The full list of [Error codes](#error-codes) is given below.
 
 ## Opcodes
 
-Tari Script opcodes range from 0 to 255 and are represented as a single unsigned byte. The opcode set is
+[TariScript] opcodes range from 0 to 255 and are represented as a single unsigned byte. The opcode set is
 limited to allow for the applications specified in this RFC, but can be expanded in the future.
 
 ### Block height checks
@@ -348,7 +348,7 @@ If `ELSE` is encountered, instructions are executed until `ENDIF` is reached.
 
 ## Serialisation
 
-Tari Script and the execution stack are serialised into byte strings using a simple linear parser. Since all opcodes are
+TariScript and the execution stack are serialised into byte strings using a simple linear parser. Since all opcodes are
 a single byte, it's very easy to read and write script byte strings. If an opcode has a parameter associated with it,
 e.g. `PushHash` then it is equally known how many bytes following the opcode will contain the parameter.
 
@@ -570,3 +570,5 @@ or Bob can spend the output.
 
 Thanks to [@philipr-za](https://github.com/philipr-za) and [@SWvheerden](https://github.com/SWvheerden) for their input
 and contributions to this RFC.
+
+[TariScript]: Glossary.md#tariscript

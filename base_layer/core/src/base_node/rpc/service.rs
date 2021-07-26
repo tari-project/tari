@@ -145,8 +145,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
     async fn submit_transaction(
         &self,
         request: Request<TransactionProto>,
-    ) -> Result<Response<TxSubmissionResponse>, RpcStatus>
-    {
+    ) -> Result<Response<TxSubmissionResponse>, RpcStatus> {
         let message = request.into_message();
         let transaction =
             Transaction::try_from(message).map_err(|_| RpcStatus::bad_request("Transaction was invalid"))?;
@@ -225,8 +224,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
     async fn transaction_query(
         &self,
         request: Request<SignatureProto>,
-    ) -> Result<Response<TxQueryResponse>, RpcStatus>
-    {
+    ) -> Result<Response<TxQueryResponse>, RpcStatus> {
         let state_machine = self.state_machine();
 
         // Determine if we are synced
@@ -247,8 +245,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
     async fn transaction_batch_query(
         &self,
         request: Request<SignaturesProto>,
-    ) -> Result<Response<TxQueryBatchResponses>, RpcStatus>
-    {
+    ) -> Result<Response<TxQueryBatchResponses>, RpcStatus> {
         let state_machine = self.state_machine();
 
         // Determine if we are synced
@@ -278,8 +275,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
     async fn fetch_matching_utxos(
         &self,
         request: Request<FetchMatchingUtxos>,
-    ) -> Result<Response<FetchUtxosResponse>, RpcStatus>
-    {
+    ) -> Result<Response<FetchUtxosResponse>, RpcStatus> {
         let message = request.into_message();
 
         let state_machine = self.state_machine();
@@ -292,15 +288,15 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
 
         let db = self.db();
         let mut res = Vec::with_capacity(message.output_hashes.len());
-        for item in db
+        for (output, spent) in (db
             .fetch_utxos(message.output_hashes, None)
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?)
+        .into_iter()
+        .flatten()
         {
-            if let Some((output, spent)) = item {
-                if !spent {
-                    res.push(output);
-                }
+            if !spent {
+                res.push(output);
             }
         }
 

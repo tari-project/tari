@@ -22,7 +22,7 @@
 
 use crate::{
     backend::ArrayLike,
-    common::{n_leaves, node_index},
+    common::node_index,
     error::MerkleMountainRangeError,
     mutable_mmr_leaf_nodes::MutableMmrLeafNodes,
     Hash,
@@ -80,6 +80,7 @@ where
     /// NB: This is semantically different to `MerkleMountainRange::len()`. The latter returns the total number of
     /// nodes in the MMR, while this function returns the number of leaf nodes minus the number of nodes marked for
     /// deletion.
+    #[allow(clippy::len_without_is_empty)]
     #[inline(always)]
     pub fn len(&self) -> u32 {
         self.size - self.deleted.cardinality() as u32
@@ -122,8 +123,8 @@ where
         // both sets.
         let mmr_root = self.mmr.get_merkle_root()?;
         let mut hasher = D::new();
-        hasher.input(&mmr_root);
-        Ok(self.hash_deleted(hasher).result().to_vec())
+        hasher.update(&mmr_root);
+        Ok(self.hash_deleted(hasher).finalize().to_vec())
     }
 
     /// Returns only the MMR merkle root without the compressed serialisation of the bitmap
@@ -196,7 +197,7 @@ where
     /// Hash the roaring bitmap of nodes that are marked for deletion
     fn hash_deleted(&self, mut hasher: D) -> D {
         let bitmap_ser = self.deleted.serialize();
-        hasher.input(&bitmap_ser);
+        hasher.update(&bitmap_ser);
         hasher
     }
 
@@ -221,8 +222,7 @@ where
         &self,
         leaf_index: usize,
         count: usize,
-    ) -> Result<MutableMmrLeafNodes, MerkleMountainRangeError>
-    {
+    ) -> Result<MutableMmrLeafNodes, MerkleMountainRangeError> {
         Ok(MutableMmrLeafNodes {
             leaf_hashes: self.mmr.get_leaf_hashes(leaf_index, count)?,
             deleted: self.get_sub_bitmap(leaf_index, count)?,
@@ -237,6 +237,10 @@ where
     /// Return a reference to the bitmap of deleted nodes
     pub fn deleted(&self) -> &Bitmap {
         &self.deleted
+    }
+
+    pub fn set_deleted(&mut self, deleted: Bitmap) {
+        self.deleted = deleted;
     }
 
     pub fn clear(&mut self) -> Result<(), MerkleMountainRangeError> {
@@ -255,20 +259,5 @@ where
 {
     fn eq(&self, other: &MutableMmr<D, B2>) -> bool {
         self.get_merkle_root() == other.get_merkle_root()
-    }
-}
-
-impl<D, B> From<MerkleMountainRange<D, B>> for MutableMmr<D, B>
-where
-    D: Digest,
-    B: ArrayLike<Value = Hash>,
-{
-    fn from(mmr: MerkleMountainRange<D, B>) -> Self {
-        let size = n_leaves(mmr.len().unwrap()) as u32; // TODO: fix unwrap
-        MutableMmr {
-            mmr,
-            deleted: Bitmap::create(),
-            size,
-        }
     }
 }

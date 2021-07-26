@@ -24,7 +24,7 @@ use crate::{
     blocks::{block_header::BlockHeaderValidationError, BlockValidationError},
     chain_storage::ChainStorageError,
     proof_of_work::{monero_rx::MergeMineError, PowError},
-    transactions::transaction::TransactionError,
+    transactions::{transaction::TransactionError, types::HashOutput},
 };
 use thiserror::Error;
 
@@ -37,7 +37,7 @@ pub enum ValidationError {
     #[error("Contains kernels or inputs that are not yet spendable")]
     MaturityError,
     #[error("Contains unknown inputs")]
-    UnknownInputs,
+    UnknownInputs(Vec<HashOutput>),
     #[error("The transaction is invalid: {0}")]
     TransactionError(#[from] TransactionError),
     #[error("Error: {0}")]
@@ -75,8 +75,12 @@ pub enum ValidationError {
     UnsortedOrDuplicateOutput,
     #[error("Error in merge mine data:{0}")]
     MergeMineError(#[from] MergeMineError),
+    #[error("Contains an input with an invalid mined-height in body")]
+    InvalidMinedHeight,
     #[error("Maximum transaction weight exceeded")]
     MaxTransactionWeightExceeded,
+    #[error("End of time: {0}")]
+    EndOfTimeError(String),
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in

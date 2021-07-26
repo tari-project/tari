@@ -92,8 +92,7 @@ impl MempoolService {
         inbound_handlers: MempoolInboundHandlers,
         config: MempoolServiceConfig,
         state_machine: StateMachineHandle,
-    ) -> Self
-    {
+    ) -> Self {
         let (timeout_sender, timeout_receiver) = mpsc::channel(100);
         Self {
             outbound_message_service,
@@ -203,8 +202,7 @@ impl MempoolService {
     fn spawn_handle_outbound_request(
         &self,
         request_context: RequestContext<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>,
-    )
-    {
+    ) {
         let outbound_message_service = self.outbound_message_service.clone();
         let waiting_requests = self.waiting_requests.clone();
         let timeout_sender = self.timeout_sender.clone();
@@ -291,8 +289,7 @@ impl MempoolService {
     fn spawn_handle_local_request(
         &self,
         request_context: RequestContext<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>,
-    )
-    {
+    ) {
         let mut inbound_handlers = self.inbound_handlers.clone();
         task::spawn(async move {
             let (request, reply_tx) = request_context.split();
@@ -333,8 +330,7 @@ async fn handle_incoming_request(
     mut inbound_handlers: MempoolInboundHandlers,
     mut outbound_message_service: OutboundMessageRequester,
     domain_request_msg: DomainMessage<mempool_proto::MempoolServiceRequest>,
-) -> Result<(), MempoolServiceError>
-{
+) -> Result<(), MempoolServiceError> {
     let (origin_public_key, inner_msg) = domain_request_msg.into_origin_and_inner();
 
     // Convert mempool_proto::MempoolServiceRequest to a MempoolServiceRequest
@@ -364,8 +360,7 @@ async fn handle_incoming_request(
 async fn handle_incoming_response(
     waiting_requests: WaitingRequests<Result<MempoolResponse, MempoolServiceError>>,
     incoming_response: mempool_proto::MempoolServiceResponse,
-) -> Result<(), MempoolServiceError>
-{
+) -> Result<(), MempoolServiceError> {
     let mempool_proto::MempoolServiceResponse { request_key, response } = incoming_response;
     let response: MempoolResponse = response
         .and_then(|r| r.try_into().ok())
@@ -398,8 +393,7 @@ async fn handle_outbound_request(
     reply_tx: OneshotSender<Result<MempoolResponse, MempoolServiceError>>,
     request: MempoolRequest,
     config: MempoolServiceConfig,
-) -> Result<(), MempoolServiceError>
-{
+) -> Result<(), MempoolServiceError> {
     let request_key = generate_request_key(&mut OsRng);
     let service_request = mempool_proto::MempoolServiceRequest {
         request_key,
@@ -444,8 +438,7 @@ async fn handle_outbound_request(
 async fn handle_incoming_tx(
     mut inbound_handlers: MempoolInboundHandlers,
     domain_transaction_msg: DomainMessage<Transaction>,
-) -> Result<(), MempoolServiceError>
-{
+) -> Result<(), MempoolServiceError> {
     let DomainMessage::<_> { source_peer, inner, .. } = domain_transaction_msg;
 
     debug!(
@@ -469,8 +462,7 @@ async fn handle_incoming_tx(
 async fn handle_request_timeout(
     waiting_requests: WaitingRequests<Result<MempoolResponse, MempoolServiceError>>,
     request_key: RequestKey,
-) -> Result<(), MempoolServiceError>
-{
+) -> Result<(), MempoolServiceError> {
     if let Some((reply_tx, started)) = waiting_requests.remove(request_key).await {
         warn!(
             target: LOG_TARGET,
@@ -496,8 +488,7 @@ async fn handle_outbound_tx(
     mut outbound_message_service: OutboundMessageRequester,
     tx: Transaction,
     exclude_peers: Vec<NodeId>,
-) -> Result<(), MempoolServiceError>
-{
+) -> Result<(), MempoolServiceError> {
     let result = outbound_message_service
         .broadcast(
             NodeDestination::Unknown,

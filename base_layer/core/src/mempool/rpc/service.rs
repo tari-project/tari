@@ -68,8 +68,7 @@ impl MempoolService for MempoolRpcService {
     async fn get_transaction_state_by_excess_sig(
         &self,
         request: Request<proto::types::Signature>,
-    ) -> Result<Response<proto::mempool::TxStorage>, RpcStatus>
-    {
+    ) -> Result<Response<proto::mempool::TxStorage>, RpcStatus> {
         let excess_sig = request
             .into_message()
             .try_into()
@@ -85,8 +84,7 @@ impl MempoolService for MempoolRpcService {
     async fn submit_transaction(
         &self,
         request: Request<proto::types::Transaction>,
-    ) -> Result<Response<proto::mempool::TxStorage>, RpcStatus>
-    {
+    ) -> Result<Response<proto::mempool::TxStorage>, RpcStatus> {
         let (context, message) = request.into_parts();
         let tx = match Transaction::try_from(message) {
             Ok(tx) => tx,

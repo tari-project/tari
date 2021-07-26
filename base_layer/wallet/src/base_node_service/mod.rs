@@ -23,18 +23,19 @@
 pub mod config;
 pub mod error;
 pub mod handle;
-
 pub mod mock_base_node_service;
 pub mod service;
+
+mod monitor;
 
 use crate::{
     base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, service::BaseNodeService},
     storage::database::{WalletBackend, WalletDatabase},
 };
-use futures::{future, Future};
 use log::*;
 use tari_comms::connectivity::ConnectivityRequester;
 use tari_service_framework::{
+    async_trait,
     reply_channel,
     ServiceInitializationError,
     ServiceInitializer,
@@ -59,12 +60,11 @@ where T: WalletBackend + 'static
     }
 }
 
+#[async_trait]
 impl<T> ServiceInitializer for BaseNodeServiceInitializer<T>
 where T: WalletBackend + 'static
 {
-    type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
-
-    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+    async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         info!(target: LOG_TARGET, "Wallet base node service initializing.");
 
         let (sender, request_stream) = reply_channel::unbounded();
@@ -96,6 +96,6 @@ where T: WalletBackend + 'static
             info!(target: LOG_TARGET, "Wallet Base Node Service shutdown");
         });
 
-        future::ready(Ok(()))
+        Ok(())
     }
 }

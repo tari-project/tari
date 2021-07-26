@@ -77,8 +77,7 @@ where
         outbound_messaging: OutboundMessageRequester,
         event_publisher: LivenessEventSender,
         shutdown_signal: ShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             request_rx: Some(request_rx),
             ping_stream: Some(ping_stream),
@@ -150,7 +149,7 @@ where
         let node_id = source_peer.node_id;
         let public_key = source_peer.public_key;
 
-        match ping_pong_msg.kind().ok_or_else(|| LivenessError::InvalidPingPongType)? {
+        match ping_pong_msg.kind().ok_or(LivenessError::InvalidPingPongType)? {
             PingPong::Ping => {
                 self.state.inc_pings_received();
                 self.send_pong(ping_pong_msg.nonce, public_key).await.unwrap();
@@ -235,6 +234,10 @@ where
                 let latency = self.state.get_avg_latency_ms(&node_id);
                 Ok(LivenessResponse::AvgLatency(latency))
             },
+            GetNetworkAvgLatency => {
+                let latency = self.state.get_network_avg_latency();
+                Ok(LivenessResponse::AvgLatency(latency))
+            },
             SetMetadataEntry(key, value) => {
                 self.state.set_metadata_entry(key, value);
                 Ok(LivenessResponse::Ok)
@@ -316,7 +319,7 @@ mod test {
         test_utils::mocks::create_connectivity_mock,
     };
     use tari_comms_dht::{
-        envelope::{DhtMessageHeader, DhtMessageType, Network},
+        envelope::{DhtMessageHeader, DhtMessageType},
         outbound::{DhtOutboundRequest, MessageSendState, SendMessageResponse},
     };
     use tari_crypto::keys::PublicKey;
@@ -395,7 +398,7 @@ mod test {
         task::spawn(service.run());
 
         let (_, pk) = CommsPublicKey::random_keypair(&mut rand::rngs::OsRng);
-        let node_id = NodeId::from_key(&pk).unwrap();
+        let node_id = NodeId::from_key(&pk);
         // Receive outbound request
         task::spawn(async move {
             match outbound_rx.select_next_some().await {
@@ -417,7 +420,7 @@ mod test {
         let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
         let source_peer = Peer::new(
             pk.clone(),
-            NodeId::from_key(&pk).unwrap(),
+            NodeId::from_key(&pk),
             Vec::<Multiaddr>::new().into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
@@ -426,12 +429,12 @@ mod test {
         );
         DomainMessage {
             dht_header: DhtMessageHeader {
-                version: 0,
+                major: 0,
+                minor: 0,
                 destination: Default::default(),
                 origin_mac: Vec::new(),
                 ephemeral_public_key: None,
                 message_type: DhtMessageType::None,
-                network: Network::LocalTest,
                 flags: Default::default(),
                 message_tag: MessageTag::new(),
                 expires: None,
@@ -533,6 +536,6 @@ mod test {
         let mut subscriber = publisher.subscribe().fuse();
         drop(publisher);
         let msg = subscriber.next().await;
-        assert_eq!(msg.is_none(), true);
+        assert!(msg.is_none());
     }
 }

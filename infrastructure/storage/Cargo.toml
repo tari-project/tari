@@ -6,7 +6,7 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.8.8"
+version = "0.9.1"
 edition = "2018"
 
 [dependencies]
@@ -22,5 +22,5 @@ tari_utilities = "^0.3"
 bytes = "0.4.12"
 
 [dev-dependencies]
-rand = "0.5.5"
+rand = "0.8"
 env_logger = "0.6.2"

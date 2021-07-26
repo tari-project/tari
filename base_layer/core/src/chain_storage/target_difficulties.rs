@@ -62,8 +62,6 @@ impl TargetDifficulties {
         use PowAlgorithm::*;
         match algo {
             Monero => &self.monero,
-            // TODO: remove
-            Blake => unimplemented!(),
             Sha3 => &self.sha3,
         }
     }
@@ -72,8 +70,6 @@ impl TargetDifficulties {
         use PowAlgorithm::*;
         match algo {
             Monero => &mut self.monero,
-            // TODO: remove
-            Blake => unimplemented!(),
             Sha3 => &mut self.sha3,
         }
     }

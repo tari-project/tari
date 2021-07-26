@@ -23,3 +23,8 @@
 pub mod identity_management;
 pub mod initialization;
 pub mod utilities;
+
+pub mod consts {
+    // Import the auto-generated const values from the Manifest and Git
+    include!(concat!(env!("OUT_DIR"), "/consts.rs"));
+}

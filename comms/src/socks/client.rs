@@ -27,15 +27,19 @@ use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use multiaddr::{Multiaddr, Protocol};
 use std::{
     borrow::Cow,
+    fmt,
+    fmt::Formatter,
     net::{Ipv4Addr, Ipv6Addr},
 };
 
 pub type Result<T> = std::result::Result<T, SocksError>;
 
 /// Authentication methods
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Authentication {
+    /// No auth
     None,
+    /// Password auth (username, password)
     Password(String, String),
 }
 
@@ -51,6 +55,16 @@ impl Authentication {
 impl Default for Authentication {
     fn default() -> Self {
         Authentication::None
+    }
+}
+
+impl fmt::Debug for Authentication {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        use Authentication::*;
+        match self {
+            None => write!(f, "None"),
+            Password(username, _) => write!(f, "Password({}, ...)", username),
+        }
     }
 }
 
@@ -130,13 +144,13 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             Authentication::None => {},
             Authentication::Password(username, password) => {
                 let username_len = username.as_bytes().len();
-                if username_len < 1 || username_len > 255 {
+                if !(1..=255).contains(&username_len) {
                     return Err(SocksError::InvalidAuthValues(
                         "username length should between 1 to 255".to_string(),
                     ));
                 }
                 let password_len = password.as_bytes().len();
-                if password_len < 1 || password_len > 255 {
+                if !(1..=255).contains(&password_len) {
                     return Err(SocksError::InvalidAuthValues(
                         "password length should between 1 to 255".to_string(),
                     ));
@@ -367,7 +381,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
         let mut addr_iter = address.iter();
         let part1 = addr_iter
             .next()
-            .ok_or_else(|| SocksError::InvalidTargetAddress("Address contained no components"))?;
+            .ok_or(SocksError::InvalidTargetAddress("Address contained no components"))?;
 
         let part2 = addr_iter.next();
 
@@ -394,7 +408,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                 self.len = 7 + len;
             },
             // Special case for Tor resolve
-            (Protocol::Dns4(domain), None) => {
+            (Protocol::Dns4(domain), None) | (Protocol::Dns(domain), None) => {
                 self.buf[3] = 0x03;
                 let domain = domain.as_bytes();
                 let len = domain.len();

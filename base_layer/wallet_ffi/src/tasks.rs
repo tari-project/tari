@@ -23,22 +23,42 @@
 use futures::StreamExt;
 use log::*;
 use tari_crypto::tari_utilities::hex::Hex;
-use tari_wallet::{error::WalletError, tasks::wallet_recovery::WalletRecoveryEvent};
+use tari_wallet::{error::WalletError, utxo_scanner_service::handle::UtxoScannerEvent};
 use tokio::{sync::broadcast, task::JoinHandle};
 
 const LOG_TARGET: &str = "wallet_ffi";
 
+/// Events that the recovery process will report via the callback
+enum RecoveryEvent {
+    ConnectingToBaseNode,       // 0
+    ConnectedToBaseNode,        // 1
+    ConnectionToBaseNodeFailed, // 2
+    Progress,                   // 3
+    Completed,                  // 4
+    ScanningRoundFailed,        // 5
+    RecoveryFailed,             // 6
+}
+
 pub async fn recovery_event_monitoring(
-    mut event_stream: broadcast::Receiver<WalletRecoveryEvent>,
+    mut event_stream: broadcast::Receiver<UtxoScannerEvent>,
     recovery_join_handle: JoinHandle<Result<(), WalletError>>,
-    recovery_progress_callback: unsafe extern "C" fn(u64, u64),
-)
-{
+    recovery_progress_callback: unsafe extern "C" fn(u8, u64, u64),
+) {
     while let Some(event) = event_stream.next().await {
         match event {
-            Ok(WalletRecoveryEvent::ConnectedToBaseNode(pk, elapsed)) => {
+            Ok(UtxoScannerEvent::ConnectingToBaseNode(peer)) => {
                 unsafe {
-                    (recovery_progress_callback)(0u64, 1u64);
+                    (recovery_progress_callback)(RecoveryEvent::ConnectingToBaseNode as u8, 0u64, 0u64);
+                }
+                info!(
+                    target: LOG_TARGET,
+                    "Attempting connection to base node {}",
+                    peer.to_hex(),
+                );
+            },
+            Ok(UtxoScannerEvent::ConnectedToBaseNode(pk, elapsed)) => {
+                unsafe {
+                    (recovery_progress_callback)(RecoveryEvent::ConnectedToBaseNode as u8, 0u64, 1u64);
                 }
                 info!(
                     target: LOG_TARGET,
@@ -47,9 +67,32 @@ pub async fn recovery_event_monitoring(
                     elapsed
                 );
             },
-            Ok(WalletRecoveryEvent::Progress(current, total)) => {
+            Ok(UtxoScannerEvent::ConnectionFailedToBaseNode {
+                peer,
+                num_retries,
+                retry_limit,
+                error,
+            }) => {
                 unsafe {
-                    (recovery_progress_callback)(current, total);
+                    (recovery_progress_callback)(
+                        RecoveryEvent::ConnectionToBaseNodeFailed as u8,
+                        num_retries as u64,
+                        retry_limit as u64,
+                    );
+                }
+                warn!(
+                    target: LOG_TARGET,
+                    "Failed to connect to base node {} with error {}",
+                    peer.to_hex(),
+                    error
+                );
+            },
+            Ok(UtxoScannerEvent::Progress {
+                current_block: current,
+                current_chain_height: total,
+            }) => {
+                unsafe {
+                    (recovery_progress_callback)(RecoveryEvent::Progress as u8, current, total);
                 }
                 info!(target: LOG_TARGET, "Recovery progress: {}/{}", current, total);
                 if current == total {
@@ -57,7 +100,12 @@ pub async fn recovery_event_monitoring(
                     break;
                 }
             },
-            Ok(WalletRecoveryEvent::Completed(num_scanned, num_utxos, total_amount, elapsed)) => {
+            Ok(UtxoScannerEvent::Completed {
+                number_scanned: num_scanned,
+                number_received: num_utxos,
+                value_received: total_amount,
+                time_taken: elapsed,
+            }) => {
                 info!(
                     target: LOG_TARGET,
                     "Recovery complete! Scanned = {} in {:.2?} ({} utxos/s), Recovered {} worth {}",
@@ -67,9 +115,31 @@ pub async fn recovery_event_monitoring(
                     num_utxos,
                     total_amount
                 );
+                unsafe {
+                    (recovery_progress_callback)(RecoveryEvent::Completed as u8, num_scanned, u64::from(total_amount));
+                }
             },
-            Ok(event) => {
-                debug!(target: LOG_TARGET, "Recovery event {:?}", event);
+            Ok(UtxoScannerEvent::ScanningRoundFailed {
+                num_retries,
+                retry_limit,
+            }) => {
+                unsafe {
+                    (recovery_progress_callback)(
+                        RecoveryEvent::ScanningRoundFailed as u8,
+                        num_retries as u64,
+                        retry_limit as u64,
+                    );
+                }
+                info!(
+                    target: LOG_TARGET,
+                    "UTXO Scanning round failed on retry {} of {}", num_retries, retry_limit
+                );
+            },
+            Ok(UtxoScannerEvent::ScanningFailed) => {
+                unsafe {
+                    (recovery_progress_callback)(RecoveryEvent::RecoveryFailed as u8, 0u64, 0u64);
+                }
+                warn!(target: LOG_TARGET, "UTXO Scanner failed and exited",);
             },
             Err(e) => {
                 // Event lagging
@@ -83,13 +153,13 @@ pub async fn recovery_event_monitoring(
         Ok(Ok(_)) => {},
         Ok(Err(e)) => {
             unsafe {
-                (recovery_progress_callback)(0u64, 0u64);
+                (recovery_progress_callback)(RecoveryEvent::RecoveryFailed as u8, 0u64, 1u64);
             }
-            error!(target: LOG_TARGET, "Recovery error: {}", e);
+            error!(target: LOG_TARGET, "Recovery error: {:?}", e);
         },
         Err(e) => {
             unsafe {
-                (recovery_progress_callback)(0u64, 0u64);
+                (recovery_progress_callback)(RecoveryEvent::RecoveryFailed as u8, 1u64, 0u64);
             }
             error!(target: LOG_TARGET, "Recovery error: {}", e);
         },

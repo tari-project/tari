@@ -1,0 +1,512 @@
+########################################################################################################################
+#                                                                                                                      #
+#                                      The Tari Network Configuration File                                             #
+#                                                                                                                      #
+########################################################################################################################
+
+# This file carries all the configuration options for running Tari-related nodes and infrastructure in one single
+# file. As you'll notice, almost all configuraton options are commented out. This is because they are either not
+# needed, are for advanced users that know what they want to tweak, or are already set at their default values.  If
+# things are working fine, then there's no need to change anything here.
+#
+# Each major section is clearly marked so that you can quickly find the section you're looking for. This first
+# section holds configuration options that are common to all sections.
+
+# A note about Logging - The logger is initialised before the configuration file is loaded. For this reason, logging
+# is not configured here, but in `~/.tari/log4rs.yml` (*nix / OsX) or `%USERPROFILE%\.tari\log4rs.yml` (Windows) by
+# default, or the location specified in the TARI_LOGFILE environment variable.
+
+[common]
+# Select the network to connect to. Valid options are:
+#   mainnet - the "real" Tari network (default)
+#   weatherwax - the Tari test net
+network = "weatherwax"
+
+# Tari is a 100% peer-to-peer network, so there are no servers to hold messages for you while you're offline.
+# Instead, we rely on our peers to hold messages for us while we're offline. This settings sets maximum size of the
+# message cache that for holding our peers' messages, in MB.
+#message_cache_size = 10
+
+# When storing messages for peers, hold onto them for at most this long before discarding them. The default is 1440
+# minutes = or 24 hrs.
+#message_cache_ttl = 1440
+
+# If peer nodes spam you with messages, or are otherwise badly behaved, they will be added to your denylist and banned
+# You can set a time limit to release that ban (in minutes), or otherwise ban them for life (-1). The default is to
+# ban them for 10 days.
+#denylist_ban_period = 1440
+
+# The number of liveness sessions to allow. Liveness sessions can be established by liveness monitors over TCP by
+# sending a 0x50 (P) as the first byte. Any messages sent must be followed by newline message no longer than
+# 50 characters. That message will be echoed back.
+#liveness_max_sessions = 0
+#liveness_allowlist_cidrs = ["127.0.0.1/32"]
+
+# The buffer size constants for the publish/subscribe connector channel, connecting comms messages to the domain layer:
+# - Buffer size for the base node (min value = 30, default value = 100).
+#buffer_size_base_node = 100
+# - Buffer size for the base node wallet (min value = 300, default value = 1000).
+#buffer_size_base_node_wallet = 1000
+# The rate limit constants for the publish/subscribe connector channel, i.e. maximum amount of inbound messages to
+# accept - any rate attemting to exceed this limit will be throttled.
+# - Rate limit for the base node (min value = 5, default value = 20).
+#buffer_rate_limit_base_node = 20
+# - Rate limit for the base node wallet (min value = 5, default value = 20).
+#buffer_rate_limit_base_node_wallet = 20
+
+# The timeout (s) for requesting blocks from a peer during blockchain sync (min value = 10 s, default value = 150 s).
+#fetch_blocks_timeout = 150
+
+# The timeout (s) for requesting UTXOs from a base node (min value = 10 s, default value = 600 s).
+#fetch_utxos_timeout = 600
+
+# The timeout (s) for requesting other base node services (min value = 10 s, default value = 180 s).
+#service_request_timeout = 180
+
+# The maximum simultaneous comms RPC sessions allowed. Setting this to -1 will allow unlimited sessions.
+# rpc_max_simultaneous_sessions = 1000
+
+# Auto Update
+#
+# This interval in seconds to check for software updates. Setting this to 0 disables checking.
+# auto_update.check_interval = 300
+# Customize the hosts that are used to check for updates. These hosts must contain update information in DNS TXT records.
+# auto_update.dns_hosts = ["updates.tari.com"]
+# Customize the location of the update SHA hashes and maintainer-signed signature.
+# auto_update.hashes_url = "https://.../hashes.txt"
+# auto_update.hashes_sig_url = "https://.../hashes.txt.sig"
+
+########################################################################################################################
+#                                                                                                                      #
+#                                          Wallet Configuration Options                                                #
+#                                                                                                                      #
+########################################################################################################################
+
+# If you are not running a wallet from this configuration, you can simply leave everything in this section commented out
+
+[wallet]
+# Override common.network for wallet
+# network = "weatherwax"
+
+# The relative folder to store your local key data and transaction history. DO NOT EVER DELETE THIS FILE unless you
+#  a) have backed up your seed phrase and
+#  b) know what you are doing!
+wallet_db_file = "wallet/wallet.dat"
+console_wallet_db_file = "wallet/console-wallet.dat"
+
+# Console wallet password
+# Should you wish to start your console wallet without typing in your password, the following options are available:
+# 1. Start the console wallet with the --password=secret argument, or
+# 2. Set the environment variable TARI_WALLET_PASSWORD=secret before starting the console wallet, or
+# 3. Set the "password" key in this [wallet] section of the config
+# password = "secret"
+
+# WalletNotify
+# Allows you to execute a script or program when these transaction events are received by the console wallet:
+# - transaction received
+# - transaction sent
+# - transaction cancelled
+# - transaction mined but unconfirmed
+# - transaction mined and confirmed
+# An example script is available here: applications/tari_console_wallet/src/notifier/notify_example.sh
+# notify = "/path/to/script"
+
+# This is the timeout period that will be used to monitor TXO queries to the base node (default = 60). Larger values
+# are needed for wallets with many (>1000) TXOs to be validated.
+base_node_query_timeout = 120
+# The amount of seconds added to the current time (Utc) which will then be used to check if the message has
+# expired or not when processing the message (default = 10800).
+#saf_expiry_duration = 10800
+# This is the number of block confirmations required for a transaction to be considered completely mined and confirmed. (default = 3)
+#transaction_num_confirmations_required = 3
+# This is the timeout period that will be used for base node broadcast monitoring tasks (default = 60)
+#transaction_broadcast_monitoring_timeout = 60
+# This is the timeout period that will be used for chain monitoring tasks (default = 60)
+#transaction_chain_monitoring_timeout = 60
+# This is the timeout period that will be used for sending transactions directly (default = 20)
+#transaction_direct_send_timeout = 20
+# This is the timeout period that will be used for sending transactions via broadcast mode (default = 60)
+#transaction_broadcast_send_timeout = 60
+# If a large amount of tiny valued uT UTXOs are used as inputs to a transaction, the fee may be larger than
+# the transaction amount. Set this value to `false` to allow spending of "dust" UTXOs for small valued
+# transactions (default = true).
+#prevent_fee_gt_amount = false
+# This option specifies the transaction routing mechanism as being directly between wallets, making
+# use of store and forward or using any combination of these.
+# (options: "DirectOnly", "StoreAndForwardOnly", DirectAndStoreAndForward". default: "DirectAndStoreAndForward").
+#transaction_routing_mechanism = "DirectAndStoreAndForward"
+
+scan_for_utxo_interval=60
+
+# When running the console wallet in command mode, use these values to determine what "stage" and timeout to wait
+# for sent transactions.
+# The stages are:
+# - "DirectSendOrSaf" - The transaction was initiated and was accepted via Direct Send or Store And Forward.
+# - "Negotiated" - The recipient replied and the transaction was negotiated.
+# - "Broadcast" - The transaction was broadcast to the base node mempool.
+# - "MinedUnconfirmed" - The transaction was successfully detected as mined but unconfirmed on the blockchain.
+# - "Mined" - The transaction was successfully detected as mined and confirmed on the blockchain.
+
+# The default values are:
+#command_send_wait_stage = "Broadcast"
+#command_send_wait_timeout = 300
+
+# The base nodes that the wallet should use for service requests and tracking chain state.
+# base_node_service_peers = ["public_key::net_address", ...]
+# base_node_service_peers = ["e856839057aac496b9e25f10821116d02b58f20129e9b9ba681b830568e47c4d::/onion3/exe2zgehnw3tvrbef3ep6taiacr6sdyeb54be2s25fpru357r4skhtad:18141"]
+
+# Configuration for the wallet's base node service
+# The refresh interval, defaults to 10 seconds
+# base_node_service_refresh_interval = 10
+# The maximum age of service requests in seconds, requests older than this are discarded
+# base_node_service_request_max_age = 60
+
+#[base_node.transport.tor]
+#control_address = "/ip4/127.0.0.1/tcp/9051"
+#control_auth_type = "none" # or "password"
+# Required for control_auth_type = "password"
+#control_auth_password = "super-secure-password"
+
+# Wallet configuration options for testnet
+[wallet.weatherwax]
+# -------------- Transport configuration --------------
+# Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
+# e.g. tor onion addresses will not be contactable.
+#transport = "tcp"
+# The address and port to listen for peer connections over TCP.
+#tcp_listener_address = "/ip4/0.0.0.0/tcp/18188"
+# Configures a tor proxy used to connect to onion addresses. All other traffic uses direct TCP connections.
+# This setting is optional however, if it is not specified, this node will not be able to connect to nodes that
+# only advertise an onion address.
+#tcp_tor_socks_address = "/ip4/127.0.0.1/tcp/36050"
+#tcp_tor_socks_auth = "none"
+
+# Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
+# onion v2, onion v3 and dns addresses.
+transport = "tor"
+# Address of the tor control server
+tor_control_address = "/ip4/127.0.0.1/tcp/9051"
+# Authentication to use for the tor control server
+tor_control_auth = "none" # or "password=xxxxxx"
+# The onion port to use.
+#tor_onion_port = 18141
+# The address to which traffic on the node's onion address will be forwarded
+# tor_forward_address = "/ip4/127.0.0.1/tcp/0"
+# Instead of attemping to get the SOCKS5 address from the tor control port, use this one. The default is to
+# use the first address returned by the tor control port (GETINFO /net/listeners/socks).
+#tor_socks_address_override=
+
+# Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
+#transport = "socks5"
+# The address of the SOCKS5 proxy
+#socks5_proxy_address = "/ip4/127.0.0.1/tcp/9050"
+# The address to which traffic will be forwarded
+#socks5_listener_address = "/ip4/127.0.0.1/tcp/18188"
+#socks5_auth = "none" # or "username_password=username:xxxxxxx"
+
+# Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
+# Use cases include:
+# - allowing wallets to locally connect to their base node, rather than through tor, when used in conjunction with `tor_proxy_bypass_addresses`
+# - multiple P2P addresses, one public over DNS and one private over TOR
+# - a "bridge" between TOR and TCP-only nodes
+# auxilary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
+
+# When these addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
+# direcly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
+# tor_proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
+
+########################################################################################################################
+#                                                                                                                      #
+#                                          Base Node Configuration Options                                             #
+#                                                                                                                      #
+########################################################################################################################
+
+# If you are not running a Tari Base node, you can simply leave everything in this section commented out. Base nodes
+# help maintain the security of the Tari token and are the surest way to preserve your privacy and be 100% sure that
+# no-one is cheating you out of your money.
+
+[base_node]
+# Override common.network for base node
+# network = "weatherwax"
+
+# Configuration options for testnet
+[base_node.weatherwax]
+# The type of database backend to use. Currently supported options are "memory" and "lmdb". LMDB is recommnded for
+# almost all use cases.
+db_type = "lmdb"
+
+# db config defaults
+# db_init_size_mb = 1000
+# db_grow_size_mb = 500
+# db_resize_threshold_mb = 100
+
+# The maximum number of orphans that can be stored in the Orphan block pool. Default value is "720".
+#orphan_storage_capacity = 720
+# The size that the orphan pool will be allowed to grow before it is cleaned out, with threshold being tested every
+# time before fetch and add blocks. Default value is "0", which indicates the orphan pool will not be cleaned out.
+#orphan_db_clean_out_threshold = 0
+# The pruning horizon that indicates how many full blocks without pruning must be kept by the base node. Default value
+# is "0", which indicates an archival node without any pruning.
+#pruning_horizon = 0
+
+# The relative path to store persistent data
+data_dir = "weatherwax"
+
+# When first logging onto the Tari network, you need to find a few peers to bootstrap the process. In the absence of
+# any servers, this is a little more challenging than usual. Our best strategy is just to try and connect to the peers
+# you knew about last time you ran the software. But what about when you run the software for the first time? That's
+# where this allowlist comes in. It's a list of known Tari nodes that are likely to be around for a long time and that
+# new nodes can use to introduce themselves to the network.
+# peer_seeds = ["public_key1::address1", "public_key2::address2",... ]
+peer_seeds = [
+    "9a26e910288213d649b26f9a7a7ee51fe2b2a67ff7d42334523463bf4be94312::/onion3/56kq54ylttnbl5ikotqex3oqvtzlxdpn7zlx4v56rvzf4kq7eezlclid:18141", #london
+    "6afd5b3c7772ad7d4bb26e0c19668fe04f2d68f99de9e132bee50a6c1846946d::/onion3/may4ajbmcn4dlnzf6fanvqlklxzqiw6qwu6ywqwkjc3bb354rc2i5wid:18141", #ncal
+    "8e7beec9becdc44fe6015a00d97a77fa3dbafe65127dcc988df6326bd9fd040d::/onion3/3pise36l4imoopsbjic5rtw67adx7rms6w5pgjmccpdwiqx66j7oqcqd:18141", #nvir
+    "80bb590d943a46e63ae79af5dc2c7d35a3dcd7922c182b28f619dc4cfc366f44::/onion3/oaxwahri7r3h5qjlcdbveyjmg4jsttausik66bicmhixft73nmvecdad:18141", #oregon
+    "981cc8cd1e4fe2f99ea1bd3e0ab1e7821ca0bfab336a4967cfec053fee86254c::/onion3/7hxpnxrxycdfevirddau7ybofwedaamjrg2ijm57k2kevh5q46ixamid:18141", #seoul
+    "f2ce179fb733725961a5f7e1e45dacdd443dd43ba6237438d6abe344fb717058::/onion3/nvgdmjf4wucgatz7vemzvi2u4sw5o4gyzwuikagpepoj4w7mkii47zid:18141", #stockholm
+    "909c0160f4d8e815aba5c2bbccfcceb448877e7b38759fb160f3e9494484d515::/onion3/qw5uxv533sqdn2qoncfyqo35dgecy4rt4x27rexi2her6q6pcpxbm4qd:18141", #sydney
+    # backups
+    "0c3fe3c23866ed3827e1cd72aae0c9d364d860d597993104e90d9a9401e52f05::/onion3/2m2xnylrsqbaozsndkbmfisxxbwh2vgvs6oyfak2qah4snnxykrf7zad:18141",
+    "b6b2c8a997ba3500d44b64a3b47203d922d614c01ebd9cad5563dc59086f9938::/onion3/kxtcwaoan6wvdl4wltguo4omo2san2ge727cfoc65hrzuwixprvop5id:18141",
+    "4471cec2b77b1608ff26b8695281e0b4ab35bad7f882eeaab043398644094a6c::/onion3/fqmbme5qvagh2tv722nrnwwcd2ooa4aqr43mxgiozo2yq33w74bop5qd:18141",
+    "e427d6007cb46e8c311fc75d2daaa95898a6162ce6a29cb4ab257c2ef70bfd62::/onion3/glicssekriwwwvfm2o5sk2mari4czbd7eklv4lsdn4wmy4ljss2t7zqd:18141",
+    "021baaee838a6c7a21ae3ed74f1cbb27e46351b78f0e00810c1a344a9042754d::/onion3/p2z2ptouqgi3agmw62uhz2tambqfzfdtetrfw443of3jnkkiw44e2zqd:18141",
+    "002a5b9d129401ca250d120b126caf067f8eb7a616252e630b6974da48def71a::/onion3/cldbbow3yzgxkvz4g2apoclrkbvg3mjxdvonoaeej3tarhlzkluodeyd:18141",
+]
+
+# This allowlist provides a method to force syncing from any known nodes you may choose, for example if you have a
+# couple of nodes that you always want to have in sync.
+# force_sync_peers = ["public_key1::address1", "public_key2::address2",... ]
+force_sync_peers = [
+    #my known peer 1
+    #"public_key1::address1",
+    #my known peer 2
+    #"public_key1::address1",
+]
+
+# DNS seeds
+# The DNS records in these hostnames should provide TXT records as per https://github.com/tari-project/tari/pull/2319
+# Enter a domain name for the TXT records: seeds.tari.com
+dns_seeds =["seeds.weatherwax.tari.com"]
+# The name server used to resolve DNS seeds  (Default: "1.1.1.1:53")
+# dns_seeds_name_server = "1.1.1.1:53"
+# Set to true to only accept DNS records that pass DNSSEC validation (Default: true)
+dns_seeds_use_dnssec = false
+
+# Determines the method of syncing blocks when the node is lagging. If you are not struggling with syncing, then
+# it is recommended to leave this setting as it. Available values are ViaBestChainMetadata and ViaRandomPeer.
+#block_sync_strategy="ViaBestChainMetadata"
+
+# Configure the maximum number of threads available for base node operation. These threads are spawned lazily, so a higher
+# number is recommended.
+# max_threads = 512
+
+# The number of threads to spawn and keep active at all times. The default is the number of cores available on this node.
+# core_threads = <number of cores>
+
+# The node's publicly-accessible hostname. This is the host name that is advertised on the network so that
+# peers can find you.
+# _NOTE_: If using the `tor` transport type, public_address will be ignored and an onion address will be
+# automatically configured
+#public_address = "/ip4/172.2.3.4/tcp/18189"
+
+# do we allow test addresses to be accpted like 127.0.0.1
+allow_test_addresses = false
+
+# Enable the gRPC server for the base node. Set this to true if you want to enable third-party wallet software
+grpc_enabled = true
+# The socket to expose for the gRPC base node server. This value is ignored if grpc_enabled is false.
+# Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
+grpc_base_node_address = "127.0.0.1:18142"
+# The socket to expose for the gRPC wallet server. This value is ignored if grpc_enabled is false.
+# Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
+grpc_console_wallet_address = "127.0.0.1:18143"
+
+# A path to the file that stores your node identity and secret key
+base_node_identity_file = "config/base_node_id.json"
+
+# A path to the file that stores your console wallet's node identity and secret key
+console_wallet_identity_file = "config/console_wallet_id.json"
+
+# -------------- Transport configuration --------------
+# Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
+# e.g. tor onion addresses will not be contactable.
+#transport = "tcp"
+# The address and port to listen for peer connections over TCP.
+#tcp_listener_address = "/ip4/0.0.0.0/tcp/18189"
+# Configures a tor proxy used to connect to onion addresses. All other traffic uses direct TCP connections.
+# This setting is optional however, if it is not specified, this node will not be able to connect to nodes that
+# only advertise an onion address.
+#tcp_tor_socks_address = "/ip4/127.0.0.1/tcp/36050"
+#tcp_tor_socks_auth = "none"
+
+# Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
+# onion v2, onion v3 and dns addresses.
+transport = "tor"
+# Address of the tor control server
+tor_control_address = "/ip4/127.0.0.1/tcp/9051"
+# Authentication to use for the tor control server
+tor_control_auth = "none" # or "password=xxxxxx"
+# The onion port to use.
+#tor_onion_port = 18141
+# The address to which traffic on the node's onion address will be forwarded
+# tor_forward_address = "/ip4/127.0.0.1/tcp/0"
+# Instead of attemping to get the SOCKS5 address from the tor control port, use this one. The default is to
+# use the first address returned by the tor control port (GETINFO /net/listeners/socks).
+#tor_socks_address_override=
+
+# Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
+#transport = "socks5"
+# The address of the SOCKS5 proxy
+#socks5_proxy_address = "/ip4/127.0.0.1/tcp/9050"
+# The address to which traffic will be forwarded
+#socks5_listener_address = "/ip4/127.0.0.1/tcp/18189"
+#socks5_auth = "none" # or "username_password=username:xxxxxxx"
+
+# A path to the file that stores the tor hidden service private key, if using the tor transport.
+base_node_tor_identity_file = "config/base_node_tor.json"
+
+# A path to the file that stores the console wallet's tor hidden service private key, if using the tor transport.
+console_wallet_tor_identity_file = "config/console_wallet_tor.json"
+
+# Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
+# Use cases include:
+# - allowing wallets to locally connect to their base node, rather than through tor, when used in conjunction with `tor_proxy_bypass_addresses`
+# - multiple P2P addresses, one public over DNS and one private over TOR
+# - a "bridge" between TOR and TCP-only nodes
+# auxilary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
+
+# When these addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
+# direcly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
+# tor_proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
+
+########################################################################################################################
+#                                                                                                                      #
+#                                             Mempool Configuration Options                                            #
+#                                                                                                                      #
+########################################################################################################################
+[mempool.weatherwax]
+
+# The maximum number of transactions that can be stored in the Unconfirmed Transaction pool. This is the main waiting
+# area in the mempool and almost all transactions will end up in this pool before being mined. It's for this reason
+# that this parameter will have the greatest impact on actual memory usage by your mempool. If you are not mining,
+# you can reduce this parameter to reduce memory consumption by your node, at the expense of network bandwith. For
+# reference, a single block can hold about 4,000 transactions
+# Default = 40,000 transactions
+# unconfirmed_pool_storage_capacity = 40000
+
+# The maximum number of transactions that can be stored in the Orphan Transaction pool. This pool keep transactions
+# that are 'orphans', i.e. transactions with inputs that don't exist in the UTXO set. If you're not mining, and
+# memory usage is a concern, this can safely be set to zero. Even so, orphan transactions do not appear that often
+# (it's usually a short chain of spends that are broadcast in quick succession). The other potential source of orphan
+# transactions are from DOS attacks and setting the `tx_ttl` parameter to a low value is an effective countermeasure
+# in this case. Default: 250 transactions
+# orphan_pool_storage_capacity = 250
+
+# The maximum amount of time an orphan transaction will be permitted to stay in the mempool before being rejected.
+# This should be set to a fairly long enough to allow the parent transaction to arrive; but low enough also to thwart
+# DOS attacks. Default: 300 seconds
+#orphan_tx_ttl = 300
+
+# The maximum number of transactions that can be stored in the Pending Transaction pool. This pool holds transactions
+# that are valid, but cannot be included in a block yet becuase there is a consensus rule holding it back, usually a
+# time lock. Once the conditions holding the transaction in the pending pool are resolved, the transaction will move
+# into the unconfirmed pool.  Default: 5,000 transactions
+# pending_pool_storage_capacity = 5000
+
+# The ReorgPool consists of all transactions that have recently been added to blocks.
+# When a potential blockchain reorganization occurs the transactions can be recovered from the ReorgPool and can be
+# added back into the UnconfirmedPool. Transactions in the ReOrg pool have a limited Time-to-live and will be removed
+# from the pool when the Time-to-live thresholds is reached. Also, when the capacity of the pool has been reached, the
+# oldest transactions will be removed to make space for incoming transactions. The pool capacity and TTL parameters
+# have the same meaning as those for the pending pool, but applied to the reorg pool; obviously.
+# Defaults: 10,000 transactions and 300 seconds
+#reorg_pool_storage_capacity = 10_000
+#reorg_tx_ttl = 300
+
+# The maximum number of transactions that can be skipped when compiling a set of highest priority transactions,
+# skipping over large transactions are performed in an attempt to fit more transactions into the remaining space.
+# This parameter only affects mining nodes. You can ignore it if you are only running a base node. Even so, changing
+# this parameter should not affect profitabilty in any meaningful way, since the transaction weights are selected to
+# closely mirror how much block space they take up
+#weight_tx_skip_count = 20
+
+########################################################################################################################
+#                                                                                                                      #
+#                                         Validator Node Configuration Options                                         #
+#                                                                                                                      #
+########################################################################################################################
+
+# If you are not , you can simply leave everything in this section commented out. Base nodes
+# help maintain the security of the Tari token and are the surest way to preserve your privacy and be 100% sure that
+# no-one is cheating you out of your money.
+
+[validator_node]
+
+# Enable the gRPC server for the base node. Set this to true if you want to enable third-party wallet software
+#grpc_enabled = false
+
+# The socket to expose for the gRPC base node server. This value is ignored if grpc_enabled is false.
+# Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
+#grpc_address = "127.0.0.1:18042"
+
+########################################################################################################################
+#                                                                                                                      #
+#                                             Merge Mining Configuration Options                                      #
+#                                                                                                                      #
+########################################################################################################################
+
+[merge_mining_proxy.weatherwax]
+
+# URL to monerod
+monerod_url = "http://monero-stagenet.exan.tech:38081" # stagenet
+#monerod_url = "http://18.133.59.45:28081"  # testnet
+#monerod_url = "http://18.132.124.81:18081" # mainnet
+
+# Address of the tari_merge_mining_proxy application
+proxy_host_address = "127.0.0.1:7878"
+
+# In sole merged mining, the block solution is usually submitted to the Monero blockchain
+# (monerod) as well as to the Tari blockchain, then this setting should be "true". With pool
+# merged mining, there is no sense in submitting the solution to the Monero blockchain as the
+# pool does that, then this setting should be "false". (default = true).
+proxy_submit_to_origin = true
+
+# If authentication is being used for curl
+monerod_use_auth = false
+
+# Username for curl
+monerod_username = ""
+
+# Password for curl
+monerod_password = ""
+
+# The merge mining proxy can either wait for the base node to achieve initial sync at startup before it enables mining,
+# or not. If merge mining starts before the base node has achieved initial sync, those Tari mined blocks will not be
+# accepted. (Default value = true; will wait for base node initial sync).
+#wait_for_initial_sync_at_startup = true
+
+[mining_node]
+# Number of mining threads
+# Default: number of logical CPU cores
+#num_mining_threads=8
+
+# GRPC address of base node
+# Default: value from `base_node.grpc_base_node_address`
+#base_node_grpc_address = "127.0.0.1:18142"
+
+# GRPC address of console wallet
+# Default: value from `base_node.grpc_console_wallet_address`
+#wallet_grpc_address = "127.0.0.1:18143"
+
+# Start mining only when base node is bootstrapped
+# and current block height is on the tip of network
+# Default: true
+#mine_on_tip_only=true
+
+# Will check tip with node every N seconds and restart mining
+# if height already taken and option `mine_on_tip_only` is set
+# to true
+# Default: 30 seconds
+#validate_tip_timeout_sec=30

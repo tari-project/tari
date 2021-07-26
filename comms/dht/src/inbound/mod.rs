@@ -36,6 +36,3 @@ mod error;
 
 mod message;
 pub use message::{DecryptedDhtMessage, DhtInboundMessage};
-
-mod validate;
-pub use validate::ValidateLayer;

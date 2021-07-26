@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::time::Duration;
+use tari_key_manager::mnemonic::MnemonicLanguage;
 
 #[derive(Clone, Debug)]
 pub struct OutputManagerServiceConfig {
@@ -28,15 +29,17 @@ pub struct OutputManagerServiceConfig {
     pub max_utxo_query_size: usize,
     pub prevent_fee_gt_amount: bool,
     pub peer_dial_retry_timeout: Duration,
+    pub seed_word_language: MnemonicLanguage,
 }
 
 impl Default for OutputManagerServiceConfig {
     fn default() -> Self {
         Self {
             base_node_query_timeout: Duration::from_secs(60),
-            max_utxo_query_size: 5000,
+            max_utxo_query_size: 3500,
             prevent_fee_gt_amount: true,
             peer_dial_retry_timeout: Duration::from_secs(20),
+            seed_word_language: MnemonicLanguage::English,
         }
     }
 }

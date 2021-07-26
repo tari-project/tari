@@ -20,16 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use rand::{distributions::Alphanumeric, rngs::OsRng, CryptoRng, Rng};
-use std::{fmt::Debug, iter, thread, time::Duration};
+use rand::{CryptoRng, Rng};
+use std::{fmt::Debug, thread, time::Duration};
 use tari_core::transactions::{
+    helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
     tari_amount::MicroTari,
     transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
     types::{CommitmentFactory, PrivateKey, PublicKey},
 };
 use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+    script,
 };
 
 pub fn assert_change<F, T>(mut func: F, to: T, poll_count: usize)
@@ -60,7 +61,7 @@ where
 
 pub struct TestParams {
     pub spend_key: PrivateKey,
-    pub change_key: PrivateKey,
+    pub change_spend_key: PrivateKey,
     pub offset: PrivateKey,
     pub nonce: PrivateKey,
     pub public_nonce: PublicKey,
@@ -70,7 +71,7 @@ impl TestParams {
         let r = PrivateKey::random(rng);
         TestParams {
             spend_key: PrivateKey::random(rng),
-            change_key: PrivateKey::random(rng),
+            change_spend_key: PrivateKey::random(rng),
             offset: PrivateKey::random(rng),
             public_nonce: PublicKey::from_secret_key(&r),
             nonce: r,
@@ -79,30 +80,33 @@ impl TestParams {
 }
 
 pub fn make_input<R: Rng + CryptoRng>(
-    rng: &mut R,
+    _rng: &mut R,
     val: MicroTari,
     factory: &CommitmentFactory,
-) -> (TransactionInput, UnblindedOutput)
-{
-    let key = PrivateKey::random(rng);
-    let commitment = factory.commit_value(&key, val.into());
-    let input = TransactionInput::new(OutputFeatures::default(), commitment);
-    (input, UnblindedOutput::new(val, key, None))
+) -> (TransactionInput, UnblindedOutput) {
+    let utxo = create_unblinded_output(script!(Nop), OutputFeatures::default(), TestParamsHelpers::new(), val);
+    (
+        utxo.as_transaction_input(&factory)
+            .expect("Should be able to make transaction input"),
+        utxo,
+    )
 }
 
 pub fn make_input_with_features<R: Rng + CryptoRng>(
-    rng: &mut R,
+    _rng: &mut R,
     value: MicroTari,
     factory: &CommitmentFactory,
     features: Option<OutputFeatures>,
-) -> (TransactionInput, UnblindedOutput)
-{
-    let spending_key = PrivateKey::random(rng);
-    let commitment = factory.commit_value(&spending_key, value.into());
-    let input = TransactionInput::new(features.clone().unwrap_or_default(), commitment);
-    (input, UnblindedOutput::new(value, spending_key, features))
-}
-
-pub fn random_string(len: usize) -> String {
-    iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
+) -> (TransactionInput, UnblindedOutput) {
+    let utxo = create_unblinded_output(
+        script!(Nop),
+        features.unwrap_or_default(),
+        TestParamsHelpers::new(),
+        value,
+    );
+    (
+        utxo.as_transaction_input(&factory)
+            .expect("Should be able to make transaction input"),
+        utxo,
+    )
 }

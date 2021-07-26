@@ -4,19 +4,19 @@ on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
-#    branches:
-#      - leet-*
+    branches:
+      - leet-*
   schedule:
-    - cron: '05 00 * * *'
+    - cron: '05 00 01 * *'
   workflow_dispatch:
     inputs:
       customTag:
-        description: 'Development Tag'
+        description: "Development Tag"
         required: true
-        default: 'development-tag'
+        default: "development-tag"
 
 env:
-  TBN_FILENAME: 'tari_base_node'
+  TBN_FILENAME: "tari_base_node"
 
 jobs:
   builds:
@@ -24,20 +24,31 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-#        os: [ubuntu-18.04, ubuntu-20.04, macos-10.15, macos-11.0, windows-2019]
+#        # Breaks build - cmake issue?
+#        os: [windows-2016]
+#       # Breaks build - clang build (croaring-sys)?
+#        features: ["safe"]
 #        os: [ubuntu-latest, macos-latest, windows-latest, self-hosted]
 #        os: [ubuntu-18.04, ubuntu-20.04, macos-10.15, macos-11.0, windows-2016, windows-2019]
-        os: [ubuntu-18.04, macos-10.15, windows-2016, self-hosted]
-#        os: [ubuntu-20.04]
+        os: [ubuntu-18.04, macos-10.15, windows-2019, self-hosted]
         # https://gcc.gnu.org/onlinedocs/gcc/x86-Options.html
 #        features: ["safe", "avx2"]
-#        features: ["safe"]
 #        target_cpu: ["x86-64", "broadwell", "skylake"]
         target_cpu: ["haswell"]
 #        target_release: ["release", "debug"]
 #        exclude:
 #          - target_cpu: "x86-64"
 #            features: "avx2"
+        exclude:
+          - os: "macos-10.15"
+            target_cpu: "haswell"
+          - os: "self-hosted"
+            target_cpu: "haswell"
+        include:
+          - os: "macos-10.15"
+            target_cpu: "x86-64"
+          - os: "self-hosted"
+            target_cpu: "x86-64"
 
     runs-on: ${{ matrix.os }}
 
@@ -57,7 +68,7 @@ jobs:
         echo "S3DESTOVERRIDE=" >> $GITHUB_ENV
 
     - name: Scheduled Destination Folder Override
-      if: ${{ github.event_name == 'schedule' && github.event.schedule == '05 00 * * *' }}
+      if: ${{ github.event_name == 'schedule' && github.event.schedule == '05 00 01 * *' }}
       run: |
         echo "S3DESTOVERRIDE=daily/" >> $GITHUB_ENV
 
@@ -65,13 +76,14 @@ jobs:
       uses: actions-rs/toolchain@v1
       with:
 #        toolchain: stable
-        toolchain: nightly-2020-08-13
+        toolchain: nightly-2021-05-09
         components: rustfmt
 #        target: ${{ matrix.target }}
         override: true
 
-    - name: Install Ubuntu dependencies
-      if: startsWith(matrix.os,'ubuntu')
+    - name: Install Linux dependencies - Ubuntu
+#      if: startsWith(matrix.os,'ubuntu')
+      if: startsWith(runner.os,'Linux')
       run: |
         sudo apt-get update
         sudo apt-get -y install \
@@ -79,27 +91,32 @@ jobs:
           libssl-dev \
           pkg-config \
           libsqlite3-dev \
+          clang \
           git \
           cmake \
-          zip \
           libc++-dev \
           libc++abi-dev \
           libprotobuf-dev \
-          protobuf-compiler
+          protobuf-compiler \
+          libncurses5-dev \
+          libncursesw5-dev \
+          zip
 #        sudo apt-get -y upgrade
 
     - name: Install macOS dependencies
-      if: startsWith(matrix.os,'macos')
+#      if: startsWith(matrix.os,'macos')
+      if: startsWith(runner.os,'macOS')
       run: brew install cmake zip
 
     - name: Install Windows dependencies
-      if: startsWith(matrix.os,'windows')
+#      if: startsWith(matrix.os,'windows')
+      if: startsWith(runner.os,'Windows')
       run: |
         vcpkg.exe install sqlite3:x64-windows zlib:x64-windows
-        choco upgrade llvm zip psutils openssl -y
+        choco upgrade llvm zip psutils openssl strawberryperl -y
 
     - name: Set environment variables - Nix
-      if: "!startsWith(matrix.os,'Windows')"
+      if: "!startsWith(runner.os,'Windows')"
       run: |
         echo "SHARUN=shasum --algorithm 256" >> $GITHUB_ENV
         echo "CC=gcc" >> $GITHUB_ENV
@@ -108,12 +125,12 @@ jobs:
         echo "TBN_DIST=/dist" >> $GITHUB_ENV
 
     - name: Set environment variables - macOS
-      if: startsWith(matrix.os,'macos')
+      if: startsWith(runner.os,'macOS')
       run: |
         echo "S3DESTDIR=osx" >> $GITHUB_ENV
 
     - name: Set environment variables - Windows
-      if: startsWith(matrix.os,'Windows')
+      if: startsWith(runner.os,'Windows')
       shell: bash
       run: |
         echo "SHARUN=pwsh C:\ProgramData\chocolatey\lib\psutils\tools\psutils-master\shasum.ps1 --algorithm 256" >> $GITHUB_ENV
@@ -123,13 +140,14 @@ jobs:
         echo "SQLITE3_LIB_DIR=C:\vcpkg\installed\x64-windows\lib" >> $GITHUB_ENV
         echo "OPENSSL_DIR=C:\Program Files\OpenSSL-Win64" >> $GITHUB_ENV
         echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $GITHUB_ENV
+        echo "C:\Strawberry\perl\bin" >> $GITHUB_PATH
 
     # this is a hack to fix an issue with building libclang in MSVC
     # it should be fixed in release 16.9 of MSVC
     # issue https://github.com/microsoft/STL/issues/1300
     # temp fix https://github.com/mono/CppSharp/pull/1514/files
     - name: fix intrin.h file - Windows
-      if: startsWith(matrix.os,'Windows')
+      if: startsWith(runner.os,'Windows')
       shell: powershell
       run: .github/hacks/intrin.ps1
 
@@ -140,19 +158,25 @@ jobs:
           ~/.cargo/registry
           ~/.cargo/git
           target
-        key: ${{ runner.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
-# ToDo: Look at making caching less strict
-#        key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ runner.os }}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
     - name: Build binaries
       env:
         RUSTFLAGS: '-C target_cpu=${{ matrix.target_cpu }}'
         ROARING_ARCH: '${{ matrix.target_cpu }}'
-      shell: bash
       run: |
+        echo "Cache Key: ${{ runner.os }}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}"
         #cd applications/tari_base_node
         #cargo build --release --bin tari_base_node --features ${{ matrix.features}}
         cargo build --release
+
+#    - name: Prepare Archives
+#      shell: bash
+#      run: |
+#        ls -la "$GITHUB_WORKSPACE"
+#        mkdir -p "$GITHUB_WORKSPACE${TBN_DIST}/archives"
+#        export distDir="$GITHUB_WORKSPACE${TBN_DIST}/archives"
+#        "$GITHUB_WORKSPACE/scripts/build_dists_tarball.sh" noBuild
 
     - name: Prepare binaries
       shell: bash
@@ -197,9 +221,15 @@ jobs:
 
     - name: Sync dist to S3 - Bash
       continue-on-error: true  # Don't break if s3 upload fails
+      if: ${{ env.AWS_SECRET_ACCESS_KEY != '' && matrix.os != 'self-hosted' }}
       shell: bash
       run: |
         echo "Starting upload ... ${{ env.SOURCE }}"
+        if [ "$RUNNER_OS" == "Windows" ]; then
+          echo "No ls for 'D:' on Windows"
+        else
+          ls -al ${{ env.SOURCE }}
+        fi
         aws s3 ${{ env.S3CMD }} --region ${{ secrets.AWS_REGION }} \
           "${{ env.SOURCE }}" \
           s3://${{ secrets.AWS_S3_BUCKET }}/${{ env.DEST_DIR }} \

@@ -32,6 +32,9 @@ pub use identity::{identity_exchange, IdentityProtocolError, IDENTITY_PROTOCOL};
 mod negotiation;
 pub use negotiation::ProtocolNegotiation;
 
+mod network_info;
+pub use network_info::NodeNetworkInfo;
+
 mod protocols;
 pub use protocols::{ProtocolEvent, ProtocolNotification, ProtocolNotificationRx, ProtocolNotificationTx, Protocols};
 

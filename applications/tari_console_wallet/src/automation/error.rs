@@ -25,8 +25,9 @@ use std::num::{ParseFloatError, ParseIntError};
 use chrono_english::DateError;
 use log::*;
 use tari_app_utilities::utilities::ExitCodes;
-use tari_core::transactions::tari_amount::MicroTariError;
+use tari_core::transactions::{tari_amount::MicroTariError, transaction::TransactionError};
 use tari_wallet::{
+    error::{WalletError, WalletStorageError},
     output_manager_service::error::OutputManagerError,
     transaction_service::error::TransactionServiceError,
 };
@@ -36,11 +37,14 @@ use tokio::task::JoinError;
 pub const LOG_TARGET: &str = "wallet::automation::error";
 
 #[derive(Debug, Error)]
+#[allow(clippy::large_enum_variant)]
 pub enum CommandError {
     #[error("Argument error - were they in the right order?")]
     Argument,
     #[error("Transaction service error `{0}`")]
-    Transaction(#[from] TransactionServiceError),
+    TransactionError(#[from] TransactionError),
+    #[error("Transaction service error `{0}`")]
+    TransactionServiceError(#[from] TransactionServiceError),
     #[error("Output manager error: `{0}`")]
     OutputManagerError(#[from] OutputManagerError),
     #[error("Tokio join error `{0}`")]
@@ -49,6 +53,12 @@ pub enum CommandError {
     Config(String),
     #[error("Comms error `{0}`")]
     Comms(String),
+    #[error("CSV file error `{0}`")]
+    CSVFile(String),
+    #[error("Wallet error `{0}`")]
+    WalletError(#[from] WalletError),
+    #[error("Wallet storage error `{0}`")]
+    WalletStorageError(#[from] WalletStorageError),
 }
 
 impl From<CommandError> for ExitCodes {
@@ -66,7 +76,7 @@ pub enum ParseError {
     MicroTariAmount(#[from] MicroTariError),
     #[error("Failed to parse public key or emoji id.")]
     PublicKey,
-    #[error("Failed to parse a missing {0}.")]
+    #[error("Failed to parse a missing {0}")]
     Empty(String),
     #[error("Failed to parse float.")]
     Float(#[from] ParseFloatError),
@@ -74,8 +84,10 @@ pub enum ParseError {
     Int(#[from] ParseIntError),
     #[error("Failed to parse date. {0}")]
     Date(#[from] DateError),
-    #[error("Invalid combination of arguments.")]
-    Invalid,
+    #[error("Failed to parse a net address.")]
+    Address,
+    #[error("Invalid combination of arguments ({0}).")]
+    Invalid(String),
     #[error("Parsing not yet implemented for {0}.")]
     Unimplemented(String),
 }

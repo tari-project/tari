@@ -65,8 +65,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     pub async fn negotiate_protocol_outbound(
         &mut self,
         selected_protocols: &[ProtocolId],
-    ) -> Result<ProtocolId, ProtocolError>
-    {
+    ) -> Result<ProtocolId, ProtocolError> {
         for protocol in selected_protocols {
             self.write_frame_flush(protocol, Flags::NONE).await?;
 
@@ -103,8 +102,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     pub async fn negotiate_protocol_outbound_optimistic(
         &mut self,
         protocol: &ProtocolId,
-    ) -> Result<ProtocolId, ProtocolError>
-    {
+    ) -> Result<ProtocolId, ProtocolError> {
         self.write_frame_flush(protocol, Flags::OPTIMISTIC | Flags::TERMINATE)
             .await?;
 
@@ -116,8 +114,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     pub async fn negotiate_protocol_inbound(
         &mut self,
         supported_protocols: &[ProtocolId],
-    ) -> Result<ProtocolId, ProtocolError>
-    {
+    ) -> Result<ProtocolId, ProtocolError> {
         let mut round = 0;
         loop {
             let (proto, flags) = self.read_frame().await?;

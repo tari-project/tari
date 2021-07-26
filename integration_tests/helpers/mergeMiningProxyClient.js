@@ -1,33 +1,39 @@
 const axios = require("axios");
 
 class MergeMiningProxyClient {
-  constructor(address) {
+  constructor(address, nodeClient) {
     this.address = address;
+    this.baseNodeClient = nodeClient;
   }
 
   async getHeight() {
-    let res = await axios.get(`${this.address}/get_height`);
+    const res = await axios.get(`${this.address}/get_height`);
     return res.data.height;
   }
 
   async getBlockTemplate() {
-    let res = await axios.post(`${this.address}/json_rpc`, {
-      jsonrpc: "2.0",
-      id: "0",
-      method: "getblocktemplate",
-      params: {
-        wallet_address:
-          "55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt",
-        reserve_size: 60,
-      },
-    });
-    //console.log(res.data);
-    //console.log("Blocktemplate:",res.data.result.blocktemplate_blob);
-    return res.data.result;
+    try {
+      const res = await axios.post(`${this.address}/json_rpc`, {
+        jsonrpc: "2.0",
+        id: "0",
+        method: "getblocktemplate",
+        params: {
+          wallet_address:
+            "5AUoj81i63cBUbiKY5jybsZXRDYb9CppmSjiZXC8ZYT6HZH6ebsQvBecYfRKDYoyzKF2uML9FKkTAc7nJvHKdoDYQEeteRW",
+          reserve_size: 60,
+        },
+      });
+      // console.log(res.data);
+      // console.log("Blocktemplate:", res.data.result.blocktemplate_blob);
+      return res.data.result;
+    } catch (e) {
+      console.error("getBlockTemplate error: ", e);
+      throw e;
+    }
   }
 
   async submitBlock(block) {
-    let res = await axios.post(`${this.address}/json_rpc`, {
+    const res = await axios.post(`${this.address}/json_rpc`, {
       jsonrpc: "2.0",
       id: "0",
       method: "submit_block",
@@ -37,7 +43,7 @@ class MergeMiningProxyClient {
   }
 
   async getLastBlockHeader() {
-    let res = await axios.post(`${this.address}/json_rpc`, {
+    const res = await axios.post(`${this.address}/json_rpc`, {
       jsonrpc: "2.0",
       id: "0",
       method: "get_last_block_header",
@@ -46,7 +52,7 @@ class MergeMiningProxyClient {
   }
 
   async getBlockHeaderByHash(hash) {
-    let res = await axios.post(`${this.address}/json_rpc`, {
+    const res = await axios.post(`${this.address}/json_rpc`, {
       jsonrpc: "2.0",
       id: "0",
       method: "get_block_header_by_hash",
@@ -59,11 +65,35 @@ class MergeMiningProxyClient {
 
   async mineBlock() {
     // Mines a block in the same way that xmrig would
-    let template = await this.getBlockTemplate();
-    let height = await this.getHeight();
-    let block = template.blocktemplate_blob;
+    const template = await this.getBlockTemplate();
+    // XMRig always calls this, so duplicated here
+    await this.getHeight();
+    const block = template.blocktemplate_blob;
     // Need to insert a nonce into the template as xmrig would for it to be a valid block.
-    let result = await this.submitBlock(block);
+    await this.submitBlock(block);
+  }
+
+  async mineBlocksUntilHeightIncreasedBy(numBlocks) {
+    let tipHeight = parseInt(await this.baseNodeClient.getTipHeight());
+    const height = tipHeight + parseInt(numBlocks);
+    let i = 0;
+    do {
+      if (i % 25 === 0) {
+        console.log(
+          "[mmProxy client] Tip at",
+          tipHeight,
+          "...(stopping at " + height + ")"
+        );
+      }
+      i += 1;
+      // Mines a block in the same way that xmrig would
+      const template = await this.getBlockTemplate();
+      const block = template.blocktemplate_blob;
+      // Need to insert a nonce into the template as xmrig would for it to be a valid block.
+      await this.submitBlock(block);
+      tipHeight = parseInt(await this.baseNodeClient.getTipHeight());
+    } while (tipHeight < height);
+    return await this.baseNodeClient.getTipHeight();
   }
 }
 

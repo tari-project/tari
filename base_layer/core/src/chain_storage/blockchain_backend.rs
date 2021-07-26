@@ -1,9 +1,11 @@
 use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{
+        accumulated_data::DeletedBitmap,
         pruned_output::PrunedOutput,
         BlockAccumulatedData,
         BlockHeaderAccumulatedData,
+        ChainBlock,
         ChainHeader,
         ChainStorageError,
         DbKey,
@@ -21,33 +23,30 @@ use croaring::Bitmap;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_mmr::Hash;
 
-/// Identify behaviour for Blockchain database back ends. Implementations must support `Send` and `Sync` so that
+/// Identify behaviour for Blockchain database backends. Implementations must support `Send` and `Sync` so that
 /// `BlockchainDatabase` can be thread-safe. The backend *must* also execute transactions atomically; i.e., every
 /// operation within it must succeed, or they all fail. Failure to support this contract could lead to
 /// synchronisation issues in your database backend.
 ///
 /// Data is passed to and from the backend via the [DbKey], [DbValue], and [DbValueKey] enums. This strategy allows
-/// us to keep the reading and writing API extremely simple. Extending the types of data that the back ends can handle
-/// will entail adding to those enums, and the back ends, while this trait can remain unchanged.
+/// us to keep the reading and writing API extremely simple. Extending the types of data that the backends can handle
+/// will entail adding to those enums, and the backends, while this trait can remain unchanged.
 #[allow(clippy::ptr_arg)]
 pub trait BlockchainBackend: Send + Sync {
     /// Commit the transaction given to the backend. If there is an error, the transaction must be rolled back, and
     /// the error condition returned. On success, every operation in the transaction will have been committed, and
     /// the function will return `Ok(())`.
     fn write(&mut self, tx: DbTransaction) -> Result<(), ChainStorageError>;
-    /// Fetch a value from the back end corresponding to the given key. If the value is not found, `get` must return
-    /// `Ok(None)`. It should only error if there is an access or integrity issue with the underlying back end.
+    /// Fetch a value from the backend corresponding to the given key. If the value is not found, `get` must return
+    /// `Ok(None)`. It should only error if there is an access or integrity issue with the underlying backend.
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError>;
-    /// Checks to see whether the given key exists in the back end. This function should only fail if there is an
-    /// access or integrity issue with the back end.
+    /// Checks to see whether the given key exists in the backend. This function should only fail if there is an
+    /// access or integrity issue with the backend.
     fn contains(&self, key: &DbKey) -> Result<bool, ChainStorageError>;
 
     /// Fetches data that is calculated and accumulated for blocks that have been
     /// added to a chain of headers
-    fn fetch_header_and_accumulated_data(
-        &self,
-        height: u64,
-    ) -> Result<(BlockHeader, BlockHeaderAccumulatedData), ChainStorageError>;
+    fn fetch_chain_header_by_height(&self, height: u64) -> Result<ChainHeader, ChainStorageError>;
 
     /// Fetches data that is calculated and accumulated for blocks that have been
     /// added to a chain of headers
@@ -56,7 +55,7 @@ pub trait BlockchainBackend: Send + Sync {
         hash: &HashOutput,
     ) -> Result<Option<BlockHeaderAccumulatedData>, ChainStorageError>;
 
-    fn fetch_chain_header_in_all_chains(&self, hash: &HashOutput) -> Result<Option<ChainHeader>, ChainStorageError>;
+    fn fetch_chain_header_in_all_chains(&self, hash: &HashOutput) -> Result<ChainHeader, ChainStorageError>;
 
     fn fetch_header_containing_kernel_mmr(&self, mmr_position: u64) -> Result<ChainHeader, ChainStorageError>;
 
@@ -101,10 +100,13 @@ pub trait BlockchainBackend: Send + Sync {
         start: u64,
         end: u64,
         deleted: &Bitmap,
-    ) -> Result<(Vec<PrunedOutput>, Vec<Bitmap>), ChainStorageError>;
+    ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError>;
 
     /// Fetch a specific output. Returns the output and the leaf index in the output MMR
-    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(TransactionOutput, u32)>, ChainStorageError>;
+    fn fetch_output(
+        &self,
+        output_hash: &HashOutput,
+    ) -> Result<Option<(TransactionOutput, u32, u64)>, ChainStorageError>;
 
     /// Fetch all outputs in a block
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError>;
@@ -131,15 +133,16 @@ pub trait BlockchainBackend: Send + Sync {
     /// Returns the kernel count
     fn kernel_count(&self) -> Result<usize, ChainStorageError>;
 
-    /// Fetches all of the orphans (hash) that are currently at the tip of an alternate chain
+    /// Fetches an current tip orphan by hash or returns None if the orphan is not found or is not a tip of any
+    /// alternate chain
     fn fetch_orphan_chain_tip_by_hash(&self, hash: &HashOutput) -> Result<Option<ChainHeader>, ChainStorageError>;
     /// Fetch all orphans that have `hash` as a previous hash
     fn fetch_orphan_children_of(&self, hash: HashOutput) -> Result<Vec<Block>, ChainStorageError>;
 
-    fn fetch_orphan_header_accumulated_data(
-        &self,
-        hash: HashOutput,
-    ) -> Result<BlockHeaderAccumulatedData, ChainStorageError>;
+    fn fetch_orphan_chain_block(&self, hash: HashOutput) -> Result<Option<ChainBlock>, ChainStorageError>;
+
+    /// Returns the full deleted bitmap at the current blockchain tip
+    fn fetch_deleted_bitmap(&self) -> Result<DeletedBitmap, ChainStorageError>;
 
     /// Delete orphans according to age. Used to keep the orphan pool at a certain capacity
     fn delete_oldest_orphans(
@@ -149,7 +152,7 @@ pub trait BlockchainBackend: Send + Sync {
     ) -> Result<(), ChainStorageError>;
 
     /// This gets the monero seed_height. This will return 0, if the seed is unkown
-    fn fetch_monero_seed_first_seen_height(&self, seed: &str) -> Result<u64, ChainStorageError>;
+    fn fetch_monero_seed_first_seen_height(&self, seed: &[u8]) -> Result<u64, ChainStorageError>;
 
     fn fetch_horizon_data(&self) -> Result<Option<HorizonData>, ChainStorageError>;
 }

@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::utils::random_string;
 use aes_gcm::{
     aead::{generic_array::GenericArray, NewAead},
     Aes256Gcm,
@@ -28,14 +27,20 @@ use aes_gcm::{
 use chrono::Utc;
 use rand::rngs::OsRng;
 use tari_core::transactions::{
+    helpers::{create_unblinded_output, TestParams},
     tari_amount::{uT, MicroTari},
-    transaction::{OutputFeatures, Transaction, UnblindedOutput},
+    transaction::{OutputFeatures, Transaction},
     transaction_protocol::sender::TransactionSenderMessage,
     types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
-use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
+use tari_crypto::{
+    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+    script,
+    script::{ExecutionStack, TariScript},
+};
+use tari_test_utils::random;
 use tari_wallet::{
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     transaction_service::storage::{
@@ -58,9 +63,14 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut runtime = Runtime::new().unwrap();
     let mut db = TransactionDatabase::new(backend);
     let factories = CryptoFactories::default();
+    let input = create_unblinded_output(
+        TariScript::default(),
+        OutputFeatures::default(),
+        TestParams::new(),
+        MicroTari::from(100_000),
+    );
     let mut builder = SenderTransactionProtocol::builder(1);
     let amount = MicroTari::from(10_000);
-    let input = UnblindedOutput::new(MicroTari::from(100_000), PrivateKey::random(&mut OsRng), None);
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177))
@@ -69,10 +79,20 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .with_amount(0, amount)
         .with_message("Yo!".to_string())
         .with_input(
-            input.as_transaction_input(&factories.commitment, OutputFeatures::default()),
+            input
+                .as_transaction_input(&factories.commitment)
+                .expect("Should be able to make transaction input"),
             input,
         )
-        .with_change_secret(PrivateKey::random(&mut OsRng));
+        .with_change_secret(PrivateKey::random(&mut OsRng))
+        .with_recipient_data(
+            0,
+            script!(Nop),
+            PrivateKey::random(&mut OsRng),
+            Default::default(),
+            PrivateKey::random(&mut OsRng),
+        )
+        .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
     let stp = builder.build::<HashDigest>(&factories).unwrap();
 
@@ -218,7 +238,13 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     assert_eq!(outbound_pub_key, outbound_txs[0].destination_public_key);
 
     let mut completed_txs = Vec::new();
-    let tx = Transaction::new(vec![], vec![], vec![], PrivateKey::random(&mut OsRng));
+    let tx = Transaction::new(
+        vec![],
+        vec![],
+        vec![],
+        PrivateKey::random(&mut OsRng),
+        PrivateKey::random(&mut OsRng),
+    );
 
     for i in 0..messages.len() {
         completed_txs.push(CompletedTransaction {
@@ -242,6 +268,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             last_send_timestamp: None,
             valid: true,
             confirmations: None,
+            mined_height: None,
         });
         runtime
             .block_on(db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone()))
@@ -529,7 +556,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
 
 #[test]
 pub fn test_transaction_service_sqlite_db() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_name = format!("{}.sqlite3", random::string(8));
     let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
@@ -540,7 +567,7 @@ pub fn test_transaction_service_sqlite_db() {
 
 #[test]
 pub fn test_transaction_service_sqlite_db_encrypted() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_name = format!("{}.sqlite3", random::string(8));
     let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);

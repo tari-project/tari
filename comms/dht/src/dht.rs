@@ -109,8 +109,7 @@ impl Dht {
         outbound_tx: mpsc::Sender<DhtOutboundRequest>,
         connectivity: ConnectivityRequester,
         shutdown_signal: ShutdownSignal,
-    ) -> Result<Self, DhtInitializationError>
-    {
+    ) -> Result<Self, DhtInitializationError> {
         let (dht_sender, dht_receiver) = mpsc::channel(DHT_ACTOR_CHANNEL_SIZE);
         let (discovery_sender, discovery_receiver) = mpsc::channel(DHT_DISCOVERY_CHANNEL_SIZE);
         let (saf_sender, saf_receiver) = mpsc::channel(DHT_SAF_SERVICE_CHANNEL_SIZE);
@@ -164,8 +163,7 @@ impl Dht {
         conn: DbConnection,
         request_receiver: mpsc::Receiver<DhtRequest>,
         shutdown_signal: ShutdownSignal,
-    ) -> DhtActor
-    {
+    ) -> DhtActor {
         DhtActor::new(
             self.config.clone(),
             conn,
@@ -182,8 +180,7 @@ impl Dht {
         &self,
         request_receiver: mpsc::Receiver<DhtDiscoveryRequest>,
         shutdown_signal: ShutdownSignal,
-    ) -> DhtDiscoveryService
-    {
+    ) -> DhtDiscoveryService {
         DhtDiscoveryService::new(
             self.config.clone(),
             Arc::clone(&self.node_identity),
@@ -224,8 +221,7 @@ impl Dht {
         request_rx: mpsc::Receiver<StoreAndForwardRequest>,
         shutdown_signal: ShutdownSignal,
         saf_response_signal_rx: mpsc::Receiver<()>,
-    ) -> StoreAndForwardService
-    {
+    ) -> StoreAndForwardService {
         StoreAndForwardService::new(
             self.config.clone(),
             conn,
@@ -279,9 +275,8 @@ impl Dht {
             InboundMessage,
             Response = (),
             Error = PipelineError,
-            Future = impl Future<Output = Result<(), PipelineError>> + Send,
-        > + Clone
-                      + Send,
+            Future = impl Future<Output = Result<(), PipelineError>>,
+        > + Clone,
     >
     where
         S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Clone + Send + Sync + 'static,
@@ -292,7 +287,6 @@ impl Dht {
         ServiceBuilder::new()
             .layer(MetricsLayer::new(self.metrics_collector.clone()))
             .layer(inbound::DeserializeLayer::new(self.peer_manager.clone()))
-            .layer(inbound::ValidateLayer::new(self.config.network))
             .layer(DedupLayer::new(self.dht_requester()))
             .layer(tower_filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
             .layer(MessageLoggingLayer::new(format!(
@@ -342,9 +336,8 @@ impl Dht {
             DhtOutboundRequest,
             Response = (),
             Error = PipelineError,
-            Future = impl Future<Output = Result<(), PipelineError>> + Send,
-        > + Clone
-                      + Send,
+            Future = impl Future<Output = Result<(), PipelineError>>,
+        > + Clone,
     >
     where
         S: Service<OutboundMessage, Response = (), Error = PipelineError> + Clone + Send + 'static,
@@ -355,8 +348,7 @@ impl Dht {
                 Arc::clone(&self.node_identity),
                 self.dht_requester(),
                 self.discovery_service_requester(),
-                self.config.network,
-                chrono::Duration::from_std(self.config.saf_msg_validity).unwrap(),
+                self.config.saf_msg_validity,
             ))
             .layer(MessageLoggingLayer::new(format!(
                 "Outbound [{}]",
@@ -567,7 +559,7 @@ mod test {
         );
 
         let origin_mac = dht_envelope.header.as_ref().unwrap().origin_mac.clone();
-        assert_eq!(origin_mac.is_empty(), false);
+        assert!(!origin_mac.is_empty());
         let inbound_message = make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().into());
 
         service.call(inbound_message).await.unwrap();

@@ -280,10 +280,7 @@ async fn online_then_offline() {
     .await;
 
     // Still online because we have client connections
-    assert_eq!(
-        connectivity.get_connectivity_status().await.unwrap().is_offline(),
-        false
-    );
+    assert!(!connectivity.get_connectivity_status().await.unwrap().is_offline());
 
     // Disconnect client connections
     for conn in &client_connections {

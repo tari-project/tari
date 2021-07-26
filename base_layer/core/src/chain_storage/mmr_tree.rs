@@ -30,13 +30,13 @@ use std::{
 pub enum MmrTree {
     Utxo,
     Kernel,
-    RangeProof,
+    Witness,
 }
 
 impl Display for MmrTree {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            MmrTree::RangeProof => f.write_str("Range Proof"),
+            MmrTree::Witness => f.write_str("Witness"),
             MmrTree::Utxo => f.write_str("UTXO"),
             MmrTree::Kernel => f.write_str("Kernel"),
         }
@@ -50,7 +50,7 @@ impl TryFrom<i32> for MmrTree {
         match v {
             0 => Ok(MmrTree::Utxo),
             1 => Ok(MmrTree::Kernel),
-            2 => Ok(MmrTree::RangeProof),
+            2 => Ok(MmrTree::Witness),
             _ => Err("Invalid MmrTree".into()),
         }
     }

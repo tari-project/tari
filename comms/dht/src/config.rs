@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{envelope::Network, network_discovery::NetworkDiscoveryConfig, storage::DbConnectionUrl};
+use crate::{network_discovery::NetworkDiscoveryConfig, storage::DbConnectionUrl};
 use std::time::Duration;
 
 #[derive(Debug, Clone)]
@@ -91,8 +91,6 @@ pub struct DhtConfig {
     /// The interval to change the random pool peers.
     /// Default: 2 hours
     pub connectivity_random_pool_refresh: Duration,
-    /// The active Network. Default: TestNet
-    pub network: Network,
     /// Network discovery config
     pub network_discovery: NetworkDiscoveryConfig,
     /// Length of time to ban a peer if the peer misbehaves at the DHT-level.
@@ -123,15 +121,11 @@ impl DhtConfig {
     }
 
     pub fn default_mainnet() -> Self {
-        Self {
-            network: Network::MainNet,
-            ..Default::default()
-        }
+        Default::default()
     }
 
     pub fn default_local_test() -> Self {
         Self {
-            network: Network::LocalTest,
             database_url: DbConnectionUrl::Memory,
             saf_auto_request: false,
             auto_join: false,
@@ -170,7 +164,6 @@ impl Default for DhtConfig {
             connectivity_random_pool_refresh: Duration::from_secs(2 * 60 * 60),
             auto_join: false,
             join_cooldown_interval: Duration::from_secs(10 * 60),
-            network: Network::TestNet,
             network_discovery: Default::default(),
             ban_duration: Duration::from_secs(6 * 60 * 60),
             allow_test_addresses: false,

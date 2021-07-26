@@ -230,8 +230,7 @@ where
         protocol_notifications: ProtocolNotificationRx<TSubstream>,
         comms_provider: TCommsProvider,
         request_rx: mpsc::Receiver<RpcServerRequest>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             executor: match config.maximum_simultaneous_sessions {
                 Some(num) => BoundedExecutor::from_current(num),
@@ -299,8 +298,7 @@ where
     async fn handle_protocol_notification(
         &mut self,
         notification: ProtocolNotification<TSubstream>,
-    ) -> Result<(), RpcServerError>
-    {
+    ) -> Result<(), RpcServerError> {
         match notification.event {
             ProtocolEvent::NewInboundSubstream(node_id, substream) => {
                 debug!(
@@ -328,8 +326,7 @@ where
         protocol: ProtocolId,
         node_id: NodeId,
         mut framed: CanonicalFraming<TSubstream>,
-    ) -> Result<(), RpcServerError>
-    {
+    ) -> Result<(), RpcServerError> {
         let mut handshake = Handshake::new(&mut framed).with_timeout(self.config.handshake_timeout);
 
         if !self.executor.can_spawn() {

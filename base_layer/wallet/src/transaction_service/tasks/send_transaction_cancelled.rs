@@ -32,8 +32,7 @@ pub async fn send_transaction_cancelled_message(
     tx_id: TxId,
     destination_public_key: CommsPublicKey,
     mut outbound_message_service: OutboundMessageRequester,
-) -> Result<(), TransactionServiceError>
-{
+) -> Result<(), TransactionServiceError> {
     let proto_message = proto::TransactionCancelledMessage { tx_id };
 
     // Send both direct and SAF we are not going to monitor the progress on these messages for potential resend as

@@ -47,9 +47,12 @@ pub fn default_subdir(path: &str, base_dir: Option<&PathBuf>) -> String {
 
 pub fn default_path(filename: &str, base_path: Option<&PathBuf>) -> PathBuf {
     let mut home = base_path.cloned().unwrap_or_else(|| {
-        let mut home = dirs_next::home_dir().unwrap_or_else(|| PathBuf::from("."));
-        home.push(".tari");
-        home
+        [
+            dirs_next::home_dir().unwrap_or_else(|| PathBuf::from(".")),
+            PathBuf::from(".tari"),
+        ]
+        .iter()
+        .collect()
     });
     home.push(filename);
     home
@@ -88,9 +91,9 @@ mod test {
                 "/",
         );
 
-        assert_eq!(std::path::Path::new(&dir.display().to_string()).exists(), false);
+        assert!(!std::path::Path::new(&dir.display().to_string()).exists());
         dir_utils::create_data_directory(Some(&dir)).unwrap();
-        assert_eq!(std::path::Path::new(&dir.display().to_string()).exists(), true);
+        assert!(std::path::Path::new(&dir.display().to_string()).exists());
     }
 
     #[test]

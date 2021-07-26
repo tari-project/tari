@@ -83,7 +83,7 @@ pub use xor_distance::XorDistance;
 pub type NodeDistance = XorDistance;
 
 mod node_identity;
-pub use node_identity::{NodeIdentity, NodeIdentityError};
+pub use node_identity::NodeIdentity;
 
 mod peer;
 pub use peer::{Peer, PeerFlags};

@@ -75,6 +75,7 @@ pub struct HiddenServiceController {
     identity: Option<TorIdentity>,
     hs_flags: HsFlags,
     is_authenticated: bool,
+    proxy_bypass_addresses: Vec<Multiaddr>,
     shutdown_signal: OptionalShutdownSignal,
 }
 
@@ -88,9 +89,9 @@ impl HiddenServiceController {
         socks_auth: socks::Authentication,
         identity: Option<TorIdentity>,
         hs_flags: HsFlags,
+        proxy_bypass_addresses: Vec<Multiaddr>,
         shutdown_signal: OptionalShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             client: None,
             control_server_addr,
@@ -101,6 +102,7 @@ impl HiddenServiceController {
             hs_flags,
             identity,
             is_authenticated: false,
+            proxy_bypass_addresses,
             shutdown_signal,
         }
     }
@@ -117,6 +119,7 @@ impl HiddenServiceController {
         Ok(SocksTransport::new(SocksConfig {
             proxy_address: socks_addr,
             authentication: self.socks_auth.clone(),
+            proxy_bypass_addresses: self.proxy_bypass_addresses.clone(),
         }))
     }
 
@@ -186,8 +189,7 @@ impl HiddenServiceController {
         &mut self,
         event_tx: broadcast::Sender<TorControlEvent>,
         shutdown_signal: &mut OptionalShutdownSignal,
-    ) -> Result<(), HiddenServiceControllerError>
-    {
+    ) -> Result<(), HiddenServiceControllerError> {
         let mut signal = Some(shutdown_signal);
         loop {
             warn!(
@@ -226,7 +228,7 @@ impl HiddenServiceController {
         self.client
             .as_mut()
             .filter(|c| c.is_connected())
-            .ok_or_else(|| HiddenServiceControllerError::NotConnected)
+            .ok_or(HiddenServiceControllerError::NotConnected)
     }
 
     async fn connect(&mut self) -> Result<(), HiddenServiceControllerError> {
@@ -276,7 +278,7 @@ impl HiddenServiceController {
                     .filter_map(Result::ok)
                     .map(|addr| socketaddr_to_multiaddr(&addr))
                     .next()
-                    .ok_or_else(|| HiddenServiceControllerError::FailedToParseSocksAddress)?;
+                    .ok_or(HiddenServiceControllerError::FailedToParseSocksAddress)?;
 
                 Ok(addr)
             },
@@ -321,8 +323,6 @@ impl HiddenServiceController {
         let proxied_addr = socketaddr_to_multiaddr(self.proxied_port_mapping.proxied_address());
 
         Ok(HiddenService {
-            socks_addr,
-            socks_auth: self.socks_auth.clone(),
             identity,
             proxied_addr,
             shutdown_signal: self.shutdown_signal.clone(),
@@ -338,8 +338,7 @@ impl HiddenServiceController {
     async fn create_or_reuse_onion(
         &mut self,
         identity: &TorIdentity,
-    ) -> Result<AddOnionResponse, HiddenServiceControllerError>
-    {
+    ) -> Result<AddOnionResponse, HiddenServiceControllerError> {
         let mut flags = Vec::new();
         if self.hs_flags.contains(HsFlags::DETACH) {
             flags.push(AddOnionFlag::Detach);

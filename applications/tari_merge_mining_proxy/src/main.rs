@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#![feature(type_alias_impl_trait)]
 #![cfg_attr(not(debug_assertions), deny(unused_variables))]
 #![cfg_attr(not(debug_assertions), deny(unused_imports))]
 #![cfg_attr(not(debug_assertions), deny(dead_code))]
@@ -40,24 +39,35 @@ use crate::{block_template_data::BlockTemplateRepository, error::MmProxyError};
 use futures::future;
 use hyper::{service::make_service_fn, Server};
 use proxy::{MergeMiningProxyConfig, MergeMiningProxyService};
-use std::{convert::Infallible, io};
-use structopt::StructOpt;
-use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
+use std::convert::Infallible;
+use tari_app_grpc::tari_rpc as grpc;
+use tari_app_utilities::initialization::init_configuration;
+use tari_common::configuration::bootstrap::ApplicationType;
+use tokio::time::Duration;
 
 #[tokio_macros::main]
-async fn main() -> Result<(), MmProxyError> {
-    let config = initialize()?;
+async fn main() -> Result<(), anyhow::Error> {
+    let (_, config, _) = init_configuration(ApplicationType::MergeMiningProxy)?;
 
     let config = MergeMiningProxyConfig::from(config);
     let addr = config.proxy_host_address;
-
-    let xmrig_service = MergeMiningProxyService::new(config, BlockTemplateRepository::new());
-    if !xmrig_service.check_connections(&mut io::stdout()).await {
-        println!(
-            "Warning: some services have not been started or are mis-configured in the proxy config. The proxy will \
-             remain running and connect to these services on demand."
-        );
-    }
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(10))
+        .pool_max_idle_per_host(25)
+        .build()
+        .map_err(MmProxyError::ReqwestError)?;
+    let base_node_client =
+        grpc::base_node_client::BaseNodeClient::connect(format!("http://{}", config.grpc_base_node_address)).await?;
+    let wallet_client =
+        grpc::wallet_client::WalletClient::connect(format!("http://{}", config.grpc_console_wallet_address)).await?;
+    let xmrig_service = MergeMiningProxyService::new(
+        config,
+        client,
+        base_node_client,
+        wallet_client,
+        BlockTemplateRepository::new(),
+    );
     let service = make_service_fn(|_conn| future::ready(Result::<_, Infallible>::Ok(xmrig_service.clone())));
 
     match Server::try_bind(&addr) {
@@ -76,24 +86,4 @@ async fn main() -> Result<(), MmProxyError> {
             Err(err.into())
         },
     }
-}
-
-/// Loads the configuration and sets up logging
-fn initialize() -> Result<GlobalConfig, MmProxyError> {
-    // Parse and validate command-line arguments
-    let mut bootstrap = ConfigBootstrap::from_args();
-    // Check and initialize configuration files
-    bootstrap.init_dirs(ApplicationType::MergeMiningProxy)?;
-
-    // Load and apply configuration file
-    let cfg = bootstrap.load_configuration()?;
-
-    #[cfg(feature = "envlog")]
-    let _ = env_logger::try_init();
-    // Initialise the logger
-    #[cfg(not(feature = "envlog"))]
-    bootstrap.initialize_logging()?;
-
-    let cfg = GlobalConfig::convert_from(cfg)?;
-    Ok(cfg)
 }

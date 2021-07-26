@@ -34,7 +34,7 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     mempool::{async_mempool, Mempool},
     proof_of_work::{Difficulty, PowAlgorithm},
-    transactions::transaction::TransactionKernel,
+    transactions::{transaction::TransactionKernel, types::HashOutput},
 };
 use log::*;
 use std::{
@@ -110,8 +110,7 @@ where T: BlockchainBackend + 'static
         mempool: Mempool,
         consensus_manager: ConsensusManager,
         outbound_nci: OutboundNodeCommsInterface,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             block_event_sender,
             blockchain_db,
@@ -195,7 +194,7 @@ where T: BlockchainBackend + 'static
                         .blockchain_db
                         .fetch_header(0)
                         .await?
-                        .ok_or_else(|| CommsInterfaceError::BlockHeaderNotFound(0))?,
+                        .ok_or(CommsInterfaceError::BlockHeaderNotFound(0))?,
                 };
                 let mut headers = vec![];
                 for i in 1..MAX_HEADERS_PER_RESPONSE {
@@ -225,11 +224,12 @@ where T: BlockchainBackend + 'static
             },
             NodeCommsRequest::FetchMatchingUtxos(utxo_hashes) => {
                 let mut res = Vec::with_capacity(utxo_hashes.len());
-                for item in self.blockchain_db.fetch_utxos(utxo_hashes, None).await? {
-                    if let Some((output, spent)) = item {
-                        if !spent {
-                            res.push(output);
-                        }
+                for (output, spent) in (self.blockchain_db.fetch_utxos(utxo_hashes, None).await?)
+                    .into_iter()
+                    .flatten()
+                {
+                    if !spent {
+                        res.push(output);
                     }
                 }
                 Ok(NodeCommsResponse::TransactionOutputs(res))
@@ -311,30 +311,6 @@ where T: BlockchainBackend + 'static
                 }
                 Ok(NodeCommsResponse::HistoricalBlocks(blocks))
             },
-            NodeCommsRequest::FetchBlocksWithStxos(hashes) => {
-                let mut blocks = Vec::with_capacity(hashes.len());
-                for hash in hashes {
-                    let hash_hex = hash.to_hex();
-                    debug!(
-                        target: LOG_TARGET,
-                        "A peer has requested a block with hash {}", hash_hex
-                    );
-                    match self.blockchain_db.fetch_block_with_stxo(hash).await {
-                        Ok(Some(block)) => blocks.push(block),
-                        Ok(None) => warn!(
-                            target: LOG_TARGET,
-                            "Could not provide requested block {} to peer because not stored", hash_hex
-                        ),
-                        Err(e) => warn!(
-                            target: LOG_TARGET,
-                            "Could not provide requested block {} to peer because: {}",
-                            hash_hex,
-                            e.to_string()
-                        ),
-                    }
-                }
-                Ok(NodeCommsResponse::HistoricalBlocks(blocks))
-            },
             NodeCommsRequest::FetchBlocksWithUtxos(hashes) => {
                 let mut blocks = Vec::with_capacity(hashes.len());
                 for hash in hashes {
@@ -370,7 +346,7 @@ where T: BlockchainBackend + 'static
             NodeCommsRequest::GetNewBlockTemplate(request) => {
                 let best_block_header = self.blockchain_db.fetch_tip_header().await?;
 
-                let mut header = BlockHeader::from_previous(&best_block_header.header)?;
+                let mut header = BlockHeader::from_previous(best_block_header.header());
                 let constants = self.consensus_manager.consensus_constants(header.height);
                 header.version = constants.blockchain_version();
                 header.pow.pow_algo = request.algo;
@@ -384,21 +360,24 @@ where T: BlockchainBackend + 'static
 
                 let transactions = async_mempool::retrieve(self.mempool.clone(), asking_weight)
                     .await?
-                    .iter()
-                    .map(|tx| (**tx).clone())
+                    .into_iter()
+                    .map(|tx| Arc::try_unwrap(tx).unwrap_or_else(|tx| (*tx).clone()))
                     .collect();
 
+                let prev_hash = header.prev_hash.clone();
                 let height = header.height;
 
                 let block_template = NewBlockTemplate::from_block(
                     header.into_builder().with_transactions(transactions).build(),
-                    self.get_target_difficulty(request.algo, constants, height).await?,
+                    self.get_target_difficulty_for_next_block(request.algo, constants, prev_hash)
+                        .await?,
                     self.consensus_manager.get_block_reward_at(height),
                 );
                 debug!(
                     target: LOG_TARGET,
                     "New block template requested at height {}", block_template.header.height,
                 );
+                trace!(target: LOG_TARGET, "{}", block_template);
                 Ok(NodeCommsResponse::NewBlockTemplate(block_template))
             },
             NodeCommsRequest::GetNewBlock(block_template) => {
@@ -438,8 +417,7 @@ where T: BlockchainBackend + 'static
         &mut self,
         new_block: NewBlock,
         source_peer: NodeId,
-    ) -> Result<(), CommsInterfaceError>
-    {
+    ) -> Result<(), CommsInterfaceError> {
         let NewBlock { block_hash } = new_block;
 
         // Only a single block request can complete at a time.
@@ -495,8 +473,7 @@ where T: BlockchainBackend + 'static
         block: Arc<Block>,
         broadcast: Broadcast,
         source_peer: Option<NodeId>,
-    ) -> Result<BlockHash, CommsInterfaceError>
-    {
+    ) -> Result<BlockHash, CommsInterfaceError> {
         let block_hash = block.hash();
         let block_height = block.header.height;
         info!(
@@ -520,7 +497,7 @@ where T: BlockchainBackend + 'static
                     BlockAddResult::Ok(_) => true,
                     BlockAddResult::BlockExists => false,
                     BlockAddResult::OrphanBlock => false,
-                    BlockAddResult::ChainReorg(_, _) => true,
+                    BlockAddResult::ChainReorg { .. } => true,
                 };
 
                 self.blockchain_db.cleanup_orphans().await?;
@@ -559,20 +536,16 @@ where T: BlockchainBackend + 'static
         }
     }
 
-    async fn get_target_difficulty(
+    async fn get_target_difficulty_for_next_block(
         &self,
         pow_algo: PowAlgorithm,
         constants: &ConsensusConstants,
-        height: u64,
-    ) -> Result<Difficulty, CommsInterfaceError>
-    {
-        trace!(
-            target: LOG_TARGET,
-            "Calculating target difficulty at height: {} for PoW: {}",
-            height,
-            pow_algo
-        );
-        let target_difficulty = self.blockchain_db.fetch_target_difficulty(pow_algo, height).await?;
+        current_block_hash: HashOutput,
+    ) -> Result<Difficulty, CommsInterfaceError> {
+        let target_difficulty = self
+            .blockchain_db
+            .fetch_target_difficulty_for_next_block(pow_algo, current_block_hash)
+            .await?;
 
         let target = target_difficulty.calculate(
             constants.min_pow_difficulty(pow_algo),

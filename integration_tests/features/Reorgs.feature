@@ -3,22 +3,27 @@ Feature: Reorgs
 
   @critical
   Scenario: Simple reorg to stronger chain
-    Given I have a seed node SA
-    And I have a base node B connected to seed SA
+        # Chain 1
+        #     Note: Use more than 1 base node to speed up the test
+    Given I have a seed node SEED_B
+    And I have a base node B connected to seed SEED_B
     And I have wallet WB connected to base node B
     And I have mining node BM connected to base node B and wallet WB
-    When I stop SA
-    And Mining node BM mines 3 blocks on B
-    Given I have a base node C connected to seed SA
+    And mining node BM mines 3 blocks with min difficulty 1 and max difficulty 50
+        # Chain 2
+        #     Note: Use more than 1 base node to speed up the test
+    Given I have a seed node SEED_C
+    And I have a base node C connected to seed SEED_C
     And I have wallet WC connected to base node C
     And I have mining node CM connected to base node C and wallet WC
-    And Mining node CM mines 15 blocks on C
+    And mining node CM mines 10 blocks with min difficulty 51 and max difficulty 9999999999
+        # Connect chain 1 and 2
     Then node B is at height 3
-    And node C is at height 15
-    When I start SA
-    Then node B is at height 15
-    And node C is at height 15
-    And node SA is at height 15
+    And node C is at height 10
+    Given I have a base node SA connected to nodes B,C
+    Then node SA is at height 10
+    And node B is at height 10
+    And node C is at height 10
 
   @critical
   Scenario: Node rolls back reorg on invalid block
@@ -27,72 +32,69 @@ Feature: Reorgs
     When I mine 5 blocks on B
     Then node B is at height 5
     When I save the tip on B as BTip1
-  # Try a few times to insert an invalid block
+        # Try a few times to insert an invalid block
     And I mine a block on B at height 3 with an invalid MMR
     And I mine a block on B at height 3 with an invalid MMR
     And I mine a block on B at height 4 with an invalid MMR
     And I mine a block on B at height 4 with an invalid MMR
     Then node B is at tip BTip1
 
-@critical @reorg @ignore
+  @critical @reorg
+  Scenario: Pruned mode reorg simple
+    Given I have a base node NODE1 connected to all seed nodes
+    And I have wallet WALLET1 connected to base node NODE1
+    And I have mining node MINING1 connected to base node NODE1 and wallet WALLET1
+    When mining node MINING1 mines 5 blocks with min difficulty 1 and max difficulty 20
+    Then all nodes are at height 5
+    Given I have a pruned node PNODE2 connected to node NODE1 with pruning horizon set to 5
+    And I have wallet WALLET2 connected to base node PNODE2
+    And I have mining node MINING2 connected to base node PNODE2 and wallet WALLET2
+    When mining node MINING1 mines 4 blocks with min difficulty 1 and max difficulty 20
+    Then all nodes are at height 9
+    When mining node MINING2 mines 5 blocks with min difficulty 1 and max difficulty 20
+    Then all nodes are at height 14
+    When I stop node PNODE2
+    When mining node MINING1 mines 3 blocks with min difficulty 1 and max difficulty 20
+    And node NODE1 is at height 17
+    And I stop node NODE1
+    And I start PNODE2
+    When mining node MINING2 mines 6 blocks with min difficulty 20 and max difficulty 1000000
+    And node PNODE2 is at height 20
+    When I start NODE1
+    Then all nodes are at height 20
+
+  @critical @reorg
   Scenario: Pruned mode reorg past horizon
     Given I have a base node NODE1 connected to all seed nodes
-    When I mine a block on NODE1 with coinbase CB1
+    And I have wallet WALLET1 connected to base node NODE1
+    And I have mining node MINING1 connected to base node NODE1 and wallet WALLET1
     Given I have a base node NODE2 connected to node NODE1
-    When I mine but don't submit a block BLOCK2 on NODE2
-    When I mine but don't submit a block BLOCK3 on NODE2
-    When I mine but don't submit a block BLOCK4 on NODE2
-    When I mine but don't submit a block BLOCK5 on NODE2
-    When I mine but don't submit a block BLOCK6 on NODE2
-    When I mine but don't submit a block BLOCK7 on NODE2
-    When I mine but don't submit a block BLOCK8 on NODE2
-    When I mine but don't submit a block BLOCK9 on NODE2
-    When I mine but don't submit a block BLOCK10 on NODE2
-    When I mine but don't submit a block BLOCK11 on NODE2
-    When I mine but don't submit a block BLOCK12 on NODE2
-    When I mine but don't submit a block BLOCK13 on NODE2
-    When I mine but don't submit a block BLOCK14 on NODE2
-    When I mine but don't submit a block BLOCK15 on NODE2
-    When I mine but don't submit a block BLOCK16 on NODE2
-    When I mine but don't submit a block BLOCK17 on NODE2
-    When I mine but don't submit a block BLOCK18 on NODE2
-    When I mine but don't submit a block BLOCK19 on NODE2
-    When I mine but don't submit a block BLOCK20 on NODE2
-    And I stop NODE2
-    When I mine 3 blocks on NODE1
+    And I have wallet WALLET2 connected to base node NODE2
+    And I have mining node MINING2 connected to base node NODE2 and wallet WALLET2
+    When I mine a block on NODE1 with coinbase CB1
+    Then all nodes are at height 1
+    And I stop node NODE1
+    And mining node MINING2 mines 19 blocks with min difficulty 20 and max difficulty 1000000
+    And node NODE2 is at height 20
+    And I stop node NODE2
+    When I start NODE1
+    And mining node MINING1 mines 3 blocks with min difficulty 1 and max difficulty 20
+    And node NODE1 is at height 4
     When I create a transaction TX1 spending CB1 to UTX1
     When I submit transaction TX1 to NODE1
     Then NODE1 has TX1 in MEMPOOL state
-    When I mine 6 blocks on NODE1
+    And mining node MINING1 mines 6 blocks with min difficulty 1 and max difficulty 20
+    And node NODE1 is at height 10
     Given I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
     Then node PNODE1 is at height 10
     When I start NODE2
-    When I submit block BLOCK2 to NODE2
-    When I submit block BLOCK3 to NODE2
-    When I submit block BLOCK4 to NODE2
-    When I submit block BLOCK5 to NODE2
-    When I submit block BLOCK6 to NODE2
-    When I submit block BLOCK7 to NODE2
-    When I submit block BLOCK8 to NODE2
-    When I submit block BLOCK9 to NODE2
-    When I submit block BLOCK10 to NODE2
-    When I submit block BLOCK11 to NODE2
-    When I submit block BLOCK12 to NODE2
-    When I submit block BLOCK13 to NODE2
-    When I submit block BLOCK14 to NODE2
-    When I submit block BLOCK15 to NODE2
-    When I submit block BLOCK16 to NODE2
-    When I submit block BLOCK17 to NODE2
-    When I submit block BLOCK18 to NODE2
-    When I submit block BLOCK19 to NODE2
-    When I submit block BLOCK20 to NODE2
     Then all nodes are at height 20
-    # Because TX1 should have been re_orged out we should be able to spend CB1 again
+        # Because TX1 should have been re_orged out we should be able to spend CB1 again
     When I create a transaction TX2 spending CB1 to UTX2
     When I submit transaction TX2 to PNODE1
     Then PNODE1 has TX2 in MEMPOOL state
 
-Scenario Outline: Massive multiple reorg
+  Scenario Outline: Massive multiple reorg
         #
         # Chain 1a:
         #   Mine X1 blocks (orphan_storage_capacity default set to 10)
@@ -181,57 +183,4 @@ Scenario Outline: Massive multiple reorg
     Examples:
         | X1     | Y1     | X2    | Y2   | SYNC_TIME |
         | 100    | 125    | 150   | 175  | 30        |
-
-    @long-running @to-be-fixed-currently-failing
-    Examples:
-        | X1     | Y1     | X2    | Y2   | SYNC_TIME |
-        | 500    | 550    | 600   | 650  | 60        |
-
-Scenario Outline: Massive reorg simple case
-        #
-        # Chain 1a:
-        #   Mine X1 blocks (orphan_storage_capacity default set to 10)
-        #
-    Given I have a seed node SEED_A1
-        # Add multiple base nodes to ensure more robust comms
-    And I have a base node NODE_A1 connected to seed SEED_A1
-    And I have a base node NODE_A2 connected to seed SEED_A1
-    When I mine <X1> blocks on SEED_A1
-    Then node NODE_A1 is at height <X1>
-    Then node NODE_A2 is at height <X1>
-        #
-        # Chain 1b:
-        #   Mine Y1 blocks (orphan_storage_capacity default set to 10)
-        #
-    And I have a seed node SEED_A2
-        # Add multiple base nodes to ensure more robust comms
-    And I have a base node NODE_A3 connected to seed SEED_A2
-    And I have a base node NODE_A4 connected to seed SEED_A2
-    When I mine <Y1> blocks on SEED_A2
-    Then node NODE_A3 is at height <Y1>
-    Then node NODE_A4 is at height <Y1>
-        #
-        # Connect Chain 1a and 1b
-        #
-#    And I connect node NODE_A1 to node NODE_A3 and wait 1 seconds
-#    And I connect node NODE_A2 to node NODE_A4 and wait 1 seconds
-        # Note: If the above two lines are included in the test, the 500+ case sometimes
-        #       passes as well.
-    And I connect node SEED_A1 to node SEED_A2 and wait <SYNC_TIME> seconds
-    Then node SEED_A1 is at the same height as node SEED_A2
-    When I mine 10 blocks on SEED_A1
-    Then all nodes are at the same height as node SEED_A1
-    @critical
-    Examples:
-        | X1     | Y1     | SYNC_TIME |
-        | 5      | 10     | 20        |
-
-    @long-running
-    Examples:
-        | X1     | Y1     | SYNC_TIME |
-        | 100    | 125    | 30        |
-
-    @long-running @to-be-fixed-currently-failing
-    Examples:
-        | X1     | Y1     | SYNC_TIME |
-        | 500    | 550    | 60        |
+        | 1010   | 1110   | 1210  | 1310 | 60        |

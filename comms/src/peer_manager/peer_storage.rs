@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    consts::PEER_MANAGER_MAX_FLOOD_PEERS,
     peer_manager::{
         node_id::NodeId,
         peer::{Peer, PeerFlags},
@@ -40,6 +39,8 @@ use std::{collections::HashMap, time::Duration};
 use tari_storage::{IterationResult, KeyValueStore};
 
 const LOG_TARGET: &str = "comms::peer_manager::peer_storage";
+/// The maximum number of peers to return from the flood_identities method in peer manager
+const PEER_MANAGER_MAX_FLOOD_PEERS: usize = 1000;
 
 /// PeerStorage provides a mechanism to keep a datastore and a local copy of all peers in sync and allow fast searches
 /// using the node_id, public key or net_address of a peer.
@@ -129,8 +130,7 @@ where DS: KeyValueStore<PeerId, Peer>
         is_offline: Option<bool>,
         peer_features: Option<PeerFeatures>,
         supported_protocols: Option<Vec<ProtocolId>>,
-    ) -> Result<(), PeerManagerError>
-    {
+    ) -> Result<(), PeerManagerError> {
         match self.public_key_index.get(public_key).copied() {
             Some(peer_key) => {
                 let mut stored_peer = self
@@ -173,7 +173,7 @@ where DS: KeyValueStore<PeerId, Peer>
         let peer_key = *self
             .node_id_index
             .get(&node_id)
-            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
         self.peer_db
             .delete(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?;
@@ -203,9 +203,8 @@ where DS: KeyValueStore<PeerId, Peer>
         let peer_key = self
             .node_id_index
             .get(node_id)
-            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
-        Ok(self
-            .peer_db
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
+        self.peer_db
             .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or_else(|| {
@@ -214,7 +213,7 @@ where DS: KeyValueStore<PeerId, Peer>
                     "node_id_index and peer database are out of sync! (key={}, node_id={})", peer_key, node_id
                 );
                 PeerManagerError::PeerNotFoundError
-            })?)
+            })
     }
 
     /// Find the peer with the provided PublicKey
@@ -222,9 +221,8 @@ where DS: KeyValueStore<PeerId, Peer>
         let peer_key = self
             .public_key_index
             .get(public_key)
-            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
-        Ok(self
-            .peer_db
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
+        self.peer_db
             .get(peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or_else(|| {
@@ -235,7 +233,7 @@ where DS: KeyValueStore<PeerId, Peer>
                     public_key
                 );
                 PeerManagerError::PeerNotFoundError
-            })?)
+            })
     }
 
     /// Check if a peer exist using the specified public_key
@@ -304,8 +302,7 @@ where DS: KeyValueStore<PeerId, Peer>
         n: usize,
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
-    ) -> Result<Vec<Peer>, PeerManagerError>
-    {
+    ) -> Result<Vec<Peer>, PeerManagerError> {
         if n == 0 {
             return Ok(Vec::new());
         }
@@ -362,7 +359,7 @@ where DS: KeyValueStore<PeerId, Peer>
         let peer_key = *self
             .node_id_index
             .get(&node_id)
-            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer = self
             .peer_db
             .get(&peer_key)
@@ -384,12 +381,11 @@ where DS: KeyValueStore<PeerId, Peer>
         public_key: &CommsPublicKey,
         duration: Duration,
         reason: String,
-    ) -> Result<NodeId, PeerManagerError>
-    {
+    ) -> Result<NodeId, PeerManagerError> {
         let id = *self
             .public_key_index
             .get(public_key)
-            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
         self.ban_peer_by_id(id, duration, reason)
     }
 
@@ -399,12 +395,11 @@ where DS: KeyValueStore<PeerId, Peer>
         node_id: &NodeId,
         duration: Duration,
         reason: String,
-    ) -> Result<NodeId, PeerManagerError>
-    {
+    ) -> Result<NodeId, PeerManagerError> {
         let id = *self
             .node_id_index
             .get(node_id)
-            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
         self.ban_peer_by_id(id, duration, reason)
     }
 
@@ -425,7 +420,7 @@ where DS: KeyValueStore<PeerId, Peer>
         let peer_key = *self
             .node_id_index
             .get(&node_id)
-            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peer_db
             .get(&peer_key)
@@ -444,7 +439,7 @@ where DS: KeyValueStore<PeerId, Peer>
         let peer_key = *self
             .node_id_index
             .get(&node_id)
-            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peer_db
             .get(&peer_key)
@@ -463,12 +458,11 @@ where DS: KeyValueStore<PeerId, Peer>
         node_id: &NodeId,
         key: u8,
         data: Vec<u8>,
-    ) -> Result<Option<Vec<u8>>, PeerManagerError>
-    {
+    ) -> Result<Option<Vec<u8>>, PeerManagerError> {
         let peer_key = *self
             .node_id_index
             .get(&node_id)
-            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peer_db
             .get(&peer_key)
@@ -482,6 +476,7 @@ where DS: KeyValueStore<PeerId, Peer>
     }
 }
 
+#[allow(clippy::from_over_into)]
 impl Into<CommsDatabase> for PeerStorage<CommsDatabase> {
     fn into(self) -> CommsDatabase {
         self.peer_db
@@ -503,7 +498,7 @@ mod test {
         // Create Peers
         let mut rng = rand::rngs::OsRng;
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
-        let node_id = NodeId::from_key(&pk).unwrap();
+        let node_id = NodeId::from_key(&pk);
         let net_address1 = "/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address2 = "/ip4/5.6.7.8/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address3 = "/ip4/5.6.7.8/tcp/7000".parse::<Multiaddr>().unwrap();
@@ -521,7 +516,7 @@ mod test {
         );
 
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
-        let node_id = NodeId::from_key(&pk).unwrap();
+        let node_id = NodeId::from_key(&pk);
         let net_address4 = "/ip4/9.10.11.12/tcp/7000".parse::<Multiaddr>().unwrap();
         let net_addresses = MultiaddressesWithStats::from(net_address4);
         let peer2: Peer = Peer::new(
@@ -535,7 +530,7 @@ mod test {
         );
 
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
-        let node_id = NodeId::from_key(&pk).unwrap();
+        let node_id = NodeId::from_key(&pk);
         let net_address5 = "/ip4/13.14.15.16/tcp/6000".parse::<Multiaddr>().unwrap();
         let net_address6 = "/ip4/17.18.19.20/tcp/8000".parse::<Multiaddr>().unwrap();
         let mut net_addresses = MultiaddressesWithStats::from(net_address5);
@@ -582,7 +577,7 @@ mod test {
         // Create Peers
         let mut rng = rand::rngs::OsRng;
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
-        let node_id = NodeId::from_key(&pk).unwrap();
+        let node_id = NodeId::from_key(&pk);
         let net_address1 = "/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address2 = "/ip4/5.6.7.8/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address3 = "/ip4/5.6.7.8/tcp/7000".parse::<Multiaddr>().unwrap();
@@ -600,7 +595,7 @@ mod test {
         );
 
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
-        let node_id = NodeId::from_key(&pk).unwrap();
+        let node_id = NodeId::from_key(&pk);
         let net_address4 = "/ip4/9.10.11.12/tcp/7000".parse::<Multiaddr>().unwrap();
         let net_addresses = MultiaddressesWithStats::from(net_address4);
         let peer2: Peer = Peer::new(
@@ -614,7 +609,7 @@ mod test {
         );
 
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
-        let node_id = NodeId::from_key(&pk).unwrap();
+        let node_id = NodeId::from_key(&pk);
         let net_address5 = "/ip4/13.14.15.16/tcp/6000".parse::<Multiaddr>().unwrap();
         let net_address6 = "/ip4/17.18.19.20/tcp/8000".parse::<Multiaddr>().unwrap();
         let mut net_addresses = MultiaddressesWithStats::from(net_address5);

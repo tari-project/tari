@@ -22,15 +22,16 @@
 
 use crate::{
     blocks::{Block, BlockHeader},
-    chain_storage::{BlockHeaderAccumulatedData, BlockHeaderAccumulatedDataBuilder, BlockchainBackend, ChainBlock},
+    chain_storage::{BlockchainBackend, ChainBlock},
+    proof_of_work::AchievedTargetDifficulty,
     transactions::{transaction::Transaction, types::Commitment},
-    validation::error::ValidationError,
+    validation::{error::ValidationError, DifficultyCalculator},
 };
 
 /// A validator that determines if a block body is valid, assuming that the header has already been
 /// validated
 pub trait CandidateBlockBodyValidation<B: BlockchainBackend>: Send + Sync {
-    fn validate_body(&self, block: &ChainBlock, backend: &B) -> Result<(), ValidationError>;
+    fn validate_body(&self, block: &Block, backend: &B) -> Result<(), ValidationError>;
 }
 
 /// A validator that validates a body after it has been determined to be a valid orphan
@@ -46,13 +47,13 @@ pub trait OrphanValidation: Send + Sync {
     fn validate(&self, item: &Block) -> Result<(), ValidationError>;
 }
 
-pub trait HeaderValidation<B: BlockchainBackend>: Send + Sync {
+pub trait HeaderValidation<TBackend: BlockchainBackend>: Send + Sync {
     fn validate(
         &self,
-        db: &B,
+        db: &TBackend,
         header: &BlockHeader,
-        previous_data: &BlockHeaderAccumulatedData,
-    ) -> Result<BlockHeaderAccumulatedDataBuilder, ValidationError>;
+        difficulty: &DifficultyCalculator,
+    ) -> Result<AchievedTargetDifficulty, ValidationError>;
 }
 
 pub trait FinalHorizonStateValidation<B>: Send + Sync {

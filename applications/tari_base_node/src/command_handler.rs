@@ -32,6 +32,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use tari_app_utilities::consts;
 use tari_common::GlobalConfig;
 use tari_comms::{
     connectivity::ConnectivityRequester,
@@ -48,18 +49,16 @@ use tari_core::{
     },
     blocks::BlockHeader,
     chain_storage::{async_db::AsyncBlockchainDb, ChainHeader, LMDBDatabase},
-    consensus::{ConsensusManager, Network},
+    consensus::ConsensusManager,
     mempool::service::LocalMempoolService,
     proof_of_work::PowAlgorithm,
     tari_utilities::{hex::Hex, message_format::MessageFormat},
     transactions::types::{Commitment, HashOutput, Signature},
 };
-use tari_crypto::ristretto::RistrettoPublicKey;
+use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::Hashable};
+use tari_p2p::auto_update::SoftwareUpdaterHandle;
 use tari_wallet::util::emoji::EmojiId;
 use tokio::{runtime, sync::watch};
-// Import the auto-generated const values from the Manifest and Git
-
-include!(concat!(env!("OUT_DIR"), "/consts.rs"));
 
 pub struct CommandHandler {
     executor: runtime::Handle,
@@ -74,6 +73,7 @@ pub struct CommandHandler {
     node_service: LocalNodeCommsInterface,
     mempool_service: LocalMempoolService,
     state_machine_info: watch::Receiver<StatusInfo>,
+    software_updater: SoftwareUpdaterHandle,
 }
 
 impl CommandHandler {
@@ -91,6 +91,7 @@ impl CommandHandler {
             node_service: ctx.local_node(),
             mempool_service: ctx.local_mempool(),
             state_machine_info: ctx.get_state_machine_info_channel(),
+            software_updater: ctx.software_updater(),
         }
     }
 
@@ -106,6 +107,8 @@ impl CommandHandler {
 
         self.executor.spawn(async move {
             let mut status_line = StatusLine::new();
+            let version = format!("v{}", consts::APP_VERSION_NUMBER);
+            status_line.add_field("", version);
 
             let state = state_info.recv().await.unwrap();
             status_line.add_field("State", state.state_info.short_desc());
@@ -143,16 +146,16 @@ impl CommandHandler {
                 ),
             );
 
-            let banned_peers = fetch_banned_peers(&peer_manager).await.unwrap();
             let conns = connectivity.get_active_connections().await.unwrap();
             status_line.add_field("Connections", conns.len());
+            let banned_peers = fetch_banned_peers(&peer_manager).await.unwrap();
+            status_line.add_field("Banned", banned_peers.len());
 
             let num_messages = metrics
                 .get_total_message_count_in_timespan(Duration::from_secs(60))
                 .await
                 .unwrap();
             status_line.add_field("Messages (last 60s)", num_messages);
-            status_line.add_field("Banned", banned_peers.len());
 
             let num_active_rpc_sessions = rpc_server.get_num_active_sessions().await.unwrap();
             status_line.add_field(
@@ -183,17 +186,48 @@ impl CommandHandler {
                         target: LOG_TARGET,
                         "Error communicating with state machine, channel could have been closed"
                     );
-                    return;
                 },
                 Some(data) => println!("Current state machine state:\n{}", data),
             };
         });
     }
 
+    /// Check for updates
+    pub fn check_for_updates(&self) {
+        let mut updater = self.software_updater.clone();
+        println!("Checking for updates (current version: {})...", consts::APP_VERSION);
+        self.executor.spawn(async move {
+            match updater.check_for_updates().await {
+                Some(update) => {
+                    println!(
+                        "Version {} of the {} is available: {} (sha: {})",
+                        update.version(),
+                        update.app(),
+                        update.download_url(),
+                        update.to_hash_hex()
+                    );
+                },
+                None => {
+                    println!("No updates found.",);
+                },
+            }
+        });
+    }
+
     /// Function process the version command
     pub fn print_version(&self) {
-        println!("Version: {}", VERSION);
-        println!("Author: {}", AUTHOR);
+        println!("Version: {}", consts::APP_VERSION);
+        println!("Author: {}", consts::APP_AUTHOR);
+
+        if let Some(ref update) = *self.software_updater.new_update_notifier().borrow() {
+            println!(
+                "Version {} of the {} is available: {} (sha: {})",
+                update.version(),
+                update.app(),
+                update.download_url(),
+                update.to_hash_hex()
+            );
+        }
     }
 
     pub fn get_chain_meta(&self) {
@@ -203,7 +237,6 @@ impl CommandHandler {
                 Err(err) => {
                     println!("Failed to retrieve chain metadata: {:?}", err);
                     warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err);
-                    return;
                 },
                 Ok(data) => println!("{}", data),
             };
@@ -214,18 +247,24 @@ impl CommandHandler {
         let blockchain = self.blockchain_db.clone();
         self.executor.spawn(async move {
             match blockchain.fetch_blocks(height..=height).await {
-                Err(err) => {
-                    println!("Failed to retrieve blocks: {}", err);
-                    warn!(target: LOG_TARGET, "{}", err);
-                    return;
-                },
                 Ok(mut data) => match (data.pop(), format) {
-                    (Some(block), Format::Text) => println!("{}", block),
+                    (Some(block), Format::Text) => {
+                        let block_data =
+                            try_or_print!(blockchain.fetch_block_accumulated_data(block.hash().clone()).await);
+
+                        println!("{}", block);
+                        println!("-- Accumulated data --");
+                        println!("{}", block_data);
+                    },
                     (Some(block), Format::Json) => println!(
                         "{}",
                         block.to_json().unwrap_or_else(|_| "Error deserializing block".into())
                     ),
                     (None, _) => println!("Block not found at height {}", height),
+                },
+                Err(err) => {
+                    println!("Failed to retrieve blocks: {}", err);
+                    warn!(target: LOG_TARGET, "{}", err);
                 },
             };
         });
@@ -238,7 +277,6 @@ impl CommandHandler {
                 Err(err) => {
                     println!("Failed to retrieve blocks: {}", err);
                     warn!(target: LOG_TARGET, "{}", err);
-                    return;
                 },
                 Ok(data) => match (data, format) {
                     (Some(block), Format::Text) => println!("{}", block),
@@ -262,35 +300,11 @@ impl CommandHandler {
                         target: LOG_TARGET,
                         "Error communicating with local base node: {:?}", err,
                     );
-                    return;
                 },
                 Ok(mut data) => match data.pop() {
                     Some(v) => println!("{}", v.block()),
                     _ => println!(
                         "Pruned node: utxo found, but lock not found for utxo commitment {}",
-                        commitment.to_hex()
-                    ),
-                },
-            };
-        });
-    }
-
-    pub fn search_stxo(&self, commitment: Commitment) {
-        let mut handler = self.node_service.clone();
-        self.executor.spawn(async move {
-            match handler.get_blocks_with_stxos(vec![commitment.clone()]).await {
-                Err(err) => {
-                    println!("Failed to retrieve blocks: {:?}", err);
-                    warn!(
-                        target: LOG_TARGET,
-                        "Error communicating with local base node: {:?}", err,
-                    );
-                    return;
-                },
-                Ok(mut data) => match data.pop() {
-                    Some(v) => println!("{}", v.block()),
-                    _ => println!(
-                        "Pruned node: stxo found, but block not found for stxo commitment {}",
                         commitment.to_hex()
                     ),
                 },
@@ -309,7 +323,6 @@ impl CommandHandler {
                         target: LOG_TARGET,
                         "Error communicating with local base node: {:?}", err,
                     );
-                    return;
                 },
                 Ok(mut data) => match data.pop() {
                     Some(v) => println!("{}", v.block()),
@@ -331,7 +344,6 @@ impl CommandHandler {
                 Err(err) => {
                     println!("Failed to retrieve mempool stats: {:?}", err);
                     warn!(target: LOG_TARGET, "Error communicating with local mempool: {:?}", err,);
-                    return;
                 },
             };
         });
@@ -346,7 +358,6 @@ impl CommandHandler {
                 Err(err) => {
                     println!("Failed to retrieve mempool state: {:?}", err);
                     warn!(target: LOG_TARGET, "Error communicating with local mempool: {:?}", err,);
-                    return;
                 },
             };
         });
@@ -500,7 +511,6 @@ impl CommandHandler {
                 Err(err) => {
                     println!("Failed to list peers: {:?}", err);
                     error!(target: LOG_TARGET, "Could not list peers: {:?}", err);
-                    return;
                 },
             }
         });
@@ -678,7 +688,6 @@ impl CommandHandler {
                 Err(err) => {
                     println!("Failed to list connections: {:?}", err);
                     error!(target: LOG_TARGET, "Could not list connections: {:?}", err);
-                    return;
                 },
             }
         });
@@ -705,7 +714,6 @@ impl CommandHandler {
                 Err(err) => {
                     println!("Failed to clear offline peer states: {:?}", err);
                     error!(target: LOG_TARGET, "{:?}", err);
-                    return;
                 },
             }
         });
@@ -739,8 +747,7 @@ impl CommandHandler {
         blockchain_db: &AsyncBlockchainDb<LMDBDatabase>,
         start: u64,
         end: Option<u64>,
-    ) -> Result<Vec<ChainHeader>, anyhow::Error>
-    {
+    ) -> Result<Vec<ChainHeader>, anyhow::Error> {
         match end {
             Some(end) => blockchain_db.fetch_chain_headers(start..=end).await.map_err(Into::into),
             None => {
@@ -757,7 +764,7 @@ impl CommandHandler {
         }
     }
 
-    pub fn calc_timing(&self, start: u64, end: Option<u64>) {
+    pub fn block_timing(&self, start: u64, end: Option<u64>) {
         let blockchain_db = self.blockchain_db.clone();
         self.executor.spawn(async move {
             let headers = match Self::get_chain_headers(&blockchain_db, start, end).await {
@@ -765,7 +772,7 @@ impl CommandHandler {
                     println!("No headers found");
                     return;
                 },
-                Ok(h) => h.into_iter().map(|ch| ch.header).rev().collect::<Vec<_>>(),
+                Ok(h) => h.into_iter().map(|ch| ch.into_header()).rev().collect::<Vec<_>>(),
                 Err(err) => {
                     println!("Failed to retrieve headers: {:?}", err);
                     warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
@@ -884,11 +891,11 @@ impl CommandHandler {
                     },
                 };
                 height -= 1;
-                if block.block().header.timestamp.as_u64() > period_ticker_end {
+                if block.header().timestamp.as_u64() > period_ticker_end {
                     print!("\x1B[{}D\x1B[K", (height + 1).to_string().chars().count());
                     continue;
                 };
-                while block.block().header.timestamp.as_u64() < period_ticker_start {
+                while block.header().timestamp.as_u64() < period_ticker_start {
                     results.push((
                         period_tx_count,
                         period_hash,
@@ -906,10 +913,10 @@ impl CommandHandler {
                 }
                 period_tx_count += block.block().body.kernels().len() - 1;
                 period_block_count += 1;
-                let st = if prev_block.block().header.timestamp.as_u64() >= block.block().header.timestamp.as_u64() {
+                let st = if prev_block.header().timestamp.as_u64() >= block.header().timestamp.as_u64() {
                     1.0
                 } else {
-                    (block.block().header.timestamp.as_u64() - prev_block.block().header.timestamp.as_u64()) as f64
+                    (block.header().timestamp.as_u64() - prev_block.header().timestamp.as_u64()) as f64
                 };
                 let diff = block.accumulated_data.target_difficulty.as_u64();
                 period_difficulty += diff;
@@ -934,9 +941,9 @@ impl CommandHandler {
         end_height: u64,
         filename: String,
         pow_algo: Option<PowAlgorithm>,
-    )
-    {
+    ) {
         let db = self.blockchain_db.clone();
+        let network = self.config.network;
         self.executor.spawn(async move {
             let mut output = try_or_print!(File::create(&filename));
 
@@ -952,8 +959,7 @@ impl CommandHandler {
 
             let start_height = cmp::max(start_height, 1);
             let mut prev_header = try_or_print!(db.fetch_chain_header(start_height - 1).await);
-            // TODO: hardcoded network #testnetreset
-            let consensus_rules = ConsensusManager::builder(Network::Stibbons).build();
+            let consensus_rules = ConsensusManager::builder(network).build();
 
             writeln!(
                 output,
@@ -966,31 +972,32 @@ impl CommandHandler {
                 let header = try_or_print!(db.fetch_chain_header(height).await);
 
                 // Optionally, filter out pow algos
-                if pow_algo.map(|algo| header.header.pow_algo() != algo).unwrap_or(false) {
+                if pow_algo.map(|algo| header.header().pow_algo() != algo).unwrap_or(false) {
                     continue;
                 }
 
-                let target_diff = try_or_print!(db.fetch_target_difficulties(prev_header.hash().clone()).await);
+                let target_diff = try_or_print!(
+                    db.fetch_target_difficulties_for_next_block(prev_header.hash().clone())
+                        .await
+                );
+                let pow_algo = header.header().pow_algo();
 
-                let min = consensus_rules
-                    .consensus_constants(height)
-                    .min_pow_difficulty(header.header.pow_algo());
-                let max = consensus_rules
-                    .consensus_constants(height)
-                    .max_pow_difficulty(header.header.pow_algo());
+                let min = consensus_rules.consensus_constants(height).min_pow_difficulty(pow_algo);
+                let max = consensus_rules.consensus_constants(height).max_pow_difficulty(pow_algo);
 
-                let calculated_target_difficulty = target_diff.get(header.header.pow_algo()).calculate(min, max);
-                let existing_target_difficulty = header.accumulated_data.target_difficulty;
-                let achieved = header.accumulated_data.achieved_difficulty;
-                let solve_time = header.header.timestamp.as_u64() as i64 - prev_header.header.timestamp.as_u64() as i64;
+                let calculated_target_difficulty = target_diff.get(pow_algo).calculate(min, max);
+                let existing_target_difficulty = header.accumulated_data().target_difficulty;
+                let achieved = header.accumulated_data().achieved_difficulty;
+                let solve_time =
+                    header.header().timestamp.as_u64() as i64 - prev_header.header().timestamp.as_u64() as i64;
                 let normalized_solve_time = cmp::min(
                     cmp::max(solve_time, 1) as u64,
                     consensus_rules
                         .consensus_constants(height)
-                        .get_difficulty_max_block_interval(header.header.pow_algo()),
+                        .get_difficulty_max_block_interval(pow_algo),
                 );
-                let acc_sha3 = header.accumulated_data.accumulated_blake_difficulty;
-                let acc_monero = header.accumulated_data.accumulated_monero_difficulty;
+                let acc_sha3 = header.accumulated_data().accumulated_sha_difficulty;
+                let acc_monero = header.accumulated_data().accumulated_monero_difficulty;
 
                 writeln!(
                     output,
@@ -1001,13 +1008,22 @@ impl CommandHandler {
                     calculated_target_difficulty.as_u64(),
                     solve_time,
                     normalized_solve_time,
-                    header.header.pow_algo(),
-                    chrono::DateTime::from(header.header.timestamp),
-                    target_diff.get(header.header.pow_algo()).len(),
+                    pow_algo,
+                    chrono::DateTime::from(header.header().timestamp),
+                    target_diff.get(pow_algo).len(),
                     acc_monero.as_u64(),
                     acc_sha3.as_u64(),
                 )
                 .unwrap();
+
+                if header.header().hash() != header.accumulated_data().hash {
+                    eprintln!(
+                        "Difference in hash at {}! header = {} and accum hash = {}",
+                        height,
+                        header.header().hash().to_hex(),
+                        header.accumulated_data().hash.to_hex()
+                    );
+                }
 
                 if existing_target_difficulty != calculated_target_difficulty {
                     eprintln!(
@@ -1037,6 +1053,10 @@ impl CommandHandler {
     /// Function to process the whoami command
     pub fn whoami(&self) {
         println!("{}", self.base_node_identity);
+    }
+
+    pub(crate) fn get_software_updater(&self) -> SoftwareUpdaterHandle {
+        self.software_updater.clone()
     }
 }
 

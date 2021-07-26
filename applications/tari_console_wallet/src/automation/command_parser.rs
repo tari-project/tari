@@ -30,6 +30,7 @@ use std::{
     str::FromStr,
 };
 use tari_app_utilities::utilities::parse_emoji_id_or_public_key;
+use tari_comms::multiaddr::Multiaddr;
 
 use tari_core::transactions::{tari_amount::MicroTari, types::PublicKey};
 
@@ -41,15 +42,21 @@ pub struct ParsedCommand {
 
 impl Display for ParsedCommand {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        use WalletCommand::*;
         let command = match self.command {
-            WalletCommand::GetBalance => "get-balance",
-            WalletCommand::SendTari => "send-tari",
-            WalletCommand::MakeItRain => "make-it-rain",
-            WalletCommand::CoinSplit => "coin-split",
-            WalletCommand::DiscoverPeer => "discover-peer",
-            WalletCommand::Whois => "whois",
-            WalletCommand::ListUtxos => "list-utxos",
-            WalletCommand::CountUtxos => "count-utxos",
+            GetBalance => "get-balance",
+            SendTari => "send-tari",
+            SendOneSided => "send-one-sided",
+            MakeItRain => "make-it-rain",
+            CoinSplit => "coin-split",
+            DiscoverPeer => "discover-peer",
+            Whois => "whois",
+            ExportUtxos => "export-utxos",
+            ExportSpentUtxos => "export-spent-utxos",
+            CountUtxos => "count-utxos",
+            SetBaseNode => "set-base-node",
+            SetCustomBaseNode => "set-custom-base-node",
+            ClearCustomBaseNode => "clear-custom-base-node",
         };
 
         let args = self
@@ -71,17 +78,26 @@ pub enum ParsedArgument {
     Float(f64),
     Int(u64),
     Date(DateTime<Utc>),
+    OutputToCSVFile(String),
+    CSVFileName(String),
+    Address(Multiaddr),
+    Negotiated(bool),
 }
 
 impl Display for ParsedArgument {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        use ParsedArgument::*;
         match self {
-            ParsedArgument::Amount(v) => write!(f, "{}", v.to_string()),
-            ParsedArgument::PublicKey(v) => write!(f, "{}", v.to_string()),
-            ParsedArgument::Text(v) => write!(f, "{}", v.to_string()),
-            ParsedArgument::Float(v) => write!(f, "{}", v.to_string()),
-            ParsedArgument::Int(v) => write!(f, "{}", v.to_string()),
-            ParsedArgument::Date(v) => write!(f, "{}", v.to_string()),
+            Amount(v) => write!(f, "{}", v.to_string()),
+            PublicKey(v) => write!(f, "{}", v.to_string()),
+            Text(v) => write!(f, "{}", v.to_string()),
+            Float(v) => write!(f, "{}", v.to_string()),
+            Int(v) => write!(f, "{}", v.to_string()),
+            Date(v) => write!(f, "{}", v.to_string()),
+            OutputToCSVFile(v) => write!(f, "{}", v.to_string()),
+            CSVFileName(v) => write!(f, "{}", v.to_string()),
+            Address(v) => write!(f, "{}", v.to_string()),
+            Negotiated(v) => write!(f, "{}", v.to_string()),
         }
     }
 }
@@ -97,12 +113,17 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, ParseError> {
     let args = match command {
         GetBalance => Vec::new(),
         SendTari => parse_send_tari(args)?,
+        SendOneSided => parse_send_tari(args)?,
         MakeItRain => parse_make_it_rain(args)?,
         CoinSplit => parse_coin_split(args)?,
-        DiscoverPeer => parse_discover_peer(args)?,
+        DiscoverPeer => parse_public_key(args)?,
         Whois => parse_whois(args)?,
-        ListUtxos => Vec::new(), // todo: only show X number of utxos
+        ExportUtxos => parse_export_utxos(args)?, // todo: only show X number of utxos
+        ExportSpentUtxos => parse_export_spent_utxos(args)?, // todo: only show X number of utxos
         CountUtxos => Vec::new(),
+        SetBaseNode => parse_public_key_and_address(args)?,
+        SetCustomBaseNode => parse_public_key_and_address(args)?,
+        ClearCustomBaseNode => Vec::new(),
     };
 
     Ok(ParsedCommand { command, args })
@@ -121,7 +142,7 @@ fn parse_whois(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseEr
     Ok(parsed_args)
 }
 
-fn parse_discover_peer(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
+fn parse_public_key(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
     let mut parsed_args = Vec::new();
 
     // public key/emoji id
@@ -134,6 +155,26 @@ fn parse_discover_peer(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>,
     Ok(parsed_args)
 }
 
+fn parse_public_key_and_address(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
+    let mut parsed_args = Vec::new();
+
+    // public key/emoji id
+    let pubkey = args
+        .next()
+        .ok_or_else(|| ParseError::Empty("public key or emoji id".to_string()))?;
+    let pubkey = parse_emoji_id_or_public_key(pubkey).ok_or(ParseError::PublicKey)?;
+    parsed_args.push(ParsedArgument::PublicKey(pubkey));
+
+    // address
+    let address = args
+        .next()
+        .ok_or_else(|| ParseError::Empty("net address".to_string()))?;
+    let address = address.parse::<Multiaddr>().map_err(|_| ParseError::Address)?;
+    parsed_args.push(ParsedArgument::Address(address));
+
+    Ok(parsed_args)
+}
+
 fn parse_make_it_rain(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
     let mut parsed_args = Vec::new();
 
@@ -142,7 +183,7 @@ fn parse_make_it_rain(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, 
     let txps = txps.parse::<f64>().map_err(ParseError::Float)?;
     if txps > 25.0 {
         println!("Maximum transaction rate is 25/sec");
-        return Err(ParseError::Invalid);
+        return Err(ParseError::Invalid("Maximum transaction rate is 25/sec".to_string()));
     }
     parsed_args.push(ParsedArgument::Float(txps));
 
@@ -153,7 +194,9 @@ fn parse_make_it_rain(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, 
 
     if (txps * duration as f64) < 1.0 {
         println!("Invalid data provided for [number of Txs/s] * [test duration (s)], must be >= 1\n");
-        return Err(ParseError::Invalid);
+        return Err(ParseError::Invalid(
+            "Invalid data provided for [number of Txs/s] * [test duration (s)], must be >= 1".to_string(),
+        ));
     }
 
     // start amount
@@ -187,6 +230,22 @@ fn parse_make_it_rain(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, 
     let pubkey = parse_emoji_id_or_public_key(pubkey).ok_or(ParseError::PublicKey)?;
     parsed_args.push(ParsedArgument::PublicKey(pubkey));
 
+    // transaction type
+    let txn_type = args
+        .next()
+        .ok_or_else(|| ParseError::Empty("transaction type".to_string()))?;
+    let negotiated = match txn_type {
+        "negotiated" => true,
+        "one_sided" => false,
+        _ => {
+            println!("Invalid data provided for <transaction type>, must be 'negotiated' or 'one_sided'\n");
+            return Err(ParseError::Invalid(
+                "Invalid data provided for <transaction type>, must be 'negotiated' or 'one_sided'".to_string(),
+            ));
+        },
+    };
+    parsed_args.push(ParsedArgument::Negotiated(negotiated));
+
     // message
     let message = args.collect::<Vec<&str>>().join(" ");
     parsed_args.push(ParsedArgument::Text(message));
@@ -216,6 +275,54 @@ fn parse_send_tari(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, Par
     Ok(parsed_args)
 }
 
+fn parse_export_utxos(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
+    let mut parsed_args = Vec::new();
+
+    if let Some(v) = args.next() {
+        if v == "--csv-file" {
+            let file_name = args.next().ok_or_else(|| {
+                ParseError::Empty(
+                    "file name\n  Usage:\n    export-utxos\n    export-utxos --csv-file <file name>".to_string(),
+                )
+            })?;
+            parsed_args.push(ParsedArgument::OutputToCSVFile("--csv-file".to_string()));
+            parsed_args.push(ParsedArgument::CSVFileName(file_name.to_string()));
+        } else {
+            return Err(ParseError::Empty(
+                "'--csv-file' qualifier\n  Usage:\n    export-utxos\n    export-utxos --csv-file <file name>"
+                    .to_string(),
+            ));
+        }
+    };
+
+    Ok(parsed_args)
+}
+
+fn parse_export_spent_utxos(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
+    let mut parsed_args = Vec::new();
+
+    if let Some(v) = args.next() {
+        if v == "--csv-file" {
+            let file_name = args.next().ok_or_else(|| {
+                ParseError::Empty(
+                    "file name\n  Usage:\n    export-spent-utxos\n    export-spent-utxos --csv-file <file name>"
+                        .to_string(),
+                )
+            })?;
+            parsed_args.push(ParsedArgument::OutputToCSVFile("--csv-file".to_string()));
+            parsed_args.push(ParsedArgument::CSVFileName(file_name.to_string()));
+        } else {
+            return Err(ParseError::Empty(
+                "'--csv-file' qualifier\n  Usage:\n    export-spent-utxos\n    export-spent-utxos --csv-file <file \
+                 name>"
+                    .to_string(),
+            ));
+        }
+    };
+
+    Ok(parsed_args)
+}
+
 fn parse_coin_split(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
     let mut parsed_args = vec![];
 
@@ -233,73 +340,143 @@ fn parse_coin_split(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, Pa
     Ok(parsed_args)
 }
 
-#[test]
-fn test_parse_command() {
+#[cfg(test)]
+mod test {
+    use crate::automation::{
+        command_parser::{parse_command, ParsedArgument},
+        error::ParseError,
+    };
     use rand::rngs::OsRng;
-    use tari_core::transactions::types::PublicKey;
+    use std::str::FromStr;
+    use tari_core::transactions::{tari_amount::MicroTari, types::PublicKey};
     use tari_crypto::keys::PublicKey as PublicKeyTrait;
 
-    let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
+    #[test]
+    fn test_parse_command() {
+        let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
 
-    let command_str = "";
-    let parsed = parse_command(command_str);
-    assert!(parsed.is_err());
+        let command_str = "";
+        let parsed = parse_command(command_str);
+        assert!(parsed.is_err());
 
-    let command_str = "send-tari asdf";
-    let parsed = parse_command(command_str);
-    assert!(parsed.is_err());
+        let command_str = "send-tari asdf";
+        let parsed = parse_command(command_str);
+        assert!(parsed.is_err());
 
-    let command_str = "send-tari 999T";
-    let parsed = parse_command(command_str);
-    assert!(parsed.is_err());
+        let command_str = "send-tari 999T";
+        let parsed = parse_command(command_str);
+        assert!(parsed.is_err());
 
-    let command_str = "send-tari 999T asdf";
-    let parsed = parse_command(command_str);
-    assert!(parsed.is_err());
+        let command_str = "send-tari 999T asdf";
+        let parsed = parse_command(command_str);
+        assert!(parsed.is_err());
 
-    let command_str = format!("send-tari 999T {} msg text", public_key);
-    let parsed = parse_command(&command_str).unwrap();
+        let command_str = format!("send-tari 999T {} msg text", public_key);
+        let parsed = parse_command(&command_str).unwrap();
 
-    if let ParsedArgument::Amount(amount) = parsed.args[0].clone() {
-        assert_eq!(amount, MicroTari::from_str("999T").unwrap());
-    } else {
-        panic!("Parsed MicroTari amount not the same as provided.");
-    }
-    if let ParsedArgument::PublicKey(pk) = parsed.args[1].clone() {
-        assert_eq!(pk, public_key);
-    } else {
-        panic!("Parsed public key is not the same as provided.");
-    }
-    if let ParsedArgument::Text(msg) = parsed.args[2].clone() {
-        assert_eq!(msg, "msg text");
-    } else {
-        panic!("Parsed message is not the same as provided.");
-    }
+        if let ParsedArgument::Amount(amount) = parsed.args[0].clone() {
+            assert_eq!(amount, MicroTari::from_str("999T").unwrap());
+        } else {
+            panic!("Parsed MicroTari amount not the same as provided.");
+        }
+        if let ParsedArgument::PublicKey(pk) = parsed.args[1].clone() {
+            assert_eq!(pk, public_key);
+        } else {
+            panic!("Parsed public key is not the same as provided.");
+        }
+        if let ParsedArgument::Text(msg) = parsed.args[2].clone() {
+            assert_eq!(msg, "msg text");
+        } else {
+            panic!("Parsed message is not the same as provided.");
+        }
 
-    let command_str = format!("send-tari 999ut {}", public_key);
-    let parsed = parse_command(&command_str).unwrap();
+        let command_str = format!("send-tari 999ut {}", public_key);
+        let parsed = parse_command(&command_str).unwrap();
 
-    if let ParsedArgument::Amount(amount) = parsed.args[0].clone() {
-        assert_eq!(amount, MicroTari::from_str("999ut").unwrap());
-    } else {
-        panic!("Parsed MicroTari amount not the same as provided.");
-    }
+        if let ParsedArgument::Amount(amount) = parsed.args[0].clone() {
+            assert_eq!(amount, MicroTari::from_str("999ut").unwrap());
+        } else {
+            panic!("Parsed MicroTari amount not the same as provided.");
+        }
 
-    let command_str = format!("send-tari 999 {}", public_key);
-    let parsed = parse_command(&command_str).unwrap();
+        let command_str = format!("send-tari 999 {}", public_key);
+        let parsed = parse_command(&command_str).unwrap();
 
-    if let ParsedArgument::Amount(amount) = parsed.args[0].clone() {
-        assert_eq!(amount, MicroTari::from_str("999").unwrap());
-    } else {
-        panic!("Parsed MicroTari amount not the same as provided.");
-    }
+        if let ParsedArgument::Amount(amount) = parsed.args[0].clone() {
+            assert_eq!(amount, MicroTari::from_str("999").unwrap());
+        } else {
+            panic!("Parsed MicroTari amount not the same as provided.");
+        }
 
-    let command_str = format!("discover-peer {}", public_key);
-    let parsed = parse_command(&command_str).unwrap();
+        let command_str = format!("discover-peer {}", public_key);
+        let parsed = parse_command(&command_str).unwrap();
 
-    if let ParsedArgument::PublicKey(pk) = parsed.args[0].clone() {
-        assert_eq!(pk, public_key);
-    } else {
-        panic!("Parsed public key is not the same as provided.");
+        if let ParsedArgument::PublicKey(pk) = parsed.args[0].clone() {
+            assert_eq!(pk, public_key);
+        } else {
+            panic!("Parsed public key is not the same as provided.");
+        }
+
+        let command_str = "export-utxos --csv-file utxo_list.csv".to_string();
+        let parsed = parse_command(&command_str).unwrap();
+
+        if let ParsedArgument::CSVFileName(file) = parsed.args[1].clone() {
+            assert_eq!(file, "utxo_list.csv".to_string());
+        } else {
+            panic!("Parsed csv file name is not the same as provided.");
+        }
+
+        let transaction_type = "negotiated";
+        let message = "Testing the network!";
+        let command_str = format!(
+            "make-it-rain 20 225 9000 0 now {} {} {}",
+            public_key, transaction_type, message
+        );
+        let parsed = parse_command(&command_str).unwrap();
+
+        if let ParsedArgument::PublicKey(pk) = parsed.args[5].clone() {
+            assert_eq!(pk, public_key);
+        } else {
+            panic!("Parsed public key is not the same as provided.");
+        }
+        if let ParsedArgument::Negotiated(negotiated) = parsed.args[6].clone() {
+            assert!(negotiated);
+        } else {
+            panic!("Parsed <transaction type> is not the same as provided.");
+        }
+        if let ParsedArgument::Text(msg) = parsed.args[7].clone() {
+            assert_eq!(message, msg);
+        } else {
+            panic!("Parsed message is not the same as provided.");
+        }
+
+        let transaction_type = "one_sided";
+        let command_str = format!(
+            "make-it-rain 20 225 9000 0 now {} {} {}",
+            public_key, transaction_type, message
+        );
+        let parsed = parse_command(&command_str).unwrap();
+
+        if let ParsedArgument::Negotiated(negotiated) = parsed.args[6].clone() {
+            assert!(!negotiated);
+        } else {
+            panic!("Parsed <transaction type> is not the same as provided.");
+        }
+
+        let transaction_type = "what_ever";
+        let command_str = format!(
+            "make-it-rain 20 225 9000 0 now {} {} {}",
+            public_key, transaction_type, message
+        );
+        match parse_command(&command_str) {
+            Ok(_) => panic!("<transaction type> argument '{}' not allowed", transaction_type),
+            Err(e) => match e {
+                ParseError::Invalid(e) => assert_eq!(
+                    e,
+                    "Invalid data provided for <transaction type>, must be 'negotiated' or 'one_sided'".to_string()
+                ),
+                _ => panic!("Expected parsing <transaction type> to return an error here"),
+            },
+        }
     }
 }

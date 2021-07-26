@@ -24,17 +24,16 @@ use crate::{
     grpc::WalletGrpcServer,
     notifier::Notifier,
     recovery::wallet_recovery,
-    ui::{run, App},
+    ui,
+    ui::App,
+    utils::db::get_custom_base_node_peer_from_db,
 };
-
 use log::*;
 use rand::{rngs::OsRng, seq::SliceRandom};
 use std::{fs, io::Stdout, net::SocketAddr, path::PathBuf};
 use tari_app_utilities::utilities::ExitCodes;
-use tari_common::GlobalConfig;
+use tari_common::{ConfigBootstrap, GlobalConfig};
 use tari_comms::peer_manager::Peer;
-
-use tari_comms::types::CommsPublicKey;
 use tari_wallet::WalletSqlite;
 use tokio::runtime::Handle;
 use tonic::transport::Server;
@@ -42,14 +41,26 @@ use tui::backend::CrosstermBackend;
 
 pub const LOG_TARGET: &str = "wallet::app::main";
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum WalletMode {
     Tui,
     Grpc,
     Script(PathBuf),
     Command(String),
-    Recovery,
+    RecoveryDaemon,
+    RecoveryTui,
     Invalid,
+}
+
+#[derive(Debug, Clone)]
+pub struct WalletModeConfig {
+    pub base_node_config: PeerConfig,
+    pub base_node_selected: Peer,
+    pub bootstrap: ConfigBootstrap,
+    pub global_config: GlobalConfig,
+    pub handle: Handle,
+    pub notify_script: Option<PathBuf>,
+    pub wallet_mode: WalletMode,
 }
 
 #[derive(Debug, Clone)]
@@ -95,24 +106,45 @@ impl PeerConfig {
             ))
         }
     }
+
+    /// Returns all the peers from the PeerConfig.
+    /// In order: Custom base node, service peers, peer seeds.
+    pub fn get_all_peers(&self) -> Vec<Peer> {
+        let num_peers = self.base_node_peers.len();
+        let num_seeds = self.peer_seeds.len();
+
+        let mut peers = if let Some(peer) = self.base_node_custom.clone() {
+            let mut peers = Vec::with_capacity(1 + num_peers + num_seeds);
+            peers.push(peer);
+            peers
+        } else {
+            Vec::with_capacity(num_peers + num_seeds)
+        };
+
+        peers.extend(self.base_node_peers.clone());
+        peers.extend(self.peer_seeds.clone());
+
+        peers
+    }
 }
 
-pub fn command_mode(
-    handle: Handle,
-    command: String,
-    wallet: WalletSqlite,
-    config: GlobalConfig,
-) -> Result<(), ExitCodes>
-{
+pub fn command_mode(config: WalletModeConfig, wallet: WalletSqlite, command: String) -> Result<(), ExitCodes> {
+    let WalletModeConfig {
+        global_config, handle, ..
+    } = config.clone();
     let commands = vec![parse_command(&command)?];
-    info!("Starting wallet command mode");
-    handle.block_on(command_runner(handle.clone(), commands, wallet, config))?;
-    info!("Shutting down wallet command mode");
+    info!(target: LOG_TARGET, "Starting wallet command mode");
+    handle.block_on(command_runner(commands, wallet.clone(), global_config))?;
 
-    Ok(())
+    info!(target: LOG_TARGET, "Completed wallet command mode");
+
+    wallet_or_exit(config, wallet)
 }
 
-pub fn script_mode(handle: Handle, path: PathBuf, wallet: WalletSqlite, config: GlobalConfig) -> Result<(), ExitCodes> {
+pub fn script_mode(config: WalletModeConfig, wallet: WalletSqlite, path: PathBuf) -> Result<(), ExitCodes> {
+    let WalletModeConfig {
+        global_config, handle, ..
+    } = config.clone();
     info!(target: LOG_TARGET, "Starting wallet script mode");
     println!("Starting wallet script mode");
     let script = fs::read_to_string(path).map_err(|e| ExitCodes::InputError(e.to_string()))?;
@@ -134,36 +166,80 @@ pub fn script_mode(handle: Handle, path: PathBuf, wallet: WalletSqlite, config: 
     println!("{} commands parsed successfully.", commands.len());
 
     println!("Starting the command runner!");
-    handle.block_on(command_runner(handle.clone(), commands, wallet, config))?;
+    handle.block_on(command_runner(commands, wallet.clone(), global_config))?;
 
     info!(target: LOG_TARGET, "Completed wallet script mode");
-    Ok(())
+
+    wallet_or_exit(config, wallet)
 }
 
-pub fn tui_mode(
-    handle: Handle,
-    node_config: GlobalConfig,
-    wallet: WalletSqlite,
-    base_node_selected: Peer,
-    base_node_config: PeerConfig,
-    notify_script: Option<PathBuf>,
-) -> Result<(), ExitCodes>
-{
+/// Prompts the user to continue to the wallet, or exit.
+fn wallet_or_exit(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), ExitCodes> {
+    if config.bootstrap.command_mode_auto_exit {
+        info!(target: LOG_TARGET, "Auto exit argument supplied - exiting.");
+        return Ok(());
+    }
+
+    if config.bootstrap.daemon_mode {
+        info!(target: LOG_TARGET, "Starting GRPC server.");
+        grpc_mode(config, wallet)
+    } else {
+        debug!(target: LOG_TARGET, "Prompting for run or exit key.");
+        println!("\nPress Enter to continue to the wallet, or type q (or quit) followed by Enter.");
+        let mut buf = String::new();
+        std::io::stdin()
+            .read_line(&mut buf)
+            .map_err(|e| ExitCodes::IOError(e.to_string()))?;
+
+        match buf.as_str().trim() {
+            "quit" | "q" | "exit" => {
+                info!(target: LOG_TARGET, "Exiting.");
+                Ok(())
+            },
+            _ => {
+                info!(target: LOG_TARGET, "Starting TUI.");
+                tui_mode(config, wallet)
+            },
+        }
+    }
+}
+
+pub fn tui_mode(config: WalletModeConfig, mut wallet: WalletSqlite) -> Result<(), ExitCodes> {
+    let WalletModeConfig {
+        mut base_node_config,
+        mut base_node_selected,
+        global_config,
+        handle,
+        notify_script,
+        ..
+    } = config;
     let grpc = WalletGrpcServer::new(wallet.clone());
-    handle.spawn(run_grpc(grpc, node_config.grpc_console_wallet_address));
+    handle.spawn(run_grpc(grpc, global_config.grpc_console_wallet_address));
 
     let notifier = Notifier::new(notify_script, handle.clone(), wallet.clone());
 
-    let app = handle.block_on(App::<CrosstermBackend<Stdout>>::new(
+    // update the selected/custom base node since it may have been changed by script/command mode
+    let base_node_custom = handle.block_on(get_custom_base_node_peer_from_db(&mut wallet));
+    base_node_config.base_node_custom = base_node_custom.clone();
+    if let Some(peer) = base_node_custom {
+        base_node_selected = peer;
+    } else if let Some(peer) = handle.block_on(wallet.get_base_node_peer())? {
+        base_node_selected = peer;
+    }
+
+    let app = App::<CrosstermBackend<Stdout>>::new(
         "Tari Console Wallet".into(),
         wallet,
-        node_config.network,
+        global_config.network,
         base_node_selected,
         base_node_config,
-        node_config,
+        global_config,
         notifier,
-    ));
-    handle.enter(|| run(app))?;
+    );
+
+    info!(target: LOG_TARGET, "Starting app");
+
+    handle.enter(|| ui::run(app))?;
 
     info!(
         target: LOG_TARGET,
@@ -173,22 +249,15 @@ pub fn tui_mode(
     Ok(())
 }
 
-pub fn recovery_mode(
-    handle: Handle,
-    config: GlobalConfig,
-    wallet: WalletSqlite,
-    base_node_selected: Peer,
-    base_node_config: PeerConfig,
-    notify_script: Option<PathBuf>,
-) -> Result<(), ExitCodes>
-{
-    let peer_seed_public_keys: Vec<CommsPublicKey> = base_node_config
-        .peer_seeds
-        .iter()
-        .map(|f| f.public_key.clone())
-        .collect();
+pub fn recovery_mode(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), ExitCodes> {
+    let WalletModeConfig {
+        base_node_config,
+        handle,
+        wallet_mode,
+        ..
+    } = config.clone();
     println!("Starting recovery...");
-    match handle.block_on(wallet_recovery(wallet.clone(), peer_seed_public_keys)) {
+    match handle.block_on(wallet_recovery(&wallet, &base_node_config)) {
         Ok(_) => println!("Wallet recovered!"),
         Err(e) => {
             error!(target: LOG_TARGET, "Recovery failed: {}", e);
@@ -202,21 +271,22 @@ pub fn recovery_mode(
     }
 
     println!("Starting TUI.");
-    tui_mode(
-        handle,
-        config,
-        wallet,
-        base_node_selected,
-        base_node_config,
-        notify_script,
-    )
+
+    match wallet_mode {
+        WalletMode::RecoveryDaemon => grpc_mode(config, wallet),
+        WalletMode::RecoveryTui => tui_mode(config, wallet),
+        _ => Err(ExitCodes::RecoveryError("Unsupported post recovery mode".to_string())),
+    }
 }
 
-pub fn grpc_mode(handle: Handle, wallet: WalletSqlite, node_config: GlobalConfig) -> Result<(), ExitCodes> {
+pub fn grpc_mode(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), ExitCodes> {
+    let WalletModeConfig {
+        global_config, handle, ..
+    } = config;
     println!("Starting grpc server");
     let grpc = WalletGrpcServer::new(wallet);
     handle
-        .block_on(run_grpc(grpc, node_config.grpc_console_wallet_address))
+        .block_on(run_grpc(grpc, global_config.grpc_console_wallet_address))
         .map_err(ExitCodes::GrpcError)?;
     println!("Shutting down");
     Ok(())

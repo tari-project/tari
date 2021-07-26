@@ -74,8 +74,7 @@ impl Mempool {
         &self,
         removed_blocks: Vec<Arc<Block>>,
         new_blocks: Vec<Arc<Block>>,
-    ) -> Result<(), MempoolError>
-    {
+    ) -> Result<(), MempoolError> {
         self.pool_storage
             .write()
             .map_err(|e| MempoolError::BackendError(e.to_string()))?
@@ -95,7 +94,7 @@ impl Mempool {
     /// Only transactions that fit into a block will be returned
     pub fn retrieve(&self, total_weight: u64) -> Result<Vec<Arc<Transaction>>, MempoolError> {
         self.pool_storage
-            .read()
+            .write()
             .map_err(|e| MempoolError::BackendError(e.to_string()))?
             .retrieve(total_weight)
     }

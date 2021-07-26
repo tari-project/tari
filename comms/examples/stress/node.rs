@@ -60,8 +60,7 @@ pub async fn create(
         mpsc::Sender<OutboundMessage>,
     ),
     Error,
->
-{
+> {
     let datastore = LMDBBuilder::new()
         .set_path(database_path.to_str().unwrap())
         .set_env_config(LMDBConfig::default())
@@ -90,7 +89,7 @@ pub async fn create(
             ni.set_public_address(public_addr.clone());
             ni
         })
-        .unwrap_or_else(|| Arc::new(NodeIdentity::random(&mut OsRng, public_addr, Default::default()).unwrap()));
+        .unwrap_or_else(|| Arc::new(NodeIdentity::random(&mut OsRng, public_addr, Default::default())));
 
     let listener_addr = format!("/ip4/0.0.0.0/tcp/{}", port).parse().unwrap();
 
@@ -122,6 +121,7 @@ pub async fn create(
             .spawn_with_transport(TcpWithTorTransport::with_tor_socks_proxy(SocksConfig {
                 proxy_address: TOR_SOCKS_ADDR.parse().unwrap(),
                 authentication: Default::default(),
+                proxy_bypass_addresses: vec![],
             }))
             .await
             .unwrap()

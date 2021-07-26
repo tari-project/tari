@@ -62,10 +62,21 @@ impl CrosstermEvents {
             let mut last_tick = Instant::now();
             loop {
                 // poll for tick rate duration, if no events, sent tick event.
-                if event::poll(config.tick_rate - last_tick.elapsed()).unwrap() {
-                    if let CEvent::Key(key) = event::read().unwrap() {
-                        tx.send(Event::Input(key)).unwrap();
-                    }
+                match event::poll(
+                    config
+                        .tick_rate
+                        .checked_sub(last_tick.elapsed())
+                        .unwrap_or_else(|| Duration::from_millis(1)),
+                ) {
+                    Ok(true) => {
+                        if let Ok(CEvent::Key(key)) = event::read() {
+                            tx.send(Event::Input(key)).unwrap();
+                        }
+                    },
+                    Ok(false) => {},
+                    Err(e) => {
+                        error!(target: LOG_TARGET, "Internal error in crossterm events: {}", e);
+                    },
                 }
                 if last_tick.elapsed() >= config.tick_rate {
                     if let Err(e) = tx.send(Event::Tick) {

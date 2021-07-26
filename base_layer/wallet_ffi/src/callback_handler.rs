@@ -56,8 +56,8 @@ use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerEventReceiver},
-        protocols::txo_validation_protocol::TxoValidationType,
         TxId,
+        TxoValidationType,
     },
     transaction_service::{
         handle::{TransactionEvent, TransactionEventReceiver},
@@ -128,8 +128,7 @@ where TBackend: TransactionBackend + 'static
         callback_invalid_txo_validation_complete: unsafe extern "C" fn(TxId, u8),
         callback_transaction_validation_complete: unsafe extern "C" fn(TxId, u8),
         callback_saf_messages_received: unsafe extern "C" fn(),
-    ) -> Self
-    {
+    ) -> Self {
         info!(
             target: LOG_TARGET,
             "ReceivedTransactionCallback -> Assigning Fn: {:?}", callback_received_transaction
@@ -501,8 +500,7 @@ where TBackend: TransactionBackend + 'static
         request_key: u64,
         validation_type: TxoValidationType,
         result: CallbackValidationResults,
-    )
-    {
+    ) {
         debug!(
             target: LOG_TARGET,
             "Calling Output Validation Complete callback function for Request Key: {} with with type {} result {:?}",
@@ -605,8 +603,8 @@ mod test {
     use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
     use tari_shutdown::Shutdown;
     use tari_wallet::{
-        output_manager_service::{handle::OutputManagerEvent, protocols::txo_validation_protocol::TxoValidationType},
-        test_utils::make_transaction_database,
+        output_manager_service::{handle::OutputManagerEvent, TxoValidationType},
+        test_utils::make_wallet_databases,
         transaction_service::{
             handle::TransactionEvent,
             storage::{
@@ -778,7 +776,7 @@ mod test {
     fn test_callback_handler() {
         let mut runtime = Runtime::new().unwrap();
 
-        let (backend, _tempdir) = make_transaction_database(None);
+        let (_wallet_backend, backend, _oms_backend, _, _tempdir) = make_wallet_databases(None);
         let db = TransactionDatabase::new(backend);
         let rtp = ReceiverTransactionProtocol::new_placeholder();
         let inbound_tx = InboundTransaction::new(
@@ -796,7 +794,13 @@ mod test {
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             MicroTari::from(100),
             MicroTari::from(2000),
-            Transaction::new(Vec::new(), Vec::new(), Vec::new(), BlindingFactor::default()),
+            Transaction::new(
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                BlindingFactor::default(),
+                BlindingFactor::default(),
+            ),
             TransactionStatus::Completed,
             "2".to_string(),
             Utc::now().naive_utc(),

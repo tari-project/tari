@@ -70,8 +70,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         connectivity: ConnectivityRequester,
         sync_peers: &'a [NodeId],
         randomx_factory: RandomXFactory,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             config,
             header_validator: BlockHeaderSyncValidator::new(db.clone(), consensus_rules, randomx_factory),
@@ -121,6 +120,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 Err(BlockHeaderSyncError::ValidationFailed(err)) => {
                     debug!(target: LOG_TARGET, "Block header validation failed: {}", err);
                     self.ban_peer_long(node_id, err.into()).await?;
+                },
+                Err(BlockHeaderSyncError::ChainSplitNotFound(peer)) => {
+                    debug!(target: LOG_TARGET, "Chain split not found for peer {}.", peer);
+                    self.ban_peer_long(peer, BanReason::ChainSplitNotFound).await?;
                 },
                 Err(err @ BlockHeaderSyncError::InvalidBlockHeight { .. }) => {
                     debug!(target: LOG_TARGET, "{}", err);
@@ -234,8 +237,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         node_id: NodeId,
         reason: BanReason,
         duration: Duration,
-    ) -> Result<(), BlockHeaderSyncError>
-    {
+    ) -> Result<(), BlockHeaderSyncError> {
         if self.config.sync_peers.contains(&node_id) {
             debug!(
                 target: LOG_TARGET,
@@ -279,8 +281,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         peer: &NodeId,
         client: &mut rpc::BaseNodeSyncRpcClient,
         header_count: u64,
-    ) -> Result<(proto::FindChainSplitResponse, Vec<HashOutput>, u64), BlockHeaderSyncError>
-    {
+    ) -> Result<(proto::FindChainSplitResponse, Vec<HashOutput>, u64), BlockHeaderSyncError> {
         const NUM_CHAIN_SPLIT_HEADERS: usize = 500;
         // Limit how far back we're willing to go. A peer might just say it does not have a chain split
         // and keep us busy going back until the genesis.
@@ -292,7 +293,6 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         loop {
             iter_count += 1;
             if iter_count > MAX_CHAIN_SPLIT_ITERS {
-                self.ban_peer_long(peer.clone(), BanReason::ChainSplitNotFound).await?;
                 return Err(BlockHeaderSyncError::ChainSplitNotFound(peer.clone()));
             }
 
@@ -302,11 +302,17 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 .await?;
             debug!(
                 target: LOG_TARGET,
-                "Determining if chain splits between {} and {} headers back from peer `{}`",
+                "Determining if chain splits between {} and {} headers back from the tip (peer: `{}`, {} hashes sent)",
                 offset,
                 offset + NUM_CHAIN_SPLIT_HEADERS,
                 peer,
+                block_hashes.len()
             );
+
+            // No further hashes to send.
+            if block_hashes.is_empty() {
+                return Err(BlockHeaderSyncError::ChainSplitNotFound(peer.clone()));
+            }
 
             let request = FindChainSplitRequest {
                 block_hashes: block_hashes.clone(),
@@ -316,6 +322,11 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             let resp = match client.find_chain_split(request).await {
                 Ok(r) => r,
                 Err(RpcError::RequestFailed(err)) if err.status_code().is_not_found() => {
+                    // This round we sent less hashes than the max, so the next round will not have any more hashes to
+                    // send. Exit early in this case.
+                    if block_hashes.len() < NUM_CHAIN_SPLIT_HEADERS {
+                        return Err(BlockHeaderSyncError::ChainSplitNotFound(peer.clone()));
+                    }
                     // Chain split not found, let's go further back
                     offset = NUM_CHAIN_SPLIT_HEADERS * iter_count;
                     continue;
@@ -339,8 +350,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         &mut self,
         peer: &NodeId,
         client: &mut rpc::BaseNodeSyncRpcClient,
-    ) -> Result<SyncStatus, BlockHeaderSyncError>
-    {
+    ) -> Result<SyncStatus, BlockHeaderSyncError> {
         // Fetch the local tip header at the beginning of the sync process
         let local_tip_header = self.db.fetch_tip_header().await?;
 
@@ -402,17 +412,18 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             .map_err(BlockHeaderSyncError::ReceivedInvalidHeader)?;
         let num_new_headers = headers.len();
 
-        // We can trust that the header associated with this hash exists because block_hashes is data this node
-        // supplied. usize conversion overflow has already been checked above
-        let chain_split_hash = block_hashes[fork_hash_index as usize].clone();
+        // NOTE: We can trust that the header associated with this hash exists because `block_hashes` was supplied by
+        // this node. usize conversion overflow has already been checked above
+        let chain_split_hash = block_hashes.get(fork_hash_index as usize).unwrap();
 
-        self.header_validator.initialize_state(chain_split_hash.clone()).await?;
+        self.header_validator.initialize_state(&chain_split_hash).await?;
         for header in headers {
             debug!(
                 target: LOG_TARGET,
-                "Validating header #{} (Pow: {})",
+                "Validating header #{} (Pow: {}) with hash: ({})",
                 header.height,
                 header.pow_algo(),
+                header.hash().to_hex(),
             );
             self.header_validator.validate(header)?;
         }
@@ -440,7 +451,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             local_tip_header,
             remote_tip_height,
             reorg_steps_back: steps_back,
-            chain_split_hash,
+            chain_split_hash: chain_split_hash.clone(),
         };
         Ok(SyncStatus::Lagging(Box::new(chain_split_info)))
     }
@@ -466,8 +477,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         peer: &NodeId,
         client: &mut rpc::BaseNodeSyncRpcClient,
         split_info: ChainSplitInfo,
-    ) -> Result<(), BlockHeaderSyncError>
-    {
+    ) -> Result<(), BlockHeaderSyncError> {
         const COMMIT_EVERY_N_HEADERS: usize = 1000;
 
         // Peer returned less than the max headers. This indicates that there are no further headers to request.
@@ -496,10 +506,12 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
         debug!(
             target: LOG_TARGET,
-            "Download remaining headers starting from header #{} from peer `{}`", start_header.header.height, peer
+            "Download remaining headers starting from header #{} from peer `{}`",
+            start_header.height(),
+            peer
         );
         let request = SyncHeadersRequest {
-            start_hash: start_header.header.hash(),
+            start_hash: start_header.hash().clone(),
             // To the tip!
             count: 0,
         };
@@ -513,9 +525,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             let header = BlockHeader::try_from(header?).map_err(BlockHeaderSyncError::ReceivedInvalidHeader)?;
             debug!(
                 target: LOG_TARGET,
-                "Validating header: #{} (PoW = {})",
+                "Validating header #{} (Pow: {}) with hash: ({})",
                 header.height,
-                header.pow_algo()
+                header.pow_algo(),
+                header.hash().to_hex(),
             );
             let existing_header = self.db.fetch_header_by_block_hash(header.hash()).await?;
             // TODO: Due to a bug in a previous version of base node sync RPC, the duplicate headers can be sent. We
@@ -571,7 +584,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         let new_tip = chain_headers.last().cloned().unwrap();
         let mut txn = self.db.write_transaction();
         chain_headers.into_iter().for_each(|chain_header| {
-            txn.insert_header(chain_header.header, chain_header.accumulated_data);
+            txn.insert_chain_header(chain_header);
         });
 
         txn.commit().await?;

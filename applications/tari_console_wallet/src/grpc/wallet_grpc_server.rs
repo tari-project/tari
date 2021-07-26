@@ -1,8 +1,11 @@
 use futures::future;
 use log::*;
+use std::convert::TryFrom;
 use tari_app_grpc::{
     conversions::naive_datetime_to_timestamp,
+    tari_rpc,
     tari_rpc::{
+        payment_recipient::PaymentType,
         wallet_server,
         CoinSplitRequest,
         CoinSplitResponse,
@@ -18,6 +21,8 @@ use tari_app_grpc::{
         GetTransactionInfoResponse,
         GetVersionRequest,
         GetVersionResponse,
+        ImportUtxosRequest,
+        ImportUtxosResponse,
         TransactionDirection,
         TransactionInfo,
         TransactionStatus,
@@ -26,10 +31,10 @@ use tari_app_grpc::{
         TransferResult,
     },
 };
-use tari_comms::types::CommsPublicKey;
+use tari_comms::{types::CommsPublicKey, CommsNode};
 use tari_core::{
     tari_utilities::{hex::Hex, ByteArray},
-    transactions::tari_amount::MicroTari,
+    transactions::{tari_amount::MicroTari, transaction::UnblindedOutput, types::Signature},
 };
 use tari_wallet::{
     output_manager_service::handle::OutputManagerHandle,
@@ -56,6 +61,10 @@ impl WalletGrpcServer {
 
     fn get_output_manager_service(&self) -> OutputManagerHandle {
         self.wallet.output_manager_service.clone()
+    }
+
+    fn comms(&self) -> &CommsNode {
+        &self.wallet.comms
     }
 }
 
@@ -97,8 +106,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     async fn get_coinbase(
         &self,
         request: Request<GetCoinbaseRequest>,
-    ) -> Result<Response<GetCoinbaseResponse>, Status>
-    {
+    ) -> Result<Response<GetCoinbaseResponse>, Status> {
         let request = request.into_inner();
 
         let mut tx_service = self.get_transaction_service();
@@ -123,29 +131,49 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map(|(idx, dest)| -> Result<_, String> {
                 let pk = CommsPublicKey::from_hex(&dest.address)
                     .map_err(|_| format!("Destination address at index {} is malformed", idx))?;
-                Ok((dest.address, pk, dest.amount, dest.fee_per_gram, dest.message))
+                Ok((
+                    dest.address,
+                    pk,
+                    dest.amount,
+                    dest.fee_per_gram,
+                    dest.message,
+                    dest.payment_type,
+                ))
             })
             .collect::<Result<Vec<_>, _>>()
             .map_err(Status::invalid_argument)?;
 
-        let transfers = recipients
-            .into_iter()
-            .map(|(address, pk, amount, fee_per_gram, message)| {
-                let mut transaction_service = self.get_transaction_service();
-                async move {
+        let mut standard_transfers = Vec::new();
+        let mut one_sided_transfers = Vec::new();
+        for (address, pk, amount, fee_per_gram, message, payment_type) in recipients.into_iter() {
+            let mut transaction_service = self.get_transaction_service();
+            if payment_type == PaymentType::StandardMimblewimble as i32 {
+                standard_transfers.push(async move {
                     (
                         address,
                         transaction_service
                             .send_transaction(pk, amount.into(), fee_per_gram.into(), message)
                             .await,
                     )
-                }
-            });
+                });
+            } else if payment_type == PaymentType::OneSided as i32 {
+                one_sided_transfers.push(async move {
+                    (
+                        address,
+                        transaction_service
+                            .send_one_sided_transaction(pk, amount.into(), fee_per_gram.into(), message)
+                            .await,
+                    )
+                });
+            }
+        }
 
-        let results = future::join_all(transfers).await;
+        let standard_results = future::join_all(standard_transfers).await;
+        let one_sided_results = future::join_all(one_sided_transfers).await;
 
-        let results = results
+        let results = standard_results
             .into_iter()
+            .chain(one_sided_results.into_iter())
             .map(|(address, result)| match result {
                 Ok(tx_id) => TransferResult {
                     address,
@@ -174,8 +202,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     async fn get_transaction_info(
         &self,
         request: Request<GetTransactionInfoRequest>,
-    ) -> Result<Response<GetTransactionInfoResponse>, Status>
-    {
+    ) -> Result<Response<GetTransactionInfoResponse>, Status> {
         let message = request.into_inner();
 
         let queries = message.transaction_ids.into_iter().map(|tx_id| {
@@ -208,8 +235,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     async fn get_completed_transactions(
         &self,
         _request: Request<GetCompletedTransactionsRequest>,
-    ) -> Result<Response<Self::GetCompletedTransactionsStream>, Status>
-    {
+    ) -> Result<Response<Self::GetCompletedTransactionsStream>, Status> {
         debug!(
             target: LOG_TARGET,
             "Incoming GRPC request for GetAllCompletedTransactions"
@@ -237,7 +263,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         excess_sig: txn
                             .transaction
                             .first_kernel_excess_sig()
-                            .expect("Complete transaction has no kernels")
+                            .unwrap_or(&Signature::default())
                             .get_signature()
                             .to_vec(),
                         message: txn.message,
@@ -288,13 +314,94 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         Ok(Response::new(CoinSplitResponse { tx_id }))
     }
+
+    async fn import_utxos(
+        &self,
+        request: Request<ImportUtxosRequest>,
+    ) -> Result<Response<ImportUtxosResponse>, Status> {
+        let message = request.into_inner();
+
+        let mut wallet = self.wallet.clone();
+
+        let unblinded_outputs: Vec<UnblindedOutput> = message
+            .outputs
+            .into_iter()
+            .map(UnblindedOutput::try_from)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(Status::invalid_argument)?;
+        let mut tx_ids = Vec::new();
+
+        for o in unblinded_outputs.iter() {
+            tx_ids.push(
+                wallet
+                    .import_unblinded_utxo(o.clone(), &CommsPublicKey::default(), "Imported via gRPC".to_string())
+                    .await
+                    .map_err(|e| Status::internal(format!("{:?}", e)))?,
+            );
+        }
+
+        Ok(Response::new(ImportUtxosResponse { tx_ids }))
+    }
+
+    async fn get_network_status(
+        &self,
+        _: Request<tari_rpc::Empty>,
+    ) -> Result<Response<tari_rpc::NetworkStatusResponse>, Status> {
+        let status = self
+            .comms()
+            .connectivity()
+            .get_connectivity_status()
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
+        let mut base_node_service = self.wallet.base_node_service.clone();
+
+        let resp = tari_rpc::NetworkStatusResponse {
+            status: tari_rpc::ConnectivityStatus::from(status) as i32,
+            avg_latency_ms: base_node_service
+                .get_base_node_latency()
+                .await
+                .map_err(|err| Status::internal(err.to_string()))?
+                .map(|d| u32::try_from(d.as_millis()).unwrap_or(u32::MAX))
+                .unwrap_or_default(),
+            num_node_connections: status.num_connected_nodes() as u32,
+        };
+
+        Ok(Response::new(resp))
+    }
+
+    async fn list_connected_peers(
+        &self,
+        _: Request<tari_rpc::Empty>,
+    ) -> Result<Response<tari_rpc::ListConnectedPeersResponse>, Status> {
+        let mut connectivity = self.comms().connectivity();
+        let peer_manager = self.comms().peer_manager();
+        let connected_peers = connectivity
+            .get_active_connections()
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
+
+        let mut peers = Vec::with_capacity(connected_peers.len());
+        for peer in connected_peers {
+            peers.push(
+                peer_manager
+                    .find_by_node_id(peer.peer_node_id())
+                    .await
+                    .map_err(|err| Status::internal(err.to_string()))?,
+            );
+        }
+
+        let resp = tari_rpc::ListConnectedPeersResponse {
+            connected_peers: peers.into_iter().map(Into::into).collect(),
+        };
+
+        Ok(Response::new(resp))
+    }
 }
 
 fn convert_wallet_transaction_into_transaction_info(
     tx: models::WalletTransaction,
     wallet_pk: &CommsPublicKey,
-) -> TransactionInfo
-{
+) -> TransactionInfo {
     use models::WalletTransaction::*;
     match tx {
         PendingInbound(tx) => TransactionInfo {

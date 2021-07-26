@@ -1,4 +1,4 @@
-use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError};
+use tari_comms::connectivity::ConnectivityError;
 use tari_crypto::tari_utilities::hex::HexError;
 use tari_wallet::{
     contacts_service::error::ContactsServiceError,
@@ -20,8 +20,6 @@ pub enum UiError {
     ConnectivityError(#[from] ConnectivityError),
     #[error(transparent)]
     HexError(#[from] HexError),
-    #[error(transparent)]
-    NodeIdError(#[from] NodeIdError),
     #[error(transparent)]
     WalletError(#[from] WalletError),
     #[error(transparent)]

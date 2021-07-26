@@ -3,9 +3,12 @@ syntax = "proto3";
 package tari.comms.identity;
 
 message PeerIdentityMsg {
-    bytes node_id = 1;
-    repeated string addresses = 2;
-    uint64 features = 3;
-    repeated bytes supported_protocols = 4;
-    string user_agent = 5;
+    repeated bytes addresses = 1;
+    uint64 features = 2;
+    repeated bytes supported_protocols = 3;
+    string user_agent = 4;
+    // Major node version. This must match the current node's version in order for the connection to be established.
+    uint32 major = 5;
+    // Minor node version. This indicates minor non-breaking changes.
+    uint32 minor = 6;
 }

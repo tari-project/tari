@@ -21,5 +21,4 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod database;
-pub mod memory_db;
 pub mod sqlite_db;

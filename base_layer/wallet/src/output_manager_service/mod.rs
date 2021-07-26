@@ -30,14 +30,15 @@ use crate::{
     },
     transaction_service::handle::TransactionServiceHandle,
 };
-use futures::{future, Future};
+use futures::future;
 use log::*;
-use tari_comms::connectivity::ConnectivityRequester;
+use tari_comms::{connectivity::ConnectivityRequester, types::CommsSecretKey};
 use tari_core::{
-    consensus::{ConsensusConstantsBuilder, Network},
+    consensus::{ConsensusConstantsBuilder, NetworkConsensus},
     transactions::types::CryptoFactories,
 };
 use tari_service_framework::{
+    async_trait,
     reply_channel,
     ServiceInitializationError,
     ServiceInitializer,
@@ -48,10 +49,16 @@ use tokio::sync::broadcast;
 pub mod config;
 pub mod error;
 pub mod handle;
-pub mod protocols;
+mod master_key_manager;
+mod recovery;
+pub mod resources;
 #[allow(unused_assignments)]
 pub mod service;
 pub mod storage;
+mod tasks;
+
+pub(crate) use master_key_manager::MasterKeyManager;
+pub use tasks::TxoValidationType;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::initializer";
 
@@ -63,28 +70,35 @@ where T: OutputManagerBackend
     config: OutputManagerServiceConfig,
     backend: Option<T>,
     factories: CryptoFactories,
-    network: Network,
+    network: NetworkConsensus,
+    master_secret_key: CommsSecretKey,
 }
 
 impl<T> OutputManagerServiceInitializer<T>
 where T: OutputManagerBackend + 'static
 {
-    pub fn new(config: OutputManagerServiceConfig, backend: T, factories: CryptoFactories, network: Network) -> Self {
+    pub fn new(
+        config: OutputManagerServiceConfig,
+        backend: T,
+        factories: CryptoFactories,
+        network: NetworkConsensus,
+        master_secret_key: CommsSecretKey,
+    ) -> Self {
         Self {
             config,
             backend: Some(backend),
             factories,
             network,
+            master_secret_key,
         }
     }
 }
 
+#[async_trait]
 impl<T> ServiceInitializer for OutputManagerServiceInitializer<T>
 where T: OutputManagerBackend + 'static
 {
-    type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
-
-    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+    async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         trace!(
             target: LOG_TARGET,
             "Output manager initialization: Base node query timeout: {}s",
@@ -104,8 +118,8 @@ where T: OutputManagerBackend + 'static
             .expect("Cannot start Output Manager Service without setting a storage backend");
         let factories = self.factories.clone();
         let config = self.config.clone();
-        let constants = ConsensusConstantsBuilder::new(self.network).build();
-
+        let constants = ConsensusConstantsBuilder::new(self.network.as_network()).build();
+        let master_secret_key = self.master_secret_key.clone();
         context.spawn_when_ready(move |handles| async move {
             let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
@@ -122,6 +136,7 @@ where T: OutputManagerBackend + 'static
                 handles.get_shutdown_signal(),
                 base_node_service_handle,
                 connectivity_manager,
+                master_secret_key,
             )
             .await
             .expect("Could not initialize Output Manager Service")
@@ -131,6 +146,6 @@ where T: OutputManagerBackend + 'static
             future::select(service, handles.get_shutdown_signal()).await;
             info!(target: LOG_TARGET, "Output manager service shutdown");
         });
-        future::ready(Ok(()))
+        Ok(())
     }
 }

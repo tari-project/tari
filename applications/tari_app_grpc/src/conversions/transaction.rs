@@ -31,6 +31,7 @@ impl From<Transaction> for grpc::Transaction {
         Self {
             offset: Vec::from(source.offset.as_bytes()),
             body: Some(source.body.into()),
+            script_offset: Vec::from(source.script_offset.as_bytes()),
         }
     }
 }
@@ -46,6 +47,8 @@ impl TryFrom<grpc::Transaction> for Transaction {
                 .body
                 .ok_or_else(|| "Transaction body not provided".to_string())?
                 .try_into()?,
+            script_offset: RistrettoSecretKey::from_bytes(&source.script_offset)
+                .map_err(|e| format!("Script offset is not valid:{}", e.to_string()))?,
         })
     }
 }

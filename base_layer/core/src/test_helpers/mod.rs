@@ -27,16 +27,15 @@ pub mod blockchain;
 
 use crate::{
     blocks::{Block, BlockHeader},
+    chain_storage::{BlockHeaderAccumulatedData, ChainHeader},
     consensus::ConsensusManager,
-    transactions::transaction::Transaction,
-};
-
-use crate::{
-    consensus::{ConsensusManagerBuilder, Network},
-    transactions::{types::CryptoFactories, CoinbaseBuilder},
+    crypto::tari_utilities::Hashable,
+    proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty},
+    transactions::{transaction::Transaction, types::CryptoFactories, CoinbaseBuilder},
 };
 use rand::{distributions::Alphanumeric, Rng};
 use std::{iter, path::Path, sync::Arc};
+use tari_common::configuration::Network;
 use tari_comms::PeerManager;
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 
@@ -54,7 +53,7 @@ pub fn create_block(block_version: u16, block_height: u64, transactions: Vec<Tra
     let mut header = BlockHeader::new(block_version);
     header.height = block_height;
     if transactions.is_empty() {
-        let constants = ConsensusManagerBuilder::new(Network::LocalNet).build();
+        let constants = ConsensusManager::builder(Network::LocalNet).build();
         let coinbase = CoinbaseBuilder::new(CryptoFactories::default())
             .with_block_height(block_height)
             .with_fees(0.into())
@@ -68,11 +67,24 @@ pub fn create_block(block_version: u16, block_height: u64, transactions: Vec<Tra
     }
 }
 
+pub fn mine_to_difficulty(mut block: Block, difficulty: Difficulty) -> Result<Block, String> {
+    // When starting from the same nonce, in tests it becomes common to mine the same block more than once without the
+    // hash changing. This introduces the required entropy
+    block.header.nonce = rand::thread_rng().gen();
+    for _i in 0..10000 {
+        if sha3_difficulty(&block.header) == difficulty {
+            return Ok(block);
+        }
+        block.header.nonce += 1;
+    }
+    Err("Could not mine to difficulty in 10000 iterations".to_string())
+}
+
 pub fn create_peer_manager<P: AsRef<Path>>(data_path: P) -> Arc<PeerManager> {
     let peer_database_name = {
         let mut rng = rand::thread_rng();
         iter::repeat(())
-            .map(|_| rng.sample(Alphanumeric))
+            .map(|_| rng.sample(Alphanumeric) as char)
             .take(8)
             .collect::<String>()
     };
@@ -86,4 +98,15 @@ pub fn create_peer_manager<P: AsRef<Path>>(data_path: P) -> Arc<PeerManager> {
         .unwrap();
     let peer_database = datastore.get_handle(&peer_database_name).unwrap();
     Arc::new(PeerManager::new(LMDBWrapper::new(Arc::new(peer_database)), None).unwrap())
+}
+
+pub fn create_chain_header(header: BlockHeader, prev_accum: &BlockHeaderAccumulatedData) -> ChainHeader {
+    let achieved_target_diff = AchievedTargetDifficulty::try_construct(header.pow_algo(), 1.into(), 1.into()).unwrap();
+    let accumulated_data = BlockHeaderAccumulatedData::builder(prev_accum)
+        .with_hash(header.hash())
+        .with_achieved_target_difficulty(achieved_target_diff)
+        .with_total_kernel_offset(header.total_kernel_offset.clone())
+        .build()
+        .unwrap();
+    ChainHeader::try_construct(header, accumulated_data).unwrap()
 }

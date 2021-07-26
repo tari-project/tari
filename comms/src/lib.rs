@@ -13,13 +13,6 @@
 //! See [CommsBuilder] for more information on using this library.
 //!
 //! [CommsBuilder]: ./builder/index.html
-// Recursion limit for futures::select!
-#![recursion_limit = "512"]
-// Allow `type Future = impl Future`
-#![feature(type_alias_impl_trait)]
-// Required to use `Ip4Addr::is_global`. Stabilisation imminent https://github.com/rust-lang/rust/issues/27709
-#![feature(ip)]
-
 #[macro_use]
 extern crate lazy_static;
 
@@ -41,7 +34,6 @@ pub mod framing;
 
 mod common;
 pub use common::rate_limit;
-mod consts;
 
 mod multiplexing;
 pub use multiplexing::Substream;
@@ -78,9 +70,7 @@ pub mod multiaddr {
     pub use ::multiaddr::{Error, Multiaddr, Protocol};
 }
 
-pub use bytes::{Bytes, BytesMut};
-
-#[cfg(feature = "rpc")]
 pub use async_trait::async_trait;
+pub use bytes::{Bytes, BytesMut};
 #[cfg(feature = "rpc")]
 pub use tower_make::MakeService;

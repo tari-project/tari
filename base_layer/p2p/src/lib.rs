@@ -22,9 +22,6 @@
 
 // Needed to make futures::select! work
 #![recursion_limit = "256"]
-// Used to eliminate the need for boxing futures in many cases.
-// Tracking issue: https://github.com/rust-lang/rust/issues/63063
-#![feature(type_alias_impl_trait)]
 #![cfg_attr(not(debug_assertions), deny(unused_variables))]
 #![cfg_attr(not(debug_assertions), deny(unused_imports))]
 #![cfg_attr(not(debug_assertions), deny(dead_code))]
@@ -37,15 +34,28 @@
 #[macro_use]
 mod test_utils;
 
+#[cfg(feature = "auto-update")]
+pub mod auto_update;
 pub mod comms_connector;
-pub mod dns_seed;
 pub mod domain_message;
 pub mod initialization;
 pub mod peer;
+pub mod peer_seeds;
 pub mod proto;
-pub mod seed_peer;
 pub mod services;
 pub mod tari_message;
 pub mod transport;
 
-pub const DEFAULT_DNS_SEED_RESOLVER: &str = "1.1.1.1:53";
+mod dns;
+
+// Re-export
+pub use tari_common::configuration::Network;
+
+/// Default DNS resolver set to cloudflare's private 1.1.1.1 resolver
+pub const DEFAULT_DNS_NAME_SERVER: &str = "1.1.1.1:53";
+
+/// Major network version. Peers will refuse connections if this value differs
+pub const MAJOR_NETWORK_VERSION: u32 = 0;
+/// Minor network version. This should change with each time the network protocol has changed in a backward-compatible
+/// way.
+pub const MINOR_NETWORK_VERSION: u32 = 0;

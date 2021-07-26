@@ -96,8 +96,7 @@ impl LivenessMock {
     pub fn new(
         receiver: reply_channel::TryReceiver<LivenessRequest, LivenessResponse, LivenessError>,
         mock_state: LivenessMockState,
-    ) -> Self
-    {
+    ) -> Self {
         Self { receiver, mock_state }
     }
 
@@ -133,6 +132,9 @@ impl LivenessMock {
                 reply.send(Ok(LivenessResponse::Count(1))).unwrap();
             },
             GetAvgLatency(_) => {
+                reply.send(Ok(LivenessResponse::AvgLatency(None))).unwrap();
+            },
+            GetNetworkAvgLatency => {
                 reply.send(Ok(LivenessResponse::AvgLatency(None))).unwrap();
             },
             SetMetadataEntry(_, _) => {

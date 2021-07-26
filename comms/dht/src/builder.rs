@@ -45,8 +45,7 @@ impl DhtBuilder {
         outbound_tx: mpsc::Sender<DhtOutboundRequest>,
         connectivity: ConnectivityRequester,
         shutdown_signal: ShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             #[cfg(test)]
             config: DhtConfig::default_local_test(),

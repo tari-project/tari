@@ -34,7 +34,7 @@ use tari_utilities::{ByteArray, ByteArrayError};
 use thiserror::Error;
 
 // Re-export applicable protos
-pub use crate::proto::envelope::{dht_header::Destination, DhtEnvelope, DhtHeader, DhtMessageType, Network};
+pub use crate::proto::envelope::{dht_header::Destination, DhtEnvelope, DhtHeader, DhtMessageType};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use prost_types::Timestamp;
 use tari_utilities::epoch_time::EpochTime;
@@ -128,14 +128,14 @@ impl DhtMessageType {
 /// It is preferable to not to expose the generated prost structs publicly.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DhtMessageHeader {
-    pub version: u32,
+    pub major: u32,
+    pub minor: u32,
     pub destination: NodeDestination,
     /// Encoded DhtOrigin. This can refer to the same peer that sent the message
     /// or another peer if the message is being propagated.
     pub origin_mac: Vec<u8>,
     pub ephemeral_public_key: Option<CommsPublicKey>,
     pub message_type: DhtMessageType,
-    pub network: Network,
     pub flags: DhtMessageFlags,
     pub message_tag: MessageTag,
     pub expires: Option<EpochTime>,
@@ -155,8 +155,8 @@ impl Display for DhtMessageHeader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(
             f,
-            "DhtMessageHeader (Dest:{}, Type:{:?}, Network:{:?}, Flags:{:?}, Trace:{})",
-            self.destination, self.message_type, self.network, self.flags, self.message_tag
+            "DhtMessageHeader (Dest:{}, Type:{:?}, Flags:{:?}, Trace:{})",
+            self.destination, self.message_type, self.flags, self.message_tag
         )
     }
 }
@@ -168,9 +168,8 @@ impl TryFrom<DhtHeader> for DhtMessageHeader {
         let destination = header
             .destination
             .map(|destination| destination.try_into().ok())
-            .filter(Option::is_some)
-            .map(Option::unwrap)
-            .ok_or_else(|| DhtMessageError::InvalidDestination)?;
+            .flatten()
+            .ok_or(DhtMessageError::InvalidDestination)?;
 
         let ephemeral_public_key = if header.ephemeral_public_key.is_empty() {
             None
@@ -184,14 +183,13 @@ impl TryFrom<DhtHeader> for DhtMessageHeader {
         let expires: Option<DateTime<Utc>> = header.expires.map(timestamp_to_datetime);
 
         Ok(Self {
-            version: header.version,
+            major: header.major,
+            minor: header.minor,
             destination,
             origin_mac: header.origin_mac,
             ephemeral_public_key,
-            message_type: DhtMessageType::from_i32(header.message_type)
-                .ok_or_else(|| DhtMessageError::InvalidMessageType)?,
-            network: Network::from_i32(header.network).ok_or_else(|| DhtMessageError::InvalidNetwork)?,
-            flags: DhtMessageFlags::from_bits(header.flags).ok_or_else(|| DhtMessageError::InvalidMessageFlags)?,
+            message_type: DhtMessageType::from_i32(header.message_type).ok_or(DhtMessageError::InvalidMessageType)?,
+            flags: DhtMessageFlags::from_bits(header.flags).ok_or(DhtMessageError::InvalidMessageFlags)?,
             message_tag: MessageTag::from(header.message_tag),
             expires: expires.map(datetime_to_epochtime),
         })
@@ -213,7 +211,8 @@ impl From<DhtMessageHeader> for DhtHeader {
     fn from(header: DhtMessageHeader) -> Self {
         let expires = header.expires.map(epochtime_to_datetime);
         Self {
-            version: header.version,
+            major: header.major,
+            minor: header.minor,
             ephemeral_public_key: header
                 .ephemeral_public_key
                 .as_ref()
@@ -222,7 +221,6 @@ impl From<DhtMessageHeader> for DhtHeader {
             origin_mac: header.origin_mac,
             destination: Some(header.destination.into()),
             message_type: header.message_type as i32,
-            network: header.network as i32,
             flags: header.flags.bits(),
             message_tag: header.message_tag.as_value(),
             expires: expires.map(datetime_to_timestamp),

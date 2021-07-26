@@ -21,7 +21,15 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::types as proto;
-use crate::transactions::types::{BlindingFactor, Commitment, HashOutput, PrivateKey, PublicKey, Signature};
+use crate::transactions::types::{
+    BlindingFactor,
+    ComSignature,
+    Commitment,
+    HashOutput,
+    PrivateKey,
+    PublicKey,
+    Signature,
+};
 use std::convert::TryFrom;
 use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
 
@@ -65,6 +73,30 @@ impl From<Signature> for proto::Signature {
     }
 }
 
+//---------------------------------- ComSignature --------------------------------------------//
+
+impl TryFrom<proto::ComSignature> for ComSignature {
+    type Error = ByteArrayError;
+
+    fn try_from(sig: proto::ComSignature) -> Result<Self, Self::Error> {
+        let public_nonce = Commitment::from_bytes(&sig.public_nonce_commitment)?;
+        let signature_u = PrivateKey::from_bytes(&sig.signature_u)?;
+        let signature_v = PrivateKey::from_bytes(&sig.signature_v)?;
+
+        Ok(Self::new(public_nonce, signature_u, signature_v))
+    }
+}
+
+impl From<ComSignature> for proto::ComSignature {
+    fn from(sig: ComSignature) -> Self {
+        Self {
+            public_nonce_commitment: sig.public_nonce().to_vec(),
+            signature_u: sig.u().to_vec(),
+            signature_v: sig.v().to_vec(),
+        }
+    }
+}
+
 //---------------------------------- HashOutput --------------------------------------------//
 
 impl From<proto::HashOutput> for HashOutput {
@@ -85,7 +117,7 @@ impl TryFrom<proto::BlindingFactor> for BlindingFactor {
     type Error = ByteArrayError;
 
     fn try_from(offset: proto::BlindingFactor) -> Result<Self, Self::Error> {
-        Ok(BlindingFactor::from_bytes(&offset.data)?)
+        BlindingFactor::from_bytes(&offset.data)
     }
 }
 

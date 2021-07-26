@@ -27,10 +27,9 @@ use crate::{
     noise::NoiseConfig,
     peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
     protocol::Protocols,
-    runtime,
-    transports::MemoryTransport,
+    transports::Transport,
 };
-use futures::channel::mpsc;
+use futures::{channel::mpsc, AsyncRead, AsyncWrite};
 use rand::rngs::OsRng;
 use std::{sync::Arc, time::Duration};
 use tari_shutdown::ShutdownSignal;
@@ -39,7 +38,6 @@ use tokio::sync::broadcast;
 
 #[derive(Clone, Debug)]
 pub struct TestNodeConfig {
-    pub transport: MemoryTransport,
     pub dial_backoff_duration: Duration,
     pub connection_manager_config: ConnectionManagerConfig,
     pub node_identity: Arc<NodeIdentity>,
@@ -47,18 +45,15 @@ pub struct TestNodeConfig {
 
 impl Default for TestNodeConfig {
     fn default() -> Self {
-        let node_identity = Arc::new(
-            NodeIdentity::random(
-                &mut OsRng,
-                "/memory/0".parse().unwrap(),
-                PeerFeatures::COMMUNICATION_NODE,
-            )
-            .unwrap(),
-        );
+        let node_identity = Arc::new(NodeIdentity::random(
+            &mut OsRng,
+            "/memory/0".parse().unwrap(),
+            PeerFeatures::COMMUNICATION_NODE,
+        ));
 
         Self {
-            transport: MemoryTransport,
             connection_manager_config: ConnectionManagerConfig {
+                allow_test_addresses: true,
                 listener_address: "/memory/0".parse().unwrap(),
                 ..Default::default()
             },
@@ -68,12 +63,16 @@ impl Default for TestNodeConfig {
     }
 }
 
-pub fn build_connection_manager(
+pub fn build_connection_manager<TTransport>(
     config: TestNodeConfig,
+    transport: TTransport,
     peer_manager: Arc<PeerManager>,
     protocols: Protocols<Substream>,
     shutdown: ShutdownSignal,
 ) -> ConnectionManagerRequester
+where
+    TTransport: Transport + Unpin + Send + Sync + Clone + 'static,
+    TTransport::Output: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static,
 {
     let noise_config = NoiseConfig::new(config.node_identity.clone());
     let (request_tx, request_rx) = mpsc::channel(10);
@@ -83,7 +82,7 @@ pub fn build_connection_manager(
 
     let mut connection_manager = ConnectionManager::new(
         config.connection_manager_config,
-        config.transport,
+        transport,
         noise_config,
         ConstantBackoff::new(config.dial_backoff_duration),
         request_rx,
@@ -94,7 +93,7 @@ pub fn build_connection_manager(
     );
     connection_manager.add_protocols(protocols);
 
-    runtime::current().spawn(connection_manager.run());
+    connection_manager.spawn();
 
     requester
 }

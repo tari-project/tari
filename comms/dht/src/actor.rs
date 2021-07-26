@@ -206,8 +206,7 @@ impl DhtActor {
         outbound_requester: OutboundMessageRequester,
         request_rx: mpsc::Receiver<DhtRequest>,
         shutdown_signal: ShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             msg_hash_cache: TtlCache::new(config.msg_hash_cache_capacity),
             config,
@@ -347,8 +346,7 @@ impl DhtActor {
     async fn broadcast_join(
         node_identity: Arc<NodeIdentity>,
         mut outbound_requester: OutboundMessageRequester,
-    ) -> Result<(), DhtActorError>
-    {
+    ) -> Result<(), DhtActorError> {
         let message = JoinMessage::from(&node_identity);
 
         debug!(
@@ -379,8 +377,7 @@ impl DhtActor {
         peer_manager: Arc<PeerManager>,
         mut connectivity: ConnectivityRequester,
         broadcast_strategy: BroadcastStrategy,
-    ) -> Result<Vec<NodeId>, DhtActorError>
-    {
+    ) -> Result<Vec<NodeId>, DhtActorError> {
         use BroadcastStrategy::*;
         match broadcast_strategy {
             DirectNodeId(node_id) => {
@@ -546,8 +543,7 @@ impl DhtActor {
         n: usize,
         excluded_peers: &[NodeId],
         features: PeerFeatures,
-    ) -> Result<Vec<NodeId>, DhtActorError>
-    {
+    ) -> Result<Vec<NodeId>, DhtActorError> {
         // Fetch to all n nearest neighbour Communication Nodes
         // which are eligible for connection.
         // Currently that means:
@@ -676,11 +672,11 @@ mod test {
 
         let signature = vec![1u8, 2, 3];
         let is_dup = requester.insert_message_hash(signature.clone()).await.unwrap();
-        assert_eq!(is_dup, false);
+        assert!(!is_dup);
         let is_dup = requester.insert_message_hash(signature).await.unwrap();
-        assert_eq!(is_dup, true);
+        assert!(is_dup);
         let is_dup = requester.insert_message_hash(Vec::new()).await.unwrap();
-        assert_eq!(is_dup, false);
+        assert!(!is_dup);
     }
 
     #[tokio_macros::test_basic]

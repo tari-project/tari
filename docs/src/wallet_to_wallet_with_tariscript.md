@@ -55,7 +55,7 @@ Alice then sends the following values to Bob:
 | \\( f \\)         | fee                                                                       |
 | \\( m \\)         | Transaction metadata (currently just lockheight)                          |
 | \\( \alpha_b \\)  | Spending script for Bob's UTXO, \\( C_b \\)                               |
-| \\( K_{Ob} \\)    | Public UTXO script offset                                                 |
+| \\( K_{Ob} \\)    | Public UTXO sender offset                                                 |
 | message           | A unicode string                                                          |
 
 ### Bob Replies
@@ -96,7 +96,7 @@ Bob then sends the following back to Alice:
 | \\( s_b, R_b \\)  | Bob's partial signature               |
 
 ### Alice Round 2
-Alice now has the information to construct the challenge \\( e \\)to calculate her partial signature:
+Alice now has the information to construct the challenge \\( e \\) to calculate her partial signature:
 
 \\( s_a = r_a + ek_a \\)
 
@@ -127,7 +127,7 @@ Alice can now construct the final transaction:
 | Input Data                | \\( \theta_a \\)                          |
 | height                    | \\( h \\)                                 |
 | Script Signature          | \\( (s_{sa}, R_{sa}) \\)                  |
-| Script offset public key  | \\( K_{Oa} \\)                            |
+| Sender offset public key  | \\( K_{Oa} \\)                            |
 
 | Transaction Output |      |
 |--------------------|-------|
@@ -135,7 +135,7 @@ Alice can now construct the final transaction:
 | Features      | Fb                                            |
 | Rangeproof    | \\( RP_b \\) for \\( \hat{C}_b \\)                    |
 | Script Hash   | \\( \sigma_b = H( \alpha_b) \\)               |
-| Script offset public key | \\( K_{Ob} \\)                     |
+| Sender offset public key | \\( K_{Ob} \\)                     |
 
 | Transaction Output |      |
 |--------------------|-------|
@@ -143,7 +143,7 @@ Alice can now construct the final transaction:
 | Features      | Fc                                            |
 | Rangeproof    | \\( RP_c \\) for \\( \hat{C}_c \\)            |
 | Script Hash   | \\( \sigma_c = H( \alpha_c) \\)               |
-| Script offset public key | \\( K_{Oc} \\)                     |
+| Sender offset public key | \\( K_{Oc} \\)                     |
 
 | Transaction Kernel |       |
 |--------------------|-------|
@@ -185,7 +185,7 @@ pub struct SingleRoundSenderData {
     
     /// Hash of the receivers UTXO script, \sigma
     pub script_hash: Vec<u8,
-    /// Public script offset key chosen for Recipient, K_o
+    /// Public sender offset key chosen for Recipient, K_o
     pub public_script_offset_key: PublicKey,
 ```
 
@@ -207,6 +207,8 @@ pub struct UnblindedOutput {
     height : u64,
     /// Script private key, k_s
     script_private_key: PrivateKey,
+    /// Public sender offset, K_O
+    public_script_offset: PublicKey,
 }
 ```
 **NOTE:** The height in the previous struct will need to be updated AFTER the transaction negotiation is complete once the Receiver has detected the UTXO has been mined.
@@ -216,4 +218,4 @@ pub struct UnblindedOutput {
    
    1.1 Initial discussion resulted in us decided that Alice sends the full script in Round 1
 2. Do parties agree of the Output Features of the received output or does Bob just choose it? Currently it's assumed default
-3. Do you need the script offset public key in both the Transaction Input and the Transaction Output?
+3. Do you need the sender offset public key in both the Transaction Input and the Transaction Output?

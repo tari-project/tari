@@ -1,5 +1,5 @@
 const { Client } = require("wallet-grpc-client");
-const { sleep } = require("./util");
+const { byteArrayToHex } = require("./util");
 
 function transactionStatus() {
   return [
@@ -28,37 +28,36 @@ class WalletClient {
   }
 
   async getCompletedTransactions() {
-    let data = await this.client.getCompletedTransactions();
-    let transactions = [];
-    let myDate = new Date();
-    for (var i = 0; i < data.length; i++) {
+    const data = await this.client.getCompletedTransactions();
+    const transactions = [];
+    for (let i = 0; i < data.length; i++) {
       transactions.push({
-        tx_id: data[i].transaction["tx_id"],
-        source_pk: data[i].transaction["source_pk"].toString("hex"),
-        dest_pk: data[i].transaction["dest_pk"].toString("hex"),
-        status: data[i].transaction["status"],
-        direction: data[i].transaction["direction"],
-        amount: data[i].transaction["amount"],
-        fee: data[i].transaction["fee"],
-        is_cancelled: data[i].transaction["is_cancelled"],
-        excess_sig: data[i].transaction["excess_sig"].toString("hex"),
+        tx_id: data[i].transaction.tx_id,
+        source_pk: data[i].transaction.source_pk.toString("hex"),
+        dest_pk: data[i].transaction.dest_pk.toString("hex"),
+        status: data[i].transaction.status,
+        direction: data[i].transaction.direction,
+        amount: data[i].transaction.amount,
+        fee: data[i].transaction.fee,
+        is_cancelled: data[i].transaction.is_cancelled,
+        excess_sig: data[i].transaction.excess_sig.toString("hex"),
         timestamp: new Date(
-          Number(data[i].transaction["timestamp"]["seconds"]) * 1000
+          Number(data[i].transaction.timestamp.seconds) * 1000
         ),
-        message: data[i].transaction["message"],
-        valid: data[i].transaction["valid"],
+        message: data[i].transaction.message,
+        valid: data[i].transaction.valid,
       });
     }
     return transactions;
   }
 
   async getAllCoinbaseTransactions() {
-    let data = await this.getCompletedTransactions();
-    let transactions = [];
-    for (var i = 0; i < data.length; i++) {
+    const data = await this.getCompletedTransactions();
+    const transactions = [];
+    for (let i = 0; i < data.length; i++) {
       if (
-        data[i]["message"].includes("Coinbase Transaction for Block ") &&
-        data[i]["fee"] == 0
+        data[i].message.includes("Coinbase Transaction for Block ") &&
+        data[i].fee == 0
       ) {
         transactions.push(data[i]);
       }
@@ -67,12 +66,12 @@ class WalletClient {
   }
 
   async getAllSpendableCoinbaseTransactions() {
-    let data = await this.getAllCoinbaseTransactions();
-    let transactions = [];
-    for (var i = 0; i < data.length; i++) {
+    const data = await this.getAllCoinbaseTransactions();
+    const transactions = [];
+    for (let i = 0; i < data.length; i++) {
       if (
-        transactionStatus().indexOf(data[i]["status"]) == 6 &&
-        data[i]["valid"] == true
+        transactionStatus().indexOf(data[i].status) == 6 &&
+        data[i].valid == true
       ) {
         transactions.push(data[i]);
       }
@@ -80,8 +79,36 @@ class WalletClient {
     return transactions;
   }
 
+  async countAllCoinbaseTransactions() {
+    const data = await this.getCompletedTransactions();
+    let count = 0;
+    for (let i = 0; i < data.length; i++) {
+      if (
+        data[i].message.includes("Coinbase Transaction for Block ") &&
+        data[i].fee == 0
+      ) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  async countAllSpendableCoinbaseTransactions() {
+    const data = await this.getAllCoinbaseTransactions();
+    let count = 0;
+    for (let i = 0; i < data.length; i++) {
+      if (
+        transactionStatus().indexOf(data[i].status) == 6 &&
+        data[i].valid == true
+      ) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
   async areCoinbasesConfirmedAtLeast(number) {
-    let data = await this.getAllSpendableCoinbaseTransactions();
+    const data = await this.getAllSpendableCoinbaseTransactions();
     if (data.length >= number) {
       return true;
     } else {
@@ -90,13 +117,13 @@ class WalletClient {
   }
 
   async getAllNormalTransactions() {
-    let data = this.getCompletedTransactions();
-    let transactions = [];
-    for (var i = 0; i < data.length; i++) {
+    const data = this.getCompletedTransactions();
+    const transactions = [];
+    for (let i = 0; i < data.length; i++) {
       if (
         !(
-          data[i]["message"].includes("Coinbase Transaction for Block ") &&
-          data[i]["fee"] == 0
+          data[i].message.includes("Coinbase Transaction for Block ") &&
+          data[i].fee == 0
         )
       ) {
         transactions.push(data[i]);
@@ -109,16 +136,22 @@ class WalletClient {
     return await this.client.transfer(args);
   }
 
+  async importUtxos(outputs) {
+    return await this.client.importUtxos({
+      outputs: outputs,
+    });
+  }
+
   async getTransactionInfo(args) {
     return await this.client.getTransactionInfo(args);
   }
 
-  async identify(args) {
-    let info = await this.client.identify(args);
+  async identify() {
+    const info = await this.client.identify();
     return {
-      public_key: info["public_key"].toString("utf8"),
-      public_address: info["public_address"],
-      node_id: info["node_id"].toString("utf8"),
+      public_key: info.public_key.toString("utf8"),
+      public_address: info.public_address,
+      node_id: info.node_id.toString("utf8"),
     };
   }
 
@@ -136,8 +169,22 @@ class WalletClient {
 
   async isBalanceAtLeast(amount) {
     try {
+      const balance = await this.getBalance();
+      if (parseInt(balance.available_balance) >= parseInt(amount)) {
+        return true;
+      } else {
+        return false;
+      }
+    } catch (e) {
+      // Any error here must be treated as if the required status was not achieved
+      return false;
+    }
+  }
+
+  async isBalanceLessThan(amount) {
+    try {
       let balance = await this.getBalance();
-      if (balance["available_balance"] >= amount) {
+      if (parseInt(balance["available_balance"]) < parseInt(amount)) {
         return true;
       } else {
         return false;
@@ -150,11 +197,12 @@ class WalletClient {
 
   async isTransactionAtLeastPending(tx_id) {
     try {
-      let txnDetails = await this.getTransactionInfo({
+      const txnDetails = await this.getTransactionInfo({
         transaction_ids: [tx_id.toString()],
       });
       if (
-        transactionStatus().indexOf(txnDetails.transactions[0]["status"]) >= 2
+        transactionStatus().indexOf(txnDetails.transactions[0].status) >= 2 &&
+        txnDetails.transactions[0].valid
       ) {
         return true;
       } else {
@@ -168,11 +216,12 @@ class WalletClient {
 
   async isTransactionAtLeastCompleted(tx_id) {
     try {
-      let txnDetails = await this.getTransactionInfo({
+      const txnDetails = await this.getTransactionInfo({
         transaction_ids: [tx_id.toString()],
       });
       if (
-        transactionStatus().indexOf(txnDetails.transactions[0]["status"]) >= 3
+        transactionStatus().indexOf(txnDetails.transactions[0].status) >= 3 &&
+        txnDetails.transactions[0].valid
       ) {
         return true;
       } else {
@@ -186,11 +235,12 @@ class WalletClient {
 
   async isTransactionAtLeastBroadcast(tx_id) {
     try {
-      let txnDetails = await this.getTransactionInfo({
+      const txnDetails = await this.getTransactionInfo({
         transaction_ids: [tx_id.toString()],
       });
       if (
-        transactionStatus().indexOf(txnDetails.transactions[0]["status"]) >= 4
+        transactionStatus().indexOf(txnDetails.transactions[0].status) >= 4 &&
+        txnDetails.transactions[0].valid
       ) {
         return true;
       } else {
@@ -204,11 +254,12 @@ class WalletClient {
 
   async isTransactionAtLeastMinedUnconfirmed(tx_id) {
     try {
-      let txnDetails = await this.getTransactionInfo({
+      const txnDetails = await this.getTransactionInfo({
         transaction_ids: [tx_id.toString()],
       });
       if (
-        transactionStatus().indexOf(txnDetails.transactions[0]["status"]) >= 5
+        transactionStatus().indexOf(txnDetails.transactions[0].status) >= 5 &&
+        txnDetails.transactions[0].valid
       ) {
         return true;
       } else {
@@ -222,11 +273,12 @@ class WalletClient {
 
   async isTransactionMinedUnconfirmed(tx_id) {
     try {
-      let txnDetails = await this.getTransactionInfo({
+      const txnDetails = await this.getTransactionInfo({
         transaction_ids: [tx_id.toString()],
       });
       if (
-        transactionStatus().indexOf(txnDetails.transactions[0]["status"]) == 5
+        transactionStatus().indexOf(txnDetails.transactions[0].status) == 5 &&
+        txnDetails.transactions[0].valid
       ) {
         return true;
       } else {
@@ -240,11 +292,12 @@ class WalletClient {
 
   async isTransactionMinedConfirmed(tx_id) {
     try {
-      let txnDetails = await this.getTransactionInfo({
+      const txnDetails = await this.getTransactionInfo({
         transaction_ids: [tx_id.toString()],
       });
       if (
-        transactionStatus().indexOf(txnDetails.transactions[0]["status"]) == 6
+        transactionStatus().indexOf(txnDetails.transactions[0].status) == 6 &&
+        txnDetails.transactions[0].valid
       ) {
         return true;
       } else {
@@ -258,7 +311,7 @@ class WalletClient {
 
   async getTransactionDetails(tx_id) {
     try {
-      let txnDetails = await this.getTransactionInfo({
+      const txnDetails = await this.getTransactionInfo({
         transaction_ids: [tx_id.toString()],
       });
       return [true, txnDetails];
@@ -269,6 +322,27 @@ class WalletClient {
 
   async coin_split(args) {
     return await this.client.coinSplit(args);
+  }
+
+  async listConnectedPeers() {
+    const { connected_peers } = await this.client.listConnectedPeers();
+    return connected_peers.map((peer) => ({
+      ...peer,
+      public_key: byteArrayToHex(peer.public_key),
+      node_id: byteArrayToHex(peer.node_id),
+      supported_protocols: peer.supported_protocols.map((p) =>
+        p.toString("utf8")
+      ),
+      features: +peer.features,
+    }));
+  }
+
+  async getNetworkStatus() {
+    let resp = await this.client.getNetworkStatus();
+    return {
+      ...resp,
+      num_node_connections: +resp.num_node_connections,
+    };
   }
 }
 

@@ -23,7 +23,6 @@
 use crate::identity_management::load_from_json;
 use futures::future::Either;
 use log::*;
-use std::{net::SocketAddr, path::Path};
 use tari_common::{CommsTransport, GlobalConfig, SocksAuthentication, TorControlAuthentication};
 use tari_comms::{
     connectivity::ConnectivityError,
@@ -34,6 +33,7 @@ use tari_comms::{
     tor::TorIdentity,
     transports::SocksConfig,
     types::CommsPublicKey,
+    utils::multiaddr::multiaddr_to_socketaddr,
 };
 use tari_core::tari_utilities::hex::Hex;
 use tari_p2p::transport::{TorConfig, TransportType};
@@ -50,17 +50,17 @@ pub const LOG_TARGET: &str = "tari::application";
 /// Enum to show failure information
 #[derive(Debug, Clone, Error)]
 pub enum ExitCodes {
-    #[error("Configuration error: {0}")]
+    #[error("There is an error in the wallet configuration: {0}")]
     ConfigError(String),
-    #[error("The wallet exited because an unknown error occurred. Check the logs for details.")]
+    #[error("The application exited because an unknown error occurred. Check the logs for details.")]
     UnknownError,
-    #[error("The wallet exited because an interface error occurred. Check the logs for details.")]
+    #[error("The application exited because an interface error occurred. Check the logs for details.")]
     InterfaceError,
-    #[error("The wallet exited. {0}")]
+    #[error("The application exited. {0}")]
     WalletError(String),
     #[error("The wallet was not able to start the GRPC server. {0}")]
     GrpcError(String),
-    #[error("The wallet did not accept the command input: {0}")]
+    #[error("The application did not accept the command input: {0}")]
     InputError(String),
     #[error("Invalid command: {0}")]
     CommandError(String),
@@ -74,8 +74,10 @@ pub enum ExitCodes {
     ConversionError(String),
     #[error("Your password was incorrect.")]
     IncorrectPassword,
-    #[error("Your wallet is encrypted but no password was provided.")]
+    #[error("Your application is encrypted but no password was provided.")]
     NoPassword,
+    #[error("Tor connection is offline")]
+    TorOffline,
 }
 
 impl ExitCodes {
@@ -93,6 +95,7 @@ impl ExitCodes {
             Self::NetworkError(_) => 110,
             Self::ConversionError(_) => 111,
             Self::IncorrectPassword | Self::NoPassword => 112,
+            Self::TorOffline => 113,
         }
     }
 }
@@ -149,17 +152,15 @@ impl ExitCodes {
     }
 }
 
-/// Creates a transport type for the console wallet using the provided configuration
-/// ## Parameters
+/// Creates a transport type from the given configuration
+///
+/// ## Paramters
 /// `config` - The reference to the configuration in which to set up the comms stack, see [GlobalConfig]
 ///
 /// ##Returns
 /// TransportType based on the configuration
-pub fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
-    debug!(
-        target: LOG_TARGET,
-        "Console wallet transport is set to '{:?}'", config.comms_transport
-    );
+pub fn create_transport_type(config: &GlobalConfig) -> TransportType {
+    debug!(target: LOG_TARGET, "Transport is set to '{:?}'", config.comms_transport);
 
     match config.comms_transport.clone() {
         CommsTransport::Tcp {
@@ -171,29 +172,27 @@ pub fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
             tor_socks_config: tor_socks_address.map(|proxy_address| SocksConfig {
                 proxy_address,
                 authentication: tor_socks_auth.map(convert_socks_authentication).unwrap_or_default(),
+                proxy_bypass_addresses: vec![],
             }),
         },
         CommsTransport::TorHiddenService {
             control_server_address,
             socks_address_override,
+            forward_address,
             auth,
-            ..
+            onion_port,
+            tor_proxy_bypass_addresses,
         } => {
-            // The wallet should always use an OS-assigned forwarding port and an onion port number of 18101
-            // to ensure that different wallet implementations cannot be differentiated by their port.
-            let port_mapping = (18101u16, "127.0.0.1:0".parse::<SocketAddr>().unwrap()).into();
-
-            let tor_identity_path = Path::new(&config.console_wallet_tor_identity_file);
-            let identity = if tor_identity_path.exists() {
-                // If this fails, we can just use another address
-                load_from_json::<_, TorIdentity>(&tor_identity_path).ok()
-            } else {
-                None
-            };
+            let identity = Some(&config.base_node_tor_identity_file)
+                .filter(|p| p.exists())
+                .and_then(|p| {
+                    // If this fails, we can just use another address
+                    load_from_json::<_, TorIdentity>(p).ok()
+                });
             info!(
                 target: LOG_TARGET,
-                "Console wallet tor identity at path '{}' {:?}",
-                tor_identity_path.to_string_lossy(),
+                "Tor identity at path '{}' {:?}",
+                config.base_node_tor_identity_file.to_string_lossy(),
                 identity
                     .as_ref()
                     .map(|ident| format!("loaded for address '{}.onion'", ident.service_id))
@@ -201,6 +200,7 @@ pub fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
                     .unwrap()
             );
 
+            let forward_addr = multiaddr_to_socketaddr(&forward_address).expect("Invalid tor forward address");
             TransportType::Tor(TorConfig {
                 control_server_addr: control_server_address,
                 control_server_auth: {
@@ -210,9 +210,10 @@ pub fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
                     }
                 },
                 identity: identity.map(Box::new),
-                port_mapping,
+                port_mapping: (onion_port, forward_addr).into(),
                 socks_address_override,
                 socks_auth: socks::Authentication::None,
+                tor_proxy_bypass_addresses,
             })
         },
         CommsTransport::Socks5 {
@@ -223,6 +224,7 @@ pub fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
             socks_config: SocksConfig {
                 proxy_address,
                 authentication: convert_socks_authentication(auth),
+                proxy_bypass_addresses: vec![],
             },
             listener_address,
         },

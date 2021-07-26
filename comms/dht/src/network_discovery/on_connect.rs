@@ -170,7 +170,7 @@ impl OnConnect {
         }
 
         let addresses = peer.addresses.iter();
-        match validate_peer_addresses(addresses, self.config().network.is_localtest()) {
+        match validate_peer_addresses(addresses, self.config().allow_test_addresses) {
             Ok(_) => {
                 debug!(
                     target: LOG_TARGET,

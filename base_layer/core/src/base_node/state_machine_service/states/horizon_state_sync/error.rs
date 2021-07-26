@@ -26,6 +26,7 @@ use crate::{
     transactions::transaction::TransactionError,
     validation::ValidationError,
 };
+use std::num::TryFromIntError;
 use tari_comms::protocol::rpc::{RpcError, RpcStatus};
 use tari_mmr::error::MerkleMountainRangeError;
 use thiserror::Error;
@@ -47,7 +48,7 @@ pub enum HorizonSyncError {
     JoinError(#[from] task::JoinError),
     #[error("Invalid kernel signature: {0}")]
     InvalidKernelSignature(TransactionError),
-    #[error("MMR did not match for {mmr_tree} at height {at_height}. {expected_hex} did not equal {actual_hex}")]
+    #[error("MMR did not match for {mmr_tree} at height {at_height}. Expected {actual_hex} to equal {expected_hex}")]
     InvalidMmrRoot {
         mmr_tree: MmrTree,
         at_height: u64,
@@ -66,4 +67,10 @@ pub enum HorizonSyncError {
     ConversionError(String),
     #[error("MerkleMountainRangeError: {0}")]
     MerkleMountainRangeError(#[from] MerkleMountainRangeError),
+}
+
+impl From<TryFromIntError> for HorizonSyncError {
+    fn from(err: TryFromIntError) -> Self {
+        HorizonSyncError::ConversionError(err.to_string())
+    }
 }

@@ -250,7 +250,7 @@ pub async fn print_network_connectivity_stats(nodes: &[TestNode], wallets: &[Tes
 pub async fn do_network_wide_broadcast(nodes: &mut [TestNode], origin_node_index: Option<usize>) -> (usize, usize) {
     let random_node = match origin_node_index {
         Some(n) if n < nodes.len() => &nodes[n],
-        Some(_) | None => &nodes[OsRng.gen_range(0, nodes.len() - 1)],
+        Some(_) | None => &nodes[OsRng.gen_range(0..nodes.len() - 1)],
     };
 
     let random_node_id = random_node.comms.node_identity().node_id().clone();
@@ -379,8 +379,7 @@ pub async fn do_store_and_forward_message_propagation(
     propagation_factor: usize,
     num_buckets: u32,
     quiet_mode: bool,
-) -> (usize, TestNode, usize, usize)
-{
+) -> (usize, TestNode, usize, usize) {
     banner!(
         "{} chosen at random to be receive messages from other nodes using store and forward",
         wallet,
@@ -597,8 +596,7 @@ pub async fn drain_messaging_events(messaging_rx: &mut NodeEventRx, show_logs: b
 fn connection_manager_logger(
     node_id: NodeId,
     quiet_mode: bool,
-) -> impl FnMut(Arc<ConnectionManagerEvent>) -> Arc<ConnectionManagerEvent>
-{
+) -> impl FnMut(Arc<ConnectionManagerEvent>) -> Arc<ConnectionManagerEvent> {
     let node_name = get_name(&node_id);
     move |event| {
         if quiet_mode {
@@ -636,7 +634,6 @@ fn connection_manager_logger(
                     node_name, err
                 );
             },
-            Listening(_) | ListenFailed(_) => unreachable!(),
             NewInboundSubstream(node_id, protocol, _) => {
                 println!(
                     "'{}' negotiated protocol '{}' to '{}'",
@@ -672,8 +669,7 @@ impl TestNode {
         messaging_events: MessagingEventSender,
         quiet_mode: bool,
         shutdown: Shutdown,
-    ) -> Self
-    {
+    ) -> Self {
         let name = get_next_name();
         register_name(comms.node_identity().node_id().clone(), name.clone());
 
@@ -704,8 +700,7 @@ impl TestNode {
         events_tx: mpsc::Sender<Arc<ConnectionManagerEvent>>,
         messaging_events_tx: NodeEventTx,
         quiet_mode: bool,
-    )
-    {
+    ) {
         let conn_man_event_sub = comms.subscribe_connection_manager_events();
         let executor = runtime::Handle::current();
 
@@ -794,7 +789,11 @@ impl fmt::Display for TestNode {
 
 pub fn make_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
     let port = MemoryTransport::acquire_next_memsocket_port();
-    Arc::new(NodeIdentity::random(&mut OsRng, format!("/memory/{}", port).parse().unwrap(), features).unwrap())
+    Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        format!("/memory/{}", port).parse().unwrap(),
+        features,
+    ))
 }
 
 fn create_peer_storage() -> CommsDatabase {
@@ -821,8 +820,7 @@ pub async fn make_node(
     propagation_factor: usize,
     num_buckets: u32,
     quiet_mode: bool,
-) -> TestNode
-{
+) -> TestNode {
     let node_identity = make_node_identity(features);
     make_node_from_node_identities(
         node_identity,
@@ -846,8 +844,7 @@ pub async fn make_node_from_node_identities(
     propagation_factor: usize,
     num_buckets: u32,
     quiet_mode: bool,
-) -> TestNode
-{
+) -> TestNode {
     let (tx, ims_rx) = mpsc::channel(1);
     let seed_peers = peer_identities.iter().map(|n| n.to_peer()).collect::<Vec<_>>();
     let shutdown = Shutdown::new();
@@ -889,8 +886,7 @@ async fn setup_comms_dht(
     seed_peers: Vec<Peer>,
     saf_auto_request: bool,
     shutdown_signal: ShutdownSignal,
-) -> (CommsNode, Dht, MessagingEventSender)
-{
+) -> (CommsNode, Dht, MessagingEventSender) {
     // Create inbound and outbound channels
     let (outbound_tx, outbound_rx) = mpsc::channel(10);
 

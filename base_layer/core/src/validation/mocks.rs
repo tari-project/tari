@@ -22,12 +22,13 @@
 
 use crate::{
     blocks::{Block, BlockHeader},
-    chain_storage::{BlockHeaderAccumulatedData, BlockHeaderAccumulatedDataBuilder, BlockchainBackend, ChainBlock},
-    proof_of_work::sha3_difficulty,
+    chain_storage::{BlockchainBackend, ChainBlock},
+    proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     transactions::{transaction::Transaction, types::Commitment},
     validation::{
         error::ValidationError,
         CandidateBlockBodyValidation,
+        DifficultyCalculator,
         FinalHorizonStateValidation,
         HeaderValidation,
         MempoolTransactionValidation,
@@ -39,7 +40,6 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
-use tari_crypto::tari_utilities::Hashable;
 
 #[derive(Clone)]
 pub struct MockValidator {
@@ -67,7 +67,7 @@ impl MockValidator {
 }
 
 impl<B: BlockchainBackend> CandidateBlockBodyValidation<B> for MockValidator {
-    fn validate_body(&self, _item: &ChainBlock, _db: &B) -> Result<(), ValidationError> {
+    fn validate_body(&self, _item: &Block, _db: &B) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
         } else {
@@ -105,30 +105,23 @@ impl OrphanValidation for MockValidator {
 impl<B: BlockchainBackend> HeaderValidation<B> for MockValidator {
     fn validate(
         &self,
-        _db: &B,
+        _: &B,
         header: &BlockHeader,
-        previous_data: &BlockHeaderAccumulatedData,
-    ) -> Result<BlockHeaderAccumulatedDataBuilder, ValidationError>
-    {
+        _: &DifficultyCalculator,
+    ) -> Result<AchievedTargetDifficulty, ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             let achieved = sha3_difficulty(header);
-            let accum_data = BlockHeaderAccumulatedDataBuilder::default()
-                .hash(header.hash())
-                .target_difficulty(1.into())
-                .achieved_difficulty(previous_data, header.pow_algo(), achieved)
-                .total_kernel_offset(&previous_data.total_kernel_offset, &header.total_kernel_offset);
 
-            Ok(accum_data)
+            let achieved_target =
+                AchievedTargetDifficulty::try_construct(PowAlgorithm::Sha3, achieved - Difficulty::from(1), achieved)
+                    .unwrap();
+            Ok(achieved_target)
         } else {
             Err(ValidationError::custom_error(
                 "This mock validator always returns an error",
             ))
         }
     }
-    // fn validate(&self, header: &BlockHeader, previous_header: &BlockHeader, previous_data:
-    // &BlockHeaderAccumulatedData) -> Result<BlockHeaderAccumulatedDataBuilder, ValidationError> {
-    //     unimplemented!()
-    // }
 }
 
 impl MempoolTransactionValidation for MockValidator {
@@ -150,8 +143,7 @@ impl<B: BlockchainBackend> FinalHorizonStateValidation<B> for MockValidator {
         _total_utxo_sum: &Commitment,
         _total_kernel_sum: &Commitment,
         _backend: &B,
-    ) -> Result<(), ValidationError>
-    {
+    ) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
         } else {

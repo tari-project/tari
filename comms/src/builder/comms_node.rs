@@ -27,6 +27,7 @@ use crate::{
         ConnectionManagerEvent,
         ConnectionManagerRequest,
         ConnectionManagerRequester,
+        ListenerInfo,
     },
     connectivity::{ConnectivityEventRx, ConnectivityManager, ConnectivityRequest, ConnectivityRequester},
     multiaddr::Multiaddr,
@@ -45,11 +46,11 @@ use crate::{
     CommsBuilder,
     Substream,
 };
-use futures::{channel::mpsc, AsyncRead, AsyncWrite, StreamExt};
+use futures::{channel::mpsc, AsyncRead, AsyncWrite};
 use log::*;
-use std::{iter, sync::Arc, time::Duration};
+use std::{iter, sync::Arc};
 use tari_shutdown::ShutdownSignal;
-use tokio::{sync::broadcast, time};
+use tokio::sync::broadcast;
 
 const LOG_TARGET: &str = "comms::node";
 
@@ -99,8 +100,7 @@ impl UnspawnedCommsNode {
         mut self,
         protocol: I,
         notifier: ProtocolNotificationTx<Substream>,
-    ) -> Self
-    {
+    ) -> Self {
         self.protocols.add(protocol, notifier);
         self
     }
@@ -117,25 +117,6 @@ impl UnspawnedCommsNode {
         self
     }
 
-    /// Wait until the ConnectionManager emits a Listening event. This is the signal that comms is ready.
-    async fn wait_listening(
-        mut events: broadcast::Receiver<Arc<ConnectionManagerEvent>>,
-    ) -> Result<Multiaddr, CommsBuilderError> {
-        loop {
-            let event = time::timeout(Duration::from_secs(10), events.next())
-                .await
-                .map_err(|_| CommsBuilderError::ConnectionManagerEventStreamTimeout)?
-                .ok_or(CommsBuilderError::ConnectionManagerEventStreamClosed)?
-                .map_err(|_| CommsBuilderError::ConnectionManagerEventStreamLagged)?;
-
-            match &*event {
-                ConnectionManagerEvent::Listening(addr) => return Ok(addr.clone()),
-                ConnectionManagerEvent::ListenFailed(err) => return Err(err.clone().into()),
-                _ => {},
-            }
-        }
-    }
-
     pub async fn spawn_with_transport<TTransport>(self, transport: TTransport) -> Result<CommsNode, CommsBuilderError>
     where
         TTransport: Transport + Unpin + Send + Sync + Clone + 'static,
@@ -144,7 +125,7 @@ impl UnspawnedCommsNode {
         let UnspawnedCommsNode {
             builder,
             connection_manager_request_rx,
-            connection_manager_requester,
+            mut connection_manager_requester,
             connectivity_requester,
             connectivity_rx,
             node_identity,
@@ -205,8 +186,6 @@ impl UnspawnedCommsNode {
         ext_context.register_complete_signal(connection_manager.complete_signal());
         connection_manager.add_protocols(ext_context.take_protocols().expect("Protocols already taken"));
         connection_manager.add_protocols(protocols);
-        // Subscribe to events before spawning the actor to ensure that no events are missed
-        let connection_manager_event_subscription = connection_manager_requester.get_event_subscription();
 
         //---------------------------------- Spawn Actors --------------------------------------------//
         connectivity_manager.create().spawn();
@@ -224,10 +203,10 @@ impl UnspawnedCommsNode {
             node_identity.node_id()
         );
 
-        let listening_addr = Self::wait_listening(connection_manager_event_subscription).await?;
+        let listening_info = connection_manager_requester.wait_until_listening().await?;
         let mut hidden_service = None;
         if let Some(mut ctl) = hidden_service_ctl {
-            ctl.set_proxied_addr(listening_addr.clone());
+            ctl.set_proxied_addr(listening_info.bind_address().clone());
             let hs = ctl.create_hidden_service().await?;
             node_identity.set_public_address(hs.get_onion_address());
             hidden_service = Some(hs);
@@ -242,7 +221,7 @@ impl UnspawnedCommsNode {
             shutdown_signal,
             connection_manager_requester,
             connectivity_requester,
-            listening_addr,
+            listening_info,
             node_identity,
             peer_manager,
             hidden_service,
@@ -278,8 +257,7 @@ impl UnspawnedCommsNode {
 
 /// CommsNode is a handle to a comms node.
 ///
-/// It allows communication with the internals of tari_comms. Note that if this handle is dropped, tari_comms will shut
-/// down.
+/// It allows communication with the internals of tari_comms.
 #[derive(Clone)]
 pub struct CommsNode {
     /// The `ShutdownSignal` for this node. Use `wait_until_shutdown` to asynchronously block until the
@@ -293,8 +271,8 @@ pub struct CommsNode {
     node_identity: Arc<NodeIdentity>,
     /// Shared PeerManager instance
     peer_manager: Arc<PeerManager>,
-    /// The resolved Ip-Tcp listening address.
-    listening_addr: Multiaddr,
+    /// The bind addresses of the listener(s)
+    listening_info: ListenerInfo,
     /// `Some` if the comms node is configured to run via a hidden service, otherwise `None`
     hidden_service: Option<tor::HiddenService>,
     /// The 'reciprocal' shutdown signals for each comms service
@@ -329,7 +307,7 @@ impl CommsNode {
 
     /// Return the Ip/Tcp address that this node is listening on
     pub fn listening_address(&self) -> &Multiaddr {
-        &self.listening_addr
+        self.listening_info.bind_address()
     }
 
     /// Return the Ip/Tcp address that this node is listening on

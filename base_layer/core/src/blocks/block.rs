@@ -60,8 +60,6 @@ pub enum BlockValidationError {
         expected: u64,
         actual: u64,
     },
-    #[error("The block contains transactions that should have been cut through.")]
-    NoCutThrough,
     #[error("The block weight is above the maximum")]
     BlockTooLarge,
 }
@@ -98,8 +96,7 @@ impl Block {
         reward: MicroTari,
         consensus_constants: &ConsensusConstants,
         factories: &CryptoFactories,
-    ) -> Result<(), BlockValidationError>
-    {
+    ) -> Result<(), BlockValidationError> {
         self.body.check_coinbase_output(
             reward,
             consensus_constants.coinbase_lock_height(),
@@ -198,6 +195,7 @@ impl BlockBuilder {
             self.header.kernel_mmr_size += kernels.len() as u64;
             self = self.add_kernels(kernels);
             self.header.total_kernel_offset = self.header.total_kernel_offset + tx.offset;
+            self.header.total_script_offset = self.header.total_script_offset + tx.script_offset;
         }
         self
     }
@@ -233,7 +231,6 @@ impl BlockBuilder {
             header: self.header,
             body: AggregateBody::new(self.inputs, self.outputs, self.kernels),
         };
-        block.body.do_cut_through();
         block.body.sort();
         block
     }
@@ -243,7 +240,6 @@ impl Hashable for Block {
     /// The block hash is just the header hash, since the inputs, outputs and range proofs are captured by their
     /// respective MMR roots in the header itself.
     fn hash(&self) -> Vec<u8> {
-        // Note. If this changes, there will be a bug in chain_database::add_block_modifying_header
         self.header.hash()
     }
 }

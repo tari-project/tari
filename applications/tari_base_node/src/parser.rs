@@ -54,6 +54,7 @@ use tari_shutdown::Shutdown;
 pub enum BaseNodeCommand {
     Help,
     Version,
+    CheckForUpdates,
     Status,
     GetChainMetadata,
     GetPeer,
@@ -70,12 +71,12 @@ pub enum BaseNodeCommand {
     CheckDb,
     PeriodStats,
     HeaderStats,
+    BlockTiming,
     CalcTiming,
     DiscoverPeer,
     GetBlock,
     SearchUtxo,
     SearchKernel,
-    SearchStxo,
     GetMempoolStats,
     GetMempoolState,
     Whoami,
@@ -162,8 +163,7 @@ impl Parser {
         command: BaseNodeCommand,
         mut args: I,
         shutdown: &mut Shutdown,
-    )
-    {
+    ) {
         use BaseNodeCommand::*;
         match command {
             Help => {
@@ -181,6 +181,9 @@ impl Parser {
             },
             Version => {
                 self.command_handler.print_version();
+            },
+            CheckForUpdates => {
+                self.command_handler.check_for_updates();
             },
             GetChainMetadata => {
                 self.command_handler.get_chain_meta();
@@ -230,8 +233,8 @@ impl Parser {
             ListHeaders => {
                 self.process_list_headers(args);
             },
-            CalcTiming => {
-                self.process_calc_timing(args);
+            BlockTiming | CalcTiming => {
+                self.process_block_timing(args);
             },
             GetBlock => {
                 self.process_get_block(args);
@@ -241,9 +244,6 @@ impl Parser {
             },
             SearchKernel => {
                 self.process_search_kernel(args);
-            },
-            SearchStxo => {
-                self.process_search_stxo(args);
             },
             GetMempoolStats => {
                 self.command_handler.get_mempool_stats();
@@ -266,9 +266,9 @@ impl Parser {
     }
 
     /// Displays the commands or context specific help for a given command
-    fn print_help(&self, help_for: BaseNodeCommand) {
+    fn print_help(&self, command: BaseNodeCommand) {
         use BaseNodeCommand::*;
-        match help_for {
+        match command {
             Help => {
                 println!("Available commands are: ");
                 let joined = self.commands.join(", ");
@@ -282,6 +282,9 @@ impl Parser {
             },
             Version => {
                 println!("Gets the current application version");
+            },
+            CheckForUpdates => {
+                println!("Checks for software updates if auto update is enabled");
             },
             GetChainMetadata => {
                 println!("Gets your base node chain meta data");
@@ -303,7 +306,7 @@ impl Parser {
             },
             RewindBlockchain => {
                 println!("Rewinds the blockchain to the given height.");
-                println!("Usage: {} [new_height]", help_for);
+                println!("Usage: {} [new_height]", command);
                 println!("new_height must be less than the current height.");
             },
             BanPeer => {
@@ -349,8 +352,10 @@ impl Parser {
                 println!("list-headers [first header height] [last header height]");
                 println!("list-headers [number of headers starting from the chain tip back]");
             },
-            CalcTiming => {
-                println!("Calculates the time average time taken to mine a given range of blocks.");
+            BlockTiming | CalcTiming => {
+                println!("Calculates the maximum, minimum, and average time taken to mine a given range of blocks.");
+                println!("block-timing [start height] [end height]");
+                println!("block-timing [number of blocks from chain tip]");
             },
             GetBlock => {
                 println!("Display a block by height or hash:");
@@ -377,13 +382,6 @@ impl Parser {
                 );
                 println!("This searches for the kernel via the excess signature");
                 println!("search-kernel [hex of nonce] [Hex of signature]");
-            },
-            SearchStxo => {
-                println!(
-                    "This will search the main chain for the stxo. If the stxo is found, it will print out the block \
-                     it was found in."
-                );
-                println!("search-stxo [hex of commitment of the stxo]");
             },
             GetMempoolStats => {
                 println!("Retrieves your mempools stats");
@@ -455,26 +453,6 @@ impl Parser {
             },
         };
         self.command_handler.search_utxo(commitment)
-    }
-
-    /// Function to process the search stxo command
-    fn process_search_stxo<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
-        // let command_arg = args.take(4).collect::<Vec<&str>>();
-        let hex = args.next();
-        if hex.is_none() {
-            self.print_help(BaseNodeCommand::SearchStxo);
-            return;
-        }
-        let commitment = match Commitment::from_hex(&hex.unwrap().to_string()) {
-            Ok(v) => v,
-            _ => {
-                println!("Invalid commitment provided.");
-                self.print_help(BaseNodeCommand::SearchStxo);
-                return;
-            },
-        };
-
-        self.command_handler.search_stxo(commitment)
     }
 
     /// Function to process the search kernel command
@@ -609,17 +587,21 @@ impl Parser {
     }
 
     /// Function to process the calc-timing command
-    fn process_calc_timing<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
+    fn process_block_timing<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
         let start = args.next().map(u64::from_str).map(Result::ok).flatten();
         let end = args.next().map(u64::from_str).map(Result::ok).flatten();
-        if start.is_none() {
-            println!("Command entered incorrectly, please use the following formats: ");
-            println!("calc-timing [first header height] [last header height]");
-            println!("calc-timing [number of headers from chain tip]");
-            return;
+
+        let command = BaseNodeCommand::BlockTiming;
+        if let Some(start) = start {
+            if end.is_none() && start < 2 {
+                println!("Number of headers must be at least 2.");
+                self.print_help(command);
+            } else {
+                self.command_handler.block_timing(start, end)
+            }
+        } else {
+            self.print_help(command);
         }
-        let start = start.unwrap();
-        self.command_handler.calc_timing(start, end)
     }
 
     fn process_period_stats<'a, I: Iterator<Item = &'a str>>(&self, args: I) {
@@ -673,7 +655,7 @@ impl Parser {
             })
             .and_then(|arg| u64::from_str(&arg).map_err(|err| err.to_string())));
 
-        let filename = args.next().unwrap_or_else(|| "header-data.csv").to_string();
+        let filename = args.next().unwrap_or("header-data.csv").to_string();
 
         let algo = try_or_print!(Ok(args.next()).and_then(|s| match s {
             Some("monero") => Ok(Some(PowAlgorithm::Monero)),

@@ -1,8 +1,8 @@
 const net = require("net");
-const fs = require("fs");
-const readline = require("readline");
 
 const { blake2bInit, blake2bUpdate, blake2bFinal } = require("blakejs");
+
+const NO_CONNECTION = 14;
 
 function getRandomInt(min, max) {
   min = Math.ceil(min);
@@ -29,27 +29,50 @@ function withTimeout(ms, promise, message = "") {
 async function waitFor(
   asyncTestFn,
   toBe,
-  maxTime,
+  maxTimeMs,
   timeOut = 500,
   skipLog = 50
 ) {
-  let now = new Date();
+  const now = new Date();
 
   let i = 0;
-  while (new Date() - now < maxTime) {
-    const value = await asyncTestFn();
-    if (value === toBe) {
-      if (i > 1) {
+  while (new Date() - now < maxTimeMs) {
+    try {
+      const value = await asyncTestFn();
+      if (value === toBe) {
+        if (i > 1) {
+          console.log("waiting for process...", timeOut, i, value);
+        }
+        break;
+      }
+      if (i % skipLog === 0 && i > 1) {
         console.log("waiting for process...", timeOut, i, value);
       }
-      break;
+      await sleep(timeOut);
+      i++;
+    } catch (e) {
+      if (i > 1) {
+        if (e && e.code && e.code === NO_CONNECTION) {
+          console.log("No connection yet (waitFor)...");
+        } else {
+          console.error("Error in waitFor: ", e);
+        }
+      }
+      await sleep(timeOut);
     }
-    if (i % skipLog === 0 && i > 1) {
-      console.log("waiting for process...", timeOut, i, value);
-    }
-    await sleep(timeOut);
-    i++;
   }
+}
+
+async function waitForPredicate(predicate, timeOut, sleep_ms = 500) {
+  const now = new Date();
+  while (new Date() - now < timeOut) {
+    const val = await predicate();
+    if (val) {
+      return val;
+    }
+    await sleep(sleep_ms);
+  }
+  throw new Error(`Predicate was not true after ${timeOut} ms`);
 }
 
 function dec2hex(n) {
@@ -58,21 +81,34 @@ function dec2hex(n) {
 
 function toLittleEndianInner(n) {
   let hexar = dec2hex(n);
-  return hexar
-    .map((h) => (h < 16 ? "0" : "") + h.toString(16))
-    .concat(Array(4 - hexar.length).fill("00"));
+  hexar = hexar.map((h) => (h < 16 ? "0" : "") + h.toString(16));
+  if (hexar.length < 4) {
+    return hexar.concat(Array(4 - hexar.length).fill("00"));
+  } else {
+    return hexar;
+  }
 }
 
 function toLittleEndian(n, numBits) {
-  let s = toLittleEndianInner(n);
+  const s = toLittleEndianInner(n);
 
   for (let i = s.length; i < numBits / 8; i++) {
     s.push("00");
   }
 
-  let arr = Buffer.from(s.join(""), "hex");
+  const arr = Buffer.from(s.join(""), "hex");
 
   return arr;
+}
+
+function littleEndianHexStringToBigEndianHexString(string) {
+  if (!string) return undefined;
+  var len = string.length;
+  var bigEndianHexString = "0x";
+  for (var i = 0; i < len / 2; i++) {
+    bigEndianHexString += string.substring(len - (i + 1) * 2, len - i * 2);
+  }
+  return bigEndianHexString;
 }
 
 function hexSwitchEndianness(val) {
@@ -84,24 +120,24 @@ function hexSwitchEndianness(val) {
 }
 
 // Thanks to https://stackoverflow.com/questions/29860354/in-nodejs-how-do-i-check-if-a-port-is-listening-or-in-use
-let portInUse = function (port, callback) {
-  let server = net.createServer(function (socket) {
+const portInUse = function (port, callback) {
+  const server = net.createServer(function (socket) {
     socket.write("Echo server\r\n");
     socket.pipe(socket);
   });
 
   server.listen(port, "127.0.0.1");
-  server.on("error", function (e) {
+  server.on("error", function () {
     callback(true);
   });
-  server.on("listening", function (e) {
+  server.on("listening", function () {
     server.close();
     callback(false);
   });
 };
 
 let index = 0;
-let getFreePort = async function (from, to) {
+const getFreePort = async function (from, to) {
   function testPort(port) {
     return new Promise((r) => {
       portInUse(port, (v) => {
@@ -123,7 +159,7 @@ let getFreePort = async function (from, to) {
     // await sleep(100);
     port++;
     index++;
-    let notInUse = await testPort(port);
+    const notInUse = await testPort(port);
     // console.log("Port not in use:", notInUse);
     if (notInUse) {
       return port;
@@ -131,39 +167,38 @@ let getFreePort = async function (from, to) {
   }
 };
 
-// WIP  this doesn't hash properly
 const getTransactionOutputHash = function (output) {
-  let KEY = null; // optional key
-  let OUTPUT_LENGTH = 32; // bytes
-  let context = blake2bInit(OUTPUT_LENGTH, KEY);
-  let flags = Buffer.alloc(1);
+  const KEY = null; // optional key
+  const OUTPUT_LENGTH = 32; // bytes
+  const context = blake2bInit(OUTPUT_LENGTH, KEY);
+  const flags = Buffer.alloc(1);
   flags[0] = output.features.flags;
-  let buffer = Buffer.concat([
+  const buffer = Buffer.concat([
     flags,
     toLittleEndian(parseInt(output.features.maturity), 64),
   ]);
+  let nopScriptBytes = Buffer.from([0x73]);
+
   blake2bUpdate(context, buffer);
   blake2bUpdate(context, output.commitment);
+  blake2bUpdate(context, nopScriptBytes);
   let final = blake2bFinal(context);
   return Buffer.from(final);
 };
 
 function consoleLogTransactionDetails(txnDetails, txId) {
-  let found = txnDetails[0];
-  let status = txnDetails[1];
+  const found = txnDetails[0];
+  const status = txnDetails[1];
   if (found) {
     console.log(
       "  Transaction " +
-        pad("'" + status.transactions[0]["tx_id"] + "'", 24) +
+        pad("'" + status.transactions[0].tx_id + "'", 24) +
         " has status " +
-        pad("'" + status.transactions[0]["status"] + "'", 40) +
+        pad("'" + status.transactions[0].status + "'", 40) +
         " and " +
-        pad(
-          "is_cancelled(" + status.transactions[0]["is_cancelled"] + ")",
-          21
-        ) +
+        pad("is_cancelled(" + status.transactions[0].is_cancelled + ")", 21) +
         " and " +
-        pad("is_valid(" + status.transactions[0]["valid"] + ")", 16)
+        pad("is_valid(" + status.transactions[0].valid + ")", 16)
     );
   } else {
     console.log("  Transaction '" + txId + "' " + status);
@@ -173,11 +208,11 @@ function consoleLogTransactionDetails(txnDetails, txId) {
 function consoleLogBalance(balance) {
   console.log(
     "  Available " +
-      pad(balance["available_balance"], 16) +
+      pad(balance.available_balance, 16) +
       " uT, Pending incoming " +
-      pad(balance["pending_incoming_balance"], 16) +
+      pad(balance.pending_incoming_balance, 16) +
       " uT, Pending outgoing " +
-      pad(balance["pending_outgoing_balance"], 16) +
+      pad(balance.pending_outgoing_balance, 16) +
       " uT"
   );
 }
@@ -185,18 +220,18 @@ function consoleLogBalance(balance) {
 function consoleLogCoinbaseDetails(txnDetails) {
   console.log(
     "  Transaction " +
-      pad("'" + txnDetails["tx_id"] + "'", 24) +
+      pad("'" + txnDetails.tx_id + "'", 24) +
       " has status " +
-      pad("'" + txnDetails["status"] + "'", 40) +
+      pad("'" + txnDetails.status + "'", 40) +
       " and " +
-      pad("is_cancelled(" + txnDetails["is_cancelled"] + ")", 21) +
+      pad("is_cancelled(" + txnDetails.is_cancelled + ")", 21) +
       " and " +
-      pad("is_valid(" + txnDetails["valid"] + ")", 16)
+      pad("is_valid(" + txnDetails.valid + ")", 16)
   );
 }
 
 function pad(str, length, padLeft = true) {
-  let padding = Array(length).join(" ");
+  const padding = Array(length).join(" ");
   if (typeof str === "undefined") return padding;
   if (padLeft) {
     return (padding + str).slice(-padding.length);
@@ -205,11 +240,39 @@ function pad(str, length, padLeft = true) {
   }
 }
 
+function combineTwoTariKeys(key1, key2) {
+  let total_key =
+    BigInt(littleEndianHexStringToBigEndianHexString(key1)) +
+    BigInt(littleEndianHexStringToBigEndianHexString(key2));
+  if (total_key < 0) {
+    total_key =
+      total_key +
+      BigInt(
+        littleEndianHexStringToBigEndianHexString(
+          "edd3f55c1a631258d69cf7a2def9de1400000000000000000000000000000010"
+        )
+      );
+  }
+  total_key = total_key.toString(16);
+  while (total_key.length < 64) {
+    total_key = "0" + total_key;
+  }
+  total_key = littleEndianHexStringToBigEndianHexString(total_key);
+  while (total_key.length < 64) {
+    total_key = "0" + total_key;
+  }
+  return total_key;
+}
+
+const byteArrayToHex = (bytes) =>
+  bytes.reduce((str, byte) => str + byte.toString(16).padStart(2, "0"), "");
+
 module.exports = {
   getRandomInt,
   sleep,
   waitFor,
   toLittleEndian,
+  littleEndianHexStringToBigEndianHexString,
   // portInUse,
   getFreePort,
   getTransactionOutputHash,
@@ -218,4 +281,9 @@ module.exports = {
   consoleLogBalance,
   consoleLogCoinbaseDetails,
   withTimeout,
+  combineTwoTariKeys,
+  byteArrayToHex,
+  waitForPredicate,
+
+  NO_CONNECTION,
 };

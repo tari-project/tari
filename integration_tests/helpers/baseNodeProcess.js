@@ -3,19 +3,47 @@ const { expect } = require("chai");
 const fs = require("fs");
 const path = require("path");
 const BaseNodeClient = require("./baseNodeClient");
-const { getFreePort } = require("./util");
+const { sleep, getFreePort } = require("./util");
 const dateFormat = require("dateformat");
 const { createEnv } = require("./config");
 
 let outputProcess;
 class BaseNodeProcess {
-  constructor(name, options, logFilePath, nodeFile) {
+  constructor(name, excludeTestEnvars, options, logFilePath, nodeFile) {
     this.name = name;
     this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath;
     this.nodeFile = nodeFile;
     this.options = options;
+    this.excludeTestEnvars = excludeTestEnvars;
   }
 
+  async init() {
+    this.port = await getFreePort(19000, 25000);
+    this.grpcPort = await getFreePort(19000, 25000);
+    this.name = `Basenode${this.port}-${this.name}`;
+    this.nodeFile = this.nodeFile || "nodeid.json";
+
+    do {
+      this.baseDir = `./temp/base_nodes/${dateFormat(
+        new Date(),
+        "yyyymmddHHMM"
+      )}/${this.name}`;
+      // Some tests failed during testing because the next base node process started in the previous process
+      // directory therefore using the previous blockchain database
+      if (fs.existsSync(this.baseDir)) {
+        sleep(1000);
+      }
+    } while (fs.existsSync(this.baseDir));
+    const args = ["--base-path", ".", "--init", "--create-id"];
+    if (this.logFilePath) {
+      args.push("--log-config", this.logFilePath);
+    }
+
+    await this.run(await this.compile(), args);
+    // console.log("Port:", this.port);
+    // console.log("GRPC:", this.grpcPort);
+    // console.log(`Starting node ${this.name}...`);
+  }
 
   async compile() {
     if (!outputProcess) {
@@ -27,15 +55,15 @@ class BaseNodeProcess {
         "-Z",
         "unstable-options",
         "--out-dir",
-        __dirname + "/../temp/out",
+        process.cwd() + "/temp/out",
       ]);
-      outputProcess = __dirname + "/../temp/out/tari_base_node";
+      outputProcess = process.cwd() + "/temp/out/tari_base_node";
     }
     return outputProcess;
   }
 
   ensureNodeInfo() {
-    while (true) {
+    for (;;) {
       if (fs.existsSync(this.baseDir + "/" + this.nodeFile)) {
         break;
       }
@@ -58,34 +86,37 @@ class BaseNodeProcess {
   }
 
   getGrpcAddress() {
-    let address = "127.0.0.1:" + this.grpcPort;
+    const address = "127.0.0.1:" + this.grpcPort;
     // console.log("Base Node GRPC Address:",address);
     return address;
   }
 
-  run(cmd, args, saveFile) {
+  run(cmd, args) {
     return new Promise((resolve, reject) => {
       if (!fs.existsSync(this.baseDir)) {
         fs.mkdirSync(this.baseDir, { recursive: true });
         fs.mkdirSync(this.baseDir + "/log", { recursive: true });
       }
 
-      let envs = createEnv(
-        this.name,
-        false,
-        this.nodeFile,
-        "127.0.0.1",
-        "8082",
-        "8081",
-        "127.0.0.1",
-        this.grpcPort,
-        this.port,
-        "127.0.0.1:8080",
-        this.options,
-        this.peerSeeds
-      );
+      let envs = [];
+      if (!this.excludeTestEnvars) {
+        envs = createEnv(
+          this.name,
+          false,
+          this.nodeFile,
+          "127.0.0.1",
+          "8082",
+          "8081",
+          "127.0.0.1",
+          this.grpcPort,
+          this.port,
+          "127.0.0.1:8080",
+          this.options,
+          this.peerSeeds
+        );
+      }
 
-      var ps = spawn(cmd, args, {
+      const ps = spawn(cmd, args, {
         cwd: this.baseDir,
         // shell: true,
         env: { ...process.env, ...envs },
@@ -95,9 +126,20 @@ class BaseNodeProcess {
         //console.log(`stdout: ${data}`);
         fs.appendFileSync(`${this.baseDir}/log/stdout.log`, data.toString());
         if (
+          // Make this resilient by comparing uppercase and making provisioning that the first print message in the
+          // base node console is not always 'State: Starting up'
           data
             .toString()
-            .match(/Copyright 2019-2020. The Tari Development Community/)
+            .toUpperCase()
+            .match(/STATE: STARTING/) ||
+          data
+            .toString()
+            .toUpperCase()
+            .match(/STATE: LISTENING/) ||
+          data
+            .toString()
+            .toUpperCase()
+            .match(/STATE: SYNCING/)
         ) {
           resolve(ps);
         }
@@ -109,7 +151,7 @@ class BaseNodeProcess {
       });
 
       ps.on("close", (code) => {
-        let ps = this.ps;
+        const ps = this.ps;
         this.ps = null;
         if (code) {
           console.log(`child process exited with code ${code}`);
@@ -126,7 +168,8 @@ class BaseNodeProcess {
 
   async startNew() {
     await this.init();
-    return await this.start();
+    const start = await this.start();
+    return start;
   }
 
   async startAndConnect() {

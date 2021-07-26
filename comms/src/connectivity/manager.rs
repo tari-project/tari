@@ -415,8 +415,7 @@ impl ConnectivityManagerActor {
     async fn select_connections(
         &self,
         selection: ConnectivitySelection,
-    ) -> Result<Vec<PeerConnection>, ConnectivityError>
-    {
+    ) -> Result<Vec<PeerConnection>, ConnectivityError> {
         trace!(target: LOG_TARGET, "Selection query: {:?}", selection);
         debug!(
             target: LOG_TARGET,
@@ -546,8 +545,7 @@ impl ConnectivityManagerActor {
     async fn handle_connection_manager_event(
         &mut self,
         event: &ConnectionManagerEvent,
-    ) -> Result<(), ConnectivityError>
-    {
+    ) -> Result<(), ConnectivityError> {
         use ConnectionManagerEvent::*;
         #[allow(clippy::single_match)]
         match event {
@@ -817,8 +815,7 @@ impl ConnectivityManagerActor {
         node_id: &NodeId,
         duration: Duration,
         reason: String,
-    ) -> Result<(), ConnectivityError>
-    {
+    ) -> Result<(), ConnectivityError> {
         info!(
             target: LOG_TARGET,
             "Banning peer {} for {} because: {}",

@@ -133,8 +133,7 @@ impl Discovering {
         &mut self,
         sync_peer: &NodeId,
         mut client: rpc::DhtClient,
-    ) -> Result<(), NetworkDiscoveryError>
-    {
+    ) -> Result<(), NetworkDiscoveryError> {
         debug!(
             target: LOG_TARGET,
             "Requesting {} peers from `{}`",

@@ -44,6 +44,12 @@ service Wallet {
     rpc GetBalance (GetBalanceRequest) returns (GetBalanceResponse);
     // Request the wallet perform a coinsplit
     rpc CoinSplit (CoinSplitRequest) returns (CoinSplitResponse);
+    // Import Utxo to wallet
+    rpc ImportUtxos (ImportUtxosRequest) returns (ImportUtxosResponse);
+    // Get Base Node network connectivity status
+    rpc GetNetworkStatus(Empty) returns (NetworkStatusResponse);
+    // List currently connected peers
+    rpc ListConnectedPeers(Empty) returns (ListConnectedPeersResponse);
 }
 
 message GetVersionRequest { }
@@ -69,6 +75,11 @@ message PaymentRecipient {
     uint64 amount = 2;
     uint64 fee_per_gram = 3;
     string message = 4;
+    enum PaymentType {
+        STANDARD_MIMBLEWIMBLE = 0;
+        ONE_SIDED = 1;
+    }
+    PaymentType payment_type = 5;
 }
 
 message TransferResponse {
@@ -164,3 +175,12 @@ message CoinSplitRequest {
 message CoinSplitResponse {
     uint64 tx_id = 1;
 }
+
+message ImportUtxosRequest {
+    repeated UnblindedOutput outputs = 1;
+}
+
+message ImportUtxosResponse {
+    repeated uint64 tx_ids = 1;
+}
+

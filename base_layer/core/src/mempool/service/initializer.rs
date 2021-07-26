@@ -37,7 +37,7 @@ use crate::{
     proto,
     transactions::transaction::Transaction,
 };
-use futures::{channel::mpsc, future, Future, Stream, StreamExt};
+use futures::{channel::mpsc, future, Stream, StreamExt};
 use log::*;
 use std::{convert::TryFrom, sync::Arc};
 use tari_comms_dht::Dht;
@@ -48,6 +48,7 @@ use tari_p2p::{
     tari_message::TariMessageType,
 };
 use tari_service_framework::{
+    async_trait,
     reply_channel,
     ServiceInitializationError,
     ServiceInitializer,
@@ -71,8 +72,7 @@ impl MempoolServiceInitializer {
         config: MempoolServiceConfig,
         mempool: Mempool,
         inbound_message_subscription_factory: Arc<SubscriptionFactory>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             inbound_message_subscription_factory,
             mempool,
@@ -135,10 +135,9 @@ async fn extract_transaction(msg: Arc<PeerMessage>) -> Option<DomainMessage<Tran
     }
 }
 
+#[async_trait]
 impl ServiceInitializer for MempoolServiceInitializer {
-    type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
-
-    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+    async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         // Create streams for receiving Mempool service requests and response messages from comms
         let inbound_request_stream = self.inbound_request_stream();
         let inbound_response_stream = self.inbound_response_stream();
@@ -190,6 +189,6 @@ impl ServiceInitializer for MempoolServiceInitializer {
             info!(target: LOG_TARGET, "Mempool Service shutdown");
         });
 
-        future::ready(Ok(()))
+        Ok(())
     }
 }

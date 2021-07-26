@@ -23,12 +23,10 @@
 use crate::{
     blocks::{
         genesis_block::{
-            get_mainnet_block_hash,
             get_mainnet_genesis_block,
-            get_ridcully_block_hash,
             get_ridcully_genesis_block,
-            get_stibbons_block_hash,
             get_stibbons_genesis_block,
+            get_weatherwax_genesis_block,
         },
         Block,
     },
@@ -36,16 +34,18 @@ use crate::{
     consensus::{
         chain_strength_comparer::{strongest_chain, ChainStrengthComparer},
         emission::{Emission, EmissionSchedule},
-        network::Network,
         ConsensusConstants,
+        NetworkConsensus,
     },
     proof_of_work::{DifficultyAdjustmentError, PowAlgorithm, TargetDifficultyWindow},
     transactions::tari_amount::MicroTari,
 };
 use std::{convert::TryFrom, sync::Arc};
+use tari_common::configuration::Network;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
+#[allow(clippy::large_enum_variant)]
 pub enum ConsensusManagerError {
     #[error("Difficulty adjustment encountered an error: `{0}`")]
     DifficultyAdjustmentError(#[from] DifficultyAdjustmentError),
@@ -72,29 +72,23 @@ impl ConsensusManager {
 
     /// Returns the genesis block for the selected network.
     pub fn get_genesis_block(&self) -> ChainBlock {
-        match self.inner.network {
+        match self.inner.network.as_network() {
             Network::MainNet => get_mainnet_genesis_block(),
             Network::Ridcully => get_ridcully_genesis_block(),
             Network::Stibbons => get_stibbons_genesis_block(),
-            Network::LocalNet => self.inner.gen_block.clone().unwrap_or_else(get_stibbons_genesis_block),
-        }
-    }
-
-    /// Returns the genesis block hash for the selected network.
-    #[deprecated]
-    pub fn get_genesis_block_hash(&self) -> Vec<u8> {
-        match self.inner.network {
-            Network::MainNet => get_mainnet_block_hash(),
-            Network::Ridcully => get_ridcully_block_hash(),
-            Network::Stibbons => get_stibbons_block_hash(),
-            Network::LocalNet => get_ridcully_block_hash(),
+            Network::Weatherwax => get_weatherwax_genesis_block(),
+            Network::LocalNet => self
+                .inner
+                .gen_block
+                .clone()
+                .unwrap_or_else(get_weatherwax_genesis_block),
         }
     }
 
     /// Get a pointer to the emission schedule
     /// The height provided here, decides the emission curve to use. It swaps to the integer curve upon reaching
     /// 1_000_000_000
-    pub fn emission_schedule(&self) -> &dyn Emission {
+    pub fn emission_schedule(&self) -> &EmissionSchedule {
         &self.inner.emission
     }
 
@@ -102,7 +96,8 @@ impl ConsensusManager {
         self.emission_schedule().block_reward(height)
     }
 
-    // Get the emission reward at height
+    /// Get the emission reward at height
+    /// Returns None if the total supply > u64::MAX
     pub fn get_total_emission_at(&self, height: u64) -> MicroTari {
         self.inner.emission.supply_at_block(height)
     }
@@ -143,7 +138,7 @@ impl ConsensusManager {
     }
 
     /// This is the currently configured chain network.
-    pub fn network(&self) -> Network {
+    pub fn network(&self) -> NetworkConsensus {
         self.inner.network
     }
 }
@@ -154,7 +149,7 @@ struct ConsensusManagerInner {
     /// This is the inner struct used to control all consensus values.
     pub consensus_constants: Vec<ConsensusConstants>,
     /// The configured chain network.
-    pub network: Network,
+    pub network: NetworkConsensus,
     /// The configuration for the emission schedule for integer only.
     pub emission: EmissionSchedule,
     /// This allows the user to set a custom Genesis block
@@ -166,7 +161,7 @@ struct ConsensusManagerInner {
 /// Constructor for the consensus manager struct
 pub struct ConsensusManagerBuilder {
     consensus_constants: Vec<ConsensusConstants>,
-    network: Network,
+    network: NetworkConsensus,
     gen_block: Option<ChainBlock>,
     chain_strength_comparer: Option<Box<dyn ChainStrengthComparer + Send + Sync>>,
 }
@@ -176,7 +171,7 @@ impl ConsensusManagerBuilder {
     pub fn new(network: Network) -> Self {
         ConsensusManagerBuilder {
             consensus_constants: vec![],
-            network,
+            network: network.into(),
             gen_block: None,
             chain_strength_comparer: None,
         }
@@ -224,7 +219,7 @@ impl ConsensusManagerBuilder {
                     .then()
                     .by_monero_difficulty()
                     .then()
-                    .by_blake_difficulty()
+                    .by_sha3_difficulty()
                     .build()
             }),
         };

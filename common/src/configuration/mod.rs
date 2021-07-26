@@ -25,12 +25,12 @@
 //! ...
 //! [base_node]
 //! # common vars for all base_node instances
-//! [base_node.rincewind]
+//! [base_node.weatherwax]
 //! # overrides for rincewnd testnet
 //! [base_node.mainnet]
 //! # overrides for mainnet
 //! [wallet]
-//! [wallet.rincewind]
+//! [wallet.weatherwax]
 //! # etc..
 //! ```
 
@@ -38,11 +38,8 @@ pub mod bootstrap;
 pub mod error;
 pub mod global;
 pub mod loader;
+mod network;
+pub use network::Network;
 pub mod seconds;
 pub mod utils;
 pub mod writer;
-
-pub use bootstrap::ConfigBootstrap;
-pub use global::{CommsTransport, DatabaseType, GlobalConfig, Network, SocksAuthentication, TorControlAuthentication};
-pub use loader::ConfigurationError;
-pub use utils::{default_config, install_default_config_file, load_configuration};

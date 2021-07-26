@@ -23,8 +23,9 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use crate::Hash;
+use crate::{error::MerkleMountainRangeError, Hash};
 use digest::Digest;
+use std::convert::TryInto;
 
 const ALL_ONES: usize = std::usize::MAX;
 
@@ -37,8 +38,11 @@ pub fn node_index(leaf_index: usize) -> usize {
 }
 
 /// Returns the leaf index derived from the MMR node index.
-pub fn leaf_index(node_index: usize) -> u32 {
-    n_leaves(node_index) as u32
+pub fn leaf_index(node_index: u32) -> u32 {
+    let n = checked_n_leaves(node_index as usize)
+        .expect("checked_n_leaves can only overflow for `usize::MAX` and that is not possible");
+    // Conversion is safe because n < node_index
+    n as u32
 }
 
 /// Is this position a leaf in the MMR?
@@ -73,15 +77,27 @@ pub fn find_peaks(size: usize) -> Vec<usize> {
     peaks
 }
 
-/// Calculates the positions of the parent and sibling of the node at the provided position.
-pub fn family(pos: usize) -> (usize, usize) {
+/// Calculates the positions of the (parent, sibling) of the node at the provided position.
+/// Returns an error if the pos provided would result in an underflow or overflow.
+pub fn family(pos: usize) -> Result<(usize, usize), MerkleMountainRangeError> {
     let (peak_map, height) = peak_map_height(pos);
     let peak = 1 << height;
-    if (peak_map & peak) != 0 {
+
+    // Convert to i128 so that we don't over/underflow, and then we will cast back to usize after
+    let pos = pos as i128;
+    let peak = peak as i128;
+    let peak_map = peak_map as i128;
+
+    let res = if (peak_map & peak) != 0 {
         (pos + 1, pos + 1 - 2 * peak)
     } else {
         (pos + 2 * peak, pos + 2 * peak - 1)
-    }
+    };
+
+    Ok((
+        res.0.try_into().map_err(|_| MerkleMountainRangeError::OutOfRange)?,
+        res.1.try_into().map_err(|_| MerkleMountainRangeError::OutOfRange)?,
+    ))
 }
 
 /// For a given starting position calculate the parent and sibling positions
@@ -147,28 +163,6 @@ pub fn peak_map_height(mut pos: usize) -> (usize, usize) {
     (bitmap, pos)
 }
 
-/// sizes of peaks and height of next node in mmr of given size
-/// Example: on input 5 returns ([3,1], 1) as mmr state before adding 5 was
-///    2
-///   / \
-///  0   1   3   4
-pub fn peak_sizes_height(size: usize) -> (Vec<usize>, usize) {
-    if size == 0 {
-        return (vec![], 0);
-    }
-    let mut peak_size = ALL_ONES >> size.leading_zeros();
-    let mut sizes = vec![];
-    let mut size_left = size;
-    while peak_size != 0 {
-        if size_left >= peak_size {
-            sizes.push(peak_size);
-            size_left -= peak_size;
-        }
-        peak_size >>= 1;
-    }
-    (sizes, size_left)
-}
-
 /// Is the node at this pos the "left" sibling of its parent?
 pub fn is_left_sibling(pos: usize) -> bool {
     let (peak_map, height) = peak_map_height(pos);
@@ -177,17 +171,38 @@ pub fn is_left_sibling(pos: usize) -> bool {
 }
 
 pub fn hash_together<D: Digest>(left: &[u8], right: &[u8]) -> Hash {
-    D::new().chain(left).chain(right).result().to_vec()
+    D::new().chain(left).chain(right).finalize().to_vec()
 }
 
 /// The number of leaves in a MMR of the provided size.
-pub fn n_leaves(size: usize) -> usize {
-    let (sizes, height) = peak_sizes_height(size);
-    let nleaves = sizes.iter().map(|n| (n + 1) / 2).sum();
-    if height == 0 {
-        nleaves
+/// Example: on input 5 returns (2 + 1 + 1) as mmr state before adding 5 was
+///    2
+///   / \
+///  0   1   3   4
+/// None is returned if the number of leaves exceeds the maximum value of a usize
+pub fn checked_n_leaves(size: usize) -> Option<usize> {
+    if size == 0 {
+        return Some(0);
+    }
+    if size == usize::MAX {
+        return None;
+    }
+
+    let mut peak_size = ALL_ONES >> size.leading_zeros();
+    let mut nleaves = 0usize;
+    let mut size_left = size;
+    while peak_size != 0 {
+        if size_left >= peak_size {
+            nleaves += (peak_size + 1) >> 1;
+            size_left -= peak_size;
+        }
+        peak_size >>= 1;
+    }
+
+    if size_left == 0 {
+        Some(nleaves)
     } else {
-        nleaves + 1
+        Some(nleaves + 1)
     }
 }
 
@@ -209,14 +224,18 @@ mod test {
 
     #[test]
     fn n_leaf_nodes() {
-        assert_eq!(n_leaves(0), 0);
-        assert_eq!(n_leaves(1), 1);
-        assert_eq!(n_leaves(3), 2);
-        assert_eq!(n_leaves(4), 3);
-        assert_eq!(n_leaves(8), 5);
-        assert_eq!(n_leaves(10), 6);
-        assert_eq!(n_leaves(11), 7);
-        assert_eq!(n_leaves(15), 8);
+        assert_eq!(checked_n_leaves(0), Some(0));
+        assert_eq!(checked_n_leaves(1), Some(1));
+        assert_eq!(checked_n_leaves(3), Some(2));
+        assert_eq!(checked_n_leaves(4), Some(3));
+        assert_eq!(checked_n_leaves(5), Some(4));
+        assert_eq!(checked_n_leaves(8), Some(5));
+        assert_eq!(checked_n_leaves(10), Some(6));
+        assert_eq!(checked_n_leaves(11), Some(7));
+        assert_eq!(checked_n_leaves(15), Some(8));
+        assert_eq!(checked_n_leaves(usize::MAX - 1), Some(9223372036854775808));
+        // Overflowed
+        assert_eq!(checked_n_leaves(usize::MAX), None);
     }
 
     #[test]
@@ -241,33 +260,33 @@ mod test {
     }
     #[test]
     fn is_sibling_left() {
-        assert_eq!(is_left_sibling(0), true);
-        assert_eq!(is_left_sibling(1), false);
-        assert_eq!(is_left_sibling(2), true);
-        assert_eq!(is_left_sibling(3), true);
-        assert_eq!(is_left_sibling(4), false);
-        assert_eq!(is_left_sibling(5), false);
-        assert_eq!(is_left_sibling(6), true);
-        assert_eq!(is_left_sibling(7), true);
-        assert_eq!(is_left_sibling(8), false);
-        assert_eq!(is_left_sibling(9), true);
-        assert_eq!(is_left_sibling(10), true);
-        assert_eq!(is_left_sibling(11), false);
-        assert_eq!(is_left_sibling(12), false);
-        assert_eq!(is_left_sibling(13), false);
-        assert_eq!(is_left_sibling(14), true);
-        assert_eq!(is_left_sibling(15), true);
+        assert!(is_left_sibling(0));
+        assert!(!is_left_sibling(1));
+        assert!(is_left_sibling(2));
+        assert!(is_left_sibling(3));
+        assert!(!is_left_sibling(4));
+        assert!(!is_left_sibling(5));
+        assert!(is_left_sibling(6));
+        assert!(is_left_sibling(7));
+        assert!(!is_left_sibling(8));
+        assert!(is_left_sibling(9));
+        assert!(is_left_sibling(10));
+        assert!(!is_left_sibling(11));
+        assert!(!is_left_sibling(12));
+        assert!(!is_left_sibling(13));
+        assert!(is_left_sibling(14));
+        assert!(is_left_sibling(15));
     }
 
     #[test]
     fn families() {
-        assert_eq!(family(1), (2, 0));
-        assert_eq!(family(0), (2, 1));
-        assert_eq!(family(3), (5, 4));
-        assert_eq!(family(9), (13, 12));
-        assert_eq!(family(15), (17, 16));
-        assert_eq!(family(6), (14, 13));
-        assert_eq!(family(13), (14, 6));
+        assert_eq!(family(1).unwrap(), (2, 0));
+        assert_eq!(family(0).unwrap(), (2, 1));
+        assert_eq!(family(3).unwrap(), (5, 4));
+        assert_eq!(family(9).unwrap(), (13, 12));
+        assert_eq!(family(15).unwrap(), (17, 16));
+        assert_eq!(family(6).unwrap(), (14, 13));
+        assert_eq!(family(13).unwrap(), (14, 6));
     }
 
     #[test]

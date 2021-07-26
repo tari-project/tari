@@ -16,6 +16,7 @@ use tari_core::{
         types::{Commitment, CryptoFactories, PrivateKey},
     },
 };
+use tari_crypto::script;
 use tokio::{sync::mpsc, task};
 
 const NUM_KEYS: usize = 4000;
@@ -61,7 +62,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // "Go!" before, or right the beginning of any key generation output.
         task::spawn(async move {
             let result = task::spawn_blocking(move || {
-                let (utxo, key) = helpers::create_utxo(value, &fc, Some(feature));
+                let script = script!(Nop);
+                let (utxo, key, _) = helpers::create_utxo(value, &fc, Some(feature), &script);
                 print!(".");
                 (utxo, key, value)
             })

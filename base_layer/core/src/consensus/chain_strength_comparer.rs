@@ -10,8 +10,8 @@ pub struct AccumulatedDifficultySquaredComparer {}
 
 impl ChainStrengthComparer for AccumulatedDifficultySquaredComparer {
     fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
-        let a_val = a.accumulated_data.total_accumulated_difficulty;
-        let b_val = b.accumulated_data.total_accumulated_difficulty;
+        let a_val = a.accumulated_data().total_accumulated_difficulty;
+        let b_val = b.accumulated_data().total_accumulated_difficulty;
         a_val.cmp(&b_val)
     }
 }
@@ -26,8 +26,7 @@ impl ThenComparer {
     pub fn new(
         before: Box<dyn ChainStrengthComparer + Send + Sync>,
         after: Box<dyn ChainStrengthComparer + Send + Sync>,
-    ) -> Self
-    {
+    ) -> Self {
         ThenComparer { before, after }
     }
 }
@@ -47,20 +46,20 @@ pub struct MoneroDifficultyComparer {}
 
 impl ChainStrengthComparer for MoneroDifficultyComparer {
     fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
-        a.accumulated_data
+        a.accumulated_data()
             .accumulated_monero_difficulty
-            .cmp(&b.accumulated_data.accumulated_monero_difficulty)
+            .cmp(&b.accumulated_data().accumulated_monero_difficulty)
     }
 }
 
 #[derive(Default, Debug)]
-pub struct BlakeDifficultyComparer {}
+pub struct Sha3DifficultyComparer {}
 
-impl ChainStrengthComparer for BlakeDifficultyComparer {
+impl ChainStrengthComparer for Sha3DifficultyComparer {
     fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
-        a.accumulated_data
-            .accumulated_blake_difficulty
-            .cmp(&b.accumulated_data.accumulated_blake_difficulty)
+        a.accumulated_data()
+            .accumulated_sha_difficulty
+            .cmp(&b.accumulated_data().accumulated_sha_difficulty)
     }
 }
 
@@ -69,7 +68,7 @@ pub struct HeightComparer {}
 
 impl ChainStrengthComparer for HeightComparer {
     fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
-        a.header.height.cmp(&b.header.height)
+        a.height().cmp(&b.height())
     }
 }
 
@@ -98,8 +97,8 @@ impl ChainStrengthComparerBuilder {
         self.add_comparer_as_then(Box::new(MoneroDifficultyComparer::default()))
     }
 
-    pub fn by_blake_difficulty(self) -> Self {
-        self.add_comparer_as_then(Box::new(BlakeDifficultyComparer::default()))
+    pub fn by_sha3_difficulty(self) -> Self {
+        self.add_comparer_as_then(Box::new(Sha3DifficultyComparer::default()))
     }
 
     pub fn by_height(self) -> Self {

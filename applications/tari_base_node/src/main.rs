@@ -27,8 +27,6 @@
 #![deny(unused_must_use)]
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
-// Enable 'impl Trait' type aliases
-#![feature(type_alias_impl_trait)]
 
 /// ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣶⣿⣿⣿⣿⣶⣦⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 /// ⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣤⣾⣿⡿⠋⠀⠀⠀⠀⠉⠛⠿⣿⣿⣶⣤⣀⠀⠀⠀⠀⠀⠀⢰⣿⣾⣾⣾⣾⣾⣾⣾⣾⣾⣿⠀⠀⠀⣾⣾⣾⡀⠀⠀⠀⠀⢰⣾⣾⣾⣾⣿⣶⣶⡀⠀⠀⠀⢸⣾⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀
@@ -54,10 +52,10 @@
 /// ```
 ///
 /// For the first run
-/// ```cargo run tari_base_node -- --create-id```
-/// 
+/// `cargo run tari_base_node -- --create-id`
+///
 /// Subsequent runs
-/// ```cargo run tari_base_node```
+/// `cargo run tari_base_node`
 ///
 /// ## Commands
 ///
@@ -114,19 +112,19 @@ use tari_app_utilities::{
     utilities::{setup_runtime, ExitCodes},
 };
 use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
-use tari_comms::peer_manager::PeerFeatures;
+use tari_comms::{peer_manager::PeerFeatures, tor::HiddenServiceControllerError};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{runtime, task, time};
 use tonic::transport::Server;
 
-pub const LOG_TARGET: &str = "base_node::app";
+const LOG_TARGET: &str = "base_node::app";
 /// Application entry point
 fn main() {
     if let Err(exit_code) = main_inner() {
-        eprintln!("{}", exit_code);
+        eprintln!("{:?}", exit_code);
         error!(
             target: LOG_TARGET,
-            "Exiting with code ({}): {}",
+            "Exiting with code ({}): {:?}",
             exit_code.as_i32(),
             exit_code
         );
@@ -196,19 +194,29 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
     .await
     .map_err(|err| {
         error!(target: LOG_TARGET, "{}", err);
+        for boxed_error in err.chain() {
+            if let Some(HiddenServiceControllerError::TorControlPortOffline) =
+                boxed_error.downcast_ref::<HiddenServiceControllerError>()
+            {
+                println!("Unable to connect to the Tor control port.");
+                println!(
+                    "Please check that you have the Tor proxy running and that access to the Tor control port is \
+                     turned on.",
+                );
+                println!("If you are unsure of what to do, use the following command to start the Tor proxy:");
+                println!(
+                    "tor --allow-missing-torrc --ignore-missing-torrc --clientonly 1 --socksport 9050 --controlport \
+                     127.0.0.1:9051 --log \"notice stdout\" --clientuseipv6 1",
+                );
+                return ExitCodes::TorOffline;
+            }
+        }
         ExitCodes::UnknownError
     })?;
 
     if node_config.grpc_enabled {
         // Go, GRPC, go go
-        let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::new(
-            ctx.local_node(),
-            ctx.local_mempool(),
-            node_config.network.into(),
-            ctx.state_machine(),
-            ctx.base_node_comms().peer_manager(),
-        );
-
+        let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
         task::spawn(run_grpc(grpc, node_config.grpc_base_node_address, shutdown.to_signal()));
     }
 
@@ -241,8 +249,7 @@ async fn run_grpc(
     grpc: crate::grpc::base_node_grpc_server::BaseNodeGrpcServer,
     grpc_address: SocketAddr,
     interrupt_signal: ShutdownSignal,
-) -> Result<(), anyhow::Error>
-{
+) -> Result<(), anyhow::Error> {
     info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_address);
 
     Server::builder()
@@ -308,6 +315,7 @@ async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
 
     let mut shutdown_signal = shutdown.to_signal();
     let start_time = Instant::now();
+    let mut software_update_notif = command_handler.get_software_updater().new_update_notifier().clone();
     loop {
         let delay_time = if start_time.elapsed() < Duration::from_secs(120) {
             Duration::from_secs(2)
@@ -318,6 +326,7 @@ async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
         };
 
         let mut interval = time::delay_for(delay_time).fuse();
+
         futures::select! {
             res = read_command_fut => {
                 match res {
@@ -334,6 +343,17 @@ async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
                     }
                 }
             },
+            resp = software_update_notif.recv().fuse() => {
+                if let Some(Some(update)) = resp {
+                    println!(
+                        "Version {} of the {} is available: {} (sha: {})",
+                        update.version(),
+                        update.app(),
+                        update.download_url(),
+                        update.to_hash_hex()
+                    );
+                }
+            }
             _ = interval => {
                command_handler.status();
             },

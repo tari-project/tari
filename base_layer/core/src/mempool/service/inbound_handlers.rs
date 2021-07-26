@@ -55,8 +55,7 @@ impl MempoolInboundHandlers {
         event_publisher: broadcast::Sender<MempoolStateEvent>,
         mempool: Mempool,
         outbound_nmi: OutboundMempoolServiceInterface,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             event_publisher,
             mempool,
@@ -94,8 +93,7 @@ impl MempoolInboundHandlers {
         &mut self,
         tx: Transaction,
         source_peer: Option<NodeId>,
-    ) -> Result<(), MempoolServiceError>
-    {
+    ) -> Result<(), MempoolServiceError> {
         debug!(
             target: LOG_TARGET,
             "Transaction ({}) received from {}.",
@@ -114,8 +112,7 @@ impl MempoolInboundHandlers {
         &mut self,
         tx: Transaction,
         exclude_peers: Vec<NodeId>,
-    ) -> Result<TxStorageResponse, MempoolServiceError>
-    {
+    ) -> Result<TxStorageResponse, MempoolServiceError> {
         trace!(target: LOG_TARGET, "submit_transaction: {}.", tx);
         let tx_storage =
             async_mempool::has_tx_with_excess_sig(self.mempool.clone(), tx.body.kernels()[0].excess_sig.clone())
@@ -129,7 +126,6 @@ impl MempoolInboundHandlers {
             );
             return Ok(tx_storage);
         }
-
         match async_mempool::insert(self.mempool.clone(), Arc::new(tx.clone())).await {
             Ok(tx_storage) => {
                 debug!(
@@ -160,11 +156,11 @@ impl MempoolInboundHandlers {
                     let _ = self.event_publisher.send(MempoolStateEvent::Updated);
                 }
             },
-            ValidBlockAdded(_, BlockAddResult::ChainReorg(removed_blocks, added_blocks), broadcast) => {
+            ValidBlockAdded(_, BlockAddResult::ChainReorg { added, removed }, broadcast) => {
                 async_mempool::process_reorg(
                     self.mempool.clone(),
-                    removed_blocks.iter().map(|b| b.block.clone().into()).collect(),
-                    added_blocks.iter().map(|b| b.block.clone().into()).collect(),
+                    removed.iter().map(|b| b.to_arc_block()).collect(),
+                    added.iter().map(|b| b.to_arc_block()).collect(),
                 )
                 .await?;
                 if broadcast.is_true() {
@@ -174,14 +170,14 @@ impl MempoolInboundHandlers {
             BlockSyncRewind(removed_blocks) if !removed_blocks.is_empty() => {
                 async_mempool::process_reorg(
                     self.mempool.clone(),
-                    removed_blocks.iter().map(|b| b.block.clone().into()).collect(),
+                    removed_blocks.iter().map(|b| b.to_arc_block()).collect(),
                     vec![],
                 )
                 .await?;
                 let _ = self.event_publisher.send(MempoolStateEvent::Updated);
             },
             BlockSyncComplete(tip_block) => {
-                async_mempool::process_published_block(self.mempool.clone(), tip_block.block.clone().into()).await?;
+                async_mempool::process_published_block(self.mempool.clone(), tip_block.to_arc_block()).await?;
                 let _ = self.event_publisher.send(MempoolStateEvent::Updated);
             },
             _ => {},

@@ -117,8 +117,7 @@ impl PeerManager {
         node_id: NodeId,
         addresses: Vec<Multiaddr>,
         peer_features: PeerFeatures,
-    ) -> Result<Peer, PeerManagerError>
-    {
+    ) -> Result<Peer, PeerManagerError> {
         match self.find_by_public_key(&pubkey).await {
             Ok(mut peer) => {
                 peer.connection_stats.set_connection_success();
@@ -159,8 +158,7 @@ impl PeerManager {
     pub async fn direct_identity_public_key(
         &self,
         public_key: &CommsPublicKey,
-    ) -> Result<Option<Peer>, PeerManagerError>
-    {
+    ) -> Result<Option<Peer>, PeerManagerError> {
         match self.peer_storage.read().await.direct_identity_public_key(&public_key) {
             Ok(peer) => Ok(Some(peer)),
             Err(PeerManagerError::PeerNotFoundError) | Err(PeerManagerError::BannedPeer) => Ok(None),
@@ -186,8 +184,7 @@ impl PeerManager {
         n: usize,
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
-    ) -> Result<Vec<Peer>, PeerManagerError>
-    {
+    ) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage
             .read()
             .await
@@ -207,8 +204,7 @@ impl PeerManager {
         node_id: &NodeId,
         region_node_id: &NodeId,
         num_network_buckets: u32,
-    ) -> Result<bool, PeerManagerError>
-    {
+    ) -> Result<bool, PeerManagerError> {
         Ok(node_id.distance(region_node_id).get_bucket(num_network_buckets).0 == NodeDistance::zero())
     }
 
@@ -227,8 +223,7 @@ impl PeerManager {
         public_key: &CommsPublicKey,
         duration: Duration,
         reason: String,
-    ) -> Result<NodeId, PeerManagerError>
-    {
+    ) -> Result<NodeId, PeerManagerError> {
         self.peer_storage.write().await.ban_peer(public_key, duration, reason)
     }
 
@@ -238,8 +233,7 @@ impl PeerManager {
         node_id: &NodeId,
         duration: Duration,
         reason: String,
-    ) -> Result<NodeId, PeerManagerError>
-    {
+    ) -> Result<NodeId, PeerManagerError> {
         self.peer_storage
             .write()
             .await
@@ -287,8 +281,7 @@ impl PeerManager {
         node_id: &NodeId,
         key: u8,
         data: Vec<u8>,
-    ) -> Result<Option<Vec<u8>>, PeerManagerError>
-    {
+    ) -> Result<Option<Vec<u8>>, PeerManagerError> {
         self.peer_storage.write().await.set_peer_metadata(node_id, key, data)
     }
 }
@@ -317,7 +310,7 @@ mod test {
 
     fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
-        let node_id = NodeId::from_key(&pk).unwrap();
+        let node_id = NodeId::from_key(&pk);
         let net_addresses = MultiaddressesWithStats::from("/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap());
         let mut peer = Peer::new(
             pk,
@@ -338,9 +331,8 @@ mod test {
     async fn get_broadcast_identities() {
         // Create peer manager with random peers
         let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
-        let mut test_peers = Vec::new();
+        let mut test_peers = vec![create_test_peer(true, PeerFeatures::COMMUNICATION_NODE)];
         // Create 20 peers were the 1st and last one is bad
-        test_peers.push(create_test_peer(true, PeerFeatures::COMMUNICATION_NODE));
         assert!(peer_manager
             .add_peer(test_peers[test_peers.len() - 1].clone())
             .await
@@ -378,14 +370,11 @@ mod test {
         let selected_peers = peer_manager.flood_peers().await.unwrap();
         assert_eq!(selected_peers.len(), 18);
         for peer_identity in &selected_peers {
-            assert_eq!(
-                peer_manager
-                    .find_by_node_id(&peer_identity.node_id)
-                    .await
-                    .unwrap()
-                    .is_banned(),
-                false
-            );
+            assert!(!peer_manager
+                .find_by_node_id(&peer_identity.node_id)
+                .await
+                .unwrap()
+                .is_banned(),);
         }
 
         // Test Closest - No exclusions
@@ -479,13 +468,24 @@ mod test {
                 let peers_in_closest_peers_that_are_further_away: Vec<(NodeId, NodeDistance)> = closest_peers
                     .iter()
                     .filter(|c| c.node_id.distance(&destination_node_id) > peer_distance_to_destination)
-                    .map(|c| (c.node_id.clone(), c.node_id.distance(&destination_node_id))).collect();
-
+                    .map(|c| (c.node_id.clone(), c.node_id.distance(&destination_node_id)))
+                    .collect();
 
                 // Compare the array to an empty array so that we can get the actual peers when debugging.
-                let closest_peers_distances : Vec<(NodeId, NodeDistance)> = closest_peers.iter().map(|c| (c.node_id.clone(), c.node_id.distance(&destination_node_id))).collect();
-                assert_eq!(peers_in_closest_peers_that_are_further_away, Vec::<(NodeId, NodeDistance)>::new(), "Peer(s) in `closest_peers` were further away than another peer. This node: {}, distance: {}, Destination node: {}, closest_peers: {:?}", peer.node_id, peer_distance_to_destination, destination_node_id, closest_peers_distances);
-
+                let closest_peers_distances: Vec<(NodeId, NodeDistance)> = closest_peers
+                    .iter()
+                    .map(|c| (c.node_id.clone(), c.node_id.distance(&destination_node_id)))
+                    .collect();
+                assert_eq!(
+                    peers_in_closest_peers_that_are_further_away,
+                    Vec::<(NodeId, NodeDistance)>::new(),
+                    "Peer(s) in `closest_peers` were further away than another peer. This node: {}, distance: {}, \
+                     Destination node: {}, closest_peers: {:?}",
+                    peer.node_id,
+                    peer_distance_to_destination,
+                    destination_node_id,
+                    closest_peers_distances
+                );
             }
         }
     }
@@ -504,7 +504,7 @@ mod test {
             .await
             .unwrap();
 
-        assert_eq!(peer.is_offline(), false);
+        assert!(!peer.is_offline());
         assert_eq!(peer.connection_stats.failed_attempts(), 0);
     }
 }

@@ -24,9 +24,8 @@ use crate::{
     multiaddr::Multiaddr,
     socks,
     socks::Socks5Client,
-    transports::{tcp::TcpTransport, TcpSocket, Transport},
+    transports::{dns::SystemDnsResolver, tcp::TcpTransport, TcpSocket, Transport},
 };
-use futures::{Future, FutureExt};
 use std::{io, time::Duration};
 
 /// SO_KEEPALIVE setting for the SOCKS TCP connection
@@ -36,6 +35,9 @@ const SOCKS_SO_KEEPALIVE: Duration = Duration::from_millis(1500);
 pub struct SocksConfig {
     pub proxy_address: Multiaddr,
     pub authentication: socks::Authentication,
+    /// If the dialed address matches any of these addresses, the SOCKS proxy is bypassed and direct TCP connection is
+    /// used.
+    pub proxy_bypass_addresses: Vec<Multiaddr>,
 }
 
 #[derive(Clone)]
@@ -48,14 +50,15 @@ impl SocksTransport {
     pub fn new(socks_config: SocksConfig) -> Self {
         Self {
             socks_config,
-            tcp_transport: Self::get_tcp_transport(),
+            tcp_transport: Self::create_socks_tcp_transport(),
         }
     }
 
-    pub fn get_tcp_transport() -> TcpTransport {
+    pub fn create_socks_tcp_transport() -> TcpTransport {
         let mut tcp_transport = TcpTransport::new();
         tcp_transport.set_nodelay(true);
         tcp_transport.set_keepalive(Some(SOCKS_SO_KEEPALIVE));
+        tcp_transport.set_dns_resolver(SystemDnsResolver);
         tcp_transport
     }
 
@@ -63,10 +66,9 @@ impl SocksTransport {
         tcp: TcpTransport,
         socks_config: SocksConfig,
         dest_addr: Multiaddr,
-    ) -> io::Result<TcpSocket>
-    {
+    ) -> io::Result<TcpSocket> {
         // Create a new connection to the SOCKS proxy
-        let socks_conn = tcp.dial(socks_config.proxy_address)?.await?;
+        let socks_conn = tcp.dial(socks_config.proxy_address).await?;
         let mut client = Socks5Client::new(socks_conn);
 
         client
@@ -81,21 +83,24 @@ impl SocksTransport {
     }
 }
 
+#[crate::async_trait]
 impl Transport for SocksTransport {
     type Error = <TcpTransport as Transport>::Error;
-    type Inbound = <TcpTransport as Transport>::Inbound;
-    type ListenFuture = <TcpTransport as Transport>::ListenFuture;
     type Listener = <TcpTransport as Transport>::Listener;
     type Output = <TcpTransport as Transport>::Output;
 
-    type DialFuture = impl Future<Output = Result<Self::Output, Self::Error>> + Unpin;
-
-    fn listen(&self, addr: Multiaddr) -> Result<Self::ListenFuture, Self::Error> {
-        self.tcp_transport.listen(addr)
+    async fn listen(&self, addr: Multiaddr) -> Result<(Self::Listener, Multiaddr), Self::Error> {
+        self.tcp_transport.listen(addr).await
     }
 
-    fn dial(&self, addr: Multiaddr) -> Result<Self::DialFuture, Self::Error> {
-        Ok(Self::socks_connect(self.tcp_transport.clone(), self.socks_config.clone(), addr).boxed())
+    async fn dial(&self, addr: Multiaddr) -> Result<Self::Output, Self::Error> {
+        // Bypass the SOCKS proxy and connect to the address directly
+        if self.socks_config.proxy_bypass_addresses.contains(&addr) {
+            return self.tcp_transport.dial(addr).await;
+        }
+
+        let socket = Self::socks_connect(self.tcp_transport.clone(), self.socks_config.clone(), addr).await?;
+        Ok(socket)
     }
 }
 
@@ -110,6 +115,7 @@ mod test {
         let transport = SocksTransport::new(SocksConfig {
             proxy_address: proxy_address.clone(),
             authentication: Default::default(),
+            proxy_bypass_addresses: vec![],
         });
 
         assert_eq!(transport.socks_config.proxy_address, proxy_address);

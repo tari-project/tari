@@ -111,9 +111,6 @@
 //! ```
 
 #![recursion_limit = "256"]
-// Details: https://doc.rust-lang.org/beta/unstable-book/language-features/type-alias-impl-trait.html
-#![feature(type_alias_impl_trait)]
-
 #[macro_use]
 extern crate diesel;
 #[macro_use]

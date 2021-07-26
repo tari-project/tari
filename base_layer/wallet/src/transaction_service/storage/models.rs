@@ -119,8 +119,7 @@ impl InboundTransaction {
         status: TransactionStatus,
         message: String,
         timestamp: NaiveDateTime,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             tx_id,
             source_public_key,
@@ -165,8 +164,7 @@ impl OutboundTransaction {
         message: String,
         timestamp: NaiveDateTime,
         direct_send_success: bool,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             tx_id,
             destination_public_key,
@@ -202,6 +200,7 @@ pub struct CompletedTransaction {
     pub last_send_timestamp: Option<NaiveDateTime>,
     pub valid: bool,
     pub confirmations: Option<u64>,
+    pub mined_height: Option<u64>,
 }
 
 impl CompletedTransaction {
@@ -218,8 +217,7 @@ impl CompletedTransaction {
         timestamp: NaiveDateTime,
         direction: TransactionDirection,
         coinbase_block_height: Option<u64>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             tx_id,
             source_public_key,
@@ -237,6 +235,7 @@ impl CompletedTransaction {
             last_send_timestamp: None,
             valid: true,
             confirmations: None,
+            mined_height: None,
         }
     }
 }
@@ -323,13 +322,14 @@ impl From<OutboundTransaction> for CompletedTransaction {
             message: tx.message,
             timestamp: tx.timestamp,
             cancelled: tx.cancelled,
-            transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::default()),
+            transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::default(), PrivateKey::default()),
             direction: TransactionDirection::Outbound,
             coinbase_block_height: None,
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
             confirmations: None,
+            mined_height: None,
         }
     }
 }
@@ -346,13 +346,14 @@ impl From<InboundTransaction> for CompletedTransaction {
             message: tx.message,
             timestamp: tx.timestamp,
             cancelled: tx.cancelled,
-            transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::default()),
+            transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::default(), PrivateKey::default()),
             direction: TransactionDirection::Inbound,
             coinbase_block_height: None,
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
             confirmations: None,
+            mined_height: None,
         }
     }
 }

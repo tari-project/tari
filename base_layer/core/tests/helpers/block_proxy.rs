@@ -23,7 +23,7 @@
 
 use tari_core::chain_storage::ChainBlock;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BlockProxy {
     pub name: String,
     pub block: ChainBlock,
@@ -31,7 +31,7 @@ pub struct BlockProxy {
 
 impl PartialEq for BlockProxy {
     fn eq(&self, other: &Self) -> bool {
-        self.block.block.eq(&other.block.block)
+        self.block.block().eq(other.block.block())
     }
 }
 

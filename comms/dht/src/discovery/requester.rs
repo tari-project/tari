@@ -86,8 +86,7 @@ impl DhtDiscoveryRequester {
         &mut self,
         dest_public_key: CommsPublicKey,
         destination: NodeDestination,
-    ) -> Result<Peer, DhtDiscoveryError>
-    {
+    ) -> Result<Peer, DhtDiscoveryError> {
         let (reply_tx, reply_rx) = oneshot::channel();
 
         self.sender
@@ -112,8 +111,7 @@ impl DhtDiscoveryRequester {
     pub async fn notify_discovery_response_received(
         &mut self,
         response: DiscoveryResponseMessage,
-    ) -> Result<(), DhtDiscoveryError>
-    {
+    ) -> Result<(), DhtDiscoveryError> {
         self.sender
             .send(DhtDiscoveryRequest::NotifyDiscoveryResponseReceived(Box::new(response)))
             .await?;

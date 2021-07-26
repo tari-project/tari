@@ -51,7 +51,7 @@ use std::{
     },
     task::{Context, Poll},
 };
-use tower::Service;
+use tower::{util::BoxService, Service};
 
 #[derive(Clone, Default)]
 pub struct MockRpcService {
@@ -75,13 +75,7 @@ impl MockRpcService {
 impl Service<ProtocolId> for MockRpcService {
     type Error = RpcServerError;
     type Future = future::Ready<Result<Self::Response, Self::Error>>;
-
-    type Response = impl Service<
-        Request<Bytes>,
-        Response = Response<Body>,
-        Error = RpcStatus,
-        Future = future::Ready<Result<Response<Body>, RpcStatus>>,
-    >;
+    type Response = BoxService<Request<Bytes>, Response<Body>, RpcStatus>;
 
     fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
@@ -94,7 +88,7 @@ impl Service<ProtocolId> for MockRpcService {
             future::ready(state.get_response())
         });
 
-        future::ready(Ok(my_service))
+        future::ready(Ok(BoxService::new(my_service)))
     }
 }
 
@@ -157,8 +151,7 @@ impl MockRpcClient {
         &mut self,
         request: T,
         method: RpcMethod,
-    ) -> Result<R, RpcError>
-    {
+    ) -> Result<R, RpcError> {
         self.inner.request_response(request, method).await
     }
 
@@ -166,8 +159,7 @@ impl MockRpcClient {
         &mut self,
         request: T,
         method: RpcMethod,
-    ) -> Result<ClientStreaming<R>, RpcError>
-    {
+    ) -> Result<ClientStreaming<R>, RpcError> {
         self.inner.server_streaming(request, method).await
     }
 }

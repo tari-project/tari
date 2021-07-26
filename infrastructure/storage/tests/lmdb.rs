@@ -273,7 +273,7 @@ fn exists_and_delete() {
         let (_, db) = insert_all_users("delete");
         assert!(db.contains_key(&525u64).unwrap());
         db.remove(&525u64).unwrap();
-        assert_eq!(db.contains_key(&525u64).unwrap(), false);
+        assert!(!db.contains_key(&525u64).unwrap());
     }
     clean_up("delete"); // In Windows file handles must be released before files can be deleted
 }

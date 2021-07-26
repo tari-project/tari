@@ -23,19 +23,9 @@
 use anyhow::anyhow;
 use log::*;
 use std::{cmp, fs, str::FromStr, sync::Arc, time::Duration};
-use tari_app_utilities::{identity_management, utilities};
-use tari_common::{CommsTransport, GlobalConfig, TorControlAuthentication};
-use tari_comms::{
-    peer_manager::Peer,
-    protocol::rpc::RpcServer,
-    socks,
-    tor,
-    tor::TorIdentity,
-    transports::SocksConfig,
-    utils::multiaddr::multiaddr_to_socketaddr,
-    NodeIdentity,
-    UnspawnedCommsNode,
-};
+use tari_app_utilities::{consts, identity_management, utilities::create_transport_type};
+use tari_common::{configuration::bootstrap::ApplicationType, GlobalConfig};
+use tari_comms::{peer_manager::Peer, protocol::rpc::RpcServer, NodeIdentity, UnspawnedCommsNode};
 use tari_comms_dht::{DbConnectionUrl, Dht, DhtConfig};
 use tari_core::{
     base_node,
@@ -60,12 +50,12 @@ use tari_core::{
     transactions::types::CryptoFactories,
 };
 use tari_p2p::{
+    auto_update::{AutoUpdateConfig, SoftwareUpdaterService},
     comms_connector::pubsub_connector,
     initialization,
     initialization::{CommsConfig, P2pInitializer},
-    seed_peer::SeedPeer,
+    peer_seeds::SeedPeer,
     services::liveness::{LivenessConfig, LivenessInitializer},
-    transport::{TorConfig, TransportType},
 };
 use tari_service_framework::{ServiceHandles, StackBuilder};
 use tari_shutdown::ShutdownSignal;
@@ -120,6 +110,21 @@ where B: BlockchainBackend + 'static
 
         let mut handles = StackBuilder::new(self.interrupt_signal)
             .add_initializer(P2pInitializer::new(comms_config, publisher))
+            .add_initializer(SoftwareUpdaterService::new(
+                ApplicationType::BaseNode,
+                consts::APP_VERSION_NUMBER
+                    .parse()
+                    .expect("Unable to parse application version. Not valid semver"),
+                AutoUpdateConfig {
+                    name_server: config.dns_seeds_name_server,
+                    update_uris: config.autoupdate_dns_hosts.clone(),
+                    use_dnssec: config.dns_seeds_use_dnssec,
+                    download_base_url: "https://tari-binaries.s3.amazonaws.com/latest".to_string(),
+                    hashes_url: config.autoupdate_hashes_url.clone(),
+                    hashes_sig_url: config.autoupdate_hashes_sig_url.clone(),
+                },
+                config.autoupdate_check_interval,
+            ))
             .add_initializer(BaseNodeServiceInitializer::new(
                 peer_message_subscriptions.clone(),
                 self.db.clone().into(),
@@ -192,8 +197,7 @@ where B: BlockchainBackend + 'static
         handles: &ServiceHandles,
         db: AsyncBlockchainDb<B>,
         config: &GlobalConfig,
-    ) -> UnspawnedCommsNode
-    {
+    ) -> UnspawnedCommsNode {
         let dht = handles.expect_handle::<Dht>();
         let builder = RpcServer::builder();
         let builder = match config.rpc_max_simultaneous_sessions {
@@ -227,8 +231,10 @@ where B: BlockchainBackend + 'static
 
     fn create_comms_config(&self) -> CommsConfig {
         CommsConfig {
+            network: self.config.network,
             node_identity: self.node_identity.clone(),
-            transport_type: self.create_transport_type(),
+            transport_type: create_transport_type(self.config),
+            auxilary_tcp_listener_address: self.config.auxilary_tcp_listener_address.clone(),
             datastore_path: self.config.peer_db_path.clone(),
             peer_database_name: "peers".to_string(),
             max_concurrent_inbound_tasks: 100,
@@ -237,7 +243,6 @@ where B: BlockchainBackend + 'static
                 database_url: DbConnectionUrl::File(self.config.data_dir.join("dht.db")),
                 auto_join: true,
                 allow_test_addresses: self.config.allow_test_addresses,
-                network: self.config.network.into(),
                 flood_ban_max_msg_count: self.config.flood_ban_max_msg_count,
                 saf_msg_validity: self.config.saf_expiry_duration,
                 ..Default::default()
@@ -257,87 +262,6 @@ where B: BlockchainBackend + 'static
             dns_seeds: self.config.dns_seeds.clone(),
             dns_seeds_name_server: self.config.dns_seeds_name_server,
             dns_seeds_use_dnssec: self.config.dns_seeds_use_dnssec,
-        }
-    }
-
-    /// Creates a transport type from the given configuration
-    ///
-    /// ## Paramters
-    /// `config` - The reference to the configuration in which to set up the comms stack, see [GlobalConfig]
-    ///
-    /// ##Returns
-    /// TransportType based on the configuration
-    fn create_transport_type(&self) -> TransportType {
-        let config = self.config;
-        debug!(target: LOG_TARGET, "Transport is set to '{:?}'", config.comms_transport);
-
-        match config.comms_transport.clone() {
-            CommsTransport::Tcp {
-                listener_address,
-                tor_socks_address,
-                tor_socks_auth,
-            } => TransportType::Tcp {
-                listener_address,
-                tor_socks_config: tor_socks_address.map(|proxy_address| SocksConfig {
-                    proxy_address,
-                    authentication: tor_socks_auth
-                        .map(utilities::convert_socks_authentication)
-                        .unwrap_or_default(),
-                }),
-            },
-            CommsTransport::TorHiddenService {
-                control_server_address,
-                socks_address_override,
-                forward_address,
-                auth,
-                onion_port,
-            } => {
-                let identity = Some(&config.base_node_tor_identity_file)
-                    .filter(|p| p.exists())
-                    .and_then(|p| {
-                        // If this fails, we can just use another address
-                        identity_management::load_from_json::<_, TorIdentity>(p).ok()
-                    });
-                info!(
-                    target: LOG_TARGET,
-                    "Tor identity at path '{}' {:?}",
-                    config.base_node_tor_identity_file.to_string_lossy(),
-                    identity
-                        .as_ref()
-                        .map(|ident| format!("loaded for address '{}.onion'", ident.service_id))
-                        .or_else(|| Some("not found".to_string()))
-                        .unwrap()
-                );
-
-                let forward_addr = multiaddr_to_socketaddr(&forward_address).expect("Invalid tor forward address");
-                TransportType::Tor(TorConfig {
-                    control_server_addr: control_server_address,
-                    control_server_auth: {
-                        match auth {
-                            TorControlAuthentication::None => tor::Authentication::None,
-                            TorControlAuthentication::Password(password) => {
-                                tor::Authentication::HashedPassword(password)
-                            },
-                        }
-                    },
-                    identity: identity.map(Box::new),
-                    port_mapping: (onion_port, forward_addr).into(),
-                    // TODO: make configurable
-                    socks_address_override,
-                    socks_auth: socks::Authentication::None,
-                })
-            },
-            CommsTransport::Socks5 {
-                proxy_address,
-                listener_address,
-                auth,
-            } => TransportType::Socks {
-                socks_config: SocksConfig {
-                    proxy_address,
-                    authentication: utilities::convert_socks_authentication(auth),
-                },
-                listener_address,
-            },
         }
     }
 }

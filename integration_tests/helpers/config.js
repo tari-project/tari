@@ -1,11 +1,5 @@
-const { spawnSync, spawn, execSync } = require("child_process");
-const { expect } = require("chai");
-const fs = require("fs");
-const { getFreePort } = require("./util");
-const dateFormat = require("dateformat");
-
 function mapEnvs(options) {
-  let res = {};
+  const res = {};
   if (options.blocks_behind_before_considered_lagging) {
     res.TARI_BASE_NODE__LOCALNET__BLOCKS_BEHIND_BEFORE_CONSIDERED_LAGGING =
       options.blocks_behind_before_considered_lagging;
@@ -13,6 +7,11 @@ function mapEnvs(options) {
   if (options.pruningHorizon) {
     // In the config toml file: `base_node.network.pruning_horizon` with `network = localnet`
     res.TARI_BASE_NODE__LOCALNET__PRUNING_HORIZON = options.pruningHorizon;
+    res.TARI_BASE_NODE__LOCALNET__PRUNED_MODE_CLEANUP_INTERVAL = 1;
+  }
+  if ("num_confirmations" in options) {
+    res.TARI_WALLET__TRANSACTION_NUM_CONFIRMATIONS_REQUIRED =
+      options.num_confirmations;
   }
   if (options.routingMechanism) {
     // In the config toml file: `wallet.transaction_routing_mechanism`
@@ -27,13 +26,44 @@ function mapEnvs(options) {
   if ("mineOnTipOnly" in options) {
     res.TARI_MINING_NODE__MINE_ON_TIP_ONLY = options.mineOnTipOnly;
   }
+  if (options.numMiningThreads) {
+    res.TARI_MINING_NODE__NUM_MINING_THREADS = options.numMiningThreads;
+  }
+
+  if (options.network) {
+    res.TARI_BASE_NODE__NETWORK = options.network;
+  }
+  if (options.transport) {
+    res.TARI_BASE_NODE__LOCALNET__TRANSPORT = options.transport;
+    res.TARI_BASE_NODE__STIBBONS__TRANSPORT = options.transport;
+  }
+  if (options.common && options.common.auto_update) {
+    let { auto_update } = options.common;
+    if (auto_update.enabled) {
+      res.TARI_COMMON__AUTO_UPDATE__ENABLED = auto_update.enabled
+        ? "true"
+        : "false";
+    }
+    if (auto_update.dns_hosts) {
+      res.TARI_COMMON__AUTO_UPDATE__DNS_HOSTS = auto_update.dns_hosts.join(",");
+    }
+    if (auto_update.hashes_url) {
+      res.TARI_COMMON__AUTO_UPDATE__HASHES_URL = auto_update.hashes_url;
+    }
+    if (auto_update.hashes_sig_url) {
+      res.TARI_COMMON__AUTO_UPDATE__HASHES_SIG_URL = auto_update.hashes_sig_url;
+    }
+  }
   return res;
 }
 
 function baseEnvs(peerSeeds = []) {
-  let envs = {
+  const envs = {
     RUST_BACKTRACE: 1,
     TARI_BASE_NODE__NETWORK: "localnet",
+    TARI_WALLET__NETWORK: "localnet",
+    TARI_MINER__NETWORK: "localnet",
+    TARI_COMMON__NETWORK: "localnet",
     TARI_BASE_NODE__LOCALNET__DATA_DIR: "localnet",
     TARI_BASE_NODE__LOCALNET__DB_TYPE: "lmdb",
     TARI_BASE_NODE__LOCALNET__ORPHAN_STORAGE_CAPACITY: "10",
@@ -51,15 +81,14 @@ function baseEnvs(peerSeeds = []) {
     TARI_BASE_NODE__LOCALNET__GRPC_ENABLED: true,
     TARI_BASE_NODE__LOCALNET__ENABLE_WALLET: false,
     TARI_BASE_NODE__LOCALNET__DNS_SEEDS_NAME_SERVER: "1.1.1.1:53",
-    TARI_BASE_NODE__LOCALNET__DNS_SEEDS_USE_DNSSEC: "true",
+    TARI_BASE_NODE__LOCALNET__DNS_SEEDS_USE_DNSSEC: "false",
     TARI_BASE_NODE__LOCALNET__BLOCK_SYNC_STRATEGY: "ViaBestChainMetadata",
-    TARI_BASE_NODE__LOCALNET__NUM_MINING_THREADS: "1",
     TARI_BASE_NODE__LOCALNET__ORPHAN_DB_CLEAN_OUT_THRESHOLD: "0",
     TARI_BASE_NODE__LOCALNET__MAX_RANDOMX_VMS: "1",
     TARI_BASE_NODE__LOCALNET__AUTO_PING_INTERVAL: "15",
     TARI_BASE_NODE__LOCALNET__FLOOD_BAN_MAX_MSG_COUNT: "100000",
     TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_URL:
-      "http://18.133.55.120:38081",
+      "http://monero-stagenet.exan.tech:38081",
     TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_USE_AUTH: false,
     TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_USERNAME: '""',
     TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_PASSWORD: '""',
@@ -67,7 +96,10 @@ function baseEnvs(peerSeeds = []) {
     TARI_BASE_NODE__LOCALNET__DB_RESIZE_THRESHOLD_MB: 10,
     TARI_BASE_NODE__LOCALNET__DB_GROW_SIZE_MB: 20,
     TARI_MERGE_MINING_PROXY__LOCALNET__WAIT_FOR_INITIAL_SYNC_AT_STARTUP: false,
+    TARI_MINING_NODE__NUM_MINING_THREADS: "1",
     TARI_MINING_NODE__MINE_ON_TIP_ONLY: true,
+    TARI_MINING_NODE__VALIDATE_TIP_TIMEOUT_SEC: 2,
+    TARI_WALLET__SCAN_FOR_UTXO_INTERVAL: 5,
   };
   if (peerSeeds.length != 0) {
     envs.TARI_BASE_NODE__LOCALNET__PEER_SEEDS = peerSeeds;
@@ -82,7 +114,7 @@ function baseEnvs(peerSeeds = []) {
 }
 
 function createEnv(
-  name = "config_identity",
+  _name = "config_identity",
   isWallet = false,
   nodeFile = "newnodeid.json",
   walletGrpcAddress = "127.0.0.1",
@@ -94,21 +126,35 @@ function createEnv(
   proxyFullAddress = "127.0.0.1:8084",
   options,
   peerSeeds = [],
-  txnSendingMechanism = "DirectAndStoreAndForward"
+  _txnSendingMechanism = "DirectAndStoreAndForward"
 ) {
   const envs = baseEnvs(peerSeeds);
+  const network =
+    options && options.network ? options.network.toUpperCase() : "LOCALNET";
 
-  const configEnvs = {
-    TARI_BASE_NODE__LOCALNET__GRPC_BASE_NODE_ADDRESS: `${baseNodeGrpcAddress}:${baseNodeGrpcPort}`,
-    TARI_BASE_NODE__LOCALNET__GRPC_CONSOLE_WALLET_ADDRESS: `${walletGrpcAddress}:${walletGrpcPort}`,
-    TARI_BASE_NODE__LOCALNET__BASE_NODE_IDENTITY_FILE: `${nodeFile}`,
-    TARI_BASE_NODE__LOCALNET__TCP_LISTENER_ADDRESS:
-      "/ip4/127.0.0.1/tcp/" + (isWallet ? `${walletPort}` : `${baseNodePort}`),
-    TARI_BASE_NODE__LOCALNET__PUBLIC_ADDRESS:
-      "/ip4/127.0.0.1/tcp/" + (isWallet ? `${walletPort}` : `${baseNodePort}`),
-    TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_HOST_ADDRESS: `${proxyFullAddress}`,
-    TARI_BASE_NODE__LOCALNET__TRANSPORT: "tcp",
-  };
+  const configEnvs = {};
+  configEnvs[
+    `TARI_BASE_NODE__${network}__GRPC_BASE_NODE_ADDRESS`
+  ] = `${baseNodeGrpcAddress}:${baseNodeGrpcPort}`;
+  configEnvs[
+    `TARI_BASE_NODE__${network}__GRPC_CONSOLE_WALLET_ADDRESS`
+  ] = `${walletGrpcAddress}:${walletGrpcPort}`;
+  configEnvs[
+    `TARI_BASE_NODE__${network}__BASE_NODE_IDENTITY_FILE`
+  ] = `${nodeFile}`;
+  configEnvs[`TARI_BASE_NODE__${network}__TCP_LISTENER_ADDRESS`] =
+    "/ip4/127.0.0.1/tcp/" + (isWallet ? `${walletPort}` : `${baseNodePort}`);
+  configEnvs[`TARI_BASE_NODE__${network}__PUBLIC_ADDRESS`] =
+    "/ip4/127.0.0.1/tcp/" + (isWallet ? `${walletPort}` : `${baseNodePort}`);
+  configEnvs[
+    `TARI_MERGE_MINING_PROXY__${network}__PROXY_HOST_ADDRESS`
+  ] = `${proxyFullAddress}`;
+  configEnvs[`TARI_BASE_NODE__${network}__TRANSPORT`] = "tcp";
+  configEnvs[`TARI_WALLET__${network}__TRANSPORT`] = "tcp";
+  configEnvs[`TARI_WALLET__${network}__TCP_LISTENER_ADDRESS`] =
+    "/ip4/127.0.0.1/tcp/" + `${walletPort}`;
+  configEnvs[`TARI_WALLET__${network}__PUBLIC_ADDRESS`] =
+    "/ip4/127.0.0.1/tcp/" + `${walletPort}`;
 
   return { ...envs, ...configEnvs, ...mapEnvs(options || {}) };
 }

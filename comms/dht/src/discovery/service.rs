@@ -85,8 +85,7 @@ impl DhtDiscoveryService {
         outbound_requester: OutboundMessageRequester,
         request_rx: mpsc::Receiver<DhtDiscoveryRequest>,
         shutdown_signal: ShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             config,
             outbound_requester,
@@ -239,8 +238,7 @@ impl DhtDiscoveryService {
         &mut self,
         public_key: &CommsPublicKey,
         discovery_msg: Box<DiscoveryResponseMessage>,
-    ) -> Result<Peer, DhtDiscoveryError>
-    {
+    ) -> Result<Peer, DhtDiscoveryError> {
         let node_id = self.validate_raw_node_id(&public_key, &discovery_msg.node_id)?;
 
         let addresses = discovery_msg
@@ -249,7 +247,7 @@ impl DhtDiscoveryService {
             .filter_map(|addr| addr.parse().ok())
             .collect::<Vec<_>>();
 
-        validate_peer_addresses(&addresses, self.config.network.is_localtest())
+        validate_peer_addresses(&addresses, self.config.allow_test_addresses)
             .map_err(|err| DhtDiscoveryError::InvalidPeerMultiaddr(err.to_string()))?;
 
         let peer = self
@@ -269,12 +267,11 @@ impl DhtDiscoveryService {
         &self,
         public_key: &CommsPublicKey,
         raw_node_id: &[u8],
-    ) -> Result<NodeId, DhtDiscoveryError>
-    {
+    ) -> Result<NodeId, DhtDiscoveryError> {
         // The reason that we check the given node id against what we expect instead of just using the given node id
         // is in future the NodeId may not necessarily be derived from the public key (i.e. DAN node is registered on
         // the base layer)
-        let expected_node_id = NodeId::from_key(public_key).map_err(|_| DhtDiscoveryError::InvalidNodeId)?;
+        let expected_node_id = NodeId::from_key(public_key);
         let node_id = NodeId::from_bytes(raw_node_id).map_err(|_| DhtDiscoveryError::InvalidNodeId)?;
         if expected_node_id == node_id {
             Ok(expected_node_id)
@@ -289,8 +286,7 @@ impl DhtDiscoveryService {
         dest_pubkey: Box<CommsPublicKey>,
         destination: NodeDestination,
         reply_tx: oneshot::Sender<Result<Peer, DhtDiscoveryError>>,
-    ) -> Result<(), DhtDiscoveryError>
-    {
+    ) -> Result<(), DhtDiscoveryError> {
         let nonce = OsRng.next_u64();
         if let Err(err) = self.send_discover(nonce, destination, dest_pubkey.clone()).await {
             let _ = reply_tx.send(Err(err));
@@ -330,8 +326,7 @@ impl DhtDiscoveryService {
         nonce: u64,
         destination: NodeDestination,
         dest_public_key: Box<CommsPublicKey>,
-    ) -> Result<(), DhtDiscoveryError>
-    {
+    ) -> Result<(), DhtDiscoveryError> {
         let discover_msg = DiscoveryMessage {
             node_id: self.node_identity.node_id().to_vec(),
             addresses: vec![self.node_identity.public_address().to_string()],

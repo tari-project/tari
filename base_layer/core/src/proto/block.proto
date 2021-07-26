@@ -29,21 +29,25 @@ message BlockHeader {
     // This is the UTXO merkle root of the outputs
     // This is calculated as Hash (txo MMR root  || roaring bitmap hash of UTXO indices)
     bytes output_mr = 6;
-    // This is the MMR root of the range proofs
-    bytes range_proof_mr = 7;
+    // This is the MMR root of the output witness data
+    bytes witness_mr = 7;
     // This is the MMR root of the kernels
     bytes kernel_mr = 8;
+    // This is the Merkle root of the inputs in this block
+    bytes input_mr = 9;
     // Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
     // block from the total kernel offset of the previous block header.
-    bytes total_kernel_offset = 9;
+    bytes total_kernel_offset = 10;
     // Nonce increment used to mine this block.
-    uint64 nonce = 10;
+    uint64 nonce = 11;
     // Proof of work metadata
-    ProofOfWork pow = 11;
+    ProofOfWork pow = 12;
     // The size of the kernel MMR
-    uint64 kernel_mmr_size = 12;
+    uint64 kernel_mmr_size = 13;
     // The size of the output MMR
-    uint64 output_mmr_size = 13;
+    uint64 output_mmr_size = 14;
+    // Sum of script offsets for all kernels in this block.
+    bytes total_script_offset = 15;
 }
 
 // A Tari block. Blocks are linked together into a blockchain.
@@ -68,7 +72,7 @@ message HistoricalBlock {
     Block block = 3;
     BlockHeaderAccumulatedData accumulated_data = 4;
     repeated bytes pruned_output_hashes = 5;
-    repeated bytes pruned_proof_hashes = 6;
+    repeated bytes pruned_witness_hash = 6;
     uint64 pruned_input_count = 7;
 }
 
@@ -76,7 +80,7 @@ message HistoricalBlock {
 message BlockHeaderAccumulatedData {
     uint64 achieved_difficulty = 1;
     uint64 accumulated_monero_difficulty = 2;
-    uint64 accumulated_blake_difficulty = 3;
+    uint64 accumulated_sha_difficulty = 3;
     uint64 target_difficulty = 4;
     bytes total_kernel_offset = 5;
     bytes hash = 6;
@@ -96,7 +100,8 @@ message NewBlockHeaderTemplate {
     bytes total_kernel_offset = 4;
     // Proof of work metadata
     ProofOfWork pow = 5;
-
+    // Sum of script offsets for all kernels in this block.
+    bytes total_script_offset = 6;
 }
 
 // The new block template is used constructing a new partial block, allowing a miner to added the coinbase utxo and as a final step the Base node to add the MMR roots to the header.

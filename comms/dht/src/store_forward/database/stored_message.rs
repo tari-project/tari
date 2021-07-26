@@ -27,10 +27,10 @@ use crate::{
     store_forward::message::StoredMessagePriority,
 };
 use chrono::NaiveDateTime;
-use digest::Input;
+use digest::Digest;
 use std::convert::TryInto;
 use tari_comms::{message::MessageExt, types::Challenge};
-use tari_utilities::hex::Hex;
+use tari_utilities::{hex, hex::Hex};
 
 #[derive(Clone, Debug, Insertable, Default)]
 #[table_name = "stored_messages"]
@@ -74,7 +74,7 @@ impl NewStoredMessage {
                 let dht_header: DhtHeader = dht_header.into();
                 dht_header.to_encoded_bytes()
             },
-            body_hash: Challenge::new().chain(body.clone()).result().to_vec().to_hex(),
+            body_hash: hex::to_hex(&Challenge::new().chain(body.clone()).finalize()),
             body,
         })
     }

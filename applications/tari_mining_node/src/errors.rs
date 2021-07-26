@@ -30,6 +30,8 @@ pub enum MinerError {
     GrpcConnection(#[from] tonic::transport::Error),
     #[error("Node not ready")]
     NodeNotReady,
+    #[error("Blockchain reached specified height {0}, mining will be stopped")]
+    MineUntilHeightReached(u64),
     #[error("Block height {0} already mined")]
     MinerLostBlock(u64),
     #[error("Expected non empty {0}")]

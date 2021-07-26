@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, Network, NodeDestination},
+    envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, NodeDestination},
     outbound::{message_params::FinalSendMessageParams, message_send_state::MessageSendStates},
 };
 use bytes::Bytes;
@@ -164,7 +164,6 @@ pub struct DhtOutboundMessage {
     pub destination: NodeDestination,
     pub dht_message_type: DhtMessageType,
     pub reply: MessagingReplyTx,
-    pub network: Network,
     pub dht_flags: DhtMessageFlags,
     pub is_broadcast: bool,
     pub expires: Option<prost_types::Timestamp>,
@@ -178,8 +177,8 @@ impl fmt::Display for DhtOutboundMessage {
             .map(|h| format!("{} (Propagated)", h))
             .unwrap_or_else(|| {
                 format!(
-                    "Network: {:?}, Flags: {:?}, Destination: {}, Trace: {}",
-                    self.network, self.dht_flags, self.destination, self.tag,
+                    "Flags: {:?}, Destination: {}, Trace: {}",
+                    self.dht_flags, self.destination, self.tag,
                 )
             });
         write!(

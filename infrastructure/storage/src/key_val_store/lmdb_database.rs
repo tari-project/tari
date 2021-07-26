@@ -146,10 +146,10 @@ mod test {
             struct Foo {
                 value: String,
             }
-            let key1 = 1 as u64;
-            let key2 = 2 as u64;
-            let key3 = 3 as u64;
-            let key4 = 4 as u64;
+            let key1 = 1;
+            let key2 = 2;
+            let key3 = 3;
+            let key4 = 4;
             let val1 = Foo {
                 value: "one".to_string(),
             };

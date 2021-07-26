@@ -75,14 +75,18 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         }
     }
 
-    pub async fn initialize_state(&mut self, start_hash: HashOutput) -> Result<(), BlockHeaderSyncError> {
+    #[allow(clippy::ptr_arg)]
+    pub async fn initialize_state(&mut self, start_hash: &HashOutput) -> Result<(), BlockHeaderSyncError> {
         let start_header = self
             .db
             .fetch_header_by_block_hash(start_hash.clone())
             .await?
             .ok_or_else(|| BlockHeaderSyncError::StartHashNotFound(start_hash.to_hex()))?;
         let timestamps = self.db.fetch_block_timestamps(start_hash.clone()).await?;
-        let target_difficulties = self.db.fetch_target_difficulties(start_hash.clone()).await?;
+        let target_difficulties = self
+            .db
+            .fetch_target_difficulties_for_next_block(start_hash.clone())
+            .await?;
         let previous_accum = self
             .db
             .fetch_header_accumulated_data(start_hash.clone())
@@ -135,12 +139,13 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             constants.min_pow_difficulty(header.pow_algo()),
             constants.max_pow_difficulty(header.pow_algo()),
         );
-        let achieved = check_target_difficulty(&header, target_difficulty, &self.randomx_factory)?;
+        let achieved_target = check_target_difficulty(&header, target_difficulty, &self.randomx_factory)?;
 
         check_pow_data(&header, &self.consensus_rules, &*self.db.inner().db_read_access()?)?;
 
         // Header is valid, add this header onto the validation state for the next round
-        // Borrow mutably later to allow immutable borrows before this line
+        // Mutable borrow done later in the function to allow multiple immutable borrows before this line. This has
+        // nothing to do with locking or concurrency.
         let state = self.state_mut();
 
         // Ensure that timestamps are inserted in sorted order
@@ -156,17 +161,17 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         // Add a "more recent" datapoint onto the target difficulty
         state.target_difficulties.add_back(&header, target_difficulty);
 
-        let metadata = BlockHeaderAccumulatedData::builder()
-            .hash(header.hash())
-            .target_difficulty(target_difficulty)
-            .achieved_difficulty(&state.previous_accum, header.pow_algo(), achieved)
-            .total_kernel_offset(&state.previous_accum.total_kernel_offset, &header.total_kernel_offset)
+        let accumulated_data = BlockHeaderAccumulatedData::builder(&state.previous_accum)
+            .with_hash(header.hash())
+            .with_achieved_target_difficulty(achieved_target)
+            .with_total_kernel_offset(header.total_kernel_offset.clone())
             .build()?;
-        state.previous_accum = metadata.clone();
-        state.valid_headers.push(ChainHeader {
-            header,
-            accumulated_data: metadata,
-        });
+
+        // NOTE: accumulated_data constructed from header
+        let chain_header = ChainHeader::try_construct(header, accumulated_data).unwrap();
+
+        state.previous_accum = chain_header.accumulated_data().clone();
+        state.valid_headers.push(chain_header);
 
         Ok(())
     }
@@ -193,8 +198,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         &self,
         our_header: &ChainHeader,
         their_header: &ChainHeader,
-    ) -> Result<(), BlockHeaderSyncError>
-    {
+    ) -> Result<(), BlockHeaderSyncError> {
         debug!(
             target: LOG_TARGET,
             "Comparing PoW on remote header #{} and local header #{}",
@@ -231,11 +235,12 @@ mod test {
     use crate::{
         blocks::BlockHeader,
         chain_storage::{async_db::AsyncBlockchainDb, BlockHeaderAccumulatedData},
-        consensus::{ConsensusManager, Network},
+        consensus::ConsensusManager,
         crypto::tari_utilities::{hex::Hex, Hashable},
         proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
         test_helpers::blockchain::{create_new_blockchain, TempDatabase},
     };
+    use tari_common::configuration::Network;
     use tari_test_utils::unpack_enum;
 
     fn setup() -> (BlockHeaderSyncValidator<TempDatabase>, AsyncBlockchainDb<TempDatabase>) {
@@ -258,7 +263,7 @@ mod test {
         let (validator, db) = setup();
         let mut tip = db.fetch_tip_header().await.unwrap();
         for _ in 0..n {
-            let mut header = BlockHeader::from_previous(&tip.header).unwrap();
+            let mut header = BlockHeader::from_previous(tip.header());
             // Needed to have unique keys for the blockchain db mmr count indexes (MDB_KEY_EXIST error)
             header.kernel_mmr_size += 1;
             header.output_mmr_size += 1;
@@ -267,13 +272,9 @@ mod test {
                 ..Default::default()
             };
 
-            db.insert_valid_headers(vec![(header.clone(), acc_data.clone())])
-                .await
-                .unwrap();
-            tip = ChainHeader {
-                header,
-                accumulated_data: acc_data,
-            };
+            let chain_header = ChainHeader::try_construct(header.clone(), acc_data.clone()).unwrap();
+            db.insert_valid_headers(vec![chain_header.clone()]).await.unwrap();
+            tip = chain_header;
         }
 
         (validator, db, tip)
@@ -285,7 +286,7 @@ mod test {
         #[tokio_macros::test_basic]
         async fn it_initializes_state_to_given_header() {
             let (mut validator, _, tip) = setup_with_headers(1).await;
-            validator.initialize_state(tip.header.hash()).await.unwrap();
+            validator.initialize_state(&tip.header().hash()).await.unwrap();
             let state = validator.state();
             assert!(state.valid_headers.is_empty());
             assert_eq!(state.target_difficulties.get(PowAlgorithm::Sha3).len(), 2);
@@ -298,7 +299,7 @@ mod test {
         async fn it_errors_if_hash_does_not_exist() {
             let (mut validator, _) = setup();
             let start_hash = vec![0; 32];
-            let err = validator.initialize_state(start_hash.clone()).await.unwrap_err();
+            let err = validator.initialize_state(&start_hash).await.unwrap_err();
             unpack_enum!(BlockHeaderSyncError::StartHashNotFound(hash) = err);
             assert_eq!(hash, start_hash.to_hex());
         }
@@ -310,13 +311,13 @@ mod test {
         #[tokio_macros::test_basic]
         async fn it_passes_if_headers_are_valid() {
             let (mut validator, _, tip) = setup_with_headers(1).await;
-            validator.initialize_state(tip.header.hash()).await.unwrap();
+            validator.initialize_state(tip.hash()).await.unwrap();
             assert!(validator.valid_headers().is_empty());
-            let next = BlockHeader::from_previous(&tip.header).unwrap();
+            let next = BlockHeader::from_previous(&tip.header());
             validator.validate(next).unwrap();
             assert_eq!(validator.valid_headers().len(), 1);
             let tip = validator.valid_headers().last().cloned().unwrap();
-            let next = BlockHeader::from_previous(&tip.header).unwrap();
+            let next = BlockHeader::from_previous(&tip.header());
             validator.validate(next).unwrap();
             assert_eq!(validator.valid_headers().len(), 2);
         }
@@ -324,8 +325,8 @@ mod test {
         #[tokio_macros::test_basic]
         async fn it_fails_if_height_is_not_serial() {
             let (mut validator, _, tip) = setup_with_headers(2).await;
-            validator.initialize_state(tip.header.hash()).await.unwrap();
-            let mut next = BlockHeader::from_previous(&tip.header).unwrap();
+            validator.initialize_state(tip.hash()).await.unwrap();
+            let mut next = BlockHeader::from_previous(tip.header());
             next.height = 10;
             let err = validator.validate(next).unwrap_err();
             unpack_enum!(BlockHeaderSyncError::InvalidBlockHeight { expected, actual } = err);

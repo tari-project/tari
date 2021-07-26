@@ -52,8 +52,7 @@ where T: ContactsBackend + 'static
 
         db: ContactsDatabase<T>,
         shutdown_signal: ShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             db,
             request_stream: Some(request_stream),
@@ -106,8 +105,7 @@ where T: ContactsBackend + 'static
     async fn handle_request(
         &mut self,
         request: ContactsServiceRequest,
-    ) -> Result<ContactsServiceResponse, ContactsServiceError>
-    {
+    ) -> Result<ContactsServiceResponse, ContactsServiceError> {
         match request {
             ContactsServiceRequest::GetContact(pk) => {
                 Ok(self.db.get_contact(pk).await.map(ContactsServiceResponse::Contact)?)

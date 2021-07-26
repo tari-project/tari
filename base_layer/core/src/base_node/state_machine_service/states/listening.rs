@@ -99,8 +99,7 @@ impl Listening {
     pub async fn next_event<B: BlockchainBackend + 'static>(
         &mut self,
         shared: &mut BaseNodeStateMachine<B>,
-    ) -> StateEvent
-    {
+    ) -> StateEvent {
         let local = match shared.db.get_chain_metadata().await {
             Ok(m) => m,
             Err(e) => {
@@ -249,8 +248,7 @@ fn select_sync_peers(
     local_tip_height: u64,
     best_metadata: &ChainMetadata,
     peer_metadata_list: &[PeerChainMetadata],
-) -> Vec<PeerChainMetadata>
-{
+) -> Vec<PeerChainMetadata> {
     peer_metadata_list
         .iter()
         // Check if the peer can provide blocks higher than the local tip height
@@ -282,8 +280,7 @@ fn determine_sync_mode(
     local: &ChainMetadata,
     network: ChainMetadata,
     sync_peers: SyncPeers,
-) -> SyncStatus
-{
+) -> SyncStatus {
     use SyncStatus::*;
     let network_tip_accum_difficulty = network.accumulated_difficulty();
     let local_tip_accum_difficulty = local.accumulated_difficulty();
@@ -349,7 +346,7 @@ mod test {
 
     fn random_node_id() -> NodeId {
         let (_secret_key, public_key) = CommsPublicKey::random_keypair(&mut OsRng);
-        NodeId::from_key(&public_key).unwrap()
+        NodeId::from_key(&public_key)
     }
 
     #[test]

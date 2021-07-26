@@ -31,7 +31,7 @@ use crate::{
     },
     DhtConfig,
 };
-use futures::{task::Context, Future};
+use futures::{future::BoxFuture, task::Context};
 use log::*;
 use std::{sync::Arc, task::Poll};
 use tari_comms::{
@@ -57,8 +57,7 @@ impl StoreLayer {
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
         saf_requester: StoreAndForwardRequester,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             peer_manager,
             config,
@@ -98,8 +97,7 @@ impl<S> StoreMiddleware<S> {
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
         saf_requester: StoreAndForwardRequester,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             next_service,
             config,
@@ -111,26 +109,29 @@ impl<S> StoreMiddleware<S> {
 }
 
 impl<S> Service<DecryptedDhtMessage> for StoreMiddleware<S>
-where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Clone + 'static
+where
+    S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Clone + Send + Sync + 'static,
+    S::Future: Send,
 {
     type Error = PipelineError;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
     type Response = ();
-
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
     }
 
     fn call(&mut self, msg: DecryptedDhtMessage) -> Self::Future {
-        StoreTask::new(
-            self.next_service.clone(),
-            self.config.clone(),
-            Arc::clone(&self.peer_manager),
-            Arc::clone(&self.node_identity),
-            self.saf_requester.clone(),
+        Box::pin(
+            StoreTask::new(
+                self.next_service.clone(),
+                self.config.clone(),
+                Arc::clone(&self.peer_manager),
+                Arc::clone(&self.node_identity),
+                self.saf_requester.clone(),
+            )
+            .handle(msg),
         )
-        .handle(msg)
     }
 }
 
@@ -144,28 +145,26 @@ struct StoreTask<S> {
     saf_requester: StoreAndForwardRequester,
 }
 
-impl<S> StoreTask<S> {
+impl<S> StoreTask<S>
+where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Send + Sync
+{
     pub fn new(
         next_service: S,
         config: DhtConfig,
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
         saf_requester: StoreAndForwardRequester,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
-            config,
+            next_service,
+
             peer_manager,
+            config,
             node_identity,
             saf_requester,
-            next_service,
         }
     }
-}
 
-impl<S> StoreTask<S>
-where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
-{
     /// Determine if this is a message we should store for our peers and, if so, store it.
     ///
     /// The criteria for storing a message is:
@@ -183,8 +182,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 message.tag,
                 message.dht_header.message_tag
             );
-            self.next_service.oneshot(message).await?;
-            return Ok(());
+            let service = self.next_service.ready_oneshot().await?;
+            return service.oneshot(message).await;
         }
 
         message.set_saf_stored(false);
@@ -200,9 +199,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             message.tag,
             message.dht_header.message_tag
         );
-        self.next_service.oneshot(message).await?;
 
-        Ok(())
+        let service = self.next_service.ready_oneshot().await?;
+        return service.oneshot(message).await;
     }
 
     async fn get_storage_priority(&self, message: &DecryptedDhtMessage) -> SafResult<Option<StoredMessagePriority>> {
@@ -339,8 +338,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     async fn get_priority_by_destination(
         &self,
         message: &DecryptedDhtMessage,
-    ) -> SafResult<Option<StoredMessagePriority>>
-    {
+    ) -> SafResult<Option<StoredMessagePriority>> {
         let log_not_eligible = |reason: &str| {
             debug!(
                 target: LOG_TARGET,
@@ -423,8 +421,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             }
         }
 
-        let stored_message = NewStoredMessage::try_construct(message, priority)
-            .ok_or_else(|| StoreAndForwardError::InvalidStoreMessage)?;
+        let stored_message =
+            NewStoredMessage::try_construct(message, priority).ok_or(StoreAndForwardError::InvalidStoreMessage)?;
         self.saf_requester.insert_message(stored_message).await
     }
 }
@@ -435,6 +433,7 @@ mod test {
     use crate::{
         envelope::{DhtMessageFlags, NodeDestination},
         test_utils::{
+            assert_send_static_service,
             build_peer_manager,
             create_store_and_forward_mock,
             make_dht_inbound_message,
@@ -457,6 +456,7 @@ mod test {
         let node_identity = make_node_identity();
         let mut service = StoreLayer::new(Default::default(), peer_manager, node_identity, requester)
             .layer(spy.to_service::<PipelineError>());
+        assert_send_static_service(&service);
 
         let inbound_msg =
             make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::empty(), false);
@@ -516,7 +516,7 @@ mod test {
             NodeDestination::PublicKey(Box::new(origin_node_identity.public_key().clone()));
         let msg = DecryptedDhtMessage::failed(inbound_msg.clone());
         service.call(msg).await.unwrap();
-        assert_eq!(spy.is_called(), true);
+        assert!(spy.is_called());
 
         async_assert_eventually!(
             mock_state.call_count(),
@@ -557,7 +557,7 @@ mod test {
             NodeDestination::PublicKey(Box::new(origin_node_identity.public_key().clone()));
         let msg_banned = DecryptedDhtMessage::failed(inbound_msg.clone());
         service.call(msg_banned).await.unwrap();
-        assert_eq!(spy.is_called(), true);
+        assert!(spy.is_called());
 
         assert_eq!(mock_state.call_count(), 0);
         let messages = mock_state.get_messages().await;

@@ -59,8 +59,7 @@ mod state_machine {
         Arc<NodeIdentity>,
         broadcast::Receiver<Arc<DhtEvent>>,
         Shutdown,
-    )
-    {
+    ) {
         // Every test needs these to be enabled
         config.network_discovery.enabled = true;
 

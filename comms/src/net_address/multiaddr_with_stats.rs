@@ -41,8 +41,7 @@ impl MutliaddrWithStats {
         rejected_message_count: u32,
         avg_latency: Duration,
         latency_sample_count: u32,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             address,
             last_seen,

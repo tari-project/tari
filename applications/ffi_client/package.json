@@ -1,0 +1,20 @@
+{
+  "name": "ffi_client",
+  "version": "1.0.0",
+  "description": "",
+  "author": "The Tari Development Community",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "recovery": "node recovery.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "ffi-napi": "^4.0.3",
+    "ref-array-napi": "^1.2.2",
+    "ref-napi": "^3.0.3",
+    "ref-struct-napi": "^1.1.1"
+  },
+  "devDependencies": {}
+}

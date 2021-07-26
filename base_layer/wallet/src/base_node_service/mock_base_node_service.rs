@@ -25,7 +25,7 @@ use crate::base_node_service::{
     handle::{BaseNodeServiceRequest, BaseNodeServiceResponse},
     service::{BaseNodeState, OnlineState},
 };
-use futures::{pin_mut, StreamExt};
+use futures::StreamExt;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::peer_manager::Peer;
 use tari_service_framework::reply_channel::Receiver;
@@ -43,8 +43,7 @@ impl MockBaseNodeService {
     pub fn new(
         request_stream: Receiver<BaseNodeServiceRequest, Result<BaseNodeServiceResponse, BaseNodeServiceError>>,
         shutdown_signal: ShutdownSignal,
-    ) -> MockBaseNodeService
-    {
+    ) -> MockBaseNodeService {
         let base_node_peer = None;
         let state = Default::default();
         MockBaseNodeService {
@@ -56,33 +55,25 @@ impl MockBaseNodeService {
     }
 
     pub async fn run(mut self) -> Result<(), BaseNodeServiceError> {
-        let request_stream = self
-            .request_stream
-            .take()
-            .expect("Wallet Base Node Service initialized without request_stream")
-            .fuse();
-        pin_mut!(request_stream);
-
-        let mut shutdown_signal = self
+        let shutdown_signal = self
             .shutdown_signal
             .take()
             .expect("Wallet Base Node Service initialized without shutdown signal");
 
-        loop {
-            futures::select! {
-                // Incoming requests
-                request_context = request_stream.select_next_some() => {
-                    let (request, reply_tx) = request_context.split();
-                    let response = self.handle_request(request).await;
-                    let _ = reply_tx.send(response);
-                },
+        let mut request_stream = self
+            .request_stream
+            .take()
+            .expect("Wallet Base Node Service initialized without request_stream")
+            .take_until(shutdown_signal);
 
-                // Shutdown
-                _ = shutdown_signal => {
-                    break Ok(());
-                }
-            }
+        while let Some(request_context) = request_stream.next().await {
+            // Incoming requests
+            let (request, reply_tx) = request_context.split();
+            let response = self.handle_request(request);
+            let _ = reply_tx.send(response);
         }
+
+        Ok(())
     }
 
     /// Set the mock server state, either online and synced to a specific height, or offline with None
@@ -121,19 +112,23 @@ impl MockBaseNodeService {
     }
 
     /// This handler is called when requests arrive from the various streams
-    async fn handle_request(
+    fn handle_request(
         &mut self,
         request: BaseNodeServiceRequest,
-    ) -> Result<BaseNodeServiceResponse, BaseNodeServiceError>
-    {
+    ) -> Result<BaseNodeServiceResponse, BaseNodeServiceError> {
         match request {
             BaseNodeServiceRequest::SetBaseNodePeer(peer) => {
                 self.set_base_node_peer(*peer);
                 Ok(BaseNodeServiceResponse::BaseNodePeerSet)
             },
+            BaseNodeServiceRequest::GetBaseNodePeer => {
+                let peer = self.state.base_node_peer.clone();
+                Ok(BaseNodeServiceResponse::BaseNodePeer(peer.map(Box::new)))
+            },
             BaseNodeServiceRequest::GetChainMetadata => Ok(BaseNodeServiceResponse::ChainMetadata(
                 self.state.chain_metadata.clone(),
             )),
+            BaseNodeServiceRequest::GetBaseNodeLatency => Ok(BaseNodeServiceResponse::Latency(None)),
         }
     }
 }

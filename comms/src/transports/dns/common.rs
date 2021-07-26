@@ -26,7 +26,7 @@ use std::net::SocketAddr;
 
 pub fn is_dns4_addr(addr: &Multiaddr) -> bool {
     let proto = addr.iter().next();
-    matches!(proto, Some(Protocol::Dns4(_)))
+    matches!(proto, Some(Protocol::Dns4(_))) || matches!(proto, Some(Protocol::Dns(_)))
 }
 
 pub fn convert_tcpip_multiaddr_to_socketaddr(addr: &Multiaddr) -> Result<SocketAddr, DnsResolverError> {
@@ -39,7 +39,7 @@ pub fn convert_tcpip_multiaddr_to_socketaddr(addr: &Multiaddr) -> Result<SocketA
 
 pub fn extract_protocols(addr: &Multiaddr) -> Result<(Protocol<'_>, Protocol<'_>), DnsResolverError> {
     let mut addr_iter = addr.iter();
-    let proto1 = addr_iter.next().ok_or_else(|| DnsResolverError::EmptyAddress)?;
+    let proto1 = addr_iter.next().ok_or(DnsResolverError::EmptyAddress)?;
     let proto2 = addr_iter.next().ok_or_else(|| DnsResolverError::InvalidAddress {
         address: addr.clone(),
         message: "Address does not consist of at least 2 parts".into(),

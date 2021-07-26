@@ -49,6 +49,7 @@ use crate::helpers::{
     nodes::{BaseNodeBuilder, NodeInterfaces},
 };
 use std::convert::TryFrom;
+use tari_common::configuration::Network;
 use tari_comms::protocol::rpc::mock::RpcRequestMock;
 use tari_core::{
     base_node::{
@@ -64,7 +65,7 @@ use tari_core::{
         state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
     },
     chain_storage::ChainBlock,
-    consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
+    consensus::{ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
     crypto::tari_utilities::Hashable,
     proto::{
         base_node::{FetchMatchingUtxos, Signatures as SignaturesProto},
@@ -92,7 +93,7 @@ fn setup() -> (
     Runtime,
     TempDir,
 ) {
-    let network = Network::LocalNet;
+    let network = NetworkConsensus::from(Network::LocalNet);
     let consensus_constants = network.create_consensus_constants();
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
@@ -100,8 +101,7 @@ fn setup() -> (
 
     let (block0, utxo0) =
         create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants[0]);
-    let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants[0].clone())
+    let consensus_manager = ConsensusManagerBuilder::new(network.as_network())
         .with_block(block0.clone())
         .build();
 
@@ -139,14 +139,14 @@ fn test_base_node_wallet_rpc() {
 
     let (txs1, utxos1) = schema_to_transaction(&[txn_schema!(from: vec![utxo0.clone()], to: vec![1 * T, 1 * T])]);
     let tx1 = (*txs1[0]).clone();
-    let tx1_sig = tx1.first_kernel_excess_sig().clone().unwrap().clone();
+    let tx1_sig = tx1.first_kernel_excess_sig().unwrap().clone();
 
     let (txs2, utxos2) = schema_to_transaction(&[txn_schema!(
         from: vec![utxos1[0].clone()],
         to: vec![400_000 * uT, 590_000 * uT]
     )]);
     let tx2 = (*txs2[0]).clone();
-    let tx2_sig = tx2.first_kernel_excess_sig().clone().unwrap().clone();
+    let tx2_sig = tx2.first_kernel_excess_sig().unwrap().clone();
 
     // Query Tx1
     let msg = SignatureProto::from(tx1_sig.clone());
@@ -186,7 +186,7 @@ fn test_base_node_wallet_rpc() {
     // Now submit a block with Tx1 in it so that Tx2 is no longer an orphan
     let block1 = base_node
         .blockchain_db
-        .prepare_block_merkle_roots(chain_block(&block0.block, vec![tx1.clone()], &consensus_manager))
+        .prepare_block_merkle_roots(chain_block(&block0.block(), vec![tx1.clone()], &consensus_manager))
         .unwrap();
 
     assert!(runtime
@@ -200,7 +200,6 @@ fn test_base_node_wallet_rpc() {
         .block_on(service.submit_transaction(req))
         .unwrap()
         .into_message();
-
     assert!(resp.accepted);
 
     // Query Tx2 which should now be in the mempool

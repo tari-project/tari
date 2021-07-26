@@ -50,7 +50,7 @@ use tokio::sync::broadcast;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
 const LOG_TARGET: &str = "comms::protocol::messaging";
-pub(super) static MESSAGING_PROTOCOL: Bytes = Bytes::from_static(b"/tari/messaging/0.1.0");
+pub(super) static MESSAGING_PROTOCOL: Bytes = Bytes::from_static(b"t/msg/0.1");
 const INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE: usize = 150;
 
 /// The maximum amount of inbound messages to accept within the `RATE_LIMIT_RESTOCK_INTERVAL` window
@@ -127,8 +127,7 @@ impl MessagingProtocol {
         messaging_events_tx: MessagingEventSender,
         inbound_message_tx: mpsc::Sender<InboundMessage>,
         shutdown_signal: ShutdownSignal,
-    ) -> Self
-    {
+    ) -> Self {
         let (internal_messaging_event_tx, internal_messaging_event_rx) =
             mpsc::channel(INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE);
         Self {
@@ -293,8 +292,7 @@ impl MessagingProtocol {
         events_tx: mpsc::Sender<MessagingEvent>,
         peer_node_id: NodeId,
         inactivity_timeout: Option<Duration>,
-    ) -> mpsc::UnboundedSender<OutboundMessage>
-    {
+    ) -> mpsc::UnboundedSender<OutboundMessage> {
         let (msg_tx, msg_rx) = mpsc::unbounded();
         let outbound_messaging =
             OutboundMessaging::new(connectivity, events_tx, msg_rx, peer_node_id, inactivity_timeout);

@@ -46,10 +46,12 @@ pub enum ChainStorageError {
     UnexpectedResult(String),
     #[error("You tried to execute an invalid Database operation: {0}")]
     InvalidOperation(String),
+    #[error("DATABASE INCONSISTENCY DETECTED at {function}: {details}")]
+    DataInconsistencyDetected { function: &'static str, details: String },
     #[error("There appears to be a critical error on the back end: {0}. Check the logs for more information.")]
     CriticalError(String),
-    #[error("Cannot return data for requests older than the current pruning horizon")]
-    BeyondPruningHorizon,
+    #[error("A full block cannot be constructed from the historical block because it contains pruned TXOs")]
+    HistoricalBlockContainsPrunedTxos,
     #[error("Could not insert {table}: {error}")]
     InsertError { table: &'static str, error: String },
     #[error("An invalid query was attempted: {0}")]
@@ -89,8 +91,6 @@ pub enum ChainStorageError {
     BlockingTaskSpawnError(String),
     #[error("A request was out of range")]
     OutOfRange,
-    #[error("Value not found: {0}")]
-    LmdbValueNotFound(lmdb_zero::Error),
     #[error("LMDB error: {source}")]
     LmdbError {
         #[from]
@@ -123,7 +123,11 @@ impl From<lmdb_zero::Error> for ChainStorageError {
     fn from(err: lmdb_zero::Error) -> Self {
         use lmdb_zero::Error::*;
         match err {
-            Code(c) if c == lmdb_zero::error::NOTFOUND => ChainStorageError::LmdbValueNotFound(err),
+            Code(c) if c == lmdb_zero::error::NOTFOUND => ChainStorageError::ValueNotFound {
+                entity: "LMDB".to_string(),
+                field: "unknown".to_string(),
+                value: "unknown".to_string(),
+            },
             _ => ChainStorageError::AccessError(err.to_string()),
         }
     }

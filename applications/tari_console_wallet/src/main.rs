@@ -6,7 +6,7 @@
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
 #![recursion_limit = "1024"]
-use crate::recovery::get_private_key_from_seed_words;
+use crate::{recovery::get_private_key_from_seed_words, wallet_modes::WalletModeConfig};
 use init::{
     boot,
     change_password,
@@ -21,7 +21,7 @@ use init::{
 use log::*;
 use recovery::prompt_private_key_from_seed_words;
 use std::process;
-use tari_app_utilities::{initialization::init_configuration, utilities::ExitCodes};
+use tari_app_utilities::{consts, initialization::init_configuration, utilities::ExitCodes};
 use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap};
 use tari_core::transactions::types::PrivateKey;
 use tari_shutdown::Shutdown;
@@ -43,10 +43,10 @@ fn main() {
     match main_inner() {
         Ok(_) => process::exit(0),
         Err(exit_code) => {
-            eprintln!("{}", exit_code);
+            eprintln!("{:?}", exit_code);
             error!(
                 target: LOG_TARGET,
-                "Exiting with code ({}): {}",
+                "Exiting with code ({}): {:?}",
                 exit_code.as_i32(),
                 exit_code
             );
@@ -62,9 +62,16 @@ fn main_inner() -> Result<(), ExitCodes> {
         .build()
         .expect("Failed to build a runtime!");
 
-    let (bootstrap, config, _) = init_configuration(ApplicationType::ConsoleWallet)?;
+    let (bootstrap, global_config, _) = init_configuration(ApplicationType::ConsoleWallet)?;
 
-    debug!(target: LOG_TARGET, "Using configuration: {:?}", config);
+    info!(
+        target: LOG_TARGET,
+        "== {} ({}) ==",
+        ApplicationType::ConsoleWallet,
+        consts::APP_VERSION
+    );
+
+    debug!(target: LOG_TARGET, "Using configuration: {:?}", global_config);
     debug!(target: LOG_TARGET, "Using bootstrap: {:?}", bootstrap);
 
     // get command line password if provided
@@ -75,9 +82,9 @@ fn main_inner() -> Result<(), ExitCodes> {
     }
 
     // check for recovery based on existence of wallet file
-    let mut boot_mode = boot(&bootstrap, &config)?;
+    let mut boot_mode = boot(&bootstrap, &global_config)?;
 
-    let master_key: Option<PrivateKey> = get_master_key(boot_mode, &bootstrap)?;
+    let recovery_master_key: Option<PrivateKey> = get_recovery_master_key(boot_mode, &bootstrap)?;
 
     if bootstrap.init {
         info!(target: LOG_TARGET, "Default configuration created. Done.");
@@ -92,15 +99,15 @@ fn main_inner() -> Result<(), ExitCodes> {
 
     if bootstrap.change_password {
         info!(target: LOG_TARGET, "Change password requested.");
-        return runtime.block_on(change_password(&config, arg_password, shutdown_signal));
+        return runtime.block_on(change_password(&global_config, arg_password, shutdown_signal));
     }
 
     // initialize wallet
     let mut wallet = runtime.block_on(init_wallet(
-        &config,
+        &global_config,
         arg_password,
         seed_words_file_name,
-        master_key,
+        recovery_master_key,
         shutdown_signal,
     ))?;
 
@@ -111,46 +118,41 @@ fn main_inner() -> Result<(), ExitCodes> {
     }
 
     // get base node/s
-    let base_node_config = runtime.block_on(get_base_node_peer_config(&config, &mut wallet))?;
-    let base_node = base_node_config.get_base_node_peer()?;
+    let base_node_config = runtime.block_on(get_base_node_peer_config(&global_config, &mut wallet))?;
+    let base_node_selected = base_node_config.get_base_node_peer()?;
 
     let wallet_mode = wallet_mode(&bootstrap, boot_mode);
 
     // start wallet
-    runtime.block_on(start_wallet(&mut wallet, &base_node, &wallet_mode))?;
+    runtime.block_on(start_wallet(&mut wallet, &base_node_selected, &wallet_mode))?;
 
     // optional path to notify script
-    let notify_script = get_notify_script(&bootstrap, &config)?;
+    let notify_script = get_notify_script(&bootstrap, &global_config)?;
 
     debug!(target: LOG_TARGET, "Starting app");
 
     let handle = runtime.handle().clone();
+    let config = WalletModeConfig {
+        base_node_config,
+        base_node_selected,
+        bootstrap,
+        global_config,
+        handle,
+        notify_script,
+        wallet_mode: wallet_mode.clone(),
+    };
     let result = match wallet_mode {
-        WalletMode::Tui => tui_mode(
-            handle,
-            config,
-            wallet.clone(),
-            base_node,
-            base_node_config,
-            notify_script,
-        ),
-        WalletMode::Grpc => grpc_mode(handle, wallet.clone(), config),
-        WalletMode::Script(path) => script_mode(handle, path, wallet.clone(), config),
-        WalletMode::Command(command) => command_mode(handle, command, wallet.clone(), config),
-        WalletMode::Recovery => recovery_mode(
-            handle,
-            config,
-            wallet.clone(),
-            base_node,
-            base_node_config,
-            notify_script,
-        ),
+        WalletMode::Tui => tui_mode(config, wallet.clone()),
+        WalletMode::Grpc => grpc_mode(config, wallet.clone()),
+        WalletMode::Script(path) => script_mode(config, wallet.clone(), path),
+        WalletMode::Command(command) => command_mode(config, wallet.clone(), command),
+        WalletMode::RecoveryDaemon | WalletMode::RecoveryTui => recovery_mode(config, wallet.clone()),
         WalletMode::Invalid => Err(ExitCodes::InputError(
             "Invalid wallet mode - are you trying too many command options at once?".to_string(),
         )),
     };
 
-    print!("Shutting down wallet... ");
+    print!("\nShutting down wallet... ");
     if shutdown.trigger().is_ok() {
         runtime.block_on(wallet.wait_until_shutdown());
     } else {
@@ -161,7 +163,10 @@ fn main_inner() -> Result<(), ExitCodes> {
     result
 }
 
-fn get_master_key(boot_mode: WalletBoot, bootstrap: &ConfigBootstrap) -> Result<Option<PrivateKey>, ExitCodes> {
+fn get_recovery_master_key(
+    boot_mode: WalletBoot,
+    bootstrap: &ConfigBootstrap,
+) -> Result<Option<PrivateKey>, ExitCodes> {
     if matches!(boot_mode, WalletBoot::Recovery) {
         let private_key = if bootstrap.seed_words.is_some() {
             let seed_words: Vec<String> = bootstrap

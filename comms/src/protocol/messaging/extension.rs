@@ -51,13 +51,13 @@ impl<TInPipe, TOutPipe, TOutReq> MessagingProtocolExtension<TInPipe, TOutPipe, T
 
 impl<TInPipe, TOutPipe, TOutReq> ProtocolExtension for MessagingProtocolExtension<TInPipe, TOutPipe, TOutReq>
 where
-    TOutPipe: Service<TOutReq, Response = ()> + Clone + Send + Sync + 'static,
-    TOutPipe::Error: fmt::Display + Send + Sync,
-    TOutPipe::Future: Send + Sync + 'static,
-    TInPipe: Service<InboundMessage> + Clone + Send + Sync + 'static,
-    TInPipe::Error: fmt::Display + Send + Sync,
-    TInPipe::Future: Send + Sync + 'static,
-    TOutReq: Send + Sync + 'static,
+    TOutPipe: Service<TOutReq, Response = ()> + Clone + Send + 'static,
+    TOutPipe::Error: fmt::Display + Send,
+    TOutPipe::Future: Send + 'static,
+    TInPipe: Service<InboundMessage> + Clone + Send + 'static,
+    TInPipe::Error: fmt::Display + Send,
+    TInPipe::Future: Send + 'static,
+    TOutReq: Send + 'static,
 {
     fn install(self: Box<Self>, context: &mut ProtocolExtensionContext) -> Result<(), ProtocolExtensionError> {
         let (proto_tx, proto_rx) = mpsc::channel(consts::MESSAGING_PROTOCOL_EVENTS_BUFFER_SIZE);

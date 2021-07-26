@@ -59,8 +59,7 @@ impl<B: BlockchainBackend> FinalHorizonStateValidation<B> for ChainBalanceValida
         total_utxo_sum: &Commitment,
         total_kernel_sum: &Commitment,
         backend: &B,
-    ) -> Result<(), ValidationError>
-    {
+    ) -> Result<(), ValidationError> {
         let emission_h = self.get_emission_commitment_at(height);
         let total_offset = self.fetch_total_offset_commitment(height, backend)?;
 
@@ -85,7 +84,8 @@ impl<B: BlockchainBackend> FinalHorizonStateValidation<B> for ChainBalanceValida
 
 impl<B: BlockchainBackend> ChainBalanceValidator<B> {
     fn fetch_total_offset_commitment(&self, height: u64, backend: &B) -> Result<Commitment, ValidationError> {
-        let offset = backend.fetch_header_and_accumulated_data(height)?.1.total_kernel_offset;
+        let chain_header = backend.fetch_chain_header_by_height(height)?;
+        let offset = &chain_header.accumulated_data().total_kernel_offset;
         Ok(self.factories.commitment.commit(&offset, &0u64.into()))
     }
 

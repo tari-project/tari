@@ -33,11 +33,11 @@ use crate::{
                 PendingTransactionOutputs,
                 WriteOperation,
             },
-            models::DbUnblindedOutput,
+            models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
         },
         TxId,
     },
-    schema::{key_manager_states, outputs, pending_transaction_outputs},
+    schema::{key_manager_states, known_one_sided_payment_scripts, outputs, pending_transaction_outputs},
     storage::sqlite_utilities::WalletDbConnection,
     util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
 };
@@ -56,12 +56,13 @@ use tari_core::{
     tari_utilities::hash::Hashable,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{OutputFeatures, OutputFlags, UnblindedOutput},
-        types::{Commitment, CryptoFactories, PrivateKey},
+        transaction::{OutputFeatures, OutputFlags, TransactionOutput, UnblindedOutput},
+        types::{ComSignature, Commitment, CryptoFactories, PrivateKey, PublicKey},
     },
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
+    script::{ExecutionStack, TariScript},
     tari_utilities::{
         hex::{from_hex, Hex},
         ByteArray,
@@ -133,6 +134,21 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     };
                     None
                 },
+            },
+            DbKey::AnyOutputByCommitment(commitment) => {
+                match OutputSql::find_by_commitment(&commitment.to_vec(), &(*conn)) {
+                    Ok(mut o) => {
+                        self.decrypt_if_necessary(&mut o)?;
+                        Some(DbValue::SpentOutput(Box::new(DbUnblindedOutput::try_from(o)?)))
+                    },
+                    Err(e) => {
+                        match e {
+                            OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
+                            e => return Err(e),
+                        };
+                        None
+                    },
+                }
             },
             DbKey::PendingTransactionOutputs(tx_id) => match PendingTransactionOutputSql::find(*tx_id, &(*conn)) {
                 Ok(p) => {
@@ -239,6 +255,19 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             },
+            DbKey::KnownOneSidedPaymentScripts => {
+                let mut known_one_sided_payment_scripts = KnownOneSidedPaymentScriptSql::index(&(*conn))?;
+                for script in known_one_sided_payment_scripts.iter_mut() {
+                    self.decrypt_if_necessary(script)?;
+                }
+
+                Some(DbValue::KnownOneSidedPaymentScripts(
+                    known_one_sided_payment_scripts
+                        .iter()
+                        .map(|script| KnownOneSidedPaymentScript::try_from(script.clone()))
+                        .collect::<Result<Vec<_>, _>>()?,
+                ))
+            },
         };
 
         Ok(result)
@@ -250,26 +279,34 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         match op {
             WriteOperation::Insert(kvp) => match kvp {
                 DbKeyValuePair::SpentOutput(c, o) => {
-                    if OutputSql::find_by_commitment(&c.to_vec(), &(*conn)).is_ok() {
+                    if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, &(*conn)).is_ok() {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
-                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Spent, None);
+                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Spent, None)?;
 
                     self.encrypt_if_necessary(&mut new_output)?;
 
                     new_output.commit(&(*conn))?
                 },
                 DbKeyValuePair::UnspentOutput(c, o) => {
-                    if OutputSql::find_by_commitment(&c.to_vec(), &(*conn)).is_ok() {
+                    if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, &(*conn)).is_ok() {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
-                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, None);
+                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, None)?;
+                    self.encrypt_if_necessary(&mut new_output)?;
+                    new_output.commit(&(*conn))?
+                },
+                DbKeyValuePair::UnspentOutputWithTxId(c, (tx_id, o)) => {
+                    if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, &(*conn)).is_ok() {
+                        return Err(OutputManagerStorageError::DuplicateOutput);
+                    }
+                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, Some(tx_id))?;
                     self.encrypt_if_necessary(&mut new_output)?;
                     new_output.commit(&(*conn))?
                 },
                 DbKeyValuePair::PendingTransactionOutputs(tx_id, p) => {
                     if PendingTransactionOutputSql::find(tx_id, &(*conn)).is_ok() {
-                        return Err(OutputManagerStorageError::DuplicateOutput);
+                        return Err(OutputManagerStorageError::DuplicateTransaction);
                     }
 
                     PendingTransactionOutputSql::new(
@@ -280,12 +317,12 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     )
                     .commit(&(*conn))?;
                     for o in p.outputs_to_be_spent {
-                        let mut new_output = NewOutputSql::new(o, OutputStatus::EncumberedToBeSpent, Some(p.tx_id));
+                        let mut new_output = NewOutputSql::new(o, OutputStatus::EncumberedToBeSpent, Some(p.tx_id))?;
                         self.encrypt_if_necessary(&mut new_output)?;
                         new_output.commit(&(*conn))?;
                     }
                     for o in p.outputs_to_be_received {
-                        let mut new_output = NewOutputSql::new(o, OutputStatus::EncumberedToBeReceived, Some(p.tx_id));
+                        let mut new_output = NewOutputSql::new(o, OutputStatus::EncumberedToBeReceived, Some(p.tx_id))?;
                         self.encrypt_if_necessary(&mut new_output)?;
                         new_output.commit(&(*conn))?;
                     }
@@ -294,6 +331,11 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     let mut km_sql = KeyManagerStateSql::from(km);
                     self.encrypt_if_necessary(&mut km_sql)?;
                     km_sql.set_state(&(*conn))?
+                },
+                DbKeyValuePair::KnownOneSidedPaymentScripts(script) => {
+                    let mut script_sql = KnownOneSidedPaymentScriptSql::from(script);
+                    self.encrypt_if_necessary(&mut script_sql)?;
+                    script_sql.commit(&(*conn))?
                 },
             },
             WriteOperation::Remove(k) => match k {
@@ -320,6 +362,20 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                             e => return Err(e),
                         };
                     },
+                },
+                DbKey::AnyOutputByCommitment(commitment) => {
+                    match OutputSql::find_by_commitment(&commitment.to_vec(), &(*conn)) {
+                        Ok(o) => {
+                            o.delete(&(*conn))?;
+                            return Ok(Some(DbValue::AnyOutput(Box::new(DbUnblindedOutput::try_from(o)?))));
+                        },
+                        Err(e) => {
+                            match e {
+                                OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
+                                e => return Err(e),
+                            };
+                        },
+                    }
                 },
                 DbKey::PendingTransactionOutputs(tx_id) => match PendingTransactionOutputSql::find(tx_id, &(*conn)) {
                     Ok(p) => {
@@ -352,6 +408,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 DbKey::KeyManagerState => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::InvalidOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::TimeLockedUnspentOutputs(_) => return Err(OutputManagerStorageError::OperationNotSupported),
+                DbKey::KnownOneSidedPaymentScripts => return Err(OutputManagerStorageError::OperationNotSupported),
             },
         }
 
@@ -372,6 +429,9 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                                 status: Some(OutputStatus::Unspent),
                                 tx_id: None,
                                 spending_key: None,
+                                script_private_key: None,
+                                metadata_signature_nonce: None,
+                                metadata_signature_u_key: None,
                             },
                             &(*conn),
                         )?;
@@ -381,6 +441,9 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                                 status: Some(OutputStatus::Spent),
                                 tx_id: None,
                                 spending_key: None,
+                                script_private_key: None,
+                                metadata_signature_nonce: None,
+                                metadata_signature_u_key: None,
                             },
                             &(*conn),
                         )?;
@@ -405,13 +468,12 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         tx_id: u64,
         outputs_to_send: &[DbUnblindedOutput],
         outputs_to_receive: &[DbUnblindedOutput],
-    ) -> Result<(), OutputManagerStorageError>
-    {
+    ) -> Result<(), OutputManagerStorageError> {
         let conn = self.database_connection.acquire_lock();
 
         let mut outputs_to_be_spent = Vec::with_capacity(outputs_to_send.len());
         for i in outputs_to_send {
-            let output = OutputSql::find_by_commitment(i.commitment.as_bytes(), &(*conn))?;
+            let output = OutputSql::find_by_commitment_and_cancelled(i.commitment.as_bytes(), false, &(*conn))?;
             if output.status == (OutputStatus::Spent as i32) {
                 return Err(OutputManagerStorageError::OutputAlreadySpent);
             }
@@ -426,13 +488,16 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     status: Some(OutputStatus::EncumberedToBeSpent),
                     tx_id: Some(tx_id),
                     spending_key: None,
+                    script_private_key: None,
+                    metadata_signature_nonce: None,
+                    metadata_signature_u_key: None,
                 },
                 &(*conn),
             )?;
         }
 
         for co in outputs_to_receive {
-            let mut new_output = NewOutputSql::new(co.clone(), OutputStatus::EncumberedToBeReceived, Some(tx_id));
+            let mut new_output = NewOutputSql::new(co.clone(), OutputStatus::EncumberedToBeReceived, Some(tx_id))?;
             self.encrypt_if_necessary(&mut new_output)?;
             new_output.commit(&(*conn))?;
         }
@@ -450,9 +515,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             Err(e) => {
                 match e {
                     OutputManagerStorageError::DieselError(DieselError::NotFound) => {
-                        return Err(OutputManagerStorageError::ValueNotFound(
-                            DbKey::PendingTransactionOutputs(tx_id),
-                        ))
+                        return Err(OutputManagerStorageError::ValueNotFound)
                     },
                     e => return Err(e),
                 };
@@ -489,6 +552,9 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                                 status: Some(OutputStatus::CancelledInbound),
                                 tx_id: None,
                                 spending_key: None,
+                                script_private_key: None,
+                                metadata_signature_nonce: None,
+                                metadata_signature_u_key: None,
                             },
                             &(*conn),
                         )?;
@@ -498,6 +564,9 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                                 status: Some(OutputStatus::Unspent),
                                 tx_id: None,
                                 spending_key: None,
+                                script_private_key: None,
+                                metadata_signature_nonce: None,
+                                metadata_signature_u_key: None,
                             },
                             &(*conn),
                         )?;
@@ -510,9 +579,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             Err(e) => {
                 match e {
                     OutputManagerStorageError::DieselError(DieselError::NotFound) => {
-                        return Err(OutputManagerStorageError::ValueNotFound(
-                            DbKey::PendingTransactionOutputs(tx_id),
-                        ))
+                        return Err(OutputManagerStorageError::ValueNotFound)
                     },
                     e => return Err(e),
                 };
@@ -544,15 +611,26 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
+    fn set_key_index(&self, index: u64) -> Result<(), OutputManagerStorageError> {
+        let conn = self.database_connection.acquire_lock();
+
+        KeyManagerStateSql::set_index(index, &(*conn))?;
+
+        Ok(())
+    }
+
     fn invalidate_unspent_output(&self, output: &DbUnblindedOutput) -> Result<Option<TxId>, OutputManagerStorageError> {
         let conn = self.database_connection.acquire_lock();
-        let output = OutputSql::find_by_commitment(&output.commitment.to_vec(), &conn)?;
-        let tx_id = output.tx_id.clone().map(|id| id as u64);
-        let _ = output.update(
+        let output = OutputSql::find_by_commitment_and_cancelled(&output.commitment.to_vec(), false, &conn)?;
+        let tx_id = output.tx_id.map(|id| id as u64);
+        output.update(
             UpdateOutput {
                 status: Some(OutputStatus::Invalid),
                 tx_id: None,
                 spending_key: None,
+                script_private_key: None,
+                metadata_signature_nonce: None,
+                metadata_signature_u_key: None,
             },
             &(*conn),
         )?;
@@ -560,18 +638,39 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(tx_id)
     }
 
+    fn update_output_metadata_signature(&self, output: &TransactionOutput) -> Result<(), OutputManagerStorageError> {
+        let conn = self.database_connection.acquire_lock();
+        let db_output = OutputSql::find_by_commitment_and_cancelled(&output.commitment.to_vec(), false, &conn)?;
+        db_output.update(
+            UpdateOutput {
+                status: None,
+                tx_id: None,
+                spending_key: None,
+                script_private_key: None,
+                metadata_signature_nonce: Some(output.metadata_signature.public_nonce().to_vec()),
+                metadata_signature_u_key: Some(output.metadata_signature.u().to_vec()),
+            },
+            &(*conn),
+        )?;
+
+        Ok(())
+    }
+
     fn revalidate_unspent_output(&self, commitment: &Commitment) -> Result<(), OutputManagerStorageError> {
         let conn = self.database_connection.acquire_lock();
-        let output = OutputSql::find_by_commitment(&commitment.to_vec(), &conn)?;
+        let output = OutputSql::find_by_commitment_and_cancelled(&commitment.to_vec(), false, &conn)?;
 
         if OutputStatus::try_from(output.status)? != OutputStatus::Invalid {
             return Err(OutputManagerStorageError::ValuesNotFound);
         }
-        let _ = output.update(
+        output.update(
             UpdateOutput {
                 status: Some(OutputStatus::Unspent),
                 tx_id: None,
                 spending_key: None,
+                script_private_key: None,
+                metadata_signature_nonce: None,
+                metadata_signature_u_key: None,
             },
             &(*conn),
         )?;
@@ -581,10 +680,9 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     fn update_spent_output_to_unspent(
         &self,
         commitment: &Commitment,
-    ) -> Result<DbUnblindedOutput, OutputManagerStorageError>
-    {
+    ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
         let conn = self.database_connection.acquire_lock();
-        let output = OutputSql::find_by_commitment(&commitment.to_vec(), &conn)?;
+        let output = OutputSql::find_by_commitment_and_cancelled(&commitment.to_vec(), false, &conn)?;
 
         if OutputStatus::try_from(output.status)? != OutputStatus::Spent {
             return Err(OutputManagerStorageError::ValuesNotFound);
@@ -595,12 +693,15 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 status: Some(OutputStatus::Unspent),
                 tx_id: None,
                 spending_key: None,
+                script_private_key: None,
+                metadata_signature_nonce: None,
+                metadata_signature_u_key: None,
             },
             &(*conn),
         )?;
         self.decrypt_if_necessary(&mut o)?;
 
-        Ok(DbUnblindedOutput::try_from(o)?)
+        DbUnblindedOutput::try_from(o)
     }
 
     fn cancel_pending_transaction_at_block_height(&self, block_height: u64) -> Result<(), OutputManagerStorageError> {
@@ -655,6 +756,22 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
         key_manager_state.set_state(&conn)?;
 
+        let mut known_one_sided_payment_scripts = KnownOneSidedPaymentScriptSql::index(&conn)?;
+
+        for script in known_one_sided_payment_scripts.iter_mut() {
+            let _ = PrivateKey::from_vec(&script.private_key).map_err(|_| {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not create PrivateKey from stored bytes, They might already be encrypted"
+                );
+                OutputManagerStorageError::AlreadyEncrypted
+            })?;
+            script
+                .encrypt(&cipher)
+                .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
+            script.update_encryption(&conn)?;
+        }
+
         (*current_cipher) = Some(cipher);
 
         Ok(())
@@ -682,6 +799,15 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
         key_manager_state.set_state(&conn)?;
 
+        let mut known_one_sided_payment_scripts = KnownOneSidedPaymentScriptSql::index(&conn)?;
+
+        for script in known_one_sided_payment_scripts.iter_mut() {
+            script
+                .decrypt(&cipher)
+                .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
+            script.update_encryption(&conn)?;
+        }
+
         // Now that all the decryption has been completed we can safely remove the cipher fully
         let _ = (*current_cipher).take();
         Ok(())
@@ -694,8 +820,7 @@ fn pending_transaction_outputs_from_sql_outputs(
     timestamp: &NaiveDateTime,
     outputs: Vec<OutputSql>,
     coinbase_block_height: Option<u64>,
-) -> Result<PendingTransactionOutputs, OutputManagerStorageError>
-{
+) -> Result<PendingTransactionOutputs, OutputManagerStorageError> {
     let mut outputs_to_be_spent = Vec::new();
     let mut outputs_to_be_received = Vec::new();
     for o in outputs {
@@ -755,11 +880,22 @@ struct NewOutputSql {
     status: i32,
     tx_id: Option<i64>,
     hash: Option<Vec<u8>>,
+    script: Vec<u8>,
+    input_data: Vec<u8>,
+    script_private_key: Vec<u8>,
+    sender_offset_public_key: Vec<u8>,
+    metadata_signature_nonce: Vec<u8>,
+    metadata_signature_u_key: Vec<u8>,
+    metadata_signature_v_key: Vec<u8>,
 }
 
 impl NewOutputSql {
-    pub fn new(output: DbUnblindedOutput, status: OutputStatus, tx_id: Option<TxId>) -> Self {
-        Self {
+    pub fn new(
+        output: DbUnblindedOutput,
+        status: OutputStatus,
+        tx_id: Option<TxId>,
+    ) -> Result<Self, OutputManagerStorageError> {
+        Ok(Self {
             commitment: Some(output.commitment.to_vec()),
             spending_key: output.unblinded_output.spending_key.to_vec(),
             value: (u64::from(output.unblinded_output.value)) as i64,
@@ -768,7 +904,14 @@ impl NewOutputSql {
             status: status as i32,
             tx_id: tx_id.map(|i| i as i64),
             hash: Some(output.hash),
-        }
+            script: output.unblinded_output.script.as_bytes(),
+            input_data: output.unblinded_output.input_data.as_bytes(),
+            script_private_key: output.unblinded_output.script_private_key.to_vec(),
+            sender_offset_public_key: output.unblinded_output.sender_offset_public_key.to_vec(),
+            metadata_signature_nonce: output.unblinded_output.metadata_signature.public_nonce().to_vec(),
+            metadata_signature_u_key: output.unblinded_output.metadata_signature.u().to_vec(),
+            metadata_signature_v_key: output.unblinded_output.metadata_signature.v().to_vec(),
+        })
     }
 
     /// Write this struct to the database
@@ -781,11 +924,13 @@ impl NewOutputSql {
 impl Encryptable<Aes256Gcm> for NewOutputSql {
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
         self.spending_key = encrypt_bytes_integral_nonce(&cipher, self.spending_key.clone())?;
+        self.script_private_key = encrypt_bytes_integral_nonce(&cipher, self.script_private_key.clone())?;
         Ok(())
     }
 
     fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
         self.spending_key = decrypt_bytes_integral_nonce(&cipher, self.spending_key.clone())?;
+        self.script_private_key = decrypt_bytes_integral_nonce(&cipher, self.script_private_key.clone())?;
         Ok(())
     }
 }
@@ -802,6 +947,13 @@ struct OutputSql {
     status: i32,
     tx_id: Option<i64>,
     hash: Option<Vec<u8>>,
+    script: Vec<u8>,
+    input_data: Vec<u8>,
+    script_private_key: Vec<u8>,
+    sender_offset_public_key: Vec<u8>,
+    metadata_signature_nonce: Vec<u8>,
+    metadata_signature_u_key: Vec<u8>,
+    metadata_signature_v_key: Vec<u8>,
 }
 
 impl OutputSql {
@@ -814,8 +966,7 @@ impl OutputSql {
     pub fn index_status(
         status: OutputStatus,
         conn: &SqliteConnection,
-    ) -> Result<Vec<OutputSql>, OutputManagerStorageError>
-    {
+    ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table.filter(outputs::status.eq(status as i32)).load(conn)?)
     }
 
@@ -834,25 +985,37 @@ impl OutputSql {
             .first::<OutputSql>(conn)?)
     }
 
-    /// Find a particular Output by its public_spending_key
     pub fn find_by_commitment(
         commitment: &[u8],
         conn: &SqliteConnection,
-    ) -> Result<OutputSql, OutputManagerStorageError>
-    {
-        let cancelled = OutputStatus::CancelledInbound as i32;
+    ) -> Result<OutputSql, OutputManagerStorageError> {
         Ok(outputs::table
-            .filter(outputs::status.ne(cancelled))
             .filter(outputs::commitment.eq(commitment))
             .first::<OutputSql>(conn)?)
+    }
+
+    pub fn find_by_commitment_and_cancelled(
+        commitment: &[u8],
+        cancelled: bool,
+        conn: &SqliteConnection,
+    ) -> Result<OutputSql, OutputManagerStorageError> {
+        let cancelled_flag = OutputStatus::CancelledInbound as i32;
+
+        let mut request = outputs::table.filter(outputs::commitment.eq(commitment)).into_boxed();
+        if cancelled {
+            request = request.filter(outputs::status.eq(cancelled_flag))
+        } else {
+            request = request.filter(outputs::status.ne(cancelled_flag))
+        };
+
+        Ok(request.first::<OutputSql>(conn)?)
     }
 
     /// Find outputs via tx_id that are encumbered. Any outputs that are encumbered cannot be marked as spent.
     pub fn find_by_tx_id_and_encumbered(
         tx_id: TxId,
         conn: &SqliteConnection,
-    ) -> Result<Vec<OutputSql>, OutputManagerStorageError>
-    {
+    ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table
             .filter(outputs::tx_id.eq(Some(tx_id as i64)))
             .filter(
@@ -868,8 +1031,7 @@ impl OutputSql {
         spending_key: &[u8],
         status: OutputStatus,
         conn: &SqliteConnection,
-    ) -> Result<OutputSql, OutputManagerStorageError>
-    {
+    ) -> Result<OutputSql, OutputManagerStorageError> {
         Ok(outputs::table
             .filter(outputs::status.eq(status as i32))
             .filter(outputs::spending_key.eq(spending_key))
@@ -891,8 +1053,7 @@ impl OutputSql {
         &self,
         updated_output: UpdateOutput,
         conn: &SqliteConnection,
-    ) -> Result<OutputSql, OutputManagerStorageError>
-    {
+    ) -> Result<OutputSql, OutputManagerStorageError> {
         let num_updated = diesel::update(outputs::table.filter(outputs::id.eq(&self.id)))
             .set(UpdateOutputSql::from(updated_output))
             .execute(conn)?;
@@ -903,7 +1064,7 @@ impl OutputSql {
             ));
         }
 
-        Ok(OutputSql::find(&self.spending_key, conn)?)
+        OutputSql::find(&self.spending_key, conn)
     }
 
     /// This function is used to update an existing record to set fields to null
@@ -911,8 +1072,7 @@ impl OutputSql {
         &self,
         updated_null: NullOutputSql,
         conn: &SqliteConnection,
-    ) -> Result<OutputSql, OutputManagerStorageError>
-    {
+    ) -> Result<OutputSql, OutputManagerStorageError> {
         let num_updated = diesel::update(outputs::table.filter(outputs::spending_key.eq(&self.spending_key)))
             .set(updated_null)
             .execute(conn)?;
@@ -923,7 +1083,7 @@ impl OutputSql {
             ));
         }
 
-        Ok(OutputSql::find(&self.spending_key, conn)?)
+        OutputSql::find(&self.spending_key, conn)
     }
 
     /// Update the changed fields of this record after encryption/decryption is performed
@@ -933,6 +1093,9 @@ impl OutputSql {
                 status: None,
                 tx_id: None,
                 spending_key: Some(self.spending_key.clone()),
+                script_private_key: Some(self.script_private_key.clone()),
+                metadata_signature_nonce: None,
+                metadata_signature_u_key: None,
             },
             conn,
         )?;
@@ -955,11 +1118,50 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 OutputManagerStorageError::ConversionError
             })?,
             Some(OutputFeatures {
-                flags: OutputFlags::from_bits(o.flags as u8)
-                    .ok_or_else(|| OutputManagerStorageError::ConversionError)?,
+                flags: OutputFlags::from_bits(o.flags as u8).ok_or(OutputManagerStorageError::ConversionError)?,
                 maturity: o.maturity as u64,
             }),
+            TariScript::from_bytes(o.script.as_slice())?,
+            ExecutionStack::from_bytes(o.input_data.as_slice())?,
+            PrivateKey::from_vec(&o.script_private_key).map_err(|_| {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not create PrivateKey from stored bytes, They might be encrypted"
+                );
+                OutputManagerStorageError::ConversionError
+            })?,
+            PublicKey::from_vec(&o.sender_offset_public_key).map_err(|_| {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not create PublicKey from stored bytes, They might be encrypted"
+                );
+                OutputManagerStorageError::ConversionError
+            })?,
+            ComSignature::new(
+                Commitment::from_vec(&o.metadata_signature_nonce).map_err(|_| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not create PublicKey from stored bytes, They might be encrypted"
+                    );
+                    OutputManagerStorageError::ConversionError
+                })?,
+                PrivateKey::from_vec(&o.metadata_signature_u_key).map_err(|_| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not create PrivateKey from stored bytes, They might be encrypted"
+                    );
+                    OutputManagerStorageError::ConversionError
+                })?,
+                PrivateKey::from_vec(&o.metadata_signature_v_key).map_err(|_| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not create PrivateKey from stored bytes, They might be encrypted"
+                    );
+                    OutputManagerStorageError::ConversionError
+                })?,
+            ),
         );
+
         let hash = match o.hash {
             None => {
                 let factories = CryptoFactories::default();
@@ -988,11 +1190,13 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
 impl Encryptable<Aes256Gcm> for OutputSql {
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
         self.spending_key = encrypt_bytes_integral_nonce(&cipher, self.spending_key.clone())?;
+        self.script_private_key = encrypt_bytes_integral_nonce(&cipher, self.script_private_key.clone())?;
         Ok(())
     }
 
     fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
         self.spending_key = decrypt_bytes_integral_nonce(&cipher, self.spending_key.clone())?;
+        self.script_private_key = decrypt_bytes_integral_nonce(&cipher, self.script_private_key.clone())?;
         Ok(())
     }
 }
@@ -1008,6 +1212,13 @@ impl From<OutputSql> for NewOutputSql {
             status: o.status,
             tx_id: o.tx_id,
             hash: o.hash,
+            script: o.script,
+            input_data: o.input_data,
+            script_private_key: o.script_private_key,
+            sender_offset_public_key: o.sender_offset_public_key,
+            metadata_signature_nonce: o.metadata_signature_nonce,
+            metadata_signature_u_key: o.metadata_signature_u_key,
+            metadata_signature_v_key: o.metadata_signature_v_key,
         }
     }
 }
@@ -1023,6 +1234,9 @@ pub struct UpdateOutput {
     status: Option<OutputStatus>,
     tx_id: Option<TxId>,
     spending_key: Option<Vec<u8>>,
+    script_private_key: Option<Vec<u8>>,
+    metadata_signature_nonce: Option<Vec<u8>>,
+    metadata_signature_u_key: Option<Vec<u8>>,
 }
 
 #[derive(AsChangeset)]
@@ -1031,6 +1245,9 @@ pub struct UpdateOutputSql {
     status: Option<i32>,
     tx_id: Option<i64>,
     spending_key: Option<Vec<u8>>,
+    script_private_key: Option<Vec<u8>>,
+    metadata_signature_nonce: Option<Vec<u8>>,
+    metadata_signature_u_key: Option<Vec<u8>>,
 }
 
 #[derive(AsChangeset)]
@@ -1048,6 +1265,9 @@ impl From<UpdateOutput> for UpdateOutputSql {
             status: u.status.map(|t| t as i32),
             tx_id: u.tx_id.map(|t| t as i64),
             spending_key: u.spending_key,
+            script_private_key: u.script_private_key,
+            metadata_signature_nonce: u.metadata_signature_nonce,
+            metadata_signature_u_key: u.metadata_signature_u_key,
         }
     }
 }
@@ -1082,8 +1302,7 @@ impl PendingTransactionOutputSql {
     pub fn find(
         tx_id: TxId,
         conn: &SqliteConnection,
-    ) -> Result<PendingTransactionOutputSql, OutputManagerStorageError>
-    {
+    ) -> Result<PendingTransactionOutputSql, OutputManagerStorageError> {
         Ok(pending_transaction_outputs::table
             .filter(pending_transaction_outputs::tx_id.eq(tx_id as i64))
             .first::<PendingTransactionOutputSql>(conn)?)
@@ -1104,8 +1323,7 @@ impl PendingTransactionOutputSql {
     pub fn index_older(
         timestamp: NaiveDateTime,
         conn: &SqliteConnection,
-    ) -> Result<Vec<PendingTransactionOutputSql>, OutputManagerStorageError>
-    {
+    ) -> Result<Vec<PendingTransactionOutputSql>, OutputManagerStorageError> {
         Ok(pending_transaction_outputs::table
             .filter(pending_transaction_outputs::timestamp.lt(timestamp))
             .load::<PendingTransactionOutputSql>(conn)?)
@@ -1115,8 +1333,7 @@ impl PendingTransactionOutputSql {
     pub fn index_block_height(
         block_height: i64,
         conn: &SqliteConnection,
-    ) -> Result<Vec<PendingTransactionOutputSql>, OutputManagerStorageError>
-    {
+    ) -> Result<Vec<PendingTransactionOutputSql>, OutputManagerStorageError> {
         Ok(pending_transaction_outputs::table
             .filter(pending_transaction_outputs::coinbase_block_height.eq(block_height))
             .load::<PendingTransactionOutputSql>(conn)?)
@@ -1144,8 +1361,7 @@ impl PendingTransactionOutputSql {
     pub fn clear_short_term(
         &self,
         conn: &SqliteConnection,
-    ) -> Result<PendingTransactionOutputSql, OutputManagerStorageError>
-    {
+    ) -> Result<PendingTransactionOutputSql, OutputManagerStorageError> {
         let num_updated = diesel::update(
             pending_transaction_outputs::table.filter(pending_transaction_outputs::tx_id.eq(&self.tx_id)),
         )
@@ -1158,7 +1374,7 @@ impl PendingTransactionOutputSql {
             ));
         }
 
-        Ok(PendingTransactionOutputSql::find(self.tx_id as u64, conn)?)
+        PendingTransactionOutputSql::find(self.tx_id as u64, conn)
     }
 }
 
@@ -1211,9 +1427,9 @@ impl KeyManagerStateSql {
     }
 
     pub fn get_state(conn: &SqliteConnection) -> Result<KeyManagerStateSql, OutputManagerStorageError> {
-        Ok(key_manager_states::table
+        key_manager_states::table
             .first::<KeyManagerStateSql>(conn)
-            .map_err(|_| OutputManagerStorageError::KeyManagerNotInitialized)?)
+            .map_err(|_| OutputManagerStorageError::KeyManagerNotInitialized)
     }
 
     pub fn set_state(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
@@ -1261,6 +1477,28 @@ impl KeyManagerStateSql {
             Err(_) => return Err(OutputManagerStorageError::KeyManagerNotInitialized),
         })
     }
+
+    pub fn set_index(index: u64, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
+        match KeyManagerStateSql::get_state(conn) {
+            Ok(km) => {
+                let update = KeyManagerStateUpdateSql {
+                    master_key: None,
+                    branch_seed: None,
+                    primary_key_index: Some(index as i64),
+                };
+                let num_updated = diesel::update(key_manager_states::table.filter(key_manager_states::id.eq(&km.id)))
+                    .set(update)
+                    .execute(conn)?;
+                if num_updated == 0 {
+                    return Err(OutputManagerStorageError::UnexpectedResult(
+                        "Database update error".to_string(),
+                    ));
+                }
+                Ok(())
+            },
+            Err(_) => Err(OutputManagerStorageError::KeyManagerNotInitialized),
+        }
+    }
 }
 
 #[derive(AsChangeset)]
@@ -1293,6 +1531,157 @@ impl Encryptable<Aes256Gcm> for KeyManagerStateSql {
     }
 }
 
+#[derive(Clone, Debug, Queryable, Insertable, Identifiable, PartialEq, AsChangeset)]
+#[table_name = "known_one_sided_payment_scripts"]
+#[primary_key(script_hash)]
+// #[identifiable_options(primary_key(hash))]
+pub struct KnownOneSidedPaymentScriptSql {
+    pub script_hash: Vec<u8>,
+    pub private_key: Vec<u8>,
+    pub script: Vec<u8>,
+    pub input: Vec<u8>,
+}
+
+/// These are the fields that can be updated for an Output
+#[derive(AsChangeset)]
+#[table_name = "known_one_sided_payment_scripts"]
+pub struct UpdateKnownOneSidedPaymentScript {
+    private_key: Option<Vec<u8>>,
+    script: Option<Vec<u8>>,
+    input: Option<Vec<u8>>,
+}
+
+impl KnownOneSidedPaymentScriptSql {
+    /// Write this struct to the database
+    pub fn commit(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
+        diesel::insert_into(known_one_sided_payment_scripts::table)
+            .values(self.clone())
+            .execute(conn)?;
+        Ok(())
+    }
+
+    /// Find a particular Output, if it exists
+    pub fn find(
+        hash: &[u8],
+        conn: &SqliteConnection,
+    ) -> Result<KnownOneSidedPaymentScriptSql, OutputManagerStorageError> {
+        Ok(known_one_sided_payment_scripts::table
+            .filter(known_one_sided_payment_scripts::script_hash.eq(hash))
+            .first::<KnownOneSidedPaymentScriptSql>(conn)?)
+    }
+
+    /// Return all known scripts
+    pub fn index(conn: &SqliteConnection) -> Result<Vec<KnownOneSidedPaymentScriptSql>, OutputManagerStorageError> {
+        Ok(known_one_sided_payment_scripts::table.load::<KnownOneSidedPaymentScriptSql>(conn)?)
+    }
+
+    pub fn delete(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
+        let num_deleted = diesel::delete(
+            known_one_sided_payment_scripts::table
+                .filter(known_one_sided_payment_scripts::script_hash.eq(&self.script_hash)),
+        )
+        .execute(conn)?;
+
+        if num_deleted == 0 {
+            return Err(OutputManagerStorageError::ValuesNotFound);
+        }
+
+        Ok(())
+    }
+
+    pub fn update(
+        &self,
+        updated_known_script: UpdateKnownOneSidedPaymentScript,
+        conn: &SqliteConnection,
+    ) -> Result<KnownOneSidedPaymentScriptSql, OutputManagerStorageError> {
+        let num_updated = diesel::update(
+            known_one_sided_payment_scripts::table
+                .filter(known_one_sided_payment_scripts::script_hash.eq(&self.script_hash)),
+        )
+        .set(updated_known_script)
+        .execute(conn)?;
+
+        if num_updated == 0 {
+            return Err(OutputManagerStorageError::UnexpectedResult(
+                "Database update error".to_string(),
+            ));
+        }
+
+        KnownOneSidedPaymentScriptSql::find(&self.script_hash, conn)
+    }
+
+    /// Update the changed fields of this record after encryption/decryption is performed
+    pub fn update_encryption(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
+        let _ = self.update(
+            UpdateKnownOneSidedPaymentScript {
+                private_key: Some(self.private_key.clone()),
+                script: None,
+                input: None,
+            },
+            conn,
+        )?;
+        Ok(())
+    }
+}
+
+/// Conversion from an KnownOneSidedPaymentScript to the Sql datatype form
+impl TryFrom<KnownOneSidedPaymentScriptSql> for KnownOneSidedPaymentScript {
+    type Error = OutputManagerStorageError;
+
+    fn try_from(o: KnownOneSidedPaymentScriptSql) -> Result<Self, Self::Error> {
+        let script_hash = o.script_hash;
+        let private_key = PrivateKey::from_bytes(&o.private_key).map_err(|_| {
+            error!(
+                target: LOG_TARGET,
+                "Could not create PrivateKey from stored bytes, They might be encrypted"
+            );
+            OutputManagerStorageError::ConversionError
+        })?;
+        let script = TariScript::from_bytes(&o.script).map_err(|_| {
+            error!(target: LOG_TARGET, "Could not create tari script from stored bytes");
+            OutputManagerStorageError::ConversionError
+        })?;
+        let input = ExecutionStack::from_bytes(&o.input).map_err(|_| {
+            error!(target: LOG_TARGET, "Could not create execution stack from stored bytes");
+            OutputManagerStorageError::ConversionError
+        })?;
+        Ok(KnownOneSidedPaymentScript {
+            script_hash,
+            private_key,
+            script,
+            input,
+        })
+    }
+}
+
+/// Conversion from an KnownOneSidedPaymentScriptSQL to the datatype form
+impl From<KnownOneSidedPaymentScript> for KnownOneSidedPaymentScriptSql {
+    fn from(known_script: KnownOneSidedPaymentScript) -> Self {
+        let script_hash = known_script.script_hash;
+        let private_key = known_script.private_key.as_bytes().to_vec();
+        let script = known_script.script.as_bytes().to_vec();
+        let input = known_script.input.as_bytes().to_vec();
+        KnownOneSidedPaymentScriptSql {
+            script_hash,
+            private_key,
+            script,
+            input,
+        }
+    }
+}
+
+impl Encryptable<Aes256Gcm> for KnownOneSidedPaymentScriptSql {
+    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
+        self.private_key = encrypt_bytes_integral_nonce(&cipher, self.private_key.clone())?;
+        Ok(())
+    }
+
+    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
+        self.private_key = decrypt_bytes_integral_nonce(&cipher, self.private_key.clone())?;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod test {
     use crate::{
@@ -1318,32 +1707,31 @@ mod test {
     };
     use chrono::{Duration as ChronoDuration, Utc};
     use diesel::{Connection, SqliteConnection};
-    use rand::{distributions::Alphanumeric, rngs::OsRng, CryptoRng, Rng, RngCore};
-    use std::{convert::TryFrom, iter, time::Duration};
+    use rand::{rngs::OsRng, RngCore};
+    use std::{convert::TryFrom, time::Duration};
     use tari_core::transactions::{
+        helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
         tari_amount::MicroTari,
         transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
         types::{CommitmentFactory, CryptoFactories, PrivateKey},
     };
-    use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
+    use tari_crypto::{keys::SecretKey, script};
+    use tari_test_utils::random;
     use tempfile::tempdir;
 
-    pub fn random_string(len: usize) -> String {
-        iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
-    }
-
-    pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: MicroTari) -> (TransactionInput, UnblindedOutput) {
-        let key = PrivateKey::random(rng);
+    pub fn make_input(val: MicroTari) -> (TransactionInput, UnblindedOutput) {
+        let test_params = TestParamsHelpers::new();
         let factory = CommitmentFactory::default();
-        let commitment = factory.commit_value(&key, val.into());
-        let input = TransactionInput::new(OutputFeatures::default(), commitment);
 
-        (input, UnblindedOutput::new(val, key, None))
+        let unblinded_output = create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params, val);
+        let input = unblinded_output.as_transaction_input(&factory).unwrap();
+
+        (input, unblinded_output)
     }
 
     #[test]
     fn test_crud() {
-        let db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let db_name = format!("{}.sqlite3", random::string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);
@@ -1362,18 +1750,18 @@ mod test {
         let factories = CryptoFactories::default();
 
         for _i in 0..2 {
-            let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
+            let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
             let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
-            let o = NewOutputSql::new(uo, OutputStatus::Unspent, None);
+            let o = NewOutputSql::new(uo, OutputStatus::Unspent, None).unwrap();
             outputs.push(o.clone());
             outputs_unspent.push(o.clone());
             o.commit(&conn).unwrap();
         }
 
         for _i in 0..3 {
-            let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
+            let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
             let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
-            let o = NewOutputSql::new(uo, OutputStatus::Spent, None);
+            let o = NewOutputSql::new(uo, OutputStatus::Spent, None).unwrap();
             outputs.push(o.clone());
             outputs_spent.push(o.clone());
             o.commit(&conn).unwrap();
@@ -1432,6 +1820,9 @@ mod test {
                     status: Some(OutputStatus::Unspent),
                     tx_id: Some(44u64),
                     spending_key: None,
+                    script_private_key: None,
+                    metadata_signature_nonce: None,
+                    metadata_signature_u_key: None,
                 },
                 &conn,
             )
@@ -1444,6 +1835,9 @@ mod test {
                     status: Some(OutputStatus::EncumberedToBeReceived),
                     tx_id: Some(44u64),
                     spending_key: None,
+                    script_private_key: None,
+                    metadata_signature_nonce: None,
+                    metadata_signature_u_key: None,
                 },
                 &conn,
             )
@@ -1484,7 +1878,7 @@ mod test {
 
     #[test]
     fn test_key_manager_crud() {
-        let db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let db_name = format!("{}.sqlite3", random::string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);
@@ -1500,7 +1894,7 @@ mod test {
 
         let state1 = KeyManagerState {
             master_key: PrivateKey::random(&mut OsRng),
-            branch_seed: random_string(8),
+            branch_seed: random::string(8),
             primary_key_index: 0,
         };
 
@@ -1511,7 +1905,7 @@ mod test {
 
         let state2 = KeyManagerState {
             master_key: PrivateKey::random(&mut OsRng),
-            branch_seed: random_string(8),
+            branch_seed: random::string(8),
             primary_key_index: 0,
         };
 
@@ -1531,7 +1925,7 @@ mod test {
 
     #[test]
     fn test_output_encryption() {
-        let db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let db_name = format!("{}.sqlite3", random::string(8).as_str());
         let tempdir = tempdir().unwrap();
         let db_folder = tempdir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);
@@ -1544,9 +1938,9 @@ mod test {
         conn.execute("PRAGMA foreign_keys = ON").unwrap();
         let factories = CryptoFactories::default();
 
-        let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
+        let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
         let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
-        let output = NewOutputSql::new(uo, OutputStatus::Unspent, None);
+        let output = NewOutputSql::new(uo, OutputStatus::Unspent, None).unwrap();
 
         let key = GenericArray::from_slice(b"an example very very secret key.");
         let cipher = Aes256Gcm::new(key);
@@ -1590,7 +1984,7 @@ mod test {
 
     #[test]
     fn test_key_manager_encryption() {
-        let db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let db_name = format!("{}.sqlite3", random::string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);
@@ -1632,7 +2026,7 @@ mod test {
 
     #[test]
     fn test_apply_remove_encryption() {
-        let db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let db_name = format!("{}.sqlite3", random::string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);
@@ -1652,14 +2046,14 @@ mod test {
         let state_sql = KeyManagerStateSql::from(starting_state);
         state_sql.set_state(&conn).unwrap();
 
-        let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
+        let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
         let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
-        let output = NewOutputSql::new(uo, OutputStatus::Unspent, None);
+        let output = NewOutputSql::new(uo, OutputStatus::Unspent, None).unwrap();
         output.commit(&conn).unwrap();
 
-        let (_, uo2) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
+        let (_, uo2) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
         let uo2 = DbUnblindedOutput::from_unblinded_output(uo2, &factories).unwrap();
-        let output2 = NewOutputSql::new(uo2, OutputStatus::Unspent, None);
+        let output2 = NewOutputSql::new(uo2, OutputStatus::Unspent, None).unwrap();
         output2.commit(&conn).unwrap();
 
         let key = GenericArray::from_slice(b"an example very very secret key.");

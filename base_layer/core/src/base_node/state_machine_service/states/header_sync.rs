@@ -56,8 +56,7 @@ impl HeaderSync {
     pub async fn next_event<B: BlockchainBackend + 'static>(
         &mut self,
         shared: &mut BaseNodeStateMachine<B>,
-    ) -> StateEvent
-    {
+    ) -> StateEvent {
         let sync_peers = if self.sync_peers.is_empty() {
             &shared.config.block_sync_config.sync_peers
         } else {

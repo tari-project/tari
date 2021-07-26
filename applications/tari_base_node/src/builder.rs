@@ -23,15 +23,15 @@
 use crate::bootstrap::BaseNodeBootstrapper;
 use log::*;
 use std::sync::Arc;
-use tari_common::{DatabaseType, GlobalConfig};
+use tari_common::{configuration::Network, DatabaseType, GlobalConfig};
 use tari_comms::{peer_manager::NodeIdentity, protocol::rpc::RpcServerHandle, CommsNode};
 use tari_comms_dht::Dht;
 use tari_core::{
     base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface, StateMachineHandle},
     chain_storage::{create_lmdb_database, BlockchainDatabase, BlockchainDatabaseConfig, LMDBDatabase, Validators},
-    consensus::ConsensusManagerBuilder,
+    consensus::ConsensusManager,
     mempool::{service::LocalMempoolService, Mempool, MempoolConfig},
-    proof_of_work::randomx_factory::{RandomXConfig, RandomXFactory},
+    proof_of_work::randomx_factory::RandomXFactory,
     transactions::types::CryptoFactories,
     validation::{
         block_validators::{BodyOnlyValidator, OrphanBlockValidator},
@@ -42,8 +42,10 @@ use tari_core::{
             TxInputAndMaturityValidator,
             TxInternalConsistencyValidator,
         },
+        DifficultyCalculator,
     },
 };
+use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::watch;
@@ -55,6 +57,7 @@ const LOG_TARGET: &str = "c::bn::initialization";
 /// on the comms stack.
 pub struct BaseNodeContext {
     config: Arc<GlobalConfig>,
+    consensus_rules: ConsensusManager,
     blockchain_db: BlockchainDatabase<LMDBDatabase>,
     base_node_comms: CommsNode,
     base_node_dht: Dht,
@@ -96,7 +99,12 @@ impl BaseNodeContext {
         &self.base_node_comms
     }
 
-    /// Returns the wallet CommsNode.
+    /// Returns the liveness service handle
+    pub fn liveness(&self) -> LivenessHandle {
+        self.base_node_handles.expect_handle()
+    }
+
+    /// Returns the base node state machine
     pub fn state_machine(&self) -> StateMachineHandle {
         self.base_node_handles.expect_handle()
     }
@@ -111,6 +119,11 @@ impl BaseNodeContext {
         &self.base_node_dht
     }
 
+    /// Returns a software update handle
+    pub fn software_updater(&self) -> SoftwareUpdaterHandle {
+        self.base_node_handles.expect_handle()
+    }
+
     /// Returns a handle to the comms RPC server
     pub fn rpc_server(&self) -> RpcServerHandle {
         self.base_node_handles.expect_handle()
@@ -119,6 +132,16 @@ impl BaseNodeContext {
     /// Returns a BlockchainDatabase handle
     pub fn blockchain_db(&self) -> BlockchainDatabase<LMDBDatabase> {
         self.blockchain_db.clone()
+    }
+
+    /// Returns the configured network
+    pub fn network(&self) -> Network {
+        self.config.network
+    }
+
+    /// Returns the consensus rules
+    pub fn consensus_rules(&self) -> &ConsensusManager {
+        &self.consensus_rules
     }
 
     /// Return the state machine channel to provide info updates
@@ -142,8 +165,7 @@ pub async fn configure_and_initialize_node(
     node_identity: Arc<NodeIdentity>,
     interrupt_signal: ShutdownSignal,
     cleanup_orphans_at_startup: bool,
-) -> Result<BaseNodeContext, anyhow::Error>
-{
+) -> Result<BaseNodeContext, anyhow::Error> {
     let result = match &config.db_type {
         DatabaseType::Memory => {
             // let backend = MemoryDatabase::<HashDigest>::default();
@@ -190,16 +212,15 @@ async fn build_node_context(
     config: Arc<GlobalConfig>,
     interrupt_signal: ShutdownSignal,
     cleanup_orphans_at_startup: bool,
-) -> Result<BaseNodeContext, anyhow::Error>
-{
+) -> Result<BaseNodeContext, anyhow::Error> {
     //---------------------------------- Blockchain --------------------------------------------//
 
-    let rules = ConsensusManagerBuilder::new(config.network.into()).build();
+    let rules = ConsensusManager::builder(config.network).build();
     let factories = CryptoFactories::default();
-    let randomx_factory = RandomXFactory::new(RandomXConfig::default(), config.max_randomx_vms);
+    let randomx_factory = RandomXFactory::new(config.max_randomx_vms);
     let validators = Validators::new(
         BodyOnlyValidator::default(),
-        HeaderValidator::new(rules.clone(), randomx_factory),
+        HeaderValidator::new(rules.clone()),
         OrphanBlockValidator::new(rules.clone(), factories.clone()),
     );
     let db_config = BlockchainDatabaseConfig {
@@ -207,7 +228,14 @@ async fn build_node_context(
         pruning_horizon: config.pruning_horizon,
         pruning_interval: config.pruned_mode_cleanup_interval,
     };
-    let blockchain_db = BlockchainDatabase::new(backend, &rules, validators, db_config, cleanup_orphans_at_startup)?;
+    let blockchain_db = BlockchainDatabase::new(
+        backend,
+        rules.clone(),
+        validators,
+        db_config,
+        DifficultyCalculator::new(rules.clone(), randomx_factory),
+        cleanup_orphans_at_startup,
+    )?;
     let mempool_validator = MempoolValidator::new(vec![
         Box::new(TxInternalConsistencyValidator::new(factories.clone())),
         Box::new(TxInputAndMaturityValidator::new(blockchain_db.clone())),
@@ -235,6 +263,7 @@ async fn build_node_context(
 
     Ok(BaseNodeContext {
         config,
+        consensus_rules: rules,
         blockchain_db,
         base_node_comms,
         base_node_dht,

@@ -57,6 +57,7 @@ impl CoreRpcErrorCode {
     }
 }
 
+#[allow(clippy::from_over_into)]
 impl Into<i32> for CoreRpcErrorCode {
     fn into(self) -> i32 {
         self.as_i32()

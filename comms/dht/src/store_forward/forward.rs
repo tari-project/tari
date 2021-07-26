@@ -26,7 +26,7 @@ use crate::{
     outbound::{OutboundMessageRequester, SendMessageParams},
     store_forward::error::StoreAndForwardError,
 };
-use futures::{task::Context, Future};
+use futures::{future::BoxFuture, task::Context};
 use log::*;
 use std::task::Poll;
 use tari_comms::{peer_manager::Peer, pipeline::PipelineError};
@@ -84,12 +84,13 @@ impl<S> ForwardMiddleware<S> {
 }
 
 impl<S> Service<DecryptedDhtMessage> for ForwardMiddleware<S>
-where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Clone + 'static
+where
+    S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Clone + Send + 'static,
+    S::Future: Send,
 {
     type Error = PipelineError;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
     type Response = ();
-
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
@@ -99,7 +100,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Cl
         let next_service = self.next_service.clone();
         let outbound_service = self.outbound_service.clone();
         let is_enabled = self.is_enabled;
-        async move {
+        Box::pin(async move {
             if !is_enabled {
                 trace!(
                     target: LOG_TARGET,
@@ -118,7 +119,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Cl
             );
             let forwarder = Forwarder::new(next_service, outbound_service);
             forwarder.handle(message).await
-        }
+        })
     }
 }
 

@@ -78,8 +78,7 @@ impl DhtRpcService for DhtRpcServiceImpl {
     async fn get_closer_peers(
         &self,
         request: Request<GetCloserPeersRequest>,
-    ) -> Result<Streaming<GetPeersResponse>, RpcStatus>
-    {
+    ) -> Result<Streaming<GetPeersResponse>, RpcStatus> {
         let message = request.message();
         if message.n == 0 {
             return Err(RpcStatus::bad_request("Requesting zero peers is invalid"));

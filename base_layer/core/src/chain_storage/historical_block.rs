@@ -21,12 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::Block,
+    blocks::{Block, BlockHeader},
     chain_storage::{BlockHeaderAccumulatedData, ChainBlock, ChainStorageError},
     transactions::types::HashOutput,
 };
 use serde::{Deserialize, Serialize};
-use std::{fmt, fmt::Display};
+use std::{fmt, fmt::Display, sync::Arc};
 use tari_crypto::tari_utilities::hex::Hex;
 
 /// The representation of a historical block in the blockchain. It is essentially identical to a protocol-defined
@@ -51,11 +51,10 @@ impl HistoricalBlock {
         accumulated_data: BlockHeaderAccumulatedData,
         pruned_outputs: Vec<(HashOutput, HashOutput)>,
         pruned_input_count: u64,
-    ) -> Self
-    {
+    ) -> Self {
         HistoricalBlock {
-            block,
             confirmations,
+            block,
             accumulated_data,
             pruned_outputs,
             pruned_input_count,
@@ -64,6 +63,10 @@ impl HistoricalBlock {
 
     pub fn confirmations(&self) -> u64 {
         self.confirmations
+    }
+
+    pub fn header(&self) -> &BlockHeader {
+        &self.block.header
     }
 
     /// Returns a reference to the block of the HistoricalBlock
@@ -75,27 +78,28 @@ impl HistoricalBlock {
         &self.accumulated_data.hash
     }
 
-    pub fn is_pruned(&self) -> bool {
+    pub fn contains_pruned_txos(&self) -> bool {
         !self.pruned_outputs.is_empty() || self.pruned_input_count > 0
     }
 
     pub fn try_into_block(self) -> Result<Block, ChainStorageError> {
-        if self.is_pruned() {
-            Err(ChainStorageError::BeyondPruningHorizon)
+        if self.contains_pruned_txos() {
+            Err(ChainStorageError::HistoricalBlockContainsPrunedTxos)
         } else {
             Ok(self.block)
         }
     }
 
     pub fn try_into_chain_block(self) -> Result<ChainBlock, ChainStorageError> {
-        if self.is_pruned() {
-            Err(ChainStorageError::BeyondPruningHorizon)
-        } else {
-            Ok(ChainBlock {
-                accumulated_data: self.accumulated_data,
-                block: self.block,
-            })
+        if self.contains_pruned_txos() {
+            return Err(ChainStorageError::HistoricalBlockContainsPrunedTxos);
         }
+
+        let chain_block = ChainBlock::try_construct(Arc::new(self.block), self.accumulated_data).ok_or_else(|| {
+            ChainStorageError::InvalidOperation("Unable to construct ChainBlock because of a hash mismatch".to_string())
+        })?;
+
+        Ok(chain_block)
     }
 
     pub fn pruned_outputs(&self) -> &[(HashOutput, HashOutput)] {
@@ -116,7 +120,7 @@ impl Display for HistoricalBlock {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}", self.block())?;
 
-        if self.is_pruned() {
+        if !self.pruned_outputs.is_empty() {
             writeln!(f, "Pruned outputs: ")?;
             for (output, proof) in &self.pruned_outputs {
                 writeln!(f, "Output hash: {} Proof:{}", output.to_hex(), proof.to_hex())?;

@@ -47,15 +47,14 @@ impl ChainMetadata {
         height: u64,
         hash: BlockHash,
         pruning_horizon: u64,
-        effective_pruned_height: u64,
+        pruned_height: u64,
         accumulated_difficulty: u128,
-    ) -> ChainMetadata
-    {
+    ) -> ChainMetadata {
         ChainMetadata {
             height_of_longest_chain: height,
             best_block: hash,
             pruning_horizon,
-            pruned_height: effective_pruned_height,
+            pruned_height,
             accumulated_difficulty,
         }
     }
@@ -76,10 +75,7 @@ impl ChainMetadata {
     pub fn horizon_block(&self, chain_tip: u64) -> u64 {
         match self.pruning_horizon {
             0 => 0,
-            horizon => match chain_tip.checked_sub(horizon) {
-                None => 0,
-                Some(h) => h,
-            },
+            horizon => chain_tip.saturating_sub(horizon),
         }
     }
 
@@ -155,11 +151,11 @@ mod test {
     #[test]
     fn pruned_mode() {
         let mut metadata = ChainMetadata::empty();
-        assert_eq!(metadata.is_pruned_node(), false);
-        assert_eq!(metadata.is_archival_node(), true);
+        assert!(!metadata.is_pruned_node());
+        assert!(metadata.is_archival_node());
         metadata.set_pruning_horizon(2880);
-        assert_eq!(metadata.is_pruned_node(), true);
-        assert_eq!(metadata.is_archival_node(), false);
+        assert!(metadata.is_pruned_node());
+        assert!(!metadata.is_archival_node());
         assert_eq!(metadata.horizon_block(0), 0);
         assert_eq!(metadata.horizon_block(100), 0);
         assert_eq!(metadata.horizon_block(2880), 0);

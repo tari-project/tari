@@ -11,45 +11,47 @@ use crate::proof_of_work::{
     error::DifficultyAdjustmentError,
 };
 use log::*;
-use std::cmp;
+use std::{cmp, collections::VecDeque};
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 pub const LOG_TARGET: &str = "c::pow::lwma_diff";
 
 #[derive(Debug, Clone)]
 pub struct LinearWeightedMovingAverage {
-    target_difficulties: Vec<(EpochTime, Difficulty)>,
+    target_difficulties: VecDeque<(EpochTime, Difficulty)>,
     block_window: usize,
-    target_time: u64,
+    target_time: u128,
     max_block_time: u64,
 }
 
 impl LinearWeightedMovingAverage {
     pub fn new(block_window: usize, target_time: u64, max_block_time: u64) -> Self {
         Self {
-            target_difficulties: Vec::with_capacity(block_window + 1),
+            target_difficulties: VecDeque::with_capacity(block_window + 1),
             block_window,
-            target_time,
+            target_time: target_time as u128,
             max_block_time,
         }
     }
 
     fn calculate(&self) -> Option<Difficulty> {
+        // This function uses u128 internally for most of the math as its possible to have an overflow with large
+        // difficulties and large block windows
         if self.target_difficulties.len() <= 1 {
             return None;
         }
 
         // Use the array length rather than block_window to include early cases where the no. of pts < block_window
-        let n = (self.target_difficulties.len() - 1) as u64;
+        let n = (self.target_difficulties.len() - 1) as u128;
 
-        let mut weighted_times: u64 = 0;
+        let mut weighted_times: u128 = 0;
         let difficulty = self
             .target_difficulties
             .iter()
             .skip(1)
-            .fold(0u64, |difficulty, (_, d)| difficulty + d.as_u64());
+            .fold(0u128, |difficulty, (_, d)| difficulty + d.as_u64() as u128);
 
-        let ave_difficulty = difficulty as f64 / n as f64;
+        let ave_difficulty = difficulty / n;
 
         let (mut previous_timestamp, _) = self.target_difficulties[0];
         let mut this_timestamp;
@@ -67,11 +69,11 @@ impl LinearWeightedMovingAverage {
 
             // Give linearly higher weight to more recent solve times.
             // Note: This will not overflow for practical values of block_window and solve time.
-            weighted_times += solve_time * (i + 1) as u64;
+            weighted_times += (solve_time * (i + 1) as u64) as u128;
         }
         // k is the sum of weights (1+2+..+n) * target_time
         let k = n * (n + 1) * self.target_time / 2;
-        let target = ave_difficulty * k as f64 / weighted_times as f64;
+        let target = (ave_difficulty * k / weighted_times) as u64;
         trace!(
             target: LOG_TARGET,
             "DiffCalc; t={}; bw={}; n={}; ts[0]={}; ts[n]={}; weighted_ts={}; k={}; diff[0]={}; diff[n]={}; \
@@ -88,26 +90,12 @@ impl LinearWeightedMovingAverage {
             ave_difficulty,
             target
         );
-        if target > std::u64::MAX as f64 {
-            error!(
-                target: LOG_TARGET,
-                "Difficulty has overflowed, current is: {:?}", target
-            );
-            panic!("Difficulty target has overflowed. Target is {}", target);
-        }
-        let target = target.ceil() as u64; // difficulty difference of 1 should not matter much, but difficulty should never be below 1, ceil(0.9) = 1
         trace!(target: LOG_TARGET, "New target difficulty: {}", target);
         Some(target.into())
     }
 
-    #[inline]
-    fn capacity(&self) -> usize {
-        self.target_difficulties.capacity()
-    }
-
-    #[inline]
-    pub fn is_at_capacity(&self) -> bool {
-        self.num_samples() == self.capacity()
+    pub fn is_full(&self) -> bool {
+        self.num_samples() == self.block_window() + 1
     }
 
     #[inline]
@@ -121,25 +109,17 @@ impl LinearWeightedMovingAverage {
     }
 
     pub fn add_front(&mut self, timestamp: EpochTime, target_difficulty: Difficulty) {
-        debug_assert!(
-            self.num_samples() <= self.block_window() + 1,
-            "LinearWeightedMovingAverage: len exceeded block_window"
-        );
-        if self.is_at_capacity() {
-            self.target_difficulties.pop();
+        if self.is_full() {
+            self.target_difficulties.pop_back();
         }
-        self.target_difficulties.insert(0, (timestamp, target_difficulty));
+        self.target_difficulties.push_front((timestamp, target_difficulty));
     }
 
     pub fn add_back(&mut self, timestamp: EpochTime, target_difficulty: Difficulty) {
-        debug_assert!(
-            self.num_samples() <= self.block_window() + 1,
-            "LinearWeightedMovingAverage: len exceeded block_window"
-        );
-        if self.is_at_capacity() {
-            self.target_difficulties.remove(0);
+        if self.is_full() {
+            self.target_difficulties.pop_front();
         }
-        self.target_difficulties.push((timestamp, target_difficulty));
+        self.target_difficulties.push_back((timestamp, target_difficulty));
     }
 }
 
@@ -165,23 +145,23 @@ mod test {
     }
 
     #[test]
-    fn lwma_is_at_capacity() {
+    fn lwma_is_full() {
         // This is important to check because using a VecDeque can cause bugs unless the following is accounted for
         // let v = VecDeq::with_capacity(10);
         // assert_eq!(v.capacity(), 11);
         // A Vec was chosen because it ended up being simpler to use
         let dif = LinearWeightedMovingAverage::new(0, 120, 120 * 6);
-        assert_eq!(dif.capacity(), 1);
+        assert!(!dif.is_full());
         let mut dif = LinearWeightedMovingAverage::new(1, 120, 120 * 6);
         dif.add_front(60.into(), 100.into());
-        assert_eq!(dif.capacity(), 2);
+        assert!(!dif.is_full());
         assert_eq!(dif.num_samples(), 1);
         dif.add_front(60.into(), 100.into());
         assert_eq!(dif.num_samples(), 2);
-        assert_eq!(dif.capacity(), 2);
+        assert!(dif.is_full());
         dif.add_front(60.into(), 100.into());
         assert_eq!(dif.num_samples(), 2);
-        assert_eq!(dif.capacity(), 2);
+        assert!(dif.is_full());
     }
 
     #[test]
@@ -214,9 +194,9 @@ mod test {
         let mut dif = LinearWeightedMovingAverage::new(5, 60, 60 * 6);
         let _ = dif.add(60.into(), 100.into());
         let _ = dif.add(10_000_000.into(), 100.into());
-        assert_eq!(dif.get_difficulty().unwrap(), 17.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 16.into());
         let _ = dif.add(20_000_000.into(), 16.into());
-        assert_eq!(dif.get_difficulty().unwrap(), 10.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 9.into());
     }
 
     // Data for 5-period moving average
@@ -224,7 +204,8 @@ mod test {
     // Intervals: 60,  60,  60,  60,  60,  50,  30,  65,  70, 100, 360,   1,   1,   1,   1
     // Diff:     100, 100, 100, 100, 100, 105, 128, 123, 116,  94,  39,  46,  55,  75, 148
     // Acum dif: 100, 200, 300, 400, 500, 605, 733, 856, 972,1066,1105,1151,1206,1281,1429
-    // Target:     1, 100, 100, 100, 100, 107, 136, 130, 120,  94,  36,  39,  47,  67, 175
+    // Target:     1, 100, 100, 100, 100, 106 134,  128, 119,  93,  35,  38,  46,  65, 173
+    // These values where calculated in excel to confirm they are correct
     #[test]
     fn lwma_calculate() {
         let mut dif = LinearWeightedMovingAverage::new(5, 60, 60 * 6);
@@ -239,24 +220,34 @@ mod test {
         let _ = dif.add(300.into(), 100.into());
         assert_eq!(dif.get_difficulty().unwrap(), 100.into());
         let _ = dif.add(350.into(), 105.into());
-        assert_eq!(dif.get_difficulty().unwrap(), 107.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 106.into());
         let _ = dif.add(380.into(), 128.into());
-        assert_eq!(dif.get_difficulty().unwrap(), 136.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 134.into());
         let _ = dif.add(445.into(), 123.into());
-        assert_eq!(dif.get_difficulty().unwrap(), 130.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 128.into());
         let _ = dif.add(515.into(), 116.into());
-        assert_eq!(dif.get_difficulty().unwrap(), 120.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 119.into());
         let _ = dif.add(615.into(), 94.into());
-        assert_eq!(dif.get_difficulty().unwrap(), 94.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 93.into());
         let _ = dif.add(975.into(), 39.into());
-        assert_eq!(dif.get_difficulty().unwrap(), 36.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 35.into());
         let _ = dif.add(976.into(), 46.into());
-        assert_eq!(dif.get_difficulty().unwrap(), 39.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 38.into());
         let _ = dif.add(977.into(), 55.into());
-        assert_eq!(dif.get_difficulty().unwrap(), 47.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 46.into());
         let _ = dif.add(978.into(), 75.into());
-        assert_eq!(dif.get_difficulty().unwrap(), 67.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 65.into());
         let _ = dif.add(979.into(), 148.into());
-        assert_eq!(dif.get_difficulty().unwrap(), 175.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 173.into());
+    }
+
+    #[test]
+    fn ensure_calculate_does_not_overflow_with_large_block_window() {
+        let mut dif = LinearWeightedMovingAverage::new(6000, 60, 60 * 6);
+        for _i in 0..6000 {
+            let _ = dif.add(60.into(), u64::MAX.into());
+        }
+        // We don't care about the value, we just want to test that get_difficulty does not panic with an overflow.
+        dif.get_difficulty().unwrap();
     }
 }

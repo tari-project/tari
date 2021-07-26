@@ -19,22 +19,24 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::grpc::{
-    blocks::{block_fees, block_heights, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
-    helpers::{mean, median},
+use crate::{
+    builder::BaseNodeContext,
+    grpc::{
+        blocks::{block_fees, block_heights, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
+        helpers::{mean, median},
+    },
 };
 use log::*;
 use std::{
     cmp,
     convert::{TryFrom, TryInto},
-    sync::Arc,
 };
-
 use tari_app_grpc::{
     tari_rpc,
     tari_rpc::{CalcType, Sorting},
 };
-use tari_comms::PeerManager;
+use tari_app_utilities::consts;
+use tari_comms::CommsNode;
 use tari_core::{
     base_node::{
         comms_interface::Broadcast,
@@ -43,17 +45,16 @@ use tari_core::{
         StateMachineHandle,
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
-    consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
-    crypto::tari_utilities::hex::Hex,
+    consensus::{emission::Emission, ConsensusManager, NetworkConsensus},
+    crypto::tari_utilities::{hex::Hex, ByteArray},
     mempool::{service::LocalMempoolService, TxStorageResponse},
     proof_of_work::PowAlgorithm,
     transactions::{transaction::Transaction, types::Signature},
 };
 use tari_crypto::tari_utilities::{message_format::MessageFormat, Hashable};
+use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tokio::{sync::mpsc, task};
 use tonic::{Request, Response, Status};
-
-const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const LOG_TARGET: &str = "tari::base_node::grpc";
 const GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS: usize = 1_000_000;
@@ -75,28 +76,25 @@ const LIST_HEADERS_DEFAULT_NUM_HEADERS: u64 = 10;
 pub struct BaseNodeGrpcServer {
     node_service: LocalNodeCommsInterface,
     mempool_service: LocalMempoolService,
-    network: Network,
+    network: NetworkConsensus,
     state_machine_handle: StateMachineHandle,
-    peer_manager: Arc<PeerManager>,
     consensus_rules: ConsensusManager,
+    software_updater: SoftwareUpdaterHandle,
+    comms: CommsNode,
+    liveness: LivenessHandle,
 }
 
 impl BaseNodeGrpcServer {
-    pub fn new(
-        local_node: LocalNodeCommsInterface,
-        local_mempool: LocalMempoolService,
-        network: Network,
-        state_machine_handle: StateMachineHandle,
-        peer_manager: Arc<PeerManager>,
-    ) -> Self
-    {
+    pub fn from_base_node_context(ctx: &BaseNodeContext) -> Self {
         Self {
-            node_service: local_node,
-            mempool_service: local_mempool,
-            consensus_rules: ConsensusManager::builder(network).build(),
-            network,
-            state_machine_handle,
-            peer_manager,
+            node_service: ctx.local_node(),
+            mempool_service: ctx.local_mempool(),
+            network: ctx.network().into(),
+            state_machine_handle: ctx.state_machine(),
+            consensus_rules: ctx.consensus_rules().clone(),
+            software_updater: ctx.software_updater(),
+            comms: ctx.base_node_comms().clone(),
+            liveness: ctx.liveness(),
         }
     }
 }
@@ -104,8 +102,7 @@ impl BaseNodeGrpcServer {
 pub async fn get_heights(
     request: &tari_rpc::HeightRequest,
     handler: LocalNodeCommsInterface,
-) -> Result<Vec<u64>, Status>
-{
+) -> Result<Vec<u64>, Status> {
     block_heights(handler, request.start_height, request.end_height, request.from_tip).await
 }
 
@@ -123,8 +120,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn get_network_difficulty(
         &self,
         request: Request<tari_rpc::HeightRequest>,
-    ) -> Result<Response<Self::GetNetworkDifficultyStream>, Status>
-    {
+    ) -> Result<Response<Self::GetNetworkDifficultyStream>, Status> {
         let request = request.into_inner();
         debug!(
             target: LOG_TARGET,
@@ -252,8 +248,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn get_mempool_transactions(
         &self,
         request: Request<tari_rpc::GetMempoolTransactionsRequest>,
-    ) -> Result<Response<Self::GetMempoolTransactionsStream>, Status>
-    {
+    ) -> Result<Response<Self::GetMempoolTransactionsStream>, Status> {
         let _request = request.into_inner();
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetMempoolTransactions",);
 
@@ -299,8 +294,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn list_headers(
         &self,
         request: Request<tari_rpc::ListHeadersRequest>,
-    ) -> Result<Response<Self::ListHeadersStream>, Status>
-    {
+    ) -> Result<Response<Self::ListHeadersStream>, Status> {
         let request = request.into_inner();
         debug!(
             target: LOG_TARGET,
@@ -396,8 +390,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn get_new_block_template(
         &self,
         request: Request<tari_rpc::NewBlockTemplateRequest>,
-    ) -> Result<Response<tari_rpc::NewBlockTemplateResponse>, Status>
-    {
+    ) -> Result<Response<tari_rpc::NewBlockTemplateResponse>, Status> {
         let request = request.into_inner();
         debug!(target: LOG_TARGET, "Incoming GRPC request for get new block template");
         trace!(target: LOG_TARGET, "Request {:?}", request);
@@ -441,13 +434,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn get_new_block(
         &self,
         request: Request<tari_rpc::NewBlockTemplate>,
-    ) -> Result<Response<tari_rpc::GetNewBlockResult>, Status>
-    {
+    ) -> Result<Response<tari_rpc::GetNewBlockResult>, Status> {
         let request = request.into_inner();
         debug!(target: LOG_TARGET, "Incoming GRPC request for get new block");
         let block_template: NewBlockTemplate = request
             .try_into()
-            .map_err(|s| Status::invalid_argument(format!("Invalid block template:{}", s)))?;
+            .map_err(|s| Status::invalid_argument(format!("Invalid block template: {}", s)))?;
 
         let mut handler = self.node_service.clone();
 
@@ -472,11 +464,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn submit_block(
         &self,
         request: Request<tari_rpc::Block>,
-    ) -> Result<Response<tari_rpc::SubmitBlockResponse>, Status>
-    {
+    ) -> Result<Response<tari_rpc::SubmitBlockResponse>, Status> {
         let request = request.into_inner();
         let block = Block::try_from(request)
-            .map_err(|e| Status::invalid_argument(format!("Failed to convert arguments. Invalid block : {:?}", e)))?;
+            .map_err(|e| Status::invalid_argument(format!("Failed to convert arguments. Invalid block: {:?}", e)))?;
         let block_height = block.header.height;
         debug!(
             target: LOG_TARGET,
@@ -499,8 +490,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn submit_transaction(
         &self,
         request: Request<tari_rpc::SubmitTransactionRequest>,
-    ) -> Result<Response<tari_rpc::SubmitTransactionResponse>, Status>
-    {
+    ) -> Result<Response<tari_rpc::SubmitTransactionResponse>, Status> {
         let request = request.into_inner();
         let txn: Transaction = request
             .transaction
@@ -543,8 +533,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn transaction_state(
         &self,
         request: Request<tari_rpc::TransactionStateRequest>,
-    ) -> Result<Response<tari_rpc::TransactionStateResponse>, Status>
-    {
+    ) -> Result<Response<tari_rpc::TransactionStateResponse>, Status> {
         let request = request.into_inner();
         let excess_sig: Signature = request
             .excess_sig
@@ -610,12 +599,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn get_peers(
         &self,
         _request: Request<tari_rpc::GetPeersRequest>,
-    ) -> Result<Response<Self::GetPeersStream>, Status>
-    {
+    ) -> Result<Response<Self::GetPeersStream>, Status> {
         debug!(target: LOG_TARGET, "Incoming GRPC request for get all peers");
 
         let peers = self
-            .peer_manager
+            .comms
+            .peer_manager()
             .all()
             .await
             .map_err(|e| Status::unknown(e.to_string()))?;
@@ -647,8 +636,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn get_blocks(
         &self,
         request: Request<tari_rpc::GetBlocksRequest>,
-    ) -> Result<Response<Self::GetBlocksStream>, Status>
-    {
+    ) -> Result<Response<Self::GetBlocksStream>, Status> {
         let request = request.into_inner();
         debug!(
             target: LOG_TARGET,
@@ -712,8 +700,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn get_tip_info(
         &self,
         _request: Request<tari_rpc::Empty>,
-    ) -> Result<Response<tari_rpc::TipInfoResponse>, Status>
-    {
+    ) -> Result<Response<tari_rpc::TipInfoResponse>, Status> {
         debug!(target: LOG_TARGET, "Incoming GRPC request for BN tip data");
 
         let mut handler = self.node_service.clone();
@@ -737,8 +724,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn search_kernels(
         &self,
         request: Request<tari_rpc::SearchKernelsRequest>,
-    ) -> Result<Response<Self::SearchKernelsStream>, Status>
-    {
+    ) -> Result<Response<Self::SearchKernelsStream>, Status> {
         debug!(target: LOG_TARGET, "Incoming GRPC request for SearchKernels");
         let request = request.into_inner();
 
@@ -791,8 +777,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn fetch_matching_utxos(
         &self,
         request: Request<tari_rpc::FetchMatchingUtxosRequest>,
-    ) -> Result<Response<Self::FetchMatchingUtxosStream>, Status>
-    {
+    ) -> Result<Response<Self::FetchMatchingUtxosStream>, Status> {
         debug!(target: LOG_TARGET, "Incoming GRPC request for FetchMatchingUtxos");
         let request = request.into_inner();
 
@@ -843,15 +828,30 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(rx))
     }
 
+    // deprecated
     async fn get_calc_timing(
         &self,
         request: Request<tari_rpc::HeightRequest>,
-    ) -> Result<Response<tari_rpc::CalcTimingResponse>, Status>
-    {
+    ) -> Result<Response<tari_rpc::CalcTimingResponse>, Status> {
+        debug!(
+            target: LOG_TARGET,
+            "Incoming GRPC request for deprecated GetCalcTiming. Forwarding to GetBlockTiming.",
+        );
+
+        let tari_rpc::BlockTimingResponse { max, min, avg } = self.get_block_timing(request).await?.into_inner();
+        let response = tari_rpc::CalcTimingResponse { max, min, avg };
+
+        Ok(Response::new(response))
+    }
+
+    async fn get_block_timing(
+        &self,
+        request: Request<tari_rpc::HeightRequest>,
+    ) -> Result<Response<tari_rpc::BlockTimingResponse>, Status> {
         let request = request.into_inner();
         debug!(
             target: LOG_TARGET,
-            "Incoming GRPC request for GetCalcTiming: from_tip: {:?} start_height: {:?} end_height: {:?}",
+            "Incoming GRPC request for GetBlockTiming: from_tip: {:?} start_height: {:?} end_height: {:?}",
             request.from_tip,
             request.start_height,
             request.end_height
@@ -869,16 +869,15 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         };
         let (max, min, avg) = BlockHeader::timing_stats(&headers);
 
-        let response: tari_rpc::CalcTimingResponse = tari_rpc::CalcTimingResponse { max, min, avg };
-        debug!(target: LOG_TARGET, "Sending GetCalcTiming response to client");
+        let response = tari_rpc::BlockTimingResponse { max, min, avg };
+        debug!(target: LOG_TARGET, "Sending GetBlockTiming response to client");
         Ok(Response::new(response))
     }
 
     async fn get_constants(
         &self,
         _request: Request<tari_rpc::Empty>,
-    ) -> Result<Response<tari_rpc::ConsensusConstants>, Status>
-    {
+    ) -> Result<Response<tari_rpc::ConsensusConstants>, Status> {
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetConstants",);
         debug!(target: LOG_TARGET, "Sending GetConstants response to client");
         // TODO: Switch to request height
@@ -890,35 +889,48 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn get_block_size(
         &self,
         request: Request<tari_rpc::BlockGroupRequest>,
-    ) -> Result<Response<tari_rpc::BlockGroupResponse>, Status>
-    {
+    ) -> Result<Response<tari_rpc::BlockGroupResponse>, Status> {
         get_block_group(self.node_service.clone(), request, BlockGroupType::BlockSize).await
     }
 
     async fn get_block_fees(
         &self,
         request: Request<tari_rpc::BlockGroupRequest>,
-    ) -> Result<Response<tari_rpc::BlockGroupResponse>, Status>
-    {
+    ) -> Result<Response<tari_rpc::BlockGroupResponse>, Status> {
         get_block_group(self.node_service.clone(), request, BlockGroupType::BlockFees).await
     }
 
     async fn get_version(&self, _request: Request<tari_rpc::Empty>) -> Result<Response<tari_rpc::StringValue>, Status> {
-        Ok(Response::new(VERSION.to_string().into()))
+        Ok(Response::new(consts::APP_VERSION.to_string().into()))
+    }
+
+    async fn check_for_updates(
+        &self,
+        _request: Request<tari_rpc::Empty>,
+    ) -> Result<Response<tari_rpc::SoftwareUpdate>, Status> {
+        let mut resp = tari_rpc::SoftwareUpdate::default();
+
+        if let Some(ref update) = *self.software_updater.new_update_notifier().borrow() {
+            resp.has_update = true;
+            resp.version = update.version().to_string();
+            resp.sha = update.to_hash_hex();
+            resp.download_url = update.download_url().to_string();
+        }
+
+        Ok(Response::new(resp))
     }
 
     async fn get_tokens_in_circulation(
         &self,
         request: Request<tari_rpc::GetBlocksRequest>,
-    ) -> Result<Response<Self::GetTokensInCirculationStream>, Status>
-    {
+    ) -> Result<Response<Self::GetTokensInCirculationStream>, Status> {
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetTokensInCirculation",);
         let request = request.into_inner();
         let mut heights = request.heights;
         heights = heights
             .drain(..cmp::min(heights.len(), GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS))
             .collect();
-        let consensus_manager = ConsensusManagerBuilder::new(self.network).build();
+        let consensus_manager = ConsensusManager::builder(self.network.as_network()).build();
 
         let (mut tx, rx) = mpsc::channel(GET_TOKENS_IN_CIRCULATION_PAGE_SIZE);
         task::spawn(async move {
@@ -926,6 +938,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 .drain(..cmp::min(heights.len(), GET_TOKENS_IN_CIRCULATION_PAGE_SIZE))
                 .collect();
             while !page.is_empty() {
+                // TODO: This is not ideal. The main issue here is the interface to get_tokens_in_circulation includes
+                // blocks at any height to be selected instead of a more coherent start - end range. This means we
+                // cannot use the Emission iterator as intended and instead, must query the supply at a
+                // given height for each block (the docs mention to use the iterator instead of supply_at_block in a
+                // loop, however the Iterator was not exposed at the time this handler was written).
                 let values: Vec<tari_rpc::ValueAtHeightResponse> = page
                     .clone()
                     .into_iter()
@@ -966,8 +983,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn get_sync_info(
         &self,
         _request: Request<tari_rpc::Empty>,
-    ) -> Result<Response<tari_rpc::SyncInfoResponse>, Status>
-    {
+    ) -> Result<Response<tari_rpc::SyncInfoResponse>, Status> {
         debug!(target: LOG_TARGET, "Incoming GRPC request for BN sync data");
 
         let mut channel = self.state_machine_handle.get_status_info_watch();
@@ -1004,8 +1020,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn get_header_by_hash(
         &self,
         request: Request<tari_rpc::GetHeaderByHashRequest>,
-    ) -> Result<Response<tari_rpc::BlockHeaderResponse>, Status>
-    {
+    ) -> Result<Response<tari_rpc::BlockHeaderResponse>, Status> {
         let tari_rpc::GetHeaderByHashRequest { hash } = request.into_inner();
         let mut node_service = self.node_service.clone();
         let hash_hex = hash.to_hex();
@@ -1032,6 +1047,70 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             None => Err(Status::not_found(format!("Header not found with hash `{}`", hash_hex))),
         }
     }
+
+    async fn identify(&self, _: Request<tari_rpc::Empty>) -> Result<Response<tari_rpc::NodeIdentity>, Status> {
+        let identity = self.comms.node_identity_ref();
+        Ok(Response::new(tari_rpc::NodeIdentity {
+            public_key: identity.public_key().to_vec(),
+            public_address: identity.public_address().to_string(),
+            node_id: identity.node_id().to_vec(),
+        }))
+    }
+
+    async fn get_network_status(
+        &self,
+        _: Request<tari_rpc::Empty>,
+    ) -> Result<Response<tari_rpc::NetworkStatusResponse>, Status> {
+        let status = self
+            .comms
+            .connectivity()
+            .get_connectivity_status()
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
+
+        let latency = self
+            .liveness
+            .clone()
+            .get_network_avg_latency()
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
+
+        let resp = tari_rpc::NetworkStatusResponse {
+            status: tari_rpc::ConnectivityStatus::from(status) as i32,
+            avg_latency_ms: latency.unwrap_or_default(),
+            num_node_connections: status.num_connected_nodes() as u32,
+        };
+
+        Ok(Response::new(resp))
+    }
+
+    async fn list_connected_peers(
+        &self,
+        _: Request<tari_rpc::Empty>,
+    ) -> Result<Response<tari_rpc::ListConnectedPeersResponse>, Status> {
+        let mut connectivity = self.comms.connectivity();
+        let peer_manager = self.comms.peer_manager();
+        let connected_peers = connectivity
+            .get_active_connections()
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
+
+        let mut peers = Vec::with_capacity(connected_peers.len());
+        for peer in connected_peers {
+            peers.push(
+                peer_manager
+                    .find_by_node_id(peer.peer_node_id())
+                    .await
+                    .map_err(|err| Status::internal(err.to_string()))?,
+            );
+        }
+
+        let resp = tari_rpc::ListConnectedPeersResponse {
+            connected_peers: peers.into_iter().map(Into::into).collect(),
+        };
+
+        Ok(Response::new(resp))
+    }
 }
 
 enum BlockGroupType {
@@ -1042,8 +1121,7 @@ async fn get_block_group(
     mut handler: LocalNodeCommsInterface,
     request: Request<tari_rpc::BlockGroupRequest>,
     block_group_type: BlockGroupType,
-) -> Result<Response<tari_rpc::BlockGroupResponse>, Status>
-{
+) -> Result<Response<tari_rpc::BlockGroupResponse>, Status> {
     let request = request.into_inner();
     let calc_type_response = request.calc_type;
     let calc_type: CalcType = request.calc_type();
