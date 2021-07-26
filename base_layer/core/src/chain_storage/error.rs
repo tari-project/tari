@@ -85,8 +85,8 @@ pub enum ChainStorageError {
     },
     #[error("The MMR root for {0} in the provided block header did not match the MMR root in the database")]
     MismatchedMmrRoot(MmrTree),
-    #[error("An invalid block was submitted to the database")]
-    InvalidBlock,
+    #[error("An invalid block was submitted to the database: {0}")]
+    InvalidBlock(String),
     #[error("Blocking task spawn error: {0}")]
     BlockingTaskSpawnError(String),
     #[error("A request was out of range")]
