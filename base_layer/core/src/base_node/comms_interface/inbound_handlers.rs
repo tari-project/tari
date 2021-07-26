@@ -224,7 +224,7 @@ where T: BlockchainBackend + 'static
             },
             NodeCommsRequest::FetchMatchingUtxos(utxo_hashes) => {
                 let mut res = Vec::with_capacity(utxo_hashes.len());
-                for (output, spent) in (self.blockchain_db.fetch_utxos(utxo_hashes, None).await?)
+                for (output, spent) in (self.blockchain_db.fetch_utxos(utxo_hashes).await?)
                     .into_iter()
                     .flatten()
                 {
@@ -237,7 +237,7 @@ where T: BlockchainBackend + 'static
             NodeCommsRequest::FetchMatchingTxos(hashes) => {
                 let res = self
                     .blockchain_db
-                    .fetch_utxos(hashes, None)
+                    .fetch_utxos(hashes)
                     .await?
                     .into_iter()
                     .filter_map(|opt| opt.map(|(output, _)| output))

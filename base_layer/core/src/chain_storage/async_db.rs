@@ -140,7 +140,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     //---------------------------------- TXO --------------------------------------------//
     make_async_fn!(fetch_utxo(hash: HashOutput) -> Option<TransactionOutput>, "fetch_utxo");
 
-    make_async_fn!(fetch_utxos(hashes: Vec<HashOutput>, is_spent_as_of: Option<HashOutput>) -> Vec<Option<(TransactionOutput, bool)>>, "fetch_utxos");
+    make_async_fn!(fetch_utxos(hashes: Vec<HashOutput>) -> Vec<Option<(TransactionOutput, bool)>>, "fetch_utxos");
 
     make_async_fn!(fetch_utxos_by_mmr_position(start: u64, end: u64, end_header_hash: HashOutput) -> (Vec<PrunedOutput>, Bitmap), "fetch_utxos_by_mmr_position");
 
