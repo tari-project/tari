@@ -28,12 +28,13 @@ use nom::lib::std::collections::VecDeque;
 use std::{
     convert::{TryFrom, TryInto},
     fmt,
+    fmt::{Debug, Formatter},
 };
 use tari_crypto::tari_utilities::ByteArray;
 
 const NODE_XOR_DISTANCE_ARRAY_SIZE: usize = 16;
 
-#[derive(Clone, Debug, Eq, PartialOrd, Ord, Default, Copy)]
+#[derive(Clone, Eq, PartialOrd, Ord, Default, Copy)]
 pub struct XorDistance(u128);
 
 impl XorDistance {
@@ -131,7 +132,7 @@ impl TryFrom<&[u8]> for XorDistance {
     #[allow(clippy::manual_memcpy)]
     fn try_from(elements: &[u8]) -> Result<Self, Self::Error> {
         if elements.len() > NODE_XOR_DISTANCE_ARRAY_SIZE {
-            return Err(NodeIdError::IncorrectByteCount)
+            return Err(NodeIdError::IncorrectByteCount);
         }
 
         let mut bytes = [0; NODE_XOR_DISTANCE_ARRAY_SIZE];
@@ -170,6 +171,33 @@ impl fmt::Display for XorDistance {
     }
 }
 
+impl Debug for XorDistance {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut digits = 0;
+        let mut suffix = "";
+        loop {
+            let prefix: u128 = self.0 / u128::pow(10, 3 * (digits + 1));
+
+            if prefix == 0 || digits > 8 {
+                return write!(f, "XorDist: {}{}", self.0 / u128::pow(10, 3 * digits), suffix);
+            }
+
+            digits += 1;
+            suffix = match suffix {
+                "" => "thousand",
+                "thousand" => "million",
+                "million" => "billion",
+                "billion" => "trillion",
+                "trillion" => "quadrillion",
+                "quadrillion" => "quintillion",
+                "quintillion" => "sextillion",
+                "sextillion" => "septillion",
+                "septillion" => "e24",
+                _ => suffix,
+            }
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
 
@@ -185,7 +213,8 @@ mod tests {
         let x = XorDistance::new();
         let bucket = x.get_bucket(20);
         assert_eq!(bucket.0, XorDistance::zero());
-        assert_eq!(bucket.1, XorDistance(81129638414606681695789005144063));
+        assert_eq!(bucket.1, XorDistance(38685626227668133590597631));
+        assert_eq!(bucket.2, 0);
 
         let node_id1 = NodeId::from_bytes(&[
             144u8, 28u8, 106u8, 112u8, 220u8, 197u8, 216u8, 119u8, 9u8, 217u8, 42u8, 77u8, 1u8,
@@ -211,39 +240,31 @@ mod tests {
 
         let x = node_id1.distance(&node_id2);
         let bucket = x.get_bucket(2);
-        assert_eq!(bucket.0, XorDistance(0));
-        assert_eq!(bucket.1, XorDistance(21267647932558653966460912964485513215));
+        assert_eq!(bucket.2, 0);
 
         let bucket = x.get_bucket(8);
-        assert_eq!(bucket.0, XorDistance(0));
-        assert_eq!(bucket.1, XorDistance(332306998946228968225951765070086143));
+        assert_eq!(bucket.2, 6);
 
         let bucket = x.get_bucket(16);
-        assert_eq!(bucket.0, XorDistance(0));
-        assert_eq!(bucket.1, XorDistance(1298074214633706907132624082305023));
+        assert_eq!(bucket.2, 14);
 
         let bucket = x.get_bucket(32);
-        assert_eq!(bucket.0, XorDistance(5070602400912917605986812821503));
-        assert_eq!(bucket.1, XorDistance(10141204801825835211973625643007));
+        assert_eq!(bucket.2, 30);
 
         // test an odd number
         let bucket = x.get_bucket(33);
-        assert_eq!(bucket.0, XorDistance(5070602400912917605986812821503));
-        assert_eq!(bucket.1, XorDistance(10141204801825835211973625643007));
+        assert_eq!(bucket.2, 31);
 
         let dist_2_3 = node_id2.distance(&node_id3);
         let bucket = dist_2_3.get_bucket(12);
-        assert_eq!(bucket.0, XorDistance(0));
-        assert_eq!(bucket.1, XorDistance(20769187434139310514121985316880383));
+        assert_eq!(bucket.2, 0);
 
         let bucket = dist_2_3.get_bucket(128);
-        assert_eq!(bucket.0, XorDistance(2097151));
-        assert_eq!(bucket.1, XorDistance(4194303));
+        assert_eq!(bucket.2, 45);
 
         let dist_3_4 = node_id3.distance(&node_id4);
         let bucket = dist_3_4.get_bucket(128);
-        assert_eq!(bucket.0, XorDistance(1));
-        assert_eq!(bucket.1, XorDistance(3));
+        assert_eq!(bucket.2, 25); // TODO: Is this correct?
 
         let dist_4_4 = node_id4.distance(&node_id4);
         assert_eq!(dist_4_4, XorDistance::zero());
@@ -282,7 +303,7 @@ mod tests {
         let n12_distance = n1_to_n2_dist.0;
         let n13_distance = n1_to_n3_dist.0;
         assert!(n12_distance < n13_distance);
-        assert_eq!(n12_distance, 56114865924689668092413877285545836544);
-        assert_eq!(n13_distance, 228941924089749863963604860508980641792);
+        assert_eq!(n12_distance, 3344706650059799438262812929484);
+        assert_eq!(n13_distance, 13646002059563986299252799779712);
     }
 }

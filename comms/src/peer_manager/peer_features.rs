@@ -32,7 +32,7 @@ bitflags! {
         const DHT_STORE_FORWARD = 0b0000_0010;
 
         const COMMUNICATION_NODE = Self::MESSAGE_PROPAGATION.bits | Self::DHT_STORE_FORWARD.bits;
-        const COMMUNICATION_CLIENT = Self::NONE.bits;
+        const COMMUNICATION_CLIENT = 0b000_1000;
     }
 }
 

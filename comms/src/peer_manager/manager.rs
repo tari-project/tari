@@ -458,7 +458,9 @@ mod test {
                 .unwrap();
 
             assert_eq!(closest_peers.len(), 5);
+            dbg!(features);
             for peer in test_peers.iter().filter(|p| p.has_features(*features)) {
+                dbg!(&peer);
                 let peer_distance_to_destination = peer.node_id.distance(&destination_node_id);
 
                 if closest_peers.contains(peer) {
@@ -479,7 +481,7 @@ mod test {
                 assert_eq!(
                     peers_in_closest_peers_that_are_further_away,
                     Vec::<(NodeId, NodeDistance)>::new(),
-                    "Peer(s) in `closest_peers` were further away than another peer. This node: {}, distance: {}, \
+                    "Peer(s) in `closest_peers` were further away than another peer. This node: {}, distance: {:?}, \
                      Destination node: {}, closest_peers: {:?}",
                     peer.node_id,
                     peer_distance_to_destination,
