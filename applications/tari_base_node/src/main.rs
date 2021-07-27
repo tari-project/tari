@@ -221,10 +221,8 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
     }
 
     // Run, node, run!
-    // TODO: We are not starting a background process/daemon. Either we should do that or call this mode
-    //       `--non-interactive`
-    if bootstrap.daemon_mode {
-        println!("Node started in daemon mode (pid = {})", process::id());
+    if bootstrap.non_interactive_mode {
+        println!("Node started in non-interactive mode (pid = {})", process::id());
     } else {
         let command_handler = Arc::new(CommandHandler::new(runtime::Handle::current(), &ctx));
         let parser = Parser::new(command_handler);

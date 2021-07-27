@@ -176,7 +176,7 @@ pub async fn get_base_node_peer_config(
 pub fn wallet_mode(bootstrap: &ConfigBootstrap, boot_mode: WalletBoot) -> WalletMode {
     // Recovery mode
     if matches!(boot_mode, WalletBoot::Recovery) {
-        if bootstrap.daemon_mode {
+        if bootstrap.non_interactive_mode {
             return WalletMode::RecoveryDaemon;
         } else {
             return WalletMode::RecoveryTui;
@@ -184,13 +184,13 @@ pub fn wallet_mode(bootstrap: &ConfigBootstrap, boot_mode: WalletBoot) -> Wallet
     }
 
     match (
-        bootstrap.daemon_mode,
+        bootstrap.non_interactive_mode,
         bootstrap.input_file.clone(),
         bootstrap.command.clone(),
     ) {
         // TUI mode
         (false, None, None) => WalletMode::Tui,
-        // GRPC daemon mode
+        // GRPC mode
         (true, None, None) => WalletMode::Grpc,
         // Script mode
         (_, Some(path), None) => WalletMode::Script(path),

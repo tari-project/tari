@@ -181,7 +181,7 @@ class WalletProcess {
       `${password ? password : "kensentme"}`,
       "--seed-words-file-name",
       this.seedWordsFile,
-      "--daemon",
+      "--non-interactive",
     ];
     if (this.recoverWallet) {
       args.push("--recover", "--seed-words", this.seedWords);
