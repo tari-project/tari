@@ -291,8 +291,8 @@ pub async fn do_network_wide_broadcast(nodes: &mut [TestNode], origin_node_index
         .filter(|n| n.comms.node_identity().node_id() != &random_node_id)
         .enumerate()
         .map(|(idx, node)| {
-            let mut outbound_req = node.dht.outbound_requester();
-            let mut connectivity = node.comms.connectivity();
+            // let mut outbound_req = node.dht.outbound_requester();
+            // let mut connectivity = node.comms.connectivity();
             let mut ims_rx = node.ims_rx.take().unwrap();
             let start = Instant::now();
             let start_global = start_global;

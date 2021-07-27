@@ -42,7 +42,6 @@ use crate::memory_net::utilities::{
     do_network_wide_broadcast,
     do_store_and_forward_message_propagation,
     drain_messaging_events,
-    get_name,
     make_node,
     make_node_from_node_identities,
     make_node_identity,
@@ -53,7 +52,7 @@ use crate::memory_net::utilities::{
 };
 use futures::{channel::mpsc, future};
 use rand::{rngs::OsRng, Rng};
-use std::{iter::repeat_with, sync::Arc, time::Duration};
+use std::{iter::repeat_with, sync::Arc};
 use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
 
 // Seed nodes
