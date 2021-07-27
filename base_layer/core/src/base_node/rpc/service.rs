@@ -289,7 +289,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         let db = self.db();
         let mut res = Vec::with_capacity(message.output_hashes.len());
         for (output, spent) in (db
-            .fetch_utxos(message.output_hashes, None)
+            .fetch_utxos(message.output_hashes)
             .await
             .map_err(RpcStatus::log_internal_error(LOG_TARGET))?)
         .into_iter()

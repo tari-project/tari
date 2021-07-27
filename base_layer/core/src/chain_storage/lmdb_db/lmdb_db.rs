@@ -1767,7 +1767,6 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn kernel_count(&self) -> Result<usize, ChainStorageError> {
         let txn = self.read_transaction()?;
-
         lmdb_len(&txn, &self.kernels_db)
     }
 

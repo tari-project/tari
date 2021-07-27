@@ -304,7 +304,7 @@ impl CommandHandler {
                 Ok(mut data) => match data.pop() {
                     Some(v) => println!("{}", v.block()),
                     _ => println!(
-                        "Pruned node: utxo found, but lock not found for utxo commitment {}",
+                        "Pruned node: utxo found, but block not found for utxo commitment {}",
                         commitment.to_hex()
                     ),
                 },

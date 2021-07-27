@@ -289,6 +289,7 @@ pub fn chain_block_with_new_coinbase(
         height + consensus_manager.consensus_constants(0).coinbase_lock_height(),
     );
     let mut header = BlockHeader::from_previous(&prev_block.header());
+    header.height = height;
     header.version = consensus_manager
         .consensus_constants(header.height)
         .blockchain_version();
