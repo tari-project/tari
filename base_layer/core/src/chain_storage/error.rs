@@ -105,6 +105,8 @@ pub enum ChainStorageError {
     CannotAcquireFileLock,
     #[error("IO Error: `{0}`")]
     IoError(#[from] std::io::Error),
+    #[error("Cannot calculate MMR roots for block that does not form a chain with the current tip. {0}")]
+    CannotCalculateNonTipMmr(String),
 }
 
 impl ChainStorageError {
