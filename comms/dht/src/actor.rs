@@ -413,10 +413,10 @@ impl DhtActor {
                 let all_buckets = NodeDistance::get_buckets(num_buckets);
 
                 let mut peer_node_ids = vec![];
-                let mut bucket_number: i32 = bucket.2 as i32;
+                let mut bucket_number: usize = bucket.2 as usize;
                 let mut bucket_min = bucket.0;
                 let mut bucket_max = bucket.1;
-                while peer_node_ids.len() < propagation_factor && bucket_number >= 0 {
+                while peer_node_ids.len() < propagation_factor {
                     let query = PeerQuery::new()
                         .select_where(|peer| {
                             if peer.node_id == destination_node_id {
