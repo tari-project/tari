@@ -208,7 +208,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let queries = message.transaction_ids.into_iter().map(|tx_id| {
             let mut transaction_service = self.get_transaction_service();
             async move {
-                error!(target: LOG_TARGET, "TX_ID: {}", tx_id);
                 transaction_service
                     .get_any_transaction(tx_id)
                     .await
@@ -404,7 +403,6 @@ fn convert_wallet_transaction_into_transaction_info(
     wallet_pk: &CommsPublicKey,
 ) -> TransactionInfo {
     use models::WalletTransaction::*;
-    error!(target: LOG_TARGET, "FOUND WALLET: {:?}", tx);
     match tx {
         PendingInbound(tx) => TransactionInfo {
             tx_id: tx.tx_id,

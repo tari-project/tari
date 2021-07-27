@@ -81,6 +81,10 @@ pub enum ValidationError {
     MaxTransactionWeightExceeded,
     #[error("End of time: {0}")]
     EndOfTimeError(String),
+    #[error("Expected block height to be {expected}, but was {block_height}")]
+    IncorrectNextTipHeight { expected: u64, block_height: u64 },
+    #[error("Expected block previous hash to be {expected}, but was {block_hash}")]
+    IncorrectPreviousHash { expected: String, block_hash: String },
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in

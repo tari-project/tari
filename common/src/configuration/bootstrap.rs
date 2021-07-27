@@ -347,7 +347,7 @@ impl ApplicationType {
         match self {
             BaseNode => "base_node",
             ConsoleWallet => "wallet",
-            MergeMiningProxy => "mm_proxy",
+            MergeMiningProxy => "merge_mining_proxy",
             MiningNode => "miner",
         }
     }

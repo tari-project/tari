@@ -205,6 +205,32 @@ impl<'de> Visitor<'de> for DeletedBitmapVisitor {
     }
 }
 
+/// Wrapper struct to get a completed bitmap with the height it was created at
+#[derive(Debug, Clone)]
+pub struct CompleteDeletedBitmap {
+    deleted: Bitmap,
+    height: u64,
+    hash: HashOutput,
+}
+
+impl CompleteDeletedBitmap {
+    pub fn new(deleted: Bitmap, height: u64, hash: HashOutput) -> CompleteDeletedBitmap {
+        CompleteDeletedBitmap { deleted, height, hash }
+    }
+
+    pub fn into_bitmap(self) -> Bitmap {
+        self.deleted
+    }
+
+    pub fn bitmap(&self) -> &Bitmap {
+        &self.deleted
+    }
+
+    pub fn dissolve(self) -> (Bitmap, u64, HashOutput) {
+        (self.deleted, self.height, self.hash)
+    }
+}
+
 pub struct BlockHeaderAccumulatedDataBuilder<'a> {
     previous_accum: &'a BlockHeaderAccumulatedData,
     hash: Option<HashOutput>,
