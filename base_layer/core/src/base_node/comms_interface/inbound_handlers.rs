@@ -224,7 +224,7 @@ where T: BlockchainBackend + 'static
             },
             NodeCommsRequest::FetchMatchingUtxos(utxo_hashes) => {
                 let mut res = Vec::with_capacity(utxo_hashes.len());
-                for (output, spent) in (self.blockchain_db.fetch_utxos(utxo_hashes, None).await?)
+                for (output, spent) in (self.blockchain_db.fetch_utxos(utxo_hashes).await?)
                     .into_iter()
                     .flatten()
                 {
@@ -237,7 +237,7 @@ where T: BlockchainBackend + 'static
             NodeCommsRequest::FetchMatchingTxos(hashes) => {
                 let res = self
                     .blockchain_db
-                    .fetch_utxos(hashes, None)
+                    .fetch_utxos(hashes)
                     .await?
                     .into_iter()
                     .filter_map(|opt| opt.map(|(output, _)| output))
@@ -362,7 +362,13 @@ where T: BlockchainBackend + 'static
                     .await?
                     .into_iter()
                     .map(|tx| Arc::try_unwrap(tx).unwrap_or_else(|tx| (*tx).clone()))
-                    .collect();
+                    .collect::<Vec<_>>();
+
+                debug!(
+                    target: LOG_TARGET,
+                    "Adding {} transaction(s) to new block template",
+                    transactions.len()
+                );
 
                 let prev_hash = header.prev_hash.clone();
                 let height = header.height;
