@@ -22,7 +22,7 @@
 use crate::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{
-        accumulated_data::{BlockAccumulatedData, BlockHeaderAccumulatedData},
+        accumulated_data::{BlockAccumulatedData, BlockHeaderAccumulatedData, CompleteDeletedBitmap},
         consts::{
             BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY,
             BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
@@ -35,7 +35,6 @@ use crate::{
         BlockchainBackend,
         ChainBlock,
         ChainHeader,
-        DeletedBitmap,
         HistoricalBlock,
         HorizonData,
         MmrTree,
@@ -337,15 +336,10 @@ where B: BlockchainBackend
         &self,
         start: u64,
         end: u64,
-        end_header_hash: HashOutput,
+        deleted: Arc<Bitmap>,
     ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError> {
         let db = self.db_read_access()?;
-        let accum_data = db.fetch_block_accumulated_data(&end_header_hash).or_not_found(
-            "BlockAccumulatedData",
-            "hash",
-            end_header_hash.to_hex(),
-        )?;
-        db.fetch_utxos_by_mmr_position(start, end, accum_data.deleted())
+        db.fetch_utxos_by_mmr_position(start, end, deleted.as_ref())
     }
 
     /// Returns the block header at the given block height.
@@ -879,10 +873,30 @@ where B: BlockchainBackend
         db.fetch_horizon_data()
     }
 
-    /// Returns the full deleted bitmap at the current blockchain tip
-    pub fn fetch_deleted_bitmap(&self) -> Result<DeletedBitmap, ChainStorageError> {
+    pub fn fetch_complete_deleted_bitmap_at(
+        &self,
+        hash: HashOutput,
+    ) -> Result<CompleteDeletedBitmap, ChainStorageError> {
         let db = self.db_read_access()?;
-        db.fetch_deleted_bitmap()
+        let mut deleted = db.fetch_deleted_bitmap()?.into_bitmap();
+
+        let end_header =
+            fetch_header_by_block_hash(&*db, hash.clone()).or_not_found("BlockHeader", "start_hash", hash.to_hex())?;
+        let chain_metadata = db.fetch_chain_metadata()?;
+        let height = chain_metadata.height_of_longest_chain();
+        for i in end_header.height..height {
+            // order here does not matter, we dont have to go in reverse
+            deleted.xor_inplace(
+                db.fetch_block_accumulated_data_by_height(i + 1)
+                    .or_not_found("BlockAccumulatedData", "height", height.to_string())?
+                    .deleted(),
+            );
+        }
+        Ok(CompleteDeletedBitmap::new(
+            deleted,
+            height,
+            chain_metadata.best_block().clone(),
+        ))
     }
 }
 
