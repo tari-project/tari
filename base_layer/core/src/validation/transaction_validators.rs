@@ -23,7 +23,6 @@
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase, MmrTree},
     crypto::tari_utilities::Hashable,
-    tari_utilities::hex::Hex,
     transactions::{transaction::Transaction, types::CryptoFactories},
     validation::{MempoolTransactionValidation, ValidationError},
 };
@@ -119,23 +118,11 @@ fn verify_timelocks(tx: &Transaction, current_height: u64) -> Result<(), Validat
 
 // This function checks that the inputs exists in the UTXO set but do not exist in the STXO set.
 fn verify_not_stxos<B: BlockchainBackend>(tx: &Transaction, db: &B) -> Result<(), ValidationError> {
-    // `ChainMetadata::best_block` must always have the hash of the tip block.
-    // NOTE: the backend makes no guarantee that the tip header has a corresponding full body (interrupted header sync,
-    // pruned node) however the chain metadata best height MUST always correspond to the highest full block
-    // this node can provide
-    let metadata = db.fetch_chain_metadata()?;
-    let data = db
-        .fetch_block_accumulated_data(metadata.best_block())?
-        .unwrap_or_else(|| {
-            panic!(
-                "Expected best block `{}` to have corresponding accumulated block data, but none was found",
-                metadata.best_block().to_hex()
-            )
-        });
+    let deleted = db.fetch_deleted_bitmap()?;
     let mut not_found_input = Vec::new();
     for input in tx.body.inputs() {
         if let Some((_, index, _height)) = db.fetch_output(&input.output_hash())? {
-            if data.deleted().contains(index) {
+            if deleted.bitmap().contains(index) {
                 warn!(
                     target: LOG_TARGET,
                     "Transaction validation failed due to already spent input: {}", input

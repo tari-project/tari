@@ -39,7 +39,7 @@ use crate::{
 };
 use futures::{channel::mpsc, stream, SinkExt};
 use log::*;
-use std::{cmp, time::Instant};
+use std::{cmp, sync::Arc, time::Instant};
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
 use tari_crypto::tari_utilities::hex::Hex;
 use tokio::task;
@@ -448,7 +448,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                             self.request.end_header_hash.to_hex()
                         ))
                     })?;
-                let end_header_hash = end_header.hash();
 
                 if self.request.start > end_header.output_mmr_size - 1 {
                     return Err(RpcStatus::bad_request(format!(
@@ -467,7 +466,15 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                 if prev_header.height > end_header.height {
                     return Err(RpcStatus::bad_request("start index is greater than end index"));
                 }
+                // we need to construct a temp bitmap for the height the client requested
+                let bitmap = self
+                    .db
+                    .fetch_complete_deleted_bitmap_at(end_header.hash())
+                    .await
+                    .map_err(|_| RpcStatus::not_found("Could not get tip deleted bitmap"))?
+                    .into_bitmap();
 
+                let bitmap = Arc::new(bitmap);
                 loop {
                     let timer = Instant::now();
                     if prev_header.height == end_header.height {
@@ -513,7 +520,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     );
                     let (utxos, deleted_diff) = self
                         .db
-                        .fetch_utxos_by_mmr_position(start, end, end_header_hash.clone())
+                        .fetch_utxos_by_mmr_position(start, end, bitmap.clone())
                         .await
                         .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
                     trace!(

@@ -22,7 +22,7 @@
 use crate::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{
-        accumulated_data::{BlockAccumulatedData, BlockHeaderAccumulatedData},
+        accumulated_data::{BlockAccumulatedData, BlockHeaderAccumulatedData, CompleteDeletedBitmap},
         consts::{
             BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY,
             BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
@@ -58,6 +58,7 @@ use std::{
     cmp,
     cmp::Ordering,
     collections::VecDeque,
+    convert::TryFrom,
     mem,
     ops::Bound,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
@@ -335,15 +336,10 @@ where B: BlockchainBackend
         &self,
         start: u64,
         end: u64,
-        end_header_hash: HashOutput,
+        deleted: Arc<Bitmap>,
     ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError> {
         let db = self.db_read_access()?;
-        let accum_data = db.fetch_block_accumulated_data(&end_header_hash).or_not_found(
-            "BlockAccumulatedData",
-            "hash",
-            end_header_hash.to_hex(),
-        )?;
-        db.fetch_utxos_by_mmr_position(start, end, accum_data.deleted())
+        db.fetch_utxos_by_mmr_position(start, end, deleted.as_ref())
     }
 
     /// Returns the block header at the given block height.
@@ -876,6 +872,32 @@ where B: BlockchainBackend
         let db = self.db_read_access()?;
         db.fetch_horizon_data()
     }
+
+    pub fn fetch_complete_deleted_bitmap_at(
+        &self,
+        hash: HashOutput,
+    ) -> Result<CompleteDeletedBitmap, ChainStorageError> {
+        let db = self.db_read_access()?;
+        let mut deleted = db.fetch_deleted_bitmap()?.into_bitmap();
+
+        let end_header =
+            fetch_header_by_block_hash(&*db, hash.clone()).or_not_found("BlockHeader", "start_hash", hash.to_hex())?;
+        let chain_metadata = db.fetch_chain_metadata()?;
+        let height = chain_metadata.height_of_longest_chain();
+        for i in end_header.height..height {
+            // order here does not matter, we dont have to go in reverse
+            deleted.xor_inplace(
+                db.fetch_block_accumulated_data_by_height(i + 1)
+                    .or_not_found("BlockAccumulatedData", "height", height.to_string())?
+                    .deleted(),
+            );
+        }
+        Ok(CompleteDeletedBitmap::new(
+            deleted,
+            height,
+            chain_metadata.best_block().clone(),
+        ))
+    }
 }
 
 fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, ChainStorageError> {
@@ -942,26 +964,45 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
     }
 
     for input in body.inputs().iter() {
-        // Search the DB for the output leaf index so that it can be marked as spent/deleted.
-        // If the output hash is not found, check the current output_mmr. This allows zero-conf transactions
-        let index =
-            match db.fetch_mmr_leaf_index(MmrTree::Utxo, &input.output_hash())? {
-                Some(index) => index,
-                None => output_mmr.find_leaf_index(&input.output_hash())?.ok_or_else(|| {
-                    ChainStorageError::ValueNotFound {
-                        entity: "UTXO".to_string(),
-                        field: "hash".to_string(),
-                        value: input.output_hash().to_hex(),
-                    }
-                })?,
-            };
         input_mmr.push(input.hash())?;
 
+        // Search the DB for the output leaf index so that it can be marked as spent/deleted.
+        // If the output hash is not found, check the current output_mmr. This allows zero-conf transactions
+        let output_hash = input.output_hash();
+        let index = match db.fetch_mmr_leaf_index(MmrTree::Utxo, &output_hash)? {
+            Some(index) => index,
+            None => {
+                let index =
+                    output_mmr
+                        .find_leaf_index(&output_hash)?
+                        .ok_or_else(|| ChainStorageError::ValueNotFound {
+                            entity: "UTXO".to_string(),
+                            field: "hash".to_string(),
+                            value: output_hash.to_hex(),
+                        })?;
+                debug!(
+                    target: LOG_TARGET,
+                    "0-conf spend detected when calculating MMR roots for UTXO index {} ({})",
+                    index,
+                    output_hash.to_hex()
+                );
+                index
+            },
+        };
+
         if !output_mmr.delete(index) {
-            let len = output_mmr.len();
+            let num_leaves = u32::try_from(output_mmr.get_leaf_count())
+                .map_err(|_| ChainStorageError::CriticalError("UTXO MMR leaf count overflows u32".to_string()))?;
+            if index < num_leaves && output_mmr.deleted().contains(index) {
+                return Err(ChainStorageError::InvalidOperation(format!(
+                    "UTXO {} was already marked as deleted.",
+                    output_hash.to_hex()
+                )));
+            }
+
             return Err(ChainStorageError::InvalidOperation(format!(
-                "Could not delete index {} from the output MMR (length is {})",
-                index, len
+                "Could not delete index {} from the output MMR ({} leaves)",
+                index, num_leaves
             )));
         }
     }
@@ -1566,7 +1607,11 @@ fn reorganize_chain<T: BlockchainBackend>(
         let mut txn = DbTransaction::new();
         let block_hash_hex = block.accumulated_data().hash.to_hex();
         txn.delete_orphan(block.accumulated_data().hash.clone());
-        if let Err(e) = block_validator.validate_body_for_valid_orphan(&block, backend) {
+        let chain_metadata = backend.fetch_chain_metadata()?;
+        let deleted_bitmap = backend.fetch_deleted_bitmap()?;
+        if let Err(e) =
+            block_validator.validate_body_for_valid_orphan(&block, backend, &chain_metadata, &deleted_bitmap)
+        {
             warn!(
                 target: LOG_TARGET,
                 "Orphan block {} ({}) failed validation during chain reorg: {:?}",
@@ -2064,7 +2109,7 @@ mod test {
         fn it_inserts_true_orphan_chain() {
             let db = create_new_blockchain();
             let validator = MockValidator::new(true);
-            let (_, main_chain) = create_main_chain(&db, &[("A->GB", 1, 120), ("B->GB", 1, 120)]);
+            let (_, main_chain) = create_main_chain(&db, &[("A->GB", 1, 120), ("B->A", 1, 120)]);
 
             let block_b = main_chain.get("B").unwrap().clone();
             let (_, orphan_chain) =

@@ -362,7 +362,13 @@ where T: BlockchainBackend + 'static
                     .await?
                     .into_iter()
                     .map(|tx| Arc::try_unwrap(tx).unwrap_or_else(|tx| (*tx).clone()))
-                    .collect();
+                    .collect::<Vec<_>>();
+
+                debug!(
+                    target: LOG_TARGET,
+                    "Adding {} transaction(s) to new block template",
+                    transactions.len()
+                );
 
                 let prev_hash = header.prev_hash.clone();
                 let height = header.height;
