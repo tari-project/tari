@@ -32,6 +32,7 @@ use crate::{
         ChainHeader,
         ChainStorageError,
         DbTransaction,
+        DeletedBitmap,
         HistoricalBlock,
         HorizonData,
         MmrTree,
@@ -215,6 +216,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(fetch_block_accumulated_data_by_height(height: u64) -> BlockAccumulatedData, "fetch_block_accumulated_data_by_height");
 
     //---------------------------------- Misc. --------------------------------------------//
+    make_async_fn!(fetch_deleted_bitmap() -> DeletedBitmap, "fetch_deleted_bitmap");
+
     make_async_fn!(fetch_block_timestamps(start_hash: HashOutput) -> RollingVec<EpochTime>, "fetch_block_timestamps");
 
     make_async_fn!(fetch_target_difficulty_for_next_block(pow_algo: PowAlgorithm, current_block_hash: HashOutput) -> TargetDifficultyWindow, "fetch_target_difficulty");
