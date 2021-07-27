@@ -55,7 +55,7 @@ network = "weatherwax"
 #buffer_rate_limit_base_node_wallet = 20
 # The message deduplication persistent cache size - messages with these hashes in the cache will only be processed once.
 # The cache will also be trimmed down to size periodically (min value = 0, default value = 2500).
-#dedup_cache_capacity = 2500
+dedup_cache_capacity = 25000
 
 # The timeout (s) for requesting blocks from a peer during blockchain sync (min value = 10 s, default value = 150 s).
 #fetch_blocks_timeout = 150

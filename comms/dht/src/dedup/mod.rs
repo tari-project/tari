@@ -21,8 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod dedup_cache;
-mod dedup_cache_sql;
-mod update_dedup_cache_sql;
 
 pub use dedup_cache::DedupCacheDatabase;
 

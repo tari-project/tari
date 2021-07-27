@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    dedup::{dedup_cache_sql::DedupCacheSql, update_dedup_cache_sql::UpdateDedupCacheSql},
     schema::dedup_cache,
     storage::{DbConnection, StorageError},
 };
@@ -49,7 +48,7 @@ impl DedupCacheDatabase {
         Self { connection, capacity }
     }
 
-    /// Inserts and returns Ok(true) if the item already existed and Ok(false) if it didn't
+    /// Inserts and returns Ok(true) if the item already existed and Ok(false) if it didn't, also updating hit stats
     pub async fn insert_body_hash_if_unique(
         &self,
         body_hash: Vec<u8>,
@@ -57,7 +56,10 @@ impl DedupCacheDatabase {
     ) -> Result<bool, StorageError> {
         let body_hash = hex::to_hex(&body_hash.as_bytes());
         let public_key = public_key.to_hex();
-        match self.insert_body_hash(body_hash.clone(), public_key.clone()).await {
+        match self
+            .insert_body_hash_or_update_stats(body_hash.clone(), public_key.clone())
+            .await
+        {
             Ok(val) => {
                 if val == 0 {
                     warn!(
@@ -68,10 +70,7 @@ impl DedupCacheDatabase {
                 Ok(false)
             },
             Err(e) => match e {
-                StorageError::UniqueViolation(_) => match self.increment_number_of_hits(body_hash, public_key).await {
-                    Ok(_) => Ok(true),
-                    Err(e) => Err(e),
-                },
+                StorageError::UniqueViolation(_) => Ok(true),
                 _ => Err(e),
             },
         }
@@ -110,52 +109,45 @@ impl DedupCacheDatabase {
             .await
     }
 
-    async fn insert_body_hash(&self, body_hash: String, public_key: String) -> Result<usize, StorageError> {
+    // Insert new row into the table or update existing row in an atomic fashion; more than one thread can access this
+    // table at the same time.
+    async fn insert_body_hash_or_update_stats(
+        &self,
+        body_hash: String,
+        public_key: String,
+    ) -> Result<usize, StorageError> {
         self.connection
             .with_connection_async(move |conn| {
                 let insert_result = diesel::insert_into(dedup_cache::table)
-                    .values(UpdateDedupCacheSql {
-                        body_hash: Some(body_hash.clone()),
-                        sender_public_key: Some(public_key),
-                        number_of_hits: Some(1),
-                        last_hit_at: Some(Utc::now().naive_utc()),
-                    })
+                    .values((
+                        dedup_cache::body_hash.eq(body_hash.clone()),
+                        dedup_cache::sender_public_key.eq(public_key.clone()),
+                        dedup_cache::number_of_hits.eq(1),
+                        dedup_cache::last_hit_at.eq(Utc::now().naive_utc()),
+                    ))
                     .execute(conn);
                 match insert_result {
                     Ok(val) => Ok(val),
                     Err(diesel::result::Error::DatabaseError(kind, e_info)) => match kind {
-                        DatabaseErrorKind::UniqueViolation => Err(StorageError::UniqueViolation(body_hash)),
+                        DatabaseErrorKind::UniqueViolation => {
+                            // Update hit stats for the message
+                            let result =
+                                diesel::update(dedup_cache::table.filter(dedup_cache::body_hash.eq(&body_hash)))
+                                    .set((
+                                        dedup_cache::sender_public_key.eq(public_key),
+                                        dedup_cache::number_of_hits.eq(dedup_cache::number_of_hits + 1),
+                                        dedup_cache::last_hit_at.eq(Utc::now().naive_utc()),
+                                    ))
+                                    .execute(conn);
+                            match result {
+                                Ok(_) => Err(StorageError::UniqueViolation(body_hash)),
+                                Err(e) => Err(e.into()),
+                            }
+                        },
                         _ => Err(diesel::result::Error::DatabaseError(kind, e_info).into()),
                     },
                     Err(e) => Err(e.into()),
                 }
-            })
-            .await
-    }
-
-    async fn increment_number_of_hits(&self, body_hash: String, public_key: String) -> Result<usize, StorageError> {
-        let record_to_update = self.find_by_body_hash(body_hash.clone()).await?;
-        self.connection
-            .with_connection_async(move |conn| {
-                diesel::update(dedup_cache::table.filter(dedup_cache::body_hash.eq(&body_hash)))
-                    .set(UpdateDedupCacheSql {
-                        body_hash: None,
-                        sender_public_key: Some(public_key),
-                        number_of_hits: Some(record_to_update.number_of_hits + 1),
-                        last_hit_at: Some(Utc::now().naive_utc()),
-                    })
-                    .execute(conn)
-                    .map_err(Into::into)
-            })
-            .await
-    }
-
-    async fn find_by_body_hash(&self, body_hash: String) -> Result<DedupCacheSql, StorageError> {
-        self.connection
-            .with_connection_async(move |conn| {
-                Ok(dedup_cache::table
-                    .filter(dedup_cache::body_hash.eq(body_hash))
-                    .first::<DedupCacheSql>(conn)?)
             })
             .await
     }
