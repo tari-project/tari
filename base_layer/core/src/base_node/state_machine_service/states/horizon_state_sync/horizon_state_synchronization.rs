@@ -47,7 +47,10 @@ use crate::{
 use croaring::Bitmap;
 use futures::StreamExt;
 use log::*;
-use std::convert::{TryFrom, TryInto};
+use std::{
+    convert::{TryFrom, TryInto},
+    sync::Arc,
+};
 use tari_comms::PeerConnection;
 use tari_crypto::{
     commitment::HomomorphicCommitment,
@@ -206,9 +209,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 let kernel_pruned_set = block_data.dissolve().0;
                 let mut kernel_mmr = MerkleMountainRange::<HashDigest, _>::new(kernel_pruned_set);
 
-                // let mut kernel_sum = HomomorphicCommitment::default();
                 for kernel in kernels.drain(..) {
-                    // kernel_sum = &kernel.excess + &kernel_sum;
                     kernel_mmr.push(kernel.hash())?;
                 }
 
@@ -531,6 +532,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
         let mut prev_mmr = 0;
         let mut prev_kernel_mmr = 0;
+        let bitmap = Arc::new(
+            self.db()
+                .fetch_complete_deleted_bitmap_at(header.hash().clone())
+                .await?
+                .into_bitmap(),
+        );
         for h in 0..=header.height() {
             let curr_header = self.db().fetch_chain_header(h).await?;
 
@@ -544,11 +551,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             );
             let (utxos, _) = self
                 .db()
-                .fetch_utxos_by_mmr_position(
-                    prev_mmr,
-                    curr_header.header().output_mmr_size - 1,
-                    header.hash().clone(),
-                )
+                .fetch_utxos_by_mmr_position(prev_mmr, curr_header.header().output_mmr_size - 1, bitmap.clone())
                 .await?;
             trace!(
                 target: LOG_TARGET,
