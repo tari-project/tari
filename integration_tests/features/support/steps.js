@@ -477,6 +477,16 @@ When(
 );
 
 When(
+  /I check if wallet (.*) has (.*) transactions/,
+  async function (walletName, count) {
+    let wallet = this.getWallet(walletName);
+    let client = wallet.getClient();
+    let txs = await client.getCompletedTransactions();
+    expect(count).to.equal(txs.length.toString());
+  }
+);
+
+When(
   /I check if last imported transactions are valid in wallet (.*)/,
   async function (walletName) {
     let wallet = this.getWallet(walletName);
