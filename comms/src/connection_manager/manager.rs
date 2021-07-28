@@ -392,15 +392,25 @@ where
                     node_id.short_str(),
                     proto_str
                 );
-                if let Err(err) = self
+                let notify_fut = self
                     .protocols
-                    .notify(&protocol, ProtocolEvent::NewInboundSubstream(*node_id, stream))
-                    .await
-                {
-                    error!(
-                        target: LOG_TARGET,
-                        "Error sending NewSubstream notification for protocol '{}' because '{:?}'", proto_str, err
-                    );
+                    .notify(&protocol, ProtocolEvent::NewInboundSubstream(*node_id, stream));
+                match time::timeout(Duration::from_secs(10), notify_fut).await {
+                    Ok(Err(err)) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "Error sending NewSubstream notification for protocol '{}' because '{:?}'", proto_str, err
+                        );
+                    },
+                    Err(err) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "Error sending NewSubstream notification for protocol '{}' because {}", proto_str, err
+                        );
+                    },
+                    _ => {
+                        debug!(target: LOG_TARGET, "Protocol notification for '{}' sent", proto_str);
+                    },
                 }
             },
 

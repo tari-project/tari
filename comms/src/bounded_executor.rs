@@ -40,6 +40,7 @@ pub struct TrySpawnError;
 pub struct BoundedExecutor {
     inner: runtime::Handle,
     semaphore: Arc<Semaphore>,
+    max_available: usize,
 }
 
 impl BoundedExecutor {
@@ -47,6 +48,7 @@ impl BoundedExecutor {
         Self {
             inner: executor,
             semaphore: Arc::new(Semaphore::new(num_permits)),
+            max_available: num_permits,
         }
     }
 
@@ -70,10 +72,16 @@ impl BoundedExecutor {
         self.num_available() > 0
     }
 
-    /// Returns the number tasks that can be spawned on this executor without blocking.
+    /// Returns the remaining number of tasks that can be spawned on this executor without waiting.
     #[inline]
     pub fn num_available(&self) -> usize {
         self.semaphore.available_permits()
+    }
+
+    /// Returns the maximum number of concurrent tasks that can be spawned on this executor without waiting.
+    #[inline]
+    pub fn max_available(&self) -> usize {
+        self.max_available
     }
 
     pub fn try_spawn<F>(&self, future: F) -> Result<JoinHandle<F::Output>, TrySpawnError>
