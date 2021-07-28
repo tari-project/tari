@@ -82,7 +82,6 @@ pub struct GlobalConfig {
     pub dns_seeds_name_server: SocketAddr,
     pub dns_seeds_use_dnssec: bool,
     pub peer_db_path: PathBuf,
-    pub enable_wallet: bool,
     pub num_mining_threads: usize,
     pub base_node_tor_identity_file: PathBuf,
     pub wallet_db_file: PathBuf,
@@ -92,9 +91,9 @@ pub struct GlobalConfig {
     pub wallet_peer_db_path: PathBuf,
     pub console_wallet_peer_db_path: PathBuf,
     pub buffer_size_base_node: usize,
-    pub buffer_size_base_node_wallet: usize,
+    pub buffer_size_console_wallet: usize,
     pub buffer_rate_limit_base_node: usize,
-    pub buffer_rate_limit_base_node_wallet: usize,
+    pub buffer_rate_limit_console_wallet: usize,
     pub dedup_cache_capacity: usize,
     pub fetch_blocks_timeout: Duration,
     pub fetch_utxos_timeout: Duration,
@@ -108,6 +107,10 @@ pub struct GlobalConfig {
     pub transaction_broadcast_send_timeout: Duration,
     pub transaction_routing_mechanism: String,
     pub transaction_num_confirmations_required: u64,
+    pub transaction_event_channel_size: usize,
+    pub base_node_event_channel_size: usize,
+    pub output_manager_event_channel_size: usize,
+    pub base_node_update_publisher_channel_size: usize,
     pub console_wallet_password: Option<String>,
     pub wallet_command_send_wait_stage: String,
     pub wallet_command_send_wait_timeout: u64,
@@ -390,12 +393,6 @@ fn convert_node_config(
     let wallet_peer_db_path = data_dir.join("wallet_peer_db");
     let console_wallet_peer_db_path = data_dir.join("console_wallet_peer_db");
 
-    // set base node wallet
-    let key = config_string("base_node", &net_str, "enable_wallet");
-    let enable_wallet = cfg
-        .get_bool(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
-
     let key = config_string("base_node", &net_str, "flood_ban_max_msg_count");
     let flood_ban_max_msg_count = cfg
         .get_int(&key)
@@ -476,6 +473,18 @@ fn convert_node_config(
     let key = "wallet.transaction_num_confirmations_required";
     let transaction_num_confirmations_required = optional(cfg.get_int(&key))?.unwrap_or(3) as u64;
 
+    let key = "wallet.transaction_event_channel_size";
+    let transaction_event_channel_size = optional(cfg.get_int(&key))?.unwrap_or(1000) as usize;
+
+    let key = "wallet.base_node_event_channel_size";
+    let base_node_event_channel_size = optional(cfg.get_int(&key))?.unwrap_or(250) as usize;
+
+    let key = "wallet.output_manager_event_channel_size";
+    let output_manager_event_channel_size = optional(cfg.get_int(&key))?.unwrap_or(250) as usize;
+
+    let key = "wallet.base_node_update_publisher_channel_size";
+    let base_node_update_publisher_channel_size = optional(cfg.get_int(&key))?.unwrap_or(50) as usize;
+
     let key = "wallet.prevent_fee_gt_amount";
     let prevent_fee_gt_amount = cfg
         .get_bool(&key)
@@ -552,8 +561,8 @@ fn convert_node_config(
         .get_int(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
 
-    let key = "common.buffer_size_base_node_wallet";
-    let buffer_size_base_node_wallet = cfg
+    let key = "common.buffer_size_console_wallet";
+    let buffer_size_console_wallet = cfg
         .get_int(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
 
@@ -562,8 +571,8 @@ fn convert_node_config(
         .get_int(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
 
-    let key = "common.buffer_rate_limit_base_node_wallet";
-    let buffer_rate_limit_base_node_wallet =
+    let key = "common.buffer_rate_limit_console_wallet";
+    let buffer_rate_limit_console_wallet =
         cfg.get_int(&key)
             .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
 
@@ -706,7 +715,6 @@ fn convert_node_config(
         dns_seeds_name_server,
         dns_seeds_use_dnssec,
         peer_db_path,
-        enable_wallet,
         num_mining_threads,
         base_node_tor_identity_file,
         console_wallet_identity_file,
@@ -716,9 +724,9 @@ fn convert_node_config(
         wallet_peer_db_path,
         console_wallet_peer_db_path,
         buffer_size_base_node,
-        buffer_size_base_node_wallet,
+        buffer_size_console_wallet,
         buffer_rate_limit_base_node,
-        buffer_rate_limit_base_node_wallet,
+        buffer_rate_limit_console_wallet,
         dedup_cache_capacity,
         fetch_blocks_timeout,
         fetch_utxos_timeout,
@@ -732,6 +740,10 @@ fn convert_node_config(
         transaction_broadcast_send_timeout,
         transaction_routing_mechanism,
         transaction_num_confirmations_required,
+        transaction_event_channel_size,
+        base_node_event_channel_size,
+        output_manager_event_channel_size,
+        base_node_update_publisher_channel_size,
         console_wallet_password,
         wallet_command_send_wait_stage,
         wallet_command_send_wait_timeout,
