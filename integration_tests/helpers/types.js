@@ -29,4 +29,9 @@ const ConnectivityStatus = {
   OFFLINE: "Offline",
 };
 
-module.exports = { PowAlgo, ConnectivityStatus };
+const PaymentType = {
+  STANDARD_MIMBLEWIMBLE: 0,
+  ONE_SIDED: 1,
+};
+
+module.exports = { PowAlgo, ConnectivityStatus, PaymentType };

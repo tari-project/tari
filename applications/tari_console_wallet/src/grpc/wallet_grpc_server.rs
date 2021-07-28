@@ -78,9 +78,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }))
     }
 
-    async fn identify(&self, request: Request<GetIdentityRequest>) -> Result<Response<GetIdentityResponse>, Status> {
-        let _request = request.into_inner();
-
+    async fn identify(&self, _: Request<GetIdentityRequest>) -> Result<Response<GetIdentityResponse>, Status> {
         let identity = self.wallet.comms.node_identity();
         Ok(Response::new(GetIdentityResponse {
             public_key: identity.public_key().to_string().as_bytes().to_vec(),

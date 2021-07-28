@@ -24,7 +24,11 @@ class WalletClient {
   }
 
   async getBalance() {
-    return await this.client.getBalance();
+    return await this.client.getBalance().then((balance) => ({
+      available_balance: parseInt(balance.available_balance),
+      pending_incoming_balance: parseInt(balance.pending_incoming_balance),
+      pending_outgoing_balance: parseInt(balance.pending_outgoing_balance),
+    }));
   }
 
   async getCompletedTransactions() {
