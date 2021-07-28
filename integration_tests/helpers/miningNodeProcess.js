@@ -115,7 +115,7 @@ class MiningNodeProcess {
       "--base-path",
       ".",
       "--init",
-      "--daemon",
+      "--non-interactive",
       "--max-blocks",
       this.maxBlocks,
       "--mine-until-height",

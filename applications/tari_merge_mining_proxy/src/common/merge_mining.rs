@@ -29,22 +29,16 @@ use tari_core::{
 };
 
 pub fn add_coinbase(
-    coinbase: Option<grpc::Transaction>,
-    mut block: NewBlockTemplate,
+    coinbase: grpc::Transaction,
+    block_template: grpc::NewBlockTemplate,
 ) -> Result<grpc::NewBlockTemplate, MmProxyError> {
-    if let Some(tx) = coinbase {
-        let output = TransactionOutput::try_from(tx.clone().body.unwrap().outputs[0].clone())
-            .map_err(MmProxyError::MissingDataError)?;
-        let kernel =
-            TransactionKernel::try_from(tx.body.unwrap().kernels[0].clone()).map_err(MmProxyError::MissingDataError)?;
-        block.body.add_output(output);
-        block.body.add_kernel(kernel);
-        let template = grpc::NewBlockTemplate::try_from(block);
-        match template {
-            Ok(template) => Ok(template),
-            Err(_e) => Err(MmProxyError::MissingDataError("Template Invalid".to_string())),
-        }
-    } else {
-        Err(MmProxyError::MissingDataError("Coinbase Invalid".to_string()))
-    }
+    let mut block_template = NewBlockTemplate::try_from(block_template)
+        .map_err(|e| MmProxyError::MissingDataError(format!("GRPC Conversion Error: {}", e)))?;
+    let output = TransactionOutput::try_from(coinbase.body.as_ref().unwrap().outputs[0].clone())
+        .map_err(MmProxyError::MissingDataError)?;
+    let kernel = TransactionKernel::try_from(coinbase.body.as_ref().unwrap().kernels[0].clone())
+        .map_err(MmProxyError::MissingDataError)?;
+    block_template.body.add_output(output);
+    block_template.body.add_kernel(kernel);
+    Ok(block_template.into())
 }
