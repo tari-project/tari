@@ -220,7 +220,7 @@ class WalletProcess {
       "kensentme",
       "--command",
       `set-base-node ${baseNode}`,
-      "--daemon",
+      "--non-interactive",
     ];
     if (this.logFilePath) {
       args.push("--log-config", this.logFilePath);

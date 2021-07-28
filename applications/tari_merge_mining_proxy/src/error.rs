@@ -75,10 +75,10 @@ pub enum MmProxyError {
     CoinbaseBuilderError(#[from] CoinbaseBuildError),
     #[error("Unexpected Tari base node response: {0}")]
     UnexpectedTariBaseNodeResponse(String),
-    #[error("Invalid RandomX seed")]
-    InvalidRandomXSeed,
     #[error("Invalid header value")]
     InvalidHeaderValue(#[from] InvalidHeaderValue),
+    #[error("Block was lost due to a failed precondition, and should be retried")]
+    FailedPreconditionBlockLostRetry,
 }
 
 impl From<tonic::Status> for MmProxyError {

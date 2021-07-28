@@ -36,15 +36,16 @@ use tari_app_grpc::{
     tari_rpc::{CalcType, Sorting},
 };
 use tari_app_utilities::consts;
-use tari_comms::CommsNode;
+use tari_comms::{Bytes, CommsNode};
 use tari_core::{
     base_node::{
-        comms_interface::Broadcast,
+        comms_interface::{Broadcast, CommsInterfaceError},
         state_machine_service::states::BlockSyncInfo,
         LocalNodeCommsInterface,
         StateMachineHandle,
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
+    chain_storage::ChainStorageError,
     consensus::{emission::Emission, ConsensusManager, NetworkConsensus},
     crypto::tari_utilities::{hex::Hex, ByteArray},
     mempool::{service::LocalMempoolService, TxStorageResponse},
@@ -443,10 +444,18 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let mut handler = self.node_service.clone();
 
-        let new_block = handler
-            .get_new_block(block_template)
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+        let new_block = match handler.get_new_block(block_template).await {
+            Ok(b) => b,
+            Err(CommsInterfaceError::ChainStorageError(ChainStorageError::CannotCalculateNonTipMmr(msg))) => {
+                let status = Status::with_details(
+                    tonic::Code::FailedPrecondition,
+                    msg,
+                    Bytes::from_static(b"CannotCalculateNonTipMmr"),
+                );
+                return Err(status);
+            },
+            Err(e) => return Err(Status::internal(e.to_string())),
+        };
         // construct response
         let block_hash = new_block.hash();
         let mining_hash = new_block.header.merged_mining_hash();
