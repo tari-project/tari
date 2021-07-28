@@ -1,4 +1,6 @@
 const net = require("net");
+const yargs = require("yargs");
+const { hideBin } = require("yargs/helpers");
 
 const { blake2bInit, blake2bUpdate, blake2bFinal } = require("blakejs");
 
@@ -284,6 +286,8 @@ module.exports = {
   combineTwoTariKeys,
   byteArrayToHex,
   waitForPredicate,
+
+  yargs: () => yargs(hideBin(process.argv)),
 
   NO_CONNECTION,
 };

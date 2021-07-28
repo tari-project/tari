@@ -69,6 +69,10 @@ impl ConnectivityManagerMockState {
         self.calls.lock().await.drain(..).collect()
     }
 
+    pub async fn count_calls_containing(&self, pat: &str) -> usize {
+        self.calls.lock().await.iter().filter(|s| s.contains(pat)).count()
+    }
+
     pub async fn get_selected_connections(&self) -> Vec<PeerConnection> {
         self.selected_connections.lock().await.clone()
     }
