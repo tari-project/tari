@@ -30,6 +30,8 @@ pub enum StorageError {
     InvalidUnicodePath,
     #[error("ConnectionError: {0}")]
     ConnectionError(#[from] diesel::ConnectionError),
+    #[error("UniqueViolation")]
+    UniqueViolation(String),
     #[error("Error when joining to tokio task : {0}")]
     JoinError(#[from] task::JoinError),
     #[error("DatabaseMigrationFailed: {0}")]
