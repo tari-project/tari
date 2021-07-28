@@ -95,10 +95,6 @@ pub async fn recovery_event_monitoring(
                     (recovery_progress_callback)(RecoveryEvent::Progress as u8, current, total);
                 }
                 info!(target: LOG_TARGET, "Recovery progress: {}/{}", current, total);
-                if current == total {
-                    info!(target: LOG_TARGET, "Recovery complete: {}/{}", current, total);
-                    break;
-                }
             },
             Ok(UtxoScannerEvent::Completed {
                 number_scanned: num_scanned,
@@ -118,6 +114,7 @@ pub async fn recovery_event_monitoring(
                 unsafe {
                     (recovery_progress_callback)(RecoveryEvent::Completed as u8, num_scanned, u64::from(total_amount));
                 }
+                break;
             },
             Ok(UtxoScannerEvent::ScanningRoundFailed {
                 num_retries,

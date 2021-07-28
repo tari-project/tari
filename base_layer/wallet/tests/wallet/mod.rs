@@ -504,6 +504,8 @@ fn test_20_store_and_forward_send_tx() {
 }
 
 #[test]
+#[ignore = "Flakey on CI, theory is that it is due to SAF neighbourhoods. Retry after Kademlia style neighbourhoods \
+            are included"]
 fn test_store_and_forward_send_tx() {
     let mut shutdown_a = Shutdown::new();
     let mut shutdown_b = Shutdown::new();
