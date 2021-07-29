@@ -114,7 +114,6 @@ message TransactionInfo {
     google.protobuf.Timestamp timestamp = 10;
     string message = 11;
     bool valid = 12;
-    bool is_found = 13;
 }
 
 enum TransactionDirection {
@@ -138,6 +137,8 @@ enum TransactionStatus {
     TRANSACTION_STATUS_COINBASE = 5;
     // This transaction is mined and confirmed at the current base node's height
     TRANSACTION_STATUS_MINED_CONFIRMED = 6;
+    // The transaction was not found by the wallet its in transaction database
+    TRANSACTION_STATUS_NOT_FOUND = 7;
 }
 
 message GetCompletedTransactionsRequest { }
