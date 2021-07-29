@@ -163,13 +163,21 @@ use tari_comms::{
     types::CommsSecretKey,
 };
 use tari_comms_dht::{DbConnectionUrl, DhtConfig};
-use tari_core::transactions::{tari_amount::MicroTari, transaction::OutputFeatures, types::CryptoFactories};
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction::OutputFeatures,
+    types::{ComSignature, CryptoFactories, PublicKey},
+};
 use tari_crypto::{
-    keys::{PublicKey, SecretKey},
-    script::ExecutionStack,
+    inputs,
+    keys::{PublicKey as PublicKeyTrait, SecretKey},
+    script,
     tari_utilities::ByteArray,
 };
-use tari_p2p::transport::{TorConfig, TransportType, TransportType::Tor};
+use tari_p2p::{
+    transport::{TorConfig, TransportType, TransportType::Tor},
+    Network,
+};
 use tari_shutdown::Shutdown;
 use tari_utilities::{hex, hex::Hex};
 use tari_wallet::{
@@ -204,18 +212,11 @@ use tari_wallet::{
             },
         },
     },
-    util::emoji::{emoji_set, EmojiId},
+    types::ValidationRetryStrategy,
+    util::emoji::{emoji_set, EmojiId, EmojiIdError},
+    utxo_scanner_service::utxo_scanning::UtxoScannerService,
     Wallet,
     WalletConfig,
-};
-
-use tari_core::transactions::types::ComSignature;
-use tari_crypto::script::TariScript;
-use tari_p2p::Network;
-use tari_wallet::{
-    types::ValidationRetryStrategy,
-    util::emoji::EmojiIdError,
-    utxo_scanner_service::utxo_scanning::UtxoScannerService,
     WalletSqlite,
 };
 use tokio::runtime::Runtime;
@@ -4523,19 +4524,17 @@ pub unsafe extern "C" fn wallet_import_utxo(
         CString::new("Imported UTXO").unwrap().to_str().unwrap().to_owned()
     };
 
+    let public_script_key = PublicKey::from_secret_key(&(*spending_key));
     match (*wallet).runtime.block_on((*wallet).wallet.import_utxo(
         MicroTari::from(amount),
         &(*spending_key).clone(),
-        TariScript::default(),
-        ExecutionStack::default(),
+        script!(Nop),
+        inputs!(public_script_key),
         &(*source_public_key).clone(),
         OutputFeatures::default(),
         message_string,
-        // TODO: Add the actual metadata signature here.
         ComSignature::default(),
-        // TODO:Add the actual script private key here.
-        &Default::default(),
-        // TODO:Add the actual script offset public keys here.
+        &(*spending_key).clone(),
         &Default::default(),
     )) {
         Ok(tx_id) => tx_id,

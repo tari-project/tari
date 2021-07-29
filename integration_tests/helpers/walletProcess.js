@@ -7,6 +7,7 @@ const { expect } = require("chai");
 const { createEnv } = require("./config");
 const WalletClient = require("./walletClient");
 const csvParser = require("csv-parser");
+var tari_crypto = require("tari_crypto");
 
 let outputProcess;
 
@@ -299,6 +300,43 @@ class WalletProcess {
     });
 
     return unblinded_outputs;
+  }
+
+  // Faucet outputs are only provided with an amount and spending key so we zero out the other output data
+  // and update the input data to be the public key of the spending key, make the script private key the spending key
+  // and then we can test if this output is still spendable when imported into the wallet.
+  async readExportedOutputsAsFaucetOutputs() {
+    let outputs = await this.readExportedOutputs();
+    for (let i = 0; i < outputs.length; i++) {
+      outputs[i].metadata_signature = {
+        public_nonce_commitment: Buffer.from(
+          "0000000000000000000000000000000000000000000000000000000000000000",
+          "hex"
+        ),
+        signature_u: Buffer.from(
+          "0000000000000000000000000000000000000000000000000000000000000000",
+          "hex"
+        ),
+        signature_v: Buffer.from(
+          "0000000000000000000000000000000000000000000000000000000000000000",
+          "hex"
+        ),
+      };
+      outputs[i].sender_offset_public_key = Buffer.from(
+        "0000000000000000000000000000000000000000000000000000000000000000",
+        "hex"
+      );
+      outputs[i].script_private_key = outputs[i].spending_key;
+      let scriptPublicKey = tari_crypto.pubkey_from_secret(
+        outputs[i].spending_key.toString("hex")
+      );
+      let input_data = Buffer.concat([
+        Buffer.from([0x04]),
+        Buffer.from(scriptPublicKey, "hex"),
+      ]);
+      outputs[i].input_data = input_data;
+    }
+    return outputs;
   }
 }
 
