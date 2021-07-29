@@ -116,7 +116,31 @@ Feature: Wallet Transactions
     Then I wait for wallet WALLET_IMPORTED to have less than 1 uT
     Then I check if last imported transactions are invalid in wallet WALLET_IMPORTED
 
-Scenario: Wallet should display all transactions made
+    @critical
+    Scenario: Wallet imports faucet UTXO
+      Given I have a seed node NODE
+      And I have 1 base nodes connected to all seed nodes
+      And I have wallet WALLET_A connected to all seed nodes
+      And I have a merge mining proxy PROXY connected to NODE and WALLET_A with default config
+      When I merge mine 5 blocks via PROXY
+      Then all nodes are at height 5
+      Then I wait for wallet WALLET_A to have at least 10000000000 uT
+      When I have wallet WALLET_B connected to all seed nodes
+      And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+      When I merge mine 5 blocks via PROXY
+      Then all nodes are at height 10
+      Then I wait for wallet WALLET_B to have at least 1000000 uT
+      Then I stop wallet WALLET_B
+      When I have wallet WALLET_C connected to all seed nodes
+      Then I import WALLET_B unspent outputs as faucet outputs to WALLET_C
+      Then I wait for wallet WALLET_C to have at least 1000000 uT
+      And I send 500000 uT from wallet WALLET_C to wallet WALLET_A at fee 100
+      Then wallet WALLET_C detects all transactions are at least Broadcast
+      When I merge mine 5 blocks via PROXY
+      Then all nodes are at height 15
+      Then I wait for wallet WALLET_C to have at least 400000 uT
+
+  Scenario: Wallet should display all transactions made
     Given I have a seed node NODE
     And I have 1 base nodes connected to all seed nodes
     And I have wallet WALLET_A connected to all seed nodes

@@ -454,6 +454,20 @@ When(
 );
 
 When(
+  /I import (.*) unspent outputs as faucet outputs to (.*)/,
+  async function (walletNameA, walletNameB) {
+    let walletA = this.getWallet(walletNameA);
+    let walletB = this.getWallet(walletNameB);
+    let clientB = walletB.getClient();
+
+    await walletA.exportUnspentOutputs();
+    let outputs = await walletA.readExportedOutputsAsFaucetOutputs();
+    let result = await clientB.importUtxos(outputs);
+    lastResult = result.tx_ids;
+  }
+);
+
+When(
   /I check if last imported transactions are invalid in wallet (.*)/,
   async function (walletName) {
     let wallet = this.getWallet(walletName);
