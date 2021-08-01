@@ -110,7 +110,7 @@ async fn connecting_peers() {
         peers
             .iter()
             .cloned()
-            .map(|peer| create_peer_connection_mock_pair(1, peer, node_identity.to_peer())),
+            .map(|peer| create_peer_connection_mock_pair(peer, node_identity.to_peer())),
     )
     .await
     .into_iter()
@@ -144,7 +144,7 @@ async fn add_many_managed_peers() {
     let connections = future::join_all(
         (0..5)
             .map(|i| peers[i].clone())
-            .map(|peer| create_peer_connection_mock_pair(1, node_identity.to_peer(), peer)),
+            .map(|peer| create_peer_connection_mock_pair(node_identity.to_peer(), peer)),
     )
     .await
     .into_iter()
@@ -218,7 +218,7 @@ async fn online_then_offline() {
     let client_connections = future::join_all(
         clients
             .iter()
-            .map(|peer| create_peer_connection_mock_pair(1, node_identity.to_peer(), peer.to_peer())),
+            .map(|peer| create_peer_connection_mock_pair(node_identity.to_peer(), peer.to_peer())),
     )
     .await
     .into_iter()
@@ -228,7 +228,7 @@ async fn online_then_offline() {
     let connections = future::join_all(
         (0..5)
             .map(|i| peers[i].clone())
-            .map(|peer| create_peer_connection_mock_pair(1, node_identity.to_peer(), peer)),
+            .map(|peer| create_peer_connection_mock_pair(node_identity.to_peer(), peer)),
     )
     .await
     .into_iter()
@@ -308,7 +308,7 @@ async fn ban_peer() {
     let (mut connectivity, mut event_stream, node_identity, peer_manager, cm_mock_state, _shutdown) =
         setup_connectivity_manager(Default::default());
     let peer = add_test_peers(&peer_manager, 1).await.pop().unwrap();
-    let (conn, _, _, _) = create_peer_connection_mock_pair(1, node_identity.to_peer(), peer.clone()).await;
+    let (conn, _, _, _) = create_peer_connection_mock_pair(node_identity.to_peer(), peer.clone()).await;
 
     let mut events = collect_stream!(event_stream, take = 1, timeout = Duration::from_secs(10));
     unpack_enum!(ConnectivityEvent::ConnectivityStateInitialized = &*events.remove(0).unwrap());
@@ -358,7 +358,7 @@ async fn peer_selection() {
         peers
             .iter()
             .cloned()
-            .map(|peer| create_peer_connection_mock_pair(1, peer, node_identity.to_peer())),
+            .map(|peer| create_peer_connection_mock_pair(peer, node_identity.to_peer())),
     )
     .await
     .into_iter()

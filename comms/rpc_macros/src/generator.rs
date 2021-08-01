@@ -234,6 +234,12 @@ impl RpcCodeGenerator {
                     Self { inner }
                 }
             }
+
+            impl #dep_mod::RpcPoolClient for #client_struct {
+                fn is_connected(&self) -> bool {
+                    self.inner.is_connected()
+                }
+            }
         }
     }
 }

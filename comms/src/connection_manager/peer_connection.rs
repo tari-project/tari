@@ -21,7 +21,15 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #[cfg(feature = "rpc")]
-use crate::protocol::rpc::{NamedProtocolService, RpcClient, RpcClientBuilder, RpcError, RPC_MAX_FRAME_SIZE};
+use crate::protocol::rpc::{
+    NamedProtocolService,
+    RpcClient,
+    RpcClientBuilder,
+    RpcClientPool,
+    RpcError,
+    RpcPoolClient,
+    RPC_MAX_FRAME_SIZE,
+};
 
 use super::{
     error::{ConnectionManagerError, PeerConnectionError},
@@ -220,6 +228,14 @@ impl PeerConnection {
         );
         let framed = self.open_framed_substream(&protocol.into(), RPC_MAX_FRAME_SIZE).await?;
         builder.connect(framed).await
+    }
+
+    /// Creates a new RpcClientPool that can be shared between tasks. The client pool will lazily establish up to
+    /// `max_sessions` sessions and provides client session that is least used.
+    #[cfg(feature = "rpc")]
+    pub fn create_rpc_client_pool<T>(&self, max_sessions: usize) -> RpcClientPool<T>
+    where T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone {
+        RpcClientPool::new(self.clone(), max_sessions)
     }
 
     /// Immediately disconnects the peer connection. This can only fail if the peer connection worker

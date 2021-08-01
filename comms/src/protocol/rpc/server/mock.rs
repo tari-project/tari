@@ -223,7 +223,7 @@ where
     /// Create a PeerConnection that can open a substream to this mock server.
     pub async fn create_connection(&self, peer: Peer, protocol_id: ProtocolId) -> PeerConnection {
         let peer_node_id = peer.node_id.clone();
-        let (_, our_conn_mock, peer_conn, _) = create_peer_connection_mock_pair(1, peer, self.our_node.to_peer()).await;
+        let (_, our_conn_mock, peer_conn, _) = create_peer_connection_mock_pair(peer, self.our_node.to_peer()).await;
 
         let mut protocol_tx = self.protocol_tx.clone();
         task::spawn(async move {

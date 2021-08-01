@@ -32,9 +32,9 @@ use crate::{
     multiplexing,
     multiplexing::{IncomingSubstreams, Substream, SubstreamCounter, Yamux},
     peer_manager::{NodeId, Peer, PeerFeatures},
-    test_utils::transport,
+    test_utils::{node_identity::build_node_identity, transport},
 };
-use futures::{channel::mpsc, lock::Mutex, stream::Fuse, StreamExt};
+use futures::{channel::mpsc, lock::Mutex, StreamExt};
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
@@ -58,7 +58,6 @@ pub fn create_dummy_peer_connection(node_id: NodeId) -> (PeerConnection, mpsc::R
 }
 
 pub async fn create_peer_connection_mock_pair(
-    buf_size: usize,
     peer1: Peer,
     peer2: Peer,
 ) -> (
@@ -68,15 +67,15 @@ pub async fn create_peer_connection_mock_pair(
     PeerConnectionMockState,
 ) {
     let rt_handle = Handle::current();
-    let (tx1, rx1) = mpsc::channel(buf_size);
-    let (tx2, rx2) = mpsc::channel(buf_size);
+    let (tx1, rx1) = mpsc::channel(1);
+    let (tx2, rx2) = mpsc::channel(1);
     let (listen_addr, muxer_in, muxer_out) = transport::build_multiplexed_connections().await;
 
     // Start both mocks on current handle
-    let mock = PeerConnectionMock::new(rx1.fuse(), muxer_in);
+    let mock = PeerConnectionMock::new(rx1, muxer_in);
     let mock_state_in = mock.get_shared_state();
     rt_handle.spawn(mock.run());
-    let mock = PeerConnectionMock::new(rx2.fuse(), muxer_out);
+    let mock = PeerConnectionMock::new(rx2, muxer_out);
     let mock_state_out = mock.get_shared_state();
     rt_handle.spawn(mock.run());
 
@@ -102,6 +101,17 @@ pub async fn create_peer_connection_mock_pair(
         ),
         mock_state_out,
     )
+}
+
+pub async fn new_peer_connection_mock_pair() -> (
+    PeerConnection,
+    PeerConnectionMockState,
+    PeerConnection,
+    PeerConnectionMockState,
+) {
+    let peer1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE).to_peer();
+    let peer2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE).to_peer();
+    create_peer_connection_mock_pair(peer1, peer2).await
 }
 
 #[derive(Debug, Clone)]
@@ -140,6 +150,10 @@ impl PeerConnectionMockState {
         self.substream_counter.clone()
     }
 
+    pub fn num_open_substreams(&self) -> usize {
+        self.substream_counter.get()
+    }
+
     pub async fn next_incoming_substream(&self) -> Option<Substream> {
         self.mux_incoming.lock().await.next().await
     }
@@ -150,12 +164,12 @@ impl PeerConnectionMockState {
 }
 
 pub struct PeerConnectionMock {
-    receiver: Fuse<mpsc::Receiver<PeerConnectionRequest>>,
+    receiver: mpsc::Receiver<PeerConnectionRequest>,
     state: PeerConnectionMockState,
 }
 
 impl PeerConnectionMock {
-    pub fn new(receiver: Fuse<mpsc::Receiver<PeerConnectionRequest>>, muxer: Yamux) -> Self {
+    pub fn new(receiver: mpsc::Receiver<PeerConnectionRequest>, muxer: Yamux) -> Self {
         Self {
             receiver,
             state: PeerConnectionMockState::new(muxer),
@@ -186,6 +200,7 @@ impl PeerConnectionMock {
                 },
             },
             Disconnect(_, reply_tx) => {
+                self.receiver.close();
                 reply_tx.send(self.state.disconnect().await).unwrap();
             },
         }
