@@ -114,7 +114,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 },
 
                 Err(err @ BlockHeaderSyncError::RpcError(RpcError::HandshakeError(RpcHandshakeError::TimedOut))) => {
-                    debug!(target: LOG_TARGET, "{}", err);
+                    warn!(target: LOG_TARGET, "{}", err);
                     self.ban_peer_short(node_id, BanReason::RpcNegotiationTimedOut).await?;
                 },
                 Err(BlockHeaderSyncError::ValidationFailed(err)) => {

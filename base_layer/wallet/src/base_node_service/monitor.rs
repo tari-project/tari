@@ -38,6 +38,7 @@ use tari_comms::{
     peer_manager::NodeId,
     protocol::rpc::RpcError,
     PeerConnection,
+    PeerConnectionError,
 };
 use tari_core::base_node::rpc::BaseNodeWalletRpcClient;
 use tari_shutdown::ShutdownSignal;
@@ -56,6 +57,7 @@ pub struct BaseNodeMonitor<T> {
     connectivity_manager: ConnectivityRequester,
     event_publisher: BaseNodeEventSender,
     shutdown_signal: ShutdownSignal,
+    connected_peer: Option<PeerConnection>,
 }
 
 impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
@@ -74,6 +76,7 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
             connectivity_manager,
             event_publisher,
             shutdown_signal,
+            connected_peer: None,
         }
     }
 
@@ -90,8 +93,11 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
                     );
                     break;
                 },
-                Err(e @ BaseNodeMonitorError::RpcFailed(_)) | Err(e @ BaseNodeMonitorError::DialFailed(_)) => {
-                    debug!(target: LOG_TARGET, "Connectivity failure to base node: {}", e,);
+                Err(e @ BaseNodeMonitorError::RpcFailed(_)) |
+                Err(e @ BaseNodeMonitorError::PeerConnectionFailed(_)) |
+                Err(e @ BaseNodeMonitorError::DialFailed(_)) |
+                Err(e @ BaseNodeMonitorError::NoPeerConnection) => {
+                    warn!(target: LOG_TARGET, "Connectivity failure to base node: {}", e,);
                     debug!(
                         target: LOG_TARGET,
                         "Setting as OFFLINE and retrying after {:.2?}", self.interval
@@ -108,7 +114,6 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
                         target: LOG_TARGET,
                         "Base node has changed. Connecting to new base node...",
                     );
-
                     self.set_connecting().await;
                     continue;
                 },
@@ -130,12 +135,12 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
 
     async fn process(&mut self) -> Result<(), BaseNodeMonitorError> {
         let peer = self.wait_for_peer_to_be_set().await?;
-        let connection = self.attempt_dial(peer.clone()).await?;
+        self.make_peer_connection(peer.clone()).await?;
         debug!(
             target: LOG_TARGET,
             "Base node connected. Establishing RPC connection...",
         );
-        let client = self.connect_client(connection).await?;
+        let client = self.get_rpc_session().await?;
         debug!(target: LOG_TARGET, "RPC established",);
         self.monitor_node(peer, client).await?;
         Ok(())
@@ -176,14 +181,34 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
         }
     }
 
-    async fn attempt_dial(&mut self, peer: NodeId) -> Result<PeerConnection, BaseNodeMonitorError> {
-        let conn = self.connectivity_manager.dial_peer(peer).await?;
-        Ok(conn)
+    // Establish a peer connection; only redial if the peer changed or is not connected
+    async fn make_peer_connection(&mut self, peer_node_id: NodeId) -> Result<(), BaseNodeMonitorError> {
+        let make_new_connection = match self.connected_peer.clone() {
+            Some(current_connection) => {
+                peer_node_id.clone() != *current_connection.peer_node_id() || !current_connection.is_connected()
+            },
+            None => true,
+        };
+        if make_new_connection {
+            self.connected_peer = Some(self.connectivity_manager.dial_peer(peer_node_id).await?);
+        };
+        Ok(())
     }
 
-    async fn connect_client(&self, mut conn: PeerConnection) -> Result<BaseNodeWalletRpcClient, BaseNodeMonitorError> {
-        let client = conn.connect_rpc().await?;
-        Ok(client)
+    // Return a new RPC session; close the connection if the RPC session fails
+    async fn get_rpc_session(&self) -> Result<BaseNodeWalletRpcClient, BaseNodeMonitorError> {
+        let connection = self
+            .connected_peer
+            .as_ref()
+            .ok_or(BaseNodeMonitorError::NoPeerConnection)?;
+        let rpc_client: BaseNodeWalletRpcClient = match connection.clone().connect_rpc().await {
+            Ok(client) => client,
+            Err(e) => {
+                connection.clone().disconnect().await?;
+                return Err(e.into());
+            },
+        };
+        Ok(rpc_client)
     }
 
     async fn monitor_node(
@@ -310,6 +335,10 @@ enum BaseNodeMonitorError {
     DialFailed(#[from] ConnectivityError),
     #[error("Rpc error: {0}")]
     RpcFailed(#[from] RpcError),
+    #[error("Peer connection error: {0}")]
+    PeerConnectionFailed(#[from] PeerConnectionError),
+    #[error("No valid peer connection")]
+    NoPeerConnection,
     #[error("Invalid base node response: {0}")]
     InvalidBaseNodeResponse(String),
     #[error("Wallet storage error: {0}")]
