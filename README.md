@@ -10,7 +10,7 @@ A number of applications have been developed by the Tari community to implement 
 - Tari Merge Mining Proxy
 - Tari Aurora wallets for Android and iOS
 
-Only the first four applications will be discussed in this README.
+Only the first four applications will be discussed in this README (see [wallet-android](https://github.com/tari-project/wallet-android) and [wallet-ios](https://github.com/tari-project/wallet-ios) for mobile wallets' repos).
 
 ## Installing using binaries
 
