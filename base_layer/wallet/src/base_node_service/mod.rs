@@ -30,10 +30,10 @@ mod monitor;
 
 use crate::{
     base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, service::BaseNodeService},
+    connectivity_service::WalletConnectivityHandle,
     storage::database::{WalletBackend, WalletDatabase},
 };
 use log::*;
-use tari_comms::connectivity::ConnectivityRequester;
 use tari_service_framework::{
     async_trait,
     reply_channel,
@@ -80,12 +80,12 @@ where T: WalletBackend + 'static
         let db = self.db.clone();
 
         context.spawn_when_ready(move |handles| async move {
-            let connectivity_manager = handles.expect_handle::<ConnectivityRequester>();
+            let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle>();
 
             let service = BaseNodeService::new(
                 config,
                 request_stream,
-                connectivity_manager,
+                wallet_connectivity,
                 event_publisher,
                 handles.get_shutdown_signal(),
                 db,
