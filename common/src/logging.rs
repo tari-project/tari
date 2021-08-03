@@ -69,6 +69,17 @@ pub fn install_default_merge_mining_proxy_logfile_config(path: &Path) -> Result<
     file.write_all(source.as_ref())
 }
 
+/// Installs a new default logfile configuration, copied from `log4rs_sample_proxy.yml` to the given path.
+pub fn install_default_stratum_transcoder_logfile_config(path: &Path) -> Result<(), std::io::Error> {
+    let source = include_str!("../logging/log4rs_sample_proxy.yml");
+    if let Some(d) = path.parent() {
+        fs::create_dir_all(d)?
+    };
+    // Note: `fs::write(path, source)` did not work as expected, as the file name was not changed
+    let mut file = File::create(path)?;
+    file.write_all(source.as_ref())
+}
+
 /// Installs a new default logfile configuration, copied from `log4rs_sample_wallet.yml` to the given path.
 pub fn install_default_mining_node_logfile_config(path: &Path) -> Result<(), std::io::Error> {
     let source = include_str!("../logging/log4rs_sample_mining_node.yml");

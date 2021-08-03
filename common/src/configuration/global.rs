@@ -120,6 +120,7 @@ pub struct GlobalConfig {
     pub monerod_password: String,
     pub monerod_use_auth: bool,
     pub proxy_host_address: SocketAddr,
+    pub transcoder_host_address: SocketAddr,
     pub proxy_submit_to_origin: bool,
     pub force_sync_peers: Vec<String>,
     pub wait_for_initial_sync_at_startup: bool,
@@ -130,6 +131,8 @@ pub struct GlobalConfig {
     pub flood_ban_max_msg_count: usize,
     pub mine_on_tip_only: bool,
     pub validate_tip_timeout_sec: u64,
+    pub mining_pool_address: String,
+    pub mining_wallet_address: String,
 }
 
 impl GlobalConfig {
@@ -616,6 +619,15 @@ fn convert_node_config(
                 .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
         })?;
 
+    let key = config_string("merge_mining_proxy", &net_str, "transcoder_host_address");
+    let transcoder_host_address = cfg
+        .get_str(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+        .and_then(|addr| {
+            addr.parse::<SocketAddr>()
+                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+        })?;
+
     let key = config_string("merge_mining_proxy", &net_str, "wait_for_initial_sync_at_startup");
     let wait_for_initial_sync_at_startup = cfg
         .get_bool(&key)
@@ -657,6 +669,11 @@ fn convert_node_config(
 
     let key = "common.auto_update.hashes_sig_url";
     let autoupdate_hashes_sig_url = cfg.get_str(&key)?;
+
+    let key = "mining_node.mining_pool_address";
+    let mining_pool_address = cfg.get_str(&key).unwrap_or_else(|_| "".to_string());
+    let key = "mining_node.mining_wallet_address";
+    let mining_wallet_address = cfg.get_str(&key).unwrap_or_else(|_| "".to_string());
 
     Ok(GlobalConfig {
         autoupdate_check_interval,
@@ -723,6 +740,7 @@ fn convert_node_config(
         wallet_base_node_service_request_max_age,
         prevent_fee_gt_amount,
         proxy_host_address,
+        transcoder_host_address,
         proxy_submit_to_origin,
         monerod_url,
         monerod_username,
@@ -737,6 +755,8 @@ fn convert_node_config(
         flood_ban_max_msg_count,
         mine_on_tip_only,
         validate_tip_timeout_sec,
+        mining_pool_address,
+        mining_wallet_address,
     })
 }
 

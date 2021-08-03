@@ -46,6 +46,7 @@ class MergeMiningProxyProcess {
       }
 
       const proxyAddress = "127.0.0.1:" + this.port;
+
       const envs = createEnv(
         this.name,
         false,
@@ -57,6 +58,7 @@ class MergeMiningProxyProcess {
         this.nodeGrpcPort,
         this.baseNodePort,
         proxyAddress,
+        "127.0.0.1:8085",
         [],
         []
       );
