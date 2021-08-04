@@ -121,17 +121,23 @@ where TBackend: TransactionBackend + 'static
             let completed_tx = match self.resources.db.get_completed_transaction(self.tx_id).await {
                 Ok(tx) => tx,
                 Err(e) => {
-                    error!(
+                    info!(
                         target: LOG_TARGET,
-                        "Cannot find Completed Transaction (TxId: {}) referred to by this Coinbase Monitoring \
-                         Protocol: {:?}",
-                        self.tx_id,
-                        e
+                        "Cannot find Coinbase Transaction (TxId: {}) likely due to being cancelled: {}", self.tx_id, e
                     );
-                    return Err(TransactionServiceProtocolError::new(
-                        self.tx_id,
-                        TransactionServiceError::TransactionDoesNotExistError,
-                    ));
+                    let _ = self
+                        .resources
+                        .event_publisher
+                        .send(Arc::new(TransactionEvent::TransactionCancelled(self.tx_id)))
+                        .map_err(|e| {
+                            trace!(
+                                target: LOG_TARGET,
+                                "Error sending event, usually because there are no subscribers: {:?}",
+                                e
+                            );
+                            e
+                        });
+                    return Ok(self.tx_id);
                 },
             };
             debug!(
@@ -332,9 +338,7 @@ where TBackend: TransactionBackend + 'static
                             }
                         }
                     }
-                    result = self.query_coinbase_transaction(
-                        signature.clone(), completed_tx.clone(), &mut client
-                    ).fuse() => {
+                    result = self.query_coinbase_transaction(signature.clone(), completed_tx.clone(), &mut client).fuse() => {
                         let (coinbase_kernel_found, metadata) = match result {
                             Ok(r) => r,
                             _ => (false, None),
