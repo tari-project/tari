@@ -8,9 +8,9 @@ The standard operating mode, TUI mode is the default when starting `tari_console
 
 ![](./docs/img/tui.png)
 
-## Daemon (GRPC) mode
+## Non-interactive (GRPC) mode
 
-Run as a server with no UI, but exposing the GRPC interface with `tari_console_wallet --daemon`.
+Run as a server with no UI, but exposing the GRPC interface with `tari_console_wallet --non-interactive`.
 
 ## Command mode
 

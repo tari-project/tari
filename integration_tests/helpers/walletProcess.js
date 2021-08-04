@@ -51,7 +51,7 @@ class WalletProcess {
     this.peerSeeds = addresses.join(",");
   }
 
-  run(cmd, args, saveFile) {
+  run(cmd, args, saveFile, input_buffer) {
     return new Promise((resolve, reject) => {
       if (!fs.existsSync(this.baseDir)) {
         fs.mkdirSync(this.baseDir, { recursive: true });
@@ -94,6 +94,10 @@ class WalletProcess {
         env: { ...process.env, ...envs },
       });
 
+      if (input_buffer) {
+        // If we want to simulate user input we can do so here.
+        ps.stdin.write(input_buffer);
+      }
       ps.stdout.on("data", (data) => {
         //console.log(`stdout: ${data}`);
         fs.appendFileSync(`${this.baseDir}/log/stdout.log`, data.toString());
@@ -115,7 +119,9 @@ class WalletProcess {
       ps.on("close", (code) => {
         const ps = this.ps;
         this.ps = null;
-        if (code) {
+        if (code == 112) {
+          reject("Incorrect password");
+        } else if (code) {
           console.log(`child process exited with code ${code}`);
           reject(`child process exited with code ${code}`);
         } else {
@@ -165,17 +171,17 @@ class WalletProcess {
     });
   }
 
-  async start() {
+  async start(password) {
     const args = [
       "--base-path",
       ".",
       "--init",
       "--create_id",
       "--password",
-      "kensentme",
+      `${password ? password : "kensentme"}`,
       "--seed-words-file-name",
       this.seedWordsFile,
-      "--daemon",
+      "--non-interactive",
     ];
     if (this.recoverWallet) {
       args.push("--recover", "--seed-words", this.seedWords);
@@ -184,6 +190,43 @@ class WalletProcess {
       args.push("--log-config", this.logFilePath);
     }
     return await this.run(await this.compile(), args, true);
+  }
+
+  async changePassword(oldPassword, newPassword) {
+    const args = [
+      "--base-path",
+      ".",
+      "--password",
+      oldPassword,
+      "--update-password",
+    ];
+    if (this.logFilePath) {
+      args.push("--log-config", this.logFilePath);
+    }
+    // Set input_buffer to double confirmation of the new password
+    return await this.run(
+      await this.compile(),
+      args,
+      true,
+      newPassword + "\n" + newPassword + "\n"
+    );
+  }
+
+  async setBaseNode(baseNode) {
+    const args = [
+      "--base-path",
+      ".",
+      "--password",
+      "kensentme",
+      "--command",
+      `set-base-node ${baseNode}`,
+      "--non-interactive",
+    ];
+    if (this.logFilePath) {
+      args.push("--log-config", this.logFilePath);
+    }
+    // After the change of base node, the console is awaiting confirmation (Enter) or quit (q).
+    return await this.run(await this.compile(), args, true, "\n");
   }
 
   async exportSpentOutputs() {

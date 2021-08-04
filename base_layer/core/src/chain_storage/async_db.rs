@@ -31,6 +31,7 @@ use crate::{
         ChainBlock,
         ChainHeader,
         ChainStorageError,
+        CompleteDeletedBitmap,
         DbTransaction,
         HistoricalBlock,
         HorizonData,
@@ -140,9 +141,9 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     //---------------------------------- TXO --------------------------------------------//
     make_async_fn!(fetch_utxo(hash: HashOutput) -> Option<TransactionOutput>, "fetch_utxo");
 
-    make_async_fn!(fetch_utxos(hashes: Vec<HashOutput>, is_spent_as_of: Option<HashOutput>) -> Vec<Option<(TransactionOutput, bool)>>, "fetch_utxos");
+    make_async_fn!(fetch_utxos(hashes: Vec<HashOutput>) -> Vec<Option<(TransactionOutput, bool)>>, "fetch_utxos");
 
-    make_async_fn!(fetch_utxos_by_mmr_position(start: u64, end: u64, end_header_hash: HashOutput) -> (Vec<PrunedOutput>, Bitmap), "fetch_utxos_by_mmr_position");
+    make_async_fn!(fetch_utxos_by_mmr_position(start: u64, end: u64, deleted: Arc<Bitmap>) -> (Vec<PrunedOutput>, Bitmap), "fetch_utxos_by_mmr_position");
 
     //---------------------------------- Kernel --------------------------------------------//
     make_async_fn!(fetch_kernel_by_excess_sig(excess_sig: Signature) -> Option<(TransactionKernel, HashOutput)>, "fetch_kernel_by_excess_sig");
@@ -215,6 +216,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(fetch_block_accumulated_data_by_height(height: u64) -> BlockAccumulatedData, "fetch_block_accumulated_data_by_height");
 
     //---------------------------------- Misc. --------------------------------------------//
+
     make_async_fn!(fetch_block_timestamps(start_hash: HashOutput) -> RollingVec<EpochTime>, "fetch_block_timestamps");
 
     make_async_fn!(fetch_target_difficulty_for_next_block(pow_algo: PowAlgorithm, current_block_hash: HashOutput) -> TargetDifficultyWindow, "fetch_target_difficulty");
@@ -222,6 +224,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(fetch_target_difficulties_for_next_block(current_block_hash: HashOutput) -> TargetDifficulties, "fetch_target_difficulties_for_next_block");
 
     make_async_fn!(fetch_block_hashes_from_header_tip(n: usize, offset: usize) -> Vec<HashOutput>, "fetch_block_hashes_from_header_tip");
+
+    make_async_fn!(fetch_complete_deleted_bitmap_at(hash: HashOutput) -> CompleteDeletedBitmap, "fetch_deleted_bitmap");
 }
 
 impl<B: BlockchainBackend + 'static> From<BlockchainDatabase<B>> for AsyncBlockchainDb<B> {
@@ -284,13 +288,13 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
     pub fn insert_pruned_output_via_horizon_sync(
         &mut self,
         output_hash: HashOutput,
-        proof_hash: HashOutput,
+        witness_hash: HashOutput,
         header_hash: HashOutput,
         header_height: u64,
         mmr_position: u32,
     ) -> &mut Self {
         self.transaction
-            .insert_pruned_utxo(output_hash, proof_hash, header_hash, header_height, mmr_position);
+            .insert_pruned_utxo(output_hash, witness_hash, header_hash, header_height, mmr_position);
         self
     }
 
@@ -305,8 +309,18 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
-    pub fn update_deleted_with_diff(&mut self, header_hash: HashOutput, deleted: Bitmap) -> &mut Self {
+    pub fn update_block_accumulated_data_with_deleted_diff(
+        &mut self,
+        header_hash: HashOutput,
+        deleted: Bitmap,
+    ) -> &mut Self {
         self.transaction.update_deleted_with_diff(header_hash, deleted);
+        self
+    }
+
+    /// Updates the deleted tip bitmap with the indexes of the given bitmap.
+    pub fn update_deleted_bitmap(&mut self, deleted: Bitmap) -> &mut Self {
+        self.transaction.update_deleted_bitmap(deleted);
         self
     }
 

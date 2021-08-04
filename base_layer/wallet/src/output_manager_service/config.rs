@@ -36,7 +36,7 @@ impl Default for OutputManagerServiceConfig {
     fn default() -> Self {
         Self {
             base_node_query_timeout: Duration::from_secs(60),
-            max_utxo_query_size: 5000,
+            max_utxo_query_size: 3500,
             prevent_fee_gt_amount: true,
             peer_dial_retry_timeout: Duration::from_secs(20),
             seed_word_language: MnemonicLanguage::English,

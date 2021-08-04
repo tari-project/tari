@@ -100,9 +100,9 @@ pub struct ConfigBootstrap {
     /// Create and save new node identity if one doesn't exist
     #[structopt(long, alias = "create_id")]
     pub create_id: bool,
-    /// Run in daemon mode, with no interface
-    #[structopt(short, long, alias = "daemon")]
-    pub daemon_mode: bool,
+    /// Run in non-interactive mode, with no UI.
+    #[structopt(short, long, alias = "non-interactive")]
+    pub non_interactive_mode: bool,
     /// This will rebuild the db, adding block for block in
     #[structopt(long, alias = "rebuild_db")]
     pub rebuild_db: bool,
@@ -163,7 +163,7 @@ impl Default for ConfigBootstrap {
             log_config: normalize_path(dir_utils::default_path(DEFAULT_BASE_NODE_LOG_CONFIG, None)),
             init: false,
             create_id: false,
-            daemon_mode: false,
+            non_interactive_mode: false,
             rebuild_db: false,
             input_file: None,
             command: None,
@@ -342,12 +342,12 @@ impl ApplicationType {
         }
     }
 
-    pub const fn as_tag_str(&self) -> &'static str {
+    pub const fn as_config_str(&self) -> &'static str {
         use ApplicationType::*;
         match self {
-            BaseNode => "base-node",
-            ConsoleWallet => "console-wallet",
-            MergeMiningProxy => "mm-proxy",
+            BaseNode => "base_node",
+            ConsoleWallet => "wallet",
+            MergeMiningProxy => "merge_mining_proxy",
             MiningNode => "miner",
         }
     }
@@ -359,9 +359,9 @@ impl FromStr for ApplicationType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         use ApplicationType::*;
         match s {
-            "base-node" => Ok(BaseNode),
-            "console-wallet" => Ok(ConsoleWallet),
-            "mm-proxy" => Ok(MergeMiningProxy),
+            "base-node" | "base_node" => Ok(BaseNode),
+            "console-wallet" | "console_wallet" => Ok(ConsoleWallet),
+            "mm-proxy" | "mm_proxy" => Ok(MergeMiningProxy),
             "miner" => Ok(MiningNode),
             _ => Err(ConfigError::new("Invalid ApplicationType", None)),
         }

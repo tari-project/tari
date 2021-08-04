@@ -3,6 +3,7 @@ use log::*;
 use std::convert::TryFrom;
 use tari_app_grpc::{
     conversions::naive_datetime_to_timestamp,
+    tari_rpc,
     tari_rpc::{
         payment_recipient::PaymentType,
         wallet_server,
@@ -30,7 +31,7 @@ use tari_app_grpc::{
         TransferResult,
     },
 };
-use tari_comms::types::CommsPublicKey;
+use tari_comms::{types::CommsPublicKey, CommsNode};
 use tari_core::{
     tari_utilities::{hex::Hex, ByteArray},
     transactions::{tari_amount::MicroTari, transaction::UnblindedOutput, types::Signature},
@@ -61,6 +62,10 @@ impl WalletGrpcServer {
     fn get_output_manager_service(&self) -> OutputManagerHandle {
         self.wallet.output_manager_service.clone()
     }
+
+    fn comms(&self) -> &CommsNode {
+        &self.wallet.comms
+    }
 }
 
 #[tonic::async_trait]
@@ -73,9 +78,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }))
     }
 
-    async fn identify(&self, request: Request<GetIdentityRequest>) -> Result<Response<GetIdentityResponse>, Status> {
-        let _request = request.into_inner();
-
+    async fn identify(&self, _: Request<GetIdentityRequest>) -> Result<Response<GetIdentityResponse>, Status> {
         let identity = self.wallet.comms.node_identity();
         Ok(Response::new(GetIdentityResponse {
             public_key: identity.public_key().to_string().as_bytes().to_vec(),
@@ -203,7 +206,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let queries = message.transaction_ids.into_iter().map(|tx_id| {
             let mut transaction_service = self.get_transaction_service();
             async move {
-                error!(target: LOG_TARGET, "TX_ID: {}", tx_id);
                 transaction_service
                     .get_any_transaction(tx_id)
                     .await
@@ -338,6 +340,60 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         Ok(Response::new(ImportUtxosResponse { tx_ids }))
     }
+
+    async fn get_network_status(
+        &self,
+        _: Request<tari_rpc::Empty>,
+    ) -> Result<Response<tari_rpc::NetworkStatusResponse>, Status> {
+        let status = self
+            .comms()
+            .connectivity()
+            .get_connectivity_status()
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
+        let mut base_node_service = self.wallet.base_node_service.clone();
+
+        let resp = tari_rpc::NetworkStatusResponse {
+            status: tari_rpc::ConnectivityStatus::from(status) as i32,
+            avg_latency_ms: base_node_service
+                .get_base_node_latency()
+                .await
+                .map_err(|err| Status::internal(err.to_string()))?
+                .map(|d| u32::try_from(d.as_millis()).unwrap_or(u32::MAX))
+                .unwrap_or_default(),
+            num_node_connections: status.num_connected_nodes() as u32,
+        };
+
+        Ok(Response::new(resp))
+    }
+
+    async fn list_connected_peers(
+        &self,
+        _: Request<tari_rpc::Empty>,
+    ) -> Result<Response<tari_rpc::ListConnectedPeersResponse>, Status> {
+        let mut connectivity = self.comms().connectivity();
+        let peer_manager = self.comms().peer_manager();
+        let connected_peers = connectivity
+            .get_active_connections()
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
+
+        let mut peers = Vec::with_capacity(connected_peers.len());
+        for peer in connected_peers {
+            peers.push(
+                peer_manager
+                    .find_by_node_id(peer.peer_node_id())
+                    .await
+                    .map_err(|err| Status::internal(err.to_string()))?,
+            );
+        }
+
+        let resp = tari_rpc::ListConnectedPeersResponse {
+            connected_peers: peers.into_iter().map(Into::into).collect(),
+        };
+
+        Ok(Response::new(resp))
+    }
 }
 
 fn convert_wallet_transaction_into_transaction_info(
@@ -345,7 +401,6 @@ fn convert_wallet_transaction_into_transaction_info(
     wallet_pk: &CommsPublicKey,
 ) -> TransactionInfo {
     use models::WalletTransaction::*;
-    error!(target: LOG_TARGET, "FOUND WALLET: {:?}", tx);
     match tx {
         PendingInbound(tx) => TransactionInfo {
             tx_id: tx.tx_id,

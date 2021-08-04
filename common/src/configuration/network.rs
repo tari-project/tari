@@ -43,6 +43,17 @@ impl Network {
     pub fn as_byte(self) -> u8 {
         self as u8
     }
+
+    pub const fn as_str(self) -> &'static str {
+        use Network::*;
+        match self {
+            MainNet => "mainnet",
+            Ridcully => "ridcully",
+            Stibbons => "stibbons",
+            Weatherwax => "weatherwax",
+            LocalNet => "localnet",
+        }
+    }
 }
 
 impl Default for Network {
@@ -72,14 +83,6 @@ impl FromStr for Network {
 
 impl Display for Network {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        use Network::*;
-        let msg = match self {
-            MainNet => "mainnet",
-            Ridcully => "ridcully",
-            Stibbons => "stibbons",
-            Weatherwax => "weatherwax",
-            LocalNet => "localnet",
-        };
-        f.write_str(msg)
+        f.write_str(self.as_str())
     }
 }

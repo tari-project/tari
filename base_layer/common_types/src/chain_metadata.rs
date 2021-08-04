@@ -47,14 +47,14 @@ impl ChainMetadata {
         height: u64,
         hash: BlockHash,
         pruning_horizon: u64,
-        effective_pruned_height: u64,
+        pruned_height: u64,
         accumulated_difficulty: u128,
     ) -> ChainMetadata {
         ChainMetadata {
             height_of_longest_chain: height,
             best_block: hash,
             pruning_horizon,
-            pruned_height: effective_pruned_height,
+            pruned_height,
             accumulated_difficulty,
         }
     }

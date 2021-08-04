@@ -121,6 +121,7 @@ pub async fn create(
             .spawn_with_transport(TcpWithTorTransport::with_tor_socks_proxy(SocksConfig {
                 proxy_address: TOR_SOCKS_ADDR.parse().unwrap(),
                 authentication: Default::default(),
+                proxy_bypass_addresses: vec![],
             }))
             .await
             .unwrap()

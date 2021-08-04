@@ -17,6 +17,11 @@
 # default, or the location specified in the TARI_LOGFILE environment variable.
 
 [common]
+# Select the network to connect to. Valid options are:
+#   mainnet - the "real" Tari network (default)
+#   weatherwax - the Tari test net
+network = "weatherwax"
+
 # Tari is a 100% peer-to-peer network, so there are no servers to hold messages for you while you're offline.
 # Instead, we rely on our peers to hold messages for us while we're offline. This settings sets maximum size of the
 # message cache that for holding our peers' messages, in MB.
@@ -48,6 +53,9 @@
 #buffer_rate_limit_base_node = 20
 # - Rate limit for the base node wallet (min value = 5, default value = 20).
 #buffer_rate_limit_base_node_wallet = 20
+# The message deduplication persistent cache size - messages with these hashes in the cache will only be processed once.
+# The cache will also be trimmed down to size periodically (min value = 0, default value = 2500).
+dedup_cache_capacity = 25000
 
 # The timeout (s) for requesting blocks from a peer during blockchain sync (min value = 10 s, default value = 150 s).
 #fetch_blocks_timeout = 150
@@ -80,6 +88,8 @@
 # If you are not running a wallet from this configuration, you can simply leave everything in this section commented out
 
 [wallet]
+# Override common.network for wallet
+# network = "weatherwax"
 
 # The relative folder to store your local key data and transaction history. DO NOT EVER DELETE THIS FILE unless you
 #  a) have backed up your seed phrase and
@@ -129,7 +139,8 @@ base_node_query_timeout = 120
 # (options: "DirectOnly", "StoreAndForwardOnly", DirectAndStoreAndForward". default: "DirectAndStoreAndForward").
 #transaction_routing_mechanism = "DirectAndStoreAndForward"
 
-scan_for_utxo_interval=60
+# UTXO scanning service interval (default = 12 hours, i.e. 60 * 60 * 12 seconds)
+scan_for_utxo_interval = 60
 
 # When running the console wallet in command mode, use these values to determine what "stage" and timeout to wait
 # for sent transactions.
@@ -160,6 +171,54 @@ scan_for_utxo_interval=60
 # Required for control_auth_type = "password"
 #control_auth_password = "super-secure-password"
 
+# Wallet configuration options for testnet
+[wallet.weatherwax]
+# -------------- Transport configuration --------------
+# Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
+# e.g. tor onion addresses will not be contactable.
+#transport = "tcp"
+# The address and port to listen for peer connections over TCP.
+#tcp_listener_address = "/ip4/0.0.0.0/tcp/18188"
+# Configures a tor proxy used to connect to onion addresses. All other traffic uses direct TCP connections.
+# This setting is optional however, if it is not specified, this node will not be able to connect to nodes that
+# only advertise an onion address.
+#tcp_tor_socks_address = "/ip4/127.0.0.1/tcp/36050"
+#tcp_tor_socks_auth = "none"
+
+# Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
+# onion v2, onion v3 and dns addresses.
+transport = "tor"
+# Address of the tor control server
+tor_control_address = "/ip4/127.0.0.1/tcp/9051"
+# Authentication to use for the tor control server
+tor_control_auth = "none" # or "password=xxxxxx"
+# The onion port to use.
+#tor_onion_port = 18141
+# The address to which traffic on the node's onion address will be forwarded
+# tor_forward_address = "/ip4/127.0.0.1/tcp/0"
+# Instead of attemping to get the SOCKS5 address from the tor control port, use this one. The default is to
+# use the first address returned by the tor control port (GETINFO /net/listeners/socks).
+#tor_socks_address_override=
+
+# Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
+#transport = "socks5"
+# The address of the SOCKS5 proxy
+#socks5_proxy_address = "/ip4/127.0.0.1/tcp/9050"
+# The address to which traffic will be forwarded
+#socks5_listener_address = "/ip4/127.0.0.1/tcp/18188"
+#socks5_auth = "none" # or "username_password=username:xxxxxxx"
+
+# Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
+# Use cases include:
+# - allowing wallets to locally connect to their base node, rather than through tor, when used in conjunction with `tor_proxy_bypass_addresses`
+# - multiple P2P addresses, one public over DNS and one private over TOR
+# - a "bridge" between TOR and TCP-only nodes
+# auxilary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
+
+# When these addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
+# direcly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
+# tor_proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
+
 ########################################################################################################################
 #                                                                                                                      #
 #                                          Base Node Configuration Options                                             #
@@ -171,14 +230,10 @@ scan_for_utxo_interval=60
 # no-one is cheating you out of your money.
 
 [base_node]
-
-# Select the network to connect to. Valid options are:
-#   mainnet - the "real" Tari network (default)
-#   weatherwax - the Tari test net
-network = "weatherwax"
+# Override common.network for base node
+# network = "weatherwax"
 
 # Configuration options for testnet
-
 [base_node.weatherwax]
 # The type of database backend to use. Currently supported options are "memory" and "lmdb". LMDB is recommnded for
 # almost all use cases.
@@ -318,6 +373,17 @@ base_node_tor_identity_file = "config/base_node_tor.json"
 
 # A path to the file that stores the console wallet's tor hidden service private key, if using the tor transport.
 console_wallet_tor_identity_file = "config/console_wallet_tor.json"
+
+# Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
+# Use cases include:
+# - allowing wallets to locally connect to their base node, rather than through tor, when used in conjunction with `tor_proxy_bypass_addresses`
+# - multiple P2P addresses, one public over DNS and one private over TOR
+# - a "bridge" between TOR and TCP-only nodes
+# auxilary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
+
+# When these addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
+# direcly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
+# tor_proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
 
 ########################################################################################################################
 #                                                                                                                      #

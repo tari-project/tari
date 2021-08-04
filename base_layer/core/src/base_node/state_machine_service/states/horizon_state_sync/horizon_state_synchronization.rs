@@ -47,7 +47,10 @@ use crate::{
 use croaring::Bitmap;
 use futures::StreamExt;
 use log::*;
-use std::convert::{TryFrom, TryInto};
+use std::{
+    convert::{TryFrom, TryInto},
+    sync::Arc,
+};
 use tari_comms::PeerConnection;
 use tari_crypto::{
     commitment::HomomorphicCommitment,
@@ -206,9 +209,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 let kernel_pruned_set = block_data.dissolve().0;
                 let mut kernel_mmr = MerkleMountainRange::<HashDigest, _>::new(kernel_pruned_set);
 
-                let mut kernel_sum = HomomorphicCommitment::default();
                 for kernel in kernels.drain(..) {
-                    kernel_sum = &kernel.excess + &kernel_sum;
                     kernel_mmr.push(kernel.hash())?;
                 }
 
@@ -323,7 +324,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let block_data = db
             .fetch_block_accumulated_data(current_header.header().prev_hash.clone())
             .await?;
-        let (_, output_pruned_set, rp_pruned_set, mut deleted) = block_data.dissolve();
+        let (_, output_pruned_set, rp_pruned_set, mut full_bitmap) = block_data.dissolve();
 
         let mut output_mmr = MerkleMountainRange::<HashDigest, _>::new(output_pruned_set);
         let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(rp_pruned_set);
@@ -376,10 +377,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     );
                     height_txo_counter += 1;
                     output_hashes.push(utxo.hash.clone());
-                    witness_hashes.push(utxo.rangeproof_hash.clone());
+                    witness_hashes.push(utxo.witness_hash.clone());
                     txn.insert_pruned_output_via_horizon_sync(
                         utxo.hash,
-                        utxo.rangeproof_hash,
+                        utxo.witness_hash,
                         current_header.hash().clone(),
                         current_header.height(),
                         u32::try_from(mmr_position)?,
@@ -416,13 +417,34 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         witness_mmr.push(hash)?;
                     }
 
-                    // Add in the changes
-                    let bitmap = Bitmap::deserialize(&diff_bitmap);
-                    deleted.or_inplace(&bitmap);
-                    deleted.run_optimize();
+                    // Check that the difference bitmap is excessively large. Bitmap::deserialize panics if greater than
+                    // isize::MAX, however isize::MAX is still an inordinate amount of data. An
+                    // arbitrary 4 MiB limit is used.
+                    const MAX_DIFF_BITMAP_BYTE_LEN: usize = 4 * 1024 * 1024;
+                    if diff_bitmap.len() > MAX_DIFF_BITMAP_BYTE_LEN {
+                        return Err(HorizonSyncError::IncorrectResponse(format!(
+                            "Received difference bitmap (size = {}) that exceeded the maximum size limit of {} from \
+                             peer {}",
+                            diff_bitmap.len(),
+                            MAX_DIFF_BITMAP_BYTE_LEN,
+                            self.sync_peer.peer_node_id()
+                        )));
+                    }
+
+                    let diff_bitmap = Bitmap::try_deserialize(&diff_bitmap).ok_or_else(|| {
+                        HorizonSyncError::IncorrectResponse(format!(
+                            "Peer {} sent an invalid difference bitmap",
+                            self.sync_peer.peer_node_id()
+                        ))
+                    })?;
+
+                    // Merge the differences into the final bitmap so that we can commit to the entire spend state
+                    // in the output MMR
+                    full_bitmap.or_inplace(&diff_bitmap);
+                    full_bitmap.run_optimize();
 
                     let pruned_output_set = output_mmr.get_pruned_hash_set()?;
-                    let output_mmr = MutableMmr::<HashDigest, _>::new(pruned_output_set.clone(), deleted.clone())?;
+                    let output_mmr = MutableMmr::<HashDigest, _>::new(pruned_output_set.clone(), full_bitmap.clone())?;
 
                     let mmr_root = output_mmr.get_merkle_root()?;
                     if mmr_root != current_header.header().output_mr {
@@ -450,13 +472,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                             .map_err(|err| HorizonSyncError::InvalidRangeProof(o.hash().to_hex(), err.to_string()))?;
                     }
 
+                    txn.update_deleted_bitmap(diff_bitmap.clone());
                     txn.update_pruned_hash_set(MmrTree::Utxo, current_header.hash().clone(), pruned_output_set);
                     txn.update_pruned_hash_set(
                         MmrTree::Witness,
                         current_header.hash().clone(),
                         witness_mmr.get_pruned_hash_set()?,
                     );
-                    txn.update_deleted_with_diff(current_header.hash().clone(), output_mmr.deleted().clone());
+                    txn.update_block_accumulated_data_with_deleted_diff(current_header.hash().clone(), diff_bitmap);
 
                     txn.commit().await?;
 
@@ -509,6 +532,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
         let mut prev_mmr = 0;
         let mut prev_kernel_mmr = 0;
+        let bitmap = Arc::new(
+            self.db()
+                .fetch_complete_deleted_bitmap_at(header.hash().clone())
+                .await?
+                .into_bitmap(),
+        );
         for h in 0..=header.height() {
             let curr_header = self.db().fetch_chain_header(h).await?;
 
@@ -522,11 +551,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             );
             let (utxos, _) = self
                 .db()
-                .fetch_utxos_by_mmr_position(
-                    prev_mmr,
-                    curr_header.header().output_mmr_size - 1,
-                    header.hash().clone(),
-                )
+                .fetch_utxos_by_mmr_position(prev_mmr, curr_header.header().output_mmr_size - 1, bitmap.clone())
                 .await?;
             trace!(
                 target: LOG_TARGET,

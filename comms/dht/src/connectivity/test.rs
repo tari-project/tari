@@ -90,7 +90,6 @@ async fn setup(
 }
 
 #[tokio_macros::test_basic]
-#[allow(clippy::redundant_closure)]
 async fn initialize() {
     let config = DhtConfig {
         num_neighbouring_nodes: 4,
@@ -111,13 +110,10 @@ async fn initialize() {
 
     // Wait for calls to add peers
     async_assert!(
-        connectivity.call_count().await >= 2,
+        connectivity.count_calls_containing("AddManagedPeers").await >= 2,
         max_attempts = 20,
         interval = Duration::from_millis(10),
     );
-
-    let calls = connectivity.take_calls().await;
-    assert_eq!(count_string_occurrences(&calls, &["AddManagedPeers"]), 2);
 
     // Check that neighbours are added
     let mut managed = connectivity.get_managed_peers().await;

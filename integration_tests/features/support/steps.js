@@ -7,12 +7,14 @@ const WalletProcess = require("../../helpers/walletProcess");
 const expect = require("chai").expect;
 const {
   waitFor,
+  waitForPredicate,
   getTransactionOutputHash,
   sleep,
   consoleLogBalance,
   consoleLogCoinbaseDetails,
   withTimeout,
 } = require("../../helpers/util");
+const { ConnectivityStatus, PaymentType } = require("../../helpers/types");
 const TransactionBuilder = require("../../helpers/transactionBuilder");
 let lastResult;
 
@@ -136,7 +138,7 @@ Given(
       node.getGrpcAddress(),
       this.getClient(name),
       wallet.getGrpcAddress(),
-      this.logFilePathMiningNocde
+      this.logFilePathMiningNode
     );
     this.addMiningNode(name, miningNode);
   }
@@ -160,7 +162,7 @@ Given(
       node.getGrpcAddress(),
       this.getClient(name),
       wallet.getGrpcAddress(),
-      this.logFilePathMiningNocde
+      this.logFilePathMiningNode
     );
     this.addMiningNode(name, miningNode);
   }
@@ -184,7 +186,7 @@ Given(
       node.getGrpcAddress(),
       this.getClient(name),
       wallet.getGrpcAddress(),
-      this.logFilePathMiningNocde
+      this.logFilePathMiningNode
     );
     this.addMiningNode(name, miningNode);
   }
@@ -217,7 +219,7 @@ Given(
   /I have a pruned node (.*) connected to node (.*) with pruning horizon set to (.*)/,
   { timeout: 20 * 1000 },
   async function (name, node, horizon) {
-    const miner = this.createNode(name, { horizon });
+    const miner = this.createNode(name, { pruningHorizon: horizon });
     miner.setPeerSeeds([this.nodes[node].peerAddress()]);
     await miner.startNew();
     this.addNode(name, miner);
@@ -475,6 +477,16 @@ When(
 );
 
 When(
+  /I check if wallet (.*) has (.*) transactions/,
+  async function (walletName, count) {
+    let wallet = this.getWallet(walletName);
+    let client = wallet.getClient();
+    let txs = await client.getCompletedTransactions();
+    expect(count).to.equal(txs.length.toString());
+  }
+);
+
+When(
   /I check if last imported transactions are valid in wallet (.*)/,
   async function (walletName) {
     let wallet = this.getWallet(walletName);
@@ -564,7 +576,7 @@ Given(
       baseNode.getGrpcAddress(),
       this.getClient(node),
       walletNode.getGrpcAddress(),
-      this.logFilePathMiningNocde,
+      this.logFilePathMiningNode,
       true
     );
     this.addMiningNode(miner, miningNode);
@@ -581,7 +593,7 @@ Given(
       baseNode.getGrpcAddress(),
       this.getClient(node),
       walletNode.getGrpcAddress(),
-      this.logFilePathMiningNocde,
+      this.logFilePathMiningNode,
       false
     );
     this.addMiningNode(miner, miningNode);
@@ -691,6 +703,22 @@ Then(
     const currentHeight = await client.getTipHeight();
     console.log(
       `Node ${name} is at tip: ${currentHeight} (should be`,
+      height,
+      `)`
+    );
+    expect(currentHeight).to.equal(height);
+  }
+);
+
+Then(
+  /node (.*) has a pruned height of (\d+)/,
+  { timeout: 120 * 1000 },
+  async function (name, height) {
+    const client = this.getClient(name);
+    await waitFor(async () => client.getPrunedHeight(), height, 115 * 1000);
+    const currentHeight = await client.getPrunedHeight();
+    console.log(
+      `Node ${name} has a pruned height: ${currentHeight} (should be`,
       height,
       `)`
     );
@@ -1626,7 +1654,7 @@ When(
           amount: amount,
           fee_per_gram: feePerGram,
           message: "msg",
-          payment_type: 1,
+          payment_type: PaymentType.ONE_SIDED,
         },
       ],
     });
@@ -2658,5 +2686,101 @@ When(
     }
 
     console.log(numTransactions, " transactions successfully sent.");
+  }
+);
+
+Given(
+  /I change the password of wallet (.*) to (.*)/,
+  { timeout: 20 * 1000 },
+  async function (name, newPassword) {
+    let wallet = this.getWallet(name);
+    await wallet.changePassword("kensentme", newPassword);
+  }
+);
+
+Then(
+  /the password of wallet (.*) is (not)? ?(.*)/,
+  { timeout: 20 * 1000 },
+  async function (name, is_not, password) {
+    let wallet = this.getWallet(name);
+    try {
+      await wallet.start(password);
+    } catch (error) {
+      expect(error).to.equal(
+        is_not === "not" ? "Incorrect password" : undefined
+      );
+    }
+  }
+);
+
+When(
+  /I wait for (.*) to connect to (.*)/,
+  { timeout: 30 * 1000 },
+  async function (firstNode, secondNode) {
+    const firstNodeClient = this.getNodeOrWalletClient(firstNode);
+    const secondNodeClient = this.getNodeOrWalletClient(secondNode);
+    const secondNodeIdentity = await secondNodeClient.identify();
+
+    await waitForPredicate(async () => {
+      let peers = await firstNodeClient.listConnectedPeers();
+      return peers.some((p) => secondNodeIdentity.public_key === p.public_key);
+    }, 50 * 1000);
+  }
+);
+
+Then(
+  /(.*) is connected to (.*)/,
+  { timeout: 30 * 1000 },
+  async function (firstNode, secondNode) {
+    const firstNodeClient = this.getNodeOrWalletClient(firstNode);
+    const secondNodeClient = this.getNodeOrWalletClient(secondNode);
+    const secondNodeIdentity = await secondNodeClient.identify();
+    let peers = await firstNodeClient.listConnectedPeers();
+    assert(peers.some((p) => secondNodeIdentity.public_key === p.public_key));
+  }
+);
+
+When(
+  /I wait for (.*) to have (.*) connectivity/,
+  { timeout: 30 * 1000 },
+  async function (nodeName, expectedStatus) {
+    const node = this.getNodeOrWalletClient(nodeName);
+    const expected = ConnectivityStatus[expectedStatus.toUpperCase()];
+    assert(
+      expected !== undefined,
+      `Invalid connectivity state ${expectedStatus}`
+    );
+    await waitForPredicate(async () => {
+      let info = await node.getNetworkStatus();
+      return info.status === expected;
+    }, 50 * 1000);
+  }
+);
+
+When(
+  /I wait for (.*) to have (\d+) node connections/,
+  { timeout: 30 * 1000 },
+  async function (nodeName, numConnections) {
+    const node = this.getNodeOrWalletClient(nodeName);
+    numConnections = +numConnections;
+    await waitForPredicate(async () => {
+      let info = await node.getNetworkStatus();
+      if (info.num_node_connections > numConnections) {
+        console.warn(
+          `Node ${nodeName} has more connections than expected. Expected = ${numConnections} Got = ${info.num_node_connections}`
+        );
+      }
+      return info.num_node_connections === numConnections;
+    }, 50 * 1000);
+  }
+);
+
+Given(
+  /change base node of (.*) to (.*)/,
+  { timeout: 20 * 1000 },
+  async function (wallet_name, base_node_name) {
+    let wallet = this.getWallet(wallet_name);
+    let base_node = this.getNode(base_node_name);
+    await wallet.setBaseNode(base_node.peerAddress().replace("::", "  "));
   }
 );

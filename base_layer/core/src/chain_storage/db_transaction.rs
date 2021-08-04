@@ -130,7 +130,7 @@ impl DbTransaction {
     pub fn insert_pruned_utxo(
         &mut self,
         output_hash: HashOutput,
-        proof_hash: HashOutput,
+        witness_hash: HashOutput,
         header_hash: HashOutput,
         header_height: u64,
         mmr_leaf_index: u32,
@@ -139,7 +139,7 @@ impl DbTransaction {
             header_hash,
             header_height,
             output_hash,
-            proof_hash,
+            witness_hash,
             mmr_position: mmr_leaf_index,
         });
         self
@@ -179,6 +179,12 @@ impl DbTransaction {
     pub fn update_deleted_with_diff(&mut self, header_hash: HashOutput, deleted: Bitmap) -> &mut Self {
         self.operations
             .push(WriteOperation::UpdateDeletedBlockAccumulatedDataWithDiff { header_hash, deleted });
+        self
+    }
+
+    /// Updates the deleted tip bitmap with the indexes of the given bitmap.
+    pub fn update_deleted_bitmap(&mut self, deleted: Bitmap) -> &mut Self {
+        self.operations.push(WriteOperation::UpdateDeletedBitmap { deleted });
         self
     }
 
@@ -297,7 +303,7 @@ pub enum WriteOperation {
         header_hash: HashOutput,
         header_height: u64,
         output_hash: HashOutput,
-        proof_hash: HashOutput,
+        witness_hash: HashOutput,
         mmr_position: u32,
     },
     DeleteHeader(u64),
@@ -313,6 +319,9 @@ pub enum WriteOperation {
     },
     UpdateDeletedBlockAccumulatedDataWithDiff {
         header_hash: HashOutput,
+        deleted: Bitmap,
+    },
+    UpdateDeletedBitmap {
         deleted: Bitmap,
     },
     PruneOutputsAndUpdateHorizon {
@@ -410,13 +419,16 @@ impl fmt::Display for WriteOperation {
                 header_hash: _,
                 header_height: _,
                 output_hash: _,
-                proof_hash: _,
+                witness_hash: _,
                 mmr_position: _,
             } => write!(f, "Insert pruned output"),
             UpdateDeletedBlockAccumulatedDataWithDiff {
                 header_hash: _,
                 deleted: _,
             } => write!(f, "Add deleted data for block"),
+            UpdateDeletedBitmap { deleted } => {
+                write!(f, "Merge deleted bitmap at tip ({} new indexes)", deleted.cardinality())
+            },
             PruneOutputsAndUpdateHorizon {
                 output_positions,
                 horizon,

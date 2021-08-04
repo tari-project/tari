@@ -24,7 +24,7 @@ use crate::{
     multiaddr::Multiaddr,
     socks,
     socks::Socks5Client,
-    transports::{tcp::TcpTransport, TcpSocket, Transport},
+    transports::{dns::SystemDnsResolver, tcp::TcpTransport, TcpSocket, Transport},
 };
 use std::{io, time::Duration};
 
@@ -35,6 +35,9 @@ const SOCKS_SO_KEEPALIVE: Duration = Duration::from_millis(1500);
 pub struct SocksConfig {
     pub proxy_address: Multiaddr,
     pub authentication: socks::Authentication,
+    /// If the dialed address matches any of these addresses, the SOCKS proxy is bypassed and direct TCP connection is
+    /// used.
+    pub proxy_bypass_addresses: Vec<Multiaddr>,
 }
 
 #[derive(Clone)]
@@ -47,14 +50,15 @@ impl SocksTransport {
     pub fn new(socks_config: SocksConfig) -> Self {
         Self {
             socks_config,
-            tcp_transport: Self::get_tcp_transport(),
+            tcp_transport: Self::create_socks_tcp_transport(),
         }
     }
 
-    pub fn get_tcp_transport() -> TcpTransport {
+    pub fn create_socks_tcp_transport() -> TcpTransport {
         let mut tcp_transport = TcpTransport::new();
         tcp_transport.set_nodelay(true);
         tcp_transport.set_keepalive(Some(SOCKS_SO_KEEPALIVE));
+        tcp_transport.set_dns_resolver(SystemDnsResolver);
         tcp_transport
     }
 
@@ -90,6 +94,11 @@ impl Transport for SocksTransport {
     }
 
     async fn dial(&self, addr: Multiaddr) -> Result<Self::Output, Self::Error> {
+        // Bypass the SOCKS proxy and connect to the address directly
+        if self.socks_config.proxy_bypass_addresses.contains(&addr) {
+            return self.tcp_transport.dial(addr).await;
+        }
+
         let socket = Self::socks_connect(self.tcp_transport.clone(), self.socks_config.clone(), addr).await?;
         Ok(socket)
     }
@@ -106,6 +115,7 @@ mod test {
         let transport = SocksTransport::new(SocksConfig {
             proxy_address: proxy_address.clone(),
             authentication: Default::default(),
+            proxy_bypass_addresses: vec![],
         });
 
         assert_eq!(transport.socks_config.proxy_address, proxy_address);

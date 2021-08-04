@@ -28,7 +28,7 @@ use log::*;
 use rpassword::prompt_password_stdout;
 use rustyline::Editor;
 use std::{fs, path::PathBuf, str::FromStr, sync::Arc};
-use tari_app_utilities::utilities::{setup_wallet_transport_type, ExitCodes};
+use tari_app_utilities::utilities::{create_transport_type, ExitCodes};
 use tari_common::{ConfigBootstrap, GlobalConfig};
 use tari_comms::{
     peer_manager::{Peer, PeerFeatures},
@@ -176,7 +176,7 @@ pub async fn get_base_node_peer_config(
 pub fn wallet_mode(bootstrap: &ConfigBootstrap, boot_mode: WalletBoot) -> WalletMode {
     // Recovery mode
     if matches!(boot_mode, WalletBoot::Recovery) {
-        if bootstrap.daemon_mode {
+        if bootstrap.non_interactive_mode {
             return WalletMode::RecoveryDaemon;
         } else {
             return WalletMode::RecoveryTui;
@@ -184,13 +184,13 @@ pub fn wallet_mode(bootstrap: &ConfigBootstrap, boot_mode: WalletBoot) -> Wallet
     }
 
     match (
-        bootstrap.daemon_mode,
+        bootstrap.non_interactive_mode,
         bootstrap.input_file.clone(),
         bootstrap.command.clone(),
     ) {
         // TUI mode
         (false, None, None) => WalletMode::Tui,
-        // GRPC daemon mode
+        // GRPC mode
         (true, None, None) => WalletMode::Grpc,
         // Script mode
         (_, Some(path), None) => WalletMode::Script(path),
@@ -306,7 +306,7 @@ pub async fn init_wallet(
         node_features,
     ));
 
-    let transport_type = setup_wallet_transport_type(&config);
+    let transport_type = create_transport_type(&config);
     let transport_type = match transport_type {
         Tor(mut tor_config) => {
             tor_config.identity = wallet_db.get_tor_id().await?.map(Box::new);
@@ -320,6 +320,7 @@ pub async fn init_wallet(
         node_identity,
         user_agent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
         transport_type,
+        auxilary_tcp_listener_address: None,
         datastore_path: config.console_wallet_peer_db_path.clone(),
         peer_database_name: "peers".to_string(),
         max_concurrent_inbound_tasks: 100,
@@ -331,6 +332,7 @@ pub async fn init_wallet(
             allow_test_addresses: config.allow_test_addresses,
             flood_ban_max_msg_count: config.flood_ban_max_msg_count,
             saf_msg_validity: config.saf_expiry_duration,
+            dedup_cache_capacity: config.dedup_cache_capacity,
             ..Default::default()
         },
         // TODO: This should be false unless testing locally - make this configurable

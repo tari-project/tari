@@ -1759,8 +1759,8 @@ fn input_malleability() {
             .with_transactions(txs.into_iter().map(|tx| Clone::clone(&*tx)).collect()),
     );
     let block = blockchain.get_block("A2").cloned().unwrap().block;
+    let header = block.header();
     let block_hash = block.hash();
-    let roots = blockchain.store().calculate_mmr_roots(block.block()).unwrap();
 
     let mut mod_block = block.block().clone();
     mod_block.body.inputs_mut()[0]
@@ -1768,8 +1768,12 @@ fn input_malleability() {
         .push(StackItem::Hash(*b"I can't do whatever I want......"))
         .unwrap();
 
+    blockchain
+        .store()
+        .rewind_to_height(mod_block.header.height - 1)
+        .unwrap();
     let modded_root = blockchain.store().calculate_mmr_roots(&mod_block).unwrap();
-    assert_ne!(roots.input_mr, modded_root.input_mr);
+    assert_ne!(header.input_mr, modded_root.input_mr);
 
     mod_block.header.input_mr = modded_root.input_mr;
     let mod_block_hash = mod_block.hash();

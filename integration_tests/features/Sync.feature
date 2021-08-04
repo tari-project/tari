@@ -25,6 +25,18 @@ Feature: Block Sync
     # All nodes should sync to tip
     Then all nodes are at height 20
 
+  @critical 
+  Scenario: Pruned mode simple sync
+    Given I have 1 seed nodes
+    Given I have a SHA3 miner NODE1 connected to all seed nodes
+    When I mine a block on NODE1 with coinbase CB1
+    And I mine 4 blocks on NODE1
+    When I spend outputs CB1 via NODE1
+    Given mining node NODE1 mines 15 blocks
+    Given I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
+    Then all nodes are at height 20
+
+@critical
   Scenario: When a new node joins the network, it should receive all peers
     Given I have 10 seed nodes
     And I have a base node NODE1 connected to all seed nodes
@@ -74,8 +86,9 @@ Feature: Block Sync
     Then all nodes are on the same chain at height 1505
 
   @critical
-  Scenario: Pruned mode
+  Scenario: Pruned mode sync test
     # TODO: Merge steps into single lines
+    Given I have a seed node SEED
     Given I have a base node NODE1 connected to all seed nodes
     When I mine a block on NODE1 with coinbase CB1
     When I mine a block on NODE1 with coinbase CB2
@@ -84,14 +97,9 @@ Feature: Block Sync
     When I mine a block on NODE1 with coinbase CB5
     Then all nodes are at height 5
     When I spend outputs CB1 via NODE1
-    #      When I spend outputs CB2 via NODE1
-    #      When I spend outputs CB3 via NODE1
     And I mine 3 blocks on NODE1
     Given I have a pruned node PNODE2 connected to node NODE1 with pruning horizon set to 5
     Then all nodes are at height 8
-    # Spend txns so that they are pruned when tip moves
-    #      When I spend outputs CB4 via PNODE2
-    #      When I spend outputs CB5 via PNODE2
     When I mine 15 blocks on PNODE2
     Then all nodes are at height 23
 
@@ -127,3 +135,19 @@ Feature: Block Sync
     Examples:
       | X1   | Y1 | SYNC_TIME |
       | 1000 | 50 | 60        |
+
+Scenario: Pruned mode network only
+    Given I have a base node NODE1 connected to all seed nodes
+    Given I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
+    Given I have a pruned node PNODE2 connected to node PNODE1 with pruning horizon set to 5
+    When I mine a block on PNODE1 with coinbase CB1
+    When I mine 2 blocks on PNODE1
+    When I create a transaction TX1 spending CB1 to UTX1
+    When I submit transaction TX1 to PNODE1
+    When I mine 1 blocks on PNODE1
+    Then TX1 is in the MINED of all nodes
+    When I stop node NODE1
+    When I mine 16 blocks on PNODE1
+    Then node PNODE2 is at height 20
+    Given I have a pruned node PNODE3 connected to node PNODE1 with pruning horizon set to 5
+    Then node PNODE3 is at height 20

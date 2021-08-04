@@ -39,7 +39,7 @@ use crate::{
         node_identity::{build_node_identity, ordered_node_identities},
         test_node::{build_connection_manager, build_peer_manager, TestNodeConfig},
     },
-    transports::MemoryTransport,
+    transports::{MemoryTransport, TcpTransport},
 };
 use futures::{
     channel::{mpsc, oneshot},
@@ -111,6 +111,7 @@ async fn dial_success() {
             config.connection_manager_config.network_info.user_agent = "node1".to_string();
             config
         },
+        MemoryTransport,
         peer_manager1.clone(),
         protocols,
         shutdown.to_signal(),
@@ -130,12 +131,14 @@ async fn dial_success() {
             config.connection_manager_config.network_info.user_agent = "node2".to_string();
             config
         },
+        MemoryTransport,
         peer_manager2.clone(),
         protocols,
         shutdown.to_signal(),
     );
     let mut subscription2 = conn_man2.get_event_subscription();
-    let public_address2 = conn_man2.wait_until_listening().await.unwrap();
+    let listener_info = conn_man2.wait_until_listening().await.unwrap();
+    let public_address2 = listener_info.bind_address().clone();
 
     peer_manager1
         .add_peer(Peer::new(
@@ -150,15 +153,11 @@ async fn dial_success() {
         .await
         .unwrap();
 
-    // Dial at the same time
     let mut conn_out = conn_man1.dial_peer(node_identity2.node_id().clone()).await.unwrap();
     assert_eq!(conn_out.peer_node_id(), node_identity2.node_id());
     let peer2 = peer_manager1.find_by_node_id(conn_out.peer_node_id()).await.unwrap();
     assert_eq!(peer2.supported_protocols, [&IDENTITY_PROTOCOL, &TEST_PROTO]);
     assert_eq!(peer2.user_agent, "node2");
-
-    let event = subscription2.next().await.unwrap().unwrap();
-    unpack_enum!(ConnectionManagerEvent::Listening(_addr) = &*event);
 
     let event = subscription2.next().await.unwrap().unwrap();
     unpack_enum!(ConnectionManagerEvent::PeerConnected(conn_in) = &*event);
@@ -191,6 +190,98 @@ async fn dial_success() {
 }
 
 #[runtime::test_basic]
+async fn dial_success_aux_tcp_listener() {
+    static TEST_PROTO: ProtocolId = ProtocolId::from_static(b"/test/valid");
+    let shutdown = Shutdown::new();
+
+    let node_identity1 = build_node_identity(PeerFeatures::empty());
+    let node_identity2 = build_node_identity(PeerFeatures::empty());
+
+    let (proto_tx1, mut proto_rx1) = mpsc::channel(1);
+    let (proto_tx2, _) = mpsc::channel(1);
+
+    // Setup connection manager 1
+    let peer_manager1 = build_peer_manager();
+
+    let mut protocols = Protocols::new();
+    protocols.add([TEST_PROTO.clone()], proto_tx1);
+    let mut conn_man1 = build_connection_manager(
+        {
+            let mut config = TestNodeConfig {
+                node_identity: node_identity1.clone(),
+                ..Default::default()
+            };
+            config.connection_manager_config.auxilary_tcp_listener_address =
+                Some("/ip4/127.0.0.1/tcp/0".parse().unwrap());
+            config.connection_manager_config.network_info.user_agent = "node1".to_string();
+            config
+        },
+        MemoryTransport,
+        peer_manager1.clone(),
+        protocols,
+        shutdown.to_signal(),
+    );
+
+    let tcp_listener_addr = conn_man1
+        .wait_until_listening()
+        .await
+        .unwrap()
+        .auxilary_bind_address()
+        .unwrap()
+        .clone();
+
+    let peer_manager2 = build_peer_manager();
+    peer_manager2
+        .add_peer(Peer::new(
+            node_identity1.public_key().clone(),
+            node_identity1.node_id().clone(),
+            vec![tcp_listener_addr].into(),
+            PeerFlags::empty(),
+            PeerFeatures::COMMUNICATION_CLIENT,
+            Default::default(),
+            Default::default(),
+        ))
+        .await
+        .unwrap();
+    let mut protocols = Protocols::new();
+    protocols.add([TEST_PROTO.clone()], proto_tx2);
+    let mut conn_man2 = build_connection_manager(
+        {
+            let mut config = TestNodeConfig {
+                node_identity: node_identity2.clone(),
+                ..Default::default()
+            };
+            config.connection_manager_config.listener_address = "/ip4/127.0.0.1/tcp/0".parse().unwrap();
+            config.connection_manager_config.network_info.user_agent = "node2".to_string();
+            config
+        },
+        // Node 2 needs to use the tcp transport to connect to node1's tcp socket
+        TcpTransport::new(),
+        peer_manager2.clone(),
+        protocols,
+        shutdown.to_signal(),
+    );
+    conn_man2.wait_until_listening().await.unwrap();
+
+    let mut connection = conn_man2.dial_peer(node_identity1.node_id().clone()).await.unwrap();
+    assert_eq!(connection.peer_node_id(), node_identity1.node_id());
+
+    let mut substream_out = connection.open_substream(&TEST_PROTO).await.unwrap();
+
+    const MSG: &[u8] = b"Welease Woger!";
+    substream_out.stream.write_all(MSG).await.unwrap();
+
+    let protocol_in = proto_rx1.next().await.unwrap();
+    assert_eq!(protocol_in.protocol, &TEST_PROTO);
+    unpack_enum!(ProtocolEvent::NewInboundSubstream(node_id, substream_in) = protocol_in.event);
+    assert_eq!(&node_id, node_identity2.node_id());
+
+    let mut buf = [0u8; MSG.len()];
+    substream_in.read_exact(&mut buf).await.unwrap();
+    assert_eq!(buf, MSG);
+}
+
+#[runtime::test_basic]
 async fn simultaneous_dial_events() {
     let mut shutdown = Shutdown::new();
 
@@ -203,13 +294,15 @@ async fn simultaneous_dial_events() {
             node_identity: node_identities[0].clone(),
             ..Default::default()
         },
+        MemoryTransport,
         peer_manager1.clone(),
         Protocols::new(),
         shutdown.to_signal(),
     );
 
     let mut subscription1 = conn_man1.get_event_subscription();
-    let public_address1 = conn_man1.wait_until_listening().await.unwrap();
+    let listener_info = conn_man1.wait_until_listening().await.unwrap();
+    let public_address1 = listener_info.bind_address().clone();
 
     let peer_manager2 = build_peer_manager();
     let mut conn_man2 = build_connection_manager(
@@ -217,12 +310,14 @@ async fn simultaneous_dial_events() {
             node_identity: node_identities[1].clone(),
             ..Default::default()
         },
+        MemoryTransport,
         peer_manager2.clone(),
         Protocols::new(),
         shutdown.to_signal(),
     );
     let mut subscription2 = conn_man2.get_event_subscription();
-    let public_address2 = conn_man2.wait_until_listening().await.unwrap();
+    let listener_info = conn_man2.wait_until_listening().await.unwrap();
+    let public_address2 = listener_info.bind_address().clone();
 
     peer_manager1
         .add_peer(Peer::new(
@@ -264,10 +359,6 @@ async fn simultaneous_dial_events() {
         (Ok(_), Err(_)) => {},
         _ => panic!("unexpected simultaneous dial result"),
     }
-
-    // Wait for listening and peer connected events
-    let event = subscription2.next().await.unwrap().unwrap();
-    unpack_enum!(ConnectionManagerEvent::Listening(_addr) = &*event);
 
     let event = subscription2.next().await.unwrap().unwrap();
     assert!(count_string_occurrences(&[event], &["PeerConnected", "PeerInboundConnectFailed"]) >= 1);
@@ -311,6 +402,7 @@ async fn dial_cancelled() {
             config.connection_manager_config.network_info.user_agent = "node1".to_string();
             config
         },
+        MemoryTransport,
         peer_manager1.clone(),
         Default::default(),
         shutdown.to_signal(),

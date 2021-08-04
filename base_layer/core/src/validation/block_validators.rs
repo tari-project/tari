@@ -22,7 +22,7 @@
 use crate::{
     blocks::{Block, BlockValidationError},
     chain_storage,
-    chain_storage::{BlockchainBackend, ChainBlock, MmrTree},
+    chain_storage::{BlockchainBackend, ChainBlock, DeletedBitmap, MmrTree},
     consensus::ConsensusManager,
     transactions::{
         aggregated_body::AggregateBody,
@@ -39,6 +39,7 @@ use crate::{
 };
 use log::*;
 use std::marker::PhantomData;
+use tari_common_types::chain_metadata::ChainMetadata;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     tari_utilities::{hash::Hashable, hex::Hex},
@@ -124,10 +125,29 @@ impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for BodyOnlyValidator {
     /// 1. Are all inputs currently in the UTXO set?
     /// 1. Are all inputs and outputs not in the STXO set?
     /// 1. Are the block header MMR roots valid?
-    fn validate_body_for_valid_orphan(&self, block: &ChainBlock, backend: &B) -> Result<(), ValidationError> {
+    fn validate_body_for_valid_orphan(
+        &self,
+        block: &ChainBlock,
+        backend: &B,
+        metadata: &ChainMetadata,
+        deleted_bitmap: &DeletedBitmap,
+    ) -> Result<(), ValidationError> {
+        if block.header().height != metadata.height_of_longest_chain() + 1 {
+            return Err(ValidationError::IncorrectNextTipHeight {
+                expected: metadata.height_of_longest_chain() + 1,
+                block_height: block.height(),
+            });
+        }
+        if block.header().prev_hash != *metadata.best_block() {
+            return Err(ValidationError::IncorrectPreviousHash {
+                expected: metadata.best_block().to_hex(),
+                block_hash: block.hash().to_hex(),
+            });
+        }
+
         let block_id = format!("block #{} ({})", block.header().height, block.hash().to_hex());
-        check_inputs_are_utxos(&block.block(), backend)?;
-        check_not_duplicate_txos(&block.block(), backend)?;
+        check_inputs_are_utxos(block.block(), backend, deleted_bitmap)?;
+        check_not_duplicate_txos(block.block(), backend)?;
         trace!(
             target: LOG_TARGET,
             "Block validation: All inputs and outputs are valid for {}",
@@ -157,14 +177,14 @@ fn check_sorting_and_duplicates(body: &AggregateBody) -> Result<(), ValidationEr
 }
 
 /// This function checks that all inputs in the blocks are valid UTXO's to be spend
-fn check_inputs_are_utxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), ValidationError> {
-    let data = db
-        .fetch_block_accumulated_data(&block.header.prev_hash)?
-        .ok_or(ValidationError::PreviousHashNotFound)?;
-
+fn check_inputs_are_utxos<B: BlockchainBackend>(
+    block: &Block,
+    db: &B,
+    deleted: &DeletedBitmap,
+) -> Result<(), ValidationError> {
     for input in block.body.inputs() {
         if let Some((_, index, _height)) = db.fetch_output(&input.output_hash())? {
-            if data.deleted().contains(index) {
+            if deleted.bitmap().contains(index) {
                 warn!(
                     target: LOG_TARGET,
                     "Block validation failed due to already spent input: {}", input
@@ -255,7 +275,7 @@ fn check_mmr_roots<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), Va
     if header.witness_mr != mmr_roots.witness_mr {
         warn!(
             target: LOG_TARGET,
-            "Block header range_proof MMR roots in {} do not match calculated roots",
+            "Block header witness MMR roots in {} do not match calculated roots",
             block.hash().to_hex()
         );
         return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));

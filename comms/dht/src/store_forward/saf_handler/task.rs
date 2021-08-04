@@ -400,7 +400,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         // Check that the destination is either undisclosed, for us or for our network region
         Self::check_destination(&config, &peer_manager, &node_identity, &dht_header).await?;
         // Check that the message has not already been received.
-        Self::check_duplicate(&mut self.dht_requester, &message.body).await?;
+        Self::check_duplicate(&mut self.dht_requester, &message.body, source_peer.public_key.clone()).await?;
 
         // Attempt to decrypt the message (if applicable), and deserialize it
         let (authenticated_pk, decrypted_body) =
@@ -417,9 +417,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         ))
     }
 
-    async fn check_duplicate(dht_requester: &mut DhtRequester, body: &[u8]) -> Result<(), StoreAndForwardError> {
+    async fn check_duplicate(
+        dht_requester: &mut DhtRequester,
+        body: &[u8],
+        public_key: CommsPublicKey,
+    ) -> Result<(), StoreAndForwardError> {
         let msg_hash = Challenge::new().chain(body).finalize().to_vec();
-        if dht_requester.insert_message_hash(msg_hash).await? {
+        if dht_requester.insert_message_hash(msg_hash, public_key).await? {
             Err(StoreAndForwardError::DuplicateMessage)
         } else {
             Ok(())

@@ -20,6 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+mod dedup_cache;
+
+pub use dedup_cache::DedupCacheDatabase;
+
 use crate::{actor::DhtRequester, inbound::DhtInboundMessage};
 use digest::Digest;
 use futures::{future::BoxFuture, task::Context};
@@ -79,7 +83,10 @@ where
                 message.tag,
                 message.dht_header.message_tag
             );
-            if dht_requester.insert_message_hash(hash).await? {
+            if dht_requester
+                .insert_message_hash(hash, message.source_peer.public_key.clone())
+                .await?
+            {
                 trace!(
                     target: LOG_TARGET,
                     "Received duplicate message {} from peer '{}' (Trace: {}). Message discarded.",

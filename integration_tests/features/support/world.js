@@ -7,7 +7,6 @@ const MiningNodeProcess = require("../../helpers/miningNodeProcess");
 const glob = require("glob");
 const fs = require("fs");
 const archiver = require("archiver");
-
 class CustomWorld {
   constructor({ attach, parameters }) {
     // this.variable = 0;
@@ -33,13 +32,14 @@ class CustomWorld {
     this.logFilePathBaseNode =
       parameters.logFilePathBaseNode || "./log4rs/base_node.yml";
     this.logFilePathProxy = parameters.logFilePathProxy || "./log4rs/proxy.yml";
-    this.logFilePathMiningNocde =
-      parameters.logFilePathMiningNocde || "./log4rs/mining_node.yml";
+    this.logFilePathMiningNode =
+      parameters.logFilePathMiningNode || "./log4rs/mining_node.yml";
     this.logFilePathWallet =
       parameters.logFilePathWallet || "./log4rs/wallet.yml";
   }
 
   async createSeedNode(name) {
+    console.log(`seed:`, name);
     const proc = new BaseNodeProcess(
       `seed-${name}`,
       false,
@@ -176,6 +176,22 @@ class CustomWorld {
     return this.walletPubkeys[name];
   }
 
+  getNodeOrWalletClient(name) {
+    let client = this.getClient(name.trim());
+    if (client) {
+      client.isNode = true;
+      client.isWallet = false;
+      return client;
+    }
+    let wallet = this.getWallet(name.trim());
+    if (wallet) {
+      let client = wallet.getClient();
+      client.isNode = false;
+      client.isWallet = true;
+      return client;
+    }
+  }
+
   async getOrCreateWallet(name) {
     const wallet = this.getWallet(name);
     if (wallet) {
@@ -269,8 +285,8 @@ BeforeAll({ timeout: 1200000 }, async function () {
     "compile",
     "127.0.0.1:9999",
     null,
-    "127.0.0.1:9998",
-    this.logFilePathMiningNocde
+    "127.0.0.1:9998"
+    // this.logFilePathMiningNode
   );
   console.log("Compiling mining node...");
   await miningNode.init(1, 1, 1, 1, true, 1);
@@ -281,37 +297,21 @@ BeforeAll({ timeout: 1200000 }, async function () {
 
 After(async function (testCase) {
   console.log("Stopping nodes");
-  for (const key in this.seeds) {
-    if (testCase.result.status === "failed") {
-      await attachLogs(`${this.seeds[key].baseDir}`, this);
-    }
-    await this.stopNode(key);
-  }
-  for (const key in this.nodes) {
-    if (testCase.result.status === "failed") {
-      await attachLogs(`${this.nodes[key].baseDir}`, this);
-    }
-    await this.stopNode(key);
-  }
-  for (const key in this.proxies) {
-    if (testCase.result.status === "failed") {
-      await attachLogs(`${this.proxies[key].baseDir}`, this);
-    }
-    await this.proxies[key].stop();
-  }
-  for (const key in this.wallets) {
-    if (testCase.result.status === "failed") {
-      await attachLogs(`${this.wallets[key].baseDir}`, this);
-    }
-    await this.wallets[key].stop();
-  }
-  for (const key in this.miners) {
-    if (testCase.result.status === "failed") {
-      await attachLogs(`${this.miners[key].baseDir}`, this);
-    }
-    await this.miners[key].stop();
-  }
+  await stopAndHandleLogs(this.seeds, testCase, this);
+  await stopAndHandleLogs(this.nodes, testCase, this);
+  await stopAndHandleLogs(this.proxies, testCase, this);
+  await stopAndHandleLogs(this.wallets, testCase, this);
+  await stopAndHandleLogs(this.miners, testCase, this);
 });
+
+async function stopAndHandleLogs(objects, testCase, context) {
+  for (const key in objects) {
+    if (testCase.result.status === "failed") {
+      await attachLogs(`${objects[key].baseDir}`, context);
+    }
+    await objects[key].stop();
+  }
+}
 
 function attachLogs(path, context) {
   return new Promise((outerRes) => {
@@ -333,7 +333,7 @@ function attachLogs(path, context) {
           fs.createReadStream("./temp/logzip.zip"),
           "application/zip",
           function () {
-            fs.rmSync("./temp/logzip.zip");
+            fs.rmSync && fs.rmSync("./temp/logzip.zip");
             outerRes();
           }
         );
