@@ -775,6 +775,7 @@ Then(
     await this.forEachClientAsync(async (client, name) => {
       await waitFor(async () => client.getTipHeight(), height, 115 * 1000);
       const currTip = await client.getTipHeader();
+      console.log("the node is at tip ", currTip);
       expect(currTip.height).to.equal(height);
       if (!tipHash) {
         tipHash = currTip.hash.toString("hex");
@@ -2517,9 +2518,9 @@ Then(
 );
 
 Then(
-  /wallets ([A-Za-z0-9,]+) account for all valid spendable coinbase transactions on the blockchain/,
+  /wallets ([A-Za-z0-9,]+) should have (.*) spendable coinbase outputs/,
   { timeout: 610 * 1000 },
-  async function (wallets) {
+  async function (wallets, amountOfCoinBases) {
     const walletClients = wallets
       .split(",")
       .map((wallet) => this.getWallet(wallet).getClient());
@@ -2536,7 +2537,7 @@ Then(
           console.log(client.name, "count", count);
           spendableCoinbaseCount += count;
         }
-        return spendableCoinbaseCount === this.lastResult;
+        return spendableCoinbaseCount.toString() === amountOfCoinBases;
       },
       true,
       600 * 1000,
@@ -2552,10 +2553,10 @@ Then(
       "with",
       spendableCoinbaseCount,
       "being valid and Mined_Confirmed, expected",
-      this.lastResult,
+      amountOfCoinBases,
       "\n"
     );
-    expect(spendableCoinbaseCount).to.equal(this.lastResult);
+    expect(spendableCoinbaseCount.toString()).to.equal(amountOfCoinBases);
   }
 );
 
