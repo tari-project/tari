@@ -71,6 +71,18 @@ where
                 return;
             }
             let service = self.service.clone();
+
+            let num_available = self.executor.num_available();
+            let max_available = self.executor.max_available();
+            // Only emit this message if there is any concurrent usage
+            if num_available < max_available {
+                debug!(
+                    target: LOG_TARGET,
+                    "Inbound pipeline usage: {}/{}",
+                    max_available - num_available,
+                    max_available
+                );
+            }
             // Call the service in it's own spawned task
             self.executor
                 .spawn(async move {
@@ -80,6 +92,7 @@ where
                 })
                 .await;
         }
+        info!(target: LOG_TARGET, "Inbound pipeline terminated: the stream completed");
     }
 }
 

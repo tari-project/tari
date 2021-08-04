@@ -266,7 +266,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .to_vec(),
                         message: txn.message,
                         valid: txn.valid,
-                        is_found: true,
                     }),
                 };
                 match sender.send(Ok(response)).await {
@@ -415,7 +414,6 @@ fn convert_wallet_transaction_into_transaction_info(
             timestamp: Some(naive_datetime_to_timestamp(tx.timestamp)),
             message: tx.message,
             valid: true,
-            is_found: true,
         },
         PendingOutbound(tx) => TransactionInfo {
             tx_id: tx.tx_id,
@@ -430,7 +428,6 @@ fn convert_wallet_transaction_into_transaction_info(
             timestamp: Some(naive_datetime_to_timestamp(tx.timestamp)),
             message: tx.message,
             valid: true,
-            is_found: true,
         },
         Completed(tx) => TransactionInfo {
             tx_id: tx.tx_id,
@@ -449,7 +446,6 @@ fn convert_wallet_transaction_into_transaction_info(
                 .unwrap_or_default(),
             message: tx.message,
             valid: tx.valid,
-            is_found: true,
         },
     }
 }
