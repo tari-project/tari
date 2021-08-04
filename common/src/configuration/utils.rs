@@ -242,8 +242,19 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     set_transport_defaults(&mut cfg).unwrap();
     set_merge_mining_defaults(&mut cfg);
     set_mining_node_defaults(&mut cfg);
+    set_stratum_transcoder_defaults(&mut cfg);
 
     cfg
+}
+
+fn set_stratum_transcoder_defaults(cfg: &mut Config) {
+    cfg.set_default("stratum_transcoder.mainnet.transcoder_host_address", "127.0.0.1:7879")
+        .unwrap();
+    cfg.set_default(
+        "stratum_transcoder.weatherwax.transcoder_host_address",
+        "127.0.0.1:7879",
+    )
+    .unwrap();
 }
 
 fn set_merge_mining_defaults(cfg: &mut Config) {
@@ -254,8 +265,6 @@ fn set_merge_mining_defaults(cfg: &mut Config) {
     .unwrap();
     cfg.set_default("merge_mining_proxy.mainnet.proxy_host_address", "127.0.0.1:7878")
         .unwrap();
-    cfg.set_default("merge_mining_proxy.mainnet.transcoder_host_address", "127.0.0.1:7879")
-        .unwrap();
     cfg.set_default("merge_mining_proxy.mainnet.monerod_use_auth", "false")
         .unwrap();
     cfg.set_default("merge_mining_proxy.mainnet.monerod_username", "")
@@ -264,15 +273,12 @@ fn set_merge_mining_defaults(cfg: &mut Config) {
         .unwrap();
     cfg.set_default("merge_mining_proxy.mainnet.wait_for_initial_sync_at_startup", true)
         .unwrap();
-
     cfg.set_default(
         "merge_mining_proxy.weatherwax.monerod_url",
         "http://monero-stagenet.exan.tech:38081",
     )
     .unwrap();
     cfg.set_default("merge_mining_proxy.weatherwax.proxy_host_address", "127.0.0.1:7878")
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.mainnet.transcoder_host_address", "127.0.0.1:7879")
         .unwrap();
     cfg.set_default("merge_mining_proxy.weatherwax.proxy_submit_to_origin", true)
         .unwrap();

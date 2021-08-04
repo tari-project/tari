@@ -470,7 +470,6 @@ monerod_url = "http://monero-stagenet.exan.tech:38081" # stagenet
 
 # Address of the tari_merge_mining_proxy application
 proxy_host_address = "127.0.0.1:7878"
-transcoder_host_address = "127.0.0.1:7879"
 
 # In sole merged mining, the block solution is usually submitted to the Monero blockchain
 # (monerod) as well as to the Tari blockchain, then this setting should be "true". With pool
@@ -491,6 +490,11 @@ monerod_password = ""
 # or not. If merge mining starts before the base node has achieved initial sync, those Tari mined blocks will not be
 # accepted. (Default value = true; will wait for base node initial sync).
 #wait_for_initial_sync_at_startup = true
+
+[stratum_transcoder]
+
+# Address of the tari_stratum_transcoder application
+transcoder_host_address = "127.0.0.1:7879"
 
 [mining_node]
 # Number of mining threads
@@ -515,3 +519,7 @@ monerod_password = ""
 # to true
 # Default: 30 seconds
 #validate_tip_timeout_sec=30
+
+# Stratum Mode configuration
+# mining_pool_address = "miningcore.tarilabs.com:3052"
+# mining_wallet_address = "YOUR_WALLET_PUBLIC_KEY"
