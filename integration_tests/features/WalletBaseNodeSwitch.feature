@@ -1,6 +1,5 @@
 Feature: Wallet Base Node Switch
 
-    @doit
     Scenario: As a user I want to change base node for a wallet
         Given I have a base node Node1 connected to all seed nodes
         And I have a base node Node2 connected to all seed nodes

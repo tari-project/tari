@@ -254,6 +254,8 @@ fn set_merge_mining_defaults(cfg: &mut Config) {
     .unwrap();
     cfg.set_default("merge_mining_proxy.mainnet.proxy_host_address", "127.0.0.1:7878")
         .unwrap();
+    cfg.set_default("merge_mining_proxy.mainnet.transcoder_host_address", "127.0.0.1:7879")
+        .unwrap();
     cfg.set_default("merge_mining_proxy.mainnet.monerod_use_auth", "false")
         .unwrap();
     cfg.set_default("merge_mining_proxy.mainnet.monerod_username", "")
@@ -269,6 +271,8 @@ fn set_merge_mining_defaults(cfg: &mut Config) {
     )
     .unwrap();
     cfg.set_default("merge_mining_proxy.weatherwax.proxy_host_address", "127.0.0.1:7878")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.mainnet.transcoder_host_address", "127.0.0.1:7879")
         .unwrap();
     cfg.set_default("merge_mining_proxy.weatherwax.proxy_submit_to_origin", true)
         .unwrap();
