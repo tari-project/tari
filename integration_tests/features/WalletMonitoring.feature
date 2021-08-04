@@ -70,23 +70,23 @@ Feature: Wallet Monitoring
     And I have mining node MINER2 connected to base node NODE2 and wallet WALLET2
 
     When I co-mine <numBlocks> blocks via merge mining proxy PROXY1 and mining node MINER2
-    Then node NODE1 is at the same height as node NODE2
-    Then node SEED_A is at the same height as node NODE1
+    # This wait is here to give a chance for re-orgs to settle out
+    Then I wait 30 seconds
+    Then all nodes are on the same chain at height <numBlocks>
 
     And mining node MINER_SEED_A mines 5 blocks
-    Then all nodes are at the same height as node SEED_A
+    Then all nodes are on the same chain at height <endBlocks>
 
     When I wait 1 seconds
-    Then wallets WALLET1,WALLET2 account for all valid spendable coinbase transactions on the blockchain
+    Then wallets WALLET1,WALLET2 should have <numBlocks> spendable coinbase outputs
     @critical
     Examples:
-        | numBlocks |
-        | 10        |
-        | 100       |
+        | numBlocks | endBlocks |
+        | 10        | 15        |
+        | 100       | 105       |
 
     @long-running
     Examples:
-        | numBlocks |
-        | 1000      |
-        | 4500     |
-
+        | numBlocks | endBlocks |
+        | 1000      | 1005      |
+        | 4500      | 4505      |
