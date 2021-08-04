@@ -663,6 +663,11 @@ where TBackend: OutputManagerBackend + 'static
         fees: MicroTari,
         block_height: u64,
     ) -> Result<Transaction, OutputManagerError> {
+        debug!(
+            target: LOG_TARGET,
+            "Building coinbase transaction for block_height {} with TxId: {}", block_height, tx_id
+        );
+
         let (spending_key, script_key) = self
             .resources
             .master_key_manager
