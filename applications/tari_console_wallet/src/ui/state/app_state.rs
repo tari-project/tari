@@ -37,7 +37,11 @@ use bitflags::bitflags;
 use futures::{stream::Fuse, StreamExt};
 use log::*;
 use qrcode::{render::unicode, QrCode};
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tari_common::{configuration::Network, GlobalConfig};
 use tari_comms::{
     connectivity::ConnectivityEventRx,
@@ -72,8 +76,10 @@ const LOG_TARGET: &str = "wallet::console_wallet::app_state";
 pub struct AppState {
     inner: Arc<RwLock<AppStateInner>>,
     cached_data: AppStateData,
+    cache_update_cooldown: Option<Instant>,
     completed_tx_filter: TransactionFilter,
     node_config: GlobalConfig,
+    config: AppStateConfig,
 }
 
 impl AppState {
@@ -91,8 +97,10 @@ impl AppState {
         Self {
             inner: Arc::new(RwLock::new(inner)),
             cached_data,
+            cache_update_cooldown: None,
             completed_tx_filter: TransactionFilter::ABANDONED_COINBASES,
             node_config,
+            config: AppStateConfig::default(),
         }
     }
 
@@ -126,10 +134,18 @@ impl AppState {
     }
 
     pub async fn update_cache(&mut self) {
-        let mut inner = self.inner.write().await;
-        let updated_state = inner.get_updated_app_state();
-        if let Some(data) = updated_state {
-            self.cached_data = data;
+        let update = match self.cache_update_cooldown {
+            Some(last_update) => last_update.elapsed() > self.config.cache_update_cooldown,
+            None => true,
+        };
+
+        if update {
+            let mut inner = self.inner.write().await;
+            let updated_state = inner.get_updated_app_state();
+            if let Some(data) = updated_state {
+                self.cached_data = data;
+                self.cache_update_cooldown = Some(Instant::now());
+            }
         }
     }
 
@@ -895,5 +911,18 @@ bitflags! {
     pub struct TransactionFilter: u8 {
         const NONE = 0b0000_0000;
         const ABANDONED_COINBASES = 0b0000_0001;
+    }
+}
+
+#[derive(Clone)]
+struct AppStateConfig {
+    pub cache_update_cooldown: Duration,
+}
+
+impl Default for AppStateConfig {
+    fn default() -> Self {
+        Self {
+            cache_update_cooldown: Duration::from_secs(2),
+        }
     }
 }
