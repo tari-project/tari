@@ -619,7 +619,7 @@ fn convert_node_config(
                 .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
         })?;
 
-    let key = config_string("merge_mining_proxy", &net_str, "transcoder_host_address");
+    let key = config_string("stratum_transcoder", &net_str, "transcoder_host_address");
     let transcoder_host_address = cfg
         .get_str(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
