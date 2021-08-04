@@ -19,7 +19,12 @@ services:
       - 18189:18189
     environment:
       TARI_LOG_CONFIGURATION: "/var/tari/config/log4rs.yml"
+      APP_NAME: wallet
+      APP_EXEC: tari_console_wallet
+      CREATE_CONFIG: 1
+      CREATE_ID: 1
       WAIT_FOR_TOR: 0
+      TARI_NETWORK: weatherwax
       SHELL: "/bin/bash"
       TERM: "linux"
     command: []
@@ -38,6 +43,10 @@ services:
         ARG WALLET_ARCH: x86-64
     environment:
       TARI_LOG_CONFIGURATION: "/var/tari/config/log4rs.yml"
+      APP_NAME: base_node
+      APP_EXEC: tari_base_node
+      CREATE_CONFIG: 1
+      CREATE_ID: 1
       WAIT_FOR_TOR: 0
       TARI_NETWORK: weatherwax
     ports:

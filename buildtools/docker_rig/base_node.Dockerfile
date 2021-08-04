@@ -37,9 +37,11 @@ RUN apt update && apt -y install \
 
 # Now create a new image with only the essentials and throw everything else away
 FROM base
+ENV APP_NAME=base_node APP_EXEC=tari_base_node
 
-COPY --from=builder /tari/target/release/tari_base_node /usr/bin/
-COPY --from=builder /tari/buildtools/docker_rig/start_base_node.sh /usr/bin/start_base_node.sh
+COPY --from=builder /tari/target/release/$APP_EXEC /usr/bin/
+COPY --from=builder /tari/buildtools/docker_rig/start_tari_app.sh /usr/bin/start_tari_app.sh
 
-ENTRYPOINT [ "start_base_node.sh", "-c", "/var/tari/config/config.toml", "-b", "/var/tari/base_node" ]
+
+ENTRYPOINT [ "start_tari_app.sh", "-c", "/var/tari/config/config.toml", "-b", "/var/tari/base_node" ]
 CMD [ "-d" ]
