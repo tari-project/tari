@@ -50,7 +50,7 @@ where T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone
         }
     }
 
-    pub async fn get(&mut self) -> Result<RpcClientLease<T>, RpcClientPoolError> {
+    pub async fn get(&self) -> Result<RpcClientLease<T>, RpcClientPoolError> {
         let mut pool = self.pool.lock().await;
         pool.get_least_used_or_connect().await
     }
