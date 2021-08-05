@@ -29,7 +29,7 @@ class MergeMiningProxyProcess {
   }
 
   async init() {
-    this.port = await getFreePort(19000, 25000);
+    this.port = await getFreePort();
     this.name = `MMProxy${this.port}-${this.name}`;
     this.baseDir = `./temp/base_nodes/${dateFormat(
       new Date(),

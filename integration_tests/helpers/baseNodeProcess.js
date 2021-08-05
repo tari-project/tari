@@ -18,8 +18,8 @@ class BaseNodeProcess {
   }
 
   async init() {
-    this.port = await getFreePort(19000, 25000);
-    this.grpcPort = await getFreePort(19000, 25000);
+    this.port = await getFreePort();
+    this.grpcPort = await getFreePort();
     this.name = `Basenode${this.port}-${this.name}`;
     this.nodeFile = this.nodeFile || "nodeid.json";
 
