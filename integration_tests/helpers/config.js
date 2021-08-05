@@ -151,7 +151,7 @@ function createEnv(
     `TARI_MERGE_MINING_PROXY__${network}__PROXY_HOST_ADDRESS`
   ] = `${proxyFullAddress}`;
   configEnvs[
-    `TARI_MERGE_MINING_PROXY__${network}__TRANSCODER_HOST_ADDRESS`
+    `TARI_STRATUM_TRANSCODER__${network}__TRANSCODER_HOST_ADDRESS`
   ] = `${transcoderFullAddress}`;
   configEnvs[`TARI_BASE_NODE__${network}__TRANSPORT`] = "tcp";
   configEnvs[`TARI_WALLET__${network}__TRANSPORT`] = "tcp";
