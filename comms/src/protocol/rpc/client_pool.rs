@@ -157,10 +157,7 @@ where T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone
     }
 
     pub fn is_full(&self) -> bool {
-        let len = self.clients.len();
-        let cap = self.clients.capacity();
-        debug_assert!(len <= cap, "length exceeded capacity");
-        len >= cap
+        self.clients.len() == self.clients.capacity()
     }
 
     async fn add_new_client_session(&mut self) -> Result<&RpcClientLease<T>, RpcClientPoolError> {

@@ -225,17 +225,17 @@ class CustomWorld {
 
     return new Promise((resolve, reject) => {
       for (let promise of promises) {
-        Promise.resolve(promise).then(
-          () => {
+        Promise.resolve(promise)
+          .then(() => {
             succeeded += 1;
             console.log(`${succeeded} of ${total} (need ${total - canFail})`);
             if (succeeded >= total - canFail) resolve();
-          },
-          () => {
+          })
+          .catch((err) => {
+            console.error(err);
             failed += 1;
-            if (failed > canFail) reject("Too many failed.");
-          }
-        );
+            if (failed > canFail) reject(`Too many failed. canFail=${canFail}`);
+          });
       }
     });
   }

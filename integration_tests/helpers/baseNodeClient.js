@@ -1,5 +1,5 @@
 const expect = require("chai").expect;
-const grpc = require("grpc");
+const grpc = require("@grpc/grpc-js");
 const protoLoader = require("@grpc/proto-loader");
 const grpc_promise = require("grpc-promise");
 const TransactionBuilder = require("./transactionBuilder");
@@ -34,7 +34,12 @@ class BaseNodeClient {
       "127.0.0.1:" + port,
       grpc.credentials.createInsecure()
     );
-    grpc_promise.promisifyAll(client);
+    client.waitForReady(Infinity, (err) => {
+      if (err) {
+        console.error(err);
+      }
+    });
+    grpc_promise.promisifyAll(client, { metadata: new grpc.Metadata() });
     return client;
   }
 
