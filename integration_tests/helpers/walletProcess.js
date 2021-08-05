@@ -60,6 +60,11 @@ class WalletProcess {
       }
 
       let envs = {};
+      const network =
+        this.options && this.options.network
+          ? this.options.network.toUpperCase()
+          : "LOCALNET";
+      envs[`TARI_BASE_NODE__COMMON__NETWORK`] = network;
       if (!this.excludeTestEnvars) {
         envs = createEnv(
           this.name,
@@ -77,13 +82,10 @@ class WalletProcess {
           this.peerSeeds
         );
       } else if (this.options["grpc_console_wallet_address"]) {
-        const network =
-          this.options && this.options.network
-            ? this.options.network.toUpperCase()
-            : "LOCALNET";
-
         envs[`TARI_BASE_NODE__${network}__GRPC_CONSOLE_WALLET_ADDRESS`] =
           this.options["grpc_console_wallet_address"];
+        this.grpcPort =
+          this.options["grpc_console_wallet_address"].split(":")[1];
       }
 
       if (saveFile) {

@@ -1,5 +1,6 @@
 const WalletProcess = require("../../integration_tests/helpers/walletProcess");
 const WalletClient = require("../../integration_tests/helpers/walletClient");
+const {getFreePort} = require("../../integration_tests/helpers/util");
 const { sleep, yargs } = require("../../integration_tests/helpers/util");
 const { PaymentType } = require("../../integration_tests/helpers/types");
 
@@ -58,22 +59,33 @@ async function main() {
       default: null,
     })
     .option("one-sided", { type: "boolean", default: false })
+    .option("routing-mechanism", {alias: "r", type: "string", default: "StoreAndForwardOnly"})
+    .option("web-hook", {
+       type: "string",
+       default: null,
+       description: "Optional web hook to send messages to instead of outputting to console (requires cURL).",
+    })
     .alias("help", "h");
+
+  //todo: Make channel configurable for web-hook
 
   argObj.help();
 
   const { argv: args } = argObj;
+  const hook = args.webHook;
 
-  debug(JSON.stringify(args, null, 2));
-  console.log("Hello, starting the washing machine");
+  debug(hook, JSON.stringify(args, null, 2));
 
+  log_notify("Hello, starting the washing machine", hook);
+
+  log_notify("Compiling and starting applications...", hook);
   let wallet1 = new WalletClient(args.wallet1Grpc);
-
   // Start wallet2
   let wallet2;
   let wallet2Process = null;
   if (!args.wallet2Grpc) {
-    wallet2Process = createGrpcWallet(args.baseNode);
+    const port = await getFreePort(20000, 25000);
+    wallet2Process = createGrpcWallet(args.baseNode, {routingMechanism: args.routingMechanism, grpc_console_wallet_address:`127.0.0.1:${port}`}, true);
     wallet2Process.baseDir = "./wallet";
     await wallet2Process.startNew();
     wallet2 = wallet2Process.getClient();
@@ -81,8 +93,8 @@ async function main() {
     wallet2 = new WalletClient(args.wallet2Grpc);
   }
 
-  await showWalletDetails("Wallet 1", wallet1);
-  await showWalletDetails("Wallet 2 ", wallet2);
+  await showWalletDetails("Wallet 1", wallet1, hook);
+  await showWalletDetails("Wallet 2 ", wallet2, hook);
 
   let [minAmount, maxAmount] = args.amountRange
     .split("-", 2)
@@ -93,43 +105,44 @@ async function main() {
   const minRequiredBalance =
     ((maxAmount - minAmount) / 2) * numTransactions +
     calcPossibleFee(FEE_PER_GRAM, numTransactions);
-  let currentBalance = await waitForBalance(wallet1, minRequiredBalance);
 
-  console.log(
-    `Required balance (${minRequiredBalance}uT) reached: ${currentBalance.available_balance}uT. Sending transactions between ${minAmount}uT and ${maxAmount}uT`
+  let currentBalance = await waitForBalance(wallet1, minRequiredBalance, hook);
+
+  log_notify(
+    `Required balance (${minRequiredBalance}uT) reached: ${currentBalance.available_balance}uT. Sending transactions between ${minAmount}uT and ${maxAmount}uT`, hook
   );
 
   let roundCount = 0;
   while (true) {
-    console.log(`Wallet 1 -> Wallet 2`);
+    log_notify(`Wallet 1 -> Wallet 2`, hook);
     let wallet1AmountSent = await sendFunds(wallet1, wallet2, {
       minAmount: minAmount,
       maxAmount: maxAmount,
       oneSided: args.oneSided,
       numTransactions,
       feePerGram: FEE_PER_GRAM,
-    });
+    }, hook);
 
-    console.log(
-      `Waiting for wallet2 to have a balance of ${wallet1AmountSent}uT`
+    log_notify(
+      `Waiting for wallet2 to have a balance of ${wallet1AmountSent}uT`, hook
     );
-    await waitForBalance(wallet2, wallet1AmountSent);
+    await waitForBalance(wallet2, wallet1AmountSent, hook);
 
-    console.log(`Wallet 2 -> Wallet 1`);
+    log_notify(`Wallet 2 -> Wallet 1`, hook);
     await sendFunds(wallet2, wallet1, {
       minAmount: minAmount,
       maxAmount: maxAmount,
       oneSided: args.oneSided,
       numTransactions,
       feePerGram: FEE_PER_GRAM,
-    });
+    }, hook);
 
     roundCount++;
     if (numRounds && roundCount >= numRounds) {
       break;
     }
     if (sleepAfterRound) {
-      console.log(`Taking a break for ${sleepAfterRound}s`);
+      log_notify(`Taking a break for ${sleepAfterRound}s`, hook);
       await sleep(sleepAfterRound * 1000);
     }
   }
@@ -139,7 +152,7 @@ async function main() {
   }
 }
 
-async function sendFunds(senderWallet, receiverWallet, options) {
+async function sendFunds(senderWallet, receiverWallet, options, hook) {
   const { available_balance: senderBalance } = await senderWallet.getBalance();
   const receiverInfo = await receiverWallet.identify();
   const paymentType = options.oneSided
@@ -154,7 +167,7 @@ async function sendFunds(senderWallet, receiverWallet, options) {
     numTransactions: options.numTransactions,
     balance: senderBalance,
     paymentType,
-  });
+  }, hook);
 
   let transactions = collect(transactionIter);
   let totalToSend = transactions.reduce(
@@ -164,7 +177,7 @@ async function sendFunds(senderWallet, receiverWallet, options) {
   // For interactive transactions, a coin split is needed first
   if (!options.oneSided) {
     let avgAmountPerTransaction = totalToSend / transactions.length;
-    console.log(`COINSPLIT: amount = ${avgAmountPerTransaction}uT`);
+    log_notify(`COINSPLIT: amount = ${avgAmountPerTransaction}uT`, hook);
     if (transactions.length > 1) {
       let leftToSplit = transactions.length;
       while (leftToSplit > 499) {
@@ -173,7 +186,7 @@ async function sendFunds(senderWallet, receiverWallet, options) {
           split_count: 499,
           fee_per_gram: options.feePerGram,
         });
-        console.log("Split:", split_result);
+        log_notify(`Split: ${JSON.stringify(split_result)}`, hook);
         leftToSplit -= 499;
       }
       if (leftToSplit > 0) {
@@ -182,10 +195,10 @@ async function sendFunds(senderWallet, receiverWallet, options) {
           split_count: leftToSplit,
           fee_per_gram: options.feePerGram,
         });
-        console.log("Last split:", split_result);
+        log_notify(`Last Split: ${JSON.stringify(split_result)}`, hook);
       }
     }
-    await waitForBalance(senderWallet, totalToSend);
+    await waitForBalance(senderWallet, totalToSend, hook);
   }
 
   let { results } = await senderWallet.transfer({
@@ -193,25 +206,25 @@ async function sendFunds(senderWallet, receiverWallet, options) {
   });
   // debug(results);
   for (let result of results) {
-    console.log(
+    log_notify(
       `${
         result.is_success ? "✅  " : `❌ ${result.failure_message}`
-      } transaction #${result.transaction_id} `
+      } transaction #${result.transaction_id} `, hook
     );
   }
 
   return totalToSend;
 }
 
-function* transactionGenerator(options) {
+function* transactionGenerator(options, hook) {
   // Loosely account for fees
   const avgSpendPerTransaction =
     options.minAmount +
     (options.maxAmount - options.minAmount) / 2 +
     calcPossibleFee(options.feePerGram, 1);
-  console.log(
+  log_notify(
     `Generating ${options.numTransactions} transactions averaging ${avgSpendPerTransaction}uT (incl fees)`
-  );
+  , hook);
 
   let amountToSend = options.minAmount;
   let i = 0;
@@ -234,10 +247,10 @@ function* transactionGenerator(options) {
   }
 }
 
-function createGrpcWallet(baseNode, opts = {}) {
-  let process = new WalletProcess("sender", false, {
+function createGrpcWallet(baseNode, opts = {}, excludeTestEnvars= true) {
+  let process = new WalletProcess("sender", excludeTestEnvars, {
     transport: "tor",
-    network: "stibbons",
+    network: "weatherwax",
     num_confirmations: 0,
     ...opts,
   });
@@ -245,21 +258,31 @@ function createGrpcWallet(baseNode, opts = {}) {
   return process;
 }
 
-async function waitForBalance(client, balance) {
+async function waitForBalance(client, balance, hook) {
   if (isNaN(balance)) {
+    log_notify("Error: balance is not a number", hook);
     throw new Error("balance is not a number");
   }
   let i = 0;
+  let r = 1;
+  let newBalance = await client.getBalance();
+  log_notify(
+      `Waiting for available wallet balance (${newBalance.available_balance}uT, pending=${newBalance.pending_incoming_balance}uT) to reach at least ${balance}uT...`
+      , hook);
   while (true) {
-    let newBalance = await client.getBalance();
-    console.log(
-      `[t=${i}s] Waiting for available wallet balance (${newBalance.available_balance}uT, pending=${newBalance.pending_incoming_balance}uT) to reach at least ${balance}uT...`
-    );
+    newBalance = await client.getBalance();
     if (newBalance.available_balance >= balance) {
       return newBalance;
     }
     await sleep(1000);
-    i++;
+    if (i >= 60)
+    {
+      log_notify(`Still waiting... [t=${r*i}s]`,hook);
+      i = 0;
+      r++;
+    } else {
+      i++;
+    }
   }
 }
 
@@ -276,19 +299,37 @@ function calcPossibleFee(feePerGram, numTransactions) {
   return feePerGram * TRANSACTION_WEIGHT * numTransactions;
 }
 
-function debug(...args) {
-  // Poor man's debug
+function debug(hook, ...args) {
   if (process.env.DEBUG) {
-    console.log(...args);
+    log_notify(...args, hook);
   }
 }
 
-async function showWalletDetails(name, wallet) {
+function log_notify(message, hook) {
+  if (!hook) {
+    console.log(message);
+  } else {
+    hook_notify(message, hook);
+  }
+}
+
+function hook_notify(message, hook) {
+  const exec = require('child_process').exec;
+  const data = `{"text": "${message}", "channel": "protocol-bot-stuff"}`;
+  const args = ` -i -X POST -H 'Content-Type: application/json' -d '${data}' ${hook}`;
+  exec('curl ' + args, function (error, stdout, stderr) {
+    console.log('stdout: ' + stdout);
+    console.log('stderr: ' + stderr);
+    if (error !== null) {
+      console.log('exec error: ' + error);
+    }
+  });
+}
+
+async function showWalletDetails(name, wallet, hook) {
   const walletIdentity = await wallet.identify();
   const { status, num_node_connections } = await wallet.getNetworkStatus();
-  console.log(
-    `${name}: ${walletIdentity.public_key} status = ${status}, num_node_connections = ${num_node_connections}`
-  );
+  log_notify(`${name}: ${walletIdentity.public_key} status = ${status}, num_node_connections = ${num_node_connections}`, hook);
 }
 
 Promise.all([main()]);
