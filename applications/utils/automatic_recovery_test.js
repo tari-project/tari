@@ -55,7 +55,8 @@ async function main() {
   const timeDiffMs = endTime - startTime;
   const timeDiffMinutes = timeDiffMs / 60000;
 
-  let walletClient = new WalletClient("127.0.0.1:18111");
+  let walletClient = new WalletClient();
+  await walletClient.connect("127.0.0.1:18111");
   let id = await walletClient.identify();
 
   wallet.stop();

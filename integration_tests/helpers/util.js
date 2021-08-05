@@ -3,8 +3,6 @@ const yargs = require("yargs");
 const { hideBin } = require("yargs/helpers");
 
 const { blake2bInit, blake2bUpdate, blake2bFinal } = require("blakejs");
-const grpcPromise = require("grpc-promise");
-const grpc = require("@grpc/grpc-js");
 
 const NO_CONNECTION = 14;
 
@@ -42,7 +40,12 @@ async function tryConnect(makeClient, opts = {}) {
   for (;;) {
     let client = makeClient();
 
-    console.log(`Connect attempt ${attempts + 1}/${options.maxAttempts}`);
+    // Don't log the uninteresting case
+    if (attempts > 0) {
+      console.warn(
+        `GRPC connection attempt ${attempts + 1}/${options.maxAttempts}`
+      );
+    }
     let error = await new Promise((resolve) => {
       client.waitForReady(options.deadline, (err) => {
         if (err) {
@@ -57,16 +60,13 @@ async function tryConnect(makeClient, opts = {}) {
         throw error;
       }
       attempts++;
+      console.error(
+        `Failed connection attempt ${attempts + 1}/${options.maxAttempts}`
+      );
       console.error(error);
       await sleep(1000);
       continue;
     }
-
-    grpcPromise.promisifyAll(client, {
-      metadata: new grpc.Metadata(),
-    });
-
-    console.log("Connect attempt successful");
 
     return client;
   }

@@ -94,7 +94,7 @@ class CustomWorld {
     await wallet.startNew();
 
     this.addWallet(name, wallet);
-    let walletClient = wallet.getClient();
+    let walletClient = await wallet.connectClient();
     let walletInfo = await walletClient.identify();
     this.walletPubkeys[name] = walletInfo.public_key;
   }
@@ -115,10 +115,15 @@ class CustomWorld {
     );
   }
 
-  baseNodeMineBlocksUntilHeightIncreasedBy(baseNode, wallet, numBlocks) {
+  async baseNodeMineBlocksUntilHeightIncreasedBy(baseNode, wallet, numBlocks) {
+    let w = null;
+    if (wallet) {
+      let tmp = this.getWallet(wallet);
+      w = await tmp.connectClient();
+    }
     const promise = this.getClient(baseNode).mineBlocksUntilHeightIncreasedBy(
       numBlocks,
-      wallet ? this.getWallet(wallet).getClient() : null
+      w
     );
     return promise;
   }
@@ -157,48 +162,65 @@ class CustomWorld {
   }
 
   getClient(name) {
-    return this.clients[name];
+    const client = this.clients[name];
+    if (!client) {
+      throw new Error(`Node client not found with name '${name}'`);
+    }
+    return client;
   }
 
   getNode(name) {
-    return this.nodes[name] || this.seeds[name];
+    const node = this.nodes[name] || this.seeds[name];
+    if (!node) {
+      throw new Error(`Node not found with name '${name}'`);
+    }
+    return node;
   }
 
   getMiningNode(name) {
-    return this.miners[name];
+    const miner = this.miners[name];
+    if (!miner) {
+      throw new Error(`Miner not found with name '${name}'`);
+    }
+    return miner;
   }
 
   getWallet(name) {
-    return this.wallets[name];
+    const wallet = this.wallets[name];
+    if (!wallet) {
+      throw new Error(`Wallet not found with name '${name}'`);
+    }
+    return wallet;
   }
 
   getWalletPubkey(name) {
     return this.walletPubkeys[name];
   }
 
-  getNodeOrWalletClient(name) {
-    let client = this.getClient(name.trim());
+  async getNodeOrWalletClient(name) {
+    let client = this.clients[name.trim()];
     if (client) {
       client.isNode = true;
       client.isWallet = false;
       return client;
     }
-    let wallet = this.getWallet(name.trim());
+    let wallet = this.wallets[name.trim()];
     if (wallet) {
-      let client = wallet.getClient();
+      let client = await wallet.connectClient();
       client.isNode = false;
       client.isWallet = true;
       return client;
     }
+    return null;
   }
 
   async getOrCreateWallet(name) {
-    const wallet = this.getWallet(name);
+    const wallet = this.wallets[name];
     if (wallet) {
       return wallet;
     }
     await this.createAndAddWallet(name, this.seedAddresses());
-    return this.getWallet(name);
+    return this.wallets[name];
   }
 
   getProxy(name) {

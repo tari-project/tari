@@ -36,8 +36,10 @@ class WalletProcess {
     return "127.0.0.1:" + this.grpcPort;
   }
 
-  getClient() {
-    return new WalletClient(this.getGrpcAddress(), this.name);
+  async connectClient() {
+    let client = new WalletClient(this.name);
+    await client.connect(this.getGrpcAddress());
+    return client;
   }
 
   getSeedWords() {

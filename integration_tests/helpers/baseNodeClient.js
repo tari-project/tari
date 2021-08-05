@@ -6,6 +6,7 @@ const { SHA3 } = require("sha3");
 const { toLittleEndian, byteArrayToHex, tryConnect } = require("./util");
 const { PowAlgo } = require("./types");
 const cloneDeep = require("clone-deep");
+const grpcPromise = require("grpc-promise");
 
 class BaseNodeClient {
   constructor() {
@@ -32,6 +33,10 @@ class BaseNodeClient {
           grpc.credentials.createInsecure()
         )
     );
+
+    grpcPromise.promisifyAll(this.client, {
+      metadata: new grpc.Metadata(),
+    });
   }
 
   getHeaderAt(height) {
