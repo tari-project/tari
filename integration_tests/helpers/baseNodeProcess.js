@@ -175,7 +175,7 @@ class BaseNodeProcess {
 
   async startAndConnect() {
     await this.startNew();
-    return this.createGrpcClient();
+    return await this.createGrpcClient();
   }
 
   async start() {
@@ -201,8 +201,8 @@ class BaseNodeProcess {
     });
   }
 
-  createGrpcClient() {
-    return new BaseNodeClient(this.grpcPort);
+  async createGrpcClient() {
+    return await BaseNodeClient.create(this.grpcPort);
   }
 }
 

@@ -3,6 +3,8 @@ const yargs = require("yargs");
 const { hideBin } = require("yargs/helpers");
 
 const { blake2bInit, blake2bUpdate, blake2bFinal } = require("blakejs");
+const grpcPromise = require("grpc-promise");
+const grpc = require("@grpc/grpc-js");
 
 const NO_CONNECTION = 14;
 
@@ -26,6 +28,48 @@ function withTimeout(ms, promise, message = "") {
     );
   });
   return Promise.race([timeout, promise]);
+}
+
+async function tryConnect(makeClient, opts = {}) {
+  const options = Object.assign(
+    {
+      deadline: Infinity,
+      maxAttempts: 3,
+    },
+    opts
+  );
+  let attempts = 0;
+  for (;;) {
+    let client = makeClient();
+
+    console.log(`Connect attempt ${attempts + 1}/${options.maxAttempts}`);
+    let error = await new Promise((resolve) => {
+      client.waitForReady(options.deadline, (err) => {
+        if (err) {
+          return resolve(err);
+        }
+        resolve(null);
+      });
+    });
+
+    if (error) {
+      if (attempts >= options.maxAttempts) {
+        throw error;
+      }
+      attempts++;
+      console.error(error);
+      await sleep(1000);
+      continue;
+    }
+
+    grpcPromise.promisifyAll(client, {
+      metadata: new grpc.Metadata(),
+    });
+
+    console.log("Connect attempt successful");
+
+    return client;
+  }
 }
 
 async function waitFor(
@@ -251,6 +295,7 @@ module.exports = {
   getTransactionOutputHash,
   hexSwitchEndianness,
   consoleLogTransactionDetails,
+  tryConnect,
   consoleLogBalance,
   consoleLogCoinbaseDetails,
   withTimeout,

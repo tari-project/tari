@@ -48,7 +48,7 @@ class CustomWorld {
     );
     await proc.startNew();
     this.seeds[name] = proc;
-    this.clients[name] = proc.createGrpcClient();
+    this.clients[name] = await proc.createGrpcClient();
   }
 
   seedAddresses() {
@@ -72,12 +72,12 @@ class CustomWorld {
       node.setPeerSeeds([addresses]);
     }
     await node.startNew();
-    this.addNode(name, node);
+    await this.addNode(name, node);
   }
 
-  addNode(name, process) {
+  async addNode(name, process) {
     this.nodes[name] = process;
-    this.clients[name] = process.createGrpcClient();
+    this.clients[name] = await process.createGrpcClient();
   }
 
   addMiningNode(name, process) {
@@ -234,7 +234,8 @@ class CustomWorld {
           .catch((err) => {
             console.error(err);
             failed += 1;
-            if (failed > canFail) reject(`Too many failed. canFail=${canFail}`);
+            if (failed > canFail)
+              reject(`Too many failed. Expected less than ${canFail} failures`);
           });
       }
     });
