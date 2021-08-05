@@ -325,11 +325,8 @@ impl CommandHandler {
                     );
                 },
                 Ok(mut data) => match data.pop() {
-                    Some(v) => println!("{}", v.block()),
-                    _ => println!(
-                        "Pruned node: kernel found, but block not found for kernel signature {}",
-                        hex_sig
-                    ),
+                    Some(v) => println!("{}", v),
+                    _ => println!("No kernel with signature {} found", hex_sig),
                 },
             };
         });
