@@ -1385,34 +1385,76 @@ Then(
   }
 );
 
-async function send_tari(sourceWallet, destWallet, tariAmount, feePerGram) {
+async function send_tari(
+  sourceWallet,
+  destWallet,
+  tariAmount,
+  feePerGram,
+  oneSided = false,
+  message = "",
+  printMessage = true
+) {
   const sourceWalletClient = sourceWallet.getClient();
   const destInfo = await destWallet.getClient().identify();
-  console.log(
-    sourceWallet.name +
+  if (message === "") {
+    message =
+      sourceWallet.name +
       " sending " +
       tariAmount +
-      "uT to " +
+      "uT one-sided(" +
+      oneSided +
+      ") to " +
       destWallet.name +
       " `" +
       destInfo.public_key +
-      "`"
-  );
+      "`";
+  }
+  if (printMessage) {
+    console.log(message);
+  }
   let success = false;
   let retries = 1;
   const retries_limit = 25;
   let lastResult;
   while (!success && retries <= retries_limit) {
-    lastResult = await sourceWalletClient.transfer({
-      recipients: [
-        {
-          address: destInfo.public_key,
-          amount: tariAmount,
-          fee_per_gram: feePerGram,
-          message: "msg",
-        },
-      ],
-    });
+    await waitFor(
+      async () => {
+        try {
+          if (!oneSided) {
+            lastResult = await sourceWalletClient.transfer({
+              recipients: [
+                {
+                  address: destInfo.public_key,
+                  amount: tariAmount,
+                  fee_per_gram: feePerGram,
+                  message: message,
+                },
+              ],
+            });
+          } else {
+            lastResult = await sourceWalletClient.transfer({
+              recipients: [
+                {
+                  address: destInfo.public_key,
+                  amount: tariAmount,
+                  fee_per_gram: feePerGram,
+                  message: message,
+                  payment_type: PaymentType.ONE_SIDED,
+                },
+              ],
+            });
+          }
+        } catch (error) {
+          console.log(error);
+          return false;
+        }
+        return true;
+      },
+      true,
+      20 * 1000,
+      5 * 1000,
+      5
+    );
     success = lastResult.results[0].is_success;
     if (!success) {
       const wait_seconds = 5;
@@ -1549,23 +1591,39 @@ When(
     let success = false;
     let retries = 1;
     const retries_limit = 25;
+    let lastResult;
     while (!success && retries <= retries_limit) {
-      lastResult = await sourceClient.transfer({
-        recipients: [
-          {
-            address: dest1Info.public_key,
-            amount: tariAmount,
-            fee_per_gram: feePerGram,
-            message: "msg",
-          },
-          {
-            address: dest2Info.public_key,
-            amount: tariAmount,
-            fee_per_gram: feePerGram,
-            message: "msg",
-          },
-        ],
-      });
+      await waitFor(
+        async () => {
+          try {
+            lastResult = await sourceClient.transfer({
+              recipients: [
+                {
+                  address: dest1Info.public_key,
+                  amount: tariAmount,
+                  fee_per_gram: feePerGram,
+                  message: "msg",
+                },
+                {
+                  address: dest2Info.public_key,
+                  amount: tariAmount,
+                  fee_per_gram: feePerGram,
+                  message: "msg",
+                },
+              ],
+            });
+          } catch (error) {
+            console.log(error);
+            return false;
+          }
+          return true;
+        },
+        true,
+        20 * 1000,
+        5 * 1000,
+        5
+      );
+
       success =
         lastResult.results[0].is_success && lastResult.results[1].is_success;
       if (!success) {
@@ -1643,13 +1701,29 @@ When(
       .map((dest) => this.getWallet(dest).getClient());
 
     console.log("Starting Transfer of", amount, "to");
-    const recipients = destWallets.map((w) => ({
-      address: w.public_key,
-      amount: amount,
-      fee_per_gram: feePerGram,
-      message: "msg",
-    }));
-    const output = await client.transfer({ recipients });
+    let output;
+    await waitFor(
+      async () => {
+        try {
+          const recipients = destWallets.map((w) => ({
+            address: w.public_key,
+            amount: amount,
+            fee_per_gram: feePerGram,
+            message: "msg",
+          }));
+          output = await client.transfer({ recipients });
+        } catch (error) {
+          console.log(error);
+          return false;
+        }
+        return true;
+      },
+      true,
+      20 * 1000,
+      5 * 1000,
+      5
+    );
+
     console.log("output", output);
     lastResult = output;
   }
@@ -1657,22 +1731,19 @@ When(
 
 When(
   /I send a one-sided transaction of (.*) uT from (.*) to (.*) at fee (.*)/,
+  { timeout: 65 * 1000 },
   async function (amount, source, dest, feePerGram) {
     let wallet = this.getWallet(source);
     let sourceClient = wallet.getClient();
-    let destPubkey = this.getWalletPubkey(dest);
 
-    lastResult = await sourceClient.transfer({
-      recipients: [
-        {
-          address: destPubkey,
-          amount: amount,
-          fee_per_gram: feePerGram,
-          message: "msg",
-          payment_type: PaymentType.ONE_SIDED,
-        },
-      ],
-    });
+    const oneSided = true;
+    const lastResult = await send_tari(
+      this.getWallet(source),
+      this.getWallet(dest),
+      amount,
+      feePerGram,
+      oneSided
+    );
     expect(lastResult.results[0].is_success).to.equal(true);
     const sourceInfo = await sourceClient.identify();
     this.addTransaction(
@@ -2648,6 +2719,7 @@ When(
               lockheight: 0,
             });
           } catch (error) {
+            console.log(error);
             return false;
           }
           return true;
@@ -2674,11 +2746,17 @@ When(
 When(
   /I send (.*) transactions of (.*) uT each from wallet (.*) to wallet (.*) at fee_per_gram (.*)/,
   { timeout: 43200 * 1000 },
-  async function (numTransactions, amount, sourceWallet, dest, feePerGram) {
+  async function (
+    numTransactions,
+    amount,
+    sourceWallet,
+    destWallet,
+    feePerGram
+  ) {
     console.log("\n");
     const sourceWalletClient = this.getWallet(sourceWallet).getClient();
     const sourceInfo = await sourceWalletClient.identify();
-    const destInfo = await this.getWallet(dest).getClient().identify();
+    const destInfo = await this.getWallet(destWallet).getClient().identify();
 
     console.log(
       "Sending",
@@ -2686,23 +2764,20 @@ When(
       "transactions from",
       sourceWallet,
       "to",
-      dest
+      destWallet
     );
 
     let batch = 1;
     for (let i = 0; i < numTransactions; i++) {
-      const message =
-        "Transaction from " + sourceWallet + " to " + dest + " " + i;
-      const result = await sourceWalletClient.transfer({
-        recipients: [
-          {
-            address: destInfo.public_key,
-            amount: amount,
-            fee_per_gram: feePerGram,
-            message: message,
-          },
-        ],
-      });
+      const result = await send_tari(
+        this.getWallet(sourceWallet),
+        this.getWallet(destWallet),
+        amount,
+        feePerGram,
+        false,
+        "Transaction from " + sourceWallet + " to " + destWallet + " " + i,
+        false
+      );
       expect(result.results[0].is_success).to.equal(true);
       this.addTransaction(
         sourceInfo.public_key,
