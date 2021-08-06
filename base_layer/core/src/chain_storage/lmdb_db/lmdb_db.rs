@@ -1616,10 +1616,7 @@ impl BlockchainBackend for LMDBDatabase {
         Ok((result, difference_bitmap))
     }
 
-    fn fetch_output(
-        &self,
-        output_hash: &HashOutput,
-    ) -> Result<Option<(TransactionOutput, u32, u64)>, ChainStorageError> {
+    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(PrunedOutput, u32, u64)>, ChainStorageError> {
         debug!(target: LOG_TARGET, "Fetch output: {}", output_hash.to_hex());
         let txn = self.read_transaction()?;
         if let Some((index, key)) =
@@ -1632,20 +1629,33 @@ impl BlockchainBackend for LMDBDatabase {
                 index,
                 key
             );
-            if let Some(output) = lmdb_get::<_, TransactionOutputRowData>(&txn, &self.utxos_db, key.as_str())? {
-                if output.output.is_none() {
-                    error!(
-                        target: LOG_TARGET,
-                        "Tried to fetch pruned output: {} ({}, {})",
-                        output_hash.to_hex(),
-                        index,
-                        key
-                    );
-                    unimplemented!("Output has been pruned");
-                }
-                Ok(Some((output.output.unwrap(), output.mmr_position, output.mined_height)))
-            } else {
-                Ok(None)
+            match lmdb_get::<_, TransactionOutputRowData>(&txn, &self.utxos_db, key.as_str())? {
+                Some(TransactionOutputRowData {
+                    output: Some(o),
+                    mmr_position,
+                    mined_height,
+                    ..
+                }) => Ok(Some((
+                    PrunedOutput::NotPruned { output: o },
+                    mmr_position,
+                    mined_height,
+                ))),
+                Some(TransactionOutputRowData {
+                    output: None,
+                    mmr_position,
+                    mined_height,
+                    hash,
+                    witness_hash,
+                    ..
+                }) => Ok(Some((
+                    PrunedOutput::Pruned {
+                        output_hash: hash,
+                        witness_hash,
+                    },
+                    mmr_position,
+                    mined_height,
+                ))),
+                _ => Ok(None),
             }
         } else {
             debug!(

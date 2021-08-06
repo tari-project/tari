@@ -47,7 +47,7 @@ use crate::{
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
     tari_utilities::epoch_time::EpochTime,
     transactions::{
-        transaction::{TransactionKernel, TransactionOutput},
+        transaction::TransactionKernel,
         types::{Commitment, HashDigest, HashOutput, Signature},
     },
     validation::{DifficultyCalculator, HeaderValidation, OrphanValidation, PostOrphanBodyValidation, ValidationError},
@@ -284,7 +284,7 @@ where B: BlockchainBackend
     }
 
     // Fetch the utxo
-    pub fn fetch_utxo(&self, hash: HashOutput) -> Result<Option<TransactionOutput>, ChainStorageError> {
+    pub fn fetch_utxo(&self, hash: HashOutput) -> Result<Option<PrunedOutput>, ChainStorageError> {
         let db = self.db_read_access()?;
         Ok(db.fetch_output(&hash)?.map(|(out, _index, _)| out))
     }
@@ -292,10 +292,7 @@ where B: BlockchainBackend
     /// Return a list of matching utxos, with each being `None` if not found. If found, the transaction
     /// output, and a boolean indicating if the UTXO was spent as of the block hash specified or the tip if not
     /// specified.
-    pub fn fetch_utxos(
-        &self,
-        hashes: Vec<HashOutput>,
-    ) -> Result<Vec<Option<(TransactionOutput, bool)>>, ChainStorageError> {
+    pub fn fetch_utxos(&self, hashes: Vec<HashOutput>) -> Result<Vec<Option<(PrunedOutput, bool)>>, ChainStorageError> {
         let db = self.db_read_access()?;
         let deleted = db.fetch_deleted_bitmap()?;
 

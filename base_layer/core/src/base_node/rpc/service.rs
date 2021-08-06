@@ -22,7 +22,7 @@
 
 use crate::{
     base_node::{rpc::BaseNodeWalletService, state_machine_service::states::StateInfo, StateMachineHandle},
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, PrunedOutput},
     mempool::{service::MempoolHandle, TxStorageResponse},
     proto::{
         base_node::{
@@ -288,15 +288,17 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
 
         let db = self.db();
         let mut res = Vec::with_capacity(message.output_hashes.len());
-        for (output, spent) in (db
+        for (pruned_output, spent) in (db
             .fetch_utxos(message.output_hashes)
             .await
             .map_err(RpcStatus::log_internal_error(LOG_TARGET))?)
         .into_iter()
         .flatten()
         {
-            if !spent {
-                res.push(output);
+            if let PrunedOutput::NotPruned { output } = pruned_output {
+                if !spent {
+                    res.push(output);
+                }
             }
         }
 

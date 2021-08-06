@@ -15,7 +15,7 @@ use crate::{
         MmrTree,
     },
     transactions::{
-        transaction::{TransactionInput, TransactionKernel, TransactionOutput},
+        transaction::{TransactionInput, TransactionKernel},
         types::{HashOutput, Signature},
     },
 };
@@ -103,10 +103,7 @@ pub trait BlockchainBackend: Send + Sync {
     ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError>;
 
     /// Fetch a specific output. Returns the output and the leaf index in the output MMR
-    fn fetch_output(
-        &self,
-        output_hash: &HashOutput,
-    ) -> Result<Option<(TransactionOutput, u32, u64)>, ChainStorageError>;
+    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(PrunedOutput, u32, u64)>, ChainStorageError>;
 
     /// Fetch all outputs in a block
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError>;

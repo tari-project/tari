@@ -32,7 +32,7 @@ use crate::{
     chain_storage::HistoricalBlock,
     proof_of_work::PowAlgorithm,
     transactions::{
-        transaction::{TransactionKernel, TransactionOutput},
+        transaction::TransactionKernel,
         types::{Commitment, HashOutput, Signature},
     },
 };
@@ -43,7 +43,10 @@ use tokio::sync::broadcast;
 
 pub type BlockEventSender = broadcast::Sender<Arc<BlockEvent>>;
 pub type BlockEventReceiver = broadcast::Receiver<Arc<BlockEvent>>;
-use crate::base_node::comms_interface::comms_request::GetNewBlockTemplateRequest;
+use crate::{
+    base_node::comms_interface::comms_request::GetNewBlockTemplateRequest,
+    transactions::transaction::TransactionOutput,
+};
 
 /// The InboundNodeCommsInterface provides an interface to request information from the current local node by other
 /// internal services.
