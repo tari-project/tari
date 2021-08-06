@@ -12,6 +12,7 @@ Feature: Wallet Transactions
     And I have wallet WALLET_B connected to all seed nodes
     Then I send a one-sided transaction of 1000000 uT from WALLET_A to WALLET_B at fee 100
     Then I send a one-sided transaction of 1000000 uT from WALLET_A to WALLET_B at fee 100
+    Then wallet WALLET_A detects all transactions are at least Broadcast
     When I merge mine 5 blocks via PROXY
     Then all nodes are at height 20
     Then I wait for wallet WALLET_B to have at least 2000000 uT
