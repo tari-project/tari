@@ -3285,27 +3285,28 @@ When(
   }
 );
 
-When("I have a ffi wallet {word}", async function (name) {
-  await this.ffiCreateWallet(name);
-});
+When(
+  "I have a ffi wallet {word} connected to base node {word}",
+  { timeout: 20 * 1000 },
+  async function (name, node) {
+    let wallet = await this.createAndAddFFIWallet(name);
+    let peer = this.nodes[node].peerAddress().split("::");
+    await wallet.addBaseNodePeer(peer[0], peer[1]);
+  }
+);
 
-Then("I want to get public key of ffi wallet {word}", function (name) {
-  let wallet = this.getWallet(name);
-  let public_key = wallet.getPublicKey();
-  expect(public_key.length).to.be.equal(
-    32,
-    `Public key has wrong length : ${public_key}`
-  );
-});
-
-Then("I want to get emoji id of ffi wallet {word}", function (name) {
-  let wallet = this.getWallet(name);
-  let emoji_id = wallet.getEmojiId();
-  expect(emoji_id.length).to.be.equal(
-    22 * 3, // 22 emojis, 3 bytes per one emoji
-    `Emoji id has wrong length : ${emoji_id}`
-  );
-});
+Then(
+  "I want to get public key of ffi wallet {word}",
+  { timeout: 20 * 1000 },
+  async function (name) {
+    let wallet = this.getWallet(name);
+    let public_key = await wallet.getPublicKey();
+    expect(public_key.length).to.be.equal(
+      64,
+      `Public key has wrong length : ${public_key}`
+    );
+  }
+);
 
 Then(
   /I wait until base node (.*) has (.*) unconfirmed transactions in its mempool/,
@@ -3330,5 +3331,136 @@ Then(
       " unconfirmed transaction in its mempool"
     );
     expect(stats.unconfirmed_txs).to.equal(numTransactions);
+  }
+);
+
+Then(
+  "I want to get emoji id of ffi wallet {word}",
+  { timeout: 20 * 1000 },
+  async function (name) {
+    let wallet = this.getWallet(name);
+    let emoji_id = await wallet.getEmojiId();
+    expect(emoji_id.length).to.be.equal(
+      22 * 3, // 22 emojis, 3 bytes per one emoji
+      `Emoji id has wrong length : ${emoji_id}`
+    );
+  }
+);
+
+Then(
+  "I wait for ffi wallet {word} to have at least {int} uT",
+  { timeout: 60 * 1000 },
+  async function (name, amount) {
+    let success = false;
+    let retries = 1;
+    const retries_limit = 12;
+    while (!success && retries <= retries_limit) {
+      if ((await this.getWallet(name).getBalance()) >= amount) {
+        success = true;
+      }
+      await sleep(5000);
+      ++retries;
+    }
+    expect(success).to.be.true;
+  }
+);
+
+When(
+  "I send {int} uT from ffi wallet {word} to wallet {word} at fee {int}",
+  { timeout: 20 * 1000 },
+  async function (amount, sender, receiver, fee) {
+    await this.getWallet(sender).sendTransaction(
+      await this.getWalletPubkey(receiver),
+      amount,
+      fee,
+      `Send from ffi ${sender} to ${receiver} at fee ${fee}`
+    );
+  }
+);
+
+When(
+  "I set passphrase {word} of ffi wallet {word}",
+  { timeout: 20 * 1000 },
+  async function (passphrase, name) {
+    let wallet = this.getWallet(name);
+    await wallet.applyEncryption(passphrase);
+  }
+);
+
+Then(
+  "I have {int} received and {int} send transaction in ffi wallet {word}",
+  { timeout: 120 * 1000 },
+  async function (received, send, name) {
+    let wallet = this.getWallet(name);
+    let [outbound, inbound] = await wallet.getCompletedTransactions();
+    let retries = 1;
+    const retries_limit = 23;
+    while (
+      (inbound != received || outbound != send) &&
+      retries <= retries_limit
+    ) {
+      await sleep(5000);
+      [outbound, inbound] = await wallet.getCompletedTransactions();
+      ++retries;
+    }
+    expect(outbound, "Outbound transaction count mismatch").to.be.equal(send);
+    expect(inbound, "Inbound transaction count mismatch").to.be.equal(received);
+  }
+);
+
+Then(
+  "ffi wallet {word} has {int} broadcast transaction",
+  { timeout: 120 * 1000 },
+  async function (name, count) {
+    let wallet = this.getWallet(name);
+    let broadcast = await wallet.getBroadcastTransactionsCount();
+    let retries = 1;
+    const retries_limit = 24;
+    while (broadcast != count && retries <= retries_limit) {
+      await sleep(5000);
+      broadcast = await wallet.getBroadcastTransactionsCount();
+      ++retries;
+    }
+    expect(broadcast, "Number of broadcasted messages mismatch").to.be.equal(
+      count
+    );
+  }
+);
+
+When(
+  "I add contact with alias {word} and pubkey {word} to ffi wallet {word}",
+  { timeout: 20 * 1000 },
+  async function (alias, wallet_name, ffi_wallet_name) {
+    let ffi_wallet = this.getWallet(ffi_wallet_name);
+    await ffi_wallet.addContact(alias, await this.getWalletPubkey(wallet_name));
+  }
+);
+
+Then(
+  "I have contact with alias {word} and pubkey {word} in ffi wallet {word}",
+  { timeout: 20 * 1000 },
+  async function (alias, wallet_name, ffi_wallet_name) {
+    let ffi_wallet = this.getWallet(ffi_wallet_name);
+    expect(await this.getWalletPubkey(wallet_name)).to.be.equal(
+      await ffi_wallet.getContact(alias)
+    );
+  }
+);
+
+When(
+  "I remove contact with alias {word} from ffi wallet {word}",
+  { timeout: 20 * 1000 },
+  async function (alias, walllet_name) {
+    let wallet = this.getWallet(walllet_name);
+    await wallet.removeContact(alias);
+  }
+);
+
+Then(
+  "I don't have contact with alias {word} in ffi wallet {word}",
+  { timeout: 20 * 1000 },
+  async function (alias, wallet_name) {
+    let wallet = this.getWallet(wallet_name);
+    expect(await wallet.getContact("alias")).to.be.undefined;
   }
 );

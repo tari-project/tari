@@ -150,7 +150,7 @@ struct TariPublicKey *emoji_id_to_public_key(const char *emoji, int *error_out);
 struct TariPrivateKey *private_key_create(struct ByteVector *bytes, int *error_out);
 
 // Generates a TariPrivateKey
-struct TariPrivateKey *private_key_generate(void);
+struct TariPrivateKey *private_key_generate();
 
 // Creates a ByteVector from a TariPrivateKey
 struct ByteVector *private_key_get_bytes(struct TariPrivateKey *private_key, int *error_out);
@@ -385,13 +385,13 @@ void pending_inbound_transactions_destroy(struct TariPendingInboundTransactions 
 // Creates a TariCommsConfig
 // Valid values for network are: ridcully, stibbons, weatherwax, localnet, mainnet
 struct TariCommsConfig *comms_config_create(const char *public_address,
-                                     struct TariTransportType *transport,
-                                     const char *database_name,
-                                     const char *datastore_path,
-                                     unsigned long long discovery_timeout_in_secs,
-                                     unsigned long long saf_message_duration_in_secs,
-                                     const char *network,
-                                     int* error_out);
+                                            struct TariTransportType *transport,
+                                            const char *database_name,
+                                            const char *datastore_path,
+                                            unsigned long long discovery_timeout_in_secs,
+                                            unsigned long long saf_message_duration_in_secs,
+                                            const char *network,
+                                            int *error_out);
 
 // Frees memory for a TariCommsConfig
 void comms_config_destroy(struct TariCommsConfig *wc);
@@ -717,7 +717,7 @@ void file_partial_backup(const char *original_file_path, const char *backup_file
 /// This function will log the provided string at debug level. To be used to have a client log messages to the LibWallet
 void log_debug_message(const char *msg);
 
-struct EmojiSet *get_emoji_set(void);
+struct EmojiSet *get_emoji_set();
 
 void emoji_set_destroy(struct EmojiSet *emoji_set);
 
