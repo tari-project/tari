@@ -1708,6 +1708,12 @@ When(
         },
       ],
     });
+    expect(lastResult.results[0].is_success).to.equal(true);
+    const sourceInfo = await sourceClient.identify();
+    this.addTransaction(
+      sourceInfo.public_key,
+      lastResult.results[0].transaction_id
+    );
   }
 );
 
@@ -2665,13 +2671,27 @@ When(
     for (let i = 0; i < numberOfSplits; i++) {
       const splits = Math.min(499, splitsLeft);
       splitsLeft -= splits;
-      const result = await walletClient.coin_split({
-        amount_per_split: splitValue,
-        split_count: splits,
-        fee_per_gram: feePerGram,
-        message: "Cucumber coinsplit",
-        lockheight: 0,
-      });
+      let result;
+      await waitFor(
+        async () => {
+          try {
+            result = await walletClient.coin_split({
+              amount_per_split: splitValue,
+              split_count: splits,
+              fee_per_gram: feePerGram,
+              message: "Cucumber coinsplit",
+              lockheight: 0,
+            });
+          } catch (error) {
+            return false;
+          }
+          return true;
+        },
+        true,
+        4700 * 1000,
+        5 * 1000,
+        5
+      );
       console.log(
         "Coin split",
         i + 1,
