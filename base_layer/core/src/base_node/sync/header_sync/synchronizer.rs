@@ -110,28 +110,28 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 Ok(()) => return Ok(peer_conn),
                 // Try another peer
                 Err(err @ BlockHeaderSyncError::NotInSync) => {
-                    debug!(target: LOG_TARGET, "{}", err);
+                    warn!(target: LOG_TARGET, "{}", err);
                 },
 
                 Err(err @ BlockHeaderSyncError::RpcError(RpcError::HandshakeError(RpcHandshakeError::TimedOut))) => {
-                    debug!(target: LOG_TARGET, "{}", err);
+                    warn!(target: LOG_TARGET, "{}", err);
                     self.ban_peer_short(node_id, BanReason::RpcNegotiationTimedOut).await?;
                 },
                 Err(BlockHeaderSyncError::ValidationFailed(err)) => {
-                    debug!(target: LOG_TARGET, "Block header validation failed: {}", err);
+                    warn!(target: LOG_TARGET, "Block header validation failed: {}", err);
                     self.ban_peer_long(node_id, err.into()).await?;
                 },
                 Err(BlockHeaderSyncError::ChainSplitNotFound(peer)) => {
-                    debug!(target: LOG_TARGET, "Chain split not found for peer {}.", peer);
+                    warn!(target: LOG_TARGET, "Chain split not found for peer {}.", peer);
                     self.ban_peer_long(peer, BanReason::ChainSplitNotFound).await?;
                 },
                 Err(err @ BlockHeaderSyncError::InvalidBlockHeight { .. }) => {
-                    debug!(target: LOG_TARGET, "{}", err);
+                    warn!(target: LOG_TARGET, "{}", err);
                     self.ban_peer_long(node_id, BanReason::GeneralHeaderSyncFailure(err))
                         .await?;
                 },
                 Err(err) => {
-                    debug!(
+                    error!(
                         target: LOG_TARGET,
                         "Failed to synchronize headers from peer `{}`: {}", node_id, err
                     );
