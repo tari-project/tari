@@ -173,7 +173,7 @@ async fn send_message_request() {
     let peer_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
     let (conn1, peer_conn_mock1, _, peer_conn_mock2) =
-        create_peer_connection_mock_pair(1, node_identity.to_peer(), peer_node_identity.to_peer()).await;
+        create_peer_connection_mock_pair(node_identity.to_peer(), peer_node_identity.to_peer()).await;
 
     // Add mock peer connection to connection manager mock for node 2
     conn_man_mock.add_active_connection(conn1).await;
@@ -221,7 +221,7 @@ async fn send_message_substream_bulk_failure() {
     let peer_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
     let (conn1, _, _, peer_conn_mock2) =
-        create_peer_connection_mock_pair(1, node_identity.to_peer(), peer_node_identity.to_peer()).await;
+        create_peer_connection_mock_pair(node_identity.to_peer(), peer_node_identity.to_peer()).await;
 
     let peer_node_id = peer_node_identity.node_id();
     // Add mock peer connection to connection manager mock for node 2
@@ -276,7 +276,7 @@ async fn many_concurrent_send_message_requests() {
     let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
     let (conn1, peer_conn_mock1, _, peer_conn_mock2) =
-        create_peer_connection_mock_pair(1, node_identity1.to_peer(), node_identity2.to_peer()).await;
+        create_peer_connection_mock_pair(node_identity1.to_peer(), node_identity2.to_peer()).await;
 
     let node_id2 = node_identity2.node_id();
     // Add mock peer connection to connection manager mock for node 2

@@ -22,9 +22,9 @@ class WalletProcess {
   }
 
   async init() {
-    this.port = await getFreePort(19000, 25000);
+    this.port = await getFreePort();
     this.name = `Wallet${this.port}-${this.name}`;
-    this.grpcPort = await getFreePort(19000, 25000);
+    this.grpcPort = await getFreePort();
     this.baseDir = `./temp/base_nodes/${dateFormat(
       new Date(),
       "yyyymmddHHMM"
@@ -36,8 +36,10 @@ class WalletProcess {
     return "127.0.0.1:" + this.grpcPort;
   }
 
-  getClient() {
-    return new WalletClient(this.getGrpcAddress(), this.name);
+  async connectClient() {
+    let client = new WalletClient(this.name);
+    await client.connect(this.getGrpcAddress());
+    return client;
   }
 
   getSeedWords() {

@@ -67,7 +67,8 @@ async function main() {
   debug(JSON.stringify(args, null, 2));
   console.log("Hello, starting the washing machine");
 
-  let wallet1 = new WalletClient(args.wallet1Grpc);
+  let wallet1 = new WalletClient();
+  await wallet1.connect(args.wallet1Grpc);
 
   // Start wallet2
   let wallet2;
@@ -76,9 +77,10 @@ async function main() {
     wallet2Process = createGrpcWallet(args.baseNode);
     wallet2Process.baseDir = "./wallet";
     await wallet2Process.startNew();
-    wallet2 = wallet2Process.getClient();
+    wallet2 = await wallet2Process.connectClient();
   } else {
-    wallet2 = new WalletClient(args.wallet2Grpc);
+    wallet2 = new WalletClient();
+    await wallet2.connect(args.wallet2Grpc);
   }
 
   await showWalletDetails("Wallet 1", wallet1);

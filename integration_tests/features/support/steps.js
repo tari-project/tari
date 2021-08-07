@@ -430,7 +430,7 @@ When(
   async function (walletNameA, walletNameB) {
     let walletA = this.getWallet(walletNameA);
     let walletB = this.getWallet(walletNameB);
-    let clientB = walletB.getClient();
+    let clientB = await walletB.connectClient();
 
     await walletA.exportSpentOutputs();
     let spent_outputs = await walletA.readExportedOutputs();
@@ -444,7 +444,7 @@ When(
   async function (walletNameA, walletNameB) {
     let walletA = this.getWallet(walletNameA);
     let walletB = this.getWallet(walletNameB);
-    let clientB = walletB.getClient();
+    let clientB = await walletB.connectClient();
 
     await walletA.exportUnspentOutputs();
     let outputs = await walletA.readExportedOutputs();
@@ -458,7 +458,7 @@ When(
   async function (walletNameA, walletNameB) {
     let walletA = this.getWallet(walletNameA);
     let walletB = this.getWallet(walletNameB);
-    let clientB = walletB.getClient();
+    let clientB = await walletB.connectClient();
 
     await walletA.exportUnspentOutputs();
     let outputs = await walletA.readExportedOutputsAsFaucetOutputs();
@@ -471,7 +471,7 @@ When(
   /I check if last imported transactions are invalid in wallet (.*)/,
   async function (walletName) {
     let wallet = this.getWallet(walletName);
-    let client = wallet.getClient();
+    let client = await wallet.connectClient();
     let found_txs = await client.getCompletedTransactions();
     //console.log("Found: ", found_txs);
     let found_count = 0;
@@ -494,7 +494,7 @@ When(
   /I check if wallet (.*) has (.*) transactions/,
   async function (walletName, count) {
     let wallet = this.getWallet(walletName);
-    let client = wallet.getClient();
+    let client = await wallet.connectClient();
     let txs = await client.getCompletedTransactions();
     expect(count).to.equal(txs.length.toString());
   }
@@ -504,7 +504,7 @@ When(
   /I check if last imported transactions are valid in wallet (.*)/,
   async function (walletName) {
     let wallet = this.getWallet(walletName);
-    let client = wallet.getClient();
+    let client = await wallet.connectClient();
     let found_txs = await client.getCompletedTransactions();
 
     let found_count = 0;
@@ -1001,7 +1001,7 @@ Then(/(.*) has (.*) in (.*) state/, async function (node, txn, pool) {
   const client = this.getClient(node);
   const sig = this.transactions[txn].body.kernels[0].excess_sig;
   await waitFor(
-    async () => client.transactionStateResult(sig),
+    async () => await client.transactionStateResult(sig),
     pool,
     1200 * 1000
   );
@@ -1022,7 +1022,7 @@ Then(
     await this.forEachClientAsync(
       async (client, name) => {
         await waitFor(
-          async () => client.transactionStateResult(sig),
+          async () => await client.transactionStateResult(sig),
           pool,
           1200 * 1000
         );
@@ -1133,7 +1133,7 @@ When(
   { timeout: 600 * 1000 },
   async function (numBlocks, walletName, nodeName) {
     const nodeClient = this.getClient(nodeName);
-    const walletClient = this.getWallet(walletName).getClient();
+    const walletClient = await this.getWallet(walletName).connectClient();
     for (let i = 0; i < numBlocks; i++) {
       await nodeClient.mineBlock(walletClient);
     }
@@ -1160,11 +1160,12 @@ When(
   { timeout: 1200 * 1000 },
   async function (numBlocks, mmProxy, node, wallet) {
     this.lastResult = this.tipHeight;
-    const baseNodeMiningPromise = this.baseNodeMineBlocksUntilHeightIncreasedBy(
-      node,
-      wallet,
-      numBlocks
-    );
+    const baseNodeMiningPromise =
+      await this.baseNodeMineBlocksUntilHeightIncreasedBy(
+        node,
+        wallet,
+        numBlocks
+      );
     const mergeMiningPromise = this.mergeMineBlocksUntilHeightIncreasedBy(
       mmProxy,
       numBlocks
@@ -1312,7 +1313,7 @@ Then(
   /I wait for wallet (.*) to have at least (.*) uT/,
   { timeout: 710 * 1000 },
   async function (wallet, amount) {
-    const walletClient = this.getWallet(wallet).getClient();
+    const walletClient = await this.getWallet(wallet).connectClient();
     console.log("\n");
     console.log(
       "Waiting for " + wallet + " balance to be at least " + amount + " uT"
@@ -1337,7 +1338,7 @@ Then(
   /I wait for wallet (.*) to have less than (.*) uT/,
   { timeout: 710 * 1000 },
   async function (wallet, amount) {
-    let walletClient = this.getWallet(wallet).getClient();
+    let walletClient = await this.getWallet(wallet).connectClient();
     console.log("\n");
     console.log(
       "Waiting for " + wallet + " balance to less than " + amount + " uT"
@@ -1362,11 +1363,11 @@ Then(
   /wallet (.*) and wallet (.*) have the same balance/,
   { timeout: 65 * 1000 },
   async function (walletNameA, walletNameB) {
-    const walletClientA = this.getWallet(walletNameA).getClient();
+    const walletClientA = await this.getWallet(walletNameA).connectClient();
     var balanceA = await walletClientA.getBalance();
     console.log("\n", walletNameA, "balance:");
     consoleLogBalance(balanceA);
-    const walletClientB = this.getWallet(walletNameB).getClient();
+    const walletClientB = await this.getWallet(walletNameB).connectClient();
     for (let i = 1; i <= 12; i++) {
       await waitFor(
         async () => walletClientB.isBalanceAtLeast(balanceA.available_balance),
@@ -1394,8 +1395,9 @@ async function send_tari(
   message = "",
   printMessage = true
 ) {
-  const sourceWalletClient = sourceWallet.getClient();
-  const destInfo = await destWallet.getClient().identify();
+  const sourceWalletClient = await sourceWallet.connectClient();
+  const destClient = await destWallet.connectClient();
+  const destInfo = await destClient.identify();
   if (message === "") {
     message =
       sourceWallet.name +
@@ -1480,11 +1482,16 @@ When(
   /I send (.*) uT from wallet (.*) to wallet (.*) at fee (.*)/,
   { timeout: 25 * 5 * 1000 },
   async function (tariAmount, source, dest, feePerGram) {
-    const sourceInfo = await this.getWallet(source).getClient().identify();
-    const destInfo = await this.getWallet(dest).getClient().identify();
+    const sourceWallet = this.getWallet(source);
+    const sourceClient = await sourceWallet.connectClient();
+    const sourceInfo = await sourceClient.identify();
+
+    const destWallet = this.getWallet(dest);
+    const destClient = await destWallet.connectClient();
+    const destInfo = await destClient.identify();
     this.lastResult = await send_tari(
-      this.getWallet(source),
-      this.getWallet(dest),
+      sourceWallet,
+      destWallet,
       tariAmount,
       feePerGram
     );
@@ -1512,8 +1519,10 @@ When(
   { timeout: 25 * 5 * 1000 },
   async function (number, tariAmount, source, dest, fee) {
     console.log("\n");
-    const sourceInfo = await this.getWallet(source).getClient().identify();
-    const destInfo = await this.getWallet(dest).getClient().identify();
+    const sourceClient = await this.getWallet(source).connectClient();
+    const sourceInfo = await sourceClient.identify();
+    const destClient = await this.getWallet(dest).connectClient();
+    const destInfo = await destClient.identify();
     for (let i = 0; i < number; i++) {
       this.lastResult = await send_tari(
         this.getWallet(source),
@@ -1540,14 +1549,15 @@ When(
   /I multi-send (.*) uT from wallet (.*) to all wallets at fee (.*)/,
   { timeout: 25 * 5 * 1000 },
   async function (tariAmount, source, fee) {
-    const sourceWalletClient = this.getWallet(source).getClient();
+    const sourceWalletClient = await this.getWallet(source).connectClient();
     const sourceInfo = await sourceWalletClient.identify();
 
     for (const wallet in this.wallets) {
       if (this.getWallet(source).name === this.getWallet(wallet).name) {
         continue;
       }
-      const destInfo = await this.getWallet(wallet).getClient().identify();
+      const destClient = await this.getWallet(wallet).connectClient();
+      const destInfo = await destClient.identify();
       this.lastResult = await send_tari(
         this.getWallet(source),
         this.getWallet(wallet),
@@ -1573,9 +1583,9 @@ When(
   /I transfer (.*) uT from (.*) to (.*) and (.*) at fee (.*)/,
   { timeout: 25 * 5 * 1000 },
   async function (tariAmount, source, dest1, dest2, feePerGram) {
-    const sourceClient = this.getWallet(source).getClient();
-    const destClient1 = this.getWallet(dest1).getClient();
-    const destClient2 = this.getWallet(dest2).getClient();
+    const sourceClient = await this.getWallet(source).connectClient();
+    const destClient1 = await this.getWallet(dest1).connectClient();
+    const destClient2 = await this.getWallet(dest2).connectClient();
 
     const sourceInfo = await sourceClient.identify();
     const dest1Info = await destClient1.identify();
@@ -1669,7 +1679,8 @@ When(
   /I transfer (.*) uT to self from wallet (.*) at fee (.*)/,
   { timeout: 25 * 5 * 1000 },
   async function (tariAmount, source, feePerGram) {
-    const sourceInfo = await this.getWallet(source).getClient().identify();
+    const sourceClient = await this.getWallet(source).connectClient();
+    const sourceInfo = await sourceClient.identify();
     this.lastResult = await send_tari(
       this.getWallet(source),
       this.getWallet(source),
@@ -1695,10 +1706,10 @@ When(
   /I transfer (.*) uT from (.*) to ([A-Za-z0-9,]+) at fee (.*)/,
   async function (amount, source, dests, feePerGram) {
     const wallet = this.getWallet(source);
-    const client = wallet.getClient();
-    const destWallets = dests
-      .split(",")
-      .map((dest) => this.getWallet(dest).getClient());
+    const client = await wallet.connectClient();
+    const destWallets = await Promise.all(
+      dests.split(",").map((dest) => this.getWallet(dest).connectClient())
+    );
 
     console.log("Starting Transfer of", amount, "to");
     let output;
@@ -1734,7 +1745,7 @@ When(
   { timeout: 65 * 1000 },
   async function (amount, source, dest, feePerGram) {
     let wallet = this.getWallet(source);
-    let sourceClient = wallet.getClient();
+    let sourceClient = await wallet.connectClient();
 
     const oneSided = true;
     const lastResult = await send_tari(
@@ -1762,10 +1773,12 @@ When(/I wait (.*) seconds/, { timeout: 600 * 1000 }, async function (int) {
 Then(
   /Batch transfer of (.*) transactions was a success from (.*) to ([A-Za-z0-9,]+)/,
   async function (txCount, walletListStr) {
-    const clients = walletListStr.split(",").map((s) => {
-      const wallet = this.getWallet(s);
-      return wallet.getClient();
-    });
+    const clients = await Promise.all(
+      walletListStr.split(",").map((s) => {
+        const wallet = this.getWallet(s);
+        return wallet.connectClient();
+      })
+    );
 
     const resultObj = lastResult.results;
     console.log(resultObj);
@@ -1816,7 +1829,7 @@ Then(
     // Note: This initial step can take a long time if network conditions are not favourable
     // Pending -> Completed -> Broadcast -> Mined Unconfirmed -> Mined Confirmed
     const wallet = this.getWallet(walletName);
-    const walletClient = wallet.getClient();
+    const walletClient = await wallet.connectClient();
     const walletInfo = await walletClient.identify();
 
     const txIds = this.transactionsMap.get(walletInfo.public_key);
@@ -1844,15 +1857,15 @@ Then(
           " to register at least Pending in the wallet ..."
       );
       await waitFor(
-        async () => wallet.getClient().isTransactionAtLeastPending(txIds[i]),
+        async () => await walletClient.isTransactionAtLeastPending(txIds[i]),
         true,
         3700 * 1000,
         5 * 1000,
         5
       );
-      const transactionPending = await wallet
-        .getClient()
-        .isTransactionAtLeastPending(txIds[i]);
+      const transactionPending = await walletClient.isTransactionAtLeastPending(
+        txIds[i]
+      );
       // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
       // consoleLogTransactionDetails(txnDetails, txIds[i]);
       expect(transactionPending).to.equal(true);
@@ -1868,7 +1881,7 @@ Then(
     // Pending -> Completed -> Broadcast -> Mined Unconfirmed -> Mined Confirmed
     for (const walletName in this.wallets) {
       const wallet = this.getWallet(walletName);
-      const walletClient = wallet.getClient();
+      const walletClient = await wallet.connectClient();
       const walletInfo = await walletClient.identify();
 
       const txIds = this.transactionsMap.get(walletInfo.public_key);
@@ -1896,15 +1909,14 @@ Then(
             " to register at least Pending in the wallet ..."
         );
         await waitFor(
-          async () => wallet.getClient().isTransactionAtLeastPending(txIds[i]),
+          async () => walletClient.isTransactionAtLeastPending(txIds[i]),
           true,
           3700 * 1000,
           5 * 1000,
           5
         );
-        const transactionPending = await wallet
-          .getClient()
-          .isTransactionAtLeastPending(txIds[i]);
+        const transactionPending =
+          await walletClient.isTransactionAtLeastPending(txIds[i]);
         // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
         // consoleLogTransactionDetails(txnDetails, txIds[i]);
         expect(transactionPending).to.equal(true);
@@ -1919,7 +1931,7 @@ Then(
   async function (walletName) {
     // Pending -> Completed -> Broadcast -> Mined Unconfirmed -> Mined Confirmed
     const wallet = this.getWallet(walletName);
-    const walletClient = wallet.getClient();
+    const walletClient = await wallet.connectClient();
     const walletInfo = await walletClient.identify();
 
     const txIds = this.transactionsMap.get(walletInfo.public_key);
@@ -1948,15 +1960,14 @@ Then(
           " to register at least Completed in the wallet ..."
       );
       await waitFor(
-        async () => wallet.getClient().isTransactionAtLeastCompleted(txIds[i]),
+        async () => walletClient.isTransactionAtLeastCompleted(txIds[i]),
         true,
         600 * 1000,
         5 * 1000,
         5
       );
-      const transactionCompleted = await wallet
-        .getClient()
-        .isTransactionAtLeastCompleted(txIds[i]);
+      const transactionCompleted =
+        await walletClient.isTransactionAtLeastCompleted(txIds[i]);
       // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
       // consoleLogTransactionDetails(txnDetails, txIds[i]);
       expect(transactionCompleted).to.equal(true);
@@ -1971,7 +1982,7 @@ Then(
     // Pending -> Completed -> Broadcast -> Mined Unconfirmed -> Mined Confirmed
     for (const walletName in this.wallets) {
       const wallet = this.getWallet(walletName);
-      const walletClient = wallet.getClient();
+      const walletClient = await wallet.connectClient();
       const walletInfo = await walletClient.identify();
 
       const txIds = this.transactionsMap.get(walletInfo.public_key);
@@ -2000,16 +2011,14 @@ Then(
             " to register at least Completed in the wallet ..."
         );
         await waitFor(
-          async () =>
-            wallet.getClient().isTransactionAtLeastCompleted(txIds[i]),
+          async () => walletClient.isTransactionAtLeastCompleted(txIds[i]),
           true,
           1100 * 1000,
           5 * 1000,
           5
         );
-        const transactionCompleted = await wallet
-          .getClient()
-          .isTransactionAtLeastCompleted(txIds[i]);
+        const transactionCompleted =
+          await walletClient.isTransactionAtLeastCompleted(txIds[i]);
         // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
         // consoleLogTransactionDetails(txnDetails, txIds[i]);
         expect(transactionCompleted).to.equal(true);
@@ -2024,7 +2033,7 @@ Then(
   async function (walletName) {
     // Pending -> Completed -> Broadcast -> Mined Unconfirmed -> Mined Confirmed
     const wallet = this.getWallet(walletName);
-    const walletClient = wallet.getClient();
+    const walletClient = await wallet.connectClient();
     const walletInfo = await walletClient.identify();
 
     let txIds = this.transactionsMap.get(walletInfo.public_key);
@@ -2054,15 +2063,14 @@ Then(
           " to register at least Broadcast in the wallet ..."
       );
       await waitFor(
-        async () => wallet.getClient().isTransactionAtLeastBroadcast(txIds[i]),
+        async () => walletClient.isTransactionAtLeastBroadcast(txIds[i]),
         true,
         600 * 1000,
         5 * 1000,
         5
       );
-      const transactionBroadcasted = await wallet
-        .getClient()
-        .isTransactionAtLeastBroadcast(txIds[i]);
+      const transactionBroadcasted =
+        await walletClient.isTransactionAtLeastBroadcast(txIds[i]);
       // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
       // consoleLogTransactionDetails(txnDetails, txIds[i]);
       expect(transactionBroadcasted).to.equal(true);
@@ -2077,7 +2085,7 @@ Then(
     // Pending -> Completed -> Broadcast -> Mined Unconfirmed -> Mined Confirmed
     for (const walletName in this.wallets) {
       const wallet = this.getWallet(walletName);
-      const walletClient = wallet.getClient();
+      const walletClient = await wallet.connectClient();
       const walletInfo = await walletClient.identify();
 
       const txIds = this.transactionsMap.get(walletInfo.public_key);
@@ -2106,16 +2114,14 @@ Then(
             " to register at least Broadcast in the wallet ..."
         );
         await waitFor(
-          async () =>
-            wallet.getClient().isTransactionAtLeastBroadcast(txIds[i]),
+          async () => walletClient.isTransactionAtLeastBroadcast(txIds[i]),
           true,
           1100 * 1000,
           5 * 1000,
           5
         );
-        const transactionBroadcasted = await wallet
-          .getClient()
-          .isTransactionAtLeastBroadcast(txIds[i]);
+        const transactionBroadcasted =
+          await walletClient.isTransactionAtLeastBroadcast(txIds[i]);
         // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
         // consoleLogTransactionDetails(txnDetails, txIds[i]);
         expect(transactionBroadcasted).to.equal(true);
@@ -2130,7 +2136,7 @@ Then(
   async function (walletName) {
     // Pending -> Completed -> Broadcast -> Mined Unconfirmed -> Mined Confirmed
     const wallet = this.getWallet(walletName);
-    const walletClient = wallet.getClient();
+    const walletClient = await wallet.connectClient();
     const walletInfo = await walletClient.identify();
 
     const txIds = this.transactionsMap.get(walletInfo.public_key);
@@ -2158,16 +2164,14 @@ Then(
           " to be detected as Mined_Unconfirmed in the wallet ..."
       );
       await waitFor(
-        async () =>
-          wallet.getClient().isTransactionAtLeastMinedUnconfirmed(txIds[i]),
+        async () => walletClient.isTransactionAtLeastMinedUnconfirmed(txIds[i]),
         true,
         600 * 1000,
         5 * 1000,
         5
       );
-      const isTransactionAtLeastMinedUnconfirmed = await wallet
-        .getClient()
-        .isTransactionAtLeastMinedUnconfirmed(txIds[i]);
+      const isTransactionAtLeastMinedUnconfirmed =
+        await walletClient.isTransactionAtLeastMinedUnconfirmed(txIds[i]);
       // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
       // consoleLogTransactionDetails(txnDetails, txIds[i]);
       expect(isTransactionAtLeastMinedUnconfirmed).to.equal(true);
@@ -2182,7 +2186,7 @@ Then(
     // Pending -> Completed -> Broadcast -> Mined Unconfirmed -> Mined Confirmed
     for (const walletName in this.wallets) {
       const wallet = this.getWallet(walletName);
-      const walletClient = wallet.getClient();
+      const walletClient = await wallet.connectClient();
       const walletInfo = await walletClient.identify();
 
       const txIds = this.transactionsMap.get(walletInfo.public_key);
@@ -2210,15 +2214,14 @@ Then(
         );
         await waitFor(
           async () =>
-            wallet.getClient().isTransactionAtLeastMinedUnconfirmed(txIds[i]),
+            walletClient.isTransactionAtLeastMinedUnconfirmed(txIds[i]),
           true,
           1100 * 1000,
           5 * 1000,
           5
         );
-        const isTransactionAtLeastMinedUnconfirmed = await wallet
-          .getClient()
-          .isTransactionAtLeastMinedUnconfirmed(txIds[i]);
+        const isTransactionAtLeastMinedUnconfirmed =
+          await walletClient.isTransactionAtLeastMinedUnconfirmed(txIds[i]);
         // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
         // consoleLogTransactionDetails(txnDetails, txIds[i]);
         expect(isTransactionAtLeastMinedUnconfirmed).to.equal(true);
@@ -2233,7 +2236,7 @@ Then(
   async function (walletName) {
     // Pending -> Completed -> Broadcast -> Mined Unconfirmed -> Mined Confirmed
     const wallet = this.getWallet(walletName);
-    const walletClient = wallet.getClient();
+    const walletClient = await wallet.connectClient();
     const walletInfo = await walletClient.identify();
 
     const txIds = this.transactionsMap.get(walletInfo.public_key);
@@ -2261,15 +2264,14 @@ Then(
           " to be detected as Mined_Unconfirmed in the wallet ..."
       );
       await waitFor(
-        async () => wallet.getClient().isTransactionMinedUnconfirmed(txIds[i]),
+        async () => walletClient.isTransactionMinedUnconfirmed(txIds[i]),
         true,
         600 * 1000,
         5 * 1000,
         5
       );
-      const isTransactionMinedUnconfirmed = await wallet
-        .getClient()
-        .isTransactionMinedUnconfirmed(txIds[i]);
+      const isTransactionMinedUnconfirmed =
+        await walletClient.isTransactionMinedUnconfirmed(txIds[i]);
       // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
       // consoleLogTransactionDetails(txnDetails, txIds[i]);
       expect(isTransactionMinedUnconfirmed).to.equal(true);
@@ -2284,7 +2286,7 @@ Then(
     // Pending -> Completed -> Broadcast -> Mined Unconfirmed -> Mined Confirmed
     for (const walletName in this.wallets) {
       const wallet = this.getWallet(walletName);
-      const walletClient = wallet.getClient();
+      const walletClient = await wallet.connectClient();
       const walletInfo = await walletClient.identify();
 
       const txIds = this.transactionsMap.get(walletInfo.public_key);
@@ -2312,16 +2314,14 @@ Then(
             " to be detected as Mined_Unconfirmed in the wallet ..."
         );
         await waitFor(
-          async () =>
-            wallet.getClient().isTransactionMinedUnconfirmed(txIds[i]),
+          async () => walletClient.isTransactionMinedUnconfirmed(txIds[i]),
           true,
           1100 * 1000,
           5 * 1000,
           5
         );
-        const isTransactionMinedUnconfirmed = await wallet
-          .getClient()
-          .isTransactionMinedUnconfirmed(txIds[i]);
+        const isTransactionMinedUnconfirmed =
+          await walletClient.isTransactionMinedUnconfirmed(txIds[i]);
         // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
         // consoleLogTransactionDetails(txnDetails, txIds[i]);
         expect(isTransactionMinedUnconfirmed).to.equal(true);
@@ -2336,7 +2336,7 @@ Then(
   async function (walletName) {
     // Pending -> Completed -> Broadcast -> Mined Unconfirmed -> Mined Confirmed
     const wallet = this.getWallet(walletName);
-    const walletClient = wallet.getClient();
+    const walletClient = await wallet.connectClient();
     const walletInfo = await walletClient.identify();
 
     const txIds = this.transactionsMap.get(walletInfo.public_key);
@@ -2364,15 +2364,14 @@ Then(
           " to be detected as Mined_Confirmed in the wallet ..."
       );
       await waitFor(
-        async () => wallet.getClient().isTransactionMinedConfirmed(txIds[i]),
+        async () => walletClient.isTransactionMinedConfirmed(txIds[i]),
         true,
         600 * 1000,
         5 * 1000,
         5
       );
-      const isTransactionMinedConfirmed = await wallet
-        .getClient()
-        .isTransactionMinedConfirmed(txIds[i]);
+      const isTransactionMinedConfirmed =
+        await walletClient.isTransactionMinedConfirmed(txIds[i]);
       // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
       // consoleLogTransactionDetails(txnDetails, txIds[i]);
       expect(isTransactionMinedConfirmed).to.equal(true);
@@ -2385,14 +2384,13 @@ Then(
   { timeout: 1200 * 1000 },
   async function (nodeName, walletName) {
     const wallet = this.getWallet(walletName);
-    const walletClient = wallet.getClient();
+    const walletClient = await wallet.connectClient();
     const walletInfo = await walletClient.identify();
     const nodeClient = this.getClient(nodeName);
-
     const txIds = this.transactionsMap.get(walletInfo.public_key);
     if (txIds === undefined) {
       console.log("\nNo transactions for " + walletName + "!");
-      expect(false).to.equal(true);
+      throw new Error("No transactions for " + walletName + "!");
     }
     console.log(
       "\nDetecting",
@@ -2428,9 +2426,8 @@ Then(
         5 * 1000,
         5
       );
-      const isTransactionMinedConfirmed = await wallet
-        .getClient()
-        .isTransactionMinedConfirmed(txIds[i]);
+      const isTransactionMinedConfirmed =
+        await walletClient.isTransactionMinedConfirmed(txIds[i]);
       // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
       // consoleLogTransactionDetails(txnDetails, txIds[i]);
       expect(isTransactionMinedConfirmed).to.equal(true);
@@ -2443,7 +2440,7 @@ Then(
   { timeout: 3600 * 1000 },
   async function (mmProxy, walletName) {
     const wallet = this.getWallet(walletName);
-    const walletClient = wallet.getClient();
+    const walletClient = await wallet.connectClient();
     const walletInfo = await walletClient.identify();
 
     const txIds = this.transactionsMap.get(walletInfo.public_key);
@@ -2485,9 +2482,8 @@ Then(
         5 * 1000,
         5
       );
-      const isTransactionMinedConfirmed = await wallet
-        .getClient()
-        .isTransactionMinedConfirmed(txIds[i]);
+      const isTransactionMinedConfirmed =
+        await walletClient.isTransactionMinedConfirmed(txIds[i]);
       // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
       // consoleLogTransactionDetails(txnDetails, txIds[i]);
       expect(isTransactionMinedConfirmed).to.equal(true);
@@ -2502,7 +2498,7 @@ Then(
     // Pending -> Completed -> Broadcast -> Mined Unconfirmed -> Mined Confirmed
     for (const walletName in this.wallets) {
       const wallet = this.getWallet(walletName);
-      const walletClient = wallet.getClient();
+      const walletClient = await wallet.connectClient();
       const walletInfo = await walletClient.identify();
 
       const txIds = this.transactionsMap.get(walletInfo.public_key);
@@ -2530,15 +2526,14 @@ Then(
             " to be detected as Mined_Confirmed in the wallet ..."
         );
         await waitFor(
-          async () => wallet.getClient().isTransactionMinedConfirmed(txIds[i]),
+          async () => walletClient.isTransactionMinedConfirmed(txIds[i]),
           true,
           1100 * 1000,
           5 * 1000,
           5
         );
-        const isTransactionMinedConfirmed = await wallet
-          .getClient()
-          .isTransactionMinedConfirmed(txIds[i]);
+        const isTransactionMinedConfirmed =
+          await walletClient.isTransactionMinedConfirmed(txIds[i]);
         // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
         // consoleLogTransactionDetails(txnDetails, txIds[i]);
         expect(isTransactionMinedConfirmed).to.equal(true);
@@ -2552,7 +2547,7 @@ When(
   { timeout: 20 * 1000 },
   async function (walletName) {
     const wallet = this.getWallet(walletName);
-    const walletClient = wallet.getClient();
+    const walletClient = await wallet.connectClient();
     console.log("\nListing all coinbase transactions: ", walletName);
     const transactions = await walletClient.getAllCoinbaseTransactions();
     if (transactions.length > 0) {
@@ -2569,7 +2564,7 @@ Then(
   /wallet (.*) has (.*) coinbase transactions/,
   { timeout: 20 * 1000 },
   async function (walletName, count) {
-    const walletClient = this.getWallet(walletName).getClient();
+    const walletClient = await this.getWallet(walletName).connectClient();
     const transactions = await walletClient.getAllCoinbaseTransactions();
     expect(transactions.length).to.equal(Number(count));
     this.resultStack.push([walletName, transactions.length]);
@@ -2580,7 +2575,7 @@ Then(
   /wallet (.*) detects at least (.*) coinbase transactions as Mined_Confirmed/,
   { timeout: 605 * 1000 },
   async function (walletName, count) {
-    const walletClient = this.getWallet(walletName).getClient();
+    const walletClient = await this.getWallet(walletName).connectClient();
     await waitFor(
       async () => walletClient.areCoinbasesConfirmedAtLeast(count),
       true,
@@ -2598,9 +2593,9 @@ Then(
   /wallets ([A-Za-z0-9,]+) should have (.*) spendable coinbase outputs/,
   { timeout: 610 * 1000 },
   async function (wallets, amountOfCoinBases) {
-    const walletClients = wallets
-      .split(",")
-      .map((wallet) => this.getWallet(wallet).getClient());
+    const walletClients = await Promise.all(
+      wallets.split(",").map((wallet) => this.getWallet(wallet).connectClient())
+    );
     let coinbaseCount = 0;
     for (const client of walletClients) {
       coinbaseCount += await client.countAllCoinbaseTransactions();
@@ -2641,9 +2636,9 @@ Then(
   /the number of coinbase transactions for wallet (.*) and wallet (.*) are (.*) less/,
   { timeout: 20 * 1000 },
   async function (walletNameA, walletNameB, count) {
-    const walletClientA = this.getWallet(walletNameA).getClient();
+    const walletClientA = await this.getWallet(walletNameA).connectClient();
     const transactionsA = await walletClientA.getAllCoinbaseTransactions();
-    const walletClientB = this.getWallet(walletNameB).getClient();
+    const walletClientB = await this.getWallet(walletNameB).connectClient();
     const transactionsB = await walletClientB.getAllCoinbaseTransactions();
     if (this.resultStack.length >= 2) {
       const walletStats = [this.resultStack.pop(), this.resultStack.pop()];
@@ -2691,7 +2686,7 @@ When(
     let splitsLeft = splitNum;
 
     const wallet = this.getWallet(walletName);
-    const walletClient = wallet.getClient();
+    const walletClient = await wallet.connectClient();
     const walletInfo = await walletClient.identify();
 
     console.log(
@@ -2754,9 +2749,12 @@ When(
     feePerGram
   ) {
     console.log("\n");
-    const sourceWalletClient = this.getWallet(sourceWallet).getClient();
+    const sourceWalletClient = await this.getWallet(
+      sourceWallet
+    ).connectClient();
     const sourceInfo = await sourceWalletClient.identify();
-    const destInfo = await this.getWallet(destWallet).getClient().identify();
+    const destWalletClient = await this.getWallet(destWallet).connectClient();
+    const destInfo = await destWalletClient.identify();
 
     console.log(
       "Sending",
@@ -2827,8 +2825,8 @@ When(
   /I wait for (.*) to connect to (.*)/,
   { timeout: 30 * 1000 },
   async function (firstNode, secondNode) {
-    const firstNodeClient = this.getNodeOrWalletClient(firstNode);
-    const secondNodeClient = this.getNodeOrWalletClient(secondNode);
+    const firstNodeClient = await this.getNodeOrWalletClient(firstNode);
+    const secondNodeClient = await this.getNodeOrWalletClient(secondNode);
     const secondNodeIdentity = await secondNodeClient.identify();
 
     await waitForPredicate(async () => {
@@ -2842,8 +2840,8 @@ Then(
   /(.*) is connected to (.*)/,
   { timeout: 30 * 1000 },
   async function (firstNode, secondNode) {
-    const firstNodeClient = this.getNodeOrWalletClient(firstNode);
-    const secondNodeClient = this.getNodeOrWalletClient(secondNode);
+    const firstNodeClient = await this.getNodeOrWalletClient(firstNode);
+    const secondNodeClient = await this.getNodeOrWalletClient(secondNode);
     const secondNodeIdentity = await secondNodeClient.identify();
     let peers = await firstNodeClient.listConnectedPeers();
     assert(peers.some((p) => secondNodeIdentity.public_key === p.public_key));
@@ -2854,7 +2852,7 @@ When(
   /I wait for (.*) to have (.*) connectivity/,
   { timeout: 30 * 1000 },
   async function (nodeName, expectedStatus) {
-    const node = this.getNodeOrWalletClient(nodeName);
+    const node = await this.getNodeOrWalletClient(nodeName);
     const expected = ConnectivityStatus[expectedStatus.toUpperCase()];
     assert(
       expected !== undefined,
@@ -2871,7 +2869,7 @@ When(
   /I wait for (.*) to have (\d+) node connections/,
   { timeout: 30 * 1000 },
   async function (nodeName, numConnections) {
-    const node = this.getNodeOrWalletClient(nodeName);
+    const node = await this.getNodeOrWalletClient(nodeName);
     numConnections = +numConnections;
     await waitForPredicate(async () => {
       let info = await node.getNetworkStatus();
