@@ -61,7 +61,16 @@ impl WindowedListState {
             self.offset = self.start;
             list_state.select(Some(selected - self.start));
         }
-
+        // If the window was resized make sure we are within bounds of the list.
+        if self.end > self.num_items {
+            let diff = self.end - self.num_items;
+            self.start -= diff;
+            self.end -= diff;
+            if let Some(selected) = self.selected {
+                list_state.select(Some(selected - self.start));
+            }
+            self.offset = self.start;
+        }
         list_state
     }
 
@@ -192,5 +201,23 @@ mod test {
         let _state = list_state.get_list_state(4);
         let window = list_state.get_start_end();
         assert_eq!(window, (5, 9));
+    }
+
+    #[test]
+    fn test_console_resize() {
+        let mut list_state = WindowedListState::new();
+        // Start with 20 items and console size of 5
+        list_state.set_num_items(20);
+        // Go to the last item (2 times previous).
+        list_state.previous();
+        list_state.previous();
+        list_state.get_list_state(5);
+        assert_eq!(list_state.get_start_end(), (15, 20));
+        // Resize to 10.
+        list_state.get_list_state(10);
+        assert_eq!(list_state.get_start_end(), (10, 20));
+        // Resize to 50.
+        list_state.get_list_state(50);
+        assert_eq!(list_state.get_start_end(), (0, 20));
     }
 }
