@@ -86,6 +86,16 @@ where
             val,
             e,
         );
+
+        if let lmdb_zero::Error::Code(code) = &e {
+            if *code == lmdb_zero::error::KEYEXIST {
+                return ChainStorageError::KeyExists {
+                    table_name,
+                    key: to_hex(key.as_lmdb_bytes()),
+                };
+            }
+        }
+
         ChainStorageError::InsertError {
             table: table_name,
             error: e.to_string(),

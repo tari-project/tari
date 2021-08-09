@@ -136,7 +136,7 @@ impl TestParams {
         UnblindedOutput::new(
             params.value,
             self.spend_key.clone(),
-            Some(params.output_features.clone()),
+            params.output_features,
             params.script.clone(),
             params
                 .input_data
@@ -263,6 +263,7 @@ macro_rules! txn_schema {
         $crate::transactions::helpers::TransactionSchema {
             from: $input.clone(),
             to: $outputs.clone(),
+            to_outputs: vec![],
             fee: $fee,
             lock_height: $lock,
             features: $features,
@@ -307,6 +308,7 @@ macro_rules! txn_schema {
 pub struct TransactionSchema {
     pub from: Vec<UnblindedOutput>,
     pub to: Vec<MicroTari>,
+    pub to_outputs: Vec<UnblindedOutput>,
     pub fee: MicroTari,
     pub lock_height: u64,
     pub features: OutputFeatures,
@@ -455,7 +457,23 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
         });
         outputs.push(utxo.clone());
         stx_builder
-            .with_output(utxo, test_params.sender_offset_private_key.clone())
+            .with_output(utxo, test_params.sender_offset_private_key)
+            .unwrap();
+    }
+    for mut utxo in schema.to_outputs {
+        let test_params = TestParams::new();
+        utxo.metadata_signature = TransactionOutput::create_final_metadata_signature(
+            &utxo.value,
+            &utxo.spending_key,
+            &utxo.script,
+            &utxo.features,
+            &test_params.sender_offset_private_key,
+        )
+        .unwrap();
+        utxo.sender_offset_public_key = test_params.sender_offset_public_key;
+        outputs.push(utxo.clone());
+        stx_builder
+            .with_output(utxo, test_params.sender_offset_private_key)
             .unwrap();
     }
 
@@ -477,7 +495,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
     let change_output = UnblindedOutput::new(
         change,
         test_params_change_and_txn.change_spend_key.clone(),
-        Some(schema.features),
+        schema.features,
         script,
         inputs!(PublicKey::from_secret_key(
             &test_params_change_and_txn.script_private_key
@@ -487,10 +505,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
         metadata_sig,
     );
     outputs.push(change_output);
-    match stx_protocol.finalize(KernelFeatures::empty(), &factories) {
-        Ok(_) => (),
-        Err(e) => panic!("{:?}", e),
-    }
+    stx_protocol.finalize(KernelFeatures::empty(), &factories).unwrap();
     let txn = stx_protocol.get_transaction().unwrap().clone();
     (txn, outputs, test_params_change_and_txn)
 }
@@ -511,12 +526,11 @@ pub fn create_test_kernel(fee: MicroTari, lock_height: u64) -> TransactionKernel
 pub fn create_utxo(
     value: MicroTari,
     factories: &CryptoFactories,
-    features: Option<OutputFeatures>,
+    features: OutputFeatures,
     script: &TariScript,
 ) -> (TransactionOutput, PrivateKey, PrivateKey) {
     let keys = generate_keys();
     let offset_keys = generate_keys();
-    let features = features.unwrap_or_default();
     let commitment = factories.commitment.commit_value(&keys.k, value.into());
     let proof = factories.range_proof.construct_proof(&keys.k, value.into()).unwrap();
     let metadata_sig =

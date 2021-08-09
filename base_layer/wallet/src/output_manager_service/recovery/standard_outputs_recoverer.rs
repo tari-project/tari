@@ -90,7 +90,7 @@ where TBackend: OutputManagerBackend + 'static
                     UnblindedOutput::new(
                         output.committed_value,
                         output.blinding_factor.clone(),
-                        Some(features),
+                        features,
                         script,
                         inputs!(PublicKey::from_secret_key(&output.blinding_factor)),
                         output.blinding_factor,

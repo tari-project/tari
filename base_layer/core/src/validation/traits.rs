@@ -22,7 +22,7 @@
 
 use crate::{
     blocks::{Block, BlockHeader},
-    chain_storage::{BlockchainBackend, ChainBlock, DeletedBitmap},
+    chain_storage::{BlockchainBackend, ChainBlock},
     proof_of_work::AchievedTargetDifficulty,
     transactions::{transaction::Transaction, types::Commitment},
     validation::{error::ValidationError, DifficultyCalculator},
@@ -42,7 +42,6 @@ pub trait PostOrphanBodyValidation<B>: Send + Sync {
         block: &ChainBlock,
         backend: &B,
         metadata: &ChainMetadata,
-        deleted_bitmap: &DeletedBitmap,
     ) -> Result<(), ValidationError>;
 }
 

@@ -643,7 +643,7 @@ fn local_get_new_block_template_and_get_new_block() {
         assert_eq!(block.header.height, 1);
         assert_eq!(block.body, block_template.body);
 
-        assert!(node.blockchain_db.add_block(block.clone().into()).is_ok());
+        node.blockchain_db.add_block(block.clone().into()).unwrap();
 
         node.shutdown().await;
     });
@@ -722,7 +722,7 @@ fn local_get_new_block_with_zero_conf() {
         assert_eq!(block.body, block_template.body);
         assert_eq!(block_template.body.kernels().len(), 5);
 
-        assert!(node.blockchain_db.add_block(block.clone().into()).is_ok());
+        node.blockchain_db.add_block(block.clone().into()).unwrap();
 
         node.shutdown().await;
     });
@@ -796,7 +796,7 @@ fn local_get_new_block_with_combined_transaction() {
         assert_eq!(block.body, block_template.body);
         assert_eq!(block_template.body.kernels().len(), 5);
 
-        assert!(node.blockchain_db.add_block(block.clone().into()).is_ok());
+        node.blockchain_db.add_block(block.clone().into()).unwrap();
 
         node.shutdown().await;
     });

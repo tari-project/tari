@@ -200,7 +200,7 @@ impl CoinbaseBuilder {
         let unblinded_output = UnblindedOutput::new(
             total_reward,
             spending_key,
-            Some(output_features),
+            output_features,
             script,
             inputs!(PublicKey::from_secret_key(&script_private_key)),
             script_private_key,
