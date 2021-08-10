@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::error::WalletStorageError;
+use crate::{connectivity_service::WalletConnectivityError, error::WalletStorageError};
 use tari_comms::{connectivity::ConnectivityError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_service_framework::reply_channel::TransportChannelError;
@@ -46,4 +46,6 @@ pub enum BaseNodeServiceError {
     InvalidBaseNodeResponse(String),
     #[error("Wallet storage error: `{0}`")]
     WalletStorageError(#[from] WalletStorageError),
+    #[error("Wallet connectivity error: `{0}`")]
+    WalletConnectivityError(#[from] WalletConnectivityError),
 }

@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::FutureExt;
+use futures::{future, FutureExt};
 use std::{future::Future, pin::Pin};
+use tari_shutdown::Shutdown;
 use tokio::{runtime, runtime::Runtime, task, task::JoinError};
 
 pub fn create_runtime() -> Runtime {
@@ -33,6 +34,17 @@ pub fn create_runtime() -> Runtime {
         .core_threads(4)
         .build()
         .expect("Could not create runtime")
+}
+
+pub fn spawn_until_shutdown<F>(fut: F) -> Shutdown
+where F: Future<Output = ()> + Send + 'static {
+    let shutdown = Shutdown::new();
+    let signal = shutdown.to_signal();
+    task::spawn(async move {
+        futures::pin_mut!(fut);
+        future::select(signal, fut).await;
+    });
+    shutdown
 }
 
 /// Create a runtime and report if it panics. If there are tasks still running after the panic, this

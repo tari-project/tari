@@ -124,6 +124,12 @@ impl ConnectivityStatus {
     }
 }
 
+impl Default for ConnectivityStatus {
+    fn default() -> Self {
+        ConnectivityStatus::Initializing
+    }
+}
+
 impl fmt::Display for ConnectivityStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self)
