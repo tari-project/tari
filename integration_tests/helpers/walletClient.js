@@ -125,7 +125,7 @@ class WalletClient {
   }
 
   async getAllNormalTransactions() {
-    const data = this.getCompletedTransactions();
+    const data = await this.getCompletedTransactions();
     const transactions = [];
     for (let i = 0; i < data.length; i++) {
       if (

@@ -105,7 +105,7 @@ where T: WalletBackend + 'static
 
             let scanning_service = UtxoScannerService::<T>::builder()
                 .with_peers(vec![])
-                .with_retry_limit(10)
+                .with_retry_limit(2)
                 .with_scanning_interval(interval)
                 .with_mode(UtxoScannerMode::Scanning)
                 .build_with_resources(

@@ -700,10 +700,7 @@ where T: OutputManagerBackend + 'static
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || {
             match db_clone.write(WriteOperation::Remove(DbKey::AnyOutputByCommitment(commitment.clone()))) {
-                Ok(None) => log_error(
-                    DbKey::AnyOutputByCommitment(commitment.clone()),
-                    OutputManagerStorageError::ValueNotFound,
-                ),
+                Ok(None) => Ok(()),
                 Ok(Some(DbValue::AnyOutput(_))) => Ok(()),
                 Ok(Some(other)) => unexpected_result(DbKey::AnyOutputByCommitment(commitment.clone()), other),
                 Err(e) => log_error(DbKey::AnyOutputByCommitment(commitment), e),
