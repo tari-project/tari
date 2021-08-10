@@ -139,9 +139,9 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(fetch_horizon_data() -> Option<HorizonData>, "fetch_horizon_data");
 
     //---------------------------------- TXO --------------------------------------------//
-    make_async_fn!(fetch_utxo(hash: HashOutput) -> Option<TransactionOutput>, "fetch_utxo");
+    make_async_fn!(fetch_utxo(hash: HashOutput) -> Option<PrunedOutput>, "fetch_utxo");
 
-    make_async_fn!(fetch_utxos(hashes: Vec<HashOutput>) -> Vec<Option<(TransactionOutput, bool)>>, "fetch_utxos");
+    make_async_fn!(fetch_utxos(hashes: Vec<HashOutput>) -> Vec<Option<(PrunedOutput, bool)>>, "fetch_utxos");
 
     make_async_fn!(fetch_utxos_by_mmr_position(start: u64, end: u64, deleted: Arc<Bitmap>) -> (Vec<PrunedOutput>, Bitmap), "fetch_utxos_by_mmr_position");
 
