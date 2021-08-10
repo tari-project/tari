@@ -591,6 +591,7 @@ where TBackend: WalletBackend + 'static
                         self.publish_event(UtxoScannerEvent::ScanningRoundFailed {
                             num_retries: self.num_retries,
                             retry_limit: self.retry_limit,
+                            error: e.to_string(),
                         });
                         continue;
                     },
@@ -599,6 +600,7 @@ where TBackend: WalletBackend + 'static
                     self.publish_event(UtxoScannerEvent::ScanningRoundFailed {
                         num_retries: self.num_retries,
                         retry_limit: self.retry_limit,
+                        error: "No new peers to try after this round".to_string(),
                     });
 
                     if self.num_retries >= self.retry_limit {

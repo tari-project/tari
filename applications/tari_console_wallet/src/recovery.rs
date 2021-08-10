@@ -131,8 +131,12 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfi
             Ok(UtxoScannerEvent::ScanningRoundFailed {
                 num_retries,
                 retry_limit,
+                error,
             }) => {
-                let s = format!("Failed to sync. Attempt {} of {}", num_retries, retry_limit);
+                let s = format!(
+                    "Attempt {}/{}: Failed to complete wallet recovery {}.",
+                    num_retries, retry_limit, error
+                );
                 println!("{}", s);
                 warn!(target: LOG_TARGET, "{}", s);
             },
