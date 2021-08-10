@@ -383,13 +383,15 @@ void pending_inbound_transactions_destroy(struct TariPendingInboundTransactions 
 
 /// -------------------------------- TariCommsConfig ----------------------------------------------- ///
 // Creates a TariCommsConfig
+// Valid values for network are: ridcully, stibbons, weatherwax, localnet, mainnet
 struct TariCommsConfig *comms_config_create(const char *public_address,
-                                            struct TariTransportType *transport,
-                                            const char *database_name,
-                                            const char *datastore_path,
-                                            unsigned long long discovery_timeout_in_secs,
-                                            unsigned long long saf_message_duration_in_secs,
-                                            int *error_out);
+                                     struct TariTransportType *transport,
+                                     const char *database_name,
+                                     const char *datastore_path,
+                                     unsigned long long discovery_timeout_in_secs,
+                                     unsigned long long saf_message_duration_in_secs,
+                                     const char *network,
+                                     int* error_out);
 
 // Frees memory for a TariCommsConfig
 void comms_config_destroy(struct TariCommsConfig *wc);
