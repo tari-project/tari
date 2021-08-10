@@ -1007,7 +1007,7 @@ where TBackend: OutputManagerBackend + 'static
                 break;
             }
             fee_with_change = Fee::calculate(fee_per_gram, 1, utxos.len(), output_count + 1);
-            if utxos_total_value >= amount + fee_with_change {
+            if utxos_total_value > amount + fee_with_change {
                 require_change_output = true;
                 break;
             }
