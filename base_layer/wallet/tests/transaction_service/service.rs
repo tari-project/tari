@@ -99,6 +99,7 @@ use tari_wallet::{
         mock_base_node_service::MockBaseNodeService,
         BaseNodeServiceInitializer,
     },
+    connectivity_service::WalletConnectivityInitializer,
     output_manager_service::{
         config::OutputManagerServiceConfig,
         handle::OutputManagerHandle,
@@ -211,6 +212,7 @@ pub fn setup_transaction_service<
             factories,
         ))
         .add_initializer(BaseNodeServiceInitializer::new(BaseNodeServiceConfig::default(), db))
+        .add_initializer(WalletConnectivityInitializer::new(BaseNodeServiceConfig::default()))
         .build();
 
     let handles = runtime.block_on(fut).expect("Service initialization failed");

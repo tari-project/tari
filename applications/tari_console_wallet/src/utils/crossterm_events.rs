@@ -70,7 +70,9 @@ impl CrosstermEvents {
                 ) {
                     Ok(true) => {
                         if let Ok(CEvent::Key(key)) = event::read() {
-                            tx.send(Event::Input(key)).unwrap();
+                            if let Err(e) = tx.send(Event::Input(key)) {
+                                warn!(target: LOG_TARGET, "Error sending Tick event on MPSC channel: {}", e);
+                            }
                         }
                     },
                     Ok(false) => {},

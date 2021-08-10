@@ -792,6 +792,41 @@ Then(
 );
 
 Then(
+  "all nodes are on the same chain tip",
+  { timeout: 1200 * 1000 },
+  async function () {
+    await waitFor(
+      async () => {
+        let tipHash = null;
+        let height = null;
+        let result = true;
+        await this.forEachClientAsync(async (client, name) => {
+          await waitFor(async () => client.getTipHeight(), 115 * 1000);
+          const currTip = await client.getTipHeader();
+          if (!tipHash) {
+            tipHash = currTip.hash.toString("hex");
+            height = currTip.height;
+            console.log(`Node ${name} is at tip: #${height}, ${tipHash}`);
+          } else {
+            const currTipHash = currTip.hash.toString("hex");
+            console.log(
+              `Node ${name} is at tip: #${currTip.height},${currTipHash} (should be #${height},${tipHash})`
+            );
+            result =
+              result && currTipHash == tipHash && currTip.height == height;
+          }
+        });
+        return result;
+      },
+      true,
+      600 * 1000,
+      5 * 1000,
+      5
+    );
+  }
+);
+
+Then(
   "all nodes are at height {int}",
   { timeout: 1200 * 1000 },
   async function (height) {

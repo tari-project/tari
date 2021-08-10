@@ -68,7 +68,10 @@ use tari_wallet::{
     util::emoji::EmojiId,
     WalletSqlite,
 };
-use tokio::sync::{watch, RwLock};
+use tokio::{
+    sync::{watch, RwLock},
+    task,
+};
 
 const LOG_TARGET: &str = "wallet::console_wallet::app_state";
 
@@ -665,15 +668,7 @@ impl AppStateInner {
             )
             .await?;
 
-        if let Err(e) = self
-            .wallet
-            .transaction_service
-            .validate_transactions(ValidationRetryStrategy::UntilSuccess)
-            .await
-        {
-            error!(target: LOG_TARGET, "Problem validating transactions: {}", e);
-        }
-        self.validate_outputs().await;
+        self.spawn_transaction_revalidation_task();
 
         self.data.base_node_previous = self.data.base_node_selected.clone();
         self.data.base_node_selected = peer.clone();
@@ -701,15 +696,7 @@ impl AppStateInner {
             )
             .await?;
 
-        if let Err(e) = self
-            .wallet
-            .transaction_service
-            .validate_transactions(ValidationRetryStrategy::UntilSuccess)
-            .await
-        {
-            error!(target: LOG_TARGET, "Problem validating transactions: {}", e);
-        }
-        self.validate_outputs().await;
+        self.spawn_transaction_revalidation_task();
 
         self.data.base_node_previous = self.data.base_node_selected.clone();
         self.data.base_node_selected = peer.clone();
@@ -751,15 +738,7 @@ impl AppStateInner {
             )
             .await?;
 
-        if let Err(e) = self
-            .wallet
-            .transaction_service
-            .validate_transactions(ValidationRetryStrategy::UntilSuccess)
-            .await
-        {
-            error!(target: LOG_TARGET, "Problem validating transactions: {}", e);
-        }
-        self.validate_outputs().await;
+        self.spawn_transaction_revalidation_task();
 
         self.data.base_node_peer_custom = None;
         self.data.base_node_selected = previous;
@@ -778,33 +757,39 @@ impl AppStateInner {
         Ok(())
     }
 
-    pub async fn validate_outputs(&mut self) {
-        if let Err(e) = self
-            .wallet
-            .output_manager_service
-            .validate_txos(TxoValidationType::Unspent, ValidationRetryStrategy::UntilSuccess)
-            .await
-        {
-            error!(target: LOG_TARGET, "Problem validating UTXOs: {}", e);
-        }
+    pub fn spawn_transaction_revalidation_task(&mut self) {
+        let mut txn_service = self.wallet.transaction_service.clone();
+        let mut output_manager_service = self.wallet.output_manager_service.clone();
 
-        if let Err(e) = self
-            .wallet
-            .output_manager_service
-            .validate_txos(TxoValidationType::Spent, ValidationRetryStrategy::UntilSuccess)
-            .await
-        {
-            error!(target: LOG_TARGET, "Problem validating STXOs: {}", e);
-        }
+        task::spawn(async move {
+            if let Err(e) = txn_service
+                .validate_transactions(ValidationRetryStrategy::UntilSuccess)
+                .await
+            {
+                error!(target: LOG_TARGET, "Problem validating transactions: {}", e);
+            }
 
-        if let Err(e) = self
-            .wallet
-            .output_manager_service
-            .validate_txos(TxoValidationType::Invalid, ValidationRetryStrategy::UntilSuccess)
-            .await
-        {
-            error!(target: LOG_TARGET, "Problem validating Invalid TXOs: {}", e);
-        }
+            if let Err(e) = output_manager_service
+                .validate_txos(TxoValidationType::Unspent, ValidationRetryStrategy::UntilSuccess)
+                .await
+            {
+                error!(target: LOG_TARGET, "Problem validating UTXOs: {}", e);
+            }
+
+            if let Err(e) = output_manager_service
+                .validate_txos(TxoValidationType::Spent, ValidationRetryStrategy::UntilSuccess)
+                .await
+            {
+                error!(target: LOG_TARGET, "Problem validating STXOs: {}", e);
+            }
+
+            if let Err(e) = output_manager_service
+                .validate_txos(TxoValidationType::Invalid, ValidationRetryStrategy::UntilSuccess)
+                .await
+            {
+                error!(target: LOG_TARGET, "Problem validating Invalid TXOs: {}", e);
+            }
+        });
     }
 }
 

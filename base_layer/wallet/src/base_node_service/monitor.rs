@@ -23,29 +23,18 @@
 use crate::{
     base_node_service::{
         handle::{BaseNodeEvent, BaseNodeEventSender},
-        service::{BaseNodeState, OnlineState},
+        service::BaseNodeState,
     },
+    connectivity_service::{OnlineStatus, WalletConnectivityHandle},
     error::WalletStorageError,
     storage::database::{WalletBackend, WalletDatabase},
 };
 use chrono::Utc;
-use futures::{future, future::Either};
 use log::*;
 use std::{convert::TryFrom, sync::Arc, time::Duration};
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::{
-    connectivity::{ConnectivityError, ConnectivityRequester},
-    peer_manager::NodeId,
-    protocol::rpc::RpcError,
-    PeerConnection,
-};
-use tari_core::base_node::rpc::BaseNodeWalletRpcClient;
-use tari_shutdown::ShutdownSignal;
-use tokio::{
-    stream::StreamExt,
-    sync::{broadcast, RwLock},
-    time,
-};
+use tari_comms::{peer_manager::NodeId, protocol::rpc::RpcError};
+use tokio::{sync::RwLock, time};
 
 const LOG_TARGET: &str = "wallet::base_node_service::chain_metadata_monitor";
 
@@ -53,9 +42,8 @@ pub struct BaseNodeMonitor<T> {
     interval: Duration,
     state: Arc<RwLock<BaseNodeState>>,
     db: WalletDatabase<T>,
-    connectivity_manager: ConnectivityRequester,
+    wallet_connectivity: WalletConnectivityHandle,
     event_publisher: BaseNodeEventSender,
-    shutdown_signal: ShutdownSignal,
 }
 
 impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
@@ -63,24 +51,22 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
         interval: Duration,
         state: Arc<RwLock<BaseNodeState>>,
         db: WalletDatabase<T>,
-        connectivity_manager: ConnectivityRequester,
+        wallet_connectivity: WalletConnectivityHandle,
         event_publisher: BaseNodeEventSender,
-        shutdown_signal: ShutdownSignal,
     ) -> Self {
         Self {
             interval,
             state,
             db,
-            connectivity_manager,
+            wallet_connectivity,
             event_publisher,
-            shutdown_signal,
         }
     }
 
     pub async fn run(mut self) {
         loop {
             trace!(target: LOG_TARGET, "Beginning new base node monitoring round");
-            match self.process().await {
+            match self.monitor_node().await {
                 Ok(_) => continue,
                 Err(BaseNodeMonitorError::NodeShuttingDown) => {
                     debug!(
@@ -90,34 +76,16 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
                     );
                     break;
                 },
-                Err(e @ BaseNodeMonitorError::RpcFailed(_)) | Err(e @ BaseNodeMonitorError::DialFailed(_)) => {
-                    debug!(target: LOG_TARGET, "Connectivity failure to base node: {}", e,);
-                    debug!(
-                        target: LOG_TARGET,
-                        "Setting as OFFLINE and retrying after {:.2?}", self.interval
-                    );
+                Err(e @ BaseNodeMonitorError::RpcFailed(_)) => {
+                    debug!(target: LOG_TARGET, "Connectivity failure to base node: {}", e);
+                    debug!(target: LOG_TARGET, "Setting as OFFLINE and retrying...",);
 
                     self.set_offline().await;
-                    if self.sleep_or_shutdown().await.is_err() {
-                        break;
-                    }
-                    continue;
-                },
-                Err(BaseNodeMonitorError::BaseNodeChanged) => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Base node has changed. Connecting to new base node...",
-                    );
-
-                    self.set_connecting().await;
                     continue;
                 },
                 Err(e @ BaseNodeMonitorError::InvalidBaseNodeResponse(_)) |
                 Err(e @ BaseNodeMonitorError::WalletStorageError(_)) => {
                     error!(target: LOG_TARGET, "{}", e);
-                    if self.sleep_or_shutdown().await.is_err() {
-                        break;
-                    }
                     continue;
                 },
             }
@@ -128,74 +96,40 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
         );
     }
 
-    async fn process(&mut self) -> Result<(), BaseNodeMonitorError> {
-        let peer = self.wait_for_peer_to_be_set().await?;
-        let connection = self.attempt_dial(peer.clone()).await?;
-        debug!(
-            target: LOG_TARGET,
-            "Base node connected. Establishing RPC connection...",
-        );
-        let client = self.connect_client(connection).await?;
-        debug!(target: LOG_TARGET, "RPC established",);
-        self.monitor_node(peer, client).await?;
-        Ok(())
-    }
-
-    async fn wait_for_peer_to_be_set(&mut self) -> Result<NodeId, BaseNodeMonitorError> {
-        // We aren't worried about late subscription here because we also check the state for a set base node peer, as
-        // long as we subscribe before checking state.
-        let mut event_subscription = self.event_publisher.subscribe();
+    async fn update_connectivity_status(&self) -> NodeId {
+        let mut watcher = self.wallet_connectivity.get_connectivity_status_watcher();
         loop {
-            let peer = self
-                .state
-                .read()
-                .await
-                .base_node_peer
-                .as_ref()
-                .map(|p| p.node_id.clone());
-
-            match peer {
-                Some(peer) => return Ok(peer),
-                None => {
-                    trace!(target: LOG_TARGET, "Base node peer not set yet. Waiting for event");
-                    let either = future::select(event_subscription.next(), &mut self.shutdown_signal).await;
-                    match either {
-                        Either::Left((Some(Ok(_)), _)) |
-                        Either::Left((Some(Err(broadcast::RecvError::Lagged(_))), _)) => {
-                            trace!(target: LOG_TARGET, "Base node monitor got event");
-                            // If we get any event (or some were missed), let's check base node peer has been set
-                            continue;
-                        },
-                        // All of these indicate that the node has been shut down
-                        Either::Left((Some(Err(broadcast::RecvError::Closed)), _)) |
-                        Either::Left((None, _)) |
-                        Either::Right((_, _)) => return Err(BaseNodeMonitorError::NodeShuttingDown),
-                    }
+            use OnlineStatus::*;
+            match watcher.recv().await.unwrap_or(Offline) {
+                Online => match self.wallet_connectivity.get_current_base_node() {
+                    Some(peer) => {
+                        return peer;
+                    },
+                    _ => continue,
+                },
+                Connecting => {
+                    self.set_connecting().await;
+                },
+                Offline => {
+                    self.set_offline().await;
                 },
             }
         }
     }
 
-    async fn attempt_dial(&mut self, peer: NodeId) -> Result<PeerConnection, BaseNodeMonitorError> {
-        let conn = self.connectivity_manager.dial_peer(peer).await?;
-        Ok(conn)
-    }
-
-    async fn connect_client(&self, mut conn: PeerConnection) -> Result<BaseNodeWalletRpcClient, BaseNodeMonitorError> {
-        let client = conn.connect_rpc().await?;
-        Ok(client)
-    }
-
-    async fn monitor_node(
-        &self,
-        peer_node_id: NodeId,
-        mut client: BaseNodeWalletRpcClient,
-    ) -> Result<(), BaseNodeMonitorError> {
+    async fn monitor_node(&mut self) -> Result<(), BaseNodeMonitorError> {
         loop {
+            let peer_node_id = self.update_connectivity_status().await;
+            let mut client = self
+                .wallet_connectivity
+                .obtain_base_node_rpc_client()
+                .await
+                .ok_or(BaseNodeMonitorError::NodeShuttingDown)?;
             let latency = client.get_last_request_latency().await?;
             trace!(
                 target: LOG_TARGET,
-                "Base node latency: {} ms",
+                "Base node {} latency: {} ms",
+                peer_node_id,
                 latency.unwrap_or_default().as_millis()
             );
 
@@ -216,35 +150,17 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
                 is_synced: Some(is_synced),
                 updated: Some(Utc::now().naive_utc()),
                 latency,
-                online: OnlineState::Online,
+                online: OnlineStatus::Online,
                 base_node_peer: state.base_node_peer.clone(),
             })
             .await;
 
-            self.sleep_or_shutdown().await?;
-            self.check_if_base_node_changed(&peer_node_id).await?;
+            time::delay_for(self.interval).await
         }
 
         // loop only exits on shutdown/error
         #[allow(unreachable_code)]
         Ok(())
-    }
-
-    async fn check_if_base_node_changed(&self, peer_node_id: &NodeId) -> Result<(), BaseNodeMonitorError> {
-        // Check if the base node peer is no longer set or has changed
-        if self
-            .state
-            .read()
-            .await
-            .base_node_peer
-            .as_ref()
-            .filter(|p| &p.node_id == peer_node_id)
-            .is_some()
-        {
-            Ok(())
-        } else {
-            Err(BaseNodeMonitorError::BaseNodeChanged)
-        }
     }
 
     async fn set_connecting(&self) {
@@ -253,7 +169,7 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
             is_synced: None,
             updated: Some(Utc::now().naive_utc()),
             latency: None,
-            online: OnlineState::Connecting,
+            online: OnlineStatus::Connecting,
             base_node_peer: state.base_node_peer.clone(),
         })
         .await;
@@ -265,7 +181,7 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
             is_synced: None,
             updated: Some(Utc::now().naive_utc()),
             latency: None,
-            online: OnlineState::Offline,
+            online: OnlineStatus::Offline,
             base_node_peer: state.base_node_peer.clone(),
         })
         .await;
@@ -282,23 +198,8 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
         self.publish_event(BaseNodeEvent::BaseNodeStateChanged(new_state));
     }
 
-    async fn sleep_or_shutdown(&self) -> Result<(), BaseNodeMonitorError> {
-        let delay = time::delay_for(self.interval);
-        let mut shutdown_signal = self.shutdown_signal.clone();
-        if let Either::Right(_) = future::select(delay, &mut shutdown_signal).await {
-            return Err(BaseNodeMonitorError::NodeShuttingDown);
-        }
-        Ok(())
-    }
-
     fn publish_event(&self, event: BaseNodeEvent) {
-        trace!(target: LOG_TARGET, "Publishing event: {:?}", event);
-        let _ = self.event_publisher.send(Arc::new(event)).map_err(|_| {
-            trace!(
-                target: LOG_TARGET,
-                "Could not publish BaseNodeEvent as there are no subscribers"
-            )
-        });
+        let _ = self.event_publisher.send(Arc::new(event));
     }
 }
 
@@ -306,14 +207,10 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
 enum BaseNodeMonitorError {
     #[error("Node is shutting down")]
     NodeShuttingDown,
-    #[error("Failed to dial base node: {0}")]
-    DialFailed(#[from] ConnectivityError),
     #[error("Rpc error: {0}")]
     RpcFailed(#[from] RpcError),
     #[error("Invalid base node response: {0}")]
     InvalidBaseNodeResponse(String),
     #[error("Wallet storage error: {0}")]
     WalletStorageError(#[from] WalletStorageError),
-    #[error("Base node changed")]
-    BaseNodeChanged,
 }
