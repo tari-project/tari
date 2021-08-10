@@ -27,14 +27,15 @@ use super::{
 };
 use crate::{
     base_node_service::monitor::BaseNodeMonitor,
+    connectivity_service::{OnlineStatus, WalletConnectivityHandle},
     storage::database::{WalletBackend, WalletDatabase},
 };
 use chrono::NaiveDateTime;
-use futures::StreamExt;
+use futures::{future, StreamExt};
 use log::*;
 use std::{sync::Arc, time::Duration};
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::Peer};
+use tari_comms::peer_manager::Peer;
 use tari_service_framework::reply_channel::Receiver;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::RwLock;
@@ -48,16 +49,8 @@ pub struct BaseNodeState {
     pub is_synced: Option<bool>,
     pub updated: Option<NaiveDateTime>,
     pub latency: Option<Duration>,
-    pub online: OnlineState,
+    pub online: OnlineStatus,
     pub base_node_peer: Option<Peer>,
-}
-
-/// Connection state of the Base Node
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum OnlineState {
-    Connecting,
-    Online,
-    Offline,
 }
 
 impl Default for BaseNodeState {
@@ -67,7 +60,7 @@ impl Default for BaseNodeState {
             is_synced: None,
             updated: None,
             latency: None,
-            online: OnlineState::Connecting,
+            online: OnlineStatus::Connecting,
             base_node_peer: None,
         }
     }
@@ -79,7 +72,7 @@ where T: WalletBackend + 'static
 {
     config: BaseNodeServiceConfig,
     request_stream: Option<Receiver<BaseNodeServiceRequest, Result<BaseNodeServiceResponse, BaseNodeServiceError>>>,
-    connectivity_manager: ConnectivityRequester,
+    wallet_connectivity: WalletConnectivityHandle,
     event_publisher: BaseNodeEventSender,
     shutdown_signal: Option<ShutdownSignal>,
     state: Arc<RwLock<BaseNodeState>>,
@@ -92,7 +85,7 @@ where T: WalletBackend + 'static
     pub fn new(
         config: BaseNodeServiceConfig,
         request_stream: Receiver<BaseNodeServiceRequest, Result<BaseNodeServiceResponse, BaseNodeServiceError>>,
-        connectivity_manager: ConnectivityRequester,
+        wallet_connectivity: WalletConnectivityHandle,
         event_publisher: BaseNodeEventSender,
         shutdown_signal: ShutdownSignal,
         db: WalletDatabase<T>,
@@ -100,7 +93,7 @@ where T: WalletBackend + 'static
         Self {
             config,
             request_stream: Some(request_stream),
-            connectivity_manager,
+            wallet_connectivity,
             event_publisher,
             shutdown_signal: Some(shutdown_signal),
             state: Default::default(),
@@ -124,12 +117,18 @@ where T: WalletBackend + 'static
             self.config.base_node_monitor_refresh_interval,
             self.state.clone(),
             self.db.clone(),
-            self.connectivity_manager.clone(),
+            self.wallet_connectivity.clone(),
             self.event_publisher.clone(),
-            shutdown_signal.clone(),
         );
 
-        tokio::spawn(monitor.run());
+        tokio::spawn({
+            let shutdown_signal = shutdown_signal.clone();
+            async move {
+                let monitor_fut = monitor.run();
+                futures::pin_mut!(monitor_fut);
+                future::select(shutdown_signal, monitor_fut).await;
+            }
+        });
 
         let mut request_stream = self
             .request_stream
@@ -158,7 +157,7 @@ where T: WalletBackend + 'static
         Ok(())
     }
 
-    async fn set_base_node_peer(&self, peer: Peer) {
+    async fn set_base_node_peer(&mut self, peer: Peer) -> Result<(), BaseNodeServiceError> {
         let new_state = BaseNodeState {
             base_node_peer: Some(peer.clone()),
             ..Default::default()
@@ -167,10 +166,12 @@ where T: WalletBackend + 'static
         {
             let mut lock = self.state.write().await;
             *lock = new_state.clone();
-        };
+        }
+        self.wallet_connectivity.set_base_node(peer.node_id.clone()).await?;
 
         self.publish_event(BaseNodeEvent::BaseNodeStateChanged(new_state));
         self.publish_event(BaseNodeEvent::BaseNodePeerSet(Box::new(peer)));
+        Ok(())
     }
 
     /// This handler is called when requests arrive from the various streams
@@ -184,7 +185,7 @@ where T: WalletBackend + 'static
         );
         match request {
             BaseNodeServiceRequest::SetBaseNodePeer(peer) => {
-                self.set_base_node_peer(*peer).await;
+                self.set_base_node_peer(*peer).await?;
                 Ok(BaseNodeServiceResponse::BaseNodePeerSet)
             },
             BaseNodeServiceRequest::GetBaseNodePeer => {

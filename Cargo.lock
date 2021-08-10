@@ -4932,6 +4932,7 @@ dependencies = [
  "futures-test",
  "lazy_static 1.4.0",
  "rand 0.8.4",
+ "tari_shutdown",
  "tempfile",
  "tokio 0.2.25",
 ]

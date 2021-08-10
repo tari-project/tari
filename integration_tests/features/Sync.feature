@@ -103,6 +103,22 @@ Feature: Block Sync
     When I mine 15 blocks on PNODE2
     Then all nodes are at height 23
 
+    Scenario: Node should not sync from pruned node
+    Given I have a base node NODE1 connected to all seed nodes
+    Given I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
+    When I mine 40 blocks on NODE1
+    Then all nodes are at height 40
+    When I stop node NODE1
+    Given I have a base node NODE2 connected to node PNODE1
+    Given I have a pruned node PNODE2 connected to node PNODE1 with pruning horizon set to 5
+    When I mine 5 blocks on NODE2
+    Then node NODE2 is at height 5
+    Then node PNODE2 is at height 40
+    When I start NODE1
+    # We need for node to boot up and supply node 2 with blocks
+    And I connect node NODE2 to node NODE1 and wait 60 seconds
+    Then all nodes are at height 40
+
   Scenario Outline: Syncing node while also mining before tip sync
     Given I have a seed node SEED
     And I have wallet WALLET1 connected to seed node SEED

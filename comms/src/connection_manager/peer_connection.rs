@@ -57,7 +57,7 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
     time::{Duration, Instant},
 };
-use tari_shutdown::Shutdown;
+use tokio::time;
 
 const LOG_TARGET: &str = "comms::connection_manager::peer_connection";
 
@@ -288,12 +288,10 @@ struct PeerConnectionActor {
     request_rx: Fuse<mpsc::Receiver<PeerConnectionRequest>>,
     direction: ConnectionDirection,
     incoming_substreams: Fuse<IncomingSubstreams>,
-    substream_shutdown: Option<Shutdown>,
     control: Control,
     event_notifier: mpsc::Sender<ConnectionManagerEvent>,
     our_supported_protocols: Vec<ProtocolId>,
     their_supported_protocols: Vec<ProtocolId>,
-    shutdown: bool,
 }
 
 impl PeerConnectionActor {
@@ -314,10 +312,8 @@ impl PeerConnectionActor {
             direction,
             control: connection.get_yamux_control(),
             incoming_substreams: connection.incoming().fuse(),
-            substream_shutdown: None,
             request_rx: request_rx.fuse(),
             event_notifier,
-            shutdown: false,
             our_supported_protocols,
             their_supported_protocols,
         }
@@ -344,15 +340,13 @@ impl PeerConnectionActor {
                         None => {
                             debug!(target: LOG_TARGET, "[{}] Peer '{}' closed the connection", self, self.peer_node_id.short_str());
                             let _ = self.disconnect(false).await;
+                            break;
                         },
                     }
                 }
             }
-
-            if self.shutdown {
-                break;
-            }
         }
+        self.request_rx.get_mut().close();
     }
 
     async fn handle_request(&mut self, request: PeerConnectionRequest) {
@@ -399,6 +393,7 @@ impl PeerConnectionActor {
         &mut self,
         protocol: ProtocolId,
     ) -> Result<NegotiatedSubstream<Substream>, PeerConnectionError> {
+        const PROTOCOL_NEGOTIATION_TIMEOUT: Duration = Duration::from_secs(10);
         debug!(
             target: LOG_TARGET,
             "[{}] Negotiating protocol '{}' on new substream for peer '{}'",
@@ -411,9 +406,12 @@ impl PeerConnectionActor {
         let mut negotiation = ProtocolNegotiation::new(&mut stream);
 
         let selected_protocol = if self.their_supported_protocols.contains(&protocol) {
-            negotiation.negotiate_protocol_outbound_optimistic(&protocol).await?
+            let fut = negotiation.negotiate_protocol_outbound_optimistic(&protocol);
+            time::timeout(PROTOCOL_NEGOTIATION_TIMEOUT, fut).await??
         } else {
-            negotiation.negotiate_protocol_outbound(&[protocol]).await?
+            let selected_protocols = [protocol];
+            let fut = negotiation.negotiate_protocol_outbound(&selected_protocols);
+            time::timeout(PROTOCOL_NEGOTIATION_TIMEOUT, fut).await??
         };
 
         Ok(NegotiatedSubstream::new(selected_protocol, stream))
@@ -433,7 +431,13 @@ impl PeerConnectionActor {
     ///
     /// silent - true to suppress the PeerDisconnected event, false to publish the event
     async fn disconnect(&mut self, silent: bool) -> Result<(), PeerConnectionError> {
-        let mut error = None;
+        if !silent {
+            self.notify_event(ConnectionManagerEvent::PeerDisconnected(Box::new(
+                self.peer_node_id.clone(),
+            )))
+            .await;
+        }
+
         if let Err(err) = self.control.close().await {
             warn!(
                 target: LOG_TARGET,
@@ -442,28 +446,16 @@ impl PeerConnectionActor {
                 self.peer_node_id.short_str(),
                 err
             );
-            error = Some(err);
+            return Err(err.into());
         }
+
         debug!(
             target: LOG_TARGET,
             "(Peer = {}) Connection closed",
             self.peer_node_id.short_str()
         );
 
-        self.shutdown = true;
-        // Shut down the incoming substream task
-        if let Some(shutdown) = self.substream_shutdown.as_mut() {
-            let _ = shutdown.trigger();
-        }
-
-        if !silent {
-            self.notify_event(ConnectionManagerEvent::PeerDisconnected(Box::new(
-                self.peer_node_id.clone(),
-            )))
-            .await;
-        }
-
-        error.map(Into::into).map(Err).unwrap_or(Ok(()))
+        Ok(())
     }
 }
 

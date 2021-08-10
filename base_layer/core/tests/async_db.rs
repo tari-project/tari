@@ -33,7 +33,7 @@ use std::ops::Deref;
 use tari_common::configuration::Network;
 use tari_core::{
     blocks::Block,
-    chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, PrunedOutput},
     transactions::{
         helpers::schema_to_transaction,
         tari_amount::T,
@@ -103,11 +103,11 @@ fn fetch_async_utxo() {
         let db2 = AsyncBlockchainDb::new(adb);
         rt.spawn(async move {
             let utxo_check = db.fetch_utxo(utxo.hash()).await.unwrap().unwrap();
-            assert_eq!(utxo_check, utxo);
+            assert_eq!(utxo_check, PrunedOutput::NotPruned { output: utxo });
         });
         rt.spawn(async move {
             let stxo_check = db2.fetch_utxo(stxo.hash()).await.unwrap().unwrap();
-            assert_eq!(stxo_check, stxo);
+            assert_eq!(stxo_check, PrunedOutput::NotPruned { output: stxo });
         });
     });
 }

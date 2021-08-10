@@ -19,22 +19,20 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::transactions::{transaction::TransactionOutput, types::HashOutput};
 
-#[allow(clippy::large_enum_variant)]
-#[derive(Debug, PartialEq)]
-pub enum PrunedOutput {
-    Pruned {
-        output_hash: HashOutput,
-        witness_hash: HashOutput,
-    },
-    NotPruned {
-        output: TransactionOutput,
-    },
-}
+mod error;
+pub use error::WalletConnectivityError;
 
-impl PrunedOutput {
-    pub fn is_pruned(&self) -> bool {
-        matches!(self, PrunedOutput::Pruned { .. })
-    }
-}
+mod handle;
+pub use handle::WalletConnectivityHandle;
+
+mod initializer;
+pub use initializer::WalletConnectivityInitializer;
+
+mod service;
+pub use service::OnlineStatus;
+
+mod watch;
+
+#[cfg(test)]
+mod test;

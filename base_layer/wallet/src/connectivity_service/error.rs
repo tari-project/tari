@@ -19,22 +19,27 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::transactions::{transaction::TransactionOutput, types::HashOutput};
 
-#[allow(clippy::large_enum_variant)]
-#[derive(Debug, PartialEq)]
-pub enum PrunedOutput {
-    Pruned {
-        output_hash: HashOutput,
-        witness_hash: HashOutput,
-    },
-    NotPruned {
-        output: TransactionOutput,
-    },
+use futures::channel::{mpsc, oneshot};
+use tari_comms::connectivity::ConnectivityError;
+
+#[derive(Debug, thiserror::Error)]
+pub enum WalletConnectivityError {
+    #[error("Base node has not been set")]
+    BaseNodeNotSet,
+    #[error("Connectivity error: {0}")]
+    ConnectivityError(#[from] ConnectivityError),
+    #[error("Service is terminated and can no longer response to requests")]
+    ServiceTerminated,
 }
 
-impl PrunedOutput {
-    pub fn is_pruned(&self) -> bool {
-        matches!(self, PrunedOutput::Pruned { .. })
+impl From<mpsc::SendError> for WalletConnectivityError {
+    fn from(_: mpsc::SendError) -> Self {
+        WalletConnectivityError::ServiceTerminated
+    }
+}
+impl From<oneshot::Canceled> for WalletConnectivityError {
+    fn from(_: oneshot::Canceled) -> Self {
+        WalletConnectivityError::ServiceTerminated
     }
 }

@@ -19,22 +19,49 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::transactions::{transaction::TransactionOutput, types::HashOutput};
 
-#[allow(clippy::large_enum_variant)]
-#[derive(Debug, PartialEq)]
-pub enum PrunedOutput {
-    Pruned {
-        output_hash: HashOutput,
-        witness_hash: HashOutput,
-    },
-    NotPruned {
-        output: TransactionOutput,
-    },
-}
+use std::sync::Arc;
+use tokio::sync::watch;
 
-impl PrunedOutput {
-    pub fn is_pruned(&self) -> bool {
-        matches!(self, PrunedOutput::Pruned { .. })
+#[derive(Clone)]
+pub struct Watch<T>(Arc<watch::Sender<T>>, watch::Receiver<T>);
+
+impl<T: Clone> Watch<T> {
+    pub fn new(initial: T) -> Self {
+        let (tx, rx) = watch::channel(initial);
+        Self(Arc::new(tx), rx)
+    }
+
+    #[allow(dead_code)]
+    pub async fn recv(&mut self) -> Option<T> {
+        self.receiver_mut().recv().await
+    }
+
+    pub fn borrow(&mut self) -> watch::Ref<'_, T> {
+        self.receiver().borrow()
+    }
+
+    pub fn broadcast(&self, item: T) {
+        // SAFETY: broadcast becomes infallible because the receiver is owned in Watch and so has the same lifetime
+        if self.sender().broadcast(item).is_err() {
+            // Result::expect requires E: fmt::Debug and `watch::SendError<T>` is not, this is equivalent
+            panic!("watch internal receiver is dropped");
+        }
+    }
+
+    fn sender(&self) -> &watch::Sender<T> {
+        &self.0
+    }
+
+    fn receiver_mut(&mut self) -> &mut watch::Receiver<T> {
+        &mut self.1
+    }
+
+    pub fn receiver(&self) -> &watch::Receiver<T> {
+        &self.1
+    }
+
+    pub fn get_receiver(&self) -> watch::Receiver<T> {
+        self.receiver().clone()
     }
 }
