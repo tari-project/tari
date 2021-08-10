@@ -22,9 +22,9 @@ class WalletProcess {
   }
 
   async init() {
-    this.port = await getFreePort(19000, 25000);
+    this.port = await getFreePort();
     this.name = `Wallet${this.port}-${this.name}`;
-    this.grpcPort = await getFreePort(19000, 25000);
+    this.grpcPort = await getFreePort();
     this.baseDir = `./temp/base_nodes/${dateFormat(
       new Date(),
       "yyyymmddHHMM"
@@ -36,8 +36,10 @@ class WalletProcess {
     return "127.0.0.1:" + this.grpcPort;
   }
 
-  getClient() {
-    return new WalletClient(this.getGrpcAddress(), this.name);
+  async connectClient() {
+    let client = new WalletClient(this.name);
+    await client.connect(this.getGrpcAddress());
+    return client;
   }
 
   getSeedWords() {
@@ -52,7 +54,7 @@ class WalletProcess {
     this.peerSeeds = addresses.join(",");
   }
 
-  run(cmd, args, saveFile, input_buffer) {
+  run(cmd, args, saveFile, input_buffer, output) {
     return new Promise((resolve, reject) => {
       if (!fs.existsSync(this.baseDir)) {
         fs.mkdirSync(this.baseDir, { recursive: true });
@@ -102,6 +104,9 @@ class WalletProcess {
       }
       ps.stdout.on("data", (data) => {
         //console.log(`stdout: ${data}`);
+        if (output !== undefined && output.buffer !== undefined) {
+          output.buffer += data;
+        }
         fs.appendFileSync(`${this.baseDir}/log/stdout.log`, data.toString());
         if (
           (!this.recoverWallet &&
@@ -214,21 +219,25 @@ class WalletProcess {
     );
   }
 
-  async setBaseNode(baseNode) {
+  async runCommand(command) {
+    // we need to quit the wallet before running a command
+    await this.stop();
     const args = [
       "--base-path",
       ".",
       "--password",
       "kensentme",
       "--command",
-      `set-base-node ${baseNode}`,
+      command,
       "--non-interactive",
     ];
     if (this.logFilePath) {
       args.push("--log-config", this.logFilePath);
     }
-    // After the change of base node, the console is awaiting confirmation (Enter) or quit (q).
-    return await this.run(await this.compile(), args, true, "\n");
+    let output = { buffer: "" };
+    // In case we killed the wallet fast send enter. Because it will ask for the logs again (e.g. whois test)
+    await this.run(await this.compile(), args, true, "\n", output);
+    return output;
   }
 
   async exportSpentOutputs() {

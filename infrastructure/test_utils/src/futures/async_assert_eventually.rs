@@ -85,4 +85,11 @@ macro_rules! async_assert {
             tokio::time::delay_for($interval).await;
         }
     }};
+    ($check_expr:expr$(,)?) => {{
+        async_assert!(
+            $check_expr,
+            max_attempts = 10,
+            interval = std::time::Duration::from_millis(100)
+        )
+    }};
 }

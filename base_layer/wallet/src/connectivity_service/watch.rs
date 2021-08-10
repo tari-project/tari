@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,30 +20,48 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{chain_storage::ChainStorageError, validation::ValidationError};
-use tari_comms::{
-    connectivity::ConnectivityError,
-    protocol::rpc::{RpcError, RpcStatus},
-};
+use std::sync::Arc;
+use tokio::sync::watch;
 
-#[derive(Debug, thiserror::Error)]
-pub enum BlockSyncError {
-    #[error("RPC error: {0}")]
-    RpcError(#[from] RpcError),
-    #[error("RPC request failed: {0}")]
-    RpcRequestError(#[from] RpcStatus),
-    #[error("Chain storage error: {0}")]
-    ChainStorageError(#[from] ChainStorageError),
-    #[error("Peer sent invalid block body: {0}")]
-    ReceivedInvalidBlockBody(String),
-    #[error("Peer sent a block that did not form a chain. Expected hash = {expected}, got = {got}")]
-    PeerSentBlockThatDidNotFormAChain { expected: String, got: String },
-    #[error("Connectivity Error: {0}")]
-    ConnectivityError(#[from] ConnectivityError),
-    #[error("No sync peers available")]
-    NoSyncPeers,
-    #[error("Block validation failed: {0}")]
-    ValidationError(#[from] ValidationError),
-    #[error("Failed to ban peer: {0}")]
-    FailedToBan(ConnectivityError),
+#[derive(Clone)]
+pub struct Watch<T>(Arc<watch::Sender<T>>, watch::Receiver<T>);
+
+impl<T: Clone> Watch<T> {
+    pub fn new(initial: T) -> Self {
+        let (tx, rx) = watch::channel(initial);
+        Self(Arc::new(tx), rx)
+    }
+
+    #[allow(dead_code)]
+    pub async fn recv(&mut self) -> Option<T> {
+        self.receiver_mut().recv().await
+    }
+
+    pub fn borrow(&mut self) -> watch::Ref<'_, T> {
+        self.receiver().borrow()
+    }
+
+    pub fn broadcast(&self, item: T) {
+        // SAFETY: broadcast becomes infallible because the receiver is owned in Watch and so has the same lifetime
+        if self.sender().broadcast(item).is_err() {
+            // Result::expect requires E: fmt::Debug and `watch::SendError<T>` is not, this is equivalent
+            panic!("watch internal receiver is dropped");
+        }
+    }
+
+    fn sender(&self) -> &watch::Sender<T> {
+        &self.0
+    }
+
+    fn receiver_mut(&mut self) -> &mut watch::Receiver<T> {
+        &mut self.1
+    }
+
+    pub fn receiver(&self) -> &watch::Receiver<T> {
+        &self.1
+    }
+
+    pub fn get_receiver(&self) -> watch::Receiver<T> {
+        self.receiver().clone()
+    }
 }

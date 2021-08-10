@@ -113,6 +113,11 @@ loggers:
     appenders:
       - base_layer
     additive: false
+  base_node:
+    level: debug
+    appenders:
+      - base_layer
+    additive: false
   # network
   comms:
     level: debug

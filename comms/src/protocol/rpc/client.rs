@@ -121,6 +121,10 @@ impl RpcClient {
         self.connector.close()
     }
 
+    pub fn is_connected(&self) -> bool {
+        self.connector.is_connected()
+    }
+
     /// Return the latency of the last request
     pub fn get_last_request_latency(&mut self) -> impl Future<Output = Result<Option<Duration>, RpcError>> + '_ {
         self.connector.get_last_request_latency()
@@ -247,6 +251,10 @@ impl ClientConnector {
             .map_err(|_| RpcError::ClientClosed)?;
 
         reply_rx.await.map_err(|_| RpcError::RequestCancelled)
+    }
+
+    pub fn is_connected(&self) -> bool {
+        !self.inner.is_closed()
     }
 }
 

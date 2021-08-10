@@ -30,6 +30,7 @@ mod peer_connection;
 pub use peer_connection::{
     create_dummy_peer_connection,
     create_peer_connection_mock_pair,
+    new_peer_connection_mock_pair,
     PeerConnectionMock,
     PeerConnectionMockState,
 };

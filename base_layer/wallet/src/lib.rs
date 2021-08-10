@@ -6,11 +6,11 @@
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
 #![recursion_limit = "2048"]
-#![feature(drain_filter)]
 
 #[macro_use]
 mod macros;
 pub mod base_node_service;
+pub mod connectivity_service;
 pub mod contacts_service;
 pub mod error;
 pub mod output_manager_service;

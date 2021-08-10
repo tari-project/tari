@@ -20,10 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::base_node_service::{
-    error::BaseNodeServiceError,
-    handle::{BaseNodeServiceRequest, BaseNodeServiceResponse},
-    service::{BaseNodeState, OnlineState},
+use crate::{
+    base_node_service::{
+        error::BaseNodeServiceError,
+        handle::{BaseNodeServiceRequest, BaseNodeServiceResponse},
+        service::BaseNodeState,
+    },
+    connectivity_service::OnlineStatus,
 };
 use futures::StreamExt;
 use tari_common_types::chain_metadata::ChainMetadata;
@@ -81,9 +84,9 @@ impl MockBaseNodeService {
         let (chain_metadata, is_synced, online) = match height {
             Some(height) => {
                 let metadata = ChainMetadata::new(height, Vec::new(), 0, 0, 0);
-                (Some(metadata), Some(true), OnlineState::Online)
+                (Some(metadata), Some(true), OnlineStatus::Online)
             },
-            None => (None, None, OnlineState::Offline),
+            None => (None, None, OnlineStatus::Offline),
         };
         self.state = BaseNodeState {
             chain_metadata,
@@ -102,7 +105,7 @@ impl MockBaseNodeService {
             is_synced: Some(true),
             updated: None,
             latency: None,
-            online: OnlineState::Online,
+            online: OnlineStatus::Online,
             base_node_peer: None,
         }
     }

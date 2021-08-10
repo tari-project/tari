@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,30 +20,26 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{chain_storage::ChainStorageError, validation::ValidationError};
-use tari_comms::{
-    connectivity::ConnectivityError,
-    protocol::rpc::{RpcError, RpcStatus},
-};
+use futures::channel::{mpsc, oneshot};
+use tari_comms::connectivity::ConnectivityError;
 
 #[derive(Debug, thiserror::Error)]
-pub enum BlockSyncError {
-    #[error("RPC error: {0}")]
-    RpcError(#[from] RpcError),
-    #[error("RPC request failed: {0}")]
-    RpcRequestError(#[from] RpcStatus),
-    #[error("Chain storage error: {0}")]
-    ChainStorageError(#[from] ChainStorageError),
-    #[error("Peer sent invalid block body: {0}")]
-    ReceivedInvalidBlockBody(String),
-    #[error("Peer sent a block that did not form a chain. Expected hash = {expected}, got = {got}")]
-    PeerSentBlockThatDidNotFormAChain { expected: String, got: String },
-    #[error("Connectivity Error: {0}")]
+pub enum WalletConnectivityError {
+    #[error("Base node has not been set")]
+    BaseNodeNotSet,
+    #[error("Connectivity error: {0}")]
     ConnectivityError(#[from] ConnectivityError),
-    #[error("No sync peers available")]
-    NoSyncPeers,
-    #[error("Block validation failed: {0}")]
-    ValidationError(#[from] ValidationError),
-    #[error("Failed to ban peer: {0}")]
-    FailedToBan(ConnectivityError),
+    #[error("Service is terminated and can no longer response to requests")]
+    ServiceTerminated,
+}
+
+impl From<mpsc::SendError> for WalletConnectivityError {
+    fn from(_: mpsc::SendError) -> Self {
+        WalletConnectivityError::ServiceTerminated
+    }
+}
+impl From<oneshot::Canceled> for WalletConnectivityError {
+    fn from(_: oneshot::Canceled) -> Self {
+        WalletConnectivityError::ServiceTerminated
+    }
 }

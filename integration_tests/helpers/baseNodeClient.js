@@ -1,24 +1,20 @@
 const expect = require("chai").expect;
-const grpc = require("grpc");
+const grpc = require("@grpc/grpc-js");
 const protoLoader = require("@grpc/proto-loader");
-const grpc_promise = require("grpc-promise");
 const TransactionBuilder = require("./transactionBuilder");
 const { SHA3 } = require("sha3");
-const { toLittleEndian, byteArrayToHex } = require("./util");
+const { toLittleEndian, byteArrayToHex, tryConnect } = require("./util");
 const { PowAlgo } = require("./types");
 const cloneDeep = require("clone-deep");
+const grpcPromise = require("grpc-promise");
 
 class BaseNodeClient {
-  constructor(clientOrPort) {
-    if (typeof clientOrPort === "number") {
-      this.client = this.createGrpcClient(clientOrPort);
-    } else {
-      this.client = clientOrPort;
-    }
+  constructor() {
+    this.client = null;
     this.blockTemplates = {};
   }
 
-  createGrpcClient(port) {
+  async connect(port) {
     const PROTO_PATH =
       __dirname + "/../../applications/tari_app_grpc/proto/base_node.proto";
     const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
@@ -30,12 +26,17 @@ class BaseNodeClient {
     });
     const protoDescriptor = grpc.loadPackageDefinition(packageDefinition);
     const tari = protoDescriptor.tari.rpc;
-    const client = new tari.BaseNode(
-      "127.0.0.1:" + port,
-      grpc.credentials.createInsecure()
+    this.client = await tryConnect(
+      () =>
+        new tari.BaseNode(
+          "127.0.0.1:" + port,
+          grpc.credentials.createInsecure()
+        )
     );
-    grpc_promise.promisifyAll(client);
-    return client;
+
+    grpcPromise.promisifyAll(this.client, {
+      metadata: new grpc.Metadata(),
+    });
   }
 
   getHeaderAt(height) {
@@ -425,6 +426,12 @@ class BaseNodeClient {
       ...resp,
       num_node_connections: +resp.num_node_connections,
     };
+  }
+
+  static async create(port) {
+    const client = new BaseNodeClient();
+    await client.connect(port);
+    return client;
   }
 }
 

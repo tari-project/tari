@@ -23,6 +23,7 @@
 use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     config::{WalletConfig, KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY},
+    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer},
     contacts_service::{handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer},
     error::WalletError,
     output_manager_service::{
@@ -95,6 +96,7 @@ where
     pub store_and_forward_requester: StoreAndForwardRequester,
     pub output_manager_service: OutputManagerHandle,
     pub transaction_service: TransactionServiceHandle,
+    pub wallet_connectivity: WalletConnectivityHandle,
     pub contacts_service: ContactsServiceHandle,
     pub base_node_service: BaseNodeServiceHandle,
     pub utxo_scanner_service: UtxoScannerHandle,
@@ -183,9 +185,10 @@ where
             ))
             .add_initializer(ContactsServiceInitializer::new(contacts_backend))
             .add_initializer(BaseNodeServiceInitializer::new(
-                config.base_node_service_config,
+                config.base_node_service_config.clone(),
                 bn_service_db,
             ))
+            .add_initializer(WalletConnectivityInitializer::new(config.base_node_service_config))
             .add_initializer(UtxoScannerServiceInitializer::new(
                 config.scan_for_utxo_interval,
                 wallet_database.clone(),
@@ -208,6 +211,7 @@ where
 
         let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
         let utxo_scanner_service_handle = handles.expect_handle::<UtxoScannerHandle>();
+        let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle>();
 
         persist_one_sided_payment_script_for_node_identity(&mut output_manager_handle, comms.node_identity())
             .await
@@ -234,6 +238,7 @@ where
             contacts_service: contacts_handle,
             base_node_service: base_node_service_handle,
             utxo_scanner_service: utxo_scanner_service_handle,
+            wallet_connectivity,
             db: wallet_database,
             factories,
             #[cfg(feature = "test_harness")]
@@ -274,10 +279,6 @@ where
         );
 
         self.comms.peer_manager().add_peer(peer.clone()).await?;
-        self.comms
-            .connectivity()
-            .add_managed_peers(vec![peer.node_id.clone()])
-            .await?;
 
         self.transaction_service
             .set_base_node_public_key(peer.public_key.clone())
