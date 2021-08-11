@@ -219,7 +219,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     target: LOG_TARGET,
                     "Forwarding SAF message directly to node: {}, Tag#{}", node_id, dht_header.message_tag
                 );
-                send_params.closest_connected(node_id.clone(), excluded_peers);
+                send_params.direct_or_closest_connected(node_id.clone(), excluded_peers);
             },
             _ => {
                 debug!(

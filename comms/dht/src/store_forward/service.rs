@@ -43,7 +43,7 @@ use futures::{
     StreamExt,
 };
 use log::*;
-use std::{cmp, convert::TryFrom, sync::Arc, time::Duration};
+use std::{convert::TryFrom, sync::Arc, time::Duration};
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityEventRx, ConnectivityRequester},
     peer_manager::{NodeId, PeerFeatures},
@@ -76,7 +76,7 @@ impl FetchStoredMessageQuery {
         }
     }
 
-    pub fn since(&mut self, since: DateTime<Utc>) -> &mut Self {
+    pub fn with_messages_since(&mut self, since: DateTime<Utc>) -> &mut Self {
         self.since = Some(since);
         self
     }
@@ -85,6 +85,10 @@ impl FetchStoredMessageQuery {
         self.response_type = response_type;
         self
     }
+
+    pub fn since(&self) -> Option<DateTime<Utc>> {
+        self.since
+    }
 }
 
 #[derive(Debug)]
@@ -92,6 +96,7 @@ pub enum StoreAndForwardRequest {
     FetchMessages(FetchStoredMessageQuery, oneshot::Sender<SafResult<Vec<StoredMessage>>>),
     InsertMessage(NewStoredMessage, oneshot::Sender<SafResult<bool>>),
     RemoveMessages(Vec<i32>),
+    RemoveMessagesOlderThan(DateTime<Utc>),
     SendStoreForwardRequestToPeer(Box<NodeId>),
     SendStoreForwardRequestNeighbours,
 }
@@ -127,6 +132,14 @@ impl StoreAndForwardRequester {
     pub async fn remove_messages(&mut self, message_ids: Vec<i32>) -> SafResult<()> {
         self.sender
             .send(StoreAndForwardRequest::RemoveMessages(message_ids))
+            .await
+            .map_err(|_| StoreAndForwardError::RequesterChannelClosed)?;
+        Ok(())
+    }
+
+    pub async fn remove_messages_older_than(&mut self, threshold: DateTime<Utc>) -> SafResult<()> {
+        self.sender
+            .send(StoreAndForwardRequest::RemoveMessagesOlderThan(threshold))
             .await
             .map_err(|_| StoreAndForwardError::RequesterChannelClosed)?;
         Ok(())
@@ -297,6 +310,12 @@ impl StoreAndForwardService {
                     );
                 }
             },
+            RemoveMessagesOlderThan(threshold) => {
+                match self.database.delete_messages_older_than(threshold.naive_utc()).await {
+                    Ok(_) => trace!(target: LOG_TARGET, "Removed messages older than {}", threshold),
+                    Err(err) => error!(target: LOG_TARGET, "RemoveMessage failed because '{:?}'", err),
+                }
+            },
         }
     }
 
@@ -382,9 +401,9 @@ impl StoreAndForwardService {
     async fn get_saf_request(&mut self) -> SafResult<StoredMessagesRequest> {
         let request = self
             .dht_requester
-            .get_metadata(DhtMetadataKey::OfflineTimestamp)
+            .get_metadata(DhtMetadataKey::LastSafMessageReceived)
             .await?
-            .map(|t| StoredMessagesRequest::since(cmp::min(t, since_utc(self.config.saf_minimum_request_period))))
+            .map(StoredMessagesRequest::since)
             .unwrap_or_else(StoredMessagesRequest::new);
 
         Ok(request)
@@ -489,8 +508,4 @@ fn since(period: Duration) -> NaiveDateTime {
         .naive_utc()
         .checked_sub_signed(period)
         .expect("period overflowed when used with checked_sub_signed")
-}
-
-fn since_utc(period: Duration) -> DateTime<Utc> {
-    DateTime::<Utc>::from_utc(since(period), Utc)
 }

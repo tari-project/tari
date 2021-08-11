@@ -217,6 +217,17 @@ impl StoreAndForwardDatabase {
             .await
     }
 
+    pub(crate) async fn delete_messages_older_than(&self, since: NaiveDateTime) -> Result<usize, StorageError> {
+        self.connection
+            .with_connection_async(move |conn| {
+                diesel::delete(stored_messages::table)
+                    .filter(stored_messages::stored_at.lt(since))
+                    .execute(conn)
+                    .map_err(Into::into)
+            })
+            .await
+    }
+
     pub(crate) async fn truncate_messages(&self, max_size: usize) -> Result<usize, StorageError> {
         self.connection
             .with_connection_async(move |conn| {

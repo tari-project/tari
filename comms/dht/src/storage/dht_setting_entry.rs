@@ -27,6 +27,8 @@ use std::fmt;
 pub enum DhtMetadataKey {
     /// Timestamp each time the DHT is shut down
     OfflineTimestamp,
+    /// Timestamp of the most recent SAF message received
+    LastSafMessageReceived,
 }
 
 impl fmt::Display for DhtMetadataKey {
