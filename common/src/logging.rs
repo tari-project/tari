@@ -69,9 +69,9 @@ pub fn install_default_merge_mining_proxy_logfile_config(path: &Path) -> Result<
     file.write_all(source.as_ref())
 }
 
-/// Installs a new default logfile configuration, copied from `log4rs_sample_proxy.yml` to the given path.
+/// Installs a new default logfile configuration, copied from `log4rs_sample_transcoder.yml` to the given path.
 pub fn install_default_stratum_transcoder_logfile_config(path: &Path) -> Result<(), std::io::Error> {
-    let source = include_str!("../logging/log4rs_sample_proxy.yml");
+    let source = include_str!("../logging/log4rs_sample_transcoder.yml");
     if let Some(d) = path.parent() {
         fs::create_dir_all(d)?
     };
