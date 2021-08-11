@@ -83,7 +83,9 @@ impl StoreAndForwardMockState {
     }
 
     pub async fn take_calls(&self) -> Vec<String> {
-        self.calls.write().await.drain(..).collect()
+        let calls = self.calls.write().await.drain(..).collect();
+        self.call_count.store(0, Ordering::SeqCst);
+        calls
     }
 }
 
@@ -115,9 +117,16 @@ impl StoreAndForwardMock {
         trace!(target: LOG_TARGET, "StoreAndForwardMock received request {:?}", req);
         self.state.add_call(&req).await;
         match req {
-            FetchMessages(_, reply_tx) => {
+            FetchMessages(request, reply_tx) => {
+                let since = request.since().unwrap();
+
                 let msgs = self.state.stored_messages.read().await;
-                let _ = reply_tx.send(Ok(msgs.clone()));
+
+                let _ = reply_tx.send(Ok(msgs
+                    .clone()
+                    .drain(..)
+                    .filter(|m| m.stored_at >= since.naive_utc())
+                    .collect()));
             },
             InsertMessage(msg, reply_tx) => {
                 self.state.stored_messages.write().await.push(StoredMessage {
@@ -143,6 +152,13 @@ impl StoreAndForwardMock {
             },
             SendStoreForwardRequestToPeer(_) => {},
             SendStoreForwardRequestNeighbours => {},
+            RemoveMessagesOlderThan(threshold) => {
+                self.state
+                    .stored_messages
+                    .write()
+                    .await
+                    .retain(|msg| msg.stored_at >= threshold.naive_utc());
+            },
         }
     }
 }

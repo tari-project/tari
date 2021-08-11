@@ -36,8 +36,10 @@ use crate::{
             StoredMessagesResponse,
         },
     },
+    storage::DhtMetadataKey,
     store_forward::{error::StoreAndForwardError, service::FetchStoredMessageQuery, StoreAndForwardRequester},
 };
+use chrono::{DateTime, NaiveDateTime, Utc};
 use digest::Digest;
 use futures::{channel::mpsc, future, stream, SinkExt, StreamExt};
 use log::*;
@@ -172,15 +174,19 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         // Compile a set of stored messages for the requesting peer
         let mut query = FetchStoredMessageQuery::new(source_pubkey, source_node_id.clone());
 
-        if let Some(since) = retrieve_msgs.since.map(timestamp_to_datetime) {
-            debug!(
-                target: LOG_TARGET,
-                "Peer '{}' requested all messages since '{}'",
-                source_node_id.short_str(),
-                since
-            );
-            query.since(since);
-        }
+        let since: Option<DateTime<Utc>> = match retrieve_msgs.since.map(timestamp_to_datetime) {
+            Some(since) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Peer '{}' requested all messages since '{}'",
+                    source_node_id.short_str(),
+                    since
+                );
+                query.with_messages_since(since);
+                Some(since)
+            },
+            None => None,
+        };
 
         let response_types = vec![SafResponseType::ForMe];
 
@@ -188,7 +194,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             query.with_response_type(resp_type);
             let messages = self.saf_requester.fetch_messages(query.clone()).await?;
 
-            let message_ids = messages.iter().map(|msg| msg.id).collect::<Vec<_>>();
             let stored_messages = StoredMessagesResponse {
                 messages: try_convert_all(messages)?,
                 request_id: retrieve_msgs.request_id,
@@ -201,6 +206,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 stored_messages.messages().len(),
                 resp_type
             );
+
             match self
                 .outbound_service
                 .send_message_no_header(
@@ -215,13 +221,15 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 .await
             {
                 Ok(_) => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Removing {} stored message(s) for peer '{}'",
-                        message_ids.len(),
-                        message.source_peer.node_id.short_str()
-                    );
-                    self.saf_requester.remove_messages(message_ids).await?;
+                    if let Some(threshold) = since {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Removing stored message(s) from before {} for peer '{}'",
+                            threshold,
+                            message.source_peer.node_id.short_str()
+                        );
+                        self.saf_requester.remove_messages_older_than(threshold).await?;
+                    }
                 },
                 Err(err) => {
                     error!(
@@ -366,6 +374,14 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return Err(StoreAndForwardError::DhtHeaderNotProvided);
         }
 
+        let stored_at = match message.stored_at {
+            None => chrono::MIN_DATETIME,
+            Some(t) => DateTime::from_utc(
+                NaiveDateTime::from_timestamp(t.seconds, t.nanos.try_into().unwrap_or(0)),
+                Utc,
+            ),
+        };
+
         let dht_header: DhtMessageHeader = message
             .dht_header
             .expect("previously checked")
@@ -409,6 +425,27 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let mut inbound_msg =
             DhtInboundMessage::new(MessageTag::new(), dht_header, Arc::clone(&source_peer), message.body);
         inbound_msg.is_saf_message = true;
+
+        let last_saf_received = self
+            .dht_requester
+            .get_metadata::<DateTime<Utc>>(DhtMetadataKey::LastSafMessageReceived)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or(chrono::MIN_DATETIME);
+
+        if stored_at > last_saf_received {
+            if let Err(err) = self
+                .dht_requester
+                .set_metadata(DhtMetadataKey::LastSafMessageReceived, stored_at)
+                .await
+            {
+                warn!(
+                    target: LOG_TARGET,
+                    "Failed to set last SAF message received timestamp: {:?}", err
+                );
+            }
+        }
 
         Ok(DecryptedDhtMessage::succeeded(
             decrypted_body,
@@ -515,6 +552,7 @@ mod test {
     use super::*;
     use crate::{
         envelope::DhtMessageFlags,
+        outbound::mock::create_outbound_service_mock,
         proto::envelope::DhtHeader,
         store_forward::{message::StoredMessagePriority, StoredMessage},
         test_utils::{
@@ -528,7 +566,7 @@ mod test {
             service_spy,
         },
     };
-    use chrono::Utc;
+    use chrono::{Duration as OldDuration, Utc};
     use futures::channel::mpsc;
     use prost::Message;
     use std::time::Duration;
@@ -536,12 +574,17 @@ mod test {
     use tari_crypto::tari_utilities::hex;
     use tari_test_utils::collect_stream;
     use tari_utilities::hex::Hex;
-    use tokio::runtime::Handle;
+    use tokio::{runtime::Handle, task, time::delay_for};
 
     // TODO: unit tests for static functions (check_signature, etc)
 
-    fn make_stored_message(node_identity: &NodeIdentity, dht_header: DhtMessageHeader) -> StoredMessage {
-        let body = b"A".to_vec();
+    fn make_stored_message(
+        message: String,
+        node_identity: &NodeIdentity,
+        dht_header: DhtMessageHeader,
+        stored_at: NaiveDateTime,
+    ) -> StoredMessage {
+        let body = message.as_bytes().to_vec();
         let body_hash = hex::to_hex(&Challenge::new().chain(body.clone()).finalize());
         StoredMessage {
             id: 1,
@@ -554,19 +597,20 @@ mod test {
             body,
             is_encrypted: false,
             priority: StoredMessagePriority::High as i32,
-            stored_at: Utc::now().naive_utc(),
+            stored_at,
             body_hash,
         }
     }
 
-    #[tokio_macros::test_basic]
+    #[tokio_macros::test]
     async fn request_stored_messages() {
-        let rt_handle = Handle::current();
         let spy = service_spy();
         let (requester, mock_state) = create_store_and_forward_mock();
 
         let peer_manager = build_peer_manager();
-        let (oms_tx, mut oms_rx) = mpsc::channel(1);
+        let (outbound_requester, outbound_mock) = create_outbound_service_mock(10);
+        let oms_mock_state = outbound_mock.get_state();
+        task::spawn(outbound_mock.run());
 
         let node_identity = make_node_identity();
 
@@ -606,29 +650,59 @@ mod test {
             requester.clone(),
             dht_requester.clone(),
             peer_manager.clone(),
-            OutboundMessageRequester::new(oms_tx.clone()),
+            outbound_requester.clone(),
             node_identity.clone(),
             message.clone(),
             saf_response_signal_sender.clone(),
         );
 
-        rt_handle.spawn(task.run());
+        task::spawn(task.run());
 
-        let (_, body) = unwrap_oms_send_msg!(oms_rx.next().await.unwrap());
-        let body = body.to_vec();
+        for _ in 0..6 {
+            if oms_mock_state.call_count() >= 1 {
+                break;
+            }
+            delay_for(Duration::from_secs(5)).await;
+        }
+        assert_eq!(oms_mock_state.call_count(), 1);
+
+        let call = oms_mock_state.pop_call().unwrap();
+        let body = call.1.to_vec();
         let body = EnvelopeBody::decode(body.as_slice()).unwrap();
         let msg = body.decode_part::<StoredMessagesResponse>(0).unwrap().unwrap();
         assert_eq!(msg.messages().len(), 0);
         assert!(!spy.is_called());
 
-        assert_eq!(mock_state.call_count(), 1);
+        // assert_eq!(mock_state.call_count(), 2);
         let calls = mock_state.take_calls().await;
-        assert!(calls[0].contains("FetchMessages"));
-        assert!(calls[0].contains(node_identity.public_key().to_hex().as_str()));
-        assert!(calls[0].contains(format!("{:?}", since).as_str()));
+        let fetch_call = calls.iter().find(|c| c.contains("FetchMessages")).unwrap();
+        assert!(fetch_call.contains(node_identity.public_key().to_hex().as_str()));
+        assert!(fetch_call.contains(format!("{:?}", since).as_str()));
 
+        let msg1_time = Utc::now()
+            .checked_sub_signed(OldDuration::from_std(Duration::from_secs(120)).unwrap())
+            .unwrap();
+        let msg1 = "one".to_string();
         mock_state
-            .add_message(make_stored_message(&node_identity, dht_header))
+            .add_message(make_stored_message(
+                msg1.clone(),
+                &node_identity,
+                dht_header.clone(),
+                msg1_time.naive_utc(),
+            ))
+            .await;
+
+        let msg2_time = Utc::now()
+            .checked_sub_signed(OldDuration::from_std(Duration::from_secs(30)).unwrap())
+            .unwrap();
+        let msg2 = "two".to_string();
+        mock_state
+            .add_message(make_stored_message(
+                msg2.clone(),
+                &node_identity,
+                dht_header,
+                msg2_time.naive_utc(),
+            ))
             .await;
 
         // Now lets test its response where there are messages to return.
@@ -638,27 +712,42 @@ mod test {
             requester,
             dht_requester,
             peer_manager,
-            OutboundMessageRequester::new(oms_tx),
+            outbound_requester.clone(),
             node_identity.clone(),
             message,
             saf_response_signal_sender,
         );
 
-        rt_handle.spawn(task.run());
+        task::spawn(task.run());
 
-        let (_, body) = unwrap_oms_send_msg!(oms_rx.next().await.unwrap());
-        let body = body.to_vec();
+        for _ in 0..6 {
+            if oms_mock_state.call_count() >= 1 {
+                break;
+            }
+            delay_for(Duration::from_secs(5)).await;
+        }
+        assert_eq!(oms_mock_state.call_count(), 1);
+        let call = oms_mock_state.pop_call().unwrap();
+
+        let body = call.1.to_vec();
         let body = EnvelopeBody::decode(body.as_slice()).unwrap();
         let msg = body.decode_part::<StoredMessagesResponse>(0).unwrap().unwrap();
+
         assert_eq!(msg.messages().len(), 1);
-        assert_eq!(msg.messages()[0].body, b"A");
+        assert_eq!(msg.messages()[0].body, "two".as_bytes());
         assert!(!spy.is_called());
 
         assert_eq!(mock_state.call_count(), 2);
         let calls = mock_state.take_calls().await;
-        assert!(calls[0].contains("FetchMessages"));
-        assert!(calls[0].contains(node_identity.public_key().to_hex().as_str()));
-        assert!(calls[0].contains(format!("{:?}", since).as_str()));
+
+        let fetch_call = calls.iter().find(|c| c.contains("FetchMessages")).unwrap();
+        assert!(fetch_call.contains(node_identity.public_key().to_hex().as_str()));
+        assert!(fetch_call.contains(format!("{:?}", since).as_str()));
+
+        let stored_messages = mock_state.get_messages().await;
+
+        assert!(!stored_messages.iter().any(|s| s.body == msg1.as_bytes()));
+        assert!(stored_messages.iter().any(|s| s.body == msg2.as_bytes()));
     }
 
     #[tokio_macros::test_basic]
@@ -689,13 +778,23 @@ mod test {
             .await
             .unwrap();
 
-        let msg1 = ProtoStoredMessage::new(0, inbound_msg_a.dht_header.clone(), inbound_msg_a.body);
-        let msg2 = ProtoStoredMessage::new(0, inbound_msg_b.dht_header, inbound_msg_b.body);
+        let msg1_time = Utc::now()
+            .checked_sub_signed(OldDuration::from_std(Duration::from_secs(60)).unwrap())
+            .unwrap();
+        let msg1 = ProtoStoredMessage::new(0, inbound_msg_a.dht_header.clone(), inbound_msg_a.body, msg1_time);
+        let msg2_time = Utc::now()
+            .checked_sub_signed(OldDuration::from_std(Duration::from_secs(30)).unwrap())
+            .unwrap();
+        let msg2 = ProtoStoredMessage::new(0, inbound_msg_b.dht_header, inbound_msg_b.body, msg2_time);
+
         // Cleartext message
         let clear_msg = wrap_in_envelope_body!(b"Clear".to_vec()).to_encoded_bytes();
         let clear_header =
             make_dht_inbound_message(&node_identity, clear_msg.clone(), DhtMessageFlags::empty(), false).dht_header;
-        let msg_clear = ProtoStoredMessage::new(0, clear_header, clear_msg);
+        let msg_clear_time = Utc::now()
+            .checked_sub_signed(OldDuration::from_std(Duration::from_secs(120)).unwrap())
+            .unwrap();
+        let msg_clear = ProtoStoredMessage::new(0, clear_header, clear_msg, msg_clear_time);
         let mut message = DecryptedDhtMessage::succeeded(
             wrap_in_envelope_body!(StoredMessagesResponse {
                 messages: vec![msg1.clone(), msg2, msg_clear],
@@ -712,15 +811,21 @@ mod test {
         );
         message.dht_header.message_type = DhtMessageType::SafStoredMessages;
 
-        let (dht_requester, mock) = create_dht_actor_mock(1);
+        let (mut dht_requester, mock) = create_dht_actor_mock(1);
         rt_handle.spawn(mock.run());
         let (saf_response_signal_sender, mut saf_response_signal_receiver) = mpsc::channel(20);
+
+        assert!(dht_requester
+            .get_metadata::<DateTime<Utc>>(DhtMetadataKey::LastSafMessageReceived)
+            .await
+            .unwrap()
+            .is_none());
 
         let task = MessageHandlerTask::new(
             Default::default(),
             spy.to_service::<PipelineError>(),
             requester,
-            dht_requester,
+            dht_requester.clone(),
             peer_manager,
             OutboundMessageRequester::new(oms_tx),
             node_identity,
@@ -746,5 +851,13 @@ mod test {
             timeout = Duration::from_secs(20)
         );
         assert_eq!(signals.len(), 1);
+
+        let last_saf_received = dht_requester
+            .get_metadata::<DateTime<Utc>>(DhtMetadataKey::LastSafMessageReceived)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(last_saf_received, msg2_time);
     }
 }
