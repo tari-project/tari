@@ -79,11 +79,12 @@ Feature: Wallet Monitoring
 
     When I wait 1 seconds
     Then wallets WALLET1,WALLET2 should have <numBlocks> spendable coinbase outputs
-    @critical
+
+    @flaky
     Examples:
-        | numBlocks | endBlocks |
-        | 10        | 15        |
-        | 100       | 105       |
+      | numBlocks | endBlocks |
+      | 10        | 15        |
+      | 100       | 105       |
 
     @long-running
     Examples:
