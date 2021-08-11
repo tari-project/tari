@@ -57,7 +57,9 @@ pub enum BroadcastStrategy {
     /// Send to a random set of peers of size n that are Communication Nodes, excluding the given node IDs
     Random(usize, Vec<NodeId>),
     /// Send to all n nearest Communication Nodes according to the given BroadcastClosestRequest
-    Closest(Box<BroadcastClosestRequest>),
+    ClosestNodes(Box<BroadcastClosestRequest>),
+    /// Send directly to destination if connected but otherwise send to all n nearest Communication Nodes
+    DirectOrClosestNodes(Box<BroadcastClosestRequest>),
     Broadcast(Vec<NodeId>),
     /// Propagate to a set of closest neighbours and random peers
     Propagate(NodeDestination, Vec<NodeId>),
@@ -70,7 +72,8 @@ impl fmt::Display for BroadcastStrategy {
             DirectPublicKey(pk) => write!(f, "DirectPublicKey({})", pk),
             DirectNodeId(node_id) => write!(f, "DirectNodeId({})", node_id),
             Flood(excluded) => write!(f, "Flood({} excluded)", excluded.len()),
-            Closest(request) => write!(f, "Closest({})", request),
+            ClosestNodes(request) => write!(f, "ClosestNodes({})", request),
+            DirectOrClosestNodes(request) => write!(f, "DirectOrClosestNodes({})", request),
             Random(n, excluded) => write!(f, "Random({}, {} excluded)", n, excluded.len()),
             Broadcast(excluded) => write!(f, "Broadcast({} excluded)", excluded.len()),
             Propagate(destination, excluded) => write!(f, "Propagate({}, {} excluded)", destination, excluded.len(),),
@@ -79,13 +82,18 @@ impl fmt::Display for BroadcastStrategy {
 }
 
 impl BroadcastStrategy {
-    /// Returns true if this strategy will send multiple messages, otherwise false
-    pub fn is_multi_message(&self) -> bool {
+    /// Returns true if this strategy will send multiple indirect messages, otherwise false
+    pub fn is_multi_message(&self, chosen_peers: &[NodeId]) -> bool {
         use BroadcastStrategy::*;
-        matches!(
-            self,
-            Closest(_) | Flood(_) | Broadcast(_) | Random(_, _) | Propagate(_, _)
-        )
+
+        match self {
+            DirectOrClosestNodes(strategy) => {
+                // Testing if there is a single chosen peer and it is the target NodeId
+                chosen_peers.len() == 1 && chosen_peers.first() == Some(&strategy.node_id)
+            },
+            ClosestNodes(_) | Broadcast(_) | Propagate(_, _) | Flood(_) | Random(_, _) => true,
+            _ => false,
+        }
     }
 
     pub fn is_direct(&self) -> bool {
@@ -129,7 +137,7 @@ mod test {
         assert!(!BroadcastStrategy::Broadcast(Default::default()).is_direct());
         assert!(!BroadcastStrategy::Propagate(Default::default(), Default::default()).is_direct(),);
         assert!(!BroadcastStrategy::Flood(Default::default()).is_direct());
-        assert!(!BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
+        assert!(!BroadcastStrategy::ClosestNodes(Box::new(BroadcastClosestRequest {
             node_id: NodeId::default(),
             excluded_peers: Default::default(),
             connected_only: false
@@ -152,7 +160,7 @@ mod test {
         assert!(BroadcastStrategy::Flood(Default::default())
             .direct_public_key()
             .is_none());
-        assert!(BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
+        assert!(BroadcastStrategy::ClosestNodes(Box::new(BroadcastClosestRequest {
             node_id: NodeId::default(),
             excluded_peers: Default::default(),
             connected_only: false
@@ -174,7 +182,7 @@ mod test {
             .direct_node_id()
             .is_none());
         assert!(BroadcastStrategy::Flood(Default::default()).direct_node_id().is_none());
-        assert!(BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
+        assert!(BroadcastStrategy::ClosestNodes(Box::new(BroadcastClosestRequest {
             node_id: NodeId::default(),
             excluded_peers: Default::default(),
             connected_only: false
