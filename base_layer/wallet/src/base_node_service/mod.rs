@@ -69,7 +69,7 @@ where T: WalletBackend + 'static
 
         let (sender, request_stream) = reply_channel::unbounded();
 
-        let (event_publisher, _) = broadcast::channel(200);
+        let (event_publisher, _) = broadcast::channel(self.config.event_channel_size);
 
         let basenode_service_handle = BaseNodeServiceHandle::new(sender, event_publisher.clone());
 

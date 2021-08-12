@@ -268,7 +268,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                     is_discovery_enabled,
                 );
 
-                let is_broadcast = broadcast_strategy.is_multi_message();
+                let is_broadcast = broadcast_strategy.is_multi_message(&peers);
 
                 // Discovery is required if:
                 //  - Discovery is enabled for this request

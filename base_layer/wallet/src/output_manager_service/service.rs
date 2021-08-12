@@ -142,7 +142,8 @@ where TBackend: OutputManagerBackend + 'static
             shutdown_signal,
         };
 
-        let (base_node_update_publisher, _) = broadcast::channel(50);
+        let (base_node_update_publisher, _) =
+            broadcast::channel(resources.config.base_node_update_publisher_channel_size);
 
         Ok(OutputManagerService {
             resources,
@@ -1007,7 +1008,7 @@ where TBackend: OutputManagerBackend + 'static
                 break;
             }
             fee_with_change = Fee::calculate(fee_per_gram, 1, utxos.len(), output_count + 1);
-            if utxos_total_value >= amount + fee_with_change {
+            if utxos_total_value > amount + fee_with_change {
                 require_change_output = true;
                 break;
             }

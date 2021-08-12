@@ -116,7 +116,7 @@ impl SendMessageParams {
     /// `node_id` - Select the closest known peers to this `NodeId`
     /// `excluded_peers` - vector of `NodeId`s to exclude from broadcast.
     pub fn closest(&mut self, node_id: NodeId, excluded_peers: Vec<NodeId>) -> &mut Self {
-        self.params_mut().broadcast_strategy = BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
+        self.params_mut().broadcast_strategy = BroadcastStrategy::ClosestNodes(Box::new(BroadcastClosestRequest {
             excluded_peers,
             node_id,
             connected_only: false,
@@ -124,14 +124,26 @@ impl SendMessageParams {
         self
     }
 
-    /// Set broadcast_strategy to Closest.`excluded_peers` are excluded. Only peers that are currently connected will be
-    /// included.
+    /// Set broadcast_strategy to ClosestNodes.`excluded_peers` are excluded. Only peers that are currently connected
+    /// will be included.
     pub fn closest_connected(&mut self, node_id: NodeId, excluded_peers: Vec<NodeId>) -> &mut Self {
-        self.params_mut().broadcast_strategy = BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
+        self.params_mut().broadcast_strategy = BroadcastStrategy::ClosestNodes(Box::new(BroadcastClosestRequest {
             excluded_peers,
             node_id,
             connected_only: true,
         }));
+        self
+    }
+
+    /// Set broadcast_strategy to DirectOrClosestNodes.`excluded_peers` are excluded. Only peers that are currently
+    /// connected will be included.
+    pub fn direct_or_closest_connected(&mut self, node_id: NodeId, excluded_peers: Vec<NodeId>) -> &mut Self {
+        self.params_mut().broadcast_strategy =
+            BroadcastStrategy::DirectOrClosestNodes(Box::new(BroadcastClosestRequest {
+                excluded_peers,
+                node_id,
+                connected_only: true,
+            }));
         self
     }
 

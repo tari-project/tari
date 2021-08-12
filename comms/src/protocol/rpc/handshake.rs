@@ -66,7 +66,7 @@ where T: AsyncRead + AsyncWrite + Unpin
         Self { framed, timeout: None }
     }
 
-    /// Set the length of time that a client/server should wait for the other side to response before timing out.
+    /// Set the length of time that a client/server should wait for the other side to respond before timing out.
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = Some(timeout);
         self

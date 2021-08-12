@@ -626,7 +626,12 @@ fn sending_transaction_and_confirmation() {
     );
 
     if let DbValue::KeyManagerState(km) = backend.fetch(&DbKey::KeyManagerState).unwrap().unwrap() {
-        assert_eq!(km.primary_key_index, 1);
+        // if we dont have change, we did not move the index forward
+        if tx.body.outputs().len() > 1 {
+            assert_eq!(km.primary_key_index, 1);
+        } else {
+            assert_eq!(km.primary_key_index, 0);
+        }
     } else {
         panic!("No Key Manager set");
     }

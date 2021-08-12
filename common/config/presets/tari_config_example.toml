@@ -43,16 +43,16 @@ network = "weatherwax"
 #liveness_allowlist_cidrs = ["127.0.0.1/32"]
 
 # The buffer size constants for the publish/subscribe connector channel, connecting comms messages to the domain layer:
-# - Buffer size for the base node (min value = 30, default value = 100).
-#buffer_size_base_node = 100
-# - Buffer size for the base node wallet (min value = 300, default value = 1000).
-#buffer_size_base_node_wallet = 1000
+# - Buffer size for the base node (min value = 30, default value = 1500).
+#buffer_size_base_node = 1500
+# - Buffer size for the console wallet (min value = 300, default value = 50000).
+#buffer_size_console_wallet = 50000
 # The rate limit constants for the publish/subscribe connector channel, i.e. maximum amount of inbound messages to
 # accept - any rate attemting to exceed this limit will be throttled.
-# - Rate limit for the base node (min value = 5, default value = 20).
-#buffer_rate_limit_base_node = 20
-# - Rate limit for the base node wallet (min value = 5, default value = 20).
-#buffer_rate_limit_base_node_wallet = 20
+# - Rate limit for the base node (min value = 5, default value = 1000).
+#buffer_rate_limit_base_node = 1000
+# - Rate limit for the console wallet (min value = 5, default value = 1000).
+buffer_rate_limit_console_wallet = 1000
 # The message deduplication persistent cache size - messages with these hashes in the cache will only be processed once.
 # The cache will also be trimmed down to size periodically (min value = 0, default value = 2500).
 dedup_cache_capacity = 25000
@@ -66,8 +66,9 @@ dedup_cache_capacity = 25000
 # The timeout (s) for requesting other base node services (min value = 10 s, default value = 180 s).
 #service_request_timeout = 180
 
-# The maximum simultaneous comms RPC sessions allowed. Setting this to -1 will allow unlimited sessions.
-# rpc_max_simultaneous_sessions = 1000
+# The maximum simultaneous comms RPC sessions allowed (default value = 1000). Setting this to -1 will allow unlimited
+# sessions.
+rpc_max_simultaneous_sessions = 10000
 
 # Auto Update
 #
@@ -116,20 +117,33 @@ console_wallet_db_file = "wallet/console-wallet.dat"
 
 # This is the timeout period that will be used to monitor TXO queries to the base node (default = 60). Larger values
 # are needed for wallets with many (>1000) TXOs to be validated.
-base_node_query_timeout = 120
+base_node_query_timeout = 180
 # The amount of seconds added to the current time (Utc) which will then be used to check if the message has
 # expired or not when processing the message (default = 10800).
 #saf_expiry_duration = 10800
-# This is the number of block confirmations required for a transaction to be considered completely mined and confirmed. (default = 3)
+# This is the number of block confirmations required for a transaction to be considered completely mined and
+# confirmed. (default = 3)
 #transaction_num_confirmations_required = 3
 # This is the timeout period that will be used for base node broadcast monitoring tasks (default = 60)
-#transaction_broadcast_monitoring_timeout = 60
+transaction_broadcast_monitoring_timeout = 180
 # This is the timeout period that will be used for chain monitoring tasks (default = 60)
 #transaction_chain_monitoring_timeout = 60
 # This is the timeout period that will be used for sending transactions directly (default = 20)
-#transaction_direct_send_timeout = 20
+transaction_direct_send_timeout = 180
 # This is the timeout period that will be used for sending transactions via broadcast mode (default = 60)
-#transaction_broadcast_send_timeout = 60
+transaction_broadcast_send_timeout = 180
+# This is the size of the event channel used to communicate transaction status events to the wallet's UI. A busy console
+# wallet doing thousands of bulk payments or used for stress testing needs a fairly big size (>10000) (default = 1000).
+transaction_event_channel_size = 25000
+# This is the size of the event channel used to communicate base node events to the wallet. A busy console
+# wallet doing thousands of bulk payments or used for stress testing needs a fairly big size (>3000) (default = 250).
+base_node_event_channel_size = 3500
+# This is the size of the event channel used to communicate output manager events to the wallet. A busy console
+# wallet doing thousands of bulk payments or used for stress testing needs a fairly big size (>3000) (default = 250).
+output_manager_event_channel_size = 3500
+# This is the size of the event channel used to communicate base node update events to the wallet. A busy console
+# wallet doing thousands of bulk payments or used for stress testing needs a fairly big size (>300) (default = 50).
+base_node_update_publisher_channel_size = 500
 # If a large amount of tiny valued uT UTXOs are used as inputs to a transaction, the fee may be larger than
 # the transaction amount. Set this value to `false` to allow spending of "dust" UTXOs for small valued
 # transactions (default = true).
@@ -140,7 +154,7 @@ base_node_query_timeout = 120
 #transaction_routing_mechanism = "DirectAndStoreAndForward"
 
 # UTXO scanning service interval (default = 12 hours, i.e. 60 * 60 * 12 seconds)
-scan_for_utxo_interval = 60
+scan_for_utxo_interval = 180
 
 # When running the console wallet in command mode, use these values to determine what "stage" and timeout to wait
 # for sent transactions.
@@ -151,7 +165,7 @@ scan_for_utxo_interval = 60
 # - "MinedUnconfirmed" - The transaction was successfully detected as mined but unconfirmed on the blockchain.
 # - "Mined" - The transaction was successfully detected as mined and confirmed on the blockchain.
 
-# The default values are:
+# The default values are: "Broadcast", 300
 #command_send_wait_stage = "Broadcast"
 #command_send_wait_timeout = 300
 
@@ -161,9 +175,9 @@ scan_for_utxo_interval = 60
 
 # Configuration for the wallet's base node service
 # The refresh interval, defaults to 10 seconds
-# base_node_service_refresh_interval = 10
+base_node_service_refresh_interval = 30
 # The maximum age of service requests in seconds, requests older than this are discarded
-# base_node_service_request_max_age = 60
+base_node_service_request_max_age = 180
 
 #[base_node.transport.tor]
 #control_address = "/ip4/127.0.0.1/tcp/9051"
@@ -252,6 +266,10 @@ db_type = "lmdb"
 # The pruning horizon that indicates how many full blocks without pruning must be kept by the base node. Default value
 # is "0", which indicates an archival node without any pruning.
 #pruning_horizon = 0
+
+# The amount of messages that will be permitted in the flood ban timespan of 100s (Default weatherwax = 1000,
+# default mainnet = 10000)
+flood_ban_max_msg_count = 10000
 
 # The relative path to store persistent data
 data_dir = "weatherwax"
@@ -464,9 +482,10 @@ console_wallet_tor_identity_file = "config/console_wallet_tor.json"
 [merge_mining_proxy.weatherwax]
 
 # URL to monerod
-monerod_url = "http://monero-stagenet.exan.tech:38081" # stagenet
-#monerod_url = "http://18.133.59.45:28081"  # testnet
-#monerod_url = "http://18.132.124.81:18081" # mainnet
+monerod_url = "http://monero-stagenet.exan.tech:38081"  # stagenet
+#monerod_url = "http://18.133.59.45:28081"               # testnet
+#monerod_url = "http://18.132.124.81:18081"              # mainnet
+#monerod_url = "http://monero.exan.tech:18081"           # mainnet alternative
 
 # Address of the tari_merge_mining_proxy application
 proxy_host_address = "127.0.0.1:7878"
