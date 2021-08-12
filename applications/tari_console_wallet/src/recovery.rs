@@ -83,11 +83,14 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfi
     let shutdown = Shutdown::new();
     let shutdown_signal = shutdown.to_signal();
 
-    let peer_public_keys = base_node_config
-        .get_all_peers()
-        .iter()
-        .map(|peer| peer.public_key.clone())
-        .collect();
+    let peers = base_node_config.get_all_peers();
+
+    let peer_manager = wallet.comms.peer_manager();
+    let mut peer_public_keys = Vec::with_capacity(peers.len());
+    for peer in peers {
+        peer_public_keys.push(peer.public_key.clone());
+        peer_manager.add_peer(peer).await?;
+    }
 
     let mut recovery_task = UtxoScannerService::<WalletSqliteDatabase>::builder()
         .with_peers(peer_public_keys)
