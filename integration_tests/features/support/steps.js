@@ -3177,3 +3177,25 @@ When(
     }
   }
 );
+
+When("I have a ffi wallet {word}", async function (name) {
+  await this.ffiCreateWallet(name);
+});
+
+Then("I want to get public key of ffi wallet {word}", function (name) {
+  let wallet = this.getWallet(name);
+  let public_key = wallet.getPublicKey();
+  expect(public_key.length).to.be.equal(
+    32,
+    `Public key has wrong length : ${public_key}`
+  );
+});
+
+Then("I want to get emoji id of ffi wallet {word}", function (name) {
+  let wallet = this.getWallet(name);
+  let emoji_id = wallet.getEmojiId();
+  expect(emoji_id.length).to.be.equal(
+    22 * 3, // 22 emojis, 3 bytes per one emoji
+    `Emoji id has wrong length : ${emoji_id}`
+  );
+});
