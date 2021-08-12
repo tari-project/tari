@@ -48,7 +48,7 @@ use tari_core::blocks::{Block, NewBlockTemplate};
 use tari_utilities::{hex::Hex, message_format::MessageFormat};
 use tracing::{debug, error};
 
-const LOG_TARGET: &str = "tari_stratum_proxy::proxy";
+const LOG_TARGET: &str = "tari_stratum_transcoder::transcoder";
 
 #[derive(Debug, Clone)]
 pub struct StratumTranscoderProxyConfig {

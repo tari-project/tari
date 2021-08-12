@@ -61,9 +61,9 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("common.liveness_max_sessions", 0).unwrap();
     cfg.set_default("common.denylist_ban_period", 1440).unwrap();
     cfg.set_default("common.buffer_size_base_node", 1_500).unwrap();
-    cfg.set_default("common.buffer_size_base_node_wallet", 50_000).unwrap();
+    cfg.set_default("common.buffer_size_console_wallet", 50_000).unwrap();
     cfg.set_default("common.buffer_rate_limit_base_node", 1_000).unwrap();
-    cfg.set_default("common.buffer_rate_limit_base_node_wallet", 1_000)
+    cfg.set_default("common.buffer_rate_limit_console_wallet", 1_000)
         .unwrap();
     cfg.set_default("common.dedup_cache_capacity", 2_500).unwrap();
     cfg.set_default("common.fetch_blocks_timeout", 150).unwrap();
@@ -172,7 +172,6 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         .unwrap();
     cfg.set_default("base_node.mainnet.grpc_console_wallet_address", "127.0.0.1:18143")
         .unwrap();
-    cfg.set_default("base_node.mainnet.enable_wallet", true).unwrap();
     cfg.set_default("base_node.mainnet.flood_ban_max_msg_count", 10000)
         .unwrap();
 
@@ -228,7 +227,6 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         .unwrap();
     cfg.set_default("base_node.weatherwax.grpc_console_wallet_address", "127.0.0.1:18143")
         .unwrap();
-    cfg.set_default("base_node.weatherwax.enable_wallet", true).unwrap();
 
     cfg.set_default("base_node.weatherwax.dns_seeds_name_server", "1.1.1.1:53")
         .unwrap();

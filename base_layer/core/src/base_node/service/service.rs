@@ -544,7 +544,7 @@ async fn handle_outbound_request(
                     Request::FetchBlocksWithUtxos(_) => {
                         trace!(
                             target: LOG_TARGET,
-                            "Timeout for service request ({}) at {:?}",
+                            "Timeout for service request FetchBlocks... ({}) set at {:?}",
                             request_key,
                             config.fetch_blocks_timeout
                         );
@@ -553,7 +553,7 @@ async fn handle_outbound_request(
                     Request::FetchMatchingUtxos(_) => {
                         trace!(
                             target: LOG_TARGET,
-                            "Timeout for service request ({}) at {:?}",
+                            "Timeout for service request FetchMatchingUtxos ({}) set at {:?}",
                             request_key,
                             config.fetch_utxos_timeout
                         );
@@ -562,7 +562,7 @@ async fn handle_outbound_request(
                     _ => {
                         trace!(
                             target: LOG_TARGET,
-                            "Timeout for service request ({}) at {:?}",
+                            "Timeout for service request ... ({}) set at {:?}",
                             request_key,
                             config.service_request_timeout
                         );
@@ -638,7 +638,7 @@ async fn handle_request_timeout(
         let _ = reply_tx.send(reply_msg.map_err(|e| {
             error!(
                 target: LOG_TARGET,
-                "Failed to send outbound request (request key: {}): {:?}", &request_key, e
+                "Failed to process outbound request (request key: {}): {:?}", &request_key, e
             );
             e
         }));

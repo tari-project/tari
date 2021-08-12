@@ -172,7 +172,7 @@ where T: TransactionBackend + 'static
         let base_node_response_stream = self.base_node_response_stream();
         let transaction_cancelled_stream = self.transaction_cancelled_stream();
 
-        let (publisher, _) = broadcast::channel(200);
+        let (publisher, _) = broadcast::channel(self.config.transaction_event_channel_size);
 
         let transaction_handle = TransactionServiceHandle::new(sender, publisher.clone());
 

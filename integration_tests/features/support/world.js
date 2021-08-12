@@ -3,6 +3,7 @@ const { setWorldConstructor, After, BeforeAll } = require("cucumber");
 const BaseNodeProcess = require("../../helpers/baseNodeProcess");
 const MergeMiningProxyProcess = require("../../helpers/mergeMiningProxyProcess");
 const WalletProcess = require("../../helpers/walletProcess");
+const WalletFFIClient = require("../../helpers/walletFFIClient");
 const MiningNodeProcess = require("../../helpers/miningNodeProcess");
 const glob = require("glob");
 const fs = require("fs");
@@ -17,6 +18,7 @@ class CustomWorld {
     this.proxies = {};
     this.miners = {};
     this.wallets = {};
+    this.walletsFFI = {};
     this.walletPubkeys = {};
     this.clients = {};
     this.headers = {};
@@ -97,6 +99,12 @@ class CustomWorld {
     let walletClient = await wallet.connectClient();
     let walletInfo = await walletClient.identify();
     this.walletPubkeys[name] = walletInfo.public_key;
+  }
+
+  async ffiCreateWallet(name) {
+    const wallet = new WalletFFIClient(name);
+    await wallet.startNew();
+    this.walletsFFI[name] = wallet;
   }
 
   addWallet(name, process) {
@@ -186,7 +194,7 @@ class CustomWorld {
   }
 
   getWallet(name) {
-    const wallet = this.wallets[name];
+    const wallet = this.wallets[name] || this.walletsFFI[name];
     if (!wallet) {
       throw new Error(`Wallet not found with name '${name}'`);
     }
@@ -315,6 +323,7 @@ BeforeAll({ timeout: 1200000 }, async function () {
   await miningNode.init(1, 1, 1, 1, true, 1);
   await miningNode.compile();
 
+  await WalletFFIClient.Init();
   console.log("Finished compilation.");
 });
 
@@ -324,6 +333,7 @@ After(async function (testCase) {
   await stopAndHandleLogs(this.nodes, testCase, this);
   await stopAndHandleLogs(this.proxies, testCase, this);
   await stopAndHandleLogs(this.wallets, testCase, this);
+  await stopAndHandleLogs(this.walletsFFI, testCase, this);
   await stopAndHandleLogs(this.miners, testCase, this);
 });
 

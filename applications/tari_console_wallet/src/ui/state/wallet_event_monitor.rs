@@ -63,7 +63,7 @@ impl WalletEventMonitor {
                     result = transaction_service_events.select_next_some() => {
                         match result {
                             Ok(msg) => {
-                                trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet event {:?}", msg);
+                                trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet transaction service event {:?}", msg);
                                 match (*msg).clone() {
                                     TransactionEvent::ReceivedFinalizedTransaction(tx_id) => {
                                         self.trigger_tx_state_refresh(tx_id).await;
@@ -108,7 +108,7 @@ impl WalletEventMonitor {
                     result = connectivity_events.select_next_some() => {
                         match result {
                             Ok(msg) => {
-                                trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet event {:?}", msg);
+                                trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet connectivity event {:?}", msg);
                                 match &*msg {
                                     ConnectivityEvent::PeerDisconnected(_) |
                                     ConnectivityEvent::ManagedPeerDisconnected(_) |
