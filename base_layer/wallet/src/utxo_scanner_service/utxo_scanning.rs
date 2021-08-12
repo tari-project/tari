@@ -307,6 +307,11 @@ where TBackend: WalletBackend + 'static
             }
 
             let num_scanned = self.scan_utxos(&mut client, start_index, tip_header).await?;
+            if num_scanned == 0 {
+                return Err(UtxoScannerError::UtxoScanningError(
+                    "Peer returned 0 UTXOs to scan".to_string(),
+                ));
+            }
             debug!(
                 target: LOG_TARGET,
                 "Scanning round completed UTXO #{} in {:.2?} ({} scanned)",
@@ -679,7 +684,7 @@ where TBackend: WalletBackend + 'static
             event_sender: self.event_sender.clone(),
             retry_limit: self.retry_limit,
             peer_index: 0,
-            num_retries: 0,
+            num_retries: 1,
             mode: self.mode.clone(),
             run_flag: self.is_running.clone(),
         }

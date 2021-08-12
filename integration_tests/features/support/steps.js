@@ -2668,6 +2668,71 @@ Then(
 );
 
 Then(
+  /wallet (.*) has at least (.*) transactions that are all (.*) and valid/,
+  { timeout: 610 * 1000 },
+  async function (walletName, numberOfTransactions, transactionStatus) {
+    const walletClient = await this.getWallet(walletName).connectClient();
+    console.log(
+      walletName +
+        ": waiting for " +
+        numberOfTransactions +
+        " transactions to be " +
+        transactionStatus +
+        " and valid..."
+    );
+    var transactions;
+    var numberCorrect;
+    var statusCorrect;
+    await waitFor(
+      async () => {
+        numberCorrect = true;
+        statusCorrect = true;
+        transactions = await walletClient.getAllNormalTransactions();
+        if (transactions.length < parseInt(numberOfTransactions)) {
+          console.log(
+            "Has",
+            transactions.length,
+            "transactions, need",
+            numberOfTransactions
+          );
+          numberCorrect = false;
+          return false;
+        }
+        for (let i = 0; i < transactions.length; i++) {
+          if (
+            transactions[i]["status"] != transactionStatus ||
+            !transactions[i]["valid"]
+          ) {
+            console.log(
+              "Transaction " +
+                i +
+                1 +
+                " has " +
+                transactions[i]["status"] +
+                " and is valid(" +
+                transactions[i]["valid"] +
+                ")"
+            );
+            statusCorrect = false;
+            return false;
+          }
+        }
+        return true;
+      },
+      true,
+      600 * 1000,
+      5 * 1000,
+      5
+    );
+
+    if (transactions === undefined) {
+      expect("\nNo transactions found!").to.equal("");
+    }
+    expect(numberCorrect && statusCorrect).to.equal(true);
+  }
+);
+
+Then(
   /the number of coinbase transactions for wallet (.*) and wallet (.*) are (.*) less/,
   { timeout: 20 * 1000 },
   async function (walletNameA, walletNameB, count) {
@@ -2833,7 +2898,7 @@ When(
 );
 
 Given(
-  /I change the password of wallet (.*) to (.*)/,
+  /I change the password of wallet (.*) to (.*) via command line/,
   { timeout: 20 * 1000 },
   async function (name, newPassword) {
     let wallet = this.getWallet(name);
@@ -2919,7 +2984,7 @@ When(
 );
 
 Given(
-  "I change base node of {word} to {word}",
+  "I change base node of {word} to {word} via command line",
   { timeout: 20 * 1000 },
   async function (wallet_name, base_node_name) {
     let wallet = this.getWallet(wallet_name);
@@ -2932,12 +2997,43 @@ Given(
   }
 );
 
+async function wallet_run_command(
+  wallet,
+  command,
+  message = "",
+  printMessage = true
+) {
+  if (message === "") {
+    message = "Wallet CLI command:\n    '" + command + "'";
+  }
+  if (printMessage) {
+    console.log(message);
+  }
+  let output;
+  await waitFor(
+    async () => {
+      try {
+        output = await wallet.runCommand(command);
+      } catch (error) {
+        console.log(error);
+        return false;
+      }
+      return true;
+    },
+    true,
+    45 * 1000,
+    5 * 1000,
+    5
+  );
+  return output;
+}
+
 Then(
-  "I get balance via command line of wallet {word} is at least {int} uT",
-  { timeout: 20 * 1000 },
+  "I get balance of wallet {word} is at least {int} uT via command line",
+  { timeout: 180 * 1000 },
   async function (name, amount) {
     let wallet = this.getWallet(name);
-    let output = await wallet.runCommand("get-balance");
+    let output = await wallet_run_command(wallet, "get-balance");
     let parse = output.buffer.match(/Available balance: (\d*.\d*) T/);
     expect(parse, "Parsing the output buffer failed").to.not.be.null;
     expect(parseFloat(parse[1])).to.be.greaterThanOrEqual(amount / 1000000);
@@ -2946,22 +3042,26 @@ Then(
 
 When(
   "I send {int} uT from {word} to {word} via command line",
-  { timeout: 20 * 1000 },
+  { timeout: 180 * 1000 },
   async function (amount, sender, receiver) {
     let wallet = this.getWallet(sender);
     let dest_pubkey = this.getWalletPubkey(receiver);
-    await wallet.runCommand(`send-tari ${amount} ${dest_pubkey} test message`);
+    await wallet_run_command(
+      wallet,
+      `send-tari ${amount} ${dest_pubkey} test message`
+    );
     // await wallet.sendTari(dest_pubkey, amount, "test message");
   }
 );
 
 When(
   "I send one-sided {int} uT from {word} to {word} via command line",
-  { timeout: 20 * 1000 },
+  { timeout: 180 * 1000 },
   async function (amount, sender, receiver) {
     let wallet = this.getWallet(sender);
     let dest_pubkey = this.getWalletPubkey(receiver);
-    await wallet.runCommand(
+    await wallet_run_command(
+      wallet,
       `send-one-sided ${amount} ${dest_pubkey} test message`
     );
     // await wallet.sendOneSided(dest_pubkey, amount, "test message");
@@ -2969,23 +3069,24 @@ When(
 );
 
 Then(
-  "I make it rain from wallet {word} {int} tx / sec {int} sec {int} uT {int} increment to {word}",
-  { timeout: 20 * 1000 },
+  "I make it rain from wallet {word} {int} tx / sec {int} sec {int} uT {int} increment to {word} via command line",
+  { timeout: 300 * 1000 },
   async function (sender, freq, duration, amount, amount_inc, receiver) {
     let wallet = this.getWallet(sender);
     let dest_pubkey = this.getWalletPubkey(receiver);
-    await wallet.runCommand(
+    await wallet_run_command(
+      wallet,
       `make-it-rain ${freq} ${duration} ${amount} ${amount_inc} now ${dest_pubkey} negotiated test message`
     );
   }
 );
 
 Then(
-  "I get count of utxos of wallet {word} via command line and it's at least {int}",
-  { timeout: 20 * 1000 },
+  "I get count of utxos of wallet {word} and it's at least {int} via command line",
+  { timeout: 180 * 1000 },
   async function (name, amount) {
     let wallet = this.getWallet(name);
-    let output = await wallet.runCommand(`count-utxos`);
+    let output = await wallet_run_command(wallet, `count-utxos`);
     let parse = output.buffer.match(/Total number of UTXOs: (\d+)/);
     expect(parse, "Parsing the output buffer failed").to.not.be.null;
     expect(parseInt(parse[1])).to.be.greaterThanOrEqual(amount);
@@ -2993,34 +3094,37 @@ Then(
 );
 
 When(
-  "I do coin split on wallet {word} to {int} uT {int} coins",
-  { timeout: 20 * 1000 },
+  "I do coin split on wallet {word} to {int} uT {int} coins via command line",
+  { timeout: 180 * 1000 },
   async function (name, amount_per_coin, number_of_coins) {
     let wallet = this.getWallet(name);
-    await wallet.runCommand(`coin-split ${amount_per_coin} ${number_of_coins}`);
+    await wallet_run_command(
+      wallet,
+      `coin-split ${amount_per_coin} ${number_of_coins}`
+    );
   }
 );
 
 When(
   "I discover peer {word} on wallet {word} via command line",
-  { timeout: 20 * 1000 },
+  { timeout: 180 * 1000 },
   async function (node, name) {
     let wallet = this.getWallet(name);
     let peer = this.getNode(node).peerAddress().split("::")[0];
-    let output = await wallet.runCommand(`discover-peer ${peer}`);
+    let output = await wallet_run_command(wallet, `discover-peer ${peer}`);
     let parse = output.buffer.match(/Discovery succeeded/);
     expect(parse, "Parsing the output buffer failed").to.not.be.null;
   }
 );
 
 When(
-  "I run whois {word} on wallet {word}",
-  { timeout: 20 * 1000 },
+  "I run whois {word} on wallet {word} via command line",
+  { timeout: 60 * 1000 },
   async function (who, name) {
     await sleep(5000);
     let wallet = this.getWallet(name);
     let pubkey = this.getNode(who).peerAddress().split("::")[0];
-    let output = await wallet.runCommand(`whois ${pubkey}`);
+    let output = await wallet_run_command(wallet, `whois ${pubkey}`);
     let parse = output.buffer.match(/Public Key: (.+)\n/);
     expect(parse, "Parsing the output buffer failed").to.not.be.null;
     expect(parse[1]).to.be.equal(pubkey);
@@ -3028,12 +3132,13 @@ When(
 );
 
 When(
-  "I set custom base node of {word} to {word}",
-  { timeout: 20 * 1000 },
+  "I set custom base node of {word} to {word} via command line",
+  { timeout: 60 * 1000 },
   async function (wallet_name, base_node_name) {
     let wallet = this.getWallet(wallet_name);
     let base_node = this.getNode(base_node_name);
-    let output = await wallet.runCommand(
+    let output = await wallet_run_command(
+      wallet,
       `set-custom-base-node ${base_node.peerAddress().replace("::", " ")}`
     );
     let parse = output.buffer.match(
@@ -3044,11 +3149,11 @@ When(
 );
 
 When(
-  "I clear custom base node of wallet {word}",
-  { timeout: 20 * 1000 },
+  "I clear custom base node of wallet {word} via command line",
+  { timeout: 60 * 1000 },
   async function (name) {
     let wallet = this.getWallet(name);
-    let output = await wallet.runCommand("clear-custom-base-node");
+    let output = await wallet_run_command(wallet, "clear-custom-base-node");
     let parse = output.buffer.match(
       /Custom base node peer cleared from wallet database./
     );
@@ -3058,10 +3163,10 @@ When(
 
 When(
   "I export the utxos of wallet {word} via command line",
-  { timeout: 20 * 1000 },
+  { timeout: 60 * 1000 },
   async function (name) {
     let wallet = this.getWallet(name);
-    let output = await wallet.runCommand("export-utxos");
+    let output = await wallet_run_command(wallet, "export-utxos");
     let parse_cnt = output.buffer.match(/Total number of UTXOs: (\d+)/);
     expect(parse_cnt, "Parsing the output buffer failed").to.not.be.null;
     let utxo_cnt = parseInt(parse_cnt[1]);
