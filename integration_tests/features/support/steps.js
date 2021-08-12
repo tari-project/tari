@@ -11,7 +11,7 @@ const {
   getTransactionOutputHash,
   sleep,
   consoleLogBalance,
-  consoleLogCoinbaseDetails,
+  consoleLogTransactionDetails,
   withTimeout,
 } = require("../../helpers/util");
 const { ConnectivityStatus, PaymentType } = require("../../helpers/types");
@@ -1901,8 +1901,6 @@ Then(
       const transactionPending = await walletClient.isTransactionAtLeastPending(
         txIds[i]
       );
-      // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-      // consoleLogTransactionDetails(txnDetails, txIds[i]);
       expect(transactionPending).to.equal(true);
     }
   }
@@ -1952,8 +1950,6 @@ Then(
         );
         const transactionPending =
           await walletClient.isTransactionAtLeastPending(txIds[i]);
-        // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-        // consoleLogTransactionDetails(txnDetails, txIds[i]);
         expect(transactionPending).to.equal(true);
       }
     }
@@ -2003,8 +1999,6 @@ Then(
       );
       const transactionCompleted =
         await walletClient.isTransactionAtLeastCompleted(txIds[i]);
-      // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-      // consoleLogTransactionDetails(txnDetails, txIds[i]);
       expect(transactionCompleted).to.equal(true);
     }
   }
@@ -2054,8 +2048,6 @@ Then(
         );
         const transactionCompleted =
           await walletClient.isTransactionAtLeastCompleted(txIds[i]);
-        // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-        // consoleLogTransactionDetails(txnDetails, txIds[i]);
         expect(transactionCompleted).to.equal(true);
       }
     }
@@ -2106,8 +2098,6 @@ Then(
       );
       const transactionBroadcasted =
         await walletClient.isTransactionAtLeastBroadcast(txIds[i]);
-      // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-      // consoleLogTransactionDetails(txnDetails, txIds[i]);
       expect(transactionBroadcasted).to.equal(true);
     }
   }
@@ -2157,8 +2147,6 @@ Then(
         );
         const transactionBroadcasted =
           await walletClient.isTransactionAtLeastBroadcast(txIds[i]);
-        // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-        // consoleLogTransactionDetails(txnDetails, txIds[i]);
         expect(transactionBroadcasted).to.equal(true);
       }
     }
@@ -2207,8 +2195,6 @@ Then(
       );
       const isTransactionAtLeastMinedUnconfirmed =
         await walletClient.isTransactionAtLeastMinedUnconfirmed(txIds[i]);
-      // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-      // consoleLogTransactionDetails(txnDetails, txIds[i]);
       expect(isTransactionAtLeastMinedUnconfirmed).to.equal(true);
     }
   }
@@ -2257,8 +2243,6 @@ Then(
         );
         const isTransactionAtLeastMinedUnconfirmed =
           await walletClient.isTransactionAtLeastMinedUnconfirmed(txIds[i]);
-        // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-        // consoleLogTransactionDetails(txnDetails, txIds[i]);
         expect(isTransactionAtLeastMinedUnconfirmed).to.equal(true);
       }
     }
@@ -2307,8 +2291,6 @@ Then(
       );
       const isTransactionMinedUnconfirmed =
         await walletClient.isTransactionMinedUnconfirmed(txIds[i]);
-      // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-      // consoleLogTransactionDetails(txnDetails, txIds[i]);
       expect(isTransactionMinedUnconfirmed).to.equal(true);
     }
   }
@@ -2357,8 +2339,6 @@ Then(
         );
         const isTransactionMinedUnconfirmed =
           await walletClient.isTransactionMinedUnconfirmed(txIds[i]);
-        // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-        // consoleLogTransactionDetails(txnDetails, txIds[i]);
         expect(isTransactionMinedUnconfirmed).to.equal(true);
       }
     }
@@ -2407,8 +2387,6 @@ Then(
       );
       const isTransactionMinedConfirmed =
         await walletClient.isTransactionMinedConfirmed(txIds[i]);
-      // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-      // consoleLogTransactionDetails(txnDetails, txIds[i]);
       expect(isTransactionMinedConfirmed).to.equal(true);
     }
   }
@@ -2463,8 +2441,6 @@ Then(
       );
       const isTransactionMinedConfirmed =
         await walletClient.isTransactionMinedConfirmed(txIds[i]);
-      // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-      // consoleLogTransactionDetails(txnDetails, txIds[i]);
       expect(isTransactionMinedConfirmed).to.equal(true);
     }
   }
@@ -2519,8 +2495,6 @@ Then(
       );
       const isTransactionMinedConfirmed =
         await walletClient.isTransactionMinedConfirmed(txIds[i]);
-      // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-      // consoleLogTransactionDetails(txnDetails, txIds[i]);
       expect(isTransactionMinedConfirmed).to.equal(true);
     }
   }
@@ -2569,8 +2543,6 @@ Then(
         );
         const isTransactionMinedConfirmed =
           await walletClient.isTransactionMinedConfirmed(txIds[i]);
-        // let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-        // consoleLogTransactionDetails(txnDetails, txIds[i]);
         expect(isTransactionMinedConfirmed).to.equal(true);
       }
     }
@@ -2578,19 +2550,27 @@ Then(
 );
 
 When(
-  /I list all coinbase transactions for wallet (.*)/,
+  /I list all (.*) transactions for wallet (.*)/,
   { timeout: 20 * 1000 },
-  async function (walletName) {
+  async function (transaction_type, walletName) {
     const wallet = this.getWallet(walletName);
     const walletClient = await wallet.connectClient();
-    console.log("\nListing all coinbase transactions: ", walletName);
-    const transactions = await walletClient.getAllCoinbaseTransactions();
+    var transactions;
+    var type;
+    if (transaction_type === "NORMAL") {
+      transactions = await walletClient.getAllNormalTransactions();
+      type = "NORMAL";
+    } else {
+      transactions = await walletClient.getAllCoinbaseTransactions();
+      type = "COINBASE";
+    }
+    console.log("\nListing all `" + type + "` transactions: ", walletName);
     if (transactions.length > 0) {
       for (let i = 0; i < transactions.length; i++) {
-        consoleLogCoinbaseDetails(transactions[i]);
+        consoleLogTransactionDetails(transactions[i]);
       }
     } else {
-      console.log("  No coinbase transactions found!");
+      console.log("  No `" + type + "` transactions found!");
     }
   }
 );
@@ -2700,7 +2680,7 @@ Then(
         }
         for (let i = 0; i < transactions.length; i++) {
           if (
-            transactions[i]["status"] != transactionStatus ||
+            transactions[i]["status"] !== transactionStatus ||
             !transactions[i]["valid"]
           ) {
             console.log(
@@ -2758,6 +2738,78 @@ Then(
       expect(
         "\nCoinbase comparison: Not enough results saved on the stack!"
       ).to.equal("");
+    }
+  }
+);
+
+Then(
+  /all (.*) transactions for wallet (.*) and wallet (.*) have consistent but opposing validity/,
+  { timeout: 20 * 1000 },
+  async function (transaction_type, walletNameA, walletNameB) {
+    let walletClientA = await this.getWallet(walletNameA).connectClient();
+    let walletClientB = await this.getWallet(walletNameB).connectClient();
+    var transactionsA;
+    var transactionsB;
+    var type;
+    if (transaction_type === "NORMAL") {
+      transactionsA = await walletClientA.getAllNormalTransactions();
+      transactionsB = await walletClientB.getAllNormalTransactions();
+      type = "NORMAL";
+    } else {
+      transactionsA = await walletClientA.getAllCoinbaseTransactions();
+      transactionsB = await walletClientB.getAllCoinbaseTransactions();
+      type = "COINBASE";
+    }
+    if (transactionsA === undefined || transactionsB === undefined) {
+      expect("\nNo `" + type + "` transactions found!").to.equal("");
+    }
+    let validA = transactionsA[0]["valid"];
+    for (let i = 0; i < transactionsA.length; i++) {
+      if (validA !== transactionsA[i]["valid"]) {
+        expect(
+          "\n" +
+            walletNameA +
+            "'s `" +
+            type +
+            "` transactions do not have a consistent validity status"
+        ).to.equal("");
+      }
+    }
+    let validB = transactionsB[0]["valid"];
+    for (let i = 0; i < transactionsB.length; i++) {
+      if (validB !== transactionsB[i]["valid"]) {
+        expect(
+          "\n" +
+            walletNameB +
+            "'s `" +
+            type +
+            "` transactions do not have a consistent validity status"
+        ).to.equal("");
+      }
+    }
+    expect(validA).to.equal(!validB);
+  }
+);
+
+Then(
+  /all (.*) transactions for wallet (.*) are valid/,
+  { timeout: 20 * 1000 },
+  async function (transaction_type, walletName) {
+    let walletClient = await this.getWallet(walletName).connectClient();
+    var transactions;
+    var type;
+    if (transaction_type === "NORMAL") {
+      transactions = await walletClient.getAllNormalTransactions();
+      type = "NORMAL";
+    } else {
+      transactions = await walletClient.getAllCoinbaseTransactions();
+      type = "COINBASE";
+    }
+    if (transactions === undefined) {
+      expect("\nNo `" + type + "` transactions found!").to.equal("");
+    }
+    for (let i = 0; i < transactions.length; i++) {
+      expect(transactions[i]["valid"]).to.equal(true);
     }
   }
 );
