@@ -122,7 +122,7 @@ impl MempoolInboundHandlers {
         if tx_storage.is_stored() {
             debug!(
                 target: LOG_TARGET,
-                "Mempool already has transaction: {}", kernel_excess_sig
+                "Mempool already has transaction: {}.", kernel_excess_sig
             );
             return Ok(tx_storage);
         }
