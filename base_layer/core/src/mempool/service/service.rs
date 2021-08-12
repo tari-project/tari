@@ -475,7 +475,7 @@ async fn handle_request_timeout(
         let _ = reply_tx.send(reply_msg.map_err(|e| {
             error!(
                 target: LOG_TARGET,
-                "Failed to send outbound request (request key: {}): {:?}", &request_key, e
+                "Failed to process outbound request (request key: {}): {:?}", &request_key, e
             );
             e
         }));

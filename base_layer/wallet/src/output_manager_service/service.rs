@@ -142,7 +142,8 @@ where TBackend: OutputManagerBackend + 'static
             shutdown_signal,
         };
 
-        let (base_node_update_publisher, _) = broadcast::channel(50);
+        let (base_node_update_publisher, _) =
+            broadcast::channel(resources.config.base_node_update_publisher_channel_size);
 
         Ok(OutputManagerService {
             resources,
