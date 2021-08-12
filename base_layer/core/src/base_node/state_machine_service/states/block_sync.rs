@@ -58,6 +58,7 @@ impl BlockSync {
         shared: &mut BaseNodeStateMachine<B>,
     ) -> StateEvent {
         let mut synchronizer = BlockSynchronizer::new(
+            shared.config.block_sync_config.clone(),
             shared.db.clone(),
             shared.connectivity.clone(),
             self.sync_peer.take(),

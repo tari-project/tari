@@ -119,6 +119,7 @@ pub async fn recovery_event_monitoring(
             Ok(UtxoScannerEvent::ScanningRoundFailed {
                 num_retries,
                 retry_limit,
+                error,
             }) => {
                 unsafe {
                     (recovery_progress_callback)(
@@ -129,7 +130,7 @@ pub async fn recovery_event_monitoring(
                 }
                 info!(
                     target: LOG_TARGET,
-                    "UTXO Scanning round failed on retry {} of {}", num_retries, retry_limit
+                    "UTXO Scanning round failed on retry {} of {}: {}", num_retries, retry_limit, error
                 );
             },
             Ok(UtxoScannerEvent::ScanningFailed) => {

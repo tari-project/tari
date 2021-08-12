@@ -76,10 +76,10 @@ async function main() {
 
   debug(hook, JSON.stringify(args, null, 2));
 
-  log_notify("Hello, starting the washing machine", hook);
+  let wallet1 = new WalletClient();
+  await wallet1.connect(args.wallet1Grpc);
 
   log_notify("Compiling and starting applications...", hook);
-  let wallet1 = new WalletClient(args.wallet1Grpc);
   // Start wallet2
   let wallet2;
   let wallet2Process = null;
@@ -88,9 +88,10 @@ async function main() {
     wallet2Process = createGrpcWallet(args.baseNode, {routingMechanism: args.routingMechanism, grpc_console_wallet_address:`127.0.0.1:${port}`}, true);
     wallet2Process.baseDir = "./wallet";
     await wallet2Process.startNew();
-    wallet2 = wallet2Process.getClient();
+    wallet2 = await wallet2Process.connectClient();
   } else {
-    wallet2 = new WalletClient(args.wallet2Grpc);
+    wallet2 = new WalletClient();
+    await wallet2.connect(args.wallet2Grpc);
   }
 
   await showWalletDetails("Wallet 1", wallet1, hook);

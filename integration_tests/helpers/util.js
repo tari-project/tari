@@ -28,6 +28,50 @@ function withTimeout(ms, promise, message = "") {
   return Promise.race([timeout, promise]);
 }
 
+async function tryConnect(makeClient, opts = {}) {
+  const options = Object.assign(
+    {
+      deadline: Infinity,
+      maxAttempts: 3,
+    },
+    opts
+  );
+  let attempts = 0;
+  for (;;) {
+    let client = makeClient();
+
+    // Don't log the uninteresting case
+    if (attempts > 0) {
+      console.warn(
+        `GRPC connection attempt ${attempts + 1}/${options.maxAttempts}`
+      );
+    }
+    let error = await new Promise((resolve) => {
+      client.waitForReady(options.deadline, (err) => {
+        if (err) {
+          return resolve(err);
+        }
+        resolve(null);
+      });
+    });
+
+    if (error) {
+      if (attempts >= options.maxAttempts) {
+        throw error;
+      }
+      attempts++;
+      console.error(
+        `Failed connection attempt ${attempts + 1}/${options.maxAttempts}`
+      );
+      console.error(error);
+      await sleep(1000);
+      continue;
+    }
+
+    return client;
+  }
+}
+
 async function waitFor(
   asyncTestFn,
   toBe,
@@ -55,7 +99,7 @@ async function waitFor(
     } catch (e) {
       if (i > 1) {
         if (e && e.code && e.code === NO_CONNECTION) {
-          console.log("No connection yet (waitFor)...");
+          // console.log("No connection yet (waitFor)...");
         } else {
           console.error("Error in waitFor: ", e);
         }
@@ -121,52 +165,23 @@ function hexSwitchEndianness(val) {
   return res;
 }
 
-// Thanks to https://stackoverflow.com/questions/29860354/in-nodejs-how-do-i-check-if-a-port-is-listening-or-in-use
-const portInUse = function (port, callback) {
-  const server = net.createServer(function (socket) {
-    socket.write("Echo server\r\n");
-    socket.pipe(socket);
-  });
-
-  server.listen(port, "127.0.0.1");
-  server.on("error", function () {
-    callback(true);
-  });
-  server.on("listening", function () {
-    server.close();
-    callback(false);
-  });
-};
-
-let index = 0;
-const getFreePort = async function (from, to) {
-  function testPort(port) {
-    return new Promise((r) => {
-      portInUse(port, (v) => {
-        if (v) {
-          r(false);
+const getFreePort = function () {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer(function (_sock) {});
+    srv.listen(0, function () {
+      let { port } = srv.address();
+      srv.close((err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(port);
         }
-        r(true);
       });
     });
-  }
-
-  let port = from + index;
-  if (port > to) {
-    index = from;
-    port = from;
-  }
-  while (port < to) {
-    // let port = getRandomInt(from, to);
-    // await sleep(100);
-    port++;
-    index++;
-    const notInUse = await testPort(port);
-    // console.log("Port not in use:", notInUse);
-    if (notInUse) {
-      return port;
-    }
-  }
+    srv.on("error", function (err) {
+      reject(err);
+    });
+  });
 };
 
 const getTransactionOutputHash = function (output) {
@@ -280,6 +295,7 @@ module.exports = {
   getTransactionOutputHash,
   hexSwitchEndianness,
   consoleLogTransactionDetails,
+  tryConnect,
   consoleLogBalance,
   consoleLogCoinbaseDetails,
   withTimeout,

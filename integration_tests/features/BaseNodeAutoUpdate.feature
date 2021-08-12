@@ -1,6 +1,9 @@
 @auto_update
 Feature: AutoUpdate
 
+
+    # Not sure why this takes so long on CI
+    @long-running
     Scenario: Auto update finds a new update
         Given I have a node NODE_A with auto update enabled
         Then NODE_A has a new software update

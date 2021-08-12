@@ -284,7 +284,9 @@ where TBackend: TransactionBackend + 'static
             };
             let mut client = match base_node_connection
                 .connect_rpc_using_builder(
-                    BaseNodeWalletRpcClient::builder().with_deadline(self.resources.config.chain_monitoring_timeout),
+                    BaseNodeWalletRpcClient::builder()
+                        .with_deadline(self.resources.config.chain_monitoring_timeout)
+                        .with_handshake_timeout(self.resources.config.chain_monitoring_timeout),
                 )
                 .await
             {

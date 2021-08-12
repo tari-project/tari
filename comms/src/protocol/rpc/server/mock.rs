@@ -28,6 +28,7 @@ use crate::{
             context::{RequestContext, RpcCommsBackend, RpcCommsProvider},
             server::{handle::RpcServerRequest, PeerRpcServer, RpcServerError},
             Body,
+            NamedProtocolService,
             Request,
             Response,
             RpcError,
@@ -48,9 +49,17 @@ use crate::{
 };
 use async_trait::async_trait;
 use bytes::Bytes;
-use futures::{channel::mpsc, stream, SinkExt};
-use std::sync::Arc;
-use tokio::{sync::RwLock, task};
+use futures::{channel::mpsc, future::BoxFuture, stream, SinkExt};
+use std::{
+    collections::HashMap,
+    future,
+    sync::Arc,
+    task::{Context, Poll},
+};
+use tokio::{
+    sync::{Mutex, RwLock},
+    task,
+};
 use tower::Service;
 use tower_make::MakeService;
 
@@ -223,7 +232,7 @@ where
     /// Create a PeerConnection that can open a substream to this mock server.
     pub async fn create_connection(&self, peer: Peer, protocol_id: ProtocolId) -> PeerConnection {
         let peer_node_id = peer.node_id.clone();
-        let (_, our_conn_mock, peer_conn, _) = create_peer_connection_mock_pair(1, peer, self.our_node.to_peer()).await;
+        let (_, our_conn_mock, peer_conn, _) = create_peer_connection_mock_pair(peer, self.our_node.to_peer()).await;
 
         let mut protocol_tx = self.protocol_tx.clone();
         task::spawn(async move {
@@ -242,5 +251,71 @@ where
     pub fn serve(&mut self) -> task::JoinHandle<Result<(), RpcServerError>> {
         let inner = self.inner.take().expect("can only call `serve` once");
         task::spawn(inner.serve())
+    }
+}
+
+impl MockRpcServer<MockRpcImpl, Substream> {
+    pub async fn create_mockimpl_connection(&self, peer: Peer) -> PeerConnection {
+        // MockRpcImpl accepts any protocol
+        self.create_connection(peer, ProtocolId::new()).await
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct MockRpcImpl {
+    state: Arc<Mutex<State>>,
+}
+
+#[derive(Default)]
+struct State {
+    accepted_calls: HashMap<u32, Response<Bytes>>,
+}
+
+impl MockRpcImpl {
+    pub fn new() -> Self {
+        Default::default()
+    }
+}
+
+impl Service<Request<Bytes>> for MockRpcImpl {
+    type Error = RpcStatus;
+    type Future = BoxFuture<'static, Result<Response<Body>, RpcStatus>>;
+    type Response = Response<Body>;
+
+    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, req: Request<Bytes>) -> Self::Future {
+        let state = self.state.clone();
+        Box::pin(async move {
+            let method_id = req.method().id();
+            match state.lock().await.accepted_calls.get(&method_id) {
+                Some(resp) => Ok(resp.clone().map(Body::single)),
+                None => Err(RpcStatus::unsupported_method(format!(
+                    "Method identifier `{}` is not recognised or supported",
+                    method_id
+                ))),
+            }
+        })
+    }
+}
+
+impl NamedProtocolService for MockRpcImpl {
+    const PROTOCOL_NAME: &'static [u8] = b"mock-service";
+}
+
+/// A service maker for GreetingServer
+impl Service<ProtocolId> for MockRpcImpl {
+    type Error = RpcServerError;
+    type Future = future::Ready<Result<Self::Response, Self::Error>>;
+    type Response = Self;
+
+    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, _: ProtocolId) -> Self::Future {
+        future::ready(Ok(self.clone()))
     }
 }

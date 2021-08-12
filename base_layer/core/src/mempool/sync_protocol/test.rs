@@ -97,7 +97,7 @@ async fn empty_set() {
     let node1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let node2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let (_node1_conn, node1_mock, node2_conn, _) =
-        create_peer_connection_mock_pair(1, node1.to_peer(), node2.to_peer()).await;
+        create_peer_connection_mock_pair(node1.to_peer(), node2.to_peer()).await;
 
     // This node connected to a peer, so it should open the substream
     connectivity_events_tx
@@ -127,7 +127,7 @@ async fn synchronise() {
     let node1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let node2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let (_node1_conn, node1_mock, node2_conn, _) =
-        create_peer_connection_mock_pair(1, node1.to_peer(), node2.to_peer()).await;
+        create_peer_connection_mock_pair(node1.to_peer(), node2.to_peer()).await;
 
     // This node connected to a peer, so it should open the substream
     connectivity_events_tx
@@ -161,7 +161,7 @@ async fn duplicate_set() {
     let node1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let node2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let (_node1_conn, node1_mock, node2_conn, _) =
-        create_peer_connection_mock_pair(1, node1.to_peer(), node2.to_peer()).await;
+        create_peer_connection_mock_pair(node1.to_peer(), node2.to_peer()).await;
 
     // This node connected to a peer, so it should open the substream
     connectivity_events_tx
@@ -267,7 +267,7 @@ async fn responder_messages() {
     let node1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let node2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let (_node1_conn, node1_mock, node2_conn, _) =
-        create_peer_connection_mock_pair(1, node1.to_peer(), node2.to_peer()).await;
+        create_peer_connection_mock_pair(node1.to_peer(), node2.to_peer()).await;
 
     // This node connected to a peer, so it should open the substream
     connectivity_events_tx

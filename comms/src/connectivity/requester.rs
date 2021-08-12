@@ -137,7 +137,7 @@ impl ConnectivityRequester {
                 Err(err @ ConnectionManagerError::DialCancelled) => {
                     num_cancels += 1;
                     // Due to simultaneous dialing, it's possible for the dial to be cancelled. However, typically if
-                    // dial is called right after, the resolved connection will be returned.
+                    // dial is called again right after, the resolved connection will be returned.
                     if num_cancels == 1 {
                         continue;
                     }

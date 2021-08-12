@@ -30,7 +30,7 @@ use crate::{
         OutboundNodeCommsInterface,
     },
     blocks::{block_header::BlockHeader, Block, NewBlock, NewBlockTemplate},
-    chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainBlock},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainBlock, PrunedOutput},
     consensus::{ConsensusConstants, ConsensusManager},
     mempool::{async_mempool, Mempool},
     proof_of_work::{Difficulty, PowAlgorithm},
@@ -224,12 +224,14 @@ where T: BlockchainBackend + 'static
             },
             NodeCommsRequest::FetchMatchingUtxos(utxo_hashes) => {
                 let mut res = Vec::with_capacity(utxo_hashes.len());
-                for (output, spent) in (self.blockchain_db.fetch_utxos(utxo_hashes).await?)
+                for (pruned_output, spent) in (self.blockchain_db.fetch_utxos(utxo_hashes).await?)
                     .into_iter()
                     .flatten()
                 {
-                    if !spent {
-                        res.push(output);
+                    if let PrunedOutput::NotPruned { output } = pruned_output {
+                        if !spent {
+                            res.push(output);
+                        }
                     }
                 }
                 Ok(NodeCommsResponse::TransactionOutputs(res))
@@ -240,7 +242,10 @@ where T: BlockchainBackend + 'static
                     .fetch_utxos(hashes)
                     .await?
                     .into_iter()
-                    .filter_map(|opt| opt.map(|(output, _)| output))
+                    .filter_map(|opt| match opt {
+                        Some((PrunedOutput::NotPruned { output }, _)) => Some(output),
+                        _ => None,
+                    })
                     .collect();
                 Ok(NodeCommsResponse::TransactionOutputs(res))
             },
