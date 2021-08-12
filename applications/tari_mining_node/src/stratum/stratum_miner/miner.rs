@@ -132,8 +132,16 @@ impl StratumMiner {
                     if difficulty >= target_difficulty {
                         let block_header: BlockHeader = BlockHeader::try_from(hasher.into_header()).unwrap();
                         info!(
-                            "Miner found block header {} with difficulty {:?}",
-                            block_header, difficulty,
+                            "Miner found block header with hash {}, nonce {} and difficulty {:?}",
+                            block_header.hash().to_hex(),
+                            solver.current_nonce,
+                            difficulty
+                        );
+                        debug!(
+                            "Miner found block header with hash {}, difficulty {:?} and data {:?}",
+                            block_header.hash().to_hex(),
+                            difficulty,
+                            block_header
                         );
 
                         let still_valid = { height == shared_data.read().unwrap().height };
@@ -149,7 +157,6 @@ impl StratumMiner {
                         }
                     }
                     solver.solutions = Solution::default();
-                    thread::sleep(time::Duration::from_micros(100));
                 },
                 None => {
                     continue;

@@ -172,7 +172,7 @@ impl Controller {
     }
 
     fn send_message_submit(&mut self, job_id: u64, hash: String, nonce: u64) -> Result<(), Error> {
-        info!("Submitting Solution");
+        info!("Submitting Solution with hash {} and nonce {}", hash, nonce);
         let params_in = types::submit_params::SubmitParams {
             id: self.last_request_id.to_string(),
             job_id,
