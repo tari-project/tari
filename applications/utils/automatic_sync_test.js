@@ -1,8 +1,6 @@
 const BaseNodeProcess = require("../../integration_tests/helpers/baseNodeProcess");
 
-const fs = require("fs");
-const os = require("os");
-const path = require("path");
+const fs = require("fs/promises");
 
 async function main() {
   const baseNode = new BaseNodeProcess("compile", true);
@@ -19,10 +17,16 @@ async function main() {
 
   await baseNode.start();
 
+  await fs.mkdir("logs", { recursive: true });
+  let logfile = await fs.open("logs/base-node.log", "w");
   let startTime = new Date();
 
   let syncPromise = new Promise((resolve) => {
+    baseNode.ps.stderr.on("data", (data) => {
+      logfile.write(data);
+    });
     baseNode.ps.stdout.on("data", (data) => {
+      logfile.write(data);
       let height = parseInt(data.toString().match("Tip:\\ (\\d+)\\ \\(")[1]);
 
       if (

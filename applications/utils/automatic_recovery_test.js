@@ -1,17 +1,24 @@
 const WalletProcess = require("../../integration_tests/helpers/walletProcess");
 const WalletClient = require("../../integration_tests/helpers/walletClient");
 
-const fs = require("fs");
+const fs = require("fs/promises");
 const yargs = require("yargs");
+const path = require("path");
 
 async function main() {
   const argv = yargs
-    .option("sw", {
-      alias: "seed-words",
+    .option("seed-words", {
+      alias: "sw",
       description: "Seed words to use during recovery",
       type: "string",
       default:
         "pigeon marble letter canal hard close kit cash coin still melt random require long shaft antenna tent turkey neck divert enrich iron analyst abandon",
+    })
+    .option("log", {
+      alias: "l",
+      description: "output logs to this file",
+      type: "string",
+      default: "logs/wallet.log",
     })
     .help()
     .alias("help", "h").argv;
@@ -32,24 +39,38 @@ async function main() {
 
   let startTime = new Date();
 
+  await fs.mkdir(path.dirname(argv.log), { recursive: true });
+  let logfile = await fs.open(argv.log, "w");
+
   let recoveryPromise = new Promise((resolve) => {
+    wallet.ps.stderr.on("data", (data) => {
+      logfile.write(data);
+    });
     wallet.ps.stdout.on("data", (data) => {
+      logfile.write(data);
       let height = data
         .toString()
         .match("Recovery\\ complete!\\ Scanned\\ =\\ (\\d+)\\ in");
       let recovered_ut = data.toString().match("worth\\ (\\d+)\\ µT");
       if (height && recovered_ut) {
-        resolve({
-          height: parseInt(height[1]),
-          recoveredAmount: parseInt(recovered_ut[1]),
-        });
-      } else if (data.toString().match("Failed to sync. Attempt 10 of 10")) {
-        resolve(false);
+        resolve([
+          null,
+          {
+            height: parseInt(height[1]),
+            recoveredAmount: parseInt(recovered_ut[1]),
+          },
+        ]);
+      } else if (
+        data
+          .toString()
+          .match("Attempt {}/{}: Failed to complete wallet recovery")
+      ) {
+        resolve([data, null]);
       }
     });
   });
 
-  let height_amount = await recoveryPromise;
+  let [err, height_amount] = await recoveryPromise;
 
   let endTime = new Date();
   const timeDiffMs = endTime - startTime;
@@ -61,26 +82,28 @@ async function main() {
 
   wallet.stop();
 
-  if (height_amount) {
-    const block_rate = height_amount.height / timeDiffMinutes;
-    console.log(
-      "Wallet (Pubkey:",
-      id.public_key,
-      ") recovered to a block height of",
-      height_amount.height,
-      "completed in",
-      timeDiffMinutes.toFixed(2),
-      "minutes (",
-      block_rate.toFixed(2),
-      "blocks/min).",
-      height_amount.recoveredAmount,
-      "µT recovered."
-    );
-  } else {
-    console.log("Wallet (Pubkey:", id.public_key, ") recovery failed");
+  await fs.rmdir(__dirname + "/temp/base_nodes", { recursive: true });
+  if (err) {
+    console.log(`Wallet (Pubkey: ${id.public_key}) recovery failed`);
+    console.log(`Error: ${err}`);
+    process.exit(1);
+    return;
   }
 
-  fs.rmdirSync(__dirname + "/temp/base_nodes", { recursive: true });
+  const block_rate = height_amount.height / timeDiffMinutes;
+  console.log(
+    "Wallet (Pubkey:",
+    id.public_key,
+    ") recovered to a block height of",
+    height_amount.height,
+    "completed in",
+    timeDiffMinutes.toFixed(2),
+    "minutes (",
+    block_rate.toFixed(2),
+    "blocks/min).",
+    height_amount.recoveredAmount,
+    "µT recovered."
+  );
 }
 
 Promise.all([main()]);
