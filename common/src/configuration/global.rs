@@ -133,6 +133,7 @@ pub struct GlobalConfig {
     pub validate_tip_timeout_sec: u64,
     pub mining_pool_address: String,
     pub mining_wallet_address: String,
+    pub mining_worker_name: String,
 }
 
 impl GlobalConfig {
@@ -674,6 +675,13 @@ fn convert_node_config(
     let mining_pool_address = cfg.get_str(&key).unwrap_or_else(|_| "".to_string());
     let key = "mining_node.mining_wallet_address";
     let mining_wallet_address = cfg.get_str(&key).unwrap_or_else(|_| "".to_string());
+    let key = "mining_node.mining_worker_name";
+    let mining_worker_name = cfg
+        .get_str(&key)
+        .unwrap_or_else(|_| "".to_string())
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .collect::<String>();
 
     Ok(GlobalConfig {
         autoupdate_check_interval,
@@ -757,6 +765,7 @@ fn convert_node_config(
         validate_tip_timeout_sec,
         mining_pool_address,
         mining_wallet_address,
+        mining_worker_name,
     })
 }
 

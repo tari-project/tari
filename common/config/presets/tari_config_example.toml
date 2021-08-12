@@ -523,3 +523,4 @@ transcoder_host_address = "127.0.0.1:7879"
 # Stratum Mode configuration
 # mining_pool_address = "miningcore.tarilabs.com:3052"
 # mining_wallet_address = "YOUR_WALLET_PUBLIC_KEY"
+# mining_worker_name = "worker1"

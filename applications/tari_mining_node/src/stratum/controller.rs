@@ -297,7 +297,7 @@ impl Controller {
                         self.stream = None;
                     } else {
                         let status = format!("Connection Status: Connected to server at {}.", self.server_url);
-                        warn!("{}", status);
+                        info!("{}", status);
                     }
                     next_server_retry = time::get_time().sec + server_retry_interval;
                     if self.stream.is_none() {
