@@ -926,7 +926,7 @@ impl From<CryptoFullRewindResult<BlindingFactor>> for FullRewindResult {
 /// [Mimblewimble TLU post](https://tlu.tarilabs.com/protocols/mimblewimble-1/sources/PITCHME.link.html?highlight=mimblewimble#mimblewimble).
 /// The kernel also tracks other transaction metadata, such as the lock height for the transaction (i.e. the earliest
 /// this transaction can be mined) and the transaction fee, in cleartext.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransactionKernel {
     /// Options for a kernel's structure or use
     pub features: KernelFeatures,
@@ -1069,6 +1069,18 @@ impl Display for TransactionKernel {
                 .unwrap_or_else(|_| "Failed to serialize signature".into()),
         );
         fmt.write_str(&msg)
+    }
+}
+
+impl PartialOrd for TransactionKernel {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.excess_sig.partial_cmp(&other.excess_sig)
+    }
+}
+
+impl Ord for TransactionKernel {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.excess_sig.cmp(&other.excess_sig)
     }
 }
 
