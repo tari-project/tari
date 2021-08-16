@@ -289,12 +289,12 @@ peer_seeds = [
     "f2ce179fb733725961a5f7e1e45dacdd443dd43ba6237438d6abe344fb717058::/onion3/nvgdmjf4wucgatz7vemzvi2u4sw5o4gyzwuikagpepoj4w7mkii47zid:18141", #stockholm
     "909c0160f4d8e815aba5c2bbccfcceb448877e7b38759fb160f3e9494484d515::/onion3/qw5uxv533sqdn2qoncfyqo35dgecy4rt4x27rexi2her6q6pcpxbm4qd:18141", #sydney
     # backups
-    "0c3fe3c23866ed3827e1cd72aae0c9d364d860d597993104e90d9a9401e52f05::/onion3/2m2xnylrsqbaozsndkbmfisxxbwh2vgvs6oyfak2qah4snnxykrf7zad:18141",
-    "b6b2c8a997ba3500d44b64a3b47203d922d614c01ebd9cad5563dc59086f9938::/onion3/kxtcwaoan6wvdl4wltguo4omo2san2ge727cfoc65hrzuwixprvop5id:18141",
-    "4471cec2b77b1608ff26b8695281e0b4ab35bad7f882eeaab043398644094a6c::/onion3/fqmbme5qvagh2tv722nrnwwcd2ooa4aqr43mxgiozo2yq33w74bop5qd:18141",
-    "e427d6007cb46e8c311fc75d2daaa95898a6162ce6a29cb4ab257c2ef70bfd62::/onion3/glicssekriwwwvfm2o5sk2mari4czbd7eklv4lsdn4wmy4ljss2t7zqd:18141",
-    "021baaee838a6c7a21ae3ed74f1cbb27e46351b78f0e00810c1a344a9042754d::/onion3/p2z2ptouqgi3agmw62uhz2tambqfzfdtetrfw443of3jnkkiw44e2zqd:18141",
-    "002a5b9d129401ca250d120b126caf067f8eb7a616252e630b6974da48def71a::/onion3/cldbbow3yzgxkvz4g2apoclrkbvg3mjxdvonoaeej3tarhlzkluodeyd:18141",
+    # "0c3fe3c23866ed3827e1cd72aae0c9d364d860d597993104e90d9a9401e52f05::/onion3/2m2xnylrsqbaozsndkbmfisxxbwh2vgvs6oyfak2qah4snnxykrf7zad:18141",
+    # "b6b2c8a997ba3500d44b64a3b47203d922d614c01ebd9cad5563dc59086f9938::/onion3/kxtcwaoan6wvdl4wltguo4omo2san2ge727cfoc65hrzuwixprvop5id:18141",
+    # "4471cec2b77b1608ff26b8695281e0b4ab35bad7f882eeaab043398644094a6c::/onion3/fqmbme5qvagh2tv722nrnwwcd2ooa4aqr43mxgiozo2yq33w74bop5qd:18141",
+    # "e427d6007cb46e8c311fc75d2daaa95898a6162ce6a29cb4ab257c2ef70bfd62::/onion3/glicssekriwwwvfm2o5sk2mari4czbd7eklv4lsdn4wmy4ljss2t7zqd:18141",
+    # "021baaee838a6c7a21ae3ed74f1cbb27e46351b78f0e00810c1a344a9042754d::/onion3/p2z2ptouqgi3agmw62uhz2tambqfzfdtetrfw443of3jnkkiw44e2zqd:18141",
+    # "002a5b9d129401ca250d120b126caf067f8eb7a616252e630b6974da48def71a::/onion3/cldbbow3yzgxkvz4g2apoclrkbvg3mjxdvonoaeej3tarhlzkluodeyd:18141",
 ]
 
 # This allowlist provides a method to force syncing from any known nodes you may choose, for example if you have a
