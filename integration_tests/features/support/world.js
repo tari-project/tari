@@ -90,8 +90,13 @@ class CustomWorld {
     this.proxies[name] = process;
   }
 
-  async createAndAddWallet(name, nodeAddresses) {
-    const wallet = new WalletProcess(name, false, {}, this.logFilePathWallet);
+  async createAndAddWallet(name, nodeAddresses, options = {}) {
+    const wallet = new WalletProcess(
+      name,
+      false,
+      options,
+      this.logFilePathWallet
+    );
     wallet.setPeerSeeds([nodeAddresses]);
     await wallet.startNew();
 
@@ -109,6 +114,10 @@ class CustomWorld {
 
   addWallet(name, process) {
     this.wallets[name] = process;
+  }
+
+  addWalletPubkey(name, pubkey) {
+    this.walletPubkeys[name] = pubkey;
   }
 
   addOutput(name, output) {

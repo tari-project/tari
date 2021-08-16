@@ -393,6 +393,33 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         Ok(Response::new(resp))
     }
+
+    async fn cancel_transaction(
+        &self,
+        request: Request<tari_rpc::CancelTransactionRequest>,
+    ) -> Result<Response<tari_rpc::CancelTransactionResponse>, Status> {
+        let message = request.into_inner();
+        debug!(
+            target: LOG_TARGET,
+            "Incoming gRPC request to Cancel Transaction (TxId: {})", message.tx_id,
+        );
+        let mut transaction_service = self.get_transaction_service();
+
+        match transaction_service.cancel_transaction(message.tx_id).await {
+            Ok(_) => {
+                return Ok(Response::new(tari_rpc::CancelTransactionResponse {
+                    is_success: true,
+                    failure_message: "".to_string(),
+                }))
+            },
+            Err(e) => {
+                return Ok(Response::new(tari_rpc::CancelTransactionResponse {
+                    is_success: false,
+                    failure_message: e.to_string(),
+                }))
+            },
+        }
+    }
 }
 
 fn convert_wallet_transaction_into_transaction_info(

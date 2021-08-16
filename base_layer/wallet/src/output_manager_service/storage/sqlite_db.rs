@@ -33,7 +33,7 @@ use crate::{
                 PendingTransactionOutputs,
                 WriteOperation,
             },
-            models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
+            models::{DbUnblindedOutput, KnownOneSidedPaymentScript, OutputStatus},
         },
         TxId,
     },
@@ -105,6 +105,7 @@ impl OutputManagerSqliteDatabase {
     }
 }
 impl OutputManagerBackend for OutputManagerSqliteDatabase {
+    #[allow(clippy::cognitive_complexity)]
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, OutputManagerStorageError> {
         let conn = self.database_connection.acquire_lock();
 
@@ -135,6 +136,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     None
                 },
             },
+
             DbKey::AnyOutputByCommitment(commitment) => {
                 match OutputSql::find_by_commitment(&commitment.to_vec(), &(*conn)) {
                     Ok(mut o) => {
@@ -172,6 +174,18 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     };
                     None
                 },
+            },
+            DbKey::OutputsByTxIdAndStatus(tx_id, status) => {
+                let mut outputs = OutputSql::find_by_tx_id_and_status(*tx_id, *status, &(*conn))?;
+                for o in outputs.iter_mut() {
+                    self.decrypt_if_necessary(o)?;
+                }
+                Some(DbValue::AnyOutputs(
+                    outputs
+                        .iter()
+                        .map(|o| DbUnblindedOutput::try_from(o.clone()))
+                        .collect::<Result<Vec<_>, _>>()?,
+                ))
             },
             DbKey::UnspentOutputs => {
                 let mut outputs = OutputSql::index_status(OutputStatus::Unspent, &(*conn))?;
@@ -273,6 +287,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(result)
     }
 
+    #[allow(clippy::cognitive_complexity)]
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError> {
         let conn = self.database_connection.acquire_lock();
 
@@ -336,6 +351,20 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     let mut script_sql = KnownOneSidedPaymentScriptSql::from(script);
                     self.encrypt_if_necessary(&mut script_sql)?;
                     script_sql.commit(&(*conn))?
+                },
+                DbKeyValuePair::UpdateOutputStatus(commitment, status) => {
+                    let output = OutputSql::find_by_commitment(&commitment.to_vec(), &(*conn))?;
+                    output.update(
+                        UpdateOutput {
+                            status: Some(status),
+                            tx_id: None,
+                            spending_key: None,
+                            script_private_key: None,
+                            metadata_signature_nonce: None,
+                            metadata_signature_u_key: None,
+                        },
+                        &(*conn),
+                    )?;
                 },
             },
             WriteOperation::Remove(k) => match k {
@@ -409,6 +438,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 DbKey::InvalidOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::TimeLockedUnspentOutputs(_) => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::KnownOneSidedPaymentScripts => return Err(OutputManagerStorageError::OperationNotSupported),
+                DbKey::OutputsByTxIdAndStatus(_, _) => return Err(OutputManagerStorageError::OperationNotSupported),
             },
         }
 
@@ -840,17 +870,6 @@ fn pending_transaction_outputs_from_sql_outputs(
     })
 }
 
-/// The status of a given output
-#[derive(PartialEq)]
-enum OutputStatus {
-    Unspent,
-    Spent,
-    EncumberedToBeReceived,
-    EncumberedToBeSpent,
-    Invalid,
-    CancelledInbound,
-}
-
 impl TryFrom<i32> for OutputStatus {
     type Error = OutputManagerStorageError;
 
@@ -1009,6 +1028,17 @@ impl OutputSql {
         };
 
         Ok(request.first::<OutputSql>(conn)?)
+    }
+
+    pub fn find_by_tx_id_and_status(
+        tx_id: TxId,
+        status: OutputStatus,
+        conn: &SqliteConnection,
+    ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        Ok(outputs::table
+            .filter(outputs::tx_id.eq(Some(tx_id as i64)))
+            .filter(outputs::status.eq(status as i32))
+            .load(conn)?)
     }
 
     /// Find outputs via tx_id that are encumbered. Any outputs that are encumbered cannot be marked as spent.

@@ -280,6 +280,9 @@ Given(
     wallet.setPeerSeeds([this.seeds[seedName].peerAddress()]);
     await wallet.startNew();
     this.addWallet(walletName, wallet);
+    let walletClient = await this.getWallet(walletName).connectClient();
+    let walletInfo = await walletClient.identify();
+    this.addWalletPubkey(walletName, walletInfo.public_key);
   }
 );
 
@@ -296,6 +299,9 @@ Given(
     wallet.setPeerSeeds([this.seedAddresses()]);
     await wallet.startNew();
     this.addWallet(name, wallet);
+    let walletClient = await this.getWallet(name).connectClient();
+    let walletInfo = await walletClient.identify();
+    this.addWalletPubkey(name, walletInfo.public_key);
   }
 );
 
@@ -344,6 +350,9 @@ Given(
     wallet.setPeerSeeds([this.seedAddresses()]);
     await wallet.startNew();
     this.addWallet(name, wallet);
+    let walletClient = await this.getWallet(name).connectClient();
+    let walletInfo = await walletClient.identify();
+    this.addWalletPubkey(name, walletInfo.public_key);
   }
 );
 
@@ -354,35 +363,12 @@ Given(
     // mechanism: DirectOnly, StoreAndForwardOnly, DirectAndStoreAndForward
     const promises = [];
     for (let i = 0; i < n; i++) {
-      if (i < 10) {
-        const wallet = new WalletProcess(
-          "Wallet_0" + String(i),
-          false,
-          { routingMechanism: mechanism },
-          this.logFilePathWallet
-        );
-        console.log(wallet.name, wallet.options);
-        wallet.setPeerSeeds([this.seedAddresses()]);
-        promises.push(
-          wallet
-            .startNew()
-            .then(() => this.addWallet("Wallet_0" + String(i), wallet))
-        );
-      } else {
-        const wallet = new WalletProcess(
-          "Wallet_0" + String(i),
-          false,
-          { routingMechanism: mechanism },
-          this.logFilePathWallet
-        );
-        console.log(wallet.name, wallet.options);
-        wallet.setPeerSeeds([this.seedAddresses()]);
-        promises.push(
-          wallet
-            .startNew()
-            .then(() => this.addWallet("Wallet_" + String(i), wallet))
-        );
-      }
+      let name = "Wallet_" + String(n).padStart(2, "0");
+      promises.push(
+        this.createAndAddWallet(name, [this.seedAddresses()], {
+          routingMechanism: mechanism,
+        })
+      );
     }
     await Promise.all(promises);
   }
@@ -409,14 +395,22 @@ Given(
       seedWords
     );
     walletB.setPeerSeeds([this.seedAddresses()]);
-    walletB.startNew(); // Do not 'await' here
+    await walletB.startNew();
     this.addWallet(walletNameB, walletB);
+    let walletClient = await this.getWallet(walletNameB).connectClient();
+    let walletInfo = await walletClient.identify();
+    this.addWalletPubkey(walletNameB, walletInfo.public_key);
   }
 );
 
 When(/I stop wallet (.*)/, async function (walletName) {
   let wallet = this.getWallet(walletName);
   await wallet.stop();
+});
+
+When(/I start wallet (.*)/, async function (walletName) {
+  let wallet = this.getWallet(walletName);
+  await wallet.start();
 });
 
 When(/I restart wallet (.*)/, async function (walletName) {
@@ -700,7 +694,7 @@ Then("Proxy response for block header by hash is valid", function () {
   assert(lastResult.result.status, "OK");
 });
 
-When(/I start (.*)/, { timeout: 20 * 1000 }, async function (name) {
+When(/I start base node (.*)/, { timeout: 20 * 1000 }, async function (name) {
   await this.startNode(name);
 });
 
@@ -1423,7 +1417,8 @@ Then(
 
 async function send_tari(
   sourceWallet,
-  destWallet,
+  destWalletName,
+  destWalletPubkey,
   tariAmount,
   feePerGram,
   oneSided = false,
@@ -1431,21 +1426,18 @@ async function send_tari(
   printMessage = true
 ) {
   const sourceWalletClient = await sourceWallet.connectClient();
-  const destClient = await destWallet.connectClient();
-  const destInfo = await destClient.identify();
-  if (message === "") {
-    message =
-      sourceWallet.name +
+  console.log(
+    sourceWallet.name +
       " sending " +
       tariAmount +
       "uT one-sided(" +
       oneSided +
       ") to " +
-      destWallet.name +
+      destWalletName +
       " `" +
-      destInfo.public_key +
-      "`";
-  }
+      destWalletPubkey +
+      "`"
+  );
   if (printMessage) {
     console.log(message);
   }
@@ -1461,7 +1453,7 @@ async function send_tari(
             lastResult = await sourceWalletClient.transfer({
               recipients: [
                 {
-                  address: destInfo.public_key,
+                  address: destWalletPubkey,
                   amount: tariAmount,
                   fee_per_gram: feePerGram,
                   message: message,
@@ -1472,7 +1464,7 @@ async function send_tari(
             lastResult = await sourceWalletClient.transfer({
               recipients: [
                 {
-                  address: destInfo.public_key,
+                  address: destWalletPubkey,
                   amount: tariAmount,
                   fee_per_gram: feePerGram,
                   message: message,
@@ -1521,12 +1513,12 @@ When(
     const sourceClient = await sourceWallet.connectClient();
     const sourceInfo = await sourceClient.identify();
 
-    const destWallet = this.getWallet(dest);
-    const destClient = await destWallet.connectClient();
-    const destInfo = await destClient.identify();
+    const destPublicKey = this.getWalletPubkey(dest);
+
     this.lastResult = await send_tari(
       sourceWallet,
-      destWallet,
+      dest,
+      destPublicKey,
       tariAmount,
       feePerGram
     );
@@ -1536,7 +1528,7 @@ When(
       this.lastResult.results[0].transaction_id
     );
     this.addTransaction(
-      destInfo.public_key,
+      destPublicKey,
       this.lastResult.results[0].transaction_id
     );
     console.log(
@@ -1561,7 +1553,8 @@ When(
     for (let i = 0; i < number; i++) {
       this.lastResult = await send_tari(
         this.getWallet(source),
-        this.getWallet(dest),
+        destInfo.name,
+        destInfo.public_key,
         tariAmount,
         fee
       );
@@ -1595,7 +1588,8 @@ When(
       const destInfo = await destClient.identify();
       this.lastResult = await send_tari(
         this.getWallet(source),
-        this.getWallet(wallet),
+        destInfo.name,
+        destInfo.public_key,
         tariAmount,
         fee
       );
@@ -1718,7 +1712,8 @@ When(
     const sourceInfo = await sourceClient.identify();
     this.lastResult = await send_tari(
       this.getWallet(source),
-      this.getWallet(source),
+      sourceInfo.name,
+      sourceInfo.public_key,
       tariAmount,
       feePerGram
     );
@@ -1779,23 +1774,52 @@ When(
   /I send a one-sided transaction of (.*) uT from (.*) to (.*) at fee (.*)/,
   { timeout: 65 * 1000 },
   async function (amount, source, dest, feePerGram) {
-    let wallet = this.getWallet(source);
-    let sourceClient = await wallet.connectClient();
+    const sourceWallet = this.getWallet(source);
+    const sourceClient = await sourceWallet.connectClient();
+    const sourceInfo = await sourceClient.identify();
+
+    const destPublicKey = this.getWalletPubkey(dest);
 
     const oneSided = true;
     const lastResult = await send_tari(
-      this.getWallet(source),
-      this.getWallet(dest),
+      sourceWallet,
+      dest,
+      destPublicKey,
       amount,
       feePerGram,
       oneSided
     );
     expect(lastResult.results[0].is_success).to.equal(true);
-    const sourceInfo = await sourceClient.identify();
+
     this.addTransaction(
       sourceInfo.public_key,
       lastResult.results[0].transaction_id
     );
+  }
+);
+
+When(
+  /I cancel last transaction in wallet (.*)/,
+  { timeout: 25 * 5 * 1000 },
+  async function (walletName) {
+    const wallet = this.getWallet(walletName);
+    const walletClient = await wallet.connectClient();
+
+    let lastTxId = this.lastResult.results[0].transaction_id;
+    console.log(
+      "Attempting to cancel transaction ",
+      lastTxId,
+      "from wallet",
+      walletName
+    );
+
+    let result = await walletClient.cancelTransaction(lastTxId);
+    console.log(
+      "Cancellation successful? ",
+      result.success,
+      result.failure_message
+    );
+    assert(result.success, true);
   }
 );
 
@@ -1957,6 +1981,36 @@ Then(
         expect(transactionPending).to.equal(true);
       }
     }
+  }
+);
+
+Then(
+  /wallet (.*) detects last transaction is Pending/,
+  { timeout: 3800 * 1000 },
+  async function (walletName) {
+    const wallet = this.getWallet(walletName);
+    const walletClient = await wallet.connectClient();
+
+    let lastTxId = this.lastResult.results[0].transaction_id;
+    console.log(
+      "Waiting for Transaction ",
+      lastTxId,
+      "to be pending in wallet",
+      walletName
+    );
+
+    await waitFor(
+      async () => walletClient.isTransactionPending(lastTxId),
+      true,
+      3700 * 1000,
+      5 * 1000,
+      5
+    );
+    const transactionPending = await walletClient.isTransactionPending(
+      lastTxId
+    );
+
+    expect(transactionPending).to.equal(true);
   }
 );
 
@@ -2869,7 +2923,8 @@ When(
     for (let i = 0; i < numTransactions; i++) {
       const result = await send_tari(
         this.getWallet(sourceWallet),
-        this.getWallet(destWallet),
+        destInfo.name,
+        destInfo.public_key,
         amount,
         feePerGram,
         false,

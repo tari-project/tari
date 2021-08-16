@@ -50,6 +50,8 @@ service Wallet {
     rpc GetNetworkStatus(Empty) returns (NetworkStatusResponse);
     // List currently connected peers
     rpc ListConnectedPeers(Empty) returns (ListConnectedPeersResponse);
+    // Cancel pending transaction
+    rpc CancelTransaction (CancelTransactionRequest) returns (CancelTransactionResponse);
 }
 
 message GetVersionRequest { }
@@ -185,3 +187,11 @@ message ImportUtxosResponse {
     repeated uint64 tx_ids = 1;
 }
 
+message CancelTransactionRequest {
+    uint64 tx_id = 1;
+}
+
+message CancelTransactionResponse {
+    bool is_success = 1;
+    string failure_message = 2;
+}

@@ -377,7 +377,11 @@ where
                         "Handling Transaction Finalized Message, Trace: {}",
                         msg.dht_header.message_tag.as_value()
                     );
-                    let result = self.accept_finalized_transaction(origin_public_key, inner_msg, ).await;
+                    let result = self.accept_finalized_transaction(
+                        origin_public_key,
+                        inner_msg,
+                        &mut receive_transaction_protocol_handles,
+                    ).await;
 
                     match result {
                         Err(TransactionServiceError::TransactionDoesNotExistError) => {
@@ -1300,6 +1304,7 @@ where
         &mut self,
         source_pubkey: CommsPublicKey,
         finalized_transaction: proto::TransactionFinalizedMessage,
+        join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
     ) -> Result<(), TransactionServiceError> {
         let tx_id = finalized_transaction.tx_id;
         let transaction: Transaction = finalized_transaction
@@ -1317,7 +1322,39 @@ where
             })?;
 
         let sender = match self.finalized_transaction_senders.get_mut(&tx_id) {
-            None => return Err(TransactionServiceError::TransactionDoesNotExistError),
+            None => {
+                // First check if perhaps we know about this inbound transaction but it was cancelled
+                match self.db.get_cancelled_pending_inbound_transaction(tx_id).await {
+                    Ok(t) => {
+                        if t.source_public_key != source_pubkey {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Received Finalized Transaction for a cancelled pending Inbound Transaction (TxId: \
+                                 {}) but Source Public Key did not match",
+                                tx_id
+                            );
+                            return Err(TransactionServiceError::TransactionDoesNotExistError);
+                        }
+                        info!(
+                            target: LOG_TARGET,
+                            "Received Finalized Transaction for a cancelled pending Inbound Transaction (TxId: {}). \
+                             Restarting protocol",
+                            tx_id
+                        );
+                        self.db.uncancel_pending_transaction(tx_id).await?;
+                        self.output_manager_service
+                            .reinstate_cancelled_inbound_transaction(tx_id)
+                            .await?;
+
+                        self.restart_receive_transaction_protocol(tx_id, source_pubkey.clone(), join_handles);
+                        match self.finalized_transaction_senders.get_mut(&tx_id) {
+                            None => return Err(TransactionServiceError::TransactionDoesNotExistError),
+                            Some(s) => s,
+                        }
+                    },
+                    Err(_) => return Err(TransactionServiceError::TransactionDoesNotExistError),
+                }
+            },
             Some(s) => s,
         };
 
@@ -1401,32 +1438,41 @@ where
     ) -> Result<(), TransactionServiceError> {
         let inbound_txs = self.db.get_pending_inbound_transactions().await?;
         for (tx_id, tx) in inbound_txs {
-            if !self.pending_transaction_reply_senders.contains_key(&tx_id) {
-                debug!(
-                    target: LOG_TARGET,
-                    "Restarting listening for Transaction Finalize for Pending Inbound Transaction TxId: {}", tx_id
-                );
-                let (tx_finalized_sender, tx_finalized_receiver) = mpsc::channel(100);
-                let (cancellation_sender, cancellation_receiver) = oneshot::channel();
-                self.finalized_transaction_senders.insert(tx_id, tx_finalized_sender);
-                self.receiver_transaction_cancellation_senders
-                    .insert(tx_id, cancellation_sender);
-                let protocol = TransactionReceiveProtocol::new(
-                    tx_id,
-                    tx.source_public_key,
-                    TransactionSenderMessage::None,
-                    TransactionReceiveProtocolStage::WaitForFinalize,
-                    self.resources.clone(),
-                    tx_finalized_receiver,
-                    cancellation_receiver,
-                );
-
-                let join_handle = tokio::spawn(protocol.execute());
-                join_handles.push(join_handle);
-            }
+            self.restart_receive_transaction_protocol(tx_id, tx.source_public_key.clone(), join_handles);
         }
 
         Ok(())
+    }
+
+    fn restart_receive_transaction_protocol(
+        &mut self,
+        tx_id: TxId,
+        source_public_key: CommsPublicKey,
+        join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
+    ) {
+        if !self.pending_transaction_reply_senders.contains_key(&tx_id) {
+            debug!(
+                target: LOG_TARGET,
+                "Restarting listening for Transaction Finalize for Pending Inbound Transaction TxId: {}", tx_id
+            );
+            let (tx_finalized_sender, tx_finalized_receiver) = mpsc::channel(100);
+            let (cancellation_sender, cancellation_receiver) = oneshot::channel();
+            self.finalized_transaction_senders.insert(tx_id, tx_finalized_sender);
+            self.receiver_transaction_cancellation_senders
+                .insert(tx_id, cancellation_sender);
+            let protocol = TransactionReceiveProtocol::new(
+                tx_id,
+                source_public_key,
+                TransactionSenderMessage::None,
+                TransactionReceiveProtocolStage::WaitForFinalize,
+                self.resources.clone(),
+                tx_finalized_receiver,
+                cancellation_receiver,
+            );
+
+            let join_handle = tokio::spawn(protocol.execute());
+            join_handles.push(join_handle);
+        }
     }
 
     /// Add a base node public key to the list that will be used to broadcast transactions and monitor the base chain

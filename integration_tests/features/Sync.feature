@@ -59,10 +59,10 @@ Feature: Block Sync
     And mining node MINER1 mines 5 blocks with min difficulty 1 and max difficulty 1
     Then node NODE1 is at height 10
     Given I stop node NODE1
-    And I start NODE2
+    And I start base node NODE2
     And mining node MINER2 mines 7 blocks with min difficulty 11 and max difficulty 100000
     Then node NODE2 is at height 12
-    When I start NODE1
+    When I start base node NODE1
     Then all nodes are on the same chain at height 12
 
   @critical @reorg @long-running
@@ -79,10 +79,10 @@ Feature: Block Sync
     And mining node MINER1 mines 1001 blocks with min difficulty 1 and max difficulty 10
     Then node NODE1 is at height 1006
     Given I stop node NODE1
-    And I start NODE2
+    And I start base node NODE2
     And mining node MINER2 mines 1500 blocks with min difficulty 11 and max difficulty 100000
     Then node NODE2 is at height 1505
-    When I start NODE1
+    When I start base node NODE1
     Then all nodes are on the same chain at height 1505
 
   @critical
@@ -114,7 +114,7 @@ Feature: Block Sync
     When I mine 5 blocks on NODE2
     Then node NODE2 is at height 5
     Then node PNODE2 is at height 40
-    When I start NODE1
+    When I start base node NODE1
     # We need for node to boot up and supply node 2 with blocks
     And I connect node NODE2 to node NODE1 and wait 60 seconds
     Then all nodes are at height 40
@@ -129,7 +129,7 @@ Feature: Block Sync
     And I stop node SYNCER
     When mining node MINER mines <X1> blocks with min difficulty 1 and max difficulty 9999999999
     Then node SEED is at height <X1>
-    When I start SYNCER
+    When I start base node SYNCER
     # Try to mine much faster than block sync, but still producing a lower accumulated difficulty
     And mining node MINER2 mines <Y1> blocks with min difficulty 1 and max difficulty 10
     # Allow reorg to filter through

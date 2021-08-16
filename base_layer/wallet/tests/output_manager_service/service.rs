@@ -84,6 +84,7 @@ use tari_wallet::{
     types::ValidationRetryStrategy,
 };
 
+use tari_wallet::output_manager_service::storage::models::OutputStatus;
 use tokio::{
     runtime::Runtime,
     sync::{broadcast, broadcast::channel},
@@ -858,6 +859,59 @@ fn cancel_transaction() {
         .unwrap();
 
     assert_eq!(runtime.block_on(oms.get_unspent_outputs()).unwrap().len(), num_outputs);
+}
+
+#[test]
+fn cancel_transaction_and_reinstate_inbound_tx() {
+    let mut runtime = Runtime::new().unwrap();
+
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
+
+    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(&mut runtime, backend.clone(), true);
+
+    let value = MicroTari::from(5000);
+    let (tx_id, sender_message) = generate_sender_transaction_message(value);
+    let _rtp = runtime.block_on(oms.get_recipient_transaction(sender_message)).unwrap();
+    assert_eq!(runtime.block_on(oms.get_unspent_outputs()).unwrap().len(), 0);
+
+    let pending_txs = runtime.block_on(oms.get_pending_transactions()).unwrap();
+
+    assert_eq!(pending_txs.len(), 1);
+
+    let output = pending_txs
+        .get(&tx_id)
+        .unwrap()
+        .outputs_to_be_received
+        .first()
+        .unwrap()
+        .clone();
+
+    runtime.block_on(oms.cancel_transaction(tx_id)).unwrap();
+
+    let cancelled_output = backend
+        .fetch(&DbKey::OutputsByTxIdAndStatus(tx_id, OutputStatus::CancelledInbound))
+        .unwrap()
+        .unwrap();
+
+    if let DbValue::AnyOutputs(o) = cancelled_output {
+        let o = o.first().expect("Should be one output in here");
+        assert_eq!(o.commitment, output.commitment);
+    } else {
+        panic!("Should have found cancelled output");
+    }
+
+    assert_eq!(runtime.block_on(oms.get_pending_transactions()).unwrap().len(), 0);
+
+    runtime
+        .block_on(oms.reinstate_cancelled_inbound_transaction(tx_id))
+        .unwrap();
+
+    assert_eq!(runtime.block_on(oms.get_pending_transactions()).unwrap().len(), 1);
+
+    let balance = runtime.block_on(oms.get_balance()).unwrap();
+
+    assert_eq!(balance.pending_incoming_balance, value);
 }
 
 #[test]

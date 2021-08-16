@@ -105,3 +105,14 @@ impl PartialEq for KnownOneSidedPaymentScript {
         self.script_hash == other.script_hash
     }
 }
+
+/// The status of a given output
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum OutputStatus {
+    Unspent,
+    Spent,
+    EncumberedToBeReceived,
+    EncumberedToBeSpent,
+    Invalid,
+    CancelledInbound,
+}

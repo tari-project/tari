@@ -39,6 +39,7 @@ function Client(address) {
     "importUtxos",
     "listConnectedPeers",
     "getNetworkStatus",
+    "cancelTransaction",
   ];
 
   this.waitForReady = (...args) => {

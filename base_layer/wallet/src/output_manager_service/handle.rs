@@ -76,6 +76,7 @@ pub enum OutputManagerRequest {
     ScanForRecoverableOutputs(Vec<TransactionOutput>),
     ScanOutputs(Vec<TransactionOutput>),
     AddKnownOneSidedPaymentScript(KnownOneSidedPaymentScript),
+    ReinstateCancelledInboundTx(TxId),
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -115,6 +116,7 @@ impl fmt::Display for OutputManagerRequest {
             ScanForRecoverableOutputs(_) => write!(f, "ScanForRecoverableOutputs"),
             ScanOutputs(_) => write!(f, "ScanRewindAndImportOutputs"),
             AddKnownOneSidedPaymentScript(_) => write!(f, "AddKnownOneSidedPaymentScript"),
+            ReinstateCancelledInboundTx(_) => write!(f, "ReinstateCancelledInboundTx"),
         }
     }
 }
@@ -149,6 +151,7 @@ pub enum OutputManagerResponse {
     RewoundOutputs(Vec<UnblindedOutput>),
     ScanOutputs(Vec<UnblindedOutput>),
     AddKnownOneSidedPaymentScript,
+    ReinstatedCancelledInboundTx,
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -542,6 +545,17 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::PayToSelfTransaction(outputs) => Ok(outputs),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn reinstate_cancelled_inbound_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::ReinstateCancelledInboundTx(tx_id))
+            .await??
+        {
+            OutputManagerResponse::ReinstatedCancelledInboundTx => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
