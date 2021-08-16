@@ -223,11 +223,18 @@ impl DbTransaction {
         self
     }
 
-    pub fn set_best_block(&mut self, height: u64, hash: HashOutput, accumulated_difficulty: u128) -> &mut Self {
+    pub fn set_best_block(
+        &mut self,
+        height: u64,
+        hash: HashOutput,
+        accumulated_difficulty: u128,
+        expected_prev_best_block: HashOutput,
+    ) -> &mut Self {
         self.operations.push(WriteOperation::SetBestBlock {
             height,
             hash,
             accumulated_difficulty,
+            expected_prev_best_block,
         });
         self
     }
@@ -323,6 +330,7 @@ pub enum WriteOperation {
         height: u64,
         hash: HashOutput,
         accumulated_difficulty: u128,
+        expected_prev_best_block: HashOutput,
     },
     SetPruningHorizonConfig(u64),
     SetPrunedHeight {
@@ -421,6 +429,7 @@ impl fmt::Display for WriteOperation {
                 height,
                 hash,
                 accumulated_difficulty,
+                expected_prev_best_block: _,
             } => write!(
                 f,
                 "Update best block to height:{} ({}) with difficulty: {}",

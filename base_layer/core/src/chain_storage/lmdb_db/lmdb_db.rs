@@ -244,7 +244,7 @@ impl LMDBDatabase {
                         &self.orphan_chain_tips_db,
                         &hash,
                         &hash,
-                        "orphan_chain_tips",
+                        "orphan_chain_tips_db",
                     )?;
                 },
                 DeleteBlock(hash) => {
@@ -299,7 +299,29 @@ impl LMDBDatabase {
                     height,
                     hash,
                     accumulated_difficulty,
+                    expected_prev_best_block,
                 } => {
+                    // for security we check that the best block does exist, and we check the previous value
+                    // we dont want to check this if the prev block has never been set, this means a empty hash of 32
+                    // bytes.
+                    if height > 0 {
+                        let prev = fetch_best_block(&write_txn, &self.metadata_db)?;
+                        if expected_prev_best_block != prev {
+                            return Err(ChainStorageError::InvalidOperation(format!(
+                                "There was a change in best_block, the best block is suppose to be: ({}), but it \
+                                 currently is: ({})",
+                                expected_prev_best_block.to_hex(),
+                                prev.to_hex(),
+                            )));
+                        };
+                    }
+                    if !lmdb_exists(&write_txn, &self.block_hashes_db, hash.as_slice())? {
+                        // we dont care about the header or the height, we just want to know its there.
+                        return Err(ChainStorageError::InvalidOperation(format!(
+                            "There is no Blockheader hash ({}) in db",
+                            expected_prev_best_block.to_hex(),
+                        )));
+                    };
                     self.set_metadata(&write_txn, MetadataKey::ChainHeight, MetadataValue::ChainHeight(height))?;
                     self.set_metadata(&write_txn, MetadataKey::BestBlock, MetadataValue::BestBlock(hash))?;
                     self.set_metadata(
