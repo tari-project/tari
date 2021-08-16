@@ -31,6 +31,8 @@ use tari_core::{
         proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
         rpc::BaseNodeWalletService,
     },
+    blocks::BlockHeader,
+    proto,
     proto::{
         base_node::{
             ChainMetadata,
@@ -86,6 +88,7 @@ pub struct BaseNodeWalletRpcMockState {
     fetch_utxos_calls: Arc<Mutex<Vec<Vec<Vec<u8>>>>>,
     response_delay: Arc<Mutex<Option<Duration>>>,
     rpc_status_error: Arc<Mutex<Option<RpcStatus>>>,
+    get_header_response: Arc<Mutex<Option<BlockHeader>>>,
     synced: Arc<Mutex<bool>>,
     utxos: Arc<Mutex<Vec<TransactionOutput>>>,
 }
@@ -121,6 +124,7 @@ impl BaseNodeWalletRpcMockState {
             fetch_utxos_calls: Arc::new(Mutex::new(Vec::new())),
             response_delay: Arc::new(Mutex::new(None)),
             rpc_status_error: Arc::new(Mutex::new(None)),
+            get_header_response: Arc::new(Mutex::new(None)),
             synced: Arc::new(Mutex::new(true)),
             utxos: Arc::new(Mutex::new(Vec::new())),
         }
@@ -457,6 +461,15 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         let tip_info_response_lock = acquire_lock!(self.state.tip_info_response);
 
         Ok(Response::new(tip_info_response_lock.clone()))
+    }
+
+    async fn get_header(&self, _: Request<u64>) -> Result<Response<proto::core::BlockHeader>, RpcStatus> {
+        let lock = acquire_lock!(self.state.get_header_response);
+        let resp = lock
+            .as_ref()
+            .cloned()
+            .ok_or_else(|| RpcStatus::not_found("get_header_response set to None"))?;
+        Ok(Response::new(resp.into()))
     }
 }
 

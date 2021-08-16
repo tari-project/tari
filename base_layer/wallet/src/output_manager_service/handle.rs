@@ -113,7 +113,7 @@ impl fmt::Display for OutputManagerRequest {
             GetPublicRewindKeys => write!(f, "GetPublicRewindKeys"),
             FeeEstimate(_) => write!(f, "FeeEstimate"),
             ScanForRecoverableOutputs(_) => write!(f, "ScanForRecoverableOutputs"),
-            ScanOutputs(_) => write!(f, "ScanRewindAndImportOutputs"),
+            ScanOutputs(_) => write!(f, "ScanOutputs"),
             AddKnownOneSidedPaymentScript(_) => write!(f, "AddKnownOneSidedPaymentScript"),
         }
     }

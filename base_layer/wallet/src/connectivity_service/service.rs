@@ -36,7 +36,7 @@ use tari_comms::{
     peer_manager::NodeId,
     protocol::rpc::{RpcClientLease, RpcClientPool},
 };
-use tari_core::base_node::rpc;
+use tari_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient};
 use tokio::time;
 
 const LOG_TARGET: &str = "wallet::connectivity";
@@ -54,9 +54,14 @@ pub struct WalletConnectivityService {
     request_stream: Fuse<mpsc::Receiver<WalletConnectivityRequest>>,
     connectivity: ConnectivityRequester,
     base_node_watch: Watch<Option<NodeId>>,
-    base_node_wallet_rpc_client_pool: Option<RpcClientPool<rpc::BaseNodeWalletRpcClient>>,
+    pools: Option<ClientPoolContainer>,
     online_status_watch: Watch<OnlineStatus>,
-    pending_base_node_rpc_requests: Vec<oneshot::Sender<RpcClientLease<rpc::BaseNodeWalletRpcClient>>>,
+    pending_requests: Vec<ReplyOneshot>,
+}
+
+struct ClientPoolContainer {
+    pub base_node_wallet_rpc_client: RpcClientPool<BaseNodeWalletRpcClient>,
+    pub base_node_sync_rpc_client: RpcClientPool<BaseNodeSyncRpcClient>,
 }
 
 impl WalletConnectivityService {
@@ -72,8 +77,8 @@ impl WalletConnectivityService {
             request_stream: request_stream.fuse(),
             connectivity,
             base_node_watch,
-            base_node_wallet_rpc_client_pool: None,
-            pending_base_node_rpc_requests: Vec::new(),
+            pools: None,
+            pending_requests: Vec::new(),
             online_status_watch,
         }
     }
@@ -100,7 +105,10 @@ impl WalletConnectivityService {
         use WalletConnectivityRequest::*;
         match request {
             ObtainBaseNodeWalletRpcClient(reply) => {
-                self.handle_get_base_node_wallet_rpc_client(reply).await;
+                self.handle_pool_request(reply.into()).await;
+            },
+            ObtainBaseNodeSyncRpcClient(reply) => {
+                self.handle_pool_request(reply.into()).await;
             },
 
             SetBaseNode(peer) => {
@@ -109,12 +117,20 @@ impl WalletConnectivityService {
         }
     }
 
+    async fn handle_pool_request(&mut self, reply: ReplyOneshot) {
+        use ReplyOneshot::*;
+        match reply {
+            WalletRpc(tx) => self.handle_get_base_node_wallet_rpc_client(tx).await,
+            SyncRpc(tx) => self.handle_get_base_node_sync_rpc_client(tx).await,
+        }
+    }
+
     async fn handle_get_base_node_wallet_rpc_client(
         &mut self,
-        reply: oneshot::Sender<RpcClientLease<rpc::BaseNodeWalletRpcClient>>,
+        reply: oneshot::Sender<RpcClientLease<BaseNodeWalletRpcClient>>,
     ) {
-        match self.base_node_wallet_rpc_client_pool {
-            Some(ref pool) => match pool.get().await {
+        match self.pools {
+            Some(ref pools) => match pools.base_node_wallet_rpc_client.get().await {
                 Ok(client) => {
                     let _ = reply.send(client);
                 },
@@ -124,16 +140,47 @@ impl WalletConnectivityService {
                         "Base node connection failed: {}. Reconnecting...", e
                     );
                     self.trigger_reconnect();
-                    self.pending_base_node_rpc_requests.push(reply);
+                    self.pending_requests.push(reply.into());
                 },
             },
             None => {
-                self.pending_base_node_rpc_requests.push(reply);
+                self.pending_requests.push(reply.into());
                 if self.base_node_watch.borrow().is_none() {
                     warn!(
                         target: LOG_TARGET,
                         "{} requests are waiting for base node to be set",
-                        self.pending_base_node_rpc_requests.len()
+                        self.pending_requests.len()
+                    );
+                }
+            },
+        }
+    }
+
+    async fn handle_get_base_node_sync_rpc_client(
+        &mut self,
+        reply: oneshot::Sender<RpcClientLease<BaseNodeSyncRpcClient>>,
+    ) {
+        match self.pools {
+            Some(ref pools) => match pools.base_node_sync_rpc_client.get().await {
+                Ok(client) => {
+                    let _ = reply.send(client);
+                },
+                Err(e) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Base node connection failed: {}. Reconnecting...", e
+                    );
+                    self.trigger_reconnect();
+                    self.pending_requests.push(reply.into());
+                },
+            },
+            None => {
+                self.pending_requests.push(reply.into());
+                if self.base_node_watch.borrow().is_none() {
+                    warn!(
+                        target: LOG_TARGET,
+                        "{} requests are waiting for base node to be set",
+                        self.pending_requests.len()
                     );
                 }
             },
@@ -151,12 +198,12 @@ impl WalletConnectivityService {
     }
 
     fn set_base_node_peer(&mut self, peer: NodeId) {
-        self.base_node_wallet_rpc_client_pool = None;
+        self.pools = None;
         self.base_node_watch.broadcast(Some(peer));
     }
 
     async fn setup_base_node_connection(&mut self, peer: NodeId) {
-        self.base_node_wallet_rpc_client_pool = None;
+        self.pools = None;
         loop {
             debug!(
                 target: LOG_TARGET,
@@ -194,8 +241,10 @@ impl WalletConnectivityService {
             "Successfully established peer connection to base node {}",
             conn.peer_node_id()
         );
-        let pool = conn.create_rpc_client_pool(self.config.base_node_rpc_pool_size);
-        self.base_node_wallet_rpc_client_pool = Some(pool);
+        self.pools = Some(ClientPoolContainer {
+            base_node_sync_rpc_client: conn.create_rpc_client_pool(self.config.base_node_rpc_pool_size),
+            base_node_wallet_rpc_client: conn.create_rpc_client_pool(self.config.base_node_rpc_pool_size),
+        });
         self.notify_pending_requests().await?;
         debug!(
             target: LOG_TARGET,
@@ -206,14 +255,40 @@ impl WalletConnectivityService {
     }
 
     async fn notify_pending_requests(&mut self) -> Result<(), WalletConnectivityError> {
-        let current_pending = mem::take(&mut self.pending_base_node_rpc_requests);
+        let current_pending = mem::take(&mut self.pending_requests);
         for reply in current_pending {
             if reply.is_canceled() {
                 continue;
             }
 
-            self.handle_get_base_node_wallet_rpc_client(reply).await;
+            self.handle_pool_request(reply).await;
         }
         Ok(())
+    }
+}
+
+enum ReplyOneshot {
+    WalletRpc(oneshot::Sender<RpcClientLease<BaseNodeWalletRpcClient>>),
+    SyncRpc(oneshot::Sender<RpcClientLease<BaseNodeSyncRpcClient>>),
+}
+
+impl ReplyOneshot {
+    pub fn is_canceled(&self) -> bool {
+        use ReplyOneshot::*;
+        match self {
+            WalletRpc(tx) => tx.is_canceled(),
+            SyncRpc(tx) => tx.is_canceled(),
+        }
+    }
+}
+
+impl From<oneshot::Sender<RpcClientLease<BaseNodeWalletRpcClient>>> for ReplyOneshot {
+    fn from(tx: oneshot::Sender<RpcClientLease<BaseNodeWalletRpcClient>>) -> Self {
+        ReplyOneshot::WalletRpc(tx)
+    }
+}
+impl From<oneshot::Sender<RpcClientLease<BaseNodeSyncRpcClient>>> for ReplyOneshot {
+    fn from(tx: oneshot::Sender<RpcClientLease<BaseNodeSyncRpcClient>>) -> Self {
+        ReplyOneshot::SyncRpc(tx)
     }
 }

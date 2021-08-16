@@ -24,6 +24,7 @@ use crate::{
     base_node::{rpc::BaseNodeWalletService, state_machine_service::states::StateInfo, StateMachineHandle},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, PrunedOutput},
     mempool::{service::MempoolHandle, TxStorageResponse},
+    proto,
     proto::{
         base_node::{
             FetchMatchingUtxos,
@@ -326,5 +327,17 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             metadata: Some(metadata.into()),
             is_synced,
         }))
+    }
+
+    async fn get_header(&self, request: Request<u64>) -> Result<Response<proto::core::BlockHeader>, RpcStatus> {
+        let height = request.into_message();
+        let header = self
+            .db()
+            .fetch_header(height)
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .ok_or_else(|| RpcStatus::not_found(format!("Header not found at height {}", height)))?;
+
+        Ok(Response::new(header.into()))
     }
 }

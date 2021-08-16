@@ -87,7 +87,7 @@ async fn it_dials_peer_when_base_node_is_set() {
     // Now a connection will given to the service
     mock_state.add_active_connection(conn).await;
 
-    let rpc_client = handle.obtain_base_node_rpc_client().await.unwrap();
+    let rpc_client = handle.obtain_base_node_wallet_rpc_client().await.unwrap();
     assert!(rpc_client.is_connected());
 }
 
@@ -106,7 +106,7 @@ async fn it_resolves_many_pending_rpc_session_requests() {
     let pending_requests = iter::repeat_with(|| {
         let mut handle = handle.clone();
         task::spawn(async move {
-            let rpc_client = handle.obtain_base_node_rpc_client().await.unwrap();
+            let rpc_client = handle.obtain_base_node_wallet_rpc_client().await.unwrap();
             rpc_client.is_connected()
         })
     })
@@ -140,7 +140,7 @@ async fn it_changes_to_a_new_base_node() {
     assert_eq!(mock_state.count_calls_containing("AddManagedPeer").await, 1);
     let _ = mock_state.take_calls().await;
 
-    let rpc_client = handle.obtain_base_node_rpc_client().await.unwrap();
+    let rpc_client = handle.obtain_base_node_wallet_rpc_client().await.unwrap();
     assert!(rpc_client.is_connected());
 
     // Initiate a connection to the base node
@@ -150,7 +150,7 @@ async fn it_changes_to_a_new_base_node() {
     mock_state.expect_dial_peer(base_node_peer2.node_id()).await;
     assert_eq!(mock_state.count_calls_containing("AddManagedPeer").await, 1);
 
-    let rpc_client = handle.obtain_base_node_rpc_client().await.unwrap();
+    let rpc_client = handle.obtain_base_node_wallet_rpc_client().await.unwrap();
     assert!(rpc_client.is_connected());
 }
 
@@ -178,7 +178,7 @@ async fn it_gracefully_handles_connect_fail_reconnect() {
         let barrier = barrier.clone();
         async move {
             barrier.wait().await;
-            let rpc_client = handle.obtain_base_node_rpc_client().await.unwrap();
+            let rpc_client = handle.obtain_base_node_wallet_rpc_client().await.unwrap();
             assert!(rpc_client.is_connected());
         }
     });
@@ -215,7 +215,7 @@ async fn it_gracefully_handles_multiple_connection_failures() {
         let barrier = barrier.clone();
         async move {
             barrier.wait().await;
-            let rpc_client = handle.obtain_base_node_rpc_client().await.unwrap();
+            let rpc_client = handle.obtain_base_node_wallet_rpc_client().await.unwrap();
             assert!(rpc_client.is_connected());
         }
     });

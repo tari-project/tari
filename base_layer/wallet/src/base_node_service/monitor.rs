@@ -122,11 +122,11 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
             let peer_node_id = self.update_connectivity_status().await;
             let mut client = self
                 .wallet_connectivity
-                .obtain_base_node_rpc_client()
+                .obtain_base_node_wallet_rpc_client()
                 .await
                 .ok_or(BaseNodeMonitorError::NodeShuttingDown)?;
             let latency = client.get_last_request_latency().await?;
-            trace!(
+            debug!(
                 target: LOG_TARGET,
                 "Base node {} latency: {} ms",
                 peer_node_id,

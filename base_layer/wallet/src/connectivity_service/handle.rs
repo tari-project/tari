@@ -27,11 +27,12 @@ use futures::{
     SinkExt,
 };
 use tari_comms::{peer_manager::NodeId, protocol::rpc::RpcClientLease};
-use tari_core::base_node::rpc;
+use tari_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient};
 use tokio::sync::watch;
 
 pub enum WalletConnectivityRequest {
-    ObtainBaseNodeWalletRpcClient(oneshot::Sender<RpcClientLease<rpc::BaseNodeWalletRpcClient>>),
+    ObtainBaseNodeWalletRpcClient(oneshot::Sender<RpcClientLease<BaseNodeWalletRpcClient>>),
+    ObtainBaseNodeSyncRpcClient(oneshot::Sender<RpcClientLease<BaseNodeSyncRpcClient>>),
     SetBaseNode(NodeId),
 }
 
@@ -68,7 +69,7 @@ impl WalletConnectivityHandle {
     /// node/nodes. It will be block until this is happens. The ONLY other time it will return is if the node is
     /// shutting down, where it will return None. Use this function whenever no work can be done without a
     /// BaseNodeWalletRpcClient RPC session.
-    pub async fn obtain_base_node_rpc_client(&mut self) -> Option<RpcClientLease<rpc::BaseNodeWalletRpcClient>> {
+    pub async fn obtain_base_node_wallet_rpc_client(&mut self) -> Option<RpcClientLease<BaseNodeWalletRpcClient>> {
         let (reply_tx, reply_rx) = oneshot::channel();
         // Under what conditions do the (1) mpsc channel and (2) oneshot channel error?
         // (1) when the receiver has been dropped
@@ -79,6 +80,22 @@ impl WalletConnectivityHandle {
         // because the node is shutting down.
         self.sender
             .send(WalletConnectivityRequest::ObtainBaseNodeWalletRpcClient(reply_tx))
+            .await
+            .ok()?;
+
+        reply_rx.await.ok()
+    }
+
+    /// Obtain a BaseNodeSyncRpcClient.
+    ///
+    /// This can be relied on to obtain a pooled BaseNodeSyncRpcClient rpc session from a currently selected base
+    /// node/nodes. It will be block until this is happens. The ONLY other time it will return is if the node is
+    /// shutting down, where it will return None. Use this function whenever no work can be done without a
+    /// BaseNodeSyncRpcClient RPC session.
+    pub async fn obtain_base_node_sync_rpc_client(&mut self) -> Option<RpcClientLease<BaseNodeSyncRpcClient>> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.sender
+            .send(WalletConnectivityRequest::ObtainBaseNodeSyncRpcClient(reply_tx))
             .await
             .ok()?;
 
