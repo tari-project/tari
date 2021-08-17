@@ -63,7 +63,6 @@ use tari_core::{
 use tari_crypto::{
     keys::PublicKey as PublicKeyTrait,
     script,
-    script::TariScript,
     tari_utilities::{hash::Hashable, hex::Hex},
 };
 use tari_mmr::MutableMmr;
@@ -114,8 +113,7 @@ pub fn _create_act_gen_block() {
     let factories = CryptoFactories::default();
     let mut header = BlockHeader::new(consensus_manager.consensus_constants(0).blockchain_version());
     let value = consensus_manager.emission_schedule().block_reward(0);
-    let (mut utxo, key, _) = create_utxo(value, &factories, None, &TariScript::default());
-    utxo.features = OutputFeatures::create_coinbase(1);
+    let (utxo, key, _) = create_utxo(value, &factories, OutputFeatures::create_coinbase(1), &script![Nop]);
     let (pk, sig) = create_random_signature_from_s_key(key.clone(), 0.into(), 0);
     let excess = Commitment::from_public_key(&pk);
     let kernel = KernelBuilder::new()

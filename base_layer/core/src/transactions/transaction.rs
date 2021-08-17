@@ -225,7 +225,7 @@ impl UnblindedOutput {
     pub fn new(
         value: MicroTari,
         spending_key: BlindingFactor,
-        features: Option<OutputFeatures>,
+        features: OutputFeatures,
         script: TariScript,
         input_data: ExecutionStack,
         script_private_key: PrivateKey,
@@ -235,7 +235,7 @@ impl UnblindedOutput {
         UnblindedOutput {
             value,
             spending_key,
-            features: features.unwrap_or_default(),
+            features,
             script,
             input_data,
             script_private_key,

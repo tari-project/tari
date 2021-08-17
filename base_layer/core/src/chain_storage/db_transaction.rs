@@ -23,7 +23,7 @@ use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{error::ChainStorageError, ChainBlock, ChainHeader, MmrTree},
     transactions::{
-        transaction::{TransactionInput, TransactionKernel, TransactionOutput},
+        transaction::{TransactionKernel, TransactionOutput},
         types::{Commitment, HashOutput},
     },
 };
@@ -140,15 +140,6 @@ impl DbTransaction {
             header_height,
             output_hash,
             witness_hash,
-            mmr_position: mmr_leaf_index,
-        });
-        self
-    }
-
-    pub fn insert_input(&mut self, input: TransactionInput, header_hash: HashOutput, mmr_leaf_index: u32) -> &mut Self {
-        self.operations.push(WriteOperation::InsertInput {
-            header_hash,
-            input: Box::new(input),
             mmr_position: mmr_leaf_index,
         });
         self
@@ -283,11 +274,6 @@ pub enum WriteOperation {
     InsertBlockBody {
         block: Arc<ChainBlock>,
     },
-    InsertInput {
-        header_hash: HashOutput,
-        input: Box<TransactionInput>,
-        mmr_position: u32,
-    },
     InsertKernel {
         header_hash: HashOutput,
         kernel: Box<TransactionKernel>,
@@ -387,17 +373,6 @@ impl fmt::Display for WriteOperation {
                 output.hash().to_hex(),
                 header_hash.to_hex(),
                 header_height,
-                mmr_position
-            ),
-            InsertInput {
-                header_hash,
-                input,
-                mmr_position,
-            } => write!(
-                f,
-                "Insert input {} in block: {} position: {}",
-                input.output_hash().to_hex(),
-                header_hash.to_hex(),
                 mmr_position
             ),
             DeleteOrphanChainTip(hash) => write!(f, "DeleteOrphanChainTip({})", hash.to_hex()),

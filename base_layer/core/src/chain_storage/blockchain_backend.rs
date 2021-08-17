@@ -16,7 +16,7 @@ use crate::{
     },
     transactions::{
         transaction::{TransactionInput, TransactionKernel},
-        types::{HashOutput, Signature},
+        types::{Commitment, HashOutput, Signature},
     },
 };
 use croaring::Bitmap;
@@ -105,6 +105,12 @@ pub trait BlockchainBackend: Send + Sync {
     /// Fetch a specific output. Returns the output and the leaf index in the output MMR
     fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(PrunedOutput, u32, u64)>, ChainStorageError>;
 
+    /// Returns the unspent TransactionOutput output that matches the given commitment if it exists in the current UTXO
+    /// set, otherwise None is returned.
+    fn fetch_unspent_output_hash_by_commitment(
+        &self,
+        commitment: &Commitment,
+    ) -> Result<Option<HashOutput>, ChainStorageError>;
     /// Fetch all outputs in a block
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError>;
 

@@ -324,7 +324,7 @@ where
         let unblinded_output = UnblindedOutput::new(
             amount,
             spending_key.clone(),
-            Some(features.clone()),
+            features.clone(),
             script,
             input_data,
             script_private_key.clone(),

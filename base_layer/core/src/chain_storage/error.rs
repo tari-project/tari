@@ -107,11 +107,17 @@ pub enum ChainStorageError {
     IoError(#[from] std::io::Error),
     #[error("Cannot calculate MMR roots for block that does not form a chain with the current tip. {0}")]
     CannotCalculateNonTipMmr(String),
+    #[error("Key {key} in {table_name} already exists")]
+    KeyExists { table_name: &'static str, key: String },
 }
 
 impl ChainStorageError {
     pub fn is_value_not_found(&self) -> bool {
         matches!(self, ChainStorageError::ValueNotFound { .. })
+    }
+
+    pub fn is_key_exist_error(&self) -> bool {
+        matches!(self, ChainStorageError::KeyExists { .. })
     }
 }
 

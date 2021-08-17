@@ -1117,10 +1117,10 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 );
                 OutputManagerStorageError::ConversionError
             })?,
-            Some(OutputFeatures {
+            OutputFeatures {
                 flags: OutputFlags::from_bits(o.flags as u8).ok_or(OutputManagerStorageError::ConversionError)?,
                 maturity: o.maturity as u64,
-            }),
+            },
             TariScript::from_bytes(o.script.as_slice())?,
             ExecutionStack::from_bytes(o.input_data.as_slice())?,
             PrivateKey::from_vec(&o.script_private_key).map_err(|_| {

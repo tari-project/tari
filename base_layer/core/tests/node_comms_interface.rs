@@ -204,7 +204,12 @@ async fn outbound_fetch_utxos() {
     let (block_sender, _) = mpsc::unbounded();
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
-    let (utxo, _, _) = create_utxo(MicroTari(10_000), &factories, None, &TariScript::default());
+    let (utxo, _, _) = create_utxo(
+        MicroTari(10_000),
+        &factories,
+        Default::default(),
+        &TariScript::default(),
+    );
     let hash = utxo.hash();
     let utxo_response = NodeCommsResponse::TransactionOutputs(vec![utxo.clone()]);
     let (received_utxos, _) = futures::join!(
@@ -239,7 +244,12 @@ async fn inbound_fetch_utxos() {
     let utxo_1 = block.body.outputs()[0].clone();
     let hash_1 = utxo_1.hash();
 
-    let (utxo_2, _, _) = create_utxo(MicroTari(10_000), &factories, None, &TariScript::default());
+    let (utxo_2, _, _) = create_utxo(
+        MicroTari(10_000),
+        &factories,
+        Default::default(),
+        &TariScript::default(),
+    );
     let hash_2 = utxo_2.hash();
 
     // Only retrieve a subset of the actual hashes, including a fake hash in the list
@@ -261,8 +271,18 @@ async fn outbound_fetch_txos() {
     let (block_sender, _) = mpsc::unbounded();
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
-    let (txo1, _, _) = create_utxo(MicroTari(10_000), &factories, None, &TariScript::default());
-    let (txo2, _, _) = create_utxo(MicroTari(15_000), &factories, None, &TariScript::default());
+    let (txo1, _, _) = create_utxo(
+        MicroTari(10_000),
+        &factories,
+        Default::default(),
+        &TariScript::default(),
+    );
+    let (txo2, _, _) = create_utxo(
+        MicroTari(15_000),
+        &factories,
+        Default::default(),
+        &TariScript::default(),
+    );
     let hash1 = txo1.hash();
     let hash2 = txo2.hash();
     let txo_response = NodeCommsResponse::TransactionOutputs(vec![txo1.clone(), txo2.clone()]);
@@ -295,9 +315,24 @@ async fn inbound_fetch_txos() {
         outbound_nci,
     );
 
-    let (utxo, _, _) = create_utxo(MicroTari(10_000), &factories, None, &TariScript::default());
-    let (pruned_utxo, _, _) = create_utxo(MicroTari(10_000), &factories, None, &TariScript::default());
-    let (stxo, _, _) = create_utxo(MicroTari(10_000), &factories, None, &TariScript::default());
+    let (utxo, _, _) = create_utxo(
+        MicroTari(10_000),
+        &factories,
+        Default::default(),
+        &TariScript::default(),
+    );
+    let (pruned_utxo, _, _) = create_utxo(
+        MicroTari(10_000),
+        &factories,
+        Default::default(),
+        &TariScript::default(),
+    );
+    let (stxo, _, _) = create_utxo(
+        MicroTari(10_000),
+        &factories,
+        Default::default(),
+        &TariScript::default(),
+    );
     let utxo_hash = utxo.hash();
     let stxo_hash = stxo.hash();
     let pruned_utxo_hash = pruned_utxo.hash();
@@ -412,7 +447,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         outbound_nci,
     );
     let script = script!(Nop);
-    let (utxo, key, offset) = create_utxo(MicroTari(10_000), &factories, None, &script);
+    let (utxo, key, offset) = create_utxo(MicroTari(10_000), &factories, Default::default(), &script);
     let metadata_signature = TransactionOutput::create_final_metadata_signature(
         &MicroTari(10_000),
         &key,
@@ -424,7 +459,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     let unblinded_output = UnblindedOutput::new(
         MicroTari(10_000),
         key.clone(),
-        None,
+        Default::default(),
         script,
         inputs!(PublicKey::from_secret_key(&key)),
         key,

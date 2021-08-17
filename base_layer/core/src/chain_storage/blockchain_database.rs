@@ -289,6 +289,14 @@ where B: BlockchainBackend
         Ok(db.fetch_output(&hash)?.map(|(out, _index, _)| out))
     }
 
+    pub fn fetch_unspent_output_by_commitment(
+        &self,
+        commitment: &Commitment,
+    ) -> Result<Option<HashOutput>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_unspent_output_hash_by_commitment(commitment)
+    }
+
     /// Return a list of matching utxos, with each being `None` if not found. If found, the transaction
     /// output, and a boolean indicating if the UTXO was spent as of the block hash specified or the tip if not
     /// specified.
@@ -1604,10 +1612,7 @@ fn reorganize_chain<T: BlockchainBackend>(
         let block_hash_hex = block.accumulated_data().hash.to_hex();
         txn.delete_orphan(block.accumulated_data().hash.clone());
         let chain_metadata = backend.fetch_chain_metadata()?;
-        let deleted_bitmap = backend.fetch_deleted_bitmap()?;
-        if let Err(e) =
-            block_validator.validate_body_for_valid_orphan(&block, backend, &chain_metadata, &deleted_bitmap)
-        {
+        if let Err(e) = block_validator.validate_body_for_valid_orphan(&block, backend, &chain_metadata) {
             warn!(
                 target: LOG_TARGET,
                 "Orphan block {} ({}) failed validation during chain reorg: {:?}",
@@ -2655,7 +2660,7 @@ mod test {
             let prev_block = block_hashes
                 .get(&from)
                 .unwrap_or_else(|| panic!("Could not find block {}", from));
-            let mut block = create_block(1, prev_block.height() + 1, vec![]);
+            let (mut block, _) = create_block(1, prev_block.height() + 1, vec![]);
             block.header.prev_hash = prev_block.hash().clone();
 
             // Keep times constant in case we need a particular target difficulty

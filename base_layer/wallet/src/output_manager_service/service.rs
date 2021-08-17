@@ -442,7 +442,7 @@ where TBackend: OutputManagerBackend + 'static
             UnblindedOutput::new(
                 single_round_sender_data.amount,
                 spending_key.clone(),
-                Some(single_round_sender_data.features.clone()),
+                single_round_sender_data.features.clone(),
                 single_round_sender_data.script.clone(),
                 // TODO: The input data should be variable; this will only work for a Nop script
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
@@ -766,7 +766,7 @@ where TBackend: OutputManagerBackend + 'static
             UnblindedOutput::new(
                 amount,
                 spending_key.clone(),
-                Some(output_features),
+                output_features,
                 script,
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
                 script_private_key,
@@ -1155,7 +1155,7 @@ where TBackend: OutputManagerBackend + 'static
                 UnblindedOutput::new(
                     output_amount,
                     spending_key.clone(),
-                    Some(output_features),
+                    output_features,
                     script,
                     inputs!(PublicKey::from_secret_key(&script_private_key)),
                     script_private_key,
@@ -1237,7 +1237,7 @@ where TBackend: OutputManagerBackend + 'static
                     let rewound_output = UnblindedOutput::new(
                         rewound_result.committed_value,
                         rewound_result.blinding_factor.clone(),
-                        Some(output.features),
+                        output.features,
                         known_one_sided_payment_scripts[i].script.clone(),
                         known_one_sided_payment_scripts[i].input.clone(),
                         known_one_sided_payment_scripts[i].private_key.clone(),

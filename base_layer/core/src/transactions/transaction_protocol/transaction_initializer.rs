@@ -314,7 +314,7 @@ impl SenderTransactionInitializer {
                         let change_unblinded_output = UnblindedOutput::new(
                             v,
                             change_key.clone(),
-                            Some(output_features),
+                            output_features,
                             script,
                             self.change_input_data
                                 .as_ref()

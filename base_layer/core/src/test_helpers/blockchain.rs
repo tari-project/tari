@@ -45,7 +45,7 @@ use crate::{
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
     transactions::{
         transaction::{TransactionInput, TransactionKernel},
-        types::{CryptoFactories, HashOutput, Signature},
+        types::{Commitment, CryptoFactories, HashOutput, Signature},
     },
     validation::{
         block_validators::{BodyOnlyValidator, OrphanBlockValidator},
@@ -246,6 +246,13 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(PrunedOutput, u32, u64)>, ChainStorageError> {
         self.db.fetch_output(output_hash)
+    }
+
+    fn fetch_unspent_output_hash_by_commitment(
+        &self,
+        commitment: &Commitment,
+    ) -> Result<Option<HashOutput>, ChainStorageError> {
+        self.db.fetch_unspent_output_hash_by_commitment(commitment)
     }
 
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError> {
