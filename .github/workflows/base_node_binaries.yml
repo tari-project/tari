@@ -5,10 +5,9 @@ on:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
     branches:
-      - development
-      - mb-*
+      - ci-*
   schedule:
-    - cron: '05 00 01 * *'
+    - cron: '05 00 * * *'
   workflow_dispatch:
     inputs:
       customTag:
@@ -169,6 +168,13 @@ jobs:
         cp -v "$GITHUB_WORKSPACE/target/release/tari_merge_mining_proxy${TBN_EXT}" .
         cp -v "$GITHUB_WORKSPACE/target/release/tari_mining_node${TBN_EXT}" .
 
+    - name: Build the windows installer
+      if: startsWith(runner.os,'Windows')
+      run: |
+        cd buildtools
+        "%programfiles(x86)%\Inno Setup 6\iscc.exe" "windows_inno_installer.iss"
+      shell: cmd
+
     - name: Archive and Sign Binaries
       shell: bash
       run: |
@@ -204,6 +210,42 @@ jobs:
         aws s3 ${{ env.S3CMD }} --region ${{ secrets.AWS_REGION }} \
           "${{ env.SOURCE }}" \
           s3://${{ secrets.AWS_S3_BUCKET }}/${{ env.DEST_DIR }} \
+          ${{ env.S3OPTIONS }}
+        echo "Done - $?"
+        exit 0
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        SOURCE: '${{ github.workspace }}${{ env.TBN_DIST }}'
+        DEST_DIR: '${{ env.S3DESTOVERRIDE }}${{ env.S3DESTDIR }}/'
+        S3CMD: 'cp'
+        S3OPTIONS: '--recursive --exclude "*" --include "*.zip*"'
+        # S3OPTIONS: '--recursive --exclude "*" --include "*.zip*"'
+        # S3OPTIONS: '--acl public-read'
+
+    - name: Copy tags to latest s3 - Bash
+#      if: ${{ env.AWS_SECRET_ACCESS_KEY != '' && matrix.os != 'self-hosted' }}
+      if: ${{ env.AWS_SECRET_ACCESS_KEY != '' && matrix.os != 'self-hosted' && startsWith(github.ref, 'refs/tags/v') }}
+      shell: bash
+      run: |
+        echo "Starting upload ... ${{ env.SOURCE }}"
+        if [ "$RUNNER_OS" == "Windows" ]; then
+          echo "No ls for 'D:' on Windows"
+        else
+          ls -al ${{ env.SOURCE }}
+        fi
+
+        aws s3 ${{ env.S3CMD }} --region ${{ secrets.AWS_REGION }} \
+                  "${{ env.SOURCE }}" \
+                  s3://${{ secrets.AWS_S3_BUCKET }}/current/${{ env.DEST_DIR }} \
+                  ${{ env.S3OPTIONS }}
+
+        aws s3 rm --region ${{ secrets.AWS_REGION }} \
+                            s3://${{ secrets.AWS_S3_BUCKET }}/latest/${{ env.DEST_DIR }}/*
+
+        aws s3 ${{ env.S3CMD }} --region ${{ secrets.AWS_REGION }} \
+          "${{ env.SOURCE }}" \
+          s3://${{ secrets.AWS_S3_BUCKET }}/latest/${{ env.DEST_DIR }} \
           ${{ env.S3OPTIONS }}
         echo "Done - $?"
         exit 0
