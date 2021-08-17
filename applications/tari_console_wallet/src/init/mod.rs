@@ -352,7 +352,7 @@ pub async fn init_wallet(
     );
 
     let factories = CryptoFactories::default();
-    let mut wallet_config = WalletConfig::new(
+    let wallet_config = WalletConfig::new(
         comms_config.clone(),
         factories,
         Some(TransactionServiceConfig {
@@ -376,11 +376,13 @@ pub async fn init_wallet(
         }),
         config.network.into(),
         Some(base_node_service_config),
-        Some(config.buffer_size_console_wallet),
+        Some(std::cmp::max(
+            BASE_NODE_BUFFER_MIN_SIZE,
+            config.buffer_size_console_wallet,
+        )),
         Some(config.buffer_rate_limit_console_wallet),
         Some(config.scan_for_utxo_interval),
     );
-    wallet_config.buffer_size = std::cmp::max(BASE_NODE_BUFFER_MIN_SIZE, config.buffer_size_base_node);
 
     let mut wallet = Wallet::start(
         wallet_config,
