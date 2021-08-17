@@ -101,7 +101,7 @@ where T: AsyncRead + AsyncWrite + Unpin
     }
 
     pub async fn reject_with_reason(&mut self, reject_reason: HandshakeRejectReason) -> Result<(), RpcHandshakeError> {
-        debug!(target: LOG_TARGET, "Rejecting handshake because {}", reject_reason);
+        warn!(target: LOG_TARGET, "Rejecting handshake because {}", reject_reason);
         let reply = proto::rpc::RpcSessionReply {
             session_result: Some(proto::rpc::rpc_session_reply::SessionResult::Rejected(true)),
             reject_reason: reject_reason.as_i32(),
@@ -120,7 +120,7 @@ where T: AsyncRead + AsyncWrite + Unpin
         // anything. Rather than returning an IO error, let's ignore the send error and see if we can receive anything,
         // or return an IO error similarly to what send would have done.
         if let Err(err) = self.framed.send(msg.to_encoded_bytes().into()).await {
-            debug!(
+            warn!(
                 target: LOG_TARGET,
                 "IO error when sending new session handshake to peer: {}", err
             );

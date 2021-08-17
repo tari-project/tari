@@ -77,7 +77,7 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
                     break;
                 },
                 Err(e @ BaseNodeMonitorError::RpcFailed(_)) => {
-                    debug!(target: LOG_TARGET, "Connectivity failure to base node: {}", e);
+                    warn!(target: LOG_TARGET, "Connectivity failure to base node: {}", e);
                     debug!(target: LOG_TARGET, "Setting as OFFLINE and retrying...",);
 
                     self.set_offline().await;
