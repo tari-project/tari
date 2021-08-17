@@ -81,7 +81,7 @@ Feature: Block Propagation
     When I wait 10 seconds
     And mining node MINER mines 5 blocks
     When I wait 100 seconds
-    When I start LAG1
+    When I start base node LAG1
         # Wait for node to so start and get into listening mode
     When I wait 100 seconds
     Then node MINER is at height 6

@@ -40,6 +40,7 @@ use crate::{
     types::{HashDigest, ValidationRetryStrategy},
 };
 use blake2::Digest;
+use chrono::Utc;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
 use log::*;
@@ -344,6 +345,10 @@ where TBackend: OutputManagerBackend + 'static
                 .add_known_script(known_script)
                 .await
                 .map(|_| OutputManagerResponse::AddKnownOneSidedPaymentScript),
+            OutputManagerRequest::ReinstateCancelledInboundTx(tx_id) => self
+                .reinstate_cancelled_inbound_transaction(tx_id)
+                .await
+                .map(|_| OutputManagerResponse::ReinstatedCancelledInboundTx),
         }
     }
 
@@ -895,6 +900,27 @@ where TBackend: OutputManagerBackend + 'static
             "Cancelling pending transaction outputs for TxId: {}", tx_id
         );
         Ok(self.resources.db.cancel_pending_transaction_outputs(tx_id).await?)
+    }
+
+    /// Restore the pending transaction encumberance and output for an inbound transaction that was previously
+    /// cancelled.
+    async fn reinstate_cancelled_inbound_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
+        self.resources.db.reinstate_inbound_output(tx_id).await?;
+
+        self.resources
+            .db
+            .add_pending_transaction_outputs(PendingTransactionOutputs {
+                tx_id,
+                outputs_to_be_spent: Vec::new(),
+                outputs_to_be_received: Vec::new(),
+                timestamp: Utc::now().naive_utc(),
+                coinbase_block_height: None,
+            })
+            .await?;
+
+        self.confirm_encumberance(tx_id).await?;
+
+        Ok(())
     }
 
     /// Go through the pending transaction and if any have existed longer than the specified duration, cancel them

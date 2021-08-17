@@ -90,8 +90,12 @@ pub trait TransactionBackend: Send + Sync + Clone {
     fn set_completed_transaction_validity(&self, tx_id: TxId, valid: bool) -> Result<(), TransactionStorageError>;
     /// Cancel Completed transaction, this will update the transaction status
     fn cancel_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
-    /// Cancel Completed transaction, this will update the transaction status
-    fn cancel_pending_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
+    /// Set cancellation on Pending transaction, this will update the transaction status
+    fn set_pending_transaction_cancellation_status(
+        &self,
+        tx_id: TxId,
+        cancelled: bool,
+    ) -> Result<(), TransactionStorageError>;
     /// Search all pending transaction for the provided tx_id and if it exists return the public key of the counterparty
     fn get_pending_transaction_counterparty_pub_key_by_tx_id(
         &self,
@@ -563,7 +567,15 @@ where T: TransactionBackend + 'static
 
     pub async fn cancel_pending_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.cancel_pending_transaction(tx_id))
+        tokio::task::spawn_blocking(move || db_clone.set_pending_transaction_cancellation_status(tx_id, true))
+            .await
+            .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(())
+    }
+
+    pub async fn uncancel_pending_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.set_pending_transaction_cancellation_status(tx_id, false))
             .await
             .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())

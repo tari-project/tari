@@ -222,6 +222,25 @@ class WalletClient {
     }
   }
 
+  async isTransactionPending(tx_id) {
+    try {
+      const txnDetails = await this.getTransactionInfo({
+        transaction_ids: [tx_id.toString()],
+      });
+      if (
+        transactionStatus().indexOf(txnDetails.transactions[0].status) == 2 &&
+        txnDetails.transactions[0].valid
+      ) {
+        return true;
+      } else {
+        return false;
+      }
+    } catch (err) {
+      // Any error here must be treated as if the required status was not achieved
+      return false;
+    }
+  }
+
   async isTransactionAtLeastCompleted(tx_id) {
     try {
       const txnDetails = await this.getTransactionInfo({
@@ -351,6 +370,22 @@ class WalletClient {
       ...resp,
       num_node_connections: +resp.num_node_connections,
     };
+  }
+  async cancelTransaction(tx_id) {
+    try {
+      const result = await this.client.cancelTransaction({
+        tx_id: tx_id,
+      });
+      return {
+        success: result.is_success,
+        failure_message: result.failure_message,
+      };
+    } catch (err) {
+      return {
+        success: false,
+        failure_message: err,
+      };
+    }
   }
 }
 

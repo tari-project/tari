@@ -162,3 +162,47 @@ Feature: Wallet Transactions
     Then I check if wallet WALLET_B has 5 transactions
     Then I restart wallet WALLET_B
     Then I check if wallet WALLET_B has 5 transactions
+
+    @critical
+    Scenario: Wallet SAF negotiation and cancellation with offline peers
+      Given I have a seed node NODE
+      And I have 1 base nodes connected to all seed nodes
+      And I have wallet WALLET_A connected to all seed nodes
+      And I have mining node MINER connected to base node NODE and wallet WALLET_A
+      And mining node MINER mines 5 blocks
+      Then all nodes are at height 5
+      Then I wait for wallet WALLET_A to have at least 10000000000 uT
+      And I have non-default wallet WALLET_SENDER connected to all seed nodes using StoreAndForwardOnly
+      And I send 100000000 uT from wallet WALLET_A to wallet WALLET_SENDER at fee 100
+      When wallet WALLET_SENDER detects all transactions are at least Broadcast
+      And mining node MINER mines 5 blocks
+      Then all nodes are at height 10
+      Then I wait for wallet WALLET_SENDER to have at least 100000000 uT
+      And I have wallet WALLET_RECV connected to all seed nodes
+      And I stop wallet WALLET_RECV
+      And I send 1000000 uT from wallet WALLET_SENDER to wallet WALLET_RECV at fee 100
+      When wallet WALLET_SENDER detects last transaction is Pending
+      Then I stop wallet WALLET_SENDER
+      And I start wallet WALLET_RECV
+      And I wait for 5 seconds
+      When wallet WALLET_RECV detects all transactions are at least Pending
+      Then I cancel last transaction in wallet WALLET_RECV
+      Then I stop wallet WALLET_RECV
+      And I start wallet WALLET_SENDER
+      # This is a weirdness that I haven't been able to figure out. When you start WALLET_SENDER on the line above it
+      # requests SAF messages from the base nodes the base nodes get the request and attempt to send the stored messages
+      # but the connection fails. It requires a second reconnection and request for the SAF messages to be delivered.
+      And I wait for 5 seconds
+      Then I restart wallet WALLET_SENDER
+      And I wait for 5 seconds
+      Then I restart wallet WALLET_SENDER
+      When wallet WALLET_SENDER detects all transactions are at least Broadcast
+      And mining node MINER mines 5 blocks
+      Then all nodes are at height 15
+      When wallet WALLET_SENDER detects all transactions as Mined_Confirmed
+      And I start wallet WALLET_RECV
+      And I wait for 5 seconds
+      Then I restart wallet WALLET_RECV
+      And I wait for 5 seconds
+      Then I restart wallet WALLET_RECV
+      Then I wait for wallet WALLET_RECV to have at least 1000000 uT

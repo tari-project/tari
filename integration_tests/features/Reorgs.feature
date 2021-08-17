@@ -57,10 +57,10 @@ Feature: Reorgs
     When mining node MINING1 mines 3 blocks with min difficulty 1 and max difficulty 20
     And node NODE1 is at height 17
     And I stop node NODE1
-    And I start PNODE2
+    And I start base node PNODE2
     When mining node MINING2 mines 6 blocks with min difficulty 20 and max difficulty 1000000
     And node PNODE2 is at height 20
-    When I start NODE1
+    When I start base node NODE1
     Then all nodes are at height 20
 
   @critical @reorg
@@ -77,7 +77,7 @@ Feature: Reorgs
     And mining node MINING2 mines 19 blocks with min difficulty 20 and max difficulty 1000000
     And node NODE2 is at height 20
     And I stop node NODE2
-    When I start NODE1
+    When I start base node NODE1
     And mining node MINING1 mines 3 blocks with min difficulty 1 and max difficulty 20
     And node NODE1 is at height 4
     When I create a transaction TX1 spending CB1 to UTX1
@@ -87,7 +87,7 @@ Feature: Reorgs
     And node NODE1 is at height 10
     Given I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
     Then node PNODE1 is at height 10
-    When I start NODE2
+    When I start base node NODE2
     Then all nodes are at height 20
         # Because TX1 should have been re_orged out we should be able to spend CB1 again
     When I create a transaction TX2 spending CB1 to UTX2
