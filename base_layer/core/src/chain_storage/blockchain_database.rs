@@ -66,7 +66,7 @@ use std::{
     collections::VecDeque,
     convert::TryFrom,
     mem,
-    ops::Bound,
+    ops::{Bound, RangeBounds},
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
     time::Instant,
 };
@@ -75,8 +75,7 @@ use tari_common_types::{
     types::{BlockHash, Commitment, HashDigest, HashOutput, Signature},
 };
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray, Hashable};
-use tari_mmr::{MerkleMountainRange, MutableMmr};
-use uint::static_assertions::_core::ops::RangeBounds;
+use tari_mmr::{pruned_hashset::PrunedHashSet, MerkleMountainRange, MutableMmr};
 
 const LOG_TARGET: &str = "c::cs::database";
 
@@ -995,7 +994,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
     let mut kernel_mmr = MerkleMountainRange::<HashDigest, _>::new(kernels);
     let mut output_mmr = MutableMmr::<HashDigest, _>::new(outputs, deleted)?;
     let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(range_proofs);
-    let mut input_mmr = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create())?;
+    let mut input_mmr = MerkleMountainRange::<HashDigest, _>::new(PrunedHashSet::default());
 
     for kernel in body.kernels().iter() {
         kernel_mmr.push(kernel.hash())?;
