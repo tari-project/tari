@@ -8,6 +8,7 @@ A number of applications have been developed by the Tari community to implement 
 - Tari Console Wallet
 - Tari Mining Node
 - Tari Merge Mining Proxy
+- Tari Stratum Transcoder
 - Tari Aurora wallets for Android and iOS
 
 Only the first four applications will be discussed in this README (see [wallet-android](https://github.com/tari-project/wallet-android) and [wallet-ios](https://github.com/tari-project/wallet-ios) for mobile wallets' repos).
@@ -41,7 +42,7 @@ Assuming you want to install the Tari applications into your home folder, then, 
     cd ~
     tar -xf <PATH_TO_BINARY_INSTALL_FILE>
 
-After this, the Tari applications will be located in `~/tari_stibbons_testnet` with a selection of
+After this, the Tari applications will be located in `~/tari_weatherwax_testnet` with a selection of
 soft links to run them.
 
 #### On Windows
@@ -406,15 +407,15 @@ Default docker builds for base x86-64 CPU. Better performing builds can be creat
 
 ## Mining
 
-The Tari protocol supports hybrid mining; stand-alone SHA3 mining using the Tari Mining Node or merged mining with
-Monero using the Tari Merge Mining Proxy in conjunction with XMRig (RandomX based mining). Blocks to be won by
-stand-alone SHA3 mining has been apportioned to approximately 40% and with Monero merged mining to approximately 60%.
+The Tari protocol supports hybrid mining; stand-alone or pooled SHA3 mining using the Tari Mining Node or merged mining with
+Monero using the Tari Merge Mining Proxy in conjunction with XMRig (RandomX-based mining). Blocks to be won by
+stand-alone and pooled SHA3 mining has been apportioned to approximately 40% and with Monero merged mining to approximately 60%.
 This apportionment is deeply baked into the Tari protocol and part of the consensus rules. The 40/60 split is determined
 by slightly different block target times for each algorithm, that when combined will give an average block time of
 approximately 120s. Each mining algorithms make use of Linear Weighted Moving Average (LWMA) maths to gracefully adjust
 the target difficulties to adhere to the respective target block times. Any block won by either mining algorithm will be
 accepted, and when there is a tie a geometric mean calculation will be used to decide the winner. This system is
-completely fair without any additional empirical meddling to try and force a certain outcome.
+completely fair without any additional empirical meddling to try force a certain outcome.
 
 ### Tari SHA3 mining
 
@@ -424,24 +425,38 @@ In order to perform SHA3 mining with Tari, the following applications are needed
 - A Tari Console Wallet [_to collect the Tari block rewards (coinbase transactions)_];
 - A Tari Mining Node [_to perform the mining_];
 
+In order to perform pooled SHA3 mining with Tari, the following applications are needed:
+
+* For a pool operator:
+  - A Tari Base Node [_to supply blockchain metadata information_];
+  - A Tari Console Wallet [_to collect the Tari block rewards (coinbase transactions)_];
+  - A Tari Stratum Transocder [_to translate and route requests by the pool to the Tari Base Node and the Tari Console Wallet_];
+  - Miningcore [_pool software supporting various cryptocurrencies, configured for Tari_]
+
+* For a miner:
+  - A Tari Console Wallet [_to collect the share rewards (pool payouts)_];
+  - A Tari Mining Node [_to perform the mining_];
+
 #### Runtime prerequisites
 
-The Tari Base Node, Tari Console Wallet and Tari Mining Node can all run in the same directory. By performing the
+The Tari Base Node, Tari Console Wallet, Tari Stratum Transcoder and Tari Mining Node can all run in the same directory. By performing the
 default installation as described in [Installing using binaries](#installing-using-binaries), all these applications
 will be available.
 
+For MiningCore see [here](https://github.com/StriderDM/miningcore/tree/tari#runtime-requirements-on-linux) and [here](https://github.com/StriderDM/miningcore/tree/tari#runtime-requirements-on-windows).
+
 #### Configuration prerequisites
 
-The configuration prerequisites are the same for all three Tari applications. After performing a
+The configuration prerequisites are the same for all four Tari applications. After performing a
 [default installation](#installing-using-binaries), locate the main configuration file (`config.toml`), which
-will be created in the `~/tari_stibbons_testnet/config` (on Linux) or `%USERPROFILE%\.tari-testnet\config` (on Windows)
+will be created in the `~/tari_weatherwax_testnet/config` (on Linux) or `%USERPROFILE%\.tari-testnet\config` (on Windows)
 directory.
 
 With the main configuration file, in addition to the settings already present, the following must also be enabled for
-the Tari Base Node and the Tari Console Wallet, if they are not enabled already. Under section **`base_node.stibbons`**:
+the Tari Base Node and the Tari Console Wallet, if they are not enabled already. Under section **`base_node.weatherwax`**:
 
 ```
-[base_node.stibbons]
+[base_node.weatherwax]
 transport = "tor"
 allow_test_addresses = false
 grpc_enabled = true
@@ -449,8 +464,20 @@ grpc_base_node_address = "127.0.0.1:18142"
 grpc_console_wallet_address = "127.0.0.1:18143"
 ```
 
-For the Tari Mining Node there are some additional settings under section **`mining_node`** that can be changed:
+For Tari Stratum Transcoder:
+```
+[stratum_transcoder]
 
+# Address of the tari_stratum_transcoder application
+transcoder_host_address = "127.0.0.1:7879"
+```
+
+For MiningCore:
+
+See example configuration [here](https://github.com/StriderDM/miningcore/blob/tari/examples/tari_pool.json).
+
+For the Tari Mining Node there are some additional settings under section **`mining_node`** that can be changed:
+* For SHA3 Mining:
 ```
 [mining_node]
 # Number of mining threads
@@ -477,31 +504,47 @@ For the Tari Mining Node there are some additional settings under section **`min
 #validate_tip_timeout_sec=30
 ```
 
+For pooled SHA3 mining:
+```
+[mining_node]
+# Number of mining threads
+# Default: number of logical CPU cores
+#num_mining_threads=8
+
+# Stratum Mode configuration
+# mining_pool_address = "miningcore.tarilabs.com:3052"
+# mining_wallet_address = "YOUR_WALLET_PUBLIC_KEY" 
+# mining_worker_name = "worker1"
+```
+Uncomment `mining_pool_address` and `mining_wallet_address`. Adjust the values to your intended configuration. 
+`mining_worker_name` is an optional configuration field allowing you to name your worker.
+
 #### Perform SHA3 mining
+* For SHA3 mining: 
+  Tor and the required Tari applications must be started and preferably in this order:
 
-Tor and the required Tari applications must be started and preferably in this order:
+  - Tor:
 
-- Tor:
+    - Linux/OSX: Execute `start_tor.sh`.
+    - Windows: `Start Tor Serviecs` menu item or `start_tor` shortcut in the Tari installation folder.
 
-  - Linux/OSX: Execute `start_tor.sh`.
-  - Windows: `Start Tor Serviecs` menu item or `start_tor` shortcut in the Tari installation folder.
+    - Tari Base Node:
 
-- Tari Base Node:
-
-  - Linux/OSX: As per [Runtime links](#runtime-links).
-  - Windows: As per [Runtime links](#runtime-links) or `Start Base Node` menu item or
+    - Linux/OSX: As per [Runtime links](#runtime-links).
+    - Windows: As per [Runtime links](#runtime-links) or `Start Base Node` menu item or
     `start_tari_base_node` shortcut in the Tari installation folder.
 
-- Tari Console Wallet:
+  - Tari Console Wallet:
 
-  - Linux/OSX: As per [Runtime links](#runtime-links).
-  - Windows: As per [Runtime links](#runtime-links) or `Start Console Wallet` menu item or
+    - Linux/OSX: As per [Runtime links](#runtime-links).
+    - Windows: As per [Runtime links](#runtime-links) or `Start Console Wallet` menu item or
     `start_tari_console_wallet` shortcut in the Tari installation folder.
 
-- Tari Mining Node:
-  - Linux/OSX: As per [Runtime links](#runtime-links).
-  - Windows: As per [Runtime links](#runtime-links) or `Start Mining Node` menu item
+  - Tari Mining Node:
+    - Linux/OSX: As per [Runtime links](#runtime-links).
+    - Windows: As per [Runtime links](#runtime-links) or `Start Mining Node` menu item
     or `start_tari_mining_node` shortcut in the Tari installation folder.
+
 
 Look out for the following types of messages on the Tari Mining Node console to confirm that it is connected properly
 and performing mining:
@@ -518,6 +561,33 @@ and performing mining:
   witness_mr: [...], total_kernel_offset: [...], nonce: 8415580256943728281, pow: Some(ProofOfWork { pow_algo: 2,
   pow_data: [] }), kernel_mmr_size: 24983, output_mmr_size: 125474 } with difficulty 7316856839
 ```
+
+* For pooled SHA3 Mining:
+  * Pool Operators:
+    Tor and the required Tari applications must be started in this order:
+    - Tor:
+      
+      - Linux/OSX: Execute `start_tor.sh`.
+      - Windows: `Start Tor Serviecs` menu item or `start_tor` shortcut in the Tari installation folder.
+
+    - Tari Base Node:
+
+      - Linux/OSX: As per [Runtime links](#runtime-links).
+      - Windows: As per [Runtime links](#runtime-links) or `Start Base Node` menu item or
+    `start_tari_base_node` shortcut in the Tari installation folder.
+
+    - Tari Console Wallet:
+
+      - Linux/OSX: As per [Runtime links](#runtime-links).
+      - Windows: As per [Runtime links](#runtime-links) or `Start Console Wallet` menu item or
+    `start_tari_console_wallet` shortcut in the Tari installation folder.
+    - Tari Stratum Transcoder
+    - MiningCore
+  * Miners:
+    - Tari Mining Node:
+      - Linux/OSX: As per [Runtime links](#runtime-links).
+      - Windows: As per [Runtime links](#runtime-links) or `Start Mining Node` menu item
+    or `start_tari_mining_node` shortcut in the Tari installation folder. 
 
 ### Tari merge mining
 
@@ -548,15 +618,15 @@ XMRig can also be build from sources. If that is your preference, follow these i
 
 The configuration prerequisites are the same for all three Tari applications. After performing a
 [default installation](#installing-using-binaries), locate the main configuration file (`config.toml`), which
-will be created in the `~/tari_stibbons_testnet/config` (on Linux) or `%USERPROFILE%\.tari-testnet\config` (on Windows)
+will be created in the `~/tari_weatherwax_testnet/config` (on Linux) or `%USERPROFILE%\.tari-testnet\config` (on Windows)
 directory.
 
 With the main configuration file, in addition to the settings already present, the following must also be enabled if
 they are not enabled already:
 
-- For the Tari Base Node and the Tari Console Wallet, under section **`base_node.stibbons`**
+- For the Tari Base Node and the Tari Console Wallet, under section **`base_node.weatherwax`**
   ```
-  [base_node.stibbons]
+  [base_node.weatherwax]
   transport = "tor"
   allow_test_addresses = false
   grpc_enabled = true
@@ -568,9 +638,9 @@ And then depending on if you are using solo mining or self-select mining you wil
 
 ###### Solo mining
 
-- For the Tari Merge Mining Proxy, under section **`merge_mining_proxy.stibbons`**
+- For the Tari Merge Mining Proxy, under section **`merge_mining_proxy.weatherwax`**
   ```
-  [merge_mining_proxy.stibbons]
+  [merge_mining_proxy.weatherwax]
   monerod_url = "http://monero-stagenet.exan.tech:38081"
   proxy_host_address = "127.0.0.1:7878"
   proxy_submit_to_origin = true
@@ -581,9 +651,9 @@ And then depending on if you are using solo mining or self-select mining you wil
 
 ###### Self-Select mining
 
-- For the Tari Merge Mining Proxy, under section **`merge_mining_proxy.stibbons`**
+- For the Tari Merge Mining Proxy, under section **`merge_mining_proxy.weatherwax`**
   ```
-  [merge_mining_proxy.stibbons]
+  [merge_mining_proxy.weatherwax]
   monerod_url = "http://18.132.124.81:18081"
   proxy_host_address = "127.0.0.1:7878"
   proxy_submit_to_origin = false
