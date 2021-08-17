@@ -1,5 +1,5 @@
-const WalletProcess = require("../../integration_tests/helpers/walletProcess");
-const WalletClient = require("../../integration_tests/helpers/walletClient");
+const WalletProcess = require("integration_tests/helpers/walletProcess");
+const WalletClient = require("integration_tests/helpers/walletClient");
 
 const fs = require("fs/promises");
 const yargs = require("yargs");
@@ -23,6 +23,30 @@ async function main() {
     .help()
     .alias("help", "h").argv;
 
+  try {
+    const { identity, timeDiffMinutes, height, blockRate, recoveredAmount } =
+      await run(argv);
+
+    console.log(
+      "Wallet (Pubkey:",
+      identity.public_key,
+      ") recovered to a block height of",
+      height,
+      "completed in",
+      timeDiffMinutes,
+      "minutes (",
+      blockRate,
+      "blocks/min).",
+      recoveredAmount,
+      "µT recovered."
+    );
+  } catch (err) {
+    console.log(`Error: ${err}`);
+    process.exit(1);
+  }
+}
+
+async function run(options = {}) {
   const wallet = new WalletProcess(
     "compile",
     true,
@@ -32,15 +56,15 @@ async function main() {
       grpc_console_wallet_address: "127.0.0.1:18111",
     },
     false,
-    argv.seedWords
+    options.seedWords
   );
 
   await wallet.startNew();
 
   let startTime = new Date();
 
-  await fs.mkdir(path.dirname(argv.log), { recursive: true });
-  let logfile = await fs.open(argv.log, "w");
+  await fs.mkdir(path.dirname(options.log), { recursive: true });
+  let logfile = await fs.open(options.log, "w");
 
   let recoveryPromise = new Promise((resolve) => {
     wallet.ps.stderr.on("data", (data) => {
@@ -71,6 +95,10 @@ async function main() {
   });
 
   let [err, height_amount] = await recoveryPromise;
+  if (err) {
+    console.log(`Wallet (Pubkey: ${id.public_key}) recovery failed`);
+    throw new Error(err);
+  }
 
   let endTime = new Date();
   const timeDiffMs = endTime - startTime;
@@ -83,27 +111,20 @@ async function main() {
   wallet.stop();
 
   await fs.rmdir(__dirname + "/temp/base_nodes", { recursive: true });
-  if (err) {
-    console.log(`Wallet (Pubkey: ${id.public_key}) recovery failed`);
-    console.log(`Error: ${err}`);
-    process.exit(1);
-    return;
-  }
 
   const block_rate = height_amount.height / timeDiffMinutes;
-  console.log(
-    "Wallet (Pubkey:",
-    id.public_key,
-    ") recovered to a block height of",
-    height_amount.height,
-    "completed in",
-    timeDiffMinutes.toFixed(2),
-    "minutes (",
-    block_rate.toFixed(2),
-    "blocks/min).",
-    height_amount.recoveredAmount,
-    "µT recovered."
-  );
+
+  return {
+    identity: id,
+    height: height_amount.height,
+    timeDiffMinutes,
+    blockRate: block_rate.toFixed(2),
+    recoveredAmount: height_amount.recoveredAmount,
+  };
 }
 
-Promise.all([main()]);
+if (require.main === module) {
+  Promise.all([main()]);
+} else {
+  module.exports = run;
+}

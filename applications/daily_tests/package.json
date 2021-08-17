@@ -1,0 +1,20 @@
+{
+  "name": "daily_tests",
+  "version": "1.0.0",
+  "description": "Protocol Dailies",
+  "main": "cron_jobs.js",
+  "dependencies": {
+    "cron": "^1.8.2",
+    "debug": "^4.3.2",
+    "integration_tests": "file:../../integration_tests",
+    "luxon": "^2.0.2",
+    "yargs": "^17.0.1"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+  }
+}
