@@ -22,7 +22,6 @@
 //
 use crate::stratum::{error::Error, stratum_types as types, stream::Stream};
 
-use chrono::Local;
 use log::*;
 use std::{
     self,
@@ -218,7 +217,10 @@ impl Controller {
                 None => Err(Error::RequestError("No params in job request".to_owned())),
                 Some(params) => {
                     let job = serde_json::from_value::<types::job_params::JobParams>(params)?;
-                    info!("Got a new job: {:?}", job);
+                    info!(
+                        "Got a new job for height {} with target difficulty {}",
+                        job.height, job.target
+                    );
                     self.send_miner_job(job)
                 },
             },
@@ -232,20 +234,17 @@ impl Controller {
             Some(result) => {
                 let login_response = serde_json::from_value::<types::login_response::LoginResponse>(result.clone());
                 if let Ok(st) = login_response {
-                    println!("{:?}", st);
-                    let date = Local::now();
-                    println!("\r\n{}", date.format("[%Y-%m-%d][%H:%M:%S]"));
-                    println!("\r\n\r\n");
+                    info!("Successful login to server, worker identifier is {}", st.id);
                     self.last_request_id = st.id;
                     let _ = self.send_miner_job(st.job);
                     return Ok(());
                 };
                 let job_response = serde_json::from_value::<types::job_params::JobParams>(result.clone());
                 if let Ok(st) = job_response {
-                    println!("{:?}", st);
-                    let date = Local::now();
-                    println!("\r\n{}", date.format("[%Y-%m-%d][%H:%M:%S]"));
-                    println!("\r\n\r\n");
+                    info!(
+                        "Got a new job for height {} with target difficulty {}",
+                        st.height, st.target
+                    );
                     let _ = self.send_miner_job(st);
                     return Ok(());
                 };
@@ -260,12 +259,14 @@ impl Controller {
                             // problem with template
                             let _ = self.send_message_get_job_template();
                         }
+                    } else {
+                        info!("{:?}", st.result);
                     }
                     return Ok(());
                 };
             },
             None => {
-                println!("{:?}", res);
+                error!("{:?}", res);
             },
         }
         Ok(())
@@ -338,7 +339,6 @@ impl Controller {
                                         match serde_json::from_str::<types::rpc_response::RpcResponse>(&m) {
                                             Err(e) => error!("Error parsing response {} : {:?}", m, e),
                                             Ok(response) => {
-                                                println!("{:?}", response);
                                                 if let Err(err) = self.handle_response(response) {
                                                     error!("Error handling response {} : :{:?}", m, err)
                                                 }
