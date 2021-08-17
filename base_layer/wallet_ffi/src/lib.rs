@@ -152,6 +152,7 @@ use std::{
     ffi::{CStr, CString},
     path::PathBuf,
     slice,
+    str::FromStr,
     sync::Arc,
     time::Duration,
 };
@@ -2565,6 +2566,7 @@ pub unsafe extern "C" fn transport_type_destroy(transport: *mut TariTransportTyp
 /// `database_path` - The database path char array pointer which. This is the folder path where the
 /// database files will be created and the application has write access to
 /// `discovery_timeout_in_secs`: specify how long the Discovery Timeout for the wallet is.
+/// `network`: name of network to connect to. Valid values are: ridcully, stibbons, weatherwax, localnet, mainnet
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -2582,6 +2584,7 @@ pub unsafe extern "C" fn comms_config_create(
     datastore_path: *const c_char,
     discovery_timeout_in_secs: c_ulonglong,
     saf_message_duration_in_secs: c_ulonglong,
+    network: *const c_char,
     error_out: *mut c_int,
 ) -> *mut TariCommsConfig {
     let mut error = 0;
@@ -2618,45 +2621,66 @@ pub unsafe extern "C" fn comms_config_create(
 
     let public_address = public_address_str.parse::<Multiaddr>();
 
-    match public_address {
-        Ok(public_address) => {
-            let ni = NodeIdentity::new(
-                CommsSecretKey::default(),
-                public_address,
-                PeerFeatures::COMMUNICATION_CLIENT,
-            );
-            let config = TariCommsConfig {
-                network: Network::Weatherwax,
-                node_identity: Arc::new(ni),
-                transport_type: (*transport_type).clone(),
-                auxilary_tcp_listener_address: None,
-                datastore_path,
-                peer_database_name: database_name_string,
-                max_concurrent_inbound_tasks: 100,
-                outbound_buffer_size: 100,
-                dht: DhtConfig {
-                    discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
-                    database_url: DbConnectionUrl::File(dht_database_path),
-                    auto_join: true,
-                    saf_msg_validity: Duration::from_secs(saf_message_duration_in_secs),
-                    ..Default::default()
-                },
-                // TODO: This should be set to false for non-test wallets. See the `allow_test_addresses` field
-                //       docstring for more info.
-                allow_test_addresses: true,
-                listener_liveness_allowlist_cidrs: Vec::new(),
-                listener_liveness_max_sessions: 0,
-                user_agent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
-                dns_seeds_name_server: "1.1.1.1:53".parse().unwrap(),
-                peer_seeds: Default::default(),
-                dns_seeds: Default::default(),
-                dns_seeds_use_dnssec: true,
-            };
+    let network_str;
+    if !network.is_null() {
+        network_str = CStr::from_ptr(network).to_str().unwrap().to_owned();
+    } else {
+        error = LibWalletError::from(InterfaceError::NullError("network".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
 
-            Box::into_raw(Box::new(config))
+    let selected_network = Network::from_str(&network_str);
+
+    match selected_network {
+        Ok(selected_network) => {
+            match public_address {
+                Ok(public_address) => {
+                    let ni = NodeIdentity::new(
+                        CommsSecretKey::default(),
+                        public_address,
+                        PeerFeatures::COMMUNICATION_CLIENT,
+                    );
+
+                    let config = TariCommsConfig {
+                        network: selected_network,
+                        node_identity: Arc::new(ni),
+                        transport_type: (*transport_type).clone(),
+                        auxilary_tcp_listener_address: None,
+                        datastore_path,
+                        peer_database_name: database_name_string,
+                        max_concurrent_inbound_tasks: 100,
+                        outbound_buffer_size: 100,
+                        dht: DhtConfig {
+                            discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
+                            database_url: DbConnectionUrl::File(dht_database_path),
+                            auto_join: true,
+                            saf_msg_validity: Duration::from_secs(saf_message_duration_in_secs),
+                            ..Default::default()
+                        },
+                        // TODO: This should be set to false for non-test wallets. See the `allow_test_addresses` field
+                        //       docstring for more info.
+                        allow_test_addresses: true,
+                        listener_liveness_allowlist_cidrs: Vec::new(),
+                        listener_liveness_max_sessions: 0,
+                        user_agent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
+                        dns_seeds_name_server: "1.1.1.1:53".parse().unwrap(),
+                        peer_seeds: Default::default(),
+                        dns_seeds: Default::default(),
+                        dns_seeds_use_dnssec: true,
+                    };
+
+                    Box::into_raw(Box::new(config))
+                },
+                Err(e) => {
+                    error = LibWalletError::from(e).code;
+                    ptr::swap(error_out, &mut error as *mut c_int);
+                    ptr::null_mut()
+                },
+            }
         },
-        Err(e) => {
-            error = LibWalletError::from(e).code;
+        Err(_) => {
+            error = LibWalletError::from(InterfaceError::NetworkError(network_str)).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             ptr::null_mut()
         },
@@ -5837,6 +5861,8 @@ mod test {
         // assert!(true); //optimized out by compiler
     }
 
+    const NETWORK_STRING: &str = "weatherwax";
+
     #[test]
     fn test_bytevector() {
         unsafe {
@@ -6121,6 +6147,9 @@ mod test {
                 CString::new(format!("{}{}", alice_temp_dir.path().to_str().unwrap(), "/test.log")).unwrap();
             let alice_log_path_str: *const c_char = CString::into_raw(alice_log_path) as *const c_char;
 
+            let alice_network = CString::new(NETWORK_STRING).unwrap();
+            let alice_network_str: *const c_char = CString::into_raw(alice_network) as *const c_char;
+
             let alice_config = comms_config_create(
                 address_alice_str,
                 transport_type_alice,
@@ -6128,6 +6157,7 @@ mod test {
                 db_path_alice_str,
                 20,
                 10800,
+                alice_network_str,
                 error_ptr,
             );
 
@@ -6165,6 +6195,10 @@ mod test {
             let address_bob = transport_memory_get_address(transport_type_bob, error_ptr);
             let address_bob_str = CStr::from_ptr(address_bob).to_str().unwrap().to_owned();
             let address_bob_str: *const c_char = CString::new(address_bob_str).unwrap().into_raw() as *const c_char;
+
+            let bob_network = CString::new(NETWORK_STRING).unwrap();
+            let bob_network_str: *const c_char = CString::into_raw(bob_network) as *const c_char;
+
             let bob_config = comms_config_create(
                 address_bob_str,
                 transport_type_bob,
@@ -6172,6 +6206,7 @@ mod test {
                 db_path_bob_str,
                 20,
                 10800,
+                bob_network_str,
                 error_ptr,
             );
 
@@ -6643,6 +6678,8 @@ mod test {
             string_destroy(db_name_bob_str as *mut c_char);
             string_destroy(db_path_bob_str as *mut c_char);
             string_destroy(address_bob_str as *mut c_char);
+            string_destroy(alice_network_str as *mut c_char);
+            string_destroy(bob_network_str as *mut c_char);
             // free wallet memory
             wallet_destroy(alice_wallet);
             wallet_destroy(bob_wallet);
@@ -6683,6 +6720,9 @@ mod test {
                 .join(db_name)
                 .with_extension("sqlite3");
 
+            let alice_network = CString::new(NETWORK_STRING).unwrap();
+            let alice_network_str: *const c_char = CString::into_raw(alice_network) as *const c_char;
+
             let alice_config = comms_config_create(
                 address_alice_str,
                 transport_type_alice,
@@ -6690,6 +6730,7 @@ mod test {
                 db_path_alice_str,
                 20,
                 10800,
+                alice_network_str,
                 error_ptr,
             );
 
@@ -6800,6 +6841,7 @@ mod test {
             assert!(stored_key.is_none(), "key should be cleared");
             drop(wallet_backend);
 
+            string_destroy(alice_network_str as *mut c_char);
             string_destroy(db_name_alice_str as *mut c_char);
             string_destroy(db_path_alice_str as *mut c_char);
             string_destroy(address_alice_str as *mut c_char);
@@ -6829,6 +6871,8 @@ mod test {
             let address_alice = transport_memory_get_address(transport_type_alice, error_ptr);
             let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
             let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
+            let alice_network = CString::new(NETWORK_STRING).unwrap();
+            let alice_network_str: *const c_char = CString::into_raw(alice_network) as *const c_char;
 
             let alice_config = comms_config_create(
                 address_alice_str,
@@ -6837,6 +6881,7 @@ mod test {
                 db_path_alice_str,
                 20,
                 10800,
+                alice_network_str,
                 error_ptr,
             );
 
@@ -6884,6 +6929,7 @@ mod test {
                 db_path_alice_str,
                 20,
                 10800,
+                alice_network_str,
                 error_ptr,
             );
 
@@ -6985,6 +7031,7 @@ mod test {
                 db_path_alice_str,
                 20,
                 10800,
+                alice_network_str,
                 error_ptr,
             );
 
@@ -7013,7 +7060,7 @@ mod test {
             );
 
             assert_eq!(error, 0);
-
+            string_destroy(alice_network_str as *mut c_char);
             string_destroy(db_name_alice_str as *mut c_char);
             string_destroy(db_path_alice_str as *mut c_char);
             string_destroy(address_alice_str as *mut c_char);
@@ -7046,6 +7093,9 @@ mod test {
             let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
             let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
 
+            let alice_network = CString::new(NETWORK_STRING).unwrap();
+            let alice_network_str: *const c_char = CString::into_raw(alice_network) as *const c_char;
+
             let alice_config = comms_config_create(
                 address_alice_str,
                 transport_type_alice,
@@ -7053,6 +7103,7 @@ mod test {
                 db_path_alice_str,
                 20,
                 10800,
+                alice_network_str,
                 error_ptr,
             );
 
@@ -7126,6 +7177,7 @@ mod test {
             assert_eq!(found_value, ptr::null_mut());
             assert_eq!(*error_ptr, 424i32);
 
+            string_destroy(alice_network_str as *mut c_char);
             string_destroy(k_str as *mut c_char);
             string_destroy(db_name_alice_str as *mut c_char);
             string_destroy(db_path_alice_str as *mut c_char);
@@ -7189,6 +7241,9 @@ mod test {
             let address_str = CStr::from_ptr(address).to_str().unwrap().to_owned();
             let address_str = CString::new(address_str).unwrap().into_raw() as *const c_char;
 
+            let network = CString::new(NETWORK_STRING).unwrap();
+            let network_str: *const c_char = CString::into_raw(network) as *const c_char;
+
             let config = comms_config_create(
                 address_str,
                 transport_type,
@@ -7196,6 +7251,7 @@ mod test {
                 db_path_str,
                 20,
                 10800,
+                network_str,
                 error_ptr,
             );
 
@@ -7239,6 +7295,9 @@ mod test {
             let address_str = CStr::from_ptr(address).to_str().unwrap().to_owned();
             let address_str = CString::new(address_str).unwrap().into_raw() as *const c_char;
 
+            let network = CString::new(NETWORK_STRING).unwrap();
+            let network_str: *const c_char = CString::into_raw(network) as *const c_char;
+
             let config = comms_config_create(
                 address_str,
                 transport_type,
@@ -7246,6 +7305,7 @@ mod test {
                 db_path_str,
                 20,
                 10800,
+                network_str,
                 error_ptr,
             );
 
