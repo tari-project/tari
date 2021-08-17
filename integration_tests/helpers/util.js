@@ -203,23 +203,17 @@ const getTransactionOutputHash = function (output) {
   return Buffer.from(final);
 };
 
-function consoleLogTransactionDetails(txnDetails, txId) {
-  const found = txnDetails[0];
-  const status = txnDetails[1];
-  if (found) {
-    console.log(
-      "  Transaction " +
-        pad("'" + status.transactions[0].tx_id + "'", 24) +
-        " has status " +
-        pad("'" + status.transactions[0].status + "'", 40) +
-        " and " +
-        pad("is_cancelled(" + status.transactions[0].is_cancelled + ")", 21) +
-        " and " +
-        pad("is_valid(" + status.transactions[0].valid + ")", 16)
-    );
-  } else {
-    console.log("  Transaction '" + txId + "' " + status);
-  }
+function consoleLogTransactionDetails(txnDetails) {
+  console.log(
+    "  Transaction " +
+      pad("'" + txnDetails.tx_id + "'", 24) +
+      " has status " +
+      pad("'" + txnDetails.status + "'", 40) +
+      " and " +
+      pad("is_cancelled(" + txnDetails.is_cancelled + ")", 21) +
+      " and " +
+      pad("is_valid(" + txnDetails.valid + ")", 16)
+  );
 }
 
 function consoleLogBalance(balance) {
@@ -231,19 +225,6 @@ function consoleLogBalance(balance) {
       " uT, Pending outgoing " +
       pad(balance.pending_outgoing_balance, 16) +
       " uT"
-  );
-}
-
-function consoleLogCoinbaseDetails(txnDetails) {
-  console.log(
-    "  Transaction " +
-      pad("'" + txnDetails.tx_id + "'", 24) +
-      " has status " +
-      pad("'" + txnDetails.status + "'", 40) +
-      " and " +
-      pad("is_cancelled(" + txnDetails.is_cancelled + ")", 21) +
-      " and " +
-      pad("is_valid(" + txnDetails.valid + ")", 16)
   );
 }
 
@@ -297,7 +278,6 @@ module.exports = {
   consoleLogTransactionDetails,
   tryConnect,
   consoleLogBalance,
-  consoleLogCoinbaseDetails,
   withTimeout,
   combineTwoTariKeys,
   byteArrayToHex,
