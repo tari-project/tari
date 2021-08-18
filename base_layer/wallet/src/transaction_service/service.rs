@@ -284,18 +284,15 @@ where
                     let (request, reply_tx) = request_context.split();
                     let event = format!("Handling Service API Request ({})", request);
                     trace!(target: LOG_TARGET, "{}", event);
-                    let response = self.handle_request(request,
+                    let _ = self.handle_request(request,
                         &mut send_transaction_protocol_handles,
                         &mut receive_transaction_protocol_handles,
                         &mut transaction_broadcast_protocol_handles,
                         &mut coinbase_transaction_monitoring_protocol_handles,
                         &mut transaction_validation_protocol_handles,
+                        reply_tx,
                     ).await.map_err(|e| {
                         warn!(target: LOG_TARGET, "Error handling request: {:?}", e);
-                        e
-                    });
-                    let _ = reply_tx.send(response).map_err(|e| {
-                        warn!(target: LOG_TARGET, "Failed to send reply");
                         e
                     });
                     let finish = Instant::now();
@@ -512,20 +509,26 @@ where
         transaction_validation_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<u64, TransactionServiceProtocolError>>,
         >,
-    ) -> Result<TransactionServiceResponse, TransactionServiceError> {
+        reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
+    ) -> Result<(), TransactionServiceError> {
+        let mut reply_channel = Some(reply_channel);
+
         trace!(target: LOG_TARGET, "Handling Service Request: {}", request);
-        match request {
-            TransactionServiceRequest::SendTransaction(dest_pubkey, amount, fee_per_gram, message) => self
-                .send_transaction(
+        let response = match request {
+            TransactionServiceRequest::SendTransaction(dest_pubkey, amount, fee_per_gram, message) => {
+                let rp = reply_channel.take().expect("Cannot be missing");
+                self.send_transaction(
                     dest_pubkey,
                     amount,
                     fee_per_gram,
                     message,
                     send_transaction_join_handles,
                     transaction_broadcast_join_handles,
+                    rp,
                 )
-                .await
-                .map(TransactionServiceResponse::TransactionSent),
+                .await?;
+                return Ok(());
+            },
             TransactionServiceRequest::SendOneSidedTransaction(dest_pubkey, amount, fee_per_gram, message) => self
                 .send_one_sided_transaction(
                     dest_pubkey,
@@ -639,7 +642,16 @@ where
                 .set_completed_transaction_validity(tx_id, validity)
                 .await
                 .map(|_| TransactionServiceResponse::CompletedTransactionValidityChanged),
+        };
+
+        // If the individual handlers did not already send the API response then do it here.
+        if let Some(rp) = reply_channel {
+            let _ = rp.send(response).map_err(|e| {
+                warn!(target: LOG_TARGET, "Failed to send reply");
+                e
+            });
         }
+        Ok(())
     }
 
     /// Sends a new transaction to a recipient
@@ -657,7 +669,10 @@ where
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<u64, TransactionServiceProtocolError>>,
         >,
-    ) -> Result<TxId, TransactionServiceError> {
+        reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
+    ) -> Result<(), TransactionServiceError> {
+        let tx_id = OsRng.next_u64();
+
         // If we're paying ourselves, let's complete and submit the transaction immediately
         if self.node_identity.public_key() == &dest_pubkey {
             debug!(
@@ -665,9 +680,9 @@ where
                 "Received transaction with spend-to-self transaction"
             );
 
-            let (tx_id, fee, transaction) = self
+            let (fee, transaction) = self
                 .output_manager_service
-                .create_pay_to_self_transaction(amount, fee_per_gram, None, message.clone())
+                .create_pay_to_self_transaction(tx_id, amount, fee_per_gram, None, message.clone())
                 .await?;
 
             // Notify that the transaction was successfully resolved.
@@ -693,22 +708,22 @@ where
             )
             .await?;
 
-            return Ok(tx_id);
+            let _ = reply_channel
+                .send(Ok(TransactionServiceResponse::TransactionSent(tx_id)))
+                .map_err(|e| {
+                    warn!(target: LOG_TARGET, "Failed to send service reply");
+                    e
+                });
+
+            return Ok(());
         }
-
-        let sender_protocol = self
-            .output_manager_service
-            .prepare_transaction_to_send(amount, fee_per_gram, None, message.clone(), script!(Nop))
-            .await?;
-
-        let tx_id = sender_protocol.get_tx_id()?;
 
         let (tx_reply_sender, tx_reply_receiver) = mpsc::channel(100);
         let (cancellation_sender, cancellation_receiver) = oneshot::channel();
         self.pending_transaction_reply_senders.insert(tx_id, tx_reply_sender);
-
         self.send_transaction_cancellation_senders
             .insert(tx_id, cancellation_sender);
+
         let protocol = TransactionSendProtocol::new(
             tx_id,
             self.resources.clone(),
@@ -716,15 +731,16 @@ where
             cancellation_receiver,
             dest_pubkey,
             amount,
+            fee_per_gram,
             message,
-            sender_protocol,
+            Some(reply_channel),
             TransactionSendProtocolStage::Initial,
         );
 
         let join_handle = tokio::spawn(protocol.execute());
         join_handles.push(join_handle);
 
-        Ok(tx_id)
+        Ok(())
     }
 
     /// Sends a one side payment transaction to a recipient
@@ -749,11 +765,13 @@ where
             ));
         }
 
-        // Prepare sender part of the transaction
+        let tx_id = OsRng.next_u64();
 
+        // Prepare sender part of the transaction
         let mut stp = self
             .output_manager_service
             .prepare_transaction_to_send(
+                tx_id,
                 amount,
                 fee_per_gram,
                 None,
@@ -761,7 +779,6 @@ where
                 script!(PushPubKey(Box::new(dest_pubkey.clone()))),
             )
             .await?;
-        let tx_id = stp.get_tx_id()?;
 
         // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
         // but the returned value is not used
@@ -1145,8 +1162,9 @@ where
                     cancellation_receiver,
                     tx.destination_public_key,
                     tx.amount,
+                    tx.fee,
                     tx.message,
-                    tx.sender_protocol,
+                    None,
                     TransactionSendProtocolStage::WaitForReply,
                 );
 

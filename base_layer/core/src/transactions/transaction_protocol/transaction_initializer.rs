@@ -44,7 +44,6 @@ use digest::Digest;
 use log::*;
 use rand::rngs::OsRng;
 use std::{
-    cmp::max,
     collections::HashMap,
     fmt::{Debug, Error, Formatter},
 };
@@ -91,6 +90,7 @@ pub struct SenderTransactionInitializer {
     recipient_scripts: FixedSet<TariScript>,
     recipient_sender_offset_private_keys: FixedSet<PrivateKey>,
     private_commitment_nonces: FixedSet<PrivateKey>,
+    tx_id: Option<u64>,
 }
 
 pub struct BuildError {
@@ -130,6 +130,7 @@ impl SenderTransactionInitializer {
             recipient_scripts: FixedSet::new(num_recipients),
             recipient_sender_offset_private_keys: FixedSet::new(num_recipients),
             private_commitment_nonces: FixedSet::new(num_recipients),
+            tx_id: None,
         }
     }
 
@@ -334,6 +335,12 @@ impl SenderTransactionInitializer {
         }
     }
 
+    /// Specify the tx_id of this transaction, if not provided it will be calculated on build
+    pub fn with_tx_id(&mut self, tx_id: u64) -> &mut Self {
+        self.tx_id = Some(tx_id);
+        self
+    }
+
     fn check_value<T>(name: &str, val: &Option<T>, vec: &mut Vec<String>) {
         if val.is_none() {
             vec.push(name.to_string());
@@ -491,23 +498,22 @@ impl SenderTransactionInitializer {
             1 => RecipientInfo::Single(None),
             _ => RecipientInfo::Multiple(HashMap::new()),
         };
-        let num_ids = max(1, self.num_recipients);
-        let mut ids = Vec::with_capacity(num_ids);
-        for i in 0..num_ids {
-            ids.push(calculate_tx_id::<D>(&public_nonce, i));
-        }
+
+        let tx_id = match self.tx_id {
+            Some(id) => id,
+            None => calculate_tx_id::<D>(&public_nonce, 0),
+        };
 
         // The fee should be less than the amount being sent. This isn't a protocol requirement, but it's what you want
         // 99.999% of the time, however, always preventing this will also prevent spending dust in some edge
         // cases.
         if self.amounts.size() > 0 && total_fee > self.calculate_amount_to_others() {
-            let ids_clone = ids.to_vec();
             warn!(
                 target: LOG_TARGET,
                 "Fee ({}) is greater than amount ({}) being sent for Transaction (TxId: {}).",
                 total_fee,
                 self.calculate_amount_to_others(),
-                ids_clone[0]
+                tx_id
             );
             if self.prevent_fee_gt_amount {
                 return self.build_err("Fee is greater than amount");
@@ -523,7 +529,7 @@ impl SenderTransactionInitializer {
         let sender_info = RawTransactionInfo {
             num_recipients: self.num_recipients,
             amount_to_self,
-            ids,
+            tx_id,
             amounts: self.amounts.into_vec(),
             recipient_output_features: self.recipient_output_features.into_vec(),
             recipient_scripts: self.recipient_scripts.into_vec(),
@@ -643,7 +649,6 @@ mod test {
         if let SenderState::Finalizing(info) = result.state {
             assert_eq!(info.num_recipients, 0, "Number of receivers");
             assert_eq!(info.signatures.len(), 0, "Number of signatures");
-            assert_eq!(info.ids.len(), 1, "Number of tx_ids");
             assert_eq!(info.amounts.len(), 0, "Number of external payment amounts");
             assert_eq!(info.metadata.lock_height, 100, "Lock height");
             assert_eq!(info.metadata.fee, expected_fee, "Fee");
@@ -685,7 +690,6 @@ mod test {
         if let SenderState::Finalizing(info) = result.state {
             assert_eq!(info.num_recipients, 0, "Number of receivers");
             assert_eq!(info.signatures.len(), 0, "Number of signatures");
-            assert_eq!(info.ids.len(), 1, "Number of tx_ids");
             assert_eq!(info.amounts.len(), 0, "Number of external payment amounts");
             assert_eq!(info.metadata.lock_height, 0, "Lock height");
             assert_eq!(info.metadata.fee, expected_fee, "Fee");
@@ -728,7 +732,6 @@ mod test {
         if let SenderState::Finalizing(info) = result.state {
             assert_eq!(info.num_recipients, 0, "Number of receivers");
             assert_eq!(info.signatures.len(), 0, "Number of signatures");
-            assert_eq!(info.ids.len(), 1, "Number of tx_ids");
             assert_eq!(info.amounts.len(), 0, "Number of external payment amounts");
             assert_eq!(info.metadata.lock_height, 0, "Lock height");
             assert_eq!(info.metadata.fee, expected_fee + MicroTari(50), "Fee");
@@ -918,7 +921,6 @@ mod test {
         if let SenderState::SingleRoundMessageReady(info) = result.state {
             assert_eq!(info.num_recipients, 1, "Number of receivers");
             assert_eq!(info.signatures.len(), 0, "Number of signatures");
-            assert_eq!(info.ids.len(), 1, "Number of tx_ids");
             assert_eq!(info.amounts.len(), 1, "Number of external payment amounts");
             assert_eq!(info.metadata.lock_height, 1234, "Lock height");
             assert_eq!(info.metadata.fee, expected_fee, "Fee");

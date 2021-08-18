@@ -80,7 +80,7 @@ pub enum TransactionServiceError {
     InvalidCompletedTransaction,
     #[error("No Base Node public keys are provided for Base chain broadcast and monitoring")]
     NoBaseNodeKeysProvided,
-    #[error("Error sending data to Protocol via register channels")]
+    #[error("Error sending data to Protocol via registered channels")]
     ProtocolChannelError,
     #[error("Transaction detected as rejected by mempool")]
     MempoolRejection,
@@ -138,6 +138,8 @@ pub enum TransactionServiceError {
     MaximumAttemptsExceeded,
     #[error("Byte array error")]
     ByteArrayError(#[from] tari_crypto::tari_utilities::ByteArrayError),
+    #[error("Transaction Service Error: `{0}`")]
+    ServiceError(String),
 }
 
 #[derive(Debug, Error)]
