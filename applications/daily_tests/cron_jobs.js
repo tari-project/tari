@@ -1,8 +1,8 @@
 const { CronJob } = require("cron");
 const fs = require("fs/promises");
 const {
-  sendMattermostNotification,
-  getMattermostWebhookUrl,
+  sendWebhookNotification,
+  getWebhookUrl,
   readLastNLines,
   emptyFile,
 } = require("./helpers");
@@ -10,20 +10,20 @@ const walletRecoveryTest = require("./automatic_recovery_test");
 const baseNodeSyncTest = require("./automatic_sync_test");
 const { SyncType } = require("./automatic_sync_test");
 
-const MATTERMOST_CHANNEL = "protocol-bot-stuff";
+const WEBHOOK_CHANNEL = "protocol-bot-stuff";
 
 function failed(message) {
   console.error(message);
-  if (!!getMattermostWebhookUrl()) {
-    sendMattermostNotification(MATTERMOST_CHANNEL, `🚨 ${message}`);
+  if (!!getWebhookUrl()) {
+    sendWebhookNotification(WEBHOOK_CHANNEL, `🚨 ${message}`);
   }
   process.exit(1);
 }
 
 function notify(message) {
   console.log(message);
-  if (!!getMattermostWebhookUrl()) {
-    sendMattermostNotification(MATTERMOST_CHANNEL, message);
+  if (!!getWebhookUrl()) {
+    sendWebhookNotification(WEBHOOK_CHANNEL, message);
   }
 }
 
