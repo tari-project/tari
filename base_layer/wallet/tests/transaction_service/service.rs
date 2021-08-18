@@ -36,7 +36,7 @@ use futures::{
     StreamExt,
 };
 use prost::Message;
-use rand::rngs::OsRng;
+use rand::{rngs::OsRng, RngCore};
 use std::{
     convert::{TryFrom, TryInto},
     path::Path,
@@ -1441,6 +1441,7 @@ fn finalize_tx_with_incorrect_pubkey() {
 
     let mut stp = runtime
         .block_on(bob_output_manager.prepare_transaction_to_send(
+            OsRng.next_u64(),
             MicroTari::from(5000),
             MicroTari::from(25),
             None,
@@ -1567,6 +1568,7 @@ fn finalize_tx_with_missing_output() {
 
     let mut stp = runtime
         .block_on(bob_output_manager.prepare_transaction_to_send(
+            OsRng.next_u64(),
             MicroTari::from(5000),
             MicroTari::from(20),
             None,

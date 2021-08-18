@@ -230,19 +230,21 @@ where TBackend: OutputManagerBackend + 'static
                 .await
                 .map(OutputManagerResponse::CoinbaseTransaction),
             OutputManagerRequest::PrepareToSendTransaction((
+                tx_id,
                 amount,
                 fee_per_gram,
                 lock_height,
                 message,
                 recipient_script,
             )) => self
-                .prepare_transaction_to_send(amount, fee_per_gram, lock_height, message, recipient_script)
+                .prepare_transaction_to_send(tx_id, amount, fee_per_gram, lock_height, message, recipient_script)
                 .await
                 .map(OutputManagerResponse::TransactionToSend),
-            OutputManagerRequest::CreatePayToSelfTransaction((amount, fee_per_gram, lock_height, message)) => self
-                .create_pay_to_self_transaction(amount, fee_per_gram, lock_height, message)
-                .await
-                .map(OutputManagerResponse::PayToSelfTransaction),
+            OutputManagerRequest::CreatePayToSelfTransaction((tx_id, amount, fee_per_gram, lock_height, message)) => {
+                self.create_pay_to_self_transaction(tx_id, amount, fee_per_gram, lock_height, message)
+                    .await
+                    .map(OutputManagerResponse::PayToSelfTransaction)
+            },
             OutputManagerRequest::FeeEstimate((amount, fee_per_gram, num_kernels, num_outputs)) => self
                 .fee_estimate(amount, fee_per_gram, num_kernels, num_outputs)
                 .await
@@ -560,6 +562,7 @@ where TBackend: OutputManagerBackend + 'static
     /// will be produced.
     pub async fn prepare_transaction_to_send(
         &mut self,
+        tx_id: TxId,
         amount: MicroTari,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
@@ -590,7 +593,8 @@ where TBackend: OutputManagerBackend + 'static
                 PrivateKey::random(&mut OsRng),
             )
             .with_message(message)
-            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
+            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
+            .with_tx_id(tx_id);
 
         for uo in outputs.iter() {
             builder.with_input(
@@ -641,7 +645,6 @@ where TBackend: OutputManagerBackend + 'static
             )?);
         }
 
-        let tx_id = stp.get_tx_id()?;
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
         self.resources
@@ -724,11 +727,12 @@ where TBackend: OutputManagerBackend + 'static
 
     async fn create_pay_to_self_transaction(
         &mut self,
+        tx_id: TxId,
         amount: MicroTari,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
-    ) -> Result<(TxId, MicroTari, Transaction), OutputManagerError> {
+    ) -> Result<(MicroTari, Transaction), OutputManagerError> {
         let (inputs, _, total) = self.select_utxos(amount, fee_per_gram, 1, None).await?;
 
         let offset = PrivateKey::random(&mut OsRng);
@@ -743,7 +747,8 @@ where TBackend: OutputManagerBackend + 'static
             .with_offset(offset.clone())
             .with_private_nonce(nonce.clone())
             .with_message(message)
-            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
+            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
+            .with_tx_id(tx_id);
 
         for uo in &inputs {
             builder.with_input(
@@ -819,7 +824,6 @@ where TBackend: OutputManagerBackend + 'static
             outputs.push(change_output);
         }
 
-        let tx_id = stp.get_tx_id()?;
         trace!(
             target: LOG_TARGET,
             "Encumber send to self transaction ({}) outputs.",
@@ -832,7 +836,7 @@ where TBackend: OutputManagerBackend + 'static
         stp.finalize(KernelFeatures::empty(), &factories)?;
         let tx = stp.take_transaction()?;
 
-        Ok((tx_id, fee, tx))
+        Ok((fee, tx))
     }
 
     /// Confirm that a transaction has finished being negotiated between parties so the short-term encumberance can be
