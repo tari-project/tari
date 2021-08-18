@@ -1,8 +1,7 @@
-const BaseNodeProcess = require("integration_tests/helpers/baseNodeProcess");
-
 const fs = require("fs/promises");
 const path = require("path");
-const { readLastNLines } = require("./helpers");
+const helpers = require("./helpers");
+const BaseNodeProcess = require("integration_tests/helpers/baseNodeProcess");
 
 const SyncType = {
   Archival: "Archival",
@@ -17,23 +16,14 @@ async function main() {
     syncType = SyncType.Archival;
   }
 
-  try {
-    const { blockHeight, timeDiffMinutes, blockRate } = await run({
-      log: "./logs/base-node.log",
-      syncType,
-    });
+  const { blockHeight, timeDiffMinutes, blockRate } = await run({
+    log: "./logs/base-node.log",
+    syncType,
+  });
 
-    console.log(
-      `${syncType} sync to block height ${blockHeight} took ${timeDiffMinutes} minutes for a rate of ${blockRate} blocks/min`
-    );
-  } catch (err) {
-    let logLines = readLastNLines("./logs/base-node.log", 10);
-    console.log(
-      `Syncing ${syncType} failed: ${err}
-        Last 10 log lines:
-        ${logLines}`
-    );
-  }
+  console.log(
+    `${syncType} sync to block height ${blockHeight} took ${timeDiffMinutes} minutes for a rate of ${blockRate} blocks/min`
+  );
 }
 
 async function run(options) {
@@ -58,48 +48,45 @@ async function run(options) {
   let logfile = await fs.open(options.log, "w+");
   let startTime = new Date();
 
-  let syncPromise = new Promise((resolve, reject) => {
-    baseNode.ps.stderr.on("data", (data) => {
-      logfile.write(data);
-    });
-    baseNode.ps.stdout.on("data", (data) => {
-      logfile.write(data);
-      let height = parseInt(data.toString().match("Tip:\\ (\\d+)\\ \\(")[1]);
-
-      if (
-        parseInt(height) > 0 &&
-        data
-          .toString()
-          .toUpperCase()
-          .match(/STATE: LISTENING/)
-      ) {
-        resolve(height);
-      }
-    });
-    baseNode.ps.once("error", (err) => {
-      reject(err);
-    });
-  });
-
-  let blockHeight = await syncPromise;
-
-  let endTime = new Date();
-  const timeDiffMs = endTime - startTime;
-  const timeDiffMinutes = timeDiffMs / 60000;
-  const blockRate = blockHeight / timeDiffMinutes;
-
-  await baseNode.stop();
-
   try {
-    await fs.rmdir(__dirname + "/temp/base_nodes", { recursive: true });
+    let syncResult = await helpers.monitorProcessOutput({
+      process: baseNode.ps,
+      outputStream: logfile,
+      onDataCallback: (data) => {
+        // 13:50 v0.9.3, State: Listening, Tip: 20515 (Wed, 18 Aug 2021 08:17:25 +0000), Mempool: 2tx (60g, +/- 1blks), Connections: 17, Banned: 0, Messages (last 60s): 36, Rpc: 3/1000 sessions
+        let match = data.match(/Tip: (\d+) \(/);
+        if (!match) {
+          return null;
+        }
+        let height = parseInt(match[1]);
+
+        if (height > 0 && data.toUpperCase().match(/STATE: LISTENING/)) {
+          return { height };
+        }
+      },
+    });
+
+    let endTime = new Date();
+    const timeDiffMs = endTime - startTime;
+    const timeDiffMinutes = timeDiffMs / 60000;
+    const blockRate = syncResult.height / timeDiffMinutes;
+
+    await baseNode.stop();
+
+    try {
+      await fs.rmdir(__dirname + "/temp/base_nodes", { recursive: true });
+    } catch (err) {
+      console.error(err);
+    }
+    return {
+      blockRate: blockRate.toFixed(2),
+      timeDiffMinutes: timeDiffMinutes.toFixed(2),
+      blockHeight: syncResult.height,
+    };
   } catch (err) {
-    console.error(err);
+    await baseNode.stop();
+    throw err;
   }
-  return {
-    blockRate: blockRate.toFixed(2),
-    timeDiffMinutes: timeDiffMinutes.toFixed(2),
-    blockHeight,
-  };
 }
 
 if (require.main === module) {

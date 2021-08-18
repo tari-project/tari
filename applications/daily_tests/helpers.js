@@ -25,23 +25,19 @@ const { hideBin } = require("yargs/helpers");
 const readline = require("readline");
 const path = require("path");
 
-const MATTERMOST_WEBHOOK_ENV_NAME = "MATTERMOST_WEBHOOK_URL";
+const WEBHOOK_URL_ENV_NAME = "WEBHOOK_URL";
 
 const yargs = () => require("yargs")(hideBin(process.argv));
 
 /**
- * Send a mattermost notification to `webhookUrl` or else the WEBHOOK_URL environment var
+ * Send a webhook notification to `webhookUrl` or else the WEBHOOK_URL environment var
  * @param channel - the channel to send
  * @param message - the message to send
  * @param webhookUrlOverride - the optional webhook URL to send, if not supplied WEBHOOK_URL is used
  * @returns {Promise<Result<null, ExecException>>}
  */
-function sendMattermostNotification(
-  channel,
-  message,
-  webhookUrlOverride = null
-) {
-  const hook = webhookUrlOverride || getMattermostWebhookUrlFromEnv();
+function sendWebhookNotification(channel, message, webhookUrlOverride = null) {
+  const hook = webhookUrlOverride || getWebhookUrlFromEnv();
   if (!hook) {
     throw new Error("WEBHOOK_URL not specified");
   }
@@ -59,8 +55,8 @@ function sendMattermostNotification(
   });
 }
 
-function getMattermostWebhookUrlFromEnv() {
-  return process.env[MATTERMOST_WEBHOOK_ENV_NAME];
+function getWebhookUrlFromEnv() {
+  return process.env[WEBHOOK_URL_ENV_NAME];
 }
 
 function readLastNLines(file, n) {
@@ -97,10 +93,71 @@ async function emptyFile(file) {
   }
 }
 
+async function monitorProcessOutput({
+  process,
+  onDataCallback,
+  outputStream,
+  noStdout,
+}) {
+  return new Promise((resolve, reject) => {
+    let isResolved = false;
+    process.stderr.on("data", (buf) => {
+      let data = buf.toString().trim();
+      if (!noStdout) {
+        console.error(data);
+      }
+      if (outputStream) {
+        outputStream.write(data);
+      }
+    });
+
+    process.stdout.on("data", (buf) => {
+      let data = buf.toString();
+      if (!noStdout) {
+        console.log(data);
+      }
+      if (outputStream) {
+        outputStream.write(data);
+      }
+      if (isResolved) {
+        return;
+      }
+      try {
+        let ret = onDataCallback(data);
+        if (ret === null || ret === undefined) {
+          // No result yet
+          return;
+        }
+
+        isResolved = true;
+        resolve(ret);
+      } catch (err) {
+        isResolved = true;
+        reject(err);
+      }
+    });
+
+    process.once("error", (err) => {
+      isResolved = true;
+      reject(err);
+    });
+    process.once("exit", (code) => {
+      isResolved = true;
+      if (code === 0) {
+        // If already resolved, this is a noop
+        resolve(null);
+      } else {
+        reject(new Error(`Exited with error code ${code}`));
+      }
+    });
+  });
+}
+
 module.exports = {
-  sendMattermostNotification,
-  getMattermostWebhookUrl: getMattermostWebhookUrlFromEnv,
+  sendWebhookNotification,
+  getWebhookUrl: getWebhookUrlFromEnv,
   readLastNLines,
   emptyFile,
   yargs,
+  monitorProcessOutput,
 };
