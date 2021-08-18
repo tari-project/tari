@@ -53,14 +53,13 @@ use crate::{
     protocol::{ProtocolEvent, ProtocolId, ProtocolNotification, ProtocolNotificationRx},
     Bytes,
 };
-use futures::{channel::mpsc, AsyncRead, AsyncWrite, Sink, SinkExt, StreamExt};
+use futures::{channel::mpsc, AsyncRead, AsyncWrite, SinkExt, StreamExt};
 use log::*;
 use prost::Message;
 use std::{
-    io,
+    future::Future,
     time::{Duration, Instant},
 };
-use tari_shutdown::{OptionalShutdownSignal, ShutdownSignal};
 use tokio::time;
 use tower::Service;
 use tower_make::MakeService;
@@ -150,7 +149,6 @@ pub struct RpcServerBuilder {
     maximum_simultaneous_sessions: Option<usize>,
     minimum_client_deadline: Duration,
     handshake_timeout: Duration,
-    shutdown_signal: OptionalShutdownSignal,
 }
 
 impl RpcServerBuilder {
@@ -173,11 +171,6 @@ impl RpcServerBuilder {
         self
     }
 
-    pub fn with_shutdown_signal(mut self, shutdown_signal: ShutdownSignal) -> Self {
-        self.shutdown_signal = Some(shutdown_signal).into();
-        self
-    }
-
     pub fn finish(self) -> RpcServer {
         let (request_tx, request_rx) = mpsc::channel(10);
         RpcServer {
@@ -194,7 +187,6 @@ impl Default for RpcServerBuilder {
             maximum_simultaneous_sessions: Some(1000),
             minimum_client_deadline: Duration::from_secs(1),
             handshake_timeout: Duration::from_secs(15),
-            shutdown_signal: Default::default(),
         }
     }
 }
@@ -248,8 +240,7 @@ where
         let mut protocol_notifs = self
             .protocol_notifications
             .take()
-            .expect("PeerRpcServer initialized without protocol_notifications")
-            .take_until(self.config.shutdown_signal.clone());
+            .expect("PeerRpcServer initialized without protocol_notifications");
 
         let mut requests = self
             .request_rx
@@ -274,8 +265,7 @@ where
 
         debug!(
             target: LOG_TARGET,
-            "Peer RPC server is shut down because the shutdown signal was triggered or the protocol notification \
-             stream ended"
+            "Peer RPC server is shut down because the protocol notification stream ended"
         );
 
         Ok(())
@@ -367,10 +357,9 @@ where
         let service = ActivePeerRpcService {
             config: self.config.clone(),
             node_id: node_id.clone(),
-            framed: Some(framed),
+            framed,
             service,
             comms_provider: self.comms_provider.clone(),
-            shutdown_signal: self.config.shutdown_signal.clone(),
         };
 
         self.executor
@@ -385,9 +374,8 @@ struct ActivePeerRpcService<TSvc, TSubstream, TCommsProvider> {
     config: RpcServerBuilder,
     node_id: NodeId,
     service: TSvc,
-    framed: Option<CanonicalFraming<TSubstream>>,
+    framed: CanonicalFraming<TSubstream>,
     comms_provider: TCommsProvider,
-    shutdown_signal: OptionalShutdownSignal,
 }
 
 impl<TSvc, TSubstream, TCommsProvider> ActivePeerRpcService<TSvc, TSubstream, TCommsProvider>
@@ -408,28 +396,26 @@ where
     }
 
     async fn run(&mut self) -> Result<(), RpcServerError> {
-        let (mut sink, stream) = self.framed.take().unwrap().split();
-        let mut stream = stream.fuse().take_until(self.shutdown_signal.clone());
-
-        while let Some(result) = stream.next().await {
+        while let Some(result) = self.framed.next().await {
             let start = Instant::now();
-            if let Err(err) = self.handle(&mut sink, result?.freeze()).await {
-                sink.close().await?;
+            if let Err(err) = self.handle(result?.freeze()).await {
+                self.framed.close().await?;
                 return Err(err);
             }
-            debug!(target: LOG_TARGET, "RPC request completed in {:.0?}", start.elapsed());
+            let elapsed = start.elapsed();
+            debug!(
+                target: LOG_TARGET,
+                "RPC request completed in {:.0?}{}",
+                elapsed,
+                if elapsed.as_secs() > 5 { " (LONG REQUEST)" } else { "" }
+            );
         }
 
-        sink.close().await?;
+        self.framed.close().await?;
         Ok(())
     }
 
-    fn create_request_context(&self) -> RequestContext {
-        RequestContext::new(self.node_id.clone(), Box::new(self.comms_provider.clone()))
-    }
-
-    async fn handle<W>(&mut self, sink: &mut W, mut request: Bytes) -> Result<(), RpcServerError>
-    where W: Sink<Bytes, Error = io::Error> + Unpin {
+    async fn handle(&mut self, mut request: Bytes) -> Result<(), RpcServerError> {
         let decoded_msg = proto::rpc::RpcRequest::decode(&mut request)?;
 
         let request_id = decoded_msg.request_id;
@@ -453,7 +439,7 @@ where
                 flags: RpcMessageFlags::FIN.bits().into(),
                 message: status.details_bytes(),
             };
-            sink.send(bad_request.to_encoded_bytes().into()).await?;
+            self.framed.send(bad_request.to_encoded_bytes().into()).await?;
             return Ok(());
         }
 
@@ -462,9 +448,14 @@ where
             "[Peer=`{}`] Got request {}", self.node_id, decoded_msg
         );
 
-        let req = Request::with_context(self.create_request_context(), method, decoded_msg.message.into());
+        let req = Request::with_context(
+            self.create_request_context(request_id),
+            method,
+            decoded_msg.message.into(),
+        );
 
-        let service_result = time::timeout(deadline, self.service.call(req)).await;
+        let service_call = log_timing(request_id, "service call", self.service.call(req));
+        let service_result = time::timeout(deadline, service_call).await;
         let service_result = match service_result {
             Ok(v) => v,
             Err(_) => {
@@ -478,9 +469,42 @@ where
 
         match service_result {
             Ok(body) => {
+                // This is the most basic way we can push responses back to the peer. Keeping this here for reference
+                // and possible future evaluation
+                //
+                // body.into_message()
+                //     .map(|msg| match msg {
+                //         Ok(msg) => {
+                //             trace!(target: LOG_TARGET, "Sending body len = {}", msg.len());
+                //             let mut flags = RpcMessageFlags::empty();
+                //             if msg.is_finished() {
+                //                 flags |= RpcMessageFlags::FIN;
+                //             }
+                //             proto::rpc::RpcResponse {
+                //                 request_id,
+                //                 status: RpcStatus::ok().as_code(),
+                //                 flags: flags.bits().into(),
+                //                 message: msg.into(),
+                //             }
+                //         },
+                //         Err(err) => {
+                //             debug!(target: LOG_TARGET, "Body contained an error: {}", err);
+                //             proto::rpc::RpcResponse {
+                //                 request_id,
+                //                 status: err.as_code(),
+                //                 flags: RpcMessageFlags::FIN.bits().into(),
+                //                 message: err.details().as_bytes().to_vec(),
+                //             }
+                //         },
+                //     })
+                //     .map(|resp| Ok(resp.to_encoded_bytes().into()))
+                //     .forward(PreventClose::new(sink))
+                //     .await?;
+
                 let mut message = body.into_message();
                 loop {
-                    match time::timeout(deadline, message.next()).await {
+                    let msg_read = log_timing(request_id, "message read", message.next());
+                    match time::timeout(deadline, msg_read).await {
                         Ok(Some(msg)) => {
                             let resp = match msg {
                                 Ok(msg) => {
@@ -507,7 +531,10 @@ where
                                 },
                             };
 
-                            if !send_response_checked(sink, request_id, resp).await? {
+                            let is_valid =
+                                log_timing(request_id, "transmit", self.send_response(request_id, resp)).await?;
+
+                            if !is_valid {
                                 break;
                             }
                         },
@@ -521,7 +548,7 @@ where
                             break;
                         },
                     }
-                }
+                } // end loop
             },
             Err(err) => {
                 debug!(target: LOG_TARGET, "Service returned an error: {}", err);
@@ -532,50 +559,63 @@ where
                     message: err.details_bytes(),
                 };
 
-                sink.send(resp.to_encoded_bytes().into()).await?;
+                self.framed.send(resp.to_encoded_bytes().into()).await?;
             },
         }
 
         Ok(())
     }
+
+    /// Sends an RpcResponse on the given Sink. If the size of the message exceeds the RPC_MAX_FRAME_SIZE, an error is
+    /// returned to the client and false is returned from this function, otherwise the message is sent and true is
+    /// returned
+    async fn send_response(&mut self, request_id: u32, resp: proto::rpc::RpcResponse) -> Result<bool, RpcServerError> {
+        match resp.to_encoded_bytes() {
+            buf if buf.len() > RPC_MAX_FRAME_SIZE => {
+                let msg = format!(
+                    "This node tried to return a message that exceeds the maximum frame size. Max = {:.4} MiB, Got = \
+                     {:.4} MiB",
+                    RPC_MAX_FRAME_SIZE as f32 / (1024.0 * 1024.0),
+                    buf.len() as f32 / (1024.0 * 1024.0)
+                );
+                warn!(target: LOG_TARGET, "{}", msg);
+                self.framed
+                    .send(
+                        proto::rpc::RpcResponse {
+                            request_id,
+                            status: RpcStatusCode::MalformedResponse as u32,
+                            flags: RpcMessageFlags::FIN.bits().into(),
+                            message: msg.as_bytes().to_vec(),
+                        }
+                        .to_encoded_bytes()
+                        .into(),
+                    )
+                    .await?;
+                Ok(false)
+            },
+            buf => {
+                self.framed.send(buf.into()).await?;
+                Ok(true)
+            },
+        }
+    }
+
+    fn create_request_context(&self, request_id: u32) -> RequestContext {
+        RequestContext::new(request_id, self.node_id.clone(), Box::new(self.comms_provider.clone()))
+    }
 }
 
-/// Sends an RpcResponse on the given Sink. If the size of the message exceeds the RPC_MAX_FRAME_SIZE, an error is
-/// returned to the client and false is returned from this function, otherwise the message is sent and true is returned
-#[inline]
-async fn send_response_checked<S>(
-    sink: &mut S,
-    request_id: u32,
-    resp: proto::rpc::RpcResponse,
-) -> Result<bool, S::Error>
-where
-    S: Sink<Bytes> + Unpin,
-{
-    match resp.to_encoded_bytes() {
-        buf if buf.len() > RPC_MAX_FRAME_SIZE => {
-            let msg = format!(
-                "This node tried to return a message that exceeds the maximum frame size. Max = {:.4} MiB, Got = \
-                 {:.4} MiB",
-                RPC_MAX_FRAME_SIZE as f32 / (1024.0 * 1024.0),
-                buf.len() as f32 / (1024.0 * 1024.0)
-            );
-            warn!(target: LOG_TARGET, "{}", msg);
-            sink.send(
-                proto::rpc::RpcResponse {
-                    request_id,
-                    status: RpcStatusCode::MalformedResponse as u32,
-                    flags: RpcMessageFlags::FIN.bits().into(),
-                    message: msg.as_bytes().to_vec(),
-                }
-                .to_encoded_bytes()
-                .into(),
-            )
-            .await?;
-            Ok(false)
-        },
-        buf => {
-            sink.send(buf.into()).await?;
-            Ok(true)
-        },
-    }
+async fn log_timing<R, F: Future<Output = R>>(request_id: u32, tag: &str, fut: F) -> R {
+    let t = Instant::now();
+    let ret = fut.await;
+    let elapsed = t.elapsed();
+    trace!(
+        target: LOG_TARGET,
+        "RPC TIMING(REQ_ID={}): '{}' took {:.2}s{}",
+        request_id,
+        tag,
+        elapsed.as_secs_f32(),
+        if elapsed.as_secs() >= 5 { " (SLOW)" } else { "" }
+    );
+    ret
 }

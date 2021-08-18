@@ -4486,6 +4486,7 @@ dependencies = [
  "serde_json",
  "snow",
  "tari_common",
+ "tari_comms_rpc_macros",
  "tari_crypto",
  "tari_shutdown",
  "tari_storage",

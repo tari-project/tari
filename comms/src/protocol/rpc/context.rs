@@ -77,17 +77,26 @@ impl RpcCommsProvider for RpcCommsBackend {
 }
 
 pub struct RequestContext {
+    request_id: u32,
     backend: Box<dyn RpcCommsProvider>,
     node_id: NodeId,
 }
 
 impl RequestContext {
-    pub(super) fn new(node_id: NodeId, backend: Box<dyn RpcCommsProvider>) -> Self {
-        Self { backend, node_id }
+    pub(super) fn new(request_id: u32, node_id: NodeId, backend: Box<dyn RpcCommsProvider>) -> Self {
+        Self {
+            request_id,
+            backend,
+            node_id,
+        }
     }
 
     pub fn peer_node_id(&self) -> &NodeId {
         &self.node_id
+    }
+
+    pub fn request_id(&self) -> u32 {
+        self.request_id
     }
 
     pub(crate) async fn fetch_peer(&self) -> Result<Peer, RpcError> {

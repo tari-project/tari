@@ -52,7 +52,6 @@ async fn setup(num_concurrent_sessions: usize) -> (PeerConnection, PeerConnectio
     task::spawn(
         RpcServer::builder()
             .with_maximum_simultaneous_sessions(num_concurrent_sessions)
-            .with_shutdown_signal(shutdown.to_signal())
             .finish()
             .add_service(GreetingServer::new(GreetingService::default()))
             .serve(notif_rx, context),
@@ -80,7 +79,7 @@ mod lazy_pool {
     #[runtime::test]
     async fn it_connects_lazily() {
         let (conn, mock_state, _shutdown) = setup(2).await;
-        let mut pool = LazyPool::<GreetingClient>::new(conn, 2);
+        let mut pool = LazyPool::<GreetingClient>::new(conn, 2, Default::default());
         assert_eq!(mock_state.num_open_substreams(), 0);
         let _conn1 = pool.get_least_used_or_connect().await.unwrap();
         assert_eq!(mock_state.num_open_substreams(), 1);
@@ -91,7 +90,7 @@ mod lazy_pool {
     #[runtime::test]
     async fn it_reuses_unused_connections() {
         let (conn, mock_state, _shutdown) = setup(2).await;
-        let mut pool = LazyPool::<GreetingClient>::new(conn, 2);
+        let mut pool = LazyPool::<GreetingClient>::new(conn, 2, Default::default());
         let _ = pool.get_least_used_or_connect().await.unwrap();
         assert_eq!(pool.refresh_num_active_connections(), 1);
         async_assert_eventually!(mock_state.num_open_substreams(), expect = 1);
@@ -103,7 +102,7 @@ mod lazy_pool {
     #[runtime::test]
     async fn it_reuses_least_used_connections() {
         let (conn, mock_state, _shutdown) = setup(2).await;
-        let mut pool = LazyPool::<GreetingClient>::new(conn, 2);
+        let mut pool = LazyPool::<GreetingClient>::new(conn, 2, Default::default());
         let conn1 = pool.get_least_used_or_connect().await.unwrap();
         assert_eq!(mock_state.num_open_substreams(), 1);
         let conn2 = pool.get_least_used_or_connect().await.unwrap();
@@ -124,7 +123,7 @@ mod lazy_pool {
     #[runtime::test]
     async fn it_reuses_used_connections_if_necessary() {
         let (conn, mock_state, _shutdown) = setup(2).await;
-        let mut pool = LazyPool::<GreetingClient>::new(conn, 1);
+        let mut pool = LazyPool::<GreetingClient>::new(conn, 1, Default::default());
         let conn1 = pool.get_least_used_or_connect().await.unwrap();
         assert_eq!(mock_state.num_open_substreams(), 1);
         let conn2 = pool.get_least_used_or_connect().await.unwrap();
@@ -136,7 +135,7 @@ mod lazy_pool {
     #[runtime::test]
     async fn it_gracefully_handles_insufficient_server_sessions() {
         let (conn, mock_state, _shutdown) = setup(1).await;
-        let mut pool = LazyPool::<GreetingClient>::new(conn, 2);
+        let mut pool = LazyPool::<GreetingClient>::new(conn, 2, Default::default());
         let conn1 = pool.get_least_used_or_connect().await.unwrap();
         assert_eq!(mock_state.num_open_substreams(), 1);
         let conn2 = pool.get_least_used_or_connect().await.unwrap();
@@ -148,7 +147,7 @@ mod lazy_pool {
     #[runtime::test]
     async fn it_prunes_disconnected_sessions() {
         let (conn, mock_state, _shutdown) = setup(2).await;
-        let mut pool = LazyPool::<GreetingClient>::new(conn, 2);
+        let mut pool = LazyPool::<GreetingClient>::new(conn, 2, Default::default());
         let mut conn1 = pool.get_least_used_or_connect().await.unwrap();
         assert_eq!(mock_state.num_open_substreams(), 1);
         let _conn2 = pool.get_least_used_or_connect().await.unwrap();
@@ -165,7 +164,7 @@ mod lazy_pool {
     #[runtime::test]
     async fn it_fails_when_peer_connected_disconnects() {
         let (mut peer_conn, _, _shutdown) = setup(2).await;
-        let mut pool = LazyPool::<GreetingClient>::new(peer_conn.clone(), 2);
+        let mut pool = LazyPool::<GreetingClient>::new(peer_conn.clone(), 2, Default::default());
         let mut _conn1 = pool.get_least_used_or_connect().await.unwrap();
         peer_conn.disconnect().await.unwrap();
         let err = pool.get_least_used_or_connect().await.unwrap_err();

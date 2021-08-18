@@ -66,7 +66,7 @@ impl WalletConnectivityHandle {
     /// Obtain a BaseNodeWalletRpcClient.
     ///
     /// This can be relied on to obtain a pooled BaseNodeWalletRpcClient rpc session from a currently selected base
-    /// node/nodes. It will be block until this is happens. The ONLY other time it will return is if the node is
+    /// node/nodes. It will block until this happens. The ONLY other time it will return is if the node is
     /// shutting down, where it will return None. Use this function whenever no work can be done without a
     /// BaseNodeWalletRpcClient RPC session.
     pub async fn obtain_base_node_wallet_rpc_client(&mut self) -> Option<RpcClientLease<BaseNodeWalletRpcClient>> {
@@ -89,7 +89,7 @@ impl WalletConnectivityHandle {
     /// Obtain a BaseNodeSyncRpcClient.
     ///
     /// This can be relied on to obtain a pooled BaseNodeSyncRpcClient rpc session from a currently selected base
-    /// node/nodes. It will be block until this is happens. The ONLY other time it will return is if the node is
+    /// node/nodes. It will block until this happens. The ONLY other time it will return is if the node is
     /// shutting down, where it will return None. Use this function whenever no work can be done without a
     /// BaseNodeSyncRpcClient RPC session.
     pub async fn obtain_base_node_sync_rpc_client(&mut self) -> Option<RpcClientLease<BaseNodeSyncRpcClient>> {

@@ -50,6 +50,7 @@ use futures::{
 use log::*;
 use prost::Message;
 use std::{
+    convert::TryFrom,
     fmt,
     future::Future,
     marker::PhantomData,
@@ -75,7 +76,7 @@ impl RpcClient {
         TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     {
         let (request_tx, request_rx) = mpsc::channel(1);
-        let connector = ClientConnector { inner: request_tx };
+        let connector = ClientConnector::new(request_tx);
         let (ready_tx, ready_rx) = oneshot::channel();
         task::spawn(RpcClientWorker::new(config, request_rx, framed, ready_tx).run());
         ready_rx
@@ -227,7 +228,7 @@ impl Default for RpcClientConfig {
     fn default() -> Self {
         Self {
             deadline: Some(Duration::from_secs(30)),
-            deadline_grace_period: Duration::from_secs(10),
+            deadline_grace_period: Duration::from_secs(30),
             handshake_timeout: Duration::from_secs(30),
         }
     }
@@ -239,6 +240,10 @@ pub struct ClientConnector {
 }
 
 impl ClientConnector {
+    pub(self) fn new(sender: mpsc::Sender<ClientRequest>) -> Self {
+        Self { inner: sender }
+    }
+
     pub fn close(&mut self) {
         self.inner.close_channel();
     }
@@ -293,8 +298,8 @@ pub struct RpcClientWorker<TSubstream> {
     request_rx: mpsc::Receiver<ClientRequest>,
     framed: CanonicalFraming<TSubstream>,
     // Request ids are limited to u16::MAX because varint encoding is used over the wire and the magnitude of the value
-    // sent determines the byte size. A u16 will be more than enough for the purpose (currently just logging)
-    request_id: u16,
+    // sent determines the byte size. A u16 will be more than enough for the purpose
+    next_request_id: u16,
     ready_tx: Option<oneshot::Sender<Result<(), RpcError>>>,
     latency: Option<Duration>,
 }
@@ -312,7 +317,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
             config,
             request_rx,
             framed,
-            request_id: 0,
+            next_request_id: 0,
             ready_tx: Some(ready_tx),
             latency: None,
         }
@@ -348,7 +353,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
             match req {
                 SendRequest { request, reply } => {
                     if let Err(err) = self.do_request_response(request, reply).await {
-                        debug!(target: LOG_TARGET, "Unexpected error: {}. Worker is terminating.", err);
+                        error!(target: LOG_TARGET, "Unexpected error: {}. Worker is terminating.", err);
                         break;
                     }
                 },
@@ -433,8 +438,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
                 },
             };
 
-            match Self::convert_to_result(resp) {
-                Ok(resp) => {
+            match Self::convert_to_result(resp, request_id) {
+                Ok(Ok(resp)) => {
                     // The consumer may drop the receiver before all responses are received.
                     // We just ignore that as we still want obey the protocol and receive messages until the FIN flag or
                     // the connection is dropped
@@ -447,7 +452,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
                         break;
                     }
                 },
-                Err(err) => {
+                Ok(Err(err)) => {
                     debug!(target: LOG_TARGET, "Remote service returned error: {}", err);
                     if !response_tx.is_closed() {
                         let _ = response_tx.send(Err(err)).await;
@@ -455,6 +460,14 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
                     response_tx.close_channel();
                     break;
                 },
+                Err(err @ RpcError::ResponseIdDidNotMatchRequest { .. }) => {
+                    warn!(target: LOG_TARGET, "{}", err);
+                    // Ignore the response, this can happen when there is excessive latency. The server sends back a
+                    // reply before the deadline but it is only received after the client has timed
+                    // out
+                    continue;
+                },
+                Err(err) => return Err(err),
             }
         }
 
@@ -462,16 +475,29 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
     }
 
     fn next_request_id(&mut self) -> u16 {
-        let next_id = self.request_id;
+        let next_id = self.next_request_id;
         // request_id is allowed to wrap around back to 0
-        self.request_id = self.request_id.checked_add(1).unwrap_or(0);
+        self.next_request_id = self.next_request_id.checked_add(1).unwrap_or(0);
         next_id
     }
 
-    fn convert_to_result(resp: proto::rpc::RpcResponse) -> Result<Response<Bytes>, RpcStatus> {
+    fn convert_to_result(
+        resp: proto::rpc::RpcResponse,
+        request_id: u16,
+    ) -> Result<Result<Response<Bytes>, RpcStatus>, RpcError> {
+        let resp_id = u16::try_from(resp.request_id)
+            .map_err(|_| RpcStatus::protocol_error(format!("invalid request_id: must be less than {}", u16::MAX)))?;
+
+        if resp_id != request_id {
+            return Err(RpcError::ResponseIdDidNotMatchRequest {
+                expected: request_id,
+                actual: resp.request_id as u16,
+            });
+        }
+
         let status = RpcStatus::from(&resp);
         if !status.is_ok() {
-            return Err(status);
+            return Ok(Err(status));
         }
 
         let resp = Response {
@@ -479,7 +505,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
             message: resp.message.into(),
         };
 
-        Ok(resp)
+        Ok(Ok(resp))
     }
 }
 

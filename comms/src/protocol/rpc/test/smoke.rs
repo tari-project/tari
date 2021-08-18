@@ -52,7 +52,7 @@ use crate::{
     test_utils::node_identity::build_node_identity,
     NodeIdentity,
 };
-use futures::{channel::mpsc, SinkExt, StreamExt};
+use futures::{channel::mpsc, future, future::Either, SinkExt, StreamExt};
 use std::{sync::Arc, time::Duration};
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_shutdown::Shutdown;
@@ -64,34 +64,39 @@ pub(super) async fn setup_service<T: GreetingRpc>(
     num_concurrent_sessions: usize,
 ) -> (
     mpsc::Sender<ProtocolNotification<MemorySocket>>,
-    task::JoinHandle<Result<(), RpcError>>,
+    task::JoinHandle<()>,
     RpcCommsBackend,
     Shutdown,
 ) {
     let (notif_tx, notif_rx) = mpsc::channel(1);
     let shutdown = Shutdown::new();
     let (context, _) = create_mocked_rpc_context();
-    let server_hnd = task::spawn(
-        RpcServer::builder()
-            .with_maximum_simultaneous_sessions(num_concurrent_sessions)
-            .with_minimum_client_deadline(Duration::from_secs(0))
-            .with_shutdown_signal(shutdown.to_signal())
-            .finish()
-            .add_service(GreetingServer::new(service_impl))
-            .serve(notif_rx, context.clone()),
-    );
+    let server_hnd = task::spawn({
+        let context = context.clone();
+        let shutdown_signal = shutdown.to_signal();
+        async move {
+            let fut = RpcServer::builder()
+                .with_maximum_simultaneous_sessions(num_concurrent_sessions)
+                .with_minimum_client_deadline(Duration::from_secs(0))
+                .finish()
+                .add_service(GreetingServer::new(service_impl))
+                .serve(notif_rx, context);
+
+            futures::pin_mut!(fut);
+
+            match future::select(shutdown_signal, fut).await {
+                Either::Left((r, _)) => r.unwrap(),
+                Either::Right((r, _)) => r.unwrap(),
+            }
+        }
+    });
     (notif_tx, server_hnd, context, shutdown)
 }
 
 pub(super) async fn setup<T: GreetingRpc>(
     service_impl: T,
     num_concurrent_sessions: usize,
-) -> (
-    MemorySocket,
-    task::JoinHandle<Result<(), RpcError>>,
-    Arc<NodeIdentity>,
-    Shutdown,
-) {
+) -> (MemorySocket, task::JoinHandle<()>, Arc<NodeIdentity>, Shutdown) {
     let (mut notif_tx, server_hnd, context, shutdown) = setup_service(service_impl, num_concurrent_sessions).await;
     let (inbound, outbound) = MemorySocket::new_pair();
     let node_identity = build_node_identity(Default::default());
@@ -110,8 +115,7 @@ pub(super) async fn setup<T: GreetingRpc>(
 }
 
 #[runtime::test_basic]
-async fn request_reponse_errors_and_streaming() // a.k.a  smoke test
-{
+async fn request_response_errors_and_streaming() {
     let (socket, server_hnd, node_identity, mut shutdown) = setup(GreetingService::default(), 1).await;
 
     let framed = framing::canonical(socket, 1024);
@@ -180,7 +184,7 @@ async fn request_reponse_errors_and_streaming() // a.k.a  smoke test
     unpack_enum!(RpcError::ClientClosed = err);
 
     shutdown.trigger().unwrap();
-    server_hnd.await.unwrap().unwrap();
+    server_hnd.await.unwrap();
 }
 
 #[runtime::test_basic]
@@ -242,17 +246,6 @@ async fn response_too_big() {
     // Take off 14 bytes for the RpcResponse overhead (i.e request_id + status + flags + msg field + vec_char(len(msg)))
     let max_size = RPC_MAX_FRAME_SIZE - 14;
     let _ = client.reply_with_msg_of_size(max_size as u64).await.unwrap();
-}
-
-#[runtime::test_basic]
-async fn server_shutdown_after_connect() {
-    let (socket, _, _, mut shutdown) = setup(GreetingService::new(&[]), 1).await;
-    let framed = framing::canonical(socket, 1024);
-    let mut client = GreetingClient::connect(framed).await.unwrap();
-    shutdown.trigger().unwrap();
-
-    let err = client.say_hello(Default::default()).await.unwrap_err();
-    unpack_enum!(RpcError::RequestCancelled = err);
 }
 
 #[runtime::test_basic]
