@@ -1120,6 +1120,27 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         Ok(Response::new(resp))
     }
+
+    async fn get_mempool_stats(
+        &self,
+        _: Request<tari_rpc::Empty>,
+    ) -> Result<Response<tari_rpc::MempoolStatsResponse>, Status> {
+        let mut mempool_handle = self.mempool_service.clone();
+
+        let mempool_stats = mempool_handle.get_mempool_stats().await.map_err(|e| {
+            error!(target: LOG_TARGET, "Error submitting query:{}", e);
+            Status::internal(e.to_string())
+        })?;
+
+        let response = tari_rpc::MempoolStatsResponse {
+            total_txs: mempool_stats.total_txs as u64,
+            unconfirmed_txs: mempool_stats.unconfirmed_txs as u64,
+            reorg_txs: mempool_stats.reorg_txs as u64,
+            total_weight: mempool_stats.total_weight,
+        };
+
+        Ok(Response::new(response))
+    }
 }
 
 enum BlockGroupType {
