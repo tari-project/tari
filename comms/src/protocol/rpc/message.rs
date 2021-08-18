@@ -242,6 +242,10 @@ impl proto::rpc::RpcResponse {
     pub fn flags(&self) -> RpcMessageFlags {
         RpcMessageFlags::from_bits_truncate(self.flags as u8)
     }
+
+    pub fn is_fin(&self) -> bool {
+        self.flags as u8 & RpcMessageFlags::FIN.bits() != 0
+    }
 }
 
 impl fmt::Display for proto::rpc::RpcResponse {

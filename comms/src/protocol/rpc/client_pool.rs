@@ -22,7 +22,14 @@
 
 use crate::{
     peer_manager::NodeId,
-    protocol::rpc::{error::HandshakeRejectReason, NamedProtocolService, RpcClient, RpcError, RpcHandshakeError},
+    protocol::rpc::{
+        error::HandshakeRejectReason,
+        NamedProtocolService,
+        RpcClient,
+        RpcClientBuilder,
+        RpcError,
+        RpcHandshakeError,
+    },
     PeerConnection,
 };
 use log::*;
@@ -43,8 +50,8 @@ impl<T> RpcClientPool<T>
 where T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone
 {
     /// Create a new RpcClientPool. Panics if passed a pool_size of 0.
-    pub(crate) fn new(peer_connection: PeerConnection, pool_size: usize) -> Self {
-        let pool = LazyPool::new(peer_connection, pool_size);
+    pub(crate) fn new(peer_connection: PeerConnection, pool_size: usize, client_config: RpcClientBuilder<T>) -> Self {
+        let pool = LazyPool::new(peer_connection, pool_size, client_config);
         Self {
             pool: Arc::new(Mutex::new(pool)),
         }
@@ -60,16 +67,18 @@ where T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone
 pub(super) struct LazyPool<T> {
     connection: PeerConnection,
     clients: Vec<RpcClientLease<T>>,
+    client_config: RpcClientBuilder<T>,
 }
 
 impl<T> LazyPool<T>
 where T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone
 {
-    pub fn new(connection: PeerConnection, capacity: usize) -> Self {
+    pub fn new(connection: PeerConnection, capacity: usize, client_config: RpcClientBuilder<T>) -> Self {
         assert!(capacity > 0, "Pool capacity of 0 is invalid");
         Self {
             connection,
             clients: Vec::with_capacity(capacity),
+            client_config,
         }
     }
 
@@ -162,7 +171,10 @@ where T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone
 
     async fn add_new_client_session(&mut self) -> Result<&RpcClientLease<T>, RpcClientPoolError> {
         debug_assert!(!self.is_full(), "add_new_client called when pool is full");
-        let client = self.connection.connect_rpc().await?;
+        let client = self
+            .connection
+            .connect_rpc_using_builder(self.client_config.clone())
+            .await?;
         let client = RpcClientLease::new(client);
         self.clients.push(client);
         Ok(self.clients.last().unwrap())
