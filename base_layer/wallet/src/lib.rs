@@ -21,9 +21,6 @@ pub mod types;
 pub mod util;
 pub mod wallet;
 
-#[cfg(feature = "test_harness")]
-pub mod testnet_utils;
-
 #[macro_use]
 extern crate diesel;
 #[macro_use]

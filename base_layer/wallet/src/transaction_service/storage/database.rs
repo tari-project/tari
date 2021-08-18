@@ -34,8 +34,6 @@ use crate::{
     },
 };
 use aes_gcm::Aes256Gcm;
-#[cfg(feature = "test_harness")]
-use chrono::NaiveDateTime;
 use chrono::Utc;
 use log::*;
 
@@ -111,13 +109,6 @@ pub trait TransactionBackend: Send + Sync + Clone {
         block_height: u64,
         amount: MicroTari,
     ) -> Result<Option<CompletedTransaction>, TransactionStorageError>;
-    /// Update a completed transactions timestamp for use in test data generation
-    #[cfg(feature = "test_harness")]
-    fn update_completed_transaction_timestamp(
-        &self,
-        tx_id: TxId,
-        timestamp: NaiveDateTime,
-    ) -> Result<(), TransactionStorageError>;
     /// Apply encryption to the backend.
     fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), TransactionStorageError>;
     /// Remove encryption from the backend.

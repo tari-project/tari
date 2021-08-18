@@ -485,9 +485,6 @@ char *wallet_sign_message(struct TariWallet *wallet, const char *msg, int *error
 // Verifies signature for a signed message
 bool wallet_verify_message_signature(struct TariWallet *wallet, struct TariPublicKey *public_key, const char *hex_sig_nonce, const char *msg, int *error_out);
 
-/// Generates test data
-bool wallet_test_generate_data(struct TariWallet *wallet, const char *datastore_path, int *error_out);
-
 // Adds a base node peer to the TariWallet
 bool wallet_add_base_node_peer(struct TariWallet *wallet, struct TariPublicKey *public_key, const char *address, int *error_out);
 
@@ -548,9 +545,6 @@ struct TariPendingInboundTransaction *wallet_get_pending_inbound_transaction_by_
 // Get a Cancelled transaction from a TariWallet by its TransactionId. Pending Inbound or Outbound transaction will be converted to a CompletedTransaction
 struct TariCompletedTransaction *wallet_get_cancelled_transaction_by_id(struct TariWallet *wallet, unsigned long long transaction_id, int *error_out);
 
-// Simulates completion of a TariPendingOutboundTransaction
-bool wallet_test_complete_sent_transaction(struct TariWallet *wallet, struct TariPendingOutboundTransaction *tx, int *error_out);
-
 // Import a UTXO into the wallet. This will add a spendable UTXO and create a faux completed transaction to record the
 // event.
 unsigned long long wallet_import_utxo(struct TariWallet *wallet, unsigned long long amount, struct TariPrivateKey *spending_key, struct TariPublicKey *source_public_key, const char *message, int *error_out);
@@ -576,18 +570,6 @@ void wallet_set_low_power_mode(struct TariWallet *wallet, int *error_out);
 
 // Set the power mode of the wallet to Normal Power mode which will then use the standard level of network traffic
 void wallet_set_normal_power_mode(struct TariWallet *wallet, int *error_out);
-
-// Simulates the completion of a broadcasted TariPendingInboundTransaction
-bool wallet_test_broadcast_transaction(struct TariWallet *wallet, unsigned long long tx, int *error_out);
-
-// Simulates receiving the finalized version of a TariPendingInboundTransaction
-bool wallet_test_finalize_received_transaction(struct TariWallet *wallet, struct TariPendingInboundTransaction *tx, int *error_out);
-
-// Simulates a TariCompletedTransaction that has been mined
-bool wallet_test_mine_transaction(struct TariWallet *wallet, unsigned long long tx, int *error_out);
-
-// Simulates a TariPendingInboundtransaction being received
-bool wallet_test_receive_transaction(struct TariWallet *wallet, int *error_out);
 
 /// Cancel a Pending Outbound Transaction
 bool wallet_cancel_pending_transaction(struct TariWallet *wallet, unsigned long long transaction_id, int *error_out);

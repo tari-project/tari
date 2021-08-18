@@ -12,7 +12,7 @@ tari_comms_dht = { version = "^0.9", path = "../../comms/dht", default-features 
 tari_crypto = "0.11.1"
 tari_key_manager = { version = "^0.9", path = "../key_manager" }
 tari_p2p = { version = "^0.9", path = "../p2p" }
-tari_wallet = { version = "^0.9", path = "../wallet", features = ["test_harness", "c_integration"]}
+tari_wallet = { version = "^0.9", path = "../wallet", features = ["c_integration"]}
 tari_shutdown = { version = "^0.9", path = "../../infrastructure/shutdown" }
 tari_utilities = "^0.3"
 

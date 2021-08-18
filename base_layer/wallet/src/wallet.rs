@@ -102,8 +102,6 @@ where
     pub utxo_scanner_service: UtxoScannerHandle,
     pub db: WalletDatabase<T>,
     pub factories: CryptoFactories,
-    #[cfg(feature = "test_harness")]
-    pub transaction_backend: U,
     _u: PhantomData<U>,
     _v: PhantomData<V>,
     _w: PhantomData<W>,
@@ -139,8 +137,6 @@ where
         comms_config.node_identity = node_identity.clone();
 
         let bn_service_db = wallet_database.clone();
-        #[cfg(feature = "test_harness")]
-        let transaction_backend_handle = transaction_backend.clone();
 
         let factories = config.clone().factories;
         let (publisher, subscription_factory) =
@@ -241,8 +237,6 @@ where
             wallet_connectivity,
             db: wallet_database,
             factories,
-            #[cfg(feature = "test_harness")]
-            transaction_backend: transaction_backend_handle,
             _u: PhantomData,
             _v: PhantomData,
             _w: PhantomData,

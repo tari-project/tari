@@ -640,34 +640,6 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(())
     }
 
-    #[cfg(feature = "test_harness")]
-    fn update_completed_transaction_timestamp(
-        &self,
-        tx_id: u64,
-        timestamp: NaiveDateTime,
-    ) -> Result<(), TransactionStorageError> {
-        let conn = self.database_connection.acquire_lock();
-
-        if let Ok(tx) = CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
-            tx.update(
-                UpdateCompletedTransactionSql::from(UpdateCompletedTransaction {
-                    status: None,
-                    timestamp: Some(timestamp),
-                    cancelled: None,
-                    direction: None,
-                    send_count: None,
-                    last_send_timestamp: None,
-                    valid: None,
-                    confirmations: None,
-                    mined_height: None,
-                }),
-                &(*conn),
-            )?;
-        }
-
-        Ok(())
-    }
-
     fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), TransactionStorageError> {
         let mut current_cipher = acquire_write_lock!(self.cipher);
 
@@ -1678,8 +1650,6 @@ impl From<UpdateCompletedTransaction> for UpdateCompletedTransactionSql {
 
 #[cfg(test)]
 mod test {
-    #[cfg(feature = "test_harness")]
-    use crate::transaction_service::storage::sqlite_db::UpdateCompletedTransactionSql;
     use crate::{
         storage::sqlite_utilities::WalletDbConnection,
         transaction_service::storage::{
@@ -1933,7 +1903,7 @@ mod test {
             .commit(&conn)
             .is_err());
 
-        CompletedTransactionSql::try_from(completed_tx2.clone())
+        CompletedTransactionSql::try_from(completed_tx2)
             .unwrap()
             .commit(&conn)
             .unwrap();
@@ -2111,26 +2081,6 @@ mod test {
         assert!(coinbase_txs.iter().any(|c| c.tx_id == 101));
         assert!(coinbase_txs.iter().any(|c| c.tx_id == 102));
         assert!(!coinbase_txs.iter().any(|c| c.tx_id == 103));
-
-        #[cfg(feature = "test_harness")]
-        CompletedTransactionSql::find_by_cancelled(completed_tx2.tx_id, false, &conn)
-            .unwrap()
-            .update(
-                UpdateCompletedTransactionSql {
-                    status: Some(TransactionStatus::MinedUnconfirmed as i32),
-                    timestamp: None,
-                    cancelled: None,
-                    direction: None,
-                    transaction_protocol: None,
-                    send_count: None,
-                    last_send_timestamp: None,
-                    valid: None,
-                    confirmations: None,
-                    mined_height: None,
-                },
-                &conn,
-            )
-            .unwrap();
     }
 
     #[test]

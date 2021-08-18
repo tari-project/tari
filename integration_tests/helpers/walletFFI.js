@@ -420,10 +420,6 @@ class WalletFFI {
           "int*",
         ],
       ],
-      wallet_test_generate_data: [
-        "bool",
-        [this.tari_wallet_ptr, "string", "int*"],
-      ],
       wallet_add_base_node_peer: [
         "bool",
         [this.tari_wallet_ptr, this.tari_public_key_ptr, "string", "int*"],
@@ -518,14 +514,6 @@ class WalletFFI {
         this.tari_completed_transaction_ptr,
         [this.tari_wallet_ptr, "int", "int*"],
       ],
-      wallet_test_complete_sent_transaction: [
-        "bool",
-        [
-          this.tari_wallet_ptr,
-          this.tari_pending_outbound_transaction_ptr,
-          "int*",
-        ],
-      ],
       wallet_import_utxo: [
         "ulong long",
         [
@@ -559,23 +547,6 @@ class WalletFFI {
       ],
       wallet_set_low_power_mode: ["void", [this.tari_wallet_ptr, "int*"]],
       wallet_set_normal_power_mode: ["void", [this.tari_wallet_ptr, "int*"]],
-      wallet_test_broadcast_transaction: [
-        "bool",
-        [this.tari_wallet_ptr, "uint", "int*"],
-      ],
-      wallet_test_finalize_received_transaction: [
-        "bool",
-        [
-          this.tari_wallet_ptr,
-          this.tari_pending_inbound_transaction_ptr,
-          "int*",
-        ],
-      ],
-      wallet_test_mine_transaction: [
-        "bool",
-        [this.tari_wallet_ptr, "ulong long", "int*"],
-      ],
-      wallet_test_receive_transaction: ["bool", [this.tari_wallet_ptr, "int*"]],
       wallet_cancel_pending_transaction: [
         "bool",
         [this.tari_wallet_ptr, "ulong long", "int*"],
