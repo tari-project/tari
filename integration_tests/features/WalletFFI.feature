@@ -1,3 +1,4 @@
+@wallet-ffi
 Feature: Wallet FFI
 
     Scenario: I want to get public key and emoji id
