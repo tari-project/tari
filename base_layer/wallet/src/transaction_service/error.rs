@@ -102,9 +102,6 @@ pub enum TransactionServiceError {
     TransactionStorageError(#[from] TransactionStorageError),
     #[error("Invalid message error: `{0}`")]
     InvalidMessageError(String),
-    #[cfg(feature = "test_harness")]
-    #[error("Test harness error: `{0}`")]
-    TestHarnessError(String),
     #[error("Transaction error: `{0}`")]
     TransactionError(#[from] TransactionError),
     #[error("Conversion error: `{0}`")]
