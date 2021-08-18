@@ -3306,3 +3306,29 @@ Then("I want to get emoji id of ffi wallet {word}", function (name) {
     `Emoji id has wrong length : ${emoji_id}`
   );
 });
+
+Then(
+  /I wait until base node (.*) has (.*) unconfirmed transactions in its mempool/,
+  { timeout: 180 * 1000 },
+  async function (baseNode, numTransactions) {
+    const client = this.getClient(baseNode);
+    await waitFor(
+      async () => {
+        let stats = await client.getMempoolStats();
+        return stats.unconfirmed_txs;
+      },
+      numTransactions,
+      120 * 1000
+    );
+
+    let stats = await client.getMempoolStats();
+    console.log(
+      "Base node",
+      baseNode,
+      "has ",
+      stats.unconfirmed_txs,
+      " unconfirmed transaction in its mempool"
+    );
+    expect(stats.unconfirmed_txs).to.equal(numTransactions);
+  }
+);

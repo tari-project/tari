@@ -433,6 +433,11 @@ class BaseNodeClient {
     await client.connect(port);
     return client;
   }
+
+  async getMempoolStats() {
+    const mempoolStats = await this.client.getMempoolStats().sendMessage({});
+    return mempoolStats;
+  }
 }
 
 module.exports = BaseNodeClient;
