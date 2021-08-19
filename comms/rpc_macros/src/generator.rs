@@ -196,7 +196,8 @@ impl RpcCodeGenerator {
         let client_struct_body = quote! {
             pub async fn connect<TSubstream>(framed: #dep_mod::CanonicalFraming<TSubstream>) -> Result<Self, #dep_mod::RpcError>
               where TSubstream: #dep_mod::AsyncRead + #dep_mod::AsyncWrite + Unpin + Send + 'static {
-                let inner = #dep_mod::RpcClient::connect(Default::default(), framed).await?;
+                use #dep_mod::NamedProtocolService;
+                let inner = #dep_mod::RpcClient::connect(Default::default(), framed, Self::PROTOCOL_NAME.into()).await?;
                 Ok(Self { inner })
             }
 

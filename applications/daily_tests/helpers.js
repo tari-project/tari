@@ -39,7 +39,7 @@ const yargs = () => require("yargs")(hideBin(process.argv));
 function sendWebhookNotification(channel, message, webhookUrlOverride = null) {
   const hook = webhookUrlOverride || getWebhookUrlFromEnv();
   if (!hook) {
-    throw new Error("WEBHOOK_URL not specified");
+    return;
   }
   const data = JSON.stringify({ channel, text: message });
   const args = ` -i -X POST -H 'Content-Type: application/json' -d '${data}' ${hook}`;

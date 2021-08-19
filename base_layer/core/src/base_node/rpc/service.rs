@@ -312,7 +312,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
     async fn get_tip_info(&self, _request: Request<()>) -> Result<Response<TipInfoResponse>, RpcStatus> {
         let state_machine = self.state_machine();
         let status_watch = state_machine.get_status_info_watch();
-        let is_synced = match (*status_watch.borrow()).state_info {
+        let is_synced = match status_watch.borrow().state_info {
             StateInfo::Listening(li) => li.is_synced(),
             _ => false,
         };

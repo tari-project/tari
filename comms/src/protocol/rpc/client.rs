@@ -25,14 +25,17 @@ use crate::{
     framing::CanonicalFraming,
     message::MessageExt,
     proto,
-    protocol::rpc::{
-        body::ClientStreaming,
-        message::BaseRequest,
-        Handshake,
-        NamedProtocolService,
-        Response,
-        RpcError,
-        RpcStatus,
+    protocol::{
+        rpc::{
+            body::ClientStreaming,
+            message::BaseRequest,
+            Handshake,
+            NamedProtocolService,
+            Response,
+            RpcError,
+            RpcStatus,
+        },
+        ProtocolId,
     },
     runtime::task,
 };
@@ -50,6 +53,7 @@ use futures::{
 use log::*;
 use prost::Message;
 use std::{
+    borrow::Cow,
     convert::TryFrom,
     fmt,
     future::Future,
@@ -71,6 +75,7 @@ impl RpcClient {
     pub async fn connect<TSubstream>(
         config: RpcClientConfig,
         framed: CanonicalFraming<TSubstream>,
+        protocol_name: ProtocolId,
     ) -> Result<Self, RpcError>
     where
         TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static,
@@ -78,7 +83,7 @@ impl RpcClient {
         let (request_tx, request_rx) = mpsc::channel(1);
         let connector = ClientConnector::new(request_tx);
         let (ready_tx, ready_rx) = oneshot::channel();
-        task::spawn(RpcClientWorker::new(config, request_rx, framed, ready_tx).run());
+        task::spawn(RpcClientWorker::new(config, request_rx, framed, ready_tx, protocol_name).run());
         ready_rx
             .await
             .expect("ready_rx oneshot is never dropped without a reply")?;
@@ -150,6 +155,7 @@ impl fmt::Debug for RpcClient {
 #[derive(Debug, Clone)]
 pub struct RpcClientBuilder<TClient> {
     config: RpcClientConfig,
+    protocol_id: Option<ProtocolId>,
     _client: PhantomData<TClient>,
 }
 
@@ -157,6 +163,7 @@ impl<TClient> Default for RpcClientBuilder<TClient> {
     fn default() -> Self {
         Self {
             config: Default::default(),
+            protocol_id: None,
             _client: PhantomData,
         }
     }
@@ -198,10 +205,21 @@ where TClient: From<RpcClient> + NamedProtocolService
         self
     }
 
+    pub(crate) fn with_protocol_id(mut self, protocol_id: ProtocolId) -> Self {
+        self.protocol_id = Some(protocol_id);
+        self
+    }
+
     /// Negotiates and establishes a session to the peer's RPC service
     pub async fn connect<TSubstream>(self, framed: CanonicalFraming<TSubstream>) -> Result<TClient, RpcError>
     where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static {
-        RpcClient::connect(self.config, framed).await.map(Into::into)
+        RpcClient::connect(
+            self.config,
+            framed,
+            self.protocol_id.as_ref().cloned().unwrap_or_default(),
+        )
+        .await
+        .map(Into::into)
     }
 }
 
@@ -302,6 +320,7 @@ pub struct RpcClientWorker<TSubstream> {
     next_request_id: u16,
     ready_tx: Option<oneshot::Sender<Result<(), RpcError>>>,
     latency: Option<Duration>,
+    protocol_id: ProtocolId,
 }
 
 impl<TSubstream> RpcClientWorker<TSubstream>
@@ -312,6 +331,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
         request_rx: mpsc::Receiver<ClientRequest>,
         framed: CanonicalFraming<TSubstream>,
         ready_tx: oneshot::Sender<Result<(), RpcError>>,
+        protocol_id: ProtocolId,
     ) -> Self {
         Self {
             config,
@@ -320,11 +340,20 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
             next_request_id: 0,
             ready_tx: Some(ready_tx),
             latency: None,
+            protocol_id,
         }
     }
 
+    fn protocol_name(&self) -> Cow<'_, str> {
+        String::from_utf8_lossy(&self.protocol_id)
+    }
+
     async fn run(mut self) {
-        debug!(target: LOG_TARGET, "Performing client handshake");
+        debug!(
+            target: LOG_TARGET,
+            "Performing client handshake for '{}'",
+            self.protocol_name()
+        );
         let start = Instant::now();
         let mut handshake = Handshake::new(&mut self.framed).with_timeout(self.config.handshake_timeout());
         match handshake.perform_client_handshake().await {
@@ -332,7 +361,9 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
                 let latency = start.elapsed();
                 debug!(
                     target: LOG_TARGET,
-                    "RPC Session negotiation completed. Latency: {:.0?}", latency
+                    "RPC Session ({}) negotiation completed. Latency: {:.0?}",
+                    self.protocol_name(),
+                    latency
                 );
                 self.latency = Some(latency);
                 if let Some(r) = self.ready_tx.take() {
@@ -366,7 +397,11 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
             debug!(target: LOG_TARGET, "IO Error when closing substream: {}", err);
         }
 
-        debug!(target: LOG_TARGET, "RpcClientWorker terminated.");
+        debug!(
+            target: LOG_TARGET,
+            "RpcClientWorker ({}) terminated.",
+            self.protocol_name()
+        );
     }
 
     async fn do_request_response(
@@ -407,9 +442,10 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
                     let latency = start.elapsed();
                     trace!(
                         target: LOG_TARGET,
-                        "Received response ({} byte(s)) from request #{} (method={}) in {:.0?}",
+                        "Received response ({} byte(s)) from request #{} (protocol = {}, method={}) in {:.0?}",
                         resp.len(),
                         request_id,
+                        self.protocol_name(),
                         method,
                         latency
                     );

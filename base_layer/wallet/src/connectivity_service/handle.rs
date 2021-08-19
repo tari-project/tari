@@ -26,27 +26,30 @@ use futures::{
     channel::{mpsc, oneshot},
     SinkExt,
 };
-use tari_comms::{peer_manager::NodeId, protocol::rpc::RpcClientLease};
+use tari_comms::{
+    peer_manager::{NodeId, Peer},
+    protocol::rpc::RpcClientLease,
+};
 use tari_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient};
 use tokio::sync::watch;
 
 pub enum WalletConnectivityRequest {
     ObtainBaseNodeWalletRpcClient(oneshot::Sender<RpcClientLease<BaseNodeWalletRpcClient>>),
     ObtainBaseNodeSyncRpcClient(oneshot::Sender<RpcClientLease<BaseNodeSyncRpcClient>>),
-    SetBaseNode(NodeId),
+    SetBaseNode(Box<Peer>),
 }
 
 #[derive(Clone)]
 pub struct WalletConnectivityHandle {
     sender: mpsc::Sender<WalletConnectivityRequest>,
-    base_node_watch_rx: watch::Receiver<Option<NodeId>>,
+    base_node_watch_rx: watch::Receiver<Option<Peer>>,
     online_status_rx: watch::Receiver<OnlineStatus>,
 }
 
 impl WalletConnectivityHandle {
     pub(super) fn new(
         sender: mpsc::Sender<WalletConnectivityRequest>,
-        base_node_watch_rx: watch::Receiver<Option<NodeId>>,
+        base_node_watch_rx: watch::Receiver<Option<Peer>>,
         online_status_rx: watch::Receiver<OnlineStatus>,
     ) -> Self {
         Self {
@@ -56,9 +59,9 @@ impl WalletConnectivityHandle {
         }
     }
 
-    pub async fn set_base_node(&mut self, base_node_peer: NodeId) -> Result<(), WalletConnectivityError> {
+    pub async fn set_base_node(&mut self, base_node_peer: Peer) -> Result<(), WalletConnectivityError> {
         self.sender
-            .send(WalletConnectivityRequest::SetBaseNode(base_node_peer))
+            .send(WalletConnectivityRequest::SetBaseNode(Box::new(base_node_peer)))
             .await?;
         Ok(())
     }
@@ -110,7 +113,11 @@ impl WalletConnectivityHandle {
         self.online_status_rx.clone()
     }
 
-    pub fn get_current_base_node(&self) -> Option<NodeId> {
+    pub fn get_current_base_node_peer(&self) -> Option<Peer> {
         self.base_node_watch_rx.borrow().clone()
+    }
+
+    pub fn get_current_base_node_id(&self) -> Option<NodeId> {
+        self.base_node_watch_rx.borrow().as_ref().map(|p| p.node_id.clone())
     }
 }

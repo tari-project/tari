@@ -23,7 +23,7 @@
 use crate::{
     async_trait,
     protocol::{
-        rpc::{Request, Response, RpcError, RpcServerError, RpcStatus, Streaming},
+        rpc::{NamedProtocolService, Request, Response, RpcError, RpcServerError, RpcStatus, Streaming},
         ProtocolId,
     },
 };
@@ -332,7 +332,7 @@ impl __rpc_deps::NamedProtocolService for GreetingClient {
 impl GreetingClient {
     pub async fn connect<TSubstream>(framed: __rpc_deps::CanonicalFraming<TSubstream>) -> Result<Self, RpcError>
     where TSubstream: __rpc_deps::AsyncRead + __rpc_deps::AsyncWrite + Unpin + Send + 'static {
-        let inner = __rpc_deps::RpcClient::connect(Default::default(), framed).await?;
+        let inner = __rpc_deps::RpcClient::connect(Default::default(), framed, Self::PROTOCOL_NAME.into()).await?;
         Ok(Self { inner })
     }
 

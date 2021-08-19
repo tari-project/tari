@@ -50,7 +50,7 @@ pub struct BaseNodeState {
     pub updated: Option<NaiveDateTime>,
     pub latency: Option<Duration>,
     pub online: OnlineStatus,
-    pub base_node_peer: Option<Peer>,
+    // pub base_node_peer: Option<Peer>,
 }
 
 impl Default for BaseNodeState {
@@ -61,7 +61,6 @@ impl Default for BaseNodeState {
             updated: None,
             latency: None,
             online: OnlineStatus::Connecting,
-            base_node_peer: None,
         }
     }
 }
@@ -158,18 +157,7 @@ where T: WalletBackend + 'static
     }
 
     async fn set_base_node_peer(&mut self, peer: Peer) -> Result<(), BaseNodeServiceError> {
-        let new_state = BaseNodeState {
-            base_node_peer: Some(peer.clone()),
-            ..Default::default()
-        };
-
-        {
-            let mut lock = self.state.write().await;
-            *lock = new_state.clone();
-        }
-        self.wallet_connectivity.set_base_node(peer.node_id.clone()).await?;
-
-        self.publish_event(BaseNodeEvent::BaseNodeStateChanged(new_state));
+        self.wallet_connectivity.set_base_node(peer.clone()).await?;
         self.publish_event(BaseNodeEvent::BaseNodePeerSet(Box::new(peer)));
         Ok(())
     }
@@ -189,7 +177,7 @@ where T: WalletBackend + 'static
                 Ok(BaseNodeServiceResponse::BaseNodePeerSet)
             },
             BaseNodeServiceRequest::GetBaseNodePeer => {
-                let peer = self.get_state().await.base_node_peer.map(Box::new);
+                let peer = self.wallet_connectivity.get_current_base_node_peer().map(Box::new);
                 Ok(BaseNodeServiceResponse::BaseNodePeer(peer))
             },
             BaseNodeServiceRequest::GetChainMetadata => match self.get_state().await.chain_metadata.clone() {
