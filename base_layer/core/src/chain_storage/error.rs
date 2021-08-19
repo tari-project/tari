@@ -64,8 +64,8 @@ pub enum ChainStorageError {
     },
     #[error("The requested {entity} was not found via {field}:{value} in the database")]
     ValueNotFound {
-        entity: String,
-        field: String,
+        entity: &'static str,
+        field: &'static str,
         value: String,
     },
     #[error("MMR error: {source}")]
@@ -132,9 +132,9 @@ impl From<lmdb_zero::Error> for ChainStorageError {
         use lmdb_zero::Error::*;
         match err {
             Code(c) if c == lmdb_zero::error::NOTFOUND => ChainStorageError::ValueNotFound {
-                entity: "LMDB".to_string(),
-                field: "unknown".to_string(),
-                value: "unknown".to_string(),
+                entity: "<unspecified entity>",
+                field: "<unknown>",
+                value: "<unknown>".to_string(),
             },
             _ => ChainStorageError::AccessError(err.to_string()),
         }
@@ -156,21 +156,32 @@ impl<U> Optional<U> for Result<U, ChainStorageError> {
 }
 
 pub trait OrNotFound<U> {
-    fn or_not_found(self, entity: &str, field: &str, value: String) -> Result<U, ChainStorageError>;
+    fn or_not_found(self, entity: &'static str, field: &'static str, value: String) -> Result<U, ChainStorageError>;
 }
 
 impl<U> OrNotFound<U> for Result<Option<U>, ChainStorageError> {
-    fn or_not_found(self, entity: &str, field: &str, value: String) -> Result<U, ChainStorageError> {
+    fn or_not_found(self, entity: &'static str, field: &'static str, value: String) -> Result<U, ChainStorageError> {
         match self {
             Ok(inner) => match inner {
-                None => Err(ChainStorageError::ValueNotFound {
-                    entity: entity.to_string(),
-                    field: field.to_string(),
-                    value,
-                }),
+                None => Err(ChainStorageError::ValueNotFound { entity, field, value }),
                 Some(v) => Ok(v),
             },
             Err(err) => Err(err),
+        }
+    }
+}
+
+impl<U> OrNotFound<U> for Result<U, lmdb_zero::Error> {
+    fn or_not_found(self, entity: &'static str, field: &'static str, value: String) -> Result<U, ChainStorageError> {
+        use lmdb_zero::Error::*;
+        match self {
+            Ok(v) => Ok(v),
+            Err(err) => match err {
+                Code(c) if c == lmdb_zero::error::NOTFOUND => {
+                    Err(ChainStorageError::ValueNotFound { entity, field, value })
+                },
+                err => Err(err.into()),
+            },
         }
     }
 }
