@@ -446,9 +446,9 @@ pub enum DbKey {
 impl DbKey {
     pub fn to_value_not_found_error(&self) -> ChainStorageError {
         let (entity, field, value) = match self {
-            DbKey::BlockHeader(v) => ("BlockHeader".to_string(), "Height".to_string(), v.to_string()),
-            DbKey::BlockHash(v) => ("Block".to_string(), "Hash".to_string(), v.to_hex()),
-            DbKey::OrphanBlock(v) => ("Orphan".to_string(), "Hash".to_string(), v.to_hex()),
+            DbKey::BlockHeader(v) => ("BlockHeader", "Height", v.to_string()),
+            DbKey::BlockHash(v) => ("Block", "Hash", v.to_hex()),
+            DbKey::OrphanBlock(v) => ("Orphan", "Hash", v.to_hex()),
         };
         ChainStorageError::ValueNotFound { entity, field, value }
     }
