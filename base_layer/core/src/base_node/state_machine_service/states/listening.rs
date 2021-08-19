@@ -152,8 +152,9 @@ impl Listening {
                         );
 
                         if !self.is_synced {
+                            debug!(target: LOG_TARGET, "Initial sync achieved");
                             self.is_synced = true;
-                            shared.set_state_info(StateInfo::Listening(ListeningInfo::new(self.is_synced)));
+                            shared.set_state_info(StateInfo::Listening(ListeningInfo::new(true)));
                         }
                         continue;
                     }
@@ -222,7 +223,7 @@ impl Listening {
 
 impl From<Waiting> for Listening {
     fn from(_: Waiting) -> Self {
-        Default::default()
+        Self { is_synced: false }
     }
 }
 

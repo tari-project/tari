@@ -94,7 +94,6 @@ impl MockBaseNodeService {
             updated: None,
             latency: None,
             online,
-            base_node_peer: self.state.base_node_peer.clone(),
         }
     }
 
@@ -106,12 +105,11 @@ impl MockBaseNodeService {
             updated: None,
             latency: None,
             online: OnlineStatus::Online,
-            base_node_peer: None,
         }
     }
 
     fn set_base_node_peer(&mut self, peer: Peer) {
-        self.state.base_node_peer = Some(peer);
+        self.base_node_peer = Some(peer);
     }
 
     /// This handler is called when requests arrive from the various streams
@@ -125,7 +123,7 @@ impl MockBaseNodeService {
                 Ok(BaseNodeServiceResponse::BaseNodePeerSet)
             },
             BaseNodeServiceRequest::GetBaseNodePeer => {
-                let peer = self.state.base_node_peer.clone();
+                let peer = self.base_node_peer.clone();
                 Ok(BaseNodeServiceResponse::BaseNodePeer(peer.map(Box::new)))
             },
             BaseNodeServiceRequest::GetChainMetadata => Ok(BaseNodeServiceResponse::ChainMetadata(

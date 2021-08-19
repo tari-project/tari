@@ -33,7 +33,7 @@ use futures::{
 use log::*;
 use tari_comms::{
     connectivity::ConnectivityRequester,
-    peer_manager::NodeId,
+    peer_manager::{NodeId, Peer},
     protocol::rpc::{RpcClientLease, RpcClientPool},
 };
 use tari_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient};
@@ -53,7 +53,7 @@ pub struct WalletConnectivityService {
     config: BaseNodeServiceConfig,
     request_stream: Fuse<mpsc::Receiver<WalletConnectivityRequest>>,
     connectivity: ConnectivityRequester,
-    base_node_watch: Watch<Option<NodeId>>,
+    base_node_watch: Watch<Option<Peer>>,
     pools: Option<ClientPoolContainer>,
     online_status_watch: Watch<OnlineStatus>,
     pending_requests: Vec<ReplyOneshot>,
@@ -68,7 +68,7 @@ impl WalletConnectivityService {
     pub(super) fn new(
         config: BaseNodeServiceConfig,
         request_stream: mpsc::Receiver<WalletConnectivityRequest>,
-        base_node_watch: Watch<Option<NodeId>>,
+        base_node_watch: Watch<Option<Peer>>,
         online_status_watch: Watch<OnlineStatus>,
         connectivity: ConnectivityRequester,
     ) -> Self {
@@ -91,10 +91,10 @@ impl WalletConnectivityService {
                 req = self.request_stream.select_next_some() => {
                     self.handle_request(req).await;
                 },
-                peer = base_node_watch_rx.select_next_some() => {
-                    if let Some(peer) = peer {
+                maybe_peer = base_node_watch_rx.select_next_some() => {
+                    if maybe_peer.is_some() {
                         // This will block the rest until the connection is established. This is what we want.
-                        self.setup_base_node_connection(peer).await;
+                        self.setup_base_node_connection().await;
                     }
                 }
             }
@@ -112,7 +112,7 @@ impl WalletConnectivityService {
             },
 
             SetBaseNode(peer) => {
-                self.set_base_node_peer(peer);
+                self.set_base_node_peer(*peer);
             },
         }
     }
@@ -197,25 +197,29 @@ impl WalletConnectivityService {
         self.set_base_node_peer(peer);
     }
 
-    fn set_base_node_peer(&mut self, peer: NodeId) {
+    fn set_base_node_peer(&mut self, peer: Peer) {
         self.pools = None;
         self.base_node_watch.broadcast(Some(peer));
     }
 
-    async fn setup_base_node_connection(&mut self, peer: NodeId) {
+    async fn setup_base_node_connection(&mut self) {
         self.pools = None;
         loop {
+            let node_id = match self.base_node_watch.borrow().as_ref() {
+                Some(p) => p.node_id.clone(),
+                None => return,
+            };
             debug!(
                 target: LOG_TARGET,
-                "Attempting to connect to base node peer {}...", peer
+                "Attempting to connect to base node peer {}...", node_id
             );
             self.set_online_status(OnlineStatus::Connecting);
-            match self.try_setup_rpc_pool(peer.clone()).await {
+            match self.try_setup_rpc_pool(node_id.clone()).await {
                 Ok(_) => {
                     self.set_online_status(OnlineStatus::Online);
                     debug!(
                         target: LOG_TARGET,
-                        "Wallet is ONLINE and connected to base node {}", peer
+                        "Wallet is ONLINE and connected to base node {}", node_id
                     );
                     break;
                 },

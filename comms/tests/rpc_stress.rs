@@ -31,7 +31,7 @@ mod helpers;
 use helpers::create_comms;
 
 use futures::{future, StreamExt};
-use std::{env, future::Future, time::Duration};
+use std::{future::Future, time::Duration};
 use tari_comms::{
     protocol::rpc::{RpcClientBuilder, RpcServer},
     transports::TcpTransport,
@@ -211,6 +211,7 @@ async fn few_large_messages() {
     .await;
 }
 
+#[allow(dead_code)]
 async fn payload_limit() {
     run_stress_test(Params {
         num_tasks: 50,
@@ -222,6 +223,7 @@ async fn payload_limit() {
     .await;
 }
 
+#[allow(dead_code)]
 async fn high_contention() {
     run_stress_test(Params {
         num_tasks: 1000,
@@ -233,6 +235,7 @@ async fn high_contention() {
     .await;
 }
 
+#[allow(dead_code)]
 async fn high_concurrency() {
     run_stress_test(Params {
         num_tasks: 1000,
@@ -244,6 +247,7 @@ async fn high_concurrency() {
     .await;
 }
 
+#[allow(dead_code)]
 async fn high_contention_high_concurrency() {
     run_stress_test(Params {
         num_tasks: 2000,
@@ -256,28 +260,16 @@ async fn high_contention_high_concurrency() {
 }
 
 #[tokio_macros::test]
-async fn run_ci() {
-    log_timing("quick", quick()).await;
-    log_timing("basic", basic()).await;
-    log_timing("many_small_messages", many_small_messages()).await;
-    log_timing("few_large_messages", few_large_messages()).await;
-}
-
-#[tokio_macros::test]
 async fn run() {
-    if env::var("CI").is_ok() {
-        println!("Skipping the stress test on CI");
-        return;
-    }
     // let _ = env_logger::try_init();
     log_timing("quick", quick()).await;
     log_timing("basic", basic()).await;
     log_timing("many_small_messages", many_small_messages()).await;
     log_timing("few_large_messages", few_large_messages()).await;
-    log_timing("payload_limit", payload_limit()).await;
-    log_timing("high_contention", high_contention()).await;
-    log_timing("high_concurrency", high_concurrency()).await;
-    log_timing("high_contention_high_concurrency", high_contention_high_concurrency()).await;
+    // log_timing("payload_limit", payload_limit()).await;
+    // log_timing("high_contention", high_contention()).await;
+    // log_timing("high_concurrency", high_concurrency()).await;
+    // log_timing("high_contention_high_concurrency", high_contention_high_concurrency()).await;
 }
 
 async fn log_timing<R, F: Future<Output = R>>(name: &str, fut: F) -> R {

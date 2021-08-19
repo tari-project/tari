@@ -101,10 +101,8 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
         loop {
             use OnlineStatus::*;
             match watcher.recv().await.unwrap_or(Offline) {
-                Online => match self.wallet_connectivity.get_current_base_node() {
-                    Some(peer) => {
-                        return peer;
-                    },
+                Online => match self.wallet_connectivity.get_current_base_node_id() {
+                    Some(node_id) => return node_id,
                     _ => continue,
                 },
                 Connecting => {
@@ -126,15 +124,8 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
                 .await
                 .ok_or(BaseNodeMonitorError::NodeShuttingDown)?;
             let latency = client.get_last_request_latency().await?;
-            debug!(
-                target: LOG_TARGET,
-                "Base node {} latency: {} ms",
-                peer_node_id,
-                latency.unwrap_or_default().as_millis()
-            );
 
             let tip_info = client.get_tip_info().await?;
-            let is_synced = tip_info.is_synced;
 
             let chain_metadata = tip_info
                 .metadata
@@ -143,15 +134,24 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
                     ChainMetadata::try_from(metadata).map_err(BaseNodeMonitorError::InvalidBaseNodeResponse)
                 })?;
 
+            let is_synced = tip_info.is_synced;
+            debug!(
+                target: LOG_TARGET,
+                "Base node {} Tip: {} ({}) Latency: {} ms",
+                peer_node_id,
+                chain_metadata.height_of_longest_chain(),
+                if is_synced { "Synced" } else { "Syncing..." },
+                latency.unwrap_or_default().as_millis()
+            );
+
             self.db.set_chain_metadata(chain_metadata.clone()).await?;
 
-            self.map_state(move |state| BaseNodeState {
+            self.map_state(move |_| BaseNodeState {
                 chain_metadata: Some(chain_metadata),
                 is_synced: Some(is_synced),
                 updated: Some(Utc::now().naive_utc()),
                 latency,
                 online: OnlineStatus::Online,
-                base_node_peer: state.base_node_peer.clone(),
             })
             .await;
 
@@ -164,25 +164,23 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
     }
 
     async fn set_connecting(&self) {
-        self.map_state(|state| BaseNodeState {
+        self.map_state(|_| BaseNodeState {
             chain_metadata: None,
             is_synced: None,
             updated: Some(Utc::now().naive_utc()),
             latency: None,
             online: OnlineStatus::Connecting,
-            base_node_peer: state.base_node_peer.clone(),
         })
         .await;
     }
 
     async fn set_offline(&self) {
-        self.map_state(|state| BaseNodeState {
+        self.map_state(|_| BaseNodeState {
             chain_metadata: None,
             is_synced: None,
             updated: Some(Utc::now().naive_utc()),
             latency: None,
             online: OnlineStatus::Offline,
-            base_node_peer: state.base_node_peer.clone(),
         })
         .await;
     }
