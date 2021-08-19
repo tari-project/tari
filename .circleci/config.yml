@@ -124,14 +124,13 @@ commands:
       - run:
           name: Run ffi cucumber scenarios
           command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running and not @broken and not @flaky and @wallet-ffi" --format json:cucumber_output/tests-ffi.cucumber
-
       - run:
-          name: Generate report (ff)
-          command: cd integration_tests && node ./generate_report.js cucumber_output/tests-ffi.cucumber temp/reports/cucumber_ffi_report.html
+          name: Generate report (ffi)
+          command: cd integration_tests && touch cucumber_output/tests-ffi.cucumber && node ./generate_report.js cucumber_output/tests-ffi.cucumber temp/reports/cucumber_ffi_report.html
           when: always
-#      - run:
-#          name: Run flaky/broken cucumber scenarios (Always pass)
-#          command: cd integration_tests && node_modules/.bin/cucumber-js --tags "not @long-running and (@broken or @flaky)" --format json:cucumber_output/broken-tests.cucumber || true
+      #      - run:
+      #          name: Run flaky/broken cucumber scenarios (Always pass)
+      #          command: cd integration_tests && node_modules/.bin/cucumber-js --tags "not @long-running and (@broken or @flaky)" --format json:cucumber_output/broken-tests.cucumber || true
       - store_test_results:
           path: integration_tests/cucumber_output
       - store_artifacts:
