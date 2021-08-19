@@ -77,6 +77,12 @@ class BaseNodeClient {
       });
   }
 
+  async getHeaders(from_height, num_headers, sorting = 0) {
+    return await this.client
+      .listHeaders()
+      .sendMessage({ from_height, num_headers, sorting });
+  }
+
   getTipHeight() {
     return this.client
       .getTipInfo()
