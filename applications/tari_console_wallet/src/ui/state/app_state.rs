@@ -833,6 +833,7 @@ impl AppStateData {
             public_address: node_identity.public_address().to_string(),
             emoji_id: eid,
             qr_code: image,
+            node_id: node_identity.node_id().to_string(),
         };
         let base_node_previous = base_node_selected.clone();
 
@@ -880,6 +881,7 @@ pub struct MyIdentity {
     pub public_address: String,
     pub emoji_id: String,
     pub qr_code: String,
+    pub node_id: String,
 }
 
 #[derive(Clone)]

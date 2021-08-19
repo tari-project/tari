@@ -2600,6 +2600,12 @@ pub unsafe extern "C" fn comms_config_create(
     }
     let datastore_path = PathBuf::from(datastore_path_string);
 
+    if transport_type.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transport_type".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
     let dht_database_path = datastore_path.join("dht.db");
 
     let public_address = public_address_str.parse::<Multiaddr>();

@@ -1088,6 +1088,20 @@ Then(/node (.*) is at tip (.*)/, async function (node, name) {
   );
 });
 
+Then(
+  /node (.*) lists headers (\d+) to (\d+) with correct heights/,
+  async function (node, start, end) {
+    const client = this.getClient(node);
+    const fromHeight = end;
+    const numHeaders = end - start + 1; // inclusive
+    const headers = await client.getHeaders(fromHeight, numHeaders);
+    const heights = headers.map((header) => parseInt(header.height));
+    for (let height = start; height <= end; height++) {
+      expect(heights).to.contain(height);
+    }
+  }
+);
+
 When(
   /I mine a block on (.*) with coinbase (.*)/,
   { timeout: 600 * 1000 },
