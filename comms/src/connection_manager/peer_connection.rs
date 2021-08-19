@@ -233,9 +233,15 @@ impl PeerConnection {
     /// Creates a new RpcClientPool that can be shared between tasks. The client pool will lazily establish up to
     /// `max_sessions` sessions and provides client session that is least used.
     #[cfg(feature = "rpc")]
-    pub fn create_rpc_client_pool<T>(&self, max_sessions: usize) -> RpcClientPool<T>
-    where T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone {
-        RpcClientPool::new(self.clone(), max_sessions)
+    pub fn create_rpc_client_pool<T>(
+        &self,
+        max_sessions: usize,
+        client_config: RpcClientBuilder<T>,
+    ) -> RpcClientPool<T>
+    where
+        T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone,
+    {
+        RpcClientPool::new(self.clone(), max_sessions, client_config)
     }
 
     /// Immediately disconnects the peer connection. This can only fail if the peer connection worker

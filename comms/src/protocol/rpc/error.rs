@@ -45,6 +45,8 @@ pub enum RpcError {
     ServerClosedRequest,
     #[error("Request cancelled")]
     RequestCancelled,
+    #[error("Response did not match the request ID (expected {expected} actual {actual})")]
+    ResponseIdDidNotMatchRequest { expected: u16, actual: u16 },
     #[error("Client internal error: {0}")]
     ClientInternalError(String),
     #[error("Handshake error: {0}")]

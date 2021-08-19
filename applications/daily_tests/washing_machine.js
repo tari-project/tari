@@ -5,15 +5,11 @@ const { sleep } = require("integration_tests/helpers/util");
 const { PaymentType } = require("integration_tests/helpers/types");
 const debug = require("debug")("washing-machine");
 const { DateTime, Interval } = require("luxon");
-const {
-  sendMattermostNotification,
-  getMattermostWebhookUrl,
-  yargs,
-} = require("./helpers");
+const { sendWebhookNotification, getWebhookUrl, yargs } = require("./helpers");
 
 // FPG to use for transactions
 const FEE_PER_GRAM = 5;
-const MATTERMOST_CHANNEL = "protocol-bot-stuff";
+const WEBHOOK_CHANNEL = "protocol-bot-stuff";
 
 /// To start, create a normal console wallet, and send it funds. Then run it with GRPC set to 18143. For quickest results,
 /// set the confirmation time to 0 (must be mined)
@@ -78,37 +74,27 @@ async function main() {
 
   argObj.help();
 
-  const mattermostNotificationsEnabled = !!getMattermostWebhookUrl();
-  if (!mattermostNotificationsEnabled) {
+  const webhookNotificationsEnabled = !!getWebhookUrl();
+  if (!webhookNotificationsEnabled) {
     console.warn(
-      "Matter most notifications are disabled because MATTERMOST_WEBHOOK_URL environment variable is not set"
+      "Matter most notifications are disabled because WEBHOOK_URL environment variable is not set"
     );
   }
 
   let washingMachine = WashingMachine.new({
-    mattermostNotificationsEnabled,
+    webhookNotificationsEnabled,
     ...argObj.argv,
   });
   try {
     await washingMachine.run();
   } catch (err) {
     console.error(err);
-    if (mattermostNotificationsEnabled) {
-      logNotify(`🚨 Washing machine failed: ${err.toString()}`);
-    }
+    logNotify(`🚨 Washing machine failed: ${err.toString()}`);
   }
 }
 
 function WashingMachine(options) {
   debug(`Washing machine initialized - ${JSON.stringify(options, null, 2)}`);
-
-  this.logNotify = (message) => {
-    if (options.mattermostNotificationsEnabled) {
-      logNotify(message);
-    } else {
-      console.log(message);
-    }
-  };
 
   this.wallet1 = new WalletClient();
   this.wallet2 = null;
@@ -139,7 +125,7 @@ function WashingMachine(options) {
       routingMechanism,
     } = options;
 
-    this.logNotify(
+    logNotify(
       `🚀 Launching washing machine (numTransactions = ${numTransactions}, numRounds = ${numRounds}, sleep = ${sleepAfterRound}s)`
     );
 
@@ -240,7 +226,7 @@ function WashingMachine(options) {
         const upstimeStr = uptime
           .toDuration(["days", "hours", "minutes", "seconds"])
           .toFormat("d'd' h'h' m'm' s's'");
-        this.logNotify(
+        logNotify(
           `Washing machine status. ${counters.numSuccess} sent,` +
             `${counters.numFailed} failed in ${roundCount} rounds. ` +
             `Uptime: ${upstimeStr}, Avg. rate: ${rate.toFixed(2)}txs/m`
@@ -256,7 +242,7 @@ function WashingMachine(options) {
     }
 
     const uptime = Interval.fromDateTimes(startTime, DateTime.now());
-    this.logNotify(
+    logNotify(
       `Washing machine completed. ${counters.numSuccess} sent, ${counters.numFailed} failed in ${numRounds} rounds. Uptime is ${uptime}`
     );
     if (wallet2Process) {
@@ -421,7 +407,7 @@ function calcPossibleFee(feePerGram, numTransactions) {
 
 function logNotify(message) {
   console.log(message);
-  sendMattermostNotification(MATTERMOST_CHANNEL, message);
+  sendWebhookNotification(WEBHOOK_CHANNEL, message);
 }
 
 Promise.all([main()]);

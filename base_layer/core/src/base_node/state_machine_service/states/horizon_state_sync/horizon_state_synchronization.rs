@@ -93,8 +93,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         );
         let header = self.db().fetch_header(self.horizon_sync_height).await?.ok_or_else(|| {
             ChainStorageError::ValueNotFound {
-                entity: "Header".to_string(),
-                field: "height".to_string(),
+                entity: "Header",
+                field: "height",
                 value: self.horizon_sync_height.to_string(),
             }
         })?;

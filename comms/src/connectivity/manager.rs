@@ -228,7 +228,7 @@ impl ConnectivityManagerActor {
                 _ => {
                     debug!(
                         target: LOG_TARGET,
-                        "No existing connection found for peer `{}`. Dialling...",
+                        "No existing connection found for peer `{}`. Dialing...",
                         node_id.short_str()
                     );
                     if let Err(err) = self.connection_manager.send_dial_peer(node_id, reply).await {
@@ -528,7 +528,7 @@ impl ConnectivityManagerActor {
                 num_failed
             );
             if self.peer_manager.set_offline(node_id, true).await? {
-                warn!(
+                debug!(
                     target: LOG_TARGET,
                     "Peer `{}` was marked as offline but was already offline.", node_id
                 );

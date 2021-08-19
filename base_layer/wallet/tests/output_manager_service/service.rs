@@ -1816,14 +1816,14 @@ fn test_txo_validation_rpc_timeout() {
         .unwrap();
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let mut delay = delay_for(Duration::from_secs(100)).fuse();
         let mut failed = 0;
         loop {
             futures::select! {
                 event = event_stream.select_next_some() => {
                     if let Ok(msg) = event {
                          if let OutputManagerEvent::TxoValidationFailure(_,_) = (*msg).clone() {
-                         failed+=1;
+                             failed+=1;
                         }
                     }
 
