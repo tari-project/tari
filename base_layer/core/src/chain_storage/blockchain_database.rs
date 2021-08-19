@@ -423,8 +423,8 @@ where B: BlockchainBackend
         let start_header =
             self.fetch_header_by_block_hash(start_hash.clone())?
                 .ok_or_else(|| ChainStorageError::ValueNotFound {
-                    entity: "BlockHeader".to_string(),
-                    field: "start_hash".to_string(),
+                    entity: "BlockHeader",
+                    field: "start_hash",
                     value: start_hash.to_hex(),
                 })?;
         let constants = self.consensus_manager.consensus_constants(start_header.height);
@@ -502,8 +502,8 @@ where B: BlockchainBackend
             let accumulated_data =
                 db.fetch_header_accumulated_data(&hash)?
                     .ok_or_else(|| ChainStorageError::ValueNotFound {
-                        entity: "BlockHeaderAccumulatedData".to_string(),
-                        field: "hash".to_string(),
+                        entity: "BlockHeaderAccumulatedData",
+                        field: "hash",
                         value: hash.to_hex(),
                     })?;
 
@@ -568,8 +568,8 @@ where B: BlockchainBackend
         let db = self.db_read_access()?;
         db.fetch_block_accumulated_data(&at_hash)?
             .ok_or_else(|| ChainStorageError::ValueNotFound {
-                entity: "BlockAccumulatedData".to_string(),
-                field: "at_hash".to_string(),
+                entity: "BlockAccumulatedData",
+                field: "at_hash",
                 value: at_hash.to_hex(),
             })
     }
@@ -807,8 +807,8 @@ where B: BlockchainBackend
 
         if end > metadata.height_of_longest_chain() {
             return Err(ChainStorageError::ValueNotFound {
-                entity: "Block".to_string(),
-                field: "end height".to_string(),
+                entity: "Block",
+                field: "end height",
                 value: end.to_string(),
             });
         }
@@ -948,8 +948,8 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
     } = db
         .fetch_block_accumulated_data(&header.prev_hash)?
         .ok_or_else(|| ChainStorageError::ValueNotFound {
-            entity: "BlockAccumulatedData".to_string(),
-            field: "header_hash".to_string(),
+            entity: "BlockAccumulatedData",
+            field: "header_hash",
             value: header.prev_hash.to_hex(),
         })?;
 
@@ -980,8 +980,8 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
                     output_mmr
                         .find_leaf_index(&output_hash)?
                         .ok_or_else(|| ChainStorageError::ValueNotFound {
-                            entity: "UTXO".to_string(),
-                            field: "hash".to_string(),
+                            entity: "UTXO",
+                            field: "hash",
                             value: output_hash.to_hex(),
                         })?;
                 debug!(
@@ -1251,8 +1251,8 @@ fn fetch_block_with_kernel<T: BlockchainBackend>(
             None => Ok(None),
         },
         Err(_) => Err(ChainStorageError::ValueNotFound {
-            entity: "Kernel".to_string(),
-            field: "Excess sig".to_string(),
+            entity: "Kernel",
+            field: "Excess sig",
             value: excess_sig.get_signature().to_hex(),
         }),
     }
@@ -1271,8 +1271,8 @@ fn fetch_block_with_utxo<T: BlockchainBackend>(
             None => Ok(None),
         },
         Err(_) => Err(ChainStorageError::ValueNotFound {
-            entity: "Output".to_string(),
-            field: "Commitment".to_string(),
+            entity: "Output",
+            field: "Commitment",
             value: commitment.to_hex(),
         }),
     }
@@ -1425,12 +1425,11 @@ fn rewind_to_hash<T: BlockchainBackend>(
     block_hash: BlockHash,
 ) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
     let block_hash_hex = block_hash.to_hex();
-    let target_header =
-        fetch_header_by_block_hash(&*db, block_hash)?.ok_or_else(|| ChainStorageError::ValueNotFound {
-            entity: "BlockHeader".to_string(),
-            field: "block_hash".to_string(),
-            value: block_hash_hex,
-        })?;
+    let target_header = fetch_header_by_block_hash(&*db, block_hash)?.ok_or(ChainStorageError::ValueNotFound {
+        entity: "BlockHeader",
+        field: "block_hash",
+        value: block_hash_hex,
+    })?;
     rewind_to_height(db, target_header.height)
 }
 
