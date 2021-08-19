@@ -107,7 +107,7 @@ pub async fn recovery_event_monitoring(
                     "Recovery complete! Scanned = {} in {:.2?} ({} utxos/s), Recovered {} worth {}",
                     num_scanned,
                     elapsed,
-                    num_scanned / elapsed.as_secs(),
+                    num_scanned / (1 + elapsed.as_secs()),
                     num_utxos,
                     total_amount
                 );
