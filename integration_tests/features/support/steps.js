@@ -3365,17 +3365,19 @@ Then(
   "I wait for ffi wallet {word} to have at least {int} uT",
   { timeout: 60 * 1000 },
   async function (name, amount) {
-    let success = false;
+    let wallet = this.getWallet(name);
     let retries = 1;
+    let balance = 0;
     const retries_limit = 12;
-    while (!success && retries <= retries_limit) {
-      if ((await this.getWallet(name).getBalance()) >= amount) {
-        success = true;
+    while (retries <= retries_limit) {
+      balance = await wallet.getBalance();
+      if (balance >= amount) {
+        break;
       }
       await sleep(5000);
       ++retries;
     }
-    expect(success).to.be.true;
+    expect(balance, "Balance is not enough").to.be.greaterThanOrEqual(amount);
   }
 );
 
@@ -3476,5 +3478,134 @@ Then(
   async function (alias, wallet_name) {
     let wallet = this.getWallet(wallet_name);
     expect(await wallet.getContact("alias")).to.be.undefined;
+  }
+);
+
+Then(
+  /node (.*) lists heights (\d+) to (\d+)/,
+  async function (node, first, last) {
+    const client = this.getClient(node);
+    const start = first;
+    const end = last;
+    let heights = [];
+
+    for (let i = start; i <= end; i++) {
+      heights.push(i);
+    }
+    const blocks = await client.getBlocks(heights);
+    const results = blocks.map((result) =>
+      parseInt(result.block.header.height)
+    );
+    let i = 0; // for ordering check
+    for (let height = start; height <= end; height++) {
+      expect(results[i]).equal(height);
+      i++;
+    }
+  }
+);
+
+When(
+  "I set base node {word} for ffi wallet {word}",
+  async function (node, wallet_name) {
+    let wallet = this.getWallet(wallet_name);
+    let peer = this.nodes[node].peerAddress().split("::");
+    await wallet.addBaseNodePeer(peer[0], peer[1]);
+  }
+);
+
+Then(
+  "I wait for ffi wallet {word} to have {int} pending outbound transaction(s)",
+  { timeout: 120 * 1000 },
+  async function (wallet_name, count) {
+    let wallet = this.getWallet(wallet_name);
+    let broadcast = await wallet.getOutboundTransactionsCount();
+    let retries = 1;
+    const retries_limit = 24;
+    while (broadcast != count && retries <= retries_limit) {
+      await sleep(5000);
+      broadcast = await wallet.getOutboundTransactionsCount();
+      ++retries;
+    }
+    expect(broadcast, "Number of pending messages mismatch").to.be.equal(count);
+  }
+);
+
+Then(
+  "I cancel all transactions on ffi wallet {word} and it will cancel {int} transaction",
+  async function (wallet_name, count) {
+    const wallet = this.getWallet(wallet_name);
+    expect(
+      await wallet.cancelAllOutboundTransactions(),
+      "Number of cancelled transactions"
+    ).to.be.equal(count);
+  }
+);
+
+Then(
+  "I recover wallet {word} into ffi wallet {word} from seed words on node {word}",
+  { timeout: 20 * 1000 },
+  async function (wallet_name, ffi_wallet_name, node) {
+    let wallet = this.getWallet(wallet_name);
+    const seed_words_text = wallet.getSeedWords();
+    await wallet.stop();
+    await sleep(1000);
+    let ffi_wallet = await this.createAndAddFFIWallet(
+      ffi_wallet_name,
+      seed_words_text
+    );
+    let peer = this.nodes[node].peerAddress().split("::");
+    await ffi_wallet.addBaseNodePeer(peer[0], peer[1]);
+    await ffi_wallet.startRecovery(peer[0]);
+  }
+);
+
+Then(
+  "I wait for recovery of wallet {word} to finish",
+  { timeout: 600 * 1000 },
+  async function (wallet_name) {
+    const wallet = this.getWallet(wallet_name);
+    while (wallet.recoveryInProgress) {
+      await sleep(1000);
+    }
+    expect(wallet.recoveryProgress[1]).to.be.greaterThan(0);
+    expect(wallet.recoveryProgress[0]).to.be.equal(wallet.recoveryProgress[1]);
+  }
+);
+
+Then("I start STXO validation on wallet {word}", async function (wallet_name) {
+  const wallet = this.getWallet(wallet_name);
+  await wallet.startStxoValidation();
+  while (!wallet.stxo_validation_complete) {
+    await sleep(1000);
+  }
+  expect(wallet.stxo_validation_result).to.be.equal(0);
+});
+
+Then("I start UTXO validation on wallet {word}", async function (wallet_name) {
+  const wallet = this.getWallet(wallet_name);
+  await wallet.startUtxoValidation();
+  while (!wallet.utxo_validation_complete) {
+    await sleep(1000);
+  }
+  expect(wallet.utxo_validation_result).to.be.equal(0);
+});
+
+Then(
+  "Check callbacks for finished inbound tx on ffi wallet {word}",
+  async function (wallet_name) {
+    const wallet = this.getWallet(wallet_name);
+    expect(wallet.receivedTransaction).to.be.greaterThanOrEqual(1);
+    expect(wallet.transactionBroadcast).to.be.greaterThanOrEqual(1);
+    wallet.clearCallbackCounters();
+  }
+);
+
+Then(
+  "Check callbacks for finished outbound tx on ffi wallet {word}",
+  async function (wallet_name) {
+    const wallet = this.getWallet(wallet_name);
+    expect(wallet.receivedTransactionReply).to.be.greaterThanOrEqual(1);
+    expect(wallet.transactionBroadcast).to.be.greaterThanOrEqual(1);
+    wallet.clearCallbackCounters();
   }
 );

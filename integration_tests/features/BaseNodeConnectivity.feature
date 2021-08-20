@@ -15,6 +15,12 @@ Feature: Base Node Connectivity
         Then I wait for WALLET_A to have ONLINE connectivity
         Then SEED_A is connected to WALLET_A
 
+    Scenario: Base node lists heights
+        Given I have 1 seed nodes
+        And I have a base node N1 connected to all seed nodes
+        When I mine 5 blocks on N1
+        Then node N1 lists heights 1 to 5
+
     Scenario: Base node lists headers
         Given I have 1 seed nodes
         And I have a base node BN1 connected to all seed nodes
