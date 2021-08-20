@@ -34,11 +34,5 @@ root:
 loggers:
   h2:
     level: info
-    appenders:
-      - transcoder
-    additive: false
   hyper:
     level: info
-    appenders:
-      - transcoder
-    additive: false
