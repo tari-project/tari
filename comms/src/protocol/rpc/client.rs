@@ -245,9 +245,9 @@ impl RpcClientConfig {
 impl Default for RpcClientConfig {
     fn default() -> Self {
         Self {
-            deadline: Some(Duration::from_secs(30)),
-            deadline_grace_period: Duration::from_secs(30),
-            handshake_timeout: Duration::from_secs(30),
+            deadline: Some(Duration::from_secs(120)),
+            deadline_grace_period: Duration::from_secs(60),
+            handshake_timeout: Duration::from_secs(90),
         }
     }
 }

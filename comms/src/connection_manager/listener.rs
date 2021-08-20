@@ -42,6 +42,7 @@ use crate::{
     protocol::ProtocolId,
     runtime,
     transports::Transport,
+    types::CommsPublicKey,
     utils::multiaddr::multiaddr_to_socketaddr,
     PeerManager,
 };
@@ -67,6 +68,7 @@ use std::{
     },
     time::Duration,
 };
+use tari_crypto::tari_utilities::hex::Hex;
 use tari_shutdown::ShutdownSignal;
 use tokio::time;
 
@@ -249,7 +251,7 @@ where
                     let result = Self::perform_socket_upgrade_procedure(
                         node_identity,
                         peer_manager,
-                        noise_config,
+                        noise_config.clone(),
                         conn_man_notifier.clone(),
                         socket,
                         peer_addr,
@@ -286,10 +288,12 @@ where
                     }
                 },
                 Ok(WireMode::Comms(byte)) => {
+                    let public_key = Self::remote_public_key_from_socket(socket, noise_config).await;
                     warn!(
                         target: LOG_TARGET,
-                        "Peer at address '{}' sent invalid wire format byte. Expected {:x?} got: {:x?} ",
+                        "Peer at address '{}' ({}) sent invalid wire format byte. Expected {:x?} got: {:x?} ",
                         peer_addr,
+                        public_key,
                         config.network_info.network_byte,
                         byte,
                     );
@@ -313,11 +317,13 @@ where
                     }
                 },
                 Err(err) => {
+                    let public_key = Self::remote_public_key_from_socket(socket, noise_config).await;
                     warn!(
                         target: LOG_TARGET,
-                        "Peer at address '{}' failed to send wire format. Expected network byte {:x?} or liveness \
-                         byte {:x?} not received. Error: {}",
+                        "Peer at address '{}' ({}) failed to send its wire format . Expected network byte {:x?} or \
+                         liveness byte {:x?} not received. Error: {}",
                         peer_addr,
+                        public_key,
                         config.network_info.network_byte,
                         LIVENESS_WIRE_MODE,
                         err
@@ -329,6 +335,32 @@ where
         // This will block (asynchronously) if we have reached the maximum simultaneous connections, creating
         // back-pressure on nodes connecting to this node
         self.bounded_executor.spawn(inbound_fut).await;
+    }
+
+    async fn remote_public_key_from_socket(socket: TTransport::Output, noise_config: NoiseConfig) -> String {
+        let public_key: Option<CommsPublicKey> = match time::timeout(
+            Duration::from_secs(30),
+            noise_config.upgrade_socket(socket, ConnectionDirection::Inbound),
+        )
+        .await
+        .map_err(|_| ConnectionManagerError::NoiseProtocolTimeout)
+        {
+            Ok(Ok(noise_socket)) => {
+                match noise_socket
+                    .get_remote_public_key()
+                    .ok_or(ConnectionManagerError::InvalidStaticPublicKey)
+                {
+                    Ok(pk) => Some(pk),
+                    _ => None,
+                }
+            },
+            _ => None,
+        };
+
+        match public_key {
+            None => "public key not known".to_string(),
+            Some(pk) => pk.to_hex(),
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
