@@ -187,3 +187,15 @@ Feature: Mempool
       When I submit transaction TX4 to BN1
       When I submit transaction TX5 to BN1
       Then I wait until base node BN1 has 5 unconfirmed transactions in its mempool
+
+  @critical
+  Scenario: Mempool unconfirmed transaction to mined transaction
+    Given I have 1 seed nodes
+    And I have a base node BN1 connected to all seed nodes
+    When I mine a block on BN1 with coinbase CB1
+    When I mine 2 blocks on BN1
+    When I create a custom fee transaction TX1 spending CB1 to UTX1 with fee 80
+    When I submit transaction TX1 to BN1
+    Then I wait until base node BN1 has 1 unconfirmed transactions in its mempool
+    When I mine 1 blocks on BN1
+    Then I wait until base node BN1 has 0 unconfirmed transactions in its mempool
