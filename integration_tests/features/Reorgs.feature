@@ -94,6 +94,49 @@ Feature: Reorgs
     When I submit transaction TX2 to PNODE1
     Then PNODE1 has TX2 in MEMPOOL state
 
+      @critical @reorg
+  Scenario: Zero-conf reorg with spending
+    Given I have a base node NODE1 connected to all seed nodes
+    Given I have a base node NODE2 connected to node NODE1
+    When I mine 14 blocks on NODE1
+    When I mine a block on NODE1 with coinbase CB1
+    When I mine 4 blocks on NODE1
+    When I create a custom fee transaction TX1 spending CB1 to UTX1 with fee 100
+    When I create a custom fee transaction TX11 spending UTX1 to UTX11 with fee 100
+    When I submit transaction TX1 to NODE1
+    When I submit transaction TX11 to NODE1
+    When I mine 1 blocks on NODE1
+    Then NODE1 has TX1 in MINED state
+    And NODE1 has TX11 in MINED state
+    And all nodes are at height 20
+    And I stop node NODE1
+    And node NODE2 is at height 20
+    When I mine a block on NODE2 with coinbase CB2
+    When I mine 3 blocks on NODE2
+    When I create a custom fee transaction TX2 spending CB2 to UTX2 with fee 100
+    When I create a custom fee transaction TX21 spending UTX2 to UTX21 with fee 100
+    When I submit transaction TX2 to NODE2
+    When I submit transaction TX21 to NODE2
+    When I mine 1 blocks on NODE2
+    Then node NODE2 is at height 25
+    And NODE2 has TX2 in MINED state
+    And NODE2 has TX21 in MINED state
+    And I stop node NODE2
+    When I start base node NODE1
+    And node NODE1 is at height 20
+    When I mine a block on NODE1 with coinbase CB3
+    When I mine 3 blocks on NODE1
+    When I create a custom fee transaction TX3 spending CB3 to UTX3 with fee 100
+    When I create a custom fee transaction TX31 spending UTX3 to UTX31 with fee 100
+    When I submit transaction TX3 to NODE1
+    When I submit transaction TX31 to NODE1
+    When I mine 1 blocks on NODE1
+    Then NODE1 has TX3 in MINED state
+    And NODE1 has TX31 in MINED state
+    And node NODE1 is at height 25
+    When I start base node NODE2
+    Then all nodes are on the same chain tip
+
   Scenario Outline: Massive multiple reorg
         #
         # Chain 1a:

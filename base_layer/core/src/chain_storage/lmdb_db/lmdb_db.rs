@@ -746,8 +746,10 @@ impl LMDBDatabase {
 
         let output_rows =
             lmdb_delete_keys_starting_with::<TransactionOutputRowData>(&write_txn, &self.utxos_db, &hash_hex)?;
-
         debug!(target: LOG_TARGET, "Deleted {} outputs...", output_rows.len());
+        let inputs = lmdb_delete_keys_starting_with::<TransactionInputRowData>(&write_txn, &self.inputs_db, &hash_hex)?;
+        debug!(target: LOG_TARGET, "Deleted {} input(s)...", inputs.len());
+
         for utxo in &output_rows {
             trace!(target: LOG_TARGET, "Deleting UTXO `{}`", to_hex(&utxo.hash));
             lmdb_delete(
@@ -757,6 +759,12 @@ impl LMDBDatabase {
                 "txos_hash_to_index_db",
             )?;
             if let Some(ref output) = utxo.output {
+                let output_hash = output.hash();
+                // if an output was already spent in the block, it was never created as unspent, so dont delete it as it
+                // does not exist here
+                if inputs.iter().any(|r| r.input.output_hash() == output_hash) {
+                    continue;
+                }
                 lmdb_delete(
                     &write_txn,
                     &*self.utxo_commitment_index,
@@ -796,8 +804,6 @@ impl LMDBDatabase {
             )?;
         }
 
-        let inputs = lmdb_delete_keys_starting_with::<TransactionInputRowData>(&write_txn, &self.inputs_db, &hash_hex)?;
-        debug!(target: LOG_TARGET, "Deleted {} input(s)...", inputs.len());
         // Move inputs in this block back into the unspent set, any outputs spent within this block they will be removed
         // by deleting all the block's outputs below
         for row in inputs {
