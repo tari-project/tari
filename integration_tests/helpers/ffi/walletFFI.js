@@ -8,6 +8,7 @@ const ref = require("ref-napi");
 const dateFormat = require("dateformat");
 const { spawn } = require("child_process");
 const fs = require("fs");
+
 class WalletFFI {
   static byte_vector = ref.types.void;
   static byte_vector_ptr = ref.refType(this.byte_vector);
@@ -63,27 +64,10 @@ class WalletFFI {
   static tari_excess_signature_ptr = ref.refType(this.tari_excess_signature);
 
   static #fn;
-  static error = ref.alloc("int");
+  static error = ref.alloc(ref.types.int);
   static NULL = ref.NULL;
   static #loaded = false;
   static #ps = null;
-
-  // Callbacks
-  static #callback_received_transaction;
-  static #callback_received_transaction_reply;
-  static #callback_received_finalized_transaction;
-  static #callback_transaction_broadcast;
-  static #callback_transaction_mined;
-  static #callback_transaction_mined_unconfirmed;
-  static #callback_direct_send_result;
-  static #callback_store_and_forward_send_result;
-  static #callback_transaction_cancellation;
-  static #callback_utxo_validation_complete;
-  static #callback_stxo_validation_complete;
-  static #callback_invalid_txo_validation_complete;
-  static #callback_transaction_validation_complete;
-  static #callback_saf_message_received;
-  static #recovery_progress_callback;
 
   static checkAsyncRes(resolve, reject, error_name) {
     return (err, res) => {
@@ -144,109 +128,45 @@ class WalletFFI {
     }tari_wallet_ffi`;
 
     // Init callbacks
-    // TODO: Add callback support for wallets
 
-    this.#callback_received_transaction = ffi.Callback(
-      "void",
-      [this.tari_pending_inbound_transaction_ptr],
-      function (_pending_inbound_transaction) {
-        console.log("callback_received_transaction");
-      }
-    );
-    this.#callback_received_transaction_reply = ffi.Callback(
-      "void",
-      [this.tari_completed_transaction_ptr],
-      function (_completed_transaction) {
-        console.log("callback_received_transaction_reply");
-      }
-    );
-    this.#callback_received_finalized_transaction = ffi.Callback(
-      "void",
-      [this.tari_completed_transaction_ptr],
-      function (_completed_transaction) {
-        console.log("callback_received_finalized_transaction");
-      }
-    );
-    this.#callback_transaction_broadcast = ffi.Callback(
-      "void",
-      [this.tari_completed_transaction_ptr],
-      function (_completed_transaction) {
-        console.log("callback_transaction_broadcast");
-      }
-    );
-    this.#callback_transaction_mined = ffi.Callback(
-      "void",
-      [this.tari_completed_transaction_ptr],
-      function (_completed_transaction) {
-        console.log("callback_transaction_mined");
-      }
-    );
-    this.#callback_transaction_mined_unconfirmed = ffi.Callback(
-      "void",
-      [this.tari_completed_transaction_ptr, "ulong long"],
-      function (_completed_transaction, _b) {
-        console.log("callback_transaction_mined_unconfirmed");
-      }
-    );
-    this.#callback_direct_send_result = ffi.Callback(
-      "void",
-      ["ulong long", "bool"],
-      function (_a, _b) {
-        console.log("callback_direct_send_result");
-      }
-    );
-    this.#callback_store_and_forward_send_result = ffi.Callback(
-      "void",
-      ["ulong long", "bool"],
-      function (_a, _b) {
-        console.log("callback_store_and_forward_send_result");
-      }
-    );
-    this.#callback_transaction_cancellation = ffi.Callback(
-      "void",
-      [this.tari_completed_transaction_ptr],
-      function (_completed_transaction) {
-        console.log("callback_transaction_cancellation");
-      }
-    );
-    this.#callback_utxo_validation_complete = ffi.Callback(
-      "void",
-      ["ulong long", "uchar"],
-      function (_a, _b) {
-        console.log("callback_utxo_validation_complete");
-      }
-    );
-    this.#callback_stxo_validation_complete = ffi.Callback(
-      "void",
-      ["ulong long", "uchar"],
-      function (_a, _b) {
-        console.log("callback_stxo_validation_complete");
-      }
-    );
-    this.#callback_invalid_txo_validation_complete = ffi.Callback(
-      "void",
-      ["ulong long", "uchar"],
-      function (_a, _b) {
-        console.log("callback_invalid_txo_validation_complete");
-      }
-    );
-    this.#callback_transaction_validation_complete = ffi.Callback(
-      "void",
-      ["ulong long", "uchar"],
-      function (_a, _b) {
-        console.log("callback_transaction_validation_complete");
-      }
-    );
-    this.#callback_saf_message_received = ffi.Callback("void", [], function () {
-      console.log("callback_saf_message_received");
-    });
-    this.#recovery_progress_callback = ffi.Callback(
-      "void",
-      ["uchar", "ulong long", "ulong long"],
-      function (_a, _b, _c) {
-        console.log("recovery_progress_callback");
-      }
-    );
+    this.createCallbackReceivedTransaction = (callback) =>
+      ffi.Callback(
+        "void",
+        [this.tari_pending_inbound_transaction_ptr],
+        callback
+      );
+    this.createCallbackReceivedTransactionReply = (callback) =>
+      ffi.Callback("void", [this.tari_completed_transaction_ptr], callback);
+    this.createCallbackReceivedFinalizedTransaction = (callback) =>
+      ffi.Callback("void", [this.tari_completed_transaction_ptr], callback);
+    this.createCallbackTransactionBroadcast = (callback) =>
+      ffi.Callback("void", [this.tari_completed_transaction_ptr], callback);
+    this.createCallbackTransactionMined = (callback) =>
+      ffi.Callback("void", [this.tari_completed_transaction_ptr], callback);
+    this.createCallbackTransactionMinedUnconfirmed = (callback) =>
+      ffi.Callback(
+        "void",
+        [this.tari_completed_transaction_ptr, "uint64"],
+        callback
+      );
+    this.createCallbackDirectSendResult = (callback) =>
+      ffi.Callback("void", ["uint64", "bool"], callback);
+    this.createCallbackStoreAndForwardSendResult = (callback) =>
+      ffi.Callback("void", ["uint64", "bool"], callback);
+    this.createCallbackTransactionCancellation = (callback) =>
+      ffi.Callback("void", [this.tari_completed_transaction_ptr], callback);
+    this.createCallbackUtxoValidationComplete = (callback) =>
+      ffi.Callback("void", ["uint64", "uchar"], callback);
+    this.createCallbackStxoValidationComplete = (callback) =>
+      ffi.Callback("void", ["uint64", "uchar"], callback);
+    this.createCallbackInvalidTxoValidationComplete = (callback) =>
+      ffi.Callback("void", ["uint64", "uchar"], callback);
+    this.createCallbackTransactionValidationComplete = (callback) =>
+      ffi.Callback("void", ["uint64", "uchar"], callback);
+    this.createCallbackSafMessageReceived = (callback) =>
+      ffi.Callback("void", [], callback);
+    this.createRecoveryProgressCallback = (callback) =>
+      ffi.Callback("void", ["uchar", "uint64", "uint64"], callback);
     // Load the library
     this.#fn = ffi.Library(outputProcess, {
       transport_memory_create: [this.tari_transport_type_ptr, []],
@@ -325,11 +245,11 @@ class WalletFFI {
         [this.tari_completed_transaction_ptr, "int*"],
       ],
       completed_transaction_get_amount: [
-        "ulong long",
+        "uint64",
         [this.tari_completed_transaction_ptr, "int*"],
       ],
       completed_transaction_get_fee: [
-        "ulong long",
+        "uint64",
         [this.tari_completed_transaction_ptr, "int*"],
       ],
       completed_transaction_get_message: [
@@ -341,11 +261,11 @@ class WalletFFI {
         [this.tari_completed_transaction_ptr, "int*"],
       ],
       completed_transaction_get_transaction_id: [
-        "ulong long",
+        "uint64",
         [this.tari_completed_transaction_ptr, "int*"],
       ],
       completed_transaction_get_timestamp: [
-        "ulong long",
+        "uint64",
         [this.tari_completed_transaction_ptr, "int*"],
       ],
       completed_transaction_is_valid: [
@@ -357,7 +277,7 @@ class WalletFFI {
         [this.tari_completed_transaction_ptr, "int*"],
       ],
       completed_transaction_get_confirmations: [
-        "ulong long",
+        "uint64",
         [this.tari_completed_transaction_ptr, "int*"],
       ],
       completed_transaction_destroy: [
@@ -392,7 +312,7 @@ class WalletFFI {
         [this.tari_completed_transactions_ptr],
       ],
       pending_outbound_transaction_get_transaction_id: [
-        "ulong long",
+        "uint64",
         [this.tari_pending_outbound_transaction_ptr, "int*"],
       ],
       pending_outbound_transaction_get_destination_public_key: [
@@ -400,11 +320,11 @@ class WalletFFI {
         [this.tari_pending_outbound_transaction_ptr, "int*"],
       ],
       pending_outbound_transaction_get_amount: [
-        "ulong long",
+        "uint64",
         [this.tari_pending_outbound_transaction_ptr, "int*"],
       ],
       pending_outbound_transaction_get_fee: [
-        "ulong long",
+        "uint64",
         [this.tari_pending_outbound_transaction_ptr, "int*"],
       ],
       pending_outbound_transaction_get_message: [
@@ -412,7 +332,7 @@ class WalletFFI {
         [this.tari_pending_outbound_transaction_ptr, "int*"],
       ],
       pending_outbound_transaction_get_timestamp: [
-        "ulong long",
+        "uint64",
         [this.tari_pending_outbound_transaction_ptr, "int*"],
       ],
       pending_outbound_transaction_get_status: [
@@ -436,7 +356,7 @@ class WalletFFI {
         [this.tari_pending_outbound_transactions_ptr],
       ],
       pending_inbound_transaction_get_transaction_id: [
-        "ulong long",
+        "uint64",
         [this.tari_pending_inbound_transaction_ptr, "int*"],
       ],
       pending_inbound_transaction_get_source_public_key: [
@@ -448,11 +368,11 @@ class WalletFFI {
         [this.tari_pending_inbound_transaction_ptr, "int*"],
       ],
       pending_inbound_transaction_get_amount: [
-        "ulong long",
+        "uint64",
         [this.tari_pending_inbound_transaction_ptr, "int*"],
       ],
       pending_inbound_transaction_get_timestamp: [
-        "ulong long",
+        "uint64",
         [this.tari_pending_inbound_transaction_ptr, "int*"],
       ],
       pending_inbound_transaction_get_status: [
@@ -482,8 +402,8 @@ class WalletFFI {
           this.tari_transport_type_ptr,
           "string",
           "string",
-          "ulong long",
-          "ulong long",
+          "uint64",
+          "uint64",
           "string",
           "int*",
         ],
@@ -538,44 +458,34 @@ class WalletFFI {
         "bool",
         [this.tari_wallet_ptr, this.tari_contact_ptr, "int*"],
       ],
-      wallet_get_available_balance: [
-        "ulong long",
-        [this.tari_wallet_ptr, "int*"],
-      ],
+      wallet_get_available_balance: ["uint64", [this.tari_wallet_ptr, "int*"]],
       wallet_get_pending_incoming_balance: [
-        "ulong long",
+        "uint64",
         [this.tari_wallet_ptr, "int*"],
       ],
       wallet_get_pending_outgoing_balance: [
-        "ulong long",
+        "uint64",
         [this.tari_wallet_ptr, "int*"],
       ],
       wallet_get_fee_estimate: [
-        "ulong long",
-        [
-          this.tari_wallet_ptr,
-          "ulong long",
-          "ulong long",
-          "ulong long",
-          "ulong long",
-          "int*",
-        ],
+        "uint64",
+        [this.tari_wallet_ptr, "uint64", "uint64", "uint64", "uint64", "int*"],
       ],
       wallet_get_num_confirmations_required: [
-        "ulong long",
+        "uint64",
         [this.tari_wallet_ptr, "int*"],
       ],
       wallet_set_num_confirmations_required: [
         "void",
-        [this.tari_wallet_ptr, "ulong long", "int*"],
+        [this.tari_wallet_ptr, "uint64", "int*"],
       ],
       wallet_send_transaction: [
-        "ulong long",
+        "uint64",
         [
           this.tari_wallet_ptr,
           this.tari_public_key_ptr,
-          "ulong long",
-          "ulong long",
+          "uint64",
+          "uint64",
           "string",
           "int*",
         ],
@@ -606,45 +516,39 @@ class WalletFFI {
       ],
       wallet_get_completed_transaction_by_id: [
         this.tari_completed_transaction_ptr,
-        [this.tari_wallet_ptr, "ulong long", "int*"],
+        [this.tari_wallet_ptr, "uint64", "int*"],
       ],
       wallet_get_pending_outbound_transaction_by_id: [
         this.tari_pending_outbound_transaction_ptr,
-        [this.tari_wallet_ptr, "ulong long", "int*"],
+        [this.tari_wallet_ptr, "uint64", "int*"],
       ],
       wallet_get_pending_inbound_transaction_by_id: [
         this.tari_pending_inbound_transaction_ptr,
-        [this.tari_wallet_ptr, "ulong long", "int*"],
+        [this.tari_wallet_ptr, "uint64", "int*"],
       ],
       wallet_get_cancelled_transaction_by_id: [
         this.tari_completed_transaction_ptr,
-        [this.tari_wallet_ptr, "ulong long", "int*"],
+        [this.tari_wallet_ptr, "uint64", "int*"],
       ],
       wallet_import_utxo: [
-        "ulong long",
+        "uint64",
         [
           this.tari_wallet_ptr,
-          "ulong long",
+          "uint64",
           this.tari_private_key_ptr,
           this.tari_public_key_ptr,
           "string",
           "int*",
         ],
       ],
-      wallet_start_utxo_validation: [
-        "ulong long",
-        [this.tari_wallet_ptr, "int*"],
-      ],
-      wallet_start_stxo_validation: [
-        "ulong long",
-        [this.tari_wallet_ptr, "int*"],
-      ],
+      wallet_start_utxo_validation: ["uint64", [this.tari_wallet_ptr, "int*"]],
+      wallet_start_stxo_validation: ["uint64", [this.tari_wallet_ptr, "int*"]],
       wallet_start_invalid_txo_validation: [
-        "ulong long",
+        "uint64",
         [this.tari_wallet_ptr, "int*"],
       ],
       wallet_start_transaction_validation: [
-        "ulong long",
+        "uint64",
         [this.tari_wallet_ptr, "int*"],
       ],
       wallet_restart_transaction_broadcast: [
@@ -655,17 +559,17 @@ class WalletFFI {
       wallet_set_normal_power_mode: ["void", [this.tari_wallet_ptr, "int*"]],
       wallet_cancel_pending_transaction: [
         "bool",
-        [this.tari_wallet_ptr, "ulong long", "int*"],
+        [this.tari_wallet_ptr, "uint64", "int*"],
       ],
       wallet_coin_split: [
-        "ulong long",
+        "uint64",
         [
           this.tari_wallet_ptr,
-          "ulong long",
-          "ulong long",
-          "ulong long",
+          "uint64",
+          "uint64",
+          "uint64",
           "string",
-          "ulong long",
+          "uint64",
           "int*",
         ],
       ],
@@ -709,6 +613,7 @@ class WalletFFI {
       )
     );
   }
+
   static transportTcpCreate(listener_address) {
     return new Promise((resolve, reject) =>
       this.#fn.transport_tcp_create.async(
@@ -718,6 +623,7 @@ class WalletFFI {
       )
     );
   }
+
   static transportTorCreate(
     control_server_address,
     tor_cookie,
@@ -737,6 +643,7 @@ class WalletFFI {
       )
     );
   }
+
   static transportMemoryGetAddress(transport) {
     return new Promise((resolve, reject) =>
       this.#fn.transport_memory_get_address.async(
@@ -746,6 +653,7 @@ class WalletFFI {
       )
     );
   }
+
   static transportTypeDestroy(transport) {
     return new Promise((resolve, reject) =>
       this.#fn.transport_type_destroy.async(
@@ -754,6 +662,7 @@ class WalletFFI {
       )
     );
   }
+
   static stringDestroy(s) {
     return new Promise((resolve, reject) =>
       this.#fn.string_destroy.async(
@@ -762,6 +671,7 @@ class WalletFFI {
       )
     );
   }
+
   static byteVectorCreate(byte_array, element_count) {
     return new Promise((resolve, reject) =>
       this.#fn.byte_vector_create.async(
@@ -772,6 +682,7 @@ class WalletFFI {
       )
     );
   }
+
   static byteVectorGetAt(ptr, i) {
     return new Promise((resolve, reject) =>
       this.#fn.byte_vector_get_at.async(
@@ -782,6 +693,7 @@ class WalletFFI {
       )
     );
   }
+
   static byteVectorGetLength(vec) {
     return new Promise((resolve, reject) =>
       this.#fn.byte_vector_get_length.async(
@@ -791,6 +703,7 @@ class WalletFFI {
       )
     );
   }
+
   static byteVectorDestroy(bytes) {
     return new Promise((resolve, reject) =>
       this.#fn.byte_vector_destroy.async(
@@ -799,6 +712,7 @@ class WalletFFI {
       )
     );
   }
+
   static publicKeyCreate(bytes) {
     return new Promise((resolve, reject) =>
       this.#fn.public_key_create.async(
@@ -808,6 +722,7 @@ class WalletFFI {
       )
     );
   }
+
   static publicKeyGetBytes(public_key) {
     return new Promise((resolve, reject) =>
       this.#fn.public_key_get_bytes.async(
@@ -817,6 +732,7 @@ class WalletFFI {
       )
     );
   }
+
   static publicKeyFromPrivateKey(secret_key) {
     return new Promise((resolve, reject) =>
       this.#fn.public_key_from_private_key.async(
@@ -826,6 +742,7 @@ class WalletFFI {
       )
     );
   }
+
   static publicKeyFromHex(hex) {
     return new Promise((resolve, reject) =>
       this.#fn.public_key_from_hex.async(
@@ -835,6 +752,7 @@ class WalletFFI {
       )
     );
   }
+
   static publicKeyDestroy(pk) {
     return new Promise((resolve, reject) =>
       this.#fn.public_key_destroy.async(
@@ -843,6 +761,7 @@ class WalletFFI {
       )
     );
   }
+
   static publicKeyToEmojiId(pk) {
     return new Promise((resolve, reject) =>
       this.#fn.public_key_to_emoji_id.async(
@@ -852,6 +771,7 @@ class WalletFFI {
       )
     );
   }
+
   static emojiIdToPublicKey(emoji) {
     return new Promise((resolve, reject) =>
       this.#fn.emoji_id_to_public_key.async(
@@ -861,6 +781,7 @@ class WalletFFI {
       )
     );
   }
+
   static privateKeyCreate(bytes) {
     return new Promise((resolve, reject) =>
       this.#fn.private_key_create.async(
@@ -870,6 +791,7 @@ class WalletFFI {
       )
     );
   }
+
   static privateKeyGenerate() {
     return new Promise((resolve, reject) =>
       this.#fn.private_key_generate.async(
@@ -877,6 +799,7 @@ class WalletFFI {
       )
     );
   }
+
   static privateKeyGetBytes(private_key) {
     return new Promise((resolve, reject) =>
       this.#fn.private_key_get_bytes.async(
@@ -886,6 +809,7 @@ class WalletFFI {
       )
     );
   }
+
   static privateKeyFromHex(hex) {
     return new Promise((resolve, reject) =>
       this.#fn.private_key_from_hex.async(
@@ -895,6 +819,7 @@ class WalletFFI {
       )
     );
   }
+
   static privateKeyDestroy(pk) {
     return new Promise((resolve, reject) =>
       this.#fn.private_key_destroy.async(
@@ -903,6 +828,7 @@ class WalletFFI {
       )
     );
   }
+
   static seedWordsCreate() {
     return new Promise((resolve, reject) =>
       this.#fn.seed_words_create.async(
@@ -910,6 +836,7 @@ class WalletFFI {
       )
     );
   }
+
   static seedWordsGetLength(seed_words) {
     return new Promise((resolve, reject) =>
       this.#fn.seed_words_get_length.async(
@@ -919,6 +846,7 @@ class WalletFFI {
       )
     );
   }
+
   static seedWordsGetAt(seed_words, position) {
     return new Promise((resolve, reject) =>
       this.#fn.seed_words_get_at.async(
@@ -929,6 +857,7 @@ class WalletFFI {
       )
     );
   }
+
   static seedWordsPushWord(seed_words, word) {
     return new Promise((resolve, reject) =>
       this.#fn.seed_words_push_word.async(
@@ -939,6 +868,7 @@ class WalletFFI {
       )
     );
   }
+
   static seedWordsDestroy(seed_words) {
     return new Promise((resolve, reject) =>
       this.#fn.seed_words_destroy.async(
@@ -947,6 +877,7 @@ class WalletFFI {
       )
     );
   }
+
   static contactCreate(alias, public_key) {
     return new Promise((resolve, reject) =>
       this.#fn.contact_create.async(
@@ -957,6 +888,7 @@ class WalletFFI {
       )
     );
   }
+
   static contactGetAlias(contact) {
     return new Promise((resolve, reject) =>
       this.#fn.contact_get_alias.async(
@@ -966,6 +898,7 @@ class WalletFFI {
       )
     );
   }
+
   static contactGetPublicKey(contact) {
     return new Promise((resolve, reject) =>
       this.#fn.contact_get_public_key.async(
@@ -975,6 +908,7 @@ class WalletFFI {
       )
     );
   }
+
   static contactDestroy(contact) {
     return new Promise((resolve, reject) =>
       this.#fn.contact_destroy.async(
@@ -983,6 +917,7 @@ class WalletFFI {
       )
     );
   }
+
   static contactsGetLength(contacts) {
     return new Promise((resolve, reject) =>
       this.#fn.contacts_get_length.async(
@@ -992,6 +927,7 @@ class WalletFFI {
       )
     );
   }
+
   static contactsGetAt(contacts, position) {
     return new Promise((resolve, reject) =>
       this.#fn.contacts_get_at.async(
@@ -1002,6 +938,7 @@ class WalletFFI {
       )
     );
   }
+
   static contactsDestroy(contacts) {
     return new Promise((resolve, reject) =>
       this.#fn.contacts_destroy.async(
@@ -1010,6 +947,7 @@ class WalletFFI {
       )
     );
   }
+
   static completedTransactionGetDestinationPublicKey(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.completed_transaction_get_destination_public_key.async(
@@ -1023,6 +961,7 @@ class WalletFFI {
       )
     );
   }
+
   static completedTransactionGetSourcePublicKey(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.completed_transaction_get_source_public_key.async(
@@ -1036,6 +975,7 @@ class WalletFFI {
       )
     );
   }
+
   static completedTransactionGetAmount(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.completed_transaction_get_amount.async(
@@ -1045,6 +985,7 @@ class WalletFFI {
       )
     );
   }
+
   static completedTransactionGetFee(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.completed_transaction_get_fee.async(
@@ -1054,6 +995,7 @@ class WalletFFI {
       )
     );
   }
+
   static completedTransactionGetMessage(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.completed_transaction_get_message.async(
@@ -1063,6 +1005,7 @@ class WalletFFI {
       )
     );
   }
+
   static completedTransactionGetStatus(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.completed_transaction_get_status.async(
@@ -1072,6 +1015,7 @@ class WalletFFI {
       )
     );
   }
+
   static completedTransactionGetTransactionId(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.completed_transaction_get_transaction_id.async(
@@ -1085,6 +1029,7 @@ class WalletFFI {
       )
     );
   }
+
   static completedTransactionGetTimestamp(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.completed_transaction_get_timestamp.async(
@@ -1094,6 +1039,7 @@ class WalletFFI {
       )
     );
   }
+
   static completedTransactionIsValid(tx) {
     return new Promise((resolve, reject) =>
       this.#fn.completed_transaction_is_valid.async(
@@ -1103,6 +1049,7 @@ class WalletFFI {
       )
     );
   }
+
   static completedTransactionIsOutbound(tx) {
     return new Promise((resolve, reject) =>
       this.#fn.completed_transaction_is_outbound.async(
@@ -1112,6 +1059,7 @@ class WalletFFI {
       )
     );
   }
+
   static completedTransactionGetConfirmations(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.completed_transaction_get_confirmations.async(
@@ -1125,6 +1073,7 @@ class WalletFFI {
       )
     );
   }
+
   static completedTransactionDestroy(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.completed_transaction_destroy.async(
@@ -1133,6 +1082,7 @@ class WalletFFI {
       )
     );
   }
+
   static completedTransactionGetExcess(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.completed_transaction_get_excess.async(
@@ -1142,6 +1092,7 @@ class WalletFFI {
       )
     );
   }
+
   static completedTransactionGetPublicNonce(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.completed_transaction_get_public_nonce.async(
@@ -1155,6 +1106,7 @@ class WalletFFI {
       )
     );
   }
+
   static completedTransactionGetSignature(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.completed_transaction_get_signature.async(
@@ -1164,6 +1116,7 @@ class WalletFFI {
       )
     );
   }
+
   static excessDestroy(excess) {
     return new Promise((resolve, reject) =>
       this.#fn.excess_destroy.async(
@@ -1172,6 +1125,7 @@ class WalletFFI {
       )
     );
   }
+
   static nonceDestroy(nonce) {
     return new Promise((resolve, reject) =>
       this.#fn.nonce_destroy.async(
@@ -1180,6 +1134,7 @@ class WalletFFI {
       )
     );
   }
+
   static signatureDestroy(signature) {
     return new Promise((resolve, reject) =>
       this.#fn.signature_destroy.async(
@@ -1188,6 +1143,7 @@ class WalletFFI {
       )
     );
   }
+
   static completedTransactionsGetLength(transactions) {
     return new Promise((resolve, reject) =>
       this.#fn.completed_transactions_get_length.async(
@@ -1197,6 +1153,7 @@ class WalletFFI {
       )
     );
   }
+
   static completedTransactionsGetAt(transactions, position) {
     return new Promise((resolve, reject) =>
       this.#fn.completed_transactions_get_at.async(
@@ -1207,6 +1164,7 @@ class WalletFFI {
       )
     );
   }
+
   static completedTransactionsDestroy(transactions) {
     return new Promise((resolve, reject) =>
       this.#fn.completed_transactions_destroy.async(
@@ -1215,6 +1173,7 @@ class WalletFFI {
       )
     );
   }
+
   static pendingOutboundTransactionGetTransactionId(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.pending_outbound_transaction_get_transaction_id.async(
@@ -1228,6 +1187,7 @@ class WalletFFI {
       )
     );
   }
+
   static pendingOutboundTransactionGetDestinationPublicKey(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.pending_outbound_transaction_get_destination_public_key.async(
@@ -1241,6 +1201,7 @@ class WalletFFI {
       )
     );
   }
+
   static pendingOutboundTransactionGetAmount(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.pending_outbound_transaction_get_amount.async(
@@ -1254,6 +1215,7 @@ class WalletFFI {
       )
     );
   }
+
   static pendingOutboundTransactionGetFee(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.pending_outbound_transaction_get_fee.async(
@@ -1263,6 +1225,7 @@ class WalletFFI {
       )
     );
   }
+
   static pendingOutboundTransactionGetMessage(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.pending_outbound_transaction_get_message.async(
@@ -1276,6 +1239,7 @@ class WalletFFI {
       )
     );
   }
+
   static pendingOutboundTransactionGetTimestamp(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.pending_outbound_transaction_get_timestamp.async(
@@ -1289,6 +1253,7 @@ class WalletFFI {
       )
     );
   }
+
   static pendingOutboundTransactionGetStatus(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.pending_outbound_transaction_get_status.async(
@@ -1302,6 +1267,7 @@ class WalletFFI {
       )
     );
   }
+
   static pendingOutboundTransactionDestroy(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.pending_outbound_transaction_destroy.async(
@@ -1310,6 +1276,7 @@ class WalletFFI {
       )
     );
   }
+
   static pendingOutboundTransactionsGetLength(transactions) {
     return new Promise((resolve, reject) =>
       this.#fn.pending_outbound_transactions_get_length.async(
@@ -1323,6 +1290,7 @@ class WalletFFI {
       )
     );
   }
+
   static pendingOutboundTransactionsGetAt(transactions, position) {
     return new Promise((resolve, reject) =>
       this.#fn.pending_outbound_transactions_get_at.async(
@@ -1333,6 +1301,7 @@ class WalletFFI {
       )
     );
   }
+
   static pendingOutboundTransactionsDestroy(transactions) {
     return new Promise((resolve, reject) =>
       this.#fn.pending_outbound_transactions_destroy.async(
@@ -1345,6 +1314,7 @@ class WalletFFI {
       )
     );
   }
+
   static pendingInboundTransactionGetTransactionId(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.pending_inbound_transaction_get_transaction_id.async(
@@ -1358,6 +1328,7 @@ class WalletFFI {
       )
     );
   }
+
   static pendingInboundTransactionGetSourcePublicKey(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.pending_inbound_transaction_get_source_public_key.async(
@@ -1371,6 +1342,7 @@ class WalletFFI {
       )
     );
   }
+
   static pendingInboundTransactionGetMessage(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.pending_inbound_transaction_get_message.async(
@@ -1384,6 +1356,7 @@ class WalletFFI {
       )
     );
   }
+
   static pendingInboundTransactionGetAmount(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.pending_inbound_transaction_get_amount.async(
@@ -1397,6 +1370,7 @@ class WalletFFI {
       )
     );
   }
+
   static pendingInboundTransactionGetTimestamp(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.pending_inbound_transaction_get_timestamp.async(
@@ -1410,6 +1384,7 @@ class WalletFFI {
       )
     );
   }
+
   static pendingInboundTransactionGetStatus(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.pending_inbound_transaction_get_status.async(
@@ -1423,6 +1398,7 @@ class WalletFFI {
       )
     );
   }
+
   static pendingInboundTransactionDestroy(transaction) {
     return new Promise((resolve, reject) =>
       this.#fn.pending_inbound_transaction_destroy.async(
@@ -1431,6 +1407,7 @@ class WalletFFI {
       )
     );
   }
+
   static pendingInboundTransactionsGetLength(transactions) {
     return new Promise((resolve, reject) =>
       this.#fn.pending_inbound_transactions_get_length.async(
@@ -1444,6 +1421,7 @@ class WalletFFI {
       )
     );
   }
+
   static pendingInboundTransactionsGetAt(transactions, position) {
     return new Promise((resolve, reject) =>
       this.#fn.pending_inbound_transactions_get_at.async(
@@ -1454,6 +1432,7 @@ class WalletFFI {
       )
     );
   }
+
   static pendingInboundTransactionsDestroy(transactions) {
     return new Promise((resolve, reject) =>
       this.#fn.pending_inbound_transactions_destroy.async(
@@ -1462,6 +1441,7 @@ class WalletFFI {
       )
     );
   }
+
   static commsConfigCreate(
     public_address,
     transport,
@@ -1485,6 +1465,7 @@ class WalletFFI {
       )
     );
   }
+
   static commsConfigDestroy(wc) {
     return new Promise((resolve, reject) =>
       this.#fn.comms_config_destroy.async(
@@ -1493,13 +1474,28 @@ class WalletFFI {
       )
     );
   }
+
   static walletCreate(
     config,
     log_path,
     num_rolling_log_files,
     size_per_log_file_bytes,
     passphrase,
-    seed_words
+    seed_words,
+    callback_received_transaction,
+    callback_received_transaction_reply,
+    callback_received_finalized_transaction,
+    callback_transaction_broadcast,
+    callback_transaction_mined,
+    callback_transaction_mined_unconfirmed,
+    callback_direct_send_result,
+    callback_store_and_forward_send_result,
+    callback_transaction_cancellation,
+    callback_utxo_validation_complete,
+    callback_stxo_validation_complete,
+    callback_invalid_txo_validation_complete,
+    callback_transaction_validation_complete,
+    callback_saf_message_received
   ) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_create.async(
@@ -1509,25 +1505,26 @@ class WalletFFI {
         size_per_log_file_bytes,
         passphrase,
         seed_words,
-        this.#callback_received_transaction,
-        this.#callback_received_transaction_reply,
-        this.#callback_received_finalized_transaction,
-        this.#callback_transaction_broadcast,
-        this.#callback_transaction_mined,
-        this.#callback_transaction_mined_unconfirmed,
-        this.#callback_direct_send_result,
-        this.#callback_store_and_forward_send_result,
-        this.#callback_transaction_cancellation,
-        this.#callback_utxo_validation_complete,
-        this.#callback_stxo_validation_complete,
-        this.#callback_invalid_txo_validation_complete,
-        this.#callback_transaction_validation_complete,
-        this.#callback_saf_message_received,
+        callback_received_transaction,
+        callback_received_transaction_reply,
+        callback_received_finalized_transaction,
+        callback_transaction_broadcast,
+        callback_transaction_mined,
+        callback_transaction_mined_unconfirmed,
+        callback_direct_send_result,
+        callback_store_and_forward_send_result,
+        callback_transaction_cancellation,
+        callback_utxo_validation_complete,
+        callback_stxo_validation_complete,
+        callback_invalid_txo_validation_complete,
+        callback_transaction_validation_complete,
+        callback_saf_message_received,
         this.error,
         this.checkAsyncRes(resolve, reject, "walletCreate")
       )
     );
   }
+
   static walletSignMessage(wallet, msg) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_sign_message.async(
@@ -1538,6 +1535,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletVerifyMessageSignature(wallet, public_key, hex_sig_nonce, msg) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_verify_message_signature.async(
@@ -1550,6 +1548,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletAddBaseNodePeer(wallet, public_key, address) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_add_base_node_peer.async(
@@ -1561,6 +1560,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletUpsertContact(wallet, contact) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_upsert_contact.async(
@@ -1571,6 +1571,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletRemoveContact(wallet, contact) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_remove_contact.async(
@@ -1581,6 +1582,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletGetAvailableBalance(wallet) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_get_available_balance.async(
@@ -1590,6 +1592,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletGetPendingIncomingBalance(wallet) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_get_pending_incoming_balance.async(
@@ -1599,6 +1602,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletGetPendingOutgoingBalance(wallet) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_get_pending_outgoing_balance.async(
@@ -1608,6 +1612,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletGetFeeEstimate(
     wallet,
     amount,
@@ -1627,6 +1632,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletGetNumConfirmationsRequired(wallet) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_get_num_confirmations_required.async(
@@ -1636,6 +1642,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletSetNumConfirmationsRequired(wallet, num) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_set_num_confirmations_required.async(
@@ -1646,6 +1653,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletSendTransaction(
     wallet,
     destination,
@@ -1665,6 +1673,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletGetContacts(wallet) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_get_contacts.async(
@@ -1674,6 +1683,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletGetCompletedTransactions(wallet) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_get_completed_transactions.async(
@@ -1683,6 +1693,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletGetPendingOutboundTransactions(wallet) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_get_pending_outbound_transactions.async(
@@ -1696,6 +1707,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletGetPublicKey(wallet) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_get_public_key.async(
@@ -1705,6 +1717,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletGetPendingInboundTransactions(wallet) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_get_pending_inbound_transactions.async(
@@ -1718,6 +1731,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletGetCancelledTransactions(wallet) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_get_cancelled_transactions.async(
@@ -1727,6 +1741,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletGetCompletedTransactionById(wallet, transaction_id) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_get_completed_transaction_by_id.async(
@@ -1737,6 +1752,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletGetPendingOutboundTransactionById(wallet, transaction_id) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_get_pending_outbound_transaction_by_id.async(
@@ -1751,6 +1767,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletGetPendingInboundTransactionById(wallet, transaction_id) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_get_pending_inbound_transaction_by_id.async(
@@ -1765,6 +1782,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletGetCancelledTransactionById(wallet, transaction_id) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_get_cancelled_transaction_by_id.async(
@@ -1775,6 +1793,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletImportUtxo(
     wallet,
     amount,
@@ -1794,6 +1813,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletStartUtxoValidation(wallet) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_start_utxo_validation.async(
@@ -1803,6 +1823,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletStartStxoValidation(wallet) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_start_stxo_validation.async(
@@ -1812,6 +1833,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletStartInvalidTxoValidation(wallet) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_start_invalid_txo_validation.async(
@@ -1821,6 +1843,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletStartTransactionValidation(wallet) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_start_transaction_validation.async(
@@ -1830,6 +1853,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletRestartTransactionBroadcast(wallet) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_restart_transaction_broadcast.async(
@@ -1839,6 +1863,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletSetLowPowerMode(wallet) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_set_low_power_mode.async(
@@ -1848,6 +1873,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletSetNormalPowerMode(wallet) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_set_normal_power_mode.async(
@@ -1857,6 +1883,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletCancelPendingTransaction(wallet, transaction_id) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_cancel_pending_transaction.async(
@@ -1867,6 +1894,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletCoinSplit(wallet, amount, count, fee, msg, lock_height) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_coin_split.async(
@@ -1881,6 +1909,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletGetSeedWords(wallet) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_get_seed_words.async(
@@ -1890,6 +1919,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletApplyEncryption(wallet, passphrase) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_apply_encryption.async(
@@ -1900,6 +1930,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletRemoveEncryption(wallet) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_remove_encryption.async(
@@ -1909,6 +1940,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletSetKeyValue(wallet, key, value) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_set_key_value.async(
@@ -1920,6 +1952,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletGetValue(wallet, key) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_get_value.async(
@@ -1930,6 +1963,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletClearValue(wallet, key) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_clear_value.async(
@@ -1940,6 +1974,7 @@ class WalletFFI {
       )
     );
   }
+
   static walletIsRecoveryInProgress(wallet) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_is_recovery_in_progress.async(
@@ -1949,17 +1984,23 @@ class WalletFFI {
       )
     );
   }
-  static walletStartRecovery(wallet, base_node_public_key) {
+
+  static walletStartRecovery(
+    wallet,
+    base_node_public_key,
+    recovery_progress_callback
+  ) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_start_recovery.async(
         wallet,
         base_node_public_key,
-        this.#recovery_progress_callback,
+        recovery_progress_callback,
         this.error,
         this.checkAsyncRes(resolve, reject, "walletStartRecovery")
       )
     );
   }
+
   static walletDestroy(wallet) {
     return new Promise((resolve, reject) =>
       this.#fn.wallet_destroy.async(
@@ -1968,6 +2009,7 @@ class WalletFFI {
       )
     );
   }
+
   static filePartialBackup(original_file_path, backup_file_path) {
     return new Promise((resolve, reject) =>
       this.#fn.file_partial_backup.async(
@@ -1978,6 +2020,7 @@ class WalletFFI {
       )
     );
   }
+
   static logDebugMessage(msg) {
     return new Promise((resolve, reject) =>
       this.#fn.log_debug_message.async(
@@ -1986,6 +2029,7 @@ class WalletFFI {
       )
     );
   }
+
   static getEmojiSet() {
     return new Promise((resolve, reject) =>
       this.#fn.get_emoji_set.async(
@@ -1993,6 +2037,7 @@ class WalletFFI {
       )
     );
   }
+
   static emojiSetDestroy(emoji_set) {
     return new Promise((resolve, reject) =>
       this.#fn.emoji_set_destroy.async(
@@ -2001,6 +2046,7 @@ class WalletFFI {
       )
     );
   }
+
   static emojiSetGetAt(emoji_set, position) {
     return new Promise((resolve, reject) =>
       this.#fn.emoji_set_get_at.async(
@@ -2011,6 +2057,7 @@ class WalletFFI {
       )
     );
   }
+
   static emojiSetGetLength(emoji_set) {
     return new Promise((resolve, reject) =>
       this.#fn.emoji_set_get_length.async(

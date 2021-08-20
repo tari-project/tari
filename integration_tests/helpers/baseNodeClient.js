@@ -444,6 +444,10 @@ class BaseNodeClient {
     const mempoolStats = await this.client.getMempoolStats().sendMessage({});
     return mempoolStats;
   }
+
+  async getBlocks(heights) {
+    return await this.client.getBlocks().sendMessage({ heights });
+  }
 }
 
 module.exports = BaseNodeClient;
