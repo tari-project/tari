@@ -115,6 +115,9 @@ commands:
           name: Pre-build mmproxy
           command: cargo build --release --bin tari_merge_mining_proxy
       - run:
+          name: Pre-build mining_node
+          command: cargo build --release --bin tari_mining_node
+      - run:
           name: Run cucumber scenarios
           command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running and not @broken and not @flaky and not @wallet-ffi" --format json:cucumber_output/tests.cucumber
       - run:
