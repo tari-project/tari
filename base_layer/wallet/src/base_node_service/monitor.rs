@@ -97,7 +97,7 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
     }
 
     async fn update_connectivity_status(&self) -> NodeId {
-        let mut watcher = self.wallet_connectivity.get_connectivity_status_watcher();
+        let mut watcher = self.wallet_connectivity.get_connectivity_status_watch();
         loop {
             use OnlineStatus::*;
             match watcher.recv().await.unwrap_or(Offline) {
