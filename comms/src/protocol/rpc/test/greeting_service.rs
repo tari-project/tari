@@ -372,6 +372,10 @@ impl GreetingClient {
         self.inner.get_last_request_latency().await
     }
 
+    pub async fn ping(&mut self) -> Result<Duration, RpcError> {
+        self.inner.ping().await
+    }
+
     pub fn close(&mut self) {
         self.inner.close();
     }
