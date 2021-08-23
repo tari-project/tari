@@ -464,14 +464,14 @@ where
             return Ok(());
         }
 
-        debug!(
-            target: LOG_TARGET,
-            "[Peer=`{}`] Got request {}", self.node_id, decoded_msg
-        );
-
         let msg_flags = RpcMessageFlags::from_bits_truncate(decoded_msg.flags as u8);
         if msg_flags.contains(RpcMessageFlags::ACK) {
-            debug!(target: LOG_TARGET, "[Peer=`{}`] ACK.", self.node_id);
+            debug!(
+                target: LOG_TARGET,
+                "[Peer=`{}` {}] sending ACK response.",
+                self.node_id,
+                self.protocol_name()
+            );
             let ack = proto::rpc::RpcResponse {
                 request_id,
                 status: RpcStatus::ok().as_code(),
@@ -481,6 +481,11 @@ where
             self.framed.send(ack.to_encoded_bytes().into()).await?;
             return Ok(());
         }
+
+        debug!(
+            target: LOG_TARGET,
+            "[Peer=`{}`] Got request {}", self.node_id, decoded_msg
+        );
 
         let req = Request::with_context(
             self.create_request_context(request_id),
