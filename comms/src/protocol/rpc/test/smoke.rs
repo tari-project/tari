@@ -249,6 +249,19 @@ async fn response_too_big() {
 }
 
 #[runtime::test_basic]
+async fn ping_latency() {
+    let (socket, _, _, _shutdown) = setup(GreetingService::new(&[]), 1).await;
+
+    let framed = framing::canonical(socket, RPC_MAX_FRAME_SIZE);
+    let mut client = GreetingClient::builder().connect(framed).await.unwrap();
+
+    let latency = client.ping().await.unwrap();
+    // This is plenty (typically would be < 1ms over MemorySocket), however CI can be very slow, so to prevent flakiness
+    // we leave a wide berth
+    assert!(latency.as_secs() < 5);
+}
+
+#[runtime::test_basic]
 async fn server_shutdown_before_connect() {
     let (socket, _, _, mut shutdown) = setup(GreetingService::new(&[]), 1).await;
     let framed = framing::canonical(socket, 1024);
