@@ -518,18 +518,16 @@ fn convert_node_config(
     let console_wallet_notify_file = optional(cfg.get_str(key))?.map(PathBuf::from);
 
     let key = "wallet.base_node_service_refresh_interval";
-    let wallet_base_node_service_refresh_interval = match cfg.get_int(key) {
-        Ok(seconds) => seconds as u64,
-        Err(ConfigError::NotFound(_)) => 10,
-        Err(e) => return Err(ConfigurationError::new(&key, &e.to_string())),
-    };
+    let wallet_base_node_service_refresh_interval = cfg
+        .get_int(key)
+        .map(|seconds| seconds as u64)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
     let key = "wallet.base_node_service_request_max_age";
-    let wallet_base_node_service_request_max_age = match cfg.get_int(key) {
-        Ok(seconds) => seconds as u64,
-        Err(ConfigError::NotFound(_)) => 60,
-        Err(e) => return Err(ConfigurationError::new(&key, &e.to_string())),
-    };
+    let wallet_base_node_service_request_max_age = cfg
+        .get_int(key)
+        .map(|seconds| seconds as u64)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
     let key = "common.liveness_max_sessions";
     let liveness_max_sessions = cfg
