@@ -58,6 +58,7 @@ use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
+    connectivity_service::WalletConnectivityHandle,
     contacts_service::storage::database::Contact,
     output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, TxId, TxoValidationType},
     transaction_service::{
@@ -652,6 +653,10 @@ impl AppStateInner {
         self.wallet.comms.connectivity().get_event_subscription().fuse()
     }
 
+    pub fn get_wallet_connectivity(&self) -> WalletConnectivityHandle {
+        self.wallet.wallet_connectivity.clone()
+    }
+
     pub fn get_base_node_event_stream(&self) -> Fuse<BaseNodeEventReceiver> {
         self.wallet.base_node_service.clone().get_event_stream_fused()
     }
@@ -833,6 +838,7 @@ impl AppStateData {
             public_address: node_identity.public_address().to_string(),
             emoji_id: eid,
             qr_code: image,
+            node_id: node_identity.node_id().to_string(),
         };
         let base_node_previous = base_node_selected.clone();
 
@@ -880,6 +886,7 @@ pub struct MyIdentity {
     pub public_address: String,
     pub emoji_id: String,
     pub qr_code: String,
+    pub node_id: String,
 }
 
 #[derive(Clone)]

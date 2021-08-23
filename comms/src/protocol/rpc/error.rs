@@ -59,6 +59,12 @@ pub enum RpcError {
     PeerManagerError(#[from] PeerManagerError),
     #[error("Connectivity error: {0}")]
     ConnectivityError(#[from] ConnectivityError),
+    #[error("Reply Timeout")]
+    ReplyTimeout,
+    #[error("Received an invalid ping response")]
+    InvalidPingResponse,
+    #[error("Unexpected ACK response. This is likely because of a previous ACK timeout")]
+    UnexpectedAckResponse,
     #[error(transparent)]
     UnknownError(#[from] anyhow::Error),
 }

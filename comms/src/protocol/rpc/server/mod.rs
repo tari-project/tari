@@ -57,6 +57,7 @@ use futures::{channel::mpsc, AsyncRead, AsyncWrite, SinkExt, StreamExt};
 use log::*;
 use prost::Message;
 use std::{
+    borrow::Cow,
     future::Future,
     time::{Duration, Instant},
 };
@@ -356,6 +357,7 @@ where
 
         let service = ActivePeerRpcService {
             config: self.config.clone(),
+            protocol,
             node_id: node_id.clone(),
             framed,
             service,
@@ -372,6 +374,7 @@ where
 
 struct ActivePeerRpcService<TSvc, TSubstream, TCommsProvider> {
     config: RpcServerBuilder,
+    protocol: ProtocolId,
     node_id: NodeId,
     service: TSvc,
     framed: CanonicalFraming<TSubstream>,
@@ -385,14 +388,31 @@ where
     TCommsProvider: RpcCommsProvider + Send + Clone + 'static,
 {
     async fn start(mut self) {
-        debug!(target: LOG_TARGET, "(Peer = `{}`) Rpc server started.", self.node_id);
+        debug!(
+            target: LOG_TARGET,
+            "(Peer = `{}`) Rpc server ({}) started.",
+            self.node_id,
+            self.protocol_name()
+        );
         if let Err(err) = self.run().await {
             error!(
                 target: LOG_TARGET,
-                "(Peer = `{}`) Rpc server exited with an error: {}", self.node_id, err
+                "(Peer = `{}`) Rpc server ({}) exited with an error: {}",
+                self.node_id,
+                self.protocol_name(),
+                err
             );
         }
-        debug!(target: LOG_TARGET, "(Peer = {}) Rpc service shutdown", self.node_id);
+        debug!(
+            target: LOG_TARGET,
+            "(Peer = {}) Rpc service ({}) shutdown",
+            self.node_id,
+            self.protocol_name()
+        );
+    }
+
+    fn protocol_name(&self) -> Cow<'_, str> {
+        String::from_utf8_lossy(&self.protocol)
     }
 
     async fn run(&mut self) -> Result<(), RpcServerError> {
@@ -405,7 +425,8 @@ where
             let elapsed = start.elapsed();
             debug!(
                 target: LOG_TARGET,
-                "RPC request completed in {:.0?}{}",
+                "RPC ({}) request completed in {:.0?}{}",
+                self.protocol_name(),
                 elapsed,
                 if elapsed.as_secs() > 5 { " (LONG REQUEST)" } else { "" }
             );
@@ -440,6 +461,24 @@ where
                 message: status.details_bytes(),
             };
             self.framed.send(bad_request.to_encoded_bytes().into()).await?;
+            return Ok(());
+        }
+
+        let msg_flags = RpcMessageFlags::from_bits_truncate(decoded_msg.flags as u8);
+        if msg_flags.contains(RpcMessageFlags::ACK) {
+            debug!(
+                target: LOG_TARGET,
+                "[Peer=`{}` {}] sending ACK response.",
+                self.node_id,
+                self.protocol_name()
+            );
+            let ack = proto::rpc::RpcResponse {
+                request_id,
+                status: RpcStatus::ok().as_code(),
+                flags: RpcMessageFlags::ACK.bits().into(),
+                ..Default::default()
+            };
+            self.framed.send(ack.to_encoded_bytes().into()).await?;
             return Ok(());
         }
 

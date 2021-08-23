@@ -197,12 +197,19 @@ impl Into<u32> for RpcMethod {
 
 bitflags! {
     pub struct RpcMessageFlags: u8 {
+        /// Message stream has completed
         const FIN = 0x01;
+        /// Typically sent with empty contents and used to confirm a substream is alive.
+        const ACK = 0x02;
     }
 }
 impl RpcMessageFlags {
     pub fn is_fin(&self) -> bool {
         self.contains(Self::FIN)
+    }
+
+    pub fn is_ack(&self) -> bool {
+        self.contains(Self::ACK)
     }
 }
 

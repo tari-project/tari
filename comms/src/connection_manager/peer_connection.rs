@@ -219,15 +219,15 @@ impl PeerConnection {
     #[cfg(feature = "rpc")]
     pub async fn connect_rpc_using_builder<T>(&mut self, builder: RpcClientBuilder<T>) -> Result<T, RpcError>
     where T: From<RpcClient> + NamedProtocolService {
-        let protocol = T::PROTOCOL_NAME;
+        let protocol = ProtocolId::from_static(T::PROTOCOL_NAME);
         debug!(
             target: LOG_TARGET,
             "Attempting to establish RPC protocol `{}` to peer `{}`",
-            String::from_utf8_lossy(protocol),
+            String::from_utf8_lossy(&protocol),
             self.peer_node_id
         );
-        let framed = self.open_framed_substream(&protocol.into(), RPC_MAX_FRAME_SIZE).await?;
-        builder.connect(framed).await
+        let framed = self.open_framed_substream(&protocol, RPC_MAX_FRAME_SIZE).await?;
+        builder.with_protocol_id(protocol).connect(framed).await
     }
 
     /// Creates a new RpcClientPool that can be shared between tasks. The client pool will lazily establish up to
