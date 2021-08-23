@@ -23,6 +23,9 @@
 #[cfg(feature = "base_node")]
 mod service;
 #[cfg(feature = "base_node")]
+mod sync_utxos_task;
+
+#[cfg(feature = "base_node")]
 pub use service::BaseNodeSyncRpcService;
 
 // mod sync_utxos;
