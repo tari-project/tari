@@ -14,7 +14,12 @@ let outputProcess;
 class WalletProcess {
   constructor(name, excludeTestEnvars, options, logFilePath, seedWords) {
     this.name = name;
-    this.options = options;
+    this.options = Object.assign(
+      {
+        baseDir: "./temp/base_nodes",
+      },
+      options || {}
+    );
     this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath;
     this.recoverWallet = !!seedWords;
     this.seedWords = seedWords;
@@ -25,7 +30,7 @@ class WalletProcess {
     this.port = await getFreePort();
     this.name = `Wallet${this.port}-${this.name}`;
     this.grpcPort = await getFreePort();
-    this.baseDir = `./temp/base_nodes/${dateFormat(
+    this.baseDir = `${this.options.baseDir}/${dateFormat(
       new Date(),
       "yyyymmddHHMM"
     )}/${this.name}`;

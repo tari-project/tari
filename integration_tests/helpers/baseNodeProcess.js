@@ -13,7 +13,12 @@ class BaseNodeProcess {
     this.name = name;
     this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath;
     this.nodeFile = nodeFile;
-    this.options = options;
+    this.options = Object.assign(
+      {
+        baseDir: "./temp/base_nodes",
+      },
+      options || {}
+    );
     this.excludeTestEnvars = excludeTestEnvars;
   }
 
@@ -24,7 +29,7 @@ class BaseNodeProcess {
     this.nodeFile = this.nodeFile || "nodeid.json";
 
     do {
-      this.baseDir = `./temp/base_nodes/${dateFormat(
+      this.baseDir = `${this.options.baseDir}/${dateFormat(
         new Date(),
         "yyyymmddHHMM"
       )}/${this.name}`;

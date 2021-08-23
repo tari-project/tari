@@ -52,7 +52,7 @@ async function run(options) {
     let syncResult = await helpers.monitorProcessOutput({
       process: baseNode.ps,
       outputStream: logfile,
-      onDataCallback: (data) => {
+      onData: (data) => {
         // 13:50 v0.9.3, State: Listening, Tip: 20515 (Wed, 18 Aug 2021 08:17:25 +0000), Mempool: 2tx (60g, +/- 1blks), Connections: 17, Banned: 0, Messages (last 60s): 36, Rpc: 3/1000 sessions
         let match = data.match(/Tip: (\d+) \(/);
         if (!match) {
@@ -73,11 +73,6 @@ async function run(options) {
 
     await baseNode.stop();
 
-    try {
-      await fs.rmdir(__dirname + "/temp/base_nodes", { recursive: true });
-    } catch (err) {
-      console.error(err);
-    }
     return {
       blockRate: blockRate.toFixed(2),
       timeDiffMinutes: timeDiffMinutes.toFixed(2),
