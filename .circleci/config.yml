@@ -106,16 +106,19 @@ commands:
           name: Check eslint
           command: cd integration_tests && npm run lint
       - run:
-          name: Pre-build base node
+          name: Build base node
           command: cargo build --release --bin tari_base_node
       - run:
-          name: Pre-build wallet
+          name: Build wallet
           command: cargo build --release --bin tari_console_wallet
       - run:
-          name: Pre-build mmproxy
+          name: Build wallet FFI
+          command: cargo build --release --package tari_wallet_ffi
+      - run:
+          name: Build mmproxy
           command: cargo build --release --bin tari_merge_mining_proxy
       - run:
-          name: Pre-build mining_node
+          name: Build mining_node
           command: cargo build --release --bin tari_mining_node
       - run:
           name: Run cucumber scenarios
