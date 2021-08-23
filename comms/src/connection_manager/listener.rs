@@ -288,6 +288,9 @@ where
                     }
                 },
                 Ok(WireMode::Comms(byte)) => {
+                    // TODO: This call is expensive and only added for the benefit of improved logging and may lead to
+                    // TODO: DoS attacks. Remove later when not needed anymore or make it optional with a config file
+                    // TODO: setting.
                     let public_key = Self::remote_public_key_from_socket(socket, noise_config).await;
                     warn!(
                         target: LOG_TARGET,
@@ -317,13 +320,11 @@ where
                     }
                 },
                 Err(err) => {
-                    let public_key = Self::remote_public_key_from_socket(socket, noise_config).await;
                     warn!(
                         target: LOG_TARGET,
-                        "Peer at address '{}' ({}) failed to send its wire format . Expected network byte {:x?} or \
-                         liveness byte {:x?} not received. Error: {}",
+                        "Peer at address '{}' failed to send its wire format. Expected network byte {:x?} or liveness \
+                         byte {:x?} not received. Error: {}",
                         peer_addr,
-                        public_key,
                         config.network_info.network_byte,
                         LIVENESS_WIRE_MODE,
                         err

@@ -116,8 +116,11 @@ Feature: Block Sync
     Then node PNODE2 is at height 40
     When I start base node NODE1
     # We need for node to boot up and supply node 2 with blocks
-    And I connect node NODE2 to node NODE1 and wait 60 seconds
-    Then all nodes are at height 40
+    And I connect node NODE2 to node NODE1 and wait 5 seconds
+    # NODE2 may initially try to sync from PNODE1 and PNODE2, then eventually try to sync from NODE1; mining blocks
+    # on NODE1 will make this test less flaky and force NODE2 to sync from NODE1 much quicker
+    When I mine 10 blocks on NODE1
+    Then all nodes are at height 50
 
   Scenario Outline: Syncing node while also mining before tip sync
     Given I have a seed node SEED
