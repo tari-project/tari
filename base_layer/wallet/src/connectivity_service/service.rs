@@ -27,6 +27,8 @@ use crate::{
 use core::mem;
 use futures::{
     channel::{mpsc, oneshot},
+    future,
+    future::Either,
     stream::Fuse,
     StreamExt,
 };
@@ -35,6 +37,7 @@ use tari_comms::{
     connectivity::ConnectivityRequester,
     peer_manager::{NodeId, Peer},
     protocol::rpc::{RpcClientLease, RpcClientPool},
+    PeerConnection,
 };
 use tari_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient};
 use tokio::time;
@@ -109,10 +112,6 @@ impl WalletConnectivityService {
             },
             ObtainBaseNodeSyncRpcClient(reply) => {
                 self.handle_pool_request(reply.into()).await;
-            },
-
-            SetBaseNode(peer) => {
-                self.set_base_node_peer(*peer);
             },
         }
     }
@@ -202,11 +201,15 @@ impl WalletConnectivityService {
         self.base_node_watch.broadcast(Some(peer));
     }
 
+    fn current_base_node(&self) -> Option<NodeId> {
+        self.base_node_watch.borrow().as_ref().map(|p| p.node_id.clone())
+    }
+
     async fn setup_base_node_connection(&mut self) {
         self.pools = None;
         loop {
-            let node_id = match self.base_node_watch.borrow().as_ref() {
-                Some(p) => p.node_id.clone(),
+            let node_id = match self.current_base_node() {
+                Some(n) => n,
                 None => return,
             };
             debug!(
@@ -215,7 +218,7 @@ impl WalletConnectivityService {
             );
             self.set_online_status(OnlineStatus::Connecting);
             match self.try_setup_rpc_pool(node_id.clone()).await {
-                Ok(_) => {
+                Ok(true) => {
                     self.set_online_status(OnlineStatus::Online);
                     debug!(
                         target: LOG_TARGET,
@@ -223,8 +226,16 @@ impl WalletConnectivityService {
                     );
                     break;
                 },
+                Ok(false) => {
+                    // Retry with updated peer
+                    continue;
+                },
                 Err(e) => {
-                    self.set_online_status(OnlineStatus::Offline);
+                    if self.current_base_node() != Some(node_id) {
+                        self.set_online_status(OnlineStatus::Connecting);
+                    } else {
+                        self.set_online_status(OnlineStatus::Offline);
+                    }
                     error!(target: LOG_TARGET, "{}", e);
                     time::delay_for(self.config.base_node_monitor_refresh_interval).await;
                     continue;
@@ -237,9 +248,12 @@ impl WalletConnectivityService {
         let _ = self.online_status_watch.broadcast(status);
     }
 
-    async fn try_setup_rpc_pool(&mut self, peer: NodeId) -> Result<(), WalletConnectivityError> {
+    async fn try_setup_rpc_pool(&mut self, peer: NodeId) -> Result<bool, WalletConnectivityError> {
         self.connectivity.add_managed_peers(vec![peer.clone()]).await?;
-        let conn = self.connectivity.dial_peer(peer).await?;
+        let conn = match self.try_dial_peer(peer).await? {
+            Some(peer) => peer,
+            None => return Ok(false),
+        };
         debug!(
             target: LOG_TARGET,
             "Successfully established peer connection to base node {}",
@@ -257,7 +271,18 @@ impl WalletConnectivityService {
             "Successfully established RPC connection {}",
             conn.peer_node_id()
         );
-        Ok(())
+        Ok(true)
+    }
+
+    async fn try_dial_peer(&mut self, peer: NodeId) -> Result<Option<PeerConnection>, WalletConnectivityError> {
+        let recv_fut = self.base_node_watch.recv();
+        futures::pin_mut!(recv_fut);
+        let dial_fut = self.connectivity.dial_peer(peer);
+        futures::pin_mut!(dial_fut);
+        match future::select(recv_fut, dial_fut).await {
+            Either::Left(_) => Ok(None),
+            Either::Right((conn, _)) => Ok(Some(conn?)),
+        }
     }
 
     async fn notify_pending_requests(&mut self) -> Result<(), WalletConnectivityError> {

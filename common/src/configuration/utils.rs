@@ -98,7 +98,8 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     )
     .unwrap();
     cfg.set_default("wallet.base_node_query_timeout", 60).unwrap();
-    // 60 sec * 60 minutes * 12 hours.
+    cfg.set_default("wallet.base_node_service_refresh_interval", 5).unwrap();
+    cfg.set_default("wallet.base_node_service_request_max_age", 60).unwrap();
     cfg.set_default("wallet.scan_for_utxo_interval", 60 * 60 * 12).unwrap();
     cfg.set_default("wallet.transaction_broadcast_monitoring_timeout", 60)
         .unwrap();
