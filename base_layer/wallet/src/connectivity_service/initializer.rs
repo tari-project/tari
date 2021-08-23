@@ -51,7 +51,7 @@ impl ServiceInitializer for WalletConnectivityInitializer {
         let online_status_watch = Watch::new(OnlineStatus::Offline);
         context.register_handle(WalletConnectivityHandle::new(
             sender,
-            base_node_watch.get_receiver(),
+            base_node_watch.clone(),
             online_status_watch.get_receiver(),
         ));
 
