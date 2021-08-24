@@ -11,15 +11,6 @@
 #  timestamp [target] LEVEL message
 refresh_rate: 30 seconds
 appenders:
-  # An appender named "stdout" that writes to stdout
-  stdout:
-    kind: console
-    encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {h({l}):5} {m}{n}"
-    filters:
-      - kind: threshold
-        level: warn
-
   # An appender named "network" that writes to a file with a custom pattern encoder
   network:
     kind: rolling_file
@@ -71,57 +62,63 @@ appenders:
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n}"
 
-# Set the default logging level to "warn" and attach the "stdout" appender to the root
+# root (to base_layer)
 root:
   level: info
   appenders:
-    - stdout
+    - base_layer
 
 loggers:
-  # Route log events common to every application to all appenders
-  tari::application:
-    level: info
-    appenders:
-      - base_layer
-      - network
-      - other
-    additive: false
-  # Route log events sent to the "core" logger to the "base_layer" appender
-  c:
-    level: info
-    appenders:
-      - base_layer
-  # Route log events sent to the "wallet" logger to the "base_layer" appender
+  # base_layer
   wallet:
     level: info
     appenders:
       - base_layer
-  # Route log events sent to the "comms" logger to the "network" appender
-  comms:
+    additive: false
+  # other
+  h2:
     level: info
-    appenders:
-      - network
-  p2p:
-    level: info
-    appenders:
-      - network
-    # Route log events sent to the "p2p" logger to the "network" appender
-  yamux:
-    level: info
-    appenders:
-      - network
- # Route log events sent to the "mio" logger to the "other" appender
-  mio:
-    level: error
-    appenders:
-      - network
-  # Route log events sent to the "rustyline" logger to the "other" appender
-  rustyline:
-    level: error
     appenders:
       - other
-  # Route log events sent to the "tokio_util" logger to the "other" appender
+    additive: false
+  hyper:
+    level: info
+    appenders:
+      - other
+    additive: false
   tokio_util:
     level: error
     appenders:
       - other
+    additive: false
+  # network
+  comms:
+    level: info
+    appenders:
+      - network
+    additive: false
+  comms::noise:
+    level: error
+    appenders:
+      - network
+    additive: false
+  p2p:
+    level: info
+    appenders:
+      - network
+    additive: false
+  mio:
+    level: error
+    appenders:
+      - network
+    additive: false
+  yamux:
+    level: error
+    appenders:
+      - network
+    additive: false
+  tracing:
+    level: error
+    appenders:
+      - network
+    additive: false
