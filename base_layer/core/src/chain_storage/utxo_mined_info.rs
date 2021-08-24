@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2021. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,8 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod transaction_broadcast_protocol;
-pub mod transaction_coinbase_monitoring_protocol;
-pub mod transaction_receive_protocol;
-pub mod transaction_send_protocol;
-pub mod transaction_validation_protocol_v2;
+use crate::chain_storage::PrunedOutput;
+use tari_common_types::types::BlockHash;
+
+pub struct UtxoMinedInfo {
+    pub output: PrunedOutput,
+    pub mmr_position: u32,
+    pub mined_height: u64,
+    pub header_hash: BlockHash,
+}

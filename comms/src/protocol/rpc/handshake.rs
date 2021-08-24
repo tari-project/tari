@@ -132,9 +132,18 @@ where T: AsyncRead + AsyncWrite + Unpin
                 debug!(target: LOG_TARGET, "Server accepted version {}", version);
                 Ok(())
             },
-            Ok(Some(Err(err))) => Err(err.into()),
+            Ok(Some(Err(err))) => {
+                error!(target: LOG_TARGET, "RPC client handshake error: {}", err);
+                Err(err.into())
+            },
             Ok(None) => Err(RpcHandshakeError::ServerClosedRequest),
-            Err(_) => Err(RpcHandshakeError::TimedOut),
+            Err(err) => {
+                error!(
+                    target: LOG_TARGET,
+                    "RPC client handshake error(probably a timeout): {}", err
+                );
+                Err(RpcHandshakeError::TimedOut)
+            },
         }
     }
 

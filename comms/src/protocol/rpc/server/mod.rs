@@ -56,6 +56,7 @@ use crate::{
 use futures::{channel::mpsc, AsyncRead, AsyncWrite, SinkExt, StreamExt};
 use log::*;
 use prost::Message;
+use rand::{rngs::OsRng, RngCore};
 use std::{
     borrow::Cow,
     future::Future,
@@ -356,6 +357,7 @@ where
         );
 
         let service = ActivePeerRpcService {
+            id: OsRng.next_u64(),
             config: self.config.clone(),
             protocol,
             node_id: node_id.clone(),
@@ -373,6 +375,7 @@ where
 }
 
 struct ActivePeerRpcService<TSvc, TSubstream, TCommsProvider> {
+    id: u64,
     config: RpcServerBuilder,
     protocol: ProtocolId,
     node_id: NodeId,

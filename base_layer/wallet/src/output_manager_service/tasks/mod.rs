@@ -20,6 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod txo_validation_task;
+mod txo_validation_task_v2;
 
-pub use txo_validation_task::{TxoValidationTask, TxoValidationType};
+use std::fmt;
+pub use txo_validation_task_v2::TxoValidationTaskV2;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TxoValidationType {
+    Unspent,
+    Spent,
+    Invalid,
+}
+
+impl fmt::Display for TxoValidationType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TxoValidationType::Unspent => write!(f, "Unspent Outputs Validation"),
+            TxoValidationType::Spent => write!(f, "Spent Outputs Validation"),
+            TxoValidationType::Invalid => write!(f, "Invalid Outputs Validation"),
+        }
+    }
+}

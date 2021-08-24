@@ -27,6 +27,7 @@ use crate::{
     },
     schema::contacts,
     storage::sqlite_utilities::WalletDbConnection,
+    util::diesel_ext::ExpectedRowsExtension,
 };
 use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
 use std::convert::TryFrom;
@@ -141,15 +142,10 @@ impl ContactSql {
         updated_contact: UpdateContact,
         conn: &SqliteConnection,
     ) -> Result<ContactSql, ContactsServiceStorageError> {
-        let num_updated = diesel::update(contacts::table.filter(contacts::public_key.eq(&self.public_key)))
+        diesel::update(contacts::table.filter(contacts::public_key.eq(&self.public_key)))
             .set(updated_contact)
-            .execute(conn)?;
-
-        if num_updated == 0 {
-            return Err(ContactsServiceStorageError::UnexpectedResult(
-                "Database update error".to_string(),
-            ));
-        }
+            .execute(conn)
+            .num_rows_affected_or_not_found(1)?;
 
         ContactSql::find(&self.public_key, conn)
     }

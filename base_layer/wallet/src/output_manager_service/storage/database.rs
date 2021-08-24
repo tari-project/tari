@@ -38,7 +38,7 @@ use std::{
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::TransactionOutput,
-    types::{BlindingFactor, Commitment, PrivateKey},
+    types::{BlindingFactor, Commitment, HashOutput, PrivateKey},
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database";
@@ -50,12 +50,36 @@ const LOG_TARGET: &str = "wallet::output_manager_service::database";
 pub trait OutputManagerBackend: Send + Sync + Clone {
     /// Retrieve the record associated with the provided DbKey
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, OutputManagerStorageError>;
+    /// Retrieve outputs that have not been found in the block chain
+    fn fetch_unmined_spent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
+    /// Retrieve outputs that have not been found in the block chain
+    fn fetch_unmined_received_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
     /// Modify the state the of the backend with a write operation
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError>;
+
+    fn set_output_mined_height(
+        &self,
+        hash: Vec<u8>,
+        mined_height: u64,
+        mined_in_block: Vec<u8>,
+        mmr_position: u64,
+    ) -> Result<(), OutputManagerStorageError>;
+
+    fn set_output_to_unmined(&self, hash: Vec<u8>) -> Result<(), OutputManagerStorageError>;
+
+    fn mark_output_as_spent(
+        &self,
+        hash: Vec<u8>,
+        mark_deleted_at_height: u64,
+        mark_deleted_in_block: Vec<u8>,
+    ) -> Result<(), OutputManagerStorageError>;
+
+    fn mark_output_as_unspent(&self, hash: Vec<u8>) -> Result<(), OutputManagerStorageError>;
+
     /// This method is called when a pending transaction is to be confirmed. It must move the `outputs_to_be_spent` and
     /// `outputs_to_be_received` from a `PendingTransactionOutputs` record into the `unspent_outputs` and
     /// `spent_outputs` collections.
-    fn confirm_transaction(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
+    fn confirm_transaction_encumberance(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
     /// This method encumbers the specified outputs into a `PendingTransactionOutputs` record. This is a short term
     /// encumberance in case the app is closed or crashes before transaction neogtiation is complete. These will be
     /// cleared on startup of the service.
@@ -102,6 +126,11 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
         &self,
         commitment: &Commitment,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError>;
+
+    /// Get the output that was most recently mined, ordered descending by mined height
+    fn get_last_mined_output(&self) -> Result<Option<DbUnblindedOutput>, OutputManagerStorageError>;
+    /// Get the output that was most recently spent, ordered descending by mined height
+    fn get_last_spent_output(&self) -> Result<Option<DbUnblindedOutput>, OutputManagerStorageError>;
 }
 
 /// Holds the outputs that have been selected for a given pending transaction waiting for confirmation
@@ -160,7 +189,6 @@ pub enum DbKeyValuePair {
     PendingTransactionOutputs(TxId, Box<PendingTransactionOutputs>),
     KeyManagerState(KeyManagerState),
     KnownOneSidedPaymentScripts(KnownOneSidedPaymentScript),
-    UpdateOutputStatus(Commitment, OutputStatus),
 }
 
 pub enum WriteOperation {
@@ -380,7 +408,7 @@ where T: OutputManagerBackend + 'static
     /// `spent_outputs` collections.
     pub async fn confirm_pending_transaction_outputs(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.confirm_transaction(tx_id))
+        tokio::task::spawn_blocking(move || db_clone.confirm_transaction_encumberance(tx_id))
             .await
             .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)
@@ -505,6 +533,22 @@ where T: OutputManagerBackend + 'static
         .await
         .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(uo)
+    }
+
+    pub async fn fetch_unmined_received_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+        let utxos = tokio::task::spawn_blocking(move || db_clone.fetch_unmined_received_outputs())
+            .await
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(utxos)
+    }
+
+    pub async fn fetch_unmined_spent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+        let utxos = tokio::task::spawn_blocking(move || db_clone.fetch_unmined_spent_outputs())
+            .await
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(utxos)
     }
 
     pub async fn fetch_all_pending_transaction_outputs(
@@ -683,6 +727,14 @@ where T: OutputManagerBackend + 'static
         Ok(scripts)
     }
 
+    pub async fn get_last_mined_output(&self) -> Result<Option<DbUnblindedOutput>, OutputManagerStorageError> {
+        self.db.get_last_mined_output()
+    }
+
+    pub async fn get_last_spent_output(&self) -> Result<Option<DbUnblindedOutput>, OutputManagerStorageError> {
+        self.db.get_last_spent_output()
+    }
+
     pub async fn add_known_script(
         &self,
         known_script: KnownOneSidedPaymentScript,
@@ -714,45 +766,48 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
-    /// Check if a single cancelled inbound output exists that matches this TxID, if it does then return its status to
-    /// EncumberedToBeReceived
-    pub async fn reinstate_inbound_output(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        let outputs = tokio::task::spawn_blocking(move || {
-            match db_clone.fetch(&DbKey::OutputsByTxIdAndStatus(tx_id, OutputStatus::CancelledInbound)) {
-                Ok(None) => Err(OutputManagerStorageError::ValueNotFound),
-                Ok(Some(DbValue::AnyOutputs(o))) => Ok(o),
-                Ok(Some(other)) => unexpected_result(
-                    DbKey::OutputsByTxIdAndStatus(tx_id, OutputStatus::CancelledInbound),
-                    other,
-                ),
-                Err(e) => log_error(DbKey::OutputsByTxIdAndStatus(tx_id, OutputStatus::CancelledInbound), e),
-            }
-        })
-        .await
-        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
-        .and_then(|inner_result| inner_result)?;
-
-        if outputs.len() != 1 {
-            return Err(OutputManagerStorageError::UnexpectedResult(
-                "There should be only 1 output for a cancelled inbound transaction but more were found".to_string(),
-            ));
-        }
-        let db_clone2 = self.db.clone();
-
+    pub async fn set_output_mined_height(
+        &self,
+        hash: HashOutput,
+        mined_height: u64,
+        mined_in_block: HashOutput,
+        mmr_position: u64,
+    ) -> Result<(), OutputManagerStorageError> {
+        let db = self.db.clone();
         tokio::task::spawn_blocking(move || {
-            db_clone2.write(WriteOperation::Insert(DbKeyValuePair::UpdateOutputStatus(
-                outputs
-                    .first()
-                    .expect("Must be only one element in outputs")
-                    .commitment
-                    .clone(),
-                OutputStatus::EncumberedToBeReceived,
-            )))
+            db.set_output_mined_height(hash, mined_height, mined_in_block, mmr_position)
         })
         .await
         .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(())
+    }
 
+    pub async fn set_output_as_unmined(&self, hash: HashOutput) -> Result<(), OutputManagerStorageError> {
+        let db = self.db.clone();
+        tokio::task::spawn_blocking(move || db.set_output_to_unmined(hash))
+            .await
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(())
+    }
+
+    pub async fn mark_output_as_spent(
+        &self,
+        hash: HashOutput,
+        mined_height: u64,
+        mined_in_block: HashOutput,
+    ) -> Result<(), OutputManagerStorageError> {
+        let db = self.db.clone();
+        tokio::task::spawn_blocking(move || db.mark_output_as_spent(hash, mined_height, mined_in_block))
+            .await
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(())
+    }
+
+    pub async fn mark_output_as_unspent(&self, hash: HashOutput) -> Result<(), OutputManagerStorageError> {
+        let db = self.db.clone();
+        tokio::task::spawn_blocking(move || db.mark_output_as_unspent(hash))
+            .await
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
     }
 }

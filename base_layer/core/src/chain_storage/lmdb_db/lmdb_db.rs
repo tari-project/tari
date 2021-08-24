@@ -65,6 +65,7 @@ use crate::{
             LMDB_DB_UTXO_COMMITMENT_INDEX,
             LMDB_DB_UTXO_MMR_SIZE_INDEX,
         },
+        utxo_mined_info::UtxoMinedInfo,
         BlockchainBackend,
         ChainBlock,
         ChainHeader,
@@ -1721,7 +1722,7 @@ impl BlockchainBackend for LMDBDatabase {
         Ok((result, difference_bitmap))
     }
 
-    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(PrunedOutput, u32, u64)>, ChainStorageError> {
+    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
         debug!(target: LOG_TARGET, "Fetch output: {}", output_hash.to_hex());
         let txn = self.read_transaction()?;
         if let Some((index, key)) =
@@ -1739,27 +1740,31 @@ impl BlockchainBackend for LMDBDatabase {
                     output: Some(o),
                     mmr_position,
                     mined_height,
+                    header_hash,
                     ..
-                }) => Ok(Some((
-                    PrunedOutput::NotPruned { output: o },
+                }) => Ok(Some(UtxoMinedInfo {
+                    output: PrunedOutput::NotPruned { output: o },
                     mmr_position,
                     mined_height,
-                ))),
+                    header_hash,
+                })),
                 Some(TransactionOutputRowData {
                     output: None,
                     mmr_position,
                     mined_height,
                     hash,
                     witness_hash,
+                    header_hash,
                     ..
-                }) => Ok(Some((
-                    PrunedOutput::Pruned {
+                }) => Ok(Some(UtxoMinedInfo {
+                    output: PrunedOutput::Pruned {
                         output_hash: hash,
                         witness_hash,
                     },
                     mmr_position,
                     mined_height,
-                ))),
+                    header_hash,
+                })),
                 _ => Ok(None),
             }
         } else {

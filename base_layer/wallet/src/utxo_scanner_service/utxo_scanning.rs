@@ -306,6 +306,7 @@ where TBackend: WalletBackend + 'static
                 return Ok((total_scanned, start_index, timer.elapsed()));
             }
 
+            // TODO: uncomment
             let num_scanned = self.scan_utxos(&mut client, start_index, tip_header).await?;
             if num_scanned == 0 {
                 return Err(UtxoScannerError::UtxoScanningError(
@@ -319,7 +320,10 @@ where TBackend: WalletBackend + 'static
                 timer.elapsed(),
                 num_scanned
             );
+
+            // let num_scanned = 0;
             total_scanned += num_scanned;
+            // return Ok((total_scanned, start_index, timer.elapsed()));
         }
     }
 

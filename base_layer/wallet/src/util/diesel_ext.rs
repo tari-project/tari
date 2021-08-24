@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2021. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,8 +20,23 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod transaction_broadcast_protocol;
-pub mod transaction_coinbase_monitoring_protocol;
-pub mod transaction_receive_protocol;
-pub mod transaction_send_protocol;
-pub mod transaction_validation_protocol_v2;
+use diesel::{result::Error as DieselError, QueryResult};
+
+pub trait ExpectedRowsExtension {
+    fn num_rows_affected_or_not_found(self, num_rows: usize) -> Result<usize, DieselError>;
+}
+
+impl ExpectedRowsExtension for QueryResult<usize> {
+    fn num_rows_affected_or_not_found(self, num_rows: usize) -> Result<usize, DieselError> {
+        match self {
+            Ok(s) => {
+                if s == num_rows {
+                    Ok(s)
+                } else {
+                    Err(DieselError::NotFound)
+                }
+            },
+            Err(e) => Err(e),
+        }
+    }
+}

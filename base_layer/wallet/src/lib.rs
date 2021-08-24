@@ -6,6 +6,10 @@
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
 #![recursion_limit = "2048"]
+// Some functions have a large amount of dependencies (e.g. services) and historically this warning
+// has lead to bundling of dependencies into a resources struct, which is then overused and is the
+// wrong abstraction
+#![allow(clippy::too_many_arguments)]
 
 #[macro_use]
 mod macros;

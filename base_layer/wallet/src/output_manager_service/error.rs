@@ -22,7 +22,7 @@
 
 use crate::base_node_service::error::BaseNodeServiceError;
 use diesel::result::Error as DieselError;
-use tari_comms::{peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
+use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
     transaction::TransactionError,
@@ -109,6 +109,13 @@ pub enum OutputManagerError {
     MasterSecretKeyMismatch,
     #[error("Private Key is not found in the current Key Chain")]
     KeyNotFoundInKeyChain,
+    #[error("Connectivity error: {source}")]
+    ConnectivityError {
+        #[from]
+        source: ConnectivityError,
+    },
+    #[error("Invalid message received:{0}")]
+    InvalidMessageError(String),
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -176,5 +183,18 @@ impl OutputManagerProtocolError {
 impl From<OutputManagerProtocolError> for OutputManagerError {
     fn from(tspe: OutputManagerProtocolError) -> Self {
         tspe.error
+    }
+}
+
+pub trait OutputManagerProtocolErrorExt<TRes> {
+    fn for_protocol(self, id: u64) -> Result<TRes, OutputManagerProtocolError>;
+}
+
+impl<TRes, TErr: Into<OutputManagerError>> OutputManagerProtocolErrorExt<TRes> for Result<TRes, TErr> {
+    fn for_protocol(self, id: u64) -> Result<TRes, OutputManagerProtocolError> {
+        match self {
+            Ok(r) => Ok(r),
+            Err(e) => Err(OutputManagerProtocolError::new(id, e.into())),
+        }
     }
 }

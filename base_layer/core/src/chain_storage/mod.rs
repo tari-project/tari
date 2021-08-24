@@ -93,4 +93,7 @@ pub use lmdb_db::{
 };
 
 mod target_difficulties;
+mod utxo_mined_info;
+pub use utxo_mined_info::*;
+
 pub use target_difficulties::TargetDifficulties;

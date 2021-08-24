@@ -4,15 +4,15 @@
 PRAGMA foreign_keys=off;
 DROP TABLE outputs;
 CREATE TABLE outputs (
-    id INTEGER NOT NULL PRIMARY KEY,
-    commitment BLOB NOT NULL,
+    id INTEGER NOT NULL PRIMARY KEY,  --auto inc,
+    commitment BLOB NULL,
     spending_key BLOB NOT NULL,
-    value INTEGER NOT NULL,
+    value BIGINT NOT NULL,
     flags INTEGER NOT NULL,
-    maturity INTEGER NOT NULL,
+    maturity bigint NOT NULL,
     status INTEGER NOT NULL,
-    tx_id INTEGER NULL,
-    hash BLOB NOT NULL,
+    tx_id bigint NULL,
+    hash BLOB NULL,
     script BLOB NOT NULL,
     input_data BLOB NOT NULL,
     script_private_key BLOB NOT NULL,

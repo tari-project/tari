@@ -636,20 +636,3 @@ where TBackend: OutputManagerBackend + 'static
         self.retry_delay = new_delay;
     }
 }
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TxoValidationType {
-    Unspent,
-    Spent,
-    Invalid,
-}
-
-impl fmt::Display for TxoValidationType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            TxoValidationType::Unspent => write!(f, "Unspent Outputs Validation"),
-            TxoValidationType::Spent => write!(f, "Spent Outputs Validation"),
-            TxoValidationType::Invalid => write!(f, "Invalid Outputs Validation"),
-        }
-    }
-}
