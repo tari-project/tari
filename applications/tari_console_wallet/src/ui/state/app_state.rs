@@ -84,6 +84,7 @@ pub struct AppState {
     completed_tx_filter: TransactionFilter,
     node_config: GlobalConfig,
     config: AppStateConfig,
+    wallet_connectivity: WalletConnectivityHandle,
 }
 
 impl AppState {
@@ -95,6 +96,7 @@ impl AppState {
         base_node_config: PeerConfig,
         node_config: GlobalConfig,
     ) -> Self {
+        let wallet_connectivity = wallet.wallet_connectivity.clone();
         let inner = AppStateInner::new(node_identity, network, wallet, base_node_selected, base_node_config);
         let cached_data = inner.data.clone();
 
@@ -105,6 +107,7 @@ impl AppState {
             completed_tx_filter: TransactionFilter::ABANDONED_COINBASES,
             node_config,
             config: AppStateConfig::default(),
+            wallet_connectivity,
         }
     }
 
@@ -350,6 +353,10 @@ impl AppState {
 
     pub fn get_base_node_state(&self) -> &BaseNodeState {
         &self.cached_data.base_node_state
+    }
+
+    pub fn get_wallet_connectivity(&self) -> WalletConnectivityHandle {
+        self.wallet_connectivity.clone()
     }
 
     pub fn get_selected_base_node(&self) -> &Peer {
