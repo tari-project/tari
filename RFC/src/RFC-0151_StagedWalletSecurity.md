@@ -48,7 +48,7 @@ technological merits of the potential system outlined herein.
 
 ## Goals
 
-The aim of this Request for Comment (RFC) is to describe Tari's ergonomic approach to securing funds in a hot wallet.
+This Request for Comment (RFC) aims to describe Tari's ergonomic approach to securing funds in a hot wallet.
 The focus is on mobile wallets, but the strategy described here is equally applicable to console or desktop wallets.
 
 ## Related Requests for Comment
@@ -62,17 +62,17 @@ The focus is on mobile wallets, but the strategy described here is equally appli
 A major UX hurdle when users first interact with a crypto wallet is the friction they experience with the first user
 experience.
 
-This is a common theme: I want to play with new wallet X that I saw advertised somewhere, so I download it and run it.
+A common theme: I want to play with some new wallet X that I saw advertised somewhere, so I download it and run it.
 But first I get several screens that
 
-* ask me to review my seed phrase
-* ask me to write down my seed phrase
-* prevent common "skip this" tricks like taking a screenshot
-* ask to confirm if I've written down my seed phrase
-* force me to write a test, either by supplying a random sample of my seed phrase, or my getting me to type in the
+* ask me to review my seed phrase,
+* ask me to write down my seed phrase,
+* prevent typical "skip this" tricks like taking a screenshot,
+* ask to confirm if I've written down my seed phrase,
+* force me to write a test, either by supplying a random sample of my seed phrase, or by getting me to type in the
 whole thing.
 
-After all this, I get to play with the wallet a bit, and then, typically I uninstall it.
+After all this, I play with the wallet a bit, and then typically, I uninstall it.
 
 The goal of this RFC is to **get the user playing with the wallet as quickly as possible**. _Without_ sacrificing
 security whatsoever.
@@ -87,7 +87,7 @@ Each step enforces more stringent security protocols on the user than the previo
 The user moves from one step to another based on criteria that
 
 1. the user configures based on her preferences, or
-2. sane predefined defaults
+2. uses sane predefined defaults.
 
 The criteria are generally based on the value of the wallet balance.
 
@@ -104,22 +104,23 @@ Therefore, Tari wallets SHOULD just skip the whole seed phrase ritual and let th
 
 #### Stage 1a - a reminder to write down your seed phrase
 
-Once the user's balance exceed the `MINIMUM_STAGE_ONE_BALANCE`, the user will be prompted to review and write down their
+Once the user's balance exceeds the `MINIMUM_STAGE_ONE_BALANCE`, they will be prompted to review and write down their
 seed phrase. The `MINIMUM_STAGE_ONE_BALANCE` is any non-zero balance by default.
 
 After the transaction that causes the balance to exceed `MINIMUM_STAGE_ONE_BALANCE` is confirmed, the user is presented
 with a friendly message: "You now have _real_ money in your wallet. If you accidentally delete your wallet app or lose
-your device, your funds are lost and there is no way to recover them, unless you have safely kept a copy of your
+your device, your funds are lost, and there is no way to recover them unless you have safely kept a copy of your
 `seed phrase` safe somewhere. Click 'Ok' to review and save the phrase now, or 'Do it later' to do it at a more
 convenient time".
 
 If the user elects _not_ to save the phrase, the message pops up again periodically. Once per day, or when the balance
 increases -- whichever is less frequent -- is sufficient without being too intrusive.
 
+
 #### Stage 1b - simple wallet backups
 
 Users are used to storing their data in the cloud. Although this practice is frowned upon by crypto purists, for small
-balances (the types of balances you often keep in a hot wallet), using secure cloud storage for wallet backups is a fair
+balances (the type you often keep in a hot wallet), using secure cloud storage for wallet backups is a fair
 compromise between keeping the keys safe from attackers and protecting users from themselves.
 
 The simple wallet backup saves the spending keys and values of the user's wallet to a personal cloud space (e.g. Google Drive,
@@ -128,10 +129,10 @@ Apple iCloud, Dropbox).
 This solution does not require any additional input from the user besides providing authorisation to store in the cloud.
 This can be done using the standard APIs and Authentication flows that each cloud provider publishes for their platform.
 
-In particular, we do not ask for a password to encrypt the commitment data. The consequence of this is that anyone who
-is able to gain access to this data -- by stealing the user's cloud credentials -- _could_ steal the user's funds.
+In particular, we do not ask for a password to encrypt the commitment data. The consequence is that anyone who gains
+access to this data -- by stealing the user's cloud credentials -- _could_ steal the user's funds.
 
-Therefore, the threshold for moving from this stage to Stage three, `STAGE_TWO_THRESHOLD_BALANCE` is fairly low;
+Therefore, the threshold for moving from this stage to Stage three, `STAGE_TWO_THRESHOLD_BALANCE` is relatively low;
 somewhere in the region of $10 to $50.
 
 The seed phrase MUST NOT be stored on the cloud in Stage 1b. Doing so would result in all _future_ funds of the user being
@@ -139,7 +140,7 @@ lost if the backup were ever compromised. Since the backup is unencrypted in Sta
 needed to recover the funds and limit the potential loss of funds in case of a breach to just that found in the commitments in the
 backup, which should not be more than $50.
 
-Backups MUST be authorised by the user when the first cloud backup is made, and SHOULD be automatically updated after each
+Backups MUST be authorised by the user when the first cloud backup is made and SHOULD be automatically updated after each
 transaction.
 
 Restoring a wallet from Stage 1b entails _importing_ the UTXO commitments into the user's current wallet.
@@ -147,6 +148,7 @@ Restoring a wallet from Stage 1b entails _importing_ the UTXO commitments into t
 Wallet authors MAY choose to exclude Stage 1b from the staged security protocol.
 
 As usual, the user MUST be able to configure `STAGE_TWO_THRESHOLD_BALANCE` to suit their particular needs.
+
 
 #### Stage 2 - full wallet backups
 
@@ -156,13 +158,14 @@ encrypted backup of the user's wallet to the cloud. The user needs to provide a 
 This makes the user's fund safer while at rest in the cloud. It also introduces an additional point of failure: the user
 can forget their wallet's encryption password.
 
-Stage 1b and 2 are similar in functionality, but different in scope (Stage 2 allows us to store all the wallet
+Stage 1b and 2 are similar in functionality but different in scope (Stage 2 allows us to store all the wallet
 metadata, rather than just the commitments). For this reason, Stage 1b is optional.
 
-Backups MUST be authorised by the user when the first cloud backup is made, and SHOULD be automatically updated after each
+Backups MUST be authorised by the user when the first cloud backup is made and SHOULD be automatically updated after each
 transaction.
 
 When migrating from Stage 1 to Stage 2, the Stage 1b backups SHOULD be deleted.
+
 
 #### Stage 3 - Sweep to cold wallet
 
@@ -179,7 +182,7 @@ sweep transaction to the blockchain.
 
 #### Security hygiene
 
-* From stage 1 onwards Users should be asked periodically whether they still have their seed phrase written down. Once every
-two months is sufficient.
+* From stage 1 onwards Users should be asked periodically whether they still have their seed phrase written down.
+  Once every two months is sufficient.
 
 
