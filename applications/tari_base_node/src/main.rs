@@ -269,7 +269,7 @@ async fn run_grpc(
 }
 
 async fn read_command(mut rustyline: Editor<Parser>) -> Result<(String, Editor<Parser>), String> {
-    task::spawn(async {
+    task::spawn_blocking(|| {
         let readline = rustyline.readline(">> ");
 
         match readline {
@@ -350,9 +350,11 @@ async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
                 match res {
                     Ok((line, mut rustyline)) => {
                         if let Some(p) = rustyline.helper_mut().as_deref_mut() {
-                            p.handle_command(line.as_str(), &mut shutdown)
+                            p.handle_command(line.as_str(), &mut shutdown);
                         }
-                        read_command_fut.set(read_command(rustyline).fuse());
+                        if !shutdown.is_triggered() {
+                            read_command_fut.set(read_command(rustyline).fuse());
+                        }
                     },
                     Err(err) => {
                         // This happens when the node is shutting down.
