@@ -123,7 +123,6 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
                 .obtain_base_node_wallet_rpc_client()
                 .await
                 .ok_or(BaseNodeMonitorError::NodeShuttingDown)?;
-            let latency = client.get_last_request_latency().await?;
 
             let tip_info = client.get_tip_info().await?;
 
@@ -134,6 +133,7 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
                     ChainMetadata::try_from(metadata).map_err(BaseNodeMonitorError::InvalidBaseNodeResponse)
                 })?;
 
+            let latency = client.ping().await?;
             let is_synced = tip_info.is_synced;
             debug!(
                 target: LOG_TARGET,
@@ -141,7 +141,7 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
                 peer_node_id,
                 chain_metadata.height_of_longest_chain(),
                 if is_synced { "Synced" } else { "Syncing..." },
-                latency.unwrap_or_default().as_millis()
+                latency.as_millis()
             );
 
             self.db.set_chain_metadata(chain_metadata.clone()).await?;
@@ -150,7 +150,7 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
                 chain_metadata: Some(chain_metadata),
                 is_synced: Some(is_synced),
                 updated: Some(Utc::now().naive_utc()),
-                latency,
+                latency: Some(latency),
                 online: OnlineStatus::Online,
             })
             .await;

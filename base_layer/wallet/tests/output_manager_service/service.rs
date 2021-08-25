@@ -84,6 +84,7 @@ use tari_wallet::{
     types::ValidationRetryStrategy,
 };
 
+use tari_comms::protocol::rpc::RpcClientConfig;
 use tari_wallet::output_manager_service::storage::models::OutputStatus;
 use tokio::{
     runtime::Runtime,
@@ -1816,7 +1817,12 @@ fn test_txo_validation_rpc_timeout() {
         .unwrap();
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(100)).fuse();
+        let mut delay = delay_for(
+            RpcClientConfig::default().deadline.unwrap() +
+                RpcClientConfig::default().deadline_grace_period +
+                Duration::from_secs(30),
+        )
+        .fuse();
         let mut failed = 0;
         loop {
             futures::select! {

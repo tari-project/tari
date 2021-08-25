@@ -281,6 +281,7 @@ data_dir = "weatherwax"
 # new nodes can use to introduce themselves to the network.
 # peer_seeds = ["public_key1::address1", "public_key2::address2",... ]
 peer_seeds = [
+    "98bc76afc1c35ad4651bdc9ef57bbe0655a2ea3cd86c0e19b5fd5890546eb040::/onion3/33izgtjkrlxhxybj6luqowkpiy2wvte43osejnbqyieqtdfhovzghxad:18141", #jozi
     "9a26e910288213d649b26f9a7a7ee51fe2b2a67ff7d42334523463bf4be94312::/onion3/56kq54ylttnbl5ikotqex3oqvtzlxdpn7zlx4v56rvzf4kq7eezlclid:18141", #london
     "6afd5b3c7772ad7d4bb26e0c19668fe04f2d68f99de9e132bee50a6c1846946d::/onion3/may4ajbmcn4dlnzf6fanvqlklxzqiw6qwu6ywqwkjc3bb354rc2i5wid:18141", #ncal
     "8e7beec9becdc44fe6015a00d97a77fa3dbafe65127dcc988df6326bd9fd040d::/onion3/3pise36l4imoopsbjic5rtw67adx7rms6w5pgjmccpdwiqx66j7oqcqd:18141", #nvir
