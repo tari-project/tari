@@ -26,7 +26,7 @@ use log::*;
 use tari_common::{CommsTransport, GlobalConfig, SocksAuthentication, TorControlAuthentication};
 use tari_comms::{
     connectivity::ConnectivityError,
-    peer_manager::NodeId,
+    peer_manager::{NodeId, PeerManagerError},
     protocol::rpc::RpcError,
     socks,
     tor,
@@ -143,6 +143,12 @@ impl From<WalletStorageError> for ExitCodes {
             IncorrectPassword => ExitCodes::IncorrectPassword,
             e => ExitCodes::WalletError(e.to_string()),
         }
+    }
+}
+
+impl From<PeerManagerError> for ExitCodes {
+    fn from(err: PeerManagerError) -> Self {
+        ExitCodes::NetworkError(err.to_string())
     }
 }
 

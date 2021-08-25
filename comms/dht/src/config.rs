@@ -66,11 +66,6 @@ pub struct DhtConfig {
     pub saf_max_message_size: usize,
     /// When true, store and forward messages are requested from peers on connect (Default: true)
     pub saf_auto_request: bool,
-    /// The minimum period used to request SAF messages from a peer. When requesting SAF messages,
-    /// it will request messages since the DHT last went offline, but this may be a small amount of
-    /// time, so `minimum_request_period` can be used so that messages aren't missed.
-    /// Default: 3 days
-    pub saf_minimum_request_period: Duration,
     /// The max capacity of the message hash cache
     /// Default: 2,500
     pub dedup_cache_capacity: usize,
@@ -154,7 +149,6 @@ impl Default for DhtConfig {
             saf_high_priority_msg_storage_ttl: Duration::from_secs(3 * 24 * 60 * 60), // 3 days
             saf_auto_request: true,
             saf_max_message_size: 512 * 1024,
-            saf_minimum_request_period: Duration::from_secs(3 * 24 * 60 * 60), // 3 days
             dedup_cache_capacity: 2_500,
             dedup_cache_trim_interval: Duration::from_secs(5 * 60),
             database_url: DbConnectionUrl::Memory,

@@ -124,6 +124,7 @@ function createEnv(
   baseNodeGrpcPort = "8080",
   baseNodePort = "8081",
   proxyFullAddress = "127.0.0.1:8084",
+  transcoderFullAddress = "127.0.0.1:8085",
   options,
   peerSeeds = [],
   _txnSendingMechanism = "DirectAndStoreAndForward"
@@ -149,6 +150,9 @@ function createEnv(
   configEnvs[
     `TARI_MERGE_MINING_PROXY__${network}__PROXY_HOST_ADDRESS`
   ] = `${proxyFullAddress}`;
+  configEnvs[
+    `TARI_STRATUM_TRANSCODER__${network}__TRANSCODER_HOST_ADDRESS`
+  ] = `${transcoderFullAddress}`;
   configEnvs[`TARI_BASE_NODE__${network}__TRANSPORT`] = "tcp";
   configEnvs[`TARI_WALLET__${network}__TRANSPORT`] = "tcp";
   configEnvs[`TARI_WALLET__${network}__TCP_LISTENER_ADDRESS`] =

@@ -94,14 +94,14 @@ pub struct ConnectionManagerConfig {
     /// The number of dial attempts to make before giving up. Default: 3
     pub max_dial_attempts: usize,
     /// The maximum number of connection tasks that will be spawned at the same time. Once this limit is reached, peers
-    /// attempting to connect will have to wait for another connection attempt to complete. Default: 20
+    /// attempting to connect will have to wait for another connection attempt to complete. Default: 100
     pub max_simultaneous_inbound_connects: usize,
     /// Set to true to allow peers to send loopback, local-link and other addresses normally not considered valid for
     /// peer-to-peer comms. Default: false
     pub allow_test_addresses: bool,
     /// Version information for this node
     pub network_info: NodeNetworkInfo,
-    /// The maximum time to wait for the first byte before closing the connection. Default: 7s
+    /// The maximum time to wait for the first byte before closing the connection. Default: 45s
     pub time_to_first_byte: Duration,
     /// The number of liveness check sessions to allow. Default: 0
     pub liveness_max_sessions: usize,
@@ -122,7 +122,7 @@ impl Default for ConnectionManagerConfig {
             #[cfg(test)]
             listener_address: "/memory/0".parse().unwrap(),
             max_dial_attempts: 3,
-            max_simultaneous_inbound_connects: 20,
+            max_simultaneous_inbound_connects: 100,
             network_info: Default::default(),
             #[cfg(not(test))]
             allow_test_addresses: false,
@@ -130,7 +130,7 @@ impl Default for ConnectionManagerConfig {
             #[cfg(test)]
             allow_test_addresses: true,
             liveness_max_sessions: 0,
-            time_to_first_byte: Duration::from_secs(7),
+            time_to_first_byte: Duration::from_secs(45),
             liveness_cidr_allowlist: vec![cidr::AnyIpCidr::V4("127.0.0.1/32".parse().unwrap())],
             auxilary_tcp_listener_address: None,
         }
@@ -392,15 +392,25 @@ where
                     node_id.short_str(),
                     proto_str
                 );
-                if let Err(err) = self
+                let notify_fut = self
                     .protocols
-                    .notify(&protocol, ProtocolEvent::NewInboundSubstream(*node_id, stream))
-                    .await
-                {
-                    error!(
-                        target: LOG_TARGET,
-                        "Error sending NewSubstream notification for protocol '{}' because '{:?}'", proto_str, err
-                    );
+                    .notify(&protocol, ProtocolEvent::NewInboundSubstream(*node_id, stream));
+                match time::timeout(Duration::from_secs(10), notify_fut).await {
+                    Ok(Err(err)) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "Error sending NewSubstream notification for protocol '{}' because '{:?}'", proto_str, err
+                        );
+                    },
+                    Err(err) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "Error sending NewSubstream notification for protocol '{}' because {}", proto_str, err
+                        );
+                    },
+                    _ => {
+                        debug!(target: LOG_TARGET, "Protocol notification for '{}' sent", proto_str);
+                    },
                 }
             },
 

@@ -348,10 +348,11 @@ pub async fn init_wallet(
     let base_node_service_config = BaseNodeServiceConfig::new(
         config.wallet_base_node_service_refresh_interval,
         config.wallet_base_node_service_request_max_age,
+        config.base_node_event_channel_size,
     );
 
     let factories = CryptoFactories::default();
-    let mut wallet_config = WalletConfig::new(
+    let wallet_config = WalletConfig::new(
         comms_config.clone(),
         factories,
         Some(TransactionServiceConfig {
@@ -363,20 +364,25 @@ pub async fn init_wallet(
                 config.transaction_routing_mechanism.clone(),
             ),
             num_confirmations_required: config.transaction_num_confirmations_required,
+            transaction_event_channel_size: config.transaction_event_channel_size,
             ..Default::default()
         }),
         Some(OutputManagerServiceConfig {
             base_node_query_timeout: config.base_node_query_timeout,
             prevent_fee_gt_amount: config.prevent_fee_gt_amount,
+            event_channel_size: config.output_manager_event_channel_size,
+            base_node_update_publisher_channel_size: config.base_node_update_publisher_channel_size,
             ..Default::default()
         }),
         config.network.into(),
         Some(base_node_service_config),
-        Some(config.buffer_size_base_node_wallet),
-        Some(config.buffer_rate_limit_base_node_wallet),
+        Some(std::cmp::max(
+            BASE_NODE_BUFFER_MIN_SIZE,
+            config.buffer_size_console_wallet,
+        )),
+        Some(config.buffer_rate_limit_console_wallet),
         Some(config.scan_for_utxo_interval),
     );
-    wallet_config.buffer_size = std::cmp::max(BASE_NODE_BUFFER_MIN_SIZE, config.buffer_size_base_node);
 
     let mut wallet = Wallet::start(
         wallet_config,

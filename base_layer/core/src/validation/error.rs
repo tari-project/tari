@@ -53,6 +53,8 @@ pub enum ValidationError {
     ContainsSTxO,
     #[error("Transaction contains already outputs that already exist")]
     ContainsTxO,
+    #[error("Transaction contains an output commitment that already exists")]
+    ContainsDuplicateUtxoCommitment,
     #[error("Final state validation failed: The UTXO set did not balance with the expected emission at height {0}")]
     ChainBalanceValidationFailed(u64),
     #[error("Proof of work error: {0}")]

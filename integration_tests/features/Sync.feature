@@ -59,10 +59,10 @@ Feature: Block Sync
     And mining node MINER1 mines 5 blocks with min difficulty 1 and max difficulty 1
     Then node NODE1 is at height 10
     Given I stop node NODE1
-    And I start NODE2
+    And I start base node NODE2
     And mining node MINER2 mines 7 blocks with min difficulty 11 and max difficulty 100000
     Then node NODE2 is at height 12
-    When I start NODE1
+    When I start base node NODE1
     Then all nodes are on the same chain at height 12
 
   @critical @reorg @long-running
@@ -79,10 +79,10 @@ Feature: Block Sync
     And mining node MINER1 mines 1001 blocks with min difficulty 1 and max difficulty 10
     Then node NODE1 is at height 1006
     Given I stop node NODE1
-    And I start NODE2
+    And I start base node NODE2
     And mining node MINER2 mines 1500 blocks with min difficulty 11 and max difficulty 100000
     Then node NODE2 is at height 1505
-    When I start NODE1
+    When I start base node NODE1
     Then all nodes are on the same chain at height 1505
 
   @critical
@@ -103,6 +103,25 @@ Feature: Block Sync
     When I mine 15 blocks on PNODE2
     Then all nodes are at height 23
 
+    Scenario: Node should not sync from pruned node
+    Given I have a base node NODE1 connected to all seed nodes
+    Given I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
+    When I mine 40 blocks on NODE1
+    Then all nodes are at height 40
+    When I stop node NODE1
+    Given I have a base node NODE2 connected to node PNODE1
+    Given I have a pruned node PNODE2 connected to node PNODE1 with pruning horizon set to 5
+    When I mine 5 blocks on NODE2
+    Then node NODE2 is at height 5
+    Then node PNODE2 is at height 40
+    When I start base node NODE1
+    # We need for node to boot up and supply node 2 with blocks
+    And I connect node NODE2 to node NODE1 and wait 5 seconds
+    # NODE2 may initially try to sync from PNODE1 and PNODE2, then eventually try to sync from NODE1; mining blocks
+    # on NODE1 will make this test less flaky and force NODE2 to sync from NODE1 much quicker
+    When I mine 10 blocks on NODE1
+    Then all nodes are at height 50
+
   Scenario Outline: Syncing node while also mining before tip sync
     Given I have a seed node SEED
     And I have wallet WALLET1 connected to seed node SEED
@@ -113,7 +132,7 @@ Feature: Block Sync
     And I stop node SYNCER
     When mining node MINER mines <X1> blocks with min difficulty 1 and max difficulty 9999999999
     Then node SEED is at height <X1>
-    When I start SYNCER
+    When I start base node SYNCER
     # Try to mine much faster than block sync, but still producing a lower accumulated difficulty
     And mining node MINER2 mines <Y1> blocks with min difficulty 1 and max difficulty 10
     # Allow reorg to filter through

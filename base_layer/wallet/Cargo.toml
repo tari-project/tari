@@ -3,7 +3,7 @@ name = "tari_wallet"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet library"
 license = "BSD-3-Clause"
-version = "0.9.1"
+version = "0.9.5"
 edition = "2018"
 
 [dependencies]
@@ -16,7 +16,6 @@ tari_p2p = { version = "^0.9", path = "../p2p" }
 tari_service_framework = { version = "^0.9", path = "../service_framework"}
 tari_shutdown = { version = "^0.9", path = "../../infrastructure/shutdown" }
 tari_storage = { version = "^0.9", path = "../../infrastructure/storage"}
-tari_test_utils = { version = "^0.9", path = "../../infrastructure/test_utils", optional = true}
 
 aes-gcm = "^0.8"
 blake2 = "0.9.0"
@@ -30,7 +29,7 @@ fs2 = "0.3.0"
 futures =  { version = "^0.3.1", features =["compat", "std"]}
 lazy_static = "1.4.0"
 log = "0.4.6"
-log4rs = {version = "0.8.3", features = ["console_appender", "file_appender", "file", "yaml_format"]}
+log4rs = {version = "1.0.0", features = ["console_appender", "file_appender", "yaml_format"]}
 lmdb-zero = "0.4.4"
 rand = "0.8"
 serde = {version = "1.0.89", features = ["derive"] }
@@ -58,6 +57,5 @@ prost = "0.6.1"
 tokio-macros = "0.2.4"
 
 [features]
-test_harness = ["tari_test_utils"]
 c_integration = []
 avx2 = ["tari_crypto/avx2", "tari_core/avx2"]

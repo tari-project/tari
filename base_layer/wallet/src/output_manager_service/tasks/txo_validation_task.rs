@@ -264,7 +264,9 @@ where TBackend: OutputManagerBackend + 'static
 
             let mut client = match base_node_connection
                 .connect_rpc_using_builder(
-                    BaseNodeWalletRpcClient::builder().with_deadline(self.resources.config.base_node_query_timeout),
+                    BaseNodeWalletRpcClient::builder()
+                        .with_deadline(self.resources.config.base_node_query_timeout)
+                        .with_handshake_timeout(self.resources.config.base_node_query_timeout),
                 )
                 .await
             {

@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{chain_storage::ChainStorageError, proof_of_work::PowError, validation::ValidationError};
+use crate::{chain_storage::ChainStorageError, validation::ValidationError};
 use tari_comms::{
     connectivity::ConnectivityError,
     protocol::rpc::{RpcError, RpcStatus},
@@ -42,10 +42,8 @@ pub enum BlockSyncError {
     ConnectivityError(#[from] ConnectivityError),
     #[error("No sync peers available")]
     NoSyncPeers,
-    #[error("Error fetching PoW: {0}")]
-    PowError(#[from] PowError),
-    //#[error("Expected to find header at height {0} however the header did not exist")]
-    // ExpectedHeaderNotFound(u64),
     #[error("Block validation failed: {0}")]
     ValidationError(#[from] ValidationError),
+    #[error("Failed to ban peer: {0}")]
+    FailedToBan(ConnectivityError),
 }

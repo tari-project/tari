@@ -45,6 +45,8 @@ pub enum RpcError {
     ServerClosedRequest,
     #[error("Request cancelled")]
     RequestCancelled,
+    #[error("Response did not match the request ID (expected {expected} actual {actual})")]
+    ResponseIdDidNotMatchRequest { expected: u16, actual: u16 },
     #[error("Client internal error: {0}")]
     ClientInternalError(String),
     #[error("Handshake error: {0}")]
@@ -57,6 +59,12 @@ pub enum RpcError {
     PeerManagerError(#[from] PeerManagerError),
     #[error("Connectivity error: {0}")]
     ConnectivityError(#[from] ConnectivityError),
+    #[error("Reply Timeout")]
+    ReplyTimeout,
+    #[error("Received an invalid ping response")]
+    InvalidPingResponse,
+    #[error("Unexpected ACK response. This is likely because of a previous ACK timeout")]
+    UnexpectedAckResponse,
     #[error(transparent)]
     UnknownError(#[from] anyhow::Error),
 }

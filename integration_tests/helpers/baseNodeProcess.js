@@ -18,8 +18,8 @@ class BaseNodeProcess {
   }
 
   async init() {
-    this.port = await getFreePort(19000, 25000);
-    this.grpcPort = await getFreePort(19000, 25000);
+    this.port = await getFreePort();
+    this.grpcPort = await getFreePort();
     this.name = `Basenode${this.port}-${this.name}`;
     this.nodeFile = this.nodeFile || "nodeid.json";
 
@@ -111,6 +111,7 @@ class BaseNodeProcess {
           this.grpcPort,
           this.port,
           "127.0.0.1:8080",
+          "127.0.0.1:8085",
           this.options,
           this.peerSeeds
         );
@@ -174,14 +175,15 @@ class BaseNodeProcess {
 
   async startAndConnect() {
     await this.startNew();
-    return this.createGrpcClient();
+    return await this.createGrpcClient();
   }
 
-  async start() {
+  async start(opts = []) {
     const args = ["--base-path", "."];
     if (this.logFilePath) {
       args.push("--log-config", this.logFilePath);
     }
+    args.push(...opts);
     return await this.run(await this.compile(), args);
   }
 
@@ -200,8 +202,8 @@ class BaseNodeProcess {
     });
   }
 
-  createGrpcClient() {
-    return new BaseNodeClient(this.grpcPort);
+  async createGrpcClient() {
+    return await BaseNodeClient.create(this.grpcPort);
   }
 }
 

@@ -28,29 +28,37 @@ const LOG_TARGET: &str = "wallet::base_node_service::config";
 #[derive(Clone, Debug)]
 pub struct BaseNodeServiceConfig {
     pub base_node_monitor_refresh_interval: Duration,
+    pub base_node_rpc_pool_size: usize,
     pub request_max_age: Duration,
+    pub event_channel_size: usize,
 }
 
 impl Default for BaseNodeServiceConfig {
     fn default() -> Self {
         Self {
             base_node_monitor_refresh_interval: Duration::from_secs(5),
+            base_node_rpc_pool_size: 10,
             request_max_age: Duration::from_secs(60),
+            event_channel_size: 250,
         }
     }
 }
 
 impl BaseNodeServiceConfig {
-    pub fn new(refresh_interval: u64, request_max_age: u64) -> Self {
+    pub fn new(refresh_interval: u64, request_max_age: u64, event_channel_size: usize) -> Self {
         info!(
             target: LOG_TARGET,
-            "Setting new wallet base node service config, refresh interval: {}s, request max age: {}s",
+            "Setting new wallet base node service config, refresh interval: {}s, request max age: {}s, event channel \
+             size : {}",
             refresh_interval,
-            request_max_age
+            request_max_age,
+            event_channel_size
         );
         Self {
             base_node_monitor_refresh_interval: Duration::from_secs(refresh_interval),
             request_max_age: Duration::from_secs(request_max_age),
+            event_channel_size,
+            ..Default::default()
         }
     }
 }

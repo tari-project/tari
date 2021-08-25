@@ -92,8 +92,8 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             .fetch_header_accumulated_data(start_hash.clone())
             .await?
             .ok_or_else(|| ChainStorageError::ValueNotFound {
-                entity: "BlockHeaderAccumulatedData".to_string(),
-                field: "hash".to_string(),
+                entity: "BlockHeaderAccumulatedData",
+                field: "hash",
                 value: start_hash.to_hex(),
             })?;
         debug!(

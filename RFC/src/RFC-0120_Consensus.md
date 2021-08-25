@@ -77,11 +77,14 @@ Every [block] MUST:
   * be in a canonical order (see [Transaction ordering])
 * each [transaction output] MUST:
   * have a unique hash (`features || commitment || script`)
+  * have a unique commitment in the current [UTXO] set
   * be in a canonical order (see [Transaction ordering])
   * have a valid [range proof]
   * have a valid [metadata signature]
   * have a valid script offset (\\gamma), as per [RFC-0201_TariScript](./RFC-0201_TariScript.md).
-* each [transaction kernel] MUST have a valid kernel signature
+* each [transaction kernel] MUST 
+  * have a valid kernel signature
+  * have a unique excess
 * the transaction commitments and kernels MUST balance, as follows:
 
   $$

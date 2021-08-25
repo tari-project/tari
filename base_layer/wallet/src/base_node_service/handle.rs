@@ -22,11 +22,9 @@
 
 use super::{error::BaseNodeServiceError, service::BaseNodeState};
 use futures::{stream::Fuse, StreamExt};
-use std::sync::Arc;
-use tari_comms::peer_manager::Peer;
-
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 use tari_common_types::chain_metadata::ChainMetadata;
+use tari_comms::peer_manager::Peer;
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;

@@ -83,7 +83,7 @@ impl grpc::TransactionInfo {
     pub fn not_found(tx_id: TxId) -> Self {
         Self {
             tx_id,
-            is_found: false,
+            status: grpc::TransactionStatus::NotFound as i32,
             ..Default::default()
         }
     }

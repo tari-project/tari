@@ -27,6 +27,7 @@ use crate::{
 };
 use futures::channel::mpsc;
 use thiserror::Error;
+use tokio::{time, time::Elapsed};
 
 #[derive(Debug, Error, Clone)]
 pub enum ConnectionManagerError {
@@ -110,4 +111,12 @@ pub enum PeerConnectionError {
     InternalRequestSendFailed(#[from] mpsc::SendError),
     #[error("Protocol error: {0}")]
     ProtocolError(#[from] ProtocolError),
+    #[error("Protocol negotiation timeout")]
+    ProtocolNegotiationTimeout,
+}
+
+impl From<time::Elapsed> for PeerConnectionError {
+    fn from(_: Elapsed) -> Self {
+        PeerConnectionError::ProtocolNegotiationTimeout
+    }
 }

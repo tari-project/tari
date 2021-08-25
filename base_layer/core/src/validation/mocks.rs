@@ -22,7 +22,7 @@
 
 use crate::{
     blocks::{Block, BlockHeader},
-    chain_storage::{BlockchainBackend, ChainBlock, DeletedBitmap},
+    chain_storage::{BlockchainBackend, ChainBlock},
     proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     transactions::{transaction::Transaction, types::Commitment},
     validation::{
@@ -80,13 +80,7 @@ impl<B: BlockchainBackend> CandidateBlockBodyValidation<B> for MockValidator {
 }
 
 impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for MockValidator {
-    fn validate_body_for_valid_orphan(
-        &self,
-        _: &ChainBlock,
-        _: &B,
-        _: &ChainMetadata,
-        _: &DeletedBitmap,
-    ) -> Result<(), ValidationError> {
+    fn validate_body_for_valid_orphan(&self, _: &ChainBlock, _: &B, _: &ChainMetadata) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
         } else {
