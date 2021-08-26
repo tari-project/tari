@@ -152,7 +152,7 @@ mod test {
 
         assert!(dedup.poll_ready(&mut cx).is_ready());
         let node_identity = make_node_identity();
-        let msg = make_dht_inbound_message(&node_identity, Vec::new(), DhtMessageFlags::empty(), false);
+        let msg = make_dht_inbound_message(&node_identity, Vec::new(), DhtMessageFlags::empty(), false, false);
 
         rt.block_on(dedup.call(msg.clone())).unwrap();
         assert_eq!(spy.call_count(), 1);
@@ -169,11 +169,23 @@ mod test {
         const TEST_MSG: &[u8] = b"test123";
         const EXPECTED_HASH: &str = "90cccd774db0ac8c6ea2deff0e26fc52768a827c91c737a2e050668d8c39c224";
         let node_identity = make_node_identity();
-        let msg = make_dht_inbound_message(&node_identity, TEST_MSG.to_vec(), DhtMessageFlags::empty(), false);
+        let msg = make_dht_inbound_message(
+            &node_identity,
+            TEST_MSG.to_vec(),
+            DhtMessageFlags::empty(),
+            false,
+            false,
+        );
         let hash1 = hash_inbound_message(&msg);
 
         let node_identity = make_node_identity();
-        let msg = make_dht_inbound_message(&node_identity, TEST_MSG.to_vec(), DhtMessageFlags::empty(), false);
+        let msg = make_dht_inbound_message(
+            &node_identity,
+            TEST_MSG.to_vec(),
+            DhtMessageFlags::empty(),
+            false,
+            false,
+        );
         let hash2 = hash_inbound_message(&msg);
 
         assert_eq!(hash1, hash2);

@@ -155,10 +155,11 @@ mod test {
             DhtMessageFlags::empty(),
             false,
             MessageTag::new(),
+            false,
         );
 
         deserialize
-            .ready_and()
+            .ready()
             .await
             .unwrap()
             .call(make_comms_inbound_message(

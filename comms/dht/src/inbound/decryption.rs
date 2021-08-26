@@ -193,8 +193,18 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     ) -> Result<DecryptedDhtMessage, DecryptionError> {
         let dht_header = &message.dht_header;
 
+        let mut header_mac_bytes = Vec::with_capacity(256);
+        header_mac_bytes.extend_from_slice(&dht_header.major.to_le_bytes());
+        header_mac_bytes.extend_from_slice(&dht_header.minor.to_le_bytes());
+        header_mac_bytes.extend_from_slice(dht_header.destination.to_inner_bytes().as_slice());
+        header_mac_bytes.extend_from_slice(&(dht_header.message_type as i32).to_le_bytes());
+        header_mac_bytes.extend_from_slice(&dht_header.flags.bits().to_le_bytes());
+        if let Some(t) = dht_header.expires {
+            header_mac_bytes.extend_from_slice(&t.as_u64().to_le_bytes());
+        }
+
         if !dht_header.flags.contains(DhtMessageFlags::ENCRYPTED) {
-            return Self::success_not_encrypted(message).await;
+            return Self::success_not_encrypted(message, header_mac_bytes).await;
         }
         trace!(
             target: LOG_TARGET,
@@ -214,9 +224,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         // Decrypt and verify the origin
         let authenticated_origin = match Self::attempt_decrypt_origin_mac(&shared_secret, dht_header) {
             Ok((public_key, signature)) => {
+                header_mac_bytes.extend_from_slice(e_pk.as_bytes());
+
                 // If this fails, discard the message because we decrypted and deserialized the message with our shared
                 // ECDH secret but the message could not be authenticated
-                Self::authenticate_origin_mac(&public_key, &signature, &message.body)?;
+                Self::authenticate_origin_mac(&public_key, &signature, header_mac_bytes.as_slice(), &message.body)?;
                 public_key
             },
             Err(err) => {
@@ -307,9 +319,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     fn authenticate_origin_mac(
         public_key: &CommsPublicKey,
         signature: &[u8],
+        mac_header: &[u8],
         body: &[u8],
     ) -> Result<(), DecryptionError> {
-        if signature::verify(public_key, signature, body) {
+        let mac_body = [mac_header, body].concat();
+        if signature::verify(public_key, signature, mac_body) {
             Ok(())
         } else {
             Err(DecryptionError::OriginMacInvalidSignature)
@@ -350,7 +364,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .map_err(|_| DecryptionError::MessageBodyDecryptionFailed)
     }
 
-    async fn success_not_encrypted(message: DhtInboundMessage) -> Result<DecryptedDhtMessage, DecryptionError> {
+    async fn success_not_encrypted(
+        message: DhtInboundMessage,
+        header_mac_bytes: Vec<u8>,
+    ) -> Result<DecryptedDhtMessage, DecryptionError> {
         let authenticated_pk = if message.dht_header.origin_mac.is_empty() {
             None
         } else {
@@ -358,7 +375,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 .map_err(|_| DecryptionError::OriginMacClearTextDecodeFailed)?;
             let public_key = CommsPublicKey::from_bytes(&origin_mac.public_key)
                 .map_err(|_| DecryptionError::OriginMacInvalidPublicKey)?;
-            Self::authenticate_origin_mac(&public_key, &origin_mac.signature, &message.body)?;
+
+            Self::authenticate_origin_mac(
+                &public_key,
+                &origin_mac.signature,
+                header_mac_bytes.as_slice(),
+                &message.body,
+            )?;
             Some(public_key)
         };
 
@@ -435,6 +458,7 @@ mod test {
             plain_text_msg.to_encoded_bytes(),
             DhtMessageFlags::ENCRYPTED,
             true,
+            false,
         );
 
         block_on(service.call(inbound_msg)).unwrap();
@@ -459,8 +483,13 @@ mod test {
 
         let some_secret = b"Super secret message".to_vec();
         let some_other_node_identity = make_node_identity();
-        let inbound_msg =
-            make_dht_inbound_message(&some_other_node_identity, some_secret, DhtMessageFlags::ENCRYPTED, true);
+        let inbound_msg = make_dht_inbound_message(
+            &some_other_node_identity,
+            some_secret,
+            DhtMessageFlags::ENCRYPTED,
+            true,
+            false,
+        );
 
         block_on(service.call(inbound_msg.clone())).unwrap();
         let decrypted = result.lock().unwrap().take().unwrap();
@@ -471,6 +500,7 @@ mod test {
 
     #[tokio_macros::test_basic]
     async fn decrypt_inbound_fail_destination() {
+        let _ = env_logger::try_init();
         let (connectivity, mock) = create_connectivity_mock();
         mock.spawn();
         let result = Arc::new(Mutex::new(None));
@@ -485,9 +515,8 @@ mod test {
         let mut service = DecryptionService::new(Default::default(), node_identity.clone(), connectivity, service);
 
         let nonsense = b"Cannot Decrypt this".to_vec();
-        let mut inbound_msg =
-            make_dht_inbound_message(&node_identity, nonsense.clone(), DhtMessageFlags::ENCRYPTED, true);
-        inbound_msg.dht_header.destination = node_identity.public_key().clone().into();
+        let inbound_msg =
+            make_dht_inbound_message(&node_identity, nonsense.clone(), DhtMessageFlags::ENCRYPTED, true, true);
 
         let err = service.call(inbound_msg).await.unwrap_err();
         let err = err.downcast::<DecryptionError>().unwrap();

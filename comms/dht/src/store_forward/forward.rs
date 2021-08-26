@@ -274,7 +274,8 @@ mod test {
         let mut service = ForwardLayer::new(oms, true).layer(spy.to_service::<PipelineError>());
 
         let node_identity = make_node_identity();
-        let inbound_msg = make_dht_inbound_message(&node_identity, b"".to_vec(), DhtMessageFlags::empty(), false);
+        let inbound_msg =
+            make_dht_inbound_message(&node_identity, b"".to_vec(), DhtMessageFlags::empty(), false, false);
         let msg = DecryptedDhtMessage::succeeded(
             wrap_in_envelope_body!(Vec::new()),
             Some(node_identity.public_key().clone()),
@@ -300,6 +301,7 @@ mod test {
             &make_node_identity(),
             sample_body.to_vec(),
             DhtMessageFlags::empty(),
+            false,
             false,
         );
         let header = inbound_msg.dht_header.clone();

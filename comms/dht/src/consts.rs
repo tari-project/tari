@@ -21,5 +21,5 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /// Version for DHT envelope
-pub const DHT_MAJOR_VERSION: u32 = 0;
+pub const DHT_MAJOR_VERSION: u32 = 1;
 pub const DHT_MINOR_VERSION: u32 = 0;

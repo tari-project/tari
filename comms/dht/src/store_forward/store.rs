@@ -462,8 +462,13 @@ mod test {
             .layer(spy.to_service::<PipelineError>());
         assert_send_static_service(&service);
 
-        let inbound_msg =
-            make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::empty(), false);
+        let inbound_msg = make_dht_inbound_message(
+            &make_node_identity(),
+            b"".to_vec(),
+            DhtMessageFlags::empty(),
+            false,
+            false,
+        );
         let msg = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(Vec::new()), None, inbound_msg);
         service.call(msg).await.unwrap();
         assert!(spy.is_called());
@@ -487,6 +492,7 @@ mod test {
             b"This shouldnt be stored".to_vec(),
             DhtMessageFlags::ENCRYPTED,
             true,
+            false,
         );
         let msg = DecryptedDhtMessage::succeeded(
             wrap_in_envelope_body!(b"secret".to_vec()),
@@ -515,6 +521,7 @@ mod test {
             b"Will you keep this for me?".to_vec(),
             DhtMessageFlags::ENCRYPTED,
             true,
+            false,
         );
         inbound_msg.dht_header.destination =
             NodeDestination::PublicKey(Box::new(origin_node_identity.public_key().clone()));
@@ -556,6 +563,7 @@ mod test {
             b"Will you keep this for me?".to_vec(),
             DhtMessageFlags::ENCRYPTED,
             true,
+            false,
         );
         inbound_msg.dht_header.destination =
             NodeDestination::PublicKey(Box::new(origin_node_identity.public_key().clone()));

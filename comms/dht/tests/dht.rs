@@ -39,7 +39,7 @@ use tari_comms::{
 };
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
-    envelope::NodeDestination,
+    envelope::{DhtMessageType, NodeDestination},
     event::DhtEvent,
     inbound::DecryptedDhtMessage,
     outbound::{OutboundEncryption, SendMessageParams},
@@ -353,6 +353,7 @@ async fn dht_store_forward() {
     let secret_msg2 = b"NMCO CCAK UQPM KCSM HKSE INJU SBLK";
 
     let mut node_B_msg_events = node_B.messaging_events.subscribe();
+
     node_A
         .dht
         .outbound_requester()
@@ -592,6 +593,99 @@ async fn dht_propagate_message_contents_not_malleable_ban() {
     // Change the message
     bytes.push(0x42);
 
+    let mut connectivity_events = node_C.comms.connectivity().get_event_subscription();
+
+    // Propagate the changed message (to node C)
+    node_B
+        .dht
+        .outbound_requester()
+        .send_raw(
+            SendMessageParams::new()
+                .propagate(node_B.node_identity().node_id().clone().into(), vec![msg
+                    .source_peer
+                    .node_id
+                    .clone()])
+                .with_dht_header(msg.dht_header)
+                .finish(),
+            bytes,
+        )
+        .await
+        .unwrap();
+    let node_B_node_id = node_B.node_identity().node_id().clone();
+
+    // Node C should ban node B
+    let banned_node_id = streams::assert_in_stream(
+        &mut connectivity_events,
+        |r| match &*r.unwrap() {
+            ConnectivityEvent::PeerBanned(node_id) => Some(node_id.clone()),
+            _ => None,
+        },
+        Duration::from_secs(10),
+    )
+    .await;
+    assert_eq!(banned_node_id, node_B_node_id);
+
+    node_A.shutdown().await;
+    node_B.shutdown().await;
+    node_C.shutdown().await;
+}
+
+#[tokio_macros::test]
+#[allow(non_snake_case)]
+async fn dht_header_not_malleable() {
+    let node_C = make_node(PeerFeatures::COMMUNICATION_NODE, None).await;
+    // Node B knows about Node C
+    let mut node_B = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_C.to_peer())).await;
+    // Node A knows about Node B
+    let node_A = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_B.to_peer())).await;
+    node_A.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
+    log::info!(
+        "NodeA = {}, NodeB = {}",
+        node_A.node_identity().node_id().short_str(),
+        node_B.node_identity().node_id().short_str(),
+    );
+
+    // Connect the peers that should be connected
+    node_A
+        .comms
+        .connectivity()
+        .dial_peer(node_B.node_identity().node_id().clone())
+        .await
+        .unwrap();
+
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    struct Person {
+        #[prost(string, tag = "1")]
+        name: String,
+        #[prost(uint32, tag = "2")]
+        age: u32,
+    }
+
+    let out_msg = Person {
+        name: "John Conway".into(),
+        age: 82,
+    };
+    node_A
+        .dht
+        .outbound_requester()
+        .send_message_no_header(
+            SendMessageParams::new()
+                .direct_node_id(node_B.node_identity().node_id().clone())
+                .with_destination(node_A.node_identity().node_id().clone().into())
+                .with_encryption(OutboundEncryption::ClearText)
+                .force_origin()
+                .finish(),
+            out_msg,
+        )
+        .await
+        .unwrap();
+
+    let mut msg = node_B.next_inbound_message(Duration::from_secs(10)).await.unwrap();
+
+    // Modify the header
+    msg.dht_header.message_type = DhtMessageType::from_i32(21i32).unwrap();
+
+    let bytes = msg.decryption_result.unwrap().to_encoded_bytes();
     let mut connectivity_events = node_C.comms.connectivity().get_event_subscription();
 
     // Propagate the changed message (to node C)

@@ -24,9 +24,10 @@ use super::{error::DhtOutboundError, message::DhtOutboundRequest};
 use crate::{
     actor::DhtRequester,
     broadcast_strategy::BroadcastStrategy,
+    consts::{DHT_MAJOR_VERSION, DHT_MINOR_VERSION},
     crypt,
     discovery::DhtDiscoveryRequester,
-    envelope::{datetime_to_timestamp, DhtMessageFlags, DhtMessageHeader, NodeDestination},
+    envelope::{datetime_to_epochtime, datetime_to_timestamp, DhtMessageFlags, DhtMessageHeader, NodeDestination},
     outbound::{
         message::{DhtOutboundMessage, OutboundEncryption, SendFailure},
         message_params::FinalSendMessageParams,
@@ -57,7 +58,7 @@ use tari_comms::{
 };
 use tari_crypto::{
     keys::PublicKey,
-    tari_utilities::{message_format::MessageFormat, ByteArray},
+    tari_utilities::{epoch_time::EpochTime, message_format::MessageFormat, ByteArray},
 };
 use tari_utilities::hex::Hex;
 use tower::{layer::Layer, Service, ServiceExt};
@@ -413,8 +414,17 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         expires: Option<DateTime<Utc>>,
     ) -> Result<(Vec<DhtOutboundMessage>, Vec<MessageSendState>), DhtOutboundError> {
         let dht_flags = encryption.flags() | extra_flags;
+        let expires_epochtime = expires.map(datetime_to_epochtime);
 
-        let (ephemeral_public_key, origin_mac, body) = self.process_encryption(&encryption, force_origin, body)?;
+        let (ephemeral_public_key, origin_mac, body) = self.process_encryption(
+            &encryption,
+            force_origin,
+            &destination,
+            &dht_message_type,
+            &dht_flags,
+            expires_epochtime.as_ref(),
+            body,
+        )?;
 
         if is_broadcast {
             self.add_to_dedup_cache(&body, self.node_identity.public_key().clone())
@@ -462,10 +472,15 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             .map_err(|_| DhtOutboundError::FailedToInsertMessageHash)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn process_encryption(
         &self,
         encryption: &OutboundEncryption,
         include_origin: bool,
+        destination: &NodeDestination,
+        message_type: &DhtMessageType,
+        flags: &DhtMessageFlags,
+        expires: Option<&EpochTime>,
         body: Bytes,
     ) -> Result<FinalMessageParts, DhtOutboundError> {
         match encryption {
@@ -477,8 +492,18 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 // Encrypt the message with the body
                 let encrypted_body = crypt::encrypt(&shared_ephemeral_secret, &body)?;
 
+                let mut header_mac_bytes = Vec::with_capacity(256);
+                header_mac_bytes.extend_from_slice(&DHT_MAJOR_VERSION.to_le_bytes());
+                header_mac_bytes.extend_from_slice(&DHT_MINOR_VERSION.to_le_bytes());
+                header_mac_bytes.extend_from_slice(destination.to_inner_bytes().as_slice());
+                header_mac_bytes.extend_from_slice(&(*message_type as i32).to_le_bytes());
+                header_mac_bytes.extend_from_slice(&flags.bits().to_le_bytes());
+                if let Some(t) = expires {
+                    header_mac_bytes.extend_from_slice(&t.as_u64().to_le_bytes());
+                }
+                header_mac_bytes.extend_from_slice(e_pk.as_bytes());
                 // Sign the encrypted message
-                let origin_mac = create_origin_mac(&self.node_identity, &encrypted_body)?;
+                let origin_mac = create_origin_mac(&self.node_identity, header_mac_bytes.as_slice(), &encrypted_body)?;
                 // Encrypt and set the origin field
                 let encrypted_origin_mac = crypt::encrypt(&shared_ephemeral_secret, &origin_mac)?;
                 Ok((
@@ -491,7 +516,16 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 trace!(target: LOG_TARGET, "Encryption not requested for message");
 
                 if include_origin {
-                    let origin_mac = create_origin_mac(&self.node_identity, &body)?;
+                    let mut header_mac_bytes = Vec::with_capacity(256);
+                    header_mac_bytes.extend_from_slice(&DHT_MAJOR_VERSION.to_le_bytes());
+                    header_mac_bytes.extend_from_slice(&DHT_MINOR_VERSION.to_le_bytes());
+                    header_mac_bytes.extend_from_slice(destination.to_inner_bytes().as_slice());
+                    header_mac_bytes.extend_from_slice(&(*message_type as i32).to_le_bytes());
+                    header_mac_bytes.extend_from_slice(&flags.bits().to_le_bytes());
+                    if let Some(t) = expires {
+                        header_mac_bytes.extend_from_slice(&t.as_u64().to_le_bytes());
+                    }
+                    let origin_mac = create_origin_mac(&self.node_identity, &header_mac_bytes, &body)?;
                     Ok((None, Some(origin_mac.into()), body))
                 } else {
                     Ok((None, None, body))
@@ -501,8 +535,14 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
     }
 }
 
-fn create_origin_mac(node_identity: &NodeIdentity, body: &[u8]) -> Result<Vec<u8>, DhtOutboundError> {
-    let signature = signature::sign(&mut OsRng, node_identity.secret_key().clone(), body)?;
+fn create_origin_mac(
+    node_identity: &NodeIdentity,
+    mac_header: &[u8],
+    body: &[u8],
+) -> Result<Vec<u8>, DhtOutboundError> {
+    let mac_body = [mac_header, body].concat();
+
+    let signature = signature::sign(&mut OsRng, node_identity.secret_key().clone(), mac_body)?;
 
     let mac = OriginMac {
         public_key: node_identity.public_key().to_vec(),

@@ -496,11 +496,23 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         header: &DhtMessageHeader,
         body: &[u8],
     ) -> Result<(Option<CommsPublicKey>, EnvelopeBody), StoreAndForwardError> {
+        let mut header_mac_bytes = Vec::with_capacity(256);
+        header_mac_bytes.extend_from_slice(&header.major.to_le_bytes());
+        header_mac_bytes.extend_from_slice(&header.minor.to_le_bytes());
+        header_mac_bytes.extend_from_slice(header.destination.to_inner_bytes().as_slice());
+        header_mac_bytes.extend_from_slice(&(header.message_type as i32).to_le_bytes());
+        header_mac_bytes.extend_from_slice(&header.flags.bits().to_le_bytes());
+
+        if let Some(t) = header.expires {
+            header_mac_bytes.extend_from_slice(&t.as_u64().to_le_bytes());
+        }
+
         if header.flags.contains(DhtMessageFlags::ENCRYPTED) {
             let ephemeral_public_key = header.ephemeral_public_key.as_ref().expect(
                 "[store and forward] DHT header is invalid after validity check because it did not contain an \
                  ephemeral_public_key",
             );
+            header_mac_bytes.extend_from_slice(&ephemeral_public_key.as_bytes());
 
             trace!(
                 target: LOG_TARGET,
@@ -509,7 +521,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             );
             let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), ephemeral_public_key);
             let decrypted = crypt::decrypt(&shared_secret, &header.origin_mac)?;
-            let authenticated_pk = Self::authenticate_message(&decrypted, body)?;
+            let authenticated_pk = Self::authenticate_message(&decrypted, header_mac_bytes.as_bytes(), body)?;
 
             trace!(
                 target: LOG_TARGET,
@@ -525,7 +537,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             Ok((Some(authenticated_pk), envelope_body))
         } else {
             let authenticated_pk = if !header.origin_mac.is_empty() {
-                Some(Self::authenticate_message(&header.origin_mac, body)?)
+                Some(Self::authenticate_message(
+                    &header.origin_mac,
+                    header_mac_bytes.as_bytes(),
+                    body,
+                )?)
             } else {
                 None
             };
@@ -534,12 +550,17 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         }
     }
 
-    fn authenticate_message(origin_mac_body: &[u8], body: &[u8]) -> Result<CommsPublicKey, StoreAndForwardError> {
+    fn authenticate_message(
+        origin_mac_body: &[u8],
+        mac_header: &[u8],
+        body: &[u8],
+    ) -> Result<CommsPublicKey, StoreAndForwardError> {
         let origin_mac = OriginMac::decode(origin_mac_body)?;
         let public_key =
             CommsPublicKey::from_bytes(&origin_mac.public_key).map_err(|_| StoreAndForwardError::InvalidOriginMac)?;
+        let full_mac_body = [mac_header, body].concat();
 
-        if signature::verify(&public_key, &origin_mac.signature, body) {
+        if signature::verify(&public_key, &origin_mac.signature, full_mac_body) {
             Ok(public_key)
         } else {
             Err(StoreAndForwardError::InvalidOriginMac)
@@ -624,6 +645,7 @@ mod test {
             DhtMessageFlags::empty(),
             false,
             MessageTag::new(),
+            false,
         );
 
         let since = Utc::now().checked_sub_signed(chrono::Duration::seconds(60)).unwrap();
@@ -635,6 +657,7 @@ mod test {
                 b"Keep this for others please".to_vec(),
                 DhtMessageFlags::ENCRYPTED,
                 true,
+                false,
             ),
         );
         message.dht_header.message_type = DhtMessageType::SafRequestMessages;
@@ -763,7 +786,8 @@ mod test {
 
         let msg_a = wrap_in_envelope_body!(&b"A".to_vec()).to_encoded_bytes();
 
-        let inbound_msg_a = make_dht_inbound_message(&node_identity, msg_a.clone(), DhtMessageFlags::ENCRYPTED, true);
+        let inbound_msg_a =
+            make_dht_inbound_message(&node_identity, msg_a.clone(), DhtMessageFlags::ENCRYPTED, true, false);
         // Need to know the peer to process a stored message
         peer_manager
             .add_peer(Clone::clone(&*inbound_msg_a.source_peer))
@@ -771,7 +795,8 @@ mod test {
             .unwrap();
 
         let msg_b = &wrap_in_envelope_body!(b"B".to_vec()).to_encoded_bytes();
-        let inbound_msg_b = make_dht_inbound_message(&node_identity, msg_b.clone(), DhtMessageFlags::ENCRYPTED, true);
+        let inbound_msg_b =
+            make_dht_inbound_message(&node_identity, msg_b.clone(), DhtMessageFlags::ENCRYPTED, true, false);
         // Need to know the peer to process a stored message
         peer_manager
             .add_peer(Clone::clone(&*inbound_msg_b.source_peer))
@@ -789,8 +814,14 @@ mod test {
 
         // Cleartext message
         let clear_msg = wrap_in_envelope_body!(b"Clear".to_vec()).to_encoded_bytes();
-        let clear_header =
-            make_dht_inbound_message(&node_identity, clear_msg.clone(), DhtMessageFlags::empty(), false).dht_header;
+        let clear_header = make_dht_inbound_message(
+            &node_identity,
+            clear_msg.clone(),
+            DhtMessageFlags::empty(),
+            false,
+            false,
+        )
+        .dht_header;
         let msg_clear_time = Utc::now()
             .checked_sub_signed(OldDuration::from_std(Duration::from_secs(120)).unwrap())
             .unwrap();
@@ -807,6 +838,7 @@ mod test {
                 b"Stored message".to_vec(),
                 DhtMessageFlags::ENCRYPTED,
                 true,
+                false,
             ),
         );
         message.dht_header.message_type = DhtMessageType::SafStoredMessages;
