@@ -95,8 +95,8 @@ mod recovery;
 mod status_line;
 mod utils;
 
-use crate::command_handler::CommandHandler;
-use futures::{pin_mut, FutureExt};
+use crate::command_handler::{CommandHandler, StatusOutput};
+use futures::{future::Fuse, pin_mut, FutureExt};
 use log::*;
 use parser::Parser;
 use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
@@ -114,7 +114,11 @@ use tari_app_utilities::{
 use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
 use tari_comms::{peer_manager::PeerFeatures, tor::HiddenServiceControllerError};
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::{runtime, task, time};
+use tokio::{
+    runtime,
+    task,
+    time::{self, Delay},
+};
 use tonic::transport::Server;
 
 const LOG_TARGET: &str = "base_node::app";
@@ -221,10 +225,11 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
     }
 
     // Run, node, run!
+    let command_handler = Arc::new(CommandHandler::new(runtime::Handle::current(), &ctx));
     if bootstrap.non_interactive_mode {
+        task::spawn(status_loop(command_handler, shutdown));
         println!("Node started in non-interactive mode (pid = {})", process::id());
     } else {
-        let command_handler = Arc::new(CommandHandler::new(runtime::Handle::current(), &ctx));
         let parser = Parser::new(command_handler);
         cli::print_banner(parser.get_commands(), 3);
 
@@ -291,7 +296,31 @@ async fn read_command(mut rustyline: Editor<Parser>) -> Result<(String, Editor<P
     .expect("Could not spawn rustyline task")
 }
 
-/// Runs the Base Node
+fn status_interval(start_time: Instant) -> Fuse<Delay> {
+    let duration = match start_time.elapsed().as_secs() {
+        0..=120 => Duration::from_secs(5),
+        _ => Duration::from_secs(30),
+    };
+    time::delay_for(duration).fuse()
+}
+
+async fn status_loop(command_handler: Arc<CommandHandler>, shutdown: Shutdown) {
+    let start_time = Instant::now();
+    let mut shutdown_signal = shutdown.to_signal();
+    loop {
+        let mut interval = status_interval(start_time);
+        futures::select! {
+            _ = interval => {
+               command_handler.status(StatusOutput::Log);
+            },
+            _ = shutdown_signal => {
+                break;
+            }
+        }
+    }
+}
+
+/// Runs the Base Node CLI loop
 /// ## Parameters
 /// `parser` - The parser to process input commands
 /// `shutdown` - The trigger for shutting down
@@ -315,16 +344,7 @@ async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
     let start_time = Instant::now();
     let mut software_update_notif = command_handler.get_software_updater().new_update_notifier().clone();
     loop {
-        let delay_time = if start_time.elapsed() < Duration::from_secs(120) {
-            Duration::from_secs(2)
-        } else if start_time.elapsed() < Duration::from_secs(300) {
-            Duration::from_secs(10)
-        } else {
-            Duration::from_secs(30)
-        };
-
-        let mut interval = time::delay_for(delay_time).fuse();
-
+        let mut interval = status_interval(start_time);
         futures::select! {
             res = read_command_fut => {
                 match res {
@@ -355,7 +375,7 @@ async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
                 }
             }
             _ = interval => {
-               command_handler.status();
+               command_handler.status(StatusOutput::Full);
             },
             _ = shutdown_signal => {
                 break;

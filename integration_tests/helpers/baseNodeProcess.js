@@ -85,6 +85,10 @@ class BaseNodeProcess {
     this.peerSeeds = addresses.join(",");
   }
 
+  setForceSyncPeers(addresses) {
+    this.forceSyncPeers = addresses.join(",");
+  }
+
   getGrpcAddress() {
     const address = "127.0.0.1:" + this.grpcPort;
     // console.log("Base Node GRPC Address:",address);
@@ -113,7 +117,9 @@ class BaseNodeProcess {
           "127.0.0.1:8080",
           "127.0.0.1:8085",
           this.options,
-          this.peerSeeds
+          this.peerSeeds,
+          "DirectAndStoreAndForward",
+          this.forceSyncPeers
         );
       }
 
