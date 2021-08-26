@@ -58,6 +58,7 @@ use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
+    connectivity_service::WalletConnectivityHandle,
     contacts_service::storage::database::Contact,
     output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, TxId, TxoValidationType},
     transaction_service::{
@@ -650,6 +651,10 @@ impl AppStateInner {
 
     pub fn get_connectivity_event_stream(&self) -> Fuse<ConnectivityEventRx> {
         self.wallet.comms.connectivity().get_event_subscription().fuse()
+    }
+
+    pub fn get_wallet_connectivity(&self) -> WalletConnectivityHandle {
+        self.wallet.wallet_connectivity.clone()
     }
 
     pub fn get_base_node_event_stream(&self) -> Fuse<BaseNodeEventReceiver> {

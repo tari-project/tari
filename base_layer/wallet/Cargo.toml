@@ -3,7 +3,7 @@ name = "tari_wallet"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet library"
 license = "BSD-3-Clause"
-version = "0.9.4"
+version = "0.9.5"
 edition = "2018"
 
 [dependencies]
@@ -29,7 +29,7 @@ fs2 = "0.3.0"
 futures =  { version = "^0.3.1", features =["compat", "std"]}
 lazy_static = "1.4.0"
 log = "0.4.6"
-log4rs = {version = "0.8.3", features = ["console_appender", "file_appender", "file", "yaml_format"]}
+log4rs = {version = "1.0.0", features = ["console_appender", "file_appender", "yaml_format"]}
 lmdb-zero = "0.4.4"
 rand = "0.8"
 serde = {version = "1.0.89", features = ["derive"] }

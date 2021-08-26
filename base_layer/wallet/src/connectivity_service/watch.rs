@@ -37,7 +37,7 @@ impl<T: Clone> Watch<T> {
         self.receiver_mut().recv().await
     }
 
-    pub fn borrow(&mut self) -> watch::Ref<'_, T> {
+    pub fn borrow(&self) -> watch::Ref<'_, T> {
         self.receiver().borrow()
     }
 

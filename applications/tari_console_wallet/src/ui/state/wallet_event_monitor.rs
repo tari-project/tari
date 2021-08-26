@@ -54,6 +54,8 @@ impl WalletEventMonitor {
             .get_output_manager_service_event_stream();
 
         let mut connectivity_events = self.app_state_inner.read().await.get_connectivity_event_stream();
+        let wallet_connectivity = self.app_state_inner.read().await.get_wallet_connectivity();
+        let mut connectivity_status = wallet_connectivity.get_connectivity_status_watch().fuse();
 
         let mut base_node_events = self.app_state_inner.read().await.get_base_node_event_stream();
 
@@ -105,6 +107,10 @@ impl WalletEventMonitor {
                             Err(_) => debug!(target: LOG_TARGET, "Lagging read on Transaction Service event broadcast channel"),
                         }
                     },
+                    status = connectivity_status.select_next_some() => {
+                        trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet connectivity status {:?}", status);
+                        self.trigger_peer_state_refresh().await;
+                    },
                     result = connectivity_events.select_next_some() => {
                         match result {
                             Ok(msg) => {
@@ -112,10 +118,7 @@ impl WalletEventMonitor {
                                 match &*msg {
                                     ConnectivityEvent::PeerDisconnected(_) |
                                     ConnectivityEvent::ManagedPeerDisconnected(_) |
-                                    ConnectivityEvent::PeerConnected(_) |
-                                    ConnectivityEvent::PeerBanned(_) |
-                                    ConnectivityEvent::PeerOffline(_) |
-                                    ConnectivityEvent::PeerConnectionWillClose(_, _) => {
+                                    ConnectivityEvent::PeerConnected(_)  => {
                                         self.trigger_peer_state_refresh().await;
                                     },
                                     // Only the above variants trigger state refresh

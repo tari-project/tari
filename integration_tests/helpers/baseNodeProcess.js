@@ -183,11 +183,12 @@ class BaseNodeProcess {
     return await this.createGrpcClient();
   }
 
-  async start() {
+  async start(opts = []) {
     const args = ["--base-path", "."];
     if (this.logFilePath) {
       args.push("--log-config", this.logFilePath);
     }
+    args.push(...opts);
     return await this.run(await this.compile(), args);
   }
 

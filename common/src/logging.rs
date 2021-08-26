@@ -21,6 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+// use log::LevelFilter;
+// use simplelog::*;
 use std::{fs, fs::File, io::Write, path::Path};
 
 /// Set up application-level logging using the Log4rs configuration file specified in
@@ -29,10 +31,61 @@ pub fn initialize_logging(config_file: &Path) -> bool {
         "Initializing logging according to {:?}",
         config_file.to_str().unwrap_or("[??]")
     );
+
     if let Err(e) = log4rs::init_file(config_file, Default::default()) {
         println!("We couldn't load a logging configuration file. {}", e.to_string());
         return false;
     }
+
+    // simplelog config - perhaps for future use
+    // let config = ConfigBuilder::new()
+    //     .set_thread_level(LevelFilter::Error)
+    //     .set_time_to_local(true)
+    //     .set_time_format_str("%H:%M")
+    //     .build();
+    //
+    // let network_config = ConfigBuilder::new()
+    //     .set_thread_level(LevelFilter::Error)
+    //     .set_time_to_local(true)
+    //     .build();
+    //
+    // let log_level = env::var("RUST_LOG").unwrap_or("Info".to_string());
+    // CombinedLogger::init(vec![
+    //     TermLogger::new(
+    //         LevelFilter::Warn,
+    //         ConfigBuilder::new()
+    //             .set_thread_level(LevelFilter::Error)
+    //             .set_time_to_local(true)
+    //             .set_time_format_str("%H:%M")
+    //             .build(),
+    //         TerminalMode::Mixed,
+    //         ColorChoice::Auto,
+    //     ),
+    //     WriteLogger::new(
+    //         LevelFilter::from_str(log_level.as_str()).unwrap_or(LevelFilter::Info),
+    //         ConfigBuilder::new()
+    //             .set_thread_level(LevelFilter::Error)
+    //             .add_filter_ignore_str("comms")
+    //             .add_filter_ignore_str("p2p")
+    //             .add_filter_ignore_str("yamux")
+    //             .add_filter_ignore_str("mio")
+    //             .build(),
+    //         File::create("log/log.log").unwrap(),
+    //     ),
+    //     WriteLogger::new(
+    //         LevelFilter::from_str(log_level.as_str()).unwrap_or(LevelFilter::Info),
+    //         ConfigBuilder::new()
+    //             .set_thread_level(LevelFilter::Error)
+    //             .add_filter_allow_str("comms")
+    //             .add_filter_allow_str("p2p")
+    //             .add_filter_allow_str("yamux")
+    //             .add_filter_allow_str("mio")
+    //             .build(),
+    //         File::create("log/network.log").unwrap(),
+    //     ),
+    // ])
+    // .unwrap();
+
     true
 }
 

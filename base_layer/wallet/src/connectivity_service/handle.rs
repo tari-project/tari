@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::service::OnlineStatus;
-use crate::connectivity_service::error::WalletConnectivityError;
+use crate::connectivity_service::{error::WalletConnectivityError, watch::Watch};
 use futures::{
     channel::{mpsc, oneshot},
     SinkExt,
@@ -36,33 +36,30 @@ use tokio::sync::watch;
 pub enum WalletConnectivityRequest {
     ObtainBaseNodeWalletRpcClient(oneshot::Sender<RpcClientLease<BaseNodeWalletRpcClient>>),
     ObtainBaseNodeSyncRpcClient(oneshot::Sender<RpcClientLease<BaseNodeSyncRpcClient>>),
-    SetBaseNode(Box<Peer>),
 }
 
 #[derive(Clone)]
 pub struct WalletConnectivityHandle {
     sender: mpsc::Sender<WalletConnectivityRequest>,
-    base_node_watch_rx: watch::Receiver<Option<Peer>>,
+    base_node_watch: Watch<Option<Peer>>,
     online_status_rx: watch::Receiver<OnlineStatus>,
 }
 
 impl WalletConnectivityHandle {
     pub(super) fn new(
         sender: mpsc::Sender<WalletConnectivityRequest>,
-        base_node_watch_rx: watch::Receiver<Option<Peer>>,
+        base_node_watch: Watch<Option<Peer>>,
         online_status_rx: watch::Receiver<OnlineStatus>,
     ) -> Self {
         Self {
             sender,
-            base_node_watch_rx,
+            base_node_watch,
             online_status_rx,
         }
     }
 
     pub async fn set_base_node(&mut self, base_node_peer: Peer) -> Result<(), WalletConnectivityError> {
-        self.sender
-            .send(WalletConnectivityRequest::SetBaseNode(Box::new(base_node_peer)))
-            .await?;
+        self.base_node_watch.broadcast(Some(base_node_peer));
         Ok(())
     }
 
@@ -109,15 +106,15 @@ impl WalletConnectivityHandle {
         self.online_status_rx.recv().await.unwrap_or(OnlineStatus::Offline)
     }
 
-    pub fn get_connectivity_status_watcher(&self) -> watch::Receiver<OnlineStatus> {
+    pub fn get_connectivity_status_watch(&self) -> watch::Receiver<OnlineStatus> {
         self.online_status_rx.clone()
     }
 
     pub fn get_current_base_node_peer(&self) -> Option<Peer> {
-        self.base_node_watch_rx.borrow().clone()
+        self.base_node_watch.borrow().clone()
     }
 
     pub fn get_current_base_node_id(&self) -> Option<NodeId> {
-        self.base_node_watch_rx.borrow().as_ref().map(|p| p.node_id.clone())
+        self.base_node_watch.borrow().as_ref().map(|p| p.node_id.clone())
     }
 }
