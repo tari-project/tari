@@ -20,25 +20,35 @@ async function main() {
       type: "string",
       default: "logs/wallet.log",
     })
+    .option("num-wallets", {
+      alias: "n",
+      description: "The number of times a wallet instance is recovered",
+      type: "integer",
+      default: 1,
+    })
     .help()
     .alias("help", "h").argv;
 
-  const { identity, timeDiffMinutes, height, blockRate, recoveredAmount } =
-    await run(argv);
+  for (let i = 0; i < argv.numWallets; i++) {
+    let { identity, timeDiffMinutes, height, blockRate, recoveredAmount } =
+      await run(argv);
 
-  console.log(
-    "Wallet (Pubkey:",
-    identity.public_key,
-    ") recovered to a block height of",
-    height,
-    "completed in",
-    timeDiffMinutes,
-    "minutes (",
-    blockRate,
-    "blocks/min).",
-    recoveredAmount,
-    "µT recovered."
-  );
+    console.log(
+      "Wallet (Pubkey:",
+      identity.public_key,
+      ") recovered to a block height of",
+      height,
+      "completed in",
+      timeDiffMinutes,
+      "minutes (",
+      blockRate,
+      "blocks/min).",
+      recoveredAmount,
+      "µT recovered for instance ",
+      i,
+      "."
+    );
+  }
 }
 
 async function run(options = {}) {
