@@ -247,6 +247,7 @@ impl MessagingProtocol {
         Ok(())
     }
 
+    // #[tracing::instrument(skip(self, out_msg), err)]
     async fn send_message(&mut self, out_msg: OutboundMessage) -> Result<(), MessagingProtocolError> {
         let peer_node_id = out_msg.peer_node_id.clone();
         let sender = loop {

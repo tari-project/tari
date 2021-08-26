@@ -71,6 +71,7 @@ use std::{
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_shutdown::ShutdownSignal;
 use tokio::time;
+use tracing::{span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::connection_manager::listener";
 
@@ -244,6 +245,7 @@ where
         let liveness_session_count = self.liveness_session_count.clone();
         let shutdown_signal = self.shutdown_signal.clone();
 
+        let span = span!(Level::TRACE, "connection_mann::listener::inbound_task",);
         let inbound_fut = async move {
             match Self::read_wire_format(&mut socket, config.time_to_first_byte).await {
                 Ok(WireMode::Comms(byte)) if byte == config.network_info.network_byte => {
@@ -331,7 +333,8 @@ where
                     );
                 },
             }
-        };
+        }
+        .instrument(span);
 
         // This will block (asynchronously) if we have reached the maximum simultaneous connections, creating
         // back-pressure on nodes connecting to this node

@@ -28,6 +28,7 @@ use tokio::{
     sync::{OwnedSemaphorePermit, Semaphore},
     task::JoinHandle,
 };
+use tracing::{span, Instrument, Level};
 
 /// Error emitted from [`try_spawn`](self::BoundedExecutor::try_spawn) when there are no tasks available
 #[derive(Debug)]
@@ -143,7 +144,8 @@ impl BoundedExecutor {
         F: Future + Send + 'static,
         F::Output: Send + 'static,
     {
-        let permit = self.semaphore.clone().acquire_owned().await;
+        let span = span!(Level::TRACE, "bounded_executor::waiting_time");
+        let permit = self.semaphore.clone().acquire_owned().instrument(span).await;
         self.do_spawn(permit, future)
     }
 
@@ -153,7 +155,8 @@ impl BoundedExecutor {
         F::Output: Send + 'static,
     {
         self.inner.spawn(async move {
-            let ret = future.await;
+            let span = span!(Level::TRACE, "bounded_executor::do_work");
+            let ret = future.instrument(span).await;
             // Task is finished, release the permit
             drop(permit);
             ret
