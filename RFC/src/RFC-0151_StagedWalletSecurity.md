@@ -141,7 +141,7 @@ needed to recover the funds and limit the potential loss of funds in case of a b
 backup, which should not be more than $50.
 
 Backups MUST be authorised by the user when the first cloud backup is made and SHOULD be automatically updated after each
-transaction.
+transaction is confirmed.
 
 Restoring a wallet from Stage 1b entails _importing_ the UTXO commitments into the user's current wallet.
 
