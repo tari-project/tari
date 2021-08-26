@@ -35,7 +35,7 @@ services:
       - $HOME/.tari/wallet:/var/tari/wallet
       - $HOME/.tari/wallet/log:/var/tari/log
   base_node:
-    image: quay.io/tarilabs/tari_base_node
+    image: quay.io/tarilabs/tari_base_node:latest
     build:
       context: ./../..
       dockerfile: buildtools/docker_rig/base_node.Dockerfile
@@ -49,6 +49,11 @@ services:
       CREATE_ID: 1
       WAIT_FOR_TOR: 0
       TARI_NETWORK: weatherwax
+      TARI_BASE_NODE__WEATHERWAX__TOR_CONTROL_AUTH: "password=asdf"
+      TARI_BASE_NODE__WEATHERWAX__TOR_CONTROL_ADDRESS: "/dns4/tor/tcp/9051"
+      TARI_BASE_NODE__WEATHERWAX__TOR_SOCKS_ADDRESS_OVERRIDE: "/dns4/tor/tcp/9050"
+      TARI_BASE_NODE__WEATHERWAX__TOR_FORWARD_ADDRESS: "/ip4/0.0.0.0/tcp/18189"
+      TARI_BASE_NODE__WEATHERWAX__TCP_LISTENER_ADDRESS: "/ip4/0.0.0.0/tcp/18189"
     ports:
       - 18189:18189
     command: []
@@ -58,6 +63,8 @@ services:
       - $HOME/.tari/config:/var/tari/config
       - $HOME/.tari/base_node:/var/tari/base_node
       - $HOME/.tari/base_node/log:/var/tari/log
+    stdin_open: true
+    tty: true
 #  xmrig:
 #  sha3-miner:
 #  pool-worker:
