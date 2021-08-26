@@ -148,7 +148,7 @@ mod test {
         let msg = create_outbound_message(body);
         assert_send_static_service(&serialize);
 
-        let service = serialize.ready_and().await.unwrap();
+        let service = serialize.ready().await.unwrap();
         service.call(msg).await.unwrap();
         let mut msg = spy.pop_request().unwrap();
         let dht_envelope = DhtEnvelope::decode(&mut msg.body).unwrap();

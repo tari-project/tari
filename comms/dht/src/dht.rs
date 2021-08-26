@@ -483,6 +483,7 @@ mod test {
             DhtMessageFlags::empty(),
             false,
             MessageTag::new(),
+            false,
         );
         let inbound_message = make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().into());
 
@@ -533,7 +534,9 @@ mod test {
             DhtMessageFlags::ENCRYPTED,
             true,
             MessageTag::new(),
+            false,
         );
+
         let inbound_message = make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().into());
 
         let msg = {
@@ -588,6 +591,7 @@ mod test {
             DhtMessageFlags::ENCRYPTED,
             true,
             MessageTag::new(),
+            false,
         );
 
         let origin_mac = dht_envelope.header.as_ref().unwrap().origin_mac.clone();
@@ -639,6 +643,7 @@ mod test {
             DhtMessageFlags::empty(),
             false,
             MessageTag::new(),
+            false,
         );
         dht_envelope.header.as_mut().map(|header| {
             header.message_type = DhtMessageType::SafStoredMessages as i32;

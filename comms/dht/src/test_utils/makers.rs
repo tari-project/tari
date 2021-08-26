@@ -67,6 +67,7 @@ pub fn make_comms_inbound_message(node_identity: &NodeIdentity, message: Bytes) 
     InboundMessage::new(node_identity.node_id().clone(), message)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn make_dht_header(
     node_identity: &NodeIdentity,
     e_pk: &CommsPublicKey,
@@ -75,14 +76,29 @@ pub fn make_dht_header(
     flags: DhtMessageFlags,
     include_origin: bool,
     trace: MessageTag,
+    include_destination: bool,
 ) -> DhtMessageHeader {
+    let destination = if include_destination {
+        NodeDestination::PublicKey(Box::new(node_identity.public_key().clone()))
+    } else {
+        NodeDestination::Unknown
+    };
     DhtMessageHeader {
         major: 0,
         minor: 0,
-        destination: NodeDestination::Unknown,
+        destination: destination.clone(),
         ephemeral_public_key: if flags.is_encrypted() { Some(e_pk.clone()) } else { None },
         origin_mac: if include_origin {
-            make_valid_origin_mac(node_identity, &e_sk, message, flags)
+            let mut header_mac_bytes = Vec::with_capacity(256);
+            header_mac_bytes.extend_from_slice(&0u32.to_le_bytes());
+            header_mac_bytes.extend_from_slice(&0u32.to_le_bytes());
+            header_mac_bytes.extend_from_slice((destination).to_inner_bytes().as_bytes());
+            header_mac_bytes.extend_from_slice(&(DhtMessageType::None as i32).to_le_bytes());
+            header_mac_bytes.extend_from_slice(&flags.bits().to_le_bytes());
+            if flags.is_encrypted() {
+                header_mac_bytes.extend_from_slice(&e_pk.as_bytes());
+            }
+            make_valid_origin_mac(node_identity, &e_sk, header_mac_bytes.as_bytes(), message, flags)
         } else {
             Vec::new()
         },
@@ -96,12 +112,14 @@ pub fn make_dht_header(
 pub fn make_valid_origin_mac(
     node_identity: &NodeIdentity,
     e_sk: &CommsSecretKey,
+    mac_header: &[u8],
     body: &[u8],
     flags: DhtMessageFlags,
 ) -> Vec<u8> {
+    let mac_body = [mac_header, body].concat();
     let mac = OriginMac {
         public_key: node_identity.public_key().to_vec(),
-        signature: signature::sign(&mut OsRng, node_identity.secret_key().clone(), body)
+        signature: signature::sign(&mut OsRng, node_identity.secret_key().clone(), mac_body)
             .unwrap()
             .to_binary()
             .unwrap(),
@@ -120,9 +138,10 @@ pub fn make_dht_inbound_message(
     body: Vec<u8>,
     flags: DhtMessageFlags,
     include_origin: bool,
+    include_destination: bool,
 ) -> DhtInboundMessage {
     let msg_tag = MessageTag::new();
-    let envelope = make_dht_envelope(node_identity, body, flags, include_origin, msg_tag);
+    let envelope = make_dht_envelope(node_identity, body, flags, include_origin, msg_tag, include_destination);
     DhtInboundMessage::new(
         msg_tag,
         envelope.header.unwrap().try_into().unwrap(),
@@ -149,13 +168,24 @@ pub fn make_dht_envelope(
     flags: DhtMessageFlags,
     include_origin: bool,
     trace: MessageTag,
+    include_destination: bool,
 ) -> DhtEnvelope {
     let (e_sk, e_pk) = make_keypair();
     if flags.is_encrypted() {
         let shared_secret = crypt::generate_ecdh_secret(&e_sk, node_identity.public_key());
         message = crypt::encrypt(&shared_secret, &message).unwrap();
     }
-    let header = make_dht_header(node_identity, &e_pk, &e_sk, &message, flags, include_origin, trace).into();
+    let header = make_dht_header(
+        node_identity,
+        &e_pk,
+        &e_sk,
+        &message,
+        flags,
+        include_origin,
+        trace,
+        include_destination,
+    )
+    .into();
     DhtEnvelope::new(header, message.into())
 }
 
