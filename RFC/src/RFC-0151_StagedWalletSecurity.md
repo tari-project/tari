@@ -132,7 +132,7 @@ This can be done using the standard APIs and Authentication flows that each clou
 In particular, we do not ask for a password to encrypt the commitment data. The consequence is that anyone who gains
 access to this data -- by stealing the user's cloud credentials -- _could_ steal the user's funds.
 
-Therefore, the threshold for moving from this stage to Stage three, `STAGE_TWO_THRESHOLD_BALANCE` is relatively low;
+Therefore, the threshold for moving from this stage to Stage 3, `STAGE_TWO_THRESHOLD_BALANCE` is relatively low;
 somewhere in the region of $10 to $50.
 
 The seed phrase MUST NOT be stored on the cloud in Stage 1b. Doing so would result in all _future_ funds of the user being
