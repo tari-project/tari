@@ -514,7 +514,7 @@ where
                             .map_err(|_| ConnectionManagerError::WireFormatSendFailed)?;
 
                         let noise_socket = time::timeout(
-                            Duration::from_secs(30),
+                            Duration::from_secs(40),
                             noise_config.upgrade_socket(socket, ConnectionDirection::Outbound),
                         )
                         .await

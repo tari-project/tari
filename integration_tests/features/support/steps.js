@@ -698,6 +698,14 @@ When(/I start base node (.*)/, { timeout: 20 * 1000 }, async function (name) {
   await this.startNode(name);
 });
 
+When(
+  /I run blockchain recovery on node (\S*)/,
+  { timeout: 120 * 1000 },
+  async function (name) {
+    await this.startNode(name, ["--rebuild-db"]);
+  }
+);
+
 When(/I stop node (.*)/, async function (name) {
   await this.stopNode(name);
 });
