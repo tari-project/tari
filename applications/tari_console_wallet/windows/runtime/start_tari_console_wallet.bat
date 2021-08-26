@@ -6,8 +6,6 @@ echo ----------------------------
 rem These are the console wallet executable and SQLite dynamic link library names
 set my_exe=tari_console_wallet.exe
 set sqlite_runtime=sqlite3.dll
-set openssl_runtime_1=libcrypto-1_1-x64.dll
-set openssl_runtime_2=libssl-1_1-x64.dll
 
 rem This is the location of the configuration and identity files
 set config_path=%~dp0..\config
