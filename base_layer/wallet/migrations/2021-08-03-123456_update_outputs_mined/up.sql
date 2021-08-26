@@ -20,10 +20,15 @@
 --  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 --  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-alter table outputs add marked_deleted_at_height BigInt;
-alter table outputs add marked_deleted_in_block blob;
-alter table outputs add received_in_tx_id bigint;
-alter table outputs add spent_in_tx_id bigint;
-update outputs set received_in_tx_id = tx_id;
+ALTER TABLE outputs
+    ADD marked_deleted_at_height BIGINT;
+ALTER TABLE outputs
+    ADD marked_deleted_in_block BLOB;
+ALTER TABLE outputs
+    ADD received_in_tx_id BIGINT;
+ALTER TABLE outputs
+    ADD spent_in_tx_id BIGINT;
+UPDATE outputs
+SET received_in_tx_id = tx_id;
 
 -- TODO: drop outputs tx_id column

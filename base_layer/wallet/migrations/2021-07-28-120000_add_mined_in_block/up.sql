@@ -20,14 +20,14 @@
 --  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 --  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-alter table completed_transactions
-add mined_in_block blob null;
+ALTER TABLE completed_transactions
+    ADD mined_in_block BLOB NULL;
 
-alter table outputs
-add mined_height unsigned bigint null;
+ALTER TABLE outputs
+    ADD mined_height UNSIGNED BIGINT NULL;
 
-alter table outputs
-add mined_in_block blob null;
+ALTER TABLE outputs
+    ADD mined_in_block BLOB NULL;
 
-alter table outputs
-add mined_mmr_position bigint null;
+ALTER TABLE outputs
+    ADD mined_mmr_position BIGINT NULL;
