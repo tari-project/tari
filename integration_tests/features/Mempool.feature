@@ -86,6 +86,7 @@ Feature: Mempool
     #   Collects 7 coinbases into one wallet, send 7 transactions
     #   Stronger chain
     #
+    Given I do not expect all automated transactions to succeed
     Given I have a seed node SEED_A
     And I have a base node NODE_A1 connected to seed SEED_A
     And I have wallet WALLET_A1 connected to seed node SEED_A
