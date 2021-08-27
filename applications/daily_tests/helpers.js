@@ -95,7 +95,7 @@ async function emptyFile(file) {
 
 async function monitorProcessOutput({
   process,
-  onDataCallback,
+  onData,
   outputStream,
   noStdout,
 }) {
@@ -123,7 +123,7 @@ async function monitorProcessOutput({
         return;
       }
       try {
-        let ret = onDataCallback(data);
+        let ret = onData(data);
         if (ret === null || ret === undefined) {
           // No result yet
           return;

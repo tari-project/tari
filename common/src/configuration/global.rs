@@ -401,11 +401,13 @@ fn convert_node_config(
 
     // block sync
     let key = config_string("base_node", &net_str, "force_sync_peers");
-    let force_sync_peers = optional(
-        cfg.get_array(&key)
-            .map(|values| values.into_iter().map(|v| v.into_str().unwrap()).collect()),
-    )?
-    .unwrap_or_default();
+    let force_sync_peers = match cfg.get_array(&key) {
+        Ok(peers) => peers.into_iter().map(|v| v.into_str().unwrap()).collect(),
+        Err(..) => match cfg.get_str(&key) {
+            Ok(s) => s.split(',').map(|v| v.to_string()).collect(),
+            Err(..) => vec![],
+        },
+    };
 
     // Liveness auto ping interval
     let key = config_string("base_node", &net_str, "auto_ping_interval");
