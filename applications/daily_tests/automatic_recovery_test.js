@@ -3,7 +3,11 @@ const yargs = require("yargs");
 const path = require("path");
 const helpers = require("./helpers");
 const WalletProcess = require("integration_tests/helpers/walletProcess");
-const WalletClient = require("integration_tests/helpers/walletClient");
+
+const RECOVERY_COMPLETE_REGEXP = /Recovery complete! Scanned = (\d+) in/;
+const RECOVERY_WORTH_REGEXP = /worth ([0-9\.]+) (µ?T)/;
+const FAILURE_REGEXP =
+  /Attempt (\d+)\/(\d+): Failed to complete wallet recovery/;
 
 async function main() {
   const argv = yargs
@@ -20,25 +24,35 @@ async function main() {
       type: "string",
       default: "logs/wallet.log",
     })
+    .option("num-wallets", {
+      alias: "n",
+      description: "The number of times a wallet instance is recovered",
+      type: "integer",
+      default: 1,
+    })
     .help()
     .alias("help", "h").argv;
 
-  const { identity, timeDiffMinutes, height, blockRate, recoveredAmount } =
-    await run(argv);
+  for (let i = 0; i < argv.numWallets; i++) {
+    let { identity, timeDiffMinutes, height, blockRate, recoveredAmount } =
+      await run(argv);
 
-  console.log(
-    "Wallet (Pubkey:",
-    identity.public_key,
-    ") recovered to a block height of",
-    height,
-    "completed in",
-    timeDiffMinutes,
-    "minutes (",
-    blockRate,
-    "blocks/min).",
-    recoveredAmount,
-    "µT recovered."
-  );
+    console.log(
+      "Wallet (Pubkey:",
+      identity.public_key,
+      ") recovered to a block height of",
+      height,
+      "completed in",
+      timeDiffMinutes,
+      "minutes (",
+      blockRate,
+      "blocks/min).",
+      recoveredAmount,
+      "µT recovered for instance ",
+      i,
+      "."
+    );
+  }
 }
 
 async function run(options = {}) {
@@ -49,6 +63,7 @@ async function run(options = {}) {
       transport: "tor",
       network: "weatherwax",
       grpc_console_wallet_address: "127.0.0.1:18111",
+      baseDir: options.baseDir || "./temp/base-nodes/",
     },
     false,
     options.seedWords
@@ -65,9 +80,9 @@ async function run(options = {}) {
     let recoveryResult = await helpers.monitorProcessOutput({
       process: wallet.ps,
       outputStream: logfile,
-      onDataCallback: (data) => {
-        let successLog = data.match(/Recovery complete! Scanned = (\d+) in/);
-        let recoveredAmount = data.match(/worth ([0-9\.]+) (µ?T)/);
+      onData: (data) => {
+        let successLog = data.match(RECOVERY_COMPLETE_REGEXP);
+        let recoveredAmount = data.match(RECOVERY_WORTH_REGEXP);
         if (successLog && recoveredAmount) {
           let recoveredAmount = parseInt(recoveredAmount[1]);
           if (recoveredAmount[2] === "T") {
@@ -80,9 +95,7 @@ async function run(options = {}) {
           };
         }
 
-        let errMatch = data.match(
-          /Attempt (\d+)\/(\d+): Failed to complete wallet recovery/
-        );
+        let errMatch = data.match(FAILURE_REGEXP);
         // One extra attempt
         if (errMatch && parseInt(errMatch[1]) > 1) {
           throw new Error(data);
@@ -96,13 +109,10 @@ async function run(options = {}) {
     const timeDiffMs = endTime - startTime;
     const timeDiffMinutes = timeDiffMs / 60000;
 
-    let walletClient = new WalletClient();
-    await walletClient.connect("127.0.0.1:18111");
-    let id = await walletClient.identify();
+    let client = await wallet.connectClient();
+    let id = await client.identify();
 
     await wallet.stop();
-
-    await fs.rmdir(__dirname + "/temp/base_nodes", { recursive: true });
 
     const block_rate = recoveryResult.height / timeDiffMinutes;
 
@@ -122,5 +132,9 @@ async function run(options = {}) {
 if (require.main === module) {
   Promise.all([main()]);
 } else {
-  module.exports = run;
+  module.exports = Object.assign(run, {
+    RECOVERY_COMPLETE_REGEXP,
+    RECOVERY_WORTH_REGEXP,
+    FAILURE_REGEXP,
+  });
 }

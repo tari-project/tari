@@ -25,6 +25,7 @@ use crate::{
     ui::{
         components::{
             base_node::BaseNode,
+            log_tab::LogTab,
             menu::Menu,
             network_tab::NetworkTab,
             receive_tab::ReceiveTab,
@@ -85,7 +86,8 @@ impl<B: Backend> App<B> {
             .add("Transactions".into(), Box::new(TransactionsTab::new()))
             .add("Send".into(), Box::new(SendTab::new()))
             .add("Receive".into(), Box::new(ReceiveTab::new()))
-            .add("Network".into(), Box::new(NetworkTab::new(base_node_selected)));
+            .add("Network".into(), Box::new(NetworkTab::new(base_node_selected)))
+            .add("Log".into(), Box::new(LogTab::new()));
 
         let base_node_status = BaseNode::new();
         let menu = Menu::new();
