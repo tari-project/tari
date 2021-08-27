@@ -27,7 +27,7 @@ function notify(message) {
   }
 }
 
-async function runWalletRecoveryTest() {
+async function runWalletRecoveryTest(instances) {
   notify("🚀 Wallet recovery check has begun 🚀");
 
   const baseDir = __dirname + "/temp/wallet-recovery";
@@ -49,6 +49,7 @@ async function runWalletRecoveryTest() {
         seedWords:
           "spare man patrol essay divide hollow trip visual actress sadness country hungry toy blouse body club depend capital sleep aim high recycle crystal abandon",
         log: LOG_FILE,
+        numWallets: instances,
       });
 
     notify(
@@ -62,7 +63,9 @@ async function runWalletRecoveryTest() {
       blockRate,
       "blocks/min).",
       recoveredAmount,
-      "µT recovered."
+      "µT recovered for ",
+      instances,
+      " instance(s)."
     );
   } catch (err) {
     console.error(err);
@@ -118,7 +121,8 @@ ${logLines.join("\n")}
 }
 
 // ------------------------- CRON ------------------------- //
-new CronJob("0 7 * * *", runWalletRecoveryTest).start();
+new CronJob("0 7 * * *", runWalletRecoveryTest(1)).start();
+new CronJob("0 7 * * *", runWalletRecoveryTest(5)).start();
 new CronJob("0 6 * * *", () => runBaseNodeSyncTest(SyncType.Archival)).start();
 new CronJob("30 6 * * *", () => runBaseNodeSyncTest(SyncType.Pruned)).start();
 

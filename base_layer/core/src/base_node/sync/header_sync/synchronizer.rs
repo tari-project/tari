@@ -480,8 +480,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     ) -> Result<(), BlockHeaderSyncError> {
         const COMMIT_EVERY_N_HEADERS: usize = 1000;
 
-        // Peer returned less than the max headers. This indicates that there are no further headers to request.
-        if self.header_validator.valid_headers().len() < NUM_INITIAL_HEADERS_TO_REQUEST as usize {
+        // Peer returned no more than the max headers. This indicates that there are no further headers to request.
+        if self.header_validator.valid_headers().len() <= NUM_INITIAL_HEADERS_TO_REQUEST as usize {
             debug!(target: LOG_TARGET, "No further headers to download");
             if !self.pending_chain_has_higher_pow(&split_info.local_tip_header)? {
                 return Err(BlockHeaderSyncError::WeakerChain);
