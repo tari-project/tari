@@ -280,7 +280,7 @@ class CustomWorld {
             console.error(err);
             failed += 1;
             if (failed > canFail)
-              reject(`Too many failed. Expected less than ${canFail} failures`);
+              reject(`Too many failed. Expected at most ${canFail} failures`);
           });
       }
     });
