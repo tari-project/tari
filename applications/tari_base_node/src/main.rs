@@ -98,9 +98,11 @@ mod utils;
 use crate::command_handler::{CommandHandler, StatusOutput};
 use futures::{future::Fuse, pin_mut, FutureExt};
 use log::*;
+use opentelemetry::{self, global, KeyValue};
 use parser::Parser;
 use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
 use std::{
+    env,
     net::SocketAddr,
     process,
     sync::Arc,
@@ -120,6 +122,7 @@ use tokio::{
     time::{self, Delay},
 };
 use tonic::transport::Server;
+use tracing_subscriber::{layer::SubscriberExt, Registry};
 
 const LOG_TARGET: &str = "base_node::app";
 /// Application entry point
@@ -148,12 +151,14 @@ fn main_inner() -> Result<(), ExitCodes> {
     })?;
 
     rt.block_on(run_node(node_config.into(), bootstrap))?;
-
+    // Shutdown and send any traces
+    global::shutdown_tracer_provider();
     Ok(())
 }
 
 /// Sets up the base node and runs the cli_loop
 async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) -> Result<(), ExitCodes> {
+    enable_tracing_if_specified(&bootstrap);
     // Load or create the Node identity
     let node_identity = setup_node_identity(
         &node_config.base_node_identity_file,
@@ -245,6 +250,25 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
 
     println!("Goodbye!");
     Ok(())
+}
+
+fn enable_tracing_if_specified(bootstrap: &ConfigBootstrap) {
+    if bootstrap.tracing_enabled {
+        // To run: docker run -d -p6831:6831/udp -p6832:6832/udp -p16686:16686 -p14268:14268 \
+        // jaegertracing/all-in-one:latest
+        global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
+        let tracer = opentelemetry_jaeger::new_pipeline()
+            .with_service_name("tari::base_node")
+            .with_tags(vec![KeyValue::new("pid", process::id().to_string()), KeyValue::new("current_exe", env::current_exe().unwrap().to_str().unwrap_or_default().to_owned())])
+            // TODO: uncomment when using tokio 1
+            // .install_batch(opentelemetry::runtime::Tokio)
+            .install_simple()
+            .unwrap();
+        let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
+        let subscriber = Registry::default().with(telemetry);
+        tracing::subscriber::set_global_default(subscriber)
+            .expect("Tracing could not be set. Try running without `--tracing-enabled`");
+    }
 }
 
 /// Runs the gRPC server

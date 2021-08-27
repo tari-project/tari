@@ -1560,8 +1560,8 @@ fn handle_possible_reorg<T: BlockchainBackend>(
             }, // We want a warning if the number of removed blocks is at least 2.
             "Chain reorg required from {} to {} (accum_diff:{}, hash:{}) to (accum_diff:{}, hash:{}). Number of \
              blocks to remove: {}, to add: {}.",
-            tip_header.header(),
-            fork_header.header(),
+            tip_header.header().height,
+            fork_header.header().height,
             tip_header.accumulated_data().total_accumulated_difficulty,
             tip_header.accumulated_data().hash.to_hex(),
             fork_header.accumulated_data().total_accumulated_difficulty,

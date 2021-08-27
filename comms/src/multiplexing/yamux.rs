@@ -30,9 +30,9 @@ use futures::{
     Stream,
     StreamExt,
 };
-use log::*;
 use std::{future::Future, io, pin::Pin, sync::Arc, task::Poll};
 use tari_shutdown::{Shutdown, ShutdownSignal};
+use tracing::{self, debug, error, event, Level};
 use yamux::Mode;
 
 type IncomingRx = mpsc::Receiver<yamux::Stream>;
@@ -62,10 +62,7 @@ impl Yamux {
         };
 
         let mut config = yamux::Config::default();
-        // Use OnRead mode instead of OnReceive mode to provide back pressure to the sending side.
-        // Caveat: the OnRead mode has the risk of deadlock, where both sides send data larger than
-        // receive window and don't read before finishing writes.
-        // This should never happen as the window size should be large enough for all protocol messages.
+
         config.set_window_update_mode(yamux::WindowUpdateMode::OnRead);
         // Because OnRead mode increases the RTT of window update, bigger buffer size and receive
         // window size perform better.
@@ -257,11 +254,13 @@ where S: Stream<Item = Result<yamux::Stream, yamux::ConnectionError>> + Unpin
         }
     }
 
+    #[tracing::instrument(name = "yamux::incoming_worker::run", skip(self))]
     pub async fn run(mut self) {
         let mut mux_stream = self.inner.take_until(&mut self.shutdown_signal);
         while let Some(result) = mux_stream.next().await {
             match result {
                 Ok(stream) => {
+                    event!(Level::TRACE, "yamux::stream received {}", stream);
                     if self.sender.send(stream).await.is_err() {
                         debug!(
                             target: LOG_TARGET,
@@ -272,7 +271,12 @@ where S: Stream<Item = Result<yamux::Stream, yamux::ConnectionError>> + Unpin
                     }
                 },
                 Err(err) => {
-                    debug!(
+                    event!(
+                        Level::ERROR,
+                        "Incoming peer substream task received an error because '{}'",
+                        err
+                    );
+                    error!(
                         target: LOG_TARGET,
                         "Incoming peer substream task received an error because '{}'", err
                     );

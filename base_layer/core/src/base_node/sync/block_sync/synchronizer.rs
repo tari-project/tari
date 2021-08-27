@@ -46,6 +46,7 @@ use tari_comms::{
     PeerConnection,
 };
 use tokio::task;
+use tracing;
 
 const LOG_TARGET: &str = "c::bn::block_sync";
 
@@ -86,6 +87,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         self.hooks.add_on_complete_hook(hook);
     }
 
+    #[tracing::instrument(skip(self), err)]
     pub async fn synchronize(&mut self) -> Result<(), BlockSyncError> {
         let peer_conn = self.get_next_sync_peer().await?;
         let node_id = peer_conn.peer_node_id().clone();
