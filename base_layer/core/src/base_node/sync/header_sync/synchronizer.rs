@@ -48,6 +48,7 @@ use tari_comms::{
     protocol::rpc::{RpcError, RpcHandshakeError},
     PeerConnection,
 };
+use tracing;
 
 const LOG_TARGET: &str = "c::bn::header_sync";
 
@@ -253,6 +254,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self, conn), err)]
     async fn attempt_sync(&mut self, mut conn: PeerConnection) -> Result<(), BlockHeaderSyncError> {
         let peer = conn.peer_node_id().clone();
         let mut client = conn.connect_rpc::<rpc::BaseNodeSyncRpcClient>().await?;
