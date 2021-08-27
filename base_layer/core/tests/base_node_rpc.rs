@@ -46,6 +46,7 @@ use std::convert::TryFrom;
 
 use tempfile::{tempdir, TempDir};
 
+use randomx_rs::RandomXFlag;
 use tari_common::configuration::Network;
 use tari_comms::protocol::rpc::mock::RpcRequestMock;
 use tari_core::{
@@ -112,6 +113,8 @@ async fn setup() -> (
     base_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
 
     let request_mock = RpcRequestMock::new(base_node.comms.peer_manager());

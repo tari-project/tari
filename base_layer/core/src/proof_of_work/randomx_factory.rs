@@ -79,6 +79,16 @@ impl RandomXFactory {
         }
         Ok(res)
     }
+
+    pub fn get_count(&self) -> usize {
+        let inner = self.inner.read().unwrap();
+        inner.get_count()
+    }
+
+    pub fn get_flags(&self) -> RandomXFlag {
+        let inner = self.inner.read().unwrap();
+        inner.get_flags()
+    }
 }
 
 struct RandomXFactoryInner {
@@ -127,6 +137,14 @@ impl RandomXFactoryInner {
         self.vms.insert(Vec::from(key), (Instant::now(), vm.clone()));
 
         Ok(vm)
+    }
+
+    pub fn get_count(&self) -> usize {
+        self.vms.len()
+    }
+
+    pub fn get_flags(&self) -> RandomXFlag {
+        self.flags
     }
 }
 
