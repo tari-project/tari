@@ -88,7 +88,12 @@ where B: BlockchainBackend + 'static
             pubsub_connector(runtime::Handle::current(), buf_size, config.buffer_rate_limit_base_node);
         let peer_message_subscriptions = Arc::new(peer_message_subscriptions);
 
-        let node_config = BaseNodeServiceConfig::default(); // TODO - make this configurable
+        let node_config = BaseNodeServiceConfig {
+            service_request_timeout: config.service_request_timeout,
+            fetch_blocks_timeout: config.fetch_blocks_timeout,
+            fetch_utxos_timeout: config.fetch_utxos_timeout,
+            ..Default::default()
+        };
         let mempool_config = MempoolServiceConfig::default(); // TODO - make this configurable
 
         let comms_config = self.create_comms_config();
