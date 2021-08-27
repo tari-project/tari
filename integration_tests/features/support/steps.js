@@ -403,6 +403,78 @@ Given(
   }
 );
 
+Given(
+  /I recover wallet (.*) into (\d+) wallets connected to all seed nodes/,
+  { timeout: 120 * 1000 },
+  async function (walletNameA, numwallets) {
+    const seedWords = this.getWallet(walletNameA).getSeedWords();
+    for (let i = 1; i <= numwallets; i++) {
+      console.log(
+        "Recover " +
+          walletNameA +
+          " into wallet " +
+          i +
+          ", seed words:\n  " +
+          seedWords
+      );
+      const wallet = new WalletProcess(
+        i,
+        false,
+        {},
+        this.logFilePathWallet,
+        seedWords
+      );
+      wallet.setPeerSeeds([this.seedAddresses()]);
+      await wallet.startNew();
+      this.addWallet(i, wallet);
+      let walletClient = await this.getWallet(i.toString()).connectClient();
+      let walletInfo = await walletClient.identify();
+      this.addWalletPubkey(wallet, walletInfo.public_key);
+    }
+  }
+);
+
+Then(
+  /I wait for (\d+) wallets to have at least (\d+) uT/,
+  { timeout: 710 * 1000 },
+  async function (numwallets, amount) {
+    for (let i = 1; i <= numwallets; i++) {
+      const walletClient = await this.getWallet(i.toString()).connectClient();
+      console.log("\n");
+      console.log(
+        "Waiting for wallet " + i + " balance to be at least " + amount + " uT"
+      );
+
+      await waitFor(
+        async () => walletClient.isBalanceAtLeast(amount),
+        true,
+        700 * 1000,
+        5 * 1000,
+        5
+      );
+      consoleLogBalance(await walletClient.getBalance());
+      if (!(await walletClient.isBalanceAtLeast(amount))) {
+        console.log("Balance not adequate!");
+      }
+      expect(await walletClient.isBalanceAtLeast(amount)).to.equal(true);
+    }
+  }
+);
+
+Then(
+  /Wallet (.*) and (\d+) wallets have the same balance/,
+  { timeout: 120 * 1000 },
+  async function (wallet, numwallets) {
+    const walletClient = await this.getWallet(wallet).connectClient();
+    let balance = await walletClient.getBalance();
+    for (let i = 1; i <= numwallets; i++) {
+      const walletClient2 = await this.getWallet(i.toString()).connectClient();
+      let balance2 = await walletClient2.getBalance();
+      expect(balance === balance2);
+    }
+  }
+);
+
 When(/I stop wallet (.*)/, async function (walletName) {
   let wallet = this.getWallet(walletName);
   await wallet.stop();
@@ -697,6 +769,14 @@ Then("Proxy response for block header by hash is valid", function () {
 When(/I start base node (.*)/, { timeout: 20 * 1000 }, async function (name) {
   await this.startNode(name);
 });
+
+When(
+  /I run blockchain recovery on node (\S*)/,
+  { timeout: 120 * 1000 },
+  async function (name) {
+    await this.startNode(name, ["--rebuild-db"]);
+  }
+);
 
 When(/I stop node (.*)/, async function (name) {
   await this.stopNode(name);
@@ -3607,5 +3687,25 @@ Then(
     expect(wallet.receivedTransactionReply).to.be.greaterThanOrEqual(1);
     expect(wallet.transactionBroadcast).to.be.greaterThanOrEqual(1);
     wallet.clearCallbackCounters();
+  }
+);
+
+When(
+  "I have {int} base nodes with pruning horizon {int} force syncing on node {word}",
+  { timeout: 190 * 1000 },
+  async function (nodes_count, horizon, force_sync_to) {
+    const promises = [];
+    const force_sync_address = this.getNode(force_sync_to).peerAddress();
+    for (let i = 0; i < nodes_count; i++) {
+      const base_node = this.createNode(`BaseNode${i}`, {
+        pruningHorizon: horizon,
+      });
+      base_node.setPeerSeeds([force_sync_address]);
+      base_node.setForceSyncPeers([force_sync_address]);
+      promises.push(
+        base_node.startNew().then(() => this.addNode(`BaseNode${i}`, base_node))
+      );
+    }
+    await Promise.all(promises);
   }
 );

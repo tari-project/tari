@@ -280,7 +280,7 @@ class CustomWorld {
             console.error(err);
             failed += 1;
             if (failed > canFail)
-              reject(`Too many failed. Expected less than ${canFail} failures`);
+              reject(`Too many failed. Expected at most ${canFail} failures`);
           });
       }
     });
@@ -291,9 +291,9 @@ class CustomWorld {
     await node.stop();
   }
 
-  async startNode(name) {
+  async startNode(name, args) {
     const node = this.seeds[name] || this.nodes[name];
-    await node.start();
+    await node.start(args);
   }
 
   addTransaction(pubKey, txId) {
@@ -338,6 +338,7 @@ BeforeAll({ timeout: 1200000 }, async function () {
   await miningNode.init(1, 1, 1, 1, true, 1);
   await miningNode.compile();
 
+  console.log("Compiling wallet FFI...");
   await WalletFFIClient.Init();
   console.log("Finished compilation.");
 });

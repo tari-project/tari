@@ -115,11 +115,9 @@ Source: "..\common\config\presets\tari_config_example.toml"; DestDir: "{app}\con
 Source: "tari_logo_purple.ico"; DestDir: "{userdocs}\..\temp\tari_icons"; Flags: ignoreversion
 Source: "tor.ico"; DestDir: "{userdocs}\..\temp\tari_icons"; Flags: ignoreversion
 Source: "xmr_logo.ico"; DestDir: "{userdocs}\..\temp\tari_icons"; Flags: ignoreversion
-;Source: "install_sqlite.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "install_sqlite.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "install_tor_services.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "install_vs2019_redist.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-;Source: "install_openssl.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-;Source: "get_openssl_win.ps1"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "install_xmrig.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "get_xmrig_win.ps1"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\common\xmrig_config\config_example_stagenet.json"; DestDir: "{app}\config"; DestName: "xmrig_config_example_stagenet.json"; Flags: ignoreversion
@@ -151,9 +149,8 @@ Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#BaseNodeName}"; 
 ;PrivilegesRequired=admin
 
 [Run]
-;Filename: "{app}\runtime\install_sqlite.bat"; Parameters: "NO_PAUSE"; Flags: runascurrentuser postinstall; Description: "Install SQLite"
+Filename: "{app}\runtime\install_sqlite.bat"; Parameters: "NO_PAUSE"; Flags: runascurrentuser postinstall; Description: "Install SQLite"
 Filename: "{app}\runtime\install_tor_services.bat"; Parameters: "NO_PAUSE"; Flags: runascurrentuser postinstall; Description: "Install Tor Services"
-;Filename: "{app}\runtime\install_openssl.bat"; Parameters: "NO_PAUSE"; Flags: runascurrentuser postinstall; Description: "Install OpenSSL"
 Filename: "{app}\runtime\install_xmrig.bat"; Parameters: "NO_PAUSE"; Flags: runascurrentuser postinstall; Description: "Install XMRig"
 Filename: "{app}\runtime\install_vs2019_redist.bat"; Parameters: "NO_PAUSE"; Flags: runascurrentuser postinstall; Description: "Install Redistributable for Visual Studio 2019"
 

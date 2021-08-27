@@ -13,7 +13,12 @@ class BaseNodeProcess {
     this.name = name;
     this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath;
     this.nodeFile = nodeFile;
-    this.options = options;
+    this.options = Object.assign(
+      {
+        baseDir: "./temp/base_nodes",
+      },
+      options || {}
+    );
     this.excludeTestEnvars = excludeTestEnvars;
   }
 
@@ -24,7 +29,7 @@ class BaseNodeProcess {
     this.nodeFile = this.nodeFile || "nodeid.json";
 
     do {
-      this.baseDir = `./temp/base_nodes/${dateFormat(
+      this.baseDir = `${this.options.baseDir}/${dateFormat(
         new Date(),
         "yyyymmddHHMM"
       )}/${this.name}`;
@@ -85,6 +90,10 @@ class BaseNodeProcess {
     this.peerSeeds = addresses.join(",");
   }
 
+  setForceSyncPeers(addresses) {
+    this.forceSyncPeers = addresses.join(",");
+  }
+
   getGrpcAddress() {
     const address = "127.0.0.1:" + this.grpcPort;
     // console.log("Base Node GRPC Address:",address);
@@ -113,7 +122,9 @@ class BaseNodeProcess {
           "127.0.0.1:8080",
           "127.0.0.1:8085",
           this.options,
-          this.peerSeeds
+          this.peerSeeds,
+          "DirectAndStoreAndForward",
+          this.forceSyncPeers
         );
       }
 
@@ -178,11 +189,12 @@ class BaseNodeProcess {
     return await this.createGrpcClient();
   }
 
-  async start() {
+  async start(opts = []) {
     const args = ["--base-path", "."];
     if (this.logFilePath) {
       args.push("--log-config", this.logFilePath);
     }
+    args.push(...opts);
     return await this.run(await this.compile(), args);
   }
 

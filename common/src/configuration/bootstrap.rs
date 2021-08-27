@@ -315,7 +315,7 @@ impl ConfigBootstrap {
     }
 }
 
-fn prompt(question: &str) -> bool {
+pub fn prompt(question: &str) -> bool {
     println!("{}", question);
     let mut input = "".to_string();
     io::stdin().read_line(&mut input).unwrap();

@@ -27,8 +27,18 @@ function notify(message) {
   }
 }
 
-async function runWalletRecoveryTest() {
+async function runWalletRecoveryTest(instances) {
   notify("🚀 Wallet recovery check has begun 🚀");
+
+  const baseDir = __dirname + "/temp/wallet-recovery";
+  // Remove the last run data
+  try {
+    await fs.rmdir(baseDir, {
+      recursive: true,
+    });
+  } catch (err) {
+    console.error(err);
+  }
 
   const LOG_FILE = "./logs/wallet-recovery-test.log";
   await emptyFile(LOG_FILE);
@@ -39,6 +49,7 @@ async function runWalletRecoveryTest() {
         seedWords:
           "spare man patrol essay divide hollow trip visual actress sadness country hungry toy blouse body club depend capital sleep aim high recycle crystal abandon",
         log: LOG_FILE,
+        numWallets: instances,
       });
 
     notify(
@@ -52,12 +63,15 @@ async function runWalletRecoveryTest() {
       blockRate,
       "blocks/min).",
       recoveredAmount,
-      "µT recovered."
+      "µT recovered for ",
+      instances,
+      " instance(s)."
     );
   } catch (err) {
     console.error(err);
     let logLines = await readLastNLines(LOG_FILE, 15);
     failed(`Wallet recovery test failed.
+    ${err}
 Last log lines:
 \`\`\`
 ${logLines.join("\n")}
@@ -69,6 +83,17 @@ ${logLines.join("\n")}
 async function runBaseNodeSyncTest(syncType) {
   notify(`🚀 ${syncType} basenode sync check has begun 🚀`);
 
+  const baseDir = __dirname + "/temp/base-node-sync";
+
+  // Remove the last run data
+  try {
+    await fs.rmdir(baseDir, {
+      recursive: true,
+    });
+  } catch (err) {
+    console.error(err);
+  }
+
   const LOG_FILE = `./logs/${syncType.toLowerCase()}-sync-test.log`;
   await emptyFile(LOG_FILE);
 
@@ -76,6 +101,7 @@ async function runBaseNodeSyncTest(syncType) {
     const { blockHeight, timeDiffMinutes, blockRate } = await baseNodeSyncTest({
       log: LOG_FILE,
       syncType,
+      baseDir,
     });
 
     notify(
@@ -95,7 +121,8 @@ ${logLines.join("\n")}
 }
 
 // ------------------------- CRON ------------------------- //
-new CronJob("0 7 * * *", runWalletRecoveryTest).start();
+new CronJob("0 7 * * *", runWalletRecoveryTest(1)).start();
+new CronJob("0 7 * * *", runWalletRecoveryTest(5)).start();
 new CronJob("0 6 * * *", () => runBaseNodeSyncTest(SyncType.Archival)).start();
 new CronJob("30 6 * * *", () => runBaseNodeSyncTest(SyncType.Pruned)).start();
 
