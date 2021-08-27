@@ -9,14 +9,14 @@ services:
       - 9050:9050
       - 9051:9051
   wallet:
-    image: quay.io/tarilabs/tari_console_wallet
+    image: quay.io/tarilabs/tari_console_wallet:latest
     build:
       context: ./../..
       dockerfile: buildtools/docker_rig/console_wallet.Dockerfile
       args:
         ARG WALLET_ARCH: x86-64
     ports:
-      - 18189:18189
+      - 18188:18188
     environment:
       TARI_LOG_CONFIGURATION: "/var/tari/config/log4rs.yml"
       APP_NAME: wallet
@@ -27,6 +27,12 @@ services:
       TARI_NETWORK: weatherwax
       SHELL: "/bin/bash"
       TERM: "linux"
+      PASSWORD: "asdf"
+      TARI_WALLET__WEATHERWAX__TOR_CONTROL_AUTH: "password=asdf"
+      TARI_WALLET__WEATHERWAX__TOR_CONTROL_ADDRESS: "/dns4/tor/tcp/9051"
+      TARI_WALLET__WEATHERWAX__TOR_SOCKS_ADDRESS_OVERRIDE: "/dns4/tor/tcp/9050"
+      TARI_WALLET__WEATHERWAX__TOR_FORWARD_ADDRESS: "/ip4/0.0.0.0/tcp/18188"
+      TARI_WALLET__WEATHERWAX__TCP_LISTENER_ADDRESS: "/ip4/0.0.0.0/tcp/18188"
     command: []
     depends_on:
       - tor
@@ -34,6 +40,8 @@ services:
       - $HOME/.tari/config:/var/tari/config
       - $HOME/.tari/wallet:/var/tari/wallet
       - $HOME/.tari/wallet/log:/var/tari/log
+    stdin_open: true
+    tty: true
   base_node:
     image: quay.io/tarilabs/tari_base_node:latest
     build:

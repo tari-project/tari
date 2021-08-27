@@ -47,7 +47,7 @@ FROM base
 ENV APP_NAME=base_node APP_EXEC=tari_base_node
 
 COPY --from=builder /tari/target/release/$APP_EXEC /usr/bin/
-COPY buildtools/docker_rig/start_tari_app.sh /usr/bin/start_tari_app.sh
+COPY buildtools/docker_rig/start_base_node.sh /usr/bin/start_tari_app.sh
 
 ENTRYPOINT [ "start_tari_app.sh", "-c", "/var/tari/config/config.toml", "-b", "/var/tari/base_node" ]
 # CMD [ "--non-interactive-mode" ]
