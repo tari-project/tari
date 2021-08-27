@@ -28,7 +28,8 @@
 //! [DhtRequest]: ./enum.DhtRequest.html
 
 use crate::{
-    broadcast_strategy::BroadcastStrategy,
+    broadcast_strategy::{BroadcastClosestRequest, BroadcastStrategy},
+    dedup::DedupCacheDatabase,
     discovery::DhtDiscoveryError,
     outbound::{DhtOutboundError, OutboundMessageRequester, SendMessageParams},
     proto::{dht::JoinMessage, envelope::DhtMessageType},
@@ -38,7 +39,6 @@ use crate::{
 use chrono::{DateTime, Utc};
 use futures::{
     channel::{mpsc, mpsc::SendError, oneshot},
-    future,
     future::BoxFuture,
     stream::{Fuse, FuturesUnordered},
     SinkExt,
@@ -49,12 +49,12 @@ use std::{cmp, fmt, fmt::Display, sync::Arc};
 use tari_comms::{
     connectivity::{ConnectivityError, ConnectivityRequester, ConnectivitySelection},
     peer_manager::{NodeId, NodeIdentity, PeerFeatures, PeerManager, PeerManagerError, PeerQuery, PeerQuerySortBy},
+    types::CommsPublicKey,
 };
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::message_format::{MessageFormat, MessageFormatError};
 use thiserror::Error;
-use tokio::task;
-use ttl_cache::TtlCache;
+use tokio::{task, time};
 
 const LOG_TARGET: &str = "comms::dht::actor";
 
@@ -97,12 +97,13 @@ impl From<SendError> for DhtActorError {
 }
 
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum DhtRequest {
     /// Send a Join request to the network
     SendJoin,
     /// Inserts a message signature to the msg hash cache. This operation replies with a boolean
     /// which is true if the signature already exists in the cache, otherwise false
-    MsgHashCacheInsert(Vec<u8>, oneshot::Sender<bool>),
+    MsgHashCacheInsert(Vec<u8>, CommsPublicKey, oneshot::Sender<bool>),
     /// Fetch selected peers according to the broadcast strategy
     SelectPeers(BroadcastStrategy, oneshot::Sender<Vec<NodeId>>),
     GetMetadata(DhtMetadataKey, oneshot::Sender<Result<Option<Vec<u8>>, DhtActorError>>),
@@ -114,7 +115,7 @@ impl Display for DhtRequest {
         use DhtRequest::*;
         match self {
             SendJoin => f.write_str("SendJoin"),
-            MsgHashCacheInsert(_, _) => f.write_str("MsgHashCacheInsert"),
+            MsgHashCacheInsert(_, _, _) => f.write_str("MsgHashCacheInsert"),
             SelectPeers(s, _) => f.write_str(&format!("SelectPeers (Strategy={})", s)),
             GetMetadata(key, _) => f.write_str(&format!("GetMetadata (key={})", key)),
             SetMetadata(key, value, _) => {
@@ -146,10 +147,14 @@ impl DhtRequester {
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)
     }
 
-    pub async fn insert_message_hash(&mut self, signature: Vec<u8>) -> Result<bool, DhtActorError> {
+    pub async fn insert_message_hash(
+        &mut self,
+        message_hash: Vec<u8>,
+        public_key: CommsPublicKey,
+    ) -> Result<bool, DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
-            .send(DhtRequest::MsgHashCacheInsert(signature, reply_tx))
+            .send(DhtRequest::MsgHashCacheInsert(message_hash, public_key, reply_tx))
             .await?;
 
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)
@@ -183,7 +188,7 @@ pub struct DhtActor {
     config: DhtConfig,
     shutdown_signal: Option<ShutdownSignal>,
     request_rx: Fuse<mpsc::Receiver<DhtRequest>>,
-    msg_hash_cache: TtlCache<Vec<u8>, ()>,
+    msg_hash_dedup_cache: DedupCacheDatabase,
 }
 
 impl DhtActor {
@@ -198,8 +203,14 @@ impl DhtActor {
         request_rx: mpsc::Receiver<DhtRequest>,
         shutdown_signal: ShutdownSignal,
     ) -> Self {
+        debug!(
+            target: LOG_TARGET,
+            "Message dedup cache will be trimmed to capacity every {}s",
+            config.dedup_cache_trim_interval.as_secs() as f64 +
+                config.dedup_cache_trim_interval.subsec_nanos() as f64 * 1e-9
+        );
         Self {
-            msg_hash_cache: TtlCache::new(config.msg_hash_cache_capacity),
+            msg_hash_dedup_cache: DedupCacheDatabase::new(conn.clone(), config.dedup_cache_capacity),
             config,
             database: DhtDatabase::new(conn),
             outbound_requester,
@@ -236,6 +247,8 @@ impl DhtActor {
 
         let mut pending_jobs = FuturesUnordered::new();
 
+        let mut dedup_cache_trim_ticker = time::interval(self.config.dedup_cache_trim_interval).fuse();
+
         let mut shutdown_signal = self
             .shutdown_signal
             .take()
@@ -251,6 +264,12 @@ impl DhtActor {
                 result = pending_jobs.select_next_some() => {
                     if let Err(err) = result {
                         debug!(target: LOG_TARGET, "Error when handling DHT request message. {}", err);
+                    }
+                },
+
+                _ = dedup_cache_trim_ticker.select_next_some() => {
+                    if let Err(err) = self.msg_hash_dedup_cache.truncate().await {
+                        error!(target: LOG_TARGET, "Error when trimming message dedup cache: {:?}", err);
                     }
                 },
 
@@ -281,15 +300,23 @@ impl DhtActor {
                 let outbound_requester = self.outbound_requester.clone();
                 Box::pin(Self::broadcast_join(node_identity, outbound_requester))
             },
-            MsgHashCacheInsert(hash, reply_tx) => {
-                // No locks needed here. Downside is this isn't really async, however this should be
-                // fine as it is very quick
-                let already_exists = self
-                    .msg_hash_cache
-                    .insert(hash, (), self.config.msg_hash_cache_ttl)
-                    .is_some();
-                let result = reply_tx.send(already_exists).map_err(|_| DhtActorError::ReplyCanceled);
-                Box::pin(future::ready(result))
+            MsgHashCacheInsert(hash, public_key, reply_tx) => {
+                let msg_hash_cache = self.msg_hash_dedup_cache.clone();
+                Box::pin(async move {
+                    match msg_hash_cache.insert_body_hash_if_unique(hash, public_key).await {
+                        Ok(already_exists) => {
+                            let _ = reply_tx.send(already_exists).map_err(|_| DhtActorError::ReplyCanceled);
+                        },
+                        Err(err) => {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Unable to update message dedup cache because {:?}", err
+                            );
+                            let _ = reply_tx.send(false).map_err(|_| DhtActorError::ReplyCanceled);
+                        },
+                    }
+                    Ok(())
+                })
             },
             SelectPeers(broadcast_strategy, reply_tx) => {
                 let peer_manager = Arc::clone(&self.peer_manager);
@@ -389,43 +416,19 @@ impl DhtActor {
                     .await?;
                 Ok(peers.into_iter().map(|p| p.peer_node_id().clone()).collect())
             },
-            Closest(closest_request) => {
-                let connections = connectivity
-                    .select_connections(ConnectivitySelection::closest_to(
-                        closest_request.node_id.clone(),
-                        config.broadcast_factor,
-                        closest_request.excluded_peers.clone(),
-                    ))
-                    .await?;
-
-                let mut candidates = connections
-                    .iter()
-                    .map(|conn| conn.peer_node_id())
-                    .cloned()
-                    .collect::<Vec<_>>();
-
-                if !closest_request.connected_only {
-                    let excluded = closest_request
-                        .excluded_peers
-                        .iter()
-                        .chain(candidates.iter())
-                        .cloned()
-                        .collect::<Vec<_>>();
-                    // If we don't have enough connections, let's select some more disconnected peers (at least 2)
-                    let n = cmp::max(config.broadcast_factor.saturating_sub(candidates.len()), 2);
-                    let additional = Self::select_closest_peers_for_propagation(
-                        &peer_manager,
-                        &closest_request.node_id,
-                        n,
-                        &excluded,
-                        PeerFeatures::MESSAGE_PROPAGATION,
-                    )
-                    .await?;
-
-                    candidates.extend(additional);
+            ClosestNodes(closest_request) => {
+                Self::select_closest_node_connected(closest_request, config, connectivity, peer_manager).await
+            },
+            DirectOrClosestNodes(closest_request) => {
+                // First check if a direct connection exists
+                if connectivity
+                    .get_connection(closest_request.node_id.clone())
+                    .await?
+                    .is_some()
+                {
+                    return Ok(vec![closest_request.node_id.clone()]);
                 }
-
-                Ok(candidates)
+                Self::select_closest_node_connected(closest_request, config, connectivity, peer_manager).await
             },
             Random(n, excluded) => {
                 // Send to a random set of peers of size n that are Communication Nodes
@@ -632,6 +635,50 @@ impl DhtActor {
 
         Ok(peers.into_iter().map(|p| p.node_id).collect())
     }
+
+    async fn select_closest_node_connected(
+        closest_request: Box<BroadcastClosestRequest>,
+        config: DhtConfig,
+        mut connectivity: ConnectivityRequester,
+        peer_manager: Arc<PeerManager>,
+    ) -> Result<Vec<NodeId>, DhtActorError> {
+        let connections = connectivity
+            .select_connections(ConnectivitySelection::closest_to(
+                closest_request.node_id.clone(),
+                config.broadcast_factor,
+                closest_request.excluded_peers.clone(),
+            ))
+            .await?;
+
+        let mut candidates = connections
+            .iter()
+            .map(|conn| conn.peer_node_id())
+            .cloned()
+            .collect::<Vec<_>>();
+
+        if !closest_request.connected_only {
+            let excluded = closest_request
+                .excluded_peers
+                .iter()
+                .chain(candidates.iter())
+                .cloned()
+                .collect::<Vec<_>>();
+            // If we don't have enough connections, let's select some more disconnected peers (at least 2)
+            let n = cmp::max(config.broadcast_factor.saturating_sub(candidates.len()), 2);
+            let additional = Self::select_closest_peers_for_propagation(
+                &peer_manager,
+                &closest_request.node_id,
+                n,
+                &excluded,
+                PeerFeatures::MESSAGE_PROPAGATION,
+            )
+            .await?;
+
+            candidates.extend(additional);
+        }
+
+        Ok(candidates)
+    }
 }
 
 #[cfg(test)]
@@ -643,9 +690,11 @@ mod test {
         test_utils::{build_peer_manager, make_client_identity, make_node_identity},
     };
     use chrono::{DateTime, Utc};
+    use std::time::Duration;
     use tari_comms::test_utils::mocks::{create_connectivity_mock, create_peer_connection_mock_pair};
     use tari_shutdown::Shutdown;
     use tari_test_utils::random;
+    use tokio::time::delay_for;
 
     async fn db_connection() -> DbConnection {
         let conn = DbConnection::connect_memory(random::string(8)).await.unwrap();
@@ -707,12 +756,110 @@ mod test {
         actor.spawn();
 
         let signature = vec![1u8, 2, 3];
-        let is_dup = requester.insert_message_hash(signature.clone()).await.unwrap();
+        let is_dup = requester
+            .insert_message_hash(signature.clone(), CommsPublicKey::default())
+            .await
+            .unwrap();
         assert!(!is_dup);
-        let is_dup = requester.insert_message_hash(signature).await.unwrap();
+        let is_dup = requester
+            .insert_message_hash(signature, CommsPublicKey::default())
+            .await
+            .unwrap();
         assert!(is_dup);
-        let is_dup = requester.insert_message_hash(Vec::new()).await.unwrap();
+        let is_dup = requester
+            .insert_message_hash(Vec::new(), CommsPublicKey::default())
+            .await
+            .unwrap();
         assert!(!is_dup);
+    }
+
+    #[tokio_macros::test_basic]
+    async fn dedup_cache_cleanup() {
+        let node_identity = make_node_identity();
+        let peer_manager = build_peer_manager();
+        let (connectivity_manager, mock) = create_connectivity_mock();
+        mock.spawn();
+        let (out_tx, _) = mpsc::channel(1);
+        let (actor_tx, actor_rx) = mpsc::channel(1);
+        let mut requester = DhtRequester::new(actor_tx);
+        let outbound_requester = OutboundMessageRequester::new(out_tx);
+        let mut shutdown = Shutdown::new();
+        let trim_interval_ms = 500;
+        // Note: This must be equal or larger than the minimum dedup cache capacity for DedupCacheDatabase
+        let capacity = 120;
+        let actor = DhtActor::new(
+            DhtConfig {
+                dedup_cache_capacity: capacity,
+                dedup_cache_trim_interval: Duration::from_millis(trim_interval_ms),
+                ..Default::default()
+            },
+            db_connection().await,
+            node_identity,
+            peer_manager,
+            connectivity_manager,
+            outbound_requester,
+            actor_rx,
+            shutdown.to_signal(),
+        );
+
+        // Create signatures for double the dedup cache capacity
+        let mut signatures: Vec<Vec<u8>> = Vec::new();
+        for i in 0..(capacity * 2) {
+            signatures.push(vec![1u8, 2, i as u8])
+        }
+
+        // Pre-populate the dedup cache; everything should be accepted due to cleanup ticker not active yet
+        for key in &signatures {
+            let is_dup = actor
+                .msg_hash_dedup_cache
+                .insert_body_hash_if_unique(key.clone(), CommsPublicKey::default())
+                .await
+                .unwrap();
+            assert!(!is_dup);
+        }
+        // Try to re-insert all; everything should be marked as duplicates due to cleanup ticker not active yet
+        for key in &signatures {
+            let is_dup = actor
+                .msg_hash_dedup_cache
+                .insert_body_hash_if_unique(key.clone(), CommsPublicKey::default())
+                .await
+                .unwrap();
+            assert!(is_dup);
+        }
+
+        // The cleanup ticker starts when the actor is spawned; the first cleanup event will fire immediately
+        actor.spawn();
+
+        // Verify that the last half of the signatures are still present in the cache
+        for key in signatures.iter().take(capacity * 2).skip(capacity) {
+            let is_dup = requester
+                .insert_message_hash(key.clone(), CommsPublicKey::default())
+                .await
+                .unwrap();
+            assert!(is_dup);
+        }
+        // Verify that the first half of the signatures have been removed and can be re-inserted into cache
+        for key in signatures.iter().take(capacity) {
+            let is_dup = requester
+                .insert_message_hash(key.clone(), CommsPublicKey::default())
+                .await
+                .unwrap();
+            assert!(!is_dup);
+        }
+
+        // Let the trim period expire; this will trim the dedup cache to capacity
+        delay_for(Duration::from_millis(trim_interval_ms * 2)).await;
+
+        // Verify that the last half of the signatures have been removed and can be re-inserted into cache
+        for key in signatures.iter().take(capacity * 2).skip(capacity) {
+            let is_dup = requester
+                .insert_message_hash(key.clone(), CommsPublicKey::default())
+                .await
+                .unwrap();
+            assert!(!is_dup);
+        }
+
+        shutdown.trigger().unwrap();
     }
 
     #[tokio_macros::test_basic]
@@ -728,7 +875,7 @@ mod test {
         mock.spawn();
 
         let (conn_in, _, conn_out, _) =
-            create_peer_connection_mock_pair(1, client_node_identity.to_peer(), node_identity.to_peer()).await;
+            create_peer_connection_mock_pair(client_node_identity.to_peer(), node_identity.to_peer()).await;
         connectivity_manager_mock_state.add_active_connection(conn_in).await;
 
         peer_manager.add_peer(make_node_identity().to_peer()).await.unwrap();
@@ -761,6 +908,7 @@ mod test {
         connectivity_manager_mock_state
             .set_selected_connections(vec![conn_out.clone()])
             .await;
+
         let peers = requester
             .select_peers(BroadcastStrategy::Broadcast(Vec::new()))
             .await
@@ -788,7 +936,29 @@ mod test {
             connected_only: false,
         });
         let peers = requester
-            .select_peers(BroadcastStrategy::Closest(send_request))
+            .select_peers(BroadcastStrategy::ClosestNodes(send_request))
+            .await
+            .unwrap();
+        assert_eq!(peers.len(), 2);
+
+        let send_request = Box::new(BroadcastClosestRequest {
+            node_id: node_identity.node_id().clone(),
+            excluded_peers: vec![],
+            connected_only: false,
+        });
+        let peers = requester
+            .select_peers(BroadcastStrategy::DirectOrClosestNodes(send_request))
+            .await
+            .unwrap();
+        assert_eq!(peers.len(), 1);
+
+        let send_request = Box::new(BroadcastClosestRequest {
+            node_id: client_node_identity.node_id().clone(),
+            excluded_peers: vec![],
+            connected_only: false,
+        });
+        let peers = requester
+            .select_peers(BroadcastStrategy::DirectOrClosestNodes(send_request))
             .await
             .unwrap();
         assert_eq!(peers.len(), 2);

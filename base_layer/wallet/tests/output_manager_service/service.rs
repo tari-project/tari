@@ -84,6 +84,8 @@ use tari_wallet::{
     types::ValidationRetryStrategy,
 };
 
+use tari_comms::protocol::rpc::RpcClientConfig;
+use tari_wallet::output_manager_service::storage::models::OutputStatus;
 use tokio::{
     runtime::Runtime,
     sync::{broadcast, broadcast::channel},
@@ -368,7 +370,14 @@ fn test_utxo_selection_no_chain_metadata() {
     let amount = MicroTari::from(1000);
     let fee_per_gram = MicroTari::from(10);
     let err = runtime
-        .block_on(oms.prepare_transaction_to_send(amount, fee_per_gram, None, "".to_string(), script!(Nop)))
+        .block_on(oms.prepare_transaction_to_send(
+            OsRng.next_u64(),
+            amount,
+            fee_per_gram,
+            None,
+            "".to_string(),
+            script!(Nop),
+        ))
         .unwrap_err();
     assert!(matches!(err, OutputManagerError::NotEnoughFunds));
 
@@ -385,7 +394,14 @@ fn test_utxo_selection_no_chain_metadata() {
 
     // but we have no chain state so the lowest maturity should be used
     let stp = runtime
-        .block_on(oms.prepare_transaction_to_send(amount, fee_per_gram, None, "".to_string(), script!(Nop)))
+        .block_on(oms.prepare_transaction_to_send(
+            OsRng.next_u64(),
+            amount,
+            fee_per_gram,
+            None,
+            "".to_string(),
+            script!(Nop),
+        ))
         .unwrap();
     assert!(stp.get_tx_id().is_ok());
 
@@ -453,7 +469,14 @@ fn test_utxo_selection_with_chain_metadata() {
     let amount = MicroTari::from(1000);
     let fee_per_gram = MicroTari::from(10);
     let err = runtime
-        .block_on(oms.prepare_transaction_to_send(amount, fee_per_gram, None, "".to_string(), script!(Nop)))
+        .block_on(oms.prepare_transaction_to_send(
+            OsRng.next_u64(),
+            amount,
+            fee_per_gram,
+            None,
+            "".to_string(),
+            script!(Nop),
+        ))
         .unwrap_err();
     assert!(matches!(err, OutputManagerError::NotEnoughFunds));
 
@@ -498,7 +521,14 @@ fn test_utxo_selection_with_chain_metadata() {
 
     // test transactions
     let stp = runtime
-        .block_on(oms.prepare_transaction_to_send(amount, fee_per_gram, None, "".to_string(), script!(Nop)))
+        .block_on(oms.prepare_transaction_to_send(
+            OsRng.next_u64(),
+            amount,
+            fee_per_gram,
+            None,
+            "".to_string(),
+            script!(Nop),
+        ))
         .unwrap();
     assert!(stp.get_tx_id().is_ok());
 
@@ -514,7 +544,14 @@ fn test_utxo_selection_with_chain_metadata() {
 
     // when the amount is greater than the largest utxo, then "Largest" selection strategy is used
     let stp = runtime
-        .block_on(oms.prepare_transaction_to_send(6 * amount, fee_per_gram, None, "".to_string(), script!(Nop)))
+        .block_on(oms.prepare_transaction_to_send(
+            OsRng.next_u64(),
+            6 * amount,
+            fee_per_gram,
+            None,
+            "".to_string(),
+            script!(Nop),
+        ))
         .unwrap();
     assert!(stp.get_tx_id().is_ok());
 
@@ -560,6 +597,7 @@ fn sending_transaction_and_confirmation() {
 
     let stp = runtime
         .block_on(oms.prepare_transaction_to_send(
+            OsRng.next_u64(),
             MicroTari::from(1000),
             MicroTari::from(20),
             None,
@@ -626,7 +664,12 @@ fn sending_transaction_and_confirmation() {
     );
 
     if let DbValue::KeyManagerState(km) = backend.fetch(&DbKey::KeyManagerState).unwrap().unwrap() {
-        assert_eq!(km.primary_key_index, 1);
+        // if we dont have change, we did not move the index forward
+        if tx.body.outputs().len() > 1 {
+            assert_eq!(km.primary_key_index, 1);
+        } else {
+            assert_eq!(km.primary_key_index, 0);
+        }
     } else {
         panic!("No Key Manager set");
     }
@@ -653,6 +696,7 @@ fn send_not_enough_funds() {
     }
 
     match runtime.block_on(oms.prepare_transaction_to_send(
+        OsRng.next_u64(),
         MicroTari::from(num_outputs * 2000),
         MicroTari::from(20),
         None,
@@ -698,6 +742,7 @@ fn send_no_change() {
 
     let mut stp = runtime
         .block_on(oms.prepare_transaction_to_send(
+            OsRng.next_u64(),
             MicroTari::from(value1 + value2) - fee_without_change,
             fee_per_gram,
             None,
@@ -774,6 +819,7 @@ fn send_not_enough_for_change() {
         .unwrap();
 
     match runtime.block_on(oms.prepare_transaction_to_send(
+        OsRng.next_u64(),
         MicroTari::from(value1 + value2 + 1) - fee_without_change,
         MicroTari::from(20),
         None,
@@ -835,6 +881,7 @@ fn cancel_transaction() {
     }
     let stp = runtime
         .block_on(oms.prepare_transaction_to_send(
+            OsRng.next_u64(),
             MicroTari::from(1000),
             MicroTari::from(20),
             None,
@@ -853,6 +900,59 @@ fn cancel_transaction() {
         .unwrap();
 
     assert_eq!(runtime.block_on(oms.get_unspent_outputs()).unwrap().len(), num_outputs);
+}
+
+#[test]
+fn cancel_transaction_and_reinstate_inbound_tx() {
+    let mut runtime = Runtime::new().unwrap();
+
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
+
+    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(&mut runtime, backend.clone(), true);
+
+    let value = MicroTari::from(5000);
+    let (tx_id, sender_message) = generate_sender_transaction_message(value);
+    let _rtp = runtime.block_on(oms.get_recipient_transaction(sender_message)).unwrap();
+    assert_eq!(runtime.block_on(oms.get_unspent_outputs()).unwrap().len(), 0);
+
+    let pending_txs = runtime.block_on(oms.get_pending_transactions()).unwrap();
+
+    assert_eq!(pending_txs.len(), 1);
+
+    let output = pending_txs
+        .get(&tx_id)
+        .unwrap()
+        .outputs_to_be_received
+        .first()
+        .unwrap()
+        .clone();
+
+    runtime.block_on(oms.cancel_transaction(tx_id)).unwrap();
+
+    let cancelled_output = backend
+        .fetch(&DbKey::OutputsByTxIdAndStatus(tx_id, OutputStatus::CancelledInbound))
+        .unwrap()
+        .unwrap();
+
+    if let DbValue::AnyOutputs(o) = cancelled_output {
+        let o = o.first().expect("Should be one output in here");
+        assert_eq!(o.commitment, output.commitment);
+    } else {
+        panic!("Should have found cancelled output");
+    }
+
+    assert_eq!(runtime.block_on(oms.get_pending_transactions()).unwrap().len(), 0);
+
+    runtime
+        .block_on(oms.reinstate_cancelled_inbound_transaction(tx_id))
+        .unwrap();
+
+    assert_eq!(runtime.block_on(oms.get_pending_transactions()).unwrap().len(), 1);
+
+    let balance = runtime.block_on(oms.get_balance()).unwrap();
+
+    assert_eq!(balance.pending_incoming_balance, value);
 }
 
 #[test]
@@ -876,6 +976,7 @@ fn timeout_transaction() {
     }
     let _stp = runtime
         .block_on(oms.prepare_transaction_to_send(
+            OsRng.next_u64(),
             MicroTari::from(1000),
             MicroTari::from(20),
             None,
@@ -930,7 +1031,14 @@ fn test_get_balance() {
 
     let send_value = MicroTari::from(1000);
     let stp = runtime
-        .block_on(oms.prepare_transaction_to_send(send_value, MicroTari::from(20), None, "".to_string(), script!(Nop)))
+        .block_on(oms.prepare_transaction_to_send(
+            OsRng.next_u64(),
+            send_value,
+            MicroTari::from(20),
+            None,
+            "".to_string(),
+            script!(Nop),
+        ))
         .unwrap();
 
     let change_val = stp.get_change_amount().unwrap();
@@ -999,6 +1107,7 @@ fn sending_transaction_with_short_term_clear() {
     // Check that funds are encumbered and then unencumbered if the pending tx is not confirmed before restart
     let _stp = runtime
         .block_on(oms.prepare_transaction_to_send(
+            OsRng.next_u64(),
             MicroTari::from(1000),
             MicroTari::from(20),
             None,
@@ -1020,6 +1129,7 @@ fn sending_transaction_with_short_term_clear() {
     // Check that a unconfirm Pending Transaction can be cancelled
     let stp = runtime
         .block_on(oms.prepare_transaction_to_send(
+            OsRng.next_u64(),
             MicroTari::from(1000),
             MicroTari::from(20),
             None,
@@ -1039,6 +1149,7 @@ fn sending_transaction_with_short_term_clear() {
     // Check that is the pending tx is confirmed that the encumberance persists after restart
     let stp = runtime
         .block_on(oms.prepare_transaction_to_send(
+            OsRng.next_u64(),
             MicroTari::from(1000),
             MicroTari::from(20),
             None,
@@ -1706,14 +1817,19 @@ fn test_txo_validation_rpc_timeout() {
         .unwrap();
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let mut delay = delay_for(
+            RpcClientConfig::default().deadline.unwrap() +
+                RpcClientConfig::default().deadline_grace_period +
+                Duration::from_secs(30),
+        )
+        .fuse();
         let mut failed = 0;
         loop {
             futures::select! {
                 event = event_stream.select_next_some() => {
                     if let Ok(msg) = event {
                          if let OutputManagerEvent::TxoValidationFailure(_,_) = (*msg).clone() {
-                         failed+=1;
+                             failed+=1;
                         }
                     }
 

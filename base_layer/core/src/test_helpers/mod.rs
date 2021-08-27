@@ -31,7 +31,12 @@ use crate::{
     consensus::ConsensusManager,
     crypto::tari_utilities::Hashable,
     proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty},
-    transactions::{transaction::Transaction, types::CryptoFactories, CoinbaseBuilder},
+    transactions::{
+        tari_amount::T,
+        transaction::{Transaction, UnblindedOutput},
+        types::CryptoFactories,
+        CoinbaseBuilder,
+    },
 };
 use rand::{distributions::Alphanumeric, Rng};
 use std::{iter, path::Path, sync::Arc};
@@ -42,29 +47,29 @@ use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 /// Create a partially constructed block using the provided set of transactions
 /// is chain_block, or rename it to `create_orphan_block` and drop the prev_block argument
 pub fn create_orphan_block(block_height: u64, transactions: Vec<Transaction>, consensus: &ConsensusManager) -> Block {
-    create_block(
-        consensus.consensus_constants(block_height).blockchain_version(),
-        block_height,
-        transactions,
-    )
+    let mut header = BlockHeader::new(consensus.consensus_constants(block_height).blockchain_version());
+    header.height = block_height;
+    header.into_builder().with_transactions(transactions).build()
 }
 
-pub fn create_block(block_version: u16, block_height: u64, transactions: Vec<Transaction>) -> Block {
+pub fn create_block(block_version: u16, block_height: u64, transactions: Vec<Transaction>) -> (Block, UnblindedOutput) {
     let mut header = BlockHeader::new(block_version);
     header.height = block_height;
-    if transactions.is_empty() {
-        let constants = ConsensusManager::builder(Network::LocalNet).build();
-        let coinbase = CoinbaseBuilder::new(CryptoFactories::default())
-            .with_block_height(block_height)
-            .with_fees(0.into())
-            .with_nonce(0.into())
-            .with_spend_key(block_height.into())
-            .build_with_reward(constants.consensus_constants(block_height), 1.into())
-            .unwrap();
-        header.into_builder().with_transactions(vec![coinbase.0]).build()
-    } else {
-        header.into_builder().with_transactions(transactions).build()
-    }
+    let constants = ConsensusManager::builder(Network::LocalNet).build();
+    let (coinbase, coinbase_output) = CoinbaseBuilder::new(CryptoFactories::default())
+        .with_block_height(block_height)
+        .with_fees(0.into())
+        .with_nonce(0.into())
+        .with_spend_key(block_height.into())
+        .build_with_reward(constants.consensus_constants(block_height), 5000 * T)
+        .unwrap();
+    (
+        header
+            .into_builder()
+            .with_transactions(iter::once(coinbase).chain(transactions).collect())
+            .build(),
+        coinbase_output,
+    )
 }
 
 pub fn mine_to_difficulty(mut block: Block, difficulty: Difficulty) -> Result<Block, String> {

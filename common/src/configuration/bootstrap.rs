@@ -59,6 +59,7 @@ use crate::{
     DEFAULT_CONFIG,
     DEFAULT_MERGE_MINING_PROXY_LOG_CONFIG,
     DEFAULT_MINING_NODE_LOG_CONFIG,
+    DEFAULT_STRATUM_TRANSCODER_LOG_CONFIG,
     DEFAULT_WALLET_LOG_CONFIG,
 };
 use std::{
@@ -100,9 +101,9 @@ pub struct ConfigBootstrap {
     /// Create and save new node identity if one doesn't exist
     #[structopt(long, alias = "create_id")]
     pub create_id: bool,
-    /// Run in daemon mode, with no interface
-    #[structopt(short, long, alias = "daemon")]
-    pub daemon_mode: bool,
+    /// Run in non-interactive mode, with no UI.
+    #[structopt(short, long, alias = "non-interactive")]
+    pub non_interactive_mode: bool,
     /// This will rebuild the db, adding block for block in
     #[structopt(long, alias = "rebuild_db")]
     pub rebuild_db: bool,
@@ -163,7 +164,7 @@ impl Default for ConfigBootstrap {
             log_config: normalize_path(dir_utils::default_path(DEFAULT_BASE_NODE_LOG_CONFIG, None)),
             init: false,
             create_id: false,
-            daemon_mode: false,
+            non_interactive_mode: false,
             rebuild_db: false,
             input_file: None,
             command: None,
@@ -230,6 +231,12 @@ impl ConfigBootstrap {
                         Some(&self.base_path),
                     ))
                 },
+                ApplicationType::StratumTranscoder => {
+                    self.log_config = normalize_path(dir_utils::default_path(
+                        DEFAULT_STRATUM_TRANSCODER_LOG_CONFIG,
+                        Some(&self.base_path),
+                    ))
+                },
                 ApplicationType::MiningNode => {
                     self.log_config = normalize_path(dir_utils::default_path(
                         DEFAULT_MINING_NODE_LOG_CONFIG,
@@ -279,6 +286,10 @@ impl ConfigBootstrap {
                         &self.log_config,
                         logging::install_default_merge_mining_proxy_logfile_config,
                     ),
+                    ApplicationType::StratumTranscoder => install_configuration(
+                        &self.log_config,
+                        logging::install_default_stratum_transcoder_logfile_config,
+                    ),
                     ApplicationType::MiningNode => {
                         install_configuration(&self.log_config, logging::install_default_mining_node_logfile_config)
                     },
@@ -304,7 +315,7 @@ impl ConfigBootstrap {
     }
 }
 
-fn prompt(question: &str) -> bool {
+pub fn prompt(question: &str) -> bool {
     println!("{}", question);
     let mut input = "".to_string();
     io::stdin().read_line(&mut input).unwrap();
@@ -329,6 +340,7 @@ pub enum ApplicationType {
     ConsoleWallet,
     MergeMiningProxy,
     MiningNode,
+    StratumTranscoder,
 }
 
 impl ApplicationType {
@@ -339,6 +351,7 @@ impl ApplicationType {
             ConsoleWallet => "Tari Console Wallet",
             MergeMiningProxy => "Tari Merge Mining Proxy",
             MiningNode => "Tari Mining Node",
+            StratumTranscoder => "Tari Stratum Transcoder",
         }
     }
 
@@ -347,8 +360,9 @@ impl ApplicationType {
         match self {
             BaseNode => "base_node",
             ConsoleWallet => "wallet",
-            MergeMiningProxy => "mm_proxy",
+            MergeMiningProxy => "merge_mining_proxy",
             MiningNode => "miner",
+            StratumTranscoder => "stratum-transcoder",
         }
     }
 }
@@ -363,6 +377,7 @@ impl FromStr for ApplicationType {
             "console-wallet" | "console_wallet" => Ok(ConsoleWallet),
             "mm-proxy" | "mm_proxy" => Ok(MergeMiningProxy),
             "miner" => Ok(MiningNode),
+            "stratum-proxy" => Ok(StratumTranscoder),
             _ => Err(ConfigError::new("Invalid ApplicationType", None)),
         }
     }

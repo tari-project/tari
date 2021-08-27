@@ -307,6 +307,11 @@ where TBackend: WalletBackend + 'static
             }
 
             let num_scanned = self.scan_utxos(&mut client, start_index, tip_header).await?;
+            if num_scanned == 0 {
+                return Err(UtxoScannerError::UtxoScanningError(
+                    "Peer returned 0 UTXOs to scan".to_string(),
+                ));
+            }
             debug!(
                 target: LOG_TARGET,
                 "Scanning round completed UTXO #{} in {:.2?} ({} scanned)",
@@ -579,7 +584,7 @@ where TBackend: WalletBackend + 'static
             match self.get_next_peer() {
                 Some(peer) => match self.attempt_sync(peer.clone()).await {
                     Ok((total_scanned, final_utxo_pos, elapsed)) => {
-                        debug!(target: LOG_TARGET, "Scanning to UTXO #{}", final_utxo_pos);
+                        debug!(target: LOG_TARGET, "Scanned to UTXO #{}", final_utxo_pos);
                         self.finalize(total_scanned, final_utxo_pos, elapsed).await?;
                         return Ok(());
                     },
@@ -588,7 +593,11 @@ where TBackend: WalletBackend + 'static
                             target: LOG_TARGET,
                             "Failed to scan UTXO's from base node {}: {}", peer, e
                         );
-
+                        self.publish_event(UtxoScannerEvent::ScanningRoundFailed {
+                            num_retries: self.num_retries,
+                            retry_limit: self.retry_limit,
+                            error: e.to_string(),
+                        });
                         continue;
                     },
                 },
@@ -596,9 +605,11 @@ where TBackend: WalletBackend + 'static
                     self.publish_event(UtxoScannerEvent::ScanningRoundFailed {
                         num_retries: self.num_retries,
                         retry_limit: self.retry_limit,
+                        error: "No new peers to try after this round".to_string(),
                     });
 
                     if self.num_retries >= self.retry_limit {
+                        self.publish_event(UtxoScannerEvent::ScanningFailed);
                         return Err(UtxoScannerError::UtxoScanningError(format!(
                             "Failed to scan UTXO's after {} attempt(s) using all {} sync peer(s). Aborting...",
                             self.num_retries,
@@ -675,7 +686,7 @@ where TBackend: WalletBackend + 'static
             event_sender: self.event_sender.clone(),
             retry_limit: self.retry_limit,
             peer_index: 0,
-            num_retries: 0,
+            num_retries: 1,
             mode: self.mode.clone(),
             run_flag: self.is_running.clone(),
         }
@@ -705,21 +716,34 @@ where TBackend: WalletBackend + 'static
         let mut shutdown = self.shutdown_signal.clone();
         let start_at = Instant::now() + Duration::from_secs(1);
         let mut work_interval = time::interval_at(start_at.into(), self.scan_for_utxo_interval).fuse();
+        let mut previous = Instant::now();
         loop {
             futures::select! {
                 _ = work_interval.select_next_some() => {
-                    let running_flag = self.is_running.clone();
-                    if !running_flag.load(Ordering::SeqCst) {
-                        let task = self.create_task();
-                        debug!(target: LOG_TARGET, "UTXO scanning service starting scan for utxos");
-                        task::spawn(async move {
-                            if let Err(err) = task.run().await {
-                                error!(target: LOG_TARGET, "Error scanning UTXOs: {}", err);
-                            }
-                            //we make sure the flag is set to false here
-                            running_flag.store(false, Ordering::Relaxed);
-                        });
+                    // This bit of code prevents bottled up tokio interval events to be fired successively for the edge
+                    // case where a computer wakes up from sleep.
+                    if start_at.elapsed() > self.scan_for_utxo_interval &&
+                        previous.elapsed() < self.scan_for_utxo_interval.mul_f32(0.9)
+                    {
+                        debug!(
+                            target: LOG_TARGET,
+                            "UTXO scanning work interval event fired too quickly, not running the task"
+                        );
+                    } else {
+                        let running_flag = self.is_running.clone();
+                        if !running_flag.load(Ordering::SeqCst) {
+                            let task = self.create_task();
+                            debug!(target: LOG_TARGET, "UTXO scanning service starting scan for utxos");
+                            task::spawn(async move {
+                                if let Err(err) = task.run().await {
+                                    error!(target: LOG_TARGET, "Error scanning UTXOs: {}", err);
+                                }
+                                //we make sure the flag is set to false here
+                                running_flag.store(false, Ordering::Relaxed);
+                            });
+                        }
                     }
+                    previous = Instant::now();
                 },
                 request_context = request_stream.select_next_some() => {
                     trace!(target: LOG_TARGET, "Handling Service API Request");

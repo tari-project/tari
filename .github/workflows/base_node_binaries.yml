@@ -5,9 +5,9 @@ on:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
     branches:
-      - leet-*
+      - ci-*
   schedule:
-    - cron: '05 00 01 * *'
+    - cron: '05 00 * * *'
   workflow_dispatch:
     inputs:
       customTag:
@@ -24,30 +24,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-#        # Breaks build - cmake issue?
-#        os: [windows-2016]
-#       # Breaks build - clang build (croaring-sys)?
-#        features: ["safe"]
-#        os: [ubuntu-latest, macos-latest, windows-latest, self-hosted]
-#        os: [ubuntu-18.04, ubuntu-20.04, macos-10.15, macos-11.0, windows-2016, windows-2019]
-        os: [ubuntu-18.04, macos-10.15, windows-2019, self-hosted]
+        os: [ubuntu-20.04, macos-10.15, windows-2019]
         # https://gcc.gnu.org/onlinedocs/gcc/x86-Options.html
-#        features: ["safe", "avx2"]
-#        target_cpu: ["x86-64", "broadwell", "skylake"]
         target_cpu: ["haswell"]
-#        target_release: ["release", "debug"]
-#        exclude:
-#          - target_cpu: "x86-64"
-#            features: "avx2"
         exclude:
           - os: "macos-10.15"
             target_cpu: "haswell"
-          - os: "self-hosted"
-            target_cpu: "haswell"
         include:
           - os: "macos-10.15"
-            target_cpu: "x86-64"
-          - os: "self-hosted"
             target_cpu: "x86-64"
 
     runs-on: ${{ matrix.os }}
@@ -75,14 +59,11 @@ jobs:
     - name: Setup Rust toolchain
       uses: actions-rs/toolchain@v1
       with:
-#        toolchain: stable
         toolchain: nightly-2021-05-09
         components: rustfmt
-#        target: ${{ matrix.target }}
         override: true
 
     - name: Install Linux dependencies - Ubuntu
-#      if: startsWith(matrix.os,'ubuntu')
       if: startsWith(runner.os,'Linux')
       run: |
         sudo apt-get update
@@ -104,12 +85,10 @@ jobs:
 #        sudo apt-get -y upgrade
 
     - name: Install macOS dependencies
-#      if: startsWith(matrix.os,'macos')
       if: startsWith(runner.os,'macOS')
       run: brew install cmake zip
 
     - name: Install Windows dependencies
-#      if: startsWith(matrix.os,'windows')
       if: startsWith(runner.os,'Windows')
       run: |
         vcpkg.exe install sqlite3:x64-windows zlib:x64-windows
@@ -141,15 +120,6 @@ jobs:
         echo "OPENSSL_DIR=C:\Program Files\OpenSSL-Win64" >> $GITHUB_ENV
         echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $GITHUB_ENV
         echo "C:\Strawberry\perl\bin" >> $GITHUB_PATH
-
-    # this is a hack to fix an issue with building libclang in MSVC
-    # it should be fixed in release 16.9 of MSVC
-    # issue https://github.com/microsoft/STL/issues/1300
-    # temp fix https://github.com/mono/CppSharp/pull/1514/files
-    - name: fix intrin.h file - Windows
-      if: startsWith(runner.os,'Windows')
-      shell: powershell
-      run: .github/hacks/intrin.ps1
 
     - name: Caching
       uses: actions/cache@v2
@@ -198,6 +168,13 @@ jobs:
         cp -v "$GITHUB_WORKSPACE/target/release/tari_merge_mining_proxy${TBN_EXT}" .
         cp -v "$GITHUB_WORKSPACE/target/release/tari_mining_node${TBN_EXT}" .
 
+    - name: Build the windows installer
+      if: startsWith(runner.os,'Windows')
+      run: |
+        cd buildtools
+        "%programfiles(x86)%\Inno Setup 6\iscc.exe" "windows_inno_installer.iss"
+      shell: cmd
+
     - name: Archive and Sign Binaries
       shell: bash
       run: |
@@ -233,6 +210,42 @@ jobs:
         aws s3 ${{ env.S3CMD }} --region ${{ secrets.AWS_REGION }} \
           "${{ env.SOURCE }}" \
           s3://${{ secrets.AWS_S3_BUCKET }}/${{ env.DEST_DIR }} \
+          ${{ env.S3OPTIONS }}
+        echo "Done - $?"
+        exit 0
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        SOURCE: '${{ github.workspace }}${{ env.TBN_DIST }}'
+        DEST_DIR: '${{ env.S3DESTOVERRIDE }}${{ env.S3DESTDIR }}/'
+        S3CMD: 'cp'
+        S3OPTIONS: '--recursive --exclude "*" --include "*.zip*"'
+        # S3OPTIONS: '--recursive --exclude "*" --include "*.zip*"'
+        # S3OPTIONS: '--acl public-read'
+
+    - name: Copy tags to latest s3 - Bash
+#      if: ${{ env.AWS_SECRET_ACCESS_KEY != '' && matrix.os != 'self-hosted' }}
+      if: ${{ env.AWS_SECRET_ACCESS_KEY != '' && matrix.os != 'self-hosted' && startsWith(github.ref, 'refs/tags/v') }}
+      shell: bash
+      run: |
+        echo "Starting upload ... ${{ env.SOURCE }}"
+        if [ "$RUNNER_OS" == "Windows" ]; then
+          echo "No ls for 'D:' on Windows"
+        else
+          ls -al ${{ env.SOURCE }}
+        fi
+
+        aws s3 ${{ env.S3CMD }} --region ${{ secrets.AWS_REGION }} \
+                  "${{ env.SOURCE }}" \
+                  s3://${{ secrets.AWS_S3_BUCKET }}/current/${{ env.DEST_DIR }} \
+                  ${{ env.S3OPTIONS }}
+
+        aws s3 rm --region ${{ secrets.AWS_REGION }} \
+                            s3://${{ secrets.AWS_S3_BUCKET }}/latest/${{ env.DEST_DIR }}/*
+
+        aws s3 ${{ env.S3CMD }} --region ${{ secrets.AWS_REGION }} \
+          "${{ env.SOURCE }}" \
+          s3://${{ secrets.AWS_S3_BUCKET }}/latest/${{ env.DEST_DIR }} \
           ${{ env.S3OPTIONS }}
         echo "Done - $?"
         exit 0

@@ -7,6 +7,7 @@ function mapEnvs(options) {
   if (options.pruningHorizon) {
     // In the config toml file: `base_node.network.pruning_horizon` with `network = localnet`
     res.TARI_BASE_NODE__LOCALNET__PRUNING_HORIZON = options.pruningHorizon;
+    res.TARI_BASE_NODE__LOCALNET__PRUNED_MODE_CLEANUP_INTERVAL = 1;
   }
   if ("num_confirmations" in options) {
     res.TARI_WALLET__TRANSACTION_NUM_CONFIRMATIONS_REQUIRED =
@@ -56,10 +57,13 @@ function mapEnvs(options) {
   return res;
 }
 
-function baseEnvs(peerSeeds = []) {
+function baseEnvs(peerSeeds = [], forceSyncPeers = []) {
   const envs = {
     RUST_BACKTRACE: 1,
     TARI_BASE_NODE__NETWORK: "localnet",
+    TARI_WALLET__NETWORK: "localnet",
+    TARI_MINER__NETWORK: "localnet",
+    TARI_COMMON__NETWORK: "localnet",
     TARI_BASE_NODE__LOCALNET__DATA_DIR: "localnet",
     TARI_BASE_NODE__LOCALNET__DB_TYPE: "lmdb",
     TARI_BASE_NODE__LOCALNET__ORPHAN_STORAGE_CAPACITY: "10",
@@ -97,6 +101,9 @@ function baseEnvs(peerSeeds = []) {
     TARI_MINING_NODE__VALIDATE_TIP_TIMEOUT_SEC: 2,
     TARI_WALLET__SCAN_FOR_UTXO_INTERVAL: 5,
   };
+  if (forceSyncPeers.length != 0) {
+    envs.TARI_BASE_NODE__LOCALNET__FORCE_SYNC_PEERS = forceSyncPeers;
+  }
   if (peerSeeds.length != 0) {
     envs.TARI_BASE_NODE__LOCALNET__PEER_SEEDS = peerSeeds;
   } else {
@@ -120,16 +127,17 @@ function createEnv(
   baseNodeGrpcPort = "8080",
   baseNodePort = "8081",
   proxyFullAddress = "127.0.0.1:8084",
+  transcoderFullAddress = "127.0.0.1:8085",
   options,
   peerSeeds = [],
-  _txnSendingMechanism = "DirectAndStoreAndForward"
+  _txnSendingMechanism = "DirectAndStoreAndForward",
+  forceSyncPeers = []
 ) {
-  const envs = baseEnvs(peerSeeds);
+  const envs = baseEnvs(peerSeeds, forceSyncPeers);
   const network =
     options && options.network ? options.network.toUpperCase() : "LOCALNET";
 
   const configEnvs = {};
-
   configEnvs[
     `TARI_BASE_NODE__${network}__GRPC_BASE_NODE_ADDRESS`
   ] = `${baseNodeGrpcAddress}:${baseNodeGrpcPort}`;
@@ -146,7 +154,15 @@ function createEnv(
   configEnvs[
     `TARI_MERGE_MINING_PROXY__${network}__PROXY_HOST_ADDRESS`
   ] = `${proxyFullAddress}`;
+  configEnvs[
+    `TARI_STRATUM_TRANSCODER__${network}__TRANSCODER_HOST_ADDRESS`
+  ] = `${transcoderFullAddress}`;
   configEnvs[`TARI_BASE_NODE__${network}__TRANSPORT`] = "tcp";
+  configEnvs[`TARI_WALLET__${network}__TRANSPORT`] = "tcp";
+  configEnvs[`TARI_WALLET__${network}__TCP_LISTENER_ADDRESS`] =
+    "/ip4/127.0.0.1/tcp/" + `${walletPort}`;
+  configEnvs[`TARI_WALLET__${network}__PUBLIC_ADDRESS`] =
+    "/ip4/127.0.0.1/tcp/" + `${walletPort}`;
 
   return { ...envs, ...configEnvs, ...mapEnvs(options || {}) };
 }

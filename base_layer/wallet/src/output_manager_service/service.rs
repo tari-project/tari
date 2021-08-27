@@ -40,6 +40,7 @@ use crate::{
     types::{HashDigest, ValidationRetryStrategy},
 };
 use blake2::Digest;
+use chrono::Utc;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
 use log::*;
@@ -142,7 +143,8 @@ where TBackend: OutputManagerBackend + 'static
             shutdown_signal,
         };
 
-        let (base_node_update_publisher, _) = broadcast::channel(50);
+        let (base_node_update_publisher, _) =
+            broadcast::channel(resources.config.base_node_update_publisher_channel_size);
 
         Ok(OutputManagerService {
             resources,
@@ -228,19 +230,21 @@ where TBackend: OutputManagerBackend + 'static
                 .await
                 .map(OutputManagerResponse::CoinbaseTransaction),
             OutputManagerRequest::PrepareToSendTransaction((
+                tx_id,
                 amount,
                 fee_per_gram,
                 lock_height,
                 message,
                 recipient_script,
             )) => self
-                .prepare_transaction_to_send(amount, fee_per_gram, lock_height, message, recipient_script)
+                .prepare_transaction_to_send(tx_id, amount, fee_per_gram, lock_height, message, recipient_script)
                 .await
                 .map(OutputManagerResponse::TransactionToSend),
-            OutputManagerRequest::CreatePayToSelfTransaction((amount, fee_per_gram, lock_height, message)) => self
-                .create_pay_to_self_transaction(amount, fee_per_gram, lock_height, message)
-                .await
-                .map(OutputManagerResponse::PayToSelfTransaction),
+            OutputManagerRequest::CreatePayToSelfTransaction((tx_id, amount, fee_per_gram, lock_height, message)) => {
+                self.create_pay_to_self_transaction(tx_id, amount, fee_per_gram, lock_height, message)
+                    .await
+                    .map(OutputManagerResponse::PayToSelfTransaction)
+            },
             OutputManagerRequest::FeeEstimate((amount, fee_per_gram, num_kernels, num_outputs)) => self
                 .fee_estimate(amount, fee_per_gram, num_kernels, num_outputs)
                 .await
@@ -343,6 +347,10 @@ where TBackend: OutputManagerBackend + 'static
                 .add_known_script(known_script)
                 .await
                 .map(|_| OutputManagerResponse::AddKnownOneSidedPaymentScript),
+            OutputManagerRequest::ReinstateCancelledInboundTx(tx_id) => self
+                .reinstate_cancelled_inbound_transaction(tx_id)
+                .await
+                .map(|_| OutputManagerResponse::ReinstatedCancelledInboundTx),
         }
     }
 
@@ -441,7 +449,7 @@ where TBackend: OutputManagerBackend + 'static
             UnblindedOutput::new(
                 single_round_sender_data.amount,
                 spending_key.clone(),
-                Some(single_round_sender_data.features.clone()),
+                single_round_sender_data.features.clone(),
                 single_round_sender_data.script.clone(),
                 // TODO: The input data should be variable; this will only work for a Nop script
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
@@ -554,6 +562,7 @@ where TBackend: OutputManagerBackend + 'static
     /// will be produced.
     pub async fn prepare_transaction_to_send(
         &mut self,
+        tx_id: TxId,
         amount: MicroTari,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
@@ -584,7 +593,8 @@ where TBackend: OutputManagerBackend + 'static
                 PrivateKey::random(&mut OsRng),
             )
             .with_message(message)
-            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
+            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
+            .with_tx_id(tx_id);
 
         for uo in outputs.iter() {
             builder.with_input(
@@ -635,7 +645,6 @@ where TBackend: OutputManagerBackend + 'static
             )?);
         }
 
-        let tx_id = stp.get_tx_id()?;
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
         self.resources
@@ -663,6 +672,11 @@ where TBackend: OutputManagerBackend + 'static
         fees: MicroTari,
         block_height: u64,
     ) -> Result<Transaction, OutputManagerError> {
+        debug!(
+            target: LOG_TARGET,
+            "Building coinbase transaction for block_height {} with TxId: {}", block_height, tx_id
+        );
+
         let (spending_key, script_key) = self
             .resources
             .master_key_manager
@@ -713,11 +727,12 @@ where TBackend: OutputManagerBackend + 'static
 
     async fn create_pay_to_self_transaction(
         &mut self,
+        tx_id: TxId,
         amount: MicroTari,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
-    ) -> Result<(TxId, MicroTari, Transaction), OutputManagerError> {
+    ) -> Result<(MicroTari, Transaction), OutputManagerError> {
         let (inputs, _, total) = self.select_utxos(amount, fee_per_gram, 1, None).await?;
 
         let offset = PrivateKey::random(&mut OsRng);
@@ -732,7 +747,8 @@ where TBackend: OutputManagerBackend + 'static
             .with_offset(offset.clone())
             .with_private_nonce(nonce.clone())
             .with_message(message)
-            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
+            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
+            .with_tx_id(tx_id);
 
         for uo in &inputs {
             builder.with_input(
@@ -760,7 +776,7 @@ where TBackend: OutputManagerBackend + 'static
             UnblindedOutput::new(
                 amount,
                 spending_key.clone(),
-                Some(output_features),
+                output_features,
                 script,
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
                 script_private_key,
@@ -808,7 +824,6 @@ where TBackend: OutputManagerBackend + 'static
             outputs.push(change_output);
         }
 
-        let tx_id = stp.get_tx_id()?;
         trace!(
             target: LOG_TARGET,
             "Encumber send to self transaction ({}) outputs.",
@@ -821,7 +836,7 @@ where TBackend: OutputManagerBackend + 'static
         stp.finalize(KernelFeatures::empty(), &factories)?;
         let tx = stp.take_transaction()?;
 
-        Ok((tx_id, fee, tx))
+        Ok((fee, tx))
     }
 
     /// Confirm that a transaction has finished being negotiated between parties so the short-term encumberance can be
@@ -889,6 +904,27 @@ where TBackend: OutputManagerBackend + 'static
             "Cancelling pending transaction outputs for TxId: {}", tx_id
         );
         Ok(self.resources.db.cancel_pending_transaction_outputs(tx_id).await?)
+    }
+
+    /// Restore the pending transaction encumberance and output for an inbound transaction that was previously
+    /// cancelled.
+    async fn reinstate_cancelled_inbound_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
+        self.resources.db.reinstate_inbound_output(tx_id).await?;
+
+        self.resources
+            .db
+            .add_pending_transaction_outputs(PendingTransactionOutputs {
+                tx_id,
+                outputs_to_be_spent: Vec::new(),
+                outputs_to_be_received: Vec::new(),
+                timestamp: Utc::now().naive_utc(),
+                coinbase_block_height: None,
+            })
+            .await?;
+
+        self.confirm_encumberance(tx_id).await?;
+
+        Ok(())
     }
 
     /// Go through the pending transaction and if any have existed longer than the specified duration, cancel them
@@ -1002,7 +1038,7 @@ where TBackend: OutputManagerBackend + 'static
                 break;
             }
             fee_with_change = Fee::calculate(fee_per_gram, 1, utxos.len(), output_count + 1);
-            if utxos_total_value >= amount + fee_with_change {
+            if utxos_total_value > amount + fee_with_change {
                 require_change_output = true;
                 break;
             }
@@ -1149,7 +1185,7 @@ where TBackend: OutputManagerBackend + 'static
                 UnblindedOutput::new(
                     output_amount,
                     spending_key.clone(),
-                    Some(output_features),
+                    output_features,
                     script,
                     inputs!(PublicKey::from_secret_key(&script_private_key)),
                     script_private_key,
@@ -1231,7 +1267,7 @@ where TBackend: OutputManagerBackend + 'static
                     let rewound_output = UnblindedOutput::new(
                         rewound_result.committed_value,
                         rewound_result.blinding_factor.clone(),
-                        Some(output.features),
+                        output.features,
                         known_one_sided_payment_scripts[i].script.clone(),
                         known_one_sided_payment_scripts[i].input.clone(),
                         known_one_sided_payment_scripts[i].private_key.clone(),

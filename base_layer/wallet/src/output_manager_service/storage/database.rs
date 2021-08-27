@@ -23,7 +23,7 @@
 use crate::output_manager_service::{
     error::OutputManagerStorageError,
     service::Balance,
-    storage::models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
+    storage::models::{DbUnblindedOutput, KnownOneSidedPaymentScript, OutputStatus},
     TxId,
 };
 use aes_gcm::Aes256Gcm;
@@ -135,6 +135,7 @@ pub enum DbKey {
     KeyManagerState,
     InvalidOutputs,
     KnownOneSidedPaymentScripts,
+    OutputsByTxIdAndStatus(TxId, OutputStatus),
 }
 
 #[derive(Debug)]
@@ -149,6 +150,7 @@ pub enum DbValue {
     KeyManagerState(KeyManagerState),
     KnownOneSidedPaymentScripts(Vec<KnownOneSidedPaymentScript>),
     AnyOutput(Box<DbUnblindedOutput>),
+    AnyOutputs(Vec<DbUnblindedOutput>),
 }
 
 pub enum DbKeyValuePair {
@@ -158,6 +160,7 @@ pub enum DbKeyValuePair {
     PendingTransactionOutputs(TxId, Box<PendingTransactionOutputs>),
     KeyManagerState(KeyManagerState),
     KnownOneSidedPaymentScripts(KnownOneSidedPaymentScript),
+    UpdateOutputStatus(Commitment, OutputStatus),
 }
 
 pub enum WriteOperation {
@@ -700,10 +703,7 @@ where T: OutputManagerBackend + 'static
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || {
             match db_clone.write(WriteOperation::Remove(DbKey::AnyOutputByCommitment(commitment.clone()))) {
-                Ok(None) => log_error(
-                    DbKey::AnyOutputByCommitment(commitment.clone()),
-                    OutputManagerStorageError::ValueNotFound,
-                ),
+                Ok(None) => Ok(()),
                 Ok(Some(DbValue::AnyOutput(_))) => Ok(()),
                 Ok(Some(other)) => unexpected_result(DbKey::AnyOutputByCommitment(commitment.clone()), other),
                 Err(e) => log_error(DbKey::AnyOutputByCommitment(commitment), e),
@@ -711,6 +711,48 @@ where T: OutputManagerBackend + 'static
         })
         .await
         .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(())
+    }
+
+    /// Check if a single cancelled inbound output exists that matches this TxID, if it does then return its status to
+    /// EncumberedToBeReceived
+    pub async fn reinstate_inbound_output(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+        let outputs = tokio::task::spawn_blocking(move || {
+            match db_clone.fetch(&DbKey::OutputsByTxIdAndStatus(tx_id, OutputStatus::CancelledInbound)) {
+                Ok(None) => Err(OutputManagerStorageError::ValueNotFound),
+                Ok(Some(DbValue::AnyOutputs(o))) => Ok(o),
+                Ok(Some(other)) => unexpected_result(
+                    DbKey::OutputsByTxIdAndStatus(tx_id, OutputStatus::CancelledInbound),
+                    other,
+                ),
+                Err(e) => log_error(DbKey::OutputsByTxIdAndStatus(tx_id, OutputStatus::CancelledInbound), e),
+            }
+        })
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
+        .and_then(|inner_result| inner_result)?;
+
+        if outputs.len() != 1 {
+            return Err(OutputManagerStorageError::UnexpectedResult(
+                "There should be only 1 output for a cancelled inbound transaction but more were found".to_string(),
+            ));
+        }
+        let db_clone2 = self.db.clone();
+
+        tokio::task::spawn_blocking(move || {
+            db_clone2.write(WriteOperation::Insert(DbKeyValuePair::UpdateOutputStatus(
+                outputs
+                    .first()
+                    .expect("Must be only one element in outputs")
+                    .commitment
+                    .clone(),
+                OutputStatus::EncumberedToBeReceived,
+            )))
+        })
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+
         Ok(())
     }
 }
@@ -737,6 +779,7 @@ impl Display for DbKey {
             DbKey::TimeLockedUnspentOutputs(_t) => f.write_str(&"Timelocked Outputs"),
             DbKey::KnownOneSidedPaymentScripts => f.write_str(&"Known claiming scripts"),
             DbKey::AnyOutputByCommitment(_) => f.write_str(&"AnyOutputByCommitment"),
+            DbKey::OutputsByTxIdAndStatus(_, _) => f.write_str(&"OutputsByTxIdAndStatus"),
         }
     }
 }
@@ -754,6 +797,7 @@ impl Display for DbValue {
             DbValue::InvalidOutputs(_) => f.write_str("Invalid Outputs"),
             DbValue::KnownOneSidedPaymentScripts(_) => f.write_str(&"Known claiming scripts"),
             DbValue::AnyOutput(_) => f.write_str(&"Any Output"),
+            DbValue::AnyOutputs(_) => f.write_str(&"Any Outputs"),
         }
     }
 }

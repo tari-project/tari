@@ -58,6 +58,7 @@ impl BlockSync {
         shared: &mut BaseNodeStateMachine<B>,
     ) -> StateEvent {
         let mut synchronizer = BlockSynchronizer::new(
+            shared.config.block_sync_config.clone(),
             shared.db.clone(),
             shared.connectivity.clone(),
             self.sync_peer.take(),
@@ -98,7 +99,7 @@ impl BlockSync {
                 StateEvent::BlocksSynchronized
             },
             Err(err) => {
-                debug!(target: LOG_TARGET, "Block sync failed: {}", err);
+                warn!(target: LOG_TARGET, "Block sync failed: {}", err);
                 StateEvent::BlockSyncFailed
             },
         }

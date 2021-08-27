@@ -40,6 +40,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
+use tari_common_types::chain_metadata::ChainMetadata;
 
 #[derive(Clone)]
 pub struct MockValidator {
@@ -79,7 +80,7 @@ impl<B: BlockchainBackend> CandidateBlockBodyValidation<B> for MockValidator {
 }
 
 impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for MockValidator {
-    fn validate_body_for_valid_orphan(&self, _item: &ChainBlock, _db: &B) -> Result<(), ValidationError> {
+    fn validate_body_for_valid_orphan(&self, _: &ChainBlock, _: &B, _: &ChainMetadata) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
         } else {

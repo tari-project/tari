@@ -226,7 +226,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
         }
 
         if message.dht_header.message_type.is_saf_message() {
-            log_not_eligible("it is a SAF message");
+            log_not_eligible("it is a SAF protocol message");
             return Ok(None);
         }
 

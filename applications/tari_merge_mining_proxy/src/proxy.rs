@@ -21,8 +21,9 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    block_template_data::{BlockTemplateDataBuilder, BlockTemplateRepository},
-    common::{json_rpc, merge_mining, monero_rpc::CoreRpcErrorCode, proxy, proxy::convert_json_to_hyper_json_response},
+    block_template_data::BlockTemplateRepository,
+    block_template_protocol::{BlockTemplateProtocol, MoneroMiningData},
+    common::{json_rpc, monero_rpc::CoreRpcErrorCode, proxy, proxy::convert_json_to_hyper_json_response},
     error::MmProxyError,
 };
 use bytes::Bytes;
@@ -33,8 +34,6 @@ use reqwest::{ResponseBuilderExt, Url};
 use serde_json as json;
 use std::{
     cmp,
-    cmp::min,
-    convert::TryFrom,
     future::Future,
     net::SocketAddr,
     pin::Pin,
@@ -45,12 +44,9 @@ use std::{
     task::{Context, Poll},
     time::Instant,
 };
-use tari_app_grpc::{tari_rpc as grpc, tari_rpc::GetCoinbaseRequest};
+use tari_app_grpc::tari_rpc as grpc;
 use tari_common::{configuration::Network, GlobalConfig};
-use tari_core::{
-    blocks::{Block, NewBlockTemplate},
-    proof_of_work::monero_rx,
-};
+use tari_core::proof_of_work::{monero_rx, monero_rx::FixedByteArray};
 use tari_utilities::hex::Hex;
 use tracing::{debug, error, info, instrument, trace, warn};
 
@@ -127,14 +123,32 @@ impl Service<Request<Body>> for MergeMiningProxyService {
         Poll::Ready(Ok(()))
     }
 
-    fn call(&mut self, req: Request<Body>) -> Self::Future {
+    fn call(&mut self, mut request: Request<Body>) -> Self::Future {
         let inner = self.inner.clone();
         let future = async move {
-            match inner.handle(req).await {
+            let bytes = match proxy::read_body_until_end(request.body_mut()).await {
+                Ok(b) => b,
+                Err(err) => {
+                    eprintln!("Method: Unknown, Failed to read request: {}", err);
+                    let resp = proxy::json_response(
+                        StatusCode::BAD_REQUEST,
+                        &json_rpc::standard_error_response(
+                            None,
+                            StandardError::InvalidRequest,
+                            Some(json!({"details": err.to_string()})),
+                        ),
+                    )
+                    .expect("unexpected failure");
+                    return Ok(resp);
+                },
+            };
+            let request = request.map(|_| bytes.freeze());
+            let method_name = parse_method_name(&request);
+            match inner.handle(&method_name, request).await {
                 Ok(resp) => Ok(resp),
                 Err(err) => {
                     error!(target: LOG_TARGET, "Error handling request: {}", err);
-
+                    eprintln!("Method: {}, Failed to handle request: {}", method_name, err);
                     Ok(proxy::json_response(
                         StatusCode::INTERNAL_SERVER_ERROR,
                         &json_rpc::standard_error_response(
@@ -360,53 +374,36 @@ impl InnerService {
         }
 
         let mut grpc_client = self.base_node_client.clone();
+        let mut grpc_wallet_client = self.wallet_client.clone();
 
         // Add merge mining tag on blocktemplate request
         debug!(target: LOG_TARGET, "Requested new block template from Tari base node");
-
-        let grpc::NewBlockTemplateResponse {
-            miner_data,
-            new_block_template,
-            initial_sync_achieved,
-        } = grpc_client
-            .get_new_block_template(grpc::NewBlockTemplateRequest {
-                algo: Some(grpc::PowAlgo {
-                    pow_algo: grpc::pow_algo::PowAlgos::Monero.into(),
-                }),
-                max_weight: 0,
-            })
-            .await
-            .map_err(|status| MmProxyError::GrpcRequestError {
-                status,
-                details: "failed to get new block template".to_string(),
-            })?
-            .into_inner();
-
-        let miner_data = miner_data.ok_or(MmProxyError::GrpcResponseMissingField("miner_data"))?;
-        let new_block_template =
-            new_block_template.ok_or(MmProxyError::GrpcResponseMissingField("new_block_template"))?;
-
-        let block_reward = miner_data.reward;
-        let total_fees = miner_data.total_fees;
-        let tari_difficulty = miner_data.target_difficulty;
-
         if !self.initial_sync_achieved.load(Ordering::Relaxed) {
+            let grpc::TipInfoResponse {
+                initial_sync_achieved,
+                metadata,
+                ..
+            } = grpc_client
+                .get_tip_info(tari_app_grpc::tari_rpc::Empty {})
+                .await?
+                .into_inner();
+
             if !initial_sync_achieved {
                 let msg = format!(
                     "Initial base node sync not achieved, current height at #{} ... (waiting = {})",
-                    new_block_template.header.as_ref().map(|h| h.height).unwrap_or_default(),
+                    metadata.as_ref().map(|h| h.height_of_longest_chain).unwrap_or_default(),
                     self.config.wait_for_initial_sync_at_startup,
                 );
                 debug!(target: LOG_TARGET, "{}", msg);
                 println!("{}", msg);
                 if self.config.wait_for_initial_sync_at_startup {
-                    return Err(MmProxyError::MissingDataError(" ".to_string() + &msg));
+                    return Err(MmProxyError::MissingDataError(msg));
                 }
             } else {
                 self.initial_sync_achieved.store(true, Ordering::Relaxed);
                 let msg = format!(
                     "Initial base node sync achieved. Ready to mine at height #{}",
-                    new_block_template.header.as_ref().map(|h| h.height).unwrap_or_default()
+                    metadata.as_ref().map(|h| h.height_of_longest_chain).unwrap_or_default(),
                 );
                 debug!(target: LOG_TARGET, "{}", msg);
                 println!("{}", msg);
@@ -414,103 +411,45 @@ impl InnerService {
             }
         }
 
-        info!(
-            target: LOG_TARGET,
-            "Received new block template from Tari base node for height #{}",
-            new_block_template.header.as_ref().map(|h| h.height).unwrap_or_default(),
-        );
+        let new_block_protocol = BlockTemplateProtocol::new(&mut grpc_client, &mut grpc_wallet_client);
 
-        let template_block = NewBlockTemplate::try_from(new_block_template)
-            .map_err(|e| MmProxyError::MissingDataError(format!("GRPC Conversion Error: {}", e)))?;
-        let tari_height = template_block.header.height;
-
-        debug!(target: LOG_TARGET, "Trying to connect to wallet");
-        let mut grpc_wallet_client = self.wallet_client.clone();
-        let coinbase_response = grpc_wallet_client
-            .get_coinbase(GetCoinbaseRequest {
-                reward: block_reward,
-                fee: total_fees,
-                height: tari_height,
-            })
-            .await
-            .map_err(|status| MmProxyError::GrpcRequestError {
-                status,
-                details: "failed to get new block template".to_string(),
-            })?;
-        let coinbase_transaction = coinbase_response.into_inner().transaction;
-
-        let coinbased_block = merge_mining::add_coinbase(coinbase_transaction, template_block)?;
-        debug!(target: LOG_TARGET, "Added coinbase to new block template");
-        let block = grpc_client
-            .get_new_block(coinbased_block)
-            .await
-            .map_err(|status| MmProxyError::GrpcRequestError {
-                status,
-                details: "failed to get new block".to_string(),
-            })?
-            .into_inner();
-
-        let mining_hash = block.merge_mining_hash;
-
-        let tari_block = Block::try_from(
-            block
-                .block
-                .clone()
-                .ok_or_else(|| MmProxyError::MissingDataError("Tari block".to_string()))?,
-        )
-        .map_err(MmProxyError::MissingDataError)?;
-        debug!(target: LOG_TARGET, "New block received from Tari: {}", (tari_block));
-
-        let block_data = BlockTemplateDataBuilder::default();
-        let block_data = block_data
-            .tari_block(block.block.ok_or(MmProxyError::GrpcResponseMissingField("block"))?)
-            .tari_miner_data(miner_data);
-
-        // Deserialize the block template blob
-        let block_template_blob = &monerod_resp["result"]["blocktemplate_blob"]
+        let seed_hash = FixedByteArray::from_hex(&monerod_resp["result"]["seed_hash"].to_string().replace("\"", ""))
+            .map_err(|err| MmProxyError::InvalidMonerodResponse(format!("seed hash hex is invalid: {}", err)))?;
+        let blocktemplate_blob = monerod_resp["result"]["blocktemplate_blob"]
             .to_string()
             .replace("\"", "");
-        debug!(target: LOG_TARGET, "Deserializing Blocktemplate Blob into Monero Block",);
-        let mut monero_block = monero_rx::deserialize_monero_block_from_hex(block_template_blob)?;
+        let difficulty = monerod_resp["result"]["difficulty"].as_u64().unwrap_or_default();
+        let monero_mining_data = MoneroMiningData {
+            seed_hash,
+            blocktemplate_blob,
+            difficulty,
+        };
 
-        debug!(target: LOG_TARGET, "Appending Merged Mining Tag",);
-        // Add the Tari merge mining tag to the retrieved block template
-        monero_rx::append_merge_mining_tag(&mut monero_block, &mining_hash)?;
+        let final_block_template_data = new_block_protocol.get_next_block_template(monero_mining_data).await?;
 
-        debug!(target: LOG_TARGET, "Creating blockhashing blob from blocktemplate blob",);
-        // Must be done after the tag is inserted since it will affect the hash of the miner tx
-        let blockhashing_blob = monero_rx::create_blockhashing_blob_from_block(&monero_block)?;
+        monerod_resp["result"]["blocktemplate_blob"] = final_block_template_data.blocktemplate_blob.into();
+        monerod_resp["result"]["blockhashing_blob"] = final_block_template_data.blockhashing_blob.into();
+        monerod_resp["result"]["difficulty"] = final_block_template_data.target_difficulty.as_u64().into();
 
-        debug!(target: LOG_TARGET, "blockhashing_blob:{}", blockhashing_blob);
-        monerod_resp["result"]["blockhashing_blob"] = blockhashing_blob.into();
-
-        let blocktemplate_blob = monero_rx::serialize_monero_block_to_hex(&monero_block)?;
-        debug!(target: LOG_TARGET, "blocktemplate_blob:{}", block_template_blob);
-        monerod_resp["result"]["blocktemplate_blob"] = blocktemplate_blob.into();
-
-        let seed = monerod_resp["result"]["seed_hash"].to_string().replace("\"", "");
-
-        let block_data = block_data.monero_seed(seed);
-
-        let monero_difficulty = monerod_resp["result"]["difficulty"].as_u64().unwrap_or_default();
-
-        let mining_difficulty = min(monero_difficulty, tari_difficulty);
-
-        let block_data = block_data
-            .monero_difficulty(monero_difficulty)
-            .tari_difficulty(tari_difficulty);
-
-        info!(
-            target: LOG_TARGET,
-            "Difficulties: Tari ({}), Monero({}), Selected({})", tari_difficulty, monero_difficulty, mining_difficulty
+        let tari_height = final_block_template_data
+            .template
+            .tari_block
+            .header
+            .as_ref()
+            .map(|h| h.height)
+            .unwrap_or(0);
+        let block_reward = final_block_template_data.template.tari_miner_data.reward;
+        let total_fees = final_block_template_data.template.tari_miner_data.total_fees;
+        let mining_hash = final_block_template_data.merge_mining_hash;
+        let monerod_resp = add_aux_data(
+            monerod_resp,
+            json!({ "base_difficulty": final_block_template_data.template.monero_difficulty }),
         );
-        monerod_resp["result"]["difficulty"] = mining_difficulty.into();
-        let monerod_resp = add_aux_data(monerod_resp, json!({ "base_difficulty": monero_difficulty }));
         let monerod_resp = append_aux_chain_data(
             monerod_resp,
             json!({
                 "id": TARI_CHAIN_ID,
-                "difficulty": tari_difficulty,
+                "difficulty": final_block_template_data.template.tari_difficulty,
                 "height": tari_height,
                 // The merge mining hash, before the final block hash can be calculated
                 "mining_hash": mining_hash.to_hex(),
@@ -518,7 +457,9 @@ impl InnerService {
             }),
         );
 
-        self.block_templates.save(mining_hash, block_data.build()?).await;
+        self.block_templates
+            .save(mining_hash, final_block_template_data.template)
+            .await;
 
         debug!(target: LOG_TARGET, "Returning template result: {}", monerod_resp);
         Ok(proxy::into_response(parts, &monerod_resp))
@@ -780,25 +721,8 @@ impl InnerService {
         }
     }
 
-    async fn handle(self, mut request: Request<Body>) -> Result<Response<Body>, MmProxyError> {
+    async fn handle(self, method_name: &str, request: Request<Bytes>) -> Result<Response<Body>, MmProxyError> {
         let start = Instant::now();
-        let bytes = proxy::read_body_until_end(request.body_mut()).await?;
-        let request = request.map(|_| bytes.freeze());
-        let method_name;
-        match *request.method() {
-            Method::GET => {
-                let mut chars = request.uri().path().chars();
-                chars.next();
-                method_name = chars.as_str().to_string();
-            },
-            Method::POST => {
-                let json = json::from_slice::<json::Value>(request.body()).unwrap_or_default();
-                method_name = str::replace(json["method"].as_str().unwrap_or_default(), "\"", "");
-            },
-            _ => {
-                method_name = "unsupported".to_string();
-            },
-        }
 
         debug!(
             target: LOG_TARGET,
@@ -934,4 +858,19 @@ fn try_into_json_block_header(header: grpc::BlockHeaderResponse) -> Result<json:
         "reward": reward,
         "timestamp": header.timestamp.map(|ts| ts.seconds.into()).unwrap_or_else(|| json!(null)),
     }))
+}
+
+fn parse_method_name(request: &Request<Bytes>) -> String {
+    match *request.method() {
+        Method::GET => {
+            let mut chars = request.uri().path().chars();
+            chars.next();
+            chars.as_str().to_string()
+        },
+        Method::POST => {
+            let json = json::from_slice::<json::Value>(request.body()).unwrap_or_default();
+            str::replace(json["method"].as_str().unwrap_or_default(), "\"", "")
+        },
+        _ => "unsupported".to_string(),
+    }
 }

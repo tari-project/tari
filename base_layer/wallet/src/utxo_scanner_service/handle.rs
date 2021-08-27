@@ -49,6 +49,7 @@ pub enum UtxoScannerEvent {
     ScanningRoundFailed {
         num_retries: usize,
         retry_limit: usize,
+        error: String,
     },
     /// Progress of the recovery process (current_block, current_chain_height)
     Progress {
@@ -62,6 +63,8 @@ pub enum UtxoScannerEvent {
         value_received: MicroTari,
         time_taken: Duration,
     },
+    /// Scanning process has failed and scanning process has exited
+    ScanningFailed,
 }
 
 #[derive(Clone)]

@@ -83,11 +83,14 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfi
     let shutdown = Shutdown::new();
     let shutdown_signal = shutdown.to_signal();
 
-    let peer_public_keys = base_node_config
-        .get_all_peers()
-        .iter()
-        .map(|peer| peer.public_key.clone())
-        .collect();
+    let peers = base_node_config.get_all_peers();
+
+    let peer_manager = wallet.comms.peer_manager();
+    let mut peer_public_keys = Vec::with_capacity(peers.len());
+    for peer in peers {
+        peer_public_keys.push(peer.public_key.clone());
+        peer_manager.add_peer(peer).await?;
+    }
 
     let mut recovery_task = UtxoScannerService::<WalletSqliteDatabase>::builder()
         .with_peers(peer_public_keys)
@@ -131,8 +134,12 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfi
             Ok(UtxoScannerEvent::ScanningRoundFailed {
                 num_retries,
                 retry_limit,
+                error,
             }) => {
-                let s = format!("Failed to sync. Attempt {} of {}", num_retries, retry_limit);
+                let s = format!(
+                    "Attempt {}/{}: Failed to complete wallet recovery {}.",
+                    num_retries, retry_limit, error
+                );
                 println!("{}", s);
                 warn!(target: LOG_TARGET, "{}", s);
             },
@@ -167,6 +174,9 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfi
                 // Can occur if we read events too slowly (lagging/slow subscriber)
                 debug!(target: LOG_TARGET, "Error receiving Wallet recovery events: {}", e);
                 continue;
+            },
+            Ok(UtxoScannerEvent::ScanningFailed) => {
+                error!(target: LOG_TARGET, "Wallet Recovery process failed and is exiting");
             },
         }
     }

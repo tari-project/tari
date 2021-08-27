@@ -268,7 +268,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                     is_discovery_enabled,
                 );
 
-                let is_broadcast = broadcast_strategy.is_multi_message();
+                let is_broadcast = broadcast_strategy.is_multi_message(&peers);
 
                 // Discovery is required if:
                 //  - Discovery is enabled for this request
@@ -417,7 +417,8 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         let (ephemeral_public_key, origin_mac, body) = self.process_encryption(&encryption, force_origin, body)?;
 
         if is_broadcast {
-            self.add_to_dedup_cache(&body).await?;
+            self.add_to_dedup_cache(&body, self.node_identity.public_key().clone())
+                .await?;
         }
 
         // Construct a DhtOutboundMessage for each recipient
@@ -447,7 +448,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         Ok(messages.unzip())
     }
 
-    async fn add_to_dedup_cache(&mut self, body: &[u8]) -> Result<bool, DhtOutboundError> {
+    async fn add_to_dedup_cache(&mut self, body: &[u8], public_key: CommsPublicKey) -> Result<bool, DhtOutboundError> {
         let hash = Challenge::new().chain(&body).finalize().to_vec();
         trace!(
             target: LOG_TARGET,
@@ -456,7 +457,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         );
 
         self.dht_requester
-            .insert_message_hash(hash)
+            .insert_message_hash(hash, public_key)
             .await
             .map_err(|_| DhtOutboundError::FailedToInsertMessageHash)
     }

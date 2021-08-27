@@ -22,11 +22,22 @@
 
 use crate::{
     blocks::BlockHeader,
-    consensus::ConsensusManagerBuilder,
+    chain_storage::{BlockHeaderAccumulatedData, ChainBlock, ChainHeader, DbTransaction},
+    consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder},
+    crypto::tari_utilities::Hashable,
+    proof_of_work::AchievedTargetDifficulty,
     test_helpers::{blockchain::create_store_with_consensus, create_chain_header},
-    validation::header_iter::HeaderIter,
+    transactions::{
+        helpers::{create_random_signature_from_s_key, create_utxo},
+        tari_amount::{uT, MicroTari},
+        transaction::{KernelBuilder, KernelFeatures, OutputFeatures, TransactionKernel},
+        types::{Commitment, CryptoFactories},
+    },
+    validation::{header_iter::HeaderIter, ChainBalanceValidator, FinalHorizonStateValidation},
 };
+use std::sync::Arc;
 use tari_common::configuration::Network;
+use tari_crypto::{commitment::HomomorphicCommitment, script};
 
 #[test]
 fn header_iter_empty_and_invalid_height() {
@@ -77,182 +88,146 @@ fn header_iter_fetch_in_chunks() {
 }
 
 #[test]
-#[ignore]
 // TODO: Fix this test with the new DB structure
 fn chain_balance_validation() {
-    // let factories = CryptoFactories::default();
-    // let consensus_manager = ConsensusManagerBuilder::new(Network::Stibbons).build();
-    // let mut genesis = consensus_manager.get_genesis_block();
-    // let faucet_value = 5000 * uT;
-    // let (faucet_utxo, faucet_key) = create_utxo(faucet_value, &factories, None);
-    // let (pk, sig) = create_random_signature_from_s_key(faucet_key.clone(), 0.into(), 0);
-    // let excess = Commitment::from_public_key(&pk);
-    // let kernel = TransactionKernel {
-    //     features: KernelFeatures::empty(),
-    //     fee: 0 * uT,
-    //     lock_height: 0,
-    //     excess,
-    //     excess_sig: sig,
-    // };
+    let factories = CryptoFactories::default();
+    let consensus_manager = ConsensusManagerBuilder::new(Network::Weatherwax).build();
+    let genesis = consensus_manager.get_genesis_block();
+    let faucet_value = 5000 * uT;
+    let (faucet_utxo, faucet_key, _) = create_utxo(faucet_value, &factories, OutputFeatures::default(), &script!(Nop));
+    let (pk, sig) = create_random_signature_from_s_key(faucet_key, 0.into(), 0);
+    let excess = Commitment::from_public_key(&pk);
+    let kernel = TransactionKernel {
+        features: KernelFeatures::empty(),
+        fee: MicroTari::from(0),
+        lock_height: 0,
+        excess,
+        excess_sig: sig,
+    };
     // let _faucet_hash = faucet_utxo.hash();
-    // genesis.body.add_output(faucet_utxo);
-    // genesis.body.add_kernels(&mut vec![kernel]);
-    // let total_faucet = faucet_value + consensus_manager.consensus_constants(0).faucet_value();
-    // let constants = ConsensusConstantsBuilder::new(Network::LocalNet)
-    //     .with_consensus_constants(consensus_manager.consensus_constants(0).clone())
-    //     .with_faucet_value(total_faucet)
-    //     .build();
-    // // Create a LocalNet consensus manager that uses rincewind consensus constants and has a custom rincewind genesis
-    // // block that contains an extra faucet utxo
-    // let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet)
-    //     .with_block(genesis.clone())
-    //     .with_consensus_constants(constants)
-    //     .build();
-    //
-    // let db = create_store_with_consensus(&consensus_manager);
-    //
-    // let validator = ChainBalanceValidator::new(db.clone(), consensus_manager.clone(), factories.clone());
-    // // Validate the genesis state
-    // validator.validate(&genesis.header).unwrap();
-    //
-    // //---------------------------------- Add a new coinbase and header --------------------------------------------//
-    // let mut txn = DbTransaction::new();
-    // let coinbase_value = consensus_manager.emission_schedule().block_reward(1);
-    // let (coinbase, coinbase_key) = create_utxo(coinbase_value, &factories, Some(OutputFeatures::create_coinbase(1)));
+    let mut gen_block = genesis.block().clone();
+    gen_block.body.add_output(faucet_utxo);
+    gen_block.body.add_kernels(&mut vec![kernel]);
+    let mut utxo_sum = HomomorphicCommitment::default();
+    let mut kernel_sum = HomomorphicCommitment::default();
+    for output in gen_block.body.outputs() {
+        utxo_sum = &output.commitment + &utxo_sum;
+    }
+    for kernel in gen_block.body.kernels() {
+        kernel_sum = &kernel.excess + &kernel_sum;
+    }
+    let genesis = ChainBlock::try_construct(Arc::new(gen_block), genesis.accumulated_data().clone()).unwrap();
+    let total_faucet = faucet_value + consensus_manager.consensus_constants(0).faucet_value();
+    let constants = ConsensusConstantsBuilder::new(Network::LocalNet)
+        .with_consensus_constants(consensus_manager.consensus_constants(0).clone())
+        .with_faucet_value(total_faucet)
+        .build();
+    // Create a LocalNet consensus manager that uses rincewind consensus constants and has a custom rincewind genesis
+    // block that contains an extra faucet utxo
+    let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet)
+        .with_block(genesis.clone())
+        .with_consensus_constants(constants)
+        .build();
+
+    let db = create_store_with_consensus(consensus_manager.clone());
+
+    let validator = ChainBalanceValidator::new(consensus_manager.clone(), factories.clone());
+    // Validate the genesis state
+    validator
+        .validate(0, &utxo_sum, &kernel_sum, &*db.db_read_access().unwrap())
+        .unwrap();
+
+    //---------------------------------- Add a new coinbase and header --------------------------------------------//
+    let mut txn = DbTransaction::new();
+    let coinbase_value = consensus_manager.get_block_reward_at(1);
+    let (coinbase, coinbase_key, _) = create_utxo(
+        coinbase_value,
+        &factories,
+        OutputFeatures::create_coinbase(1),
+        &script!(Nop),
+    );
     // let _coinbase_hash = coinbase.hash();
-    // let (pk, sig) = create_random_signature_from_s_key(coinbase_key.clone(), 0.into(), 0);
-    // let excess = Commitment::from_public_key(&pk);
-    // let kernel = KernelBuilder::new()
-    //     .with_signature(&sig)
-    //     .with_excess(&excess)
-    //     .with_features(KernelFeatures::COINBASE_KERNEL)
-    //     .build()
-    //     .unwrap();
-    //
-    // let header1 = BlockHeader::from_previous(&genesis.header).unwrap();
-    // txn.insert_header(header1.clone());
-    //
-    // let mut mmr_position = 0;
-    // let mut mmr_leaf_index = 0;
-    //
-    // txn.insert_kernel(kernel, header1.hash(), mmr_position);
-    // txn.insert_utxo(coinbase.clone(), header1.hash(), mmr_leaf_index);
-    //
-    // db.commit(txn).unwrap();
-    //
-    // validator.validate(&header1).unwrap();
-    //
-    // //---------------------------------- Spend coinbase from h=1 ----------------------------------//
-    // let mut txn = DbTransaction::new();
-    //
-    // // txn.spend_utxo(coinbase_hash);
-    //
-    // let output = UnblindedOutput::new(coinbase_value, coinbase_key, None);
-    // let fee = Fee::calculate(25 * uT, 1, 1, 2);
-    // let schema = txn_schema!(from: vec![output], to: vec![coinbase_value - fee], fee: 25 * uT);
-    // let (tx, _, params) = spend_utxos(schema);
-    //
-    // let v = consensus_manager.emission_schedule().block_reward(2) + fee;
-    // let (coinbase, key) = create_utxo(v, &factories, Some(OutputFeatures::create_coinbase(1)));
-    // let (pk, sig) = create_random_signature_from_s_key(key, 0.into(), 0);
-    // let excess = Commitment::from_public_key(&pk);
-    // let kernel = KernelBuilder::new()
-    //     .with_signature(&sig)
-    //     .with_excess(&excess)
-    //     .with_features(KernelFeatures::COINBASE_KERNEL)
-    //     .build()
-    //     .unwrap();
-    //
-    // let mut header2 = BlockHeader::from_previous(&header1).unwrap();
-    // header2.total_kernel_offset = params.offset;
-    // txn.insert_header(header2.clone());
-    //
-    // let header2_hash = header2.hash();
-    // mmr_leaf_index += 1;
-    // txn.insert_utxo(coinbase.clone(), header2_hash.clone(), mmr_leaf_index);
-    // for utxo in tx.body.outputs() {
-    //     mmr_leaf_index += 1;
-    //     txn.insert_utxo(utxo.clone(), header2_hash.clone(), mmr_leaf_index);
-    // }
-    // mmr_position += 1;
-    // txn.insert_kernel(kernel, header2_hash.clone(), mmr_position);
-    // for kernel in tx.body.kernels() {
-    //     mmr_position += 1;
-    //     txn.insert_kernel(kernel.clone(), header2_hash.clone(), mmr_position);
-    // }
-    //
-    // db.commit(txn).unwrap();
-    //
-    // validator.validate(&header2).unwrap();
-    //
-    // //---------------------------------- Spend faucet UTXO --------------------------------------------//
-    // let mut txn = DbTransaction::new();
-    //
-    // // txn.spend_utxo(faucet_hash);
-    //
-    // let output = UnblindedOutput::new(faucet_value, faucet_key, None);
-    // let fee = Fee::calculate(25 * uT, 1, 1, 2);
-    // let schema = txn_schema!(from: vec![output], to: vec![faucet_value - fee], fee: 25 * uT);
-    // let (tx, _, params) = spend_utxos(schema);
-    //
-    // let v = consensus_manager.emission_schedule().block_reward(3) + fee;
-    // let (coinbase, key) = create_utxo(v, &factories, Some(OutputFeatures::create_coinbase(1)));
-    // let (pk, sig) = create_random_signature_from_s_key(key, 0.into(), 0);
-    // let excess = Commitment::from_public_key(&pk);
-    // let kernel = KernelBuilder::new()
-    //     .with_signature(&sig)
-    //     .with_excess(&excess)
-    //     .with_features(KernelFeatures::COINBASE_KERNEL)
-    //     .build()
-    //     .unwrap();
-    //
-    // let mut header3 = BlockHeader::from_previous(&header2).unwrap();
-    // header3.total_kernel_offset = params.offset;
-    // txn.insert_header(header3.clone());
-    //
-    // let header3_hash = header3.hash();
-    // mmr_leaf_index += 1;
-    // txn.insert_utxo(coinbase.clone(), header3_hash.clone(), mmr_leaf_index);
-    // for utxo in tx.body.outputs() {
-    //     mmr_leaf_index += 1;
-    //     txn.insert_utxo(utxo.clone(), header3_hash.clone(), mmr_leaf_index);
-    // }
-    //
-    // mmr_position += 1;
-    // txn.insert_kernel(kernel, header3_hash.clone(), mmr_position);
-    // for kernel in tx.body.kernels() {
-    //     mmr_position += 1;
-    //     txn.insert_kernel(kernel.clone(), header3_hash.clone(), mmr_position);
-    // }
-    // db.commit(txn).unwrap();
-    //
-    // validator.validate(&header3).unwrap();
-    //
-    // //---------------------------------- Try to inflate --------------------------------------------//
-    // let mut txn = DbTransaction::new();
-    //
-    // let v = consensus_manager.emission_schedule().block_reward(4) + 1 * uT;
-    // let (coinbase, key) = create_utxo(v, &factories, Some(OutputFeatures::create_coinbase(1)));
-    // let (pk, sig) = create_random_signature_from_s_key(key, 0.into(), 0);
-    // let excess = Commitment::from_public_key(&pk);
-    // let kernel = KernelBuilder::new()
-    //     .with_signature(&sig)
-    //     .with_excess(&excess)
-    //     .with_features(KernelFeatures::COINBASE_KERNEL)
-    //     .build()
-    //     .unwrap();
-    //
-    // let header4 = BlockHeader::from_previous(&header3).unwrap();
-    // txn.insert_header(header4.clone());
-    // let header4_hash = header4.hash();
-    //
-    // mmr_leaf_index += 1;
-    // txn.insert_utxo(coinbase.clone(), header4_hash.clone(), mmr_leaf_index);
-    // mmr_position += 1;
-    // txn.insert_kernel(kernel, header4_hash.clone(), mmr_position);
-    //
-    // db.commit(txn).unwrap();
-    //
-    // validator.validate(&header4).unwrap_err();
-    unimplemented!();
+    let (pk, sig) = create_random_signature_from_s_key(coinbase_key, 0.into(), 0);
+    let excess = Commitment::from_public_key(&pk);
+    let kernel = KernelBuilder::new()
+        .with_signature(&sig)
+        .with_excess(&excess)
+        .with_features(KernelFeatures::COINBASE_KERNEL)
+        .build()
+        .unwrap();
+
+    let mut header1 = BlockHeader::from_previous(genesis.header());
+    header1.kernel_mmr_size += 1;
+    header1.output_mmr_size += 1;
+    let achieved_difficulty = AchievedTargetDifficulty::try_construct(
+        genesis.header().pow_algo(),
+        genesis.accumulated_data().target_difficulty,
+        genesis.accumulated_data().achieved_difficulty,
+    )
+    .unwrap();
+    let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
+        .with_hash(header1.hash())
+        .with_achieved_target_difficulty(achieved_difficulty)
+        .with_total_kernel_offset(header1.total_kernel_offset.clone())
+        .build()
+        .unwrap();
+    let header1 = ChainHeader::try_construct(header1, accumulated_data).unwrap();
+    txn.insert_chain_header(header1.clone());
+
+    let mut mmr_position = 4;
+    let mut mmr_leaf_index = 4;
+
+    txn.insert_kernel(kernel.clone(), header1.hash().clone(), mmr_position);
+    txn.insert_utxo(coinbase.clone(), header1.hash().clone(), 1, mmr_leaf_index);
+
+    db.commit(txn).unwrap();
+    utxo_sum = &coinbase.commitment + &utxo_sum;
+    kernel_sum = &kernel.excess + &kernel_sum;
+    validator
+        .validate(1, &utxo_sum, &kernel_sum, &*db.db_read_access().unwrap())
+        .unwrap();
+
+    //---------------------------------- Try to inflate --------------------------------------------//
+    let mut txn = DbTransaction::new();
+
+    let v = consensus_manager.get_block_reward_at(2) + uT;
+    let (coinbase, key, _) = create_utxo(v, &factories, OutputFeatures::create_coinbase(1), &script!(Nop));
+    let (pk, sig) = create_random_signature_from_s_key(key, 0.into(), 0);
+    let excess = Commitment::from_public_key(&pk);
+    let kernel = KernelBuilder::new()
+        .with_signature(&sig)
+        .with_excess(&excess)
+        .with_features(KernelFeatures::COINBASE_KERNEL)
+        .build()
+        .unwrap();
+
+    let mut header2 = BlockHeader::from_previous(header1.header());
+    header2.kernel_mmr_size += 1;
+    header2.output_mmr_size += 1;
+    let achieved_difficulty = AchievedTargetDifficulty::try_construct(
+        genesis.header().pow_algo(),
+        genesis.accumulated_data().target_difficulty,
+        genesis.accumulated_data().achieved_difficulty,
+    )
+    .unwrap();
+    let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
+        .with_hash(header2.hash())
+        .with_achieved_target_difficulty(achieved_difficulty)
+        .with_total_kernel_offset(header2.total_kernel_offset.clone())
+        .build()
+        .unwrap();
+    let header2 = ChainHeader::try_construct(header2, accumulated_data).unwrap();
+    txn.insert_chain_header(header2.clone());
+    utxo_sum = &coinbase.commitment + &utxo_sum;
+    kernel_sum = &kernel.excess + &kernel_sum;
+    mmr_leaf_index += 1;
+    txn.insert_utxo(coinbase, header2.hash().clone(), 2, mmr_leaf_index);
+    mmr_position += 1;
+    txn.insert_kernel(kernel, header2.hash().clone(), mmr_position);
+
+    db.commit(txn).unwrap();
+
+    validator
+        .validate(2, &utxo_sum, &kernel_sum, &*db.db_read_access().unwrap())
+        .unwrap_err();
 }

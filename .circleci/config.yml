@@ -106,24 +106,37 @@ commands:
           name: Check eslint
           command: cd integration_tests && npm run lint
       - run:
-          name: Pre-build base node
+          name: Build base node
           command: cargo build --release --bin tari_base_node
       - run:
-          name: Pre-build wallet
+          name: Build wallet
           command: cargo build --release --bin tari_console_wallet
       - run:
-          name: Pre-build mmproxy
+          name: Build wallet FFI
+          command: cargo build --release --package tari_wallet_ffi
+      - run:
+          name: Build mmproxy
           command: cargo build --release --bin tari_merge_mining_proxy
       - run:
+          name: Build mining_node
+          command: cargo build --release --bin tari_mining_node
+      - run:
           name: Run cucumber scenarios
-          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running and not @broken and not @flaky" --format json:cucumber_output/tests.cucumber
+          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running and not @broken and not @flaky and not @wallet-ffi" --format json:cucumber_output/tests.cucumber
       - run:
           name: Generate report
           command: cd integration_tests && node ./generate_report.js
           when: always
       - run:
-          name: Run flaky/broken cucumber scenarios (Always pass)
-          command: cd integration_tests && node_modules/.bin/cucumber-js --tags "not @long-running and (@broken or @flaky)" --format json:cucumber_output/broken-tests.cucumber || true
+          name: Run ffi cucumber scenarios
+          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running and not @broken and not @flaky and @wallet-ffi" --format json:cucumber_output/tests-ffi.cucumber
+      - run:
+          name: Generate report (ffi)
+          command: cd integration_tests && touch cucumber_output/tests-ffi.cucumber && node ./generate_report.js cucumber_output/tests-ffi.cucumber temp/reports/cucumber_ffi_report.html
+          when: always
+      #      - run:
+      #          name: Run flaky/broken cucumber scenarios (Always pass)
+      #          command: cd integration_tests && node_modules/.bin/cucumber-js --tags "not @long-running and (@broken or @flaky)" --format json:cucumber_output/broken-tests.cucumber || true
       - store_test_results:
           path: integration_tests/cucumber_output
       - store_artifacts:

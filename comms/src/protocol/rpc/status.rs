@@ -36,21 +36,21 @@ pub struct RpcStatus {
 
 impl RpcStatus {
     pub fn ok() -> Self {
-        RpcStatus {
+        Self {
             code: RpcStatusCode::Ok,
             details: Default::default(),
         }
     }
 
     pub fn unsupported_method<T: ToString>(details: T) -> Self {
-        RpcStatus {
+        Self {
             code: RpcStatusCode::UnsupportedMethod,
             details: details.to_string(),
         }
     }
 
     pub fn not_implemented<T: ToString>(details: T) -> Self {
-        RpcStatus {
+        Self {
             code: RpcStatusCode::NotImplemented,
             details: details.to_string(),
         }
@@ -96,6 +96,13 @@ impl RpcStatus {
         move |err| {
             log::error!(target: target, "Internal error: {}", err);
             Self::general_default()
+        }
+    }
+
+    pub(super) fn protocol_error<T: ToString>(details: T) -> Self {
+        Self {
+            code: RpcStatusCode::ProtocolError,
+            details: details.to_string(),
         }
     }
 
@@ -177,6 +184,8 @@ pub enum RpcStatusCode {
     General = 6,
     /// Entity not found
     NotFound = 7,
+    /// RPC protocol error
+    ProtocolError = 8,
     // The following status represents anything that is not recognised (i.e not one of the above codes).
     /// Unrecognised RPC status code
     InvalidRpcStatusCode,

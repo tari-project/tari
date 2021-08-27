@@ -57,8 +57,8 @@ pub enum OutputManagerRequest {
     GetCoinbaseTransaction((u64, MicroTari, MicroTari, u64)),
     ConfirmPendingTransaction(u64),
     ConfirmTransaction((u64, Vec<TransactionInput>, Vec<TransactionOutput>)),
-    PrepareToSendTransaction((MicroTari, MicroTari, Option<u64>, String, TariScript)),
-    CreatePayToSelfTransaction((MicroTari, MicroTari, Option<u64>, String)),
+    PrepareToSendTransaction((TxId, MicroTari, MicroTari, Option<u64>, String, TariScript)),
+    CreatePayToSelfTransaction((TxId, MicroTari, MicroTari, Option<u64>, String)),
     CancelTransaction(u64),
     TimeoutTransactions(Duration),
     GetPendingTransactions,
@@ -76,6 +76,7 @@ pub enum OutputManagerRequest {
     ScanForRecoverableOutputs(Vec<TransactionOutput>),
     ScanOutputs(Vec<TransactionOutput>),
     AddKnownOneSidedPaymentScript(KnownOneSidedPaymentScript),
+    ReinstateCancelledInboundTx(TxId),
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -95,8 +96,8 @@ impl fmt::Display for OutputManagerRequest {
             GetRecipientTransaction(_) => write!(f, "GetRecipientTransaction"),
             ConfirmTransaction(v) => write!(f, "ConfirmTransaction ({})", v.0),
             ConfirmPendingTransaction(v) => write!(f, "ConfirmPendingTransaction ({})", v),
-            PrepareToSendTransaction((_, _, _, msg, _)) => write!(f, "PrepareToSendTransaction ({})", msg),
-            CreatePayToSelfTransaction((_, _, _, msg)) => write!(f, "CreatePayToSelfTransaction ({})", msg),
+            PrepareToSendTransaction((_, _, _, _, msg, _)) => write!(f, "PrepareToSendTransaction ({})", msg),
+            CreatePayToSelfTransaction((_, _, _, _, msg)) => write!(f, "CreatePayToSelfTransaction ({})", msg),
             CancelTransaction(v) => write!(f, "CancelTransaction ({})", v),
             TimeoutTransactions(d) => write!(f, "TimeoutTransactions ({}s)", d.as_secs()),
             GetPendingTransactions => write!(f, "GetPendingTransactions"),
@@ -113,8 +114,9 @@ impl fmt::Display for OutputManagerRequest {
             GetPublicRewindKeys => write!(f, "GetPublicRewindKeys"),
             FeeEstimate(_) => write!(f, "FeeEstimate"),
             ScanForRecoverableOutputs(_) => write!(f, "ScanForRecoverableOutputs"),
-            ScanOutputs(_) => write!(f, "ScanRewindAndImportOutputs"),
+            ScanOutputs(_) => write!(f, "ScanOutputs"),
             AddKnownOneSidedPaymentScript(_) => write!(f, "AddKnownOneSidedPaymentScript"),
+            ReinstateCancelledInboundTx(_) => write!(f, "ReinstateCancelledInboundTx"),
         }
     }
 }
@@ -129,7 +131,7 @@ pub enum OutputManagerResponse {
     CoinbaseTransaction(Transaction),
     OutputConfirmed,
     PendingTransactionConfirmed,
-    PayToSelfTransaction((TxId, MicroTari, Transaction)),
+    PayToSelfTransaction((MicroTari, Transaction)),
     TransactionConfirmed,
     TransactionToSend(SenderTransactionProtocol),
     TransactionCancelled,
@@ -149,6 +151,7 @@ pub enum OutputManagerResponse {
     RewoundOutputs(Vec<UnblindedOutput>),
     ScanOutputs(Vec<UnblindedOutput>),
     AddKnownOneSidedPaymentScript,
+    ReinstatedCancelledInboundTx,
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -277,6 +280,7 @@ impl OutputManagerHandle {
 
     pub async fn prepare_transaction_to_send(
         &mut self,
+        tx_id: TxId,
         amount: MicroTari,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
@@ -286,6 +290,7 @@ impl OutputManagerHandle {
         match self
             .handle
             .call(OutputManagerRequest::PrepareToSendTransaction((
+                tx_id,
                 amount,
                 fee_per_gram,
                 lock_height,
@@ -526,14 +531,16 @@ impl OutputManagerHandle {
 
     pub async fn create_pay_to_self_transaction(
         &mut self,
+        tx_id: TxId,
         amount: MicroTari,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
-    ) -> Result<(TxId, MicroTari, Transaction), OutputManagerError> {
+    ) -> Result<(MicroTari, Transaction), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::CreatePayToSelfTransaction((
+                tx_id,
                 amount,
                 fee_per_gram,
                 lock_height,
@@ -542,6 +549,17 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::PayToSelfTransaction(outputs) => Ok(outputs),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn reinstate_cancelled_inbound_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::ReinstateCancelledInboundTx(tx_id))
+            .await??
+        {
+            OutputManagerResponse::ReinstatedCancelledInboundTx => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

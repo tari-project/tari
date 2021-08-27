@@ -22,6 +22,7 @@
 use crate::transactions::{transaction::TransactionOutput, types::HashOutput};
 
 #[allow(clippy::large_enum_variant)]
+#[derive(Debug, PartialEq)]
 pub enum PrunedOutput {
     Pruned {
         output_hash: HashOutput,
@@ -31,6 +32,7 @@ pub enum PrunedOutput {
         output: TransactionOutput,
     },
 }
+
 impl PrunedOutput {
     pub fn is_pruned(&self) -> bool {
         matches!(self, PrunedOutput::Pruned { .. })

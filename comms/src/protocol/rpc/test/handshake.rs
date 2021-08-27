@@ -29,9 +29,9 @@ use crate::{
         Handshake,
     },
     runtime,
+    runtime::task,
 };
 use tari_test_utils::unpack_enum;
-use tokio::task;
 
 #[runtime::test_basic]
 async fn it_performs_the_handshake() {

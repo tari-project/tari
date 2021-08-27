@@ -106,7 +106,7 @@ where T: OutputManagerBackend + 'static
         );
 
         let (sender, receiver) = reply_channel::unbounded();
-        let (publisher, _) = broadcast::channel(200);
+        let (publisher, _) = broadcast::channel(self.config.event_channel_size);
 
         // Register handle before waiting for handles to be ready
         let oms_handle = OutputManagerHandle::new(sender, publisher.clone());

@@ -30,6 +30,8 @@ pub struct OutputManagerServiceConfig {
     pub prevent_fee_gt_amount: bool,
     pub peer_dial_retry_timeout: Duration,
     pub seed_word_language: MnemonicLanguage,
+    pub event_channel_size: usize,
+    pub base_node_update_publisher_channel_size: usize,
 }
 
 impl Default for OutputManagerServiceConfig {
@@ -40,6 +42,8 @@ impl Default for OutputManagerServiceConfig {
             prevent_fee_gt_amount: true,
             peer_dial_retry_timeout: Duration::from_secs(20),
             seed_word_language: MnemonicLanguage::English,
+            event_channel_size: 250,
+            base_node_update_publisher_channel_size: 50,
         }
     }
 }

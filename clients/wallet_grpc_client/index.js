@@ -39,7 +39,12 @@ function Client(address) {
     "importUtxos",
     "listConnectedPeers",
     "getNetworkStatus",
+    "cancelTransaction",
   ];
+
+  this.waitForReady = (...args) => {
+    this.inner.waitForReady(...args);
+  };
 
   functions.forEach((method) => {
     this[method] = (arg) => this.inner[method]().sendMessage(arg);

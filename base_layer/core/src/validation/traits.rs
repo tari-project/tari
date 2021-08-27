@@ -27,6 +27,7 @@ use crate::{
     transactions::{transaction::Transaction, types::Commitment},
     validation::{error::ValidationError, DifficultyCalculator},
 };
+use tari_common_types::chain_metadata::ChainMetadata;
 
 /// A validator that determines if a block body is valid, assuming that the header has already been
 /// validated
@@ -36,7 +37,12 @@ pub trait CandidateBlockBodyValidation<B: BlockchainBackend>: Send + Sync {
 
 /// A validator that validates a body after it has been determined to be a valid orphan
 pub trait PostOrphanBodyValidation<B>: Send + Sync {
-    fn validate_body_for_valid_orphan(&self, block: &ChainBlock, backend: &B) -> Result<(), ValidationError>;
+    fn validate_body_for_valid_orphan(
+        &self,
+        block: &ChainBlock,
+        backend: &B,
+        metadata: &ChainMetadata,
+    ) -> Result<(), ValidationError>;
 }
 
 pub trait MempoolTransactionValidation: Send + Sync {

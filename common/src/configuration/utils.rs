@@ -61,10 +61,11 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("common.liveness_max_sessions", 0).unwrap();
     cfg.set_default("common.denylist_ban_period", 1440).unwrap();
     cfg.set_default("common.buffer_size_base_node", 1_500).unwrap();
-    cfg.set_default("common.buffer_size_base_node_wallet", 50_000).unwrap();
+    cfg.set_default("common.buffer_size_console_wallet", 50_000).unwrap();
     cfg.set_default("common.buffer_rate_limit_base_node", 1_000).unwrap();
-    cfg.set_default("common.buffer_rate_limit_base_node_wallet", 1_000)
+    cfg.set_default("common.buffer_rate_limit_console_wallet", 1_000)
         .unwrap();
+    cfg.set_default("common.dedup_cache_capacity", 2_500).unwrap();
     cfg.set_default("common.fetch_blocks_timeout", 150).unwrap();
     cfg.set_default("common.fetch_utxos_timeout", 600).unwrap();
     cfg.set_default("common.service_request_timeout", 180).unwrap();
@@ -97,7 +98,8 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     )
     .unwrap();
     cfg.set_default("wallet.base_node_query_timeout", 60).unwrap();
-    // 60 sec * 60 minutes * 12 hours.
+    cfg.set_default("wallet.base_node_service_refresh_interval", 5).unwrap();
+    cfg.set_default("wallet.base_node_service_request_max_age", 60).unwrap();
     cfg.set_default("wallet.scan_for_utxo_interval", 60 * 60 * 12).unwrap();
     cfg.set_default("wallet.transaction_broadcast_monitoring_timeout", 60)
         .unwrap();
@@ -171,7 +173,6 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         .unwrap();
     cfg.set_default("base_node.mainnet.grpc_console_wallet_address", "127.0.0.1:18143")
         .unwrap();
-    cfg.set_default("base_node.mainnet.enable_wallet", true).unwrap();
     cfg.set_default("base_node.mainnet.flood_ban_max_msg_count", 10000)
         .unwrap();
 
@@ -227,7 +228,6 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         .unwrap();
     cfg.set_default("base_node.weatherwax.grpc_console_wallet_address", "127.0.0.1:18143")
         .unwrap();
-    cfg.set_default("base_node.weatherwax.enable_wallet", true).unwrap();
 
     cfg.set_default("base_node.weatherwax.dns_seeds_name_server", "1.1.1.1:53")
         .unwrap();
@@ -241,8 +241,19 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     set_transport_defaults(&mut cfg).unwrap();
     set_merge_mining_defaults(&mut cfg);
     set_mining_node_defaults(&mut cfg);
+    set_stratum_transcoder_defaults(&mut cfg);
 
     cfg
+}
+
+fn set_stratum_transcoder_defaults(cfg: &mut Config) {
+    cfg.set_default("stratum_transcoder.mainnet.transcoder_host_address", "127.0.0.1:7879")
+        .unwrap();
+    cfg.set_default(
+        "stratum_transcoder.weatherwax.transcoder_host_address",
+        "127.0.0.1:7879",
+    )
+    .unwrap();
 }
 
 fn set_merge_mining_defaults(cfg: &mut Config) {
@@ -261,7 +272,6 @@ fn set_merge_mining_defaults(cfg: &mut Config) {
         .unwrap();
     cfg.set_default("merge_mining_proxy.mainnet.wait_for_initial_sync_at_startup", true)
         .unwrap();
-
     cfg.set_default(
         "merge_mining_proxy.weatherwax.monerod_url",
         "http://monero-stagenet.exan.tech:38081",

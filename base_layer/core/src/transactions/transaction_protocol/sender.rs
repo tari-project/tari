@@ -65,7 +65,7 @@ pub(super) struct RawTransactionInfo {
     pub num_recipients: usize,
     // The sum of self-created outputs plus change
     pub amount_to_self: MicroTari,
-    pub ids: Vec<u64>,
+    pub tx_id: u64,
     pub amounts: Vec<MicroTari>,
     pub recipient_scripts: Vec<TariScript>,
     pub recipient_output_features: Vec<OutputFeatures>,
@@ -209,7 +209,7 @@ impl SenderTransactionProtocol {
         match &self.state {
             SenderState::Finalizing(info) |
             SenderState::SingleRoundMessageReady(info) |
-            SenderState::CollectingSingleSignature(info) => info.ids[0] == tx_id,
+            SenderState::CollectingSingleSignature(info) => info.tx_id == tx_id,
             _ => false,
         }
     }
@@ -218,7 +218,7 @@ impl SenderTransactionProtocol {
         match &self.state {
             SenderState::Finalizing(info) |
             SenderState::SingleRoundMessageReady(info) |
-            SenderState::CollectingSingleSignature(info) => Ok(info.ids[0]),
+            SenderState::CollectingSingleSignature(info) => Ok(info.tx_id),
             _ => Err(TPE::InvalidStateError),
         }
     }
@@ -357,7 +357,7 @@ impl SenderTransactionProtocol {
                 })?;
 
                 Ok(SingleRoundSenderData {
-                    tx_id: info.ids[0],
+                    tx_id: info.tx_id,
                     amount: self.get_total_amount()?,
                     public_nonce: info.public_nonce.clone(),
                     public_excess: info.public_excess.clone(),

@@ -26,8 +26,6 @@ pub use config::MessagingConfig;
 mod extension;
 pub use extension::MessagingProtocolExtension;
 
-mod consts;
-
 mod error;
 mod inbound;
 mod outbound;

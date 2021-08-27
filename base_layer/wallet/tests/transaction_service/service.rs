@@ -36,7 +36,7 @@ use futures::{
     StreamExt,
 };
 use prost::Message;
-use rand::rngs::OsRng;
+use rand::{rngs::OsRng, RngCore};
 use std::{
     convert::{TryFrom, TryInto},
     path::Path,
@@ -99,6 +99,7 @@ use tari_wallet::{
         mock_base_node_service::MockBaseNodeService,
         BaseNodeServiceInitializer,
     },
+    connectivity_service::WalletConnectivityInitializer,
     output_manager_service::{
         config::OutputManagerServiceConfig,
         handle::OutputManagerHandle,
@@ -211,6 +212,7 @@ pub fn setup_transaction_service<
             factories,
         ))
         .add_initializer(BaseNodeServiceInitializer::new(BaseNodeServiceConfig::default(), db))
+        .add_initializer(WalletConnectivityInitializer::new(BaseNodeServiceConfig::default()))
         .build();
 
     let handles = runtime.block_on(fut).expect("Service initialization failed");
@@ -1439,6 +1441,7 @@ fn finalize_tx_with_incorrect_pubkey() {
 
     let mut stp = runtime
         .block_on(bob_output_manager.prepare_transaction_to_send(
+            OsRng.next_u64(),
             MicroTari::from(5000),
             MicroTari::from(25),
             None,
@@ -1565,6 +1568,7 @@ fn finalize_tx_with_missing_output() {
 
     let mut stp = runtime
         .block_on(bob_output_manager.prepare_transaction_to_send(
+            OsRng.next_u64(),
             MicroTari::from(5000),
             MicroTari::from(20),
             None,

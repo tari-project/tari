@@ -50,6 +50,8 @@ service Wallet {
     rpc GetNetworkStatus(Empty) returns (NetworkStatusResponse);
     // List currently connected peers
     rpc ListConnectedPeers(Empty) returns (ListConnectedPeersResponse);
+    // Cancel pending transaction
+    rpc CancelTransaction (CancelTransactionRequest) returns (CancelTransactionResponse);
 }
 
 message GetVersionRequest { }
@@ -114,7 +116,6 @@ message TransactionInfo {
     google.protobuf.Timestamp timestamp = 10;
     string message = 11;
     bool valid = 12;
-    bool is_found = 13;
 }
 
 enum TransactionDirection {
@@ -138,6 +139,8 @@ enum TransactionStatus {
     TRANSACTION_STATUS_COINBASE = 5;
     // This transaction is mined and confirmed at the current base node's height
     TRANSACTION_STATUS_MINED_CONFIRMED = 6;
+    // The transaction was not found by the wallet its in transaction database
+    TRANSACTION_STATUS_NOT_FOUND = 7;
 }
 
 message GetCompletedTransactionsRequest { }
@@ -184,3 +187,11 @@ message ImportUtxosResponse {
     repeated uint64 tx_ids = 1;
 }
 
+message CancelTransactionRequest {
+    uint64 tx_id = 1;
+}
+
+message CancelTransactionResponse {
+    bool is_success = 1;
+    string failure_message = 2;
+}

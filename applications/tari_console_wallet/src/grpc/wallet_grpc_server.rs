@@ -78,9 +78,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }))
     }
 
-    async fn identify(&self, request: Request<GetIdentityRequest>) -> Result<Response<GetIdentityResponse>, Status> {
-        let _request = request.into_inner();
-
+    async fn identify(&self, _: Request<GetIdentityRequest>) -> Result<Response<GetIdentityResponse>, Status> {
         let identity = self.wallet.comms.node_identity();
         Ok(Response::new(GetIdentityResponse {
             public_key: identity.public_key().to_string().as_bytes().to_vec(),
@@ -208,7 +206,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let queries = message.transaction_ids.into_iter().map(|tx_id| {
             let mut transaction_service = self.get_transaction_service();
             async move {
-                error!(target: LOG_TARGET, "TX_ID: {}", tx_id);
                 transaction_service
                     .get_any_transaction(tx_id)
                     .await
@@ -269,7 +266,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .to_vec(),
                         message: txn.message,
                         valid: txn.valid,
-                        is_found: true,
                     }),
                 };
                 match sender.send(Ok(response)).await {
@@ -397,6 +393,33 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         Ok(Response::new(resp))
     }
+
+    async fn cancel_transaction(
+        &self,
+        request: Request<tari_rpc::CancelTransactionRequest>,
+    ) -> Result<Response<tari_rpc::CancelTransactionResponse>, Status> {
+        let message = request.into_inner();
+        debug!(
+            target: LOG_TARGET,
+            "Incoming gRPC request to Cancel Transaction (TxId: {})", message.tx_id,
+        );
+        let mut transaction_service = self.get_transaction_service();
+
+        match transaction_service.cancel_transaction(message.tx_id).await {
+            Ok(_) => {
+                return Ok(Response::new(tari_rpc::CancelTransactionResponse {
+                    is_success: true,
+                    failure_message: "".to_string(),
+                }))
+            },
+            Err(e) => {
+                return Ok(Response::new(tari_rpc::CancelTransactionResponse {
+                    is_success: false,
+                    failure_message: e.to_string(),
+                }))
+            },
+        }
+    }
 }
 
 fn convert_wallet_transaction_into_transaction_info(
@@ -404,7 +427,6 @@ fn convert_wallet_transaction_into_transaction_info(
     wallet_pk: &CommsPublicKey,
 ) -> TransactionInfo {
     use models::WalletTransaction::*;
-    error!(target: LOG_TARGET, "FOUND WALLET: {:?}", tx);
     match tx {
         PendingInbound(tx) => TransactionInfo {
             tx_id: tx.tx_id,
@@ -419,7 +441,6 @@ fn convert_wallet_transaction_into_transaction_info(
             timestamp: Some(naive_datetime_to_timestamp(tx.timestamp)),
             message: tx.message,
             valid: true,
-            is_found: true,
         },
         PendingOutbound(tx) => TransactionInfo {
             tx_id: tx.tx_id,
@@ -434,7 +455,6 @@ fn convert_wallet_transaction_into_transaction_info(
             timestamp: Some(naive_datetime_to_timestamp(tx.timestamp)),
             message: tx.message,
             valid: true,
-            is_found: true,
         },
         Completed(tx) => TransactionInfo {
             tx_id: tx.tx_id,
@@ -453,7 +473,6 @@ fn convert_wallet_transaction_into_transaction_info(
                 .unwrap_or_default(),
             message: tx.message,
             valid: tx.valid,
-            is_found: true,
         },
     }
 }

@@ -60,6 +60,11 @@ use tari_p2p::auto_update::SoftwareUpdaterHandle;
 use tari_wallet::util::emoji::EmojiId;
 use tokio::{runtime, sync::watch};
 
+pub enum StatusOutput {
+    Log,
+    Full,
+}
+
 pub struct CommandHandler {
     executor: runtime::Handle,
     config: Arc<GlobalConfig>,
@@ -95,7 +100,7 @@ impl CommandHandler {
         }
     }
 
-    pub fn status(&self) {
+    pub fn status(&self, output: StatusOutput) {
         let mut state_info = self.state_machine_info.clone();
         let mut node = self.node_service.clone();
         let mut mempool = self.mempool_service.clone();
@@ -171,8 +176,14 @@ impl CommandHandler {
                 ),
             );
 
-            info!(target: "base_node::app::status", "{}", status_line);
-            println!("{}", status_line);
+            let target = "base_node::app::status";
+            match output {
+                StatusOutput::Full => {
+                    println!("{}", status_line);
+                    info!(target: target, "{}", status_line);
+                },
+                StatusOutput::Log => info!(target: target, "{}", status_line),
+            };
         });
     }
 
@@ -304,7 +315,7 @@ impl CommandHandler {
                 Ok(mut data) => match data.pop() {
                     Some(v) => println!("{}", v.block()),
                     _ => println!(
-                        "Pruned node: utxo found, but lock not found for utxo commitment {}",
+                        "Pruned node: utxo found, but block not found for utxo commitment {}",
                         commitment.to_hex()
                     ),
                 },
@@ -325,11 +336,8 @@ impl CommandHandler {
                     );
                 },
                 Ok(mut data) => match data.pop() {
-                    Some(v) => println!("{}", v.block()),
-                    _ => println!(
-                        "Pruned node: kernel found, but block not found for kernel signature {}",
-                        hex_sig
-                    ),
+                    Some(v) => println!("{}", v),
+                    _ => println!("No kernel with signature {} found", hex_sig),
                 },
             };
         });
