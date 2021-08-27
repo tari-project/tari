@@ -57,7 +57,7 @@ function mapEnvs(options) {
   return res;
 }
 
-function baseEnvs(peerSeeds = []) {
+function baseEnvs(peerSeeds = [], forceSyncPeers = []) {
   const envs = {
     RUST_BACKTRACE: 1,
     TARI_BASE_NODE__NETWORK: "localnet",
@@ -101,6 +101,9 @@ function baseEnvs(peerSeeds = []) {
     TARI_MINING_NODE__VALIDATE_TIP_TIMEOUT_SEC: 2,
     TARI_WALLET__SCAN_FOR_UTXO_INTERVAL: 5,
   };
+  if (forceSyncPeers.length != 0) {
+    envs.TARI_BASE_NODE__LOCALNET__FORCE_SYNC_PEERS = forceSyncPeers;
+  }
   if (peerSeeds.length != 0) {
     envs.TARI_BASE_NODE__LOCALNET__PEER_SEEDS = peerSeeds;
   } else {
@@ -127,9 +130,10 @@ function createEnv(
   transcoderFullAddress = "127.0.0.1:8085",
   options,
   peerSeeds = [],
-  _txnSendingMechanism = "DirectAndStoreAndForward"
+  _txnSendingMechanism = "DirectAndStoreAndForward",
+  forceSyncPeers = []
 ) {
-  const envs = baseEnvs(peerSeeds);
+  const envs = baseEnvs(peerSeeds, forceSyncPeers);
   const network =
     options && options.network ? options.network.toUpperCase() : "LOCALNET";
 

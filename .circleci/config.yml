@@ -122,14 +122,14 @@ commands:
           command: cargo build --release --bin tari_mining_node
       - run:
           name: Run cucumber scenarios
-          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running and not @broken and not @flaky and not @wallet-ffi" --format json:cucumber_output/tests.cucumber
+          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running and not @broken and not @flaky and not @wallet-ffi" --format json:cucumber_output/tests.cucumber --exit
       - run:
           name: Generate report
           command: cd integration_tests && node ./generate_report.js
           when: always
       - run:
           name: Run ffi cucumber scenarios
-          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running and not @broken and not @flaky and @wallet-ffi" --format json:cucumber_output/tests-ffi.cucumber
+          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running and not @broken and not @flaky and @wallet-ffi" --format json:cucumber_output/tests-ffi.cucumber --exit
       - run:
           name: Generate report (ffi)
           command: cd integration_tests && touch cucumber_output/tests-ffi.cucumber && node ./generate_report.js cucumber_output/tests-ffi.cucumber temp/reports/cucumber_ffi_report.html

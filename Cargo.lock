@@ -4647,6 +4647,7 @@ dependencies = [
  "log 0.4.14",
  "qrcode",
  "rand 0.8.4",
+ "regex",
  "rpassword",
  "rustyline",
  "strum",
