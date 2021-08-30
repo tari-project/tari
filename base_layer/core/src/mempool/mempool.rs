@@ -30,7 +30,7 @@ use crate::{
         StatsResponse,
         TxStorageResponse,
     },
-    transactions::{transaction::Transaction, },
+    transactions::transaction::Transaction,
     validation::MempoolTransactionValidation,
 };
 use std::sync::{Arc, RwLock};

@@ -25,6 +25,7 @@ use std::{fmt, sync::Arc};
 use crate::{
     chain_storage::BlockchainBackend,
     consensus::ConsensusManager,
+    transactions::CryptoFactories,
     validation::{
         block_validators::BlockValidator,
         CandidateBlockBodyValidation,
@@ -32,7 +33,6 @@ use crate::{
         FinalHorizonStateValidation,
     },
 };
-use crate::transactions::CryptoFactories;
 
 #[derive(Clone)]
 pub struct SyncValidators<B: BlockchainBackend> {

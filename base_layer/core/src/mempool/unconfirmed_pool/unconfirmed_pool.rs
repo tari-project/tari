@@ -27,7 +27,7 @@ use std::{
 
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_crypto::tari_utilities::{Hashable, hex::Hex};
+use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
 use crate::{
     blocks::Block,
@@ -36,11 +36,9 @@ use crate::{
         priority::{FeePriority, PrioritizedTransaction},
         unconfirmed_pool::UnconfirmedPoolError,
     },
-    transactions::{
-        transaction::Transaction,
-    },
+    transactions::transaction::Transaction,
 };
-use tari_common_types::types::{Signature, HashOutput};
+use tari_common_types::types::{HashOutput, Signature};
 
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
 
@@ -484,14 +482,14 @@ mod test {
         transactions::{
             fee::Fee,
             helpers::{TestParams, UtxoTestParams},
-            SenderTransactionProtocol,
             tari_amount::MicroTari,
             transaction::KernelFeatures,
-            types::HashDigest,
+            CryptoFactories,
+            SenderTransactionProtocol,
         },
         tx,
     };
-    use crate::transactions::crypto_factories::CryptoFactories;
+    use tari_common_types::types::HashDigest;
 
     use super::*;
 

@@ -24,10 +24,10 @@ use crate::{
     blocks::{block_header::BlockHeaderValidationError, BlockValidationError},
     chain_storage::ChainStorageError,
     proof_of_work::{monero_rx::MergeMineError, PowError},
-    transactions::{transaction::TransactionError},
+    transactions::transaction::TransactionError,
 };
-use thiserror::Error;
 use tari_common_types::types::HashOutput;
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ValidationError {

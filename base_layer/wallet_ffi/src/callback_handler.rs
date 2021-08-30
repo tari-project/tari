@@ -592,11 +592,11 @@ mod test {
         thread,
         time::Duration,
     };
+    use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey};
     use tari_comms_dht::event::DhtEvent;
     use tari_core::transactions::{
         tari_amount::{uT, MicroTari},
         transaction::Transaction,
-        types::{BlindingFactor, PrivateKey, PublicKey},
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     };

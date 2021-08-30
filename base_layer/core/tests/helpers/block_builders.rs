@@ -23,7 +23,7 @@
 use std::{iter::repeat_with, sync::Arc};
 
 use croaring::Bitmap;
-use rand::{RngCore, rngs::OsRng};
+use rand::{rngs::OsRng, RngCore};
 use tari_crypto::{
     keys::PublicKey as PublicKeyTrait,
     script,
@@ -31,19 +31,20 @@ use tari_crypto::{
 };
 
 use tari_common::configuration::Network;
+use tari_common_types::types::{Commitment, HashDigest, HashOutput, PublicKey};
 use tari_core::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{
         BlockAddResult,
+        BlockHeaderAccumulatedData,
         BlockchainBackend,
         BlockchainDatabase,
-        BlockHeaderAccumulatedData,
         ChainBlock,
         ChainHeader,
         ChainStorageError,
     },
-    consensus::{ConsensusConstants, ConsensusManager, ConsensusManagerBuilder, emission::Emission},
-    proof_of_work::{AchievedTargetDifficulty, Difficulty, sha3_difficulty},
+    consensus::{emission::Emission, ConsensusConstants, ConsensusManager, ConsensusManagerBuilder},
+    proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
         helpers::{
             create_random_signature_from_s_key,
@@ -64,10 +65,9 @@ use tari_core::{
             TransactionOutput,
             UnblindedOutput,
         },
-        types::{Commitment, HashDigest, HashOutput, PublicKey},
+        CryptoFactories,
     },
 };
-use tari_core::transactions::crypto_factories::CryptoFactories;
 use tari_mmr::MutableMmr;
 
 pub fn create_coinbase(

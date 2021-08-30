@@ -41,6 +41,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use tari_common_types::types::HashOutput;
 use tari_comms::{
     connectivity::{ConnectivityError, ConnectivityRequester, ConnectivitySelection},
     peer_manager::NodeId,
@@ -48,7 +49,6 @@ use tari_comms::{
     PeerConnection,
 };
 use tracing;
-use tari_common_types::types::HashOutput;
 
 const LOG_TARGET: &str = "c::bn::header_sync";
 

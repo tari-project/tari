@@ -24,11 +24,10 @@ use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{BlockchainBackend, ChainBlock},
     proof_of_work::AchievedTargetDifficulty,
-    transactions::{transaction::Transaction, },
+    transactions::transaction::Transaction,
     validation::{error::ValidationError, DifficultyCalculator},
 };
-use tari_common_types::chain_metadata::ChainMetadata;
-use tari_common_types::types::Commitment;
+use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
 
 /// A validator that determines if a block body is valid, assuming that the header has already been
 /// validated

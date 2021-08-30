@@ -25,25 +25,25 @@ use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::He
 
 use crate::{
     blocks::{
-        Block,
         block_header::{BlockHeader, BlockHeaderValidationError},
+        Block,
         BlockValidationError,
     },
     chain_storage::BlockchainBackend,
     consensus::{ConsensusConstants, ConsensusManager},
     proof_of_work::{
-        AchievedTargetDifficulty,
-        Difficulty,
         monero_difficulty,
         monero_rx::MoneroPowData,
-        PowAlgorithm,
-        PowError,
         randomx_factory::RandomXFactory,
         sha3_difficulty,
+        AchievedTargetDifficulty,
+        Difficulty,
+        PowAlgorithm,
+        PowError,
     },
+    transactions::CryptoFactories,
     validation::ValidationError,
 };
-use crate::transactions::CryptoFactories;
 
 pub const LOG_TARGET: &str = "c::val::helpers";
 

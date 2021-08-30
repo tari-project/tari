@@ -39,10 +39,7 @@
 
 #[cfg(feature = "base_node")]
 use crate::blocks::{BlockBuilder, NewBlockHeaderTemplate};
-use tari_common_types::types::HashDigest;
-use crate::{
-    proof_of_work::{PowAlgorithm, PowError, ProofOfWork},
-};
+use crate::proof_of_work::{PowAlgorithm, PowError, ProofOfWork};
 use chrono::{DateTime, Utc};
 use digest::Digest;
 use serde::{
@@ -56,7 +53,7 @@ use std::{
     fmt,
     fmt::{Display, Error, Formatter},
 };
-use tari_common_types::types::{BlockHash, BLOCK_HASH_LENGTH, BlindingFactor};
+use tari_common_types::types::{BlindingFactor, BlockHash, HashDigest, BLOCK_HASH_LENGTH};
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
 use thiserror::Error;
 

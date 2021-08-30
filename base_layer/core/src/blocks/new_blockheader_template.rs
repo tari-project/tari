@@ -26,7 +26,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
-use tari_common_types::types::{BlockHash, BlindingFactor};
+use tari_common_types::types::{BlindingFactor, BlockHash};
 use tari_crypto::tari_utilities::hex::Hex;
 
 /// The NewBlockHeaderTemplate is used for the construction of a new mineable block. It contains all the metadata for

@@ -42,15 +42,16 @@ use crate::{
     common::rolling_vec::RollingVec,
     proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
     tari_utilities::epoch_time::EpochTime,
-    transactions::{
-        transaction::{TransactionKernel, TransactionOutput},
-    },
+    transactions::transaction::{TransactionKernel, TransactionOutput},
 };
 use croaring::Bitmap;
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use std::{mem, ops::RangeBounds, sync::Arc, time::Instant};
-use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash, types::HashOutput, types::Signature, types::Commitment};
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{BlockHash, Commitment, HashOutput, Signature},
+};
 use tari_mmr::pruned_hashset::PrunedHashSet;
 
 const LOG_TARGET: &str = "c::bn::async_db";

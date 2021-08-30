@@ -45,9 +45,9 @@ use crate::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
         transaction::{Transaction, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
+        CryptoFactories,
     },
 };
-use crate::transactions::CryptoFactories;
 
 #[derive(Clone, Debug, PartialEq, Error)]
 pub enum BlockValidationError {

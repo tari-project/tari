@@ -36,14 +36,14 @@ use crate::{
     chain_storage::{BlockHeaderAccumulatedData, ChainHeader},
     consensus::ConsensusManager,
     crypto::tari_utilities::Hashable,
-    proof_of_work::{AchievedTargetDifficulty, Difficulty, sha3_difficulty},
+    proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
-        CoinbaseBuilder,
         tari_amount::T,
         transaction::{Transaction, UnblindedOutput},
+        CoinbaseBuilder,
+        CryptoFactories,
     },
 };
-use crate::transactions::CryptoFactories;
 
 pub mod blockchain;
 

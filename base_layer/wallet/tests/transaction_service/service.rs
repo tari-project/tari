@@ -35,7 +35,7 @@ use futures::{
     StreamExt,
 };
 use prost::Message;
-use rand::{RngCore, rngs::OsRng};
+use rand::{rngs::OsRng, RngCore};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     common::Blake256,
@@ -52,18 +52,21 @@ use tokio::{
     time::delay_for,
 };
 
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{PrivateKey, PublicKey, Signature},
+};
 use tari_comms::{
-    CommsNode,
     message::EnvelopeBody,
     peer_manager::{NodeIdentity, PeerFeatures},
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
-    Substream,
     test_utils::{
-        mocks::{ConnectivityManagerMockState, create_connectivity_mock},
+        mocks::{create_connectivity_mock, ConnectivityManagerMockState},
         node_identity::build_node_identity,
     },
     types::CommsSecretKey,
+    CommsNode,
+    Substream,
 };
 use tari_comms_dht::outbound::mock::{
     create_outbound_service_mock,
@@ -81,37 +84,36 @@ use tari_core::{
     transactions::{
         fee::Fee,
         helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
         tari_amount::*,
         transaction::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction},
         transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage},
-        types::{PrivateKey, PublicKey, Signature},
+        CryptoFactories,
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
     },
 };
-use tari_core::transactions::crypto_factories::CryptoFactories;
 use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage, Network};
-use tari_service_framework::{RegisterHandle, reply_channel, StackBuilder};
+use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
 use tari_wallet::{
     base_node_service::{
-        BaseNodeServiceInitializer,
         config::BaseNodeServiceConfig,
         handle::BaseNodeServiceHandle,
         mock_base_node_service::MockBaseNodeService,
+        BaseNodeServiceInitializer,
     },
     connectivity_service::WalletConnectivityInitializer,
     output_manager_service::{
         config::OutputManagerServiceConfig,
         handle::OutputManagerHandle,
-        OutputManagerServiceInitializer,
         service::OutputManagerService,
         storage::{
             database::{OutputManagerBackend, OutputManagerDatabase},
             models::KnownOneSidedPaymentScript,
             sqlite_db::OutputManagerSqliteDatabase,
         },
+        OutputManagerServiceInitializer,
     },
     storage::{
         database::{WalletBackend, WalletDatabase},

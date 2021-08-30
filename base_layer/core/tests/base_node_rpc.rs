@@ -72,12 +72,12 @@ use tari_core::{
     test_helpers::blockchain::TempDatabase,
     transactions::{
         helpers::schema_to_transaction,
-        tari_amount::{T, uT},
+        tari_amount::{uT, T},
         transaction::{TransactionOutput, UnblindedOutput},
+        CryptoFactories,
     },
     txn_schema,
 };
-use tari_core::transactions::crypto_factories::CryptoFactories;
 
 use crate::helpers::{
     block_builders::{chain_block, create_genesis_block_with_coinbase_value},

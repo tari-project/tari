@@ -1304,10 +1304,10 @@ mod test {
             helpers::{TestParams, UtxoTestParams},
             tari_amount::T,
             transaction::OutputFeatures,
-            types::{BlindingFactor, PrivateKey, PublicKey, RangeProof},
         },
         txn_schema,
     };
+    use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey};
 
     use super::*;
 

@@ -1730,12 +1730,12 @@ mod test {
     use tari_crypto::{keys::SecretKey, script};
     use tempfile::tempdir;
 
+    use tari_common_types::types::{CommitmentFactory, PrivateKey};
     use tari_core::transactions::{
-        crypto_factories::CryptoFactories,
         helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
         tari_amount::MicroTari,
         transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
-        types::{CommitmentFactory, PrivateKey},
+        CryptoFactories,
     };
     use tari_test_utils::random;
 

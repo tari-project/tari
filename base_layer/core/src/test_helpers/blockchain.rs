@@ -34,17 +34,17 @@ use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
 
 use crate::{
-    blocks::{Block, BlockHeader, genesis_block::get_weatherwax_genesis_block},
+    blocks::{genesis_block::get_weatherwax_genesis_block, Block, BlockHeader},
     chain_storage::{
+        create_lmdb_database,
         BlockAccumulatedData,
+        BlockHeaderAccumulatedData,
         BlockchainBackend,
         BlockchainDatabase,
         BlockchainDatabaseConfig,
-        BlockHeaderAccumulatedData,
         ChainBlock,
         ChainHeader,
         ChainStorageError,
-        create_lmdb_database,
         DbKey,
         DbTransaction,
         DbValue,
@@ -58,15 +58,15 @@ use crate::{
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
     transactions::{
         transaction::{TransactionInput, TransactionKernel},
+        CryptoFactories,
     },
     validation::{
         block_validators::{BodyOnlyValidator, OrphanBlockValidator},
-        DifficultyCalculator,
         mocks::MockValidator,
+        DifficultyCalculator,
     },
 };
-use crate::transactions::CryptoFactories;
-use tari_common_types::types::{HashOutput, Signature, Commitment};
+use tari_common_types::types::{Commitment, HashOutput, Signature};
 
 /// Create a new blockchain database containing no blocks.
 pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {

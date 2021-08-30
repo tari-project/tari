@@ -23,7 +23,7 @@
 use std::{sync::Arc, thread, time::Duration};
 
 use futures::{FutureExt, StreamExt};
-use rand::{RngCore, rngs::OsRng};
+use rand::{rngs::OsRng, RngCore};
 use tari_crypto::{
     hash::blake2::Blake256,
     inputs,
@@ -37,35 +37,34 @@ use tokio::{
     time::delay_for,
 };
 
+use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
-    protocol::rpc::{mock::MockRpcServer, NamedProtocolService, RpcStatus},
-    Substream,
+    protocol::rpc::{mock::MockRpcServer, NamedProtocolService, RpcClientConfig, RpcStatus},
     test_utils::{
-        mocks::{ConnectivityManagerMockState, create_connectivity_mock},
+        mocks::{create_connectivity_mock, ConnectivityManagerMockState},
         node_identity::build_node_identity,
     },
     types::CommsSecretKey,
+    Substream,
 };
-use tari_comms::protocol::rpc::RpcClientConfig;
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcServer,
     consensus::ConsensusConstantsBuilder,
     transactions::{
         fee::Fee,
         helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
-        SenderTransactionProtocol,
-        tari_amount::{MicroTari, uT},
+        tari_amount::{uT, MicroTari},
         transaction::{KernelFeatures, OutputFeatures, Transaction},
         transaction_protocol::{
             recipient::RecipientState,
             sender::TransactionSenderMessage,
             single_receiver::SingleReceiverTransactionProtocol,
         },
-        types::{PrivateKey, PublicKey},
+        CryptoFactories,
+        SenderTransactionProtocol,
     },
 };
-use tari_core::transactions::crypto_factories::CryptoFactories;
 use tari_p2p::Network;
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
@@ -78,7 +77,7 @@ use tari_wallet::{
         service::OutputManagerService,
         storage::{
             database::{DbKey, DbKeyValuePair, DbValue, OutputManagerBackend, OutputManagerDatabase, WriteOperation},
-            models::DbUnblindedOutput,
+            models::{DbUnblindedOutput, OutputStatus},
             sqlite_db::OutputManagerSqliteDatabase,
         },
         TxId,
@@ -87,7 +86,6 @@ use tari_wallet::{
     transaction_service::handle::TransactionServiceHandle,
     types::ValidationRetryStrategy,
 };
-use tari_wallet::output_manager_service::storage::models::OutputStatus;
 
 use crate::support::{
     data::get_temp_sqlite_database_connection,

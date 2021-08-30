@@ -31,8 +31,7 @@ pub use error::HorizonSyncError;
 use horizon_state_synchronization::HorizonStateSynchronization;
 use tari_comms::PeerConnection;
 
-use crate::{base_node::BaseNodeStateMachine, chain_storage::BlockchainBackend};
-use crate::transactions::CryptoFactories;
+use crate::{base_node::BaseNodeStateMachine, chain_storage::BlockchainBackend, transactions::CryptoFactories};
 
 use super::{
     events_and_states::{HorizonSyncInfo, HorizonSyncStatus},

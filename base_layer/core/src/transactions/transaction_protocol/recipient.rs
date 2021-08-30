@@ -224,10 +224,10 @@ mod test {
                 RewindData,
                 TransactionMetadata,
             },
-            types::{PrivateKey, PublicKey, Signature},
             ReceiverTransactionProtocol,
         },
     };
+    use tari_common_types::types::{PrivateKey, PublicKey, Signature};
 
     #[test]
     fn single_round_recipient() {

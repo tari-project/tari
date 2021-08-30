@@ -1,11 +1,11 @@
 pub mod aggregated_body;
 pub mod bullet_rangeproofs;
+mod crypto_factories;
 pub mod fee;
 pub mod tari_amount;
 pub mod transaction;
 #[allow(clippy::op_ref)]
 pub mod transaction_protocol;
-mod crypto_factories;
 
 pub use crypto_factories::*;
 

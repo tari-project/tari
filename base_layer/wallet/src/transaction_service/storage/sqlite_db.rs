@@ -1670,13 +1670,13 @@ mod test {
     };
     use tempfile::tempdir;
 
+    use tari_common_types::types::{HashDigest, PrivateKey, PublicKey};
     use tari_core::transactions::{
-        crypto_factories::CryptoFactories,
         helpers::{create_unblinded_output, TestParams},
         tari_amount::MicroTari,
         transaction::{OutputFeatures, Transaction},
         transaction_protocol::sender::TransactionSenderMessage,
-        types::{HashDigest, PrivateKey, PublicKey},
+        CryptoFactories,
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     };

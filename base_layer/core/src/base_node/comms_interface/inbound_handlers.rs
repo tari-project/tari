@@ -34,7 +34,7 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     mempool::{async_mempool, Mempool},
     proof_of_work::{Difficulty, PowAlgorithm},
-    transactions::{transaction::TransactionKernel, },
+    transactions::transaction::TransactionKernel,
 };
 use log::*;
 use std::{

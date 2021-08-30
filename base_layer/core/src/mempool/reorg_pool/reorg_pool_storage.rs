@@ -20,16 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    blocks::Block,
-    mempool::reorg_pool::reorg_pool::ReorgPoolConfig,
-    transactions::{transaction::Transaction, },
-};
+use crate::{blocks::Block, mempool::reorg_pool::reorg_pool::ReorgPoolConfig, transactions::transaction::Transaction};
 use log::*;
 use std::sync::Arc;
+use tari_common_types::types::Signature;
 use tari_crypto::tari_utilities::hex::Hex;
 use ttl_cache::TtlCache;
-use tari_common_types::types::Signature;
 
 pub const LOG_TARGET: &str = "c::mp::reorg_pool::reorg_pool_storage";
 

@@ -37,16 +37,16 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         transaction::{KernelFeatures, OutputFlags, TransactionError},
+        CryptoFactories,
     },
     validation::{
-        CandidateBlockBodyValidation,
         helpers::{check_accounting_balance, check_block_weight, check_coinbase_output, is_all_unique_and_sorted},
-        OrphanValidation,
         traits::PostOrphanBodyValidation,
+        CandidateBlockBodyValidation,
+        OrphanValidation,
         ValidationError,
     },
 };
-use crate::transactions::CryptoFactories;
 
 pub const LOG_TARGET: &str = "c::val::block_validators";
 

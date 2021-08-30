@@ -21,13 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::transactions::bullet_rangeproofs::BulletRangeProof;
-use tari_crypto::{
-
-    ristretto::{
-        dalek_range_proof::DalekRangeProofService,
-    },
-};
-
+use tari_crypto::ristretto::dalek_range_proof::DalekRangeProofService;
 
 /// Specify the range proof type
 pub type RangeProofService = DalekRangeProofService;

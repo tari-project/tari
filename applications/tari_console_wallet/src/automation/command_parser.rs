@@ -349,7 +349,8 @@ mod test {
     };
     use rand::rngs::OsRng;
     use std::str::FromStr;
-    use tari_core::transactions::{tari_amount::MicroTari, types::PublicKey};
+    use tari_common_types::types::PublicKey;
+    use tari_core::transactions::tari_amount::MicroTari;
     use tari_crypto::keys::PublicKey as PublicKeyTrait;
 
     #[test]

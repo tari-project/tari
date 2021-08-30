@@ -31,20 +31,20 @@ use tari_service_framework::{async_trait, ServiceInitializationError, ServiceIni
 use crate::{
     base_node::{
         chain_metadata_service::ChainMetadataHandle,
-        LocalNodeCommsInterface,
-        OutboundNodeCommsInterface,
         state_machine_service::{
             handle::StateMachineHandle,
             state_machine::{BaseNodeStateMachine, BaseNodeStateMachineConfig},
             states::StatusInfo,
         },
         sync::SyncValidators,
+        LocalNodeCommsInterface,
+        OutboundNodeCommsInterface,
     },
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     consensus::ConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
+    transactions::CryptoFactories,
 };
-use crate::transactions::CryptoFactories;
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::initializer";
 

@@ -34,7 +34,7 @@ use tokio::sync::broadcast;
 
 use helpers::block_builders::append_block;
 use tari_common::configuration::Network;
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_common_types::{chain_metadata::ChainMetadata, types::PublicKey};
 use tari_comms::peer_manager::NodeId;
 use tari_core::{
     base_node::{
@@ -50,12 +50,11 @@ use tari_core::{
         helpers::{create_utxo, spend_utxos},
         tari_amount::MicroTari,
         transaction::{OutputFeatures, TransactionOutput, UnblindedOutput},
-        types::PublicKey,
+        CryptoFactories,
     },
     txn_schema,
     validation::{mocks::MockValidator, transaction_validators::TxInputAndMaturityValidator},
 };
-use tari_core::transactions::crypto_factories::CryptoFactories;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 
 #[allow(dead_code)]

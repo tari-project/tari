@@ -44,8 +44,8 @@ use tari_wallet::{
     output_manager_service::error::OutputManagerError,
 };
 
-use tari_common_types::emoji::EmojiId;
 use crate::identity_management::load_from_json;
+use tari_common_types::emoji::EmojiId;
 
 pub const LOG_TARGET: &str = "tari::application";
 

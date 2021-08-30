@@ -45,7 +45,7 @@ pub fn is_valid(arr: &[usize], dict_len: usize) -> bool {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::luhn::*;
+    use crate::luhn::{checksum, is_valid};
 
     #[test]
     fn luhn_6() {

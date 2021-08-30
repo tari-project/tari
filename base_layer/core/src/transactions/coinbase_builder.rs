@@ -257,10 +257,10 @@ mod test {
             tari_amount::uT,
             transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionError},
             transaction_protocol::RewindData,
-            types::{BlindingFactor, PrivateKey},
             CoinbaseBuilder,
         },
     };
+    use tari_common_types::types::{BlindingFactor, PrivateKey};
 
     fn get_builder() -> (CoinbaseBuilder, ConsensusManager, CryptoFactories) {
         let network = Network::LocalNet;

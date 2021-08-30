@@ -38,7 +38,10 @@ use tari_crypto::{
 use tempfile::tempdir;
 use tokio::{runtime::Runtime, time::delay_for};
 
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{PrivateKey, PublicKey},
+};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
@@ -47,12 +50,11 @@ use tari_comms::{
 use tari_comms_dht::DhtConfig;
 use tari_core::transactions::{
     helpers::{create_unblinded_output, TestParams},
-    tari_amount::{MicroTari, uT},
-    types::{PrivateKey, PublicKey},
+    tari_amount::{uT, MicroTari},
+    transaction::OutputFeatures,
+    CryptoFactories,
 };
-use tari_core::transactions::crypto_factories::CryptoFactories;
-use tari_core::transactions::transaction::OutputFeatures;
-use tari_p2p::{DEFAULT_DNS_NAME_SERVER, initialization::CommsConfig, Network, transport::TransportType};
+use tari_p2p::{initialization::CommsConfig, transport::TransportType, Network, DEFAULT_DNS_NAME_SERVER};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
 use tari_wallet::{

@@ -22,10 +22,9 @@
 
 use tari_core::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
-    consensus::{ConsensusManager, emission::Emission},
-    transactions::{tari_amount::MicroTari, transaction::Transaction},
+    consensus::{emission::Emission, ConsensusManager},
+    transactions::{tari_amount::MicroTari, transaction::Transaction, CryptoFactories},
 };
-use tari_core::transactions::crypto_factories::CryptoFactories;
 
 use crate::helpers::block_builders::create_coinbase;
 

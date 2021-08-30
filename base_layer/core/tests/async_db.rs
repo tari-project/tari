@@ -31,6 +31,7 @@ use helpers::{
     sample_blockchains::{create_blockchain_db_no_cut_through, create_new_blockchain},
 };
 use tari_common::configuration::Network;
+use tari_common_types::types::CommitmentFactory;
 use tari_core::{
     blocks::Block,
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, PrunedOutput},
@@ -38,11 +39,10 @@ use tari_core::{
         helpers::schema_to_transaction,
         tari_amount::T,
         transaction::{TransactionOutput, UnblindedOutput},
-        types::CommitmentFactory,
+        CryptoFactories,
     },
     txn_schema,
 };
-use tari_core::transactions::crypto_factories::CryptoFactories;
 use tari_test_utils::runtime::test_async;
 
 #[allow(dead_code)]

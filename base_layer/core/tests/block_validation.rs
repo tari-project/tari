@@ -40,18 +40,18 @@ use tari_core::{
     transactions::{
         helpers::{schema_to_transaction, TestParams, UtxoTestParams},
         tari_amount::T,
+        CryptoFactories,
     },
     txn_schema,
     validation::{
         block_validators::{BlockValidator, BodyOnlyValidator, OrphanBlockValidator},
-        CandidateBlockBodyValidation,
-        DifficultyCalculator,
         header_validator::HeaderValidator,
         mocks::MockValidator,
+        CandidateBlockBodyValidation,
+        DifficultyCalculator,
         ValidationError,
     },
 };
-use tari_core::transactions::crypto_factories::CryptoFactories;
 
 use crate::helpers::{block_builders::chain_block_with_new_coinbase, test_blockchain::TestBlockchain};
 

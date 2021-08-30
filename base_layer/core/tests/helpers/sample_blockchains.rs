@@ -24,23 +24,23 @@
 use tari_common::configuration::Network;
 use tari_core::{
     chain_storage::{
+        create_lmdb_database,
         BlockchainDatabase,
         BlockchainDatabaseConfig,
         ChainBlock,
-        create_lmdb_database,
         LMDBDatabase,
         Validators,
     },
     consensus::{ConsensusConstants, ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder},
     test_helpers::blockchain::{create_store_with_consensus, TempDatabase},
     transactions::{
-        tari_amount::{T, uT},
+        tari_amount::{uT, T},
         transaction::UnblindedOutput,
+        CryptoFactories,
     },
     txn_schema,
     validation::DifficultyCalculator,
 };
-use tari_core::transactions::crypto_factories::CryptoFactories;
 use tari_storage::lmdb_store::LMDBConfig;
 
 use crate::helpers::block_builders::{create_genesis_block, generate_new_block};

@@ -20,24 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use rand::{RngCore, rngs::OsRng};
+use rand::{rngs::OsRng, RngCore};
 use tari_crypto::{script::StackItem, tari_utilities::Hashable};
 
 use tari_common::configuration::Network;
 use tari_common_types::types::BlockHash;
 use tari_core::{
-    blocks::{Block, BlockHeader, genesis_block},
+    blocks::{genesis_block, Block, BlockHeader},
     chain_storage::{
+        create_lmdb_database,
         BlockAddResult,
         BlockchainBackend,
         BlockchainDatabase,
         BlockchainDatabaseConfig,
         ChainStorageError,
-        create_lmdb_database,
         DbTransaction,
         Validators,
     },
-    consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, emission::Emission},
+    consensus::{emission::Emission, ConsensusConstantsBuilder, ConsensusManagerBuilder},
     proof_of_work::Difficulty,
     test_helpers::blockchain::{
         create_store_with_consensus,
@@ -47,13 +47,13 @@ use tari_core::{
     },
     transactions::{
         helpers::{schema_to_transaction, spend_utxos},
-        tari_amount::{MicroTari, T, uT},
+        tari_amount::{uT, MicroTari, T},
+        CryptoFactories,
     },
     tx,
     txn_schema,
-    validation::{DifficultyCalculator, mocks::MockValidator, ValidationError},
+    validation::{mocks::MockValidator, DifficultyCalculator, ValidationError},
 };
-use tari_core::transactions::crypto_factories::CryptoFactories;
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
 

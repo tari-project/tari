@@ -28,17 +28,17 @@ use aes_gcm::{
 };
 use chrono::{Duration as ChronoDuration, Utc};
 use diesel::result::{DatabaseErrorKind, Error::DatabaseError};
-use rand::{RngCore, rngs::OsRng};
+use rand::{rngs::OsRng, RngCore};
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey, script::TariScript};
 use tokio::runtime::Runtime;
 
+use tari_common_types::types::PrivateKey;
 use tari_core::transactions::{
     helpers::{create_unblinded_output, TestParams},
     tari_amount::MicroTari,
     transaction::OutputFeatures,
-    types::PrivateKey,
+    CryptoFactories,
 };
-use tari_core::transactions::crypto_factories::CryptoFactories;
 use tari_wallet::output_manager_service::{
     error::OutputManagerStorageError,
     service::Balance,

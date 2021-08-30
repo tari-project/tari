@@ -34,16 +34,16 @@ use tari_crypto::{
 use tempfile::tempdir;
 use tokio::runtime::Runtime;
 
+use tari_common_types::types::{HashDigest, PrivateKey, PublicKey};
 use tari_core::transactions::{
     helpers::{create_unblinded_output, TestParams},
-    ReceiverTransactionProtocol,
-    SenderTransactionProtocol,
-    tari_amount::{MicroTari, uT},
+    tari_amount::{uT, MicroTari},
     transaction::{OutputFeatures, Transaction},
     transaction_protocol::sender::TransactionSenderMessage,
-    types::{HashDigest, PrivateKey, PublicKey},
+    CryptoFactories,
+    ReceiverTransactionProtocol,
+    SenderTransactionProtocol,
 };
-use tari_core::transactions::crypto_factories::CryptoFactories;
 use tari_test_utils::random;
 use tari_wallet::{
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
@@ -60,7 +60,6 @@ use tari_wallet::{
         sqlite_db::TransactionServiceSqliteDatabase,
     },
 };
-
 pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut runtime = Runtime::new().unwrap();
     let mut db = TransactionDatabase::new(backend);

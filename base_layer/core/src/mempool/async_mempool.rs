@@ -23,7 +23,7 @@
 use crate::{
     blocks::Block,
     mempool::{error::MempoolError, Mempool, StateResponse, StatsResponse, TxStorageResponse},
-    transactions::{transaction::Transaction, },
+    transactions::transaction::Transaction,
 };
 use std::sync::Arc;
 use tari_common_types::types::Signature;

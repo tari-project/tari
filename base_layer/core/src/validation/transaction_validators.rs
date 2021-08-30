@@ -26,10 +26,9 @@ use crate::{
     blocks::BlockValidationError,
     chain_storage::{BlockchainBackend, BlockchainDatabase, MmrTree},
     crypto::tari_utilities::Hashable,
-    transactions::transaction::Transaction,
+    transactions::{transaction::Transaction, CryptoFactories},
     validation::{MempoolTransactionValidation, ValidationError},
 };
-use crate::transactions::CryptoFactories;
 
 pub const LOG_TARGET: &str = "c::val::transaction_validators";
 

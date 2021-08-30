@@ -595,9 +595,9 @@ mod test {
                 transaction_initializer::SenderTransactionInitializer,
                 TransactionProtocolError,
             },
-            types::PrivateKey,
         },
     };
+    use tari_common_types::types::PrivateKey;
 
     /// One input, 2 outputs
     #[test]

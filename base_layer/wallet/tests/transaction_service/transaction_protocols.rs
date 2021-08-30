@@ -29,15 +29,15 @@ use tempfile::{tempdir, TempDir};
 use tokio::{sync::broadcast, task, time::delay_for};
 
 use tari_comms::{
-    NodeIdentity,
     peer_manager::PeerFeatures,
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService, RpcStatus},
-    Substream,
     test_utils::{
-        mocks::{ConnectivityManagerMockState, create_connectivity_mock},
+        mocks::{create_connectivity_mock, ConnectivityManagerMockState},
         node_identity::build_node_identity,
     },
     types::CommsPublicKey,
+    NodeIdentity,
+    Substream,
 };
 use tari_comms_dht::outbound::mock::{create_outbound_service_mock, OutboundServiceMockState};
 use tari_core::{
@@ -47,11 +47,11 @@ use tari_core::{
     },
     transactions::{
         helpers::schema_to_transaction,
-        tari_amount::{MicroTari, T, uT},
+        tari_amount::{uT, MicroTari, T},
+        CryptoFactories,
     },
     txn_schema,
 };
-use tari_core::transactions::crypto_factories::CryptoFactories;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::Shutdown;
 use tari_test_utils::random;

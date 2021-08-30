@@ -457,7 +457,7 @@ pub fn get_igor_genesis_block_raw() -> Block {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::transactions::crypto_factories::CryptoFactories;
+    use crate::transactions::CryptoFactories;
 
     #[test]
     fn weatherwax_genesis_sanity_check() {

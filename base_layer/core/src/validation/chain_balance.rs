@@ -28,12 +28,9 @@ use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use crate::{
     chain_storage::BlockchainBackend,
     consensus::ConsensusManager,
-    transactions::{
-        tari_amount::MicroTari,
-    },
+    transactions::{tari_amount::MicroTari, CryptoFactories},
     validation::{FinalHorizonStateValidation, ValidationError},
 };
-use crate::transactions::CryptoFactories;
 use tari_common_types::types::{Commitment, PrivateKey};
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync::chain_balance";

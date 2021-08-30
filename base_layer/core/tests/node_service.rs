@@ -37,11 +37,11 @@ use helpers::{
     },
     event_stream::event_stream_next,
     nodes::{
-        BaseNodeBuilder,
         create_network_with_2_base_nodes_with_config,
         create_network_with_3_base_nodes_with_config,
         random_node_identity,
         wait_until_online,
+        BaseNodeBuilder,
     },
 };
 use tari_common::configuration::Network;
@@ -59,8 +59,9 @@ use tari_core::{
     proof_of_work::PowAlgorithm,
     transactions::{
         helpers::{schema_to_transaction, spend_utxos},
-        tari_amount::{T, uT},
+        tari_amount::{uT, T},
         transaction::OutputFeatures,
+        CryptoFactories,
     },
     txn_schema,
     validation::{
@@ -69,7 +70,6 @@ use tari_core::{
         mocks::MockValidator,
     },
 };
-use tari_core::transactions::crypto_factories::CryptoFactories;
 use tari_p2p::services::liveness::LivenessConfig;
 use tari_test_utils::unpack_enum;
 

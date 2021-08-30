@@ -40,11 +40,11 @@ use crate::{
         },
         types::{Signature as SignatureProto, Transaction as TransactionProto},
     },
-    transactions::{transaction::Transaction, },
+    transactions::transaction::Transaction,
 };
 use std::convert::TryFrom;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 use tari_common_types::types::Signature;
+use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 
 const LOG_TARGET: &str = "c::base_node::rpc";
 

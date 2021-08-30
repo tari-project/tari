@@ -41,7 +41,7 @@ use crate::{
     },
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
-        types::{ RangeProofService},
+        types::RangeProofService,
     },
 };
 use croaring::Bitmap;
@@ -51,13 +51,13 @@ use std::{
     convert::{TryFrom, TryInto},
     sync::Arc,
 };
+use tari_common_types::types::HashDigest;
 use tari_comms::PeerConnection;
 use tari_crypto::{
     commitment::HomomorphicCommitment,
     tari_utilities::{hex::Hex, Hashable},
 };
 use tari_mmr::{MerkleMountainRange, MutableMmr};
-use tari_common_types::types::HashDigest;
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync";
 

@@ -154,9 +154,8 @@ mod test {
             TransactionMetadata,
             TransactionProtocolError,
         },
-        types::{PrivateKey, PublicKey},
     };
-    use tari_common_types::PublicKey;
+    use tari_common_types::types::{PrivateKey, PublicKey};
 
     fn generate_output_parms() -> (PrivateKey, PrivateKey, OutputFeatures) {
         let r = PrivateKey::random(&mut OsRng);

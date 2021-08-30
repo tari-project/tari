@@ -27,8 +27,8 @@ use crate::{
     proto::utils::{datetime_to_timestamp, timestamp_to_datetime},
 };
 use std::convert::TryFrom;
-use tari_crypto::tari_utilities::ByteArray;
 use tari_common_types::types::BlindingFactor;
+use tari_crypto::tari_utilities::ByteArray;
 
 //---------------------------------- BlockHeader --------------------------------------------//
 

@@ -733,8 +733,9 @@ mod test {
             RewindData,
             TransactionProtocolError,
         },
-        types::{PrivateKey, PublicKey, RangeProof},
+        types::RangeProof,
     };
+    use tari_common_types::types::{PrivateKey, PublicKey};
 
     #[test]
     fn test_metadata_signature_finalize() {

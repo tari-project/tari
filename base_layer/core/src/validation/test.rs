@@ -35,13 +35,13 @@ use crate::{
     test_helpers::{blockchain::create_store_with_consensus, create_chain_header},
     transactions::{
         helpers::{create_random_signature_from_s_key, create_utxo},
-        tari_amount::{MicroTari, uT},
+        tari_amount::{uT, MicroTari},
         transaction::{KernelBuilder, KernelFeatures, OutputFeatures, TransactionKernel},
-        types::Commitment,
+        CryptoFactories,
     },
-    validation::{ChainBalanceValidator, FinalHorizonStateValidation, header_iter::HeaderIter},
+    validation::{header_iter::HeaderIter, ChainBalanceValidator, FinalHorizonStateValidation},
 };
-use crate::transactions::crypto_factories::CryptoFactories;
+use tari_common_types::types::Commitment;
 
 #[test]
 fn header_iter_empty_and_invalid_height() {

@@ -172,8 +172,7 @@ pub struct EmojiIdError;
 
 #[cfg(test)]
 mod test {
-    use tari_app_utilities::emoji::EmojiId;
-    use tari_core::transactions::types::PublicKey;
+    use crate::{emoji::EmojiId, types::PublicKey};
     use tari_crypto::tari_utilities::hex::Hex;
 
     #[test]

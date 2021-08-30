@@ -23,8 +23,7 @@
 // use crate::helpers::database::create_store;
 use std::{ops::Deref, sync::Arc, time::Duration};
 
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
-use tari_crypto::script;
+use tari_crypto::{keys::PublicKey as PublicKeyTrait, script};
 use tempfile::tempdir;
 use tokio::runtime::Runtime;
 
@@ -41,6 +40,7 @@ use helpers::{
     sample_blockchains::{create_new_blockchain, create_new_blockchain_with_constants},
 };
 use tari_common::configuration::Network;
+use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
     base_node::{
@@ -55,19 +55,17 @@ use tari_core::{
     transactions::{
         fee::Fee,
         helpers::{create_unblinded_output, schema_to_transaction, spend_utxos, TestParams},
-        tari_amount::{MicroTari, T, uT},
+        tari_amount::{uT, MicroTari, T},
         transaction::{KernelBuilder, OutputFeatures, Transaction, TransactionOutput},
         transaction_protocol::{build_challenge, TransactionMetadata},
-        types::{Commitment, PrivateKey, PublicKey, Signature},
+        CryptoFactories,
     },
     tx,
     txn_schema,
     validation::transaction_validators::{TxConsensusValidator, TxInputAndMaturityValidator},
 };
-use tari_core::transactions::crypto_factories::CryptoFactories;
 use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType};
 use tari_test_utils::async_assert_eventually;
-
 #[allow(dead_code)]
 mod helpers;
 

@@ -32,8 +32,8 @@ use tokio::{
 
 use helpers::{
     block_builders::{append_block, chain_block, create_genesis_block},
-    chain_metadata::{MockChainMetadata, random_peer_metadata},
-    nodes::{BaseNodeBuilder, create_network_with_2_base_nodes_with_config, wait_until_online},
+    chain_metadata::{random_peer_metadata, MockChainMetadata},
+    nodes::{create_network_with_2_base_nodes_with_config, wait_until_online, BaseNodeBuilder},
 };
 use tari_common::configuration::Network;
 use tari_core::{
@@ -42,9 +42,9 @@ use tari_core::{
         comms_interface::Broadcast,
         service::BaseNodeServiceConfig,
         state_machine_service::{
+            states::{Listening, StateEvent, StatusInfo},
             BaseNodeStateMachine,
             BaseNodeStateMachineConfig,
-            states::{Listening, StateEvent, StatusInfo},
         },
         SyncValidators,
     },
@@ -52,9 +52,9 @@ use tari_core::{
     mempool::MempoolServiceConfig,
     proof_of_work::randomx_factory::RandomXFactory,
     test_helpers::blockchain::create_test_blockchain_db,
+    transactions::CryptoFactories,
     validation::mocks::MockValidator,
 };
-use tari_core::transactions::crypto_factories::CryptoFactories;
 use tari_p2p::services::liveness::LivenessConfig;
 use tari_shutdown::Shutdown;
 
