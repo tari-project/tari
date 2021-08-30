@@ -27,7 +27,7 @@ use crate::{
     proto::envelope::DhtMessageType,
 };
 use std::{fmt, fmt::Display};
-use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
+use tari_comms::{message::MessageTag, peer_manager::NodeId, types::CommsPublicKey};
 
 /// Configuration for outbound messages.
 ///
@@ -66,6 +66,7 @@ pub struct FinalSendMessageParams {
     pub dht_message_type: DhtMessageType,
     pub dht_message_flags: DhtMessageFlags,
     pub dht_header: Option<DhtMessageHeader>,
+    pub tag: Option<MessageTag>,
 }
 
 impl Default for FinalSendMessageParams {
@@ -79,6 +80,7 @@ impl Default for FinalSendMessageParams {
             force_origin: false,
             is_discovery_enabled: false,
             dht_header: None,
+            tag: None,
         }
     }
 }
@@ -168,6 +170,12 @@ impl SendMessageParams {
     /// Set broadcast_strategy to Random.
     pub fn random(&mut self, n: usize) -> &mut Self {
         self.params_mut().broadcast_strategy = BroadcastStrategy::Random(n, vec![]);
+        self
+    }
+
+    /// Set the message trace tag
+    pub fn with_tag(&mut self, tag: MessageTag) -> &mut Self {
+        self.params_mut().tag = Some(tag);
         self
     }
 

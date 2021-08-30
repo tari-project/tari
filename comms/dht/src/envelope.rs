@@ -106,8 +106,12 @@ impl DhtMessageFlags {
 }
 
 impl DhtMessageType {
+    pub fn is_domain_message(self) -> bool {
+        matches!(self, DhtMessageType::None)
+    }
+
     pub fn is_dht_message(self) -> bool {
-        self.is_dht_discovery() || self.is_dht_join()
+        self.is_dht_discovery() || matches!(self, DhtMessageType::DiscoveryResponse) || self.is_dht_join()
     }
 
     pub fn is_dht_discovery(self) -> bool {
