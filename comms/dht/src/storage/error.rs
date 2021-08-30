@@ -40,4 +40,6 @@ pub enum StorageError {
     ResultError(#[from] diesel::result::Error),
     #[error("MessageFormatError: {0}")]
     MessageFormatError(#[from] MessageFormatError),
+    #[error("Unexpected result: {0}")]
+    UnexpectedResult(String),
 }

@@ -33,11 +33,11 @@ impl<T, U> Filter<T, U> {
 
 impl<T, U, Request> Service<Request> for Filter<T, U>
 where
-    T: Service<Request, Error = PipelineError> + Clone,
+    T: Service<Request, Response = (), Error = PipelineError> + Clone,
     U: Predicate<Request>,
 {
     type Error = PipelineError;
-    type Future = ResponseFuture<U::Future, T, Request>;
+    type Future = ResponseFuture<T, Request>;
     type Response = T::Response;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
