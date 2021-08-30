@@ -57,7 +57,7 @@ impl<B: Backend> Component<B> for BaseNode {
             ]),
             OnlineStatus::Online => {
                 let base_node_state = app_state.get_base_node_state();
-                if let Some(metadata) = base_node_state.clone().chain_metadata {
+                if let Some(ref metadata) = base_node_state.chain_metadata {
                     let tip = metadata.height_of_longest_chain();
 
                     let synced = base_node_state.is_synced.unwrap_or_default();
@@ -93,7 +93,7 @@ impl<B: Backend> Component<B> for BaseNode {
                     Spans::from(vec![
                         Span::styled("Chain Tip:", Style::default().fg(Color::Magenta)),
                         Span::raw(" "),
-                        Span::styled("Waiting for data...", Style::default().fg(Color::White)),
+                        Span::styled("Waiting for data...", Style::default().fg(Color::DarkGray)),
                     ])
                 }
             },

@@ -21,10 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::RpcServerError;
-use futures::{
-    channel::{mpsc, oneshot},
-    SinkExt,
-};
+use tokio::sync::{mpsc, oneshot};
 
 #[derive(Debug)]
 pub enum RpcServerRequest {

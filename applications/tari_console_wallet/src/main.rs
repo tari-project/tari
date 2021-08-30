@@ -58,8 +58,7 @@ fn main() {
 }
 
 fn main_inner() -> Result<(), ExitCodes> {
-    let mut runtime = tokio::runtime::Builder::new()
-        .threaded_scheduler()
+    let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .expect("Failed to build a runtime!");
@@ -156,11 +155,8 @@ fn main_inner() -> Result<(), ExitCodes> {
     };
 
     print!("\nShutting down wallet... ");
-    if shutdown.trigger().is_ok() {
-        runtime.block_on(wallet.wait_until_shutdown());
-    } else {
-        error!(target: LOG_TARGET, "No listeners for the shutdown signal!");
-    }
+    shutdown.trigger();
+    runtime.block_on(wallet.wait_until_shutdown());
     println!("Done.");
 
     result

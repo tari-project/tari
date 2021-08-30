@@ -26,6 +26,7 @@ use crate::{
         helpers::{mean, median},
     },
 };
+use futures::{channel::mpsc, SinkExt};
 use log::*;
 use std::{
     cmp,
@@ -41,7 +42,6 @@ use tari_comms::{Bytes, CommsNode};
 use tari_core::{
     base_node::{
         comms_interface::{Broadcast, CommsInterfaceError},
-        state_machine_service::states::BlockSyncInfo,
         LocalNodeCommsInterface,
         StateMachineHandle,
     },
@@ -55,7 +55,7 @@ use tari_core::{
 };
 use tari_crypto::tari_utilities::{message_format::MessageFormat, Hashable};
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
-use tokio::{sync::mpsc, task};
+use tokio::task;
 use tonic::{Request, Response, Status};
 
 const LOG_TARGET: &str = "tari::base_node::grpc";
@@ -996,32 +996,25 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<tari_rpc::SyncInfoResponse>, Status> {
         debug!(target: LOG_TARGET, "Incoming GRPC request for BN sync data");
 
-        let mut channel = self.state_machine_handle.get_status_info_watch();
-
-        let mut sync_info: Option<BlockSyncInfo> = None;
-
-        if let Some(info) = channel.recv().await {
-            sync_info = info.state_info.get_block_sync_info();
-        }
-
-        let mut response = tari_rpc::SyncInfoResponse {
-            tip_height: 0,
-            local_height: 0,
-            peer_node_id: vec![],
-        };
-
-        if let Some(info) = sync_info {
-            let node_ids = info
-                .sync_peers
-                .iter()
-                .map(|x| x.to_string().as_bytes().to_vec())
-                .collect();
-            response = tari_rpc::SyncInfoResponse {
-                tip_height: info.tip_height,
-                local_height: info.local_height,
-                peer_node_id: node_ids,
-            };
-        }
+        let response = self
+            .state_machine_handle
+            .get_status_info_watch()
+            .borrow()
+            .state_info
+            .get_block_sync_info()
+            .map(|info| {
+                let node_ids = info
+                    .sync_peers
+                    .iter()
+                    .map(|x| x.to_string().as_bytes().to_vec())
+                    .collect();
+                tari_rpc::SyncInfoResponse {
+                    tip_height: info.tip_height,
+                    local_height: info.local_height,
+                    peer_node_id: node_ids,
+                }
+            })
+            .unwrap_or_default();
 
         debug!(target: LOG_TARGET, "Sending SyncData response to client");
         Ok(Response::new(response))

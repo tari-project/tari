@@ -283,7 +283,7 @@ mod test {
     mod initialize_state {
         use super::*;
 
-        #[tokio_macros::test_basic]
+        #[tokio::test]
         async fn it_initializes_state_to_given_header() {
             let (mut validator, _, tip) = setup_with_headers(1).await;
             validator.initialize_state(&tip.header().hash()).await.unwrap();
@@ -295,7 +295,7 @@ mod test {
             assert_eq!(state.current_height, 1);
         }
 
-        #[tokio_macros::test_basic]
+        #[tokio::test]
         async fn it_errors_if_hash_does_not_exist() {
             let (mut validator, _) = setup();
             let start_hash = vec![0; 32];
@@ -308,7 +308,7 @@ mod test {
     mod validate {
         use super::*;
 
-        #[tokio_macros::test_basic]
+        #[tokio::test]
         async fn it_passes_if_headers_are_valid() {
             let (mut validator, _, tip) = setup_with_headers(1).await;
             validator.initialize_state(tip.hash()).await.unwrap();
@@ -322,7 +322,7 @@ mod test {
             assert_eq!(validator.valid_headers().len(), 2);
         }
 
-        #[tokio_macros::test_basic]
+        #[tokio::test]
         async fn it_fails_if_height_is_not_serial() {
             let (mut validator, _, tip) = setup_with_headers(2).await;
             validator.initialize_state(tip.hash()).await.unwrap();

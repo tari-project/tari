@@ -23,11 +23,9 @@
 use std::{sync::Arc, thread::sleep, time::Duration};
 
 use chrono::Utc;
-use futures::{FutureExt, StreamExt};
+use futures::StreamExt;
 use rand::rngs::OsRng;
-use tempfile::{tempdir, TempDir};
-use tokio::{sync::broadcast, task, time::delay_for};
-
+use std::{sync::Arc, time::Duration};
 use tari_comms::{
     peer_manager::PeerFeatures,
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService, RpcStatus},
@@ -79,6 +77,8 @@ use tari_wallet::{
     },
     types::ValidationRetryStrategy,
 };
+use tempfile::{tempdir, TempDir};
+use tokio::{sync::broadcast, task, time::sleep};
 
 use crate::support::{
     rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
@@ -233,7 +233,7 @@ pub async fn oms_reply_channel_task(
 }
 
 /// A happy path test by submitting a transaction into the mempool, have it mined but unconfirmed and then confirmed.
-#[tokio_macros::test]
+#[tokio::test]
 #[allow(clippy::identity_op)]
 async fn tx_broadcast_protocol_submit_success_i() {
     let (
@@ -248,7 +248,7 @@ async fn tx_broadcast_protocol_submit_success_i() {
         _temp_dir,
         mut transaction_event_receiver,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
-    let mut event_stream = resources.event_publisher.subscribe().fuse();
+    let mut event_stream = resources.event_publisher.subscribe();
     let (base_node_update_publisher, _) = broadcast::channel(20);
 
     let protocol = TransactionBroadcastProtocol::new(
@@ -356,7 +356,8 @@ async fn tx_broadcast_protocol_submit_success_i() {
         .unwrap();
     // lets wait for the transaction service event to notify us of a confirmed tx
     // We need to do this to ensure that the wallet db has been updated to "Mined"
-    while let Some(v) = transaction_event_receiver.next().await {
+    loop {
+        let v = transaction_event_receiver.recv().await;
         let event = v.unwrap();
         match (*event).clone() {
             TransactionEvent::TransactionMined(_) => {
@@ -395,13 +396,14 @@ async fn tx_broadcast_protocol_submit_success_i() {
     );
 
     // Check that the appropriate events were emitted
-    let mut delay = delay_for(Duration::from_secs(5)).fuse();
+    let delay = sleep(Duration::from_secs(5));
+    tokio::pin!(delay);
     let mut broadcast = false;
     let mut unconfirmed = false;
     let mut confirmed = false;
     loop {
-        futures::select! {
-            event = event_stream.select_next_some() => {
+        tokio::select! {
+            event = event_stream.recv() => {
                 match &*event.unwrap() {
                         TransactionEvent::TransactionMinedUnconfirmed(_, confirmations) => if *confirmations == 1 {
                             unconfirmed = true;
@@ -415,7 +417,7 @@ async fn tx_broadcast_protocol_submit_success_i() {
                         _ => (),
                         }
             },
-            () = delay => {
+            () = &mut delay => {
                 break;
             },
         }
@@ -429,7 +431,7 @@ async fn tx_broadcast_protocol_submit_success_i() {
 }
 
 /// Test submitting a transaction that is immediately rejected
-#[tokio_macros::test]
+#[tokio::test]
 #[allow(clippy::identity_op)]
 async fn tx_broadcast_protocol_submit_rejection() {
     let (
@@ -444,7 +446,7 @@ async fn tx_broadcast_protocol_submit_rejection() {
         _temp_dir,
         _transaction_event_receiver,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
-    let mut event_stream = resources.event_publisher.subscribe().fuse();
+    let mut event_stream = resources.event_publisher.subscribe();
     let (base_node_update_publisher, _) = broadcast::channel(20);
 
     add_transaction_to_database(1, 1 * T, true, None, resources.db.clone()).await;
@@ -481,16 +483,17 @@ async fn tx_broadcast_protocol_submit_rejection() {
     assert!(db_completed_tx.is_err());
 
     // Check that the appropriate events were emitted
-    let mut delay = delay_for(Duration::from_secs(1)).fuse();
+    let delay = sleep(Duration::from_secs(1));
+    tokio::pin!(delay);
     let mut cancelled = false;
     loop {
-        futures::select! {
-            event = event_stream.select_next_some() => {
+        tokio::select! {
+            event = event_stream.recv() => {
                 if let TransactionEvent::TransactionCancelled(_) = &*event.unwrap() {
                 cancelled = true;
                 }
             },
-            () = delay => {
+            () = &mut delay => {
                 break;
             },
         }
@@ -501,7 +504,7 @@ async fn tx_broadcast_protocol_submit_rejection() {
 
 /// Test restarting a protocol which means the first step is a query not a submission, detecting the Tx is not in the
 /// mempool, resubmit the tx and then have it mined
-#[tokio_macros::test]
+#[tokio::test]
 #[allow(clippy::identity_op)]
 async fn tx_broadcast_protocol_restart_protocol_as_query() {
     let (
@@ -588,7 +591,7 @@ async fn tx_broadcast_protocol_restart_protocol_as_query() {
 
 /// This test will submit a Tx which will be accepted and then dropped from the mempool, resulting in a resubmit which
 /// will be rejected and result in a cancelled transaction
-#[tokio_macros::test]
+#[tokio::test]
 #[allow(clippy::identity_op)]
 async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
     let (
@@ -603,7 +606,7 @@ async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
         _temp_dir,
         _transaction_event_receiver,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
-    let mut event_stream = resources.event_publisher.subscribe().fuse();
+    let mut event_stream = resources.event_publisher.subscribe();
     let (base_node_update_publisher, _) = broadcast::channel(20);
 
     add_transaction_to_database(1, 1 * T, true, None, resources.db.clone()).await;
@@ -669,16 +672,17 @@ async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
     assert!(db_completed_tx.is_err());
 
     // Check that the appropriate events were emitted
-    let mut delay = delay_for(Duration::from_secs(1)).fuse();
+    let delay = sleep(Duration::from_secs(1));
+    tokio::pin!(delay);
     let mut cancelled = false;
     loop {
-        futures::select! {
-            event = event_stream.select_next_some() => {
+        tokio::select! {
+            event = event_stream.recv() => {
                 if let TransactionEvent::TransactionCancelled(_) = &*event.unwrap() {
                 cancelled = true;
                 }
             },
-            () = delay => {
+            () = &mut delay => {
                 break;
             },
         }
@@ -689,7 +693,7 @@ async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
 
 /// This test will submit a tx which is accepted and mined but unconfirmed, then the next query it will not exist
 /// resulting in a resubmission which we will let run to being mined with success
-#[tokio_macros::test]
+#[tokio::test]
 #[allow(clippy::identity_op)]
 async fn tx_broadcast_protocol_submit_mined_then_not_mined_resubmit_success() {
     let (
@@ -754,14 +758,14 @@ async fn tx_broadcast_protocol_submit_mined_then_not_mined_resubmit_success() {
 
     // Wait for the "TransactionMinedUnconfirmed" tx event to ensure that the wallet db state is "MinedUnconfirmed"
     let mut count = 0u16;
-    while let Some(v) = transaction_event_receiver.next().await {
+    loop {
+        let v = transaction_event_receiver.recv().await;
         let event = v.unwrap();
         match (*event).clone() {
             TransactionEvent::TransactionMinedUnconfirmed(_, _) => {
                 break;
             },
             _ => {
-                sleep(Duration::from_millis(1000));
                 count += 1;
                 if count >= 10 {
                     break;
@@ -809,7 +813,7 @@ async fn tx_broadcast_protocol_submit_mined_then_not_mined_resubmit_success() {
 }
 
 /// Test being unable to connect and then connection becoming available.
-#[tokio_macros::test]
+#[tokio::test]
 #[allow(clippy::identity_op)]
 async fn tx_broadcast_protocol_connection_problem() {
     let (
@@ -826,7 +830,7 @@ async fn tx_broadcast_protocol_connection_problem() {
     ) = setup(TxProtocolTestConfig::WithoutConnection).await;
     let (base_node_update_publisher, _) = broadcast::channel(20);
 
-    let mut event_stream = resources.event_publisher.subscribe().fuse();
+    let mut event_stream = resources.event_publisher.subscribe();
 
     add_transaction_to_database(1, 1 * T, true, None, resources.db.clone()).await;
 
@@ -842,11 +846,12 @@ async fn tx_broadcast_protocol_connection_problem() {
     let join_handle = task::spawn(protocol.execute());
 
     // Check that the connection problem event was emitted at least twice
-    let mut delay = delay_for(Duration::from_secs(10)).fuse();
+    let delay = sleep(Duration::from_secs(10));
+    tokio::pin!(delay);
     let mut connection_issues = 0;
     loop {
-        futures::select! {
-            event = event_stream.select_next_some() => {
+        tokio::select! {
+            event = event_stream.recv() => {
                 if let TransactionEvent::TransactionBaseNodeConnectionProblem(_) = &*event.unwrap() {
                 connection_issues+=1;
                 }
@@ -854,7 +859,7 @@ async fn tx_broadcast_protocol_connection_problem() {
                     break;
                 }
             },
-            () = delay => {
+            () = &mut delay => {
                 break;
             },
         }
@@ -881,7 +886,7 @@ async fn tx_broadcast_protocol_connection_problem() {
 }
 
 /// Submit a transaction that is Already Mined for the submission, the subsequent query should confirm the transaction
-#[tokio_macros::test]
+#[tokio::test]
 #[allow(clippy::identity_op)]
 async fn tx_broadcast_protocol_submit_already_mined() {
     let (
@@ -951,7 +956,7 @@ async fn tx_broadcast_protocol_submit_already_mined() {
 }
 
 /// A test to see that the broadcast protocol can handle a change to the base node address while it runs.
-#[tokio_macros::test]
+#[tokio::test]
 #[allow(clippy::identity_op)]
 async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
     let (
@@ -1053,7 +1058,7 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
 
 /// Validate completed transactions, will check that valid ones stay valid and incorrectly marked invalid tx become
 /// valid.
-#[tokio_macros::test]
+#[tokio::test]
 #[allow(clippy::identity_op)]
 async fn tx_validation_protocol_tx_becomes_valid() {
     let (
@@ -1151,7 +1156,7 @@ async fn tx_validation_protocol_tx_becomes_valid() {
 }
 
 /// Validate completed transaction, the transaction should become invalid
-#[tokio_macros::test]
+#[tokio::test]
 #[allow(clippy::identity_op)]
 async fn tx_validation_protocol_tx_becomes_invalid() {
     let (
@@ -1216,7 +1221,7 @@ async fn tx_validation_protocol_tx_becomes_invalid() {
 }
 
 /// Validate completed transactions, the transaction should become invalid
-#[tokio_macros::test]
+#[tokio::test]
 #[allow(clippy::identity_op)]
 async fn tx_validation_protocol_tx_becomes_unconfirmed() {
     let (
@@ -1288,7 +1293,7 @@ async fn tx_validation_protocol_tx_becomes_unconfirmed() {
 
 /// Test the validation protocol reacts correctly to a change in base node and redoes the full validation based on the
 /// new base node
-#[tokio_macros::test]
+#[tokio::test]
 #[allow(clippy::identity_op)]
 async fn tx_validation_protocol_tx_ends_on_base_node_end() {
     let (
@@ -1305,7 +1310,7 @@ async fn tx_validation_protocol_tx_ends_on_base_node_end() {
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let (base_node_update_publisher, _) = broadcast::channel(20);
     let (_timeout_update_publisher, _) = broadcast::channel(20);
-    let mut event_stream = resources.event_publisher.subscribe().fuse();
+    let mut event_stream = resources.event_publisher.subscribe();
 
     add_transaction_to_database(
         1,
@@ -1401,16 +1406,17 @@ async fn tx_validation_protocol_tx_ends_on_base_node_end() {
     let result = join_handle.await.unwrap();
     assert!(result.is_ok());
 
-    let mut delay = delay_for(Duration::from_secs(1)).fuse();
+    let delay = sleep(Duration::from_secs(1));
+    tokio::pin!(delay);
     let mut aborted = false;
     loop {
-        futures::select! {
-            event = event_stream.select_next_some() => {
+        tokio::select! {
+            event = event_stream.recv() => {
                  if let TransactionEvent::TransactionValidationAborted(_) = &*event.unwrap() {
                  aborted = true;
                  }
             },
-            () = delay => {
+            () = &mut delay => {
                 break;
             },
         }
@@ -1419,7 +1425,7 @@ async fn tx_validation_protocol_tx_ends_on_base_node_end() {
 }
 
 /// Test the validation protocol reacts correctly when the RPC client returns an error between calls.
-#[tokio_macros::test]
+#[tokio::test]
 #[allow(clippy::identity_op)]
 async fn tx_validation_protocol_rpc_client_broken_between_calls() {
     let (
@@ -1543,7 +1549,7 @@ async fn tx_validation_protocol_rpc_client_broken_between_calls() {
 
 /// Test the validation protocol reacts correctly when the RPC client returns an error between calls and only retry
 /// finite amount of times
-#[tokio_macros::test]
+#[tokio::test]
 #[allow(clippy::identity_op)]
 async fn tx_validation_protocol_rpc_client_broken_finite_retries() {
     let (
@@ -1560,7 +1566,7 @@ async fn tx_validation_protocol_rpc_client_broken_finite_retries() {
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let (base_node_update_publisher, _) = broadcast::channel(20);
     let (_timeout_update_publisher, _) = broadcast::channel(20);
-    let mut event_stream = resources.event_publisher.subscribe().fuse();
+    let mut event_stream = resources.event_publisher.subscribe();
     add_transaction_to_database(
         1,
         1 * T,
@@ -1613,12 +1619,13 @@ async fn tx_validation_protocol_rpc_client_broken_finite_retries() {
     assert!(result.is_err());
 
     // Check that the connection problem event was emitted at least twice
-    let mut delay = delay_for(Duration::from_secs(10)).fuse();
+    let delay = sleep(Duration::from_secs(10));
+    tokio::pin!(delay);
     let mut timeouts = 0i32;
     let mut failures = 0i32;
     loop {
-        futures::select! {
-            event = event_stream.select_next_some() => {
+        tokio::select! {
+            event = event_stream.recv() => {
             log::error!("EVENT: {:?}", event);
                 match &*event.unwrap() {
                     TransactionEvent::TransactionValidationTimedOut(_) => {
@@ -1633,7 +1640,7 @@ async fn tx_validation_protocol_rpc_client_broken_finite_retries() {
                     break;
                 }
             },
-            () = delay => {
+            () = &mut delay => {
                 break;
             },
         }
@@ -1644,7 +1651,7 @@ async fn tx_validation_protocol_rpc_client_broken_finite_retries() {
 
 /// Validate completed transactions, will check that valid ones stay valid and incorrectly marked invalid tx become
 /// valid.
-#[tokio_macros::test]
+#[tokio::test]
 #[allow(clippy::identity_op)]
 async fn tx_validation_protocol_base_node_not_synced() {
     let (
@@ -1661,7 +1668,7 @@ async fn tx_validation_protocol_base_node_not_synced() {
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let (base_node_update_publisher, _) = broadcast::channel(20);
     let (_timeout_update_publisher, _) = broadcast::channel(20);
-    let mut event_stream = resources.event_publisher.subscribe().fuse();
+    let mut event_stream = resources.event_publisher.subscribe();
 
     add_transaction_to_database(
         1,
@@ -1714,12 +1721,13 @@ async fn tx_validation_protocol_base_node_not_synced() {
     let result = join_handle.await.unwrap();
     assert!(result.is_err());
 
-    let mut delay = delay_for(Duration::from_secs(10)).fuse();
+    let delay = sleep(Duration::from_secs(10));
+    tokio::pin!(delay);
     let mut delayed = 0i32;
     let mut failures = 0i32;
     loop {
-        futures::select! {
-            event = event_stream.select_next_some() => {
+        tokio::select! {
+            event = event_stream.recv() => {
                 match &*event.unwrap() {
                     TransactionEvent::TransactionValidationDelayed(_) => {
                         delayed +=1 ;
@@ -1731,7 +1739,7 @@ async fn tx_validation_protocol_base_node_not_synced() {
                 }
 
             },
-            () = delay => {
+            () = &mut delay => {
                 break;
             },
         }

@@ -143,8 +143,7 @@ where
         let bn_service_db = wallet_database.clone();
 
         let factories = config.clone().factories;
-        let (publisher, subscription_factory) =
-            pubsub_connector(runtime::Handle::current(), config.buffer_size, config.rate_limit);
+        let (publisher, subscription_factory) = pubsub_connector(config.buffer_size, config.rate_limit);
         let peer_message_subscription_factory = Arc::new(subscription_factory);
         let transport_type = config.comms_config.transport_type.clone();
 

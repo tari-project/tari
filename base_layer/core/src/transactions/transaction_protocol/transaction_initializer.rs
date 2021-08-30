@@ -768,6 +768,7 @@ mod test {
             .with_output(output, p.sender_offset_private_key)
             .unwrap()
             .with_fee_per_gram(MicroTari(2));
+
         for _ in 0..MAX_TRANSACTION_INPUTS + 1 {
             let (utxo, input) = create_test_input(MicroTari(50), 0, &factories.commitment);
             builder.with_input(utxo, input);

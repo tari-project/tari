@@ -136,7 +136,7 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
             })
             .await;
 
-            time::delay_for(self.interval).await
+            time::sleep(self.interval).await
         }
 
         // loop only exits on shutdown/error

@@ -1,4 +1,4 @@
-use futures::future;
+use futures::{channel::mpsc, future, SinkExt};
 use log::*;
 use std::convert::TryFrom;
 use tari_app_grpc::{
@@ -42,7 +42,7 @@ use tari_wallet::{
     transaction_service::{handle::TransactionServiceHandle, storage::models},
     WalletSqlite,
 };
-use tokio::{sync::mpsc, task};
+use tokio::task;
 use tonic::{Request, Response, Status};
 
 const LOG_TARGET: &str = "wallet::ui::grpc";

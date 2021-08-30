@@ -24,8 +24,8 @@ use crate::{
     message::{InboundMessage, OutboundMessage},
     pipeline::SinkService,
 };
-use futures::channel::mpsc;
 use thiserror::Error;
+use tokio::sync::mpsc;
 use tower::Service;
 
 const DEFAULT_MAX_CONCURRENT_TASKS: usize = 50;
@@ -99,9 +99,7 @@ where
     TOutSvc: Service<TOutReq> + Clone + Send + 'static,
     TInSvc: Service<InboundMessage> + Clone + Send + 'static,
 {
-    fn build_outbound(
-        &mut self,
-    ) -> Result<OutboundPipelineConfig<mpsc::Receiver<TOutReq>, TOutSvc>, PipelineBuilderError> {
+    fn build_outbound(&mut self) -> Result<OutboundPipelineConfig<TOutReq, TOutSvc>, PipelineBuilderError> {
         let (out_sender, out_receiver) = mpsc::channel(self.outbound_buffer_size);
 
         let in_receiver = self
@@ -137,9 +135,9 @@ where
     }
 }
 
-pub struct OutboundPipelineConfig<TInStream, TPipeline> {
+pub struct OutboundPipelineConfig<TInItem, TPipeline> {
     /// Messages read from this stream are passed to the pipeline
-    pub in_receiver: TInStream,
+    pub in_receiver: mpsc::Receiver<TInItem>,
     /// Receiver of `OutboundMessage`s coming from the pipeline
     pub out_receiver: mpsc::Receiver<OutboundMessage>,
     /// The pipeline (`tower::Service`) to run for each in_stream message
@@ -149,7 +147,7 @@ pub struct OutboundPipelineConfig<TInStream, TPipeline> {
 pub struct Config<TInSvc, TOutSvc, TOutReq> {
     pub max_concurrent_inbound_tasks: usize,
     pub inbound: TInSvc,
-    pub outbound: OutboundPipelineConfig<mpsc::Receiver<TOutReq>, TOutSvc>,
+    pub outbound: OutboundPipelineConfig<TOutReq, TOutSvc>,
 }
 
 #[derive(Debug, Error)]

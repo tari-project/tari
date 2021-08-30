@@ -74,10 +74,8 @@ impl BaseNodeContext {
     pub async fn run(self) {
         info!(target: LOG_TARGET, "Tari base node has STARTED");
 
-        if let Err(e) = self.state_machine().shutdown_signal().await {
-            warn!(target: LOG_TARGET, "Error shutting down Base Node State Machine: {}", e);
-        }
-        info!(target: LOG_TARGET, "Initiating communications stack shutdown");
+        self.state_machine().shutdown_signal().wait().await;
+        info!(target: LOG_TARGET, "Waiting for communications stack shutdown");
 
         self.base_node_comms.wait_until_shutdown().await;
         info!(target: LOG_TARGET, "Communications stack has shutdown");

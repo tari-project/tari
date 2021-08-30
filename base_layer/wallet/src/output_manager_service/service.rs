@@ -170,9 +170,9 @@ where TBackend: OutputManagerBackend + 'static
 
         info!(target: LOG_TARGET, "Output Manager Service started");
         loop {
-            futures::select! {
-                request_context = request_stream.select_next_some() => {
-                trace!(target: LOG_TARGET, "Handling Service API Request");
+            tokio::select! {
+                Some(request_context) = request_stream.next() => {
+                    trace!(target: LOG_TARGET, "Handling Service API Request");
                     let (request, reply_tx) = request_context.split();
                     let response = self.handle_request(request).await.map_err(|e| {
                         warn!(target: LOG_TARGET, "Error handling request: {:?}", e);
@@ -183,12 +183,8 @@ where TBackend: OutputManagerBackend + 'static
                         e
                     });
                 },
-                _ = shutdown => {
+                _ = shutdown.wait() => {
                     info!(target: LOG_TARGET, "Output manager service shutting down because it received the shutdown signal");
-                    break;
-                }
-                complete => {
-                    info!(target: LOG_TARGET, "Output manager service shutting down");
                     break;
                 }
             }

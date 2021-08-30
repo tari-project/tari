@@ -132,9 +132,15 @@ pub async fn change_password(
         return Err(ExitCodes::InputError("Passwords don't match!".to_string()));
     }
 
-    wallet.remove_encryption().await?;
+    wallet
+        .remove_encryption()
+        .await
+        .map_err(|e| ExitCodes::WalletError(e.to_string()))?;
 
-    wallet.apply_encryption(passphrase).await?;
+    wallet
+        .apply_encryption(passphrase)
+        .await
+        .map_err(|e| ExitCodes::WalletError(e.to_string()))?;
 
     println!("Wallet password changed successfully.");
 

@@ -103,7 +103,7 @@ impl CommandHandler {
     }
 
     pub fn status(&self, output: StatusOutput) {
-        let mut state_info = self.state_machine_info.clone();
+        let state_info = self.state_machine_info.clone();
         let mut node = self.node_service.clone();
         let mut mempool = self.mempool_service.clone();
         let peer_manager = self.peer_manager.clone();
@@ -117,8 +117,7 @@ impl CommandHandler {
             let version = format!("v{}", consts::APP_VERSION_NUMBER);
             status_line.add_field("", version);
 
-            let state = state_info.recv().await.unwrap();
-            status_line.add_field("State", state.state_info.short_desc());
+            status_line.add_field("State", state_info.borrow().state_info.short_desc());
 
             let metadata = node.get_metadata().await.unwrap();
 
@@ -191,18 +190,8 @@ impl CommandHandler {
 
     /// Function to process the get-state-info command
     pub fn state_info(&self) {
-        let mut channel = self.state_machine_info.clone();
-        self.executor.spawn(async move {
-            match channel.recv().await {
-                None => {
-                    info!(
-                        target: LOG_TARGET,
-                        "Error communicating with state machine, channel could have been closed"
-                    );
-                },
-                Some(data) => println!("Current state machine state:\n{}", data),
-            };
-        });
+        let watch = self.state_machine_info.clone();
+        println!("Current state machine state:\n{}", *watch.borrow());
     }
 
     /// Check for updates

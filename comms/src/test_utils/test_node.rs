@@ -29,12 +29,14 @@ use crate::{
     protocol::Protocols,
     transports::Transport,
 };
-use futures::{channel::mpsc, AsyncRead, AsyncWrite};
 use rand::rngs::OsRng;
 use std::{sync::Arc, time::Duration};
 use tari_shutdown::ShutdownSignal;
 use tari_storage::HashmapDatabase;
-use tokio::sync::broadcast;
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::{broadcast, mpsc},
+};
 
 #[derive(Clone, Debug)]
 pub struct TestNodeConfig {

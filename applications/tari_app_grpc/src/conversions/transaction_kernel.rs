@@ -27,7 +27,6 @@ use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{KernelFeatures, TransactionKernel},
 };
-use tari_crypto::tari_utilities::{ByteArray, Hashable};
 
 impl TryFrom<grpc::TransactionKernel> for TransactionKernel {
     type Error = String;

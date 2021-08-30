@@ -23,9 +23,9 @@
 use super::{ProtocolError, ProtocolId};
 use bitflags::bitflags;
 use bytes::{Bytes, BytesMut};
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use log::*;
 use std::convert::TryInto;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 const LOG_TARGET: &str = "comms::connection_manager::protocol";
 
@@ -204,7 +204,7 @@ mod test {
     use futures::future;
     use tari_test_utils::unpack_enum;
 
-    #[runtime::test_basic]
+    #[runtime::test]
     async fn negotiate_success() {
         let (mut initiator, mut responder) = MemorySocket::new_pair();
         let mut negotiate_out = ProtocolNegotiation::new(&mut initiator);
@@ -229,7 +229,7 @@ mod test {
         assert_eq!(out_proto.unwrap(), ProtocolId::from_static(b"A"));
     }
 
-    #[runtime::test_basic]
+    #[runtime::test]
     async fn negotiate_fail() {
         let (mut initiator, mut responder) = MemorySocket::new_pair();
         let mut negotiate_out = ProtocolNegotiation::new(&mut initiator);
@@ -254,7 +254,7 @@ mod test {
         unpack_enum!(ProtocolError::ProtocolOutboundNegotiationFailed(_s) = out_proto.unwrap_err());
     }
 
-    #[runtime::test_basic]
+    #[runtime::test]
     async fn negotiate_fail_max_rounds() {
         let (mut initiator, mut responder) = MemorySocket::new_pair();
         let mut negotiate_out = ProtocolNegotiation::new(&mut initiator);
@@ -279,7 +279,7 @@ mod test {
         unpack_enum!(ProtocolError::ProtocolNegotiationTerminatedByPeer = out_proto.unwrap_err());
     }
 
-    #[runtime::test_basic]
+    #[runtime::test]
     async fn negotiate_success_optimistic() {
         let (mut initiator, mut responder) = MemorySocket::new_pair();
         let mut negotiate_out = ProtocolNegotiation::new(&mut initiator);
@@ -300,7 +300,7 @@ mod test {
         out_proto.unwrap();
     }
 
-    #[runtime::test_basic]
+    #[runtime::test]
     async fn negotiate_fail_optimistic() {
         let (mut initiator, mut responder) = MemorySocket::new_pair();
         let mut negotiate_out = ProtocolNegotiation::new(&mut initiator);

@@ -61,7 +61,7 @@ use tari_wallet::{
     },
 };
 pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
-    let mut runtime = Runtime::new().unwrap();
+    let runtime = Runtime::new().unwrap();
     let mut db = TransactionDatabase::new(backend);
     let factories = CryptoFactories::default();
     let input = create_unblinded_output(

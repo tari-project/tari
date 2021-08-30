@@ -18,11 +18,11 @@ tari_shutdown = { version = "^0.9", path = "../../infrastructure/shutdown" }
 tari_utilities = "^0.3"
 
 futures =  { version = "^0.3.1", features =["compat", "std"]}
-tokio = "0.2.10"
+tokio = "1.10.1"
 libc = "0.2.65"
 rand = "0.8"
 chrono = { version = "0.4.6", features = ["serde"]}
-thiserror = "1.0.20"
+thiserror = "1.0.26"
 log = "0.4.6"
 log4rs = {version = "1.0.0", features = ["console_appender", "file_appender", "yaml_format"]}
 
@@ -42,4 +42,3 @@ env_logger = "0.7.1"
 tari_key_manager = { version = "^0.9", path = "../key_manager" }
 tari_common_types = { version = "^0.9", path = "../../base_layer/common_types"}
 tari_test_utils = { version = "^0.9", path = "../../infrastructure/test_utils"}
-tokio = { version="0.2.10" }

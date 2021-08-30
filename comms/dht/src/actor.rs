@@ -37,13 +37,7 @@ use crate::{
     DhtConfig,
 };
 use chrono::{DateTime, Utc};
-use futures::{
-    channel::{mpsc, mpsc::SendError, oneshot},
-    future::BoxFuture,
-    stream::{Fuse, FuturesUnordered},
-    SinkExt,
-    StreamExt,
-};
+use futures::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
 use log::*;
 use std::{cmp, fmt, fmt::Display, sync::Arc};
 use tari_comms::{
@@ -55,7 +49,11 @@ use tari_crypto::tari_utilities::hex::Hex;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::message_format::{MessageFormat, MessageFormatError};
 use thiserror::Error;
-use tokio::{task, time};
+use tokio::{
+    sync::{mpsc, oneshot},
+    task,
+    time,
+};
 
 const LOG_TARGET: &str = "comms::dht::actor";
 
@@ -63,8 +61,6 @@ const LOG_TARGET: &str = "comms::dht::actor";
 pub enum DhtActorError {
     #[error("MPSC channel is disconnected")]
     ChannelDisconnected,
-    #[error("MPSC sender was unable to send because the channel buffer is full")]
-    SendBufferFull,
     #[error("Reply sender canceled the request")]
     ReplyCanceled,
     #[error("PeerManagerError: {0}")]
@@ -85,15 +81,9 @@ pub enum DhtActorError {
     ConnectivityEventStreamClosed,
 }
 
-impl From<SendError> for DhtActorError {
-    fn from(err: SendError) -> Self {
-        if err.is_disconnected() {
-            DhtActorError::ChannelDisconnected
-        } else if err.is_full() {
-            DhtActorError::SendBufferFull
-        } else {
-            unreachable!();
-        }
+impl<T> From<mpsc::error::SendError<T>> for DhtActorError {
+    fn from(_: mpsc::error::SendError<T>) -> Self {
+        DhtActorError::ChannelDisconnected
     }
 }
 
@@ -215,8 +205,8 @@ pub struct DhtActor {
     outbound_requester: OutboundMessageRequester,
     connectivity: ConnectivityRequester,
     config: DhtConfig,
-    shutdown_signal: Option<ShutdownSignal>,
-    request_rx: Fuse<mpsc::Receiver<DhtRequest>>,
+    shutdown_signal: ShutdownSignal,
+    request_rx: mpsc::Receiver<DhtRequest>,
     msg_hash_dedup_cache: DedupCacheDatabase,
 }
 
@@ -246,8 +236,8 @@ impl DhtActor {
             peer_manager,
             connectivity,
             node_identity,
-            shutdown_signal: Some(shutdown_signal),
-            request_rx: request_rx.fuse(),
+            shutdown_signal,
+            request_rx,
         }
     }
 
@@ -276,33 +266,28 @@ impl DhtActor {
 
         let mut pending_jobs = FuturesUnordered::new();
 
-        let mut dedup_cache_trim_ticker = time::interval(self.config.dedup_cache_trim_interval).fuse();
-
-        let mut shutdown_signal = self
-            .shutdown_signal
-            .take()
-            .expect("DhtActor initialized without shutdown_signal");
+        let mut dedup_cache_trim_ticker = time::interval(self.config.dedup_cache_trim_interval);
 
         loop {
-            futures::select! {
-                request = self.request_rx.select_next_some() => {
+            tokio::select! {
+                Some(request) = self.request_rx.recv() => {
                     trace!(target: LOG_TARGET, "DhtActor received request: {}", request);
                     pending_jobs.push(self.request_handler(request));
                 },
 
-                result = pending_jobs.select_next_some() => {
+                Some(result) = pending_jobs.next() => {
                     if let Err(err) = result {
                         debug!(target: LOG_TARGET, "Error when handling DHT request message. {}", err);
                     }
                 },
 
-                _ = dedup_cache_trim_ticker.select_next_some() => {
+                _ = dedup_cache_trim_ticker.tick() => {
                     if let Err(err) = self.msg_hash_dedup_cache.trim_entries().await {
                         error!(target: LOG_TARGET, "Error when trimming message dedup cache: {:?}", err);
                     }
                 },
 
-                _ = shutdown_signal => {
+                _ = self.shutdown_signal.wait() => {
                     info!(target: LOG_TARGET, "DhtActor is shutting down because it received a shutdown signal.");
                     self.mark_shutdown_time().await;
                     break Ok(());
@@ -731,7 +716,10 @@ mod test {
         test_utils::{build_peer_manager, make_client_identity, make_node_identity},
     };
     use chrono::{DateTime, Utc};
-    use tari_comms::test_utils::mocks::{create_connectivity_mock, create_peer_connection_mock_pair};
+    use tari_comms::{
+        runtime,
+        test_utils::mocks::{create_connectivity_mock, create_peer_connection_mock_pair},
+    };
     use tari_shutdown::Shutdown;
     use tari_test_utils::random;
 
@@ -741,7 +729,7 @@ mod test {
         conn
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn send_join_request() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
@@ -766,11 +754,11 @@ mod test {
         actor.spawn();
 
         requester.send_join().await.unwrap();
-        let (params, _) = unwrap_oms_send_msg!(out_rx.next().await.unwrap());
+        let (params, _) = unwrap_oms_send_msg!(out_rx.recv().await.unwrap());
         assert_eq!(params.dht_message_type, DhtMessageType::Join);
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn insert_message_signature() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
@@ -812,7 +800,7 @@ mod test {
         assert_eq!(num_hits, 1);
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn dedup_cache_cleanup() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
@@ -897,7 +885,7 @@ mod test {
         }
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn select_peers() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
@@ -1008,7 +996,7 @@ mod test {
         assert_eq!(peers.len(), 1);
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn get_and_set_metadata() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
@@ -1064,6 +1052,6 @@ mod test {
             .unwrap();
         assert_eq!(got_ts, ts);
 
-        shutdown.trigger().unwrap();
+        shutdown.trigger();
     }
 }

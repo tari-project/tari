@@ -29,14 +29,7 @@ use std::{
 
 use chrono::{NaiveDateTime, Utc};
 use digest::Digest;
-use futures::{
-    channel::{mpsc, mpsc::Sender, oneshot},
-    pin_mut,
-    stream::FuturesUnordered,
-    SinkExt,
-    Stream,
-    StreamExt,
-};
+use futures::{pin_mut, stream::FuturesUnordered, Stream, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use tari_crypto::{keys::DiffieHellmanSharedSecret, script, tari_utilities::ByteArray};
@@ -64,6 +57,10 @@ use tari_core::{
 use tari_p2p::domain_message::DomainMessage;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
+use tokio::{
+    sync::{broadcast, mpsc, mpsc::Sender, oneshot},
+    task::JoinHandle,
+};
 
 use crate::{
     output_manager_service::{handle::OutputManagerHandle, TxId},
@@ -280,9 +277,9 @@ where
 
         info!(target: LOG_TARGET, "Transaction Service started");
         loop {
-            futures::select! {
+            tokio::select! {
                 //Incoming request
-                request_context = request_stream.select_next_some() => {
+                Some(request_context) = request_stream.next() => {
                     // TODO: Remove time measurements; this is to aid in system testing only
                     let start = Instant::now();
                     let (request, reply_tx) = request_context.split();
@@ -307,7 +304,7 @@ where
                     );
                 },
                 // Incoming Transaction messages from the Comms layer
-                msg = transaction_stream.select_next_some() => {
+                Some(msg) = transaction_stream.next() => {
                     // TODO: Remove time measurements; this is to aid in system testing only
                     let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
@@ -337,7 +334,7 @@ where
                     );
                 },
                  // Incoming Transaction Reply messages from the Comms layer
-                msg = transaction_reply_stream.select_next_some() => {
+                Some(msg) = transaction_reply_stream.next() => {
                     // TODO: Remove time measurements; this is to aid in system testing only
                     let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
@@ -368,7 +365,7 @@ where
                     );
                 },
                // Incoming Finalized Transaction messages from the Comms layer
-                msg = transaction_finalized_stream.select_next_some() => {
+                Some(msg) = transaction_finalized_stream.next() => {
                     // TODO: Remove time measurements; this is to aid in system testing only
                     let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
@@ -406,7 +403,7 @@ where
                     );
                 },
                 // Incoming messages from the Comms layer
-                msg = base_node_response_stream.select_next_some() => {
+                Some(msg) = base_node_response_stream.next() => {
                     // TODO: Remove time measurements; this is to aid in system testing only
                     let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
@@ -425,7 +422,7 @@ where
                     );
                 }
                 // Incoming messages from the Comms layer
-                msg = transaction_cancelled_stream.select_next_some() => {
+                Some(msg) = transaction_cancelled_stream.next() => {
                     // TODO: Remove time measurements; this is to aid in system testing only
                     let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
@@ -440,7 +437,7 @@ where
                         finish.duration_since(start).as_millis(),
                     );
                 }
-                join_result = send_transaction_protocol_handles.select_next_some() => {
+                Some(join_result) = send_transaction_protocol_handles.next() => {
                     trace!(target: LOG_TARGET, "Send Protocol for Transaction has ended with result {:?}", join_result);
                     match join_result {
                         Ok(join_result_inner) => self.complete_send_transaction_protocol(
@@ -450,7 +447,7 @@ where
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Send Transaction Protocol: {:?}", e),
                     };
                 }
-                join_result = receive_transaction_protocol_handles.select_next_some() => {
+                Some(join_result) = receive_transaction_protocol_handles.next() => {
                     trace!(target: LOG_TARGET, "Receive Transaction Protocol has ended with result {:?}", join_result);
                     match join_result {
                         Ok(join_result_inner) => self.complete_receive_transaction_protocol(
@@ -460,14 +457,14 @@ where
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Send Transaction Protocol: {:?}", e),
                     };
                 }
-                join_result = transaction_broadcast_protocol_handles.select_next_some() => {
+                Some(join_result) = transaction_broadcast_protocol_handles.next() => {
                     trace!(target: LOG_TARGET, "Transaction Broadcast protocol has ended with result {:?}", join_result);
                     match join_result {
                         Ok(join_result_inner) => self.complete_transaction_broadcast_protocol(join_result_inner).await,
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Broadcast Protocol: {:?}", e),
                     };
                 }
-                join_result = coinbase_transaction_monitoring_protocol_handles.select_next_some() => {
+                Some(join_result) = coinbase_transaction_monitoring_protocol_handles.next() => {
                     trace!(target: LOG_TARGET, "Coinbase transaction monitoring protocol has ended with result {:?}",
                     join_result);
                     match join_result {
@@ -475,19 +472,15 @@ where
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Coinbase Monitoring protocol: {:?}", e),
                     };
                 }
-                join_result = transaction_validation_protocol_handles.select_next_some() => {
+                Some(join_result) = transaction_validation_protocol_handles.next() => {
                     trace!(target: LOG_TARGET, "Transaction Validation protocol has ended with result {:?}", join_result);
                     match join_result {
                         Ok(join_result_inner) => self.complete_transaction_validation_protocol(join_result_inner).await,
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Transaction Validation protocol: {:?}", e),
                     };
                 }
-                 _ = shutdown => {
+                 _ = shutdown.wait() => {
                     info!(target: LOG_TARGET, "Transaction service shutting down because it received the shutdown signal");
-                    break;
-                }
-                complete => {
-                    info!(target: LOG_TARGET, "Transaction service shutting down");
                     break;
                 }
             }

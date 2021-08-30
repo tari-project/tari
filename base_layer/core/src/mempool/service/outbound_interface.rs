@@ -28,11 +28,11 @@ use crate::{
     },
     transactions::transaction::Transaction,
 };
-use futures::channel::mpsc::UnboundedSender;
 use log::*;
 use tari_common_types::types::Signature;
 use tari_comms::peer_manager::NodeId;
 use tari_service_framework::{reply_channel::SenderService, Service};
+use tokio::sync::mpsc::UnboundedSender;
 
 pub const LOG_TARGET: &str = "c::mp::service::outbound_interface";
 
@@ -72,15 +72,13 @@ impl OutboundMempoolServiceInterface {
         transaction: Transaction,
         exclude_peers: Vec<NodeId>,
     ) -> Result<(), MempoolServiceError> {
-        self.tx_sender
-            .unbounded_send((transaction, exclude_peers))
-            .or_else(|e| {
-                {
-                    error!(target: LOG_TARGET, "Could not broadcast transaction. {:?}", e);
-                    Err(e)
-                }
-                .map_err(|_| MempoolServiceError::BroadcastFailed)
-            })
+        self.tx_sender.send((transaction, exclude_peers)).or_else(|e| {
+            {
+                error!(target: LOG_TARGET, "Could not broadcast transaction. {:?}", e);
+                Err(e)
+            }
+            .map_err(|_| MempoolServiceError::BroadcastFailed)
+        })
     }
 
     /// Check if the specified transaction is stored in the mempool of a remote base node.

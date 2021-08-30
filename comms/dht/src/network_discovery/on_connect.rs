@@ -33,7 +33,7 @@ use crate::{
 };
 use futures::StreamExt;
 use log::*;
-use std::{convert::TryInto, ops::Deref};
+use std::convert::TryInto;
 use tari_comms::{
     connectivity::ConnectivityEvent,
     peer_manager::{NodeId, Peer},
@@ -62,8 +62,9 @@ impl OnConnect {
 
     pub async fn next_event(&mut self) -> StateEvent {
         let mut connectivity_events = self.context.connectivity.get_event_subscription();
-        while let Some(event) = connectivity_events.next().await {
-            match event.as_ref().map(|e| e.deref()) {
+        loop {
+            let event = connectivity_events.recv().await;
+            match event {
                 Ok(ConnectivityEvent::PeerConnected(conn)) => {
                     if conn.peer_features().is_client() {
                         continue;
@@ -96,10 +97,10 @@ impl OnConnect {
                     self.prev_synced.push(conn.peer_node_id().clone());
                 },
                 Ok(_) => { /* Nothing to do */ },
-                Err(broadcast::RecvError::Lagged(n)) => {
+                Err(broadcast::error::RecvError::Lagged(n)) => {
                     warn!(target: LOG_TARGET, "Lagged behind on {} connectivity event(s)", n)
                 },
-                Err(broadcast::RecvError::Closed) => {
+                Err(broadcast::error::RecvError::Closed) => {
                     break;
                 },
             }
