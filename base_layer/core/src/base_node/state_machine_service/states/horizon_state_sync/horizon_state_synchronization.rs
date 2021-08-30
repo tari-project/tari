@@ -538,6 +538,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 .await?
                 .into_bitmap(),
         );
+        let expected_prev_best_block = self.shared.db.get_chain_metadata().await?.best_block().clone();
         for h in 0..=header.height() {
             let curr_header = self.db().fetch_chain_header(h).await?;
 
@@ -622,6 +623,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 header.height(),
                 header.hash().clone(),
                 header.accumulated_data().total_accumulated_difficulty,
+                expected_prev_best_block,
             )
             .set_pruned_height(header.height(), pruned_kernel_sum, pruned_utxo_sum)
             .commit()
