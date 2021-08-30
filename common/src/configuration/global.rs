@@ -71,7 +71,6 @@ pub struct GlobalConfig {
     pub pruning_horizon: u64,
     pub pruned_mode_cleanup_interval: u64,
     pub core_threads: Option<usize>,
-    pub max_threads: Option<usize>,
     pub base_node_identity_file: PathBuf,
     pub public_address: Multiaddr,
     pub grpc_enabled: bool,
@@ -268,10 +267,6 @@ fn convert_node_config(
     // Thread counts
     let key = config_string("base_node", &net_str, "core_threads");
     let core_threads =
-        optional(cfg.get_int(&key).map(|n| n as usize)).map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
-
-    let key = config_string("base_node", &net_str, "max_threads");
-    let max_threads =
         optional(cfg.get_int(&key).map(|n| n as usize)).map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
     // Max RandomX VMs
@@ -712,7 +707,6 @@ fn convert_node_config(
         pruning_horizon,
         pruned_mode_cleanup_interval,
         core_threads,
-        max_threads,
         base_node_identity_file,
         public_address,
         grpc_enabled,

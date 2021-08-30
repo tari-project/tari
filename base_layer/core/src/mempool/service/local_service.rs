@@ -146,7 +146,7 @@ mod test {
         }
     }
 
-    #[tokio_macros::test]
+    #[tokio::test]
     async fn mempool_stats() {
         let (event_publisher, _) = broadcast::channel(100);
         let (tx, rx) = unbounded();
@@ -157,7 +157,7 @@ mod test {
         assert_eq!(stats, request_stats());
     }
 
-    #[tokio_macros::test]
+    #[tokio::test]
     async fn mempool_stats_from_multiple() {
         let (event_publisher, _) = broadcast::channel(100);
         let (tx, rx) = unbounded();

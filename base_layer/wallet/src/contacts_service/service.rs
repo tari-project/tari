@@ -76,8 +76,8 @@ where T: ContactsBackend + 'static
 
         info!(target: LOG_TARGET, "Contacts Service started");
         loop {
-            futures::select! {
-                request_context = request_stream.select_next_some() => {
+            tokio::select! {
+                Some(request_context) = request_stream.next() => {
                     let (request, reply_tx) = request_context.split();
                     let response = self.handle_request(request).await.map_err(|e| {
                         error!(target: LOG_TARGET, "Error handling request: {:?}", e);
@@ -88,12 +88,8 @@ where T: ContactsBackend + 'static
                         e
                     });
                 },
-                _ = shutdown => {
+                _ = shutdown.wait() => {
                     info!(target: LOG_TARGET, "Contacts service shutting down because it received the shutdown signal");
-                    break;
-                }
-                complete => {
-                    info!(target: LOG_TARGET, "Contacts service shutting down");
                     break;
                 }
             }

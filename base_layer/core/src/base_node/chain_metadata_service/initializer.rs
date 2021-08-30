@@ -20,10 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{service::ChainMetadataService, LOG_TARGET};
+use super::service::ChainMetadataService;
 use crate::base_node::{chain_metadata_service::handle::ChainMetadataHandle, comms_interface::LocalNodeCommsInterface};
-use futures::{future, pin_mut};
-use log::*;
 use tari_comms::connectivity::ConnectivityRequester;
 use tari_p2p::services::liveness::LivenessHandle;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
@@ -40,15 +38,12 @@ impl ServiceInitializer for ChainMetadataServiceInitializer {
         let handle = ChainMetadataHandle::new(publisher.clone());
         context.register_handle(handle);
 
-        context.spawn_when_ready(|handles| async move {
+        context.spawn_until_shutdown(|handles| {
             let liveness = handles.expect_handle::<LivenessHandle>();
             let base_node = handles.expect_handle::<LocalNodeCommsInterface>();
             let connectivity = handles.expect_handle::<ConnectivityRequester>();
 
-            let service_run = ChainMetadataService::new(liveness, base_node, connectivity, publisher).run();
-            pin_mut!(service_run);
-            future::select(service_run, handles.get_shutdown_signal()).await;
-            info!(target: LOG_TARGET, "ChainMetadataService has shut down");
+            ChainMetadataService::new(liveness, base_node, connectivity, publisher).run()
         });
 
         Ok(())

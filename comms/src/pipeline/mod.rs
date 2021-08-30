@@ -44,7 +44,4 @@ pub(crate) use inbound::Inbound;
 mod outbound;
 pub(crate) use outbound::Outbound;
 
-mod translate_sink;
-pub use translate_sink::TranslateSink;
-
 pub type PipelineError = anyhow::Error;

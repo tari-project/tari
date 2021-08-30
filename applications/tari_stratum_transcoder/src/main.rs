@@ -41,7 +41,7 @@ use tari_app_grpc::tari_rpc as grpc;
 use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
 use tokio::time::Duration;
 
-#[tokio_macros::main]
+#[tokio::main]
 async fn main() -> Result<(), StratumTranscoderProxyError> {
     let config = initialize()?;
 

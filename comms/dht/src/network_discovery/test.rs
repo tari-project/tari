@@ -28,12 +28,12 @@ use crate::{
     test_utils::{build_peer_manager, make_node_identity},
     DhtConfig,
 };
-use futures::StreamExt;
 use std::{iter, sync::Arc, time::Duration};
 use tari_comms::{
     connectivity::ConnectivityStatus,
     peer_manager::{Peer, PeerFeatures},
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
+    runtime,
     test_utils::{
         mocks::{create_connectivity_mock, ConnectivityManagerMockState},
         node_identity::build_node_identity,
@@ -97,7 +97,7 @@ mod state_machine {
         )
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     #[allow(clippy::redundant_closure)]
     async fn it_fetches_peers() {
         const NUM_PEERS: usize = 3;
@@ -139,7 +139,7 @@ mod state_machine {
         mock.get_peers.set_response(Ok(peers)).await;
         discovery_actor.spawn();
 
-        let event = event_rx.next().await.unwrap().unwrap();
+        let event = event_rx.recv().await.unwrap();
         unpack_enum!(DhtEvent::NetworkDiscoveryPeersAdded(info) = &*event);
         assert!(info.has_new_neighbours());
         assert_eq!(info.num_new_neighbours, NUM_PEERS);
@@ -149,11 +149,11 @@ mod state_machine {
         assert_eq!(info.sync_peers, vec![peer_node_identity.node_id().clone()]);
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn it_shuts_down() {
         let (discovery, _, _, _, _, mut shutdown) = setup(Default::default(), make_node_identity(), vec![]).await;
 
-        shutdown.trigger().unwrap();
+        shutdown.trigger();
         tokio::time::timeout(Duration::from_secs(5), discovery.run())
             .await
             .unwrap();
@@ -200,7 +200,7 @@ mod discovery_ready {
         (node_identity, peer_manager, connectivity_mock, ready, context)
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn it_begins_aggressive_discovery() {
         let (_, pm, _, mut ready, _) = setup(Default::default());
         let peers = build_many_node_identities(1, PeerFeatures::COMMUNICATION_NODE);
@@ -212,14 +212,14 @@ mod discovery_ready {
         assert!(params.num_peers_to_request.is_none());
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn it_idles_if_no_sync_peers() {
         let (_, _, _, mut ready, _) = setup(Default::default());
         let state_event = ready.next_event().await;
         unpack_enum!(StateEvent::Idle = state_event);
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn it_idles_if_num_rounds_reached() {
         let config = NetworkDiscoveryConfig {
             min_desired_peers: 0,
@@ -240,7 +240,7 @@ mod discovery_ready {
         unpack_enum!(StateEvent::Idle = state_event);
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn it_transitions_to_on_connect() {
         let config = NetworkDiscoveryConfig {
             min_desired_peers: 0,

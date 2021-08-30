@@ -42,7 +42,7 @@ where St: ?Sized + Stream + Unpin
         let (lower_bound, upper_bound) = stream.size_hint();
         Self {
             inner: stream,
-            collection: Vec::with_capacity(upper_bound.or(Some(lower_bound)).unwrap()),
+            collection: Vec::with_capacity(upper_bound.unwrap_or(lower_bound)),
         }
     }
 }
@@ -70,15 +70,16 @@ where St: ?Sized + Stream + Unpin
 mod test {
     use super::*;
     use futures::stream;
+    use tari_comms::runtime;
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn drain_terminating_stream() {
         let mut stream = stream::iter(1..10u8);
         let burst = DrainBurst::new(&mut stream).await;
         assert_eq!(burst, (1..10u8).into_iter().collect::<Vec<_>>());
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn drain_stream_with_pending() {
         let mut stream = stream::iter(1..10u8);
         let burst = DrainBurst::new(&mut stream).await;

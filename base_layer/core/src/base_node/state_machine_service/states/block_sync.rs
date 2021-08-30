@@ -67,7 +67,7 @@ impl BlockSync {
 
         let status_event_sender = shared.status_event_sender.clone();
         let bootstrapped = shared.is_bootstrapped();
-        let _ = status_event_sender.broadcast(StatusInfo {
+        let _ = status_event_sender.send(StatusInfo {
             bootstrapped,
             state_info: StateInfo::BlockSyncStarting,
         });
@@ -80,7 +80,7 @@ impl BlockSync {
                 false.into(),
             ));
 
-            let _ = status_event_sender.broadcast(StatusInfo {
+            let _ = status_event_sender.send(StatusInfo {
                 bootstrapped,
                 state_info: StateInfo::BlockSync(BlockSyncInfo {
                     tip_height: remote_tip_height,

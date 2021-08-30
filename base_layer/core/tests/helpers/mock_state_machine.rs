@@ -40,7 +40,7 @@ impl MockBaseNodeStateMachine {
     }
 
     pub fn publish_status(&mut self, status: StatusInfo) {
-        let _ = self.status_sender.broadcast(status);
+        let _ = self.status_sender.send(status);
     }
 
     pub fn get_initializer(&self) -> MockBaseNodeStateMachineInitializer {

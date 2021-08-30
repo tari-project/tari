@@ -46,11 +46,13 @@ use crate::{
     CommsBuilder,
     Substream,
 };
-use futures::{channel::mpsc, AsyncRead, AsyncWrite};
 use log::*;
 use std::{iter, sync::Arc};
 use tari_shutdown::ShutdownSignal;
-use tokio::sync::broadcast;
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::{broadcast, mpsc},
+};
 
 const LOG_TARGET: &str = "comms::node";
 

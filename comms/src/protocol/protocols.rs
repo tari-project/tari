@@ -32,8 +32,8 @@ use crate::{
     },
     Substream,
 };
-use futures::{channel::mpsc, SinkExt};
 use std::collections::HashMap;
+use tokio::sync::mpsc;
 
 pub type ProtocolNotificationTx<TSubstream> = mpsc::Sender<ProtocolNotification<TSubstream>>;
 pub type ProtocolNotificationRx<TSubstream> = mpsc::Receiver<ProtocolNotification<TSubstream>>;
@@ -143,7 +143,6 @@ impl ProtocolExtension for Protocols<Substream> {
 mod test {
     use super::*;
     use crate::runtime;
-    use futures::StreamExt;
     use tari_test_utils::unpack_enum;
 
     #[test]
@@ -160,7 +159,7 @@ mod test {
         assert!(protocols.get_supported_protocols().iter().all(|p| protos.contains(p)));
     }
 
-    #[runtime::test_basic]
+    #[runtime::test]
     async fn notify() {
         let (tx, mut rx) = mpsc::channel(1);
         let protos = [ProtocolId::from_static(b"/tari/test/1")];
@@ -172,12 +171,12 @@ mod test {
             .await
             .unwrap();
 
-        let notification = rx.next().await.unwrap();
+        let notification = rx.recv().await.unwrap();
         unpack_enum!(ProtocolEvent::NewInboundSubstream(peer_id, _s) = notification.event);
         assert_eq!(peer_id, NodeId::new());
     }
 
-    #[runtime::test_basic]
+    #[runtime::test]
     async fn notify_fail_not_registered() {
         let mut protocols = Protocols::<()>::new();
 

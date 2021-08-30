@@ -30,7 +30,7 @@ use crate::{
     transactions::{helpers::create_tx, tari_amount::uT, transaction::Transaction},
     validation::mocks::MockValidator,
 };
-use futures::{channel::mpsc, Sink, SinkExt, Stream, StreamExt};
+use futures::{Sink, SinkExt, Stream, StreamExt};
 use std::{fmt, io, iter::repeat_with, sync::Arc};
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityEventTx},
@@ -44,7 +44,10 @@ use tari_comms::{
     BytesMut,
 };
 use tari_crypto::tari_utilities::ByteArray;
-use tokio::{sync::broadcast, task};
+use tokio::{
+    sync::{broadcast, mpsc},
+    task,
+};
 
 pub fn create_transactions(n: usize) -> Vec<Transaction> {
     repeat_with(|| {
@@ -82,7 +85,6 @@ fn setup(
         protocol_notif_rx,
         connectivity_events_rx,
         mempool.clone(),
-        None,
     );
 
     task::spawn(protocol.run());
@@ -90,7 +92,7 @@ fn setup(
     (protocol_notif_tx, connectivity_events_tx, mempool, transactions)
 }
 
-#[tokio_macros::test_basic]
+#[tokio::test]
 async fn empty_set() {
     let (_, connectivity_events_tx, mempool1, _) = setup(0);
 
@@ -101,7 +103,7 @@ async fn empty_set() {
 
     // This node connected to a peer, so it should open the substream
     connectivity_events_tx
-        .send(Arc::new(ConnectivityEvent::PeerConnected(node2_conn)))
+        .send(ConnectivityEvent::PeerConnected(node2_conn))
         .unwrap();
 
     let substream = node1_mock.next_incoming_substream().await.unwrap();
@@ -120,7 +122,7 @@ async fn empty_set() {
     assert_eq!(transactions.len(), 0);
 }
 
-#[tokio_macros::test_basic]
+#[tokio::test]
 async fn synchronise() {
     let (_, connectivity_events_tx, mempool1, transactions1) = setup(5);
 
@@ -131,7 +133,7 @@ async fn synchronise() {
 
     // This node connected to a peer, so it should open the substream
     connectivity_events_tx
-        .send(Arc::new(ConnectivityEvent::PeerConnected(node2_conn)))
+        .send(ConnectivityEvent::PeerConnected(node2_conn))
         .unwrap();
 
     let substream = node1_mock.next_incoming_substream().await.unwrap();
@@ -154,7 +156,7 @@ async fn synchronise() {
     assert!(transactions2.iter().all(|txn| transactions.contains(&txn)));
 }
 
-#[tokio_macros::test_basic]
+#[tokio::test]
 async fn duplicate_set() {
     let (_, connectivity_events_tx, mempool1, transactions1) = setup(2);
 
@@ -165,7 +167,7 @@ async fn duplicate_set() {
 
     // This node connected to a peer, so it should open the substream
     connectivity_events_tx
-        .send(Arc::new(ConnectivityEvent::PeerConnected(node2_conn)))
+        .send(ConnectivityEvent::PeerConnected(node2_conn))
         .unwrap();
 
     let substream = node1_mock.next_incoming_substream().await.unwrap();
@@ -189,9 +191,9 @@ async fn duplicate_set() {
     assert!(transactions2.iter().all(|txn| transactions.contains(&txn)));
 }
 
-#[tokio_macros::test_basic]
+#[tokio::test]
 async fn responder() {
-    let (mut protocol_notif, _, _, transactions1) = setup(2);
+    let (protocol_notif, _, _, transactions1) = setup(2);
 
     let node1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let node2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
@@ -225,9 +227,9 @@ async fn responder() {
     // this.
 }
 
-#[tokio_macros::test_basic]
+#[tokio::test]
 async fn initiator_messages() {
-    let (mut protocol_notif, _, _, transactions1) = setup(2);
+    let (protocol_notif, _, _, transactions1) = setup(2);
 
     let node1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
@@ -260,7 +262,7 @@ async fn initiator_messages() {
     assert_eq!(indexes.indexes, [0, 1]);
 }
 
-#[tokio_macros::test_basic]
+#[tokio::test]
 async fn responder_messages() {
     let (_, connectivity_events_tx, _, transactions1) = setup(1);
 
@@ -271,7 +273,7 @@ async fn responder_messages() {
 
     // This node connected to a peer, so it should open the substream
     connectivity_events_tx
-        .send(Arc::new(ConnectivityEvent::PeerConnected(node2_conn)))
+        .send(ConnectivityEvent::PeerConnected(node2_conn))
         .unwrap();
 
     let substream = node1_mock.next_incoming_substream().await.unwrap();

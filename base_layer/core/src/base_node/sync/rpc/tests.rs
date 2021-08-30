@@ -89,7 +89,7 @@ mod sync_blocks {
     use tari_comms::protocol::rpc::RpcStatusCode;
     use tari_test_utils::unpack_enum;
 
-    #[tokio_macros::test_basic]
+    #[tokio::test]
     async fn it_returns_not_found_if_unknown_hash() {
         let mut backend = create_mock_backend();
         backend.expect_fetch().times(1).returning(|_| Ok(None));
@@ -103,7 +103,7 @@ mod sync_blocks {
         unpack_enum!(RpcStatusCode::NotFound = err.status_code());
     }
 
-    #[tokio_macros::test_basic]
+    #[tokio::test]
     async fn it_sends_an_empty_response() {
         let mut backend = create_mock_backend();
 
@@ -136,7 +136,7 @@ mod sync_blocks {
         assert!(streaming.next().await.is_none());
     }
 
-    #[tokio_macros::test_basic]
+    #[tokio::test]
     async fn it_streams_blocks_until_end() {
         let mut backend = create_mock_backend();
 

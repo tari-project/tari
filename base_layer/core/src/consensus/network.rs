@@ -36,6 +36,7 @@ impl NetworkConsensus {
             Stibbons => ConsensusConstants::stibbons(),
             Weatherwax => ConsensusConstants::weatherwax(),
             LocalNet => ConsensusConstants::localnet(),
+            Igor => ConsensusConstants::igor(),
         }
     }
 
