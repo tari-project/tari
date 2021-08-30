@@ -26,15 +26,10 @@ use tokio::sync::watch;
 #[derive(Clone)]
 pub struct Watch<T>(Arc<watch::Sender<T>>, watch::Receiver<T>);
 
-impl<T: Clone> Watch<T> {
+impl<T> Watch<T> {
     pub fn new(initial: T) -> Self {
         let (tx, rx) = watch::channel(initial);
         Self(Arc::new(tx), rx)
-    }
-
-    #[allow(dead_code)]
-    pub async fn recv(&mut self) -> Option<T> {
-        self.receiver_mut().recv().await
     }
 
     pub fn borrow(&self) -> watch::Ref<'_, T> {
@@ -42,8 +37,8 @@ impl<T: Clone> Watch<T> {
     }
 
     pub fn broadcast(&self, item: T) {
-        // SAFETY: broadcast becomes infallible because the receiver is owned in Watch and so has the same lifetime
-        if self.sender().broadcast(item).is_err() {
+        // PANIC: broadcast becomes infallible because the receiver is owned in Watch and so has the same lifetime
+        if self.sender().send(item).is_err() {
             // Result::expect requires E: fmt::Debug and `watch::SendError<T>` is not, this is equivalent
             panic!("watch internal receiver is dropped");
         }
@@ -51,10 +46,6 @@ impl<T: Clone> Watch<T> {
 
     fn sender(&self) -> &watch::Sender<T> {
         &self.0
-    }
-
-    fn receiver_mut(&mut self) -> &mut watch::Receiver<T> {
-        &mut self.1
     }
 
     pub fn receiver(&self) -> &watch::Receiver<T> {

@@ -44,14 +44,15 @@ use crate::{
     Bytes,
 };
 use futures::{
-    channel::mpsc,
     future::BoxFuture,
     task::{Context, Poll},
-    AsyncRead,
-    AsyncWrite,
     FutureExt,
 };
 use std::sync::Arc;
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::mpsc,
+};
 use tower::Service;
 use tower_make::MakeService;
 
@@ -329,7 +330,7 @@ mod test {
         }
     }
 
-    #[runtime::test_basic]
+    #[runtime::test]
     async fn find_route() {
         let server = RpcServer::new();
         let mut router = Router::new(server, HelloService).add_service(GoodbyeService);

@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::StreamExt;
 use log::*;
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_wallet::{error::WalletError, utxo_scanner_service::handle::UtxoScannerEvent};
@@ -44,8 +43,8 @@ pub async fn recovery_event_monitoring(
     recovery_join_handle: JoinHandle<Result<(), WalletError>>,
     recovery_progress_callback: unsafe extern "C" fn(u8, u64, u64),
 ) {
-    while let Some(event) = event_stream.next().await {
-        match event {
+    loop {
+        match event_stream.recv().await {
             Ok(UtxoScannerEvent::ConnectingToBaseNode(peer)) => {
                 unsafe {
                     (recovery_progress_callback)(RecoveryEvent::ConnectingToBaseNode as u8, 0u64, 0u64);
@@ -138,6 +137,9 @@ pub async fn recovery_event_monitoring(
                     (recovery_progress_callback)(RecoveryEvent::RecoveryFailed as u8, 0u64, 0u64);
                 }
                 warn!(target: LOG_TARGET, "UTXO Scanner failed and exited",);
+            },
+            Err(broadcast::error::RecvError::Closed) => {
+                break;
             },
             Err(e) => {
                 // Event lagging

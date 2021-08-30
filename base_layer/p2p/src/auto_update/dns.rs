@@ -189,19 +189,26 @@ impl Display for UpdateSpec {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::dns::mock;
     use trust_dns_client::{
-        proto::rr::{rdata, RData, RecordType},
+        op::Query,
+        proto::{
+            rr::{rdata, Name, RData, RecordType},
+            xfer::DnsResponse,
+        },
         rr::Record,
     };
 
-    fn create_txt_record(contents: Vec<&str>) -> Record {
+    fn create_txt_record(contents: Vec<&str>) -> DnsResponse {
+        let resp_query = Query::query(Name::from_str("test.local.").unwrap(), RecordType::A);
         let mut record = Record::new();
         record
             .set_record_type(RecordType::TXT)
             .set_rdata(RData::TXT(rdata::TXT::new(
                 contents.into_iter().map(ToString::to_string).collect(),
             )));
-        record
+
+        mock::message(resp_query, vec![record], vec![], vec![]).into()
     }
 
     mod update_spec {
@@ -220,7 +227,6 @@ mod test {
     mod dns_software_update {
         use super::*;
         use crate::DEFAULT_DNS_NAME_SERVER;
-        use std::{collections::HashMap, iter::FromIterator};
 
         impl AutoUpdateConfig {
             fn get_test_defaults() -> Self {
@@ -238,15 +244,15 @@ mod test {
             }
         }
 
-        #[tokio_macros::test_basic]
+        #[tokio::test]
         async fn it_ignores_non_conforming_txt_entries() {
-            let records = HashMap::from_iter([("test.local.", vec![
-                create_txt_record(vec![":::"]),
-                create_txt_record(vec!["base-node:::"]),
-                create_txt_record(vec!["base-node::1.0:"]),
-                create_txt_record(vec!["base-node:android-armv7:0.1.0:abcdef"]),
-                create_txt_record(vec!["base-node:linux-x86_64:1.0.0:bada55"]),
-            ])]);
+            let records = vec![
+                Ok(create_txt_record(vec![":::"])),
+                Ok(create_txt_record(vec!["base-node:::"])),
+                Ok(create_txt_record(vec!["base-node::1.0:"])),
+                Ok(create_txt_record(vec!["base-node:android-armv7:0.1.0:abcdef"])),
+                Ok(create_txt_record(vec!["base-node:linux-x86_64:1.0.0:bada55"])),
+            ];
             let updater = DnsSoftwareUpdate {
                 client: DnsClient::connect_mock(records).await.unwrap(),
                 config: AutoUpdateConfig::get_test_defaults(),
@@ -258,12 +264,12 @@ mod test {
             assert!(spec.is_none());
         }
 
-        #[tokio_macros::test_basic]
+        #[tokio::test]
         async fn it_returns_best_update() {
-            let records = HashMap::from_iter([("test.local.", vec![
-                create_txt_record(vec!["base-node:linux-x86_64:1.0.0:abcdef"]),
-                create_txt_record(vec!["base-node:linux-x86_64:1.0.1:abcdef01"]),
-            ])]);
+            let records = vec![
+                Ok(create_txt_record(vec!["base-node:linux-x86_64:1.0.0:abcdef"])),
+                Ok(create_txt_record(vec!["base-node:linux-x86_64:1.0.1:abcdef01"])),
+            ];
             let updater = DnsSoftwareUpdate {
                 client: DnsClient::connect_mock(records).await.unwrap(),
                 config: AutoUpdateConfig::get_test_defaults(),

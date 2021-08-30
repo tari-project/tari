@@ -1107,20 +1107,24 @@ When(/I spend outputs (.*) via (.*)/, async function (inputs, node) {
   expect(this.lastResult.result).to.equal("ACCEPTED");
 });
 
-Then(/(.*) has (.*) in (.*) state/, async function (node, txn, pool) {
-  const client = this.getClient(node);
-  const sig = this.transactions[txn].body.kernels[0].excess_sig;
-  await waitFor(
-    async () => await client.transactionStateResult(sig),
-    pool,
-    1200 * 1000
-  );
-  this.lastResult = await this.getClient(node).transactionState(
-    this.transactions[txn].body.kernels[0].excess_sig
-  );
-  console.log(`Node ${node} response is: ${this.lastResult.result}`);
-  expect(this.lastResult.result).to.equal(pool);
-});
+Then(
+  /(.*) has (.*) in (.*) state/,
+  { timeout: 21 * 60 * 1000 },
+  async function (node, txn, pool) {
+    const client = this.getClient(node);
+    const sig = this.transactions[txn].body.kernels[0].excess_sig;
+    await waitForPredicate(
+      async () => (await client.transactionStateResult(sig)) === pool,
+      20 * 60 * 1000,
+      1000
+    );
+    this.lastResult = await this.getClient(node).transactionState(
+      this.transactions[txn].body.kernels[0].excess_sig
+    );
+    console.log(`Node ${node} response is: ${this.lastResult.result}`);
+    expect(this.lastResult.result).to.equal(pool);
+  }
+);
 
 // The number is rounded down. E.g. if 1% can fail out of 17, that is 16.83 have to succeed.
 // It's means at least 16 have to succeed.

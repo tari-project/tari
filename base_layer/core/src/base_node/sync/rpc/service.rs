@@ -35,12 +35,14 @@ use crate::{
         SyncUtxosResponse,
     },
 };
-use futures::{channel::mpsc, stream, SinkExt};
 use log::*;
 use std::cmp;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
+use tari_comms::{
+    protocol::rpc::{Request, Response, RpcStatus, Streaming},
+    utils,
+};
 use tari_crypto::tari_utilities::hex::Hex;
-use tokio::task;
+use tokio::{sync::mpsc, task};
 use tracing::{instrument, span, Instrument, Level};
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc";
@@ -116,7 +118,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
 
         // Number of blocks to load and push to the stream before loading the next batch
         const BATCH_SIZE: usize = 4;
-        let (mut tx, rx) = mpsc::channel(BATCH_SIZE);
+        let (tx, rx) = mpsc::channel(BATCH_SIZE);
 
         let span = span!(Level::TRACE, "sync_rpc::block_sync::inner_worker");
         task::spawn(
@@ -138,19 +140,16 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                             break;
                         },
                         Ok(blocks) => {
-                            let mut blocks = stream::iter(
-                                blocks
-                                    .into_iter()
-                                    .map(|hb| hb.try_into_block().map_err(RpcStatus::log_internal_error(LOG_TARGET)))
-                                    .map(|block| match block {
-                                        Ok(b) => Ok(proto::base_node::BlockBodyResponse::from(b)),
-                                        Err(err) => Err(err),
-                                    })
-                                    .map(Ok),
-                            );
+                            let blocks = blocks
+                                .into_iter()
+                                .map(|hb| hb.try_into_block().map_err(RpcStatus::log_internal_error(LOG_TARGET)))
+                                .map(|block| match block {
+                                    Ok(b) => Ok(proto::base_node::BlockBodyResponse::from(b)),
+                                    Err(err) => Err(err),
+                                });
 
                             // Ensure task stops if the peer prematurely stops their RPC session
-                            if tx.send_all(&mut blocks).await.is_err() {
+                            if utils::mpsc::send_all(&tx, blocks).await.is_err() {
                                 break;
                             }
                         },
@@ -209,7 +208,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             chunk_size
         );
 
-        let (mut tx, rx) = mpsc::channel(chunk_size);
+        let (tx, rx) = mpsc::channel(chunk_size);
         let span = span!(Level::TRACE, "sync_rpc::sync_headers::inner_worker");
         task::spawn(
             async move {
@@ -233,10 +232,9 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                             break;
                         },
                         Ok(headers) => {
-                            let mut headers =
-                                stream::iter(headers.into_iter().map(proto::core::BlockHeader::from).map(Ok).map(Ok));
+                            let headers = headers.into_iter().map(proto::core::BlockHeader::from).map(Ok);
                             // Ensure task stops if the peer prematurely stops their RPC session
-                            if tx.send_all(&mut headers).await.is_err() {
+                            if utils::mpsc::send_all(&tx, headers).await.is_err() {
                                 break;
                             }
                         },
@@ -354,7 +352,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
     ) -> Result<Streaming<proto::types::TransactionKernel>, RpcStatus> {
         let req = request.into_message();
         const BATCH_SIZE: usize = 1000;
-        let (mut tx, rx) = mpsc::channel(BATCH_SIZE);
+        let (tx, rx) = mpsc::channel(BATCH_SIZE);
         let db = self.db();
 
         task::spawn(async move {
@@ -394,15 +392,9 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                         break;
                     },
                     Ok(kernels) => {
-                        let mut kernels = stream::iter(
-                            kernels
-                                .into_iter()
-                                .map(proto::types::TransactionKernel::from)
-                                .map(Ok)
-                                .map(Ok),
-                        );
+                        let kernels = kernels.into_iter().map(proto::types::TransactionKernel::from).map(Ok);
                         // Ensure task stops if the peer prematurely stops their RPC session
-                        if tx.send_all(&mut kernels).await.is_err() {
+                        if utils::mpsc::send_all(&tx, kernels).await.is_err() {
                             break;
                         }
                     },

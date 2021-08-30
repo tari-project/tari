@@ -53,14 +53,19 @@ use crate::{
     protocol::{ProtocolEvent, ProtocolId, ProtocolNotification, ProtocolNotificationRx},
     Bytes,
 };
-use futures::{channel::mpsc, AsyncRead, AsyncWrite, SinkExt, StreamExt};
+use futures::SinkExt;
 use prost::Message;
 use std::{
     borrow::Cow,
     future::Future,
     time::{Duration, Instant},
 };
-use tokio::time;
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::mpsc,
+    time,
+};
+use tokio_stream::StreamExt;
 use tower::Service;
 use tower_make::MakeService;
 use tracing::{debug, error, instrument, span, trace, warn, Instrument, Level};
@@ -198,7 +203,7 @@ pub(super) struct PeerRpcServer<TSvc, TSubstream, TCommsProvider> {
     service: TSvc,
     protocol_notifications: Option<ProtocolNotificationRx<TSubstream>>,
     comms_provider: TCommsProvider,
-    request_rx: Option<mpsc::Receiver<RpcServerRequest>>,
+    request_rx: mpsc::Receiver<RpcServerRequest>,
 }
 
 impl<TSvc, TSubstream, TCommsProvider> PeerRpcServer<TSvc, TSubstream, TCommsProvider>
@@ -233,7 +238,7 @@ where
             service,
             protocol_notifications: Some(protocol_notifications),
             comms_provider,
-            request_rx: Some(request_rx),
+            request_rx,
         }
     }
 
@@ -243,24 +248,19 @@ where
             .take()
             .expect("PeerRpcServer initialized without protocol_notifications");
 
-        let mut requests = self
-            .request_rx
-            .take()
-            .expect("PeerRpcServer initialized without request_rx");
-
         loop {
-            futures::select! {
-                 maybe_notif = protocol_notifs.next() => {
-                     match maybe_notif {
-                         Some(notif) => self.handle_protocol_notification(notif).await?,
-                         // No more protocol notifications to come, so we're done
-                         None => break,
-                     }
-                 }
+            tokio::select! {
+                maybe_notif = protocol_notifs.recv() => {
+                    match maybe_notif {
+                        Some(notif) => self.handle_protocol_notification(notif).await?,
+                        // No more protocol notifications to come, so we're done
+                        None => break,
+                    }
+                }
 
-                 req = requests.select_next_some() => {
+                Some(req) = self.request_rx.recv() => {
                      self.handle_request(req).await;
-                 },
+                },
             }
         }
 

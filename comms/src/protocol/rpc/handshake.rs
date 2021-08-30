@@ -22,10 +22,13 @@
 
 use crate::{framing::CanonicalFraming, message::MessageExt, proto, protocol::rpc::error::HandshakeRejectReason};
 use bytes::BytesMut;
-use futures::{AsyncRead, AsyncWrite, SinkExt, StreamExt};
+use futures::{SinkExt, StreamExt};
 use prost::{DecodeError, Message};
 use std::{io, time::Duration};
-use tokio::time;
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    time,
+};
 use tracing::{debug, error, event, span, warn, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::rpc::handshake";
@@ -168,7 +171,7 @@ where T: AsyncRead + AsyncWrite + Unpin
     }
 
     #[tracing::instrument(name = "rpc::receive_handshake_reply", skip(self), err)]
-    async fn recv_next_frame(&mut self) -> Result<Option<Result<BytesMut, io::Error>>, time::Elapsed> {
+    async fn recv_next_frame(&mut self) -> Result<Option<Result<BytesMut, io::Error>>, time::error::Elapsed> {
         match self.timeout {
             Some(timeout) => time::timeout(timeout, self.framed.next()).await,
             None => Ok(self.framed.next().await),

@@ -50,7 +50,7 @@ use tokio::runtime::Runtime;
 
 #[allow(clippy::same_item_push)]
 pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
-    let mut runtime = Runtime::new().unwrap();
+    let runtime = Runtime::new().unwrap();
 
     let db = OutputManagerDatabase::new(backend);
     let factories = CryptoFactories::default();
@@ -392,7 +392,7 @@ pub fn test_output_manager_sqlite_db_encrypted() {
 
 #[test]
 pub fn test_key_manager_crud() {
-    let mut runtime = Runtime::new().unwrap();
+    let runtime = Runtime::new().unwrap();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection, None);
     let db = OutputManagerDatabase::new(backend);
@@ -429,7 +429,7 @@ pub fn test_key_manager_crud() {
     assert_eq!(read_state3.primary_key_index, 2);
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 pub async fn test_short_term_encumberance() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
@@ -510,7 +510,7 @@ pub async fn test_short_term_encumberance() {
     );
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 pub async fn test_no_duplicate_outputs() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();

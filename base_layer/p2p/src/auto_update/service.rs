@@ -24,17 +24,15 @@ use crate::{
     auto_update,
     auto_update::{AutoUpdateConfig, SoftwareUpdate, Version},
 };
-use futures::{
-    channel::{mpsc, oneshot},
-    future::Either,
-    stream,
-    SinkExt,
-    StreamExt,
-};
+use futures::{future::Either, stream, StreamExt};
 use std::{env::consts, time::Duration};
 use tari_common::configuration::bootstrap::ApplicationType;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
-use tokio::{sync::watch, time};
+use tokio::{
+    sync::{mpsc, oneshot, watch},
+    time,
+};
+use tokio_stream::wrappers;
 
 const LOG_TARGET: &str = "app:auto-update";
 
@@ -94,19 +92,20 @@ impl SoftwareUpdaterService {
         new_update_notification: watch::Receiver<Option<SoftwareUpdate>>,
     ) {
         let mut interval_or_never = match self.check_interval {
-            Some(interval) => Either::Left(time::interval(interval)).fuse(),
-            None => Either::Right(stream::empty()).fuse(),
+            Some(interval) => Either::Left(wrappers::IntervalStream::new(time::interval(interval))),
+            None => Either::Right(stream::empty()),
         };
 
         loop {
             let last_version = new_update_notification.borrow().clone();
 
-            let maybe_update = futures::select! {
-                reply = request_rx.select_next_some() => {
+            let maybe_update = tokio::select! {
+                Some(reply) = request_rx.recv() => {
                     let maybe_update = self.check_for_updates().await;
                     let _ = reply.send(maybe_update.clone());
                     maybe_update
                },
+
                _ = interval_or_never.next() => {
                     // Periodically, check for updates if configured to do so.
                     // If an update is found the new update notifier will be triggered and any listeners notified
@@ -121,7 +120,7 @@ impl SoftwareUpdaterService {
                     .map(|up| up.version() < update.version())
                     .unwrap_or(true)
                 {
-                    let _ = notifier.broadcast(Some(update.clone()));
+                    let _ = notifier.send(Some(update.clone()));
                 }
             }
         }

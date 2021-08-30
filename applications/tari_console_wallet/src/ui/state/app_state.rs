@@ -34,7 +34,6 @@ use crate::{
     wallet_modes::PeerConfig,
 };
 use bitflags::bitflags;
-use futures::{stream::Fuse, StreamExt};
 use log::*;
 use qrcode::{render::unicode, QrCode};
 use std::{
@@ -51,6 +50,7 @@ use tari_comms::{
     NodeIdentity,
 };
 use tari_core::transactions::{
+    emoji::EmojiId,
     tari_amount::{uT, MicroTari},
     types::PublicKey,
 };
@@ -66,7 +66,6 @@ use tari_wallet::{
         storage::models::{CompletedTransaction, TransactionStatus},
     },
     types::ValidationRetryStrategy,
-    util::emoji::EmojiId,
     WalletSqlite,
 };
 use tokio::{
@@ -648,24 +647,24 @@ impl AppStateInner {
         self.wallet.comms.shutdown_signal()
     }
 
-    pub fn get_transaction_service_event_stream(&self) -> Fuse<TransactionEventReceiver> {
-        self.wallet.transaction_service.get_event_stream_fused()
+    pub fn get_transaction_service_event_stream(&self) -> TransactionEventReceiver {
+        self.wallet.transaction_service.get_event_stream()
     }
 
-    pub fn get_output_manager_service_event_stream(&self) -> Fuse<OutputManagerEventReceiver> {
-        self.wallet.output_manager_service.get_event_stream_fused()
+    pub fn get_output_manager_service_event_stream(&self) -> OutputManagerEventReceiver {
+        self.wallet.output_manager_service.get_event_stream()
     }
 
-    pub fn get_connectivity_event_stream(&self) -> Fuse<ConnectivityEventRx> {
-        self.wallet.comms.connectivity().get_event_subscription().fuse()
+    pub fn get_connectivity_event_stream(&self) -> ConnectivityEventRx {
+        self.wallet.comms.connectivity().get_event_subscription()
     }
 
     pub fn get_wallet_connectivity(&self) -> WalletConnectivityHandle {
         self.wallet.wallet_connectivity.clone()
     }
 
-    pub fn get_base_node_event_stream(&self) -> Fuse<BaseNodeEventReceiver> {
-        self.wallet.base_node_service.clone().get_event_stream_fused()
+    pub fn get_base_node_event_stream(&self) -> BaseNodeEventReceiver {
+        self.wallet.base_node_service.get_event_stream()
     }
 
     pub async fn set_base_node_peer(&mut self, peer: Peer) -> Result<(), UiError> {

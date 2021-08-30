@@ -22,12 +22,14 @@
 
 use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction::{KernelFeatures, TransactionKernel},
-    types::Commitment,
+use tari_core::{
+    crypto::tari_utilities::{ByteArray, Hashable},
+    transactions::{
+        tari_amount::MicroTari,
+        transaction::{KernelFeatures, TransactionKernel},
+        types::Commitment,
+    },
 };
-use tari_crypto::tari_utilities::{ByteArray, Hashable};
 
 impl TryFrom<grpc::TransactionKernel> for TransactionKernel {
     type Error = String;

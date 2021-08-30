@@ -39,13 +39,13 @@ use crate::{
     runtime::task,
     test_utils::mocks::{new_peer_connection_mock_pair, PeerConnectionMockState},
 };
-use futures::{channel::mpsc, SinkExt};
 use tari_shutdown::Shutdown;
 use tari_test_utils::{async_assert_eventually, unpack_enum};
+use tokio::sync::mpsc;
 
 async fn setup(num_concurrent_sessions: usize) -> (PeerConnection, PeerConnectionMockState, Shutdown) {
     let (conn1, conn1_state, conn2, conn2_state) = new_peer_connection_mock_pair().await;
-    let (mut notif_tx, notif_rx) = mpsc::channel(1);
+    let (notif_tx, notif_rx) = mpsc::channel(1);
     let shutdown = Shutdown::new();
     let (context, _) = create_mocked_rpc_context();
 
@@ -148,15 +148,15 @@ mod lazy_pool {
     async fn it_prunes_disconnected_sessions() {
         let (conn, mock_state, _shutdown) = setup(2).await;
         let mut pool = LazyPool::<GreetingClient>::new(conn, 2, Default::default());
-        let mut conn1 = pool.get_least_used_or_connect().await.unwrap();
+        let mut client1 = pool.get_least_used_or_connect().await.unwrap();
         assert_eq!(mock_state.num_open_substreams(), 1);
-        let _conn2 = pool.get_least_used_or_connect().await.unwrap();
+        let _client2 = pool.get_least_used_or_connect().await.unwrap();
         assert_eq!(mock_state.num_open_substreams(), 2);
-        conn1.close();
-        drop(conn1);
+        client1.close().await;
+        drop(client1);
         async_assert_eventually!(mock_state.num_open_substreams(), expect = 1);
         assert_eq!(pool.refresh_num_active_connections(), 1);
-        let _conn3 = pool.get_least_used_or_connect().await.unwrap();
+        let _client3 = pool.get_least_used_or_connect().await.unwrap();
         assert_eq!(pool.refresh_num_active_connections(), 2);
         assert_eq!(mock_state.num_open_substreams(), 2);
     }

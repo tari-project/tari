@@ -21,15 +21,18 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    common::rate_limit::RateLimit,
     message::InboundMessage,
     peer_manager::NodeId,
     protocol::messaging::{MessagingEvent, MessagingProtocol},
+    rate_limit::RateLimit,
 };
-use futures::{channel::mpsc, future::Either, AsyncRead, AsyncWrite, SinkExt, StreamExt};
+use futures::{future::Either, StreamExt};
 use log::*;
 use std::{sync::Arc, time::Duration};
-use tokio::sync::broadcast;
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::{broadcast, mpsc},
+};
 
 const LOG_TARGET: &str = "comms::protocol::messaging::inbound";
 
@@ -61,7 +64,7 @@ impl InboundMessaging {
         }
     }
 
-    pub async fn run<S>(mut self, socket: S)
+    pub async fn run<S>(self, socket: S)
     where S: AsyncRead + AsyncWrite + Unpin {
         let peer = &self.peer;
         debug!(
@@ -70,48 +73,40 @@ impl InboundMessaging {
             peer.short_str()
         );
 
-        let (mut sink, stream) = MessagingProtocol::framed(socket).split();
+        let stream =
+            MessagingProtocol::framed(socket).rate_limit(self.rate_limit_capacity, self.rate_limit_restock_interval);
 
-        if let Err(err) = sink.close().await {
-            debug!(
-                target: LOG_TARGET,
-                "Error closing sink half for peer `{}`: {}",
-                peer.short_str(),
-                err
-            );
-        }
-        let stream = stream.rate_limit(self.rate_limit_capacity, self.rate_limit_restock_interval);
-
-        let mut stream = match self.inactivity_timeout {
-            Some(timeout) => Either::Left(tokio::stream::StreamExt::timeout(stream, timeout)),
+        let stream = match self.inactivity_timeout {
+            Some(timeout) => Either::Left(tokio_stream::StreamExt::timeout(stream, timeout)),
             None => Either::Right(stream.map(Ok)),
         };
+        tokio::pin!(stream);
 
         while let Some(result) = stream.next().await {
             match result {
                 Ok(Ok(raw_msg)) => {
-                    let inbound_msg = InboundMessage::new(peer.clone(), raw_msg.clone().freeze());
+                    let msg_len = raw_msg.len();
+                    let inbound_msg = InboundMessage::new(peer.clone(), raw_msg.freeze());
                     debug!(
                         target: LOG_TARGET,
                         "Received message {} from peer '{}' ({} bytes)",
                         inbound_msg.tag,
                         peer.short_str(),
-                        raw_msg.len()
+                        msg_len
                     );
 
                     let event = MessagingEvent::MessageReceived(inbound_msg.source_peer.clone(), inbound_msg.tag);
 
                     if let Err(err) = self.inbound_message_tx.send(inbound_msg).await {
+                        let tag = err.0.tag;
                         warn!(
                             target: LOG_TARGET,
-                            "Failed to send InboundMessage for peer '{}' because '{}'",
+                            "Failed to send InboundMessage {} for peer '{}' because inbound message channel closed",
+                            tag,
                             peer.short_str(),
-                            err
                         );
 
-                        if err.is_disconnected() {
-                            break;
-                        }
+                        break;
                     }
 
                     let _ = self.messaging_events_tx.send(Arc::new(event));

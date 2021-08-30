@@ -21,16 +21,15 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{discovery::DhtDiscoveryError, envelope::NodeDestination, proto::dht::DiscoveryResponseMessage};
-use futures::{
-    channel::{mpsc, oneshot},
-    SinkExt,
-};
 use std::{
     fmt::{Display, Error, Formatter},
     time::Duration,
 };
 use tari_comms::{peer_manager::Peer, types::CommsPublicKey};
-use tokio::time;
+use tokio::{
+    sync::{mpsc, oneshot},
+    time,
+};
 
 #[derive(Debug)]
 pub enum DhtDiscoveryRequest {

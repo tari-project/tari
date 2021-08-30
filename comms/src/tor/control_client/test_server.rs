@@ -20,13 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    compat::IoCompat,
-    memsocket::MemorySocket,
-    multiaddr::Multiaddr,
-    runtime,
-    test_utils::transport::build_connected_sockets,
-};
+use crate::{memsocket::MemorySocket, multiaddr::Multiaddr, runtime, test_utils::transport::build_connected_sockets};
 use futures::{lock::Mutex, stream, SinkExt, StreamExt};
 use std::sync::Arc;
 use tokio_util::codec::{Framed, LinesCodec};
@@ -82,7 +76,7 @@ impl TorControlPortTestServer {
     }
 
     pub async fn run(self) {
-        let mut framed = Framed::new(IoCompat::new(self.socket), LinesCodec::new());
+        let mut framed = Framed::new(self.socket, LinesCodec::new());
         let state = self.state;
         while let Some(msg) = framed.next().await {
             state.request_lines.lock().await.push(msg.unwrap());

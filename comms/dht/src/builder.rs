@@ -21,13 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{dht::DhtInitializationError, outbound::DhtOutboundRequest, DbConnectionUrl, Dht, DhtConfig};
-use futures::channel::mpsc;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
     connectivity::ConnectivityRequester,
     peer_manager::{NodeIdentity, PeerManager},
 };
 use tari_shutdown::ShutdownSignal;
+use tokio::sync::mpsc;
 
 pub struct DhtBuilder {
     node_identity: Arc<NodeIdentity>,

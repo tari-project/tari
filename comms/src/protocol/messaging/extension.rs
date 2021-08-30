@@ -34,8 +34,8 @@ use crate::{
     runtime,
     runtime::task,
 };
-use futures::channel::mpsc;
 use std::fmt;
+use tokio::sync::mpsc;
 use tower::Service;
 
 /// Buffer size for inbound messages from _all_ peers. This should be large enough to buffer quite a few incoming

@@ -22,16 +22,12 @@
 
 use super::service::OnlineStatus;
 use crate::connectivity_service::{error::WalletConnectivityError, watch::Watch};
-use futures::{
-    channel::{mpsc, oneshot},
-    SinkExt,
-};
 use tari_comms::{
     peer_manager::{NodeId, Peer},
     protocol::rpc::RpcClientLease,
 };
 use tari_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient};
-use tokio::sync::watch;
+use tokio::sync::{mpsc, oneshot, watch};
 
 pub enum WalletConnectivityRequest {
     ObtainBaseNodeWalletRpcClient(oneshot::Sender<RpcClientLease<BaseNodeWalletRpcClient>>),

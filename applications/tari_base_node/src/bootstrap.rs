@@ -59,7 +59,6 @@ use tari_p2p::{
 };
 use tari_service_framework::{ServiceHandles, StackBuilder};
 use tari_shutdown::ShutdownSignal;
-use tokio::runtime;
 
 const LOG_TARGET: &str = "c::bn::initialization";
 /// The minimum buffer size for the base node pubsub_connector channel
@@ -84,8 +83,7 @@ where B: BlockchainBackend + 'static
         fs::create_dir_all(&config.peer_db_path)?;
 
         let buf_size = cmp::max(BASE_NODE_BUFFER_MIN_SIZE, config.buffer_size_base_node);
-        let (publisher, peer_message_subscriptions) =
-            pubsub_connector(runtime::Handle::current(), buf_size, config.buffer_rate_limit_base_node);
+        let (publisher, peer_message_subscriptions) = pubsub_connector(buf_size, config.buffer_rate_limit_base_node);
         let peer_message_subscriptions = Arc::new(peer_message_subscriptions);
 
         let node_config = BaseNodeServiceConfig {

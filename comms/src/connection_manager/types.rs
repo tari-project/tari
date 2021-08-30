@@ -20,11 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{
-    channel::oneshot,
-    future::{Fuse, Shared},
-    FutureExt,
-};
 use std::fmt;
 
 /// Direction of the connection relative to this node
@@ -45,31 +40,5 @@ impl ConnectionDirection {
 impl fmt::Display for ConnectionDirection {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self)
-    }
-}
-
-pub type OneshotSignal<T> = Shared<Fuse<oneshot::Receiver<T>>>;
-pub struct OneshotTrigger<T>(Option<oneshot::Sender<T>>, OneshotSignal<T>);
-
-impl<T: Clone> OneshotTrigger<T> {
-    pub fn new() -> Self {
-        let (tx, rx) = oneshot::channel();
-        Self(Some(tx), rx.fuse().shared())
-    }
-
-    pub fn to_signal(&self) -> OneshotSignal<T> {
-        self.1.clone()
-    }
-
-    pub fn trigger(&mut self, item: T) {
-        if let Some(tx) = self.0.take() {
-            let _ = tx.send(item);
-        }
-    }
-}
-
-impl<T: Clone> Default for OneshotTrigger<T> {
-    fn default() -> Self {
-        Self::new()
     }
 }

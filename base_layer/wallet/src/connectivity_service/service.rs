@@ -24,16 +24,8 @@ use crate::{
     base_node_service::config::BaseNodeServiceConfig,
     connectivity_service::{error::WalletConnectivityError, handle::WalletConnectivityRequest, watch::Watch},
 };
-use core::mem;
-use futures::{
-    channel::{mpsc, oneshot},
-    future,
-    future::Either,
-    stream::Fuse,
-    FutureExt,
-    StreamExt,
-};
 use log::*;
+use std::{mem, time::Duration};
 use tari_comms::{
     connectivity::ConnectivityRequester,
     peer_manager::{NodeId, Peer},
@@ -41,7 +33,11 @@ use tari_comms::{
     PeerConnection,
 };
 use tari_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient};
-use tokio::{time, time::Duration};
+use tokio::{
+    sync::{mpsc, oneshot, watch},
+    time,
+    time::MissedTickBehavior,
+};
 
 const LOG_TARGET: &str = "wallet::connectivity";
 
@@ -55,9 +51,9 @@ pub enum OnlineStatus {
 
 pub struct WalletConnectivityService {
     config: BaseNodeServiceConfig,
-    request_stream: Fuse<mpsc::Receiver<WalletConnectivityRequest>>,
+    request_stream: mpsc::Receiver<WalletConnectivityRequest>,
     connectivity: ConnectivityRequester,
-    base_node_watch: Watch<Option<Peer>>,
+    base_node_watch: watch::Receiver<Option<Peer>>,
     pools: Option<ClientPoolContainer>,
     online_status_watch: Watch<OnlineStatus>,
     pending_requests: Vec<ReplyOneshot>,
@@ -72,13 +68,13 @@ impl WalletConnectivityService {
     pub(super) fn new(
         config: BaseNodeServiceConfig,
         request_stream: mpsc::Receiver<WalletConnectivityRequest>,
-        base_node_watch: Watch<Option<Peer>>,
+        base_node_watch: watch::Receiver<Option<Peer>>,
         online_status_watch: Watch<OnlineStatus>,
         connectivity: ConnectivityRequester,
     ) -> Self {
         Self {
             config,
-            request_stream: request_stream.fuse(),
+            request_stream,
             connectivity,
             base_node_watch,
             pools: None,
@@ -89,20 +85,26 @@ impl WalletConnectivityService {
 
     pub async fn start(mut self) {
         debug!(target: LOG_TARGET, "Wallet connectivity service has started.");
-        let mut base_node_watch_rx = self.base_node_watch.get_receiver().fuse();
+        let mut check_connection =
+            time::interval_at(time::Instant::now() + Duration::from_secs(5), Duration::from_secs(5));
+        check_connection.set_missed_tick_behavior(MissedTickBehavior::Delay);
         loop {
-            let mut check_connection = time::delay_for(Duration::from_secs(1)).fuse();
-            futures::select! {
-                req = self.request_stream.select_next_some() => {
-                    self.handle_request(req).await;
-                },
-                maybe_peer = base_node_watch_rx.select_next_some() => {
-                    if maybe_peer.is_some() {
+            tokio::select! {
+                // BIASED: select branches are in order of priority
+                biased;
+
+                Ok(_) = self.base_node_watch.changed() => {
+                    if self.base_node_watch.borrow().is_some() {
                         // This will block the rest until the connection is established. This is what we want.
                         self.setup_base_node_connection().await;
                     }
                 },
-                _ = check_connection => {
+
+                Some(req) = self.request_stream.recv() => {
+                    self.handle_request(req).await;
+                },
+
+                _ = check_connection.tick() => {
                     self.check_connection().await;
                 }
             }
@@ -234,7 +236,7 @@ impl WalletConnectivityService {
                         self.set_online_status(OnlineStatus::Offline);
                     }
                     warn!(target: LOG_TARGET, "{}", e);
-                    time::delay_for(self.config.base_node_monitor_refresh_interval).await;
+                    time::sleep(self.config.base_node_monitor_refresh_interval).await;
                     continue;
                 },
             }
@@ -272,13 +274,15 @@ impl WalletConnectivityService {
     }
 
     async fn try_dial_peer(&mut self, peer: NodeId) -> Result<Option<PeerConnection>, WalletConnectivityError> {
-        let recv_fut = self.base_node_watch.recv();
-        futures::pin_mut!(recv_fut);
-        let dial_fut = self.connectivity.dial_peer(peer);
-        futures::pin_mut!(dial_fut);
-        match future::select(recv_fut, dial_fut).await {
-            Either::Left(_) => Ok(None),
-            Either::Right((conn, _)) => Ok(Some(conn?)),
+        tokio::select! {
+            biased;
+
+            _ = self.base_node_watch.changed() => {
+                Ok(None)
+            }
+            result = self.connectivity.dial_peer(peer) => {
+                Ok(Some(result?))
+            }
         }
     }
 
@@ -304,8 +308,8 @@ impl ReplyOneshot {
     pub fn is_canceled(&self) -> bool {
         use ReplyOneshot::*;
         match self {
-            WalletRpc(tx) => tx.is_canceled(),
-            SyncRpc(tx) => tx.is_canceled(),
+            WalletRpc(tx) => tx.is_closed(),
+            SyncRpc(tx) => tx.is_closed(),
         }
     }
 }

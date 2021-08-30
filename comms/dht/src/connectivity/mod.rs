@@ -27,7 +27,6 @@ mod metrics;
 pub use metrics::{MetricsCollector, MetricsCollectorHandle};
 
 use crate::{connectivity::metrics::MetricsError, event::DhtEvent, DhtActorError, DhtConfig, DhtRequester};
-use futures::{stream::Fuse, StreamExt};
 use log::*;
 use std::{sync::Arc, time::Instant};
 use tari_comms::{
@@ -78,11 +77,11 @@ pub struct DhtConnectivity {
     /// Used to track when the random peer pool was last refreshed
     random_pool_last_refresh: Option<Instant>,
     stats: Stats,
-    dht_events: Fuse<broadcast::Receiver<Arc<DhtEvent>>>,
+    dht_events: broadcast::Receiver<Arc<DhtEvent>>,
 
     metrics_collector: MetricsCollectorHandle,
 
-    shutdown_signal: Option<ShutdownSignal>,
+    shutdown_signal: ShutdownSignal,
 }
 
 impl DhtConnectivity {
@@ -108,8 +107,8 @@ impl DhtConnectivity {
             metrics_collector,
             random_pool_last_refresh: None,
             stats: Stats::new(),
-            dht_events: dht_events.fuse(),
-            shutdown_signal: Some(shutdown_signal),
+            dht_events,
+            shutdown_signal,
         }
     }
 
@@ -131,21 +130,15 @@ impl DhtConnectivity {
         })
     }
 
-    pub async fn run(mut self, connectivity_events: ConnectivityEventRx) -> Result<(), DhtConnectivityError> {
-        let mut connectivity_events = connectivity_events.fuse();
-        let mut shutdown_signal = self
-            .shutdown_signal
-            .take()
-            .expect("DhtConnectivity initialized without a shutdown_signal");
-
+    pub async fn run(mut self, mut connectivity_events: ConnectivityEventRx) -> Result<(), DhtConnectivityError> {
         debug!(target: LOG_TARGET, "DHT connectivity starting");
         self.refresh_neighbour_pool().await?;
 
-        let mut ticker = time::interval(self.config.connectivity_update_interval).fuse();
+        let mut ticker = time::interval(self.config.connectivity_update_interval);
 
         loop {
-            futures::select! {
-                event = connectivity_events.select_next_some() => {
+            tokio::select! {
+                event = connectivity_events.recv() => {
                     if let Ok(event) = event {
                         if let Err(err) = self.handle_connectivity_event(&event).await {
                             debug!(target: LOG_TARGET, "Error handling connectivity event: {:?}", err);
@@ -153,15 +146,13 @@ impl DhtConnectivity {
                     }
                },
 
-               event = self.dht_events.select_next_some() => {
-                   if let Ok(event) = event {
-                        if let Err(err) = self.handle_dht_event(&event).await {
-                            debug!(target: LOG_TARGET, "Error handling DHT event: {:?}", err);
-                        }
-                   }
+               Ok(event) = self.dht_events.recv() => {
+                    if let Err(err) = self.handle_dht_event(&event).await {
+                        debug!(target: LOG_TARGET, "Error handling DHT event: {:?}", err);
+                    }
                },
 
-               _ = ticker.next() => {
+               _ = ticker.tick() => {
                     if let Err(err) = self.refresh_random_pool_if_required().await {
                         debug!(target: LOG_TARGET, "Error refreshing random peer pool: {:?}", err);
                     }
@@ -170,7 +161,7 @@ impl DhtConnectivity {
                     }
                },
 
-               _ = shutdown_signal => {
+               _ = self.shutdown_signal.wait() => {
                     info!(target: LOG_TARGET, "DhtConnectivity shutting down because the shutdown signal was received");
                     break;
                }
