@@ -490,7 +490,7 @@ async fn handle_outbound_tx(
     exclude_peers: Vec<NodeId>,
 ) -> Result<(), MempoolServiceError> {
     let result = outbound_message_service
-        .propagate(
+        .flood(
             NodeDestination::Unknown,
             OutboundEncryption::ClearText,
             exclude_peers,
