@@ -50,6 +50,7 @@ use std::{fmt, sync::Arc};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use time::Duration;
 use tokio::{sync::broadcast, task, time};
+use tracing::{span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::connection_manager::manager";
 
@@ -121,7 +122,7 @@ impl Default for ConnectionManagerConfig {
                 .expect("DEFAULT_LISTENER_ADDRESS is malformed"),
             #[cfg(test)]
             listener_address: "/memory/0".parse().unwrap(),
-            max_dial_attempts: 3,
+            max_dial_attempts: 1,
             max_simultaneous_inbound_connects: 100,
             network_info: Default::default(),
             #[cfg(not(test))]
@@ -258,6 +259,8 @@ where
     }
 
     pub async fn run(mut self) {
+        let span = span!(Level::DEBUG, "comms::connection_manager::run");
+        let _enter = span.enter();
         let mut shutdown = self
             .shutdown_signal
             .take()
@@ -350,7 +353,16 @@ where
         use ConnectionManagerRequest::*;
         trace!(target: LOG_TARGET, "Connection manager got request: {:?}", request);
         match request {
-            DialPeer(node_id, reply) => self.dial_peer(node_id, reply).await,
+            DialPeer {
+                node_id,
+                reply_tx,
+                tracing_id: _tracing,
+            } => {
+                let span = span!(Level::TRACE, "connection_manager::handle_request");
+                // This causes a panic for some reason?
+                // span.follows_from(tracing_id);
+                self.dial_peer(node_id, reply_tx).instrument(span).await
+            },
             CancelDial(node_id) => {
                 if let Err(err) = self.dialer_tx.send(DialerRequest::CancelPendingDial(node_id)).await {
                     error!(
@@ -432,6 +444,7 @@ where
         let _ = self.connection_manager_events_tx.send(Arc::new(event));
     }
 
+    #[tracing::instrument(skip(self, reply))]
     async fn dial_peer(
         &mut self,
         node_id: NodeId,

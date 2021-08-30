@@ -153,7 +153,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             self.forward(&message).await?;
         }
 
-        // The message has been forwarded, but other middleware may be interested (i.e. StoreMiddleware)
+        // The message has been forwarded, but downstream middleware may be interested
         trace!(
             target: LOG_TARGET,
             "Passing message {} to next service (Trace: {})",
@@ -205,8 +205,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         }
 
         let body = decryption_result
-            .clone()
+            .as_ref()
             .err()
+            .cloned()
             .expect("previous check that decryption failed");
 
         let excluded_peers = vec![source_peer.node_id.clone()];

@@ -204,15 +204,19 @@ impl ConnectivityManagerMock {
         use ConnectivityRequest::*;
         self.state.add_call(format!("{:?}", req)).await;
         match req {
-            DialPeer(node_id, reply) => {
+            DialPeer {
+                node_id,
+                reply_tx,
+                tracing_id: _,
+            } => {
                 // Send Ok(conn) if we have an active connection, otherwise Err(DialConnectFailedAllAddresses)
                 self.state
                     .with_state(|state| match state.pending_conns.get_mut(&node_id) {
                         Some(replies) => {
-                            replies.push(reply);
+                            replies.push(reply_tx);
                         },
                         None => {
-                            let _ = reply.send(
+                            let _ = reply_tx.send(
                                 state
                                     .active_conns
                                     .get(&node_id)

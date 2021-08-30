@@ -251,6 +251,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             is_discovery_enabled,
             force_origin,
             dht_header,
+            tag,
         } = params;
 
         match self.select_peers(broadcast_strategy.clone()).await {
@@ -320,6 +321,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                         is_broadcast,
                         body,
                         Some(expires),
+                        tag,
                     )
                     .await
                 {
@@ -411,6 +413,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         is_broadcast: bool,
         body: Bytes,
         expires: Option<DateTime<Utc>>,
+        tag: Option<MessageTag>,
     ) -> Result<(Vec<DhtOutboundMessage>, Vec<MessageSendState>), DhtOutboundError> {
         let dht_flags = encryption.flags() | extra_flags;
 
@@ -424,7 +427,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         // Construct a DhtOutboundMessage for each recipient
         let messages = selected_peers.into_iter().map(|node_id| {
             let (reply_tx, reply_rx) = oneshot::channel();
-            let tag = MessageTag::new();
+            let tag = tag.unwrap_or_else(MessageTag::new);
             let send_state = MessageSendState::new(tag, reply_rx);
             (
                 DhtOutboundMessage {
@@ -448,7 +451,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         Ok(messages.unzip())
     }
 
-    async fn add_to_dedup_cache(&mut self, body: &[u8], public_key: CommsPublicKey) -> Result<bool, DhtOutboundError> {
+    async fn add_to_dedup_cache(&mut self, body: &[u8], public_key: CommsPublicKey) -> Result<(), DhtOutboundError> {
         let hash = Challenge::new().chain(&body).finalize().to_vec();
         trace!(
             target: LOG_TARGET,
@@ -456,10 +459,19 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             hash.to_hex(),
         );
 
-        self.dht_requester
-            .insert_message_hash(hash, public_key)
+        // Do not count messages we've broadcast towards the total hit count
+        let hit_count = self
+            .dht_requester
+            .get_message_cache_hit_count(hash.clone())
             .await
-            .map_err(|_| DhtOutboundError::FailedToInsertMessageHash)
+            .map_err(|err| DhtOutboundError::FailedToInsertMessageHash(err.to_string()))?;
+        if hit_count == 0 {
+            self.dht_requester
+                .add_message_to_dedup_cache(hash, public_key)
+                .await
+                .map_err(|err| DhtOutboundError::FailedToInsertMessageHash(err.to_string()))?;
+        }
+        Ok(())
     }
 
     fn process_encryption(

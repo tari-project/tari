@@ -162,6 +162,7 @@ pub enum StateInfo {
     StartUp,
     HeaderSync(BlockSyncInfo),
     HorizonSync(HorizonSyncInfo),
+    BlockSyncStarting,
     BlockSync(BlockSyncInfo),
     Listening(ListeningInfo),
 }
@@ -193,12 +194,17 @@ impl StateInfo {
                 HorizonSyncStatus::Finalizing => "Finalizing horizon sync".to_string(),
             },
             Self::BlockSync(info) => format!(
-                "Syncing blocks: {}/{} ({:.0}%)",
+                "Syncing blocks with {}: {}/{} ({:.0}%) ",
+                info.sync_peers
+                    .first()
+                    .map(|s| s.short_str())
+                    .unwrap_or_else(|| "".to_string()),
                 info.local_height,
                 info.tip_height,
                 info.local_height as f64 / info.tip_height as f64 * 100.0
             ),
             Self::Listening(_) => "Listening".to_string(),
+            Self::BlockSyncStarting => "Starting block sync".to_string(),
         }
     }
 
@@ -212,7 +218,7 @@ impl StateInfo {
     pub fn is_synced(&self) -> bool {
         use StateInfo::*;
         match self {
-            StartUp | HeaderSync(_) | HorizonSync(_) | BlockSync(_) => false,
+            StartUp | HeaderSync(_) | HorizonSync(_) | BlockSync(_) | BlockSyncStarting => false,
             Listening(info) => info.is_synced(),
         }
     }
@@ -226,6 +232,7 @@ impl Display for StateInfo {
             Self::HorizonSync(info) => write!(f, "Synchronizing horizon state: {}", info),
             Self::BlockSync(info) => write!(f, "Synchronizing blocks: {}", info),
             Self::Listening(info) => write!(f, "Listening: {}", info),
+            Self::BlockSyncStarting => write!(f, "Synchronizing blocks: Starting"),
         }
     }
 }

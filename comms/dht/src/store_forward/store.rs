@@ -122,16 +122,31 @@ where
     }
 
     fn call(&mut self, msg: DecryptedDhtMessage) -> Self::Future {
-        Box::pin(
-            StoreTask::new(
-                self.next_service.clone(),
-                self.config.clone(),
-                Arc::clone(&self.peer_manager),
-                Arc::clone(&self.node_identity),
-                self.saf_requester.clone(),
+        if msg.is_duplicate() {
+            trace!(
+                target: LOG_TARGET,
+                "Passing duplicate message {} to next service (Trace: {})",
+                msg.tag,
+                msg.dht_header.message_tag
+            );
+
+            let service = self.next_service.clone();
+            Box::pin(async move {
+                let service = service.ready_oneshot().await?;
+                service.oneshot(msg).await
+            })
+        } else {
+            Box::pin(
+                StoreTask::new(
+                    self.next_service.clone(),
+                    self.config.clone(),
+                    Arc::clone(&self.peer_manager),
+                    Arc::clone(&self.node_identity),
+                    self.saf_requester.clone(),
+                )
+                .handle(msg),
             )
-            .handle(msg),
-        )
+        }
     }
 }
 

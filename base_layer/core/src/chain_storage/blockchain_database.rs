@@ -1133,9 +1133,10 @@ fn insert_block(txn: &mut DbTransaction, block: Arc<ChainBlock>) -> Result<(), C
 
     let height = block.height();
     let accumulated_difficulty = block.accumulated_data().total_accumulated_difficulty;
+    let expected_prev_best_block = block.block().header.prev_hash.clone();
     txn.insert_chain_header(block.to_chain_header())
         .insert_block_body(block)
-        .set_best_block(height, block_hash, accumulated_difficulty);
+        .set_best_block(height, block_hash, accumulated_difficulty, expected_prev_best_block);
 
     Ok(())
 }
@@ -1314,6 +1315,7 @@ fn rewind_to_height<T: BlockchainBackend>(
     // Delete headers
     let last_header_height = last_header.height;
     let metadata = db.fetch_chain_metadata()?;
+    let expected_block_hash = metadata.best_block().clone();
     let last_block_height = metadata.height_of_longest_chain();
     let steps_back = last_header_height
         .checked_sub(cmp::max(last_block_height, height))
@@ -1414,6 +1416,7 @@ fn rewind_to_height<T: BlockchainBackend>(
         chain_header.height(),
         chain_header.accumulated_data().hash.clone(),
         chain_header.accumulated_data().total_accumulated_difficulty,
+        expected_block_hash,
     );
     db.write(txn)?;
 
@@ -1560,8 +1563,8 @@ fn handle_possible_reorg<T: BlockchainBackend>(
             }, // We want a warning if the number of removed blocks is at least 2.
             "Chain reorg required from {} to {} (accum_diff:{}, hash:{}) to (accum_diff:{}, hash:{}). Number of \
              blocks to remove: {}, to add: {}.",
-            tip_header.header(),
-            fork_header.header(),
+            tip_header.header().height,
+            fork_header.header().height,
             tip_header.accumulated_data().total_accumulated_difficulty,
             tip_header.accumulated_data().hash.to_hex(),
             fork_header.accumulated_data().total_accumulated_difficulty,
