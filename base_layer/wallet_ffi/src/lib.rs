@@ -119,7 +119,6 @@ use std::{
     time::Duration,
 };
 
-use futures::StreamExt;
 use libc::{c_char, c_int, c_longlong, c_uchar, c_uint, c_ulonglong, c_ushort};
 use log::{LevelFilter, *};
 use log4rs::{
@@ -158,7 +157,7 @@ use tari_comms::{
     types::CommsSecretKey,
 };
 use tari_comms_dht::{DbConnectionUrl, DhtConfig};
-use tari_core::transactions::{emoji::{emoji_set, EmojiId, EmojiIdError},tari_amount::MicroTari, transaction::OutputFeatures, CryptoFactories};
+use tari_core::transactions::{tari_amount::MicroTari, transaction::OutputFeatures, CryptoFactories};
 use tari_p2p::{
     transport::{TorConfig, TransportType, TransportType::Tor},
     Network,

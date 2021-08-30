@@ -27,7 +27,8 @@ use tari_core::{
     crypto::{
         script::{ExecutionStack, TariScript},
         tari_utilities::ByteArray,
-    },transactions::{tari_amount::MicroTari, transaction::UnblindedOutput},
+    },
+    transactions::{tari_amount::MicroTari, transaction::UnblindedOutput},
 };
 
 impl From<UnblindedOutput> for grpc::UnblindedOutput {

@@ -23,14 +23,6 @@
 use std::sync::Arc;
 
 use futures::StreamExt;
-use tari_crypto::{
-    inputs,
-    keys::PublicKey as PublicKeyTrait,
-    script,
-    script::TariScript,
-    tari_utilities::hash::Hashable,
-};
-use tokio::sync::broadcast;
 use helpers::block_builders::append_block;
 use tari_common::configuration::Network;
 use tari_common_types::{chain_metadata::ChainMetadata, types::PublicKey};
@@ -54,11 +46,19 @@ use tari_core::{
     txn_schema,
     validation::{mocks::MockValidator, transaction_validators::TxInputAndMaturityValidator},
 };
+use tari_crypto::{
+    inputs,
+    keys::PublicKey as PublicKeyTrait,
+    script,
+    script::TariScript,
+    tari_utilities::hash::Hashable,
+};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
+use tokio::sync::broadcast;
 
+use tokio::sync::mpsc;
 #[allow(dead_code)]
 mod helpers;
-use tokio::sync::{broadcast, mpsc};
 // use crate::helpers::database::create_test_db;
 
 async fn test_request_responder(

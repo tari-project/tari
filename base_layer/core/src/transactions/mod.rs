@@ -15,7 +15,6 @@ pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::S
 
 #[macro_use]
 pub mod helpers;
-pub mod emoji;
 
 mod coinbase_builder;
 pub use crate::transactions::coinbase_builder::{CoinbaseBuildError, CoinbaseBuilder};

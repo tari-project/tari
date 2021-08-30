@@ -24,7 +24,6 @@ use std::{cmp, fs, str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::anyhow;
 use log::*;
-use tokio::runtime;
 
 use tari_app_utilities::{consts, identity_management, utilities::create_transport_type};
 use tari_common::{configuration::bootstrap::ApplicationType, GlobalConfig};

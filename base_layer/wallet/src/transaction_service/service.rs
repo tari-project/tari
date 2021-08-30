@@ -57,10 +57,7 @@ use tari_core::{
 use tari_p2p::domain_message::DomainMessage;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
-use tokio::{
-    sync::{broadcast, mpsc, mpsc::Sender, oneshot},
-    task::JoinHandle,
-};
+use tokio::sync::{mpsc, mpsc::Sender, oneshot};
 
 use crate::{
     output_manager_service::{handle::OutputManagerHandle, TxId},

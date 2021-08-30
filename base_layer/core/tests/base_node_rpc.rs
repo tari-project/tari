@@ -45,7 +45,6 @@
 use std::convert::TryFrom;
 
 use tempfile::{tempdir, TempDir};
-use tokio::runtime::Runtime;
 
 use tari_common::configuration::Network;
 use tari_comms::protocol::rpc::mock::RpcRequestMock;
@@ -78,7 +77,6 @@ use tari_core::{
     },
     txn_schema,
 };
-use tempfile::{tempdir, TempDir};
 
 use crate::helpers::{
     block_builders::{chain_block, create_genesis_block_with_coinbase_value},

@@ -37,14 +37,8 @@ use tari_comms::{
     types::CommsPublicKey,
     utils::multiaddr::multiaddr_to_socketaddr,
 };
-use tari_core::{tari_utilities::hex::Hex, transactions::emoji::EmojiId};
+use tari_core::tari_utilities::hex::Hex;
 use tari_p2p::transport::{TorConfig, TransportType};
-use thiserror::Error;
-use tokio::{runtime, runtime::Runtime};
-use tari_wallet::{
-    error::{WalletError, WalletStorageError},
-    output_manager_service::error::OutputManagerError,
-};
 
 use crate::identity_management::load_from_json;
 use tari_common_types::emoji::EmojiId;

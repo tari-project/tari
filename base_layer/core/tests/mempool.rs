@@ -25,7 +25,6 @@ use std::{ops::Deref, sync::Arc, time::Duration};
 
 use tari_crypto::{keys::PublicKey as PublicKeyTrait, script};
 use tempfile::tempdir;
-use tokio::runtime::Runtime;
 
 use helpers::{
     block_builders::{
@@ -66,7 +65,6 @@ use tari_core::{
 };
 use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType};
 use tari_test_utils::async_assert_eventually;
-use tempfile::tempdir;
 #[allow(dead_code)]
 mod helpers;
 

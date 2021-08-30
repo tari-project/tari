@@ -35,7 +35,7 @@ use tari_crypto::{
     script,
 };
 use tempfile::tempdir;
-use tokio::{runtime::Runtime, time::delay_for};
+use tokio::runtime::Runtime;
 
 use tari_common_types::{
     chain_metadata::ChainMetadata,
@@ -74,8 +74,7 @@ use tari_wallet::{
     WalletConfig,
     WalletSqlite,
 };
-use tempfile::tempdir;
-use tokio::{runtime::Runtime, time::sleep};
+use tokio::time::sleep;
 
 use crate::support::{comms_and_services::get_next_memory_address, utils::make_input};
 

@@ -27,7 +27,8 @@ use tari_core::{
     crypto::{
         script::TariScript,
         tari_utilities::{ByteArray, Hashable},
-    },transactions::{bullet_rangeproofs::BulletRangeProof, transaction::TransactionOutput},
+    },
+    transactions::{bullet_rangeproofs::BulletRangeProof, transaction::TransactionOutput},
 };
 
 impl TryFrom<grpc::TransactionOutput> for TransactionOutput {

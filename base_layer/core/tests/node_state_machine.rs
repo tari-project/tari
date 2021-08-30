@@ -20,8 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{thread, time::Duration};
-
 use helpers::{
     block_builders::{append_block, chain_block, create_genesis_block},
     chain_metadata::{random_peer_metadata, MockChainMetadata},
@@ -56,6 +54,9 @@ use tokio::{
     task,
     time,
 };
+
+#[allow(dead_code)]
+mod helpers;
 
 static EMISSION: [u64; 2] = [10, 10];
 #[tokio::test]

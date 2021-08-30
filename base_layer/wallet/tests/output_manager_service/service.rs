@@ -19,12 +19,15 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-use std::{sync::Arc, thread, time::Duration};
-
+use crate::support::{
+    data::get_temp_sqlite_database_connection,
+    rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
+    utils::{make_input, make_input_with_features, TestParams},
+};
 use futures::FutureExt;
 use rand::{rngs::OsRng, RngCore};
 use std::{sync::Arc, time::Duration};
+use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService, RpcClientConfig, RpcStatus},
@@ -52,6 +55,13 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
+use tari_crypto::{
+    common::Blake256,
+    inputs,
+    keys::{PublicKey as PublicKeyTrait, SecretKey},
+    script,
+    script::TariScript,
+};
 use tari_p2p::Network;
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
@@ -77,11 +87,6 @@ use tokio::{
     sync::{broadcast, broadcast::channel},
     task,
     time,
-
-use crate::support::{
-    data::get_temp_sqlite_database_connection,
-    rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
-    utils::{make_input, make_input_with_features, TestParams},
 };
 
 #[allow(clippy::type_complexity)]

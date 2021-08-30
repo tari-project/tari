@@ -74,7 +74,7 @@ use crate::{
     },
     WalletSqlite,
 };
-use tokio::{sync::broadcast, task, time, time::MissedTickBehavior};
+use tokio::time::MissedTickBehavior;
 
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 

@@ -38,7 +38,6 @@ use tari_crypto::{
     signatures::{SchnorrSignature, SchnorrSignatureError},
     tari_utilities::hex::Hex,
 };
-use tokio::runtime;
 
 use tari_common_types::types::{ComSignature, PrivateKey, PublicKey};
 use tari_comms::{
