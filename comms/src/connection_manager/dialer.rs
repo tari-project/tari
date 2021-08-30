@@ -338,7 +338,7 @@ where
     }
 
     #[allow(clippy::too_many_arguments)]
-    #[tracing::instrument(skip(peer_manager, socket, conn_man_notifier, config, cancel_signal), err)]
+    #[tracing::instrument(skip(peer_manager, socket, conn_man_notifier, config, cancel_signal))]
     async fn perform_socket_upgrade_procedure(
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,

@@ -126,7 +126,7 @@ impl ConnectivityRequester {
         self.event_tx.clone()
     }
 
-    #[tracing::instrument(skip(self), err)]
+    #[tracing::instrument(skip(self))]
     pub async fn dial_peer(&mut self, peer: NodeId) -> Result<PeerConnection, ConnectivityError> {
         let mut num_cancels = 0;
         loop {

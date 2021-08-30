@@ -41,7 +41,7 @@ use tracing;
 pub static IDENTITY_PROTOCOL: ProtocolId = ProtocolId::from_static(b"t/identity/1.0");
 const LOG_TARGET: &str = "comms::protocol::identity";
 
-#[tracing::instrument(skip(socket, our_supported_protocols), err)]
+#[tracing::instrument(skip(socket, our_supported_protocols))]
 pub async fn identity_exchange<'p, TSocket, P>(
     node_identity: &NodeIdentity,
     direction: ConnectionDirection,
