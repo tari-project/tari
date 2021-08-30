@@ -58,6 +58,7 @@ impl BlockSync {
         shared: &mut BaseNodeStateMachine<B>,
     ) -> StateEvent {
         let mut synchronizer = BlockSynchronizer::new(
+            shared.config.block_sync_config.clone(),
             shared.db.clone(),
             shared.connectivity.clone(),
             self.sync_peer.take(),
@@ -65,8 +66,12 @@ impl BlockSync {
         );
 
         let status_event_sender = shared.status_event_sender.clone();
-        let local_nci = shared.local_node_interface.clone();
         let bootstrapped = shared.is_bootstrapped();
+        let _ = status_event_sender.broadcast(StatusInfo {
+            bootstrapped,
+            state_info: StateInfo::BlockSyncStarting,
+        });
+        let local_nci = shared.local_node_interface.clone();
         synchronizer.on_progress(move |block, remote_tip_height, sync_peers| {
             let local_height = block.height();
             local_nci.publish_block_event(BlockEvent::ValidBlockAdded(
@@ -98,7 +103,7 @@ impl BlockSync {
                 StateEvent::BlocksSynchronized
             },
             Err(err) => {
-                debug!(target: LOG_TARGET, "Block sync failed: {}", err);
+                warn!(target: LOG_TARGET, "Block sync failed: {}", err);
                 StateEvent::BlockSyncFailed
             },
         }

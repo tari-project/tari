@@ -139,9 +139,9 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(fetch_horizon_data() -> Option<HorizonData>, "fetch_horizon_data");
 
     //---------------------------------- TXO --------------------------------------------//
-    make_async_fn!(fetch_utxo(hash: HashOutput) -> Option<TransactionOutput>, "fetch_utxo");
+    make_async_fn!(fetch_utxo(hash: HashOutput) -> Option<PrunedOutput>, "fetch_utxo");
 
-    make_async_fn!(fetch_utxos(hashes: Vec<HashOutput>) -> Vec<Option<(TransactionOutput, bool)>>, "fetch_utxos");
+    make_async_fn!(fetch_utxos(hashes: Vec<HashOutput>) -> Vec<Option<(PrunedOutput, bool)>>, "fetch_utxos");
 
     make_async_fn!(fetch_utxos_by_mmr_position(start: u64, end: u64, deleted: Arc<Bitmap>) -> (Vec<PrunedOutput>, Bitmap), "fetch_utxos_by_mmr_position");
 
@@ -253,8 +253,15 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         }
     }
 
-    pub fn set_best_block(&mut self, height: u64, hash: HashOutput, accumulated_data: u128) -> &mut Self {
-        self.transaction.set_best_block(height, hash, accumulated_data);
+    pub fn set_best_block(
+        &mut self,
+        height: u64,
+        hash: HashOutput,
+        accumulated_data: u128,
+        expected_prev_best_block: HashOutput,
+    ) -> &mut Self {
+        self.transaction
+            .set_best_block(height, hash, accumulated_data, expected_prev_best_block);
         self
     }
 

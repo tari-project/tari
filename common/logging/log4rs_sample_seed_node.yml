@@ -19,7 +19,7 @@ appenders:
         count: 5
         pattern: "log/base-node/extra/network.{}.log"
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n}"
 
   status:
     kind: rolling_file
@@ -35,7 +35,7 @@ appenders:
         count: 5
         pattern: "log/base-node/rolled/status.{}.log"
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n}"
 
   base_layer:
     kind: rolling_file
@@ -53,7 +53,7 @@ appenders:
         count: 5
         pattern: "log/base-node/rolled/base_layer.{}.log"
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n}"
 
   base_layer_extra:
     kind: rolling_file
@@ -71,7 +71,7 @@ appenders:
         count: 5
         pattern: "log/base-node/extra/base_layer.{}.log"
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n}"
 
   other:
     kind: rolling_file
@@ -87,7 +87,7 @@ appenders:
         count: 5
         pattern: "log/base-node/extra/other.{}.log"
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n}"
 
 root:
   appenders:

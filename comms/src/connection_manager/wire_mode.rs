@@ -22,7 +22,7 @@
 
 use std::convert::TryFrom;
 
-const LIVENESS_WIRE_MODE: u8 = 0x46; // E
+pub(crate) const LIVENESS_WIRE_MODE: u8 = 0x46; // E
 
 pub enum WireMode {
     Comms(u8),

@@ -48,6 +48,7 @@ use tari_comms::{
     protocol::rpc::{RpcError, RpcHandshakeError},
     PeerConnection,
 };
+use tracing;
 
 const LOG_TARGET: &str = "c::bn::header_sync";
 
@@ -110,28 +111,28 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 Ok(()) => return Ok(peer_conn),
                 // Try another peer
                 Err(err @ BlockHeaderSyncError::NotInSync) => {
-                    debug!(target: LOG_TARGET, "{}", err);
+                    warn!(target: LOG_TARGET, "{}", err);
                 },
 
                 Err(err @ BlockHeaderSyncError::RpcError(RpcError::HandshakeError(RpcHandshakeError::TimedOut))) => {
-                    debug!(target: LOG_TARGET, "{}", err);
+                    warn!(target: LOG_TARGET, "{}", err);
                     self.ban_peer_short(node_id, BanReason::RpcNegotiationTimedOut).await?;
                 },
                 Err(BlockHeaderSyncError::ValidationFailed(err)) => {
-                    debug!(target: LOG_TARGET, "Block header validation failed: {}", err);
+                    warn!(target: LOG_TARGET, "Block header validation failed: {}", err);
                     self.ban_peer_long(node_id, err.into()).await?;
                 },
                 Err(BlockHeaderSyncError::ChainSplitNotFound(peer)) => {
-                    debug!(target: LOG_TARGET, "Chain split not found for peer {}.", peer);
+                    warn!(target: LOG_TARGET, "Chain split not found for peer {}.", peer);
                     self.ban_peer_long(peer, BanReason::ChainSplitNotFound).await?;
                 },
                 Err(err @ BlockHeaderSyncError::InvalidBlockHeight { .. }) => {
-                    debug!(target: LOG_TARGET, "{}", err);
+                    warn!(target: LOG_TARGET, "{}", err);
                     self.ban_peer_long(node_id, BanReason::GeneralHeaderSyncFailure(err))
                         .await?;
                 },
                 Err(err) => {
-                    debug!(
+                    error!(
                         target: LOG_TARGET,
                         "Failed to synchronize headers from peer `{}`: {}", node_id, err
                     );
@@ -253,6 +254,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self, conn), err)]
     async fn attempt_sync(&mut self, mut conn: PeerConnection) -> Result<(), BlockHeaderSyncError> {
         let peer = conn.peer_node_id().clone();
         let mut client = conn.connect_rpc::<rpc::BaseNodeSyncRpcClient>().await?;
@@ -480,8 +482,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     ) -> Result<(), BlockHeaderSyncError> {
         const COMMIT_EVERY_N_HEADERS: usize = 1000;
 
-        // Peer returned less than the max headers. This indicates that there are no further headers to request.
-        if self.header_validator.valid_headers().len() < NUM_INITIAL_HEADERS_TO_REQUEST as usize {
+        // Peer returned no more than the max headers. This indicates that there are no further headers to request.
+        if self.header_validator.valid_headers().len() <= NUM_INITIAL_HEADERS_TO_REQUEST as usize {
             debug!(target: LOG_TARGET, "No further headers to download");
             if !self.pending_chain_has_higher_pow(&split_info.local_tip_header)? {
                 return Err(BlockHeaderSyncError::WeakerChain);

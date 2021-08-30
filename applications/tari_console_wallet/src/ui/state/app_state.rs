@@ -37,7 +37,11 @@ use bitflags::bitflags;
 use futures::{stream::Fuse, StreamExt};
 use log::*;
 use qrcode::{render::unicode, QrCode};
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tari_common::{configuration::Network, GlobalConfig};
 use tari_comms::{
     connectivity::ConnectivityEventRx,
@@ -54,6 +58,7 @@ use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
+    connectivity_service::WalletConnectivityHandle,
     contacts_service::storage::database::Contact,
     output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, TxId, TxoValidationType},
     transaction_service::{
@@ -64,7 +69,10 @@ use tari_wallet::{
     util::emoji::EmojiId,
     WalletSqlite,
 };
-use tokio::sync::{watch, RwLock};
+use tokio::{
+    sync::{watch, RwLock},
+    task,
+};
 
 const LOG_TARGET: &str = "wallet::console_wallet::app_state";
 
@@ -72,8 +80,10 @@ const LOG_TARGET: &str = "wallet::console_wallet::app_state";
 pub struct AppState {
     inner: Arc<RwLock<AppStateInner>>,
     cached_data: AppStateData,
+    cache_update_cooldown: Option<Instant>,
     completed_tx_filter: TransactionFilter,
     node_config: GlobalConfig,
+    config: AppStateConfig,
 }
 
 impl AppState {
@@ -91,8 +101,10 @@ impl AppState {
         Self {
             inner: Arc::new(RwLock::new(inner)),
             cached_data,
+            cache_update_cooldown: None,
             completed_tx_filter: TransactionFilter::ABANDONED_COINBASES,
             node_config,
+            config: AppStateConfig::default(),
         }
     }
 
@@ -126,10 +138,18 @@ impl AppState {
     }
 
     pub async fn update_cache(&mut self) {
-        let mut inner = self.inner.write().await;
-        let updated_state = inner.get_updated_app_state();
-        if let Some(data) = updated_state {
-            self.cached_data = data;
+        let update = match self.cache_update_cooldown {
+            Some(last_update) => last_update.elapsed() > self.config.cache_update_cooldown,
+            None => true,
+        };
+
+        if update {
+            let mut inner = self.inner.write().await;
+            let updated_state = inner.get_updated_app_state();
+            if let Some(data) = updated_state {
+                self.cached_data = data;
+                self.cache_update_cooldown = Some(Instant::now());
+            }
         }
     }
 
@@ -633,6 +653,10 @@ impl AppStateInner {
         self.wallet.comms.connectivity().get_event_subscription().fuse()
     }
 
+    pub fn get_wallet_connectivity(&self) -> WalletConnectivityHandle {
+        self.wallet.wallet_connectivity.clone()
+    }
+
     pub fn get_base_node_event_stream(&self) -> Fuse<BaseNodeEventReceiver> {
         self.wallet.base_node_service.clone().get_event_stream_fused()
     }
@@ -649,15 +673,7 @@ impl AppStateInner {
             )
             .await?;
 
-        if let Err(e) = self
-            .wallet
-            .transaction_service
-            .validate_transactions(ValidationRetryStrategy::UntilSuccess)
-            .await
-        {
-            error!(target: LOG_TARGET, "Problem validating transactions: {}", e);
-        }
-        self.validate_outputs().await;
+        self.spawn_transaction_revalidation_task();
 
         self.data.base_node_previous = self.data.base_node_selected.clone();
         self.data.base_node_selected = peer.clone();
@@ -685,15 +701,7 @@ impl AppStateInner {
             )
             .await?;
 
-        if let Err(e) = self
-            .wallet
-            .transaction_service
-            .validate_transactions(ValidationRetryStrategy::UntilSuccess)
-            .await
-        {
-            error!(target: LOG_TARGET, "Problem validating transactions: {}", e);
-        }
-        self.validate_outputs().await;
+        self.spawn_transaction_revalidation_task();
 
         self.data.base_node_previous = self.data.base_node_selected.clone();
         self.data.base_node_selected = peer.clone();
@@ -735,15 +743,7 @@ impl AppStateInner {
             )
             .await?;
 
-        if let Err(e) = self
-            .wallet
-            .transaction_service
-            .validate_transactions(ValidationRetryStrategy::UntilSuccess)
-            .await
-        {
-            error!(target: LOG_TARGET, "Problem validating transactions: {}", e);
-        }
-        self.validate_outputs().await;
+        self.spawn_transaction_revalidation_task();
 
         self.data.base_node_peer_custom = None;
         self.data.base_node_selected = previous;
@@ -762,33 +762,39 @@ impl AppStateInner {
         Ok(())
     }
 
-    pub async fn validate_outputs(&mut self) {
-        if let Err(e) = self
-            .wallet
-            .output_manager_service
-            .validate_txos(TxoValidationType::Unspent, ValidationRetryStrategy::UntilSuccess)
-            .await
-        {
-            error!(target: LOG_TARGET, "Problem validating UTXOs: {}", e);
-        }
+    pub fn spawn_transaction_revalidation_task(&mut self) {
+        let mut txn_service = self.wallet.transaction_service.clone();
+        let mut output_manager_service = self.wallet.output_manager_service.clone();
 
-        if let Err(e) = self
-            .wallet
-            .output_manager_service
-            .validate_txos(TxoValidationType::Spent, ValidationRetryStrategy::UntilSuccess)
-            .await
-        {
-            error!(target: LOG_TARGET, "Problem validating STXOs: {}", e);
-        }
+        task::spawn(async move {
+            if let Err(e) = txn_service
+                .validate_transactions(ValidationRetryStrategy::UntilSuccess)
+                .await
+            {
+                error!(target: LOG_TARGET, "Problem validating transactions: {}", e);
+            }
 
-        if let Err(e) = self
-            .wallet
-            .output_manager_service
-            .validate_txos(TxoValidationType::Invalid, ValidationRetryStrategy::UntilSuccess)
-            .await
-        {
-            error!(target: LOG_TARGET, "Problem validating Invalid TXOs: {}", e);
-        }
+            if let Err(e) = output_manager_service
+                .validate_txos(TxoValidationType::Unspent, ValidationRetryStrategy::UntilSuccess)
+                .await
+            {
+                error!(target: LOG_TARGET, "Problem validating UTXOs: {}", e);
+            }
+
+            if let Err(e) = output_manager_service
+                .validate_txos(TxoValidationType::Spent, ValidationRetryStrategy::UntilSuccess)
+                .await
+            {
+                error!(target: LOG_TARGET, "Problem validating STXOs: {}", e);
+            }
+
+            if let Err(e) = output_manager_service
+                .validate_txos(TxoValidationType::Invalid, ValidationRetryStrategy::UntilSuccess)
+                .await
+            {
+                error!(target: LOG_TARGET, "Problem validating Invalid TXOs: {}", e);
+            }
+        });
     }
 }
 
@@ -832,6 +838,7 @@ impl AppStateData {
             public_address: node_identity.public_address().to_string(),
             emoji_id: eid,
             qr_code: image,
+            node_id: node_identity.node_id().to_string(),
         };
         let base_node_previous = base_node_selected.clone();
 
@@ -879,6 +886,7 @@ pub struct MyIdentity {
     pub public_address: String,
     pub emoji_id: String,
     pub qr_code: String,
+    pub node_id: String,
 }
 
 #[derive(Clone)]
@@ -895,5 +903,18 @@ bitflags! {
     pub struct TransactionFilter: u8 {
         const NONE = 0b0000_0000;
         const ABANDONED_COINBASES = 0b0000_0001;
+    }
+}
+
+#[derive(Clone)]
+struct AppStateConfig {
+    pub cache_update_cooldown: Duration,
+}
+
+impl Default for AppStateConfig {
+    fn default() -> Self {
+        Self {
+            cache_update_cooldown: Duration::from_secs(2),
+        }
     }
 }

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::config::{SourceLocation, InstallLocation};
+use crate::config::{InstallLocation, SourceLocation};
 
 pub enum PoolStrategy {
     Solo,
@@ -31,7 +31,10 @@ pub enum Miners {
     None,
     Sha3Only(PoolStrategy),
     MergeMineOnly(PoolStrategy),
-    Both{ sha3: PoolStrategy, merge_mine: PoolStrategy },
+    Both {
+        sha3: PoolStrategy,
+        merge_mine: PoolStrategy,
+    },
 }
 
 pub struct MiningOptions {
@@ -44,4 +47,3 @@ pub struct XmRigOptions {
     source: SourceLocation,
     install_location: InstallLocation,
 }
-

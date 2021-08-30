@@ -196,7 +196,8 @@ impl RpcCodeGenerator {
         let client_struct_body = quote! {
             pub async fn connect<TSubstream>(framed: #dep_mod::CanonicalFraming<TSubstream>) -> Result<Self, #dep_mod::RpcError>
               where TSubstream: #dep_mod::AsyncRead + #dep_mod::AsyncWrite + Unpin + Send + 'static {
-                let inner = #dep_mod::RpcClient::connect(Default::default(), framed).await?;
+                use #dep_mod::NamedProtocolService;
+                let inner = #dep_mod::RpcClient::connect(Default::default(), framed, Self::PROTOCOL_NAME.into()).await?;
                 Ok(Self { inner })
             }
 
@@ -208,6 +209,10 @@ impl RpcCodeGenerator {
 
             pub async fn get_last_request_latency(&mut self) -> Result<Option<std::time::Duration>, #dep_mod::RpcError> {
                 self.inner.get_last_request_latency().await
+            }
+
+            pub async fn ping(&mut self) -> Result<std::time::Duration, #dep_mod::RpcError> {
+                self.inner.ping().await
             }
 
             pub fn close(&mut self) {
@@ -232,6 +237,12 @@ impl RpcCodeGenerator {
             impl From<#dep_mod::RpcClient> for #client_struct {
                 fn from(inner: #dep_mod::RpcClient) -> Self {
                     Self { inner }
+                }
+            }
+
+            impl #dep_mod::RpcPoolClient for #client_struct {
+                fn is_connected(&self) -> bool {
+                    self.inner.is_connected()
                 }
             }
         }

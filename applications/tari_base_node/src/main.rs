@@ -95,12 +95,14 @@ mod recovery;
 mod status_line;
 mod utils;
 
-use crate::command_handler::CommandHandler;
-use futures::{pin_mut, FutureExt};
+use crate::command_handler::{CommandHandler, StatusOutput};
+use futures::{future::Fuse, pin_mut, FutureExt};
 use log::*;
+use opentelemetry::{self, global, KeyValue};
 use parser::Parser;
 use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
 use std::{
+    env,
     net::SocketAddr,
     process,
     sync::Arc,
@@ -114,8 +116,13 @@ use tari_app_utilities::{
 use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
 use tari_comms::{peer_manager::PeerFeatures, tor::HiddenServiceControllerError};
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::{runtime, task, time};
+use tokio::{
+    runtime,
+    task,
+    time::{self, Delay},
+};
 use tonic::transport::Server;
+use tracing_subscriber::{layer::SubscriberExt, Registry};
 
 const LOG_TARGET: &str = "base_node::app";
 /// Application entry point
@@ -144,12 +151,14 @@ fn main_inner() -> Result<(), ExitCodes> {
     })?;
 
     rt.block_on(run_node(node_config.into(), bootstrap))?;
-
+    // Shutdown and send any traces
+    global::shutdown_tracer_provider();
     Ok(())
 }
 
 /// Sets up the base node and runs the cli_loop
 async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) -> Result<(), ExitCodes> {
+    enable_tracing_if_specified(&bootstrap);
     // Load or create the Node identity
     let node_identity = setup_node_identity(
         &node_config.base_node_identity_file,
@@ -221,10 +230,11 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
     }
 
     // Run, node, run!
+    let command_handler = Arc::new(CommandHandler::new(runtime::Handle::current(), &ctx));
     if bootstrap.non_interactive_mode {
+        task::spawn(status_loop(command_handler, shutdown));
         println!("Node started in non-interactive mode (pid = {})", process::id());
     } else {
-        let command_handler = Arc::new(CommandHandler::new(runtime::Handle::current(), &ctx));
         let parser = Parser::new(command_handler);
         cli::print_banner(parser.get_commands(), 3);
 
@@ -240,6 +250,25 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
 
     println!("Goodbye!");
     Ok(())
+}
+
+fn enable_tracing_if_specified(bootstrap: &ConfigBootstrap) {
+    if bootstrap.tracing_enabled {
+        // To run: docker run -d -p6831:6831/udp -p6832:6832/udp -p16686:16686 -p14268:14268 \
+        // jaegertracing/all-in-one:latest
+        global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
+        let tracer = opentelemetry_jaeger::new_pipeline()
+            .with_service_name("tari::base_node")
+            .with_tags(vec![KeyValue::new("pid", process::id().to_string()), KeyValue::new("current_exe", env::current_exe().unwrap().to_str().unwrap_or_default().to_owned())])
+            // TODO: uncomment when using tokio 1
+            // .install_batch(opentelemetry::runtime::Tokio)
+            .install_simple()
+            .unwrap();
+        let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
+        let subscriber = Registry::default().with(telemetry);
+        tracing::subscriber::set_global_default(subscriber)
+            .expect("Tracing could not be set. Try running without `--tracing-enabled`");
+    }
 }
 
 /// Runs the gRPC server
@@ -264,7 +293,7 @@ async fn run_grpc(
 }
 
 async fn read_command(mut rustyline: Editor<Parser>) -> Result<(String, Editor<Parser>), String> {
-    task::spawn(async {
+    task::spawn_blocking(|| {
         let readline = rustyline.readline(">> ");
 
         match readline {
@@ -291,7 +320,31 @@ async fn read_command(mut rustyline: Editor<Parser>) -> Result<(String, Editor<P
     .expect("Could not spawn rustyline task")
 }
 
-/// Runs the Base Node
+fn status_interval(start_time: Instant) -> Fuse<Delay> {
+    let duration = match start_time.elapsed().as_secs() {
+        0..=120 => Duration::from_secs(5),
+        _ => Duration::from_secs(30),
+    };
+    time::delay_for(duration).fuse()
+}
+
+async fn status_loop(command_handler: Arc<CommandHandler>, shutdown: Shutdown) {
+    let start_time = Instant::now();
+    let mut shutdown_signal = shutdown.to_signal();
+    loop {
+        let mut interval = status_interval(start_time);
+        futures::select! {
+            _ = interval => {
+               command_handler.status(StatusOutput::Log);
+            },
+            _ = shutdown_signal => {
+                break;
+            }
+        }
+    }
+}
+
+/// Runs the Base Node CLI loop
 /// ## Parameters
 /// `parser` - The parser to process input commands
 /// `shutdown` - The trigger for shutting down
@@ -315,24 +368,17 @@ async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
     let start_time = Instant::now();
     let mut software_update_notif = command_handler.get_software_updater().new_update_notifier().clone();
     loop {
-        let delay_time = if start_time.elapsed() < Duration::from_secs(120) {
-            Duration::from_secs(2)
-        } else if start_time.elapsed() < Duration::from_secs(300) {
-            Duration::from_secs(10)
-        } else {
-            Duration::from_secs(30)
-        };
-
-        let mut interval = time::delay_for(delay_time).fuse();
-
+        let mut interval = status_interval(start_time);
         futures::select! {
             res = read_command_fut => {
                 match res {
                     Ok((line, mut rustyline)) => {
                         if let Some(p) = rustyline.helper_mut().as_deref_mut() {
-                            p.handle_command(line.as_str(), &mut shutdown)
+                            p.handle_command(line.as_str(), &mut shutdown);
                         }
-                        read_command_fut.set(read_command(rustyline).fuse());
+                        if !shutdown.is_triggered() {
+                            read_command_fut.set(read_command(rustyline).fuse());
+                        }
                     },
                     Err(err) => {
                         // This happens when the node is shutting down.
@@ -353,7 +399,7 @@ async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
                 }
             }
             _ = interval => {
-               command_handler.status();
+               command_handler.status(StatusOutput::Full);
             },
             _ = shutdown_signal => {
                 break;

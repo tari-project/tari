@@ -23,7 +23,7 @@ use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{error::ChainStorageError, ChainBlock, ChainHeader, MmrTree},
     transactions::{
-        transaction::{TransactionInput, TransactionKernel, TransactionOutput},
+        transaction::{TransactionKernel, TransactionOutput},
         types::{Commitment, HashOutput},
     },
 };
@@ -145,15 +145,6 @@ impl DbTransaction {
         self
     }
 
-    pub fn insert_input(&mut self, input: TransactionInput, header_hash: HashOutput, mmr_leaf_index: u32) -> &mut Self {
-        self.operations.push(WriteOperation::InsertInput {
-            header_hash,
-            input: Box::new(input),
-            mmr_position: mmr_leaf_index,
-        });
-        self
-    }
-
     pub fn update_pruned_hash_set(
         &mut self,
         mmr_tree: MmrTree,
@@ -232,11 +223,18 @@ impl DbTransaction {
         self
     }
 
-    pub fn set_best_block(&mut self, height: u64, hash: HashOutput, accumulated_difficulty: u128) -> &mut Self {
+    pub fn set_best_block(
+        &mut self,
+        height: u64,
+        hash: HashOutput,
+        accumulated_difficulty: u128,
+        expected_prev_best_block: HashOutput,
+    ) -> &mut Self {
         self.operations.push(WriteOperation::SetBestBlock {
             height,
             hash,
             accumulated_difficulty,
+            expected_prev_best_block,
         });
         self
     }
@@ -282,11 +280,6 @@ pub enum WriteOperation {
     },
     InsertBlockBody {
         block: Arc<ChainBlock>,
-    },
-    InsertInput {
-        header_hash: HashOutput,
-        input: Box<TransactionInput>,
-        mmr_position: u32,
     },
     InsertKernel {
         header_hash: HashOutput,
@@ -337,6 +330,7 @@ pub enum WriteOperation {
         height: u64,
         hash: HashOutput,
         accumulated_difficulty: u128,
+        expected_prev_best_block: HashOutput,
     },
     SetPruningHorizonConfig(u64),
     SetPrunedHeight {
@@ -389,17 +383,6 @@ impl fmt::Display for WriteOperation {
                 header_height,
                 mmr_position
             ),
-            InsertInput {
-                header_hash,
-                input,
-                mmr_position,
-            } => write!(
-                f,
-                "Insert input {} in block: {} position: {}",
-                input.output_hash().to_hex(),
-                header_hash.to_hex(),
-                mmr_position
-            ),
             DeleteOrphanChainTip(hash) => write!(f, "DeleteOrphanChainTip({})", hash.to_hex()),
             InsertOrphanChainTip(hash) => write!(f, "InsertOrphanChainTip({})", hash.to_hex()),
             DeleteBlock(hash) => write!(f, "DeleteBlock({})", hash.to_hex()),
@@ -446,6 +429,7 @@ impl fmt::Display for WriteOperation {
                 height,
                 hash,
                 accumulated_difficulty,
+                expected_prev_best_block: _,
             } => write!(
                 f,
                 "Update best block to height:{} ({}) with difficulty: {}",
@@ -471,9 +455,9 @@ pub enum DbKey {
 impl DbKey {
     pub fn to_value_not_found_error(&self) -> ChainStorageError {
         let (entity, field, value) = match self {
-            DbKey::BlockHeader(v) => ("BlockHeader".to_string(), "Height".to_string(), v.to_string()),
-            DbKey::BlockHash(v) => ("Block".to_string(), "Hash".to_string(), v.to_hex()),
-            DbKey::OrphanBlock(v) => ("Orphan".to_string(), "Hash".to_string(), v.to_hex()),
+            DbKey::BlockHeader(v) => ("BlockHeader", "Height", v.to_string()),
+            DbKey::BlockHash(v) => ("Block", "Hash", v.to_hex()),
+            DbKey::OrphanBlock(v) => ("Orphan", "Hash", v.to_hex()),
         };
         ChainStorageError::ValueNotFound { entity, field, value }
     }

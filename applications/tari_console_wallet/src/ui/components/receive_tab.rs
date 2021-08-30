@@ -45,6 +45,7 @@ impl ReceiveTab {
                     Constraint::Length(3),
                     Constraint::Length(3),
                     Constraint::Length(3),
+                    Constraint::Length(3),
                     Constraint::Min(1),
                 ]
                 .as_ref(),
@@ -64,15 +65,27 @@ impl ReceiveTab {
         let public_key = Paragraph::new(app_state.get_identity().public_key.as_str());
         f.render_widget(public_key, label_layout[0]);
 
-        // Public Address
+        // NodeId
         let block = Block::default()
             .borders(Borders::ALL)
-            .title(Span::styled("Public Address", Style::default().fg(Color::White)));
+            .title(Span::styled("Node ID", Style::default().fg(Color::White)));
         f.render_widget(block, info_chunks[2]);
         let label_layout = Layout::default()
             .constraints([Constraint::Length(1)].as_ref())
             .margin(1)
             .split(info_chunks[2]);
+        let node_id = Paragraph::new(app_state.get_identity().node_id.as_str());
+        f.render_widget(node_id, label_layout[0]);
+
+        // Public Address
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(Span::styled("Public Address", Style::default().fg(Color::White)));
+        f.render_widget(block, info_chunks[3]);
+        let label_layout = Layout::default()
+            .constraints([Constraint::Length(1)].as_ref())
+            .margin(1)
+            .split(info_chunks[3]);
         let public_address = Paragraph::new(app_state.get_identity().public_address.as_str());
         f.render_widget(public_address, label_layout[0]);
 
@@ -80,11 +93,11 @@ impl ReceiveTab {
         let block = Block::default()
             .borders(Borders::ALL)
             .title(Span::styled("Emoji ID", Style::default().fg(Color::White)));
-        f.render_widget(block, info_chunks[3]);
+        f.render_widget(block, info_chunks[4]);
         let label_layout = Layout::default()
             .constraints([Constraint::Length(1)].as_ref())
             .margin(1)
-            .split(info_chunks[3]);
+            .split(info_chunks[4]);
         let emoji_id = Paragraph::new(app_state.get_identity().emoji_id.as_str());
         f.render_widget(emoji_id, label_layout[0]);
     }

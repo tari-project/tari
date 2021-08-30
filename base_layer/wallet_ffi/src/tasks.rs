@@ -95,10 +95,6 @@ pub async fn recovery_event_monitoring(
                     (recovery_progress_callback)(RecoveryEvent::Progress as u8, current, total);
                 }
                 info!(target: LOG_TARGET, "Recovery progress: {}/{}", current, total);
-                if current == total {
-                    info!(target: LOG_TARGET, "Recovery complete: {}/{}", current, total);
-                    break;
-                }
             },
             Ok(UtxoScannerEvent::Completed {
                 number_scanned: num_scanned,
@@ -111,17 +107,19 @@ pub async fn recovery_event_monitoring(
                     "Recovery complete! Scanned = {} in {:.2?} ({} utxos/s), Recovered {} worth {}",
                     num_scanned,
                     elapsed,
-                    num_scanned / elapsed.as_secs(),
+                    num_scanned / (1 + elapsed.as_secs()),
                     num_utxos,
                     total_amount
                 );
                 unsafe {
                     (recovery_progress_callback)(RecoveryEvent::Completed as u8, num_scanned, u64::from(total_amount));
                 }
+                break;
             },
             Ok(UtxoScannerEvent::ScanningRoundFailed {
                 num_retries,
                 retry_limit,
+                error,
             }) => {
                 unsafe {
                     (recovery_progress_callback)(
@@ -132,7 +130,7 @@ pub async fn recovery_event_monitoring(
                 }
                 info!(
                     target: LOG_TARGET,
-                    "UTXO Scanning round failed on retry {} of {}", num_retries, retry_limit
+                    "UTXO Scanning round failed on retry {} of {}: {}", num_retries, retry_limit, error
                 );
             },
             Ok(UtxoScannerEvent::ScanningFailed) => {

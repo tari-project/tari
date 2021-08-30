@@ -1,6 +1,6 @@
 [package]
 name = "tari_console_wallet"
-version = "0.9.1"
+version = "0.9.5"
 authors = ["The Tari Development Community"]
 edition = "2018"
 
@@ -26,6 +26,7 @@ unicode-width = "0.1"
 unicode-segmentation = "1.6.0"
 log = { version = "0.4.8", features = ["std"] }
 qrcode = { version = "0.12" }
+regex = "1.5.4"
 rpassword = "5.0"
 rustyline = "6.0"
 strum = "^0.19"
@@ -33,6 +34,15 @@ strum_macros = "^0.19"
 tokio = { version="0.2.10", features = ["signal"] }
 thiserror = "1.0.20"
 tonic = "0.2"
+
+tracing = "0.1.26"
+tracing-opentelemetry = "0.15.0"
+tracing-subscriber = "0.2.20"
+
+# network tracing, rt-tokio for async batch export
+opentelemetry = { version = "0.16", default-features = false, features = ["trace","rt-tokio"] }
+opentelemetry-jaeger = { version="0.15", features=["rt-tokio"]}
+
 
 [dependencies.tari_core]
 path = "../../base_layer/core"

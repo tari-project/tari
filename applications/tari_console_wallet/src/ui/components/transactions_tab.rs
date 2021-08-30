@@ -552,6 +552,9 @@ impl<B: Backend> Component<B> for TransactionsTab {
     }
 
     fn on_up(&mut self, app_state: &mut AppState) {
+        if self.confirmation_dialog {
+            return;
+        }
         match self.selected_tx_list {
             SelectedTransactionList::None => {},
             SelectedTransactionList::PendingTxs => {
@@ -575,6 +578,9 @@ impl<B: Backend> Component<B> for TransactionsTab {
     }
 
     fn on_down(&mut self, app_state: &mut AppState) {
+        if self.confirmation_dialog {
+            return;
+        }
         match self.selected_tx_list {
             SelectedTransactionList::None => {},
             SelectedTransactionList::PendingTxs => {
@@ -602,6 +608,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
         self.pending_list_state.select(None);
         self.completed_list_state.select(None);
         self.detailed_transaction = None;
+        self.confirmation_dialog = false;
     }
 }
 

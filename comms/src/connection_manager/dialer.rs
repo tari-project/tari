@@ -55,6 +55,7 @@ use log::*;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{task::JoinHandle, time};
+use tracing::{self, span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::connection_manager::dialer";
 
@@ -254,6 +255,7 @@ where
             });
     }
 
+    #[tracing::instrument(skip(self, pending_dials, reply_tx))]
     fn handle_dial_peer_request(
         &mut self,
         pending_dials: &mut DialFuturesUnordered,
@@ -281,6 +283,7 @@ where
         let noise_config = self.noise_config.clone();
         let config = self.config.clone();
 
+        let span = span!(Level::TRACE, "handle_dial_peer_request_inner1");
         let dial_fut = async move {
             let (dial_state, dial_result) =
                 Self::dial_peer_with_retry(dial_state, noise_config, transport, backoff, &config).await;
@@ -314,7 +317,8 @@ where
                 },
                 Err(err) => (dial_state, Err(err)),
             }
-        };
+        }
+        .instrument(span);
 
         pending_dials.push(dial_fut.boxed());
     }
@@ -335,6 +339,7 @@ where
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[tracing::instrument(skip(peer_manager, socket, conn_man_notifier, config, cancel_signal), err)]
     async fn perform_socket_upgrade_procedure(
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
@@ -419,6 +424,7 @@ where
         )
     }
 
+    #[tracing::instrument(skip(dial_state, noise_config, transport, backoff, config))]
     async fn dial_peer_with_retry(
         dial_state: DialState,
         noise_config: NoiseConfig,
@@ -514,7 +520,7 @@ where
                             .map_err(|_| ConnectionManagerError::WireFormatSendFailed)?;
 
                         let noise_socket = time::timeout(
-                            Duration::from_secs(30),
+                            Duration::from_secs(40),
                             noise_config.upgrade_socket(socket, ConnectionDirection::Outbound),
                         )
                         .await

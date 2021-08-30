@@ -22,7 +22,10 @@
 
 use super::error::BlockSyncError;
 use crate::{
-    base_node::sync::{hooks::Hooks, rpc},
+    base_node::{
+        sync::{hooks::Hooks, rpc},
+        BlockSyncConfig,
+    },
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainBlock},
     proto::base_node::SyncBlocksRequest,
     tari_utilities::{hex::Hex, Hashable},
@@ -43,10 +46,12 @@ use tari_comms::{
     PeerConnection,
 };
 use tokio::task;
+use tracing;
 
 const LOG_TARGET: &str = "c::bn::block_sync";
 
 pub struct BlockSynchronizer<B> {
+    config: BlockSyncConfig,
     db: AsyncBlockchainDb<B>,
     connectivity: ConnectivityRequester,
     sync_peer: Option<PeerConnection>,
@@ -56,12 +61,14 @@ pub struct BlockSynchronizer<B> {
 
 impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
     pub fn new(
+        config: BlockSyncConfig,
         db: AsyncBlockchainDb<B>,
         connectivity: ConnectivityRequester,
         sync_peer: Option<PeerConnection>,
         block_validator: Arc<dyn CandidateBlockBodyValidation<B>>,
     ) -> Self {
         Self {
+            config,
             db,
             connectivity,
             sync_peer,
@@ -80,6 +87,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         self.hooks.add_on_complete_hook(hook);
     }
 
+    #[tracing::instrument(skip(self), err)]
     pub async fn synchronize(&mut self) -> Result<(), BlockSyncError> {
         let peer_conn = self.get_next_sync_peer().await?;
         let node_id = peer_conn.peer_node_id().clone();
@@ -87,10 +95,17 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
             target: LOG_TARGET,
             "Attempting to synchronize blocks with `{}`", node_id
         );
-        self.attempt_block_sync(peer_conn).await?;
-
-        self.db.cleanup_orphans().await?;
-        Ok(())
+        match self.attempt_block_sync(peer_conn).await {
+            Ok(_) => {
+                self.db.cleanup_orphans().await?;
+                Ok(())
+            },
+            Err(err @ BlockSyncError::ValidationError(_)) | Err(err @ BlockSyncError::ReceivedInvalidBlockBody(_)) => {
+                self.ban_peer(node_id, &err).await?;
+                Err(err)
+            },
+            Err(err) => Err(err),
+        }
     }
 
     async fn get_next_sync_peer(&mut self) -> Result<PeerConnection, BlockSyncError> {
@@ -213,6 +228,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                     block.height(),
                     header_hash,
                     block.accumulated_data().total_accumulated_difficulty,
+                    block.header().prev_hash.clone(),
                 )
                 .commit()
                 .await?;
@@ -236,17 +252,6 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         }
 
         if let Some(block) = current_block {
-            // Update metadata to last tip header
-            let header = &block.header();
-            let height = header.height;
-            let best_block = header.hash();
-            let accumulated_difficulty = block.accumulated_data().total_accumulated_difficulty;
-            self.db
-                .write_transaction()
-                .set_best_block(height, best_block.to_vec(), accumulated_difficulty)
-                .commit()
-                .await?;
-
             self.hooks.call_on_complete_hooks(block);
         }
 
@@ -266,5 +271,22 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         })
         .await
         .expect("block validator panicked")
+    }
+
+    async fn ban_peer<T: ToString>(&mut self, node_id: NodeId, reason: T) -> Result<(), BlockSyncError> {
+        let reason = reason.to_string();
+        if self.config.sync_peers.contains(&node_id) {
+            debug!(
+                target: LOG_TARGET,
+                "Not banning peer that is allowlisted for sync. Ban reason = {}", reason
+            );
+            return Ok(());
+        }
+        warn!(target: LOG_TARGET, "Banned sync peer because {}", reason);
+        self.connectivity
+            .ban_peer_until(node_id, self.config.ban_period, reason)
+            .await
+            .map_err(BlockSyncError::FailedToBan)?;
+        Ok(())
     }
 }

@@ -49,6 +49,9 @@ pub struct MinerConfig {
     pub mine_on_tip_only: bool,
     pub proof_of_work_algo: ProofOfWork,
     pub validate_tip_timeout_sec: u64,
+    pub mining_pool_address: String,
+    pub mining_wallet_address: String,
+    pub mining_worker_name: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -71,6 +74,9 @@ impl Default for MinerConfig {
             mine_on_tip_only: true,
             proof_of_work_algo: ProofOfWork::Sha3,
             validate_tip_timeout_sec: 30,
+            mining_pool_address: "".to_string(),
+            mining_wallet_address: "".to_string(),
+            mining_worker_name: "".to_string(),
         }
     }
 }

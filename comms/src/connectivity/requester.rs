@@ -44,6 +44,7 @@ use std::{
 };
 use tokio::{sync::broadcast, time};
 const LOG_TARGET: &str = "comms::connectivity::requester";
+use tracing;
 
 pub type ConnectivityEventRx = broadcast::Receiver<Arc<ConnectivityEvent>>;
 pub type ConnectivityEventTx = broadcast::Sender<Arc<ConnectivityEvent>>;
@@ -90,7 +91,11 @@ impl fmt::Display for ConnectivityEvent {
 #[derive(Debug)]
 pub enum ConnectivityRequest {
     WaitStarted(oneshot::Sender<()>),
-    DialPeer(NodeId, oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>),
+    DialPeer {
+        node_id: NodeId,
+        reply_tx: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
+        tracing_id: Option<tracing::span::Id>,
+    },
     GetConnectivityStatus(oneshot::Sender<ConnectivityStatus>),
     AddManagedPeers(Vec<NodeId>),
     RemovePeer(NodeId),
@@ -123,12 +128,17 @@ impl ConnectivityRequester {
         self.event_tx.clone()
     }
 
+    #[tracing::instrument(skip(self), err)]
     pub async fn dial_peer(&mut self, peer: NodeId) -> Result<PeerConnection, ConnectivityError> {
         let mut num_cancels = 0;
         loop {
             let (reply_tx, reply_rx) = oneshot::channel();
             self.sender
-                .send(ConnectivityRequest::DialPeer(peer.clone(), reply_tx))
+                .send(ConnectivityRequest::DialPeer {
+                    node_id: peer.clone(),
+                    reply_tx,
+                    tracing_id: tracing::Span::current().id(),
+                })
                 .await
                 .map_err(|_| ConnectivityError::ActorDisconnected)?;
 
@@ -137,7 +147,7 @@ impl ConnectivityRequester {
                 Err(err @ ConnectionManagerError::DialCancelled) => {
                     num_cancels += 1;
                     // Due to simultaneous dialing, it's possible for the dial to be cancelled. However, typically if
-                    // dial is called right after, the resolved connection will be returned.
+                    // dial is called again right after, the resolved connection will be returned.
                     if num_cancels == 1 {
                         continue;
                     }

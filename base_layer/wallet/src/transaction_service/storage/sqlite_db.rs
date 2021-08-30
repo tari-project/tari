@@ -576,16 +576,20 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(())
     }
 
-    fn cancel_pending_transaction(&self, tx_id: u64) -> Result<(), TransactionStorageError> {
+    fn set_pending_transaction_cancellation_status(
+        &self,
+        tx_id: u64,
+        cancelled: bool,
+    ) -> Result<(), TransactionStorageError> {
         let conn = self.database_connection.acquire_lock();
-        match InboundTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
+        match InboundTransactionSql::find(tx_id, &(*conn)) {
             Ok(v) => {
-                v.cancel(&(*conn))?;
+                v.set_cancelled(cancelled, &(*conn))?;
             },
             Err(_) => {
-                match OutboundTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
+                match OutboundTransactionSql::find(tx_id, &(*conn)) {
                     Ok(v) => {
-                        v.cancel(&(*conn))?;
+                        v.set_cancelled(cancelled, &(*conn))?;
                     },
                     Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
                         return Err(TransactionStorageError::ValuesNotFound);
@@ -633,34 +637,6 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 };
             },
         };
-        Ok(())
-    }
-
-    #[cfg(feature = "test_harness")]
-    fn update_completed_transaction_timestamp(
-        &self,
-        tx_id: u64,
-        timestamp: NaiveDateTime,
-    ) -> Result<(), TransactionStorageError> {
-        let conn = self.database_connection.acquire_lock();
-
-        if let Ok(tx) = CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
-            tx.update(
-                UpdateCompletedTransactionSql::from(UpdateCompletedTransaction {
-                    status: None,
-                    timestamp: Some(timestamp),
-                    cancelled: None,
-                    direction: None,
-                    send_count: None,
-                    last_send_timestamp: None,
-                    valid: None,
-                    confirmations: None,
-                    mined_height: None,
-                }),
-                &(*conn),
-            )?;
-        }
-
         Ok(())
     }
 
@@ -1019,10 +995,10 @@ impl InboundTransactionSql {
         Ok(())
     }
 
-    pub fn cancel(&self, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
+    pub fn set_cancelled(&self, cancelled: bool, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
         self.update(
             UpdateInboundTransactionSql {
-                cancelled: Some(1i32),
+                cancelled: Some(cancelled as i32),
                 direct_send_success: None,
                 receiver_protocol: None,
                 send_count: None,
@@ -1202,10 +1178,10 @@ impl OutboundTransactionSql {
         Ok(())
     }
 
-    pub fn cancel(&self, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
+    pub fn set_cancelled(&self, cancelled: bool, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
         self.update(
             UpdateOutboundTransactionSql {
-                cancelled: Some(1i32),
+                cancelled: Some(cancelled as i32),
                 direct_send_success: None,
                 sender_protocol: None,
                 send_count: None,
@@ -1674,8 +1650,6 @@ impl From<UpdateCompletedTransaction> for UpdateCompletedTransactionSql {
 
 #[cfg(test)]
 mod test {
-    #[cfg(feature = "test_harness")]
-    use crate::transaction_service::storage::sqlite_db::UpdateCompletedTransactionSql;
     use crate::{
         storage::sqlite_utilities::WalletDbConnection,
         transaction_service::storage::{
@@ -1929,7 +1903,7 @@ mod test {
             .commit(&conn)
             .is_err());
 
-        CompletedTransactionSql::try_from(completed_tx2.clone())
+        CompletedTransactionSql::try_from(completed_tx2)
             .unwrap()
             .commit(&conn)
             .unwrap();
@@ -1986,23 +1960,34 @@ mod test {
         assert!(InboundTransactionSql::find_by_cancelled(inbound_tx1.tx_id, true, &conn).is_err());
         InboundTransactionSql::try_from(inbound_tx1.clone())
             .unwrap()
-            .cancel(&conn)
+            .set_cancelled(true, &conn)
             .unwrap();
         assert!(InboundTransactionSql::find_by_cancelled(inbound_tx1.tx_id, false, &conn).is_err());
         assert!(InboundTransactionSql::find_by_cancelled(inbound_tx1.tx_id, true, &conn).is_ok());
-
+        InboundTransactionSql::try_from(inbound_tx1.clone())
+            .unwrap()
+            .set_cancelled(false, &conn)
+            .unwrap();
+        assert!(InboundTransactionSql::find_by_cancelled(inbound_tx1.tx_id, true, &conn).is_err());
+        assert!(InboundTransactionSql::find_by_cancelled(inbound_tx1.tx_id, false, &conn).is_ok());
         OutboundTransactionSql::try_from(outbound_tx1.clone())
             .unwrap()
             .commit(&conn)
             .unwrap();
 
         assert!(OutboundTransactionSql::find_by_cancelled(outbound_tx1.tx_id, true, &conn).is_err());
-        OutboundTransactionSql::try_from(outbound_tx1)
+        OutboundTransactionSql::try_from(outbound_tx1.clone())
             .unwrap()
-            .cancel(&conn)
+            .set_cancelled(true, &conn)
             .unwrap();
-        assert!(InboundTransactionSql::find_by_cancelled(inbound_tx1.tx_id, false, &conn).is_err());
-        assert!(InboundTransactionSql::find_by_cancelled(inbound_tx1.tx_id, true, &conn).is_ok());
+        assert!(OutboundTransactionSql::find_by_cancelled(outbound_tx1.tx_id, false, &conn).is_err());
+        assert!(OutboundTransactionSql::find_by_cancelled(outbound_tx1.tx_id, true, &conn).is_ok());
+        OutboundTransactionSql::try_from(outbound_tx1.clone())
+            .unwrap()
+            .set_cancelled(false, &conn)
+            .unwrap();
+        assert!(OutboundTransactionSql::find_by_cancelled(outbound_tx1.tx_id, true, &conn).is_err());
+        assert!(OutboundTransactionSql::find_by_cancelled(outbound_tx1.tx_id, false, &conn).is_ok());
 
         CompletedTransactionSql::try_from(completed_tx1.clone())
             .unwrap()
@@ -2096,26 +2081,6 @@ mod test {
         assert!(coinbase_txs.iter().any(|c| c.tx_id == 101));
         assert!(coinbase_txs.iter().any(|c| c.tx_id == 102));
         assert!(!coinbase_txs.iter().any(|c| c.tx_id == 103));
-
-        #[cfg(feature = "test_harness")]
-        CompletedTransactionSql::find_by_cancelled(completed_tx2.tx_id, false, &conn)
-            .unwrap()
-            .update(
-                UpdateCompletedTransactionSql {
-                    status: Some(TransactionStatus::MinedUnconfirmed as i32),
-                    timestamp: None,
-                    cancelled: None,
-                    direction: None,
-                    transaction_protocol: None,
-                    send_count: None,
-                    last_send_timestamp: None,
-                    valid: None,
-                    confirmations: None,
-                    mined_height: None,
-                },
-                &conn,
-            )
-            .unwrap();
     }
 
     #[test]

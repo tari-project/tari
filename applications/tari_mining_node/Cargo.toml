@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "The tari mining node implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.9.1"
+version = "0.9.5"
 edition = "2018"
 
 [dependencies]
@@ -24,7 +24,14 @@ serde = { version = "1.0", default_features = false, features = ["derive"] }
 tonic = { version = "0.2", features = ["transport"] }
 tokio = { version = "0.2", default_features = false, features = ["rt-core"] }
 thiserror = "1.0"
-
+jsonrpc = "0.11.0"
+reqwest = { version = "0.11", features = ["blocking", "json"] }
+serde_json = "1.0.57"
+native-tls = "0.2"
+bufstream = "0.1"
+time = "0.1"
+chrono = "0.4"
+hex = "0.4.2"
 
 [dev-dependencies]
 tari_crypto = "0.11.1"

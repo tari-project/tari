@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::chain_storage::error::ChainStorageError;
+use crate::chain_storage::{error::ChainStorageError, OrNotFound};
 use lmdb_zero::{
     del,
     error::{self, LmdbResultExt},
@@ -86,6 +86,16 @@ where
             val,
             e,
         );
+
+        if let lmdb_zero::Error::Code(code) = &e {
+            if *code == lmdb_zero::error::KEYEXIST {
+                return ChainStorageError::KeyExists {
+                    table_name,
+                    key: to_hex(key.as_lmdb_bytes()),
+                };
+            }
+        }
+
         ChainStorageError::InsertError {
             table: table_name,
             error: e.to_string(),
@@ -131,9 +141,18 @@ where
 }
 
 /// Deletes the given key. An error is returned if the key does not exist
-pub fn lmdb_delete<K>(txn: &WriteTransaction<'_>, db: &Database, key: &K) -> Result<(), ChainStorageError>
-where K: AsLmdbBytes + ?Sized {
-    txn.access().del_key(&db, key)?;
+pub fn lmdb_delete<K>(
+    txn: &WriteTransaction<'_>,
+    db: &Database,
+    key: &K,
+    table_name: &'static str,
+) -> Result<(), ChainStorageError>
+where
+    K: AsLmdbBytes + ?Sized,
+{
+    txn.access()
+        .del_key(&db, key)
+        .or_not_found(table_name, "<unknown>", to_hex(key.as_lmdb_bytes()))?;
     Ok(())
 }
 

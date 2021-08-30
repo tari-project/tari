@@ -59,6 +59,7 @@ use crate::{
     DEFAULT_CONFIG,
     DEFAULT_MERGE_MINING_PROXY_LOG_CONFIG,
     DEFAULT_MINING_NODE_LOG_CONFIG,
+    DEFAULT_STRATUM_TRANSCODER_LOG_CONFIG,
     DEFAULT_WALLET_LOG_CONFIG,
 };
 use std::{
@@ -145,6 +146,8 @@ pub struct ConfigBootstrap {
     pub miner_min_diff: Option<u64>,
     #[structopt(long, alias = "max-difficulty")]
     pub miner_max_diff: Option<u64>,
+    #[structopt(long, alias = "tracing")]
+    pub tracing_enabled: bool,
 }
 
 fn normalize_path(path: PathBuf) -> PathBuf {
@@ -179,6 +182,7 @@ impl Default for ConfigBootstrap {
             miner_max_blocks: None,
             miner_min_diff: None,
             miner_max_diff: None,
+            tracing_enabled: false,
         }
     }
 }
@@ -227,6 +231,12 @@ impl ConfigBootstrap {
                 ApplicationType::MergeMiningProxy => {
                     self.log_config = normalize_path(dir_utils::default_path(
                         DEFAULT_MERGE_MINING_PROXY_LOG_CONFIG,
+                        Some(&self.base_path),
+                    ))
+                },
+                ApplicationType::StratumTranscoder => {
+                    self.log_config = normalize_path(dir_utils::default_path(
+                        DEFAULT_STRATUM_TRANSCODER_LOG_CONFIG,
                         Some(&self.base_path),
                     ))
                 },
@@ -279,6 +289,10 @@ impl ConfigBootstrap {
                         &self.log_config,
                         logging::install_default_merge_mining_proxy_logfile_config,
                     ),
+                    ApplicationType::StratumTranscoder => install_configuration(
+                        &self.log_config,
+                        logging::install_default_stratum_transcoder_logfile_config,
+                    ),
                     ApplicationType::MiningNode => {
                         install_configuration(&self.log_config, logging::install_default_mining_node_logfile_config)
                     },
@@ -304,7 +318,7 @@ impl ConfigBootstrap {
     }
 }
 
-fn prompt(question: &str) -> bool {
+pub fn prompt(question: &str) -> bool {
     println!("{}", question);
     let mut input = "".to_string();
     io::stdin().read_line(&mut input).unwrap();
@@ -329,6 +343,7 @@ pub enum ApplicationType {
     ConsoleWallet,
     MergeMiningProxy,
     MiningNode,
+    StratumTranscoder,
 }
 
 impl ApplicationType {
@@ -339,6 +354,7 @@ impl ApplicationType {
             ConsoleWallet => "Tari Console Wallet",
             MergeMiningProxy => "Tari Merge Mining Proxy",
             MiningNode => "Tari Mining Node",
+            StratumTranscoder => "Tari Stratum Transcoder",
         }
     }
 
@@ -349,6 +365,7 @@ impl ApplicationType {
             ConsoleWallet => "wallet",
             MergeMiningProxy => "merge_mining_proxy",
             MiningNode => "miner",
+            StratumTranscoder => "stratum-transcoder",
         }
     }
 }
@@ -363,6 +380,7 @@ impl FromStr for ApplicationType {
             "console-wallet" | "console_wallet" => Ok(ConsoleWallet),
             "mm-proxy" | "mm_proxy" => Ok(MergeMiningProxy),
             "miner" => Ok(MiningNode),
+            "stratum-proxy" => Ok(StratumTranscoder),
             _ => Err(ConfigError::new("Invalid ApplicationType", None)),
         }
     }

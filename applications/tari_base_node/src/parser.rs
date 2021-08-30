@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::LOG_TARGET;
-use crate::command_handler::{CommandHandler, Format};
+use crate::command_handler::{CommandHandler, Format, StatusOutput};
 use futures::future::Either;
 use log::*;
 use rustyline::{
@@ -174,7 +174,7 @@ impl Parser {
                 );
             },
             Status => {
-                self.command_handler.status();
+                self.command_handler.status(StatusOutput::Full);
             },
             GetStateInfo => {
                 self.command_handler.state_info();

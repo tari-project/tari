@@ -29,7 +29,7 @@ class MergeMiningProxyProcess {
   }
 
   async init() {
-    this.port = await getFreePort(19000, 25000);
+    this.port = await getFreePort();
     this.name = `MMProxy${this.port}-${this.name}`;
     this.baseDir = `./temp/base_nodes/${dateFormat(
       new Date(),
@@ -46,6 +46,7 @@ class MergeMiningProxyProcess {
       }
 
       const proxyAddress = "127.0.0.1:" + this.port;
+
       const envs = createEnv(
         this.name,
         false,
@@ -57,12 +58,15 @@ class MergeMiningProxyProcess {
         this.nodeGrpcPort,
         this.baseNodePort,
         proxyAddress,
+        "127.0.0.1:8085",
         [],
         []
       );
       const extraEnvs = {
         TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_SUBMIT_TO_ORIGIN:
           this.submitOrigin,
+        TARI_MERGE_MINING_PROXY__LOCALNET__monerod_url:
+          "http://3.104.4.129:18081",
       };
       const completeEnvs = { ...envs, ...extraEnvs };
       const ps = spawn(cmd, args, {

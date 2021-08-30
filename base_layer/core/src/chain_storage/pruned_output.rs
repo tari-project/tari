@@ -22,6 +22,7 @@
 use crate::transactions::{transaction::TransactionOutput, types::HashOutput};
 
 #[allow(clippy::large_enum_variant)]
+#[derive(Debug, PartialEq)]
 pub enum PrunedOutput {
     Pruned {
         output_hash: HashOutput,

@@ -93,8 +93,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         );
         let header = self.db().fetch_header(self.horizon_sync_height).await?.ok_or_else(|| {
             ChainStorageError::ValueNotFound {
-                entity: "Header".to_string(),
-                field: "height".to_string(),
+                entity: "Header",
+                field: "height",
                 value: self.horizon_sync_height.to_string(),
             }
         })?;
@@ -538,6 +538,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 .await?
                 .into_bitmap(),
         );
+        let expected_prev_best_block = self.shared.db.get_chain_metadata().await?.best_block().clone();
         for h in 0..=header.height() {
             let curr_header = self.db().fetch_chain_header(h).await?;
 
@@ -622,6 +623,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 header.height(),
                 header.hash().clone(),
                 header.accumulated_data().total_accumulated_difficulty,
+                expected_prev_best_block,
             )
             .set_pruned_height(header.height(), pruned_kernel_sum, pruned_utxo_sum)
             .commit()

@@ -80,6 +80,8 @@ service BaseNode {
     rpc GetNetworkStatus(Empty) returns (NetworkStatusResponse);
     // List currently connected peers
     rpc ListConnectedPeers(Empty) returns (ListConnectedPeersResponse);
+    // Get mempool stats
+    rpc GetMempoolStats(Empty) returns (MempoolStatsResponse);
 }
 
 message SubmitBlockResponse {
@@ -336,4 +338,11 @@ message SoftwareUpdate {
     string version = 2;
     string sha = 3;
     string download_url = 4;
+}
+
+message MempoolStatsResponse {
+    uint64 total_txs = 1;
+    uint64 unconfirmed_txs = 2;
+    uint64 reorg_txs = 3;
+    uint64 total_weight = 4;
 }

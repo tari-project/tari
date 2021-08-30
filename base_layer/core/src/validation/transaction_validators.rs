@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    blocks::BlockValidationError,
     chain_storage::{BlockchainBackend, BlockchainDatabase, MmrTree},
     crypto::tari_utilities::Hashable,
     transactions::{transaction::Transaction, types::CryptoFactories},
@@ -97,7 +98,7 @@ impl<B: BlockchainBackend> TxInputAndMaturityValidator<B> {
 impl<B: BlockchainBackend> MempoolTransactionValidation for TxInputAndMaturityValidator<B> {
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
         let db = self.db.db_read_access()?;
-        verify_not_stxos(tx, &*db)?;
+        verify_inputs_are_spendable(tx, &*db)?;
         check_not_duplicate_txos(tx, &*db)?;
 
         let tip_height = db.fetch_chain_metadata()?.height_of_longest_chain();
@@ -116,31 +117,47 @@ fn verify_timelocks(tx: &Transaction, current_height: u64) -> Result<(), Validat
     Ok(())
 }
 
-// This function checks that the inputs exists in the UTXO set but do not exist in the STXO set.
-fn verify_not_stxos<B: BlockchainBackend>(tx: &Transaction, db: &B) -> Result<(), ValidationError> {
-    let deleted = db.fetch_deleted_bitmap()?;
+/// This function checks that the inputs exists in the UTXO set but do not exist in the STXO set.
+fn verify_inputs_are_spendable<B: BlockchainBackend>(tx: &Transaction, db: &B) -> Result<(), ValidationError> {
     let mut not_found_input = Vec::new();
     for input in tx.body.inputs() {
-        if let Some((_, index, _height)) = db.fetch_output(&input.output_hash())? {
-            if deleted.bitmap().contains(index) {
-                warn!(
-                    target: LOG_TARGET,
-                    "Transaction validation failed due to already spent input: {}", input
-                );
-                return Err(ValidationError::ContainsSTxO);
+        let output_hash = input.output_hash();
+        if let Some(utxo_hash) = db.fetch_unspent_output_hash_by_commitment(&input.commitment)? {
+            // We know that the commitment exists in the UTXO set. Check that the output hash matches (i.e. all fields
+            // like output features match)
+            if utxo_hash == output_hash {
+                continue;
             }
-        } else if !tx
-            .body
-            .outputs()
-            .iter()
-            .any(|output| output.hash() == input.output_hash())
-        {
+
             warn!(
                 target: LOG_TARGET,
-                "Transaction uses input: {} which does not exist yet", input
+                "Input spends a UTXO but does not produce the same hash as the output it spends:
+            {}",
+                input
             );
-            not_found_input.push(input.output_hash());
+            return Err(ValidationError::BlockError(BlockValidationError::InvalidInput));
         }
+
+        // Wallet needs to know if a transaction has already been mined and uses this error variant to do so.
+        if db.fetch_output(&output_hash)?.is_some() {
+            warn!(
+                target: LOG_TARGET,
+                "Transaction validation failed due to already spent input: {}", input
+            );
+            // We know that the output here must be spent because `fetch_unspent_output_hash_by_commitment` would have
+            // been Some
+            return Err(ValidationError::ContainsSTxO);
+        }
+
+        if tx.body.outputs().iter().any(|output| output.hash() == output_hash) {
+            continue;
+        }
+
+        warn!(
+            target: LOG_TARGET,
+            "Transaction uses input: {} which does not exist yet", input
+        );
+        not_found_input.push(output_hash);
     }
     if !not_found_input.is_empty() {
         return Err(ValidationError::UnknownInputs(not_found_input));
@@ -149,7 +166,7 @@ fn verify_not_stxos<B: BlockchainBackend>(tx: &Transaction, db: &B) -> Result<()
     Ok(())
 }
 
-// This function checks that the inputs and outputs do not exist in the STxO set.
+/// This function checks that the outputs do not exist in the TxO set.
 fn check_not_duplicate_txos<B: BlockchainBackend>(transaction: &Transaction, db: &B) -> Result<(), ValidationError> {
     for output in transaction.body.outputs() {
         if db.fetch_mmr_leaf_index(MmrTree::Utxo, &output.hash())?.is_some() {

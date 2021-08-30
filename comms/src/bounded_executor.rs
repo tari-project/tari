@@ -28,6 +28,7 @@ use tokio::{
     sync::{OwnedSemaphorePermit, Semaphore},
     task::JoinHandle,
 };
+use tracing::{span, Instrument, Level};
 
 /// Error emitted from [`try_spawn`](self::BoundedExecutor::try_spawn) when there are no tasks available
 #[derive(Debug)]
@@ -40,6 +41,7 @@ pub struct TrySpawnError;
 pub struct BoundedExecutor {
     inner: runtime::Handle,
     semaphore: Arc<Semaphore>,
+    max_available: usize,
 }
 
 impl BoundedExecutor {
@@ -47,6 +49,7 @@ impl BoundedExecutor {
         Self {
             inner: executor,
             semaphore: Arc::new(Semaphore::new(num_permits)),
+            max_available: num_permits,
         }
     }
 
@@ -70,10 +73,16 @@ impl BoundedExecutor {
         self.num_available() > 0
     }
 
-    /// Returns the number tasks that can be spawned on this executor without blocking.
+    /// Returns the remaining number of tasks that can be spawned on this executor without waiting.
     #[inline]
     pub fn num_available(&self) -> usize {
         self.semaphore.available_permits()
+    }
+
+    /// Returns the maximum number of concurrent tasks that can be spawned on this executor without waiting.
+    #[inline]
+    pub fn max_available(&self) -> usize {
+        self.max_available
     }
 
     pub fn try_spawn<F>(&self, future: F) -> Result<JoinHandle<F::Output>, TrySpawnError>
@@ -135,7 +144,8 @@ impl BoundedExecutor {
         F: Future + Send + 'static,
         F::Output: Send + 'static,
     {
-        let permit = self.semaphore.clone().acquire_owned().await;
+        let span = span!(Level::TRACE, "bounded_executor::waiting_time");
+        let permit = self.semaphore.clone().acquire_owned().instrument(span).await;
         self.do_spawn(permit, future)
     }
 
@@ -145,7 +155,8 @@ impl BoundedExecutor {
         F::Output: Send + 'static,
     {
         self.inner.spawn(async move {
-            let ret = future.await;
+            let span = span!(Level::TRACE, "bounded_executor::do_work");
+            let ret = future.instrument(span).await;
             // Task is finished, release the permit
             drop(permit);
             ret

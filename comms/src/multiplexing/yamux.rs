@@ -23,8 +23,6 @@
 use crate::{connection_manager::ConnectionDirection, runtime};
 use futures::{
     channel::mpsc,
-    future,
-    future::Either,
     io::{AsyncRead, AsyncWrite},
     stream::FusedStream,
     task::Context,
@@ -32,9 +30,9 @@ use futures::{
     Stream,
     StreamExt,
 };
-use log::*;
 use std::{future::Future, io, pin::Pin, sync::Arc, task::Poll};
 use tari_shutdown::{Shutdown, ShutdownSignal};
+use tracing::{self, debug, error, event, Level};
 use yamux::Mode;
 
 type IncomingRx = mpsc::Receiver<yamux::Stream>;
@@ -64,10 +62,7 @@ impl Yamux {
         };
 
         let mut config = yamux::Config::default();
-        // Use OnRead mode instead of OnReceive mode to provide back pressure to the sending side.
-        // Caveat: the OnRead mode has the risk of deadlock, where both sides send data larger than
-        // receive window and don't read before finishing writes.
-        // This should never happen as the window size should be large enough for all protocol messages.
+
         config.set_window_update_mode(yamux::WindowUpdateMode::OnRead);
         // Because OnRead mode increases the RTT of window update, bigger buffer size and receive
         // window size perform better.
@@ -99,7 +94,7 @@ impl Yamux {
         let (incoming_tx, incoming_rx) = mpsc::channel(10);
         let stream = yamux::into_stream(connection).boxed();
         let incoming = IncomingWorker::new(stream, incoming_tx, shutdown.to_signal());
-        runtime::current().spawn(incoming.run());
+        runtime::task::spawn(incoming.run());
         IncomingSubstreams::new(incoming_rx, counter, shutdown)
     }
 
@@ -245,7 +240,7 @@ impl AsyncWrite for Substream {
 struct IncomingWorker<S> {
     inner: S,
     sender: mpsc::Sender<yamux::Stream>,
-    shutdown_signal: Option<ShutdownSignal>,
+    shutdown_signal: ShutdownSignal,
 }
 
 impl<S> IncomingWorker<S>
@@ -255,55 +250,42 @@ where S: Stream<Item = Result<yamux::Stream, yamux::ConnectionError>> + Unpin
         Self {
             inner: stream,
             sender,
-            shutdown_signal: Some(shutdown_signal),
+            shutdown_signal,
         }
     }
 
+    #[tracing::instrument(name = "yamux::incoming_worker::run", skip(self))]
     pub async fn run(mut self) {
-        let mut signal = self.shutdown_signal.take();
-        loop {
-            let either = future::select(self.inner.next(), signal.take().expect("cannot fail")).await;
-            match either {
-                Either::Left((Some(Err(err)), _)) => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Incoming peer substream task received an error because '{}'", err
-                    );
-                    break;
-                },
-                // Received a substream result
-                Either::Left((Some(Ok(stream)), sig)) => {
-                    signal = Some(sig);
-                    if let Err(err) = self.sender.send(stream).await {
-                        if err.is_disconnected() {
-                            debug!(
-                                target: LOG_TARGET,
-                                "Incoming peer substream task is shutting down because the internal stream sender \
-                                 channel was closed"
-                            );
-                            break;
-                        }
+        let mut mux_stream = self.inner.take_until(&mut self.shutdown_signal);
+        while let Some(result) = mux_stream.next().await {
+            match result {
+                Ok(stream) => {
+                    event!(Level::TRACE, "yamux::stream received {}", stream);
+                    if self.sender.send(stream).await.is_err() {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Incoming peer substream task is shutting down because the internal stream sender channel \
+                             was closed"
+                        );
+                        break;
                     }
                 },
-                // The substream closed
-                Either::Left((None, _)) => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Incoming peer substream task is shutting down because the stream ended"
+                Err(err) => {
+                    event!(
+                        Level::ERROR,
+                        "Incoming peer substream task received an error because '{}'",
+                        err
                     );
-                    break;
-                },
-                // The shutdown signal was received
-                Either::Right((_, _)) => {
-                    debug!(
+                    error!(
                         target: LOG_TARGET,
-                        "Incoming peer substream task is shutting down because the shutdown signal was received"
+                        "Incoming peer substream task received an error because '{}'", err
                     );
                     break;
                 },
             }
         }
 
+        debug!(target: LOG_TARGET, "Incoming peer substream task is shutting down");
         self.sender.close_channel();
     }
 }
