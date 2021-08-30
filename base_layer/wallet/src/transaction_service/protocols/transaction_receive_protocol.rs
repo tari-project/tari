@@ -381,7 +381,7 @@ where TBackend: TransactionBackend + 'static
             );
 
             finalized_transaction
-                .validate_internal_consistency(&self.resources.factories, None)
+                .validate_internal_consistency(true, &self.resources.factories, None)
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
             // Find your own output in the transaction

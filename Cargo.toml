@@ -24,3 +24,6 @@ members = [
     "applications/tari_stratum_transcoder",
     "applications/tari_mining_node",
 ]
+#
+#[profile.release]
+#debug = true

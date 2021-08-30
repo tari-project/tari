@@ -1029,7 +1029,7 @@ fn consensus_validation_large_tx() {
 
     // make sure the tx was correctly made and is valid
     let factories = CryptoFactories::default();
-    assert!(tx.validate_internal_consistency(&factories, None).is_ok());
+    assert!(tx.validate_internal_consistency(true, &factories, None).is_ok());
     let weight = tx.calculate_weight();
 
     let height = blocks.len() as u64;

@@ -51,9 +51,13 @@ impl<B: BlockchainBackend + 'static> SyncValidators<B> {
         }
     }
 
-    pub fn full_consensus(rules: ConsensusManager, factories: CryptoFactories) -> Self {
+    pub fn full_consensus(
+        rules: ConsensusManager,
+        factories: CryptoFactories,
+        bypass_range_proof_verification: bool,
+    ) -> Self {
         Self::new(
-            BlockValidator::new(rules.clone(), factories.clone()),
+            BlockValidator::new(rules.clone(), bypass_range_proof_verification, factories.clone()),
             ChainBalanceValidator::<B>::new(rules, factories),
         )
     }

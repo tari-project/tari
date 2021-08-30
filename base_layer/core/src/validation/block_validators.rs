@@ -51,12 +51,17 @@ pub const LOG_TARGET: &str = "c::val::block_validators";
 #[derive(Clone)]
 pub struct OrphanBlockValidator {
     rules: ConsensusManager,
+    bypass_range_proof_verification: bool,
     factories: CryptoFactories,
 }
 
 impl OrphanBlockValidator {
-    pub fn new(rules: ConsensusManager, factories: CryptoFactories) -> Self {
-        Self { rules, factories }
+    pub fn new(rules: ConsensusManager, bypass_range_proof_verification: bool, factories: CryptoFactories) -> Self {
+        Self {
+            rules,
+            bypass_range_proof_verification,
+            factories,
+        }
     }
 }
 
@@ -101,7 +106,12 @@ impl OrphanValidation for OrphanBlockValidator {
         trace!(target: LOG_TARGET, "SV - Output constraints are ok for {} ", &block_id);
         check_coinbase_output(block, &self.rules, &self.factories)?;
         trace!(target: LOG_TARGET, "SV - Coinbase output is ok for {} ", &block_id);
-        check_accounting_balance(block, &self.rules, &self.factories)?;
+        check_accounting_balance(
+            block,
+            &self.rules,
+            self.bypass_range_proof_verification,
+            &self.factories,
+        )?;
         trace!(target: LOG_TARGET, "SV - accounting balance correct for {}", &block_id);
         debug!(
             target: LOG_TARGET,
@@ -311,15 +321,17 @@ fn check_mmr_roots<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), Va
 /// the block body using the header. It is assumed that the `BlockHeader` has already been validated.
 pub struct BlockValidator<B: BlockchainBackend> {
     rules: ConsensusManager,
+    bypass_range_proof_verification: bool,
     factories: CryptoFactories,
     phantom_data: PhantomData<B>,
 }
 
 impl<B: BlockchainBackend> BlockValidator<B> {
-    pub fn new(rules: ConsensusManager, factories: CryptoFactories) -> Self {
+    pub fn new(rules: ConsensusManager, bypass_range_proof_verification: bool, factories: CryptoFactories) -> Self {
         Self {
             rules,
             factories,
+            bypass_range_proof_verification,
             phantom_data: Default::default(),
         }
     }
@@ -428,7 +440,12 @@ impl<B: BlockchainBackend> CandidateBlockBodyValidation<B> for BlockValidator<B>
         self.check_inputs(block)?;
         self.check_outputs(block)?;
 
-        check_accounting_balance(block, &self.rules, &self.factories)?;
+        check_accounting_balance(
+            block,
+            &self.rules,
+            self.bypass_range_proof_verification,
+            &self.factories,
+        )?;
         trace!(target: LOG_TARGET, "SV - accounting balance correct for {}", &block_id);
         debug!(
             target: LOG_TARGET,
