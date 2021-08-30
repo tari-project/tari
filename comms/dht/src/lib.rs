@@ -71,7 +71,7 @@
 //! #use std::sync::Arc;
 //! #use tari_comms::CommsBuilder;
 //! #use tokio::runtime::Runtime;
-//! #use futures::channel::mpsc;
+//! #use tokio::sync::mpsc;
 //!
 //! let runtime = Runtime::new().unwrap();
 //! // Channel from comms to inbound dht

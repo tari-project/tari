@@ -61,6 +61,11 @@ where T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone
         let mut pool = self.pool.lock().await;
         pool.get_least_used_or_connect().await
     }
+
+    pub async fn is_connected(&self) -> bool {
+        let pool = self.pool.lock().await;
+        pool.is_connected()
+    }
 }
 
 #[derive(Clone)]
@@ -109,6 +114,10 @@ where T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone
             // Clone is what actually takes the lease out (increments the Arc)
             return Ok(client.clone());
         }
+    }
+
+    pub fn is_connected(&self) -> bool {
+        self.connection.is_connected()
     }
 
     pub(super) fn refresh_num_active_connections(&mut self) -> usize {

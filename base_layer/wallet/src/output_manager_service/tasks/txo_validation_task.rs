@@ -30,7 +30,7 @@ use crate::{
     transaction_service::storage::models::TransactionStatus,
     types::ValidationRetryStrategy,
 };
-use futures::{FutureExt, StreamExt};
+use futures::FutureExt;
 use log::*;
 use std::{cmp, collections::HashMap, convert::TryFrom, fmt, sync::Arc, time::Duration};
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey, PeerConnection};
@@ -40,7 +40,7 @@ use tari_core::{
     transactions::{transaction::TransactionOutput, types::Signature},
 };
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
-use tokio::{sync::broadcast, time::delay_for};
+use tokio::{sync::broadcast, time::sleep};
 
 const LOG_TARGET: &str = "wallet::output_manager_service::utxo_validation_task";
 
@@ -87,21 +87,17 @@ where TBackend: OutputManagerBackend + 'static
 
     /// The task that defines the execution of the protocol.
     pub async fn execute(mut self) -> Result<u64, OutputManagerProtocolError> {
-        let mut base_node_update_receiver = self
-            .base_node_update_receiver
-            .take()
-            .ok_or_else(|| {
-                OutputManagerProtocolError::new(
-                    self.id,
-                    OutputManagerError::ServiceError("A Base Node Update receiver was not provided".to_string()),
-                )
-            })?
-            .fuse();
+        let mut base_node_update_receiver = self.base_node_update_receiver.take().ok_or_else(|| {
+            OutputManagerProtocolError::new(
+                self.id,
+                OutputManagerError::ServiceError("A Base Node Update receiver was not provided".to_string()),
+            )
+        })?;
 
         let mut shutdown = self.resources.shutdown_signal.clone();
 
         let total_retries_str = match self.retry_strategy {
-            ValidationRetryStrategy::Limited(n) => format!("{}", n),
+            ValidationRetryStrategy::Limited(n) => n.to_string(),
             ValidationRetryStrategy::UntilSuccess => "∞".to_string(),
         };
 
@@ -180,14 +176,14 @@ where TBackend: OutputManagerBackend + 'static
             let base_node_node_id = NodeId::from_key(&self.base_node_public_key.clone());
             let mut connection: Option<PeerConnection> = None;
 
-            let delay = delay_for(self.resources.config.peer_dial_retry_timeout);
+            let delay = sleep(self.resources.config.peer_dial_retry_timeout);
 
             debug!(
                 target: LOG_TARGET,
                 "Connecting to Base Node (Public Key: {})", self.base_node_public_key,
             );
-            futures::select! {
-                dial_result = self.resources.connectivity_manager.dial_peer(base_node_node_id.clone()).fuse() => {
+            tokio::select! {
+                dial_result = self.resources.connectivity_manager.dial_peer(base_node_node_id.clone()) => {
                     match dial_result {
                         Ok(base_node_connection) => {
                             connection = Some(base_node_connection);
@@ -197,7 +193,7 @@ where TBackend: OutputManagerBackend + 'static
                         },
                     }
                 },
-                new_base_node = base_node_update_receiver.select_next_some() => {
+                new_base_node = base_node_update_receiver.recv() => {
                     match new_base_node {
                         Ok(_) => {
                              info!(
@@ -228,7 +224,7 @@ where TBackend: OutputManagerBackend + 'static
                         }
                     }
                 }
-                _ = shutdown => {
+                _ = shutdown.wait() => {
                     info!(target: LOG_TARGET, "TXO Validation Protocol  (Id: {}) shutting down because it received the shutdown signal", self.id);
                     return Err(OutputManagerProtocolError::new(self.id, OutputManagerError::Shutdown));
                 },
@@ -236,7 +232,7 @@ where TBackend: OutputManagerBackend + 'static
 
             let mut base_node_connection = match connection {
                 None => {
-                    futures::select! {
+                    tokio::select! {
                         _ = delay.fuse() => {
                             let _ = self
                                 .resources
@@ -253,7 +249,7 @@ where TBackend: OutputManagerBackend + 'static
                             retries += 1;
                             continue;
                         },
-                        _ = shutdown => {
+                        _ = shutdown.wait() => {
                             info!(target: LOG_TARGET, "TXO Validation Protocol  (Id: {}) shutting down because it received the shutdown signal", self.id);
                             return Err(OutputManagerProtocolError::new(self.id, OutputManagerError::Shutdown));
                         },
@@ -294,9 +290,9 @@ where TBackend: OutputManagerBackend + 'static
                     batch_num,
                     batch_total
                 );
-                let delay = delay_for(self.retry_delay);
-                futures::select! {
-                    new_base_node = base_node_update_receiver.select_next_some() => {
+                let delay = sleep(self.retry_delay);
+                tokio::select! {
+                    new_base_node = base_node_update_receiver.recv() => {
                         match new_base_node {
                             Ok(_bn) => {
                              info!(target: LOG_TARGET, "TXO Validation protocol aborted due to Base Node Public key change" );
@@ -323,7 +319,7 @@ where TBackend: OutputManagerBackend + 'static
                             }
                         }
                     },
-                    result = self.send_query_batch(batch.clone(), &mut client).fuse() => {
+                    result = self.send_query_batch(batch.clone(), &mut client) => {
                         match result {
                             Ok(synced) => {
                                 self.base_node_synced = synced;
@@ -374,7 +370,7 @@ where TBackend: OutputManagerBackend + 'static
                             },
                         }
                     },
-                    _ = shutdown => {
+                    _ = shutdown.wait() => {
                         info!(target: LOG_TARGET, "TXO Validation Protocol (Id: {}) shutting down because it received the shutdown signal", self.id);
                         return Err(OutputManagerProtocolError::new(self.id, OutputManagerError::Shutdown));
                     },

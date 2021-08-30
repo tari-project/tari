@@ -11,10 +11,7 @@ pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::S
 
 #[macro_use]
 pub mod helpers;
-#[cfg(any(feature = "base_node", feature = "transactions"))]
-mod coinbase_builder;
+pub mod emoji;
 
-#[cfg(any(feature = "base_node", feature = "transactions"))]
-pub use crate::transactions::coinbase_builder::CoinbaseBuildError;
-#[cfg(any(feature = "base_node", feature = "transactions"))]
-pub use crate::transactions::coinbase_builder::CoinbaseBuilder;
+mod coinbase_builder;
+pub use crate::transactions::coinbase_builder::{CoinbaseBuildError, CoinbaseBuilder};

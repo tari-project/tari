@@ -28,12 +28,13 @@ use crate::{
     outbound::OutboundMessageRequester,
     store_forward::StoreAndForwardRequester,
 };
-use futures::{channel::mpsc, future::BoxFuture, task::Context};
+use futures::{future::BoxFuture, task::Context};
 use std::{sync::Arc, task::Poll};
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerManager},
     pipeline::PipelineError,
 };
+use tokio::sync::mpsc;
 use tower::Service;
 
 #[derive(Clone)]

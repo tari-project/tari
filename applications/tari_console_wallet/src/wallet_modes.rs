@@ -239,7 +239,10 @@ pub fn tui_mode(config: WalletModeConfig, mut wallet: WalletSqlite) -> Result<()
 
     info!(target: LOG_TARGET, "Starting app");
 
-    handle.enter(|| ui::run(app))?;
+    {
+        let _enter = handle.enter();
+        ui::run(app)?;
+    }
 
     info!(
         target: LOG_TARGET,

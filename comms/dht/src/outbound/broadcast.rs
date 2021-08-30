@@ -39,7 +39,6 @@ use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use digest::Digest;
 use futures::{
-    channel::oneshot,
     future,
     future::BoxFuture,
     stream::{self, StreamExt},
@@ -60,6 +59,7 @@ use tari_crypto::{
     tari_utilities::{message_format::MessageFormat, ByteArray},
 };
 use tari_utilities::hex::Hex;
+use tokio::sync::oneshot;
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::outbound::broadcast_middleware";
@@ -256,7 +256,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
 
         match self.select_peers(broadcast_strategy.clone()).await {
             Ok(mut peers) => {
-                if reply_tx.is_canceled() {
+                if reply_tx.is_closed() {
                     return Err(DhtOutboundError::ReplyChannelCanceled);
                 }
 
@@ -537,19 +537,19 @@ mod test {
             DhtDiscoveryMockState,
         },
     };
-    use futures::channel::oneshot;
     use rand::rngs::OsRng;
     use std::time::Duration;
     use tari_comms::{
         multiaddr::Multiaddr,
         peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
+        runtime,
         types::CommsPublicKey,
     };
     use tari_crypto::keys::PublicKey;
     use tari_test_utils::unpack_enum;
-    use tokio::task;
+    use tokio::{sync::oneshot, task};
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn send_message_flood() {
         let pk = CommsPublicKey::default();
         let example_peer = Peer::new(
@@ -613,7 +613,7 @@ mod test {
         assert!(requests.iter().any(|msg| msg.destination_node_id == other_peer.node_id));
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn send_message_direct_not_found() {
         // Test for issue https://github.com/tari-project/tari/issues/959
 
@@ -657,7 +657,7 @@ mod test {
         assert_eq!(spy.call_count(), 0);
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn send_message_direct_dht_discovery() {
         let node_identity = NodeIdentity::random(
             &mut OsRng,

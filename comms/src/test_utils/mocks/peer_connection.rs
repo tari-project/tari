@@ -34,15 +34,18 @@ use crate::{
     peer_manager::{NodeId, Peer, PeerFeatures},
     test_utils::{node_identity::build_node_identity, transport},
 };
-use futures::{channel::mpsc, lock::Mutex, StreamExt};
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
 };
-use tokio::runtime::Handle;
+use tokio::{
+    runtime::Handle,
+    sync::{mpsc, Mutex},
+};
+use tokio_stream::StreamExt;
 
 pub fn create_dummy_peer_connection(node_id: NodeId) -> (PeerConnection, mpsc::Receiver<PeerConnectionRequest>) {
-    let (tx, rx) = mpsc::channel(0);
+    let (tx, rx) = mpsc::channel(1);
     (
         PeerConnection::new(
             1,
@@ -114,7 +117,7 @@ pub async fn new_peer_connection_mock_pair() -> (
     create_peer_connection_mock_pair(peer1, peer2).await
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct PeerConnectionMockState {
     call_count: Arc<AtomicUsize>,
     mux_control: Arc<Mutex<multiplexing::Control>>,
@@ -181,7 +184,7 @@ impl PeerConnectionMock {
     }
 
     pub async fn run(mut self) {
-        while let Some(req) = self.receiver.next().await {
+        while let Some(req) = self.receiver.recv().await {
             self.handle_request(req).await;
         }
     }

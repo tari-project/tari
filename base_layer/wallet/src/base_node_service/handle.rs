@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::{error::BaseNodeServiceError, service::BaseNodeState};
-use futures::{stream::Fuse, StreamExt};
 use std::{sync::Arc, time::Duration};
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::peer_manager::Peer;
@@ -72,8 +71,8 @@ impl BaseNodeServiceHandle {
         }
     }
 
-    pub fn get_event_stream_fused(&self) -> Fuse<BaseNodeEventReceiver> {
-        self.event_stream_sender.subscribe().fuse()
+    pub fn get_event_stream(&self) -> BaseNodeEventReceiver {
+        self.event_stream_sender.subscribe()
     }
 
     pub async fn get_chain_metadata(&mut self) -> Result<Option<ChainMetadata>, BaseNodeServiceError> {

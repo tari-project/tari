@@ -23,7 +23,7 @@
 mod helpers;
 use helpers::create_comms;
 
-use futures::{channel::mpsc, future, SinkExt, StreamExt};
+use futures::{future, SinkExt, StreamExt};
 use std::time::Duration;
 use tari_comms::{
     framing,
@@ -35,7 +35,7 @@ use tari_comms::{
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::unpack_enum;
-use tokio::{task, time::Instant};
+use tokio::{sync::mpsc, task, time::Instant};
 
 const PROTOCOL_NAME: &[u8] = b"test/dummy/protocol";
 
@@ -79,7 +79,7 @@ async fn run_stress_test(num_substreams: usize, num_iterations: usize, payload_s
     task::spawn({
         let sample = sample.clone();
         async move {
-            while let Some(event) = notif_rx.next().await {
+            while let Some(event) = notif_rx.recv().await {
                 unpack_enum!(ProtocolEvent::NewInboundSubstream(_n, remote_substream) = event.event);
                 let mut remote_substream = framing::canonical(remote_substream, frame_size);
 
@@ -150,7 +150,7 @@ async fn run_stress_test(num_substreams: usize, num_iterations: usize, payload_s
     println!("avg t = {}ms", avg);
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 async fn many_at_frame_limit() {
     const NUM_SUBSTREAMS: usize = 20;
     const NUM_ITERATIONS_PER_STREAM: usize = 100;

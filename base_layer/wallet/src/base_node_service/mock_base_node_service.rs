@@ -20,13 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    base_node_service::{
-        error::BaseNodeServiceError,
-        handle::{BaseNodeServiceRequest, BaseNodeServiceResponse},
-        service::BaseNodeState,
-    },
-    connectivity_service::OnlineStatus,
+use crate::base_node_service::{
+    error::BaseNodeServiceError,
+    handle::{BaseNodeServiceRequest, BaseNodeServiceResponse},
+    service::BaseNodeState,
 };
 use futures::StreamExt;
 use tari_common_types::chain_metadata::ChainMetadata;
@@ -81,30 +78,28 @@ impl MockBaseNodeService {
 
     /// Set the mock server state, either online and synced to a specific height, or offline with None
     pub fn set_base_node_state(&mut self, height: Option<u64>) {
-        let (chain_metadata, is_synced, online) = match height {
+        let (chain_metadata, is_synced) = match height {
             Some(height) => {
                 let metadata = ChainMetadata::new(height, Vec::new(), 0, 0, 0);
-                (Some(metadata), Some(true), OnlineStatus::Online)
+                (Some(metadata), Some(true))
             },
-            None => (None, None, OnlineStatus::Offline),
+            None => (None, None),
         };
         self.state = BaseNodeState {
             chain_metadata,
             is_synced,
             updated: None,
             latency: None,
-            online,
         }
     }
 
     pub fn set_default_base_node_state(&mut self) {
-        let metadata = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
+        let metadata = ChainMetadata::new(u64::MAX, Vec::new(), 0, 0, 0);
         self.state = BaseNodeState {
             chain_metadata: Some(metadata),
             is_synced: Some(true),
             updated: None,
             latency: None,
-            online: OnlineStatus::Online,
         }
     }
 

@@ -120,6 +120,8 @@ mod test {
     use super::*;
     use tari_utilities::hex::Hex;
 
+    const TEST_NAME: &str = "test.local.";
+
     mod peer_seed {
         use super::*;
 
@@ -182,76 +184,88 @@ mod test {
 
     mod peer_seed_resolver {
         use super::*;
-        use std::{collections::HashMap, iter::FromIterator};
-        use trust_dns_client::rr::{rdata, RData, Record, RecordType};
+        use crate::dns::mock;
+        use trust_dns_client::{
+            proto::{
+                op::Query,
+                rr::{DNSClass, Name},
+                xfer::DnsResponse,
+            },
+            rr::{rdata, RData, Record, RecordType},
+        };
 
         #[ignore = "This test requires network IO and is mostly useful during development"]
-        #[tokio_macros::test]
-        async fn it_returns_an_empty_vec_if_all_seeds_are_invalid() {
+        #[tokio::test]
+        async fn it_returns_seeds_from_real_address() {
             let mut resolver = DnsSeedResolver {
                 client: DnsClient::connect("1.1.1.1:53".parse().unwrap()).await.unwrap(),
             };
-            let seeds = resolver.resolve("tari.com").await.unwrap();
-            assert!(seeds.is_empty());
+            let seeds = resolver.resolve("seeds.weatherwax.tari.com").await.unwrap();
+            assert!(!seeds.is_empty());
         }
 
-        fn create_txt_record(contents: Vec<&str>) -> Record {
+        fn create_txt_record(contents: Vec<&str>) -> DnsResponse {
+            let mut resp_query = Query::query(Name::from_str(TEST_NAME).unwrap(), RecordType::TXT);
+            resp_query.set_query_class(DNSClass::IN);
             let mut record = Record::new();
             record
                 .set_record_type(RecordType::TXT)
                 .set_rdata(RData::TXT(rdata::TXT::new(
                     contents.into_iter().map(ToString::to_string).collect(),
                 )));
-            record
+
+            mock::message(resp_query, vec![record], vec![], vec![]).into()
         }
 
-        #[tokio_macros::test]
+        #[tokio::test]
         async fn it_returns_peer_seeds() {
-            let records = HashMap::from_iter([("test.local.", vec![
+            let records = vec![
                 // Multiple addresses(works)
-                create_txt_record(vec![
-                    "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/ip4/127.0.0.1/tcp/8000::/\
+                Ok(create_txt_record(vec![
+                    "fab24c542183073996ddf3a6c73ff8b8562fed351d252ec5cb8f269d1ad92f0c::/ip4/127.0.0.1/tcp/8000::/\
                      onion3/bsmuof2cn4y2ysz253gzsvg3s72fcgh4f3qcm3hdlxdtcwe6al2dicyd:1234",
-                ]),
+                ])),
                 // Misc
-                create_txt_record(vec!["v=spf1 include:_spf.spf.com ~all"]),
+                Ok(create_txt_record(vec!["v=spf1 include:_spf.spf.com ~all"])),
                 // Single address (works)
-                create_txt_record(vec![
+                Ok(create_txt_record(vec![
                     "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/ip4/127.0.0.1/tcp/8000",
-                ]),
+                ])),
                 // Single address trailing delim
-                create_txt_record(vec![
+                Ok(create_txt_record(vec![
                     "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/ip4/127.0.0.1/tcp/8000::",
-                ]),
+                ])),
                 // Invalid public key
-                create_txt_record(vec![
+                Ok(create_txt_record(vec![
                     "07e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/ip4/127.0.0.1/tcp/8000",
-                ]),
+                ])),
                 // No Address with delim
-                create_txt_record(vec![
+                Ok(create_txt_record(vec![
                     "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::",
-                ]),
+                ])),
                 // No Address no delim
-                create_txt_record(vec!["06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a"]),
+                Ok(create_txt_record(vec![
+                    "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a",
+                ])),
                 // Invalid address
-                create_txt_record(vec![
+                Ok(create_txt_record(vec![
                     "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/onion3/invalid:1234",
-                ]),
-            ])]);
+                ])),
+            ];
             let mut resolver = DnsSeedResolver {
                 client: DnsClient::connect_mock(records).await.unwrap(),
             };
-            let seeds = resolver.resolve("test.local.").await.unwrap();
+            let seeds = resolver.resolve(TEST_NAME).await.unwrap();
             assert_eq!(seeds.len(), 2);
             assert_eq!(
                 seeds[0].public_key.to_hex(),
-                "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a"
+                "fab24c542183073996ddf3a6c73ff8b8562fed351d252ec5cb8f269d1ad92f0c"
             );
+            assert_eq!(seeds[0].addresses.len(), 2);
             assert_eq!(
                 seeds[1].public_key.to_hex(),
                 "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a"
             );
-            assert_eq!(seeds[0].addresses.len(), 2);
             assert_eq!(seeds[1].addresses.len(), 1);
         }
     }

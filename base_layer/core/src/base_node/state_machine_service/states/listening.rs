@@ -31,7 +31,6 @@ use crate::{
     },
     chain_storage::BlockchainBackend,
 };
-use futures::StreamExt;
 use log::*;
 use num_format::{Locale, ToFormattedString};
 use serde::{Deserialize, Serialize};
@@ -118,7 +117,8 @@ impl Listening {
 
         info!(target: LOG_TARGET, "Listening for chain metadata updates");
         shared.set_state_info(StateInfo::Listening(ListeningInfo::new(self.is_synced)));
-        while let Some(metadata_event) = shared.metadata_event_stream.next().await {
+        loop {
+            let metadata_event = shared.metadata_event_stream.recv().await;
             match metadata_event.as_ref().map(|v| v.deref()) {
                 Ok(ChainMetadataEvent::PeerChainMetadataReceived(peer_metadata_list)) => {
                     let mut peer_metadata_list = peer_metadata_list.clone();
@@ -199,16 +199,16 @@ impl Listening {
 
                     if !self.is_synced {
                         self.is_synced = true;
+                        shared.set_state_info(StateInfo::Listening(ListeningInfo::new(true)));
                         debug!(target: LOG_TARGET, "Initial sync achieved");
                     }
-                    shared.set_state_info(StateInfo::Listening(ListeningInfo::new(true)));
                 },
-                Err(broadcast::RecvError::Lagged(n)) => {
+                Err(broadcast::error::RecvError::Lagged(n)) => {
                     debug!(target: LOG_TARGET, "Metadata event subscriber lagged by {} item(s)", n);
                 },
-                Err(broadcast::RecvError::Closed) => {
-                    // This should never happen because the while loop exits when the stream ends
+                Err(broadcast::error::RecvError::Closed) => {
                     debug!(target: LOG_TARGET, "Metadata event subscriber closed");
+                    break;
                 },
             }
         }

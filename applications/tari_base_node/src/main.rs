@@ -96,7 +96,7 @@ mod status_line;
 mod utils;
 
 use crate::command_handler::{CommandHandler, StatusOutput};
-use futures::{future::Fuse, pin_mut, FutureExt};
+use futures::{pin_mut, FutureExt};
 use log::*;
 use opentelemetry::{self, global, KeyValue};
 use parser::Parser;
@@ -119,7 +119,7 @@ use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     runtime,
     task,
-    time::{self, Delay},
+    time::{self},
 };
 use tonic::transport::Server;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
@@ -145,7 +145,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     debug!(target: LOG_TARGET, "Using configuration: {:?}", node_config);
 
     // Set up the Tokio runtime
-    let mut rt = setup_runtime(&node_config).map_err(|e| {
+    let rt = setup_runtime(&node_config).map_err(|e| {
         error!(target: LOG_TARGET, "{}", e);
         ExitCodes::UnknownError
     })?;
@@ -320,26 +320,28 @@ async fn read_command(mut rustyline: Editor<Parser>) -> Result<(String, Editor<P
     .expect("Could not spawn rustyline task")
 }
 
-fn status_interval(start_time: Instant) -> Fuse<Delay> {
+fn status_interval(start_time: Instant) -> time::Sleep {
     let duration = match start_time.elapsed().as_secs() {
         0..=120 => Duration::from_secs(5),
         _ => Duration::from_secs(30),
     };
-    time::delay_for(duration).fuse()
+    time::sleep(duration)
 }
 
 async fn status_loop(command_handler: Arc<CommandHandler>, shutdown: Shutdown) {
     let start_time = Instant::now();
     let mut shutdown_signal = shutdown.to_signal();
     loop {
-        let mut interval = status_interval(start_time);
-        futures::select! {
+        let interval = status_interval(start_time);
+        tokio::select! {
+            biased;
+            _ = shutdown_signal.wait() => {
+                break;
+            }
+
             _ = interval => {
                command_handler.status(StatusOutput::Log);
             },
-            _ = shutdown_signal => {
-                break;
-            }
         }
     }
 }
@@ -368,9 +370,9 @@ async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
     let start_time = Instant::now();
     let mut software_update_notif = command_handler.get_software_updater().new_update_notifier().clone();
     loop {
-        let mut interval = status_interval(start_time);
-        futures::select! {
-            res = read_command_fut => {
+        let interval = status_interval(start_time);
+        tokio::select! {
+            res = &mut read_command_fut => {
                 match res {
                     Ok((line, mut rustyline)) => {
                         if let Some(p) = rustyline.helper_mut().as_deref_mut() {
@@ -387,8 +389,8 @@ async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
                     }
                 }
             },
-            resp = software_update_notif.recv().fuse() => {
-                if let Some(Some(update)) = resp {
+            Ok(_) = software_update_notif.changed() => {
+                if let Some(ref update) = *software_update_notif.borrow() {
                     println!(
                         "Version {} of the {} is available: {} (sha: {})",
                         update.version(),
@@ -401,7 +403,7 @@ async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
             _ = interval => {
                command_handler.status(StatusOutput::Full);
             },
-            _ = shutdown_signal => {
+            _ = shutdown_signal.wait() => {
                 break;
             }
         }

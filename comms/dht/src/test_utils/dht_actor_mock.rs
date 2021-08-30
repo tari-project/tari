@@ -25,7 +25,6 @@ use crate::{
     actor::{DhtRequest, DhtRequester},
     storage::DhtMetadataKey,
 };
-use futures::{channel::mpsc, stream::Fuse, StreamExt};
 use std::{
     collections::HashMap,
     sync::{
@@ -35,11 +34,11 @@ use std::{
     },
 };
 use tari_comms::peer_manager::Peer;
-use tokio::task;
+use tokio::{sync::mpsc, task};
 
 pub fn create_dht_actor_mock(buf_size: usize) -> (DhtRequester, DhtActorMock) {
     let (tx, rx) = mpsc::channel(buf_size);
-    (DhtRequester::new(tx), DhtActorMock::new(rx.fuse()))
+    (DhtRequester::new(tx), DhtActorMock::new(rx))
 }
 
 #[derive(Default, Debug, Clone)]
@@ -75,12 +74,12 @@ impl DhtMockState {
 }
 
 pub struct DhtActorMock {
-    receiver: Fuse<mpsc::Receiver<DhtRequest>>,
+    receiver: mpsc::Receiver<DhtRequest>,
     state: DhtMockState,
 }
 
 impl DhtActorMock {
-    pub fn new(receiver: Fuse<mpsc::Receiver<DhtRequest>>) -> Self {
+    pub fn new(receiver: mpsc::Receiver<DhtRequest>) -> Self {
         Self {
             receiver,
             state: DhtMockState::default(),
@@ -96,7 +95,7 @@ impl DhtActorMock {
     }
 
     pub async fn run(mut self) {
-        while let Some(req) = self.receiver.next().await {
+        while let Some(req) = self.receiver.recv().await {
             self.handle_request(req).await;
         }
     }

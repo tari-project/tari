@@ -192,7 +192,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         .unwrap();
     cfg.set_default(
         "base_node.weatherwax.data_dir",
-        default_subdir("stibbons/", Some(&bootstrap.base_path)),
+        default_subdir("weatherwax/", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
@@ -228,7 +228,6 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         .unwrap();
     cfg.set_default("base_node.weatherwax.grpc_console_wallet_address", "127.0.0.1:18143")
         .unwrap();
-
     cfg.set_default("base_node.weatherwax.dns_seeds_name_server", "1.1.1.1:53")
         .unwrap();
     cfg.set_default("base_node.weatherwax.dns_seeds_use_dnssec", true)
@@ -237,6 +236,28 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
 
     cfg.set_default("wallet.base_node_service_peers", Vec::<String>::new())
         .unwrap();
+
+    //---------------------------------- Igor Defaults --------------------------------------------//
+
+    cfg.set_default("base_node.igor.db_type", "lmdb").unwrap();
+    cfg.set_default("base_node.igor.orphan_storage_capacity", 720).unwrap();
+    cfg.set_default("base_node.igor.orphan_db_clean_out_threshold", 0)
+        .unwrap();
+    cfg.set_default("base_node.igor.pruning_horizon", 0).unwrap();
+    cfg.set_default("base_node.igor.pruned_mode_cleanup_interval", 50)
+        .unwrap();
+    cfg.set_default("base_node.igor.flood_ban_max_msg_count", 1000).unwrap();
+    cfg.set_default("base_node.igor.public_address", format!("{}/tcp/18141", local_ip_addr))
+        .unwrap();
+    cfg.set_default("base_node.igor.grpc_enabled", false).unwrap();
+    cfg.set_default("base_node.igor.grpc_base_node_address", "127.0.0.1:18142")
+        .unwrap();
+    cfg.set_default("base_node.igor.grpc_console_wallet_address", "127.0.0.1:18143")
+        .unwrap();
+    cfg.set_default("base_node.igor.dns_seeds_name_server", "1.1.1.1:53")
+        .unwrap();
+    cfg.set_default("base_node.igor.dns_seeds_use_dnssec", true).unwrap();
+    cfg.set_default("base_node.igor.auto_ping_interval", 30).unwrap();
 
     set_transport_defaults(&mut cfg).unwrap();
     set_merge_mining_defaults(&mut cfg);
@@ -254,6 +275,8 @@ fn set_stratum_transcoder_defaults(cfg: &mut Config) {
         "127.0.0.1:7879",
     )
     .unwrap();
+    cfg.set_default("stratum_transcoder.igor.transcoder_host_address", "127.0.0.1:7879")
+        .unwrap();
 }
 
 fn set_merge_mining_defaults(cfg: &mut Config) {
@@ -288,6 +311,16 @@ fn set_merge_mining_defaults(cfg: &mut Config) {
     cfg.set_default("merge_mining_proxy.weatherwax.monerod_password", "")
         .unwrap();
     cfg.set_default("merge_mining_proxy.weatherwax.wait_for_initial_sync_at_startup", true)
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.igor.proxy_host_address", "127.0.0.1:7878")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.igor.proxy_submit_to_origin", true)
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.igor.monerod_use_auth", "false")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.igor.monerod_username", "").unwrap();
+    cfg.set_default("merge_mining_proxy.igor.monerod_password", "").unwrap();
+    cfg.set_default("merge_mining_proxy.igor.wait_for_initial_sync_at_startup", true)
         .unwrap();
 }
 
@@ -372,6 +405,18 @@ fn set_transport_defaults(cfg: &mut Config) -> Result<(), config::ConfigError> {
         )?;
 
         cfg.set_default(&format!("{}.weatherwax.socks5_auth", app), "none")?;
+
+        // igor
+        cfg.set_default(&format!("{}.igor.transport", app), "tor")?;
+
+        cfg.set_default(&format!("{}.igor.tor_control_address", app), "/ip4/127.0.0.1/tcp/9051")?;
+        cfg.set_default(&format!("{}.igor.tor_control_auth", app), "none")?;
+        cfg.set_default(&format!("{}.igor.tor_forward_address", app), "/ip4/127.0.0.1/tcp/0")?;
+        cfg.set_default(&format!("{}.igor.tor_onion_port", app), "18141")?;
+
+        cfg.set_default(&format!("{}.igor.socks5_proxy_address", app), "/ip4/0.0.0.0/tcp/9150")?;
+
+        cfg.set_default(&format!("{}.igor.socks5_auth", app), "none")?;
     }
     Ok(())
 }

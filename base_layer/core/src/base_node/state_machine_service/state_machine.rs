@@ -159,7 +159,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             state_info: self.info.clone(),
         };
 
-        if let Err(e) = self.status_event_sender.broadcast(status) {
+        if let Err(e) = self.status_event_sender.send(status) {
             debug!(target: LOG_TARGET, "Error broadcasting a StatusEvent update: {}", e);
         }
     }

@@ -32,7 +32,7 @@ use crate::{
     },
     types::ValidationRetryStrategy,
 };
-use futures::{FutureExt, StreamExt};
+use futures::FutureExt;
 use log::*;
 use std::{cmp, convert::TryFrom, sync::Arc, time::Duration};
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey, PeerConnection};
@@ -43,7 +43,7 @@ use tari_core::{
     },
     proto::{base_node::Signatures as SignaturesProto, types::Signature as SignatureProto},
 };
-use tokio::{sync::broadcast, time::delay_for};
+use tokio::{sync::broadcast, time::sleep};
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::validation_protocol";
 
@@ -94,14 +94,12 @@ where TBackend: TransactionBackend + 'static
         let mut timeout_update_receiver = self
             .timeout_update_receiver
             .take()
-            .ok_or_else(|| TransactionServiceProtocolError::new(self.id, TransactionServiceError::InvalidStateError))?
-            .fuse();
+            .ok_or_else(|| TransactionServiceProtocolError::new(self.id, TransactionServiceError::InvalidStateError))?;
 
         let mut base_node_update_receiver = self
             .base_node_update_receiver
             .take()
-            .ok_or_else(|| TransactionServiceProtocolError::new(self.id, TransactionServiceError::InvalidStateError))?
-            .fuse();
+            .ok_or_else(|| TransactionServiceProtocolError::new(self.id, TransactionServiceError::InvalidStateError))?;
 
         let mut shutdown = self.resources.shutdown_signal.clone();
 
@@ -158,13 +156,13 @@ where TBackend: TransactionBackend + 'static
             let base_node_node_id = NodeId::from_key(&self.base_node_public_key);
             let mut connection: Option<PeerConnection> = None;
 
-            let delay = delay_for(self.timeout);
+            let delay = sleep(self.timeout);
 
             debug!(
                 target: LOG_TARGET,
                 "Connecting to Base Node (Public Key: {})", self.base_node_public_key,
             );
-            futures::select! {
+            tokio::select! {
                 dial_result = self.resources.connectivity_manager.dial_peer(base_node_node_id.clone()).fuse() => {
                     match dial_result {
                         Ok(base_node_connection) => {
@@ -175,7 +173,7 @@ where TBackend: TransactionBackend + 'static
                         },
                     }
                 },
-                new_base_node = base_node_update_receiver.select_next_some() => {
+                new_base_node = base_node_update_receiver.recv() => {
 
                     match new_base_node {
                         Ok(_) => {
@@ -204,7 +202,7 @@ where TBackend: TransactionBackend + 'static
                         }
                     }
                 }
-                updated_timeout = timeout_update_receiver.select_next_some() => {
+                updated_timeout = timeout_update_receiver.recv() => {
                     match updated_timeout {
                         Ok(to) => {
                             self.timeout = to;
@@ -223,7 +221,7 @@ where TBackend: TransactionBackend + 'static
                         }
                     }
                 },
-                _ = shutdown => {
+                _ = shutdown.wait() => {
                     info!(target: LOG_TARGET, "Transaction Validation Protocol shutting down because it received the shutdown signal");
                     return Err(TransactionServiceProtocolError::new(self.id, TransactionServiceError::Shutdown))
                 },
@@ -231,7 +229,7 @@ where TBackend: TransactionBackend + 'static
 
             let mut base_node_connection = match connection {
                 None => {
-                    futures::select! {
+                    tokio::select! {
                         _ = delay.fuse() => {
                             let _ = self
                                 .resources
@@ -248,7 +246,7 @@ where TBackend: TransactionBackend + 'static
                             retries += 1;
                             continue;
                         },
-                        _ = shutdown => {
+                        _ = shutdown.wait() => {
                             info!(target: LOG_TARGET, "Transaction Validation Protocol shutting down because it received the shutdown signal");
                             return Err(TransactionServiceProtocolError::new(self.id, TransactionServiceError::Shutdown))
                         },
@@ -282,9 +280,9 @@ where TBackend: TransactionBackend + 'static
                 } else {
                     break 'main;
                 };
-                let delay = delay_for(self.timeout);
-                futures::select! {
-                    new_base_node = base_node_update_receiver.select_next_some() => {
+                let delay = sleep(self.timeout);
+                tokio::select! {
+                    new_base_node = base_node_update_receiver.recv() => {
                         match new_base_node {
                             Ok(_) => {
                                info!(target: LOG_TARGET, "Aborting Transaction Validation Protocol as new Base node is set");
@@ -372,7 +370,7 @@ where TBackend: TransactionBackend + 'static
                             },
                         }
                     },
-                    updated_timeout = timeout_update_receiver.select_next_some() => {
+                    updated_timeout = timeout_update_receiver.recv() => {
                         match updated_timeout {
                             Ok(to) => {
                                 self.timeout = to;
@@ -391,7 +389,7 @@ where TBackend: TransactionBackend + 'static
                             }
                         }
                     },
-                    _ = shutdown => {
+                    _ = shutdown.wait() => {
                         info!(target: LOG_TARGET, "Transaction Validation Protocol shutting down because it received the shutdown signal");
                         return Err(TransactionServiceProtocolError::new(self.id, TransactionServiceError::Shutdown))
                     },

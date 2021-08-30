@@ -19,10 +19,10 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 
-use futures::channel::{mpsc::SendError, oneshot};
 use std::io;
 use tari_comms::{
     connectivity::ConnectivityError,
+    message::OutboundMessage,
     peer_manager::PeerManagerError,
     tor,
     CommsBuilderError,
@@ -30,7 +30,11 @@ use tari_comms::{
 };
 use tari_crypto::tari_utilities::message_format::MessageFormatError;
 use thiserror::Error;
-use tokio::{task, time};
+use tokio::{
+    sync::{mpsc::error::SendError, oneshot},
+    task,
+    time,
+};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -48,12 +52,12 @@ pub enum Error {
     ConnectivityError(#[from] ConnectivityError),
     #[error("Message format error: {0}")]
     MessageFormatError(#[from] MessageFormatError),
-    #[error("Failed to send message")]
-    SendError(#[from] SendError),
+    #[error("Failed to send message: {0}")]
+    SendError(#[from] SendError<OutboundMessage>),
     #[error("JoinError: {0}")]
     JoinError(#[from] task::JoinError),
     #[error("Example did not exit cleanly: `{0}`")]
-    WaitTimeout(#[from] time::Elapsed),
+    WaitTimeout(#[from] time::error::Elapsed),
     #[error("IO error: {0}")]
     Io(#[from] io::Error),
     #[error("User quit")]
@@ -63,5 +67,5 @@ pub enum Error {
     #[error("Unexpected EoF")]
     UnexpectedEof,
     #[error("Internal reply canceled")]
-    ReplyCanceled(#[from] oneshot::Canceled),
+    ReplyCanceled(#[from] oneshot::error::RecvError),
 }

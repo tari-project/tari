@@ -23,13 +23,12 @@
 #[allow(dead_code)]
 mod helpers;
 
-use futures::StreamExt;
 use helpers::{
     block_builders::{append_block, chain_block, create_genesis_block},
     chain_metadata::{random_peer_metadata, MockChainMetadata},
     nodes::{create_network_with_2_base_nodes_with_config, wait_until_online, BaseNodeBuilder},
 };
-use std::{thread, time::Duration};
+use std::time::Duration;
 use tari_common::configuration::Network;
 use tari_core::{
     base_node::{
@@ -54,15 +53,14 @@ use tari_p2p::services::liveness::LivenessConfig;
 use tari_shutdown::Shutdown;
 use tempfile::tempdir;
 use tokio::{
-    runtime::Runtime,
     sync::{broadcast, watch},
+    task,
     time,
 };
 
 static EMISSION: [u64; 2] = [10, 10];
-#[test]
-fn test_listening_lagging() {
-    let mut runtime = Runtime::new().unwrap();
+#[tokio::test]
+async fn test_listening_lagging() {
     let factories = CryptoFactories::default();
     let network = Network::LocalNet;
     let temp_dir = tempdir().unwrap();
@@ -75,7 +73,6 @@ fn test_listening_lagging() {
         .with_block(prev_block.clone())
         .build();
     let (alice_node, bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
-        &mut runtime,
         BaseNodeServiceConfig::default(),
         MempoolServiceConfig::default(),
         LivenessConfig {
@@ -84,7 +81,8 @@ fn test_listening_lagging() {
         },
         consensus_manager,
         temp_dir.path().to_str().unwrap(),
-    );
+    )
+    .await;
     let shutdown = Shutdown::new();
     let (state_change_event_publisher, _) = broadcast::channel(10);
     let (status_event_sender, _status_event_receiver) = watch::channel(StatusInfo::new());
@@ -103,46 +101,44 @@ fn test_listening_lagging() {
         consensus_manager.clone(),
         shutdown.to_signal(),
     );
-    wait_until_online(&mut runtime, &[&alice_node, &bob_node]);
+    wait_until_online(&[&alice_node, &bob_node]).await;
 
-    let await_event_task = runtime.spawn(async move { Listening::new().next_event(&mut alice_state_machine).await });
+    let await_event_task = task::spawn(async move { Listening::new().next_event(&mut alice_state_machine).await });
 
-    runtime.block_on(async move {
-        let bob_db = bob_node.blockchain_db;
-        let mut bob_local_nci = bob_node.local_nci;
+    let bob_db = bob_node.blockchain_db;
+    let mut bob_local_nci = bob_node.local_nci;
 
-        // Bob Block 1 - no block event
-        let prev_block = append_block(&bob_db, &prev_block, vec![], &consensus_manager, 3.into()).unwrap();
-        // Bob Block 2 - with block event and liveness service metadata update
-        let mut prev_block = bob_db
-            .prepare_block_merkle_roots(chain_block(&prev_block.block(), vec![], &consensus_manager))
-            .unwrap();
-        prev_block.header.output_mmr_size += 1;
-        prev_block.header.kernel_mmr_size += 1;
-        bob_local_nci
-            .submit_block(prev_block, Broadcast::from(true))
-            .await
-            .unwrap();
-        assert_eq!(bob_db.get_height().unwrap(), 2);
+    // Bob Block 1 - no block event
+    let prev_block = append_block(&bob_db, &prev_block, vec![], &consensus_manager, 3.into()).unwrap();
+    // Bob Block 2 - with block event and liveness service metadata update
+    let mut prev_block = bob_db
+        .prepare_block_merkle_roots(chain_block(&prev_block.block(), vec![], &consensus_manager))
+        .unwrap();
+    prev_block.header.output_mmr_size += 1;
+    prev_block.header.kernel_mmr_size += 1;
+    bob_local_nci
+        .submit_block(prev_block, Broadcast::from(true))
+        .await
+        .unwrap();
+    assert_eq!(bob_db.get_height().unwrap(), 2);
 
-        let next_event = time::timeout(Duration::from_secs(10), await_event_task)
-            .await
-            .expect("Alice did not emit `StateEvent::FallenBehind` within 10 seconds")
-            .unwrap();
+    let next_event = time::timeout(Duration::from_secs(10), await_event_task)
+        .await
+        .expect("Alice did not emit `StateEvent::FallenBehind` within 10 seconds")
+        .unwrap();
 
-        match next_event {
-            StateEvent::InitialSync => {},
-            _ => panic!(),
-        }
-    });
+    match next_event {
+        StateEvent::InitialSync => {},
+        _ => panic!(),
+    }
 }
 
-#[test]
-fn test_event_channel() {
+#[tokio::test]
+async fn test_event_channel() {
     let temp_dir = tempdir().unwrap();
-    let mut runtime = Runtime::new().unwrap();
-    let (node, consensus_manager) =
-        BaseNodeBuilder::new(Network::Weatherwax.into()).start(&mut runtime, temp_dir.path().to_str().unwrap());
+    let (node, consensus_manager) = BaseNodeBuilder::new(Network::Weatherwax.into())
+        .start(temp_dir.path().to_str().unwrap())
+        .await;
     // let shutdown = Shutdown::new();
     let db = create_test_blockchain_db();
     let shutdown = Shutdown::new();
@@ -165,24 +161,21 @@ fn test_event_channel() {
         shutdown.to_signal(),
     );
 
-    runtime.spawn(state_machine.run());
+    task::spawn(state_machine.run());
 
     let PeerChainMetadata {
         node_id,
         chain_metadata,
     } = random_peer_metadata(10, 5_000);
-    runtime
-        .block_on(mock.publish_chain_metadata(&node_id, &chain_metadata))
+    mock.publish_chain_metadata(&node_id, &chain_metadata)
+        .await
         .expect("Could not publish metadata");
-    thread::sleep(Duration::from_millis(50));
-    runtime.block_on(async {
-        let event = state_change_event_subscriber.next().await;
-        assert_eq!(*event.unwrap().unwrap(), StateEvent::Initialized);
-        let event = state_change_event_subscriber.next().await;
-        let event = event.unwrap().unwrap();
-        match event.as_ref() {
-            StateEvent::InitialSync => (),
-            _ => panic!("Unexpected state was found:{:?}", event),
-        }
-    });
+    let event = state_change_event_subscriber.recv().await;
+    assert_eq!(*event.unwrap(), StateEvent::Initialized);
+    let event = state_change_event_subscriber.recv().await;
+    let event = event.unwrap();
+    match event.as_ref() {
+        StateEvent::InitialSync => (),
+        _ => panic!("Unexpected state was found:{:?}", event),
+    }
 }

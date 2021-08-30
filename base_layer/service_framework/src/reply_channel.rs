@@ -20,26 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{
-    channel::{
-        mpsc::{self, SendError},
-        oneshot,
-    },
-    ready,
-    stream::FusedStream,
-    task::Context,
-    Future,
-    FutureExt,
-    Stream,
-    StreamExt,
-};
+use futures::{ready, stream::FusedStream, task::Context, Future, FutureExt, Stream};
 use std::{pin::Pin, task::Poll};
 use thiserror::Error;
+use tokio::sync::{mpsc, oneshot};
 use tower_service::Service;
 
 /// Create a new Requester/Responder pair which wraps and calls the given service
 pub fn unbounded<TReq, TResp>() -> (SenderService<TReq, TResp>, Receiver<TReq, TResp>) {
-    let (tx, rx) = mpsc::unbounded();
+    let (tx, rx) = mpsc::unbounded_channel();
     (SenderService::new(tx), Receiver::new(rx))
 }
 
@@ -81,20 +70,15 @@ impl<TReq, TRes> Service<TReq> for SenderService<TReq, TRes> {
     type Future = TransportResponseFuture<TRes>;
     type Response = TRes;
 
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.tx.poll_ready(cx).map_err(|err| {
-            if err.is_disconnected() {
-                return TransportChannelError::ChannelClosed;
-            }
-
-            unreachable!("unbounded channels can never be full");
-        })
+    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        // An unbounded sender is always ready (i.e. will never wait to send)
+        Poll::Ready(Ok(()))
     }
 
     fn call(&mut self, request: TReq) -> Self::Future {
         let (tx, rx) = oneshot::channel();
 
-        if self.tx.unbounded_send((request, tx)).is_ok() {
+        if self.tx.send((request, tx)).is_ok() {
             TransportResponseFuture::new(rx)
         } else {
             // We're not able to send (rx closed) so return a future which resolves to
@@ -106,8 +90,6 @@ impl<TReq, TRes> Service<TReq> for SenderService<TReq, TRes> {
 
 #[derive(Debug, Error, Eq, PartialEq, Clone)]
 pub enum TransportChannelError {
-    #[error("Error occurred when sending: `{0}`")]
-    SendError(#[from] SendError),
     #[error("Request was canceled")]
     Canceled,
     #[error("The response channel has closed")]
@@ -188,23 +170,21 @@ impl<TReq, TResp> RequestContext<TReq, TResp> {
 }
 
 /// Receiver side of the reply channel.
-/// This is functionally equivalent to `rx.map(|(req, reply_tx)| RequestContext::new(req, reply_tx))`
-/// but is ergonomically better to use with the `futures::select` macro (implements FusedStream)
-/// and has a short type signature.
 pub struct Receiver<TReq, TResp> {
     rx: Rx<TReq, TResp>,
+    is_closed: bool,
 }
 
 impl<TReq, TResp> FusedStream for Receiver<TReq, TResp> {
     fn is_terminated(&self) -> bool {
-        self.rx.is_terminated()
+        self.is_closed
     }
 }
 
 impl<TReq, TResp> Receiver<TReq, TResp> {
     // Create a new Responder
     pub fn new(rx: Rx<TReq, TResp>) -> Self {
-        Self { rx }
+        Self { rx, is_closed: false }
     }
 
     pub fn close(&mut self) {
@@ -216,10 +196,17 @@ impl<TReq, TResp> Stream for Receiver<TReq, TResp> {
     type Item = RequestContext<TReq, TResp>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        match ready!(self.rx.poll_next_unpin(cx)) {
+        if self.is_terminated() {
+            return Poll::Ready(None);
+        }
+
+        match ready!(self.rx.poll_recv(cx)) {
             Some((req, tx)) => Poll::Ready(Some(RequestContext::new(req, tx))),
             // Stream has closed, so we're done
-            None => Poll::Ready(None),
+            None => {
+                self.is_closed = true;
+                Poll::Ready(None)
+            },
         }
     }
 }
@@ -227,7 +214,7 @@ impl<TReq, TResp> Stream for Receiver<TReq, TResp> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use futures::{executor::block_on, future};
+    use futures::{executor::block_on, future, StreamExt};
     use std::fmt::Debug;
     use tari_test_utils::unpack_enum;
     use tower::ServiceExt;
@@ -247,7 +234,7 @@ mod test {
 
     async fn reply<TReq, TResp>(mut rx: Rx<TReq, TResp>, msg: TResp)
     where TResp: Debug {
-        match rx.next().await {
+        match rx.recv().await {
             Some((_, tx)) => {
                 tx.send(msg).unwrap();
             },
@@ -257,7 +244,7 @@ mod test {
 
     #[test]
     fn requestor_call() {
-        let (tx, rx) = mpsc::unbounded();
+        let (tx, rx) = mpsc::unbounded_channel();
         let requestor = SenderService::<_, _>::new(tx);
 
         let fut = future::join(requestor.oneshot("PING"), reply(rx, "PONG"));

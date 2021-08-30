@@ -25,44 +25,42 @@ use crate::{
     transports::dns::{DnsResolverRef, SystemDnsResolver},
     utils::multiaddr::socketaddr_to_multiaddr,
 };
-use futures::{io::Error, ready, AsyncRead, AsyncWrite, Future, FutureExt, Stream};
+use futures::{ready, FutureExt};
 use multiaddr::Multiaddr;
 use std::{
+    future::Future,
     io,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
-    time::Duration,
 };
-use tokio::{
-    io::{AsyncRead as TokioAsyncRead, AsyncWrite as TokioAsyncWrite},
-    net::{TcpListener, TcpStream},
-};
+use tokio::net::{TcpListener, TcpStream};
+use tokio_stream::Stream;
 
 /// Transport implementation for TCP
 #[derive(Clone)]
 pub struct TcpTransport {
-    recv_buffer_size: Option<usize>,
-    send_buffer_size: Option<usize>,
+    // recv_buffer_size: Option<usize>,
+    // send_buffer_size: Option<usize>,
     ttl: Option<u32>,
-    #[allow(clippy::option_option)]
-    keepalive: Option<Option<Duration>>,
+    // #[allow(clippy::option_option)]
+    // keepalive: Option<Option<Duration>>,
     nodelay: Option<bool>,
     dns_resolver: DnsResolverRef,
 }
 
 impl TcpTransport {
-    #[doc("Sets `SO_RCVBUF` i.e the size of the receive buffer.")]
-    setter_mut!(set_recv_buffer_size, recv_buffer_size, Option<usize>);
-
-    #[doc("Sets `SO_SNDBUF` i.e. the size of the send buffer.")]
-    setter_mut!(set_send_buffer_size, send_buffer_size, Option<usize>);
+    // #[doc("Sets `SO_RCVBUF` i.e the size of the receive buffer.")]
+    // setter_mut!(set_recv_buffer_size, recv_buffer_size, Option<usize>);
+    //
+    // #[doc("Sets `SO_SNDBUF` i.e. the size of the send buffer.")]
+    // setter_mut!(set_send_buffer_size, send_buffer_size, Option<usize>);
 
     #[doc("Sets `IP_TTL` i.e. the TTL of packets sent from this socket.")]
     setter_mut!(set_ttl, ttl, Option<u32>);
 
-    #[doc("Sets `SO_KEEPALIVE` i.e. the interval to send keepalive probes, or None to disable.")]
-    setter_mut!(set_keepalive, keepalive, Option<Option<Duration>>);
+    // #[doc("Sets `SO_KEEPALIVE` i.e. the interval to send keepalive probes, or None to disable.")]
+    // setter_mut!(set_keepalive, keepalive, Option<Option<Duration>>);
 
     #[doc("Sets `TCP_NODELAY` i.e disable Nagle's algorithm if set to true.")]
     setter_mut!(set_nodelay, nodelay, Option<bool>);
@@ -81,9 +79,10 @@ impl TcpTransport {
 
     /// Apply socket options to `TcpStream`.
     fn configure(&self, socket: &TcpStream) -> io::Result<()> {
-        if let Some(keepalive) = self.keepalive {
-            socket.set_keepalive(keepalive)?;
-        }
+        // https://github.com/rust-lang/rust/issues/69774
+        // if let Some(keepalive) = self.keepalive {
+        //     socket.set_keepalive(keepalive)?;
+        // }
 
         if let Some(ttl) = self.ttl {
             socket.set_ttl(ttl)?;
@@ -93,13 +92,13 @@ impl TcpTransport {
             socket.set_nodelay(nodelay)?;
         }
 
-        if let Some(recv_buffer_size) = self.recv_buffer_size {
-            socket.set_recv_buffer_size(recv_buffer_size)?;
-        }
-
-        if let Some(send_buffer_size) = self.send_buffer_size {
-            socket.set_send_buffer_size(send_buffer_size)?;
-        }
+        // if let Some(recv_buffer_size) = self.recv_buffer_size {
+        //     socket.set_recv_buffer_size(recv_buffer_size)?;
+        // }
+        //
+        // if let Some(send_buffer_size) = self.send_buffer_size {
+        //     socket.set_send_buffer_size(send_buffer_size)?;
+        // }
 
         Ok(())
     }
@@ -108,10 +107,10 @@ impl TcpTransport {
 impl Default for TcpTransport {
     fn default() -> Self {
         Self {
-            recv_buffer_size: None,
-            send_buffer_size: None,
+            // recv_buffer_size: None,
+            // send_buffer_size: None,
             ttl: None,
-            keepalive: None,
+            // keepalive: None,
             nodelay: None,
             dns_resolver: Arc::new(SystemDnsResolver),
         }
@@ -122,7 +121,7 @@ impl Default for TcpTransport {
 impl Transport for TcpTransport {
     type Error = io::Error;
     type Listener = TcpInbound;
-    type Output = TcpSocket;
+    type Output = TcpStream;
 
     async fn listen(&self, addr: Multiaddr) -> Result<(Self::Listener, Multiaddr), Self::Error> {
         let socket_addr = self
@@ -161,12 +160,12 @@ impl<F> TcpOutbound<F> {
 impl<F> Future for TcpOutbound<F>
 where F: Future<Output = io::Result<TcpStream>> + Unpin
 {
-    type Output = io::Result<TcpSocket>;
+    type Output = io::Result<TcpStream>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let socket = ready!(Pin::new(&mut self.future).poll(cx))?;
-        self.config.configure(&socket)?;
-        Poll::Ready(Ok(TcpSocket::new(socket)))
+        let stream = ready!(Pin::new(&mut self.future).poll(cx))?;
+        self.config.configure(&stream)?;
+        Poll::Ready(Ok(stream))
     }
 }
 
@@ -184,52 +183,14 @@ impl TcpInbound {
 }
 
 impl Stream for TcpInbound {
-    type Item = io::Result<(TcpSocket, Multiaddr)>;
+    type Item = io::Result<(TcpStream, Multiaddr)>;
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let (socket, addr) = ready!(self.listener.poll_accept(cx))?;
         // Configure each socket
         self.config.configure(&socket)?;
         let peer_addr = socketaddr_to_multiaddr(&addr);
-        Poll::Ready(Some(Ok((TcpSocket::new(socket), peer_addr))))
-    }
-}
-
-/// TcpSocket is a wrapper struct for tokio `TcpStream` and implements
-/// `futures-rs` AsyncRead/Write
-pub struct TcpSocket {
-    inner: TcpStream,
-}
-
-impl TcpSocket {
-    pub fn new(stream: TcpStream) -> Self {
-        Self { inner: stream }
-    }
-}
-
-impl AsyncWrite for TcpSocket {
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize, Error>> {
-        Pin::new(&mut self.inner).poll_write(cx, buf)
-    }
-
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
-        Pin::new(&mut self.inner).poll_flush(cx)
-    }
-
-    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
-        Pin::new(&mut self.inner).poll_shutdown(cx)
-    }
-}
-
-impl AsyncRead for TcpSocket {
-    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut [u8]) -> Poll<Result<usize, Error>> {
-        Pin::new(&mut self.inner).poll_read(cx, buf)
-    }
-}
-
-impl From<TcpStream> for TcpSocket {
-    fn from(stream: TcpStream) -> Self {
-        Self { inner: stream }
+        Poll::Ready(Some(Ok((socket, peer_addr))))
     }
 }
 
@@ -240,16 +201,15 @@ mod test {
     #[test]
     fn configure() {
         let mut tcp = TcpTransport::new();
-        tcp.set_send_buffer_size(123)
-            .set_recv_buffer_size(456)
-            .set_nodelay(true)
-            .set_ttl(789)
-            .set_keepalive(Some(Duration::from_millis(100)));
+        // tcp.set_send_buffer_size(123)
+        //     .set_recv_buffer_size(456)
+        tcp.set_nodelay(true).set_ttl(789);
+        // .set_keepalive(Some(Duration::from_millis(100)));
 
-        assert_eq!(tcp.send_buffer_size, Some(123));
-        assert_eq!(tcp.recv_buffer_size, Some(456));
+        // assert_eq!(tcp.send_buffer_size, Some(123));
+        // assert_eq!(tcp.recv_buffer_size, Some(456));
         assert_eq!(tcp.nodelay, Some(true));
         assert_eq!(tcp.ttl, Some(789));
-        assert_eq!(tcp.keepalive, Some(Some(Duration::from_millis(100))));
+        // assert_eq!(tcp.keepalive, Some(Some(Duration::from_millis(100))));
     }
 }

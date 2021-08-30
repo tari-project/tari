@@ -462,11 +462,11 @@ mod test {
     };
     use chrono::Utc;
     use std::time::Duration;
-    use tari_comms::wrap_in_envelope_body;
+    use tari_comms::{runtime, wrap_in_envelope_body};
     use tari_test_utils::async_assert_eventually;
     use tari_utilities::hex::Hex;
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn cleartext_message_no_origin() {
         let (requester, mock_state) = create_store_and_forward_mock();
 
@@ -486,7 +486,7 @@ mod test {
         assert_eq!(messages.len(), 0);
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn decryption_succeeded_no_store() {
         let (requester, mock_state) = create_store_and_forward_mock();
 
@@ -514,7 +514,7 @@ mod test {
         assert_eq!(mock_state.call_count(), 0);
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn decryption_failed_should_store() {
         let (requester, mock_state) = create_store_and_forward_mock();
         let spy = service_spy();
@@ -553,7 +553,7 @@ mod test {
         assert!(duration.num_seconds() <= 5);
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn decryption_failed_banned_peer() {
         let (requester, mock_state) = create_store_and_forward_mock();
         let spy = service_spy();

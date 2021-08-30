@@ -26,27 +26,27 @@
 
 //! Noise Socket
 
+use crate::types::CommsPublicKey;
 use futures::ready;
 use log::*;
 use snow::{error::StateProblem, HandshakeState, TransportState};
 use std::{
+    cmp,
     convert::TryInto,
     io,
     pin::Pin,
     task::{Context, Poll},
 };
-// use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use crate::types::CommsPublicKey;
-use futures::{io::Error, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tari_crypto::tari_utilities::ByteArray;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
 
 const LOG_TARGET: &str = "comms::noise::socket";
 
-const MAX_PAYLOAD_LENGTH: usize = u16::max_value() as usize; // 65535
+const MAX_PAYLOAD_LENGTH: usize = u16::MAX as usize; // 65535
 
 // The maximum number of bytes that we can buffer is 16 bytes less than u16::max_value() because
 // encrypted messages include a tag along with the payload.
-const MAX_WRITE_BUFFER_LENGTH: usize = u16::max_value() as usize - 16; // 65519
+const MAX_WRITE_BUFFER_LENGTH: usize = u16::MAX as usize - 16; // 65519
 
 /// Collection of buffers used for buffering data during the various read/write states of a
 /// NoiseSocket
@@ -223,7 +223,12 @@ where
     TSocket: AsyncRead,
 {
     loop {
-        let n = ready!(socket.as_mut().poll_read(&mut context, &mut buf[*offset..]))?;
+        let mut read_buf = ReadBuf::new(&mut buf[*offset..]);
+        let prev_rem = read_buf.remaining();
+        ready!(socket.as_mut().poll_read(&mut context, &mut read_buf))?;
+        let n = prev_rem
+            .checked_sub(read_buf.remaining())
+            .expect("buffer underflow: prev_rem < read_buf.remaining()");
         trace!(
             target: LOG_TARGET,
             "poll_read_exact: read {}/{} bytes",
@@ -320,7 +325,7 @@ where TSocket: AsyncRead + Unpin
                     decrypted_len,
                     ref mut offset,
                 } => {
-                    let bytes_to_copy = ::std::cmp::min(decrypted_len as usize - *offset, buf.len());
+                    let bytes_to_copy = cmp::min(decrypted_len as usize - *offset, buf.len());
                     buf[..bytes_to_copy]
                         .copy_from_slice(&self.buffers.read_decrypted[*offset..(*offset + bytes_to_copy)]);
                     trace!(
@@ -351,8 +356,11 @@ where TSocket: AsyncRead + Unpin
 impl<TSocket> AsyncRead for NoiseSocket<TSocket>
 where TSocket: AsyncRead + Unpin
 {
-    fn poll_read(self: Pin<&mut Self>, context: &mut Context, buf: &mut [u8]) -> Poll<io::Result<usize>> {
-        self.get_mut().poll_read(context, buf)
+    fn poll_read(self: Pin<&mut Self>, context: &mut Context, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
+        let slice = buf.initialize_unfilled();
+        let n = futures::ready!(self.get_mut().poll_read(context, slice))?;
+        buf.advance(n);
+        Poll::Ready(Ok(()))
     }
 }
 
@@ -501,8 +509,8 @@ where TSocket: AsyncWrite + Unpin
         self.get_mut().poll_flush(cx)
     }
 
-    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
-        Pin::new(&mut self.socket).poll_close(cx)
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+        Pin::new(&mut self.socket).poll_shutdown(cx)
     }
 }
 
@@ -531,7 +539,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                     target: LOG_TARGET,
                     "Noise handshake failed because '{:?}'. Closing socket.", err
                 );
-                self.socket.close().await?;
+                self.socket.shutdown().await?;
                 Err(err)
             },
         }
@@ -644,7 +652,6 @@ mod test {
     use futures::future::join;
     use snow::{params::NoiseParams, Builder, Error, Keypair};
     use std::io;
-    use tokio::runtime::Runtime;
 
     async fn build_test_connection(
     ) -> Result<((Keypair, Handshake<MemorySocket>), (Keypair, Handshake<MemorySocket>)), Error> {
@@ -707,7 +714,7 @@ mod test {
         dialer_socket.write_all(b" ").await?;
         dialer_socket.write_all(b"archive").await?;
         dialer_socket.flush().await?;
-        dialer_socket.close().await?;
+        dialer_socket.shutdown().await?;
 
         let mut buf = Vec::new();
         listener_socket.read_to_end(&mut buf).await?;
@@ -745,51 +752,60 @@ mod test {
         Ok(())
     }
 
-    #[test]
-    fn u16_max_writes() -> io::Result<()> {
-        // Current thread runtime stack overflows, so the full tokio runtime is used here
-        let mut rt = Runtime::new().unwrap();
-        rt.block_on(async move {
-            let ((_dialer_keypair, dialer), (_listener_keypair, listener)) = build_test_connection().await.unwrap();
+    #[runtime::test]
+    async fn u16_max_writes() -> io::Result<()> {
+        let ((_dialer_keypair, dialer), (_listener_keypair, listener)) = build_test_connection().await.unwrap();
 
-            let (mut a, mut b) = perform_handshake(dialer, listener).await?;
+        let (mut a, mut b) = perform_handshake(dialer, listener).await?;
 
-            let buf_send = [1; MAX_PAYLOAD_LENGTH];
-            a.write_all(&buf_send).await?;
-            a.flush().await?;
+        let buf_send = [1; MAX_PAYLOAD_LENGTH + 1];
+        a.write_all(&buf_send).await?;
+        a.flush().await?;
 
-            let mut buf_receive = [0; MAX_PAYLOAD_LENGTH];
-            b.read_exact(&mut buf_receive).await?;
-            assert_eq!(&buf_receive[..], &buf_send[..]);
+        let mut buf_receive = [0; MAX_PAYLOAD_LENGTH + 1];
+        b.read_exact(&mut buf_receive).await?;
+        assert_eq!(&buf_receive[..], &buf_send[..]);
 
-            Ok(())
-        })
+        Ok(())
     }
 
-    #[test]
-    fn unexpected_eof() -> io::Result<()> {
-        // Current thread runtime stack overflows, so the full tokio runtime is used here
-        let mut rt = Runtime::new().unwrap();
-        rt.block_on(async move {
-            let ((_dialer_keypair, dialer), (_listener_keypair, listener)) = build_test_connection().await.unwrap();
+    #[runtime::test]
+    async fn larger_writes() -> io::Result<()> {
+        let ((_dialer_keypair, dialer), (_listener_keypair, listener)) = build_test_connection().await.unwrap();
 
-            let (mut a, mut b) = perform_handshake(dialer, listener).await?;
+        let (mut a, mut b) = perform_handshake(dialer, listener).await?;
 
-            let buf_send = [1; MAX_PAYLOAD_LENGTH];
-            a.write_all(&buf_send).await?;
-            a.flush().await?;
+        let buf_send = [1; MAX_PAYLOAD_LENGTH * 2 + 1024];
+        a.write_all(&buf_send).await?;
+        a.flush().await?;
 
-            a.socket.close().await.unwrap();
-            drop(a);
+        let mut buf_receive = [0; MAX_PAYLOAD_LENGTH * 2 + 1024];
+        b.read_exact(&mut buf_receive).await?;
+        assert_eq!(&buf_receive[..], &buf_send[..]);
 
-            let mut buf_receive = [0; MAX_PAYLOAD_LENGTH];
-            b.read_exact(&mut buf_receive).await.unwrap();
-            assert_eq!(&buf_receive[..], &buf_send[..]);
+        Ok(())
+    }
 
-            let err = b.read_exact(&mut buf_receive).await.unwrap_err();
-            assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
+    #[runtime::test]
+    async fn unexpected_eof() -> io::Result<()> {
+        let ((_dialer_keypair, dialer), (_listener_keypair, listener)) = build_test_connection().await.unwrap();
 
-            Ok(())
-        })
+        let (mut a, mut b) = perform_handshake(dialer, listener).await?;
+
+        let buf_send = [1; MAX_PAYLOAD_LENGTH];
+        a.write_all(&buf_send).await?;
+        a.flush().await?;
+
+        a.socket.shutdown().await.unwrap();
+        drop(a);
+
+        let mut buf_receive = [0; MAX_PAYLOAD_LENGTH];
+        b.read_exact(&mut buf_receive).await.unwrap();
+        assert_eq!(&buf_receive[..], &buf_send[..]);
+
+        let err = b.read_exact(&mut buf_receive).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
+
+        Ok(())
     }
 }

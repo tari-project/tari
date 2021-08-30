@@ -26,7 +26,7 @@
 
 // This is slightly changed from the libra rate limiter implementation
 
-use futures::{stream::Fuse, FutureExt, Stream, StreamExt};
+use futures::FutureExt;
 use pin_project::pin_project;
 use std::{
     future::Future,
@@ -36,10 +36,11 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    sync::{OwnedSemaphorePermit, Semaphore},
+    sync::{AcquireError, OwnedSemaphorePermit, Semaphore},
     time,
     time::Interval,
 };
+use tokio_stream::Stream;
 
 pub trait RateLimit: Stream {
     /// Consumes the stream and returns a rate-limited stream that only polls the underlying stream
@@ -60,12 +61,13 @@ pub struct RateLimiter<T> {
     stream: T,
     /// An interval stream that "restocks" the permits
     #[pin]
-    interval: Fuse<Interval>,
+    interval: Interval,
     /// The maximum permits to issue
     capacity: usize,
     /// A semaphore that holds the permits
     permits: Arc<Semaphore>,
-    permit_future: Option<Pin<Box<dyn Future<Output = OwnedSemaphorePermit> + Send>>>,
+    #[allow(clippy::type_complexity)]
+    permit_future: Option<Pin<Box<dyn Future<Output = Result<OwnedSemaphorePermit, AcquireError>> + Send>>>,
     permit_acquired: bool,
 }
 
@@ -75,7 +77,7 @@ impl<T: Stream> RateLimiter<T> {
             stream,
             capacity,
 
-            interval: time::interval(restock_interval).fuse(),
+            interval: time::interval(restock_interval),
             // `interval` starts immediately, so we can start with zero permits
             permits: Arc::new(Semaphore::new(0)),
             permit_future: None,
@@ -89,7 +91,7 @@ impl<T: Stream> Stream for RateLimiter<T> {
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         // "Restock" permits once interval is ready
-        if let Poll::Ready(Some(_)) = self.as_mut().project().interval.poll_next(cx) {
+        if self.as_mut().project().interval.poll_tick(cx).is_ready() {
             self.permits
                 .add_permits(self.capacity - self.permits.available_permits());
         }
@@ -103,6 +105,8 @@ impl<T: Stream> Stream for RateLimiter<T> {
             }
 
             // Wait until a permit is acquired
+            // `unwrap()` is safe because acquire_owned only panics if the semaphore has closed, but we never close it
+            // for the lifetime of this instance
             let permit = futures::ready!(self
                 .as_mut()
                 .project()
@@ -110,7 +114,8 @@ impl<T: Stream> Stream for RateLimiter<T> {
                 .as_mut()
                 .unwrap()
                 .as_mut()
-                .poll(cx));
+                .poll(cx))
+            .unwrap();
             // Don't release the permit on drop, `interval` will restock permits
             permit.forget();
             let this = self.as_mut().project();
@@ -130,45 +135,54 @@ impl<T: Stream> Stream for RateLimiter<T> {
 mod test {
     use super::*;
     use crate::runtime;
-    use futures::{future::Either, stream};
+    use futures::{stream, StreamExt};
 
-    #[runtime::test_basic]
+    #[runtime::test]
     async fn rate_limit() {
         let repeater = stream::repeat(());
 
-        let mut rate_limited = repeater.rate_limit(10, Duration::from_secs(100)).fuse();
+        let mut rate_limited = repeater.rate_limit(10, Duration::from_secs(100));
 
-        let mut timeout = time::delay_for(Duration::from_millis(50)).fuse();
+        let timeout = time::sleep(Duration::from_millis(50));
+        tokio::pin!(timeout);
         let mut count = 0usize;
         loop {
-            let either = futures::future::select(rate_limited.select_next_some(), timeout).await;
-            match either {
-                Either::Left((_, to)) => {
+            let item = tokio::select! {
+                biased;
+                _ = &mut timeout => None,
+                item = rate_limited.next() => item,
+            };
+
+            match item {
+                Some(_) => {
                     count += 1;
-                    timeout = to;
                 },
-                Either::Right(_) => break,
+                None => break,
             }
         }
         assert_eq!(count, 10);
     }
 
-    #[runtime::test_basic]
+    #[runtime::test]
     async fn rate_limit_restock() {
         let repeater = stream::repeat(());
 
-        let mut rate_limited = repeater.rate_limit(10, Duration::from_millis(10)).fuse();
+        let mut rate_limited = repeater.rate_limit(10, Duration::from_millis(10));
 
-        let mut timeout = time::delay_for(Duration::from_millis(50)).fuse();
+        let timeout = time::sleep(Duration::from_millis(50));
+        tokio::pin!(timeout);
         let mut count = 0usize;
         loop {
-            let either = futures::future::select(rate_limited.select_next_some(), timeout).await;
-            match either {
-                Either::Left((_, to)) => {
+            let item = tokio::select! {
+                biased;
+                _ = &mut timeout => None,
+                item = rate_limited.next() => item,
+            };
+            match item {
+                Some(_) => {
                     count += 1;
-                    timeout = to;
                 },
-                Either::Right(_) => break,
+                None => break,
             }
         }
         // Test that at least 1 restock happens.
