@@ -228,6 +228,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                     block.height(),
                     header_hash,
                     block.accumulated_data().total_accumulated_difficulty,
+                    block.header().prev_hash.clone(),
                 )
                 .commit()
                 .await?;
@@ -251,17 +252,6 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         }
 
         if let Some(block) = current_block {
-            // Update metadata to last tip header
-            let header = &block.header();
-            let height = header.height;
-            let best_block = header.hash();
-            let accumulated_difficulty = block.accumulated_data().total_accumulated_difficulty;
-            self.db
-                .write_transaction()
-                .set_best_block(height, best_block.to_vec(), accumulated_difficulty)
-                .commit()
-                .await?;
-
             self.hooks.call_on_complete_hooks(block);
         }
 
