@@ -1,38 +1,37 @@
 const CompletedTransaction = require("./completedTransaction");
-const WalletFFI = require("./walletFFI");
+const InterfaceFFI = require("./ffiInterface");
 
 class CompletedTransactions {
   #tari_completed_transactions_ptr;
 
-  constructor(tari_completed_transactions_ptr) {
-    this.#tari_completed_transactions_ptr = tari_completed_transactions_ptr;
-  }
-
-  static async fromWallet(wallet) {
-    return new CompletedTransactions(
-      await WalletFFI.walletGetCompletedTransactions(wallet)
-    );
+  constructor(ptr) {
+    this.#tari_completed_transactions_ptr = ptr;
   }
 
   getLength() {
-    return WalletFFI.completedTransactionsGetLength(
+    return InterfaceFFI.completedTransactionsGetLength(
       this.#tari_completed_transactions_ptr
     );
   }
 
-  async getAt(position) {
-    return new CompletedTransaction(
-      await WalletFFI.completedTransactionsGetAt(
+  getAt(position) {
+    let result = new CompletedTransaction();
+    result.pointerAssign(
+      InterfaceFFI.completedTransactionsGetAt(
         this.#tari_completed_transactions_ptr,
         position
       )
     );
+    return result;
   }
 
   destroy() {
-    return WalletFFI.completedTransactionsDestroy(
-      this.#tari_completed_transactions_ptr
-    );
+    if (this.#tari_completed_transactions_ptr) {
+      InterfaceFFI.completedTransactionsDestroy(
+        this.#tari_completed_transactions_ptr
+      );
+      this.#tari_completed_transactions_ptr = undefined; //prevent double free segfault
+    }
   }
 }
 

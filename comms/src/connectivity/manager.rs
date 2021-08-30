@@ -53,6 +53,7 @@ use std::{
 };
 use tari_shutdown::ShutdownSignal;
 use tokio::{sync::broadcast, task::JoinHandle, time};
+use tracing::{span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::connectivity::manager";
 
@@ -156,6 +157,7 @@ impl ConnectivityManagerActor {
         task::spawn(Self::run(self))
     }
 
+    #[tracing::instrument(name = "connectivity_manager_actor::run", skip(self))]
     pub async fn run(mut self) {
         info!(target: LOG_TARGET, "ConnectivityManager started");
         let mut shutdown_signal = self
@@ -216,28 +218,41 @@ impl ConnectivityManagerActor {
             GetConnectivityStatus(reply) => {
                 let _ = reply.send(self.status);
             },
-            DialPeer(node_id, reply) => match self.pool.get(&node_id) {
-                Some(state) if state.is_connected() => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Found existing connection for peer `{}`",
-                        node_id.short_str()
-                    );
-                    let _ = reply.send(Ok(state.connection().cloned().expect("Already checked")));
-                },
-                _ => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "No existing connection found for peer `{}`. Dialing...",
-                        node_id.short_str()
-                    );
-                    if let Err(err) = self.connection_manager.send_dial_peer(node_id, reply).await {
-                        error!(
-                            target: LOG_TARGET,
-                            "Failed to send dial request to connection manager: {:?}", err
-                        );
+            DialPeer {
+                node_id,
+                reply_tx,
+                tracing_id,
+            } => {
+                let span = span!(Level::TRACE, "handle_request");
+                // let _e = span.enter();
+                span.follows_from(tracing_id);
+                async move {
+                    match self.pool.get(&node_id) {
+                        Some(state) if state.is_connected() => {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Found existing connection for peer `{}`",
+                                node_id.short_str()
+                            );
+                            let _ = reply_tx.send(Ok(state.connection().cloned().expect("Already checked")));
+                        },
+                        _ => {
+                            debug!(
+                                target: LOG_TARGET,
+                                "No existing connection found for peer `{}`. Dialing...",
+                                node_id.short_str()
+                            );
+                            if let Err(err) = self.connection_manager.send_dial_peer(node_id, Some(reply_tx)).await {
+                                error!(
+                                    target: LOG_TARGET,
+                                    "Failed to send dial request to connection manager: {:?}", err
+                                );
+                            }
+                        },
                     }
-                },
+                }
+                .instrument(span)
+                .await
             },
             AddManagedPeers(node_ids) => {
                 self.add_managed_peers(node_ids).await;
@@ -435,6 +450,7 @@ impl ConnectivityManagerActor {
         Ok(conns.into_iter().cloned().collect())
     }
 
+    #[tracing::instrument(skip(self))]
     async fn add_managed_peers(&mut self, node_ids: Vec<NodeId>) {
         let pool = &mut self.pool;
         let mut should_update_connectivity = false;

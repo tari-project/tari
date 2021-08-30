@@ -54,7 +54,6 @@ use crate::{
     Bytes,
 };
 use futures::{channel::mpsc, AsyncRead, AsyncWrite, SinkExt, StreamExt};
-use log::*;
 use prost::Message;
 use std::{
     borrow::Cow,
@@ -64,6 +63,7 @@ use std::{
 use tokio::time;
 use tower::Service;
 use tower_make::MakeService;
+use tracing::{debug, error, instrument, span, trace, warn, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::rpc";
 
@@ -286,6 +286,7 @@ where
         }
     }
 
+    #[tracing::instrument(name = "rpc::server::new_client_connection", skip(self, notification), err)]
     async fn handle_protocol_notification(
         &mut self,
         notification: ProtocolNotification<TSubstream>,
@@ -312,6 +313,7 @@ where
         Ok(())
     }
 
+    #[tracing::instrument(name = "rpc::server::try_initiate_service", skip(self, framed), err)]
     async fn try_initiate_service(
         &mut self,
         protocol: ProtocolId,
@@ -436,6 +438,7 @@ where
         Ok(())
     }
 
+    #[instrument(name = "rpc::server::handle_req", skip(self), err)]
     async fn handle(&mut self, mut request: Bytes) -> Result<(), RpcServerError> {
         let decoded_msg = proto::rpc::RpcRequest::decode(&mut request)?;
 
@@ -646,7 +649,8 @@ where
 
 async fn log_timing<R, F: Future<Output = R>>(request_id: u32, tag: &str, fut: F) -> R {
     let t = Instant::now();
-    let ret = fut.await;
+    let span = span!(Level::TRACE, "rpc::internal::timing::{}::{}", request_id, tag);
+    let ret = fut.instrument(span).await;
     let elapsed = t.elapsed();
     trace!(
         target: LOG_TARGET,

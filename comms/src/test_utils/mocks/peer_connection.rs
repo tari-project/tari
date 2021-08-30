@@ -190,9 +190,16 @@ impl PeerConnectionMock {
         use PeerConnectionRequest::*;
         self.state.inc_call_count();
         match req {
-            OpenSubstream(protocol, reply_tx) => match self.state.open_substream().await {
+            OpenSubstream {
+                protocol_id,
+                reply_tx,
+                tracing_id: _,
+            } => match self.state.open_substream().await {
                 Ok(stream) => {
-                    let negotiated_substream = NegotiatedSubstream { protocol, stream };
+                    let negotiated_substream = NegotiatedSubstream {
+                        protocol: protocol_id,
+                        stream,
+                    };
                     reply_tx.send(Ok(negotiated_substream)).unwrap();
                 },
                 Err(err) => {

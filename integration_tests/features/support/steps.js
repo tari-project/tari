@@ -403,6 +403,78 @@ Given(
   }
 );
 
+Given(
+  /I recover wallet (.*) into (\d+) wallets connected to all seed nodes/,
+  { timeout: 120 * 1000 },
+  async function (walletNameA, numwallets) {
+    const seedWords = this.getWallet(walletNameA).getSeedWords();
+    for (let i = 1; i <= numwallets; i++) {
+      console.log(
+        "Recover " +
+          walletNameA +
+          " into wallet " +
+          i +
+          ", seed words:\n  " +
+          seedWords
+      );
+      const wallet = new WalletProcess(
+        i,
+        false,
+        {},
+        this.logFilePathWallet,
+        seedWords
+      );
+      wallet.setPeerSeeds([this.seedAddresses()]);
+      await wallet.startNew();
+      this.addWallet(i, wallet);
+      let walletClient = await this.getWallet(i.toString()).connectClient();
+      let walletInfo = await walletClient.identify();
+      this.addWalletPubkey(wallet, walletInfo.public_key);
+    }
+  }
+);
+
+Then(
+  /I wait for (\d+) wallets to have at least (\d+) uT/,
+  { timeout: 710 * 1000 },
+  async function (numwallets, amount) {
+    for (let i = 1; i <= numwallets; i++) {
+      const walletClient = await this.getWallet(i.toString()).connectClient();
+      console.log("\n");
+      console.log(
+        "Waiting for wallet " + i + " balance to be at least " + amount + " uT"
+      );
+
+      await waitFor(
+        async () => walletClient.isBalanceAtLeast(amount),
+        true,
+        700 * 1000,
+        5 * 1000,
+        5
+      );
+      consoleLogBalance(await walletClient.getBalance());
+      if (!(await walletClient.isBalanceAtLeast(amount))) {
+        console.log("Balance not adequate!");
+      }
+      expect(await walletClient.isBalanceAtLeast(amount)).to.equal(true);
+    }
+  }
+);
+
+Then(
+  /Wallet (.*) and (\d+) wallets have the same balance/,
+  { timeout: 120 * 1000 },
+  async function (wallet, numwallets) {
+    const walletClient = await this.getWallet(wallet).connectClient();
+    let balance = await walletClient.getBalance();
+    for (let i = 1; i <= numwallets; i++) {
+      const walletClient2 = await this.getWallet(i.toString()).connectClient();
+      let balance2 = await walletClient2.getBalance();
+      expect(balance === balance2);
+    }
+  }
+);
+
 When(/I stop wallet (.*)/, async function (walletName) {
   let wallet = this.getWallet(walletName);
   await wallet.stop();
@@ -3307,29 +3379,6 @@ When(
   }
 );
 
-When(
-  "I have a ffi wallet {word} connected to base node {word}",
-  { timeout: 20 * 1000 },
-  async function (name, node) {
-    let wallet = await this.createAndAddFFIWallet(name);
-    let peer = this.nodes[node].peerAddress().split("::");
-    await wallet.addBaseNodePeer(peer[0], peer[1]);
-  }
-);
-
-Then(
-  "I want to get public key of ffi wallet {word}",
-  { timeout: 20 * 1000 },
-  async function (name) {
-    let wallet = this.getWallet(name);
-    let public_key = await wallet.getPublicKey();
-    expect(public_key.length).to.be.equal(
-      64,
-      `Public key has wrong length : ${public_key}`
-    );
-  }
-);
-
 Then(
   /I wait until base node (.*) has (.*) unconfirmed transactions in its mempool/,
   { timeout: 180 * 1000 },
@@ -3357,11 +3406,92 @@ Then(
 );
 
 Then(
+  /node (.*) lists heights (\d+) to (\d+)/,
+  async function (node, first, last) {
+    const client = this.getClient(node);
+    const start = first;
+    const end = last;
+    let heights = [];
+
+    for (let i = start; i <= end; i++) {
+      heights.push(i);
+    }
+    const blocks = await client.getBlocks(heights);
+    const results = blocks.map((result) =>
+      parseInt(result.block.header.height)
+    );
+    let i = 0; // for ordering check
+    for (let height = start; height <= end; height++) {
+      expect(results[i]).equal(height);
+      i++;
+    }
+  }
+);
+
+Then(
+  "I wait for recovery of wallet {word} to finish",
+  { timeout: 600 * 1000 },
+  async function (wallet_name) {
+    const wallet = this.getWallet(wallet_name);
+    while (wallet.recoveryInProgress) {
+      await sleep(1000);
+    }
+    expect(wallet.recoveryProgress[1]).to.be.greaterThan(0);
+    expect(wallet.recoveryProgress[0]).to.be.equal(wallet.recoveryProgress[1]);
+  }
+);
+
+When(
+  "I have {int} base nodes with pruning horizon {int} force syncing on node {word}",
+  { timeout: 190 * 1000 },
+  async function (nodes_count, horizon, force_sync_to) {
+    const promises = [];
+    const force_sync_address = this.getNode(force_sync_to).peerAddress();
+    for (let i = 0; i < nodes_count; i++) {
+      const base_node = this.createNode(`BaseNode${i}`, {
+        pruningHorizon: horizon,
+      });
+      base_node.setPeerSeeds([force_sync_address]);
+      base_node.setForceSyncPeers([force_sync_address]);
+      promises.push(
+        base_node.startNew().then(() => this.addNode(`BaseNode${i}`, base_node))
+      );
+    }
+    await Promise.all(promises);
+  }
+);
+
+//region FFI
+When(
+  "I have ffi wallet {word} connected to base node {word}",
+  { timeout: 20 * 1000 },
+  async function (name, node) {
+    let wallet = await this.createAndAddFFIWallet(name);
+    let peer = this.nodes[node].peerAddress().split("::");
+    wallet.addBaseNodePeer(peer[0], peer[1]);
+  }
+);
+
+Then(
+  "I want to get public key of ffi wallet {word}",
+  { timeout: 20 * 1000 },
+  function (name) {
+    let wallet = this.getWallet(name);
+    let public_key = wallet.identify();
+    expect(public_key.length).to.be.equal(
+      64,
+      `Public key has wrong length : ${public_key}`
+    );
+  }
+);
+
+Then(
   "I want to get emoji id of ffi wallet {word}",
   { timeout: 20 * 1000 },
   async function (name) {
     let wallet = this.getWallet(name);
-    let emoji_id = await wallet.getEmojiId();
+    let emoji_id = wallet.identifyEmoji();
+    console.log(emoji_id);
     expect(emoji_id.length).to.be.equal(
       22 * 3, // 22 emojis, 3 bytes per one emoji
       `Emoji id has wrong length : ${emoji_id}`
@@ -3369,45 +3499,27 @@ Then(
   }
 );
 
-Then(
-  "I wait for ffi wallet {word} to have at least {int} uT",
-  { timeout: 60 * 1000 },
-  async function (name, amount) {
-    let wallet = this.getWallet(name);
-    let retries = 1;
-    let balance = 0;
-    const retries_limit = 12;
-    while (retries <= retries_limit) {
-      balance = await wallet.getBalance();
-      if (balance >= amount) {
-        break;
-      }
-      await sleep(5000);
-      ++retries;
-    }
-    expect(balance, "Balance is not enough").to.be.greaterThanOrEqual(amount);
-  }
-);
-
 When(
   "I send {int} uT from ffi wallet {word} to wallet {word} at fee {int}",
   { timeout: 20 * 1000 },
-  async function (amount, sender, receiver, fee) {
-    await this.getWallet(sender).sendTransaction(
-      await this.getWalletPubkey(receiver),
+  function (amount, sender, receiver, fee) {
+    let ffi_wallet = this.getWallet(sender);
+    let result = ffi_wallet.sendTransaction(
+      this.getWalletPubkey(receiver),
       amount,
       fee,
       `Send from ffi ${sender} to ${receiver} at fee ${fee}`
     );
+    console.log(result);
   }
 );
 
 When(
   "I set passphrase {word} of ffi wallet {word}",
   { timeout: 20 * 1000 },
-  async function (passphrase, name) {
+  function (passphrase, name) {
     let wallet = this.getWallet(name);
-    await wallet.applyEncryption(passphrase);
+    wallet.applyEncryption(passphrase);
   }
 );
 
@@ -3416,17 +3528,29 @@ Then(
   { timeout: 120 * 1000 },
   async function (received, send, name) {
     let wallet = this.getWallet(name);
-    let [outbound, inbound] = await wallet.getCompletedTransactions();
-    let retries = 1;
-    const retries_limit = 23;
-    while (
-      (inbound != received || outbound != send) &&
-      retries <= retries_limit
-    ) {
-      await sleep(5000);
-      [outbound, inbound] = await wallet.getCompletedTransactions();
-      ++retries;
+    let completed = wallet.getCompletedTxs();
+    let inbound = 0;
+    let outbound = 0;
+    let length = completed.getLength();
+    let inboundTxs = wallet.getInboundTxs();
+    inbound += inboundTxs.getLength();
+    inboundTxs.destroy();
+    let outboundTxs = wallet.getOutboundTxs();
+    outbound += outboundTxs.getLength();
+    outboundTxs.destroy();
+    for (let i = 0; i < length; i++) {
+      {
+        let tx = completed.getAt(i);
+        if (tx.isOutbound()) {
+          outbound++;
+        } else {
+          inbound++;
+        }
+        tx.destroy();
+      }
     }
+    completed.destroy();
+
     expect(outbound, "Outbound transaction count mismatch").to.be.equal(send);
     expect(inbound, "Inbound transaction count mismatch").to.be.equal(received);
   }
@@ -3454,70 +3578,86 @@ Then(
 When(
   "I add contact with alias {word} and pubkey {word} to ffi wallet {word}",
   { timeout: 20 * 1000 },
-  async function (alias, wallet_name, ffi_wallet_name) {
+  function (alias, wallet_name, ffi_wallet_name) {
     let ffi_wallet = this.getWallet(ffi_wallet_name);
-    await ffi_wallet.addContact(alias, await this.getWalletPubkey(wallet_name));
+    ffi_wallet.addContact(alias, this.getWalletPubkey(wallet_name));
   }
 );
 
 Then(
   "I have contact with alias {word} and pubkey {word} in ffi wallet {word}",
   { timeout: 20 * 1000 },
-  async function (alias, wallet_name, ffi_wallet_name) {
+  function (alias, wallet_name, ffi_wallet_name) {
+    let wallet = this.getWalletPubkey(wallet_name);
     let ffi_wallet = this.getWallet(ffi_wallet_name);
-    expect(await this.getWalletPubkey(wallet_name)).to.be.equal(
-      await ffi_wallet.getContact(alias)
-    );
+    let contacts = ffi_wallet.getContactList();
+    let length = contacts.getLength();
+    let found = false;
+    for (let i = 0; i < length; i++) {
+      {
+        let contact = contacts.getAt(i);
+        let hex = contact.getPubkeyHex();
+        if (wallet === hex) {
+          found = true;
+        }
+        contact.destroy();
+      }
+    }
+    contacts.destroy();
+    expect(found).to.be.equal(true);
   }
 );
 
 When(
   "I remove contact with alias {word} from ffi wallet {word}",
   { timeout: 20 * 1000 },
-  async function (alias, walllet_name) {
-    let wallet = this.getWallet(walllet_name);
-    await wallet.removeContact(alias);
+  function (alias, wallet_name) {
+    let ffi_wallet = this.getWallet(wallet_name);
+    let contacts = ffi_wallet.getContactList();
+    let length = contacts.getLength();
+    for (let i = 0; i < length; i++) {
+      {
+        let contact = contacts.getAt(i);
+        let calias = contact.getAlias();
+        if (alias === calias) {
+          ffi_wallet.removeContact(contact);
+        }
+        contact.destroy();
+      }
+    }
+    contacts.destroy();
   }
 );
 
 Then(
   "I don't have contact with alias {word} in ffi wallet {word}",
   { timeout: 20 * 1000 },
-  async function (alias, wallet_name) {
-    let wallet = this.getWallet(wallet_name);
-    expect(await wallet.getContact("alias")).to.be.undefined;
-  }
-);
-
-Then(
-  /node (.*) lists heights (\d+) to (\d+)/,
-  async function (node, first, last) {
-    const client = this.getClient(node);
-    const start = first;
-    const end = last;
-    let heights = [];
-
-    for (let i = start; i <= end; i++) {
-      heights.push(i);
+  function (alias, wallet_name) {
+    let ffi_wallet = this.getWallet(wallet_name);
+    let contacts = ffi_wallet.getContactList();
+    let length = contacts.getLength();
+    let found = false;
+    for (let i = 0; i < length; i++) {
+      {
+        let contact = contacts.getAt(i);
+        let calias = contact.getAlias();
+        if (alias === calias) {
+          found = true;
+        }
+        contact.destroy();
+      }
     }
-    const blocks = await client.getBlocks(heights);
-    const results = blocks.map((result) =>
-      parseInt(result.block.header.height)
-    );
-    let i = 0; // for ordering check
-    for (let height = start; height <= end; height++) {
-      expect(results[i]).equal(height);
-      i++;
-    }
+    contacts.destroy();
+    expect(found).to.be.equal(false);
   }
 );
 
 When(
   "I set base node {word} for ffi wallet {word}",
-  async function (node, wallet_name) {
+  function (node, wallet_name) {
     let wallet = this.getWallet(wallet_name);
     let peer = this.nodes[node].peerAddress().split("::");
-    await wallet.addBaseNodePeer(peer[0], peer[1]);
+    wallet.addBaseNodePeer(peer[0], peer[1]);
   }
 );
 
@@ -3526,26 +3666,48 @@ Then(
   { timeout: 120 * 1000 },
   async function (wallet_name, count) {
     let wallet = this.getWallet(wallet_name);
-    let broadcast = await wallet.getOutboundTransactionsCount();
+    let broadcast = wallet.getOutboundTransactions();
+    let length = broadcast.getLength();
+    broadcast.destroy();
     let retries = 1;
     const retries_limit = 24;
-    while (broadcast != count && retries <= retries_limit) {
+    while (length != count && retries <= retries_limit) {
       await sleep(5000);
-      broadcast = await wallet.getOutboundTransactionsCount();
+      broadcast = wallet.getOutboundTransactions();
+      length = broadcast.getLength();
+      broadcast.destroy();
       ++retries;
     }
-    expect(broadcast, "Number of pending messages mismatch").to.be.equal(count);
+    expect(length, "Number of pending messages mismatch").to.be.equal(count);
   }
 );
 
 Then(
-  "I cancel all transactions on ffi wallet {word} and it will cancel {int} transaction",
+  "I cancel all outbound transactions on ffi wallet {word} and it will cancel {int} transaction",
   async function (wallet_name, count) {
     const wallet = this.getWallet(wallet_name);
-    expect(
-      await wallet.cancelAllOutboundTransactions(),
-      "Number of cancelled transactions"
-    ).to.be.equal(count);
+    let txs = wallet.getOutboundTransactions();
+    let cancelled = 0;
+    for (let i = 0; i < txs.getLength(); i++) {
+      let tx = txs.getAt(i);
+      let cancellation = wallet.cancelPendingTransaction(tx.getTransactionID());
+      tx.destroy();
+      if (cancellation) {
+        cancelled++;
+      }
+    }
+    txs.destroy();
+    expect(cancelled).to.be.equal(count);
+  }
+);
+
+Given(
+  /I have a ffi wallet (.*) connected to base node (.*)/,
+  { timeout: 20 * 1000 },
+  async function (walletName, nodeName) {
+    let ffi_wallet = await this.createAndAddFFIWallet(walletName, null);
+    let peer = this.nodes[nodeName].peerAddress().split("::");
+    ffi_wallet.addBaseNodePeer(peer[0], peer[1]);
   }
 );
 
@@ -3562,41 +3724,10 @@ Then(
       seed_words_text
     );
     let peer = this.nodes[node].peerAddress().split("::");
-    await ffi_wallet.addBaseNodePeer(peer[0], peer[1]);
-    await ffi_wallet.startRecovery(peer[0]);
+    ffi_wallet.addBaseNodePeer(peer[0], peer[1]);
+    ffi_wallet.startRecovery(peer[0]);
   }
 );
-
-Then(
-  "I wait for recovery of wallet {word} to finish",
-  { timeout: 600 * 1000 },
-  async function (wallet_name) {
-    const wallet = this.getWallet(wallet_name);
-    while (wallet.recoveryInProgress) {
-      await sleep(1000);
-    }
-    expect(wallet.recoveryProgress[1]).to.be.greaterThan(0);
-    expect(wallet.recoveryProgress[0]).to.be.equal(wallet.recoveryProgress[1]);
-  }
-);
-
-Then("I start STXO validation on wallet {word}", async function (wallet_name) {
-  const wallet = this.getWallet(wallet_name);
-  await wallet.startStxoValidation();
-  while (!wallet.stxo_validation_complete) {
-    await sleep(1000);
-  }
-  expect(wallet.stxo_validation_result).to.be.equal(0);
-});
-
-Then("I start UTXO validation on wallet {word}", async function (wallet_name) {
-  const wallet = this.getWallet(wallet_name);
-  await wallet.startUtxoValidation();
-  while (!wallet.utxo_validation_complete) {
-    await sleep(1000);
-  }
-  expect(wallet.utxo_validation_result).to.be.equal(0);
-});
 
 Then(
   "Check callbacks for finished inbound tx on ffi wallet {word}",
@@ -3617,3 +3748,183 @@ Then(
     wallet.clearCallbackCounters();
   }
 );
+
+Then(
+  /I wait for ffi wallet (.*) to receive (.*) transaction/,
+  { timeout: 710 * 1000 },
+  async function (wallet_name, amount) {
+    let wallet = this.getWallet(wallet_name);
+
+    console.log("\n");
+    console.log(
+      "Waiting for " + wallet_name + " to receive " + amount + " transaction(s)"
+    );
+
+    await waitFor(
+      async () => {
+        return wallet.getCounters().received >= amount;
+      },
+      true,
+      700 * 1000,
+      5 * 1000,
+      5
+    );
+
+    if (!(wallet.getCounters().received >= amount)) {
+      console.log("Counter not adequate!");
+    } else {
+      console.log(wallet.getCounters());
+    }
+    expect(wallet.getCounters().received >= amount).to.equal(true);
+  }
+);
+
+Then(
+  /I wait for ffi wallet (.*) to receive (.*) finalization/,
+  { timeout: 710 * 1000 },
+  async function (wallet_name, amount) {
+    let wallet = this.getWallet(wallet_name);
+
+    console.log("\n");
+    console.log(
+      "Waiting for " +
+        wallet_name +
+        " to receive " +
+        amount +
+        " transaction finalization(s)"
+    );
+
+    await waitFor(
+      async () => {
+        return wallet.getCounters().finalized >= amount;
+      },
+      true,
+      700 * 1000,
+      5 * 1000,
+      5
+    );
+
+    if (!(wallet.getCounters().finalized >= amount)) {
+      console.log("Counter not adequate!");
+    } else {
+      console.log(wallet.getCounters());
+    }
+    expect(wallet.getCounters().finalized >= amount).to.equal(true);
+  }
+);
+
+Then(
+  /I wait for ffi wallet (.*) to receive (.*) SAF message/,
+  { timeout: 710 * 1000 },
+  async function (wallet_name, amount) {
+    let wallet = this.getWallet(wallet_name);
+
+    console.log("\n");
+    console.log(
+      "Waiting for " +
+        wallet_name +
+        " to receive " +
+        amount +
+        " SAF messages(s)"
+    );
+
+    await waitFor(
+      async () => {
+        return wallet.getCounters().saf >= amount;
+      },
+      true,
+      700 * 1000,
+      5 * 1000,
+      5
+    );
+
+    if (!(wallet.getCounters().saf >= amount)) {
+      console.log("Counter not adequate!");
+    } else {
+      console.log(wallet.getCounters());
+    }
+    expect(wallet.getCounters().saf >= amount).to.equal(true);
+  }
+);
+
+Then(
+  /I wait for ffi wallet (.*) to have at least (.*) uT/,
+  { timeout: 710 * 1000 },
+  async function (wallet_name, amount) {
+    let wallet = this.getWallet(wallet_name);
+
+    console.log("\n");
+    console.log(
+      "Waiting for " + wallet_name + " balance to be at least " + amount + " uT"
+    );
+
+    let count = 0;
+
+    while (!(wallet.getBalance().available >= amount)) {
+      await sleep(1000);
+      count++;
+      if (count > 700) {
+        break;
+      }
+    }
+
+    let balance = wallet.getBalance().available;
+
+    if (!(balance >= amount)) {
+      console.log("Balance not adequate!");
+    } else {
+      console.log(wallet.getBalance());
+    }
+    expect(balance >= amount).to.equal(true);
+  }
+);
+
+Then(
+  "I wait for recovery of ffi wallet {word} to finish",
+  { timeout: 600 * 1000 },
+  function (wallet_name) {
+    const wallet = this.getWallet(wallet_name);
+    while (!wallet.recoveryFinished) {
+      sleep(1000).then();
+    }
+  }
+);
+
+When(/I start ffi wallet (.*)/, async function (walletName) {
+  let wallet = this.getWallet(walletName);
+  await wallet.startNew(null, null);
+});
+
+When(/I restart ffi wallet (.*)/, async function (walletName) {
+  let wallet = this.getWallet(walletName);
+  await wallet.restart();
+});
+
+When(/I stop ffi wallet (.*)/, function (walletName) {
+  let wallet = this.getWallet(walletName);
+  wallet.stop();
+  wallet.resetCounters();
+});
+
+Then(
+  "I start STXO validation on ffi wallet {word}",
+  async function (wallet_name) {
+    const wallet = this.getWallet(wallet_name);
+    await wallet.startStxoValidation();
+    while (!wallet.getStxoValidationStatus().stxo_validation_complete) {
+      await sleep(1000);
+    }
+  }
+);
+
+Then(
+  "I start UTXO validation on ffi wallet {word}",
+  async function (wallet_name) {
+    const wallet = this.getWallet(wallet_name);
+    await wallet.startUtxoValidation();
+    while (!wallet.getUtxoValidationStatus().utxo_validation_complete) {
+      await sleep(1000);
+    }
+  }
+);
+//endregion

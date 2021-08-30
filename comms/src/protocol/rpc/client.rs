@@ -62,6 +62,7 @@ use std::{
 };
 use tokio::time;
 use tower::{Service, ServiceExt};
+use tracing::{event, span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::rpc::client";
 
@@ -83,7 +84,15 @@ impl RpcClient {
         let (request_tx, request_rx) = mpsc::channel(1);
         let connector = ClientConnector::new(request_tx);
         let (ready_tx, ready_rx) = oneshot::channel();
-        task::spawn(RpcClientWorker::new(config, request_rx, framed, ready_tx, protocol_name).run());
+        let tracing_id = tracing::Span::current().id();
+        task::spawn({
+            let span = span!(Level::TRACE, "start_rpc_worker");
+            span.follows_from(tracing_id);
+
+            RpcClientWorker::new(config, request_rx, framed, ready_tx, protocol_name)
+                .run()
+                .instrument(span)
+        });
         ready_rx
             .await
             .expect("ready_rx oneshot is never dropped without a reply")?;
@@ -364,6 +373,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
         String::from_utf8_lossy(&self.protocol_id)
     }
 
+    #[tracing::instrument(name = "rpc_client_worker run", skip(self), fields(next_request_id= self.next_request_id))]
     async fn run(mut self) {
         debug!(
             target: LOG_TARGET,
@@ -472,6 +482,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
         Ok(())
     }
 
+    #[tracing::instrument(name = "rpc_do_request_response", skip(self, reply), err)]
     async fn do_request_response(
         &mut self,
         request: BaseRequest<Bytes>,
@@ -494,14 +505,17 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
 
         let (mut response_tx, response_rx) = mpsc::channel(10);
         if reply.send(response_rx).is_err() {
-            debug!(target: LOG_TARGET, "Client request was cancelled.");
+            event!(Level::WARN, "Client request was cancelled");
+            warn!(target: LOG_TARGET, "Client request was cancelled.");
             response_tx.close_channel();
+            // TODO: Should this not exit here?
         }
 
         loop {
             let resp = match self.read_reply().await {
                 Ok(resp) => {
                     let latency = start.elapsed();
+                    event!(Level::TRACE, "Message received");
                     trace!(
                         target: LOG_TARGET,
                         "Received response ({} byte(s)) from request #{} (protocol = {}, method={}) in {:.0?}",
@@ -522,11 +536,15 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
                         method,
                         start.elapsed()
                     );
+                    event!(Level::ERROR, "Response timed out");
                     let _ = response_tx.send(Err(RpcStatus::timed_out("Response timed out"))).await;
                     response_tx.close_channel();
                     break;
                 },
-                Err(err) => return Err(err),
+                Err(err) => {
+                    event!(Level::ERROR, "Errored:{}", err);
+                    return Err(err);
+                },
             };
 
             match Self::convert_to_result(resp, request_id) {

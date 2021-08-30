@@ -325,7 +325,6 @@ pub async fn init_wallet(
         peer_database_name: "peers".to_string(),
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
-        // TODO - make this configurable
         dht: DhtConfig {
             database_url: DbConnectionUrl::File(config.data_dir.join("dht-console-wallet.db")),
             auto_join: true,
@@ -335,7 +334,7 @@ pub async fn init_wallet(
             dedup_cache_capacity: config.dedup_cache_capacity,
             ..Default::default()
         },
-        // TODO: This should be false unless testing locally - make this configurable
+        // This should be false unless testing locally
         allow_test_addresses: config.allow_test_addresses,
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,

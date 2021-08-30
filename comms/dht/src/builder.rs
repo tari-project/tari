@@ -99,6 +99,11 @@ impl DhtBuilder {
         self
     }
 
+    pub fn with_dedup_discard_hit_count(mut self, max_hit_count: usize) -> Self {
+        self.config.dedup_allowed_message_occurrences = max_hit_count;
+        self
+    }
+
     pub fn with_num_random_nodes(mut self, n: usize) -> Self {
         self.config.num_random_nodes = n;
         self

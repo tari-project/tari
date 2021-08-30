@@ -131,7 +131,11 @@ impl ConnectionManagerMock {
         self.state.inc_call_count();
         self.state.add_call(format!("{:?}", req)).await;
         match req {
-            DialPeer(node_id, reply_tx) => {
+            DialPeer {
+                node_id,
+                reply_tx,
+                tracing_id: _,
+            } => {
                 // Send Ok(conn) if we have an active connection, otherwise Err(DialConnectFailedAllAddresses)
                 let _ = reply_tx.send(
                     self.state

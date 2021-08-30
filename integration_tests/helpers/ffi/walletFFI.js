@@ -65,6 +65,7 @@ class WalletFFI {
 
   static #fn;
   static error = ref.alloc(ref.types.int);
+  static recovery_in_progress = ref.alloc(ref.types.bool);
   static NULL = ref.NULL;
   static #loaded = false;
   static #ps = null;
@@ -432,6 +433,7 @@ class WalletFFI {
           "pointer",
           "pointer",
           "pointer",
+          "bool*",
           "int*",
         ],
       ],
@@ -1519,6 +1521,7 @@ class WalletFFI {
         callback_invalid_txo_validation_complete,
         callback_transaction_validation_complete,
         callback_saf_message_received,
+        this.recovery_in_progress,
         this.error,
         this.checkAsyncRes(resolve, reject, "walletCreate")
       )

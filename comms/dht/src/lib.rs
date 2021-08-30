@@ -153,11 +153,11 @@ pub use storage::DbConnectionUrl;
 mod dedup;
 pub use dedup::DedupLayer;
 
+mod filter;
 mod logging_middleware;
 mod proto;
 mod rpc;
 mod schema;
-mod tower_filter;
 
 pub mod broadcast_strategy;
 pub mod domain_message;

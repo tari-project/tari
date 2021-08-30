@@ -67,6 +67,7 @@ pub struct BaseNodeContext {
 impl BaseNodeContext {
     /// Starts the node container. This entails the base node state machine.
     /// This call consumes the NodeContainer instance.
+    #[tracing::instrument(name = "base_node::run", skip(self))]
     pub async fn run(self) {
         info!(target: LOG_TARGET, "Tari base node has STARTED");
 

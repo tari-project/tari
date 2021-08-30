@@ -48,6 +48,7 @@ use tari_comms::{
     protocol::rpc::{RpcError, RpcHandshakeError},
     PeerConnection,
 };
+use tracing;
 
 const LOG_TARGET: &str = "c::bn::header_sync";
 
@@ -253,6 +254,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self, conn), err)]
     async fn attempt_sync(&mut self, mut conn: PeerConnection) -> Result<(), BlockHeaderSyncError> {
         let peer = conn.peer_node_id().clone();
         let mut client = conn.connect_rpc::<rpc::BaseNodeSyncRpcClient>().await?;
@@ -480,8 +482,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     ) -> Result<(), BlockHeaderSyncError> {
         const COMMIT_EVERY_N_HEADERS: usize = 1000;
 
-        // Peer returned less than the max headers. This indicates that there are no further headers to request.
-        if self.header_validator.valid_headers().len() < NUM_INITIAL_HEADERS_TO_REQUEST as usize {
+        // Peer returned no more than the max headers. This indicates that there are no further headers to request.
+        if self.header_validator.valid_headers().len() <= NUM_INITIAL_HEADERS_TO_REQUEST as usize {
             debug!(target: LOG_TARGET, "No further headers to download");
             if !self.pending_chain_has_higher_pow(&split_info.local_tip_header)? {
                 return Err(BlockHeaderSyncError::WeakerChain);
