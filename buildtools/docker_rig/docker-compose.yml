@@ -23,7 +23,7 @@ services:
       APP_EXEC: tari_console_wallet
       CREATE_CONFIG: 1
       CREATE_ID: 1
-      WAIT_FOR_TOR: 0
+      WAIT_FOR_TOR: 60
       TARI_NETWORK: weatherwax
       SHELL: "/bin/bash"
       TERM: "linux"
@@ -55,7 +55,7 @@ services:
       APP_EXEC: tari_base_node
       CREATE_CONFIG: 1
       CREATE_ID: 1
-      WAIT_FOR_TOR: 0
+      WAIT_FOR_TOR: 60
       TARI_NETWORK: weatherwax
       TARI_BASE_NODE__WEATHERWAX__TOR_CONTROL_AUTH: "password=asdf"
       TARI_BASE_NODE__WEATHERWAX__TOR_CONTROL_ADDRESS: "/dns4/tor/tcp/9051"

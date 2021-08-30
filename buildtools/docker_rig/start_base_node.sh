@@ -29,24 +29,28 @@ echo "WAIT_FOR_TOR: $WAIT_FOR_TOR"
 echo "base folder (in container): $TARI_BASE"
 echo "config folder (in container): $CONFIG"
 
-if [[ $WAIT_FOR_TOR == 1 ]]; then
-  echo "Waiting for tor to start up"
-  sleep 30
+if [[ $WAIT_FOR_TOR != 0 ]]; then
+  echo "Waiting $WAIT_FOR_TOR seconds for Tor to start up"
+  sleep "$WAIT_FOR_TOR"
 fi
 
 cd "$TARI_BASE" || exit 1
-ID_FILENAME=${NETWORK}_${APP_NAME}_id.json
 
-if [[ $CREATE_ID && ! -f $ID_FILENAME ]]; then
-  echo "Creating network identity file ($ID_FILENAME)."
-  $APP_EXEC -b "$TARI_BASE" --create-id || exit 1
-  echo "done"
+ARGS=()
+if [[ $CREATE_CONFIG == 1 && ! -f $CONFIG/config.toml ]]; then
+  echo "Creating config file."
+  ARGS+=("--init")
 fi
 
-if [[ $CREATE_CONFIG == 1 && ! -f $CONFIG/config.toml ]]; then
-  echo "Creating config file"
-  $APP_EXEC -b "$TARI_BASE" --init || exit 1
-  echo "done"
+ID_FILENAME=${NETWORK}_${APP_NAME}_id.json
+if [[ $CREATE_ID && ! -f $ID_FILENAME ]]; then
+  echo "Creating network identity file ($ID_FILENAME)."
+  ARGS+=("--create-id")
+fi
+
+if [ -n "${ARGS[0]}" ]; then
+  echo "Initializing."
+  $APP_EXEC -b "$TARI_BASE" -c "$CONFIG/config.toml" "${ARGS[@]}" || exit 1
 fi
 
 $APP_EXEC "$@"

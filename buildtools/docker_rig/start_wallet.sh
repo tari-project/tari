@@ -30,9 +30,9 @@ echo "base folder (in container): $TARI_BASE"
 echo "config folder (in container): $CONFIG"
 echo "wallet password: $PASSWORD" # delete this
 
-if [[ $WAIT_FOR_TOR == 1 ]]; then
-  echo "Waiting for tor to start up"
-  sleep 30
+if [[ $WAIT_FOR_TOR != 0 ]]; then
+  echo "Waiting $WAIT_FOR_TOR seconds for Tor to start up"
+  sleep "$WAIT_FOR_TOR"
 fi
 
 cd "$TARI_BASE" || exit 1
