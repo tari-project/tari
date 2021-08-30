@@ -20,10 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{env::JoinPathsError, path::PathBuf};
+use std::path::PathBuf;
 
+#[cfg(target_os = "windows")]
 const TARI_FOLDER: &str = "tari";
-const TARI_HIDDEN_FOLDER: &str = ".tari";
+#[cfg(any(target_os = "macos", target_os = "unix"))]
+const TARI_FOLDER: &str = ".tari";
 
 pub enum SourceLocation {
     SourceCode(SourceCodeOptions),
@@ -54,7 +56,7 @@ impl Default for InstallLocation {
         {
             bin = dirs::home_dir().expect("No default home folder");
             bin.push("bin");
-            home.push(TARI_HIDDEN_FOLDER);
+            home.push(TARI_FOLDER);
         }
 
         Self {
