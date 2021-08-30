@@ -20,14 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod common;
 mod base_node;
-mod wallet;
-mod mining;
 mod combined;
+mod common;
+mod mining;
+mod wallet;
 
-pub use common::{SourceLocation, InstallLocation};
-pub use base_node::{BaseNodeOptions};
-pub use mining::{Miners, MiningOptions};
-pub use wallet::{WalletOptions};
+pub use base_node::BaseNodeOptions;
 pub use combined::InstallerOptions;
+pub use common::{InstallLocation, SourceLocation};
+pub use mining::{Miners, MiningOptions};
+pub use wallet::WalletOptions;

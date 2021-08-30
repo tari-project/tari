@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::config::common::{SourceLocation, InstallLocation};
+use crate::config::common::{InstallLocation, SourceLocation};
 
 pub struct BaseNodeOptions {
     // Where do we get the base node code from?
@@ -28,7 +28,7 @@ pub struct BaseNodeOptions {
     // Where do the base node and related files live?
     install_location: InstallLocation,
     // Tor setup
-    tor_options: TorOptions
+    tor_options: TorOptions,
 }
 
 pub enum TorLocation {
@@ -41,5 +41,5 @@ pub enum TorLocation {
 }
 
 pub struct TorOptions {
-    location: TorLocation
+    location: TorLocation,
 }

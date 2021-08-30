@@ -1,8 +1,3 @@
 mod config;
 
-fn main() {
-
-}
-
-
-
+fn main() {}

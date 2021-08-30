@@ -20,8 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::path::PathBuf;
-use std::env::JoinPathsError;
+use std::{env::JoinPathsError, path::PathBuf};
 
 const TARI_FOLDER: &str = "tari";
 const TARI_HIDDEN_FOLDER: &str = ".tari";
@@ -46,11 +45,13 @@ impl Default for InstallLocation {
         let mut home = dirs::home_dir().expect("No default home folder");
         let mut bin: PathBuf;
         let data = dirs::data_dir().expect("No default data folder");
-        #[cfg(target_os = "windows")] {
+        #[cfg(target_os = "windows")]
+        {
             home.push(TARI_FOLDER);
             bin = PathBuf::from("C:\\Program Files");
         }
-        #[cfg(any(target_os = "macos", target_os = "unix"))] {
+        #[cfg(any(target_os = "macos", target_os = "unix"))]
+        {
             bin = dirs::home_dir().expect("No default home folder");
             bin.push("bin");
             home.push(TARI_HIDDEN_FOLDER);
