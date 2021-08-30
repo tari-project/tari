@@ -20,16 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::outbound::message::SendFailure;
-use futures::channel::mpsc::SendError;
+use crate::outbound::{message::SendFailure, DhtOutboundRequest};
 use tari_comms::message::MessageError;
 use tari_crypto::{signatures::SchnorrSignatureError, tari_utilities::message_format::MessageFormatError};
 use thiserror::Error;
+use tokio::sync::mpsc::error::SendError;
 
 #[derive(Debug, Error)]
 pub enum DhtOutboundError {
-    #[error("SendError: {0}")]
-    SendError(#[from] SendError),
+    #[error("`Failed to send: {0}")]
+    SendError(#[from] SendError<DhtOutboundRequest>),
     #[error("MessageSerializationError: {0}")]
     MessageSerializationError(#[from] MessageError),
     #[error("MessageFormatError: {0}")]
@@ -48,8 +48,8 @@ pub enum DhtOutboundError {
     SendToOurselves,
     #[error("Discovery process failed")]
     DiscoveryFailed,
-    #[error("Failed to insert message hash")]
-    FailedToInsertMessageHash,
+    #[error("Failed to insert message hash: {0}")]
+    FailedToInsertMessageHash(String),
     #[error("Failed to send message: {0}")]
     SendMessageFailed(SendFailure),
     #[error("No messages were queued for sending")]

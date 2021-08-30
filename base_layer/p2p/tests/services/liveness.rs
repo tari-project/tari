@@ -35,16 +35,15 @@ use tari_p2p::{
 };
 use tari_service_framework::{RegisterHandle, StackBuilder};
 use tari_shutdown::Shutdown;
-use tari_test_utils::collect_stream;
+use tari_test_utils::collect_try_recv;
 use tempfile::tempdir;
-use tokio::runtime;
 
 pub async fn setup_liveness_service(
     node_identity: Arc<NodeIdentity>,
     peers: Vec<Arc<NodeIdentity>>,
     data_path: &str,
 ) -> (LivenessHandle, CommsNode, Dht, Shutdown) {
-    let (publisher, subscription_factory) = pubsub_connector(runtime::Handle::current(), 100, 20);
+    let (publisher, subscription_factory) = pubsub_connector(100, 20);
     let subscription_factory = Arc::new(subscription_factory);
     let shutdown = Shutdown::new();
     let (comms, dht, _) =
@@ -75,7 +74,7 @@ fn make_node_identity() -> Arc<NodeIdentity> {
     ))
 }
 
-#[tokio_macros::test_basic]
+#[tokio::test]
 async fn end_to_end() {
     let node_1_identity = make_node_identity();
     let node_2_identity = make_node_identity();
@@ -114,34 +113,34 @@ async fn end_to_end() {
         liveness1.send_ping(node_2_identity.node_id().clone()).await.unwrap();
     }
 
-    let events = collect_stream!(liveness1_event_stream, take = 18, timeout = Duration::from_secs(20),);
+    let events = collect_try_recv!(liveness1_event_stream, take = 18, timeout = Duration::from_secs(20));
 
     let ping_count = events
         .iter()
-        .filter(|event| matches!(**(**event).as_ref().unwrap(), LivenessEvent::ReceivedPing(_)))
+        .filter(|event| matches!(&***event, LivenessEvent::ReceivedPing(_)))
         .count();
 
     assert_eq!(ping_count, 10);
 
     let pong_count = events
         .iter()
-        .filter(|event| matches!(**(**event).as_ref().unwrap(), LivenessEvent::ReceivedPong(_)))
+        .filter(|event| matches!(&***event, LivenessEvent::ReceivedPong(_)))
         .count();
 
     assert_eq!(pong_count, 8);
 
-    let events = collect_stream!(liveness2_event_stream, take = 18, timeout = Duration::from_secs(10),);
+    let events = collect_try_recv!(liveness2_event_stream, take = 18, timeout = Duration::from_secs(10));
 
     let ping_count = events
         .iter()
-        .filter(|event| matches!(**(**event).as_ref().unwrap(), LivenessEvent::ReceivedPing(_)))
+        .filter(|event| matches!(&***event, LivenessEvent::ReceivedPing(_)))
         .count();
 
     assert_eq!(ping_count, 8);
 
     let pong_count = events
         .iter()
-        .filter(|event| matches!(**(**event).as_ref().unwrap(), LivenessEvent::ReceivedPong(_)))
+        .filter(|event| matches!(&***event, LivenessEvent::ReceivedPong(_)))
         .count();
 
     assert_eq!(pong_count, 10);

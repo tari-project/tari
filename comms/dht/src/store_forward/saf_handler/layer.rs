@@ -27,9 +27,9 @@ use crate::{
     outbound::OutboundMessageRequester,
     store_forward::StoreAndForwardRequester,
 };
-use futures::channel::mpsc;
 use std::sync::Arc;
 use tari_comms::peer_manager::{NodeIdentity, PeerManager};
+use tokio::sync::mpsc;
 use tower::layer::Layer;
 
 pub struct MessageHandlerLayer {

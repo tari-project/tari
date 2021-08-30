@@ -120,7 +120,6 @@ use crate::{
 };
 use core::ptr;
 use error::LibWalletError;
-use futures::StreamExt;
 use libc::{c_char, c_int, c_longlong, c_uchar, c_uint, c_ulonglong, c_ushort};
 use log::{LevelFilter, *};
 use log4rs::{
@@ -155,6 +154,7 @@ use tari_comms::{
 };
 use tari_comms_dht::{DbConnectionUrl, DhtConfig};
 use tari_core::transactions::{
+    emoji::{emoji_set, EmojiId, EmojiIdError},
     tari_amount::MicroTari,
     transaction::OutputFeatures,
     types::{ComSignature, CryptoFactories, PublicKey},
@@ -195,7 +195,6 @@ use tari_wallet::{
         },
     },
     types::ValidationRetryStrategy,
-    util::emoji::{emoji_set, EmojiId, EmojiIdError},
     utxo_scanner_service::utxo_scanning::{UtxoScannerService, RECOVERY_KEY},
     Wallet,
     WalletConfig,
@@ -917,14 +916,14 @@ pub unsafe extern "C" fn seed_words_push_word(
 
     (*seed_words).0.push(word_string);
     if (*seed_words).0.len() >= 24 {
-        if let Err(e) = TariPrivateKey::from_mnemonic(&(*seed_words).0) {
+        return if let Err(e) = TariPrivateKey::from_mnemonic(&(*seed_words).0) {
             log::error!(target: LOG_TARGET, "Problem building private key from seed phrase");
             error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);
-            return SeedWordPushResult::InvalidSeedPhrase as u8;
+            SeedWordPushResult::InvalidSeedPhrase as u8
         } else {
-            return SeedWordPushResult::SeedPhraseComplete as u8;
-        }
+            SeedWordPushResult::SeedPhraseComplete as u8
+        };
     }
 
     SeedWordPushResult::SuccessfulPush as u8
@@ -2858,7 +2857,7 @@ pub unsafe extern "C" fn wallet_create(
         match TariPrivateKey::from_mnemonic(&(*seed_words).0) {
             Ok(private_key) => Some(private_key),
             Err(e) => {
-                error!(target: LOG_TARGET, "Mnemonic Error for given seed words: {}", e);
+                error!(target: LOG_TARGET, "Mnemonic Error for given seed words: {:?}", e);
                 error = LibWalletError::from(e).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
                 return ptr::null_mut();
@@ -2866,7 +2865,7 @@ pub unsafe extern "C" fn wallet_create(
         }
     };
 
-    let mut runtime = match Runtime::new() {
+    let runtime = match Runtime::new() {
         Ok(r) => r,
         Err(e) => {
             error = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
@@ -2947,15 +2946,15 @@ pub unsafe extern "C" fn wallet_create(
             // lets ensure the wallet tor_id is saved, this could have been changed during wallet startup
             if let Some(hs) = w.comms.hidden_service() {
                 if let Err(e) = runtime.block_on(w.db.set_tor_identity(hs.tor_identity().clone())) {
-                    warn!(target: LOG_TARGET, "Could not save tor identity to db: {}", e);
+                    warn!(target: LOG_TARGET, "Could not save tor identity to db: {:?}", e);
                 }
             }
             // Start Callback Handler
             let callback_handler = CallbackHandler::new(
                 TransactionDatabase::new(transaction_backend),
-                w.transaction_service.get_event_stream_fused(),
-                w.output_manager_service.get_event_stream_fused(),
-                w.dht_service.subscribe_dht_events().fuse(),
+                w.transaction_service.get_event_stream(),
+                w.output_manager_service.get_event_stream(),
+                w.dht_service.subscribe_dht_events(),
                 w.comms.shutdown_signal(),
                 w.comms.node_identity().public_key().clone(),
                 callback_received_transaction,
@@ -5154,7 +5153,7 @@ pub unsafe extern "C" fn file_partial_backup(
 
     let runtime = Runtime::new();
     match runtime {
-        Ok(mut runtime) => match runtime.block_on(partial_wallet_backup(original_path, backup_path)) {
+        Ok(runtime) => match runtime.block_on(partial_wallet_backup(original_path, backup_path)) {
             Ok(_) => (),
             Err(e) => {
                 error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
@@ -5281,10 +5280,8 @@ pub unsafe extern "C" fn emoji_set_destroy(emoji_set: *mut EmojiSet) {
 pub unsafe extern "C" fn wallet_destroy(wallet: *mut TariWallet) {
     if !wallet.is_null() {
         let mut w = Box::from_raw(wallet);
-        match w.shutdown.trigger() {
-            Err(_) => error!(target: LOG_TARGET, "No listeners for the shutdown signal!"),
-            Ok(()) => w.runtime.block_on(w.wallet.wait_until_shutdown()),
-        }
+        w.shutdown.trigger();
+        w.runtime.block_on(w.wallet.wait_until_shutdown());
     }
 }
 
@@ -5314,11 +5311,11 @@ mod test {
         str::{from_utf8, FromStr},
         sync::Mutex,
     };
+    use tari_core::transactions::emoji;
     use tari_test_utils::random;
     use tari_wallet::{
         storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
         transaction_service::storage::models::TransactionStatus,
-        util::emoji,
     };
     use tempfile::tempdir;
 
@@ -5781,7 +5778,7 @@ mod test {
                 error_ptr,
             );
 
-            let mut runtime = Runtime::new().unwrap();
+            let runtime = Runtime::new().unwrap();
 
             let connection =
                 run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");

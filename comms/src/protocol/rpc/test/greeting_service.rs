@@ -26,12 +26,16 @@ use crate::{
         rpc::{NamedProtocolService, Request, Response, RpcError, RpcServerError, RpcStatus, Streaming},
         ProtocolId,
     },
+    utils,
 };
 use core::iter;
-use futures::{channel::mpsc, stream, SinkExt, StreamExt};
 use std::{sync::Arc, time::Duration};
 use tari_crypto::tari_utilities::hex::Hex;
-use tokio::{sync::RwLock, task, time};
+use tokio::{
+    sync::{mpsc, RwLock},
+    task,
+    time,
+};
 
 #[async_trait]
 // #[tari_rpc(protocol_name = "/tari/greeting/1.0", server_struct = GreetingServer, client_struct = GreetingClient)]
@@ -91,20 +95,11 @@ impl GreetingRpc for GreetingService {
     }
 
     async fn get_greetings(&self, request: Request<u32>) -> Result<Streaming<String>, RpcStatus> {
-        let (mut tx, rx) = mpsc::channel(1);
+        let (tx, rx) = mpsc::channel(1);
         let num = *request.message();
         let greetings = self.greetings[..num as usize].to_vec();
         task::spawn(async move {
-            let iter = greetings.into_iter().map(Ok);
-            let mut stream = stream::iter(iter)
-                // "Extra" Result::Ok is to satisfy send_all
-                .map(Ok);
-            match tx.send_all(&mut stream).await {
-                Ok(_) => {},
-                Err(_err) => {
-                    // Log error
-                },
-            }
+            let _ = utils::mpsc::send_all(&tx, greetings.into_iter().map(Ok)).await;
         });
 
         Ok(Streaming::new(rx))
@@ -118,7 +113,7 @@ impl GreetingRpc for GreetingService {
     }
 
     async fn streaming_error2(&self, _: Request<()>) -> Result<Streaming<String>, RpcStatus> {
-        let (mut tx, rx) = mpsc::channel(2);
+        let (tx, rx) = mpsc::channel(2);
         tx.send(Ok("This is ok".to_string())).await.unwrap();
         tx.send(Err(RpcStatus::bad_request("This is a problem"))).await.unwrap();
 
@@ -151,7 +146,7 @@ impl SlowGreetingService {
 impl GreetingRpc for SlowGreetingService {
     async fn say_hello(&self, _: Request<SayHelloRequest>) -> Result<Response<SayHelloResponse>, RpcStatus> {
         let delay = *self.delay.read().await;
-        time::delay_for(delay).await;
+        time::sleep(delay).await;
         Ok(Response::new(SayHelloResponse {
             greeting: "took a while to load".to_string(),
         }))
@@ -376,8 +371,8 @@ impl GreetingClient {
         self.inner.ping().await
     }
 
-    pub fn close(&mut self) {
-        self.inner.close();
+    pub async fn close(&mut self) {
+        self.inner.close().await;
     }
 }
 

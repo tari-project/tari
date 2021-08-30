@@ -21,9 +21,9 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::protocol::rpc::handshake::RpcHandshakeError;
-use futures::channel::oneshot;
 use prost::DecodeError;
 use std::io;
+use tokio::sync::oneshot;
 
 #[derive(Debug, thiserror::Error)]
 pub enum RpcServerError {
@@ -41,8 +41,8 @@ pub enum RpcServerError {
     ProtocolServiceNotFound(String),
 }
 
-impl From<oneshot::Canceled> for RpcServerError {
-    fn from(_: oneshot::Canceled) -> Self {
+impl From<oneshot::error::RecvError> for RpcServerError {
+    fn from(_: oneshot::error::RecvError) -> Self {
         RpcServerError::RequestCanceled
     }
 }

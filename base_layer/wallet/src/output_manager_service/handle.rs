@@ -31,7 +31,6 @@ use crate::{
     types::ValidationRetryStrategy,
 };
 use aes_gcm::Aes256Gcm;
-use futures::{stream::Fuse, StreamExt};
 use std::{collections::HashMap, fmt, sync::Arc, time::Duration};
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
@@ -191,8 +190,8 @@ impl OutputManagerHandle {
         }
     }
 
-    pub fn get_event_stream_fused(&self) -> Fuse<OutputManagerEventReceiver> {
-        self.event_stream_sender.subscribe().fuse()
+    pub fn get_event_stream(&self) -> OutputManagerEventReceiver {
+        self.event_stream_sender.subscribe()
     }
 
     pub async fn add_output(&mut self, output: UnblindedOutput) -> Result<(), OutputManagerError> {

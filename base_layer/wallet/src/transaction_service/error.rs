@@ -34,7 +34,7 @@ use tari_p2p::services::liveness::error::LivenessError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
 use time::OutOfRangeError;
-use tokio::sync::broadcast::RecvError;
+use tokio::sync::broadcast::error::RecvError;
 
 #[derive(Debug, Error)]
 pub enum TransactionServiceError {

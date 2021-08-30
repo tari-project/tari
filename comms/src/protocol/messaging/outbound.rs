@@ -29,13 +29,13 @@ use crate::{
     peer_manager::NodeId,
     protocol::messaging::protocol::MESSAGING_PROTOCOL,
 };
-use futures::{channel::mpsc, future::Either, SinkExt, StreamExt};
+use futures::{future::Either, StreamExt, TryStreamExt};
 use log::*;
 use std::{
     io,
     time::{Duration, Instant},
 };
-use tokio::stream as tokio_stream;
+use tokio::sync::mpsc as tokiompsc;
 use tracing::{event, span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::protocol::messaging::outbound";
@@ -46,8 +46,8 @@ const MAX_SEND_RETRIES: usize = 1;
 
 pub struct OutboundMessaging {
     connectivity: ConnectivityRequester,
-    request_rx: mpsc::UnboundedReceiver<OutboundMessage>,
-    messaging_events_tx: mpsc::Sender<MessagingEvent>,
+    request_rx: tokiompsc::UnboundedReceiver<OutboundMessage>,
+    messaging_events_tx: tokiompsc::Sender<MessagingEvent>,
     peer_node_id: NodeId,
     inactivity_timeout: Option<Duration>,
 }
@@ -55,8 +55,8 @@ pub struct OutboundMessaging {
 impl OutboundMessaging {
     pub fn new(
         connectivity: ConnectivityRequester,
-        messaging_events_tx: mpsc::Sender<MessagingEvent>,
-        request_rx: mpsc::UnboundedReceiver<OutboundMessage>,
+        messaging_events_tx: tokiompsc::Sender<MessagingEvent>,
+        request_rx: tokiompsc::UnboundedReceiver<OutboundMessage>,
         peer_node_id: NodeId,
         inactivity_timeout: Option<Duration>,
     ) -> Self {
@@ -82,7 +82,7 @@ impl OutboundMessaging {
                 self.peer_node_id.short_str()
             );
             let peer_node_id = self.peer_node_id.clone();
-            let mut messaging_events_tx = self.messaging_events_tx.clone();
+            let messaging_events_tx = self.messaging_events_tx.clone();
             match self.run_inner().await {
                 Ok(_) => {
                     event!(
@@ -265,7 +265,7 @@ impl OutboundMessaging {
         );
         let substream = substream.stream;
 
-        let (sink, _) = MessagingProtocol::framed(substream).split();
+        let framed = MessagingProtocol::framed(substream);
 
         let Self {
             request_rx,
@@ -273,30 +273,30 @@ impl OutboundMessaging {
             ..
         } = self;
 
+        // Convert unbounded channel to a stream
+        let stream = futures::stream::unfold(request_rx, |mut rx| async move {
+            let v = rx.recv().await;
+            v.map(|v| (v, rx))
+        });
+
         let stream = match inactivity_timeout {
             Some(timeout) => {
-                let s = tokio_stream::StreamExt::timeout(request_rx, timeout).map(|r| match r {
-                    Ok(s) => Ok(s),
-                    Err(_) => Err(io::Error::new(
-                        io::ErrorKind::TimedOut,
-                        MessagingProtocolError::Inactivity,
-                    )),
-                });
+                let s = tokio_stream::StreamExt::timeout(stream, timeout)
+                    .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, MessagingProtocolError::Inactivity));
                 Either::Left(s)
             },
-            None => Either::Right(request_rx.map(Ok)),
+            None => Either::Right(stream.map(Ok)),
         };
 
-        stream
-            .map(|msg| {
-                msg.map(|mut out_msg| {
-                    event!(Level::DEBUG, "Message buffered for sending {}", out_msg);
-                    out_msg.reply_success();
-                    out_msg.body
-                })
+        let stream = stream.map(|msg| {
+            msg.map(|mut out_msg| {
+                event!(Level::DEBUG, "Message buffered for sending {}", out_msg);
+                out_msg.reply_success();
+                out_msg.body
             })
-            .forward(sink)
-            .await?;
+        });
+
+        super::forward::Forward::new(stream, framed).await?;
 
         debug!(
             target: LOG_TARGET,
@@ -310,7 +310,7 @@ impl OutboundMessaging {
         // Close the request channel so that we can read all the remaining messages and flush them
         // to a failed event
         self.request_rx.close();
-        while let Some(mut out_msg) = self.request_rx.next().await {
+        while let Some(mut out_msg) = self.request_rx.recv().await {
             out_msg.reply_fail(reason);
             let _ = self
                 .messaging_events_tx

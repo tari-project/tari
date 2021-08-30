@@ -20,12 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
-
-use chrono::Utc;
-use futures::{channel::mpsc::Receiver, FutureExt, StreamExt};
-use log::*;
-
 use crate::transaction_service::{
     config::TransactionRoutingMechanism,
     error::{TransactionServiceError, TransactionServiceProtocolError},
@@ -41,7 +35,10 @@ use crate::transaction_service::{
         wait_on_dial::wait_on_dial,
     },
 };
-use futures::channel::oneshot;
+use chrono::Utc;
+use futures::FutureExt;
+use log::*;
+use std::sync::Arc;
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
@@ -55,7 +52,10 @@ use tari_core::transactions::{
 };
 use tari_crypto::script;
 use tari_p2p::tari_message::TariMessageType;
-use tokio::time::delay_for;
+use tokio::{
+    sync::{mpsc::Receiver, oneshot},
+    time::sleep,
+};
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::send_protocol";
 const LOG_TARGET_STRESS: &str = "stress_test::send_protocol";
@@ -344,7 +344,8 @@ where TBackend: TransactionBackend + 'static
             },
             Some(t) => t,
         };
-        let mut timeout_delay = delay_for(timeout_duration).fuse();
+        let timeout_delay = sleep(timeout_duration).fuse();
+        tokio::pin!(timeout_delay);
 
         // check to see if a resend is due
         let resend = match outbound_tx.last_send_timestamp {
@@ -390,9 +391,9 @@ where TBackend: TransactionBackend + 'static
         #[allow(unused_assignments)]
         let mut reply = None;
         loop {
-            let mut resend_timeout = delay_for(self.resources.config.transaction_resend_period).fuse();
-            futures::select! {
-                (spk, rr) = receiver.select_next_some() => {
+            let resend_timeout = sleep(self.resources.config.transaction_resend_period).fuse();
+            tokio::select! {
+                Some((spk, rr)) = receiver.recv() => {
                     let rr_tx_id = rr.tx_id;
                     reply = Some(rr);
 
@@ -407,7 +408,7 @@ where TBackend: TransactionBackend + 'static
                         break;
                     }
                 },
-                result = cancellation_receiver => {
+                result = &mut cancellation_receiver => {
                     if result.is_ok() {
                         info!(target: LOG_TARGET, "Cancelling Transaction Send Protocol (TxId: {})", self.id);
                         let _ = send_transaction_cancelled_message(self.id,self.dest_pubkey.clone(), self.resources.outbound_message_service.clone(), ).await.map_err(|e| {
@@ -441,10 +442,10 @@ where TBackend: TransactionBackend + 'static
                             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
                     }
                 },
-                () = timeout_delay => {
+                () = &mut timeout_delay => {
                     return self.timeout_transaction().await;
                 }
-                _ = shutdown => {
+                _ = shutdown.wait() => {
                     info!(target: LOG_TARGET, "Transaction Send Protocol (id: {}) shutting down because it received the shutdown signal", self.id);
                     return Err(TransactionServiceProtocolError::new(self.id, TransactionServiceError::Shutdown))
                 }

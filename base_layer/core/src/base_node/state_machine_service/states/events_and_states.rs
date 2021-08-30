@@ -160,7 +160,7 @@ impl Display for BaseNodeState {
 #[derive(Debug, Clone, PartialEq)]
 pub enum StateInfo {
     StartUp,
-    HeaderSync(BlockSyncInfo),
+    HeaderSync(Option<BlockSyncInfo>),
     HorizonSync(HorizonSyncInfo),
     BlockSyncStarting,
     BlockSync(BlockSyncInfo),
@@ -169,15 +169,12 @@ pub enum StateInfo {
 
 impl StateInfo {
     pub fn short_desc(&self) -> String {
+        use StateInfo::*;
         match self {
-            Self::StartUp => "Starting up".to_string(),
-            Self::HeaderSync(info) => format!(
-                "Syncing headers: {}/{} ({:.0}%)",
-                info.local_height,
-                info.tip_height,
-                info.local_height as f64 / info.tip_height as f64 * 100.0
-            ),
-            Self::HorizonSync(info) => match info.status {
+            StartUp => "Starting up".to_string(),
+            HeaderSync(None) => "Starting header sync".to_string(),
+            HeaderSync(Some(info)) => format!("Syncing headers: {}", info.sync_progress_string()),
+            HorizonSync(info) => match info.status {
                 HorizonSyncStatus::Starting => "Starting horizon sync".to_string(),
                 HorizonSyncStatus::Kernels(current, total) => format!(
                     "Syncing kernels: {}/{} ({:.0}%)",
@@ -193,18 +190,16 @@ impl StateInfo {
                 ),
                 HorizonSyncStatus::Finalizing => "Finalizing horizon sync".to_string(),
             },
-            Self::BlockSync(info) => format!(
-                "Syncing blocks with {}: {}/{} ({:.0}%) ",
+            BlockSync(info) => format!(
+                "Syncing blocks: ({}) {}",
                 info.sync_peers
                     .first()
-                    .map(|s| s.short_str())
+                    .map(|n| n.short_str())
                     .unwrap_or_else(|| "".to_string()),
-                info.local_height,
-                info.tip_height,
-                info.local_height as f64 / info.tip_height as f64 * 100.0
+                info.sync_progress_string()
             ),
-            Self::Listening(_) => "Listening".to_string(),
-            Self::BlockSyncStarting => "Starting block sync".to_string(),
+            Listening(_) => "Listening".to_string(),
+            BlockSyncStarting => "Starting block sync".to_string(),
         }
     }
 
@@ -226,13 +221,15 @@ impl StateInfo {
 
 impl Display for StateInfo {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        use StateInfo::*;
         match self {
-            Self::StartUp => write!(f, "Node starting up"),
-            Self::HeaderSync(info) => write!(f, "Synchronizing block headers: {}", info),
-            Self::HorizonSync(info) => write!(f, "Synchronizing horizon state: {}", info),
-            Self::BlockSync(info) => write!(f, "Synchronizing blocks: {}", info),
-            Self::Listening(info) => write!(f, "Listening: {}", info),
-            Self::BlockSyncStarting => write!(f, "Synchronizing blocks: Starting"),
+            StartUp => write!(f, "Node starting up"),
+            HeaderSync(Some(info)) => write!(f, "Synchronizing block headers: {}", info),
+            HeaderSync(None) => write!(f, "Synchronizing block headers: Starting"),
+            HorizonSync(info) => write!(f, "Synchronizing horizon state: {}", info),
+            BlockSync(info) => write!(f, "Synchronizing blocks: {}", info),
+            Listening(info) => write!(f, "Listening: {}", info),
+            BlockSyncStarting => write!(f, "Synchronizing blocks: Starting"),
         }
     }
 }
@@ -282,15 +279,24 @@ impl BlockSyncInfo {
             sync_peers,
         }
     }
+
+    pub fn sync_progress_string(&self) -> String {
+        format!(
+            "{}/{} ({:.0}%)",
+            self.local_height,
+            self.tip_height,
+            (self.local_height as f64 / self.tip_height as f64 * 100.0)
+        )
+    }
 }
 
 impl Display for BlockSyncInfo {
-    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        fmt.write_str("Syncing from the following peers: \n")?;
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        writeln!(f, "Syncing from the following peers:")?;
         for peer in &self.sync_peers {
-            fmt.write_str(&format!("{}\n", peer))?;
+            writeln!(f, "{}", peer)?;
         }
-        fmt.write_str(&format!("Syncing {}/{}\n", self.local_height, self.tip_height))
+        writeln!(f, "Syncing {}", self.sync_progress_string())
     }
 }
 

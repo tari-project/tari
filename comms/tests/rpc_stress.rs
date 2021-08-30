@@ -155,6 +155,7 @@ async fn run_stress_test(test_params: Params) {
     }
 
     future::join_all(tasks).await.into_iter().for_each(Result::unwrap);
+
     log::info!("Stress test took {:.2?}", time.elapsed());
 }
 
@@ -259,7 +260,7 @@ async fn high_contention_high_concurrency() {
     .await;
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 async fn run() {
     // let _ = env_logger::try_init();
     log_timing("quick", quick()).await;

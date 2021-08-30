@@ -22,7 +22,7 @@
 
 #[allow(dead_code)]
 mod helpers;
-use futures::{channel::mpsc, StreamExt};
+use futures::StreamExt;
 use helpers::block_builders::append_block;
 use std::sync::Arc;
 use tari_common::configuration::Network;
@@ -55,7 +55,7 @@ use tari_crypto::{
     tari_utilities::hash::Hashable,
 };
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 // use crate::helpers::database::create_test_db;
 
 async fn test_request_responder(
@@ -71,10 +71,10 @@ fn new_mempool() -> Mempool {
     Mempool::new(MempoolConfig::default(), Arc::new(mempool_validator))
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 async fn outbound_get_metadata() {
     let (request_sender, mut request_receiver) = reply_channel::unbounded();
-    let (block_sender, _) = mpsc::unbounded();
+    let (block_sender, _) = mpsc::unbounded_channel();
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     let metadata = ChainMetadata::new(5, vec![0u8], 3, 0, 5);
@@ -86,7 +86,7 @@ async fn outbound_get_metadata() {
     assert_eq!(received_metadata.unwrap(), metadata);
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 async fn inbound_get_metadata() {
     let store = create_test_blockchain_db();
     let mempool = new_mempool();
@@ -95,7 +95,7 @@ async fn inbound_get_metadata() {
     let consensus_manager = ConsensusManager::builder(network).build();
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
-    let (block_sender, _) = mpsc::unbounded();
+    let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender.clone());
     let inbound_nch = InboundNodeCommsHandlers::new(
         block_event_sender,
@@ -117,7 +117,7 @@ async fn inbound_get_metadata() {
     }
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 async fn inbound_fetch_kernel_by_excess_sig() {
     let store = create_test_blockchain_db();
     let mempool = new_mempool();
@@ -126,7 +126,7 @@ async fn inbound_fetch_kernel_by_excess_sig() {
     let consensus_manager = ConsensusManager::builder(network).build();
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
-    let (block_sender, _) = mpsc::unbounded();
+    let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender.clone());
     let inbound_nch = InboundNodeCommsHandlers::new(
         block_event_sender,
@@ -149,10 +149,10 @@ async fn inbound_fetch_kernel_by_excess_sig() {
     }
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 async fn outbound_fetch_headers() {
     let (request_sender, mut request_receiver) = reply_channel::unbounded();
-    let (block_sender, _) = mpsc::unbounded();
+    let (block_sender, _) = mpsc::unbounded_channel();
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     let mut header = BlockHeader::new(0);
@@ -167,7 +167,7 @@ async fn outbound_fetch_headers() {
     assert_eq!(received_headers[0], header);
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 async fn inbound_fetch_headers() {
     let store = create_test_blockchain_db();
     let mempool = new_mempool();
@@ -175,7 +175,7 @@ async fn inbound_fetch_headers() {
     let consensus_manager = ConsensusManager::builder(network).build();
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
-    let (block_sender, _) = mpsc::unbounded();
+    let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
     let inbound_nch = InboundNodeCommsHandlers::new(
         block_event_sender,
@@ -197,11 +197,11 @@ async fn inbound_fetch_headers() {
     }
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 async fn outbound_fetch_utxos() {
     let factories = CryptoFactories::default();
     let (request_sender, mut request_receiver) = reply_channel::unbounded();
-    let (block_sender, _) = mpsc::unbounded();
+    let (block_sender, _) = mpsc::unbounded_channel();
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     let (utxo, _, _) = create_utxo(
@@ -221,7 +221,7 @@ async fn outbound_fetch_utxos() {
     assert_eq!(received_utxos[0], utxo);
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 async fn inbound_fetch_utxos() {
     let factories = CryptoFactories::default();
 
@@ -231,7 +231,7 @@ async fn inbound_fetch_utxos() {
     let consensus_manager = ConsensusManager::builder(network).build();
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
-    let (block_sender, _) = mpsc::unbounded();
+    let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
     let inbound_nch = InboundNodeCommsHandlers::new(
         block_event_sender,
@@ -264,11 +264,11 @@ async fn inbound_fetch_utxos() {
     }
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 async fn outbound_fetch_txos() {
     let factories = CryptoFactories::default();
     let (request_sender, mut request_receiver) = reply_channel::unbounded();
-    let (block_sender, _) = mpsc::unbounded();
+    let (block_sender, _) = mpsc::unbounded_channel();
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     let (txo1, _, _) = create_utxo(
@@ -296,7 +296,7 @@ async fn outbound_fetch_txos() {
     assert_eq!(received_txos[1], txo2);
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 async fn inbound_fetch_txos() {
     let factories = CryptoFactories::default();
     let store = create_test_blockchain_db();
@@ -305,7 +305,7 @@ async fn inbound_fetch_txos() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
     let (request_sender, _) = reply_channel::unbounded();
-    let (block_sender, _) = mpsc::unbounded();
+    let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
     let inbound_nch = InboundNodeCommsHandlers::new(
         block_event_sender,
@@ -366,10 +366,10 @@ async fn inbound_fetch_txos() {
     }
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 async fn outbound_fetch_blocks() {
     let (request_sender, mut request_receiver) = reply_channel::unbounded();
-    let (block_sender, _) = mpsc::unbounded();
+    let (block_sender, _) = mpsc::unbounded_channel();
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
     let network = Network::LocalNet;
     let consensus_constants = NetworkConsensus::from(network).create_consensus_constants();
@@ -385,7 +385,7 @@ async fn outbound_fetch_blocks() {
     assert_eq!(received_blocks[0], block);
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 async fn inbound_fetch_blocks() {
     let store = create_test_blockchain_db();
     let mempool = new_mempool();
@@ -393,7 +393,7 @@ async fn inbound_fetch_blocks() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
     let (request_sender, _) = reply_channel::unbounded();
-    let (block_sender, _) = mpsc::unbounded();
+    let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
     let inbound_nch = InboundNodeCommsHandlers::new(
         block_event_sender,
@@ -415,7 +415,7 @@ async fn inbound_fetch_blocks() {
     }
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 // Test needs to be updated to new pruned structure.
 async fn inbound_fetch_blocks_before_horizon_height() {
     let factories = CryptoFactories::default();
@@ -437,7 +437,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     let mempool = Mempool::new(MempoolConfig::default(), Arc::new(mempool_validator));
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
-    let (block_sender, _) = mpsc::unbounded();
+    let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
     let inbound_nch = InboundNodeCommsHandlers::new(
         block_event_sender,

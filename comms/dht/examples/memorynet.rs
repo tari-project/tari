@@ -49,15 +49,16 @@ use crate::memory_net::utilities::{
     shutdown_all,
     take_a_break,
 };
-use futures::{channel::mpsc, future};
+use futures::future;
 use rand::{rngs::OsRng, Rng};
 use std::{iter::repeat_with, time::Duration};
 use tari_comms::peer_manager::PeerFeatures;
+use tokio::sync::mpsc;
 
 // Size of network
-const NUM_NODES: usize = 6;
+const NUM_NODES: usize = 40;
 // Must be at least 2
-const NUM_WALLETS: usize = 50;
+const NUM_WALLETS: usize = 5;
 const QUIET_MODE: bool = true;
 /// Number of neighbouring nodes each node should include in the connection pool
 const NUM_NEIGHBOURING_NODES: usize = 8;
@@ -66,7 +67,7 @@ const NUM_RANDOM_NODES: usize = 4;
 /// The number of messages that should be propagated out
 const PROPAGATION_FACTOR: usize = 4;
 
-#[tokio_macros::main]
+#[tokio::main]
 #[allow(clippy::same_item_push)]
 async fn main() {
     env_logger::init();
@@ -77,7 +78,7 @@ async fn main() {
         NUM_WALLETS
     );
 
-    let (node_message_tx, mut messaging_events_rx) = mpsc::unbounded();
+    let (node_message_tx, mut messaging_events_rx) = mpsc::unbounded_channel();
 
     let seed_node = vec![
         make_node(

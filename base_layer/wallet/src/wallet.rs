@@ -77,7 +77,6 @@ use tari_key_manager::key_manager::KeyManager;
 use tari_p2p::{comms_connector::pubsub_connector, initialization, initialization::P2pInitializer};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
-use tokio::runtime;
 
 const LOG_TARGET: &str = "wallet";
 
@@ -139,8 +138,7 @@ where
         let bn_service_db = wallet_database.clone();
 
         let factories = config.clone().factories;
-        let (publisher, subscription_factory) =
-            pubsub_connector(runtime::Handle::current(), config.buffer_size, config.rate_limit);
+        let (publisher, subscription_factory) = pubsub_connector(config.buffer_size, config.rate_limit);
         let peer_message_subscription_factory = Arc::new(subscription_factory);
         let transport_type = config.comms_config.transport_type.clone();
 

@@ -22,13 +22,15 @@
 
 use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
-use tari_core::transactions::{
-    transaction::TransactionInput,
-    types::{Commitment, PublicKey},
-};
-use tari_crypto::{
-    script::{ExecutionStack, TariScript},
-    tari_utilities::{ByteArray, Hashable},
+use tari_core::{
+    crypto::{
+        script::{ExecutionStack, TariScript},
+        tari_utilities::{ByteArray, Hashable},
+    },
+    transactions::{
+        transaction::TransactionInput,
+        types::{Commitment, PublicKey},
+    },
 };
 
 impl TryFrom<grpc::TransactionInput> for TransactionInput {

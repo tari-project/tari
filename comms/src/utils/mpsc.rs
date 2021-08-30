@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,4 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod rate_limit;
+use tokio::sync::mpsc;
+
+pub async fn send_all<T, I: IntoIterator<Item = T>>(
+    sender: &mpsc::Sender<T>,
+    iter: I,
+) -> Result<(), mpsc::error::SendError<T>> {
+    for item in iter {
+        sender.send(item).await?;
+    }
+    Ok(())
+}

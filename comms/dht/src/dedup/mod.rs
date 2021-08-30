@@ -47,13 +47,15 @@ fn hash_inbound_message(message: &DhtInboundMessage) -> Vec<u8> {
 pub struct DedupMiddleware<S> {
     next_service: S,
     dht_requester: DhtRequester,
+    allowed_message_occurrences: usize,
 }
 
 impl<S> DedupMiddleware<S> {
-    pub fn new(service: S, dht_requester: DhtRequester) -> Self {
+    pub fn new(service: S, dht_requester: DhtRequester, allowed_message_occurrences: usize) -> Self {
         Self {
             next_service: service,
             dht_requester,
+            allowed_message_occurrences,
         }
     }
 }
@@ -71,9 +73,10 @@ where
         Poll::Ready(Ok(()))
     }
 
-    fn call(&mut self, message: DhtInboundMessage) -> Self::Future {
+    fn call(&mut self, mut message: DhtInboundMessage) -> Self::Future {
         let next_service = self.next_service.clone();
         let mut dht_requester = self.dht_requester.clone();
+        let allowed_message_occurrences = self.allowed_message_occurrences;
         Box::pin(async move {
             let hash = hash_inbound_message(&message);
             trace!(
@@ -83,14 +86,17 @@ where
                 message.tag,
                 message.dht_header.message_tag
             );
-            if dht_requester
-                .insert_message_hash(hash, message.source_peer.public_key.clone())
-                .await?
-            {
+
+            message.dedup_hit_count = dht_requester
+                .add_message_to_dedup_cache(hash, message.source_peer.public_key.clone())
+                .await?;
+
+            if message.dedup_hit_count as usize > allowed_message_occurrences {
                 trace!(
                     target: LOG_TARGET,
-                    "Received duplicate message {} from peer '{}' (Trace: {}). Message discarded.",
+                    "Received duplicate message {} (hit_count = {}) from peer '{}' (Trace: {}). Message discarded.",
                     message.tag,
+                    message.dedup_hit_count,
                     message.source_peer.node_id.short_str(),
                     message.dht_header.message_tag,
                 );
@@ -99,8 +105,9 @@ where
 
             trace!(
                 target: LOG_TARGET,
-                "Passing message {} onto next service (Trace: {})",
+                "Passing message {} (hit_count = {}) onto next service (Trace: {})",
                 message.tag,
+                message.dedup_hit_count,
                 message.dht_header.message_tag
             );
             next_service.oneshot(message).await
@@ -110,11 +117,15 @@ where
 
 pub struct DedupLayer {
     dht_requester: DhtRequester,
+    allowed_message_occurrences: usize,
 }
 
 impl DedupLayer {
-    pub fn new(dht_requester: DhtRequester) -> Self {
-        Self { dht_requester }
+    pub fn new(dht_requester: DhtRequester, allowed_message_occurrences: usize) -> Self {
+        Self {
+            dht_requester,
+            allowed_message_occurrences,
+        }
     }
 }
 
@@ -122,7 +133,7 @@ impl<S> Layer<S> for DedupLayer {
     type Service = DedupMiddleware<S>;
 
     fn layer(&self, service: S) -> Self::Service {
-        DedupMiddleware::new(service, self.dht_requester.clone())
+        DedupMiddleware::new(service, self.dht_requester.clone(), self.allowed_message_occurrences)
     }
 }
 
@@ -138,15 +149,15 @@ mod test {
 
     #[test]
     fn process_message() {
-        let mut rt = Runtime::new().unwrap();
+        let rt = Runtime::new().unwrap();
         let spy = service_spy();
 
         let (dht_requester, mock) = create_dht_actor_mock(1);
         let mock_state = mock.get_shared_state();
-        mock_state.set_signature_cache_insert(false);
+        mock_state.set_number_of_message_hits(1);
         rt.spawn(mock.run());
 
-        let mut dedup = DedupLayer::new(dht_requester).layer(spy.to_service::<PipelineError>());
+        let mut dedup = DedupLayer::new(dht_requester, 3).layer(spy.to_service::<PipelineError>());
 
         panic_context!(cx);
 
@@ -157,7 +168,7 @@ mod test {
         rt.block_on(dedup.call(msg.clone())).unwrap();
         assert_eq!(spy.call_count(), 1);
 
-        mock_state.set_signature_cache_insert(true);
+        mock_state.set_number_of_message_hits(4);
         rt.block_on(dedup.call(msg)).unwrap();
         assert_eq!(spy.call_count(), 1);
         // Drop dedup so that the DhtMock will stop running

@@ -1,64 +1,82 @@
-const WalletFFI = require("./walletFFI");
+const InterfaceFFI = require("./ffiInterface");
 const ByteVector = require("./byteVector");
 const utf8 = require("utf8");
 
 class PublicKey {
   #tari_public_key_ptr;
 
-  constructor(public_key) {
-    this.#tari_public_key_ptr = public_key;
+  pointerAssign(ptr) {
+    // Prevent pointer from being leaked in case of re-assignment
+    if (this.#tari_public_key_ptr) {
+      this.destroy();
+      this.#tari_public_key_ptr = ptr;
+    } else {
+      this.#tari_public_key_ptr = ptr;
+    }
   }
 
-  static fromPubkey(public_key) {
-    return new PublicKey(public_key);
+  fromPrivateKey(key) {
+    let result = new PublicKey();
+    result.pointerAssign(InterfaceFFI.publicKeyFromPrivateKey(key.getPtr()));
+    return result;
   }
 
-  static async fromWallet(wallet) {
-    return new PublicKey(await WalletFFI.walletGetPublicKey(wallet));
+  static fromHexString(hex) {
+    let sanitize = utf8.encode(hex); // Make sure it's not UTF-16 encoded (JS default)
+    let result = new PublicKey();
+    result.pointerAssign(InterfaceFFI.publicKeyFromHex(sanitize));
+    return result;
   }
 
-  static async fromString(public_key_hex) {
-    let sanitize = utf8.encode(public_key_hex); // Make sure it's not UTF-16 encoded (JS default)
-    return new PublicKey(await WalletFFI.publicKeyFromHex(sanitize));
+  fromEmojiID(emoji) {
+    let sanitize = utf8.encode(emoji); // Make sure it's not UTF-16 encoded (JS default)
+    let result = new PublicKey();
+    result.pointerAssign(InterfaceFFI.emojiIdToPublicKey(sanitize));
+    return result;
   }
 
-  static async fromBytes(bytes) {
-    return new PublicKey(await WalletFFI.publicKeyCreate(bytes));
+  fromByteVector(byte_vector) {
+    let result = new PublicKey();
+    result.pointerAssign(InterfaceFFI.publicKeyCreate(byte_vector.getPtr()));
+    return result;
   }
 
   getPtr() {
     return this.#tari_public_key_ptr;
   }
 
-  async getBytes() {
-    return new ByteVector(
-      await WalletFFI.publicKeyGetBytes(this.#tari_public_key_ptr)
+  getBytes() {
+    let result = new ByteVector();
+    result.pointerAssign(
+      InterfaceFFI.publicKeyGetBytes(this.#tari_public_key_ptr)
     );
+    return result;
   }
 
-  async getHex() {
-    const bytes = await this.getBytes();
-    const length = await bytes.getLength();
+  getHex() {
+    const bytes = this.getBytes();
+    const length = bytes.getLength();
     let byte_array = new Uint8Array(length);
-    for (let i = 0; i < length; ++i) {
-      byte_array[i] = await bytes.getAt(i);
+    for (let i = 0; i < length; i++) {
+      byte_array[i] = bytes.getAt(i);
     }
-    await bytes.destroy();
+    bytes.destroy();
     let buffer = Buffer.from(byte_array, 0);
     return buffer.toString("hex");
   }
 
-  async getEmojiId() {
-    const emoji_id = await WalletFFI.publicKeyToEmojiId(
-      this.#tari_public_key_ptr
-    );
+  getEmojiId() {
+    const emoji_id = InterfaceFFI.publicKeyToEmojiId(this.#tari_public_key_ptr);
     const result = emoji_id.readCString();
-    await WalletFFI.stringDestroy(emoji_id);
+    InterfaceFFI.stringDestroy(emoji_id);
     return result;
   }
 
   destroy() {
-    return WalletFFI.publicKeyDestroy(this.#tari_public_key_ptr);
+    if (this.#tari_public_key_ptr) {
+      InterfaceFFI.publicKeyDestroy(this.#tari_public_key_ptr);
+      this.#tari_public_key_ptr = undefined; //prevent double free segfault
+    }
   }
 }
 
