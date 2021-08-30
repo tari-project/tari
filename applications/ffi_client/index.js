@@ -1,6 +1,8 @@
 // this is nasty
 //  ¯\_(ツ)_/¯
 
+// TODO: Use implementation in cucumber tests instead (see helpers/ffi).
+
 const lib = require("./lib");
 const ref = require("ref-napi");
 const ffi = require("ffi-napi");

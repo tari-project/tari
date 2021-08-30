@@ -107,11 +107,11 @@ class CustomWorld {
     this.walletPubkeys[name] = walletInfo.public_key;
   }
 
-  async createAndAddFFIWallet(name, seed_words) {
+  async createAndAddFFIWallet(name, seed_words = null, passphrase = null) {
     const wallet = new WalletFFIClient(name);
-    await wallet.startNew(seed_words);
+    await wallet.startNew(seed_words, passphrase);
     this.walletsFFI[name] = wallet;
-    this.walletPubkeys[name] = await wallet.getPublicKey();
+    this.walletPubkeys[name] = wallet.identify();
     return wallet;
   }
 

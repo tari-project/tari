@@ -43,6 +43,7 @@ pub struct DhtInboundMessage {
     pub dht_header: DhtMessageHeader,
     /// True if forwarded via store and forward, otherwise false
     pub is_saf_message: bool,
+    pub dedup_hit_count: u32,
     pub body: Vec<u8>,
 }
 impl DhtInboundMessage {
@@ -53,6 +54,7 @@ impl DhtInboundMessage {
             dht_header,
             source_peer,
             is_saf_message: false,
+            dedup_hit_count: 0,
             body,
         }
     }
@@ -62,11 +64,12 @@ impl Display for DhtInboundMessage {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         write!(
             f,
-            "\n---- Inbound Message ---- \nSize: {} byte(s)\nType: {}\nPeer: {}\nHeader: {}\n{}\n----",
+            "\n---- Inbound Message ---- \nSize: {} byte(s)\nType: {}\nPeer: {}\nHit Count: {}\nHeader: {}\n{}\n----",
             self.body.len(),
             self.dht_header.message_type,
             self.source_peer,
             self.dht_header,
+            self.dedup_hit_count,
             self.tag,
         )
     }
@@ -86,6 +89,14 @@ pub struct DecryptedDhtMessage {
     pub is_saf_stored: Option<bool>,
     pub is_already_forwarded: bool,
     pub decryption_result: Result<EnvelopeBody, Vec<u8>>,
+    pub dedup_hit_count: u32,
+}
+
+impl DecryptedDhtMessage {
+    /// Returns true if this message has been received before, otherwise false if this is the first time
+    pub fn is_duplicate(&self) -> bool {
+        self.dedup_hit_count > 1
+    }
 }
 
 impl DecryptedDhtMessage {
@@ -104,6 +115,7 @@ impl DecryptedDhtMessage {
             is_saf_stored: None,
             is_already_forwarded: false,
             decryption_result: Ok(message_body),
+            dedup_hit_count: message.dedup_hit_count,
         }
     }
 
@@ -118,6 +130,7 @@ impl DecryptedDhtMessage {
             is_saf_stored: None,
             is_already_forwarded: false,
             decryption_result: Err(message.body),
+            dedup_hit_count: message.dedup_hit_count,
         }
     }
 

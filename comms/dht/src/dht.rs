@@ -26,6 +26,7 @@ use crate::{
     connectivity::{DhtConnectivity, MetricsCollector, MetricsCollectorHandle},
     discovery::{DhtDiscoveryRequest, DhtDiscoveryRequester, DhtDiscoveryService},
     event::{DhtEventReceiver, DhtEventSender},
+    filter,
     inbound,
     inbound::{DecryptedDhtMessage, DhtInboundMessage, MetricsLayer},
     logging_middleware::MessageLoggingLayer,
@@ -37,12 +38,11 @@ use crate::{
     storage::{DbConnection, StorageError},
     store_forward,
     store_forward::{StoreAndForwardError, StoreAndForwardRequest, StoreAndForwardRequester, StoreAndForwardService},
-    tower_filter,
     DedupLayer,
     DhtActorError,
     DhtConfig,
 };
-use futures::{channel::mpsc, future, Future};
+use futures::{channel::mpsc, Future};
 use log::*;
 use std::sync::Arc;
 use tari_comms::{
@@ -285,13 +285,14 @@ impl Dht {
         S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Clone + Send + Sync + 'static,
         S::Future: Send,
     {
-        // FIXME: There is an unresolved stack overflow issue on windows in debug mode during runtime, but not in
-        //        release mode, related to the amount of layers. (issue #1416)
         ServiceBuilder::new()
             .layer(MetricsLayer::new(self.metrics_collector.clone()))
             .layer(inbound::DeserializeLayer::new(self.peer_manager.clone()))
-            .layer(DedupLayer::new(self.dht_requester()))
-            .layer(tower_filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
+            .layer(DedupLayer::new(
+                self.dht_requester(),
+                self.config.dedup_allowed_message_occurrences,
+            ))
+            .layer(filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
             .layer(MessageLoggingLayer::new(format!(
                 "Inbound [{}]",
                 self.node_identity.node_id().short_str()
@@ -301,6 +302,7 @@ impl Dht {
                 self.node_identity.clone(),
                 self.connectivity.clone(),
             ))
+            .layer(filter::FilterLayer::new(filter_messages_to_rebroadcast))
             .layer(store_forward::StoreLayer::new(
                 self.config.clone(),
                 Arc::clone(&self.peer_manager),
@@ -363,31 +365,57 @@ impl Dht {
 
     /// Produces a filter predicate which disallows store and forward messages if that feature is not
     /// supported by the node.
-    fn unsupported_saf_messages_filter(
-        &self,
-    ) -> impl tower_filter::Predicate<DhtInboundMessage, Future = future::Ready<Result<(), PipelineError>>> + Clone + Send
-    {
+    fn unsupported_saf_messages_filter(&self) -> impl filter::Predicate<DhtInboundMessage> + Clone + Send {
         let node_identity = Arc::clone(&self.node_identity);
         move |msg: &DhtInboundMessage| {
             if node_identity.has_peer_features(PeerFeatures::DHT_STORE_FORWARD) {
-                return future::ready(Ok(()));
+                return true;
             }
 
             match msg.dht_header.message_type {
                 DhtMessageType::SafRequestMessages => {
                     // TODO: #banheuristic This is an indication of node misbehaviour
-                    debug!(
+                    warn!(
                         "Received store and forward message from PublicKey={}. Store and forward feature is not \
                          supported by this node. Discarding message.",
                         msg.source_peer.public_key
                     );
-                    future::ready(Err(anyhow::anyhow!(
-                        "Message filtered out because store and forward is not supported by this node",
-                    )))
+                    false
                 },
-                _ => future::ready(Ok(())),
+                _ => true,
             }
         }
+    }
+}
+
+/// Provides the gossip filtering rules for an inbound message
+fn filter_messages_to_rebroadcast(msg: &DecryptedDhtMessage) -> bool {
+    // Let the message through if:
+    // it isn't a duplicate (normal message), or
+    let should_continue = !msg.is_duplicate() ||
+        (
+            // it is a duplicate domain message (i.e. not DHT or SAF protocol message), and
+            msg.dht_header.message_type.is_domain_message() &&
+                // it has an unknown destination (e.g complete transactions, blocks, misc. encrypted
+                // messages) we allow it to proceed, which in turn, re-propagates it for another round.
+                msg.dht_header.destination.is_unknown()
+        );
+
+    if should_continue {
+        // The message has been forwarded, but downstream middleware may be interested
+        debug!(
+            target: LOG_TARGET,
+            "[filter_messages_to_rebroadcast] Passing message {} to next service (Trace: {})",
+            msg.tag,
+            msg.dht_header.message_tag
+        );
+        true
+    } else {
+        debug!(
+            target: LOG_TARGET,
+            "[filter_messages_to_rebroadcast] Discarding duplicate message {}", msg
+        );
+        false
     }
 }
 
