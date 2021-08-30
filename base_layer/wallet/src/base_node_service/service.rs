@@ -27,7 +27,7 @@ use super::{
 };
 use crate::{
     base_node_service::monitor::BaseNodeMonitor,
-    connectivity_service::{OnlineStatus, WalletConnectivityHandle},
+    connectivity_service::WalletConnectivityHandle,
     storage::database::{WalletBackend, WalletDatabase},
 };
 use chrono::NaiveDateTime;
@@ -49,8 +49,6 @@ pub struct BaseNodeState {
     pub is_synced: Option<bool>,
     pub updated: Option<NaiveDateTime>,
     pub latency: Option<Duration>,
-    pub online: OnlineStatus,
-    // pub base_node_peer: Option<Peer>,
 }
 
 impl Default for BaseNodeState {
@@ -60,7 +58,6 @@ impl Default for BaseNodeState {
             is_synced: None,
             updated: None,
             latency: None,
-            online: OnlineStatus::Connecting,
         }
     }
 }

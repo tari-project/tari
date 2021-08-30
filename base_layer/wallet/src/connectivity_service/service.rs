@@ -30,6 +30,7 @@ use futures::{
     future,
     future::Either,
     stream::Fuse,
+    FutureExt,
     StreamExt,
 };
 use log::*;
@@ -40,7 +41,7 @@ use tari_comms::{
     PeerConnection,
 };
 use tari_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient};
-use tokio::time;
+use tokio::{time, time::Duration};
 
 const LOG_TARGET: &str = "wallet::connectivity";
 
@@ -90,6 +91,7 @@ impl WalletConnectivityService {
         debug!(target: LOG_TARGET, "Wallet connectivity service has started.");
         let mut base_node_watch_rx = self.base_node_watch.get_receiver().fuse();
         loop {
+            let mut check_connection = time::delay_for(Duration::from_secs(1)).fuse();
             futures::select! {
                 req = self.request_stream.select_next_some() => {
                     self.handle_request(req).await;
@@ -99,7 +101,19 @@ impl WalletConnectivityService {
                         // This will block the rest until the connection is established. This is what we want.
                         self.setup_base_node_connection().await;
                     }
+                },
+                _ = check_connection => {
+                    self.check_connection().await;
                 }
+            }
+        }
+    }
+
+    async fn check_connection(&mut self) {
+        if let Some(pool) = self.pools.as_ref() {
+            if !pool.base_node_wallet_rpc_client.is_connected().await {
+                debug!(target: LOG_TARGET, "Peer connection lost. Attempting to reconnect...");
+                self.setup_base_node_connection().await;
             }
         }
     }
@@ -138,7 +152,6 @@ impl WalletConnectivityService {
                         target: LOG_TARGET,
                         "Base node connection failed: {}. Reconnecting...", e
                     );
-                    self.trigger_reconnect();
                     self.pending_requests.push(reply.into());
                 },
             },
@@ -169,7 +182,6 @@ impl WalletConnectivityService {
                         target: LOG_TARGET,
                         "Base node connection failed: {}. Reconnecting...", e
                     );
-                    self.trigger_reconnect();
                     self.pending_requests.push(reply.into());
                 },
             },
@@ -184,21 +196,6 @@ impl WalletConnectivityService {
                 }
             },
         }
-    }
-
-    fn trigger_reconnect(&mut self) {
-        let peer = self
-            .base_node_watch
-            .borrow()
-            .clone()
-            .expect("trigger_reconnect called before base node is set");
-        // Trigger the watch so that a peer connection is reinitiated
-        self.set_base_node_peer(peer);
-    }
-
-    fn set_base_node_peer(&mut self, peer: Peer) {
-        self.pools = None;
-        self.base_node_watch.broadcast(Some(peer));
     }
 
     fn current_base_node(&self) -> Option<NodeId> {
@@ -236,7 +233,7 @@ impl WalletConnectivityService {
                     } else {
                         self.set_online_status(OnlineStatus::Offline);
                     }
-                    error!(target: LOG_TARGET, "{}", e);
+                    warn!(target: LOG_TARGET, "{}", e);
                     time::delay_for(self.config.base_node_monitor_refresh_interval).await;
                     continue;
                 },

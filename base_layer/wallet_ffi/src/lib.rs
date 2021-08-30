@@ -917,14 +917,14 @@ pub unsafe extern "C" fn seed_words_push_word(
 
     (*seed_words).0.push(word_string);
     if (*seed_words).0.len() >= 24 {
-        if let Err(e) = TariPrivateKey::from_mnemonic(&(*seed_words).0) {
+        return if let Err(e) = TariPrivateKey::from_mnemonic(&(*seed_words).0) {
             log::error!(target: LOG_TARGET, "Problem building private key from seed phrase");
             error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);
-            return SeedWordPushResult::InvalidSeedPhrase as u8;
+            SeedWordPushResult::InvalidSeedPhrase as u8
         } else {
-            return SeedWordPushResult::SeedPhraseComplete as u8;
-        }
+            SeedWordPushResult::SeedPhraseComplete as u8
+        };
     }
 
     SeedWordPushResult::SuccessfulPush as u8
@@ -2858,7 +2858,7 @@ pub unsafe extern "C" fn wallet_create(
         match TariPrivateKey::from_mnemonic(&(*seed_words).0) {
             Ok(private_key) => Some(private_key),
             Err(e) => {
-                error!(target: LOG_TARGET, "Mnemonic Error for given seed words: {}", e);
+                error!(target: LOG_TARGET, "Mnemonic Error for given seed words: {:?}", e);
                 error = LibWalletError::from(e).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
                 return ptr::null_mut();
@@ -2947,7 +2947,7 @@ pub unsafe extern "C" fn wallet_create(
             // lets ensure the wallet tor_id is saved, this could have been changed during wallet startup
             if let Some(hs) = w.comms.hidden_service() {
                 if let Err(e) = runtime.block_on(w.db.set_tor_identity(hs.tor_identity().clone())) {
-                    warn!(target: LOG_TARGET, "Could not save tor identity to db: {}", e);
+                    warn!(target: LOG_TARGET, "Could not save tor identity to db: {:?}", e);
                 }
             }
             // Start Callback Handler

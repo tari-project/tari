@@ -42,9 +42,9 @@ impl BaseNode {
 impl<B: Backend> Component<B> for BaseNode {
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {
-        let base_node_state = app_state.get_base_node_state();
+        let current_online_status = app_state.get_wallet_connectivity().get_connectivity_status();
 
-        let chain_info = match base_node_state.online {
+        let chain_info = match current_online_status {
             OnlineStatus::Connecting => Spans::from(vec![
                 Span::styled("Chain Tip:", Style::default().fg(Color::Magenta)),
                 Span::raw(" "),
@@ -56,6 +56,7 @@ impl<B: Backend> Component<B> for BaseNode {
                 Span::styled("Offline", Style::default().fg(Color::Red)),
             ]),
             OnlineStatus::Online => {
+                let base_node_state = app_state.get_base_node_state();
                 if let Some(metadata) = base_node_state.clone().chain_metadata {
                     let tip = metadata.height_of_longest_chain();
 
@@ -92,7 +93,7 @@ impl<B: Backend> Component<B> for BaseNode {
                     Spans::from(vec![
                         Span::styled("Chain Tip:", Style::default().fg(Color::Magenta)),
                         Span::raw(" "),
-                        Span::styled("Error", Style::default().fg(Color::Red)),
+                        Span::styled("Waiting for data...", Style::default().fg(Color::White)),
                     ])
                 }
             },
