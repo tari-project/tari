@@ -102,8 +102,8 @@ impl WalletConnectivityHandle {
         reply_rx.await.ok()
     }
 
-    pub async fn get_connectivity_status(&mut self) -> OnlineStatus {
-        self.online_status_rx.recv().await.unwrap_or(OnlineStatus::Offline)
+    pub fn get_connectivity_status(&mut self) -> OnlineStatus {
+        *self.online_status_rx.borrow()
     }
 
     pub fn get_connectivity_status_watch(&self) -> watch::Receiver<OnlineStatus> {

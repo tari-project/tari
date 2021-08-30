@@ -88,6 +88,20 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return Ok(());
         }
 
+        if message.is_duplicate() {
+            debug!(
+                target: LOG_TARGET,
+                "Received message ({}) that has already been received {} time(s). Last sent by peer '{}', passing on \
+                 to next service (Trace: {})",
+                message.tag,
+                message.dedup_hit_count,
+                message.source_peer.node_id.short_str(),
+                message.dht_header.message_tag,
+            );
+            self.next_service.oneshot(message).await?;
+            return Ok(());
+        }
+
         trace!(
             target: LOG_TARGET,
             "Received DHT message type `{}` (Source peer: {}, Tag: {}, Trace: {})",

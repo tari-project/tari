@@ -173,12 +173,12 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
         db.add_block(Arc::new(block))
             .await
             .map_err(|e| anyhow!("Stopped recovery at height {}, reason: {}", counter, e))?;
-        counter += 1;
-        if counter > max_height {
-            info!(target: LOG_TARGET, "Done with recovery, chain height {}", counter - 1);
+        if counter >= max_height {
+            info!(target: LOG_TARGET, "Done with recovery, chain height {}", counter);
             break;
         }
-        print!("\x1B[{}D\x1B[K", (counter + 1).to_string().chars().count());
+        print!("\x1B[{}D\x1B[K", counter.to_string().len());
+        counter += 1;
     }
     Ok(())
 }

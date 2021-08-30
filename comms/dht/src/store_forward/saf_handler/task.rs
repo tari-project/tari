@@ -103,6 +103,20 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .take()
             .expect("DhtInboundMessageTask initialized without message");
 
+        if message.is_duplicate() {
+            debug!(
+                target: LOG_TARGET,
+                "Received message ({}) that has already been received {} time(s). Last sent by peer '{}', passing on \
+                 (Trace: {})",
+                message.tag,
+                message.dedup_hit_count,
+                message.source_peer.node_id.short_str(),
+                message.dht_header.message_tag,
+            );
+            self.next_service.oneshot(message).await?;
+            return Ok(());
+        }
+
         if message.dht_header.message_type.is_saf_message() && message.decryption_failed() {
             debug!(
                 target: LOG_TARGET,
@@ -460,7 +474,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         public_key: CommsPublicKey,
     ) -> Result<(), StoreAndForwardError> {
         let msg_hash = Challenge::new().chain(body).finalize().to_vec();
-        if dht_requester.insert_message_hash(msg_hash, public_key).await? {
+        let hit_count = dht_requester.add_message_to_dedup_cache(msg_hash, public_key).await?;
+        if hit_count > 1 {
             Err(StoreAndForwardError::DuplicateMessage)
         } else {
             Ok(())
