@@ -72,6 +72,10 @@ pub struct DhtConfig {
     /// The periodic trim interval for items in the message hash cache
     /// Default: 300s (5 mins)
     pub dedup_cache_trim_interval: Duration,
+    /// The number of occurrences of a message is allowed to pass through the DHT pipeline before being
+    /// deduped/discarded
+    /// Default: 1
+    pub dedup_allowed_message_occurrences: usize,
     /// The duration to wait for a peer discovery to complete before giving up.
     /// Default: 2 minutes
     pub discovery_request_timeout: Duration,
@@ -136,6 +140,7 @@ impl DhtConfig {
 
 impl Default for DhtConfig {
     fn default() -> Self {
+        // NB: please remember to update field comments to reflect these defaults
         Self {
             num_neighbouring_nodes: 8,
             num_random_nodes: 4,
@@ -151,6 +156,7 @@ impl Default for DhtConfig {
             saf_max_message_size: 512 * 1024,
             dedup_cache_capacity: 2_500,
             dedup_cache_trim_interval: Duration::from_secs(5 * 60),
+            dedup_allowed_message_occurrences: 1,
             database_url: DbConnectionUrl::Memory,
             discovery_request_timeout: Duration::from_secs(2 * 60),
             connectivity_update_interval: Duration::from_secs(2 * 60),

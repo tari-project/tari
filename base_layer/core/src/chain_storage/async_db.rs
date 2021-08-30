@@ -253,8 +253,15 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         }
     }
 
-    pub fn set_best_block(&mut self, height: u64, hash: HashOutput, accumulated_data: u128) -> &mut Self {
-        self.transaction.set_best_block(height, hash, accumulated_data);
+    pub fn set_best_block(
+        &mut self,
+        height: u64,
+        hash: HashOutput,
+        accumulated_data: u128,
+        expected_prev_best_block: HashOutput,
+    ) -> &mut Self {
+        self.transaction
+            .set_best_block(height, hash, accumulated_data, expected_prev_best_block);
         self
     }
 

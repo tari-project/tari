@@ -48,8 +48,8 @@ pub enum DhtOutboundError {
     SendToOurselves,
     #[error("Discovery process failed")]
     DiscoveryFailed,
-    #[error("Failed to insert message hash")]
-    FailedToInsertMessageHash,
+    #[error("Failed to insert message hash: {0}")]
+    FailedToInsertMessageHash(String),
     #[error("Failed to send message: {0}")]
     SendMessageFailed(SendFailure),
     #[error("No messages were queued for sending")]
