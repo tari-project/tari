@@ -441,6 +441,8 @@ void comms_config_destroy(struct TariCommsConfig *wc);
 /// `callback_saf_message_received` - The callback function pointer that will be called when the Dht has determined that
 /// is has connected to enough of its neighbours to be confident that it has received any SAF messages that were waiting
 /// for it.
+/// `recovery_in_progress` - Pointer to an bool which will be modified to indicate if there is an outstanding recovery
+/// that should be completed or not to an error code should one occur, may not be null. Functions as an out parameter.
 /// `error_out` - Pointer to an int which will be modified
 /// to an error code should one occur, may not be null. Functions as an out parameter.
 /// ## Returns
@@ -477,6 +479,7 @@ struct TariWallet *wallet_create(struct TariCommsConfig *config,
                                  void (*callback_invalid_txo_validation_complete)(unsigned long long, unsigned char),
                                  void (*callback_transaction_validation_complete)(unsigned long long, unsigned char),
                                  void (*callback_saf_message_received)(),
+                                 bool *recovery_in_progress,
                                  int *error_out);
 
 // Signs a message

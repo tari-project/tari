@@ -58,6 +58,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::time;
+use tracing::{self, span, Instrument, Level, Span};
 
 const LOG_TARGET: &str = "comms::connection_manager::peer_connection";
 
@@ -111,10 +112,11 @@ pub fn create(
 #[derive(Debug)]
 pub enum PeerConnectionRequest {
     /// Open a new substream and negotiate the given protocol
-    OpenSubstream(
-        ProtocolId,
-        oneshot::Sender<Result<NegotiatedSubstream<Substream>, PeerConnectionError>>,
-    ),
+    OpenSubstream {
+        protocol_id: ProtocolId,
+        reply_tx: oneshot::Sender<Result<NegotiatedSubstream<Substream>, PeerConnectionError>>,
+        tracing_id: Option<tracing::span::Id>,
+    },
     /// Disconnect all substreams and close the transport connection
     Disconnect(bool, oneshot::Sender<Result<(), PeerConnectionError>>),
 }
@@ -188,19 +190,25 @@ impl PeerConnection {
         self.substream_counter.get()
     }
 
+    #[tracing::instrument("peer_connection::open_substream", skip(self), err)]
     pub async fn open_substream(
         &mut self,
         protocol_id: &ProtocolId,
     ) -> Result<NegotiatedSubstream<Substream>, PeerConnectionError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.request_tx
-            .send(PeerConnectionRequest::OpenSubstream(protocol_id.clone(), reply_tx))
+            .send(PeerConnectionRequest::OpenSubstream {
+                protocol_id: protocol_id.clone(),
+                reply_tx,
+                tracing_id: Span::current().id(),
+            })
             .await?;
         reply_rx
             .await
             .map_err(|_| PeerConnectionError::InternalReplyCancelled)?
     }
 
+    #[tracing::instrument("peer_connection::open_framed_substream", skip(self), err)]
     pub async fn open_framed_substream(
         &mut self,
         protocol_id: &ProtocolId,
@@ -211,12 +219,14 @@ impl PeerConnection {
     }
 
     #[cfg(feature = "rpc")]
+    #[tracing::instrument("peer_connection::connect_rpc", skip(self), fields(peer_node_id = self.peer_node_id.to_string().as_str()), err)]
     pub async fn connect_rpc<T>(&mut self) -> Result<T, RpcError>
     where T: From<RpcClient> + NamedProtocolService {
         self.connect_rpc_using_builder(Default::default()).await
     }
 
     #[cfg(feature = "rpc")]
+    #[tracing::instrument("peer_connection::connect_rpc_with_builder", skip(self, builder), err)]
     pub async fn connect_rpc_using_builder<T>(&mut self, builder: RpcClientBuilder<T>) -> Result<T, RpcError>
     where T: From<RpcClient> + NamedProtocolService {
         let protocol = ProtocolId::from_static(T::PROTOCOL_NAME);
@@ -358,8 +368,14 @@ impl PeerConnectionActor {
     async fn handle_request(&mut self, request: PeerConnectionRequest) {
         use PeerConnectionRequest::*;
         match request {
-            OpenSubstream(proto, reply_tx) => {
-                let result = self.open_negotiated_protocol_stream(proto).await;
+            OpenSubstream {
+                protocol_id,
+                reply_tx,
+                tracing_id,
+            } => {
+                let span = span!(Level::TRACE, "handle_request");
+                span.follows_from(tracing_id);
+                let result = self.open_negotiated_protocol_stream(protocol_id).instrument(span).await;
                 log_if_error_fmt!(
                     target: LOG_TARGET,
                     reply_tx.send(result),
@@ -380,6 +396,7 @@ impl PeerConnectionActor {
         }
     }
 
+    #[tracing::instrument(skip(self, stream), err, fields(comms.direction="inbound"))]
     async fn handle_incoming_substream(&mut self, mut stream: Substream) -> Result<(), PeerConnectionError> {
         let selected_protocol = ProtocolNegotiation::new(&mut stream)
             .negotiate_protocol_inbound(&self.our_supported_protocols)
@@ -395,6 +412,7 @@ impl PeerConnectionActor {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self), err)]
     async fn open_negotiated_protocol_stream(
         &mut self,
         protocol: ProtocolId,

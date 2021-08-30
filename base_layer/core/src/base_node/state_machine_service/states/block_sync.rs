@@ -66,8 +66,12 @@ impl BlockSync {
         );
 
         let status_event_sender = shared.status_event_sender.clone();
-        let local_nci = shared.local_node_interface.clone();
         let bootstrapped = shared.is_bootstrapped();
+        let _ = status_event_sender.broadcast(StatusInfo {
+            bootstrapped,
+            state_info: StateInfo::BlockSyncStarting,
+        });
+        let local_nci = shared.local_node_interface.clone();
         synchronizer.on_progress(move |block, remote_tip_height, sync_peers| {
             let local_height = block.height();
             local_nci.publish_block_event(BlockEvent::ValidBlockAdded(

@@ -196,7 +196,7 @@ use tari_wallet::{
     },
     types::ValidationRetryStrategy,
     util::emoji::{emoji_set, EmojiId, EmojiIdError},
-    utxo_scanner_service::utxo_scanning::UtxoScannerService,
+    utxo_scanner_service::utxo_scanning::{UtxoScannerService, RECOVERY_KEY},
     Wallet,
     WalletConfig,
     WalletSqlite,
@@ -2792,6 +2792,8 @@ unsafe fn init_logging(log_path: *const c_char, num_rolling_log_files: c_uint, s
 /// `callback_saf_message_received` - The callback function pointer that will be called when the Dht has determined that
 /// is has connected to enough of its neighbours to be confident that it has received any SAF messages that were waiting
 /// for it.
+/// `recovery_in_progress` - Pointer to an bool which will be modified to indicate if there is an outstanding recovery
+/// that should be completed or not to an error code should one occur, may not be null. Functions as an out parameter.
 /// `error_out` - Pointer to an int which will be modified
 /// to an error code should one occur, may not be null. Functions as an out parameter.
 /// ## Returns
@@ -2823,6 +2825,7 @@ pub unsafe extern "C" fn wallet_create(
     callback_invalid_txo_validation_complete: unsafe extern "C" fn(u64, u8),
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, u8),
     callback_saf_messages_received: unsafe extern "C" fn(),
+    recovery_in_progress: *mut bool,
     error_out: *mut c_int,
 ) -> *mut TariWallet {
     use tari_key_manager::mnemonic::Mnemonic;
@@ -2921,6 +2924,13 @@ pub unsafe extern "C" fn wallet_create(
         None,
         None,
     );
+
+    let mut recovery_lookup = match runtime.block_on(wallet_database.get_client_key_value(RECOVERY_KEY.to_owned())) {
+        Err(_) => false,
+        Ok(None) => false,
+        Ok(Some(_)) => true,
+    };
+    ptr::swap(recovery_in_progress, &mut recovery_lookup as *mut bool);
 
     w = runtime.block_on(Wallet::start(
         wallet_config,
@@ -5737,6 +5747,8 @@ mod test {
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
+            let mut recovery_in_progress = true;
+            let recovery_in_progress_ptr = &mut recovery_in_progress as *mut bool;
 
             let secret_key_alice = private_key_generate();
             let public_key_alice = public_key_from_private_key(secret_key_alice, error_ptr);
@@ -5800,9 +5812,10 @@ mod test {
                 invalid_txo_validation_complete_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
+                recovery_in_progress_ptr,
                 error_ptr,
             );
-
+            assert!(!(*recovery_in_progress_ptr), "no recovery in progress");
             assert_eq!(*error_ptr, 0, "No error expected");
             wallet_destroy(alice_wallet);
 
@@ -5839,8 +5852,10 @@ mod test {
                 invalid_txo_validation_complete_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
+                recovery_in_progress_ptr,
                 error_ptr,
             );
+            assert!(!(*recovery_in_progress_ptr), "no recovery in progress");
 
             assert_eq!(*error_ptr, 0, "No error expected");
             wallet_destroy(alice_wallet2);
@@ -5894,6 +5909,8 @@ mod test {
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
+            let mut recovery_in_progress = true;
+            let recovery_in_progress_ptr = &mut recovery_in_progress as *mut bool;
 
             let secret_key_alice = private_key_generate();
             let public_key_alice = public_key_from_private_key(secret_key_alice, error_ptr);
@@ -5941,6 +5958,7 @@ mod test {
                 invalid_txo_validation_complete_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
+                recovery_in_progress_ptr,
                 error_ptr,
             );
 
@@ -5988,6 +6006,7 @@ mod test {
                 invalid_txo_validation_complete_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
+                recovery_in_progress_ptr,
                 error_ptr,
             );
 
@@ -6018,6 +6037,7 @@ mod test {
                 invalid_txo_validation_complete_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
+                recovery_in_progress_ptr,
                 error_ptr,
             );
             assert_eq!(error, 428);
@@ -6043,6 +6063,7 @@ mod test {
                 invalid_txo_validation_complete_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
+                recovery_in_progress_ptr,
                 error_ptr,
             );
 
@@ -6089,8 +6110,10 @@ mod test {
                 invalid_txo_validation_complete_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
+                recovery_in_progress_ptr,
                 error_ptr,
             );
+            assert!(!(*recovery_in_progress_ptr), "no recovery in progress");
 
             assert_eq!(error, 0);
             string_destroy(alice_network_str as *mut c_char);
@@ -6114,6 +6137,8 @@ mod test {
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
+            let mut recovery_in_progress = true;
+            let recovery_in_progress_ptr = &mut recovery_in_progress as *mut bool;
 
             let secret_key_alice = private_key_generate();
             let db_name_alice = CString::new(random::string(8).as_str()).unwrap();
@@ -6161,6 +6186,7 @@ mod test {
                 invalid_txo_validation_complete_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
+                recovery_in_progress_ptr,
                 error_ptr,
             );
 
@@ -6229,6 +6255,8 @@ mod test {
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
+            let mut recovery_in_progress = true;
+            let recovery_in_progress_ptr = &mut recovery_in_progress as *mut bool;
 
             let mnemonic = vec![
                 "clever", "jaguar", "bus", "engage", "oil", "august", "media", "high", "trick", "remove", "tiny",
@@ -6309,6 +6337,7 @@ mod test {
                 invalid_txo_validation_complete_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
+                recovery_in_progress_ptr,
                 error_ptr,
             );
 
@@ -6363,6 +6392,7 @@ mod test {
                 invalid_txo_validation_complete_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
+                recovery_in_progress_ptr,
                 error_ptr,
             );
             assert_eq!(error, 0);
