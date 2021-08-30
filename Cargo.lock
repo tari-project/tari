@@ -2904,14 +2904,14 @@ checksum = "e1cf9b1c4e9a6c4de793c632496fa490bdc0e1eea73f0c91394f7b6990935d22"
 dependencies = [
  "async-trait",
  "crossbeam-channel 0.5.1",
- "futures 0.3.15",
+ "futures 0.3.16",
  "js-sys",
  "lazy_static 1.4.0",
  "percent-encoding 2.1.0",
- "pin-project 1.0.7",
+ "pin-project 1.0.8",
  "rand 0.8.4",
  "thiserror",
- "tokio 1.9.0",
+ "tokio 1.10.1",
  "tokio-stream",
 ]
 
@@ -2927,7 +2927,7 @@ dependencies = [
  "opentelemetry-semantic-conventions",
  "thiserror",
  "thrift",
- "tokio 1.9.0",
+ "tokio 1.10.1",
 ]
 
 [[package]]
@@ -4452,6 +4452,7 @@ dependencies = [
  "strum",
  "strum_macros 0.19.4",
  "tari_common",
+ "tari_common_types",
  "tari_comms",
  "tari_core",
  "tari_crypto",
@@ -4482,6 +4483,7 @@ dependencies = [
  "tari_app_grpc",
  "tari_app_utilities",
  "tari_common",
+ "tari_common_types",
  "tari_comms",
  "tari_comms_dht",
  "tari_core",
@@ -4490,7 +4492,6 @@ dependencies = [
  "tari_p2p",
  "tari_service_framework",
  "tari_shutdown",
- "tari_wallet",
  "thiserror",
  "tokio 0.2.25",
  "tonic",
@@ -4553,6 +4554,7 @@ name = "tari_common_types"
 version = "0.9.5"
 dependencies = [
  "futures 0.3.16",
+ "lazy_static 1.4.0",
  "rand 0.8.4",
  "serde 1.0.129",
  "tari_crypto",
@@ -4693,6 +4695,7 @@ dependencies = [
  "tari_app_grpc",
  "tari_app_utilities",
  "tari_common",
+ "tari_common_types",
  "tari_comms",
  "tari_comms_dht",
  "tari_core",
@@ -5087,7 +5090,6 @@ dependencies = [
  "env_logger 0.7.1",
  "fs2",
  "futures 0.3.16",
- "lazy_static 1.4.0",
  "libsqlite3-sys",
  "lmdb-zero",
  "log 0.4.14",
@@ -5173,6 +5175,7 @@ dependencies = [
  "rand 0.8.4",
  "serde 1.0.129",
  "serde_json",
+ "tari_common_types",
  "tari_core",
  "tari_crypto",
  "tari_utilities",
@@ -5363,7 +5366,7 @@ checksum = "7b2f3f698253f03119ac0102beaa64f67a67e08074d03a22d18784104543727f"
 dependencies = [
  "futures-core",
  "pin-project-lite 0.2.7",
- "tokio 1.9.0",
+ "tokio 1.10.1",
 ]
 
 [[package]]
