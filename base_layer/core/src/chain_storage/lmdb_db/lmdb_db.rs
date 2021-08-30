@@ -76,7 +76,6 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
-        types::{Commitment, HashDigest, HashOutput, Signature},
     },
 };
 use croaring::Bitmap;
@@ -92,6 +91,7 @@ use tari_common_types::{
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex, ByteArray};
 use tari_mmr::{pruned_hashset::PrunedHashSet, Hash, MerkleMountainRange, MutableMmr};
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore};
+use tari_common_types::types::{HashOutput, Commitment, Signature, HashDigest};
 
 type DatabaseRef = Arc<Database<'static>>;
 

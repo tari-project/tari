@@ -20,6 +20,25 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use futures::future;
+use log::*;
+use tokio::sync::broadcast;
+
+pub(crate) use master_key_manager::MasterKeyManager;
+use tari_comms::{connectivity::ConnectivityRequester, types::CommsSecretKey};
+use tari_core::{
+    consensus::{ConsensusConstantsBuilder, NetworkConsensus},
+    transactions::CryptoFactories,
+};
+use tari_service_framework::{
+    async_trait,
+    reply_channel,
+    ServiceInitializationError,
+    ServiceInitializer,
+    ServiceInitializerContext,
+};
+pub use tasks::TxoValidationType;
+
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
     output_manager_service::{
@@ -30,21 +49,6 @@ use crate::{
     },
     transaction_service::handle::TransactionServiceHandle,
 };
-use futures::future;
-use log::*;
-use tari_comms::{connectivity::ConnectivityRequester, types::CommsSecretKey};
-use tari_core::{
-    consensus::{ConsensusConstantsBuilder, NetworkConsensus},
-    transactions::types::CryptoFactories,
-};
-use tari_service_framework::{
-    async_trait,
-    reply_channel,
-    ServiceInitializationError,
-    ServiceInitializer,
-    ServiceInitializerContext,
-};
-use tokio::sync::broadcast;
 
 pub mod config;
 pub mod error;
@@ -56,9 +60,6 @@ pub mod resources;
 pub mod service;
 pub mod storage;
 mod tasks;
-
-pub(crate) use master_key_manager::MasterKeyManager;
-pub use tasks::TxoValidationType;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::initializer";
 

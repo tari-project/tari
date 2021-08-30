@@ -32,7 +32,6 @@ use crate::{
         base_node::{FindChainSplitRequest, SyncHeadersRequest},
     },
     tari_utilities::{hex::Hex, Hashable},
-    transactions::types::HashOutput,
     validation::ValidationError,
 };
 use futures::{future, stream::FuturesUnordered, StreamExt};
@@ -49,6 +48,7 @@ use tari_comms::{
     PeerConnection,
 };
 use tracing;
+use tari_common_types::types::HashOutput;
 
 const LOG_TARGET: &str = "c::bn::header_sync";
 

@@ -21,14 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use anyhow::anyhow;
-use log::*;
 use std::{
     fs,
     io::{self, Write},
     path::Path,
     sync::Arc,
 };
+
+use anyhow::anyhow;
+use log::*;
+
 use tari_app_utilities::utilities::ExitCodes;
 use tari_common::{configuration::Network, DatabaseType, GlobalConfig};
 use tari_core::{
@@ -43,7 +45,7 @@ use tari_core::{
     },
     consensus::ConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
-    transactions::types::CryptoFactories,
+    transactions::CryptoFactories,
     validation::{
         block_validators::{BodyOnlyValidator, OrphanBlockValidator},
         header_validator::HeaderValidator,

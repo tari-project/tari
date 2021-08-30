@@ -20,7 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{collections::HashMap, fmt};
+
+use serde::{Deserialize, Serialize};
+
 use crate::transactions::{
+    crypto_factories::CryptoFactories,
     transaction::{OutputFeatures, TransactionOutput},
     transaction_protocol::{
         sender::{SingleRoundSenderData as SD, TransactionSenderMessage},
@@ -28,10 +33,8 @@ use crate::transactions::{
         RewindData,
         TransactionProtocolError,
     },
-    types::{CryptoFactories, MessageHash, PrivateKey, PublicKey, Signature},
 };
-use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt};
+use tari_common_types::types::{MessageHash, PrivateKey, PublicKey, Signature};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[allow(clippy::large_enum_variant)]
@@ -202,9 +205,16 @@ impl ReceiverTransactionProtocol {
 
 #[cfg(test)]
 mod test {
+    use rand::rngs::OsRng;
+    use tari_crypto::{
+        commitment::HomomorphicCommitmentFactory,
+        keys::{PublicKey as PK, SecretKey as SecretKeyTrait},
+    };
+
     use crate::{
         crypto::script::TariScript,
         transactions::{
+            crypto_factories::CryptoFactories,
             helpers::TestParams,
             tari_amount::*,
             transaction::OutputFeatures,
@@ -214,14 +224,9 @@ mod test {
                 RewindData,
                 TransactionMetadata,
             },
-            types::{CryptoFactories, PrivateKey, PublicKey, Signature},
+            types::{PrivateKey, PublicKey, Signature},
             ReceiverTransactionProtocol,
         },
-    };
-    use rand::rngs::OsRng;
-    use tari_crypto::{
-        commitment::HomomorphicCommitmentFactory,
-        keys::{PublicKey as PK, SecretKey as SecretKeyTrait},
     };
 
     #[test]

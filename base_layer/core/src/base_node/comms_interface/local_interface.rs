@@ -33,7 +33,6 @@ use crate::{
     proof_of_work::PowAlgorithm,
     transactions::{
         transaction::TransactionKernel,
-        types::{Commitment, HashOutput, Signature},
     },
 };
 use std::sync::Arc;
@@ -47,6 +46,7 @@ use crate::{
     base_node::comms_interface::comms_request::GetNewBlockTemplateRequest,
     transactions::transaction::TransactionOutput,
 };
+use tari_common_types::types::{HashOutput, Commitment, Signature};
 
 /// The InboundNodeCommsInterface provides an interface to request information from the current local node by other
 /// internal services.

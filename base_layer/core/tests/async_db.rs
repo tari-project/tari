@@ -21,15 +21,15 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-#[allow(dead_code)]
-mod helpers;
+use std::ops::Deref;
+
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, tari_utilities::Hashable};
 
 use helpers::{
     block_builders::chain_block_with_new_coinbase,
     database::create_orphan_block,
     sample_blockchains::{create_blockchain_db_no_cut_through, create_new_blockchain},
 };
-use std::ops::Deref;
 use tari_common::configuration::Network;
 use tari_core::{
     blocks::Block,
@@ -38,12 +38,15 @@ use tari_core::{
         helpers::schema_to_transaction,
         tari_amount::T,
         transaction::{TransactionOutput, UnblindedOutput},
-        types::{CommitmentFactory, CryptoFactories},
+        types::CommitmentFactory,
     },
     txn_schema,
 };
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, tari_utilities::Hashable};
+use tari_core::transactions::crypto_factories::CryptoFactories;
 use tari_test_utils::runtime::test_async;
+
+#[allow(dead_code)]
+mod helpers;
 
 /// Finds the UTXO in a block corresponding to the unblinded output. We have to search for outputs because UTXOs get
 /// sorted in blocks, and so the order they were inserted in can change.

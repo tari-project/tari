@@ -26,12 +26,13 @@ use crate::{
         StatsResponse,
         TxStorageResponse,
     },
-    transactions::{transaction::Transaction, types::Signature},
+    transactions::{transaction::Transaction, },
 };
 use futures::channel::mpsc::UnboundedSender;
 use log::*;
 use tari_comms::peer_manager::NodeId;
 use tari_service_framework::{reply_channel::SenderService, Service};
+use tari_common_types::types::Signature;
 
 pub const LOG_TARGET: &str = "c::mp::service::outbound_interface";
 

@@ -20,14 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    support::{
-        comms_and_services::{create_dummy_message, get_next_memory_address, setup_comms_services},
-        rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
-        utils::{make_input, TestParams},
-    },
-    transaction_service::transaction_protocols::add_transaction_to_database,
+use std::{
+    convert::{TryFrom, TryInto},
+    path::Path,
+    sync::Arc,
+    time::Duration,
 };
+
 use chrono::{Duration as ChronoDuration, Utc};
 use futures::{
     channel::{mpsc, mpsc::Sender},
@@ -36,25 +35,35 @@ use futures::{
     StreamExt,
 };
 use prost::Message;
-use rand::{rngs::OsRng, RngCore};
-use std::{
-    convert::{TryFrom, TryInto},
-    path::Path,
-    sync::Arc,
-    time::Duration,
+use rand::{RngCore, rngs::OsRng};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    common::Blake256,
+    inputs,
+    keys::{PublicKey as PK, SecretKey as SK},
+    script,
+    script::{ExecutionStack, TariScript},
 };
+use tempfile::tempdir;
+use tokio::{
+    runtime,
+    runtime::{Builder, Runtime},
+    sync::{broadcast, broadcast::channel},
+    time::delay_for,
+};
+
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::{
+    CommsNode,
     message::EnvelopeBody,
     peer_manager::{NodeIdentity, PeerFeatures},
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
+    Substream,
     test_utils::{
-        mocks::{create_connectivity_mock, ConnectivityManagerMockState},
+        mocks::{ConnectivityManagerMockState, create_connectivity_mock},
         node_identity::build_node_identity,
     },
     types::CommsSecretKey,
-    CommsNode,
-    Substream,
 };
 use tari_comms_dht::outbound::mock::{
     create_outbound_service_mock,
@@ -72,44 +81,37 @@ use tari_core::{
     transactions::{
         fee::Fee,
         helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
         tari_amount::*,
         transaction::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction},
         transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage},
-        types::{CryptoFactories, PrivateKey, PublicKey, Signature},
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
+        types::{PrivateKey, PublicKey, Signature},
     },
 };
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    common::Blake256,
-    inputs,
-    keys::{PublicKey as PK, SecretKey as SK},
-    script,
-    script::{ExecutionStack, TariScript},
-};
+use tari_core::transactions::crypto_factories::CryptoFactories;
 use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage, Network};
-use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
+use tari_service_framework::{RegisterHandle, reply_channel, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
 use tari_wallet::{
     base_node_service::{
+        BaseNodeServiceInitializer,
         config::BaseNodeServiceConfig,
         handle::BaseNodeServiceHandle,
         mock_base_node_service::MockBaseNodeService,
-        BaseNodeServiceInitializer,
     },
     connectivity_service::WalletConnectivityInitializer,
     output_manager_service::{
         config::OutputManagerServiceConfig,
         handle::OutputManagerHandle,
+        OutputManagerServiceInitializer,
         service::OutputManagerService,
         storage::{
             database::{OutputManagerBackend, OutputManagerDatabase},
             models::KnownOneSidedPaymentScript,
             sqlite_db::OutputManagerSqliteDatabase,
         },
-        OutputManagerServiceInitializer,
     },
     storage::{
         database::{WalletBackend, WalletDatabase},
@@ -137,12 +139,14 @@ use tari_wallet::{
     },
     types::{HashDigest, ValidationRetryStrategy},
 };
-use tempfile::tempdir;
-use tokio::{
-    runtime,
-    runtime::{Builder, Runtime},
-    sync::{broadcast, broadcast::channel},
-    time::delay_for,
+
+use crate::{
+    support::{
+        comms_and_services::{create_dummy_message, get_next_memory_address, setup_comms_services},
+        rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
+        utils::{make_input, TestParams},
+    },
+    transaction_service::transaction_protocols::add_transaction_to_database,
 };
 
 fn create_runtime() -> Runtime {

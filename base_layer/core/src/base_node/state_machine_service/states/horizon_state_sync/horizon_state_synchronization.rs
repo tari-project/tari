@@ -41,7 +41,7 @@ use crate::{
     },
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
-        types::{HashDigest, RangeProofService},
+        types::{ RangeProofService},
     },
 };
 use croaring::Bitmap;
@@ -57,6 +57,7 @@ use tari_crypto::{
     tari_utilities::{hex::Hex, Hashable},
 };
 use tari_mmr::{MerkleMountainRange, MutableMmr};
+use tari_common_types::types::HashDigest;
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync";
 

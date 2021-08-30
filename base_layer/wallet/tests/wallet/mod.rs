@@ -20,8 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{comms_and_services::get_next_memory_address, utils::make_input};
-use tari_core::transactions::transaction::OutputFeatures;
+use std::{panic, path::Path, sync::Arc, time::Duration};
 
 use aes_gcm::{
     aead::{generic_array::GenericArray, NewAead},
@@ -30,7 +29,15 @@ use aes_gcm::{
 use digest::Digest;
 use futures::{FutureExt, StreamExt};
 use rand::rngs::OsRng;
-use std::{panic, path::Path, sync::Arc, time::Duration};
+use tari_crypto::{
+    common::Blake256,
+    inputs,
+    keys::{PublicKey as PublicKeyTrait, SecretKey},
+    script,
+};
+use tempfile::tempdir;
+use tokio::{runtime::Runtime, time::delay_for};
+
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -40,16 +47,12 @@ use tari_comms::{
 use tari_comms_dht::DhtConfig;
 use tari_core::transactions::{
     helpers::{create_unblinded_output, TestParams},
-    tari_amount::{uT, MicroTari},
-    types::{CryptoFactories, PrivateKey, PublicKey},
+    tari_amount::{MicroTari, uT},
+    types::{PrivateKey, PublicKey},
 };
-use tari_crypto::{
-    common::Blake256,
-    inputs,
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
-    script,
-};
-use tari_p2p::{initialization::CommsConfig, transport::TransportType, Network, DEFAULT_DNS_NAME_SERVER};
+use tari_core::transactions::crypto_factories::CryptoFactories;
+use tari_core::transactions::transaction::OutputFeatures;
+use tari_p2p::{DEFAULT_DNS_NAME_SERVER, initialization::CommsConfig, Network, transport::TransportType};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
 use tari_wallet::{
@@ -70,8 +73,8 @@ use tari_wallet::{
     WalletConfig,
     WalletSqlite,
 };
-use tempfile::tempdir;
-use tokio::{runtime::Runtime, time::delay_for};
+
+use crate::support::{comms_and_services::get_next_memory_address, utils::make_input};
 
 fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
     Peer::new(

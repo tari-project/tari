@@ -31,12 +31,13 @@ use crate::{
         StatsResponse,
         TxStorageResponse,
     },
-    transactions::{transaction::Transaction, types::Signature},
+    transactions::{transaction::Transaction, },
     validation::{MempoolTransactionValidation, ValidationError},
 };
 use log::*;
 use std::sync::Arc;
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+use tari_common_types::types::Signature;
 
 pub const LOG_TARGET: &str = "c::mp::mempool_storage";
 

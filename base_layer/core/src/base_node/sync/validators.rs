@@ -20,10 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{fmt, sync::Arc};
+
 use crate::{
     chain_storage::BlockchainBackend,
     consensus::ConsensusManager,
-    transactions::types::CryptoFactories,
     validation::{
         block_validators::BlockValidator,
         CandidateBlockBodyValidation,
@@ -31,7 +32,7 @@ use crate::{
         FinalHorizonStateValidation,
     },
 };
-use std::{fmt, sync::Arc};
+use crate::transactions::CryptoFactories;
 
 #[derive(Clone)]
 pub struct SyncValidators<B: BlockchainBackend> {

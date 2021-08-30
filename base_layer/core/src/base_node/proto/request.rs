@@ -32,10 +32,10 @@ use crate::{
             HashOutputs,
         },
     },
-    transactions::types::{Commitment, HashOutput, Signature},
 };
 use std::convert::{From, TryFrom, TryInto};
 use tari_crypto::tari_utilities::ByteArrayError;
+use tari_common_types::types::{HashOutput, Signature, Commitment    };
 
 //---------------------------------- BaseNodeRequest --------------------------------------------//
 impl TryInto<ci::NodeCommsRequest> for ProtoNodeCommsRequest {

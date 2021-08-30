@@ -20,23 +20,30 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use croaring::Bitmap;
-use rand::{rngs::OsRng, RngCore};
 use std::{iter::repeat_with, sync::Arc};
+
+use croaring::Bitmap;
+use rand::{RngCore, rngs::OsRng};
+use tari_crypto::{
+    keys::PublicKey as PublicKeyTrait,
+    script,
+    tari_utilities::{hash::Hashable, hex::Hex},
+};
+
 use tari_common::configuration::Network;
 use tari_core::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{
         BlockAddResult,
-        BlockHeaderAccumulatedData,
         BlockchainBackend,
         BlockchainDatabase,
+        BlockHeaderAccumulatedData,
         ChainBlock,
         ChainHeader,
         ChainStorageError,
     },
-    consensus::{emission::Emission, ConsensusConstants, ConsensusManager, ConsensusManagerBuilder},
-    proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty},
+    consensus::{ConsensusConstants, ConsensusManager, ConsensusManagerBuilder, emission::Emission},
+    proof_of_work::{AchievedTargetDifficulty, Difficulty, sha3_difficulty},
     transactions::{
         helpers::{
             create_random_signature_from_s_key,
@@ -57,14 +64,10 @@ use tari_core::{
             TransactionOutput,
             UnblindedOutput,
         },
-        types::{Commitment, CryptoFactories, HashDigest, HashOutput, PublicKey},
+        types::{Commitment, HashDigest, HashOutput, PublicKey},
     },
 };
-use tari_crypto::{
-    keys::PublicKey as PublicKeyTrait,
-    script,
-    tari_utilities::{hash::Hashable, hex::Hex},
-};
+use tari_core::transactions::crypto_factories::CryptoFactories;
 use tari_mmr::MutableMmr;
 
 pub fn create_coinbase(

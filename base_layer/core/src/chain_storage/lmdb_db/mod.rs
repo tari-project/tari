@@ -26,10 +26,10 @@ mod lmdb_db;
 
 use crate::transactions::{
     transaction::{TransactionInput, TransactionKernel, TransactionOutput},
-    types::HashOutput,
 };
 pub use lmdb_db::{create_lmdb_database, create_recovery_lmdb_database, LMDBDatabase};
 use serde::{Deserialize, Serialize};
+use tari_common_types::types::HashOutput;
 
 pub const LMDB_DB_METADATA: &str = "metadata";
 pub const LMDB_DB_HEADERS: &str = "headers";

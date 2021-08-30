@@ -20,18 +20,31 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    fs,
+    ops::Deref,
+    path::{Path, PathBuf},
+};
+
+use croaring::Bitmap;
+
+use tari_common::configuration::Network;
+use tari_common_types::chain_metadata::ChainMetadata;
+use tari_storage::lmdb_store::LMDBConfig;
+use tari_test_utils::paths::create_temporary_data_path;
+
 use crate::{
-    blocks::{genesis_block::get_weatherwax_genesis_block, Block, BlockHeader},
+    blocks::{Block, BlockHeader, genesis_block::get_weatherwax_genesis_block},
     chain_storage::{
-        create_lmdb_database,
         BlockAccumulatedData,
-        BlockHeaderAccumulatedData,
         BlockchainBackend,
         BlockchainDatabase,
         BlockchainDatabaseConfig,
+        BlockHeaderAccumulatedData,
         ChainBlock,
         ChainHeader,
         ChainStorageError,
+        create_lmdb_database,
         DbKey,
         DbTransaction,
         DbValue,
@@ -45,24 +58,15 @@ use crate::{
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
     transactions::{
         transaction::{TransactionInput, TransactionKernel},
-        types::{Commitment, CryptoFactories, HashOutput, Signature},
     },
     validation::{
         block_validators::{BodyOnlyValidator, OrphanBlockValidator},
-        mocks::MockValidator,
         DifficultyCalculator,
+        mocks::MockValidator,
     },
 };
-use croaring::Bitmap;
-use std::{
-    fs,
-    ops::Deref,
-    path::{Path, PathBuf},
-};
-use tari_common::configuration::Network;
-use tari_common_types::chain_metadata::ChainMetadata;
-use tari_storage::lmdb_store::LMDBConfig;
-use tari_test_utils::paths::create_temporary_data_path;
+use crate::transactions::CryptoFactories;
+use tari_common_types::types::{HashOutput, Signature, Commitment};
 
 /// Create a new blockchain database containing no blocks.
 pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {

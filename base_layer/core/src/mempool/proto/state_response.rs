@@ -23,10 +23,8 @@
 use crate::mempool::{proto::mempool::StateResponse as ProtoStateResponse, StateResponse};
 use std::convert::{TryFrom, TryInto};
 // use crate::transactions::proto::types::Signature as ProtoSignature;
-use crate::{
-    mempool::proto::mempool::Signature as ProtoSignature,
-    transactions::types::{PrivateKey, PublicKey, Signature},
-};
+use crate::mempool::proto::mempool::Signature as ProtoSignature;
+use tari_common_types::types::{PrivateKey, PublicKey, Signature};
 use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
 
 //---------------------------------- Signature --------------------------------------------//

@@ -20,6 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use tari_crypto::{commitment::HomomorphicCommitment, script};
+
+use tari_common::configuration::Network;
+
 use crate::{
     blocks::BlockHeader,
     chain_storage::{BlockHeaderAccumulatedData, ChainBlock, ChainHeader, DbTransaction},
@@ -29,15 +35,13 @@ use crate::{
     test_helpers::{blockchain::create_store_with_consensus, create_chain_header},
     transactions::{
         helpers::{create_random_signature_from_s_key, create_utxo},
-        tari_amount::{uT, MicroTari},
+        tari_amount::{MicroTari, uT},
         transaction::{KernelBuilder, KernelFeatures, OutputFeatures, TransactionKernel},
-        types::{Commitment, CryptoFactories},
+        types::Commitment,
     },
-    validation::{header_iter::HeaderIter, ChainBalanceValidator, FinalHorizonStateValidation},
+    validation::{ChainBalanceValidator, FinalHorizonStateValidation, header_iter::HeaderIter},
 };
-use std::sync::Arc;
-use tari_common::configuration::Network;
-use tari_crypto::{commitment::HomomorphicCommitment, script};
+use crate::transactions::crypto_factories::CryptoFactories;
 
 #[test]
 fn header_iter_empty_and_invalid_height() {

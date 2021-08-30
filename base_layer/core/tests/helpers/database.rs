@@ -20,12 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::helpers::block_builders::create_coinbase;
 use tari_core::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
-    consensus::{emission::Emission, ConsensusManager},
-    transactions::{tari_amount::MicroTari, transaction::Transaction, types::CryptoFactories},
+    consensus::{ConsensusManager, emission::Emission},
+    transactions::{tari_amount::MicroTari, transaction::Transaction},
 };
+use tari_core::transactions::crypto_factories::CryptoFactories;
+
+use crate::helpers::block_builders::create_coinbase;
 
 // use tari_test_utils::paths::create_temporary_data_path;
 

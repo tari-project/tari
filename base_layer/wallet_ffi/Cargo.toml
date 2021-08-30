@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 tari_comms = { version = "^0.9", path = "../../comms", default-features = false}
 tari_comms_dht = { version = "^0.9", path = "../../comms/dht", default-features = false }
+tari_common_types = {path="../common_types"}
 tari_crypto = "0.11.1"
 tari_key_manager = { version = "^0.9", path = "../key_manager" }
 tari_p2p = { version = "^0.9", path = "../p2p" }

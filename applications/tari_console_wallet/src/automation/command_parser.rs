@@ -32,7 +32,8 @@ use std::{
 use tari_app_utilities::utilities::parse_emoji_id_or_public_key;
 use tari_comms::multiaddr::Multiaddr;
 
-use tari_core::transactions::{tari_amount::MicroTari, types::PublicKey};
+use tari_common_types::types::PublicKey;
+use tari_core::transactions::tari_amount::MicroTari;
 
 #[derive(Debug)]
 pub struct ParsedCommand {

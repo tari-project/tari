@@ -20,16 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[allow(dead_code)]
-mod helpers;
+use std::{thread, time::Duration};
 
 use futures::StreamExt;
+use tempfile::tempdir;
+use tokio::{
+    runtime::Runtime,
+    sync::{broadcast, watch},
+    time,
+};
+
 use helpers::{
     block_builders::{append_block, chain_block, create_genesis_block},
-    chain_metadata::{random_peer_metadata, MockChainMetadata},
-    nodes::{create_network_with_2_base_nodes_with_config, wait_until_online, BaseNodeBuilder},
+    chain_metadata::{MockChainMetadata, random_peer_metadata},
+    nodes::{BaseNodeBuilder, create_network_with_2_base_nodes_with_config, wait_until_online},
 };
-use std::{thread, time::Duration};
 use tari_common::configuration::Network;
 use tari_core::{
     base_node::{
@@ -37,9 +42,9 @@ use tari_core::{
         comms_interface::Broadcast,
         service::BaseNodeServiceConfig,
         state_machine_service::{
-            states::{Listening, StateEvent, StatusInfo},
             BaseNodeStateMachine,
             BaseNodeStateMachineConfig,
+            states::{Listening, StateEvent, StatusInfo},
         },
         SyncValidators,
     },
@@ -47,17 +52,14 @@ use tari_core::{
     mempool::MempoolServiceConfig,
     proof_of_work::randomx_factory::RandomXFactory,
     test_helpers::blockchain::create_test_blockchain_db,
-    transactions::types::CryptoFactories,
     validation::mocks::MockValidator,
 };
+use tari_core::transactions::crypto_factories::CryptoFactories;
 use tari_p2p::services::liveness::LivenessConfig;
 use tari_shutdown::Shutdown;
-use tempfile::tempdir;
-use tokio::{
-    runtime::Runtime,
-    sync::{broadcast, watch},
-    time,
-};
+
+#[allow(dead_code)]
+mod helpers;
 
 static EMISSION: [u64; 2] = [10, 10];
 #[test]

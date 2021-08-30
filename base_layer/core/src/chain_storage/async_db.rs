@@ -44,14 +44,13 @@ use crate::{
     tari_utilities::epoch_time::EpochTime,
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
-        types::{Commitment, HashOutput, Signature},
     },
 };
 use croaring::Bitmap;
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use std::{mem, ops::RangeBounds, sync::Arc, time::Instant};
-use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
+use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash, types::HashOutput, types::Signature, types::Commitment};
 use tari_mmr::pruned_hashset::PrunedHashSet;
 
 const LOG_TARGET: &str = "c::bn::async_db";

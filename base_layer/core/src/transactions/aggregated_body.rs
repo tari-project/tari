@@ -1,3 +1,14 @@
+use std::fmt::{Display, Error, Formatter};
+
+use log::*;
+use serde::{Deserialize, Serialize};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::PublicKey as PublicKeyTrait,
+    ristretto::pedersen::PedersenCommitment,
+    tari_utilities::hex::Hex,
+};
+
 // Copyright 2019, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -20,20 +31,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::transactions::{
+    crypto_factories::CryptoFactories,
     fee::Fee,
     tari_amount::*,
     transaction::*,
-    types::{BlindingFactor, Commitment, CommitmentFactory, CryptoFactories, PrivateKey, PublicKey, RangeProofService},
+    types::RangeProofService,
 };
-use log::*;
-use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Error, Formatter};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::PublicKey as PublicKeyTrait,
-    ristretto::pedersen::PedersenCommitment,
-    tari_utilities::hex::Hex,
-};
+use tari_common_types::types::{BlindingFactor, Commitment, CommitmentFactory, PrivateKey, PublicKey};
 
 pub const LOG_TARGET: &str = "c::tx::aggregated_body";
 

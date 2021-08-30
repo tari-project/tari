@@ -5,6 +5,10 @@ pub mod tari_amount;
 pub mod transaction;
 #[allow(clippy::op_ref)]
 pub mod transaction_protocol;
+mod crypto_factories;
+
+pub use crypto_factories::*;
+
 pub mod types;
 // Re-export commonly used structs
 pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::SenderTransactionProtocol};

@@ -20,22 +20,29 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::error::CommandError;
-use crate::{
-    automation::command_parser::{ParsedArgument, ParsedCommand},
-    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
-};
-use chrono::{DateTime, Utc};
-use futures::{FutureExt, StreamExt};
-use log::*;
 use std::{
     fs::File,
     io::{LineWriter, Write},
     str::FromStr,
     time::{Duration, Instant},
 };
+
+use chrono::{DateTime, Utc};
+use futures::{FutureExt, StreamExt};
+use log::*;
 use strum_macros::{Display, EnumIter, EnumString};
+use tari_crypto::ristretto::pedersen::PedersenCommitmentFactory;
+use tokio::{
+    sync::mpsc,
+    time::{delay_for, timeout},
+};
+
+use crate::{
+    automation::command_parser::{ParsedArgument, ParsedCommand},
+    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
+};
 use tari_common::GlobalConfig;
+use tari_common_types::{emoji::EmojiId, types::PublicKey};
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
     multiaddr::Multiaddr,
@@ -47,20 +54,15 @@ use tari_core::{
     transactions::{
         tari_amount::{uT, MicroTari, Tari},
         transaction::UnblindedOutput,
-        types::PublicKey,
     },
 };
-use tari_crypto::ristretto::pedersen::PedersenCommitmentFactory;
 use tari_wallet::{
     output_manager_service::{handle::OutputManagerHandle, TxId},
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
-    util::emoji::EmojiId,
     WalletSqlite,
 };
-use tokio::{
-    sync::mpsc,
-    time::{delay_for, timeout},
-};
+
+use super::error::CommandError;
 
 pub const LOG_TARGET: &str = "wallet::automation::commands";
 

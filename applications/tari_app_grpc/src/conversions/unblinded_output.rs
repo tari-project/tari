@@ -22,11 +22,8 @@
 
 use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction::UnblindedOutput,
-    types::{PrivateKey, PublicKey},
-};
+use tari_common_types::types::{PrivateKey, PublicKey};
+use tari_core::transactions::{tari_amount::MicroTari, transaction::UnblindedOutput};
 use tari_crypto::{
     script::{ExecutionStack, TariScript},
     tari_utilities::ByteArray,

@@ -20,14 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use log::*;
+
 use crate::{
     blocks::BlockValidationError,
     chain_storage::{BlockchainBackend, BlockchainDatabase, MmrTree},
     crypto::tari_utilities::Hashable,
-    transactions::{transaction::Transaction, types::CryptoFactories},
+    transactions::transaction::Transaction,
     validation::{MempoolTransactionValidation, ValidationError},
 };
-use log::*;
+use crate::transactions::CryptoFactories;
 
 pub const LOG_TARGET: &str = "c::val::transaction_validators";
 

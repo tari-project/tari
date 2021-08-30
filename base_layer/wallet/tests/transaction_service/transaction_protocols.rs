@@ -20,24 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{
-    rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
-    utils::make_input,
-};
+use std::{sync::Arc, thread::sleep, time::Duration};
+
 use chrono::Utc;
 use futures::{FutureExt, StreamExt};
 use rand::rngs::OsRng;
-use std::{sync::Arc, thread::sleep, time::Duration};
+use tempfile::{tempdir, TempDir};
+use tokio::{sync::broadcast, task, time::delay_for};
+
 use tari_comms::{
+    NodeIdentity,
     peer_manager::PeerFeatures,
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService, RpcStatus},
+    Substream,
     test_utils::{
-        mocks::{create_connectivity_mock, ConnectivityManagerMockState},
+        mocks::{ConnectivityManagerMockState, create_connectivity_mock},
         node_identity::build_node_identity,
     },
     types::CommsPublicKey,
-    NodeIdentity,
-    Substream,
 };
 use tari_comms_dht::outbound::mock::{create_outbound_service_mock, OutboundServiceMockState};
 use tari_core::{
@@ -47,11 +47,11 @@ use tari_core::{
     },
     transactions::{
         helpers::schema_to_transaction,
-        tari_amount::{uT, MicroTari, T},
-        types::CryptoFactories,
+        tari_amount::{MicroTari, T, uT},
     },
     txn_schema,
 };
+use tari_core::transactions::crypto_factories::CryptoFactories;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::Shutdown;
 use tari_test_utils::random;
@@ -79,8 +79,11 @@ use tari_wallet::{
     },
     types::ValidationRetryStrategy,
 };
-use tempfile::{tempdir, TempDir};
-use tokio::{sync::broadcast, task, time::delay_for};
+
+use crate::support::{
+    rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
+    utils::make_input,
+};
 
 // Just in case other options become apparent in later testing
 #[derive(PartialEq)]

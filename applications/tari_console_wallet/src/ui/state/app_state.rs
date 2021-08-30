@@ -20,6 +20,46 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+use bitflags::bitflags;
+use futures::{stream::Fuse, StreamExt};
+use log::*;
+use qrcode::{render::unicode, QrCode};
+use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
+use tokio::{
+    sync::{watch, RwLock},
+    task,
+};
+
+use tari_common::{configuration::Network, GlobalConfig};
+use tari_common_types::{emoji::EmojiId, types::PublicKey};
+use tari_comms::{
+    connectivity::ConnectivityEventRx,
+    multiaddr::Multiaddr,
+    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
+    types::CommsPublicKey,
+    NodeIdentity,
+};
+use tari_core::transactions::tari_amount::{uT, MicroTari};
+use tari_shutdown::ShutdownSignal;
+use tari_wallet::{
+    base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
+    connectivity_service::WalletConnectivityHandle,
+    contacts_service::storage::database::Contact,
+    output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, TxId, TxoValidationType},
+    transaction_service::{
+        handle::TransactionEventReceiver,
+        storage::models::{CompletedTransaction, TransactionStatus},
+    },
+    types::ValidationRetryStrategy,
+    WalletSqlite,
+};
+
 use crate::{
     notifier::Notifier,
     ui::{
@@ -32,46 +72,6 @@ use crate::{
     },
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
     wallet_modes::PeerConfig,
-};
-use bitflags::bitflags;
-use futures::{stream::Fuse, StreamExt};
-use log::*;
-use qrcode::{render::unicode, QrCode};
-use std::{
-    collections::HashMap,
-    sync::Arc,
-    time::{Duration, Instant},
-};
-use tari_common::{configuration::Network, GlobalConfig};
-use tari_comms::{
-    connectivity::ConnectivityEventRx,
-    multiaddr::Multiaddr,
-    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
-    types::CommsPublicKey,
-    NodeIdentity,
-};
-use tari_core::transactions::{
-    tari_amount::{uT, MicroTari},
-    types::PublicKey,
-};
-use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
-use tari_shutdown::ShutdownSignal;
-use tari_wallet::{
-    base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
-    connectivity_service::WalletConnectivityHandle,
-    contacts_service::storage::database::Contact,
-    output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, TxId, TxoValidationType},
-    transaction_service::{
-        handle::TransactionEventReceiver,
-        storage::models::{CompletedTransaction, TransactionStatus},
-    },
-    types::ValidationRetryStrategy,
-    util::emoji::EmojiId,
-    WalletSqlite,
-};
-use tokio::{
-    sync::{watch, RwLock},
-    task,
 };
 
 const LOG_TARGET: &str = "wallet::console_wallet::app_state";

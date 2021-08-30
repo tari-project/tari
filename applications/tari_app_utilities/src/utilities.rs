@@ -20,9 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::identity_management::load_from_json;
 use futures::future::Either;
 use log::*;
+use thiserror::Error;
+use tokio::{runtime, runtime::Runtime};
+
 use tari_common::{CommsTransport, GlobalConfig, SocksAuthentication, TorControlAuthentication};
 use tari_comms::{
     connectivity::ConnectivityError,
@@ -40,10 +42,10 @@ use tari_p2p::transport::{TorConfig, TransportType};
 use tari_wallet::{
     error::{WalletError, WalletStorageError},
     output_manager_service::error::OutputManagerError,
-    util::emoji::EmojiId,
 };
-use thiserror::Error;
-use tokio::{runtime, runtime::Runtime};
+
+use tari_common_types::emoji::EmojiId;
+use crate::identity_management::load_from_json;
 
 pub const LOG_TARGET: &str = "tari::application";
 

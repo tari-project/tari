@@ -23,26 +23,29 @@
 //! Common test helper functions that are small and useful enough to be included in the main crate, rather than the
 //! integration test folder.
 
-pub mod blockchain;
+use std::{iter, path::Path, sync::Arc};
+
+use rand::{distributions::Alphanumeric, Rng};
+
+use tari_common::configuration::Network;
+use tari_comms::PeerManager;
+use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 
 use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{BlockHeaderAccumulatedData, ChainHeader},
     consensus::ConsensusManager,
     crypto::tari_utilities::Hashable,
-    proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty},
+    proof_of_work::{AchievedTargetDifficulty, Difficulty, sha3_difficulty},
     transactions::{
+        CoinbaseBuilder,
         tari_amount::T,
         transaction::{Transaction, UnblindedOutput},
-        types::CryptoFactories,
-        CoinbaseBuilder,
     },
 };
-use rand::{distributions::Alphanumeric, Rng};
-use std::{iter, path::Path, sync::Arc};
-use tari_common::configuration::Network;
-use tari_comms::PeerManager;
-use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
+use crate::transactions::CryptoFactories;
+
+pub mod blockchain;
 
 /// Create a partially constructed block using the provided set of transactions
 /// is chain_block, or rename it to `create_orphan_block` and drop the prev_block argument

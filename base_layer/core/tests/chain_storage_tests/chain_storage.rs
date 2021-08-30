@@ -20,6 +20,43 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use rand::{RngCore, rngs::OsRng};
+use tari_crypto::{script::StackItem, tari_utilities::Hashable};
+
+use tari_common::configuration::Network;
+use tari_common_types::types::BlockHash;
+use tari_core::{
+    blocks::{Block, BlockHeader, genesis_block},
+    chain_storage::{
+        BlockAddResult,
+        BlockchainBackend,
+        BlockchainDatabase,
+        BlockchainDatabaseConfig,
+        ChainStorageError,
+        create_lmdb_database,
+        DbTransaction,
+        Validators,
+    },
+    consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, emission::Emission},
+    proof_of_work::Difficulty,
+    test_helpers::blockchain::{
+        create_store_with_consensus,
+        create_store_with_consensus_and_validators,
+        create_test_blockchain_db,
+        create_test_db,
+    },
+    transactions::{
+        helpers::{schema_to_transaction, spend_utxos},
+        tari_amount::{MicroTari, T, uT},
+    },
+    tx,
+    txn_schema,
+    validation::{DifficultyCalculator, mocks::MockValidator, ValidationError},
+};
+use tari_core::transactions::crypto_factories::CryptoFactories;
+use tari_storage::lmdb_store::LMDBConfig;
+use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
+
 // use crate::helpers::database::create_test_db;
 // use crate::helpers::database::create_store;
 use crate::helpers::{
@@ -37,41 +74,6 @@ use crate::helpers::{
     sample_blockchains::{create_new_blockchain, create_new_blockchain_lmdb},
     test_blockchain::TestBlockchain,
 };
-use rand::{rngs::OsRng, RngCore};
-use tari_common::configuration::Network;
-use tari_common_types::types::BlockHash;
-use tari_core::{
-    blocks::{genesis_block, Block, BlockHeader},
-    chain_storage::{
-        create_lmdb_database,
-        BlockAddResult,
-        BlockchainBackend,
-        BlockchainDatabase,
-        BlockchainDatabaseConfig,
-        ChainStorageError,
-        DbTransaction,
-        Validators,
-    },
-    consensus::{emission::Emission, ConsensusConstantsBuilder, ConsensusManagerBuilder},
-    proof_of_work::Difficulty,
-    test_helpers::blockchain::{
-        create_store_with_consensus,
-        create_store_with_consensus_and_validators,
-        create_test_blockchain_db,
-        create_test_db,
-    },
-    transactions::{
-        helpers::{schema_to_transaction, spend_utxos},
-        tari_amount::{uT, MicroTari, T},
-        types::CryptoFactories,
-    },
-    tx,
-    txn_schema,
-    validation::{mocks::MockValidator, DifficultyCalculator, ValidationError},
-};
-use tari_crypto::{script::StackItem, tari_utilities::Hashable};
-use tari_storage::lmdb_store::LMDBConfig;
-use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
 
 #[test]
 fn fetch_nonexistent_header() {

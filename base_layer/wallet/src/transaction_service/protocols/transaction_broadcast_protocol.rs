@@ -35,13 +35,14 @@ use crate::{
 use futures::{FutureExt, StreamExt};
 use log::*;
 use std::{convert::TryFrom, sync::Arc, time::Duration};
+use tari_common_types::types::Signature;
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey, PeerConnection};
 use tari_core::{
     base_node::{
         proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
         rpc::BaseNodeWalletRpcClient,
     },
-    transactions::{transaction::Transaction, types::Signature},
+    transactions::transaction::Transaction,
 };
 use tari_crypto::tari_utilities::hex::Hex;
 use tokio::{sync::broadcast, time::delay_for};

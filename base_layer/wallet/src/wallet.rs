@@ -20,6 +20,46 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{marker::PhantomData, sync::Arc};
+
+use aes_gcm::{
+    aead::{generic_array::GenericArray, NewAead},
+    Aes256Gcm,
+};
+use digest::Digest;
+use log::*;
+use rand::rngs::OsRng;
+use tari_crypto::{
+    common::Blake256,
+    keys::SecretKey,
+    ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
+    script,
+    script::{ExecutionStack, TariScript},
+    signatures::{SchnorrSignature, SchnorrSignatureError},
+    tari_utilities::hex::Hex,
+};
+use tokio::runtime;
+
+use tari_common_types::types::{ComSignature, PrivateKey, PublicKey};
+use tari_comms::{
+    multiaddr::Multiaddr,
+    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
+    types::{CommsPublicKey, CommsSecretKey},
+    CommsNode,
+    NodeIdentity,
+    UnspawnedCommsNode,
+};
+use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction::{OutputFeatures, UnblindedOutput},
+    CryptoFactories,
+};
+use tari_key_manager::key_manager::KeyManager;
+use tari_p2p::{comms_connector::pubsub_connector, initialization, initialization::P2pInitializer};
+use tari_service_framework::StackBuilder;
+use tari_shutdown::ShutdownSignal;
+
 use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     config::{WalletConfig, KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY},
@@ -42,42 +82,6 @@ use crate::{
     types::KeyDigest,
     utxo_scanner_service::{handle::UtxoScannerHandle, UtxoScannerServiceInitializer},
 };
-use aes_gcm::{
-    aead::{generic_array::GenericArray, NewAead},
-    Aes256Gcm,
-};
-use digest::Digest;
-use log::*;
-use rand::rngs::OsRng;
-use std::{marker::PhantomData, sync::Arc};
-use tari_comms::{
-    multiaddr::Multiaddr,
-    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
-    types::{CommsPublicKey, CommsSecretKey},
-    CommsNode,
-    NodeIdentity,
-    UnspawnedCommsNode,
-};
-use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction::{OutputFeatures, UnblindedOutput},
-    types::{ComSignature, CryptoFactories, PrivateKey, PublicKey},
-};
-use tari_crypto::{
-    common::Blake256,
-    keys::SecretKey,
-    ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
-    script,
-    script::{ExecutionStack, TariScript},
-    signatures::{SchnorrSignature, SchnorrSignatureError},
-    tari_utilities::hex::Hex,
-};
-use tari_key_manager::key_manager::KeyManager;
-use tari_p2p::{comms_connector::pubsub_connector, initialization, initialization::P2pInitializer};
-use tari_service_framework::StackBuilder;
-use tari_shutdown::ShutdownSignal;
-use tokio::runtime;
 
 const LOG_TARGET: &str = "wallet";
 

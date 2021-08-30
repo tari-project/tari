@@ -28,9 +28,10 @@ use crate::{
         StatsResponse,
         TxStorageResponse,
     },
-    transactions::{transaction::Transaction, types::Signature},
+    transactions::{transaction::Transaction, },
 };
 use tari_service_framework::{reply_channel::TrySenderService, Service};
+use tari_common_types::types::Signature;
 
 #[derive(Clone)]
 pub struct MempoolHandle {

@@ -20,6 +20,51 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    collections::{HashMap, HashSet},
+    convert::TryInto,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+use chrono::{NaiveDateTime, Utc};
+use digest::Digest;
+use futures::{
+    channel::{mpsc, mpsc::Sender, oneshot},
+    pin_mut,
+    stream::FuturesUnordered,
+    SinkExt,
+    Stream,
+    StreamExt,
+};
+use log::*;
+use rand::{rngs::OsRng, RngCore};
+use tari_crypto::{keys::DiffieHellmanSharedSecret, script, tari_utilities::ByteArray};
+use tokio::{sync::broadcast, task::JoinHandle};
+
+use tari_common_types::types::PrivateKey;
+use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeIdentity, types::CommsPublicKey};
+use tari_comms_dht::outbound::OutboundMessageRequester;
+use tari_core::{
+    crypto::keys::SecretKey,
+    proto::base_node as base_node_proto,
+    transactions::{
+        tari_amount::MicroTari,
+        transaction::{KernelFeatures, OutputFeatures, Transaction},
+        transaction_protocol::{
+            proto,
+            recipient::RecipientSignedMessage,
+            sender::TransactionSenderMessage,
+            RewindData,
+        },
+        CryptoFactories,
+        ReceiverTransactionProtocol,
+    },
+};
+use tari_p2p::domain_message::DomainMessage;
+use tari_service_framework::{reply_channel, reply_channel::Receiver};
+use tari_shutdown::ShutdownSignal;
+
 use crate::{
     output_manager_service::{handle::OutputManagerHandle, TxId},
     transaction_service::{
@@ -45,47 +90,6 @@ use crate::{
     },
     types::{HashDigest, ValidationRetryStrategy},
 };
-use chrono::{NaiveDateTime, Utc};
-use digest::Digest;
-use futures::{
-    channel::{mpsc, mpsc::Sender, oneshot},
-    pin_mut,
-    stream::FuturesUnordered,
-    SinkExt,
-    Stream,
-    StreamExt,
-};
-use log::*;
-use rand::{rngs::OsRng, RngCore};
-use std::{
-    collections::{HashMap, HashSet},
-    convert::TryInto,
-    sync::Arc,
-    time::{Duration, Instant},
-};
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeIdentity, types::CommsPublicKey};
-use tari_comms_dht::outbound::OutboundMessageRequester;
-use tari_core::{
-    crypto::keys::SecretKey,
-    proto::base_node as base_node_proto,
-    transactions::{
-        tari_amount::MicroTari,
-        transaction::{KernelFeatures, OutputFeatures, Transaction},
-        transaction_protocol::{
-            proto,
-            recipient::RecipientSignedMessage,
-            sender::TransactionSenderMessage,
-            RewindData,
-        },
-        types::{CryptoFactories, PrivateKey},
-        ReceiverTransactionProtocol,
-    },
-};
-use tari_crypto::{keys::DiffieHellmanSharedSecret, script, tari_utilities::ByteArray};
-use tari_p2p::domain_message::DomainMessage;
-use tari_service_framework::{reply_channel, reply_channel::Receiver};
-use tari_shutdown::ShutdownSignal;
-use tokio::{sync::broadcast, task::JoinHandle};
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
 

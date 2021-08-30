@@ -20,7 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::PublicKey as PK,
+    range_proof::{RangeProofError, RangeProofService as RPS},
+    tari_utilities::byte_array::ByteArray,
+};
+
 use crate::transactions::{
+    crypto_factories::CryptoFactories,
     transaction::{OutputFeatures, TransactionOutput},
     transaction_protocol::{
         build_challenge,
@@ -29,14 +37,9 @@ use crate::transactions::{
         RewindData,
         TransactionProtocolError as TPE,
     },
-    types::{CryptoFactories, PrivateKey as SK, PublicKey, RangeProof, Signature},
+    types::RangeProof,
 };
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::PublicKey as PK,
-    range_proof::{RangeProofError, RangeProofService as RPS},
-    tari_utilities::byte_array::ByteArray,
-};
+use tari_common_types::types::{PrivateKey as SK, PublicKey, Signature};
 
 /// SingleReceiverTransactionProtocol represents the actions taken by the single receiver in the one-round Tari
 /// transaction protocol. The procedure is straightforward. Upon receiving the sender's information, the receiver:
@@ -133,7 +136,15 @@ impl SingleReceiverTransactionProtocol {
 
 #[cfg(test)]
 mod test {
+    use rand::rngs::OsRng;
+    use tari_crypto::{
+        commitment::HomomorphicCommitmentFactory,
+        keys::{PublicKey as PK, SecretKey as SK},
+        script::TariScript,
+    };
+
     use crate::transactions::{
+        crypto_factories::CryptoFactories,
         tari_amount::*,
         transaction::OutputFeatures,
         transaction_protocol::{
@@ -143,14 +154,9 @@ mod test {
             TransactionMetadata,
             TransactionProtocolError,
         },
-        types::{CryptoFactories, PrivateKey, PublicKey},
+        types::{PrivateKey, PublicKey},
     };
-    use rand::rngs::OsRng;
-    use tari_crypto::{
-        commitment::HomomorphicCommitmentFactory,
-        keys::{PublicKey as PK, SecretKey as SK},
-        script::TariScript,
-    };
+    use tari_common_types::PublicKey;
 
     fn generate_output_parms() -> (PrivateKey, PrivateKey, OutputFeatures) {
         let r = PrivateKey::random(&mut OsRng);

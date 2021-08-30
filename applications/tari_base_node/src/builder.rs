@@ -20,9 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::bootstrap::BaseNodeBootstrapper;
-use log::*;
 use std::sync::Arc;
+
+use log::*;
+use tokio::sync::watch;
+
 use tari_common::{configuration::Network, DatabaseType, GlobalConfig};
 use tari_comms::{peer_manager::NodeIdentity, protocol::rpc::RpcServerHandle, CommsNode};
 use tari_comms_dht::Dht;
@@ -32,7 +34,7 @@ use tari_core::{
     consensus::ConsensusManager,
     mempool::{service::LocalMempoolService, Mempool, MempoolConfig},
     proof_of_work::randomx_factory::RandomXFactory,
-    transactions::types::CryptoFactories,
+    transactions::CryptoFactories,
     validation::{
         block_validators::{BodyOnlyValidator, OrphanBlockValidator},
         header_validator::HeaderValidator,
@@ -48,7 +50,8 @@ use tari_core::{
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
-use tokio::sync::watch;
+
+use crate::bootstrap::BaseNodeBootstrapper;
 
 const LOG_TARGET: &str = "c::bn::initialization";
 

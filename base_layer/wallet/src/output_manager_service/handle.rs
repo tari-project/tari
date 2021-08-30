@@ -33,12 +33,12 @@ use crate::{
 use aes_gcm::Aes256Gcm;
 use futures::{stream::Fuse, StreamExt};
 use std::{collections::HashMap, fmt, sync::Arc, time::Duration};
+use tari_common_types::types::PublicKey;
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{Transaction, TransactionInput, TransactionOutput, UnblindedOutput},
     transaction_protocol::sender::TransactionSenderMessage,
-    types::PublicKey,
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };

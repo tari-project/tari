@@ -42,13 +42,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod helpers;
-
-use crate::helpers::{
-    block_builders::{chain_block, create_genesis_block_with_coinbase_value},
-    nodes::{BaseNodeBuilder, NodeInterfaces},
-};
 use std::convert::TryFrom;
+
+use tempfile::{tempdir, TempDir};
+use tokio::runtime::Runtime;
+
 use tari_common::configuration::Network;
 use tari_comms::protocol::rpc::mock::RpcRequestMock;
 use tari_core::{
@@ -74,14 +72,19 @@ use tari_core::{
     test_helpers::blockchain::TempDatabase,
     transactions::{
         helpers::schema_to_transaction,
-        tari_amount::{uT, T},
+        tari_amount::{T, uT},
         transaction::{TransactionOutput, UnblindedOutput},
-        types::CryptoFactories,
     },
     txn_schema,
 };
-use tempfile::{tempdir, TempDir};
-use tokio::runtime::Runtime;
+use tari_core::transactions::crypto_factories::CryptoFactories;
+
+use crate::helpers::{
+    block_builders::{chain_block, create_genesis_block_with_coinbase_value},
+    nodes::{BaseNodeBuilder, NodeInterfaces},
+};
+
+mod helpers;
 
 fn setup() -> (
     BaseNodeWalletRpcService<TempDatabase>,

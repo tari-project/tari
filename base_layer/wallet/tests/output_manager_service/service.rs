@@ -20,41 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{
-    data::get_temp_sqlite_database_connection,
-    rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
-    utils::{make_input, make_input_with_features, TestParams},
-};
-use futures::{FutureExt, StreamExt};
-use rand::{rngs::OsRng, RngCore};
 use std::{sync::Arc, thread, time::Duration};
-use tari_comms::{
-    peer_manager::{NodeIdentity, PeerFeatures},
-    protocol::rpc::{mock::MockRpcServer, NamedProtocolService, RpcStatus},
-    test_utils::{
-        mocks::{create_connectivity_mock, ConnectivityManagerMockState},
-        node_identity::build_node_identity,
-    },
-    types::CommsSecretKey,
-    Substream,
-};
-use tari_core::{
-    base_node::rpc::BaseNodeWalletRpcServer,
-    consensus::ConsensusConstantsBuilder,
-    transactions::{
-        fee::Fee,
-        helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
-        tari_amount::{uT, MicroTari},
-        transaction::{KernelFeatures, OutputFeatures, Transaction},
-        transaction_protocol::{
-            recipient::RecipientState,
-            sender::TransactionSenderMessage,
-            single_receiver::SingleReceiverTransactionProtocol,
-        },
-        types::{CryptoFactories, PrivateKey, PublicKey},
-        SenderTransactionProtocol,
-    },
-};
+
+use futures::{FutureExt, StreamExt};
+use rand::{RngCore, rngs::OsRng};
 use tari_crypto::{
     hash::blake2::Blake256,
     inputs,
@@ -62,6 +31,41 @@ use tari_crypto::{
     script,
     script::TariScript,
 };
+use tokio::{
+    runtime::Runtime,
+    sync::{broadcast, broadcast::channel},
+    time::delay_for,
+};
+
+use tari_comms::{
+    peer_manager::{NodeIdentity, PeerFeatures},
+    protocol::rpc::{mock::MockRpcServer, NamedProtocolService, RpcStatus},
+    Substream,
+    test_utils::{
+        mocks::{ConnectivityManagerMockState, create_connectivity_mock},
+        node_identity::build_node_identity,
+    },
+    types::CommsSecretKey,
+};
+use tari_comms::protocol::rpc::RpcClientConfig;
+use tari_core::{
+    base_node::rpc::BaseNodeWalletRpcServer,
+    consensus::ConsensusConstantsBuilder,
+    transactions::{
+        fee::Fee,
+        helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
+        SenderTransactionProtocol,
+        tari_amount::{MicroTari, uT},
+        transaction::{KernelFeatures, OutputFeatures, Transaction},
+        transaction_protocol::{
+            recipient::RecipientState,
+            sender::TransactionSenderMessage,
+            single_receiver::SingleReceiverTransactionProtocol,
+        },
+        types::{PrivateKey, PublicKey},
+    },
+};
+use tari_core::transactions::crypto_factories::CryptoFactories;
 use tari_p2p::Network;
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
@@ -83,13 +87,12 @@ use tari_wallet::{
     transaction_service::handle::TransactionServiceHandle,
     types::ValidationRetryStrategy,
 };
-
-use tari_comms::protocol::rpc::RpcClientConfig;
 use tari_wallet::output_manager_service::storage::models::OutputStatus;
-use tokio::{
-    runtime::Runtime,
-    sync::{broadcast, broadcast::channel},
-    time::delay_for,
+
+use crate::support::{
+    data::get_temp_sqlite_database_connection,
+    rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
+    utils::{make_input, make_input_with_features, TestParams},
 };
 
 #[allow(clippy::type_complexity)]

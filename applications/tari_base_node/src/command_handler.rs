@@ -34,6 +34,10 @@ use std::{
 };
 use tari_app_utilities::consts;
 use tari_common::GlobalConfig;
+use tari_common_types::{
+    emoji::EmojiId,
+    types::{Commitment, HashOutput, Signature},
+};
 use tari_comms::{
     connectivity::ConnectivityRequester,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerManager, PeerManagerError, PeerQuery},
@@ -53,11 +57,9 @@ use tari_core::{
     mempool::service::LocalMempoolService,
     proof_of_work::PowAlgorithm,
     tari_utilities::{hex::Hex, message_format::MessageFormat},
-    transactions::types::{Commitment, HashOutput, Signature},
 };
 use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::Hashable};
 use tari_p2p::auto_update::SoftwareUpdaterHandle;
-use tari_wallet::util::emoji::EmojiId;
 use tokio::{runtime, sync::watch};
 
 pub enum StatusOutput {

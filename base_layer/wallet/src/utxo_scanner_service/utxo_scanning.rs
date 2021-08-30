@@ -20,24 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    error::WalletError,
-    output_manager_service::{handle::OutputManagerHandle, TxId},
-    storage::{
-        database::{WalletBackend, WalletDatabase},
-        sqlite_db::WalletSqliteDatabase,
-    },
-    transaction_service::handle::TransactionServiceHandle,
-    utxo_scanner_service::{
-        error::UtxoScannerError,
-        handle::{UtxoScannerEvent, UtxoScannerRequest, UtxoScannerResponse},
-    },
-    WalletSqlite,
-};
-use chrono::Utc;
-use futures::{pin_mut, StreamExt};
-use log::*;
-use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom,
     sync::{
@@ -46,6 +28,14 @@ use std::{
     },
     time::{Duration, Instant},
 };
+
+use chrono::Utc;
+use futures::{pin_mut, StreamExt};
+use log::*;
+use serde::{Deserialize, Serialize};
+use tokio::{sync::broadcast, task, time};
+
+use tari_common_types::types::HashOutput;
 use tari_comms::{
     connectivity::ConnectivityRequester,
     peer_manager::NodeId,
@@ -64,12 +54,26 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         transaction::{TransactionOutput, UnblindedOutput},
-        types::{CryptoFactories, HashOutput},
+        CryptoFactories,
     },
 };
 use tari_service_framework::{reply_channel, reply_channel::SenderService};
 use tari_shutdown::ShutdownSignal;
-use tokio::{sync::broadcast, task, time};
+
+use crate::{
+    error::WalletError,
+    output_manager_service::{handle::OutputManagerHandle, TxId},
+    storage::{
+        database::{WalletBackend, WalletDatabase},
+        sqlite_db::WalletSqliteDatabase,
+    },
+    transaction_service::handle::TransactionServiceHandle,
+    utxo_scanner_service::{
+        error::UtxoScannerError,
+        handle::{UtxoScannerEvent, UtxoScannerRequest, UtxoScannerResponse},
+    },
+    WalletSqlite,
+};
 
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 

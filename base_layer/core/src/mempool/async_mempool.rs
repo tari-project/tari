@@ -23,9 +23,10 @@
 use crate::{
     blocks::Block,
     mempool::{error::MempoolError, Mempool, StateResponse, StatsResponse, TxStorageResponse},
-    transactions::{transaction::Transaction, types::Signature},
+    transactions::{transaction::Transaction, },
 };
 use std::sync::Arc;
+use tari_common_types::types::Signature;
 
 macro_rules! make_async {
     ($fn:ident($($param1:ident:$ptype1:ty,$param2:ident:$ptype2:ty),+) -> $rtype:ty) => {

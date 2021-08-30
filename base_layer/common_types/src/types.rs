@@ -20,5 +20,50 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_crypto::{
+    common::Blake256,
+    ristretto::{
+        pedersen::{PedersenCommitment, PedersenCommitmentFactory},
+        RistrettoComSig,
+        RistrettoPublicKey,
+        RistrettoSchnorr,
+        RistrettoSecretKey,
+    },
+};
+
 pub const BLOCK_HASH_LENGTH: usize = 32;
 pub type BlockHash = Vec<u8>;
+
+/// Define the explicit Signature implementation for the Tari base layer. A different signature scheme can be
+/// employed by redefining this type.
+pub type Signature = RistrettoSchnorr;
+/// Define the explicit Commitment Signature implementation for the Tari base layer.
+pub type ComSignature = RistrettoComSig;
+
+/// Define the explicit Commitment implementation for the Tari base layer.
+pub type Commitment = PedersenCommitment;
+pub type CommitmentFactory = PedersenCommitmentFactory;
+
+/// Define the explicit Public key implementation for the Tari base layer
+pub type PublicKey = RistrettoPublicKey;
+
+/// Define the explicit Secret key implementation for the Tari base layer.
+pub type PrivateKey = RistrettoSecretKey;
+pub type BlindingFactor = RistrettoSecretKey;
+
+/// Define the hash function that will be used to produce a signature challenge
+pub type SignatureHasher = Blake256;
+
+/// Specify the Hash function for general hashing
+pub type HashDigest = Blake256;
+
+/// Specify the digest type for signature challenges
+pub type Challenge = Blake256;
+
+/// The type of output that `Challenge` produces
+pub type MessageHash = Vec<u8>;
+
+/// Define the data type that is used to store results of `HashDigest`
+pub type HashOutput = Vec<u8>;
+
+pub const MAX_RANGE_PROOF_RANGE: usize = 64; // 2^64

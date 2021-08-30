@@ -25,10 +25,9 @@ use crate::{
     blocks::{Block, NewBlock, NewBlockHeaderTemplate, NewBlockTemplate},
     chain_storage::{BlockHeaderAccumulatedData, HistoricalBlock},
     proof_of_work::ProofOfWork,
-    transactions::types::BlindingFactor,
 };
 use std::convert::{TryFrom, TryInto};
-use tari_common_types::types::BLOCK_HASH_LENGTH;
+use tari_common_types::types::{BLOCK_HASH_LENGTH, BlindingFactor};
 use tari_crypto::tari_utilities::ByteArray;
 
 //---------------------------------- Block --------------------------------------------//

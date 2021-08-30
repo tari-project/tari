@@ -23,11 +23,11 @@
 use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{BlockHeaderAccumulatedData, ChainBlock, ChainStorageError},
-    transactions::types::HashOutput,
 };
 use serde::{Deserialize, Serialize};
 use std::{fmt, fmt::Display, sync::Arc};
 use tari_crypto::tari_utilities::hex::Hex;
+use tari_common_types::types::HashOutput;
 
 /// The representation of a historical block in the blockchain. It is essentially identical to a protocol-defined
 /// block but contains some extra metadata that clients such as Block Explorers will find interesting.

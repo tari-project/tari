@@ -34,7 +34,7 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     mempool::{async_mempool, Mempool},
     proof_of_work::{Difficulty, PowAlgorithm},
-    transactions::{transaction::TransactionKernel, types::HashOutput},
+    transactions::{transaction::TransactionKernel, },
 };
 use log::*;
 use std::{
@@ -42,7 +42,7 @@ use std::{
     sync::Arc,
 };
 use strum_macros::Display;
-use tari_common_types::types::BlockHash;
+use tari_common_types::types::{BlockHash, HashOutput};
 use tari_comms::peer_manager::NodeId;
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
 use tokio::sync::Semaphore;

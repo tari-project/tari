@@ -23,12 +23,13 @@
 use crate::{
     blocks::Block,
     mempool::reorg_pool::reorg_pool::ReorgPoolConfig,
-    transactions::{transaction::Transaction, types::Signature},
+    transactions::{transaction::Transaction, },
 };
 use log::*;
 use std::sync::Arc;
 use tari_crypto::tari_utilities::hex::Hex;
 use ttl_cache::TtlCache;
+use tari_common_types::types::Signature;
 
 pub const LOG_TARGET: &str = "c::mp::reorg_pool::reorg_pool_storage";
 

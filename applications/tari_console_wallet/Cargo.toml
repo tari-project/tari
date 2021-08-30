@@ -5,12 +5,13 @@ authors = ["The Tari Development Community"]
 edition = "2018"
 
 [dependencies]
-tari_wallet = {  path = "../../base_layer/wallet" }
+tari_wallet = {  path = "../../base_layer/wallet", features=["bundled_sqlite"] }
 tari_crypto = "0.11.1"
 tari_common = {  path = "../../common" }
 tari_app_utilities = { path = "../tari_app_utilities"}
 tari_comms = {  path = "../../comms"}
 tari_comms_dht = {  path = "../../comms/dht"}
+tari_common_types = {path = "../../base_layer/common_types"}
 tari_p2p = {  path = "../../base_layer/p2p" }
 tari_app_grpc = {  path = "../tari_app_grpc" }
 tari_shutdown = {  path = "../../infrastructure/shutdown" }

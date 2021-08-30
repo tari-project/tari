@@ -33,7 +33,7 @@ use futures::future;
 use log::*;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{connectivity::ConnectivityRequester, NodeIdentity};
-use tari_core::transactions::types::CryptoFactories;
+use tari_core::transactions::CryptoFactories;
 use tari_service_framework::{
     async_trait,
     reply_channel,

@@ -1,3 +1,13 @@
+use std::marker::PhantomData;
+
+use log::*;
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    tari_utilities::{hash::Hashable, hex::Hex},
+};
+
+use tari_common_types::chain_metadata::ChainMetadata;
+
 // Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -27,23 +37,16 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         transaction::{KernelFeatures, OutputFlags, TransactionError},
-        types::CryptoFactories,
     },
     validation::{
-        helpers::{check_accounting_balance, check_block_weight, check_coinbase_output, is_all_unique_and_sorted},
-        traits::PostOrphanBodyValidation,
         CandidateBlockBodyValidation,
+        helpers::{check_accounting_balance, check_block_weight, check_coinbase_output, is_all_unique_and_sorted},
         OrphanValidation,
+        traits::PostOrphanBodyValidation,
         ValidationError,
     },
 };
-use log::*;
-use std::marker::PhantomData;
-use tari_common_types::chain_metadata::ChainMetadata;
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    tari_utilities::{hash::Hashable, hex::Hex},
-};
+use crate::transactions::CryptoFactories;
 
 pub const LOG_TARGET: &str = "c::val::block_validators";
 

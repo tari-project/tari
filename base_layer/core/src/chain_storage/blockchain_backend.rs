@@ -16,12 +16,12 @@ use crate::{
     },
     transactions::{
         transaction::{TransactionInput, TransactionKernel},
-        types::{Commitment, HashOutput, Signature},
     },
 };
 use croaring::Bitmap;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_mmr::Hash;
+use tari_common_types::types::{HashOutput, Signature, Commitment};
 
 /// Identify behaviour for Blockchain database backends. Implementations must support `Send` and `Sync` so that
 /// `BlockchainDatabase` can be thread-safe. The backend *must* also execute transactions atomically; i.e., every

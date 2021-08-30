@@ -20,10 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[allow(dead_code)]
-mod helpers;
-use crate::helpers::block_builders::{construct_chained_blocks, create_coinbase};
+use std::{sync::Arc, time::Duration};
+
 use futures::join;
+use tari_crypto::tari_utilities::hash::Hashable;
+use tempfile::tempdir;
+use tokio::runtime::Runtime;
+
 use helpers::{
     block_builders::{
         append_block,
@@ -34,14 +37,13 @@ use helpers::{
     },
     event_stream::event_stream_next,
     nodes::{
+        BaseNodeBuilder,
         create_network_with_2_base_nodes_with_config,
         create_network_with_3_base_nodes_with_config,
         random_node_identity,
         wait_until_online,
-        BaseNodeBuilder,
     },
 };
-use std::{sync::Arc, time::Duration};
 use tari_common::configuration::Network;
 use tari_comms::protocol::messaging::MessagingEvent;
 use tari_core::{
@@ -57,9 +59,8 @@ use tari_core::{
     proof_of_work::PowAlgorithm,
     transactions::{
         helpers::{schema_to_transaction, spend_utxos},
-        tari_amount::{uT, T},
+        tari_amount::{T, uT},
         transaction::OutputFeatures,
-        types::CryptoFactories,
     },
     txn_schema,
     validation::{
@@ -68,11 +69,14 @@ use tari_core::{
         mocks::MockValidator,
     },
 };
-use tari_crypto::tari_utilities::hash::Hashable;
+use tari_core::transactions::crypto_factories::CryptoFactories;
 use tari_p2p::services::liveness::LivenessConfig;
 use tari_test_utils::unpack_enum;
-use tempfile::tempdir;
-use tokio::runtime::Runtime;
+
+use crate::helpers::block_builders::{construct_chained_blocks, create_coinbase};
+
+#[allow(dead_code)]
+mod helpers;
 
 #[test]
 fn request_response_get_metadata() {

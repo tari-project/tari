@@ -24,13 +24,14 @@ use crate::{
     base_node::comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
     blocks::{block_header::BlockHeader, NewBlock},
     chain_storage::HistoricalBlock,
-    transactions::{transaction::TransactionOutput, types::HashOutput},
+    transactions::{transaction::TransactionOutput, },
 };
 use futures::channel::mpsc::UnboundedSender;
 use log::*;
 use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
 use tari_comms::peer_manager::NodeId;
 use tari_service_framework::{reply_channel::SenderService, Service};
+use tari_common_types::types::HashOutput;
 
 pub const LOG_TARGET: &str = "c::bn::comms_interface::outbound_interface";
 

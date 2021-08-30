@@ -27,7 +27,6 @@ use crate::{
     tari_utilities::Hashable,
     transactions::{
         aggregated_body::AggregateBody,
-        types::{BlindingFactor, Commitment, HashOutput},
     },
 };
 use croaring::Bitmap;
@@ -49,6 +48,7 @@ use std::{
 };
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_mmr::{pruned_hashset::PrunedHashSet, ArrayLike};
+use tari_common_types::types::{Commitment, HashOutput, BlindingFactor};
 
 const LOG_TARGET: &str = "c::bn::acc_data";
 

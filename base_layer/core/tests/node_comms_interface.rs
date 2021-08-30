@@ -20,11 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[allow(dead_code)]
-mod helpers;
-use futures::{channel::mpsc, StreamExt};
-use helpers::block_builders::append_block;
 use std::sync::Arc;
+
+use futures::{channel::mpsc, StreamExt};
+use tari_crypto::{
+    inputs,
+    keys::PublicKey as PublicKeyTrait,
+    script,
+    script::TariScript,
+    tari_utilities::hash::Hashable,
+};
+use tokio::sync::broadcast;
+
+use helpers::block_builders::append_block;
 use tari_common::configuration::Network;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::peer_manager::NodeId;
@@ -42,20 +50,16 @@ use tari_core::{
         helpers::{create_utxo, spend_utxos},
         tari_amount::MicroTari,
         transaction::{OutputFeatures, TransactionOutput, UnblindedOutput},
-        types::{CryptoFactories, PublicKey},
+        types::PublicKey,
     },
     txn_schema,
     validation::{mocks::MockValidator, transaction_validators::TxInputAndMaturityValidator},
 };
-use tari_crypto::{
-    inputs,
-    keys::PublicKey as PublicKeyTrait,
-    script,
-    script::TariScript,
-    tari_utilities::hash::Hashable,
-};
+use tari_core::transactions::crypto_factories::CryptoFactories;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
-use tokio::sync::broadcast;
+
+#[allow(dead_code)]
+mod helpers;
 // use crate::helpers::database::create_test_db;
 
 async fn test_request_responder(

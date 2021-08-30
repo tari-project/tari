@@ -20,8 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[allow(dead_code)]
-mod helpers;
+// use crate::helpers::database::create_store;
+use std::{ops::Deref, sync::Arc, time::Duration};
+
+use tari_crypto::keys::PublicKey as PublicKeyTrait;
+use tari_crypto::script;
+use tempfile::tempdir;
+use tokio::runtime::Runtime;
 
 use helpers::{
     block_builders::{
@@ -35,9 +40,6 @@ use helpers::{
     nodes::{create_network_with_2_base_nodes_with_config, create_network_with_3_base_nodes_with_config},
     sample_blockchains::{create_new_blockchain, create_new_blockchain_with_constants},
 };
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
-// use crate::helpers::database::create_store;
-use std::{ops::Deref, sync::Arc, time::Duration};
 use tari_common::configuration::Network;
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
@@ -53,20 +55,21 @@ use tari_core::{
     transactions::{
         fee::Fee,
         helpers::{create_unblinded_output, schema_to_transaction, spend_utxos, TestParams},
-        tari_amount::{uT, MicroTari, T},
+        tari_amount::{MicroTari, T, uT},
         transaction::{KernelBuilder, OutputFeatures, Transaction, TransactionOutput},
         transaction_protocol::{build_challenge, TransactionMetadata},
-        types::{Commitment, CryptoFactories, PrivateKey, PublicKey, Signature},
+        types::{Commitment, PrivateKey, PublicKey, Signature},
     },
     tx,
     txn_schema,
     validation::transaction_validators::{TxConsensusValidator, TxInputAndMaturityValidator},
 };
-use tari_crypto::script;
+use tari_core::transactions::crypto_factories::CryptoFactories;
 use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType};
 use tari_test_utils::async_assert_eventually;
-use tempfile::tempdir;
-use tokio::runtime::Runtime;
+
+#[allow(dead_code)]
+mod helpers;
 
 #[test]
 #[allow(clippy::identity_op)]

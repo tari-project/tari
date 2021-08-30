@@ -1,5 +1,3 @@
-use crate::transactions::types::Commitment;
-
 // Copyright 2021. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -23,6 +21,7 @@ use crate::transactions::types::Commitment;
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use serde::{Deserialize, Serialize};
 use tari_crypto::tari_utilities::ByteArray;
+use tari_common_types::types::Commitment;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HorizonData {

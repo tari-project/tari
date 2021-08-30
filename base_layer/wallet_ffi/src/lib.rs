@@ -107,19 +107,18 @@
 #[cfg(test)]
 #[macro_use]
 extern crate lazy_static;
-mod callback_handler;
-mod enums;
-mod error;
-mod tasks;
 
-use crate::{
-    callback_handler::CallbackHandler,
-    enums::SeedWordPushResult,
-    error::{InterfaceError, TransactionError},
-    tasks::recovery_event_monitoring,
-};
 use core::ptr;
-use error::LibWalletError;
+use std::{
+    boxed::Box,
+    ffi::{CStr, CString},
+    path::PathBuf,
+    slice,
+    str::FromStr,
+    sync::Arc,
+    time::Duration,
+};
+
 use futures::StreamExt;
 use libc::{c_char, c_int, c_longlong, c_uchar, c_uint, c_ulonglong, c_ushort};
 use log::{LevelFilter, *};
@@ -136,14 +135,19 @@ use log4rs::{
     encode::pattern::PatternEncoder,
 };
 use rand::rngs::OsRng;
-use std::{
-    boxed::Box,
-    ffi::{CStr, CString},
-    path::PathBuf,
-    slice,
-    str::FromStr,
-    sync::Arc,
-    time::Duration,
+use tari_crypto::{
+    inputs,
+    keys::{PublicKey as PublicKeyTrait, SecretKey},
+    script,
+    tari_utilities::ByteArray,
+};
+use tari_utilities::{hex, hex::Hex};
+use tokio::runtime::Runtime;
+
+use error::LibWalletError;
+use tari_common_types::{
+    emoji::{emoji_set, EmojiId, EmojiIdError},
+    types::{ComSignature, PublicKey},
 };
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -154,23 +158,12 @@ use tari_comms::{
     types::CommsSecretKey,
 };
 use tari_comms_dht::{DbConnectionUrl, DhtConfig};
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction::OutputFeatures,
-    types::{ComSignature, CryptoFactories, PublicKey},
-};
-use tari_crypto::{
-    inputs,
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
-    script,
-    tari_utilities::ByteArray,
-};
+use tari_core::transactions::{tari_amount::MicroTari, transaction::OutputFeatures, CryptoFactories};
 use tari_p2p::{
     transport::{TorConfig, TransportType, TransportType::Tor},
     Network,
 };
 use tari_shutdown::Shutdown;
-use tari_utilities::{hex, hex::Hex};
 use tari_wallet::{
     contacts_service::storage::database::Contact,
     error::{WalletError, WalletStorageError},
@@ -195,13 +188,23 @@ use tari_wallet::{
         },
     },
     types::ValidationRetryStrategy,
-    util::emoji::{emoji_set, EmojiId, EmojiIdError},
     utxo_scanner_service::utxo_scanning::{UtxoScannerService, RECOVERY_KEY},
     Wallet,
     WalletConfig,
     WalletSqlite,
 };
-use tokio::runtime::Runtime;
+
+use crate::{
+    callback_handler::CallbackHandler,
+    enums::SeedWordPushResult,
+    error::{InterfaceError, TransactionError},
+    tasks::recovery_event_monitoring,
+};
+
+mod callback_handler;
+mod enums;
+mod error;
+mod tasks;
 
 const LOG_TARGET: &str = "wallet_ffi";
 
@@ -209,7 +212,7 @@ pub type TariTransportType = tari_p2p::transport::TransportType;
 pub type TariPublicKey = tari_comms::types::CommsPublicKey;
 pub type TariPrivateKey = tari_comms::types::CommsSecretKey;
 pub type TariCommsConfig = tari_p2p::initialization::CommsConfig;
-pub type TariExcess = tari_core::transactions::types::Commitment;
+pub type TariExcess = tari_common_types::types::Commitment;
 pub type TariExcessPublicNonce = tari_crypto::ristretto::RistrettoPublicKey;
 pub type TariExcessSignature = tari_crypto::ristretto::RistrettoSecretKey;
 
@@ -5306,21 +5309,24 @@ pub unsafe extern "C" fn log_debug_message(msg: *const c_char) {
 
 #[cfg(test)]
 mod test {
-    use crate::*;
-    use libc::{c_char, c_uchar, c_uint};
     use std::{
         ffi::CString,
         path::Path,
         str::{from_utf8, FromStr},
         sync::Mutex,
     };
+
+    use libc::{c_char, c_uchar, c_uint};
+    use tempfile::tempdir;
+
+    use tari_app_utilities::emoji;
     use tari_test_utils::random;
     use tari_wallet::{
         storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
         transaction_service::storage::models::TransactionStatus,
-        util::emoji,
     };
-    use tempfile::tempdir;
+
+    use crate::*;
 
     fn type_of<T>(_: T) -> String {
         std::any::type_name::<T>().to_string()

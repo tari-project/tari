@@ -38,10 +38,10 @@ use crate::{
             TransactionKernel,
             TransactionOutput,
         },
-        types::{BlindingFactor, Commitment, PublicKey},
     },
 };
 use std::convert::{TryFrom, TryInto};
+use tari_common_types::types::{BlindingFactor, Commitment, PublicKey};
 use tari_crypto::{
     script::{ExecutionStack, TariScript},
     tari_utilities::{ByteArray, ByteArrayError},

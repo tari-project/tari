@@ -48,7 +48,6 @@ use crate::{
     tari_utilities::epoch_time::EpochTime,
     transactions::{
         transaction::TransactionKernel,
-        types::{Commitment, HashDigest, HashOutput, Signature},
     },
     validation::{DifficultyCalculator, HeaderValidation, OrphanValidation, PostOrphanBodyValidation, ValidationError},
 };
@@ -68,6 +67,7 @@ use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray, Hashable};
 use tari_mmr::{MerkleMountainRange, MutableMmr};
 use uint::static_assertions::_core::ops::RangeBounds;
+use tari_common_types::types::{HashOutput, Commitment, Signature, HashDigest};
 
 const LOG_TARGET: &str = "c::cs::database";
 
