@@ -5,6 +5,7 @@ const MergeMiningProxyProcess = require("../../helpers/mergeMiningProxyProcess")
 const WalletProcess = require("../../helpers/walletProcess");
 const WalletFFIClient = require("../../helpers/walletFFIClient");
 const MiningNodeProcess = require("../../helpers/miningNodeProcess");
+const TransactionBuilder = require("../../helpers/transactionBuilder");
 const glob = require("glob");
 const fs = require("fs");
 const archiver = require("archiver");
@@ -12,7 +13,7 @@ class CustomWorld {
   constructor({ attach, parameters }) {
     // this.variable = 0;
     this.attach = attach;
-
+    this.checkAutoTransactions = true;
     this.seeds = {};
     this.nodes = {};
     this.proxies = {};
@@ -23,6 +24,7 @@ class CustomWorld {
     this.clients = {};
     this.headers = {};
     this.outputs = {};
+    this.transactionOutputs = {};
     this.testrun = `run${Date.now()}`;
     this.lastResult = null;
     this.blocks = {};
@@ -30,7 +32,6 @@ class CustomWorld {
     this.peers = {};
     this.transactionsMap = new Map();
     this.resultStack = [];
-    this.tipHeight = 0;
     this.logFilePathBaseNode =
       parameters.logFilePathBaseNode || "./log4rs/base_node.yml";
     this.logFilePathProxy = parameters.logFilePathProxy || "./log4rs/proxy.yml";
@@ -124,6 +125,47 @@ class CustomWorld {
 
   addOutput(name, output) {
     this.outputs[name] = output;
+  }
+
+  addTransactionOutput(spendHeight, output) {
+    if (this.transactionOutputs[spendHeight] == null) {
+      this.transactionOutputs[spendHeight] = [output];
+    } else {
+      this.transactionOutputs[spendHeight].push(output);
+    }
+  }
+
+  async createTransactions(name, height) {
+    let result = true;
+    const txInputs = this.transactionOutputs[height];
+    if (txInputs == null) {
+      return result;
+    }
+    let i = 0;
+    for (const input of txInputs) {
+      const txn = new TransactionBuilder();
+      txn.addInput(input);
+      const txOutput = txn.addOutput(txn.getSpendableAmount());
+      this.addTransactionOutput(height + 1, txOutput);
+      const completedTx = txn.build();
+      const submitResult = await this.getClient(name).submitTransaction(
+        completedTx
+      );
+      if (this.checkAutoTransactions && submitResult.result != "ACCEPTED") {
+        result = false;
+      }
+      if (submitResult.result == "ACCEPTED") {
+        i++;
+      }
+      if (i > 9) {
+        //this is to make sure the blocks stay relatively empty so that the tests don't take too long
+        break;
+      }
+    }
+    console.log(
+      `Created ${i} transactions for node: ${name} at height: ${height}`
+    );
+    return result;
   }
 
   async mineBlock(name, weight, beforeSubmit, onError) {

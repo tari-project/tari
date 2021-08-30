@@ -38,6 +38,22 @@ Given("I have {int} seed nodes", { timeout: 20 * 1000 }, async function (n) {
 });
 
 Given(
+  /I do not expect all automated transactions to succeed/,
+  { timeout: 20 * 1000 },
+  async function () {
+    this.checkAutoTransactions = false;
+  }
+);
+
+Given(
+  /I expect all automated transactions to succeed/,
+  { timeout: 20 * 1000 },
+  async function () {
+    this.checkAutoTransactions = true;
+  }
+);
+
+Given(
   /I have a base node (.*) connected to all seed nodes/,
   { timeout: 20 * 1000 },
   async function (name) {
@@ -943,21 +959,6 @@ Then(
 );
 
 Then(
-  "all nodes are at current tip height",
-  { timeout: 1200 * 1000 },
-  async function () {
-    const height = parseInt(this.tipHeight);
-    console.log("Wait for all nodes to reach height of", height);
-    await this.forEachClientAsync(async (client, name) => {
-      await waitFor(async () => client.getTipHeight(), height, 1200 * 1000);
-      const currTip = await client.getTipHeight();
-      console.log(`Node ${name} is at tip: ${currTip} (expected ${height})`);
-      expect(currTip).to.equal(height);
-    });
-  }
-);
-
-Then(
   /all nodes are at the same height as node (.*)/,
   { timeout: 1200 * 1000 },
   async function (nodeB) {
@@ -1186,11 +1187,16 @@ When(
   /I mine a block on (.*) with coinbase (.*)/,
   { timeout: 600 * 1000 },
   async function (name, coinbaseName) {
+    const tipHeight = await this.getClient(name).getTipHeight();
+    let autoTransactionResult = await this.createTransactions(
+      name,
+      tipHeight + 1
+    );
+    expect(autoTransactionResult).to.equal(true);
     await this.mineBlock(name, 0, (candidate) => {
       this.addOutput(coinbaseName, candidate.originalTemplate.coinbase);
       return candidate;
     });
-    this.tipHeight += 1;
   }
 );
 
@@ -1198,11 +1204,25 @@ When(
   /I mine (\d+) custom weight blocks on (.*) with weight (\d+)/,
   { timeout: -1 },
   async function (numBlocks, name, weight) {
+    const tipHeight = await this.getClient(name).getTipHeight();
     for (let i = 0; i < numBlocks; i++) {
+      let autoTransactionResult = await this.createTransactions(
+        name,
+        tipHeight + i + 1
+      );
+      expect(autoTransactionResult).to.equal(true);
       // If a block cannot be mined quickly enough (or the process has frozen), timeout.
-      await withTimeout(60 * 1000, this.mineBlock(name, parseInt(weight)));
+      await withTimeout(
+        60 * 1000,
+        this.mineBlock(name, parseInt(weight), (candidate) => {
+          this.addTransactionOutput(
+            tipHeight + i + 1 + 2,
+            candidate.originalTemplate.coinbase
+          );
+          return candidate;
+        })
+      );
     }
-    this.tipHeight += parseInt(numBlocks);
   }
 );
 
@@ -1244,10 +1264,24 @@ When(
   /I mine (\d+) blocks on (.*)/,
   { timeout: -1 },
   async function (numBlocks, name) {
+    const tipHeight = await this.getClient(name).getTipHeight();
     for (let i = 0; i < numBlocks; i++) {
-      await withTimeout(60 * 1000, this.mineBlock(name, 0));
+      let autoTransactionResult = await this.createTransactions(
+        name,
+        tipHeight + i + 1
+      );
+      expect(autoTransactionResult).to.equal(true);
+      await withTimeout(
+        60 * 1000,
+        this.mineBlock(name, 0, (candidate) => {
+          this.addTransactionOutput(
+            tipHeight + i + 1 + 2,
+            candidate.originalTemplate.coinbase
+          );
+          return candidate;
+        })
+      );
     }
-    this.tipHeight += parseInt(numBlocks);
   }
 );
 
@@ -1257,7 +1291,13 @@ When(
   async function (numBlocks, walletName, nodeName) {
     const nodeClient = this.getClient(nodeName);
     const walletClient = await this.getWallet(walletName).connectClient();
+    const tipHeight = await this.getClient(nodeName).getTipHeight();
     for (let i = 0; i < numBlocks; i++) {
+      let autoTransactionResult = await this.createTransactions(
+        nodeName,
+        tipHeight + 1 + i
+      );
+      expect(autoTransactionResult).to.equal(true);
       await nodeClient.mineBlock(walletClient);
     }
   }
@@ -1270,7 +1310,6 @@ When(
     for (let i = 0; i < numBlocks; i++) {
       await this.mergeMineBlock(mmProxy);
     }
-    this.tipHeight += parseInt(numBlocks);
   }
 );
 
@@ -1282,7 +1321,8 @@ When(
   /I co-mine (.*) blocks via merge mining proxy (.*) and base node (.*) with wallet (.*)/,
   { timeout: 1200 * 1000 },
   async function (numBlocks, mmProxy, node, wallet) {
-    this.lastResult = this.tipHeight;
+    let tipHeight = await this.getClient(node).getTipHeight();
+    this.lastResult = tipHeight;
     const baseNodeMiningPromise =
       await this.baseNodeMineBlocksUntilHeightIncreasedBy(
         node,
@@ -1295,13 +1335,13 @@ When(
     );
     await Promise.all([baseNodeMiningPromise, mergeMiningPromise]).then(
       ([res1, res2]) => {
-        this.tipHeight = Math.max(res1, res2);
-        this.lastResult = this.tipHeight - this.lastResult;
+        tipHeight = Math.max(res1, res2);
+        this.lastResult = tipHeight - this.lastResult;
         console.log(
           "Co-mining",
           numBlocks,
           "blocks concluded, tip at",
-          this.tipHeight
+          tipHeight
         );
       }
     );
@@ -1312,7 +1352,6 @@ When(
   /I co-mine (.*) blocks via merge mining proxy (.*) and mining node (.*)/,
   { timeout: 6000 * 1000 },
   async function (numBlocks, mmProxy, miner) {
-    this.lastResult = this.tipHeight;
     const sha3MiningPromise = this.sha3MineBlocksUntilHeightIncreasedBy(
       miner,
       numBlocks,
@@ -1324,13 +1363,14 @@ When(
     );
     await Promise.all([sha3MiningPromise, mergeMiningPromise]).then(
       ([res1, res2]) => {
-        this.tipHeight = Math.max(res1, res2);
-        this.lastResult = this.tipHeight - this.lastResult;
         console.log(
           "Co-mining",
           numBlocks,
-          "blocks concluded, tip at",
-          this.tipHeight
+          "blocks concluded, tips at [",
+          res1,
+          ",",
+          res2,
+          "]"
         );
       }
     );
@@ -1340,10 +1380,20 @@ When(
 When(
   /I mine but do not submit a block (.*) on (.*)/,
   async function (blockName, nodeName) {
+    const tipHeight = await this.getClient(nodeName).getTipHeight();
+    let autoTransactionResult = await this.createTransactions(
+      nodeName,
+      tipHeight + 1
+    );
+    expect(autoTransactionResult).to.equal(true);
     await this.mineBlock(
       nodeName,
       null,
       (block) => {
+        this.addTransactionOutput(
+          tipHeight + 2,
+          block.originalTemplate.coinbase
+        );
         this.saveBlock(blockName, block);
         return false;
       },
@@ -1362,7 +1412,15 @@ When(
     const client = this.getClient(node);
     const template = client.getPreviousBlockTemplate(atHeight);
     const candidate = await client.getMinedCandidateBlock(0, template);
-
+    let autoTransactionResult = await this.createTransactions(
+      node,
+      parseInt(atHeight)
+    );
+    expect(autoTransactionResult).to.equal(true);
+    this.addTransactionOutput(
+      parseInt(atHeight) + 1,
+      candidate.originalTemplate.coinbase
+    );
     await client.submitBlock(
       candidate.template,
       (block) => {
@@ -2577,8 +2635,13 @@ Then(
           if (await walletClient.isTransactionMinedConfirmed(txIds[i])) {
             return true;
           } else {
+            const tipHeight = await this.getClient(nodeName).getTipHeight();
+            let autoTransactionResult = await this.createTransactions(
+              nodeName,
+              tipHeight + 1
+            );
+            expect(autoTransactionResult).to.equal(true);
             await nodeClient.mineBlock(walletClient);
-            this.tipHeight += 1;
             return false;
           }
         },
@@ -2632,7 +2695,6 @@ Then(
             return true;
           } else {
             await this.mergeMineBlock(mmProxy);
-            this.tipHeight += 1;
             return false;
           }
         },
