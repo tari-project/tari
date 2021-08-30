@@ -152,7 +152,7 @@ impl ChainMetadataService {
 
     async fn handle_liveness_event(&mut self, event: &LivenessEvent) -> Result<(), ChainMetadataSyncError> {
         match event {
-            // Received a ping, check if our neighbour sent it and it contains ChainMetadata
+            // Received a ping, check if it contains ChainMetadata
             LivenessEvent::ReceivedPing(event) => {
                 trace!(
                     target: LOG_TARGET,
@@ -160,6 +160,7 @@ impl ChainMetadataService {
                     event.node_id
                 );
                 self.collect_chain_state_from_ping(&event.node_id, &event.metadata)?;
+                self.send_chain_metadata_to_event_publisher().await?;
             },
             // Received a pong, check if our neighbour sent it and it contains ChainMetadata
             LivenessEvent::ReceivedPong(event) => {
@@ -169,11 +170,7 @@ impl ChainMetadataService {
                     event.node_id
                 );
                 self.collect_chain_state_from_pong(&event.node_id, &event.metadata)?;
-
-                // All peers have responded in this round, send the chain metadata to the base node service
-                if self.peer_chain_metadata.len() >= self.peer_chain_metadata.capacity() {
-                    self.flush_chain_metadata_to_event_publisher().await?;
-                }
+                self.send_chain_metadata_to_event_publisher().await?;
             },
             // New ping round has begun
             LivenessEvent::PingRoundBroadcast(num_peers) => {
@@ -181,11 +178,9 @@ impl ChainMetadataService {
                     target: LOG_TARGET,
                     "New chain metadata round sent to {} peer(s)", num_peers
                 );
-                // If we have chain metadata to send to the base node service, send them now
-                // because the next round of pings is happening.
-                self.flush_chain_metadata_to_event_publisher().await?;
                 // Ensure that we're waiting for the correct amount of peers to respond
                 // and have allocated space for their replies
+
                 self.resize_chainstate_buffer(*num_peers);
             },
         }
@@ -193,13 +188,13 @@ impl ChainMetadataService {
         Ok(())
     }
 
-    async fn flush_chain_metadata_to_event_publisher(&mut self) -> Result<(), ChainMetadataSyncError> {
-        let chain_metadata = self.peer_chain_metadata.drain(..).collect::<Vec<_>>();
-
+    async fn send_chain_metadata_to_event_publisher(&mut self) -> Result<(), ChainMetadataSyncError> {
         // send only fails if there are no subscribers.
         let _ = self
             .event_publisher
-            .send(Arc::new(ChainMetadataEvent::PeerChainMetadataReceived(chain_metadata)));
+            .send(Arc::new(ChainMetadataEvent::PeerChainMetadataReceived(
+                self.peer_chain_metadata.clone(),
+            )));
 
         Ok(())
     }
@@ -277,7 +272,6 @@ impl ChainMetadataService {
 
         self.peer_chain_metadata
             .push(PeerChainMetadata::new(node_id.clone(), chain_metadata));
-
         Ok(())
     }
 }
