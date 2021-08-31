@@ -406,3 +406,26 @@ mod add_block {
         db.add_block(block).unwrap().assert_added();
     }
 }
+
+mod get_stats {
+    use super::*;
+
+    #[test]
+    fn it_works_when_db_is_empty() {
+        let db = setup();
+        let stats = db.get_stats().unwrap();
+        assert_eq!(stats.root().depth, 1);
+    }
+}
+
+mod fetch_total_size_stats {
+    use super::*;
+
+    #[test]
+    fn it_works_when_db_is_empty() {
+        let db = setup();
+        let stats = db.fetch_total_size_stats().unwrap();
+        // Returns one per db
+        assert_eq!(stats.sizes().len(), 19);
+    }
+}

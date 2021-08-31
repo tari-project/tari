@@ -27,6 +27,7 @@ use crate::{
         error::{ChainStorageError, OrNotFound},
         lmdb_db::{
             lmdb::{
+                fetch_db_entry_sizes,
                 lmdb_delete,
                 lmdb_delete_key_value,
                 lmdb_delete_keys_starting_with,
@@ -65,9 +66,12 @@ use crate::{
             LMDB_DB_UTXO_COMMITMENT_INDEX,
             LMDB_DB_UTXO_MMR_SIZE_INDEX,
         },
+        stats::DbTotalSizeStats,
         BlockchainBackend,
         ChainBlock,
         ChainHeader,
+        DbBasicStats,
+        DbSize,
         HorizonData,
         MmrTree,
         PrunedOutput,
@@ -358,6 +362,33 @@ impl LMDBDatabase {
             .commit()
             .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
         Ok(())
+    }
+
+    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 19] {
+        [
+            ("metadata_db", &self.metadata_db),
+            ("headers_db", &self.headers_db),
+            ("header_accumulated_data_db", &self.header_accumulated_data_db),
+            ("block_accumulated_data_db", &self.block_accumulated_data_db),
+            ("block_hashes_db", &self.block_hashes_db),
+            ("utxos_db", &self.utxos_db),
+            ("inputs_db", &self.inputs_db),
+            ("txos_hash_to_index_db", &self.txos_hash_to_index_db),
+            ("kernels_db", &self.kernels_db),
+            ("kernel_excess_index", &self.kernel_excess_index),
+            ("kernel_excess_sig_index", &self.kernel_excess_sig_index),
+            ("kernel_mmr_size_index", &self.kernel_mmr_size_index),
+            ("output_mmr_size_index", &self.output_mmr_size_index),
+            ("utxo_commitment_index", &self.utxo_commitment_index),
+            ("orphans_db", &self.orphans_db),
+            (
+                "orphan_header_accumulated_data_db",
+                &self.orphan_header_accumulated_data_db,
+            ),
+            ("monero_seed_height_db", &self.monero_seed_height_db),
+            ("orphan_chain_tips_db", &self.orphan_chain_tips_db),
+            ("orphan_parent_map_index", &self.orphan_parent_map_index),
+        ]
     }
 
     fn prune_output(
@@ -2042,6 +2073,34 @@ impl BlockchainBackend for LMDBDatabase {
     fn fetch_horizon_data(&self) -> Result<Option<HorizonData>, ChainStorageError> {
         let txn = self.read_transaction()?;
         fetch_horizon_data(&txn, &self.metadata_db)
+    }
+
+    fn get_stats(&self) -> Result<DbBasicStats, ChainStorageError> {
+        let global = self.env.stat()?;
+        let env_info = self.env.info()?;
+
+        let txn = self.read_transaction()?;
+        let db_stats = self
+            .all_dbs()
+            .iter()
+            .map(|(name, db)| txn.db_stat(db).map(|s| (*name, s)))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(DbBasicStats::new(global, env_info, db_stats))
+    }
+
+    fn fetch_total_size_stats(&self) -> Result<DbTotalSizeStats, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        self.all_dbs()
+            .iter()
+            .map(|(name, db)| {
+                fetch_db_entry_sizes(&txn, db).map(|(num_entries, total_key_size, total_value_size)| DbSize {
+                    name,
+                    num_entries,
+                    total_key_size,
+                    total_value_size,
+                })
+            })
+            .collect()
     }
 }
 

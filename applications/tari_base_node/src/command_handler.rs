@@ -52,6 +52,7 @@ use tari_core::{
         LocalNodeCommsInterface,
     },
     blocks::BlockHeader,
+    chain_storage,
     chain_storage::{async_db::AsyncBlockchainDb, ChainHeader, LMDBDatabase},
     consensus::ConsensusManager,
     mempool::service::LocalMempoolService,
@@ -503,7 +504,7 @@ impl CommandHandler {
                             info_str,
                         ]);
                     }
-                    table.print_std();
+                    table.print_stdout();
 
                     println!("{} peer(s) known by this node", num_peers);
                 },
@@ -677,7 +678,7 @@ impl CommandHandler {
                         ]);
                     }
 
-                    table.print_std();
+                    table.print_stdout();
 
                     println!("{} active connection(s)", num_connections);
                 },
@@ -1053,6 +1054,80 @@ impl CommandHandler {
 
     pub(crate) fn get_software_updater(&self) -> SoftwareUpdaterHandle {
         self.software_updater.clone()
+    }
+
+    pub fn get_blockchain_db_stats(&self) {
+        let db = self.blockchain_db.clone();
+
+        fn stat_to_row(stat: &chain_storage::DbStat) -> Vec<String> {
+            row![
+                stat.name,
+                stat.entries,
+                stat.depth,
+                stat.branch_pages,
+                stat.leaf_pages,
+                stat.overflow_pages,
+            ]
+        }
+
+        self.executor.spawn(async move {
+            match db.get_stats().await {
+                Ok(stats) => {
+                    let mut table = Table::new();
+                    table.set_titles(vec![
+                        "Name",
+                        "Entries",
+                        "Depth",
+                        "Branch Pages",
+                        "Leaf Pages",
+                        "Overflow Pages",
+                    ]);
+                    stats.db_stats().iter().for_each(|stat| {
+                        table.add_row(stat_to_row(stat));
+                    });
+                    table.print_stdout();
+                    println!();
+                    println!(
+                        "{} databases, page size: {} bytes, env_info = ({})",
+                        stats.root().entries,
+                        stats.root().psize as usize,
+                        stats.env_info()
+                    );
+                },
+                Err(err) => {
+                    println!("{}", err);
+                    return;
+                },
+            }
+
+            println!();
+            println!("Totalling DB entry sizes. This may take a few seconds...");
+            println!();
+            match db.fetch_total_size_stats().await {
+                Ok(stats) => {
+                    println!();
+                    let mut table = Table::new();
+                    table.set_titles(vec!["Name", "Entries", "Total Size", "Avg. Size/Entry", "% of total"]);
+                    let total_db_size = stats.sizes().iter().map(|s| s.total()).sum::<u64>();
+                    stats.sizes().iter().for_each(|size| {
+                        let total = size.total() as f32 / 1024.0 / 1024.0;
+                        table.add_row(row![
+                            size.name,
+                            size.num_entries,
+                            format!("{:.2} MiB", total),
+                            format!("{} bytes", size.avg_bytes_per_entry()),
+                            format!("{:.2}%", (size.total() as f32 / total_db_size as f32) * 100.0)
+                        ])
+                    });
+                    table.print_stdout();
+                    println!();
+                    println!("Total data size: {:.2} MiB", total_db_size as f32 / 1024.0 / 1024.0);
+                },
+                Err(err) => {
+                    println!("{}", err);
+                },
+            }
+        });
     }
 }
 
