@@ -32,7 +32,6 @@ use crate::{
         base_node::{FindChainSplitRequest, SyncHeadersRequest},
     },
     tari_utilities::{hex::Hex, Hashable},
-    transactions::types::HashOutput,
     validation::ValidationError,
 };
 use futures::{future, stream::FuturesUnordered, StreamExt};
@@ -42,6 +41,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use tari_common_types::types::HashOutput;
 use tari_comms::{
     connectivity::{ConnectivityError, ConnectivityRequester, ConnectivitySelection},
     peer_manager::NodeId,

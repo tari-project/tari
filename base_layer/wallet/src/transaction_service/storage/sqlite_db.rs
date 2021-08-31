@@ -20,6 +20,26 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    collections::HashMap,
+    convert::TryFrom,
+    str::from_utf8,
+    sync::{Arc, MutexGuard, RwLock},
+};
+
+use aes_gcm::{self, aead::Error as AeadError, Aes256Gcm};
+use chrono::{NaiveDateTime, Utc};
+use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
+use log::*;
+use tari_crypto::tari_utilities::{
+    hex::{from_hex, Hex},
+    ByteArray,
+};
+
+use tari_common_types::types::PublicKey;
+use tari_comms::types::CommsPublicKey;
+use tari_core::transactions::tari_amount::MicroTari;
+
 use crate::{
     output_manager_service::TxId,
     schema::{completed_transactions, inbound_transactions, outbound_transactions},
@@ -39,22 +59,6 @@ use crate::{
         },
     },
     util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
-};
-use aes_gcm::{self, aead::Error as AeadError, Aes256Gcm};
-use chrono::{NaiveDateTime, Utc};
-use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
-use log::*;
-use std::{
-    collections::HashMap,
-    convert::TryFrom,
-    str::from_utf8,
-    sync::{Arc, MutexGuard, RwLock},
-};
-use tari_comms::types::CommsPublicKey;
-use tari_core::transactions::{tari_amount::MicroTari, types::PublicKey};
-use tari_crypto::tari_utilities::{
-    hex::{from_hex, Hex},
-    ByteArray,
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::database::sqlite_db";
@@ -1650,6 +1654,34 @@ impl From<UpdateCompletedTransaction> for UpdateCompletedTransactionSql {
 
 #[cfg(test)]
 mod test {
+    use std::convert::TryFrom;
+
+    use aes_gcm::{
+        aead::{generic_array::GenericArray, NewAead},
+        Aes256Gcm,
+    };
+    use chrono::Utc;
+    use diesel::{Connection, SqliteConnection};
+    use rand::rngs::OsRng;
+    use tari_crypto::{
+        keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+        script,
+        script::{ExecutionStack, TariScript},
+    };
+    use tempfile::tempdir;
+
+    use tari_common_types::types::{HashDigest, PrivateKey, PublicKey};
+    use tari_core::transactions::{
+        helpers::{create_unblinded_output, TestParams},
+        tari_amount::MicroTari,
+        transaction::{OutputFeatures, Transaction},
+        transaction_protocol::sender::TransactionSenderMessage,
+        CryptoFactories,
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
+    };
+    use tari_test_utils::random::string;
+
     use crate::{
         storage::sqlite_utilities::WalletDbConnection,
         transaction_service::storage::{
@@ -1670,30 +1702,6 @@ mod test {
         },
         util::encryption::Encryptable,
     };
-    use aes_gcm::{
-        aead::{generic_array::GenericArray, NewAead},
-        Aes256Gcm,
-    };
-    use chrono::Utc;
-    use diesel::{Connection, SqliteConnection};
-    use rand::rngs::OsRng;
-    use std::convert::TryFrom;
-    use tari_core::transactions::{
-        helpers::{create_unblinded_output, TestParams},
-        tari_amount::MicroTari,
-        transaction::{OutputFeatures, Transaction},
-        transaction_protocol::sender::TransactionSenderMessage,
-        types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
-    };
-    use tari_crypto::{
-        keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-        script,
-        script::{ExecutionStack, TariScript},
-    };
-    use tari_test_utils::random::string;
-    use tempfile::tempdir;
 
     #[test]
     fn test_crud() {

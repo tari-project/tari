@@ -25,6 +25,7 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
+use tari_common_types::types::Signature;
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 use tari_core::{
     base_node::{
@@ -52,10 +53,7 @@ use tari_core::{
         },
     },
     tari_utilities::Hashable,
-    transactions::{
-        transaction::{Transaction, TransactionOutput},
-        types::Signature,
-    },
+    transactions::transaction::{Transaction, TransactionOutput},
 };
 use tokio::time::sleep;
 
@@ -483,13 +481,14 @@ mod test {
     };
 
     use std::convert::TryFrom;
+    use tari_common_types::types::BlindingFactor;
     use tari_core::{
         base_node::{
             proto::wallet_rpc::{TxSubmissionRejectionReason, TxSubmissionResponse},
             rpc::{BaseNodeWalletRpcClient, BaseNodeWalletRpcServer},
         },
         proto::base_node::{ChainMetadata, TipInfoResponse},
-        transactions::{transaction::Transaction, types::BlindingFactor},
+        transactions::transaction::Transaction,
     };
     use tokio::time::Duration;
 

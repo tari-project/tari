@@ -22,10 +22,7 @@
 use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{error::ChainStorageError, ChainBlock, ChainHeader, MmrTree},
-    transactions::{
-        transaction::{TransactionKernel, TransactionOutput},
-        types::{Commitment, HashOutput},
-    },
+    transactions::transaction::{TransactionKernel, TransactionOutput},
 };
 use croaring::Bitmap;
 use std::{
@@ -33,7 +30,7 @@ use std::{
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
-use tari_common_types::types::BlockHash;
+use tari_common_types::types::{BlockHash, Commitment, HashOutput};
 use tari_crypto::tari_utilities::{
     hex::{to_hex, Hex},
     Hashable,

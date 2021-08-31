@@ -20,6 +20,57 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    cmp::Ordering,
+    collections::HashMap,
+    fmt::{self, Display},
+    sync::Arc,
+    time::Duration,
+};
+
+use blake2::Digest;
+use chrono::Utc;
+use diesel::result::{DatabaseErrorKind, Error as DieselError};
+use futures::{pin_mut, StreamExt};
+use log::*;
+use rand::{rngs::OsRng, RngCore};
+use tari_crypto::{
+    inputs,
+    keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
+    script,
+    script::TariScript,
+    tari_utilities::{hex::Hex, ByteArray},
+};
+use tokio::sync::broadcast;
+
+use tari_common_types::types::{PrivateKey, PublicKey};
+use tari_comms::{
+    connectivity::ConnectivityRequester,
+    types::{CommsPublicKey, CommsSecretKey},
+};
+use tari_core::{
+    consensus::ConsensusConstants,
+    transactions::{
+        fee::Fee,
+        tari_amount::MicroTari,
+        transaction::{
+            KernelFeatures,
+            OutputFeatures,
+            Transaction,
+            TransactionInput,
+            TransactionOutput,
+            UnblindedOutput,
+        },
+        transaction_protocol::sender::TransactionSenderMessage,
+        CoinbaseBuilder,
+        CryptoFactories,
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
+    },
+};
+use tari_service_framework::reply_channel;
+use tari_shutdown::ShutdownSignal;
+
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
     output_manager_service::{
@@ -39,53 +90,6 @@ use crate::{
     transaction_service::handle::TransactionServiceHandle,
     types::{HashDigest, ValidationRetryStrategy},
 };
-use blake2::Digest;
-use chrono::Utc;
-use diesel::result::{DatabaseErrorKind, Error as DieselError};
-use futures::{pin_mut, StreamExt};
-use log::*;
-use rand::{rngs::OsRng, RngCore};
-use std::{
-    cmp::Ordering,
-    collections::HashMap,
-    fmt::{self, Display},
-    sync::Arc,
-    time::Duration,
-};
-use tari_comms::{
-    connectivity::ConnectivityRequester,
-    types::{CommsPublicKey, CommsSecretKey},
-};
-use tari_core::{
-    consensus::ConsensusConstants,
-    transactions::{
-        fee::Fee,
-        tari_amount::MicroTari,
-        transaction::{
-            KernelFeatures,
-            OutputFeatures,
-            Transaction,
-            TransactionInput,
-            TransactionOutput,
-            UnblindedOutput,
-        },
-        transaction_protocol::sender::TransactionSenderMessage,
-        types::{CryptoFactories, PrivateKey, PublicKey},
-        CoinbaseBuilder,
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
-    },
-};
-use tari_crypto::{
-    inputs,
-    keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
-    script,
-    script::TariScript,
-    tari_utilities::{hex::Hex, ByteArray},
-};
-use tari_service_framework::reply_channel;
-use tari_shutdown::ShutdownSignal;
-use tokio::sync::broadcast;
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
 const LOG_TARGET_STRESS: &str = "stress_test::output_manager_service";

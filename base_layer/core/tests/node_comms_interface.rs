@@ -20,13 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[allow(dead_code)]
-mod helpers;
+use std::sync::Arc;
+
 use futures::StreamExt;
 use helpers::block_builders::append_block;
-use std::sync::Arc;
 use tari_common::configuration::Network;
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_common_types::{chain_metadata::ChainMetadata, types::PublicKey};
 use tari_comms::peer_manager::NodeId;
 use tari_core::{
     base_node::{
@@ -42,7 +41,7 @@ use tari_core::{
         helpers::{create_utxo, spend_utxos},
         tari_amount::MicroTari,
         transaction::{OutputFeatures, TransactionOutput, UnblindedOutput},
-        types::{CryptoFactories, PublicKey},
+        CryptoFactories,
     },
     txn_schema,
     validation::{mocks::MockValidator, transaction_validators::TxInputAndMaturityValidator},
@@ -55,7 +54,11 @@ use tari_crypto::{
     tari_utilities::hash::Hashable,
 };
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::broadcast;
+
+use tokio::sync::mpsc;
+#[allow(dead_code)]
+mod helpers;
 // use crate::helpers::database::create_test_db;
 
 async fn test_request_responder(

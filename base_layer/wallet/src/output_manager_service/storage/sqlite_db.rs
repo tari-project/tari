@@ -20,6 +20,37 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    collections::HashMap,
+    convert::TryFrom,
+    str::from_utf8,
+    sync::{Arc, RwLock},
+    time::Duration,
+};
+
+use aes_gcm::{aead::Error as AeadError, Aes256Gcm, Error};
+use chrono::{Duration as ChronoDuration, NaiveDateTime, Utc};
+use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
+use log::*;
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    script::{ExecutionStack, TariScript},
+    tari_utilities::{
+        hex::{from_hex, Hex},
+        ByteArray,
+    },
+};
+
+use tari_common_types::types::{ComSignature, Commitment, PrivateKey, PublicKey};
+use tari_core::{
+    tari_utilities::hash::Hashable,
+    transactions::{
+        tari_amount::MicroTari,
+        transaction::{OutputFeatures, OutputFlags, TransactionOutput, UnblindedOutput},
+        CryptoFactories,
+    },
+};
+
 use crate::{
     output_manager_service::{
         error::OutputManagerStorageError,
@@ -40,33 +71,6 @@ use crate::{
     schema::{key_manager_states, known_one_sided_payment_scripts, outputs, pending_transaction_outputs},
     storage::sqlite_utilities::WalletDbConnection,
     util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
-};
-use aes_gcm::{aead::Error as AeadError, Aes256Gcm, Error};
-use chrono::{Duration as ChronoDuration, NaiveDateTime, Utc};
-use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
-use log::*;
-use std::{
-    collections::HashMap,
-    convert::TryFrom,
-    str::from_utf8,
-    sync::{Arc, RwLock},
-    time::Duration,
-};
-use tari_core::{
-    tari_utilities::hash::Hashable,
-    transactions::{
-        tari_amount::MicroTari,
-        transaction::{OutputFeatures, OutputFlags, TransactionOutput, UnblindedOutput},
-        types::{ComSignature, Commitment, CryptoFactories, PrivateKey, PublicKey},
-    },
-};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    script::{ExecutionStack, TariScript},
-    tari_utilities::{
-        hex::{from_hex, Hex},
-        ByteArray,
-    },
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database::sqlite_db";
@@ -1714,6 +1718,27 @@ impl Encryptable<Aes256Gcm> for KnownOneSidedPaymentScriptSql {
 
 #[cfg(test)]
 mod test {
+    use std::{convert::TryFrom, time::Duration};
+
+    use aes_gcm::{
+        aead::{generic_array::GenericArray, NewAead},
+        Aes256Gcm,
+    };
+    use chrono::{Duration as ChronoDuration, Utc};
+    use diesel::{Connection, SqliteConnection};
+    use rand::{rngs::OsRng, RngCore};
+    use tari_crypto::{keys::SecretKey, script};
+    use tempfile::tempdir;
+
+    use tari_common_types::types::{CommitmentFactory, PrivateKey};
+    use tari_core::transactions::{
+        helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
+        tari_amount::MicroTari,
+        transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
+        CryptoFactories,
+    };
+    use tari_test_utils::random;
+
     use crate::{
         output_manager_service::storage::{
             database::{DbKey, KeyManagerState, OutputManagerBackend},
@@ -1731,23 +1756,6 @@ mod test {
         storage::sqlite_utilities::WalletDbConnection,
         util::encryption::Encryptable,
     };
-    use aes_gcm::{
-        aead::{generic_array::GenericArray, NewAead},
-        Aes256Gcm,
-    };
-    use chrono::{Duration as ChronoDuration, Utc};
-    use diesel::{Connection, SqliteConnection};
-    use rand::{rngs::OsRng, RngCore};
-    use std::{convert::TryFrom, time::Duration};
-    use tari_core::transactions::{
-        helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
-        tari_amount::MicroTari,
-        transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
-        types::{CommitmentFactory, CryptoFactories, PrivateKey},
-    };
-    use tari_crypto::{keys::SecretKey, script};
-    use tari_test_utils::random;
-    use tempfile::tempdir;
 
     pub fn make_input(val: MicroTari) -> (TransactionInput, UnblindedOutput) {
         let test_params = TestParamsHelpers::new();

@@ -24,7 +24,7 @@ use std::convert::TryFrom;
 use tari_core::crypto::tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
-use tari_core::transactions::types::{ComSignature, Commitment, PrivateKey};
+use tari_common_types::types::{ComSignature, Commitment, PrivateKey};
 
 impl TryFrom<grpc::ComSignature> for ComSignature {
     type Error = String;

@@ -25,26 +25,27 @@
 
 // TODO: Move the horizon synchronizer to the `sync` module
 
-mod config;
-
-pub use self::config::HorizonSyncConfig;
-
-mod error;
+use log::*;
 
 pub use error::HorizonSyncError;
-
-mod horizon_state_synchronization;
-
 use horizon_state_synchronization::HorizonStateSynchronization;
+use tari_comms::PeerConnection;
+
+use crate::{base_node::BaseNodeStateMachine, chain_storage::BlockchainBackend, transactions::CryptoFactories};
 
 use super::{
     events_and_states::{HorizonSyncInfo, HorizonSyncStatus},
     StateEvent,
     StateInfo,
 };
-use crate::{base_node::BaseNodeStateMachine, chain_storage::BlockchainBackend, transactions::types::CryptoFactories};
-use log::*;
-use tari_comms::PeerConnection;
+
+pub use self::config::HorizonSyncConfig;
+
+mod config;
+
+mod error;
+
+mod horizon_state_synchronization;
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync";
 

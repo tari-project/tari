@@ -5,19 +5,21 @@
 #![deny(unused_must_use)]
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
-use serde::Serialize;
+
 use std::{fs::File, io::Write};
-use tari_core::{
-    tari_utilities::hex::Hex,
-    transactions::{
-        helpers,
-        tari_amount::{MicroTari, T},
-        transaction::{KernelFeatures, OutputFeatures, TransactionKernel, TransactionOutput},
-        types::{Commitment, CryptoFactories, PrivateKey},
-    },
-};
+
+use serde::Serialize;
 use tari_crypto::script;
 use tokio::{sync::mpsc, task};
+
+use tari_common_types::types::{Commitment, PrivateKey};
+use tari_core::transactions::{
+    helpers,
+    tari_amount::{MicroTari, T},
+    transaction::{KernelFeatures, OutputFeatures, TransactionKernel, TransactionOutput},
+    CryptoFactories,
+};
+use tari_crypto::tari_utilities::hex::Hex;
 
 const NUM_KEYS: usize = 4000;
 

@@ -22,11 +22,11 @@
 
 use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
+use tari_common_types::types::BlindingFactor;
 use tari_core::{
     blocks::{NewBlockHeaderTemplate, NewBlockTemplate},
     crypto::tari_utilities::ByteArray,
     proof_of_work::ProofOfWork,
-    transactions::types::BlindingFactor,
 };
 impl From<NewBlockTemplate> for grpc::NewBlockTemplate {
     fn from(block: NewBlockTemplate) -> Self {

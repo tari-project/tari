@@ -20,7 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::fmt;
+
+use digest::Digest;
+use serde::{Deserialize, Serialize};
+use tari_crypto::{
+    keys::PublicKey as PublicKeyTrait,
+    ristretto::pedersen::{PedersenCommitment, PedersenCommitmentFactory},
+    script::TariScript,
+    tari_utilities::ByteArray,
+};
+
 use crate::transactions::{
+    crypto_factories::CryptoFactories,
     tari_amount::*,
     transaction::{
         KernelBuilder,
@@ -42,17 +54,8 @@ use crate::transactions::{
         TransactionMetadata,
         TransactionProtocolError as TPE,
     },
-    types::{BlindingFactor, ComSignature, CryptoFactories, PrivateKey, PublicKey, RangeProofService, Signature},
 };
-use digest::Digest;
-use serde::{Deserialize, Serialize};
-use std::fmt;
-use tari_crypto::{
-    keys::PublicKey as PublicKeyTrait,
-    ristretto::pedersen::{PedersenCommitment, PedersenCommitmentFactory},
-    script::TariScript,
-    tari_utilities::ByteArray,
-};
+use tari_common_types::types::{BlindingFactor, ComSignature, PrivateKey, PublicKey, RangeProofService, Signature};
 
 //----------------------------------------   Local Data types     ----------------------------------------------------//
 
@@ -705,19 +708,6 @@ impl fmt::Display for SenderState {
 
 #[cfg(test)]
 mod test {
-    use crate::transactions::{
-        fee::Fee,
-        helpers::{create_test_input, create_unblinded_output, TestParams},
-        tari_amount::*,
-        transaction::{KernelFeatures, OutputFeatures, TransactionOutput},
-        transaction_protocol::{
-            sender::SenderTransactionProtocol,
-            single_receiver::SingleReceiverTransactionProtocol,
-            RewindData,
-            TransactionProtocolError,
-        },
-        types::{CryptoFactories, PrivateKey, PublicKey, RangeProof},
-    };
     use rand::rngs::OsRng;
     use tari_crypto::{
         commitment::HomomorphicCommitmentFactory,
@@ -729,6 +719,21 @@ mod test {
         script::{ExecutionStack, TariScript},
         tari_utilities::{hex::Hex, ByteArray},
     };
+
+    use crate::transactions::{
+        crypto_factories::CryptoFactories,
+        fee::Fee,
+        helpers::{create_test_input, create_unblinded_output, TestParams},
+        tari_amount::*,
+        transaction::{KernelFeatures, OutputFeatures, TransactionOutput},
+        transaction_protocol::{
+            sender::SenderTransactionProtocol,
+            single_receiver::SingleReceiverTransactionProtocol,
+            RewindData,
+            TransactionProtocolError,
+        },
+    };
+    use tari_common_types::types::{PrivateKey, PublicKey, RangeProof};
 
     #[test]
     fn test_metadata_signature_finalize() {

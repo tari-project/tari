@@ -20,9 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::helpers::{block_builders::chain_block_with_new_coinbase, test_blockchain::TestBlockchain};
-use monero::blockdata::block::Block as MoneroBlock;
 use std::sync::Arc;
+
+use monero::blockdata::block::Block as MoneroBlock;
+use tari_crypto::inputs;
+
 use tari_common::configuration::Network;
 use tari_core::{
     blocks::{Block, BlockHeaderValidationError, BlockValidationError},
@@ -38,7 +40,7 @@ use tari_core::{
     transactions::{
         helpers::{schema_to_transaction, TestParams, UtxoTestParams},
         tari_amount::T,
-        types::CryptoFactories,
+        CryptoFactories,
     },
     txn_schema,
     validation::{
@@ -50,7 +52,8 @@ use tari_core::{
         ValidationError,
     },
 };
-use tari_crypto::inputs;
+
+use crate::helpers::{block_builders::chain_block_with_new_coinbase, test_blockchain::TestBlockchain};
 
 mod helpers;
 

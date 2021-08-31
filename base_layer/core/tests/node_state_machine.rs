@@ -20,9 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[allow(dead_code)]
-mod helpers;
-
 use helpers::{
     block_builders::{append_block, chain_block, create_genesis_block},
     chain_metadata::{random_peer_metadata, MockChainMetadata},
@@ -46,7 +43,7 @@ use tari_core::{
     mempool::MempoolServiceConfig,
     proof_of_work::randomx_factory::RandomXFactory,
     test_helpers::blockchain::create_test_blockchain_db,
-    transactions::types::CryptoFactories,
+    transactions::CryptoFactories,
     validation::mocks::MockValidator,
 };
 use tari_p2p::services::liveness::LivenessConfig;
@@ -57,6 +54,9 @@ use tokio::{
     task,
     time,
 };
+
+#[allow(dead_code)]
+mod helpers;
 
 static EMISSION: [u64; 2] = [10, 10];
 #[tokio::test]

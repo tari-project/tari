@@ -20,6 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    fs,
+    ops::Deref,
+    path::{Path, PathBuf},
+};
+
+use croaring::Bitmap;
+
+use tari_common::configuration::Network;
+use tari_common_types::chain_metadata::ChainMetadata;
+use tari_storage::lmdb_store::LMDBConfig;
+use tari_test_utils::paths::create_temporary_data_path;
+
 use crate::{
     blocks::{genesis_block::get_weatherwax_genesis_block, Block, BlockHeader},
     chain_storage::{
@@ -45,7 +58,7 @@ use crate::{
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
     transactions::{
         transaction::{TransactionInput, TransactionKernel},
-        types::{Commitment, CryptoFactories, HashOutput, Signature},
+        CryptoFactories,
     },
     validation::{
         block_validators::{BodyOnlyValidator, OrphanBlockValidator},
@@ -53,16 +66,7 @@ use crate::{
         DifficultyCalculator,
     },
 };
-use croaring::Bitmap;
-use std::{
-    fs,
-    ops::Deref,
-    path::{Path, PathBuf},
-};
-use tari_common::configuration::Network;
-use tari_common_types::chain_metadata::ChainMetadata;
-use tari_storage::lmdb_store::LMDBConfig;
-use tari_test_utils::paths::create_temporary_data_path;
+use tari_common_types::types::{Commitment, HashOutput, Signature};
 
 /// Create a new blockchain database containing no blocks.
 pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {

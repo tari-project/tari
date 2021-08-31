@@ -20,8 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{comms_and_services::get_next_memory_address, utils::make_input};
-use tari_core::transactions::transaction::OutputFeatures;
+use std::{panic, path::Path, sync::Arc, time::Duration};
 
 use aes_gcm::{
     aead::{generic_array::GenericArray, NewAead},
@@ -29,8 +28,19 @@ use aes_gcm::{
 };
 use digest::Digest;
 use rand::rngs::OsRng;
-use std::{panic, path::Path, sync::Arc, time::Duration};
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_crypto::{
+    common::Blake256,
+    inputs,
+    keys::{PublicKey as PublicKeyTrait, SecretKey},
+    script,
+};
+use tempfile::tempdir;
+use tokio::runtime::Runtime;
+
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{PrivateKey, PublicKey},
+};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
@@ -40,13 +50,8 @@ use tari_comms_dht::DhtConfig;
 use tari_core::transactions::{
     helpers::{create_unblinded_output, TestParams},
     tari_amount::{uT, MicroTari},
-    types::{CryptoFactories, PrivateKey, PublicKey},
-};
-use tari_crypto::{
-    common::Blake256,
-    inputs,
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
-    script,
+    transaction::OutputFeatures,
+    CryptoFactories,
 };
 use tari_p2p::{initialization::CommsConfig, transport::TransportType, Network, DEFAULT_DNS_NAME_SERVER};
 use tari_shutdown::{Shutdown, ShutdownSignal};
@@ -69,8 +74,9 @@ use tari_wallet::{
     WalletConfig,
     WalletSqlite,
 };
-use tempfile::tempdir;
-use tokio::{runtime::Runtime, time::sleep};
+use tokio::time::sleep;
+
+use crate::support::{comms_and_services::get_next_memory_address, utils::make_input};
 
 fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
     Peer::new(

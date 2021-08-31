@@ -23,7 +23,6 @@
 use crate::{
     crypto::tari_utilities::ByteArrayError,
     proto::{base_node as proto, types},
-    transactions::types::Signature,
 };
 
 use serde::{Deserialize, Serialize};
@@ -31,7 +30,7 @@ use std::{
     convert::TryFrom,
     fmt::{Display, Error, Formatter},
 };
-use tari_common_types::types::BlockHash;
+use tari_common_types::types::{BlockHash, Signature};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TxSubmissionResponse {

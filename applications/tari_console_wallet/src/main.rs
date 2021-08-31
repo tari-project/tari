@@ -24,7 +24,7 @@ use recovery::prompt_private_key_from_seed_words;
 use std::{env, process};
 use tari_app_utilities::{consts, initialization::init_configuration, utilities::ExitCodes};
 use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap};
-use tari_core::transactions::types::PrivateKey;
+use tari_common_types::types::PrivateKey;
 use tari_shutdown::Shutdown;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};

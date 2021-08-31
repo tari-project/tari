@@ -22,16 +22,13 @@
 
 use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
+use tari_common_types::types::{BulletRangeProof, Commitment, PublicKey};
 use tari_core::{
     crypto::{
         script::TariScript,
         tari_utilities::{ByteArray, Hashable},
     },
-    transactions::{
-        bullet_rangeproofs::BulletRangeProof,
-        transaction::TransactionOutput,
-        types::{Commitment, PublicKey},
-    },
+    transactions::transaction::TransactionOutput,
 };
 
 impl TryFrom<grpc::TransactionOutput> for TransactionOutput {

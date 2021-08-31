@@ -26,19 +26,23 @@ use aes_gcm::{
 };
 use chrono::Utc;
 use rand::rngs::OsRng;
+use tari_crypto::{
+    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+    script,
+    script::{ExecutionStack, TariScript},
+};
+use tempfile::tempdir;
+use tokio::runtime::Runtime;
+
+use tari_common_types::types::{HashDigest, PrivateKey, PublicKey};
 use tari_core::transactions::{
     helpers::{create_unblinded_output, TestParams},
     tari_amount::{uT, MicroTari},
     transaction::{OutputFeatures, Transaction},
     transaction_protocol::sender::TransactionSenderMessage,
-    types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
+    CryptoFactories,
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
-};
-use tari_crypto::{
-    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-    script,
-    script::{ExecutionStack, TariScript},
 };
 use tari_test_utils::random;
 use tari_wallet::{
@@ -56,9 +60,6 @@ use tari_wallet::{
         sqlite_db::TransactionServiceSqliteDatabase,
     },
 };
-use tempfile::tempdir;
-use tokio::runtime::Runtime;
-
 pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let runtime = Runtime::new().unwrap();
     let mut db = TransactionDatabase::new(backend);

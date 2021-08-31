@@ -37,6 +37,7 @@ use tari_app_grpc::{
     tari_rpc::{CalcType, Sorting},
 };
 use tari_app_utilities::consts;
+use tari_common_types::types::Signature;
 use tari_comms::{Bytes, CommsNode};
 use tari_core::{
     base_node::{
@@ -50,7 +51,7 @@ use tari_core::{
     crypto::tari_utilities::{hex::Hex, ByteArray},
     mempool::{service::LocalMempoolService, TxStorageResponse},
     proof_of_work::PowAlgorithm,
-    transactions::{transaction::Transaction, types::Signature},
+    transactions::transaction::Transaction,
 };
 use tari_crypto::tari_utilities::{message_format::MessageFormat, Hashable};
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};

@@ -23,29 +23,6 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use crate::transactions::{
-    aggregated_body::AggregateBody,
-    tari_amount::{uT, MicroTari},
-    transaction_protocol::{build_challenge, RewindData, TransactionMetadata},
-    types::{
-        BlindingFactor,
-        Challenge,
-        ComSignature,
-        Commitment,
-        CommitmentFactory,
-        CryptoFactories,
-        HashDigest,
-        MessageHash,
-        PrivateKey,
-        PublicKey,
-        RangeProof,
-        RangeProofService,
-        Signature,
-    },
-};
-use blake2::Digest;
-use rand::rngs::OsRng;
-use serde::{Deserialize, Serialize};
 use std::{
     cmp::{max, min, Ordering},
     fmt,
@@ -53,6 +30,10 @@ use std::{
     hash::{Hash, Hasher},
     ops::Add,
 };
+
+use blake2::Digest;
+use rand::rngs::OsRng;
+use serde::{Deserialize, Serialize};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
@@ -69,6 +50,27 @@ use tari_crypto::{
     tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable},
 };
 use thiserror::Error;
+
+use crate::transactions::{
+    aggregated_body::AggregateBody,
+    crypto_factories::CryptoFactories,
+    tari_amount::{uT, MicroTari},
+    transaction_protocol::{build_challenge, RewindData, TransactionMetadata},
+};
+use tari_common_types::types::{
+    BlindingFactor,
+    Challenge,
+    ComSignature,
+    Commitment,
+    CommitmentFactory,
+    HashDigest,
+    MessageHash,
+    PrivateKey,
+    PublicKey,
+    RangeProof,
+    RangeProofService,
+    Signature,
+};
 
 // Tx_weight(inputs(12,500), outputs(500), kernels(1)) = 19,003, still well enough below block weight of 19,500
 pub const MAX_TRANSACTION_INPUTS: usize = 12_500;
@@ -1295,17 +1297,6 @@ impl Default for TransactionBuilder {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::{
-        transactions::{
-            helpers,
-            helpers::{TestParams, UtxoTestParams},
-            tari_amount::T,
-            transaction::OutputFeatures,
-            types::{BlindingFactor, PrivateKey, PublicKey, RangeProof},
-        },
-        txn_schema,
-    };
     use rand::{self, rngs::OsRng};
     use tari_crypto::{
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
@@ -1313,6 +1304,19 @@ mod test {
         script,
         script::ExecutionStack,
     };
+
+    use crate::{
+        transactions::{
+            helpers,
+            helpers::{TestParams, UtxoTestParams},
+            tari_amount::T,
+            transaction::OutputFeatures,
+        },
+        txn_schema,
+    };
+    use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey};
+
+    use super::*;
 
     #[test]
     fn input_and_output_hash_match() {
