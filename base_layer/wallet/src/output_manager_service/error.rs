@@ -61,6 +61,8 @@ pub enum OutputManagerError {
     ConversionError(String),
     #[error("Not all the transaction inputs and outputs are present to be confirmed: {0}")]
     IncompleteTransaction(&'static str),
+    #[error("Inconsistent data found: {0}")]
+    InconsistentDataError(&'static str),
     #[error("Not enough funds to fulfil transaction")]
     NotEnoughFunds,
     #[error("Funds are still pending. Unable to fulfil transaction right now.")]

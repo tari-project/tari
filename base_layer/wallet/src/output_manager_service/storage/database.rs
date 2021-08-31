@@ -375,22 +375,22 @@ where T: OutputManagerBackend + 'static
         ))
     }
 
-    pub async fn add_pending_transaction_outputs(
-        &self,
-        pending_transaction_outputs: PendingTransactionOutputs,
-    ) -> Result<(), OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || {
-            db_clone.write(WriteOperation::Insert(DbKeyValuePair::PendingTransactionOutputs(
-                pending_transaction_outputs.tx_id,
-                Box::new(pending_transaction_outputs),
-            )))
-        })
-        .await
-        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
-
-        Ok(())
-    }
+    // pub async fn add_pending_transaction_outputs(
+    //     &self,
+    //     pending_transaction_outputs: PendingTransactionOutputs,
+    // ) -> Result<(), OutputManagerStorageError> {
+    //     let db_clone = self.db.clone();
+    //     tokio::task::spawn_blocking(move || {
+    //         db_clone.write(WriteOperation::Insert(DbKeyValuePair::PendingTransactionOutputs(
+    //             pending_transaction_outputs.tx_id,
+    //             Box::new(pending_transaction_outputs),
+    //         )))
+    //     })
+    //     .await
+    //     .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+    //
+    //     Ok(())
+    // }
 
     pub async fn fetch_pending_transaction_outputs(
         &self,

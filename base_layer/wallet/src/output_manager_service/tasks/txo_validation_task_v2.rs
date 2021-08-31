@@ -21,7 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::output_manager_service::{
     config::OutputManagerServiceConfig,
-    error::{OutputManagerError, OutputManagerProtocolError, OutputManagerProtocolErrorExt},
+    error::{
+        OutputManagerError,
+        OutputManagerError::OutputManagerStorageError,
+        OutputManagerProtocolError,
+        OutputManagerProtocolErrorExt,
+    },
     handle::{OutputManagerEvent, OutputManagerEventSender},
     storage::{
         database::{OutputManagerBackend, OutputManagerDatabase},
@@ -112,8 +117,7 @@ where TBackend: OutputManagerBackend + 'static
             .db
             .fetch_unmined_spent_outputs()
             .await
-            .for_protocol(self.operation_id)
-            .unwrap();
+            .for_protocol(self.operation_id)?;
 
         if unmined_outputs.is_empty() {
             return Ok(());
@@ -140,7 +144,7 @@ where TBackend: OutputManagerBackend + 'static
             for output in batch {
                 if deleted_bitmap_response
                     .deleted_positions
-                    .contains(&output.mined_mmr_position.unwrap())
+                    .contains(&output.mined_mmr_position?)
                 {
                     self.db
                         .mark_output_as_spent(
@@ -153,7 +157,7 @@ where TBackend: OutputManagerBackend + 'static
                 }
                 if deleted_bitmap_response
                     .not_deleted_positions
-                    .contains(&output.mined_mmr_position.unwrap()) &&
+                    .contains(&output.mined_mmr_position?) &&
                     output.marked_deleted_at_height.is_some()
                 {
                     self.db
@@ -174,8 +178,7 @@ where TBackend: OutputManagerBackend + 'static
             .db
             .fetch_unmined_received_outputs()
             .await
-            .for_protocol(self.operation_id)
-            .unwrap();
+            .for_protocol(self.operation_id)?;
 
         for batch in unmined_outputs.chunks(self.batch_size) {
             info!(
@@ -243,15 +246,9 @@ where TBackend: OutputManagerBackend + 'static
             "Checking last mined TXO to see if the base node has re-orged"
         );
 
-        while let Some(last_spent_output) = self
-            .db
-            .get_last_spent_output()
-            .await
-            .for_protocol(self.operation_id)
-            .unwrap()
-        {
-            let mined_height = last_spent_output.marked_deleted_at_height.unwrap(); // TODO: fix unwrap
-            let mined_in_block_hash = last_spent_output.marked_deleted_in_block.clone().unwrap(); // TODO: fix unwrap.
+        while let Some(last_spent_output) = self.db.get_last_spent_output().await.for_protocol(self.operation_id)? {
+            let mined_height = last_spent_output.marked_deleted_at_height?;
+            let mined_in_block_hash = last_spent_output.marked_deleted_in_block.clone()?;
             let block_at_height = self
                 .get_base_node_block_at_height(mined_height, client)
                 .await
@@ -276,15 +273,17 @@ where TBackend: OutputManagerBackend + 'static
             }
         }
 
-        while let Some(last_mined_output) = self
-            .db
-            .get_last_mined_output()
-            .await
-            .for_protocol(self.operation_id)
-            .unwrap()
-        {
-            let mined_height = last_mined_output.mined_height.unwrap(); // TODO: fix unwrap
-            let mined_in_block_hash = last_mined_output.mined_in_block.clone().unwrap(); // TODO: fix unwrap.
+        while let Some(last_mined_output) = self.db.get_last_mined_output().await.for_protocol(self.operation_id)? {
+            if last_mined_output.mined_height.is_none() || last_mined_output.mined_in_block.is_none() {
+                return Err(OutputManagerProtocolError::new(
+                    self.operation_id,
+                    OutputManagerError::InconsistentDataError(
+                        "Output marked as mined, but mined_height or mined_in_block was empty",
+                    ),
+                ));
+            }
+            let mined_height = last_mined_output.mined_height.unwrap();
+            let mined_in_block_hash = last_mined_output.mined_in_block.clone().unwrap();
             let block_at_height = self
                 .get_base_node_block_at_height(mined_height, client)
                 .await
