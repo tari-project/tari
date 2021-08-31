@@ -32,7 +32,7 @@ use std::{
 use tari_common::configuration::bootstrap::ApplicationType;
 use tari_utilities::hex::{from_hex, Hex};
 
-const LOG_TARGET: &str = "p2p::auto-update:dns";
+const LOG_TARGET: &str = "p2p::auto_update::dns";
 
 pub struct DnsSoftwareUpdate {
     client: DnsClient,
