@@ -37,9 +37,8 @@ use crate::transactions::{
         RewindData,
         TransactionProtocolError as TPE,
     },
-    types::RangeProof,
 };
-use tari_common_types::types::{PrivateKey as SK, PublicKey, Signature};
+use tari_common_types::types::{PrivateKey as SK, PublicKey, RangeProof, Signature};
 
 /// SingleReceiverTransactionProtocol represents the actions taken by the single receiver in the one-round Tari
 /// transaction protocol. The procedure is straightforward. Upon receiving the sender's information, the receiver:

@@ -54,9 +54,8 @@ use crate::transactions::{
         TransactionMetadata,
         TransactionProtocolError as TPE,
     },
-    types::RangeProofService,
 };
-use tari_common_types::types::{BlindingFactor, ComSignature, PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{BlindingFactor, ComSignature, PrivateKey, PublicKey, RangeProofService, Signature};
 
 //----------------------------------------   Local Data types     ----------------------------------------------------//
 
@@ -733,9 +732,8 @@ mod test {
             RewindData,
             TransactionProtocolError,
         },
-        types::RangeProof,
     };
-    use tari_common_types::types::{PrivateKey, PublicKey};
+    use tari_common_types::types::{PrivateKey, PublicKey, RangeProof};
 
     #[test]
     fn test_metadata_signature_finalize() {

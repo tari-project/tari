@@ -56,7 +56,6 @@ use crate::transactions::{
     crypto_factories::CryptoFactories,
     tari_amount::{uT, MicroTari},
     transaction_protocol::{build_challenge, RewindData, TransactionMetadata},
-    types::{RangeProof, RangeProofService},
 };
 use tari_common_types::types::{
     BlindingFactor,
@@ -68,6 +67,8 @@ use tari_common_types::types::{
     MessageHash,
     PrivateKey,
     PublicKey,
+    RangeProof,
+    RangeProofService,
     Signature,
 };
 

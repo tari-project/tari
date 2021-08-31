@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
-use crate::transactions::types::RangeProofService;
-use tari_common_types::types::{CommitmentFactory, MAX_RANGE_PROOF_RANGE};
+use tari_common_types::types::{CommitmentFactory, RangeProofService, MAX_RANGE_PROOF_RANGE};
 
 /// A convenience struct wrapping cryptographic factories that are used through-out the rest of the code base
 /// Uses Arcs internally so calling clone on this is cheap, no need to wrap this in an Arc

@@ -30,14 +30,13 @@ use crate::{
     chain_storage::{BlockHeaderAccumulatedData, ChainBlock},
     transactions::{
         aggregated_body::AggregateBody,
-        bullet_rangeproofs::BulletRangeProof,
         tari_amount::MicroTari,
         transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionKernel, TransactionOutput},
     },
 };
 use chrono::DateTime;
 use std::sync::Arc;
-use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature, BLOCK_HASH_LENGTH};
+use tari_common_types::types::{BulletRangeProof, Commitment, PrivateKey, PublicKey, Signature, BLOCK_HASH_LENGTH};
 use tari_crypto::{
     script::TariScript,
     tari_utilities::{hash::Hashable, hex::*},

@@ -31,6 +31,12 @@ use tari_crypto::{
     },
 };
 
+use tari_crypto::ristretto::dalek_range_proof::DalekRangeProofService;
+
+mod bullet_rangeproofs;
+
+pub use bullet_rangeproofs::BulletRangeProof;
+
 pub const BLOCK_HASH_LENGTH: usize = 32;
 pub type BlockHash = Vec<u8>;
 
@@ -67,3 +73,9 @@ pub type MessageHash = Vec<u8>;
 pub type HashOutput = Vec<u8>;
 
 pub const MAX_RANGE_PROOF_RANGE: usize = 64; // 2^64
+
+/// Specify the range proof type
+pub type RangeProofService = DalekRangeProofService;
+
+/// Specify the range proof
+pub type RangeProof = BulletRangeProof;

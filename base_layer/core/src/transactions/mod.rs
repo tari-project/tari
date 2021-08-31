@@ -1,5 +1,4 @@
 pub mod aggregated_body;
-pub mod bullet_rangeproofs;
 mod crypto_factories;
 pub mod fee;
 pub mod tari_amount;
