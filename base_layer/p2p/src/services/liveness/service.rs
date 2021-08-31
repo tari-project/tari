@@ -141,11 +141,13 @@ where
     async fn handle_incoming_message(&mut self, msg: DomainMessage<PingPongMessage>) -> Result<(), LivenessError> {
         let DomainMessage::<_> {
             source_peer,
+            dht_header,
             inner: ping_pong_msg,
             ..
         } = msg;
         let node_id = source_peer.node_id;
         let public_key = source_peer.public_key;
+        let message_tag = dht_header.message_tag;
 
         match ping_pong_msg.kind().ok_or(LivenessError::InvalidPingPongType)? {
             PingPong::Ping => {
@@ -155,9 +157,10 @@ where
 
                 debug!(
                     target: LOG_TARGET,
-                    "Received ping from peer '{}' with useragent '{}'",
+                    "Received ping from peer '{}' with useragent '{}' (Trace: {})",
                     node_id.short_str(),
                     source_peer.user_agent,
+                    message_tag,
                 );
 
                 let ping_event = PingPongEvent::new(node_id, None, ping_pong_msg.metadata.into());
@@ -167,9 +170,10 @@ where
                 if !self.state.is_inflight(ping_pong_msg.nonce) {
                     debug!(
                         target: LOG_TARGET,
-                        "Received Pong that was not requested from '{}' with useragent {}. Ignoring it.",
+                        "Received Pong that was not requested from '{}' with useragent {}. Ignoring it. (Trace: {})",
                         node_id.short_str(),
                         source_peer.user_agent,
+                        message_tag,
                     );
                     return Ok(());
                 }
@@ -177,10 +181,11 @@ where
                 let maybe_latency = self.state.record_pong(ping_pong_msg.nonce);
                 debug!(
                     target: LOG_TARGET,
-                    "Received pong from peer '{}' with useragent '{}'. {}",
+                    "Received pong from peer '{}' with useragent '{}'. {} (Trace: {})",
                     node_id.short_str(),
                     source_peer.user_agent,
                     maybe_latency.map(|ms| format!("Latency: {}ms", ms)).unwrap_or_default(),
+                    message_tag,
                 );
 
                 let pong_event = PingPongEvent::new(node_id, maybe_latency, ping_pong_msg.metadata.into());
