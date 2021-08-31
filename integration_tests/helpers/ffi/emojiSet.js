@@ -1,18 +1,18 @@
 const InterfaceFFI = require("./ffiInterface");
 
 class EmojiSet {
-  #emoji_set_ptr;
+  ptr;
 
   constructor() {
-    this.#emoji_set_ptr = InterfaceFFI.getEmojiSet();
+    this.ptr = InterfaceFFI.getEmojiSet();
   }
 
   getLength() {
-    return InterfaceFFI.emojiSetGetLength(this.#emoji_set_ptr);
+    return InterfaceFFI.emojiSetGetLength(this.ptr);
   }
 
   getAt(position) {
-    return InterfaceFFI.emojiSetGetAt(this.#emoji_set_ptr, position);
+    return InterfaceFFI.emojiSetGetAt(this.ptr, position);
   }
 
   list() {
@@ -26,9 +26,9 @@ class EmojiSet {
   }
 
   destroy() {
-    if (this.#emoji_set_ptr) {
-      InterfaceFFI.byteVectorDestroy(this.#emoji_set_ptr);
-      this.#emoji_set_ptr = undefined; //prevent double free segfault
+    if (this.ptr) {
+      InterfaceFFI.byteVectorDestroy(this.ptr);
+      this.ptr = undefined; //prevent double free segfault
     }
   }
 }
