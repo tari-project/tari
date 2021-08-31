@@ -77,6 +77,8 @@ impl ServiceInitializer for MempoolSyncInitializer {
         context.spawn_until_shutdown(move |handles| async move {
             let state_machine = handles.expect_handle::<StateMachineHandle>();
             let connectivity = handles.expect_handle::<ConnectivityRequester>();
+            // Ensure that we get an subscription ASAP so that we don't miss any connectivity events
+            let connectivity_event_subscription = connectivity.get_event_subscription();
 
             let mut status_watch = state_machine.get_status_info_watch();
             if !status_watch.borrow().bootstrapped {
@@ -94,7 +96,7 @@ impl ServiceInitializer for MempoolSyncInitializer {
                 }
             }
 
-            MempoolSyncProtocol::new(config, notif_rx, connectivity.get_event_subscription(), mempool)
+            MempoolSyncProtocol::new(config, notif_rx, connectivity_event_subscription, mempool)
                 .run()
                 .await;
         });
