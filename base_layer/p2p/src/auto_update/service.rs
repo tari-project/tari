@@ -25,16 +25,18 @@ use crate::{
     auto_update::{AutoUpdateConfig, SoftwareUpdate, Version},
 };
 use futures::{future::Either, stream, StreamExt};
+use log::*;
 use std::{env::consts, time::Duration};
 use tari_common::configuration::bootstrap::ApplicationType;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::{
     sync::{mpsc, oneshot, watch},
     time,
+    time::MissedTickBehavior,
 };
 use tokio_stream::wrappers;
 
-const LOG_TARGET: &str = "app:auto-update";
+const LOG_TARGET: &str = "p2p::auto_update";
 
 /// A watch notifier that contains the latest software update, if any
 pub type SoftwareUpdateNotifier = watch::Receiver<Option<SoftwareUpdate>>;
@@ -92,7 +94,11 @@ impl SoftwareUpdaterService {
         new_update_notification: watch::Receiver<Option<SoftwareUpdate>>,
     ) {
         let mut interval_or_never = match self.check_interval {
-            Some(interval) => Either::Left(wrappers::IntervalStream::new(time::interval(interval))),
+            Some(interval) => {
+                let mut interval = time::interval(interval);
+                interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+                Either::Left(wrappers::IntervalStream::new(interval))
+            },
             None => Either::Right(stream::empty()),
         };
 
@@ -106,7 +112,7 @@ impl SoftwareUpdaterService {
                     maybe_update
                },
 
-               _ = interval_or_never.next() => {
+               Some(_) = interval_or_never.next() => {
                     // Periodically, check for updates if configured to do so.
                     // If an update is found the new update notifier will be triggered and any listeners notified
                     self.check_for_updates().await
@@ -132,6 +138,13 @@ impl SoftwareUpdaterService {
             "Checking for updates ({})...",
             self.config.update_uris.join(", ")
         );
+        if !self.config.is_update_enabled() {
+            warn!(
+                target: LOG_TARGET,
+                "Check for updates has been called but auto update has been disabled in the config"
+            );
+            return None;
+        }
 
         let arch = format!("{}-{}", consts::OS, consts::ARCH);
 
