@@ -71,10 +71,8 @@ impl BaseNodeContext {
     pub async fn run(self) {
         info!(target: LOG_TARGET, "Tari base node has STARTED");
 
-        if let Err(e) = self.state_machine().shutdown_signal().await {
-            warn!(target: LOG_TARGET, "Error shutting down Base Node State Machine: {}", e);
-        }
-        info!(target: LOG_TARGET, "Initiating communications stack shutdown");
+        self.state_machine().shutdown_signal().wait().await;
+        info!(target: LOG_TARGET, "Waiting for communications stack shutdown");
 
         self.base_node_comms.wait_until_shutdown().await;
         info!(target: LOG_TARGET, "Communications stack has shutdown");
@@ -222,7 +220,11 @@ async fn build_node_context(
     let validators = Validators::new(
         BodyOnlyValidator::default(),
         HeaderValidator::new(rules.clone()),
-        OrphanBlockValidator::new(rules.clone(), factories.clone()),
+        OrphanBlockValidator::new(
+            rules.clone(),
+            config.base_node_bypass_range_proof_verification,
+            factories.clone(),
+        ),
     );
     let db_config = BlockchainDatabaseConfig {
         orphan_storage_capacity: config.orphan_storage_capacity,
@@ -238,7 +240,10 @@ async fn build_node_context(
         cleanup_orphans_at_startup,
     )?;
     let mempool_validator = MempoolValidator::new(vec![
-        Box::new(TxInternalConsistencyValidator::new(factories.clone())),
+        Box::new(TxInternalConsistencyValidator::new(
+            factories.clone(),
+            config.base_node_bypass_range_proof_verification,
+        )),
         Box::new(TxInputAndMaturityValidator::new(blockchain_db.clone())),
         Box::new(TxConsensusValidator::new(blockchain_db.clone())),
     ]);

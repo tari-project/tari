@@ -33,7 +33,6 @@ use futures::{
     channel::{mpsc, mpsc::Sender},
     FutureExt,
     SinkExt,
-    StreamExt,
 };
 use prost::Message;
 use rand::{rngs::OsRng, RngCore};
@@ -142,14 +141,13 @@ use tokio::{
     runtime,
     runtime::{Builder, Runtime},
     sync::{broadcast, broadcast::channel},
-    time::delay_for,
+    time::sleep,
 };
 
 fn create_runtime() -> Runtime {
-    Builder::new()
-        .threaded_scheduler()
+    Builder::new_multi_thread()
         .enable_all()
-        .core_threads(8)
+        .worker_threads(8)
         .build()
         .unwrap()
 }
@@ -172,7 +170,8 @@ pub fn setup_transaction_service<
     discovery_request_timeout: Duration,
     shutdown_signal: ShutdownSignal,
 ) -> (TransactionServiceHandle, OutputManagerHandle, CommsNode) {
-    let (publisher, subscription_factory) = pubsub_connector(runtime.handle().clone(), 100, 20);
+    let _enter = runtime.enter();
+    let (publisher, subscription_factory) = pubsub_connector(100, 20);
     let subscription_factory = Arc::new(subscription_factory);
     let (comms, dht) = runtime.block_on(setup_comms_services(
         node_identity,
@@ -303,11 +302,15 @@ pub fn setup_transaction_service_no_comms_and_oms_backend<
     let protocol_name = server.as_protocol_name();
     let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
-    let mut mock_server = runtime
-        .handle()
-        .enter(|| MockRpcServer::new(server, server_node_identity.clone()));
+    let mut mock_server = {
+        let _enter = runtime.handle().enter();
+        MockRpcServer::new(server, server_node_identity.clone())
+    };
 
-    runtime.handle().enter(|| mock_server.serve());
+    {
+        let _enter = runtime.handle().enter();
+        mock_server.serve();
+    }
 
     let connection = runtime.block_on(async {
         mock_server
@@ -504,9 +507,9 @@ fn manage_single_transaction() {
         .block_on(alice_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
         .unwrap();
 
-    let mut alice_event_stream = alice_ts.get_event_stream_fused();
+    let mut alice_event_stream = alice_ts.get_event_stream();
 
-    runtime.block_on(async { delay_for(Duration::from_secs(2)).await });
+    runtime.block_on(async { sleep(Duration::from_secs(2)).await });
 
     let (mut bob_ts, mut bob_oms, bob_comms) = setup_transaction_service(
         &mut runtime,
@@ -524,7 +527,7 @@ fn manage_single_transaction() {
         .block_on(bob_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
         .unwrap();
 
-    let mut bob_event_stream = bob_ts.get_event_stream_fused();
+    let mut bob_event_stream = bob_ts.get_event_stream();
 
     let _ = runtime.block_on(
         bob_comms
@@ -556,18 +559,19 @@ fn manage_single_transaction() {
         .expect("Alice sending tx");
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(90)).fuse();
+        let delay = sleep(Duration::from_secs(90));
+        tokio::pin!(delay);
         let mut count = 0;
         loop {
-            futures::select! {
-                _event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                _event = alice_event_stream.recv() => {
                     println!("alice: {:?}", &*_event.as_ref().unwrap());
                     count+=1;
                     if count>=2 {
                         break;
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -576,18 +580,19 @@ fn manage_single_transaction() {
 
     let mut tx_id = 0u64;
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(90)).fuse();
+        let delay = sleep(Duration::from_secs(90));
+        tokio::pin!(delay);
         let mut finalized = 0;
         loop {
-            futures::select! {
-                event = bob_event_stream.select_next_some() => {
+            tokio::select! {
+                event = bob_event_stream.recv() => {
                     println!("bob: {:?}", &*event.as_ref().unwrap());
                     if let TransactionEvent::ReceivedFinalizedTransaction(id) = &*event.unwrap() {
                         tx_id = *id;
                         finalized+=1;
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -747,7 +752,7 @@ fn send_one_sided_transaction_to_other() {
         shutdown.to_signal(),
     );
 
-    let mut alice_event_stream = alice_ts.get_event_stream_fused();
+    let mut alice_event_stream = alice_ts.get_event_stream();
 
     runtime
         .block_on(alice_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
@@ -792,11 +797,12 @@ fn send_one_sided_transaction_to_other() {
     });
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(30)).fuse();
+        let delay = sleep(Duration::from_secs(30));
+        tokio::pin!(delay);
         let mut found = false;
         loop {
-            futures::select! {
-                event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
                     if let TransactionEvent::TransactionCompletedImmediately(id) = &*event.unwrap() {
                         if id == &tx_id {
                             found = true;
@@ -804,7 +810,7 @@ fn send_one_sided_transaction_to_other() {
                         }
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -1071,9 +1077,9 @@ fn manage_multiple_transactions() {
         Duration::from_secs(60),
         shutdown.to_signal(),
     );
-    let mut alice_event_stream = alice_ts.get_event_stream_fused();
+    let mut alice_event_stream = alice_ts.get_event_stream();
 
-    runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
+    runtime.block_on(async { sleep(Duration::from_secs(5)).await });
 
     // Spin up Bob and Carol
     let (mut bob_ts, mut bob_oms, bob_comms) = setup_transaction_service(
@@ -1088,8 +1094,8 @@ fn manage_multiple_transactions() {
         Duration::from_secs(1),
         shutdown.to_signal(),
     );
-    let mut bob_event_stream = bob_ts.get_event_stream_fused();
-    runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
+    let mut bob_event_stream = bob_ts.get_event_stream();
+    runtime.block_on(async { sleep(Duration::from_secs(5)).await });
 
     let (mut carol_ts, mut carol_oms, carol_comms) = setup_transaction_service(
         &mut runtime,
@@ -1103,18 +1109,18 @@ fn manage_multiple_transactions() {
         Duration::from_secs(1),
         shutdown.to_signal(),
     );
-    let mut carol_event_stream = carol_ts.get_event_stream_fused();
+    let mut carol_event_stream = carol_ts.get_event_stream();
 
     // Establish some connections beforehand, to reduce the amount of work done concurrently in tests
     // Connect Bob and Alice
-    runtime.block_on(async { delay_for(Duration::from_secs(3)).await });
+    runtime.block_on(async { sleep(Duration::from_secs(3)).await });
 
     let _ = runtime.block_on(
         bob_comms
             .connectivity()
             .dial_peer(alice_node_identity.node_id().clone()),
     );
-    runtime.block_on(async { delay_for(Duration::from_secs(3)).await });
+    runtime.block_on(async { sleep(Duration::from_secs(3)).await });
 
     // Connect alice to carol
     let _ = runtime.block_on(
@@ -1182,12 +1188,13 @@ fn manage_multiple_transactions() {
         .unwrap();
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(90)).fuse();
+        let delay = sleep(Duration::from_secs(90));
+        tokio::pin!(delay);
         let mut tx_reply = 0;
         let mut finalized = 0;
         loop {
-            futures::select! {
-                event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
                     match &*event.unwrap() {
                         TransactionEvent::ReceivedTransactionReply(_) => tx_reply+=1,
                         TransactionEvent::ReceivedFinalizedTransaction(_) => finalized+=1,
@@ -1198,7 +1205,7 @@ fn manage_multiple_transactions() {
                         break;
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -1210,12 +1217,14 @@ fn manage_multiple_transactions() {
     log::trace!("Alice received all Tx messages");
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(90)).fuse();
+        let delay = sleep(Duration::from_secs(90));
+
+        tokio::pin!(delay);
         let mut tx_reply = 0;
         let mut finalized = 0;
         loop {
-            futures::select! {
-                event = bob_event_stream.select_next_some() => {
+            tokio::select! {
+                event = bob_event_stream.recv() => {
                     match &*event.unwrap() {
                         TransactionEvent::ReceivedTransactionReply(_) => tx_reply+=1,
                         TransactionEvent::ReceivedFinalizedTransaction(_) => finalized+=1,
@@ -1225,7 +1234,7 @@ fn manage_multiple_transactions() {
                         break;
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -1235,14 +1244,17 @@ fn manage_multiple_transactions() {
     });
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(90)).fuse();
+        let delay = sleep(Duration::from_secs(90));
+        tokio::pin!(delay);
+
+        tokio::pin!(delay);
         let mut finalized = 0;
         loop {
-            futures::select! {
-                event = carol_event_stream.select_next_some() => {
+            tokio::select! {
+                event = carol_event_stream.recv() => {
                     if let TransactionEvent::ReceivedFinalizedTransaction(_) = &*event.unwrap() { finalized+=1 }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -1264,7 +1276,7 @@ fn manage_multiple_transactions() {
     assert_eq!(carol_pending_inbound.len(), 0);
     assert_eq!(carol_completed_tx.len(), 1);
 
-    shutdown.trigger().unwrap();
+    shutdown.trigger();
     runtime.block_on(async move {
         alice_comms.wait_until_shutdown().await;
         bob_comms.wait_until_shutdown().await;
@@ -1303,7 +1315,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
         _,
     ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend, oms_backend, None);
 
-    let mut alice_event_stream = alice_ts.get_event_stream_fused();
+    let mut alice_event_stream = alice_ts.get_event_stream();
 
     let (_utxo, uo) = make_input(&mut OsRng, MicroTari(250000), &factories.commitment);
 
@@ -1355,11 +1367,14 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
         .unwrap();
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(30)).fuse();
+        let delay = sleep(Duration::from_secs(30));
+tokio::pin!(delay);
+
+        tokio::pin!(delay);
         let mut errors = 0;
         loop {
-            futures::select! {
-                event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
                     log::error!("ERROR: {:?}", event);
                     if let TransactionEvent::Error(s) = &*event.unwrap() {
                         if s == &"TransactionProtocolError(TransactionBuildError(InvalidSignatureError(\"Verifying kernel signature\")))".to_string()
@@ -1371,7 +1386,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
                         }
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -1415,7 +1430,7 @@ fn finalize_tx_with_incorrect_pubkey() {
         _,
         _,
     ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend, alice_oms_backend, None);
-    let mut alice_event_stream = alice_ts.get_event_stream_fused();
+    let mut alice_event_stream = alice_ts.get_event_stream();
 
     let bob_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
@@ -1488,15 +1503,18 @@ fn finalize_tx_with_incorrect_pubkey() {
         .unwrap();
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(15)).fuse();
+        let delay = sleep(Duration::from_secs(15));
+        tokio::pin!(delay);
+
+        tokio::pin!(delay);
         loop {
-            futures::select! {
-                event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
                      if let TransactionEvent::ReceivedFinalizedTransaction(_) = (*event.unwrap()).clone() {
                          panic!("Should not have received finalized event!");
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -1542,7 +1560,7 @@ fn finalize_tx_with_missing_output() {
         _,
         _,
     ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend, alice_oms_backend, None);
-    let mut alice_event_stream = alice_ts.get_event_stream_fused();
+    let mut alice_event_stream = alice_ts.get_event_stream();
 
     let bob_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
@@ -1623,15 +1641,18 @@ fn finalize_tx_with_missing_output() {
         .unwrap();
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(15)).fuse();
+        let delay = sleep(Duration::from_secs(15));
+        tokio::pin!(delay);
+
+        tokio::pin!(delay);
         loop {
-            futures::select! {
-                event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
                      if let TransactionEvent::ReceivedFinalizedTransaction(_) = (*event.unwrap()).clone() {
                         panic!("Should not have received finalized event");
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -1648,8 +1669,7 @@ fn discovery_async_return_test() {
     let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path();
 
-    let mut runtime = runtime::Builder::new()
-        .basic_scheduler()
+    let mut runtime = runtime::Builder::new_current_thread()
         .enable_time()
         .thread_name("discovery_async_return_test")
         .build()
@@ -1714,7 +1734,7 @@ fn discovery_async_return_test() {
         Duration::from_secs(20),
         shutdown.to_signal(),
     );
-    let mut alice_event_stream = alice_ts.get_event_stream_fused();
+    let mut alice_event_stream = alice_ts.get_event_stream();
 
     let (_utxo, uo1a) = make_input(&mut OsRng, MicroTari(5500), &factories.commitment);
     runtime.block_on(alice_oms.add_output(uo1a)).unwrap();
@@ -1741,17 +1761,20 @@ fn discovery_async_return_test() {
     let mut txid = 0;
     let mut is_success = true;
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let delay = sleep(Duration::from_secs(60));
+        tokio::pin!(delay);
+
+        tokio::pin!(delay);
         loop {
-            futures::select! {
-                event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
                     if let TransactionEvent::TransactionDirectSendResult(tx_id, result) = (*event.unwrap()).clone() {
                         txid = tx_id;
                         is_success = result;
                         break;
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     panic!("Timeout while waiting for transaction to fail sending");
                 },
             }
@@ -1772,18 +1795,21 @@ fn discovery_async_return_test() {
     let mut success_result = false;
     let mut success_tx_id = 0u64;
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let delay = sleep(Duration::from_secs(60));
+        tokio::pin!(delay);
+
+        tokio::pin!(delay);
 
         loop {
-            futures::select! {
-                event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
                     if let TransactionEvent::TransactionDirectSendResult(tx_id, success) = &*event.unwrap() {
                         success_result = *success;
                         success_tx_id = *tx_id;
                         break;
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     panic!("Timeout while waiting for transaction to successfully be sent");
                 },
             }
@@ -1794,24 +1820,26 @@ fn discovery_async_return_test() {
     assert!(success_result);
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let delay = sleep(Duration::from_secs(60));
+        tokio::pin!(delay);
+        tokio::pin!(delay);
         loop {
-            futures::select! {
-                event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
                     if let TransactionEvent::ReceivedTransactionReply(tx_id) = &*event.unwrap() {
                         if tx_id == &tx_id2 {
                             break;
                         }
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     panic!("Timeout while Alice was waiting for a transaction reply");
                 },
             }
         }
     });
 
-    shutdown.trigger().unwrap();
+    shutdown.trigger();
     runtime.block_on(async move {
         alice_comms.wait_until_shutdown().await;
         carol_comms.wait_until_shutdown().await;
@@ -2012,7 +2040,7 @@ fn test_transaction_cancellation() {
             ..Default::default()
         }),
     );
-    let mut alice_event_stream = alice_ts.get_event_stream_fused();
+    let mut alice_event_stream = alice_ts.get_event_stream();
 
     let alice_total_available = 250000 * uT;
     let (_utxo, uo) = make_input(&mut OsRng, alice_total_available, &factories.commitment);
@@ -2030,15 +2058,17 @@ fn test_transaction_cancellation() {
         .unwrap();
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let delay = sleep(Duration::from_secs(60));
+        tokio::pin!(delay);
+        tokio::pin!(delay);
         loop {
-            futures::select! {
-                event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
                     if let TransactionEvent::TransactionStoreForwardSendResult(_,_) = &*event.unwrap() {
                        break;
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -2054,7 +2084,7 @@ fn test_transaction_cancellation() {
             None => (),
             Some(_) => break,
         }
-        runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
+        runtime.block_on(async { sleep(Duration::from_secs(5)).await });
         if i >= 12 {
             panic!("Pending outbound transaction should have been added by now");
         }
@@ -2066,17 +2096,18 @@ fn test_transaction_cancellation() {
 
     // Wait for cancellation event, in an effort to nail down where the issue is for the flakey CI test
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let delay = sleep(Duration::from_secs(60));
+        tokio::pin!(delay);
         let mut cancelled = false;
         loop {
-            futures::select! {
-                event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
                     if let TransactionEvent::TransactionCancelled(_) = &*event.unwrap() {
                        cancelled = true;
                        break;
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -2143,15 +2174,16 @@ fn test_transaction_cancellation() {
         .unwrap();
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let delay = sleep(Duration::from_secs(60));
+        tokio::pin!(delay);
         loop {
-            futures::select! {
-                event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
                     if let TransactionEvent::ReceivedTransaction(_) = &*event.unwrap() {
                        break;
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -2213,15 +2245,16 @@ fn test_transaction_cancellation() {
         .unwrap();
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let delay = sleep(Duration::from_secs(60));
+        tokio::pin!(delay);
         loop {
-            futures::select! {
-                event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
                     if let TransactionEvent::ReceivedTransaction(_) = &*event.unwrap() {
                        break;
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -2243,7 +2276,7 @@ fn test_transaction_cancellation() {
         )))
         .unwrap();
 
-    runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
+    runtime.block_on(async { sleep(Duration::from_secs(5)).await });
 
     runtime
         .block_on(alice_ts.get_pending_inbound_transactions())
@@ -2257,17 +2290,18 @@ fn test_transaction_cancellation() {
         .unwrap();
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(30)).fuse();
+        let delay = sleep(Duration::from_secs(30)).fuse();
+        tokio::pin!(delay);
         let mut cancelled = false;
         loop {
-            futures::select! {
-                event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
                     if let TransactionEvent::TransactionCancelled(_) = &*event.unwrap() {
                        cancelled = true;
                        break;
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -2386,7 +2420,7 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
         .try_into()
         .unwrap();
 
-    runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
+    runtime.block_on(async { sleep(Duration::from_secs(5)).await });
     assert_eq!(bob_outbound_service.call_count(), 0, "Should be no more calls");
     let (_wallet_backend, backend, oms_backend, _, _temp_dir) = make_wallet_databases(None);
 
@@ -2428,7 +2462,7 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
         .try_into()
         .unwrap();
 
-    runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
+    runtime.block_on(async { sleep(Duration::from_secs(5)).await });
     assert_eq!(bob2_outbound_service.call_count(), 0, "Should be no more calls");
 
     // Test finalize is sent Direct Only.
@@ -2449,7 +2483,7 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
     let _ = alice_outbound_service.pop_call().unwrap();
     let _ = alice_outbound_service.pop_call().unwrap();
 
-    runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
+    runtime.block_on(async { sleep(Duration::from_secs(5)).await });
     assert_eq!(alice_outbound_service.call_count(), 0, "Should be no more calls");
 
     // Now to repeat sending so we can test the SAF send of the finalize message
@@ -2520,7 +2554,7 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
 
     assert_eq!(alice_outbound_service.call_count(), 1);
     let _ = alice_outbound_service.pop_call();
-    runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
+    runtime.block_on(async { sleep(Duration::from_secs(5)).await });
     assert_eq!(alice_outbound_service.call_count(), 0, "Should be no more calls2");
 }
 
@@ -2548,7 +2582,7 @@ fn test_tx_direct_send_behaviour() {
         _,
         _,
     ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), backend, oms_backend, None);
-    let mut alice_event_stream = alice_ts.get_event_stream_fused();
+    let mut alice_event_stream = alice_ts.get_event_stream();
 
     let (_utxo, uo) = make_input(&mut OsRng, 1000000 * uT, &factories.commitment);
     runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
@@ -2576,12 +2610,13 @@ fn test_tx_direct_send_behaviour() {
         .unwrap();
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let delay = sleep(Duration::from_secs(60));
+tokio::pin!(delay);
         let mut direct_count = 0;
         let mut saf_count = 0;
         loop {
-            futures::select! {
-                event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
                     match &*event.unwrap() {
                         TransactionEvent::TransactionDirectSendResult(_, result) => if !result { direct_count+=1 },
                         TransactionEvent::TransactionStoreForwardSendResult(_, result) => if !result { saf_count+=1},                         _ => (),
@@ -2591,7 +2626,7 @@ fn test_tx_direct_send_behaviour() {
                         break;
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -2619,12 +2654,13 @@ fn test_tx_direct_send_behaviour() {
         .unwrap();
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let delay = sleep(Duration::from_secs(60));
+tokio::pin!(delay);
         let mut direct_count = 0;
         let mut saf_count = 0;
         loop {
-            futures::select! {
-                event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
                     match &*event.unwrap() {
                         TransactionEvent::TransactionDirectSendResult(_, result) => if !result { direct_count+=1 },
                         TransactionEvent::TransactionStoreForwardSendResult(_, result) => if *result { saf_count+=1
@@ -2635,7 +2671,7 @@ fn test_tx_direct_send_behaviour() {
                         break;
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -2663,11 +2699,12 @@ fn test_tx_direct_send_behaviour() {
         .unwrap();
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let delay = sleep(Duration::from_secs(60));
+tokio::pin!(delay);
         let mut direct_count = 0;
         loop {
-            futures::select! {
-                event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
                     match &*event.unwrap() {
                         TransactionEvent::TransactionDirectSendResult(_, result) => if *result { direct_count+=1 },
                         TransactionEvent::TransactionStoreForwardSendResult(_, _) => panic!("Should be no SAF messages"),
@@ -2678,7 +2715,7 @@ fn test_tx_direct_send_behaviour() {
                         break;
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -2705,11 +2742,12 @@ fn test_tx_direct_send_behaviour() {
         .unwrap();
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let delay = sleep(Duration::from_secs(60));
+tokio::pin!(delay);
         let mut saf_count = 0;
         loop {
-            futures::select! {
-                event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
                     match &*event.unwrap() {
                         TransactionEvent::TransactionStoreForwardSendResult(_, result) => if *result { saf_count+=1
 },                         TransactionEvent::TransactionDirectSendResult(_, result) => if *result { panic!(
@@ -2720,7 +2758,7 @@ fn test_tx_direct_send_behaviour() {
                         break;
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -2852,7 +2890,7 @@ fn test_restarting_transaction_protocols() {
     // Test that Bob's node restarts the send protocol
     let (mut bob_ts, _bob_oms, _bob_outbound_service, _, _, mut bob_tx_reply, _, _, _, _shutdown, _, _, _) =
         setup_transaction_service_no_comms(&mut runtime, factories.clone(), bob_backend, bob_oms_backend, None);
-    let mut bob_event_stream = bob_ts.get_event_stream_fused();
+    let mut bob_event_stream = bob_ts.get_event_stream();
 
     runtime
         .block_on(bob_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
@@ -2864,18 +2902,19 @@ fn test_restarting_transaction_protocols() {
         .unwrap();
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(15)).fuse();
+        let delay = sleep(Duration::from_secs(15));
+        tokio::pin!(delay);
         let mut received_reply = false;
         loop {
-            futures::select! {
-                event = bob_event_stream.select_next_some() => {
+            tokio::select! {
+                event = bob_event_stream.recv() => {
                      if let TransactionEvent::ReceivedTransactionReply(id) = (*event.unwrap()).clone() {
                         assert_eq!(id, tx_id);
                         received_reply = true;
                         break;
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -2886,7 +2925,7 @@ fn test_restarting_transaction_protocols() {
     // Test Alice's node restarts the receive protocol
     let (mut alice_ts, _alice_oms, _alice_outbound_service, _, _, _, mut alice_tx_finalized, _, _, _shutdown, _, _, _) =
         setup_transaction_service_no_comms(&mut runtime, factories, alice_backend, alice_oms_backend, None);
-    let mut alice_event_stream = alice_ts.get_event_stream_fused();
+    let mut alice_event_stream = alice_ts.get_event_stream();
 
     runtime
         .block_on(alice_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
@@ -2906,18 +2945,19 @@ fn test_restarting_transaction_protocols() {
         .unwrap();
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(15)).fuse();
+        let delay = sleep(Duration::from_secs(15));
+        tokio::pin!(delay);
         let mut received_finalized = false;
         loop {
-            futures::select! {
-                event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
                      if let TransactionEvent::ReceivedFinalizedTransaction(id) = (*event.unwrap()).clone() {
                         assert_eq!(id, tx_id);
                         received_finalized = true;
                         break;
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -3046,7 +3086,7 @@ fn test_coinbase_monitoring_stuck_in_mempool() {
         server_node_identity,
         mut rpc_service_state,
     ) = setup_transaction_service_no_comms(&mut runtime, factories, backend, oms_backend, None);
-    let mut alice_event_stream = alice_ts.get_event_stream_fused();
+    let mut alice_event_stream = alice_ts.get_event_stream();
     rpc_service_state.set_response_delay(Some(Duration::from_secs(1)));
 
     let block_height_a = 10;
@@ -3131,11 +3171,12 @@ fn test_coinbase_monitoring_stuck_in_mempool() {
         println!("  {}", e)
     }
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(30)).fuse();
+        let delay = sleep(Duration::from_secs(30));
+        tokio::pin!(delay);
         let mut count = 0usize;
         loop {
-            futures::select! {
-                            event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                            event = alice_event_stream.recv() => {
                                 if let TransactionEvent::ReceivedFinalizedTransaction(tx_id) = &*event.unwrap() {
             if tx_id == &tx_id1 || tx_id == &tx_id2 {
             count += 1;
@@ -3145,7 +3186,7 @@ fn test_coinbase_monitoring_stuck_in_mempool() {
             }
                                 }
                             },
-                            () = delay => {
+                            () = &mut delay => {
                                 break;
                             },
                         }
@@ -3170,11 +3211,12 @@ fn test_coinbase_monitoring_stuck_in_mempool() {
         println!("  {}", e)
     }
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(30)).fuse();
+        let delay = sleep(Duration::from_secs(30));
+        tokio::pin!(delay);
         let mut count = 0usize;
         loop {
-            futures::select! {
-                            event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                            event = alice_event_stream.recv() => {
             if let TransactionEvent::TransactionCancelled(tx_id) = &*event.unwrap() {
             if tx_id == &tx_id1 || tx_id == &tx_id2 {
             count += 1;
@@ -3184,7 +3226,7 @@ fn test_coinbase_monitoring_stuck_in_mempool() {
             }
             }
                             },
-                            () = delay => {
+                            () = &mut delay => {
                                 break;
                             },
                         }
@@ -3215,7 +3257,7 @@ fn test_coinbase_monitoring_with_base_node_change_and_mined() {
         server_node_identity,
         mut rpc_service_state,
     ) = setup_transaction_service_no_comms(&mut runtime, factories, backend, oms_backend, None);
-    let mut alice_event_stream = alice_ts.get_event_stream_fused();
+    let mut alice_event_stream = alice_ts.get_event_stream();
     rpc_service_state.set_response_delay(Some(Duration::from_secs(1)));
 
     let block_height_a = 10;
@@ -3301,11 +3343,12 @@ fn test_coinbase_monitoring_with_base_node_change_and_mined() {
         println!("  {}", e)
     }
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(30)).fuse();
+        let delay = sleep(Duration::from_secs(30));
+        tokio::pin!(delay);
         let mut count = 0usize;
         loop {
-            futures::select! {
-                            event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                            event = alice_event_stream.recv() => {
                                 if let TransactionEvent::TransactionMinedUnconfirmed(tx_id, _) = &*event.unwrap() {
             if tx_id == &tx_id1 || tx_id == &tx_id2 {
             count += 1;
@@ -3316,7 +3359,7 @@ fn test_coinbase_monitoring_with_base_node_change_and_mined() {
                                 }
 
                             },
-                            () = delay => {
+                            () = &mut delay => {
                                 break;
                             },
                         }
@@ -3331,10 +3374,14 @@ fn test_coinbase_monitoring_with_base_node_change_and_mined() {
     rpc_service_state.set_response_delay(Some(Duration::from_secs(1)));
     let new_server = BaseNodeWalletRpcServer::new(service);
     let protocol_name = new_server.as_protocol_name();
-    let mut new_mock_server = runtime
-        .handle()
-        .enter(|| MockRpcServer::new(new_server, new_server_node_identity.clone()));
-    runtime.handle().enter(|| new_mock_server.serve());
+    let mut new_mock_server = {
+        let _enter = runtime.handle().enter();
+        MockRpcServer::new(new_server, new_server_node_identity.clone())
+    };
+    {
+        let _enter = runtime.handle().enter();
+        new_mock_server.serve();
+    }
     let connection =
         runtime.block_on(new_mock_server.create_connection(new_server_node_identity.to_peer(), protocol_name.into()));
     runtime.block_on(connectivity_mock_state.add_active_connection(connection));
@@ -3368,11 +3415,12 @@ fn test_coinbase_monitoring_with_base_node_change_and_mined() {
         println!("  {}", e)
     }
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(30)).fuse();
+        let delay = sleep(Duration::from_secs(30));
+        tokio::pin!(delay);
         let mut count = 0usize;
         loop {
-            futures::select! {
-                            event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                            event = alice_event_stream.recv() => {
                                 if let TransactionEvent::TransactionMined(tx_id) = &*event.unwrap() {
             if tx_id == &tx_id1 || tx_id == &tx_id2 {
             count += 1;
@@ -3382,7 +3430,7 @@ fn test_coinbase_monitoring_with_base_node_change_and_mined() {
             }
                                 }
                             },
-                            () = delay => {
+                            () = &mut delay => {
                                 break;
                             },
                         }
@@ -3413,7 +3461,7 @@ fn test_coinbase_monitoring_mined_not_synced() {
         server_node_identity,
         mut rpc_service_state,
     ) = setup_transaction_service_no_comms(&mut runtime, factories, backend, oms_backend, None);
-    let mut alice_event_stream = alice_ts.get_event_stream_fused();
+    let mut alice_event_stream = alice_ts.get_event_stream();
     rpc_service_state.set_response_delay(Some(Duration::from_secs(1)));
 
     let block_height_a = 10;
@@ -3499,11 +3547,12 @@ fn test_coinbase_monitoring_mined_not_synced() {
         println!("  {}", e)
     }
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(30)).fuse();
+        let delay = sleep(Duration::from_secs(30));
+        tokio::pin!(delay);
         let mut count = 0usize;
         loop {
-            futures::select! {
-                            event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                            event = alice_event_stream.recv() => {
             if let TransactionEvent::ReceivedFinalizedTransaction(tx_id) = &*event.unwrap() {
             if tx_id == &tx_id1 || tx_id == &tx_id2 {
             count += 1;
@@ -3513,7 +3562,7 @@ fn test_coinbase_monitoring_mined_not_synced() {
             }
             }
                             },
-                            () = delay => {
+                            () = &mut delay => {
                                 break;
                             },
                         }
@@ -3538,11 +3587,12 @@ fn test_coinbase_monitoring_mined_not_synced() {
         println!("  {}", e)
     }
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(30)).fuse();
+        let delay = sleep(Duration::from_secs(30));
+        tokio::pin!(delay);
         let mut count = 0usize;
         loop {
-            futures::select! {
-                            event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                            event = alice_event_stream.recv() => {
                                 if let TransactionEvent::TransactionMined(tx_id) = &*event.unwrap() {
             if tx_id == &tx_id1 || tx_id == &tx_id2 {
             count += 1;
@@ -3552,7 +3602,7 @@ fn test_coinbase_monitoring_mined_not_synced() {
             }
                                 }
                             },
-                            () = delay => {
+                            () = &mut delay => {
                                 break;
                             },
                         }
@@ -3760,7 +3810,7 @@ fn test_transaction_resending() {
         assert_eq!(bob_reply_message.tx_id, tx_id);
     }
 
-    runtime.block_on(async { delay_for(Duration::from_secs(2)).await });
+    runtime.block_on(async { sleep(Duration::from_secs(2)).await });
     // See if sending a second message too soon is ignored
     runtime
         .block_on(bob_tx_sender.send(create_dummy_message(
@@ -3772,7 +3822,7 @@ fn test_transaction_resending() {
     assert!(bob_outbound_service.wait_call_count(1, Duration::from_secs(2)).is_err());
 
     // Wait for the cooldown to expire but before the resend period has elapsed see if a repeat illicts a reponse.
-    runtime.block_on(async { delay_for(Duration::from_secs(2)).await });
+    runtime.block_on(async { sleep(Duration::from_secs(2)).await });
     runtime
         .block_on(bob_tx_sender.send(create_dummy_message(
             alice_sender_message.into(),
@@ -3819,7 +3869,7 @@ fn test_transaction_resending() {
         .is_err());
 
     // Wait for the cooldown to expire but before the resend period has elapsed see if a repeat illicts a reponse.
-    runtime.block_on(async { delay_for(Duration::from_secs(2)).await });
+    runtime.block_on(async { sleep(Duration::from_secs(2)).await });
 
     runtime
         .block_on(alice_tx_reply_sender.send(create_dummy_message(
@@ -4143,7 +4193,7 @@ fn test_replying_to_cancelled_tx() {
         assert_eq!(data.tx_id, tx_id);
     }
     // Need a moment for Alice's wallet to finish writing to its database before cancelling
-    runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
+    runtime.block_on(async { sleep(Duration::from_secs(5)).await });
 
     runtime.block_on(alice_ts.cancel_transaction(tx_id)).unwrap();
 
@@ -4193,7 +4243,7 @@ fn test_replying_to_cancelled_tx() {
     assert_eq!(bob_reply_message.tx_id, tx_id);
 
     // Wait for cooldown to expire
-    runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
+    runtime.block_on(async { sleep(Duration::from_secs(5)).await });
 
     let _ = alice_outbound_service.take_calls();
 
@@ -4406,7 +4456,7 @@ fn test_transaction_timeout_cancellation() {
                 ..Default::default()
             }),
         );
-    let mut carol_event_stream = carol_ts.get_event_stream_fused();
+    let mut carol_event_stream = carol_ts.get_event_stream();
 
     runtime
         .block_on(carol_tx_sender.send(create_dummy_message(
@@ -4431,11 +4481,12 @@ fn test_transaction_timeout_cancellation() {
     assert_eq!(carol_reply_message.tx_id, tx_id);
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let delay = sleep(Duration::from_secs(60));
+        tokio::pin!(delay);
         let mut transaction_cancelled = false;
         loop {
-            futures::select! {
-                            event = carol_event_stream.select_next_some() => {
+            tokio::select! {
+                            event = carol_event_stream.recv() => {
                                  if let TransactionEvent::TransactionCancelled(t) = &*event.unwrap() {
             if t == &tx_id {
             transaction_cancelled = true;
@@ -4443,7 +4494,7 @@ fn test_transaction_timeout_cancellation() {
             }
                                  }
                             },
-                            () = delay => {
+                            () = &mut delay => {
                                 break;
                             },
                         }
@@ -4481,7 +4532,7 @@ fn transaction_service_tx_broadcast() {
         server_node_identity,
         rpc_service_state,
     ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), backend, oms_backend, None);
-    let mut alice_event_stream = alice_ts.get_event_stream_fused();
+    let mut alice_event_stream = alice_ts.get_event_stream();
 
     runtime
         .block_on(alice_ts.set_base_node_public_key(server_node_identity.public_key().clone()))
@@ -4609,11 +4660,12 @@ fn transaction_service_tx_broadcast() {
         .unwrap();
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let delay = sleep(Duration::from_secs(60));
+        tokio::pin!(delay);
         let mut tx1_received = false;
         loop {
-            futures::select! {
-                event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
                      if let TransactionEvent::ReceivedTransactionReply(tx_id) = &*event.unwrap(){
                         if tx_id == &tx_id1 {
                             tx1_received = true;
@@ -4621,7 +4673,7 @@ fn transaction_service_tx_broadcast() {
                         }
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -4655,11 +4707,12 @@ fn transaction_service_tx_broadcast() {
     });
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let delay = sleep(Duration::from_secs(60));
+        tokio::pin!(delay);
         let mut tx1_mined = false;
         loop {
-            futures::select! {
-                event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
                      if let TransactionEvent::TransactionMined(tx_id) = &*event.unwrap(){
                         if tx_id == &tx_id1 {
                             tx1_mined = true;
@@ -4667,7 +4720,7 @@ fn transaction_service_tx_broadcast() {
                         }
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -4683,11 +4736,12 @@ fn transaction_service_tx_broadcast() {
         .unwrap();
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let delay = sleep(Duration::from_secs(60));
+        tokio::pin!(delay);
         let mut tx2_received = false;
         loop {
-            futures::select! {
-                event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
                      if let TransactionEvent::ReceivedTransactionReply(tx_id) = &*event.unwrap(){
                         if tx_id == &tx_id2 {
                             tx2_received = true;
@@ -4695,7 +4749,7 @@ fn transaction_service_tx_broadcast() {
                         }
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -4733,11 +4787,12 @@ fn transaction_service_tx_broadcast() {
     });
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let delay = sleep(Duration::from_secs(60));
+        tokio::pin!(delay);
         let mut tx2_cancelled = false;
         loop {
-            futures::select! {
-                event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
                      if let TransactionEvent::TransactionCancelled(tx_id) = &*event.unwrap(){
                         if tx_id == &tx_id2 {
                             tx2_cancelled = true;
@@ -4745,7 +4800,7 @@ fn transaction_service_tx_broadcast() {
                         }
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -4851,15 +4906,16 @@ fn broadcast_all_completed_transactions_on_startup() {
 
     assert!(runtime.block_on(alice_ts.restart_broadcast_protocols()).is_ok());
 
-    let mut event_stream = alice_ts.get_event_stream_fused();
+    let mut event_stream = alice_ts.get_event_stream();
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let delay = sleep(Duration::from_secs(60));
+        tokio::pin!(delay);
         let mut found1 = false;
         let mut found2 = false;
         let mut found3 = false;
         loop {
-            futures::select! {
-                event = event_stream.select_next_some() => {
+            tokio::select! {
+                event = event_stream.recv() => {
                     if let TransactionEvent::TransactionBroadcast(tx_id) = (*event.unwrap()).clone() {
                         if tx_id == 1u64 {
                             found1 = true
@@ -4876,7 +4932,7 @@ fn broadcast_all_completed_transactions_on_startup() {
 
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -4916,7 +4972,7 @@ fn transaction_service_tx_broadcast_with_base_node_change() {
         server_node_identity,
         rpc_service_state,
     ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), backend, oms_backend, None);
-    let mut alice_event_stream = alice_ts.get_event_stream_fused();
+    let mut alice_event_stream = alice_ts.get_event_stream();
 
     runtime
         .block_on(alice_ts.set_base_node_public_key(server_node_identity.public_key().clone()))
@@ -4995,11 +5051,12 @@ fn transaction_service_tx_broadcast_with_base_node_change() {
         .unwrap();
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let delay = sleep(Duration::from_secs(60));
+        tokio::pin!(delay);
         let mut tx1_received = false;
         loop {
-            futures::select! {
-                event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
                      if let TransactionEvent::ReceivedTransactionReply(tx_id) = &*event.unwrap(){
                         if tx_id == &tx_id1 {
                             tx1_received = true;
@@ -5007,7 +5064,7 @@ fn transaction_service_tx_broadcast_with_base_node_change() {
                         }
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -5038,11 +5095,15 @@ fn transaction_service_tx_broadcast_with_base_node_change() {
     let new_server = BaseNodeWalletRpcServer::new(service);
     let protocol_name = new_server.as_protocol_name();
 
-    let mut new_mock_server = runtime
-        .handle()
-        .enter(|| MockRpcServer::new(new_server, new_server_node_identity.clone()));
+    let mut new_mock_server = {
+        let _enter = runtime.handle().enter();
+        MockRpcServer::new(new_server, new_server_node_identity.clone())
+    };
 
-    runtime.handle().enter(|| new_mock_server.serve());
+    {
+        let _enter = runtime.handle().enter();
+        new_mock_server.serve();
+    }
 
     let connection =
         runtime.block_on(new_mock_server.create_connection(new_server_node_identity.to_peer(), protocol_name.into()));
@@ -5075,17 +5136,18 @@ fn transaction_service_tx_broadcast_with_base_node_change() {
     });
 
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let delay = sleep(Duration::from_secs(60));
+        tokio::pin!(delay);
         let mut tx_mined = false;
         loop {
-            futures::select! {
-                event = alice_event_stream.select_next_some() => {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
                      if let TransactionEvent::TransactionMined(_) = &*event.unwrap(){
                             tx_mined = true;
                             break;
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -5350,11 +5412,15 @@ fn start_validation_protocol_then_broadcast_protocol_change_base_node() {
     let new_server = BaseNodeWalletRpcServer::new(service);
     let protocol_name = new_server.as_protocol_name();
 
-    let mut new_mock_server = runtime
-        .handle()
-        .enter(|| MockRpcServer::new(new_server, new_server_node_identity.clone()));
+    let mut new_mock_server = {
+        let _enter = runtime.handle().enter();
+        MockRpcServer::new(new_server, new_server_node_identity.clone())
+    };
 
-    runtime.handle().enter(|| new_mock_server.serve());
+    {
+        let _enter = runtime.handle().enter();
+        new_mock_server.serve();
+    }
 
     let connection =
         runtime.block_on(new_mock_server.create_connection(new_server_node_identity.to_peer(), protocol_name.into()));

@@ -21,16 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::Transport;
-use crate::transports::{
-    dns::TorDnsResolver,
-    helpers::is_onion_address,
-    SocksConfig,
-    SocksTransport,
-    TcpSocket,
-    TcpTransport,
-};
+use crate::transports::{dns::TorDnsResolver, helpers::is_onion_address, SocksConfig, SocksTransport, TcpTransport};
 use multiaddr::Multiaddr;
 use std::io;
+use tokio::net::TcpStream;
 
 /// Transport implementation for TCP with Tor support
 #[derive(Clone, Default)]
@@ -69,7 +63,7 @@ impl TcpWithTorTransport {
 impl Transport for TcpWithTorTransport {
     type Error = io::Error;
     type Listener = <TcpTransport as Transport>::Listener;
-    type Output = TcpSocket;
+    type Output = TcpStream;
 
     async fn listen(&self, addr: Multiaddr) -> Result<(Self::Listener, Multiaddr), Self::Error> {
         self.tcp_transport.listen(addr).await

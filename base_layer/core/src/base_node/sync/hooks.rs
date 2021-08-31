@@ -28,7 +28,7 @@ use tari_comms::peer_manager::NodeId;
 
 #[derive(Default)]
 pub(super) struct Hooks {
-    on_progress_header: Vec<Box<dyn FnMut(u64, u64, &[NodeId]) + Send + Sync>>,
+    on_progress_header: Vec<Box<dyn FnMut(Option<(u64, u64)>, &[NodeId]) + Send + Sync>>,
     on_progress_block: Vec<Box<dyn FnMut(Arc<ChainBlock>, u64, &[NodeId]) + Send + Sync>>,
     on_complete: Vec<Box<dyn FnMut(Arc<ChainBlock>) + Send + Sync>>,
     on_rewind: Vec<Box<dyn FnMut(Vec<Arc<ChainBlock>>) + Send + Sync>>,
@@ -36,14 +36,14 @@ pub(super) struct Hooks {
 
 impl Hooks {
     pub fn add_on_progress_header_hook<H>(&mut self, hook: H)
-    where H: FnMut(u64, u64, &[NodeId]) + Send + Sync + 'static {
+    where H: FnMut(Option<(u64, u64)>, &[NodeId]) + Send + Sync + 'static {
         self.on_progress_header.push(Box::new(hook));
     }
 
-    pub fn call_on_progress_header_hooks(&mut self, height: u64, remote_tip_height: u64, sync_peers: &[NodeId]) {
+    pub fn call_on_progress_header_hooks(&mut self, height_vs_remote: Option<(u64, u64)>, sync_peers: &[NodeId]) {
         self.on_progress_header
             .iter_mut()
-            .for_each(|f| (*f)(height, remote_tip_height, sync_peers));
+            .for_each(|f| (*f)(height_vs_remote, sync_peers));
     }
 
     pub fn add_on_progress_block_hook<H>(&mut self, hook: H)

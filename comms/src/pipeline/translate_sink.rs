@@ -93,9 +93,10 @@ where F: FnMut(I) -> Option<O>
 mod test {
     use super::*;
     use crate::runtime;
-    use futures::{channel::mpsc, SinkExt, StreamExt};
+    use futures::{SinkExt, StreamExt};
+    use tokio::sync::mpsc;
 
-    #[runtime::test_basic]
+    #[runtime::test]
     async fn check_translates() {
         let (tx, mut rx) = mpsc::channel(1);
 

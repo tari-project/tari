@@ -22,6 +22,8 @@
 
 use bitflags::bitflags;
 use bytes::Bytes;
+use chrono::{DateTime, NaiveDateTime, Utc};
+use prost_types::Timestamp;
 use serde::{Deserialize, Serialize};
 use std::{
     cmp,
@@ -30,14 +32,11 @@ use std::{
     fmt::Display,
 };
 use tari_comms::{message::MessageTag, peer_manager::NodeId, types::CommsPublicKey, NodeIdentity};
-use tari_utilities::{ByteArray, ByteArrayError};
+use tari_utilities::{epoch_time::EpochTime, ByteArray, ByteArrayError};
 use thiserror::Error;
 
 // Re-export applicable protos
 pub use crate::proto::envelope::{dht_header::Destination, DhtEnvelope, DhtHeader, DhtMessageType};
-use chrono::{DateTime, NaiveDateTime, Utc};
-use prost_types::Timestamp;
-use tari_utilities::epoch_time::EpochTime;
 
 /// Utility function that converts a `chrono::DateTime<Utc>` to a `prost::Timestamp`
 pub(crate) fn datetime_to_timestamp(datetime: DateTime<Utc>) -> Timestamp {

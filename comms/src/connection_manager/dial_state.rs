@@ -24,8 +24,8 @@ use crate::{
     connection_manager::{error::ConnectionManagerError, peer_connection::PeerConnection},
     peer_manager::Peer,
 };
-use futures::channel::oneshot;
 use tari_shutdown::ShutdownSignal;
+use tokio::sync::oneshot;
 
 /// The state of the dial request
 pub struct DialState {

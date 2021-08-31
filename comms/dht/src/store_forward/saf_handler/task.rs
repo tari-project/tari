@@ -41,7 +41,7 @@ use crate::{
 };
 use chrono::{DateTime, NaiveDateTime, Utc};
 use digest::Digest;
-use futures::{channel::mpsc, future, stream, SinkExt, StreamExt};
+use futures::{future, stream, StreamExt};
 use log::*;
 use prost::Message;
 use std::{convert::TryInto, sync::Arc};
@@ -53,6 +53,7 @@ use tari_comms::{
     utils::signature,
 };
 use tari_utilities::{convert::try_convert_all, ByteArray};
+use tokio::sync::mpsc;
 use tower::{Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::storeforward::handler";
@@ -582,14 +583,13 @@ mod test {
         },
     };
     use chrono::{Duration as OldDuration, Utc};
-    use futures::channel::mpsc;
     use prost::Message;
     use std::time::Duration;
-    use tari_comms::{message::MessageExt, wrap_in_envelope_body};
+    use tari_comms::{message::MessageExt, runtime, wrap_in_envelope_body};
     use tari_crypto::tari_utilities::hex;
-    use tari_test_utils::collect_stream;
+    use tari_test_utils::collect_recv;
     use tari_utilities::hex::Hex;
-    use tokio::{runtime::Handle, task, time::delay_for};
+    use tokio::{runtime::Handle, sync::mpsc, task, time::sleep};
 
     // TODO: unit tests for static functions (check_signature, etc)
 
@@ -617,7 +617,7 @@ mod test {
         }
     }
 
-    #[tokio_macros::test]
+    #[tokio::test]
     async fn request_stored_messages() {
         let spy = service_spy();
         let (requester, mock_state) = create_store_and_forward_mock();
@@ -677,7 +677,7 @@ mod test {
             if oms_mock_state.call_count() >= 1 {
                 break;
             }
-            delay_for(Duration::from_secs(5)).await;
+            sleep(Duration::from_secs(5)).await;
         }
         assert_eq!(oms_mock_state.call_count(), 1);
 
@@ -739,7 +739,7 @@ mod test {
             if oms_mock_state.call_count() >= 1 {
                 break;
             }
-            delay_for(Duration::from_secs(5)).await;
+            sleep(Duration::from_secs(5)).await;
         }
         assert_eq!(oms_mock_state.call_count(), 1);
         let call = oms_mock_state.pop_call().unwrap();
@@ -765,7 +765,7 @@ mod test {
         assert!(stored_messages.iter().any(|s| s.body == msg2.as_bytes()));
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn receive_stored_messages() {
         let rt_handle = Handle::current();
         let spy = service_spy();
@@ -860,7 +860,7 @@ mod test {
         assert!(msgs.contains(&b"A".to_vec()));
         assert!(msgs.contains(&b"B".to_vec()));
         assert!(msgs.contains(&b"Clear".to_vec()));
-        let signals = collect_stream!(
+        let signals = collect_recv!(
             saf_response_signal_receiver,
             take = 1,
             timeout = Duration::from_secs(20)

@@ -83,7 +83,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     }
 
     pub fn on_progress<H>(&mut self, hook: H)
-    where H: FnMut(u64, u64, &[NodeId]) + Send + Sync + 'static {
+    where H: FnMut(Option<(u64, u64)>, &[NodeId]) + Send + Sync + 'static {
         self.hooks.add_on_progress_header_hook(hook);
     }
 
@@ -94,6 +94,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
     pub async fn synchronize(&mut self) -> Result<PeerConnection, BlockHeaderSyncError> {
         debug!(target: LOG_TARGET, "Starting header sync.",);
+        self.hooks.call_on_progress_header_hooks(None, self.sync_peers);
         let sync_peers = self.select_sync_peers().await?;
         info!(
             target: LOG_TARGET,
@@ -261,7 +262,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         let latency = client.get_last_request_latency().await?;
         debug!(
             target: LOG_TARGET,
-            "Initiating header sync with peer `{}` (latency = {}ms)",
+            "Initiating header sync with peer `{}` (sync latency = {}ms)",
             conn.peer_node_id(),
             latency.unwrap_or_default().as_millis()
         );
@@ -272,6 +273,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             // We're ahead of this peer, try another peer if possible
             SyncStatus::Ahead => Err(BlockHeaderSyncError::NotInSync),
             SyncStatus::Lagging(split_info) => {
+                self.hooks.call_on_progress_header_hooks(
+                    Some((split_info.local_tip_header.height(), split_info.remote_tip_height)),
+                    self.sync_peers,
+                );
                 self.synchronize_headers(&peer, &mut client, *split_info).await?;
                 Ok(())
             },
@@ -482,46 +487,53 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     ) -> Result<(), BlockHeaderSyncError> {
         const COMMIT_EVERY_N_HEADERS: usize = 1000;
 
-        // Peer returned no more than the max headers. This indicates that there are no further headers to request.
-        if self.header_validator.valid_headers().len() <= NUM_INITIAL_HEADERS_TO_REQUEST as usize {
-            debug!(target: LOG_TARGET, "No further headers to download");
-            if !self.pending_chain_has_higher_pow(&split_info.local_tip_header)? {
-                return Err(BlockHeaderSyncError::WeakerChain);
-            }
+        let mut has_switched_to_new_chain = false;
+        let pending_len = self.header_validator.valid_headers().len();
 
+        // Find the hash to start syncing the rest of the headers.
+        // The expectation cannot fail because there has been at least one valid header returned (checked in
+        // determine_sync_status)
+        let (start_header_height, start_header_hash) = self
+            .header_validator
+            .current_valid_chain_tip_header()
+            .map(|h| (h.height(), h.hash().clone()))
+            .expect("synchronize_headers: expected there to be a valid tip header but it was None");
+
+        // If we already have a stronger chain at this point, switch over to it.
+        // just in case we happen to be exactly NUM_INITIAL_HEADERS_TO_REQUEST headers behind.
+        let has_better_pow = self.pending_chain_has_higher_pow(&split_info.local_tip_header)?;
+        if has_better_pow {
             debug!(
                 target: LOG_TARGET,
                 "Remote chain from peer {} has higher PoW. Switching", peer
             );
-            // PoW is higher, switching over to the new chain
             self.switch_to_pending_chain(&split_info).await?;
+            has_switched_to_new_chain = true;
+        }
+
+        if pending_len < NUM_INITIAL_HEADERS_TO_REQUEST as usize {
+            // Peer returned less than the number of requested headers. This indicates that we have all the available
+            // headers.
+            debug!(target: LOG_TARGET, "No further headers to download");
+            if !has_better_pow {
+                return Err(BlockHeaderSyncError::WeakerChain);
+            }
 
             return Ok(());
         }
 
-        // Find the hash to start syncing the rest of the headers.
-        // The expectation cannot fail because the number of headers has been checked in determine_sync_status
-        let start_header =
-            self.header_validator.valid_headers().last().expect(
-                "synchronize_headers: expected there to be at least one valid pending header but there were none",
-            );
-
         debug!(
             target: LOG_TARGET,
-            "Download remaining headers starting from header #{} from peer `{}`",
-            start_header.height(),
-            peer
+            "Download remaining headers starting from header #{} from peer `{}`", start_header_height, peer
         );
         let request = SyncHeadersRequest {
-            start_hash: start_header.hash().clone(),
+            start_hash: start_header_hash,
             // To the tip!
             count: 0,
         };
 
         let mut header_stream = client.sync_headers(request).await?;
-        debug!(target: LOG_TARGET, "Reading headers from peer `{}`", peer);
-
-        let mut has_switched_to_new_chain = false;
+        debug!(target: LOG_TARGET, "Reading headers from peer `{}`", peer,);
 
         while let Some(header) = header_stream.next().await {
             let header = BlockHeader::try_from(header?).map_err(BlockHeaderSyncError::ReceivedInvalidHeader)?;
@@ -563,7 +575,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             }
 
             self.hooks
-                .call_on_progress_header_hooks(current_height, split_info.remote_tip_height, self.sync_peers);
+                .call_on_progress_header_hooks(Some((current_height, split_info.remote_tip_height)), self.sync_peers);
         }
 
         if !has_switched_to_new_chain {

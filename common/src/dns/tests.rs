@@ -48,7 +48,7 @@ use trust_dns_client::rr::{rdata, RData, Record, RecordType};
 
 // Ignore as this test requires network IO
 #[ignore]
-#[tokio_macros::test]
+#[tokio::test]
 async fn it_returns_an_empty_vec_if_all_seeds_are_invalid() {
     let mut resolver = PeerSeedResolver::connect("1.1.1.1:53".parse().unwrap()).await.unwrap();
     let seeds = resolver.resolve("tari.com").await.unwrap();
@@ -64,7 +64,7 @@ fn create_txt_record(contents: Vec<String>) -> Record {
 }
 
 #[allow(clippy::vec_init_then_push)]
-#[tokio_macros::test]
+#[tokio::test]
 async fn it_returns_peer_seeds() {
     let mut records = Vec::new();
     // Multiple addresses(works)

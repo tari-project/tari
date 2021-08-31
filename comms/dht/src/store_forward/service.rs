@@ -36,12 +36,6 @@ use crate::{
     DhtRequester,
 };
 use chrono::{DateTime, NaiveDateTime, Utc};
-use futures::{
-    channel::{mpsc, oneshot},
-    stream::Fuse,
-    SinkExt,
-    StreamExt,
-};
 use log::*;
 use std::{convert::TryFrom, sync::Arc, time::Duration};
 use tari_comms::{
@@ -51,7 +45,11 @@ use tari_comms::{
     PeerManager,
 };
 use tari_shutdown::ShutdownSignal;
-use tokio::{task, time};
+use tokio::{
+    sync::{mpsc, oneshot},
+    task,
+    time,
+};
 
 const LOG_TARGET: &str = "comms::dht::storeforward::actor";
 /// The interval to initiate a database cleanup.
@@ -167,13 +165,13 @@ pub struct StoreAndForwardService {
     dht_requester: DhtRequester,
     database: StoreAndForwardDatabase,
     peer_manager: Arc<PeerManager>,
-    connection_events: Fuse<ConnectivityEventRx>,
+    connection_events: ConnectivityEventRx,
     outbound_requester: OutboundMessageRequester,
-    request_rx: Fuse<mpsc::Receiver<StoreAndForwardRequest>>,
-    shutdown_signal: Option<ShutdownSignal>,
+    request_rx: mpsc::Receiver<StoreAndForwardRequest>,
+    shutdown_signal: ShutdownSignal,
     num_received_saf_responses: Option<usize>,
     num_online_peers: Option<usize>,
-    saf_response_signal_rx: Fuse<mpsc::Receiver<()>>,
+    saf_response_signal_rx: mpsc::Receiver<()>,
     event_publisher: DhtEventSender,
 }
 
@@ -196,13 +194,13 @@ impl StoreAndForwardService {
             database: StoreAndForwardDatabase::new(conn),
             peer_manager,
             dht_requester,
-            request_rx: request_rx.fuse(),
-            connection_events: connectivity.get_event_subscription().fuse(),
+            request_rx,
+            connection_events: connectivity.get_event_subscription(),
             outbound_requester,
-            shutdown_signal: Some(shutdown_signal),
+            shutdown_signal,
             num_received_saf_responses: Some(0),
             num_online_peers: None,
-            saf_response_signal_rx: saf_response_signal_rx.fuse(),
+            saf_response_signal_rx,
             event_publisher,
         }
     }
@@ -213,20 +211,15 @@ impl StoreAndForwardService {
     }
 
     async fn run(mut self) {
-        let mut shutdown_signal = self
-            .shutdown_signal
-            .take()
-            .expect("StoreAndForwardActor initialized without shutdown_signal");
-
-        let mut cleanup_ticker = time::interval(CLEANUP_INTERVAL).fuse();
+        let mut cleanup_ticker = time::interval(CLEANUP_INTERVAL);
 
         loop {
-            futures::select! {
-                request = self.request_rx.select_next_some() => {
+            tokio::select! {
+                Some(request) = self.request_rx.recv() => {
                     self.handle_request(request).await;
                 },
 
-               event = self.connection_events.select_next_some() => {
+               event = self.connection_events.recv() => {
                     if let Ok(event) = event {
                          if let Err(err) = self.handle_connectivity_event(&event).await {
                             error!(target: LOG_TARGET, "Error handling connection manager event: {:?}", err);
@@ -234,20 +227,20 @@ impl StoreAndForwardService {
                     }
                 },
 
-                _ = cleanup_ticker.select_next_some() => {
+                _ = cleanup_ticker.tick() => {
                     if let Err(err) = self.cleanup().await {
                         error!(target: LOG_TARGET, "Error when performing store and forward cleanup: {:?}", err);
                     }
                 },
 
-                _ = self.saf_response_signal_rx.select_next_some() => {
+                Some(_) = self.saf_response_signal_rx.recv() => {
                     if let Some(n) = self.num_received_saf_responses {
                         self.num_received_saf_responses = Some(n + 1);
                         self.check_saf_response_threshold();
                     }
                 },
 
-                _ = shutdown_signal => {
+                _ = self.shutdown_signal.wait() => {
                     info!(target: LOG_TARGET, "StoreAndForwardActor is shutting down because the shutdown signal was triggered");
                     break;
                 }

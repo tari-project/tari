@@ -42,6 +42,7 @@ use crate::{
         ProtocolNotificationTx,
     },
     test_utils::mocks::{create_connectivity_mock, create_peer_connection_mock_pair, ConnectivityManagerMockState},
+    utils,
     NodeIdentity,
     PeerConnection,
     PeerManager,
@@ -49,7 +50,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use bytes::Bytes;
-use futures::{channel::mpsc, future::BoxFuture, stream, SinkExt};
+use futures::future::BoxFuture;
 use std::{
     collections::HashMap,
     future,
@@ -57,7 +58,7 @@ use std::{
     task::{Context, Poll},
 };
 use tokio::{
-    sync::{Mutex, RwLock},
+    sync::{mpsc, Mutex, RwLock},
     task,
 };
 use tower::Service;
@@ -139,9 +140,13 @@ pub trait RpcMock {
     {
         method_state.requests.write().await.push(request.into_message());
         let resp = method_state.response.read().await.clone()?;
-        let (mut tx, rx) = mpsc::channel(resp.len());
-        let mut resp = stream::iter(resp.into_iter().map(Ok).map(Ok));
-        tx.send_all(&mut resp).await.unwrap();
+        let (tx, rx) = mpsc::channel(resp.len());
+        match utils::mpsc::send_all(&tx, resp.into_iter().map(Ok)).await {
+            Ok(_) => {},
+            // This is done because tokio mpsc channels give the item back to you in the error, and our item doesn't
+            // impl Debug, so we can't use unwrap, expect etc
+            Err(_) => panic!("send error"),
+        }
         Ok(Streaming::new(rx))
     }
 }
@@ -234,7 +239,7 @@ where
         let peer_node_id = peer.node_id.clone();
         let (_, our_conn_mock, peer_conn, _) = create_peer_connection_mock_pair(peer, self.our_node.to_peer()).await;
 
-        let mut protocol_tx = self.protocol_tx.clone();
+        let protocol_tx = self.protocol_tx.clone();
         task::spawn(async move {
             while let Some(substream) = our_conn_mock.next_incoming_substream().await {
                 let proto_notif = ProtocolNotification::new(

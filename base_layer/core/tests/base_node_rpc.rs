@@ -81,22 +81,19 @@ use tari_core::{
     txn_schema,
 };
 use tempfile::{tempdir, TempDir};
-use tokio::runtime::Runtime;
 
-fn setup() -> (
+async fn setup() -> (
     BaseNodeWalletRpcService<TempDatabase>,
     NodeInterfaces,
     RpcRequestMock,
     ConsensusManager,
     ChainBlock,
     UnblindedOutput,
-    Runtime,
     TempDir,
 ) {
     let network = NetworkConsensus::from(Network::LocalNet);
     let consensus_constants = network.create_consensus_constants();
     let factories = CryptoFactories::default();
-    let mut runtime = Runtime::new().unwrap();
     let temp_dir = tempdir().unwrap();
 
     let (block0, utxo0) =
@@ -107,13 +104,14 @@ fn setup() -> (
 
     let (mut base_node, _consensus_manager) = BaseNodeBuilder::new(network)
         .with_consensus_manager(consensus_manager.clone())
-        .start(&mut runtime, temp_dir.path().to_str().unwrap());
+        .start(temp_dir.path().to_str().unwrap())
+        .await;
     base_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
     });
 
-    let request_mock = runtime.enter(|| RpcRequestMock::new(base_node.comms.peer_manager()));
+    let request_mock = RpcRequestMock::new(base_node.comms.peer_manager());
     let service = BaseNodeWalletRpcService::new(
         base_node.blockchain_db.clone().into(),
         base_node.mempool_handle.clone(),
@@ -126,16 +124,15 @@ fn setup() -> (
         consensus_manager,
         block0,
         utxo0,
-        runtime,
         temp_dir,
     )
 }
 
-#[test]
+#[tokio::test]
 #[allow(clippy::identity_op)]
-fn test_base_node_wallet_rpc() {
+async fn test_base_node_wallet_rpc() {
     // Testing the submit_transaction() and transaction_query() rpc calls
-    let (service, mut base_node, request_mock, consensus_manager, block0, utxo0, mut runtime, _temp_dir) = setup();
+    let (service, mut base_node, request_mock, consensus_manager, block0, utxo0, _temp_dir) = setup().await;
 
     let (txs1, utxos1) = schema_to_transaction(&[txn_schema!(from: vec![utxo0.clone()], to: vec![1 * T, 1 * T])]);
     let tx1 = (*txs1[0]).clone();
@@ -151,8 +148,8 @@ fn test_base_node_wallet_rpc() {
     // Query Tx1
     let msg = SignatureProto::from(tx1_sig.clone());
     let req = request_mock.request_with_context(Default::default(), msg);
-    let resp =
-        TxQueryResponse::try_from(runtime.block_on(service.transaction_query(req)).unwrap().into_message()).unwrap();
+    let resp = service.transaction_query(req).await.unwrap().into_message();
+    let resp = TxQueryResponse::try_from(resp).unwrap();
 
     assert_eq!(resp.confirmations, 0);
     assert_eq!(resp.block_hash, None);
@@ -162,13 +159,7 @@ fn test_base_node_wallet_rpc() {
     let msg = TransactionProto::from(tx2.clone());
     let req = request_mock.request_with_context(Default::default(), msg);
 
-    let resp = TxSubmissionResponse::try_from(
-        runtime
-            .block_on(service.submit_transaction(req))
-            .unwrap()
-            .into_message(),
-    )
-    .unwrap();
+    let resp = TxSubmissionResponse::try_from(service.submit_transaction(req).await.unwrap().into_message()).unwrap();
 
     assert!(!resp.accepted);
     assert_eq!(resp.rejection_reason, TxSubmissionRejectionReason::Orphan);
@@ -176,8 +167,7 @@ fn test_base_node_wallet_rpc() {
     // Query Tx2 to confirm it wasn't accepted
     let msg = SignatureProto::from(tx2_sig.clone());
     let req = request_mock.request_with_context(Default::default(), msg);
-    let resp =
-        TxQueryResponse::try_from(runtime.block_on(service.transaction_query(req)).unwrap().into_message()).unwrap();
+    let resp = TxQueryResponse::try_from(service.transaction_query(req).await.unwrap().into_message()).unwrap();
 
     assert_eq!(resp.confirmations, 0);
     assert_eq!(resp.block_hash, None);
@@ -189,24 +179,22 @@ fn test_base_node_wallet_rpc() {
         .prepare_block_merkle_roots(chain_block(&block0.block(), vec![tx1.clone()], &consensus_manager))
         .unwrap();
 
-    assert!(runtime
-        .block_on(base_node.local_nci.submit_block(block1.clone(), Broadcast::from(true)))
-        .is_ok());
+    base_node
+        .local_nci
+        .submit_block(block1.clone(), Broadcast::from(true))
+        .await
+        .unwrap();
 
     // Check that subitting Tx2 will now be accepted
     let msg = TransactionProto::from(tx2);
     let req = request_mock.request_with_context(Default::default(), msg);
-    let resp = runtime
-        .block_on(service.submit_transaction(req))
-        .unwrap()
-        .into_message();
+    let resp = service.submit_transaction(req).await.unwrap().into_message();
     assert!(resp.accepted);
 
     // Query Tx2 which should now be in the mempool
     let msg = SignatureProto::from(tx2_sig.clone());
     let req = request_mock.request_with_context(Default::default(), msg);
-    let resp =
-        TxQueryResponse::try_from(runtime.block_on(service.transaction_query(req)).unwrap().into_message()).unwrap();
+    let resp = TxQueryResponse::try_from(service.transaction_query(req).await.unwrap().into_message()).unwrap();
 
     assert_eq!(resp.confirmations, 0);
     assert_eq!(resp.block_hash, None);
@@ -215,13 +203,7 @@ fn test_base_node_wallet_rpc() {
     // Now if we submit Tx1 is should return as rejected as AlreadyMined as Tx1's kernel is present
     let msg = TransactionProto::from(tx1);
     let req = request_mock.request_with_context(Default::default(), msg);
-    let resp = TxSubmissionResponse::try_from(
-        runtime
-            .block_on(service.submit_transaction(req))
-            .unwrap()
-            .into_message(),
-    )
-    .unwrap();
+    let resp = TxSubmissionResponse::try_from(service.submit_transaction(req).await.unwrap().into_message()).unwrap();
 
     assert!(!resp.accepted);
     assert_eq!(resp.rejection_reason, TxSubmissionRejectionReason::AlreadyMined);
@@ -233,13 +215,7 @@ fn test_base_node_wallet_rpc() {
     // Now if we submit Tx1 is should return as rejected as AlreadyMined
     let msg = TransactionProto::from(tx1b);
     let req = request_mock.request_with_context(Default::default(), msg);
-    let resp = TxSubmissionResponse::try_from(
-        runtime
-            .block_on(service.submit_transaction(req))
-            .unwrap()
-            .into_message(),
-    )
-    .unwrap();
+    let resp = TxSubmissionResponse::try_from(service.submit_transaction(req).await.unwrap().into_message()).unwrap();
 
     assert!(!resp.accepted);
     assert_eq!(resp.rejection_reason, TxSubmissionRejectionReason::DoubleSpend);
@@ -253,15 +229,16 @@ fn test_base_node_wallet_rpc() {
     block2.header.output_mmr_size += 1;
     block2.header.kernel_mmr_size += 1;
 
-    runtime
-        .block_on(base_node.local_nci.submit_block(block2, Broadcast::from(true)))
+    base_node
+        .local_nci
+        .submit_block(block2, Broadcast::from(true))
+        .await
         .unwrap();
 
     // Query Tx1 which should be in block 1 with 1 confirmation
     let msg = SignatureProto::from(tx1_sig.clone());
     let req = request_mock.request_with_context(Default::default(), msg);
-    let resp =
-        TxQueryResponse::try_from(runtime.block_on(service.transaction_query(req)).unwrap().into_message()).unwrap();
+    let resp = TxQueryResponse::try_from(service.transaction_query(req).await.unwrap().into_message()).unwrap();
 
     assert_eq!(resp.confirmations, 1);
     assert_eq!(resp.block_hash, Some(block1.hash()));
@@ -271,10 +248,7 @@ fn test_base_node_wallet_rpc() {
         sigs: vec![SignatureProto::from(tx1_sig.clone()), SignatureProto::from(tx2_sig)],
     };
     let req = request_mock.request_with_context(Default::default(), msg);
-    let response = runtime
-        .block_on(service.transaction_batch_query(req))
-        .unwrap()
-        .into_message();
+    let response = service.transaction_batch_query(req).await.unwrap().into_message();
 
     for r in response.responses {
         let response = TxQueryBatchResponse::try_from(r).unwrap();
@@ -299,10 +273,7 @@ fn test_base_node_wallet_rpc() {
 
     let req = request_mock.request_with_context(Default::default(), msg);
 
-    let response = runtime
-        .block_on(service.fetch_matching_utxos(req))
-        .unwrap()
-        .into_message();
+    let response = service.fetch_matching_utxos(req).await.unwrap().into_message();
 
     assert_eq!(response.outputs.len(), utxos1.len());
     for output_proto in response.outputs.iter() {

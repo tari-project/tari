@@ -66,11 +66,10 @@ use tari_crypto::script;
 use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType};
 use tari_test_utils::async_assert_eventually;
 use tempfile::tempdir;
-use tokio::runtime::Runtime;
 
-#[test]
+#[tokio::test]
 #[allow(clippy::identity_op)]
-fn test_insert_and_process_published_block() {
+async fn test_insert_and_process_published_block() {
     let network = Network::LocalNet;
     let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
     let mempool_validator = TxInputAndMaturityValidator::new(store.clone());
@@ -201,9 +200,9 @@ fn test_insert_and_process_published_block() {
     assert_eq!(stats.total_weight, 30);
 }
 
-#[test]
+#[tokio::test]
 #[allow(clippy::identity_op)]
-fn test_time_locked() {
+async fn test_time_locked() {
     let network = Network::LocalNet;
     let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
     let mempool_validator = TxInputAndMaturityValidator::new(store.clone());
@@ -245,9 +244,9 @@ fn test_time_locked() {
     assert_eq!(mempool.insert(tx2).unwrap(), TxStorageResponse::UnconfirmedPool);
 }
 
-#[test]
+#[tokio::test]
 #[allow(clippy::identity_op)]
-fn test_retrieve() {
+async fn test_retrieve() {
     let network = Network::LocalNet;
     let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
     let mempool_validator = TxInputAndMaturityValidator::new(store.clone());
@@ -331,9 +330,9 @@ fn test_retrieve() {
     assert!(retrieved_txs.contains(&tx2[1]));
 }
 
-#[test]
+#[tokio::test]
 #[allow(clippy::identity_op)]
-fn test_zero_conf() {
+async fn test_zero_conf() {
     let network = Network::LocalNet;
     let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
     let mempool_validator = TxInputAndMaturityValidator::new(store.clone());
@@ -631,9 +630,9 @@ fn test_zero_conf() {
     assert!(retrieved_txs.contains(&Arc::new(tx34)));
 }
 
-#[test]
+#[tokio::test]
 #[allow(clippy::identity_op)]
-fn test_reorg() {
+async fn test_reorg() {
     let network = Network::LocalNet;
     let (mut db, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
     let mempool_validator = TxInputAndMaturityValidator::new(db.clone());
@@ -712,13 +711,12 @@ fn test_reorg() {
     mempool.process_reorg(vec![], vec![reorg_block4.into()]).unwrap();
 }
 
-#[test]
 // TODO: This test returns 0 in the unconfirmed pool, so might not catch errors. It should be updated to return better
 // data
 #[allow(clippy::identity_op)]
-fn request_response_get_stats() {
+#[tokio::test]
+async fn request_response_get_stats() {
     let factories = CryptoFactories::default();
-    let mut runtime = Runtime::new().unwrap();
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
@@ -731,13 +729,13 @@ fn request_response_get_stats() {
         .with_block(block0)
         .build();
     let (mut alice, bob, _consensus_manager) = create_network_with_2_base_nodes_with_config(
-        &mut runtime,
         BaseNodeServiceConfig::default(),
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
         consensus_manager,
         temp_dir.path(),
-    );
+    )
+    .await;
 
     // Create a tx spending the genesis output. Then create 2 orphan txs
     let (tx1, _, _) = spend_utxos(txn_schema!(from: vec![utxo], to: vec![2 * T, 2 * T, 2 * T]));
@@ -759,21 +757,18 @@ fn request_response_get_stats() {
     assert_eq!(stats.reorg_txs, 0);
     assert_eq!(stats.total_weight, 0);
 
-    runtime.block_on(async {
-        // Alice will request mempool stats from Bob, and thus should be identical
-        let received_stats = alice.outbound_mp_interface.get_stats().await.unwrap();
-        assert_eq!(received_stats.total_txs, 0);
-        assert_eq!(received_stats.unconfirmed_txs, 0);
-        assert_eq!(received_stats.reorg_txs, 0);
-        assert_eq!(received_stats.total_weight, 0);
-    });
+    // Alice will request mempool stats from Bob, and thus should be identical
+    let received_stats = alice.outbound_mp_interface.get_stats().await.unwrap();
+    assert_eq!(received_stats.total_txs, 0);
+    assert_eq!(received_stats.unconfirmed_txs, 0);
+    assert_eq!(received_stats.reorg_txs, 0);
+    assert_eq!(received_stats.total_weight, 0);
 }
 
-#[test]
+#[tokio::test]
 #[allow(clippy::identity_op)]
-fn request_response_get_tx_state_by_excess_sig() {
+async fn request_response_get_tx_state_by_excess_sig() {
     let factories = CryptoFactories::default();
-    let mut runtime = Runtime::new().unwrap();
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
@@ -786,13 +781,13 @@ fn request_response_get_tx_state_by_excess_sig() {
         .with_block(block0)
         .build();
     let (mut alice_node, bob_node, carol_node, _consensus_manager) = create_network_with_3_base_nodes_with_config(
-        &mut runtime,
         BaseNodeServiceConfig::default(),
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
         consensus_manager,
         temp_dir.path().to_str().unwrap(),
-    );
+    )
+    .await;
 
     let (tx, _, _) = spend_utxos(txn_schema!(from: vec![utxo.clone()], to: vec![2 * T, 2 * T, 2 * T]));
     let (unpublished_tx, _, _) = spend_utxos(txn_schema!(from: vec![utxo], to: vec![3 * T]));
@@ -807,43 +802,40 @@ fn request_response_get_tx_state_by_excess_sig() {
     // Check that the transactions are in the expected pools.
     // Spending the coinbase utxo will be in the pending pool, because cb utxos have a maturity.
     // The orphan tx will be in the orphan pool, while the unadded tx won't be found
-    runtime.block_on(async {
-        let tx_excess_sig = tx.body.kernels()[0].excess_sig.clone();
-        let unpublished_tx_excess_sig = unpublished_tx.body.kernels()[0].excess_sig.clone();
-        let orphan_tx_excess_sig = orphan_tx.body.kernels()[0].excess_sig.clone();
-        assert_eq!(
-            alice_node
-                .outbound_mp_interface
-                .get_tx_state_by_excess_sig(tx_excess_sig)
-                .await
-                .unwrap(),
-            TxStorageResponse::NotStored
-        );
-        assert_eq!(
-            alice_node
-                .outbound_mp_interface
-                .get_tx_state_by_excess_sig(unpublished_tx_excess_sig)
-                .await
-                .unwrap(),
-            TxStorageResponse::NotStored
-        );
-        assert_eq!(
-            alice_node
-                .outbound_mp_interface
-                .get_tx_state_by_excess_sig(orphan_tx_excess_sig)
-                .await
-                .unwrap(),
-            TxStorageResponse::NotStored
-        );
-    });
+    let tx_excess_sig = tx.body.kernels()[0].excess_sig.clone();
+    let unpublished_tx_excess_sig = unpublished_tx.body.kernels()[0].excess_sig.clone();
+    let orphan_tx_excess_sig = orphan_tx.body.kernels()[0].excess_sig.clone();
+    assert_eq!(
+        alice_node
+            .outbound_mp_interface
+            .get_tx_state_by_excess_sig(tx_excess_sig)
+            .await
+            .unwrap(),
+        TxStorageResponse::NotStored
+    );
+    assert_eq!(
+        alice_node
+            .outbound_mp_interface
+            .get_tx_state_by_excess_sig(unpublished_tx_excess_sig)
+            .await
+            .unwrap(),
+        TxStorageResponse::NotStored
+    );
+    assert_eq!(
+        alice_node
+            .outbound_mp_interface
+            .get_tx_state_by_excess_sig(orphan_tx_excess_sig)
+            .await
+            .unwrap(),
+        TxStorageResponse::NotStored
+    );
 }
 
 static EMISSION: [u64; 2] = [10, 10];
-#[test]
+#[tokio::test]
 #[allow(clippy::identity_op)]
-fn receive_and_propagate_transaction() {
+async fn receive_and_propagate_transaction() {
     let factories = CryptoFactories::default();
-    let mut runtime = Runtime::new().unwrap();
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
@@ -857,13 +849,13 @@ fn receive_and_propagate_transaction() {
         .build();
     let (mut alice_node, mut bob_node, mut carol_node, _consensus_manager) =
         create_network_with_3_base_nodes_with_config(
-            &mut runtime,
             BaseNodeServiceConfig::default(),
             MempoolServiceConfig::default(),
             LivenessConfig::default(),
             consensus_manager,
             temp_dir.path().to_str().unwrap(),
-        );
+        )
+        .await;
     alice_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
@@ -884,63 +876,61 @@ fn receive_and_propagate_transaction() {
     assert!(alice_node.mempool.insert(Arc::new(tx.clone())).is_ok());
     assert!(alice_node.mempool.insert(Arc::new(orphan.clone())).is_ok());
 
-    runtime.block_on(async {
-        alice_node
-            .outbound_message_service
-            .send_direct(
-                bob_node.node_identity.public_key().clone(),
-                OutboundDomainMessage::new(TariMessageType::NewTransaction, proto::types::Transaction::from(tx)),
-            )
-            .await
-            .unwrap();
-        alice_node
-            .outbound_message_service
-            .send_direct(
-                carol_node.node_identity.public_key().clone(),
-                OutboundDomainMessage::new(TariMessageType::NewTransaction, proto::types::Transaction::from(orphan)),
-            )
-            .await
-            .unwrap();
+    alice_node
+        .outbound_message_service
+        .send_direct(
+            bob_node.node_identity.public_key().clone(),
+            OutboundDomainMessage::new(TariMessageType::NewTransaction, proto::types::Transaction::from(tx)),
+        )
+        .await
+        .unwrap();
+    alice_node
+        .outbound_message_service
+        .send_direct(
+            carol_node.node_identity.public_key().clone(),
+            OutboundDomainMessage::new(TariMessageType::NewTransaction, proto::types::Transaction::from(orphan)),
+        )
+        .await
+        .unwrap();
 
-        async_assert_eventually!(
-            bob_node.mempool.has_tx_with_excess_sig(tx_excess_sig.clone()).unwrap(),
-            expect = TxStorageResponse::NotStored,
-            max_attempts = 20,
-            interval = Duration::from_millis(1000)
-        );
-        async_assert_eventually!(
-            carol_node
-                .mempool
-                .has_tx_with_excess_sig(tx_excess_sig.clone())
-                .unwrap(),
-            expect = TxStorageResponse::NotStored,
-            max_attempts = 10,
-            interval = Duration::from_millis(1000)
-        );
-        // Carol got sent the orphan tx directly, so it will be in her mempool
-        async_assert_eventually!(
-            carol_node
-                .mempool
-                .has_tx_with_excess_sig(orphan_excess_sig.clone())
-                .unwrap(),
-            expect = TxStorageResponse::NotStored,
-            max_attempts = 10,
-            interval = Duration::from_millis(1000)
-        );
-        // It's difficult to test a negative here, but let's at least make sure that the orphan TX was not propagated
-        // by the time we check it
-        async_assert_eventually!(
-            bob_node
-                .mempool
-                .has_tx_with_excess_sig(orphan_excess_sig.clone())
-                .unwrap(),
-            expect = TxStorageResponse::NotStored,
-        );
-    });
+    async_assert_eventually!(
+        bob_node.mempool.has_tx_with_excess_sig(tx_excess_sig.clone()).unwrap(),
+        expect = TxStorageResponse::NotStored,
+        max_attempts = 20,
+        interval = Duration::from_millis(1000)
+    );
+    async_assert_eventually!(
+        carol_node
+            .mempool
+            .has_tx_with_excess_sig(tx_excess_sig.clone())
+            .unwrap(),
+        expect = TxStorageResponse::NotStored,
+        max_attempts = 10,
+        interval = Duration::from_millis(1000)
+    );
+    // Carol got sent the orphan tx directly, so it will be in her mempool
+    async_assert_eventually!(
+        carol_node
+            .mempool
+            .has_tx_with_excess_sig(orphan_excess_sig.clone())
+            .unwrap(),
+        expect = TxStorageResponse::NotStored,
+        max_attempts = 10,
+        interval = Duration::from_millis(1000)
+    );
+    // It's difficult to test a negative here, but let's at least make sure that the orphan TX was not propagated
+    // by the time we check it
+    async_assert_eventually!(
+        bob_node
+            .mempool
+            .has_tx_with_excess_sig(orphan_excess_sig.clone())
+            .unwrap(),
+        expect = TxStorageResponse::NotStored,
+    );
 }
 
-#[test]
-fn consensus_validation_large_tx() {
+#[tokio::test]
+async fn consensus_validation_large_tx() {
     let network = Network::LocalNet;
     // We dont want to compute the 19500 limit of local net, so we create smaller blocks
     let consensus_constants = ConsensusConstantsBuilder::new(network)
@@ -1029,7 +1019,7 @@ fn consensus_validation_large_tx() {
 
     // make sure the tx was correctly made and is valid
     let factories = CryptoFactories::default();
-    assert!(tx.validate_internal_consistency(&factories, None).is_ok());
+    assert!(tx.validate_internal_consistency(true, &factories, None).is_ok());
     let weight = tx.calculate_weight();
 
     let height = blocks.len() as u64;
@@ -1042,9 +1032,8 @@ fn consensus_validation_large_tx() {
     assert!(matches!(response, TxStorageResponse::NotStored));
 }
 
-#[test]
-fn service_request_timeout() {
-    let mut runtime = Runtime::new().unwrap();
+#[tokio::test]
+async fn service_request_timeout() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
     let mempool_service_config = MempoolServiceConfig {
@@ -1053,27 +1042,25 @@ fn service_request_timeout() {
     };
     let temp_dir = tempdir().unwrap();
     let (mut alice_node, bob_node, _consensus_manager) = create_network_with_2_base_nodes_with_config(
-        &mut runtime,
         BaseNodeServiceConfig::default(),
         mempool_service_config,
         LivenessConfig::default(),
         consensus_manager,
         temp_dir.path().to_str().unwrap(),
-    );
+    )
+    .await;
 
-    runtime.block_on(async {
-        bob_node.shutdown().await;
+    bob_node.shutdown().await;
 
-        match alice_node.outbound_mp_interface.get_stats().await {
-            Err(MempoolServiceError::RequestTimedOut) => {},
-            _ => panic!(),
-        }
-    });
+    match alice_node.outbound_mp_interface.get_stats().await {
+        Err(MempoolServiceError::RequestTimedOut) => {},
+        _ => panic!(),
+    }
 }
 
-#[test]
+#[tokio::test]
 #[allow(clippy::identity_op)]
-fn block_event_and_reorg_event_handling() {
+async fn block_event_and_reorg_event_handling() {
     // This test creates 2 nodes Alice and Bob
     // Then creates 2 chains B1 -> B2A (diff 1) and B1 -> B2B (diff 10)
     // There are 5 transactions created
@@ -1086,7 +1073,6 @@ fn block_event_and_reorg_event_handling() {
     let network = Network::LocalNet;
     let consensus_constants = NetworkConsensus::from(network).create_consensus_constants();
 
-    let mut runtime = Runtime::new().unwrap();
     let temp_dir = tempdir().unwrap();
     let (block0, utxos0) =
         create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants[0]);
@@ -1095,13 +1081,13 @@ fn block_event_and_reorg_event_handling() {
         .with_block(block0.clone())
         .build();
     let (mut alice, mut bob, consensus_manager) = create_network_with_2_base_nodes_with_config(
-        &mut runtime,
         BaseNodeServiceConfig::default(),
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
         consensus_manager,
         temp_dir.path().to_str().unwrap(),
-    );
+    )
+    .await;
     alice.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
@@ -1135,88 +1121,86 @@ fn block_event_and_reorg_event_handling() {
         .prepare_block_merkle_roots(chain_block(block0.block(), vec![], &consensus_manager))
         .unwrap();
 
-    runtime.block_on(async {
-        // Add one empty block, so the coinbase UTXO is no longer time-locked.
-        assert!(bob
-            .local_nci
-            .submit_block(empty_block.clone(), Broadcast::from(true))
-            .await
-            .is_ok());
-        assert!(alice
-            .local_nci
-            .submit_block(empty_block.clone(), Broadcast::from(true))
-            .await
-            .is_ok());
-        alice.mempool.insert(Arc::new(tx1.clone())).unwrap();
-        bob.mempool.insert(Arc::new(tx1.clone())).unwrap();
-        let mut block1 = bob
-            .blockchain_db
-            .prepare_block_merkle_roots(chain_block(&empty_block, vec![tx1], &consensus_manager))
-            .unwrap();
-        find_header_with_achieved_difficulty(&mut block1.header, Difficulty::from(1));
-        // Add Block1 - tx1 will be moved to the ReorgPool.
-        assert!(bob
-            .local_nci
-            .submit_block(block1.clone(), Broadcast::from(true))
-            .await
-            .is_ok());
-        async_assert_eventually!(
-            alice.mempool.has_tx_with_excess_sig(tx1_excess_sig.clone()).unwrap(),
-            expect = TxStorageResponse::ReorgPool,
-            max_attempts = 20,
-            interval = Duration::from_millis(1000)
-        );
-        alice.mempool.insert(Arc::new(tx2a.clone())).unwrap();
-        alice.mempool.insert(Arc::new(tx3a.clone())).unwrap();
-        alice.mempool.insert(Arc::new(tx2b.clone())).unwrap();
-        alice.mempool.insert(Arc::new(tx3b.clone())).unwrap();
-        bob.mempool.insert(Arc::new(tx2a.clone())).unwrap();
-        bob.mempool.insert(Arc::new(tx3a.clone())).unwrap();
-        bob.mempool.insert(Arc::new(tx2b.clone())).unwrap();
-        bob.mempool.insert(Arc::new(tx3b.clone())).unwrap();
+    // Add one empty block, so the coinbase UTXO is no longer time-locked.
+    assert!(bob
+        .local_nci
+        .submit_block(empty_block.clone(), Broadcast::from(true))
+        .await
+        .is_ok());
+    assert!(alice
+        .local_nci
+        .submit_block(empty_block.clone(), Broadcast::from(true))
+        .await
+        .is_ok());
+    alice.mempool.insert(Arc::new(tx1.clone())).unwrap();
+    bob.mempool.insert(Arc::new(tx1.clone())).unwrap();
+    let mut block1 = bob
+        .blockchain_db
+        .prepare_block_merkle_roots(chain_block(&empty_block, vec![tx1], &consensus_manager))
+        .unwrap();
+    find_header_with_achieved_difficulty(&mut block1.header, Difficulty::from(1));
+    // Add Block1 - tx1 will be moved to the ReorgPool.
+    assert!(bob
+        .local_nci
+        .submit_block(block1.clone(), Broadcast::from(true))
+        .await
+        .is_ok());
+    async_assert_eventually!(
+        alice.mempool.has_tx_with_excess_sig(tx1_excess_sig.clone()).unwrap(),
+        expect = TxStorageResponse::ReorgPool,
+        max_attempts = 20,
+        interval = Duration::from_millis(1000)
+    );
+    alice.mempool.insert(Arc::new(tx2a.clone())).unwrap();
+    alice.mempool.insert(Arc::new(tx3a.clone())).unwrap();
+    alice.mempool.insert(Arc::new(tx2b.clone())).unwrap();
+    alice.mempool.insert(Arc::new(tx3b.clone())).unwrap();
+    bob.mempool.insert(Arc::new(tx2a.clone())).unwrap();
+    bob.mempool.insert(Arc::new(tx3a.clone())).unwrap();
+    bob.mempool.insert(Arc::new(tx2b.clone())).unwrap();
+    bob.mempool.insert(Arc::new(tx3b.clone())).unwrap();
 
-        let mut block2a = bob
-            .blockchain_db
-            .prepare_block_merkle_roots(chain_block(&block1, vec![tx2a, tx3a], &consensus_manager))
-            .unwrap();
-        find_header_with_achieved_difficulty(&mut block2a.header, Difficulty::from(1));
-        // Block2b also builds on Block1 but has a stronger PoW
-        let mut block2b = bob
-            .blockchain_db
-            .prepare_block_merkle_roots(chain_block(&block1, vec![tx2b, tx3b], &consensus_manager))
-            .unwrap();
-        find_header_with_achieved_difficulty(&mut block2b.header, Difficulty::from(10));
+    let mut block2a = bob
+        .blockchain_db
+        .prepare_block_merkle_roots(chain_block(&block1, vec![tx2a, tx3a], &consensus_manager))
+        .unwrap();
+    find_header_with_achieved_difficulty(&mut block2a.header, Difficulty::from(1));
+    // Block2b also builds on Block1 but has a stronger PoW
+    let mut block2b = bob
+        .blockchain_db
+        .prepare_block_merkle_roots(chain_block(&block1, vec![tx2b, tx3b], &consensus_manager))
+        .unwrap();
+    find_header_with_achieved_difficulty(&mut block2b.header, Difficulty::from(10));
 
-        // Add Block2a - tx2b and tx3b will be discarded as double spends.
-        assert!(bob
-            .local_nci
-            .submit_block(block2a.clone(), Broadcast::from(true))
-            .await
-            .is_ok());
+    // Add Block2a - tx2b and tx3b will be discarded as double spends.
+    assert!(bob
+        .local_nci
+        .submit_block(block2a.clone(), Broadcast::from(true))
+        .await
+        .is_ok());
 
-        async_assert_eventually!(
-            bob.mempool.has_tx_with_excess_sig(tx2a_excess_sig.clone()).unwrap(),
-            expect = TxStorageResponse::ReorgPool,
-            max_attempts = 20,
-            interval = Duration::from_millis(1000)
-        );
-        async_assert_eventually!(
-            alice.mempool.has_tx_with_excess_sig(tx2a_excess_sig.clone()).unwrap(),
-            expect = TxStorageResponse::ReorgPool,
-            max_attempts = 20,
-            interval = Duration::from_millis(1000)
-        );
-        assert_eq!(
-            alice.mempool.has_tx_with_excess_sig(tx3a_excess_sig.clone()).unwrap(),
-            TxStorageResponse::ReorgPool
-        );
-        assert_eq!(
-            alice.mempool.has_tx_with_excess_sig(tx2b_excess_sig.clone()).unwrap(),
-            TxStorageResponse::ReorgPool
-        );
-        assert_eq!(
-            alice.mempool.has_tx_with_excess_sig(tx3b_excess_sig.clone()).unwrap(),
-            TxStorageResponse::ReorgPool
-        );
-    });
+    async_assert_eventually!(
+        bob.mempool.has_tx_with_excess_sig(tx2a_excess_sig.clone()).unwrap(),
+        expect = TxStorageResponse::ReorgPool,
+        max_attempts = 20,
+        interval = Duration::from_millis(1000)
+    );
+    async_assert_eventually!(
+        alice.mempool.has_tx_with_excess_sig(tx2a_excess_sig.clone()).unwrap(),
+        expect = TxStorageResponse::ReorgPool,
+        max_attempts = 20,
+        interval = Duration::from_millis(1000)
+    );
+    assert_eq!(
+        alice.mempool.has_tx_with_excess_sig(tx3a_excess_sig.clone()).unwrap(),
+        TxStorageResponse::ReorgPool
+    );
+    assert_eq!(
+        alice.mempool.has_tx_with_excess_sig(tx2b_excess_sig.clone()).unwrap(),
+        TxStorageResponse::ReorgPool
+    );
+    assert_eq!(
+        alice.mempool.has_tx_with_excess_sig(tx3b_excess_sig.clone()).unwrap(),
+        TxStorageResponse::ReorgPool
+    );
 }

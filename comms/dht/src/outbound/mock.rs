@@ -31,11 +31,6 @@ use crate::{
     },
 };
 use bytes::Bytes;
-use futures::{
-    channel::{mpsc, oneshot},
-    stream::Fuse,
-    StreamExt,
-};
 use log::*;
 use std::{
     sync::{Arc, Condvar, Mutex, RwLock},
@@ -45,7 +40,10 @@ use tari_comms::{
     message::{MessageTag, MessagingReplyTx},
     protocol::messaging::SendFailReason,
 };
-use tokio::time::delay_for;
+use tokio::{
+    sync::{mpsc, oneshot},
+    time::sleep,
+};
 
 const LOG_TARGET: &str = "mock::outbound_requester";
 
@@ -54,7 +52,7 @@ const LOG_TARGET: &str = "mock::outbound_requester";
 /// Each time a request is expected, handle_next should be called.
 pub fn create_outbound_service_mock(size: usize) -> (OutboundMessageRequester, OutboundServiceMock) {
     let (tx, rx) = mpsc::channel(size);
-    (OutboundMessageRequester::new(tx), OutboundServiceMock::new(rx.fuse()))
+    (OutboundMessageRequester::new(tx), OutboundServiceMock::new(rx))
 }
 
 #[derive(Clone, Default)]
@@ -149,12 +147,12 @@ impl OutboundServiceMockState {
 }
 
 pub struct OutboundServiceMock {
-    receiver: Fuse<mpsc::Receiver<DhtOutboundRequest>>,
+    receiver: mpsc::Receiver<DhtOutboundRequest>,
     mock_state: OutboundServiceMockState,
 }
 
 impl OutboundServiceMock {
-    pub fn new(receiver: Fuse<mpsc::Receiver<DhtOutboundRequest>>) -> Self {
+    pub fn new(receiver: mpsc::Receiver<DhtOutboundRequest>) -> Self {
         Self {
             receiver,
             mock_state: OutboundServiceMockState::new(),
@@ -166,7 +164,7 @@ impl OutboundServiceMock {
     }
 
     pub async fn run(mut self) {
-        while let Some(req) = self.receiver.next().await {
+        while let Some(req) = self.receiver.recv().await {
             match req {
                 DhtOutboundRequest::SendMessage(params, body, reply_tx) => {
                     let behaviour = self.mock_state.get_behaviour();
@@ -192,7 +190,7 @@ impl OutboundServiceMock {
                                 ResponseType::QueuedSuccessDelay(delay) => {
                                     let (response, mut inner_reply_tx) = self.add_call((*params).clone(), body);
                                     reply_tx.send(response).expect("Reply channel cancelled");
-                                    delay_for(delay).await;
+                                    sleep(delay).await;
                                     inner_reply_tx.reply_success();
                                 },
                                 resp => {
