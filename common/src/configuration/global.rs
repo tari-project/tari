@@ -136,6 +136,7 @@ pub struct GlobalConfig {
     pub mining_pool_address: String,
     pub mining_wallet_address: String,
     pub mining_worker_name: String,
+    pub base_node_bypass_range_proof_verification: bool,
 }
 
 impl GlobalConfig {
@@ -371,6 +372,8 @@ fn convert_node_config(
             s.parse::<SocketAddr>()
                 .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
         })?;
+    let key = config_string("base_node", &net_str, "bypass_range_proof_verification");
+    let base_node_bypass_range_proof_verification = cfg.get_bool(&key).unwrap_or(false);
 
     let key = config_string("base_node", &net_str, "dns_seeds_use_dnssec");
     let dns_seeds_use_dnssec = cfg
@@ -772,6 +775,7 @@ fn convert_node_config(
         mining_pool_address,
         mining_wallet_address,
         mining_worker_name,
+        base_node_bypass_range_proof_verification,
     })
 }
 

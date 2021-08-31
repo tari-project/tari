@@ -220,7 +220,11 @@ async fn build_node_context(
     let validators = Validators::new(
         BodyOnlyValidator::default(),
         HeaderValidator::new(rules.clone()),
-        OrphanBlockValidator::new(rules.clone(), factories.clone()),
+        OrphanBlockValidator::new(
+            rules.clone(),
+            config.base_node_bypass_range_proof_verification,
+            factories.clone(),
+        ),
     );
     let db_config = BlockchainDatabaseConfig {
         orphan_storage_capacity: config.orphan_storage_capacity,
@@ -236,7 +240,10 @@ async fn build_node_context(
         cleanup_orphans_at_startup,
     )?;
     let mempool_validator = MempoolValidator::new(vec![
-        Box::new(TxInternalConsistencyValidator::new(factories.clone())),
+        Box::new(TxInternalConsistencyValidator::new(
+            factories.clone(),
+            config.base_node_bypass_range_proof_verification,
+        )),
         Box::new(TxInputAndMaturityValidator::new(blockchain_db.clone())),
         Box::new(TxConsensusValidator::new(blockchain_db.clone())),
     ]);
