@@ -30,15 +30,13 @@ use crate::{
     chain_storage::{BlockHeaderAccumulatedData, ChainBlock},
     transactions::{
         aggregated_body::AggregateBody,
-        bullet_rangeproofs::BulletRangeProof,
         tari_amount::MicroTari,
         transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionKernel, TransactionOutput},
-        types::{Commitment, PrivateKey, PublicKey, Signature},
     },
 };
 use chrono::DateTime;
 use std::sync::Arc;
-use tari_common_types::types::BLOCK_HASH_LENGTH;
+use tari_common_types::types::{BulletRangeProof, Commitment, PrivateKey, PublicKey, Signature, BLOCK_HASH_LENGTH};
 use tari_crypto::{
     script::TariScript,
     tari_utilities::{hash::Hashable, hex::*},
@@ -458,7 +456,7 @@ pub fn get_igor_genesis_block_raw() -> Block {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::transactions::types::CryptoFactories;
+    use crate::transactions::CryptoFactories;
 
     #[test]
     fn weatherwax_genesis_sanity_check() {

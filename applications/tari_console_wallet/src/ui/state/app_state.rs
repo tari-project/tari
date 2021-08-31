@@ -20,28 +20,23 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    notifier::Notifier,
-    ui::{
-        state::{
-            tasks::{send_one_sided_transaction_task, send_transaction_task},
-            wallet_event_monitor::WalletEventMonitor,
-        },
-        UiContact,
-        UiError,
-    },
-    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
-    wallet_modes::PeerConfig,
-};
-use bitflags::bitflags;
-use log::*;
-use qrcode::{render::unicode, QrCode};
 use std::{
     collections::HashMap,
     sync::Arc,
     time::{Duration, Instant},
 };
+
+use bitflags::bitflags;
+use log::*;
+use qrcode::{render::unicode, QrCode};
+use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
+use tokio::{
+    sync::{watch, RwLock},
+    task,
+};
+
 use tari_common::{configuration::Network, GlobalConfig};
+use tari_common_types::{emoji::EmojiId, types::PublicKey};
 use tari_comms::{
     connectivity::ConnectivityEventRx,
     multiaddr::Multiaddr,
@@ -49,12 +44,7 @@ use tari_comms::{
     types::CommsPublicKey,
     NodeIdentity,
 };
-use tari_core::transactions::{
-    emoji::EmojiId,
-    tari_amount::{uT, MicroTari},
-    types::PublicKey,
-};
-use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
+use tari_core::transactions::tari_amount::{uT, MicroTari};
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
@@ -68,9 +58,19 @@ use tari_wallet::{
     types::ValidationRetryStrategy,
     WalletSqlite,
 };
-use tokio::{
-    sync::{watch, RwLock},
-    task,
+
+use crate::{
+    notifier::Notifier,
+    ui::{
+        state::{
+            tasks::{send_one_sided_transaction_task, send_transaction_task},
+            wallet_event_monitor::WalletEventMonitor,
+        },
+        UiContact,
+        UiError,
+    },
+    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
+    wallet_modes::PeerConfig,
 };
 
 const LOG_TARGET: &str = "wallet::console_wallet::app_state";

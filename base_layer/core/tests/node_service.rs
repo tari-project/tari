@@ -58,7 +58,7 @@ use tari_core::{
         helpers::{schema_to_transaction, spend_utxos},
         tari_amount::{uT, T},
         transaction::OutputFeatures,
-        types::CryptoFactories,
+        CryptoFactories,
     },
     txn_schema,
     validation::{
@@ -67,7 +67,7 @@ use tari_core::{
         mocks::MockValidator,
     },
 };
-use tari_crypto::tari_utilities::hash::Hashable;
+use tari_crypto::tari_utilities::Hashable;
 use tari_p2p::services::liveness::LivenessConfig;
 use tari_test_utils::unpack_enum;
 use tempfile::tempdir;

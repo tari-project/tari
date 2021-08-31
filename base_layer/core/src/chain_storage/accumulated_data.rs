@@ -25,10 +25,7 @@ use crate::{
     chain_storage::ChainStorageError,
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     tari_utilities::Hashable,
-    transactions::{
-        aggregated_body::AggregateBody,
-        types::{BlindingFactor, Commitment, HashOutput},
-    },
+    transactions::aggregated_body::AggregateBody,
 };
 use croaring::Bitmap;
 use log::*;
@@ -47,6 +44,7 @@ use std::{
     fmt::{Display, Formatter},
     sync::Arc,
 };
+use tari_common_types::types::{BlindingFactor, Commitment, HashOutput};
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_mmr::{pruned_hashset::PrunedHashSet, ArrayLike};
 

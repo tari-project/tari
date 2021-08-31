@@ -1,4 +1,4 @@
-use tari_core::transactions::emoji::EmojiId;
+use tari_common_types::emoji::EmojiId;
 use tari_wallet::contacts_service::storage::database::Contact;
 
 #[derive(Debug, Clone)]

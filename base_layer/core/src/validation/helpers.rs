@@ -20,6 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use log::*;
+use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex};
+
 use crate::{
     blocks::{
         block_header::{BlockHeader, BlockHeaderValidationError},
@@ -38,11 +41,9 @@ use crate::{
         PowAlgorithm,
         PowError,
     },
-    transactions::types::CryptoFactories,
+    transactions::CryptoFactories,
     validation::ValidationError,
 };
-use log::*;
-use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex};
 
 pub const LOG_TARGET: &str = "c::val::helpers";
 

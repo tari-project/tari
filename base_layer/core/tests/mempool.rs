@@ -20,8 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[allow(dead_code)]
-mod helpers;
+// use crate::helpers::database::create_store;
+use std::{ops::Deref, sync::Arc, time::Duration};
+
+use tari_crypto::{keys::PublicKey as PublicKeyTrait, script};
+use tempfile::tempdir;
 
 use helpers::{
     block_builders::{
@@ -35,10 +38,8 @@ use helpers::{
     nodes::{create_network_with_2_base_nodes_with_config, create_network_with_3_base_nodes_with_config},
     sample_blockchains::{create_new_blockchain, create_new_blockchain_with_constants},
 };
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
-// use crate::helpers::database::create_store;
-use std::{ops::Deref, sync::Arc, time::Duration};
 use tari_common::configuration::Network;
+use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
     base_node::{
@@ -56,16 +57,16 @@ use tari_core::{
         tari_amount::{uT, MicroTari, T},
         transaction::{KernelBuilder, OutputFeatures, Transaction, TransactionOutput},
         transaction_protocol::{build_challenge, TransactionMetadata},
-        types::{Commitment, CryptoFactories, PrivateKey, PublicKey, Signature},
+        CryptoFactories,
     },
     tx,
     txn_schema,
     validation::transaction_validators::{TxConsensusValidator, TxInputAndMaturityValidator},
 };
-use tari_crypto::script;
 use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType};
 use tari_test_utils::async_assert_eventually;
-use tempfile::tempdir;
+#[allow(dead_code)]
+mod helpers;
 
 #[tokio::test]
 #[allow(clippy::identity_op)]

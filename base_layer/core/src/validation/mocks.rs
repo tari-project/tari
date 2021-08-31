@@ -24,7 +24,7 @@ use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{BlockchainBackend, ChainBlock},
     proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty, PowAlgorithm},
-    transactions::{transaction::Transaction, types::Commitment},
+    transactions::transaction::Transaction,
     validation::{
         error::ValidationError,
         CandidateBlockBodyValidation,
@@ -40,7 +40,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
 
 #[derive(Clone)]
 pub struct MockValidator {

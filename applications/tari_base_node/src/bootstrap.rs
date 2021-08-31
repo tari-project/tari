@@ -20,9 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{cmp, fs, str::FromStr, sync::Arc, time::Duration};
+
 use anyhow::anyhow;
 use log::*;
-use std::{cmp, fs, str::FromStr, sync::Arc, time::Duration};
+
 use tari_app_utilities::{consts, identity_management, utilities::create_transport_type};
 use tari_common::{configuration::bootstrap::ApplicationType, GlobalConfig};
 use tari_comms::{peer_manager::Peer, protocol::rpc::RpcServer, NodeIdentity, UnspawnedCommsNode};
@@ -47,7 +49,7 @@ use tari_core::{
         MempoolServiceInitializer,
         MempoolSyncInitializer,
     },
-    transactions::types::CryptoFactories,
+    transactions::CryptoFactories,
 };
 use tari_p2p::{
     auto_update::{AutoUpdateConfig, SoftwareUpdaterService},

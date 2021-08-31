@@ -25,12 +25,9 @@ use crate::{
     tari_rpc as grpc,
 };
 use std::convert::TryFrom;
-use tari_core::{
-    blocks::BlockHeader,
-    crypto::tari_utilities::{ByteArray, Hashable},
-    proof_of_work::ProofOfWork,
-    transactions::types::BlindingFactor,
-};
+use tari_common_types::types::BlindingFactor;
+use tari_core::{blocks::BlockHeader, proof_of_work::ProofOfWork};
+use tari_crypto::tari_utilities::{ByteArray, Hashable};
 
 impl From<BlockHeader> for grpc::BlockHeader {
     fn from(h: BlockHeader) -> Self {

@@ -20,7 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{data::get_temp_sqlite_database_connection, utils::make_input};
+use std::time::Duration;
+
 use aes_gcm::{
     aead::{generic_array::GenericArray, NewAead},
     Aes256Gcm,
@@ -28,14 +29,16 @@ use aes_gcm::{
 use chrono::{Duration as ChronoDuration, Utc};
 use diesel::result::{DatabaseErrorKind, Error::DatabaseError};
 use rand::{rngs::OsRng, RngCore};
-use std::time::Duration;
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey, script::TariScript};
+use tokio::runtime::Runtime;
+
+use tari_common_types::types::PrivateKey;
 use tari_core::transactions::{
     helpers::{create_unblinded_output, TestParams},
     tari_amount::MicroTari,
     transaction::OutputFeatures,
-    types::{CryptoFactories, PrivateKey},
+    CryptoFactories,
 };
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey, script::TariScript};
 use tari_wallet::output_manager_service::{
     error::OutputManagerStorageError,
     service::Balance,
@@ -46,7 +49,7 @@ use tari_wallet::output_manager_service::{
     },
 };
 
-use tokio::runtime::Runtime;
+use crate::support::{data::get_temp_sqlite_database_connection, utils::make_input};
 
 #[allow(clippy::same_item_push)]
 pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {

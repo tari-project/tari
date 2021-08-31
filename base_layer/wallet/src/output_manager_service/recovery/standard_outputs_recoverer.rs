@@ -20,6 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use log::*;
+use tari_crypto::{inputs, keys::PublicKey as PublicKeyTrait, tari_utilities::hex::Hex};
+
+use tari_common_types::types::PublicKey;
+use tari_core::transactions::{
+    transaction::{TransactionOutput, UnblindedOutput},
+    CryptoFactories,
+};
+
 use crate::output_manager_service::{
     error::OutputManagerError,
     storage::{
@@ -28,13 +39,6 @@ use crate::output_manager_service::{
     },
     MasterKeyManager,
 };
-use log::*;
-use std::sync::Arc;
-use tari_core::transactions::{
-    transaction::{TransactionOutput, UnblindedOutput},
-    types::{CryptoFactories, PublicKey},
-};
-use tari_crypto::{inputs, keys::PublicKey as PublicKeyTrait, tari_utilities::hex::Hex};
 
 const LOG_TARGET: &str = "wallet::output_manager_service::recovery";
 

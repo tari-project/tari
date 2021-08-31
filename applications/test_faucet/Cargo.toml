@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 tari_crypto = "0.11.1"
 tari_utilities = "^0.3"
+tari_common_types ={path="../../base_layer/common_types"}
 
 rand = "0.8"
 serde = { version = "1.0.97", features = ["derive"] }

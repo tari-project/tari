@@ -30,10 +30,8 @@ use crate::{
 };
 use futures::lock::Mutex;
 use log::*;
-use tari_core::transactions::{
-    transaction_protocol::RewindData,
-    types::{PrivateKey, PublicKey},
-};
+use tari_common_types::types::{PrivateKey, PublicKey};
+use tari_core::transactions::transaction_protocol::RewindData;
 use tari_crypto::{keys::PublicKey as PublicKeyTrait, range_proof::REWIND_USER_MESSAGE_LENGTH};
 use tari_key_manager::{
     key_manager::KeyManager,

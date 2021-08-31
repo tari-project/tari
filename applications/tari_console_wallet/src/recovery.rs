@@ -25,7 +25,7 @@ use futures::FutureExt;
 use log::*;
 use rustyline::Editor;
 use tari_app_utilities::utilities::ExitCodes;
-use tari_core::transactions::types::PrivateKey;
+use tari_common_types::types::PrivateKey;
 use tari_key_manager::mnemonic::to_secretkey;
 use tari_shutdown::Shutdown;
 use tari_wallet::{

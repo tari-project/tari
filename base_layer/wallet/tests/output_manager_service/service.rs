@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use crate::support::{
     data::get_temp_sqlite_database_connection,
     rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
@@ -28,6 +27,7 @@ use crate::support::{
 use futures::FutureExt;
 use rand::{rngs::OsRng, RngCore};
 use std::{sync::Arc, time::Duration};
+use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService, RpcClientConfig, RpcStatus},
@@ -51,12 +51,12 @@ use tari_core::{
             sender::TransactionSenderMessage,
             single_receiver::SingleReceiverTransactionProtocol,
         },
-        types::{CryptoFactories, PrivateKey, PublicKey},
+        CryptoFactories,
         SenderTransactionProtocol,
     },
 };
 use tari_crypto::{
-    hash::blake2::Blake256,
+    common::Blake256,
     inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     script,
