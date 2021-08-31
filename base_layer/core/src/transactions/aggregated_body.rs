@@ -312,6 +312,7 @@ impl AggregateBody {
         &self,
         tx_offset: &BlindingFactor,
         script_offset: &BlindingFactor,
+        bypass_range_proof_verification: bool,
         total_reward: MicroTari,
         factories: &CryptoFactories,
     ) -> Result<(), TransactionError> {
@@ -321,7 +322,9 @@ impl AggregateBody {
         self.verify_kernel_signatures()?;
         self.validate_kernel_sum(total_offset, &factories.commitment)?;
 
-        self.validate_range_proofs(&factories.range_proof)?;
+        if !bypass_range_proof_verification {
+            self.validate_range_proofs(&factories.range_proof)?;
+        }
         self.verify_metadata_signatures()?;
         self.validate_script_offset(script_offset_g, &factories.commitment)
     }

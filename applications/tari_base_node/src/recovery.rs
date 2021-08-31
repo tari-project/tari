@@ -100,7 +100,11 @@ pub async fn run_recovery(node_config: &GlobalConfig) -> Result<(), anyhow::Erro
     let validators = Validators::new(
         BodyOnlyValidator::default(),
         HeaderValidator::new(rules.clone()),
-        OrphanBlockValidator::new(rules.clone(), factories.clone()),
+        OrphanBlockValidator::new(
+            rules.clone(),
+            node_config.base_node_bypass_range_proof_verification,
+            factories.clone(),
+        ),
     );
     let db_config = BlockchainDatabaseConfig {
         orphan_storage_capacity: node_config.orphan_storage_capacity,

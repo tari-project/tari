@@ -115,6 +115,10 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         Ok(())
     }
 
+    pub fn current_valid_chain_tip_header(&self) -> Option<&ChainHeader> {
+        self.valid_headers().last()
+    }
+
     pub fn validate(&mut self, header: BlockHeader) -> Result<(), BlockHeaderSyncError> {
         let state = self.state();
         let expected_height = state.current_height + 1;

@@ -565,7 +565,7 @@ impl SenderTransactionProtocol {
                 }
                 let transaction = result.unwrap();
                 let result = transaction
-                    .validate_internal_consistency(factories, None)
+                    .validate_internal_consistency(true, factories, None)
                     .map_err(TPE::TransactionBuildError);
                 if let Err(e) = result {
                     self.state = SenderState::Failed(e.clone());
@@ -970,7 +970,10 @@ mod test {
         assert_eq!(tx.body.inputs().len(), 1);
         assert_eq!(tx.body.inputs()[0], utxo);
         assert_eq!(tx.body.outputs().len(), 2);
-        assert!(tx.clone().validate_internal_consistency(&factories, None).is_ok());
+        assert!(tx
+            .clone()
+            .validate_internal_consistency(false, &factories, None)
+            .is_ok());
     }
 
     #[test]

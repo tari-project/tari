@@ -66,7 +66,7 @@ fn test_genesis_block() {
     let validators = Validators::new(
         BodyOnlyValidator::default(),
         HeaderValidator::new(rules.clone()),
-        OrphanBlockValidator::new(rules.clone(), factories),
+        OrphanBlockValidator::new(rules.clone(), false, factories),
     );
     let db = BlockchainDatabase::new(
         backend,
@@ -219,7 +219,7 @@ fn inputs_are_not_malleable() {
     input_mut.input_data = malicious_input.input_data;
     input_mut.script_signature = malicious_input.script_signature;
 
-    let validator = BlockValidator::new(blockchain.consensus_manager().clone(), CryptoFactories::default());
+    let validator = BlockValidator::new(blockchain.consensus_manager().clone(), true, CryptoFactories::default());
     let err = validator
         .validate_body(&block, &*blockchain.store().db_read_access().unwrap())
         .unwrap_err();

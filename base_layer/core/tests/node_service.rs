@@ -450,7 +450,7 @@ async fn propagate_and_forward_invalid_block() {
         .with_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
-    let stateless_block_validator = OrphanBlockValidator::new(rules.clone(), factories);
+    let stateless_block_validator = OrphanBlockValidator::new(rules.clone(), true, factories);
 
     let mock_validator = MockValidator::new(false);
     let (mut dan_node, rules) = BaseNodeBuilder::new(network.into())
@@ -643,7 +643,7 @@ async fn local_get_new_block_with_zero_conf() {
         .with_validators(
             BodyOnlyValidator::default(),
             HeaderValidator::new(rules.clone()),
-            OrphanBlockValidator::new(rules, factories.clone()),
+            OrphanBlockValidator::new(rules, true, factories.clone()),
         )
         .start(temp_dir.path().to_str().unwrap())
         .await;
@@ -720,7 +720,7 @@ async fn local_get_new_block_with_combined_transaction() {
         .with_validators(
             BodyOnlyValidator::default(),
             HeaderValidator::new(rules.clone()),
-            OrphanBlockValidator::new(rules, factories.clone()),
+            OrphanBlockValidator::new(rules, true, factories.clone()),
         )
         .start(temp_dir.path().to_str().unwrap())
         .await;

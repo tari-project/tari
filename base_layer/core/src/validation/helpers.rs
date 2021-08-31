@@ -200,6 +200,7 @@ pub fn check_block_weight(block: &Block, consensus_constants: &ConsensusConstant
 pub fn check_accounting_balance(
     block: &Block,
     rules: &ConsensusManager,
+    bypass_range_proof_verification: bool,
     factories: &CryptoFactories,
 ) -> Result<(), ValidationError> {
     if block.header.height == 0 {
@@ -211,7 +212,13 @@ pub fn check_accounting_balance(
     let total_coinbase = rules.calculate_coinbase_and_fees(block);
     block
         .body
-        .validate_internal_consistency(&offset, &script_offset, total_coinbase, factories)
+        .validate_internal_consistency(
+            &offset,
+            &script_offset,
+            bypass_range_proof_verification,
+            total_coinbase,
+            factories,
+        )
         .map_err(|err| {
             warn!(
                 target: LOG_TARGET,

@@ -525,6 +525,7 @@ mod test {
             tx.body.validate_internal_consistency(
                 &BlindingFactor::default(),
                 &PrivateKey::default(),
+                false,
                 block_reward,
                 &factories
             ),

@@ -4,11 +4,9 @@ const CompletedTransaction = require("./completedTransaction");
 const CompletedTransactions = require("./completedTransactions");
 const PendingInboundTransaction = require("./pendingInboundTransaction");
 const PendingInboundTransactions = require("./pendingInboundTransactions");
-// const PendingOutboundTransaction = require("./pendingOutboundTransaction");
 const PendingOutboundTransactions = require("./pendingOutboundTransactions");
 const Contact = require("./contact");
 const Contacts = require("./contacts");
-// const SeedWords = require("./seedWords");
 
 const utf8 = require("utf8");
 

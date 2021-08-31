@@ -115,7 +115,7 @@ pub fn create_store_with_consensus(rules: ConsensusManager) -> BlockchainDatabas
     let validators = Validators::new(
         BodyOnlyValidator::default(),
         MockValidator::new(true),
-        OrphanBlockValidator::new(rules.clone(), factories),
+        OrphanBlockValidator::new(rules.clone(), false, factories),
     );
     create_store_with_consensus_and_validators(rules, validators)
 }
