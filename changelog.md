@@ -1,3 +1,36 @@
+<a name="0.9.6"></a>
+## 0.9.6 (2021-09-01)
+
+
+#### Features
+
+*   add ability to bypass rangeproof (#3265) ([055271fc](https://github.com/tari-project/tari/commit/055271fc96e034779b8eb30b9161b1173736c688))
+*   allow network to be selected at application start (#3247) ([8a36fb56](https://github.com/tari-project/tari/commit/8a36fb568eef0c4ca72bd108dc388a1ef35ba505))
+*   add Igor testnet (#3256) ([0f6d3b1c](https://github.com/tari-project/tari/commit/0f6d3b1c1c600c9436b08e62a57fe22744151bd4))
+*   improve basenode switch from listening to lagging mode (#3255) ([9dc335f6](https://github.com/tari-project/tari/commit/9dc335f67b75baa5733bc3bf7f78fc02d9bdfdf9))
+*   allow DHT to be configured to repropagate messages for a number of rounds (#3211) ([60f286b3](https://github.com/tari-project/tari/commit/60f286b3e2b16cf4ac02727f6056a4327901f7c6))
+*   base_node prompt user to create id if not found (#3245) ([6391941f](https://github.com/tari-project/tari/commit/6391941f83888e8e0ab6b06bfe225bbbba1da7a3))
+*   add support for forcing sync from seeds (#3228) ([d1329320](https://github.com/tari-project/tari/commit/d13293208281fd3efbba0279e2a7bf6f64052bae))
+* **wallet:**  add tab for error log to the wallet (#3250) ([098f25dc](https://github.com/tari-project/tari/commit/098f25dcd28b6e92157d05bcedb8777e0f085e0d))
+
+#### Bug Fixes
+
+*   make logging less noisy (#3267) ([4798161b](https://github.com/tari-project/tari/commit/4798161b6bd728f3b06718d49e40ae988edc046c))
+*   remove cucumber walletffi.js file that got re-included in rebase (#3271) ([77c92565](https://github.com/tari-project/tari/commit/77c92565603665c81d3b241b4f4e212a032d6631))
+*   auto update continuously checks auto_update_check_interval is disabled (#3270) ([b3bff31c](https://github.com/tari-project/tari/commit/b3bff31cb5c81a0439f28f30385074c3123a157b))
+*   revert mining_node default logging config (#3262) ([edc1a2b9](https://github.com/tari-project/tari/commit/edc1a2b96ceddae3d1c0a54f933ced797b63bed3))
+*   off-by-one causing "no further headers to download" bug (#3264) ([3502b397](https://github.com/tari-project/tari/commit/3502b397341d66a938fe94717696f105f939772f))
+*   small display bug (#3257) ([d1bb7377](https://github.com/tari-project/tari/commit/d1bb7377afe25f674df4252a47b14e50b931c55f))
+*   send transactions to all connected peers (#3239) ([16f779ed](https://github.com/tari-project/tari/commit/16f779edf4a00770de23041d2b55d885d81c7fb6))
+*   add periodic connection check to wallet connectivity service (#3237) ([8c7066bc](https://github.com/tari-project/tari/commit/8c7066bc48f5f0b5494626e5f1da42656e92f217))
+*   fix base_node_service_config not read (#3251) ([80066887](https://github.com/tari-project/tari/commit/80066887a7dee0a4784911c1c19defa39047b320))
+*   daily wallet recovery fixes (#3229) ([6970230d](https://github.com/tari-project/tari/commit/6970230d700a86d0a0a9b5fdd0f46fc712a45aba))
+*   remove OpenSSL from Windows runtime (#3242) ([0048c3bc](https://github.com/tari-project/tari/commit/0048c3bcfe509b078634d32e8805e9994a18093a))
+*   add status output to logs in non-interactive mode (#3244) ([6b91bb63](https://github.com/tari-project/tari/commit/6b91bb6309d68059278d85bd89518360c45a6364))
+*   exit command and free up tokio thread (#3235) ([d924beb6](https://github.com/tari-project/tari/commit/d924beb6a6508bd887fa41d7e7a37d5d0b1ba62a))
+
+
+
 <a name="0.9.5"></a>
 ## 0.9.5 (2021-08-23)
 
