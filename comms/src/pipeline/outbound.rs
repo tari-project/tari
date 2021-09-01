@@ -25,34 +25,33 @@ use crate::{
     pipeline::builder::OutboundPipelineConfig,
     protocol::messaging::MessagingRequest,
 };
-use futures::{channel::mpsc, future, future::Either, stream::FusedStream, SinkExt, Stream, StreamExt};
+use futures::future::Either;
 use log::*;
 use std::fmt::Display;
-use tokio::runtime;
+use tokio::{runtime, sync::mpsc};
 use tower::{Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::pipeline::outbound";
 
-pub struct Outbound<TPipeline, TStream> {
+pub struct Outbound<TPipeline, TItem> {
     /// Executor used to spawn a pipeline for each received item on the stream
     executor: runtime::Handle,
     /// Outbound pipeline configuration containing the pipeline and it's in and out streams
-    config: OutboundPipelineConfig<TStream, TPipeline>,
+    config: OutboundPipelineConfig<TItem, TPipeline>,
     /// Request sender for Messaging
     messaging_request_tx: mpsc::Sender<MessagingRequest>,
 }
 
-impl<TPipeline, TStream> Outbound<TPipeline, TStream>
+impl<TPipeline, TItem> Outbound<TPipeline, TItem>
 where
-    TStream: Stream + FusedStream + Unpin,
-    TStream::Item: Send + 'static,
-    TPipeline: Service<TStream::Item, Response = ()> + Clone + Send + 'static,
+    TItem: Send + 'static,
+    TPipeline: Service<TItem, Response = ()> + Clone + Send + 'static,
     TPipeline::Error: Display + Send,
     TPipeline::Future: Send,
 {
     pub fn new(
         executor: runtime::Handle,
-        config: OutboundPipelineConfig<TStream, TPipeline>,
+        config: OutboundPipelineConfig<TItem, TPipeline>,
         messaging_request_tx: mpsc::Sender<MessagingRequest>,
     ) -> Self {
         Self {
@@ -64,10 +63,13 @@ where
 
     pub async fn run(mut self) {
         loop {
-            let either = future::select(self.config.in_receiver.next(), self.config.out_receiver.next()).await;
+            let either = tokio::select! {
+                next = self.config.in_receiver.recv() => Either::Left(next),
+                next = self.config.out_receiver.recv() => Either::Right(next)
+            };
             match either {
                 // Pipeline IN received a message. Spawn a new task for the pipeline
-                Either::Left((Some(msg), _)) => {
+                Either::Left(Some(msg)) => {
                     let pipeline = self.config.pipeline.clone();
                     self.executor.spawn(async move {
                         if let Err(err) = pipeline.oneshot(msg).await {
@@ -76,7 +78,7 @@ where
                     });
                 },
                 // Pipeline IN channel closed
-                Either::Left((None, _)) => {
+                Either::Left(None) => {
                     info!(
                         target: LOG_TARGET,
                         "Outbound pipeline is shutting down because the in channel closed"
@@ -84,7 +86,7 @@ where
                     break;
                 },
                 // Pipeline OUT received a message
-                Either::Right((Some(out_msg), _)) => {
+                Either::Right(Some(out_msg)) => {
                     if self.messaging_request_tx.is_closed() {
                         // MessagingRequest channel closed
                         break;
@@ -92,7 +94,7 @@ where
                     self.send_messaging_request(out_msg).await;
                 },
                 // Pipeline OUT channel closed
-                Either::Right((None, _)) => {
+                Either::Right(None) => {
                     info!(
                         target: LOG_TARGET,
                         "Outbound pipeline is shutting down because the out channel closed"
@@ -117,19 +119,22 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{pipeline::SinkService, runtime};
+    use crate::{pipeline::SinkService, runtime, utils};
     use bytes::Bytes;
-    use futures::stream;
     use std::time::Duration;
-    use tari_test_utils::{collect_stream, unpack_enum};
+    use tari_test_utils::{collect_recv, unpack_enum};
     use tokio::{runtime::Handle, time};
 
-    #[runtime::test_basic]
+    #[runtime::test]
     async fn run() {
         const NUM_ITEMS: usize = 10;
-        let items =
-            (0..NUM_ITEMS).map(|i| OutboundMessage::new(Default::default(), Bytes::copy_from_slice(&i.to_be_bytes())));
-        let stream = stream::iter(items).fuse();
+        let (tx, in_receiver) = mpsc::channel(NUM_ITEMS);
+        utils::mpsc::send_all(
+            &tx,
+            (0..NUM_ITEMS).map(|i| OutboundMessage::new(Default::default(), Bytes::copy_from_slice(&i.to_be_bytes()))),
+        )
+        .await
+        .unwrap();
         let (out_tx, out_rx) = mpsc::channel(NUM_ITEMS);
         let (msg_tx, mut msg_rx) = mpsc::channel(NUM_ITEMS);
         let executor = Handle::current();
@@ -137,7 +142,7 @@ mod test {
         let pipeline = Outbound::new(
             executor.clone(),
             OutboundPipelineConfig {
-                in_receiver: stream,
+                in_receiver,
                 out_receiver: out_rx,
                 pipeline: SinkService::new(out_tx),
             },
@@ -146,7 +151,8 @@ mod test {
 
         let spawned_task = executor.spawn(pipeline.run());
 
-        let requests = collect_stream!(msg_rx, take = NUM_ITEMS, timeout = Duration::from_millis(5));
+        msg_rx.close();
+        let requests = collect_recv!(msg_rx, timeout = Duration::from_millis(5));
         for req in requests {
             unpack_enum!(MessagingRequest::SendMessage(_o) = req);
         }

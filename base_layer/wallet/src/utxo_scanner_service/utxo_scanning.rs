@@ -20,24 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    error::WalletError,
-    output_manager_service::{handle::OutputManagerHandle, TxId},
-    storage::{
-        database::{WalletBackend, WalletDatabase},
-        sqlite_db::WalletSqliteDatabase,
-    },
-    transaction_service::handle::TransactionServiceHandle,
-    utxo_scanner_service::{
-        error::UtxoScannerError,
-        handle::{UtxoScannerEvent, UtxoScannerRequest, UtxoScannerResponse},
-    },
-    WalletSqlite,
-};
-use chrono::Utc;
-use futures::{pin_mut, StreamExt};
-use log::*;
-use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom,
     sync::{
@@ -46,6 +28,14 @@ use std::{
     },
     time::{Duration, Instant},
 };
+
+use chrono::Utc;
+use futures::{pin_mut, StreamExt};
+use log::*;
+use serde::{Deserialize, Serialize};
+use tokio::{sync::broadcast, task, time};
+
+use tari_common_types::types::HashOutput;
 use tari_comms::{
     connectivity::ConnectivityRequester,
     peer_manager::NodeId,
@@ -64,12 +54,27 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         transaction::{TransactionOutput, UnblindedOutput},
-        types::{CryptoFactories, HashOutput},
+        CryptoFactories,
     },
 };
 use tari_service_framework::{reply_channel, reply_channel::SenderService};
 use tari_shutdown::ShutdownSignal;
-use tokio::{sync::broadcast, task, time};
+
+use crate::{
+    error::WalletError,
+    output_manager_service::{handle::OutputManagerHandle, TxId},
+    storage::{
+        database::{WalletBackend, WalletDatabase},
+        sqlite_db::WalletSqliteDatabase,
+    },
+    transaction_service::handle::TransactionServiceHandle,
+    utxo_scanner_service::{
+        error::UtxoScannerError,
+        handle::{UtxoScannerEvent, UtxoScannerRequest, UtxoScannerResponse},
+    },
+    WalletSqlite,
+};
+use tokio::time::MissedTickBehavior;
 
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 
@@ -715,35 +720,23 @@ where TBackend: WalletBackend + 'static
 
         let mut shutdown = self.shutdown_signal.clone();
         let start_at = Instant::now() + Duration::from_secs(1);
-        let mut work_interval = time::interval_at(start_at.into(), self.scan_for_utxo_interval).fuse();
-        let mut previous = Instant::now();
+        let mut work_interval = time::interval_at(start_at.into(), self.scan_for_utxo_interval);
+        work_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
         loop {
-            futures::select! {
-                _ = work_interval.select_next_some() => {
-                    // This bit of code prevents bottled up tokio interval events to be fired successively for the edge
-                    // case where a computer wakes up from sleep.
-                    if start_at.elapsed() > self.scan_for_utxo_interval &&
-                        previous.elapsed() < self.scan_for_utxo_interval.mul_f32(0.9)
-                    {
-                        debug!(
-                            target: LOG_TARGET,
-                            "UTXO scanning work interval event fired too quickly, not running the task"
-                        );
-                    } else {
-                        let running_flag = self.is_running.clone();
-                        if !running_flag.load(Ordering::SeqCst) {
-                            let task = self.create_task();
-                            debug!(target: LOG_TARGET, "UTXO scanning service starting scan for utxos");
-                            task::spawn(async move {
-                                if let Err(err) = task.run().await {
-                                    error!(target: LOG_TARGET, "Error scanning UTXOs: {}", err);
-                                }
-                                //we make sure the flag is set to false here
-                                running_flag.store(false, Ordering::Relaxed);
-                            });
-                        }
+            tokio::select! {
+                _ = work_interval.tick() => {
+                    let running_flag = self.is_running.clone();
+                    if !running_flag.load(Ordering::SeqCst) {
+                        let task = self.create_task();
+                        debug!(target: LOG_TARGET, "UTXO scanning service starting scan for utxos");
+                        task::spawn(async move {
+                            if let Err(err) = task.run().await {
+                                error!(target: LOG_TARGET, "Error scanning UTXOs: {}", err);
+                            }
+                            //we make sure the flag is set to false here
+                            running_flag.store(false, Ordering::Relaxed);
+                        });
                     }
-                    previous = Instant::now();
                 },
                 request_context = request_stream.select_next_some() => {
                     trace!(target: LOG_TARGET, "Handling Service API Request");
@@ -757,7 +750,7 @@ where TBackend: WalletBackend + 'static
                         e
                     });
                 },
-                _ = shutdown => {
+                _ = shutdown.wait() => {
                     // this will stop the task if its running, and let that thread exit gracefully
                     self.is_running.store(false, Ordering::Relaxed);
                     info!(target: LOG_TARGET, "UTXO scanning service shutting down because it received the shutdown signal");

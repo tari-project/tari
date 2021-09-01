@@ -214,7 +214,7 @@ impl HiddenServiceController {
                         "Failed to reestablish connection with tor control server because '{:?}'", err
                     );
                     warn!(target: LOG_TARGET, "Will attempt again in 5 seconds...");
-                    time::delay_for(Duration::from_secs(5)).await;
+                    time::sleep(Duration::from_secs(5)).await;
                 },
 
                 Either::Right(_) => {

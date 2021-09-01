@@ -24,13 +24,16 @@ use crate::{
     base_node::comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
     blocks::{block_header::BlockHeader, NewBlock},
     chain_storage::HistoricalBlock,
-    transactions::{transaction::TransactionOutput, types::HashOutput},
+    transactions::transaction::TransactionOutput,
 };
-use futures::channel::mpsc::UnboundedSender;
 use log::*;
-use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{BlockHash, HashOutput},
+};
 use tari_comms::peer_manager::NodeId;
 use tari_service_framework::{reply_channel::SenderService, Service};
+use tokio::sync::mpsc::UnboundedSender;
 
 pub const LOG_TARGET: &str = "c::bn::comms_interface::outbound_interface";
 
@@ -234,10 +237,8 @@ impl OutboundNodeCommsInterface {
         new_block: NewBlock,
         exclude_peers: Vec<NodeId>,
     ) -> Result<(), CommsInterfaceError> {
-        self.block_sender
-            .unbounded_send((new_block, exclude_peers))
-            .map_err(|err| {
-                CommsInterfaceError::InternalChannelError(format!("Failed to send on block_sender: {}", err))
-            })
+        self.block_sender.send((new_block, exclude_peers)).map_err(|err| {
+            CommsInterfaceError::InternalChannelError(format!("Failed to send on block_sender: {}", err))
+        })
     }
 }

@@ -20,14 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use log::*;
+
 use crate::{
     blocks::BlockValidationError,
     chain_storage::{BlockchainBackend, BlockchainDatabase, MmrTree},
     crypto::tari_utilities::Hashable,
-    transactions::{transaction::Transaction, types::CryptoFactories},
+    transactions::{transaction::Transaction, CryptoFactories},
     validation::{MempoolTransactionValidation, ValidationError},
 };
-use log::*;
 
 pub const LOG_TARGET: &str = "c::val::transaction_validators";
 
@@ -40,17 +41,21 @@ pub const LOG_TARGET: &str = "c::val::transaction_validators";
 /// This function does NOT check that inputs come from the UTXO set
 pub struct TxInternalConsistencyValidator {
     factories: CryptoFactories,
+    bypass_range_proof_verification: bool,
 }
 
 impl TxInternalConsistencyValidator {
-    pub fn new(factories: CryptoFactories) -> Self {
-        Self { factories }
+    pub fn new(factories: CryptoFactories, bypass_range_proof_verification: bool) -> Self {
+        Self {
+            factories,
+            bypass_range_proof_verification,
+        }
     }
 }
 
 impl MempoolTransactionValidation for TxInternalConsistencyValidator {
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
-        tx.validate_internal_consistency(&self.factories, None)
+        tx.validate_internal_consistency(self.bypass_range_proof_verification, &self.factories, None)
             .map_err(ValidationError::TransactionError)?;
         Ok(())
     }

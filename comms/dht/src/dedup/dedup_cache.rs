@@ -24,14 +24,22 @@ use crate::{
     schema::dedup_cache,
     storage::{DbConnection, StorageError},
 };
-use chrono::Utc;
-use diesel::{dsl, result::DatabaseErrorKind, ExpressionMethods, QueryDsl, RunQueryDsl};
+use chrono::{NaiveDateTime, Utc};
+use diesel::{dsl, result::DatabaseErrorKind, ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl};
 use log::*;
 use tari_comms::types::CommsPublicKey;
-use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
-use tari_utilities::hex;
+use tari_crypto::tari_utilities::hex::Hex;
 
 const LOG_TARGET: &str = "comms::dht::dedup_cache";
+
+#[derive(Queryable, PartialEq, Debug)]
+struct DedupCacheEntry {
+    body_hash: String,
+    sender_public_ke: String,
+    number_of_hit: i32,
+    stored_at: NaiveDateTime,
+    last_hit_at: NaiveDateTime,
+}
 
 #[derive(Clone)]
 pub struct DedupCacheDatabase {
@@ -48,36 +56,40 @@ impl DedupCacheDatabase {
         Self { connection, capacity }
     }
 
-    /// Inserts and returns Ok(true) if the item already existed and Ok(false) if it didn't, also updating hit stats
-    pub async fn insert_body_hash_if_unique(
-        &self,
-        body_hash: Vec<u8>,
-        public_key: CommsPublicKey,
-    ) -> Result<bool, StorageError> {
-        let body_hash = hex::to_hex(&body_hash.as_bytes());
-        let public_key = public_key.to_hex();
-        match self
-            .insert_body_hash_or_update_stats(body_hash.clone(), public_key.clone())
-            .await
-        {
-            Ok(val) => {
-                if val == 0 {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Unable to insert new entry into message dedup cache"
-                    );
-                }
-                Ok(false)
-            },
-            Err(e) => match e {
-                StorageError::UniqueViolation(_) => Ok(true),
-                _ => Err(e),
-            },
+    /// Adds the body hash to the cache, returning the number of hits (inclusive) that have been recorded for this body
+    /// hash
+    pub async fn add_body_hash(&self, body_hash: Vec<u8>, public_key: CommsPublicKey) -> Result<u32, StorageError> {
+        let hit_count = self
+            .insert_body_hash_or_update_stats(body_hash.to_hex(), public_key.to_hex())
+            .await?;
+
+        if hit_count == 0 {
+            warn!(
+                target: LOG_TARGET,
+                "Unable to insert new entry into message dedup cache"
+            );
         }
+        Ok(hit_count)
+    }
+
+    pub async fn get_hit_count(&self, body_hash: Vec<u8>) -> Result<u32, StorageError> {
+        let hit_count = self
+            .connection
+            .with_connection_async(move |conn| {
+                dedup_cache::table
+                    .select(dedup_cache::number_of_hits)
+                    .filter(dedup_cache::body_hash.eq(&body_hash.to_hex()))
+                    .get_result::<i32>(conn)
+                    .optional()
+                    .map_err(Into::into)
+            })
+            .await?;
+
+        Ok(hit_count.unwrap_or(0) as u32)
     }
 
     /// Trims the dedup cache to the configured limit by removing the oldest entries
-    pub async fn truncate(&self) -> Result<usize, StorageError> {
+    pub async fn trim_entries(&self) -> Result<usize, StorageError> {
         let capacity = self.capacity;
         self.connection
             .with_connection_async(move |conn| {
@@ -109,40 +121,46 @@ impl DedupCacheDatabase {
             .await
     }
 
-    // Insert new row into the table or update existing row in an atomic fashion; more than one thread can access this
-    // table at the same time.
+    /// Insert new row into the table or updates an existing row. Returns the number of hits for this body hash.
     async fn insert_body_hash_or_update_stats(
         &self,
         body_hash: String,
         public_key: String,
-    ) -> Result<usize, StorageError> {
+    ) -> Result<u32, StorageError> {
         self.connection
             .with_connection_async(move |conn| {
                 let insert_result = diesel::insert_into(dedup_cache::table)
                     .values((
-                        dedup_cache::body_hash.eq(body_hash.clone()),
-                        dedup_cache::sender_public_key.eq(public_key.clone()),
+                        dedup_cache::body_hash.eq(&body_hash),
+                        dedup_cache::sender_public_key.eq(&public_key),
                         dedup_cache::number_of_hits.eq(1),
                         dedup_cache::last_hit_at.eq(Utc::now().naive_utc()),
                     ))
                     .execute(conn);
                 match insert_result {
-                    Ok(val) => Ok(val),
+                    Ok(1) => Ok(1),
+                    Ok(n) => Err(StorageError::UnexpectedResult(format!(
+                        "Expected exactly one row to be inserted. Got {}",
+                        n
+                    ))),
                     Err(diesel::result::Error::DatabaseError(kind, e_info)) => match kind {
                         DatabaseErrorKind::UniqueViolation => {
                             // Update hit stats for the message
-                            let result =
-                                diesel::update(dedup_cache::table.filter(dedup_cache::body_hash.eq(&body_hash)))
-                                    .set((
-                                        dedup_cache::sender_public_key.eq(public_key),
-                                        dedup_cache::number_of_hits.eq(dedup_cache::number_of_hits + 1),
-                                        dedup_cache::last_hit_at.eq(Utc::now().naive_utc()),
-                                    ))
-                                    .execute(conn);
-                            match result {
-                                Ok(_) => Err(StorageError::UniqueViolation(body_hash)),
-                                Err(e) => Err(e.into()),
-                            }
+                            diesel::update(dedup_cache::table.filter(dedup_cache::body_hash.eq(&body_hash)))
+                                .set((
+                                    dedup_cache::sender_public_key.eq(&public_key),
+                                    dedup_cache::number_of_hits.eq(dedup_cache::number_of_hits + 1),
+                                    dedup_cache::last_hit_at.eq(Utc::now().naive_utc()),
+                                ))
+                                .execute(conn)?;
+                            // TODO: Diesel support for RETURNING statements would remove this query, but is not
+                            //       available for Diesel + SQLite yet
+                            let hits = dedup_cache::table
+                                .select(dedup_cache::number_of_hits)
+                                .filter(dedup_cache::body_hash.eq(&body_hash))
+                                .get_result::<i32>(conn)?;
+
+                            Ok(hits as u32)
                         },
                         _ => Err(diesel::result::Error::DatabaseError(kind, e_info).into()),
                     },

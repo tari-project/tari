@@ -21,8 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use crate::helpers::block_builders::{create_genesis_block, generate_new_block};
-
 use tari_common::configuration::Network;
 use tari_core::{
     chain_storage::{
@@ -38,12 +36,15 @@ use tari_core::{
     transactions::{
         tari_amount::{uT, T},
         transaction::UnblindedOutput,
-        types::CryptoFactories,
+        CryptoFactories,
     },
     txn_schema,
     validation::DifficultyCalculator,
 };
 use tari_storage::lmdb_store::LMDBConfig;
+
+use crate::helpers::block_builders::{create_genesis_block, generate_new_block};
+
 // use crate::helpers::database::{TempDatabase, create_store_with_consensus};
 
 static EMISSION: [u64; 2] = [10, 10];

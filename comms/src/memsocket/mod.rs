@@ -26,16 +26,20 @@
 use bytes::{Buf, Bytes};
 use futures::{
     channel::mpsc::{self, UnboundedReceiver, UnboundedSender},
-    io::{AsyncRead, AsyncWrite, Error, ErrorKind, Result},
     ready,
     stream::{FusedStream, Stream},
     task::{Context, Poll},
 };
 use std::{
+    cmp,
     collections::{hash_map::Entry, HashMap},
     num::NonZeroU16,
     pin::Pin,
     sync::Mutex,
+};
+use tokio::{
+    io,
+    io::{AsyncRead, AsyncWrite, ErrorKind, ReadBuf},
 };
 
 lazy_static! {
@@ -114,6 +118,7 @@ pub fn release_memsocket_port(port: NonZeroU16) {
 /// use std::io::Result;
 ///
 /// use tari_comms::memsocket::{MemoryListener, MemorySocket};
+/// use tokio::io::*;
 /// use futures::prelude::*;
 ///
 /// async fn write_stormlight(mut stream: MemorySocket) -> Result<()> {
@@ -170,7 +175,7 @@ impl MemoryListener {
     /// ```
     ///
     /// [`local_addr`]: #method.local_addr
-    pub fn bind(port: u16) -> Result<Self> {
+    pub fn bind(port: u16) -> io::Result<Self> {
         let mut switchboard = (&*SWITCHBOARD).lock().unwrap();
 
         // Get the port we should bind to.  If 0 was given, use a random port
@@ -262,11 +267,11 @@ impl MemoryListener {
         Incoming { inner: self }
     }
 
-    fn poll_accept(&mut self, context: &mut Context) -> Poll<Result<MemorySocket>> {
+    fn poll_accept(&mut self, context: &mut Context) -> Poll<io::Result<MemorySocket>> {
         match Pin::new(&mut self.incoming).poll_next(context) {
             Poll::Ready(Some(socket)) => Poll::Ready(Ok(socket)),
             Poll::Ready(None) => {
-                let err = Error::new(ErrorKind::Other, "MemoryListener unknown error");
+                let err = io::Error::new(ErrorKind::Other, "MemoryListener unknown error");
                 Poll::Ready(Err(err))
             },
             Poll::Pending => Poll::Pending,
@@ -283,7 +288,7 @@ pub struct Incoming<'a> {
 }
 
 impl<'a> Stream for Incoming<'a> {
-    type Item = Result<MemorySocket>;
+    type Item = io::Result<MemorySocket>;
 
     fn poll_next(mut self: Pin<&mut Self>, context: &mut Context) -> Poll<Option<Self::Item>> {
         let socket = ready!(self.inner.poll_accept(context)?);
@@ -302,6 +307,7 @@ impl<'a> Stream for Incoming<'a> {
 ///
 /// ```rust, no_run
 /// use futures::prelude::*;
+/// use tokio::io::*;
 /// use tari_comms::memsocket::MemorySocket;
 ///
 /// # async fn run() -> ::std::io::Result<()> {
@@ -371,7 +377,7 @@ impl MemorySocket {
     /// let socket = MemorySocket::connect(16)?;
     /// # Ok(())}
     /// ```
-    pub fn connect(port: u16) -> Result<MemorySocket> {
+    pub fn connect(port: u16) -> io::Result<MemorySocket> {
         let mut switchboard = (&*SWITCHBOARD).lock().unwrap();
 
         // Find port to connect to
@@ -399,13 +405,13 @@ impl MemorySocket {
 
 impl AsyncRead for MemorySocket {
     /// Attempt to read from the `AsyncRead` into `buf`.
-    fn poll_read(mut self: Pin<&mut Self>, mut context: &mut Context, buf: &mut [u8]) -> Poll<Result<usize>> {
+    fn poll_read(mut self: Pin<&mut Self>, mut context: &mut Context, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
         if self.incoming.is_terminated() {
             if self.seen_eof {
                 return Poll::Ready(Err(ErrorKind::UnexpectedEof.into()));
             } else {
                 self.seen_eof = true;
-                return Poll::Ready(Ok(0));
+                return Poll::Ready(Ok(()));
             }
         }
 
@@ -413,22 +419,23 @@ impl AsyncRead for MemorySocket {
 
         loop {
             // If we're already filled up the buffer then we can return
-            if bytes_read == buf.len() {
-                return Poll::Ready(Ok(bytes_read));
+            if buf.remaining() == 0 {
+                return Poll::Ready(Ok(()));
             }
 
             match self.current_buffer {
                 // We have data to copy to buf
                 Some(ref mut current_buffer) if !current_buffer.is_empty() => {
-                    let bytes_to_read = ::std::cmp::min(buf.len() - bytes_read, current_buffer.len());
-                    debug_assert!(bytes_to_read > 0);
+                    let bytes_to_read = cmp::min(buf.remaining(), current_buffer.len());
+                    if bytes_to_read > 0 {
+                        buf.initialize_unfilled_to(bytes_to_read)
+                            .copy_from_slice(&current_buffer.slice(..bytes_to_read));
+                        buf.advance(bytes_to_read);
 
-                    buf[bytes_read..(bytes_read + bytes_to_read)]
-                        .copy_from_slice(current_buffer.slice(0..bytes_to_read).as_ref());
+                        current_buffer.advance(bytes_to_read);
 
-                    current_buffer.advance(bytes_to_read);
-
-                    bytes_read += bytes_to_read;
+                        bytes_read += bytes_to_read;
+                    }
                 },
 
                 // Either we've exhausted our current buffer or don't have one
@@ -438,13 +445,13 @@ impl AsyncRead for MemorySocket {
                             Poll::Pending => {
                                 // If we've read anything up to this point return the bytes read
                                 if bytes_read > 0 {
-                                    return Poll::Ready(Ok(bytes_read));
+                                    return Poll::Ready(Ok(()));
                                 } else {
                                     return Poll::Pending;
                                 }
                             },
                             Poll::Ready(Some(buf)) => Some(buf),
-                            Poll::Ready(None) => return Poll::Ready(Ok(bytes_read)),
+                            Poll::Ready(None) => return Poll::Ready(Ok(())),
                         }
                     };
                 },
@@ -455,14 +462,14 @@ impl AsyncRead for MemorySocket {
 
 impl AsyncWrite for MemorySocket {
     /// Attempt to write bytes from `buf` into the outgoing channel.
-    fn poll_write(mut self: Pin<&mut Self>, context: &mut Context, buf: &[u8]) -> Poll<Result<usize>> {
+    fn poll_write(mut self: Pin<&mut Self>, context: &mut Context, buf: &[u8]) -> Poll<io::Result<usize>> {
         let len = buf.len();
 
         match self.outgoing.poll_ready(context) {
             Poll::Ready(Ok(())) => {
                 if let Err(e) = self.outgoing.start_send(Bytes::copy_from_slice(buf)) {
                     if e.is_disconnected() {
-                        return Poll::Ready(Err(Error::new(ErrorKind::BrokenPipe, e)));
+                        return Poll::Ready(Err(io::Error::new(ErrorKind::BrokenPipe, e)));
                     }
 
                     // Unbounded channels should only ever have "Disconnected" errors
@@ -471,7 +478,7 @@ impl AsyncWrite for MemorySocket {
             },
             Poll::Ready(Err(e)) => {
                 if e.is_disconnected() {
-                    return Poll::Ready(Err(Error::new(ErrorKind::BrokenPipe, e)));
+                    return Poll::Ready(Err(io::Error::new(ErrorKind::BrokenPipe, e)));
                 }
 
                 // Unbounded channels should only ever have "Disconnected" errors
@@ -484,12 +491,12 @@ impl AsyncWrite for MemorySocket {
     }
 
     /// Attempt to flush the channel. Cannot Fail.
-    fn poll_flush(self: Pin<&mut Self>, _context: &mut Context) -> Poll<Result<()>> {
+    fn poll_flush(self: Pin<&mut Self>, _context: &mut Context) -> Poll<io::Result<()>> {
         Poll::Ready(Ok(()))
     }
 
     /// Attempt to close the channel. Cannot Fail.
-    fn poll_close(self: Pin<&mut Self>, _context: &mut Context) -> Poll<Result<()>> {
+    fn poll_shutdown(self: Pin<&mut Self>, _context: &mut Context) -> Poll<io::Result<()>> {
         self.outgoing.close_channel();
 
         Poll::Ready(Ok(()))
@@ -499,15 +506,12 @@ impl AsyncWrite for MemorySocket {
 #[cfg(test)]
 mod test {
     use super::*;
-    use futures::{
-        executor::block_on,
-        io::{AsyncReadExt, AsyncWriteExt},
-        stream::StreamExt,
-    };
-    use std::io::Result;
+    use crate::runtime;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio_stream::StreamExt;
 
     #[test]
-    fn listener_bind() -> Result<()> {
+    fn listener_bind() -> io::Result<()> {
         let port = acquire_next_memsocket_port().into();
         let listener = MemoryListener::bind(port)?;
         assert_eq!(listener.local_addr(), port);
@@ -515,172 +519,187 @@ mod test {
         Ok(())
     }
 
-    #[test]
-    fn simple_connect() -> Result<()> {
+    #[runtime::test]
+    async fn simple_connect() -> io::Result<()> {
         let port = acquire_next_memsocket_port().into();
         let mut listener = MemoryListener::bind(port)?;
 
         let mut dialer = MemorySocket::connect(port)?;
-        let mut listener_socket = block_on(listener.incoming().next()).unwrap()?;
+        let mut listener_socket = listener.incoming().next().await.unwrap()?;
 
-        block_on(dialer.write_all(b"foo"))?;
-        block_on(dialer.flush())?;
+        dialer.write_all(b"foo").await?;
+        dialer.flush().await?;
 
         let mut buf = [0; 3];
-        block_on(listener_socket.read_exact(&mut buf))?;
+        listener_socket.read_exact(&mut buf).await?;
         assert_eq!(&buf, b"foo");
 
         Ok(())
     }
 
-    #[test]
-    fn listen_on_port_zero() -> Result<()> {
+    #[runtime::test]
+    async fn listen_on_port_zero() -> io::Result<()> {
         let mut listener = MemoryListener::bind(0)?;
         let listener_addr = listener.local_addr();
 
         let mut dialer = MemorySocket::connect(listener_addr)?;
-        let mut listener_socket = block_on(listener.incoming().next()).unwrap()?;
+        let mut listener_socket = listener.incoming().next().await.unwrap()?;
 
-        block_on(dialer.write_all(b"foo"))?;
-        block_on(dialer.flush())?;
+        dialer.write_all(b"foo").await?;
+        dialer.flush().await?;
 
         let mut buf = [0; 3];
-        block_on(listener_socket.read_exact(&mut buf))?;
+        listener_socket.read_exact(&mut buf).await?;
         assert_eq!(&buf, b"foo");
 
-        block_on(listener_socket.write_all(b"bar"))?;
-        block_on(listener_socket.flush())?;
+        listener_socket.write_all(b"bar").await?;
+        listener_socket.flush().await?;
 
         let mut buf = [0; 3];
-        block_on(dialer.read_exact(&mut buf))?;
+        dialer.read_exact(&mut buf).await?;
         assert_eq!(&buf, b"bar");
 
         Ok(())
     }
 
-    #[test]
-    fn listener_correctly_frees_port_on_drop() -> Result<()> {
-        fn connect_on_port(port: u16) -> Result<()> {
-            let mut listener = MemoryListener::bind(port)?;
-            let mut dialer = MemorySocket::connect(port)?;
-            let mut listener_socket = block_on(listener.incoming().next()).unwrap()?;
+    #[runtime::test]
+    async fn listener_correctly_frees_port_on_drop() {
+        async fn connect_on_port(port: u16) {
+            let mut listener = MemoryListener::bind(port).unwrap();
+            let mut dialer = MemorySocket::connect(port).unwrap();
+            let mut listener_socket = listener.incoming().next().await.unwrap().unwrap();
 
-            block_on(dialer.write_all(b"foo"))?;
-            block_on(dialer.flush())?;
+            dialer.write_all(b"foo").await.unwrap();
+            dialer.flush().await.unwrap();
 
             let mut buf = [0; 3];
-            block_on(listener_socket.read_exact(&mut buf))?;
+            let n = listener_socket.read_exact(&mut buf).await.unwrap();
+            assert_eq!(n, 3);
             assert_eq!(&buf, b"foo");
-
-            Ok(())
         }
 
         let port = acquire_next_memsocket_port().into();
-        connect_on_port(port)?;
-        connect_on_port(port)?;
-
-        Ok(())
+        connect_on_port(port).await;
+        connect_on_port(port).await;
     }
 
-    #[test]
-    fn simple_write_read() -> Result<()> {
+    #[runtime::test]
+    async fn simple_write_read() -> io::Result<()> {
         let (mut a, mut b) = MemorySocket::new_pair();
 
-        block_on(a.write_all(b"hello world"))?;
-        block_on(a.flush())?;
+        a.write_all(b"hello world").await?;
+        a.flush().await?;
         drop(a);
 
         let mut v = Vec::new();
-        block_on(b.read_to_end(&mut v))?;
+        b.read_to_end(&mut v).await?;
         assert_eq!(v, b"hello world");
 
         Ok(())
     }
 
-    #[test]
-    fn partial_read() -> Result<()> {
+    #[runtime::test]
+    async fn partial_read() -> io::Result<()> {
         let (mut a, mut b) = MemorySocket::new_pair();
 
-        block_on(a.write_all(b"foobar"))?;
-        block_on(a.flush())?;
+        a.write_all(b"foobar").await?;
+        a.flush().await?;
 
         let mut buf = [0; 3];
-        block_on(b.read_exact(&mut buf))?;
+        b.read_exact(&mut buf).await?;
         assert_eq!(&buf, b"foo");
-        block_on(b.read_exact(&mut buf))?;
+        b.read_exact(&mut buf).await?;
         assert_eq!(&buf, b"bar");
 
         Ok(())
     }
 
-    #[test]
-    fn partial_read_write_both_sides() -> Result<()> {
+    #[runtime::test]
+    async fn partial_read_write_both_sides() -> io::Result<()> {
         let (mut a, mut b) = MemorySocket::new_pair();
 
-        block_on(a.write_all(b"foobar"))?;
-        block_on(a.flush())?;
-        block_on(b.write_all(b"stormlight"))?;
-        block_on(b.flush())?;
+        a.write_all(b"foobar").await?;
+        a.flush().await?;
+        b.write_all(b"stormlight").await?;
+        b.flush().await?;
 
         let mut buf_a = [0; 5];
         let mut buf_b = [0; 3];
-        block_on(a.read_exact(&mut buf_a))?;
+        a.read_exact(&mut buf_a).await?;
         assert_eq!(&buf_a, b"storm");
-        block_on(b.read_exact(&mut buf_b))?;
+        b.read_exact(&mut buf_b).await?;
         assert_eq!(&buf_b, b"foo");
 
-        block_on(a.read_exact(&mut buf_a))?;
+        a.read_exact(&mut buf_a).await?;
         assert_eq!(&buf_a, b"light");
-        block_on(b.read_exact(&mut buf_b))?;
+        b.read_exact(&mut buf_b).await?;
         assert_eq!(&buf_b, b"bar");
 
         Ok(())
     }
 
-    #[test]
-    fn many_small_writes() -> Result<()> {
+    #[runtime::test]
+    async fn many_small_writes() -> io::Result<()> {
         let (mut a, mut b) = MemorySocket::new_pair();
 
-        block_on(a.write_all(b"words"))?;
-        block_on(a.write_all(b" "))?;
-        block_on(a.write_all(b"of"))?;
-        block_on(a.write_all(b" "))?;
-        block_on(a.write_all(b"radiance"))?;
-        block_on(a.flush())?;
+        a.write_all(b"words").await?;
+        a.write_all(b" ").await?;
+        a.flush().await?;
+        a.write_all(b"of").await?;
+        a.write_all(b" ").await?;
+        a.flush().await?;
+        a.write_all(b"radiance").await?;
+        a.flush().await?;
         drop(a);
 
         let mut buf = [0; 17];
-        block_on(b.read_exact(&mut buf))?;
+        b.read_exact(&mut buf).await?;
         assert_eq!(&buf, b"words of radiance");
 
         Ok(())
     }
 
-    #[test]
-    fn read_zero_bytes() -> Result<()> {
+    #[runtime::test]
+    async fn large_writes() -> io::Result<()> {
         let (mut a, mut b) = MemorySocket::new_pair();
 
-        block_on(a.write_all(b"way of kings"))?;
-        block_on(a.flush())?;
+        let large_data = vec![123u8; 1024];
+        a.write_all(&large_data).await?;
+        a.flush().await?;
+        drop(a);
+
+        let mut buf = Vec::new();
+        b.read_to_end(&mut buf).await?;
+        assert_eq!(buf.len(), 1024);
+
+        Ok(())
+    }
+
+    #[runtime::test]
+    async fn read_zero_bytes() -> io::Result<()> {
+        let (mut a, mut b) = MemorySocket::new_pair();
+
+        a.write_all(b"way of kings").await?;
+        a.flush().await?;
 
         let mut buf = [0; 12];
-        block_on(b.read_exact(&mut buf[0..0]))?;
+        b.read_exact(&mut buf[0..0]).await?;
         assert_eq!(buf, [0; 12]);
-        block_on(b.read_exact(&mut buf))?;
+        b.read_exact(&mut buf).await?;
         assert_eq!(&buf, b"way of kings");
 
         Ok(())
     }
 
-    #[test]
-    fn read_bytes_with_large_buffer() -> Result<()> {
+    #[runtime::test]
+    async fn read_bytes_with_large_buffer() -> io::Result<()> {
         let (mut a, mut b) = MemorySocket::new_pair();
 
-        block_on(a.write_all(b"way of kings"))?;
-        block_on(a.flush())?;
+        a.write_all(b"way of kings").await?;
+        a.flush().await?;
 
         let mut buf = [0; 20];
-        let bytes_read = block_on(b.read(&mut buf))?;
+        let bytes_read = b.read(&mut buf).await?;
         assert_eq!(bytes_read, 12);
         assert_eq!(&buf[0..12], b"way of kings");
 

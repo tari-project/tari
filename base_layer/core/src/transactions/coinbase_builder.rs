@@ -21,12 +21,23 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+use rand::rngs::OsRng;
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    inputs,
+    keys::{PublicKey as PK, SecretKey},
+    script,
+    script::TariScript,
+};
+use thiserror::Error;
+
 use crate::{
     consensus::{
         emission::{Emission, EmissionSchedule},
         ConsensusConstants,
     },
     transactions::{
+        crypto_factories::CryptoFactories,
         tari_amount::{uT, MicroTari},
         transaction::{
             KernelBuilder,
@@ -38,18 +49,9 @@ use crate::{
             UnblindedOutput,
         },
         transaction_protocol::{build_challenge, RewindData, TransactionMetadata},
-        types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey, Signature},
     },
 };
-use rand::rngs::OsRng;
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    inputs,
-    keys::{PublicKey as PK, SecretKey},
-    script,
-    script::TariScript,
-};
-use thiserror::Error;
+use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey, Signature};
 
 #[derive(Debug, Clone, Error, PartialEq)]
 pub enum CoinbaseBuildError {
@@ -241,21 +243,24 @@ impl CoinbaseBuilder {
 
 #[cfg(test)]
 mod test {
+    use rand::rngs::OsRng;
+    use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as SecretKeyTrait};
+
+    use tari_common::configuration::Network;
+
     use crate::{
         consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder},
         transactions::{
             coinbase_builder::CoinbaseBuildError,
+            crypto_factories::CryptoFactories,
             helpers::TestParams,
             tari_amount::uT,
             transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionError},
             transaction_protocol::RewindData,
-            types::{BlindingFactor, CryptoFactories, PrivateKey},
             CoinbaseBuilder,
         },
     };
-    use rand::rngs::OsRng;
-    use tari_common::configuration::Network;
-    use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as SecretKeyTrait};
+    use tari_common_types::types::{BlindingFactor, PrivateKey};
 
     fn get_builder() -> (CoinbaseBuilder, ConsensusManager, CryptoFactories) {
         let network = Network::LocalNet;
@@ -520,6 +525,7 @@ mod test {
             tx.body.validate_internal_consistency(
                 &BlindingFactor::default(),
                 &PrivateKey::default(),
+                false,
                 block_reward,
                 &factories
             ),

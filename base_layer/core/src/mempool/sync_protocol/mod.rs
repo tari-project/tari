@@ -73,12 +73,11 @@ mod initializer;
 pub use initializer::MempoolSyncInitializer;
 
 use crate::{
-    base_node::StateMachineHandle,
     mempool::{async_mempool, proto, Mempool, MempoolServiceConfig},
     proto as shared_proto,
     transactions::transaction::Transaction,
 };
-use futures::{stream, stream::Fuse, AsyncRead, AsyncWrite, SinkExt, Stream, StreamExt};
+use futures::{stream, SinkExt, Stream, StreamExt};
 use log::*;
 use prost::Message;
 use std::{
@@ -88,7 +87,6 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         Arc,
     },
-    time::Duration,
 };
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityEventRx},
@@ -101,7 +99,11 @@ use tari_comms::{
     PeerConnection,
 };
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
-use tokio::{sync::Semaphore, task};
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::Semaphore,
+    task,
+};
 
 const MAX_FRAME_SIZE: usize = 3 * 1024 * 1024; // 3 MiB
 const LOG_TARGET: &str = "c::mempool::sync_protocol";
@@ -111,11 +113,10 @@ pub static MEMPOOL_SYNC_PROTOCOL: Bytes = Bytes::from_static(b"t/mempool-sync/1"
 pub struct MempoolSyncProtocol<TSubstream> {
     config: MempoolServiceConfig,
     protocol_notifier: ProtocolNotificationRx<TSubstream>,
-    connectivity_events: Fuse<ConnectivityEventRx>,
+    connectivity_events: ConnectivityEventRx,
     mempool: Mempool,
     num_synched: Arc<AtomicUsize>,
     permits: Arc<Semaphore>,
-    state_machine: Option<StateMachineHandle>,
 }
 
 impl<TSubstream> MempoolSyncProtocol<TSubstream>
@@ -126,54 +127,34 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
         protocol_notifier: ProtocolNotificationRx<TSubstream>,
         connectivity_events: ConnectivityEventRx,
         mempool: Mempool,
-        state_machine: Option<StateMachineHandle>,
     ) -> Self {
         Self {
             config,
             protocol_notifier,
-            connectivity_events: connectivity_events.fuse(),
+            connectivity_events,
             mempool,
             num_synched: Arc::new(AtomicUsize::new(0)),
             permits: Arc::new(Semaphore::new(1)),
-            state_machine,
         }
     }
 
     pub async fn run(mut self) {
         info!(target: LOG_TARGET, "Mempool protocol handler has started");
-        while let Some(ref v) = self.state_machine {
-            let status_watch = v.get_status_info_watch();
-            if (*status_watch.borrow()).bootstrapped {
-                break;
-            }
-            trace!(
-                target: LOG_TARGET,
-                "Mempool sync still on hold, waiting for bootstrap to finish",
-            );
-            tokio::time::delay_for(Duration::from_secs(1)).await;
-        }
+
         loop {
-            futures::select! {
-                event = self.connectivity_events.select_next_some() => {
-                    if let Ok(event) = event {
-                        self.handle_connectivity_event(&*event).await;
-                    }
+            tokio::select! {
+                Ok(event) = self.connectivity_events.recv() => {
+                    self.handle_connectivity_event(event).await;
                 },
 
-                notif = self.protocol_notifier.select_next_some() => {
+                Some(notif) = self.protocol_notifier.recv() => {
                     self.handle_protocol_notification(notif);
-                }
-
-                // protocol_notifier and connectivity_events are closed
-                complete => {
-                    info!(target: LOG_TARGET, "Mempool protocol handler is shutting down");
-                    break;
                 }
             }
         }
     }
 
-    async fn handle_connectivity_event(&mut self, event: &ConnectivityEvent) {
+    async fn handle_connectivity_event(&mut self, event: ConnectivityEvent) {
         match event {
             // If this node is connecting to a peer
             ConnectivityEvent::PeerConnected(conn) if conn.direction().is_outbound() => {

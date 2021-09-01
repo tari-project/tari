@@ -20,23 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    utils::db::get_custom_base_node_peer_from_db,
-    wallet_modes::{PeerConfig, WalletMode},
-};
+use std::{fs, path::PathBuf, str::FromStr, sync::Arc};
+
 use log::*;
 use rpassword::prompt_password_stdout;
 use rustyline::Editor;
-use std::{fs, path::PathBuf, str::FromStr, sync::Arc};
+
 use tari_app_utilities::utilities::{create_transport_type, ExitCodes};
 use tari_common::{ConfigBootstrap, GlobalConfig};
+use tari_common_types::types::PrivateKey;
 use tari_comms::{
     peer_manager::{Peer, PeerFeatures},
     types::CommsSecretKey,
     NodeIdentity,
 };
 use tari_comms_dht::{DbConnectionUrl, DhtConfig};
-use tari_core::transactions::types::{CryptoFactories, PrivateKey};
+use tari_core::transactions::CryptoFactories;
 use tari_p2p::{
     initialization::CommsConfig,
     peer_seeds::SeedPeer,
@@ -57,6 +56,11 @@ use tari_wallet::{
     Wallet,
     WalletConfig,
     WalletSqlite,
+};
+
+use crate::{
+    utils::db::get_custom_base_node_peer_from_db,
+    wallet_modes::{PeerConfig, WalletMode},
 };
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::init";
@@ -128,9 +132,15 @@ pub async fn change_password(
         return Err(ExitCodes::InputError("Passwords don't match!".to_string()));
     }
 
-    wallet.remove_encryption().await?;
+    wallet
+        .remove_encryption()
+        .await
+        .map_err(|e| ExitCodes::WalletError(e.to_string()))?;
 
-    wallet.apply_encryption(passphrase).await?;
+    wallet
+        .apply_encryption(passphrase)
+        .await
+        .map_err(|e| ExitCodes::WalletError(e.to_string()))?;
 
     println!("Wallet password changed successfully.");
 

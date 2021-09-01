@@ -20,26 +20,28 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
-    compat::IoCompat,
     connection_manager::ConnectionDirection,
     message::MessageExt,
     peer_manager::NodeIdentity,
     proto::identity::PeerIdentityMsg,
     protocol::{NodeNetworkInfo, ProtocolError, ProtocolId, ProtocolNegotiation},
 };
-use futures::{AsyncRead, AsyncWrite, SinkExt, StreamExt};
+use futures::{SinkExt, StreamExt};
 use log::*;
 use prost::Message;
 use std::{io, time::Duration};
 use thiserror::Error;
-use tokio::time;
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    time,
+};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use tracing;
 
 pub static IDENTITY_PROTOCOL: ProtocolId = ProtocolId::from_static(b"t/identity/1.0");
 const LOG_TARGET: &str = "comms::protocol::identity";
 
-#[tracing::instrument(skip(socket, our_supported_protocols), err)]
+#[tracing::instrument(skip(socket, our_supported_protocols))]
 pub async fn identity_exchange<'p, TSocket, P>(
     node_identity: &NodeIdentity,
     direction: ConnectionDirection,
@@ -79,7 +81,7 @@ where
     debug_assert_eq!(proto, IDENTITY_PROTOCOL);
 
     // Create length-delimited frame codec
-    let framed = Framed::new(IoCompat::new(socket), LengthDelimitedCodec::new());
+    let framed = Framed::new(socket, LengthDelimitedCodec::new());
     let (mut sink, mut stream) = framed.split();
 
     let supported_protocols = our_supported_protocols.into_iter().map(|p| p.to_vec()).collect();
@@ -136,8 +138,8 @@ pub enum IdentityProtocolError {
     ProtocolVersionMismatch,
 }
 
-impl From<time::Elapsed> for IdentityProtocolError {
-    fn from(_: time::Elapsed) -> Self {
+impl From<time::error::Elapsed> for IdentityProtocolError {
+    fn from(_: time::error::Elapsed) -> Self {
         IdentityProtocolError::Timeout
     }
 }
@@ -172,7 +174,7 @@ mod test {
     };
     use futures::{future, StreamExt};
 
-    #[runtime::test_basic]
+    #[runtime::test]
     async fn identity_exchange() {
         let transport = MemoryTransport;
         let addr = "/memory/0".parse().unwrap();
@@ -221,7 +223,7 @@ mod test {
         assert_eq!(identity2.addresses, vec![node_identity2.public_address().to_vec()]);
     }
 
-    #[runtime::test_basic]
+    #[runtime::test]
     async fn fail_cases() {
         let transport = MemoryTransport;
         let addr = "/memory/0".parse().unwrap();

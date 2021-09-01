@@ -103,7 +103,7 @@ mod test {
     use tari_shutdown::Shutdown;
     use tower::service_fn;
 
-    #[tokio_macros::test]
+    #[tokio::test]
     async fn service_defn_simple() {
         // This is less of a test and more of a demo of using the short-hand implementation of ServiceInitializer
         let simple_initializer = |_: ServiceInitializerContext| Ok(());
@@ -155,7 +155,7 @@ mod test {
         }
     }
 
-    #[tokio_macros::test]
+    #[tokio::test]
     async fn service_stack_new() {
         let shared_state = Arc::new(AtomicUsize::new(0));
 

@@ -20,9 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::identity_management::load_from_json;
 use futures::future::Either;
 use log::*;
+use thiserror::Error;
+use tokio::{runtime, runtime::Runtime};
+
 use tari_common::{CommsTransport, GlobalConfig, SocksAuthentication, TorControlAuthentication};
 use tari_comms::{
     connectivity::ConnectivityError,
@@ -37,13 +39,9 @@ use tari_comms::{
 };
 use tari_core::tari_utilities::hex::Hex;
 use tari_p2p::transport::{TorConfig, TransportType};
-use tari_wallet::{
-    error::{WalletError, WalletStorageError},
-    output_manager_service::error::OutputManagerError,
-    util::emoji::EmojiId,
-};
-use thiserror::Error;
-use tokio::{runtime, runtime::Runtime};
+
+use crate::identity_management::load_from_json;
+use tari_common_types::emoji::EmojiId;
 
 pub const LOG_TARGET: &str = "tari::application";
 
@@ -107,20 +105,6 @@ impl From<tari_common::ConfigError> for ExitCodes {
     }
 }
 
-impl From<WalletError> for ExitCodes {
-    fn from(err: WalletError) -> Self {
-        error!(target: LOG_TARGET, "{}", err);
-        Self::WalletError(err.to_string())
-    }
-}
-
-impl From<OutputManagerError> for ExitCodes {
-    fn from(err: OutputManagerError) -> Self {
-        error!(target: LOG_TARGET, "{}", err);
-        Self::WalletError(err.to_string())
-    }
-}
-
 impl From<ConnectivityError> for ExitCodes {
     fn from(err: ConnectivityError) -> Self {
         error!(target: LOG_TARGET, "{}", err);
@@ -135,13 +119,36 @@ impl From<RpcError> for ExitCodes {
     }
 }
 
-impl From<WalletStorageError> for ExitCodes {
-    fn from(err: WalletStorageError) -> Self {
-        use WalletStorageError::*;
-        match err {
-            NoPasswordError => ExitCodes::NoPassword,
-            IncorrectPassword => ExitCodes::IncorrectPassword,
-            e => ExitCodes::WalletError(e.to_string()),
+#[cfg(feature = "wallet")]
+mod wallet {
+    use super::*;
+    use tari_wallet::{
+        error::{WalletError, WalletStorageError},
+        output_manager_service::error::OutputManagerError,
+    };
+
+    impl From<WalletError> for ExitCodes {
+        fn from(err: WalletError) -> Self {
+            error!(target: LOG_TARGET, "{}", err);
+            Self::WalletError(err.to_string())
+        }
+    }
+
+    impl From<OutputManagerError> for ExitCodes {
+        fn from(err: OutputManagerError) -> Self {
+            error!(target: LOG_TARGET, "{}", err);
+            Self::WalletError(err.to_string())
+        }
+    }
+
+    impl From<WalletStorageError> for ExitCodes {
+        fn from(err: WalletStorageError) -> Self {
+            use WalletStorageError::*;
+            match err {
+                NoPasswordError => ExitCodes::NoPassword,
+                IncorrectPassword => ExitCodes::IncorrectPassword,
+                e => ExitCodes::WalletError(e.to_string()),
+            }
         }
     }
 }
@@ -259,26 +266,22 @@ pub fn convert_socks_authentication(auth: SocksAuthentication) -> socks::Authent
 /// ## Returns
 /// A result containing the runtime on success, string indicating the error on failure
 pub fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, String> {
-    info!(
-        target: LOG_TARGET,
-        "Configuring the node to run on up to {} core threads and {} mining threads.",
-        config.max_threads.unwrap_or(512),
-        config.num_mining_threads
-    );
+    let mut builder = runtime::Builder::new_multi_thread();
 
-    let mut builder = runtime::Builder::new();
-
-    if let Some(max_threads) = config.max_threads {
-        // Ensure that there are always enough threads for mining.
-        // e.g if the user sets max_threads = 2, mining_threads = 5 then 7 threads are available in total
-        builder.max_threads(max_threads + config.num_mining_threads);
-    }
     if let Some(core_threads) = config.core_threads {
-        builder.core_threads(core_threads);
+        info!(
+            target: LOG_TARGET,
+            "Configuring the node to run on up to {} core threads.",
+            config
+                .core_threads
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "<num cores>".to_string()),
+        );
+        builder.worker_threads(core_threads);
     }
 
     builder
-        .threaded_scheduler()
         .enable_all()
         .build()
         .map_err(|e| format!("There was an error while building the node runtime. {}", e.to_string()))

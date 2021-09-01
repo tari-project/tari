@@ -129,7 +129,8 @@ impl Stream for Listener {
 mod test {
     use super::*;
     use crate::runtime;
-    use futures::{future::join, stream::StreamExt, AsyncReadExt, AsyncWriteExt};
+    use futures::{future::join, stream::StreamExt};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     #[runtime::test]
     async fn simple_listen_and_dial() -> Result<(), ::std::io::Error> {

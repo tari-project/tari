@@ -20,6 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use log::*;
+use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex};
+
 use crate::{
     blocks::{
         block_header::{BlockHeader, BlockHeaderValidationError},
@@ -38,11 +41,9 @@ use crate::{
         PowAlgorithm,
         PowError,
     },
-    transactions::types::CryptoFactories,
+    transactions::CryptoFactories,
     validation::ValidationError,
 };
-use log::*;
-use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex};
 
 pub const LOG_TARGET: &str = "c::val::helpers";
 
@@ -199,6 +200,7 @@ pub fn check_block_weight(block: &Block, consensus_constants: &ConsensusConstant
 pub fn check_accounting_balance(
     block: &Block,
     rules: &ConsensusManager,
+    bypass_range_proof_verification: bool,
     factories: &CryptoFactories,
 ) -> Result<(), ValidationError> {
     if block.header.height == 0 {
@@ -210,7 +212,13 @@ pub fn check_accounting_balance(
     let total_coinbase = rules.calculate_coinbase_and_fees(block);
     block
         .body
-        .validate_internal_consistency(&offset, &script_offset, total_coinbase, factories)
+        .validate_internal_consistency(
+            &offset,
+            &script_offset,
+            bypass_range_proof_verification,
+            total_coinbase,
+            factories,
+        )
         .map_err(|err| {
             warn!(
                 target: LOG_TARGET,

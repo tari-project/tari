@@ -14,13 +14,13 @@ use crate::{
         HorizonData,
         MmrTree,
     },
-    transactions::{
-        transaction::{TransactionInput, TransactionKernel},
-        types::{Commitment, HashOutput, Signature},
-    },
+    transactions::transaction::{TransactionInput, TransactionKernel},
 };
 use croaring::Bitmap;
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{Commitment, HashOutput, Signature},
+};
 use tari_mmr::Hash;
 
 /// Identify behaviour for Blockchain database backends. Implementations must support `Send` and `Sync` so that

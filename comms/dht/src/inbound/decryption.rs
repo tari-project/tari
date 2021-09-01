@@ -397,7 +397,12 @@ mod test {
     };
     use futures::{executor::block_on, future};
     use std::sync::Mutex;
-    use tari_comms::{message::MessageExt, test_utils::mocks::create_connectivity_mock, wrap_in_envelope_body};
+    use tari_comms::{
+        message::MessageExt,
+        runtime,
+        test_utils::mocks::create_connectivity_mock,
+        wrap_in_envelope_body,
+    };
     use tari_test_utils::{counter_context, unpack_enum};
     use tower::service_fn;
 
@@ -469,7 +474,7 @@ mod test {
         assert_eq!(decrypted.decryption_result.unwrap_err(), inbound_msg.body);
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn decrypt_inbound_fail_destination() {
         let (connectivity, mock) = create_connectivity_mock();
         mock.spawn();

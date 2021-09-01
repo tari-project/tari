@@ -46,7 +46,7 @@ use tari_app_utilities::initialization::init_configuration;
 use tari_common::configuration::bootstrap::ApplicationType;
 use tokio::time::Duration;
 
-#[tokio_macros::main]
+#[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let (_, config, _) = init_configuration(ApplicationType::MergeMiningProxy)?;
 

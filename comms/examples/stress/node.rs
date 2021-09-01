@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::{error::Error, STRESS_PROTOCOL_NAME, TOR_CONTROL_PORT_ADDR, TOR_SOCKS_ADDR};
-use futures::channel::mpsc;
 use rand::rngs::OsRng;
 use std::{convert, net::Ipv4Addr, path::Path, sync::Arc, time::Duration};
 use tari_comms::{
@@ -43,7 +42,7 @@ use tari_storage::{
     lmdb_store::{LMDBBuilder, LMDBConfig},
     LMDBWrapper,
 };
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 
 pub async fn create(
     node_identity: Option<Arc<NodeIdentity>>,

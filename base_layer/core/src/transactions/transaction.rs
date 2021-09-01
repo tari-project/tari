@@ -23,29 +23,6 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use crate::transactions::{
-    aggregated_body::AggregateBody,
-    tari_amount::{uT, MicroTari},
-    transaction_protocol::{build_challenge, RewindData, TransactionMetadata},
-    types::{
-        BlindingFactor,
-        Challenge,
-        ComSignature,
-        Commitment,
-        CommitmentFactory,
-        CryptoFactories,
-        HashDigest,
-        MessageHash,
-        PrivateKey,
-        PublicKey,
-        RangeProof,
-        RangeProofService,
-        Signature,
-    },
-};
-use blake2::Digest;
-use rand::rngs::OsRng;
-use serde::{Deserialize, Serialize};
 use std::{
     cmp::{max, min, Ordering},
     fmt,
@@ -53,6 +30,10 @@ use std::{
     hash::{Hash, Hasher},
     ops::Add,
 };
+
+use blake2::Digest;
+use rand::rngs::OsRng;
+use serde::{Deserialize, Serialize};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
@@ -69,6 +50,27 @@ use tari_crypto::{
     tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable},
 };
 use thiserror::Error;
+
+use crate::transactions::{
+    aggregated_body::AggregateBody,
+    crypto_factories::CryptoFactories,
+    tari_amount::{uT, MicroTari},
+    transaction_protocol::{build_challenge, RewindData, TransactionMetadata},
+};
+use tari_common_types::types::{
+    BlindingFactor,
+    Challenge,
+    ComSignature,
+    Commitment,
+    CommitmentFactory,
+    HashDigest,
+    MessageHash,
+    PrivateKey,
+    PublicKey,
+    RangeProof,
+    RangeProofService,
+    Signature,
+};
 
 // Tx_weight(inputs(12,500), outputs(500), kernels(1)) = 19,003, still well enough below block weight of 19,500
 pub const MAX_TRANSACTION_INPUTS: usize = 12_500;
@@ -1109,12 +1111,18 @@ impl Transaction {
     #[allow(clippy::erasing_op)] // This is for 0 * uT
     pub fn validate_internal_consistency(
         &self,
+        bypass_range_proof_verification: bool,
         factories: &CryptoFactories,
         reward: Option<MicroTari>,
     ) -> Result<(), TransactionError> {
         let reward = reward.unwrap_or_else(|| 0 * uT);
-        self.body
-            .validate_internal_consistency(&self.offset, &self.script_offset, reward, factories)
+        self.body.validate_internal_consistency(
+            &self.offset,
+            &self.script_offset,
+            bypass_range_proof_verification,
+            reward,
+            factories,
+        )
     }
 
     pub fn get_body(&self) -> &AggregateBody {
@@ -1264,7 +1272,7 @@ impl TransactionBuilder {
         if let (Some(script_offset), Some(offset)) = (self.script_offset, self.offset) {
             let (i, o, k) = self.body.dissolve();
             let tx = Transaction::new(i, o, k, offset, script_offset);
-            tx.validate_internal_consistency(factories, self.reward)?;
+            tx.validate_internal_consistency(true, factories, self.reward)?;
             Ok(tx)
         } else {
             Err(TransactionError::ValidationError(
@@ -1289,17 +1297,6 @@ impl Default for TransactionBuilder {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::{
-        transactions::{
-            helpers,
-            helpers::{TestParams, UtxoTestParams},
-            tari_amount::T,
-            transaction::OutputFeatures,
-            types::{BlindingFactor, PrivateKey, PublicKey, RangeProof},
-        },
-        txn_schema,
-    };
     use rand::{self, rngs::OsRng};
     use tari_crypto::{
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
@@ -1307,6 +1304,19 @@ mod test {
         script,
         script::ExecutionStack,
     };
+
+    use crate::{
+        transactions::{
+            helpers,
+            helpers::{TestParams, UtxoTestParams},
+            tari_amount::T,
+            transaction::OutputFeatures,
+        },
+        txn_schema,
+    };
+    use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey};
+
+    use super::*;
 
     #[test]
     fn input_and_output_hash_match() {
@@ -1514,7 +1524,7 @@ mod test {
         let (tx, _, _) = helpers::create_tx(5000.into(), 15.into(), 1, 2, 1, 4);
 
         let factories = CryptoFactories::default();
-        assert!(tx.validate_internal_consistency(&factories, None).is_ok());
+        assert!(tx.validate_internal_consistency(false, &factories, None).is_ok());
     }
 
     #[test]
@@ -1527,7 +1537,7 @@ mod test {
         assert_eq!(tx.body.kernels().len(), 1);
 
         let factories = CryptoFactories::default();
-        assert!(tx.validate_internal_consistency(&factories, None).is_ok());
+        assert!(tx.validate_internal_consistency(false, &factories, None).is_ok());
 
         let schema = txn_schema!(from: vec![outputs[1].clone()], to: vec![1 * T, 2 * T]);
         let (tx2, _outputs, _) = helpers::spend_utxos(schema);
@@ -1558,10 +1568,12 @@ mod test {
         }
 
         // Validate basis transaction where cut-through has not been applied.
-        assert!(tx3.validate_internal_consistency(&factories, None).is_ok());
+        assert!(tx3.validate_internal_consistency(false, &factories, None).is_ok());
 
         // tx3_cut_through has manual cut-through, it should not be possible so this should fail
-        assert!(tx3_cut_through.validate_internal_consistency(&factories, None).is_err());
+        assert!(tx3_cut_through
+            .validate_internal_consistency(false, &factories, None)
+            .is_err());
     }
 
     #[test]
@@ -1598,7 +1610,7 @@ mod test {
         tx.body.inputs_mut()[0].input_data = stack;
 
         let factories = CryptoFactories::default();
-        let err = tx.validate_internal_consistency(&factories, None).unwrap_err();
+        let err = tx.validate_internal_consistency(false, &factories, None).unwrap_err();
         assert!(matches!(err, TransactionError::InvalidSignatureError(_)));
     }
 
