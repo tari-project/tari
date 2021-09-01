@@ -43,7 +43,7 @@ mod get_stats {
     use super::*;
     use crate::mempool::{MempoolService, StatsResponse};
 
-    #[tokio_macros::test_basic]
+    #[tokio::test]
     async fn it_returns_the_stats() {
         let (service, mempool, req_mock, _tmpdir) = setup();
         let expected_stats = StatsResponse {
@@ -66,7 +66,7 @@ mod get_state {
     use super::*;
     use crate::mempool::{MempoolService, StateResponse};
 
-    #[tokio_macros::test_basic]
+    #[tokio::test]
     async fn it_returns_the_state() {
         let (service, mempool, req_mock, _tmpdir) = setup();
         let expected_state = StateResponse {
@@ -94,7 +94,7 @@ mod get_tx_state_by_excess_sig {
     use tari_crypto::ristretto::{RistrettoPublicKey, RistrettoSecretKey};
     use tari_test_utils::unpack_enum;
 
-    #[tokio_macros::test_basic]
+    #[tokio::test]
     async fn it_returns_the_storage_status() {
         let (service, mempool, req_mock, _tmpdir) = setup();
         let expected = TxStorageResponse::UnconfirmedPool;
@@ -116,7 +116,7 @@ mod get_tx_state_by_excess_sig {
         assert_eq!(mempool.get_call_count(), 1);
     }
 
-    #[tokio_macros::test_basic]
+    #[tokio::test]
     async fn it_errors_on_invalid_signature() {
         let (service, _, req_mock, _tmpdir) = setup();
         let status = service
@@ -139,7 +139,7 @@ mod submit_transaction {
     use tari_crypto::ristretto::RistrettoSecretKey;
     use tari_test_utils::unpack_enum;
 
-    #[tokio_macros::test_basic]
+    #[tokio::test]
     async fn it_submits_transaction() {
         let (service, mempool, req_mock, _tmpdir) = setup();
         let expected = TxStorageResponse::UnconfirmedPool;
@@ -166,7 +166,7 @@ mod submit_transaction {
         assert_eq!(mempool.get_call_count(), 1);
     }
 
-    #[tokio_macros::test_basic]
+    #[tokio::test]
     async fn it_errors_on_invalid_transaction() {
         let (service, _, req_mock, _tmpdir) = setup();
         let status = service

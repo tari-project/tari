@@ -33,7 +33,7 @@ use crate::{
     proto as shared_protos,
     proto::base_node as proto,
 };
-use futures::{channel::mpsc, future, Stream, StreamExt};
+use futures::{future, Stream, StreamExt};
 use log::*;
 use std::{convert::TryFrom, sync::Arc};
 use tari_comms_dht::Dht;
@@ -50,7 +50,7 @@ use tari_service_framework::{
     ServiceInitializer,
     ServiceInitializerContext,
 };
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 
 const LOG_TARGET: &str = "c::bn::service::initializer";
 const SUBSCRIPTION_LABEL: &str = "Base Node";
@@ -151,7 +151,7 @@ where T: BlockchainBackend + 'static
         let inbound_block_stream = self.inbound_block_stream();
         // Connect InboundNodeCommsInterface and OutboundNodeCommsInterface to BaseNodeService
         let (outbound_request_sender_service, outbound_request_stream) = reply_channel::unbounded();
-        let (outbound_block_sender_service, outbound_block_stream) = mpsc::unbounded();
+        let (outbound_block_sender_service, outbound_block_stream) = mpsc::unbounded_channel();
         let (local_request_sender_service, local_request_stream) = reply_channel::unbounded();
         let (local_block_sender_service, local_block_stream) = reply_channel::unbounded();
         let outbound_nci =

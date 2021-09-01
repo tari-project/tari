@@ -30,8 +30,8 @@
 
 use super::{handle::WalletConnectivityHandle, service::WalletConnectivityService, watch::Watch};
 use crate::{base_node_service::config::BaseNodeServiceConfig, connectivity_service::service::OnlineStatus};
-use futures::channel::mpsc;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tokio::sync::mpsc;
 
 pub struct WalletConnectivityInitializer {
     config: BaseNodeServiceConfig,
@@ -59,8 +59,13 @@ impl ServiceInitializer for WalletConnectivityInitializer {
 
         context.spawn_until_shutdown(move |handles| {
             let connectivity = handles.expect_handle();
-            let service =
-                WalletConnectivityService::new(config, receiver, base_node_watch, online_status_watch, connectivity);
+            let service = WalletConnectivityService::new(
+                config,
+                receiver,
+                base_node_watch.get_receiver(),
+                online_status_watch,
+                connectivity,
+            );
             service.start()
         });
 

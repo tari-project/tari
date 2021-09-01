@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{Stream, StreamExt};
-use std::{collections::HashMap, hash::Hash, time::Duration};
+use futures::{stream, Stream, StreamExt};
+use std::{borrow::BorrowMut, collections::HashMap, hash::Hash, time::Duration};
+use tokio::sync::{broadcast, mpsc};
 
 #[allow(dead_code)]
 #[allow(clippy::mutable_key_type)] // Note: Clippy Breaks with Interior Mutability Error
@@ -54,7 +55,6 @@ where
 #[macro_export]
 macro_rules! collect_stream {
     ($stream:expr, take=$take:expr, timeout=$timeout:expr $(,)?) => {{
-        use futures::{Stream, StreamExt};
         use tokio::time;
 
         // Evaluate $stream once, NOT in the loop 🐛🚨
@@ -62,14 +62,17 @@ macro_rules! collect_stream {
 
         let mut items = Vec::new();
         loop {
-            if let Some(item) = time::timeout($timeout, stream.next()).await.expect(
-                format!(
-                    "Timeout before stream could collect {} item(s). Got {} item(s).",
-                    $take,
-                    items.len()
+            if let Some(item) = time::timeout($timeout, futures::stream::StreamExt::next(stream))
+                .await
+                .expect(
+                    format!(
+                        "Timeout before stream could collect {} item(s). Got {} item(s).",
+                        $take,
+                        items.len()
+                    )
+                    .as_str(),
                 )
-                .as_str(),
-            ) {
+            {
                 items.push(item);
                 if items.len() == $take {
                     break items;
@@ -80,11 +83,86 @@ macro_rules! collect_stream {
         }
     }};
     ($stream:expr, timeout=$timeout:expr $(,)?) => {{
-        use futures::StreamExt;
         use tokio::time;
 
+        let mut stream = &mut $stream;
         let mut items = Vec::new();
-        while let Some(item) = time::timeout($timeout, $stream.next())
+        while let Some(item) = time::timeout($timeout, futures::stream::StreamExt::next($stream))
+            .await
+            .expect(format!("Timeout before stream was closed. Got {} items.", items.len()).as_str())
+        {
+            items.push(item);
+        }
+        items
+    }};
+}
+
+#[macro_export]
+macro_rules! collect_recv {
+    ($stream:expr, take=$take:expr, timeout=$timeout:expr $(,)?) => {{
+        use tokio::time;
+
+        // Evaluate $stream once, NOT in the loop 🐛🚨
+        let mut stream = &mut $stream;
+
+        let mut items = Vec::new();
+        loop {
+            let item = time::timeout($timeout, stream.recv()).await.expect(&format!(
+                "Timeout before stream could collect {} item(s). Got {} item(s).",
+                $take,
+                items.len()
+            ));
+
+            items.push(item.expect(&format!("{}/{} recv ended early", items.len(), $take)));
+            if items.len() == $take {
+                break items;
+            }
+        }
+    }};
+    ($stream:expr, timeout=$timeout:expr $(,)?) => {{
+        use tokio::time;
+
+        let mut stream = &mut $stream;
+
+        let mut items = Vec::new();
+        while let Some(item) = time::timeout($timeout, stream.recv())
+            .await
+            .expect(format!("Timeout before stream was closed. Got {} items.", items.len()).as_str())
+        {
+            items.push(item);
+        }
+        items
+    }};
+}
+
+#[macro_export]
+macro_rules! collect_try_recv {
+    ($stream:expr, take=$take:expr, timeout=$timeout:expr $(,)?) => {{
+        use tokio::time;
+
+        // Evaluate $stream once, NOT in the loop 🐛🚨
+        let mut stream = &mut $stream;
+
+        let mut items = Vec::new();
+        loop {
+            let item = time::timeout($timeout, stream.recv()).await.expect(&format!(
+                "Timeout before stream could collect {} item(s). Got {} item(s).",
+                $take,
+                items.len()
+            ));
+
+            items.push(item.expect(&format!("{}/{} recv returned unexpected result", items.len(), $take)));
+            if items.len() == $take {
+                break items;
+            }
+        }
+    }};
+    ($stream:expr, timeout=$timeout:expr $(,)?) => {{
+        use tokio::time;
+
+        let mut stream = &mut $stream;
+        let mut items = Vec::new();
+        while let Ok(item) = time::timeout($timeout, stream.recv())
             .await
             .expect(format!("Timeout before stream was closed. Got {} items.", items.len()).as_str())
         {
@@ -102,9 +180,9 @@ macro_rules! collect_stream {
 /// # use std::time::Duration;
 /// # use tari_test_utils::collect_stream_count;
 ///
-/// let mut rt = Runtime::new().unwrap();
+/// let rt = Runtime::new().unwrap();
 /// let mut stream = stream::iter(vec![1,2,2,3,2]);
-/// assert_eq!(rt.block_on(async { collect_stream_count!(stream, timeout=Duration::from_secs(1)) }).get(&2), Some(&3));
+/// assert_eq!(rt.block_on(async { collect_stream_count!(&mut stream, timeout=Duration::from_secs(1)) }).get(&2), Some(&3));
 /// ```
 #[macro_export]
 macro_rules! collect_stream_count {
@@ -138,4 +216,57 @@ where
             panic!("Predicate did not return true before the stream ended");
         }
     }
+}
+
+pub async fn assert_in_mpsc<T, P, R>(rx: &mut mpsc::Receiver<T>, mut predicate: P, timeout: Duration) -> R
+where P: FnMut(T) -> Option<R> {
+    loop {
+        if let Some(item) = tokio::time::timeout(timeout, rx.recv())
+            .await
+            .expect("Timeout before stream emitted")
+        {
+            if let Some(r) = (predicate)(item) {
+                break r;
+            }
+        } else {
+            panic!("Predicate did not return true before the mpsc stream ended");
+        }
+    }
+}
+
+pub async fn assert_in_broadcast<T, P, R>(rx: &mut broadcast::Receiver<T>, mut predicate: P, timeout: Duration) -> R
+where
+    P: FnMut(T) -> Option<R>,
+    T: Clone,
+{
+    loop {
+        if let Ok(item) = tokio::time::timeout(timeout, rx.recv())
+            .await
+            .expect("Timeout before stream emitted")
+        {
+            if let Some(r) = (predicate)(item) {
+                break r;
+            }
+        } else {
+            panic!("Predicate did not return true before the broadcast channel ended");
+        }
+    }
+}
+
+pub fn convert_mpsc_to_stream<T>(rx: &mut mpsc::Receiver<T>) -> impl Stream<Item = T> + '_ {
+    stream::unfold(rx, |rx| async move { rx.recv().await.map(|t| (t, rx)) })
+}
+
+pub fn convert_unbounded_mpsc_to_stream<T>(rx: &mut mpsc::UnboundedReceiver<T>) -> impl Stream<Item = T> + '_ {
+    stream::unfold(rx, |rx| async move { rx.recv().await.map(|t| (t, rx)) })
+}
+
+pub fn convert_broadcast_to_stream<'a, T, S>(rx: S) -> impl Stream<Item = Result<T, broadcast::error::RecvError>> + 'a
+where
+    T: Clone + Send + 'static,
+    S: BorrowMut<broadcast::Receiver<T>> + 'a,
+{
+    stream::unfold(rx, |mut rx| async move {
+        Some(rx.borrow_mut().recv().await).map(|t| (t, rx))
+    })
 }

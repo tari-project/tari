@@ -25,7 +25,6 @@ use crate::{
     outbound::{message_params::FinalSendMessageParams, message_send_state::MessageSendStates},
 };
 use bytes::Bytes;
-use futures::channel::oneshot;
 use std::{fmt, fmt::Display, sync::Arc};
 use tari_comms::{
     message::{MessageTag, MessagingReplyTx},
@@ -34,6 +33,7 @@ use tari_comms::{
 };
 use tari_utilities::hex::Hex;
 use thiserror::Error;
+use tokio::sync::oneshot;
 
 /// Determines if an outbound message should be Encrypted and, if so, for which public key
 #[derive(Debug, Clone, PartialEq, Eq)]

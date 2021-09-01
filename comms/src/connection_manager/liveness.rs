@@ -20,15 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::compat::IoCompat;
-use futures::{AsyncRead, AsyncWrite, Future, StreamExt};
+use futures::StreamExt;
+use std::future::Future;
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::{Framed, LinesCodec, LinesCodecError};
 
 /// Max line length accepted by the liveness session.
 const MAX_LINE_LENGTH: usize = 50;
 
 pub struct LivenessSession<TSocket> {
-    framed: Framed<IoCompat<TSocket>, LinesCodec>,
+    framed: Framed<TSocket, LinesCodec>,
 }
 
 impl<TSocket> LivenessSession<TSocket>
@@ -36,7 +37,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 {
     pub fn new(socket: TSocket) -> Self {
         Self {
-            framed: Framed::new(IoCompat::new(socket), LinesCodec::new_with_max_length(MAX_LINE_LENGTH)),
+            framed: Framed::new(socket, LinesCodec::new_with_max_length(MAX_LINE_LENGTH)),
         }
     }
 
@@ -52,13 +53,14 @@ mod test {
     use crate::{memsocket::MemorySocket, runtime};
     use futures::SinkExt;
     use tokio::{time, time::Duration};
+    use tokio_stream::StreamExt;
 
-    #[runtime::test_basic]
+    #[runtime::test]
     async fn echos() {
         let (inbound, outbound) = MemorySocket::new_pair();
         let liveness = LivenessSession::new(inbound);
         let join_handle = runtime::current().spawn(liveness.run());
-        let mut outbound = Framed::new(IoCompat::new(outbound), LinesCodec::new());
+        let mut outbound = Framed::new(outbound, LinesCodec::new());
         for _ in 0..10usize {
             outbound.send("ECHO".to_string()).await.unwrap()
         }

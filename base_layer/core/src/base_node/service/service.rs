@@ -38,16 +38,7 @@ use crate::{
     proto as shared_protos,
     proto::{base_node as proto, base_node::base_node_service_request::Request},
 };
-use futures::{
-    channel::{
-        mpsc::{channel, Receiver, Sender, UnboundedReceiver},
-        oneshot::Sender as OneshotSender,
-    },
-    pin_mut,
-    stream::StreamExt,
-    SinkExt,
-    Stream,
-};
+use futures::{pin_mut, stream::StreamExt, Stream};
 use log::*;
 use rand::rngs::OsRng;
 use std::{convert::TryInto, sync::Arc, time::Duration};
@@ -64,7 +55,14 @@ use tari_comms_dht::{
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::reply_channel::RequestContext;
-use tokio::task;
+use tokio::{
+    sync::{
+        mpsc,
+        mpsc::{Receiver, Sender, UnboundedReceiver},
+        oneshot::Sender as OneshotSender,
+    },
+    task,
+};
 
 const LOG_TARGET: &str = "c::bn::base_node_service::service";
 
@@ -134,7 +132,7 @@ where B: BlockchainBackend + 'static
         config: BaseNodeServiceConfig,
         state_machine_handle: StateMachineHandle,
     ) -> Self {
-        let (timeout_sender, timeout_receiver) = channel(100);
+        let (timeout_sender, timeout_receiver) = mpsc::channel(100);
         Self {
             outbound_message_service,
             inbound_nch,
@@ -162,7 +160,7 @@ where B: BlockchainBackend + 'static
     {
         let outbound_request_stream = streams.outbound_request_stream.fuse();
         pin_mut!(outbound_request_stream);
-        let outbound_block_stream = streams.outbound_block_stream.fuse();
+        let outbound_block_stream = streams.outbound_block_stream;
         pin_mut!(outbound_block_stream);
         let inbound_request_stream = streams.inbound_request_stream.fuse();
         pin_mut!(inbound_request_stream);
@@ -177,53 +175,52 @@ where B: BlockchainBackend + 'static
         let timeout_receiver_stream = self
             .timeout_receiver_stream
             .take()
-            .expect("Base Node Service initialized without timeout_receiver_stream")
-            .fuse();
+            .expect("Base Node Service initialized without timeout_receiver_stream");
         pin_mut!(timeout_receiver_stream);
         loop {
-            futures::select! {
+            tokio::select! {
                 // Outbound request messages from the OutboundNodeCommsInterface
-                outbound_request_context = outbound_request_stream.select_next_some() => {
+                Some(outbound_request_context) = outbound_request_stream.next() => {
                     self.spawn_handle_outbound_request(outbound_request_context);
                 },
 
                 // Outbound block messages from the OutboundNodeCommsInterface
-                (block, excluded_peers) = outbound_block_stream.select_next_some() => {
+                Some((block, excluded_peers)) = outbound_block_stream.recv() => {
                     self.spawn_handle_outbound_block(block, excluded_peers);
                 },
 
                 // Incoming request messages from the Comms layer
-                domain_msg = inbound_request_stream.select_next_some() => {
+                Some(domain_msg) = inbound_request_stream.next() => {
                     self.spawn_handle_incoming_request(domain_msg);
                 },
 
                 // Incoming response messages from the Comms layer
-                domain_msg = inbound_response_stream.select_next_some() => {
+                Some(domain_msg) = inbound_response_stream.next() => {
                     self.spawn_handle_incoming_response(domain_msg);
                 },
 
                 // Timeout events for waiting requests
-                timeout_request_key = timeout_receiver_stream.select_next_some() => {
+                Some(timeout_request_key) = timeout_receiver_stream.recv() => {
                     self.spawn_handle_request_timeout(timeout_request_key);
                 },
 
                 // Incoming block messages from the Comms layer
-                block_msg = inbound_block_stream.select_next_some() => {
+                Some(block_msg) = inbound_block_stream.next() => {
                     self.spawn_handle_incoming_block(block_msg).await;
                 }
 
                 // Incoming local request messages from the LocalNodeCommsInterface and other local services
-                local_request_context = local_request_stream.select_next_some() => {
+                Some(local_request_context) = local_request_stream.next() => {
                     self.spawn_handle_local_request(local_request_context);
                 },
 
                 // Incoming local block messages from the LocalNodeCommsInterface e.g. miner and block sync
-                local_block_context = local_block_stream.select_next_some() => {
+                Some(local_block_context) = local_block_stream.next() => {
                     self.spawn_handle_local_block(local_block_context);
                 },
 
-                complete => {
-                    info!(target: LOG_TARGET, "Base Node service shutting down");
+                else => {
+                    info!(target: LOG_TARGET, "Base Node service shutting down because all streams ended");
                     break;
                 }
             }
@@ -646,9 +643,9 @@ async fn handle_request_timeout(
     Ok(())
 }
 
-fn spawn_request_timeout(mut timeout_sender: Sender<RequestKey>, request_key: RequestKey, timeout: Duration) {
+fn spawn_request_timeout(timeout_sender: Sender<RequestKey>, request_key: RequestKey, timeout: Duration) {
     task::spawn(async move {
-        tokio::time::delay_for(timeout).await;
+        tokio::time::sleep(timeout).await;
         let _ = timeout_sender.send(request_key).await;
     });
 }

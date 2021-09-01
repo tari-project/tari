@@ -26,7 +26,7 @@ use crate::{
         consts::{MEMPOOL_REORG_POOL_CACHE_TTL, MEMPOOL_REORG_POOL_STORAGE_CAPACITY},
         reorg_pool::{ReorgPoolError, ReorgPoolStorage},
     },
-    transactions::{transaction::Transaction, types::Signature},
+    transactions::transaction::Transaction,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -34,6 +34,7 @@ use std::{
     time::Duration,
 };
 use tari_common::configuration::seconds;
+use tari_common_types::types::Signature;
 
 /// Configuration for the ReorgPool
 #[derive(Clone, Copy, Deserialize, Serialize)]

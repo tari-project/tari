@@ -38,13 +38,7 @@ use crate::{
     proto,
     transactions::transaction::Transaction,
 };
-use futures::{
-    channel::{mpsc, oneshot::Sender as OneshotSender},
-    pin_mut,
-    stream::StreamExt,
-    SinkExt,
-    Stream,
-};
+use futures::{pin_mut, stream::StreamExt, Stream};
 use log::*;
 use rand::rngs::OsRng;
 use std::{convert::TryInto, sync::Arc, time::Duration};
@@ -58,7 +52,10 @@ use tari_comms_dht::{
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::{reply_channel, reply_channel::RequestContext};
-use tokio::task;
+use tokio::{
+    sync::{mpsc, oneshot::Sender as OneshotSender},
+    task,
+};
 
 const LOG_TARGET: &str = "c::mempool::service::service";
 
@@ -118,7 +115,7 @@ impl MempoolService {
     {
         let outbound_request_stream = streams.outbound_request_stream.fuse();
         pin_mut!(outbound_request_stream);
-        let mut outbound_tx_stream = streams.outbound_tx_stream.fuse();
+        let mut outbound_tx_stream = streams.outbound_tx_stream;
         let inbound_request_stream = streams.inbound_request_stream.fuse();
         pin_mut!(inbound_request_stream);
         let inbound_response_stream = streams.inbound_response_stream.fuse();
@@ -127,70 +124,70 @@ impl MempoolService {
         pin_mut!(inbound_transaction_stream);
         let local_request_stream = streams.local_request_stream.fuse();
         pin_mut!(local_request_stream);
-        let mut block_event_stream = streams.block_event_stream.fuse();
+        let mut block_event_stream = streams.block_event_stream;
         let mut timeout_receiver_stream = self
             .timeout_receiver_stream
             .take()
-            .expect("Mempool Service initialized without timeout_receiver_stream")
-            .fuse();
+            .expect("Mempool Service initialized without timeout_receiver_stream");
         let mut request_receiver = streams.request_receiver;
 
         loop {
-            futures::select! {
+            tokio::select! {
                 // Requests sent from the handle
-                request = request_receiver.select_next_some() => {
+                Some(request) = request_receiver.next() => {
                     let (request, reply) = request.split();
                     let _ = reply.send(self.handle_request(request).await);
                 },
 
                 // Outbound request messages from the OutboundMempoolServiceInterface
-                outbound_request_context = outbound_request_stream.select_next_some() => {
+                Some(outbound_request_context) = outbound_request_stream.next() => {
                     self.spawn_handle_outbound_request(outbound_request_context);
                 },
 
                 // Outbound tx messages from the OutboundMempoolServiceInterface
-                (txn, excluded_peers) = outbound_tx_stream.select_next_some() => {
+                Some((txn, excluded_peers)) = outbound_tx_stream.recv() => {
                     self.spawn_handle_outbound_tx(txn, excluded_peers);
                 },
 
                 // Incoming request messages from the Comms layer
-                domain_msg = inbound_request_stream.select_next_some() => {
+                Some(domain_msg) = inbound_request_stream.next() => {
                     self.spawn_handle_incoming_request(domain_msg);
                 },
 
                 // Incoming response messages from the Comms layer
-                domain_msg = inbound_response_stream.select_next_some() => {
+                Some(domain_msg) = inbound_response_stream.next() => {
                     self.spawn_handle_incoming_response(domain_msg);
                 },
 
                 // Incoming transaction messages from the Comms layer
-                transaction_msg = inbound_transaction_stream.select_next_some() => {
+                Some(transaction_msg) = inbound_transaction_stream.next() => {
                     self.spawn_handle_incoming_tx(transaction_msg).await;
                 }
 
                 // Incoming local request messages from the LocalMempoolServiceInterface and other local services
-                local_request_context = local_request_stream.select_next_some() => {
+                Some(local_request_context) = local_request_stream.next() => {
                     self.spawn_handle_local_request(local_request_context);
                 },
 
                 // Block events from local Base Node.
-                block_event = block_event_stream.select_next_some() => {
+                block_event = block_event_stream.recv() => {
                     if let Ok(block_event) = block_event {
                         self.spawn_handle_block_event(block_event);
                     }
                 },
 
                 // Timeout events for waiting requests
-                timeout_request_key = timeout_receiver_stream.select_next_some() => {
+                Some(timeout_request_key) = timeout_receiver_stream.recv() => {
                     self.spawn_handle_request_timeout(timeout_request_key);
                 },
 
-                complete => {
+                else => {
                     info!(target: LOG_TARGET, "Mempool service shutting down");
                     break;
                 }
             }
         }
+
         Ok(())
     }
 
@@ -490,7 +487,7 @@ async fn handle_outbound_tx(
     exclude_peers: Vec<NodeId>,
 ) -> Result<(), MempoolServiceError> {
     let result = outbound_message_service
-        .propagate(
+        .flood(
             NodeDestination::Unknown,
             OutboundEncryption::ClearText,
             exclude_peers,
@@ -506,9 +503,9 @@ async fn handle_outbound_tx(
     Ok(())
 }
 
-fn spawn_request_timeout(mut timeout_sender: mpsc::Sender<RequestKey>, request_key: RequestKey, timeout: Duration) {
+fn spawn_request_timeout(timeout_sender: mpsc::Sender<RequestKey>, request_key: RequestKey, timeout: Duration) {
     task::spawn(async move {
-        tokio::time::delay_for(timeout).await;
+        tokio::time::sleep(timeout).await;
         let _ = timeout_sender.send(request_key).await;
     });
 }

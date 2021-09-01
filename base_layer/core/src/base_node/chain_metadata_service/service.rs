@@ -29,7 +29,6 @@ use crate::{
     chain_storage::BlockAddResult,
     proto::base_node as proto,
 };
-use futures::stream::StreamExt;
 use log::*;
 use num_format::{Locale, ToFormattedString};
 use prost::Message;
@@ -75,9 +74,9 @@ impl ChainMetadataService {
 
     /// Run the service
     pub async fn run(mut self) {
-        let mut liveness_event_stream = self.liveness.get_event_stream().fuse();
-        let mut block_event_stream = self.base_node.get_block_event_stream().fuse();
-        let mut connectivity_events = self.connectivity.get_event_subscription().fuse();
+        let mut liveness_event_stream = self.liveness.get_event_stream();
+        let mut block_event_stream = self.base_node.get_block_event_stream();
+        let mut connectivity_events = self.connectivity.get_event_subscription();
 
         log_if_error!(
             target: LOG_TARGET,
@@ -86,47 +85,36 @@ impl ChainMetadataService {
         );
 
         loop {
-            futures::select! {
-                block_event = block_event_stream.select_next_some() => {
-                    if let Ok(block_event) = block_event {
-                        log_if_error!(
-                            level: debug,
-                            target: LOG_TARGET,
-                            "Failed to handle block event because '{}'",
-                            self.handle_block_event(&block_event).await
-                        );
-                    }
+            tokio::select! {
+                Ok(block_event) = block_event_stream.recv() => {
+                    log_if_error!(
+                        level: debug,
+                        target: LOG_TARGET,
+                        "Failed to handle block event because '{}'",
+                        self.handle_block_event(&block_event).await
+                    );
                 },
 
-                liveness_event = liveness_event_stream.select_next_some() => {
-                    if let Ok(event) = liveness_event {
-                        log_if_error!(
-                            target: LOG_TARGET,
-                            "Failed to handle liveness event because '{}'",
-                            self.handle_liveness_event(&*event).await
-                        );
-                    }
+                Ok(event) = liveness_event_stream.recv() => {
+                    log_if_error!(
+                        target: LOG_TARGET,
+                        "Failed to handle liveness event because '{}'",
+                        self.handle_liveness_event(&*event).await
+                    );
                 },
 
-                event = connectivity_events.select_next_some() => {
-                    if let Ok(event) = event {
-                        self.handle_connectivity_event(&*event);
-                    }
-                }
-
-                complete => {
-                    info!(target: LOG_TARGET, "ChainStateSyncService is exiting because all tasks have completed");
-                    break;
+                Ok(event) = connectivity_events.recv() => {
+                    self.handle_connectivity_event(event);
                 }
             }
         }
     }
 
-    fn handle_connectivity_event(&mut self, event: &ConnectivityEvent) {
+    fn handle_connectivity_event(&mut self, event: ConnectivityEvent) {
         use ConnectivityEvent::*;
         match event {
             PeerDisconnected(node_id) | ManagedPeerDisconnected(node_id) | PeerBanned(node_id) => {
-                if let Some(pos) = self.peer_chain_metadata.iter().position(|p| &p.node_id == node_id) {
+                if let Some(pos) = self.peer_chain_metadata.iter().position(|p| p.node_id == node_id) {
                     debug!(
                         target: LOG_TARGET,
                         "Removing disconnected/banned peer `{}` from chain metadata list ", node_id
@@ -164,7 +152,7 @@ impl ChainMetadataService {
 
     async fn handle_liveness_event(&mut self, event: &LivenessEvent) -> Result<(), ChainMetadataSyncError> {
         match event {
-            // Received a ping, check if our neighbour sent it and it contains ChainMetadata
+            // Received a ping, check if it contains ChainMetadata
             LivenessEvent::ReceivedPing(event) => {
                 trace!(
                     target: LOG_TARGET,
@@ -172,6 +160,7 @@ impl ChainMetadataService {
                     event.node_id
                 );
                 self.collect_chain_state_from_ping(&event.node_id, &event.metadata)?;
+                self.send_chain_metadata_to_event_publisher().await?;
             },
             // Received a pong, check if our neighbour sent it and it contains ChainMetadata
             LivenessEvent::ReceivedPong(event) => {
@@ -181,11 +170,7 @@ impl ChainMetadataService {
                     event.node_id
                 );
                 self.collect_chain_state_from_pong(&event.node_id, &event.metadata)?;
-
-                // All peers have responded in this round, send the chain metadata to the base node service
-                if self.peer_chain_metadata.len() >= self.peer_chain_metadata.capacity() {
-                    self.flush_chain_metadata_to_event_publisher().await?;
-                }
+                self.send_chain_metadata_to_event_publisher().await?;
             },
             // New ping round has begun
             LivenessEvent::PingRoundBroadcast(num_peers) => {
@@ -193,11 +178,9 @@ impl ChainMetadataService {
                     target: LOG_TARGET,
                     "New chain metadata round sent to {} peer(s)", num_peers
                 );
-                // If we have chain metadata to send to the base node service, send them now
-                // because the next round of pings is happening.
-                self.flush_chain_metadata_to_event_publisher().await?;
                 // Ensure that we're waiting for the correct amount of peers to respond
                 // and have allocated space for their replies
+
                 self.resize_chainstate_buffer(*num_peers);
             },
         }
@@ -205,13 +188,13 @@ impl ChainMetadataService {
         Ok(())
     }
 
-    async fn flush_chain_metadata_to_event_publisher(&mut self) -> Result<(), ChainMetadataSyncError> {
-        let chain_metadata = self.peer_chain_metadata.drain(..).collect::<Vec<_>>();
-
+    async fn send_chain_metadata_to_event_publisher(&mut self) -> Result<(), ChainMetadataSyncError> {
         // send only fails if there are no subscribers.
         let _ = self
             .event_publisher
-            .send(Arc::new(ChainMetadataEvent::PeerChainMetadataReceived(chain_metadata)));
+            .send(Arc::new(ChainMetadataEvent::PeerChainMetadataReceived(
+                self.peer_chain_metadata.clone(),
+            )));
 
         Ok(())
     }
@@ -289,7 +272,6 @@ impl ChainMetadataService {
 
         self.peer_chain_metadata
             .push(PeerChainMetadata::new(node_id.clone(), chain_metadata));
-
         Ok(())
     }
 }
@@ -298,6 +280,7 @@ impl ChainMetadataService {
 mod test {
     use super::*;
     use crate::base_node::comms_interface::{CommsInterfaceError, NodeCommsRequest, NodeCommsResponse};
+    use futures::StreamExt;
     use std::convert::TryInto;
     use tari_comms::test_utils::{
         mocks::{create_connectivity_mock, ConnectivityManagerMockState},
@@ -361,7 +344,7 @@ mod test {
         )
     }
 
-    #[tokio_macros::test]
+    #[tokio::test]
     async fn update_liveness_chain_metadata() {
         let (mut service, liveness_mock_state, _, mut base_node_receiver) = setup();
 
@@ -370,11 +353,11 @@ mod test {
         let chain_metadata = proto_chain_metadata.clone().try_into().unwrap();
 
         task::spawn(async move {
-            let base_node_req = base_node_receiver.select_next_some().await;
-            let (_req, reply_tx) = base_node_req.split();
-            reply_tx
-                .send(Ok(NodeCommsResponse::ChainMetadata(chain_metadata)))
-                .unwrap();
+            if let Some(base_node_req) = base_node_receiver.next().await {
+                base_node_req
+                    .reply(Ok(NodeCommsResponse::ChainMetadata(chain_metadata)))
+                    .unwrap();
+            }
         });
 
         service.update_liveness_chain_metadata().await.unwrap();
@@ -387,7 +370,7 @@ mod test {
         let chain_metadata = proto::ChainMetadata::decode(data.as_slice()).unwrap();
         assert_eq!(chain_metadata.height_of_longest_chain, Some(123));
     }
-    #[tokio_macros::test_basic]
+    #[tokio::test]
     async fn handle_liveness_event_ok() {
         let (mut service, _, _, _) = setup();
 
@@ -416,7 +399,7 @@ mod test {
         );
     }
 
-    #[tokio_macros::test_basic]
+    #[tokio::test]
     async fn handle_liveness_event_banned_peer() {
         let (mut service, _, _, _) = setup();
 
@@ -442,7 +425,7 @@ mod test {
             .peer_chain_metadata
             .iter()
             .any(|p| &p.node_id == nodes[0].node_id()));
-        service.handle_connectivity_event(&ConnectivityEvent::PeerBanned(nodes[0].node_id().clone()));
+        service.handle_connectivity_event(ConnectivityEvent::PeerBanned(nodes[0].node_id().clone()));
         // Check that banned peer was removed
         assert!(service
             .peer_chain_metadata
@@ -450,7 +433,7 @@ mod test {
             .all(|p| &p.node_id != nodes[0].node_id()));
     }
 
-    #[tokio_macros::test_basic]
+    #[tokio::test]
     async fn handle_liveness_event_no_metadata() {
         let (mut service, _, _, _) = setup();
 
@@ -468,7 +451,7 @@ mod test {
         assert_eq!(service.peer_chain_metadata.len(), 0);
     }
 
-    #[tokio_macros::test_basic]
+    #[tokio::test]
     async fn handle_liveness_event_bad_metadata() {
         let (mut service, _, _, _) = setup();
 

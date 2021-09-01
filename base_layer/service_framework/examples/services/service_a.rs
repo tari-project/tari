@@ -69,7 +69,7 @@ impl ServiceA {
         pin_mut!(request_stream);
 
         loop {
-            futures::select! {
+            tokio::select! {
                 //Incoming request
                 request_context = request_stream.select_next_some() => {
                     println!("Handling Service A API Request");
@@ -82,7 +82,7 @@ impl ServiceA {
                     response.push_str(request.clone().as_str());
                     let _ = reply_tx.send(response);
                 },
-                _ = shutdown_signal => {
+                _ = shutdown_signal.wait() => {
                     println!("Service A shutting down because the shutdown signal was received");
                     break;
                 }

@@ -36,20 +36,17 @@ use crate::{
     transports::{TcpTransport, Transport},
     PeerManager,
 };
-use futures::{
-    channel::{mpsc, oneshot},
-    stream::Fuse,
-    AsyncRead,
-    AsyncWrite,
-    SinkExt,
-    StreamExt,
-};
 use log::*;
 use multiaddr::Multiaddr;
 use std::{fmt, sync::Arc};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use time::Duration;
-use tokio::{sync::broadcast, task, time};
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::{broadcast, mpsc, oneshot},
+    task,
+    time,
+};
 use tracing::{span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::connection_manager::manager";
@@ -156,8 +153,8 @@ impl ListenerInfo {
 }
 
 pub struct ConnectionManager<TTransport, TBackoff> {
-    request_rx: Fuse<mpsc::Receiver<ConnectionManagerRequest>>,
-    internal_event_rx: Fuse<mpsc::Receiver<ConnectionManagerEvent>>,
+    request_rx: mpsc::Receiver<ConnectionManagerRequest>,
+    internal_event_rx: mpsc::Receiver<ConnectionManagerEvent>,
     dialer_tx: mpsc::Sender<DialerRequest>,
     dialer: Option<Dialer<TTransport, TBackoff>>,
     listener: Option<PeerListener<TTransport>>,
@@ -230,10 +227,10 @@ where
 
         Self {
             shutdown_signal: Some(shutdown_signal),
-            request_rx: request_rx.fuse(),
+            request_rx,
             peer_manager,
             protocols: Protocols::new(),
-            internal_event_rx: internal_event_rx.fuse(),
+            internal_event_rx,
             dialer_tx,
             dialer: Some(dialer),
             listener: Some(listener),
@@ -266,7 +263,7 @@ where
             .take()
             .expect("ConnectionManager initialized without a shutdown");
 
-        // Runs the listeners, waiting for a
+        // Runs the listeners. Sockets are bound and ready once this resolves
         match self.run_listeners().await {
             Ok(info) => {
                 self.listener_info = Some(info);
@@ -293,16 +290,16 @@ where
                 .join(", ")
         );
         loop {
-            futures::select! {
-                event = self.internal_event_rx.select_next_some() => {
+            tokio::select! {
+                Some(event) = self.internal_event_rx.recv() => {
                     self.handle_event(event).await;
                 },
 
-                request = self.request_rx.select_next_some() => {
+                Some(request) = self.request_rx.recv() => {
                     self.handle_request(request).await;
                 },
 
-                _ = shutdown => {
+                _ = &mut shutdown => {
                     info!(target: LOG_TARGET, "ConnectionManager is shutting down because it received the shutdown signal");
                     break;
                 }

@@ -51,10 +51,9 @@ use crate::{
     tor,
     types::CommsDatabase,
 };
-use futures::channel::mpsc;
 use std::{fs::File, sync::Arc};
 use tari_shutdown::ShutdownSignal;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 
 /// The `CommsBuilder` provides a simple builder API for getting Tari comms p2p messaging up and running.
 pub struct CommsBuilder {

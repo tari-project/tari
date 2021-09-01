@@ -153,7 +153,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             self.forward(&message).await?;
         }
 
-        // The message has been forwarded, but other middleware may be interested (i.e. StoreMiddleware)
+        // The message has been forwarded, but downstream middleware may be interested
         trace!(
             target: LOG_TARGET,
             "Passing message {} to next service (Trace: {})",
@@ -205,8 +205,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         }
 
         let body = decryption_result
-            .clone()
+            .as_ref()
             .err()
+            .cloned()
             .expect("previous check that decryption failed");
 
         let excluded_peers = vec![source_peer.node_id.clone()];
@@ -262,14 +263,13 @@ mod test {
         outbound::mock::create_outbound_service_mock,
         test_utils::{make_dht_inbound_message, make_node_identity, service_spy},
     };
-    use futures::{channel::mpsc, executor::block_on};
-    use tari_comms::wrap_in_envelope_body;
-    use tokio::runtime::Runtime;
+    use tari_comms::{runtime, runtime::task, wrap_in_envelope_body};
+    use tokio::sync::mpsc;
 
-    #[test]
-    fn decryption_succeeded() {
+    #[runtime::test]
+    async fn decryption_succeeded() {
         let spy = service_spy();
-        let (oms_tx, mut oms_rx) = mpsc::channel(1);
+        let (oms_tx, _) = mpsc::channel(1);
         let oms = OutboundMessageRequester::new(oms_tx);
         let mut service = ForwardLayer::new(oms, true).layer(spy.to_service::<PipelineError>());
 
@@ -280,18 +280,16 @@ mod test {
             Some(node_identity.public_key().clone()),
             inbound_msg,
         );
-        block_on(service.call(msg)).unwrap();
+        service.call(msg).await.unwrap();
         assert!(spy.is_called());
-        assert!(oms_rx.try_next().is_err());
     }
 
-    #[test]
-    fn decryption_failed() {
-        let mut rt = Runtime::new().unwrap();
+    #[runtime::test]
+    async fn decryption_failed() {
         let spy = service_spy();
         let (oms_requester, oms_mock) = create_outbound_service_mock(1);
         let oms_mock_state = oms_mock.get_state();
-        rt.spawn(oms_mock.run());
+        task::spawn(oms_mock.run());
 
         let mut service = ForwardLayer::new(oms_requester, true).layer(spy.to_service::<PipelineError>());
 
@@ -304,7 +302,7 @@ mod test {
         );
         let header = inbound_msg.dht_header.clone();
         let msg = DecryptedDhtMessage::failed(inbound_msg);
-        rt.block_on(service.call(msg)).unwrap();
+        service.call(msg).await.unwrap();
         assert!(spy.is_called());
 
         assert_eq!(oms_mock_state.call_count(), 1);

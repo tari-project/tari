@@ -20,14 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    blocks::NewBlockTemplate,
-    chain_storage::MmrTree,
-    proof_of_work::PowAlgorithm,
-    transactions::types::{Commitment, HashOutput, Signature},
-};
+use crate::{blocks::NewBlockTemplate, chain_storage::MmrTree, proof_of_work::PowAlgorithm};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
+use tari_common_types::types::{Commitment, HashOutput, Signature};
 use tari_crypto::tari_utilities::hex::Hex;
 
 /// A container for the parameters required for a FetchMmrState request.

@@ -21,13 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{dht::DhtInitializationError, outbound::DhtOutboundRequest, DbConnectionUrl, Dht, DhtConfig};
-use futures::channel::mpsc;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
     connectivity::ConnectivityRequester,
     peer_manager::{NodeIdentity, PeerManager},
 };
 use tari_shutdown::ShutdownSignal;
+use tokio::sync::mpsc;
 
 pub struct DhtBuilder {
     node_identity: Arc<NodeIdentity>,
@@ -96,6 +96,11 @@ impl DhtBuilder {
 
     pub fn with_dedup_cache_capacity(mut self, capacity: usize) -> Self {
         self.config.dedup_cache_capacity = capacity;
+        self
+    }
+
+    pub fn with_dedup_discard_hit_count(mut self, max_hit_count: usize) -> Self {
+        self.config.dedup_allowed_message_occurrences = max_hit_count;
         self
     }
 

@@ -39,7 +39,7 @@ fn to_abs_path(path: &str) -> String {
     }
 }
 
-#[tokio_macros::main]
+#[tokio::main]
 async fn main() {
     let matches = App::new("Tor identity file generator")
         .version("1.0")

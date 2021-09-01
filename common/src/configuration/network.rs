@@ -37,6 +37,7 @@ pub enum Network {
     Ridcully = 0x21,
     Stibbons = 0x22,
     Weatherwax = 0x23,
+    Igor = 0x24,
 }
 
 impl Network {
@@ -51,6 +52,7 @@ impl Network {
             Ridcully => "ridcully",
             Stibbons => "stibbons",
             Weatherwax => "weatherwax",
+            Igor => "igor",
             LocalNet => "localnet",
         }
     }
@@ -73,6 +75,7 @@ impl FromStr for Network {
             "weatherwax" => Ok(Weatherwax),
             "mainnet" => Ok(MainNet),
             "localnet" => Ok(LocalNet),
+            "igor" => Ok(Igor),
             invalid => Err(ConfigurationError::new(
                 "network",
                 &format!("Invalid network option: {}", invalid),

@@ -20,8 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::Sink;
-use std::{error::Error, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 use tari_comms::{
     message::MessageTag,
     multiaddr::Multiaddr,
@@ -32,7 +31,7 @@ use tari_comms::{
 };
 use tari_comms_dht::{envelope::DhtMessageHeader, Dht};
 use tari_p2p::{
-    comms_connector::{InboundDomainConnector, PeerMessage},
+    comms_connector::InboundDomainConnector,
     domain_message::DomainMessage,
     initialization::initialize_local_test_comms,
 };
@@ -43,18 +42,14 @@ pub fn get_next_memory_address() -> Multiaddr {
     format!("/memory/{}", port).parse().unwrap()
 }
 
-pub async fn setup_comms_services<TSink>(
+pub async fn setup_comms_services(
     node_identity: Arc<NodeIdentity>,
     peers: Vec<Arc<NodeIdentity>>,
-    publisher: InboundDomainConnector<TSink>,
+    publisher: InboundDomainConnector,
     database_path: String,
     discovery_request_timeout: Duration,
     shutdown_signal: ShutdownSignal,
-) -> (CommsNode, Dht)
-where
-    TSink: Sink<Arc<PeerMessage>> + Clone + Unpin + Send + Sync + 'static,
-    TSink::Error: Error + Send + Sync,
-{
+) -> (CommsNode, Dht) {
     let peers = peers.into_iter().map(|ni| ni.to_peer()).collect();
     let (comms, dht, _) = initialize_local_test_comms(
         node_identity,

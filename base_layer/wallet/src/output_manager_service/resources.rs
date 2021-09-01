@@ -20,6 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
+use tari_core::{consensus::ConsensusConstants, transactions::CryptoFactories};
+use tari_shutdown::ShutdownSignal;
+
 use crate::{
     output_manager_service::{
         config::OutputManagerServiceConfig,
@@ -29,10 +35,6 @@ use crate::{
     },
     transaction_service::handle::TransactionServiceHandle,
 };
-use std::sync::Arc;
-use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
-use tari_core::{consensus::ConsensusConstants, transactions::types::CryptoFactories};
-use tari_shutdown::ShutdownSignal;
 
 /// This struct is a collection of the common resources that a async task in the service requires.
 #[derive(Clone)]

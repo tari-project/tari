@@ -20,7 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use num::pow;
+use rand::rngs::OsRng;
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    common::Blake256,
+    inputs,
+    keys::{PublicKey as PK, SecretKey},
+    range_proof::RangeProofService,
+    script,
+    script::{ExecutionStack, TariScript},
+};
+
 use crate::transactions::{
+    crypto_factories::CryptoFactories,
     fee::Fee,
     tari_amount::MicroTari,
     transaction::{
@@ -34,21 +49,9 @@ use crate::transactions::{
         UnblindedOutput,
     },
     transaction_protocol::{build_challenge, TransactionMetadata},
-    types::{Commitment, CommitmentFactory, CryptoFactories, PrivateKey, PublicKey, Signature},
     SenderTransactionProtocol,
 };
-use num::pow;
-use rand::rngs::OsRng;
-use std::sync::Arc;
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    common::Blake256,
-    inputs,
-    keys::{PublicKey as PK, SecretKey},
-    range_proof::RangeProofService,
-    script,
-    script::{ExecutionStack, TariScript},
-};
+use tari_common_types::types::{Commitment, CommitmentFactory, PrivateKey, PublicKey, Signature};
 
 pub fn create_test_input(
     amount: MicroTari,

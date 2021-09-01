@@ -20,7 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{data::get_temp_sqlite_database_connection, utils::make_input};
+use std::time::Duration;
+
 use aes_gcm::{
     aead::{generic_array::GenericArray, NewAead},
     Aes256Gcm,
@@ -28,14 +29,16 @@ use aes_gcm::{
 use chrono::{Duration as ChronoDuration, Utc};
 use diesel::result::{DatabaseErrorKind, Error::DatabaseError};
 use rand::{rngs::OsRng, RngCore};
-use std::time::Duration;
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey, script::TariScript};
+use tokio::runtime::Runtime;
+
+use tari_common_types::types::PrivateKey;
 use tari_core::transactions::{
     helpers::{create_unblinded_output, TestParams},
     tari_amount::MicroTari,
     transaction::OutputFeatures,
-    types::{CryptoFactories, PrivateKey},
+    CryptoFactories,
 };
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey, script::TariScript};
 use tari_wallet::output_manager_service::{
     error::OutputManagerStorageError,
     service::Balance,
@@ -46,11 +49,11 @@ use tari_wallet::output_manager_service::{
     },
 };
 
-use tokio::runtime::Runtime;
+use crate::support::{data::get_temp_sqlite_database_connection, utils::make_input};
 
 #[allow(clippy::same_item_push)]
 pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
-    let mut runtime = Runtime::new().unwrap();
+    let runtime = Runtime::new().unwrap();
 
     let db = OutputManagerDatabase::new(backend);
     let factories = CryptoFactories::default();
@@ -392,7 +395,7 @@ pub fn test_output_manager_sqlite_db_encrypted() {
 
 #[test]
 pub fn test_key_manager_crud() {
-    let mut runtime = Runtime::new().unwrap();
+    let runtime = Runtime::new().unwrap();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection, None);
     let db = OutputManagerDatabase::new(backend);
@@ -429,7 +432,7 @@ pub fn test_key_manager_crud() {
     assert_eq!(read_state3.primary_key_index, 2);
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 pub async fn test_short_term_encumberance() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
@@ -510,7 +513,7 @@ pub async fn test_short_term_encumberance() {
     );
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 pub async fn test_no_duplicate_outputs() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();

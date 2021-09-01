@@ -32,6 +32,7 @@ use petgraph::{
 };
 use std::{collections::HashMap, convert::TryFrom, fs, fs::File, io::Write, path::Path, process::Command, sync::Mutex};
 use tari_comms::{connectivity::ConnectivitySelection, peer_manager::NodeId};
+use tari_test_utils::streams::convert_unbounded_mpsc_to_stream;
 
 const TEMP_GRAPH_OUTPUT_DIR: &str = "/tmp/memorynet_temp";
 
@@ -277,7 +278,9 @@ pub enum PythonRenderType {
 /// This function will drain the message event queue and then build a message propagation tree assuming the first sender
 /// is the starting node
 pub async fn track_join_message_drain_messaging_events(messaging_rx: &mut NodeEventRx) -> StableGraph<NodeId, String> {
-    let drain_fut = DrainBurst::new(messaging_rx);
+    let stream = convert_unbounded_mpsc_to_stream(messaging_rx);
+    tokio::pin!(stream);
+    let drain_fut = DrainBurst::new(&mut stream);
 
     let messages = drain_fut.await;
     let num_messages = messages.len();

@@ -26,6 +26,7 @@ use crate::{
     connectivity::{DhtConnectivity, MetricsCollector, MetricsCollectorHandle},
     discovery::{DhtDiscoveryRequest, DhtDiscoveryRequester, DhtDiscoveryService},
     event::{DhtEventReceiver, DhtEventSender},
+    filter,
     inbound,
     inbound::{DecryptedDhtMessage, DhtInboundMessage, MetricsLayer},
     logging_middleware::MessageLoggingLayer,
@@ -37,12 +38,11 @@ use crate::{
     storage::{DbConnection, StorageError},
     store_forward,
     store_forward::{StoreAndForwardError, StoreAndForwardRequest, StoreAndForwardRequester, StoreAndForwardService},
-    tower_filter,
     DedupLayer,
     DhtActorError,
     DhtConfig,
 };
-use futures::{channel::mpsc, future, Future};
+use futures::Future;
 use log::*;
 use std::sync::Arc;
 use tari_comms::{
@@ -53,7 +53,7 @@ use tari_comms::{
 };
 use tari_shutdown::ShutdownSignal;
 use thiserror::Error;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 use tower::{layer::Layer, Service, ServiceBuilder};
 
 const LOG_TARGET: &str = "comms::dht";
@@ -285,13 +285,14 @@ impl Dht {
         S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Clone + Send + Sync + 'static,
         S::Future: Send,
     {
-        // FIXME: There is an unresolved stack overflow issue on windows in debug mode during runtime, but not in
-        //        release mode, related to the amount of layers. (issue #1416)
         ServiceBuilder::new()
             .layer(MetricsLayer::new(self.metrics_collector.clone()))
             .layer(inbound::DeserializeLayer::new(self.peer_manager.clone()))
-            .layer(DedupLayer::new(self.dht_requester()))
-            .layer(tower_filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
+            .layer(DedupLayer::new(
+                self.dht_requester(),
+                self.config.dedup_allowed_message_occurrences,
+            ))
+            .layer(filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
             .layer(MessageLoggingLayer::new(format!(
                 "Inbound [{}]",
                 self.node_identity.node_id().short_str()
@@ -301,6 +302,7 @@ impl Dht {
                 self.node_identity.clone(),
                 self.connectivity.clone(),
             ))
+            .layer(filter::FilterLayer::new(filter_messages_to_rebroadcast))
             .layer(store_forward::StoreLayer::new(
                 self.config.clone(),
                 Arc::clone(&self.peer_manager),
@@ -363,31 +365,57 @@ impl Dht {
 
     /// Produces a filter predicate which disallows store and forward messages if that feature is not
     /// supported by the node.
-    fn unsupported_saf_messages_filter(
-        &self,
-    ) -> impl tower_filter::Predicate<DhtInboundMessage, Future = future::Ready<Result<(), PipelineError>>> + Clone + Send
-    {
+    fn unsupported_saf_messages_filter(&self) -> impl filter::Predicate<DhtInboundMessage> + Clone + Send {
         let node_identity = Arc::clone(&self.node_identity);
         move |msg: &DhtInboundMessage| {
             if node_identity.has_peer_features(PeerFeatures::DHT_STORE_FORWARD) {
-                return future::ready(Ok(()));
+                return true;
             }
 
             match msg.dht_header.message_type {
                 DhtMessageType::SafRequestMessages => {
                     // TODO: #banheuristic This is an indication of node misbehaviour
-                    debug!(
+                    warn!(
                         "Received store and forward message from PublicKey={}. Store and forward feature is not \
                          supported by this node. Discarding message.",
                         msg.source_peer.public_key
                     );
-                    future::ready(Err(anyhow::anyhow!(
-                        "Message filtered out because store and forward is not supported by this node",
-                    )))
+                    false
                 },
-                _ => future::ready(Ok(())),
+                _ => true,
             }
         }
+    }
+}
+
+/// Provides the gossip filtering rules for an inbound message
+fn filter_messages_to_rebroadcast(msg: &DecryptedDhtMessage) -> bool {
+    // Let the message through if:
+    // it isn't a duplicate (normal message), or
+    let should_continue = !msg.is_duplicate() ||
+        (
+            // it is a duplicate domain message (i.e. not DHT or SAF protocol message), and
+            msg.dht_header.message_type.is_domain_message() &&
+                // it has an unknown destination (e.g complete transactions, blocks, misc. encrypted
+                // messages) we allow it to proceed, which in turn, re-propagates it for another round.
+                msg.dht_header.destination.is_unknown()
+        );
+
+    if should_continue {
+        // The message has been forwarded, but downstream middleware may be interested
+        debug!(
+            target: LOG_TARGET,
+            "[filter_messages_to_rebroadcast] Passing message {} to next service (Trace: {})",
+            msg.tag,
+            msg.dht_header.message_tag
+        );
+        true
+    } else {
+        debug!(
+            target: LOG_TARGET,
+            "[filter_messages_to_rebroadcast] Discarding duplicate message {}", msg
+        );
+        false
     }
 }
 
@@ -404,22 +432,23 @@ mod test {
             make_comms_inbound_message,
             make_dht_envelope,
             make_node_identity,
+            service_spy,
         },
         DhtBuilder,
     };
-    use futures::{channel::mpsc, StreamExt};
     use std::{sync::Arc, time::Duration};
     use tari_comms::{
         message::{MessageExt, MessageTag},
         pipeline::SinkService,
+        runtime,
         test_utils::mocks::create_connectivity_mock,
         wrap_in_envelope_body,
     };
     use tari_shutdown::Shutdown;
-    use tokio::{task, time};
+    use tokio::{sync::mpsc, task, time};
     use tower::{layer::Layer, Service};
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn stack_unencrypted() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
@@ -459,7 +488,7 @@ mod test {
 
         let msg = {
             service.call(inbound_message).await.unwrap();
-            let msg = time::timeout(Duration::from_secs(10), out_rx.next())
+            let msg = time::timeout(Duration::from_secs(10), out_rx.recv())
                 .await
                 .unwrap()
                 .unwrap();
@@ -469,7 +498,7 @@ mod test {
         assert_eq!(msg, b"secret");
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn stack_encrypted() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
@@ -509,7 +538,7 @@ mod test {
 
         let msg = {
             service.call(inbound_message).await.unwrap();
-            let msg = time::timeout(Duration::from_secs(10), out_rx.next())
+            let msg = time::timeout(Duration::from_secs(10), out_rx.recv())
                 .await
                 .unwrap()
                 .unwrap();
@@ -519,7 +548,7 @@ mod test {
         assert_eq!(msg, b"secret");
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn stack_forward() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
@@ -528,7 +557,6 @@ mod test {
         peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
 
         let (connectivity, _) = create_connectivity_mock();
-        let (next_service_tx, mut next_service_rx) = mpsc::channel(10);
         let (oms_requester, oms_mock) = create_outbound_service_mock(1);
 
         // Send all outbound requests to the mock
@@ -545,7 +573,8 @@ mod test {
         let oms_mock_state = oms_mock.get_state();
         task::spawn(oms_mock.run());
 
-        let mut service = dht.inbound_middleware_layer().layer(SinkService::new(next_service_tx));
+        let spy = service_spy();
+        let mut service = dht.inbound_middleware_layer().layer(spy.to_service());
 
         let msg = wrap_in_envelope_body!(b"unencrypteable".to_vec());
 
@@ -574,10 +603,10 @@ mod test {
         assert_eq!(params.dht_header.unwrap().origin_mac, origin_mac);
 
         // Check the next service was not called
-        assert!(next_service_rx.try_next().is_err());
+        assert_eq!(spy.call_count(), 0);
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn stack_filter_saf_message() {
         let node_identity = make_client_identity();
         let peer_manager = build_peer_manager();
@@ -600,9 +629,8 @@ mod test {
         .await
         .unwrap();
 
-        let (next_service_tx, mut next_service_rx) = mpsc::channel(10);
-
-        let mut service = dht.inbound_middleware_layer().layer(SinkService::new(next_service_tx));
+        let spy = service_spy();
+        let mut service = dht.inbound_middleware_layer().layer(spy.to_service());
 
         let msg = wrap_in_envelope_body!(b"secret".to_vec());
         let mut dht_envelope = make_dht_envelope(
@@ -619,10 +647,6 @@ mod test {
         let inbound_message = make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().into());
 
         service.call(inbound_message).await.unwrap_err();
-        // This seems like the best way to tell that an open channel is empty without the test blocking indefinitely
-        assert_eq!(
-            format!("{}", next_service_rx.try_next().unwrap_err()),
-            "receiver channel is empty"
-        );
+        assert_eq!(spy.call_count(), 0);
     }
 }

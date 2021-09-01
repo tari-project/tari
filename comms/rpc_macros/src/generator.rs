@@ -215,8 +215,8 @@ impl RpcCodeGenerator {
                 self.inner.ping().await
             }
 
-            pub fn close(&mut self) {
-                self.inner.close();
+            pub async fn close(&mut self) {
+                self.inner.close().await;
             }
         };
 

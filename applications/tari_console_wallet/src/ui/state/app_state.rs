@@ -20,6 +20,45 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+use bitflags::bitflags;
+use log::*;
+use qrcode::{render::unicode, QrCode};
+use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
+use tokio::{
+    sync::{watch, RwLock},
+    task,
+};
+
+use tari_common::{configuration::Network, GlobalConfig};
+use tari_common_types::{emoji::EmojiId, types::PublicKey};
+use tari_comms::{
+    connectivity::ConnectivityEventRx,
+    multiaddr::Multiaddr,
+    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
+    types::CommsPublicKey,
+    NodeIdentity,
+};
+use tari_core::transactions::tari_amount::{uT, MicroTari};
+use tari_shutdown::ShutdownSignal;
+use tari_wallet::{
+    base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
+    connectivity_service::WalletConnectivityHandle,
+    contacts_service::storage::database::Contact,
+    output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, TxId, TxoValidationType},
+    transaction_service::{
+        handle::TransactionEventReceiver,
+        storage::models::{CompletedTransaction, TransactionStatus},
+    },
+    types::ValidationRetryStrategy,
+    WalletSqlite,
+};
+
 use crate::{
     notifier::Notifier,
     ui::{
@@ -33,46 +72,6 @@ use crate::{
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
     wallet_modes::PeerConfig,
 };
-use bitflags::bitflags;
-use futures::{stream::Fuse, StreamExt};
-use log::*;
-use qrcode::{render::unicode, QrCode};
-use std::{
-    collections::HashMap,
-    sync::Arc,
-    time::{Duration, Instant},
-};
-use tari_common::{configuration::Network, GlobalConfig};
-use tari_comms::{
-    connectivity::ConnectivityEventRx,
-    multiaddr::Multiaddr,
-    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
-    types::CommsPublicKey,
-    NodeIdentity,
-};
-use tari_core::transactions::{
-    tari_amount::{uT, MicroTari},
-    types::PublicKey,
-};
-use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
-use tari_shutdown::ShutdownSignal;
-use tari_wallet::{
-    base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
-    connectivity_service::WalletConnectivityHandle,
-    contacts_service::storage::database::Contact,
-    output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, TxId, TxoValidationType},
-    transaction_service::{
-        handle::TransactionEventReceiver,
-        storage::models::{CompletedTransaction, TransactionStatus},
-    },
-    types::ValidationRetryStrategy,
-    util::emoji::EmojiId,
-    WalletSqlite,
-};
-use tokio::{
-    sync::{watch, RwLock},
-    task,
-};
 
 const LOG_TARGET: &str = "wallet::console_wallet::app_state";
 
@@ -84,6 +83,7 @@ pub struct AppState {
     completed_tx_filter: TransactionFilter,
     node_config: GlobalConfig,
     config: AppStateConfig,
+    wallet_connectivity: WalletConnectivityHandle,
 }
 
 impl AppState {
@@ -95,6 +95,7 @@ impl AppState {
         base_node_config: PeerConfig,
         node_config: GlobalConfig,
     ) -> Self {
+        let wallet_connectivity = wallet.wallet_connectivity.clone();
         let inner = AppStateInner::new(node_identity, network, wallet, base_node_selected, base_node_config);
         let cached_data = inner.data.clone();
 
@@ -105,6 +106,7 @@ impl AppState {
             completed_tx_filter: TransactionFilter::ABANDONED_COINBASES,
             node_config,
             config: AppStateConfig::default(),
+            wallet_connectivity,
         }
     }
 
@@ -350,6 +352,10 @@ impl AppState {
 
     pub fn get_base_node_state(&self) -> &BaseNodeState {
         &self.cached_data.base_node_state
+    }
+
+    pub fn get_wallet_connectivity(&self) -> WalletConnectivityHandle {
+        self.wallet_connectivity.clone()
     }
 
     pub fn get_selected_base_node(&self) -> &Peer {
@@ -641,24 +647,24 @@ impl AppStateInner {
         self.wallet.comms.shutdown_signal()
     }
 
-    pub fn get_transaction_service_event_stream(&self) -> Fuse<TransactionEventReceiver> {
-        self.wallet.transaction_service.get_event_stream_fused()
+    pub fn get_transaction_service_event_stream(&self) -> TransactionEventReceiver {
+        self.wallet.transaction_service.get_event_stream()
     }
 
-    pub fn get_output_manager_service_event_stream(&self) -> Fuse<OutputManagerEventReceiver> {
-        self.wallet.output_manager_service.get_event_stream_fused()
+    pub fn get_output_manager_service_event_stream(&self) -> OutputManagerEventReceiver {
+        self.wallet.output_manager_service.get_event_stream()
     }
 
-    pub fn get_connectivity_event_stream(&self) -> Fuse<ConnectivityEventRx> {
-        self.wallet.comms.connectivity().get_event_subscription().fuse()
+    pub fn get_connectivity_event_stream(&self) -> ConnectivityEventRx {
+        self.wallet.comms.connectivity().get_event_subscription()
     }
 
     pub fn get_wallet_connectivity(&self) -> WalletConnectivityHandle {
         self.wallet.wallet_connectivity.clone()
     }
 
-    pub fn get_base_node_event_stream(&self) -> Fuse<BaseNodeEventReceiver> {
-        self.wallet.base_node_service.clone().get_event_stream_fused()
+    pub fn get_base_node_event_stream(&self) -> BaseNodeEventReceiver {
+        self.wallet.base_node_service.get_event_stream()
     }
 
     pub async fn set_base_node_peer(&mut self, peer: Peer) -> Result<(), UiError> {
