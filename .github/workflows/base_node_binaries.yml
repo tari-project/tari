@@ -260,10 +260,20 @@ jobs:
         # S3OPTIONS: '--recursive --exclude "*" --include "*.zip*"'
         # S3OPTIONS: '--acl public-read'
 
-    - name: Create Release
-      uses: ncipollo/release-action@v1
-      with:
-        artifacts: "tari_base_node-*"
-        token: ${{ secrets.GITHUB_TOKEN }}
-        prerelesae: true
-        draft: true
+  create-release:
+    runs-on: ubuntu-latest
+    needs: builds
+    # if: ${{ env.AWS_SECRET_ACCESS_KEY != '' && matrix.os != 'self-hosted' && startsWith(github.ref, 'refs/tags/v') }}
+    steps:
+#      - name: Download binaries
+#        uses: actions/download-artifact@v2
+#        with:
+#          name: "tari_base_node-*"
+      - name: Create release
+        uses: ncipollo/release-action@v1
+        with:
+          name: "test release"
+          artifacts: "tari_base_node-*"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          prerelease: true
+          draft: true
