@@ -511,7 +511,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
         Ok(())
     }
 
-    #[tracing::instrument(name = "rpc_do_request_response", skip(self, reply), err)]
+    #[tracing::instrument(name = "rpc_do_request_response", skip(self, reply))]
     async fn do_request_response(
         &mut self,
         request: BaseRequest<Bytes>,
