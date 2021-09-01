@@ -30,13 +30,12 @@ use crate::{
     protocol::messaging::protocol::MESSAGING_PROTOCOL,
 };
 use futures::{future::Either, StreamExt, TryStreamExt};
-use log::*;
 use std::{
     io,
     time::{Duration, Instant},
 };
 use tokio::sync::mpsc as tokiompsc;
-use tracing::{event, span, Instrument, Level};
+use tracing::{debug, error, event, span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::protocol::messaging::outbound";
 /// The number of times to retry sending a failed message before publishing a SendMessageFailed event.
@@ -107,9 +106,18 @@ impl OutboundMessaging {
                         peer_node_id.short_str()
                     );
                 },
-                Err(err) => {
-                    event!(Level::ERROR, "Outbound messaging substream failed:{}", err);
-                    debug!(target: LOG_TARGET, "Outbound messaging substream failed: {}", err);
+                Err(err) => match err {
+                    MessagingProtocolError::PeerDialFailed => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Outbound messaging substream failed due to a dial fail. Most likely the peer is offline \
+                             or doesn't exist: {}",
+                            err
+                        );
+                    },
+                    _ => {
+                        error!(target: LOG_TARGET, "Outbound messaging substream failed:{}", err);
+                    },
                 },
             }
 
@@ -131,7 +139,6 @@ impl OutboundMessaging {
                     break substream;
                 },
                 Err(err) => {
-                    event!(Level::ERROR, "Error establishing messaging protocol");
                     if attempts >= MAX_SEND_RETRIES {
                         debug!(
                             target: LOG_TARGET,
