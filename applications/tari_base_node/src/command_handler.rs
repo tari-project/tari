@@ -52,7 +52,6 @@ use tari_core::{
         LocalNodeCommsInterface,
     },
     blocks::BlockHeader,
-    chain_storage,
     chain_storage::{async_db::AsyncBlockchainDb, ChainHeader, LMDBDatabase},
     consensus::ConsensusManager,
     mempool::service::LocalMempoolService,
@@ -1057,21 +1056,12 @@ impl CommandHandler {
     }
 
     pub fn get_blockchain_db_stats(&self) {
+        const BYTES_PER_MB: usize = 1024 * 1024;
+
         let db = self.blockchain_db.clone();
 
-        fn stat_to_row(stat: &chain_storage::DbStat) -> Vec<String> {
-            row![
-                stat.name,
-                stat.entries,
-                stat.depth,
-                stat.branch_pages,
-                stat.leaf_pages,
-                stat.overflow_pages,
-            ]
-        }
-
         self.executor.spawn(async move {
-            match db.get_stats().await {
+            let total_db_size = match db.get_stats().await {
                 Ok(stats) => {
                     let mut table = Table::new();
                     table.set_titles(vec![
@@ -1081,24 +1071,40 @@ impl CommandHandler {
                         "Branch Pages",
                         "Leaf Pages",
                         "Overflow Pages",
+                        "Est. Size (MiB)",
+                        "% of total",
                     ]);
+                    let total_db_size = stats.db_stats().iter().map(|s| s.total_page_size()).sum::<usize>();
                     stats.db_stats().iter().for_each(|stat| {
-                        table.add_row(stat_to_row(stat));
+                        table.add_row(row![
+                            stat.name,
+                            stat.entries,
+                            stat.depth,
+                            stat.branch_pages,
+                            stat.leaf_pages,
+                            stat.overflow_pages,
+                            format!("{:.2}", stat.total_page_size() as f32 / BYTES_PER_MB as f32),
+                            format!("{:.2}%", (stat.total_page_size() as f32 / total_db_size as f32) * 100.0)
+                        ]);
                     });
+
                     table.print_stdout();
                     println!();
                     println!(
-                        "{} databases, page size: {} bytes, env_info = ({})",
+                        "{} databases, {:.2} MiB used ({:.2}%), page size: {} bytes, env_info = ({})",
                         stats.root().entries,
+                        total_db_size as f32 / BYTES_PER_MB as f32,
+                        (total_db_size as f32 / stats.env_info().mapsize as f32) * 100.0,
                         stats.root().psize as usize,
                         stats.env_info()
                     );
+                    total_db_size
                 },
                 Err(err) => {
                     println!("{}", err);
                     return;
                 },
-            }
+            };
 
             println!();
             println!("Totalling DB entry sizes. This may take a few seconds...");
@@ -1107,21 +1113,31 @@ impl CommandHandler {
                 Ok(stats) => {
                     println!();
                     let mut table = Table::new();
-                    table.set_titles(vec!["Name", "Entries", "Total Size", "Avg. Size/Entry", "% of total"]);
-                    let total_db_size = stats.sizes().iter().map(|s| s.total()).sum::<u64>();
+                    table.set_titles(vec![
+                        "Name",
+                        "Entries",
+                        "Total Size (MiB)",
+                        "Avg. Size/Entry (bytes)",
+                        "% of total",
+                    ]);
+                    let total_data_size = stats.sizes().iter().map(|s| s.total()).sum::<u64>();
                     stats.sizes().iter().for_each(|size| {
-                        let total = size.total() as f32 / 1024.0 / 1024.0;
+                        let total = size.total() as f32 / BYTES_PER_MB as f32;
                         table.add_row(row![
                             size.name,
                             size.num_entries,
-                            format!("{:.2} MiB", total),
-                            format!("{} bytes", size.avg_bytes_per_entry()),
-                            format!("{:.2}%", (size.total() as f32 / total_db_size as f32) * 100.0)
+                            format!("{:.2}", total),
+                            format!("{}", size.avg_bytes_per_entry()),
+                            format!("{:.2}%", (size.total() as f32 / total_data_size as f32) * 100.0)
                         ])
                     });
                     table.print_stdout();
                     println!();
-                    println!("Total data size: {:.2} MiB", total_db_size as f32 / 1024.0 / 1024.0);
+                    println!(
+                        "Total blockchain data size: {:.2} MiB ({:.2} % of LMDB map size)",
+                        total_data_size as f32 / BYTES_PER_MB as f32,
+                        (total_data_size as f32 / total_db_size as f32) * 100.0
+                    );
                 },
                 Err(err) => {
                     println!("{}", err);

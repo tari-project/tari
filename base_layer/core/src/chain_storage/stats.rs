@@ -61,19 +61,12 @@ impl DbBasicStats {
 
 impl Display for DbBasicStats {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "Root: psize = {}, {}", self.root.psize, stat_to_string(&self.root))?;
+        writeln!(f, "Root: psize = {}, {}", self.root.psize, self.root)?;
         for stat in &self.db_stats {
-            writeln!(f, "{}", stat_to_string(&stat))?;
+            writeln!(f, "{}", stat)?;
         }
         Ok(())
     }
-}
-
-fn stat_to_string(stat: &DbStat) -> String {
-    format!(
-        "name: {}, entries = {}, depth = {}, branch_pages = {}, leaf_pages = {}, overflow_pages = {}",
-        stat.name, stat.entries, stat.depth, stat.branch_pages, stat.leaf_pages, stat.overflow_pages
-    )
 }
 
 /// Statistics information about an environment.
@@ -95,6 +88,13 @@ pub struct DbStat {
     pub entries: usize,
 }
 
+impl DbStat {
+    /// Returns the total size in bytes of all pages
+    pub fn total_page_size(&self) -> usize {
+        self.psize as usize * (self.leaf_pages + self.branch_pages + self.overflow_pages)
+    }
+}
+
 impl From<(&'static str, lmdb::Stat)> for DbStat {
     fn from((name, stat): (&'static str, lmdb::Stat)) -> Self {
         Self {
@@ -106,6 +106,23 @@ impl From<(&'static str, lmdb::Stat)> for DbStat {
             overflow_pages: stat.overflow_pages,
             entries: stat.entries,
         }
+    }
+}
+
+impl Display for DbStat {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "name: {}, Total page size: {}, entries: {}, depth: {}, branch_pages: {}, leaf_pages: {}, overflow_pages: \
+             {}",
+            self.name,
+            self.total_page_size(),
+            self.entries,
+            self.depth,
+            self.branch_pages,
+            self.leaf_pages,
+            self.overflow_pages,
+        )
     }
 }
 
@@ -186,8 +203,12 @@ impl Display for EnvInfo {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "mapsize: {}, last_pgno: {}, last_txnid: {}, maxreaders: {}, numreaders: {}",
-            self.mapsize, self.last_pgno, self.last_txnid, self.maxreaders, self.numreaders,
+            "mapsize: {:.2} MiB, last_pgno: {}, last_txnid: {}, maxreaders: {}, numreaders: {}",
+            self.mapsize as f32 / 1024.0 / 1024.0,
+            self.last_pgno,
+            self.last_txnid,
+            self.maxreaders,
+            self.numreaders,
         )
     }
 }

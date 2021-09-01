@@ -87,7 +87,6 @@ where
             val,
             e,
         );
-
         if let lmdb_zero::Error::Code(code) = &e {
             if *code == lmdb_zero::error::KEYEXIST {
                 return ChainStorageError::KeyExists {
@@ -95,8 +94,10 @@ where
                     key: to_hex(key.as_lmdb_bytes()),
                 };
             }
+            if *code == lmdb_zero::error::MAP_FULL {
+                return ChainStorageError::DbResizeRequired;
+            }
         }
-
         ChainStorageError::InsertError {
             table: table_name,
             error: e.to_string(),
@@ -121,6 +122,11 @@ where
             target: LOG_TARGET,
             "Could not insert value into lmdb transaction: {:?}", e
         );
+        if let lmdb_zero::Error::Code(code) = &e {
+            if *code == lmdb_zero::error::MAP_FULL {
+                return ChainStorageError::DbResizeRequired;
+            }
+        }
         ChainStorageError::AccessError(e.to_string())
     })
 }
