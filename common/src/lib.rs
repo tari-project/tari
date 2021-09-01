@@ -72,7 +72,7 @@
 //! let config = args.load_configuration().unwrap();
 //! let global = GlobalConfig::convert_from(ApplicationType::BaseNode, config).unwrap();
 //! assert_eq!(global.network, Network::Weatherwax);
-//! assert!(global.max_threads.is_none());
+//! assert!(global.core_threads.is_none());
 //! # std::fs::remove_dir_all(temp_dir).unwrap();
 //! ```
 

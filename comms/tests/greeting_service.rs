@@ -23,14 +23,14 @@
 #![cfg(feature = "rpc")]
 
 use core::iter;
-use futures::{channel::mpsc, stream, SinkExt, StreamExt};
 use std::{cmp, time::Duration};
 use tari_comms::{
     async_trait,
     protocol::rpc::{Request, Response, RpcStatus, Streaming},
+    utils,
 };
 use tari_comms_rpc_macros::tari_rpc;
-use tokio::{task, time};
+use tokio::{sync::mpsc, task, time};
 
 #[tari_rpc(protocol_name = b"t/greeting/1", server_struct = GreetingServer, client_struct = GreetingClient)]
 pub trait GreetingRpc: Send + Sync + 'static {
@@ -85,15 +85,9 @@ impl GreetingRpc for GreetingService {
 
     async fn get_greetings(&self, request: Request<u32>) -> Result<Streaming<String>, RpcStatus> {
         let num = *request.message();
-        let (mut tx, rx) = mpsc::channel(num as usize);
+        let (tx, rx) = mpsc::channel(num as usize);
         let greetings = self.greetings[..cmp::min(num as usize + 1, self.greetings.len())].to_vec();
-        task::spawn(async move {
-            let iter = greetings.into_iter().map(Ok);
-            let mut stream = stream::iter(iter)
-                // "Extra" Result::Ok is to satisfy send_all
-                .map(Ok);
-            tx.send_all(&mut stream).await.unwrap();
-        });
+        task::spawn(async move { utils::mpsc::send_all(&tx, greetings.into_iter().map(Ok)).await });
 
         Ok(Streaming::new(rx))
     }
@@ -113,7 +107,7 @@ impl GreetingRpc for GreetingService {
             item_size,
             num_items,
         } = request.into_message();
-        let (mut tx, rx) = mpsc::channel(10);
+        let (tx, rx) = mpsc::channel(10);
         let t = std::time::Instant::now();
         task::spawn(async move {
             let item = iter::repeat(0u8).take(item_size as usize).collect::<Vec<_>>();
@@ -136,7 +130,7 @@ impl GreetingRpc for GreetingService {
     }
 
     async fn slow_response(&self, request: Request<u64>) -> Result<Response<()>, RpcStatus> {
-        time::delay_for(Duration::from_secs(request.into_message())).await;
+        time::sleep(Duration::from_secs(request.into_message())).await;
         Ok(Response::new(()))
     }
 }

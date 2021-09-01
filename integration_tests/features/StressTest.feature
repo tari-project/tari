@@ -12,18 +12,18 @@ Feature: Stress Test
         And I have stress-test wallet WALLET_B connected to the seed node NODE2 with broadcast monitoring timeout <MonitoringTimeout>
             # There need to be at least as many mature coinbase UTXOs in the wallet coin splits required for the number of transactions
         When I merge mine <NumCoinsplitsNeeded> blocks via PROXY
-        Then all nodes are at current tip height
+        Then all nodes are on the same chain tip
         When I wait for wallet WALLET_A to have at least 5100000000 uT
 
         Then I coin split tari in wallet WALLET_A to produce <NumTransactions> UTXOs of 5000 uT each with fee_per_gram 20 uT
         When I merge mine 3 blocks via PROXY
         When I merge mine <NumCoinsplitsNeeded> blocks via PROXY
-        Then all nodes are at current tip height
+        Then all nodes are on the same chain tip
         Then wallet WALLET_A detects all transactions as Mined_Confirmed
         When I send <NumTransactions> transactions of 1111 uT each from wallet WALLET_A to wallet WALLET_B at fee_per_gram 20
             # Mine enough blocks for the first block of transactions to be confirmed.
         When I merge mine 4 blocks via PROXY
-        Then all nodes are at current tip height
+        Then all nodes are on the same chain tip
             # Now wait until all transactions are detected as confirmed in WALLET_A, continue to mine blocks if transactions
             # are not found to be confirmed as sometimes the previous mining occurs faster than transactions are submitted
             # to the mempool

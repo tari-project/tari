@@ -20,12 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::util::luhn::{checksum, is_valid};
+use crate::{
+    luhn::{checksum, is_valid},
+    types::PublicKey,
+};
 use std::{
     collections::HashMap,
     fmt::{Display, Error, Formatter},
 };
-use tari_core::transactions::types::PublicKey;
 use tari_crypto::tari_utilities::{
     hex::{Hex, HexError},
     ByteArray,
@@ -70,7 +72,7 @@ lazy_static! {
 /// # Example
 ///
 /// ```
-/// use tari_wallet::util::emoji::EmojiId;
+/// use tari_common_types::emoji::EmojiId;
 ///
 /// assert!(EmojiId::is_valid("🐎🍴🌷🌟💻🐖🐩🐾🌟🐬🎧🐌🏦🐳🐎🐝🐢🔋👕🎸👿🍒🐓🎉💔🌹🏆🐬💡🎳🚦🍹🎒"));
 /// let eid = EmojiId::from_hex("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a").unwrap();
@@ -170,8 +172,7 @@ pub struct EmojiIdError;
 
 #[cfg(test)]
 mod test {
-    use crate::util::emoji::EmojiId;
-    use tari_core::transactions::types::PublicKey;
+    use crate::{emoji::EmojiId, types::PublicKey};
     use tari_crypto::tari_utilities::hex::Hex;
 
     #[test]

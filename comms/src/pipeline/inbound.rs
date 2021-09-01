@@ -21,10 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::bounded_executor::BoundedExecutor;
-use futures::{future::FusedFuture, stream::FusedStream, Stream, StreamExt};
+use futures::future::FusedFuture;
 use log::*;
 use std::fmt::Display;
 use tari_shutdown::ShutdownSignal;
+use tokio::sync::mpsc;
 use tower::{Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::pipeline::inbound";
@@ -33,22 +34,26 @@ const LOG_TARGET: &str = "comms::pipeline::inbound";
 /// The difference between this can ServiceExt::call_all is
 /// that ServicePipeline doesn't keep the result of the service
 /// call and that it spawns a task for each incoming item.
-pub struct Inbound<TSvc, TStream> {
+pub struct Inbound<TSvc, TMsg> {
     executor: BoundedExecutor,
     service: TSvc,
-    stream: TStream,
+    stream: mpsc::Receiver<TMsg>,
     shutdown_signal: ShutdownSignal,
 }
 
-impl<TSvc, TStream> Inbound<TSvc, TStream>
+impl<TSvc, TMsg> Inbound<TSvc, TMsg>
 where
-    TStream: Stream + FusedStream + Unpin,
-    TStream::Item: Send + 'static,
-    TSvc: Service<TStream::Item> + Clone + Send + 'static,
+    TMsg: Send + 'static,
+    TSvc: Service<TMsg> + Clone + Send + 'static,
     TSvc::Error: Display + Send,
     TSvc::Future: Send,
 {
-    pub fn new(executor: BoundedExecutor, stream: TStream, service: TSvc, shutdown_signal: ShutdownSignal) -> Self {
+    pub fn new(
+        executor: BoundedExecutor,
+        stream: mpsc::Receiver<TMsg>,
+        service: TSvc,
+        shutdown_signal: ShutdownSignal,
+    ) -> Self {
         Self {
             executor,
             service,
@@ -59,7 +64,7 @@ where
     }
 
     pub async fn run(mut self) {
-        while let Some(item) = self.stream.next().await {
+        while let Some(item) = self.stream.recv().await {
             // Check if the shutdown signal has been triggered.
             // If there are messages in the stream, drop them. Otherwise the stream is empty,
             // it will return None and the while loop will end.
@@ -100,21 +105,25 @@ where
 mod test {
     use super::*;
     use crate::runtime;
-    use futures::{channel::mpsc, future, stream};
+    use futures::future;
     use std::time::Duration;
     use tari_shutdown::Shutdown;
-    use tari_test_utils::collect_stream;
-    use tokio::{runtime::Handle, time};
+    use tari_test_utils::collect_recv;
+    use tokio::{sync::mpsc, time};
     use tower::service_fn;
 
-    #[runtime::test_basic]
+    #[runtime::test]
     async fn run() {
         let items = vec![1, 2, 3, 4, 5, 6];
-        let stream = stream::iter(items.clone()).fuse();
+        let (tx, mut stream) = mpsc::channel(items.len());
+        for i in items.clone() {
+            tx.send(i).await.unwrap();
+        }
+        stream.close();
 
-        let (mut out_tx, mut out_rx) = mpsc::channel(items.len());
+        let (out_tx, mut out_rx) = mpsc::channel(items.len());
 
-        let executor = Handle::current();
+        let executor = runtime::current();
         let shutdown = Shutdown::new();
         let pipeline = Inbound::new(
             BoundedExecutor::new(executor.clone(), 1),
@@ -125,9 +134,10 @@ mod test {
             }),
             shutdown.to_signal(),
         );
+
         let spawned_task = executor.spawn(pipeline.run());
 
-        let received = collect_stream!(out_rx, take = items.len(), timeout = Duration::from_secs(10));
+        let received = collect_recv!(out_rx, take = items.len(), timeout = Duration::from_secs(10));
         assert!(received.iter().all(|i| items.contains(i)));
 
         // Check that this task ends because the stream has closed

@@ -20,9 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{cmp, fs, str::FromStr, sync::Arc, time::Duration};
+
 use anyhow::anyhow;
 use log::*;
-use std::{cmp, fs, str::FromStr, sync::Arc, time::Duration};
+
 use tari_app_utilities::{consts, identity_management, utilities::create_transport_type};
 use tari_common::{configuration::bootstrap::ApplicationType, GlobalConfig};
 use tari_comms::{peer_manager::Peer, protocol::rpc::RpcServer, NodeIdentity, UnspawnedCommsNode};
@@ -47,7 +49,7 @@ use tari_core::{
         MempoolServiceInitializer,
         MempoolSyncInitializer,
     },
-    transactions::types::CryptoFactories,
+    transactions::CryptoFactories,
 };
 use tari_p2p::{
     auto_update::{AutoUpdateConfig, SoftwareUpdaterService},
@@ -59,7 +61,6 @@ use tari_p2p::{
 };
 use tari_service_framework::{ServiceHandles, StackBuilder};
 use tari_shutdown::ShutdownSignal;
-use tokio::runtime;
 
 const LOG_TARGET: &str = "c::bn::initialization";
 /// The minimum buffer size for the base node pubsub_connector channel
@@ -84,8 +85,7 @@ where B: BlockchainBackend + 'static
         fs::create_dir_all(&config.peer_db_path)?;
 
         let buf_size = cmp::max(BASE_NODE_BUFFER_MIN_SIZE, config.buffer_size_base_node);
-        let (publisher, peer_message_subscriptions) =
-            pubsub_connector(runtime::Handle::current(), buf_size, config.buffer_rate_limit_base_node);
+        let (publisher, peer_message_subscriptions) = pubsub_connector(buf_size, config.buffer_rate_limit_base_node);
         let peer_message_subscriptions = Arc::new(peer_message_subscriptions);
 
         let node_config = BaseNodeServiceConfig {

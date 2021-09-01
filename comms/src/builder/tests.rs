@@ -42,19 +42,16 @@ use crate::{
     CommsNode,
 };
 use bytes::Bytes;
-use futures::{
-    channel::{mpsc, oneshot},
-    stream::FuturesUnordered,
-    AsyncReadExt,
-    AsyncWriteExt,
-    SinkExt,
-    StreamExt,
-};
+use futures::stream::FuturesUnordered;
 use std::{collections::HashSet, convert::identity, hash::Hash, time::Duration};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_storage::HashmapDatabase;
-use tari_test_utils::{collect_stream, unpack_enum};
-use tokio::{sync::broadcast, task};
+use tari_test_utils::{collect_recv, collect_stream, unpack_enum};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    sync::{broadcast, mpsc, oneshot},
+    task,
+};
 
 async fn spawn_node(
     protocols: Protocols<Substream>,
@@ -109,7 +106,7 @@ async fn spawn_node(
     (comms_node, inbound_rx, outbound_tx, messaging_events_sender)
 }
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn peer_to_peer_custom_protocols() {
     static TEST_PROTOCOL: Bytes = Bytes::from_static(b"/tari/test");
     static ANOTHER_TEST_PROTOCOL: Bytes = Bytes::from_static(b"/tari/test-again");
@@ -161,9 +158,9 @@ async fn peer_to_peer_custom_protocols() {
 
     // Check that both nodes get the PeerConnected event. We subscribe after the nodes are initialized
     // so we miss those events.
-    let next_event = conn_man_events2.next().await.unwrap().unwrap();
+    let next_event = conn_man_events2.recv().await.unwrap();
     unpack_enum!(ConnectionManagerEvent::PeerConnected(conn2) = &*next_event);
-    let next_event = conn_man_events1.next().await.unwrap().unwrap();
+    let next_event = conn_man_events1.recv().await.unwrap();
     unpack_enum!(ConnectionManagerEvent::PeerConnected(_conn) = &*next_event);
 
     // Let's speak both our test protocols
@@ -176,7 +173,7 @@ async fn peer_to_peer_custom_protocols() {
     negotiated_substream2.stream.write_all(ANOTHER_TEST_MSG).await.unwrap();
 
     // Read TEST_PROTOCOL message to node 2 from node 1
-    let negotiation = test_protocol_rx2.next().await.unwrap();
+    let negotiation = test_protocol_rx2.recv().await.unwrap();
     assert_eq!(negotiation.protocol, TEST_PROTOCOL);
     unpack_enum!(ProtocolEvent::NewInboundSubstream(node_id, substream) = negotiation.event);
     assert_eq!(&node_id, node_identity1.node_id());
@@ -185,7 +182,7 @@ async fn peer_to_peer_custom_protocols() {
     assert_eq!(buf, TEST_MSG);
 
     // Read ANOTHER_TEST_PROTOCOL message to node 1 from node 2
-    let negotiation = another_test_protocol_rx1.next().await.unwrap();
+    let negotiation = another_test_protocol_rx1.recv().await.unwrap();
     assert_eq!(negotiation.protocol, ANOTHER_TEST_PROTOCOL);
     unpack_enum!(ProtocolEvent::NewInboundSubstream(node_id, substream) = negotiation.event);
     assert_eq!(&node_id, node_identity2.node_id());
@@ -193,18 +190,18 @@ async fn peer_to_peer_custom_protocols() {
     substream.read_exact(&mut buf).await.unwrap();
     assert_eq!(buf, ANOTHER_TEST_MSG);
 
-    shutdown.trigger().unwrap();
+    shutdown.trigger();
     comms_node1.wait_until_shutdown().await;
     comms_node2.wait_until_shutdown().await;
 }
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn peer_to_peer_messaging() {
     const NUM_MSGS: usize = 100;
     let shutdown = Shutdown::new();
 
-    let (comms_node1, mut inbound_rx1, mut outbound_tx1, _) = spawn_node(Protocols::new(), shutdown.to_signal()).await;
-    let (comms_node2, mut inbound_rx2, mut outbound_tx2, messaging_events2) =
+    let (comms_node1, mut inbound_rx1, outbound_tx1, _) = spawn_node(Protocols::new(), shutdown.to_signal()).await;
+    let (comms_node2, mut inbound_rx2, outbound_tx2, messaging_events2) =
         spawn_node(Protocols::new(), shutdown.to_signal()).await;
 
     let mut messaging_events2 = messaging_events2.subscribe();
@@ -238,14 +235,14 @@ async fn peer_to_peer_messaging() {
         outbound_tx1.send(outbound_msg).await.unwrap();
     }
 
-    let messages1_to_2 = collect_stream!(inbound_rx2, take = NUM_MSGS, timeout = Duration::from_secs(10));
+    let messages1_to_2 = collect_recv!(inbound_rx2, take = NUM_MSGS, timeout = Duration::from_secs(10));
     let send_results = collect_stream!(replies, take = NUM_MSGS, timeout = Duration::from_secs(10));
     send_results.into_iter().for_each(|r| {
         r.unwrap().unwrap();
     });
 
-    let events = collect_stream!(messaging_events2, take = NUM_MSGS, timeout = Duration::from_secs(10));
-    events.into_iter().map(Result::unwrap).for_each(|m| {
+    let events = collect_recv!(messaging_events2, take = NUM_MSGS, timeout = Duration::from_secs(10));
+    events.into_iter().for_each(|m| {
         unpack_enum!(MessagingEvent::MessageReceived(_n, _t) = &*m);
     });
 
@@ -258,7 +255,7 @@ async fn peer_to_peer_messaging() {
         outbound_tx2.send(outbound_msg).await.unwrap();
     }
 
-    let messages2_to_1 = collect_stream!(inbound_rx1, take = NUM_MSGS, timeout = Duration::from_secs(10));
+    let messages2_to_1 = collect_recv!(inbound_rx1, take = NUM_MSGS, timeout = Duration::from_secs(10));
 
     // Check that we got all the messages
     let check_messages = |msgs: Vec<InboundMessage>| {
@@ -279,13 +276,13 @@ async fn peer_to_peer_messaging() {
     comms_node2.wait_until_shutdown().await;
 }
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn peer_to_peer_messaging_simultaneous() {
     const NUM_MSGS: usize = 10;
     let shutdown = Shutdown::new();
 
-    let (comms_node1, mut inbound_rx1, mut outbound_tx1, _) = spawn_node(Protocols::new(), shutdown.to_signal()).await;
-    let (comms_node2, mut inbound_rx2, mut outbound_tx2, _) = spawn_node(Protocols::new(), shutdown.to_signal()).await;
+    let (comms_node1, mut inbound_rx1, outbound_tx1, _) = spawn_node(Protocols::new(), shutdown.to_signal()).await;
+    let (comms_node2, mut inbound_rx2, outbound_tx2, _) = spawn_node(Protocols::new(), shutdown.to_signal()).await;
 
     log::info!(
         "Peer1 = `{}`, Peer2 = `{}`",
@@ -350,8 +347,8 @@ async fn peer_to_peer_messaging_simultaneous() {
     handle2.await.unwrap();
 
     // Tasks are finished, let's see if all the messages made it though
-    let messages1_to_2 = collect_stream!(inbound_rx2, take = NUM_MSGS, timeout = Duration::from_secs(10));
-    let messages2_to_1 = collect_stream!(inbound_rx1, take = NUM_MSGS, timeout = Duration::from_secs(10));
+    let messages1_to_2 = collect_recv!(inbound_rx2, take = NUM_MSGS, timeout = Duration::from_secs(10));
+    let messages2_to_1 = collect_recv!(inbound_rx1, take = NUM_MSGS, timeout = Duration::from_secs(10));
 
     assert!(has_unique_elements(messages1_to_2.into_iter().map(|m| m.body)));
     assert!(has_unique_elements(messages2_to_1.into_iter().map(|m| m.body)));

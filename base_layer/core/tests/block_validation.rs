@@ -20,9 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::helpers::{block_builders::chain_block_with_new_coinbase, test_blockchain::TestBlockchain};
-use monero::blockdata::block::Block as MoneroBlock;
 use std::sync::Arc;
+
+use monero::blockdata::block::Block as MoneroBlock;
+use tari_crypto::inputs;
+
 use tari_common::configuration::Network;
 use tari_core::{
     blocks::{Block, BlockHeaderValidationError, BlockValidationError},
@@ -38,7 +40,7 @@ use tari_core::{
     transactions::{
         helpers::{schema_to_transaction, TestParams, UtxoTestParams},
         tari_amount::T,
-        types::CryptoFactories,
+        CryptoFactories,
     },
     txn_schema,
     validation::{
@@ -50,7 +52,8 @@ use tari_core::{
         ValidationError,
     },
 };
-use tari_crypto::inputs;
+
+use crate::helpers::{block_builders::chain_block_with_new_coinbase, test_blockchain::TestBlockchain};
 
 mod helpers;
 
@@ -63,7 +66,7 @@ fn test_genesis_block() {
     let validators = Validators::new(
         BodyOnlyValidator::default(),
         HeaderValidator::new(rules.clone()),
-        OrphanBlockValidator::new(rules.clone(), factories),
+        OrphanBlockValidator::new(rules.clone(), false, factories),
     );
     let db = BlockchainDatabase::new(
         backend,
@@ -216,7 +219,7 @@ fn inputs_are_not_malleable() {
     input_mut.input_data = malicious_input.input_data;
     input_mut.script_signature = malicious_input.script_signature;
 
-    let validator = BlockValidator::new(blockchain.consensus_manager().clone(), CryptoFactories::default());
+    let validator = BlockValidator::new(blockchain.consensus_manager().clone(), true, CryptoFactories::default());
     let err = validator
         .validate_body(&block, &*blockchain.store().db_read_access().unwrap())
         .unwrap_err();

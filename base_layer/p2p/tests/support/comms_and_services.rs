@@ -20,27 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::Sink;
-use std::{error::Error, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 use tari_comms::{peer_manager::NodeIdentity, protocol::messaging::MessagingEventSender, CommsNode};
 use tari_comms_dht::Dht;
-use tari_p2p::{
-    comms_connector::{InboundDomainConnector, PeerMessage},
-    initialization::initialize_local_test_comms,
-};
+use tari_p2p::{comms_connector::InboundDomainConnector, initialization::initialize_local_test_comms};
 use tari_shutdown::ShutdownSignal;
 
-pub async fn setup_comms_services<TSink>(
+pub async fn setup_comms_services(
     node_identity: Arc<NodeIdentity>,
     peers: Vec<Arc<NodeIdentity>>,
-    publisher: InboundDomainConnector<TSink>,
+    publisher: InboundDomainConnector,
     data_path: &str,
     shutdown_signal: ShutdownSignal,
-) -> (CommsNode, Dht, MessagingEventSender)
-where
-    TSink: Sink<Arc<PeerMessage>> + Clone + Unpin + Send + Sync + 'static,
-    TSink::Error: Error + Send + Sync,
-{
+) -> (CommsNode, Dht, MessagingEventSender) {
     let peers = peers.into_iter().map(|ni| ni.to_peer()).collect();
     let (comms, dht, messaging_events) = initialize_local_test_comms(
         node_identity,

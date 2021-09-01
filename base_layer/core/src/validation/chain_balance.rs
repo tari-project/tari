@@ -20,18 +20,18 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::marker::PhantomData;
+
+use log::*;
+use tari_crypto::commitment::HomomorphicCommitmentFactory;
+
 use crate::{
     chain_storage::BlockchainBackend,
     consensus::ConsensusManager,
-    transactions::{
-        tari_amount::MicroTari,
-        types::{Commitment, CryptoFactories, PrivateKey},
-    },
+    transactions::{tari_amount::MicroTari, CryptoFactories},
     validation::{FinalHorizonStateValidation, ValidationError},
 };
-use log::*;
-use std::marker::PhantomData;
-use tari_crypto::commitment::HomomorphicCommitmentFactory;
+use tari_common_types::types::{Commitment, PrivateKey};
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync::chain_balance";
 

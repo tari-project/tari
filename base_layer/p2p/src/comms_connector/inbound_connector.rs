@@ -22,45 +22,42 @@
 
 use super::peer_message::PeerMessage;
 use anyhow::anyhow;
-use futures::{task::Context, Future, Sink, SinkExt};
+use futures::{task::Context, Future};
 use log::*;
 use std::{pin::Pin, sync::Arc, task::Poll};
 use tari_comms::pipeline::PipelineError;
 use tari_comms_dht::{domain_message::MessageHeader, inbound::DecryptedDhtMessage};
+use tokio::sync::mpsc;
 use tower::Service;
 
 const LOG_TARGET: &str = "comms::middleware::inbound_connector";
 /// This service receives DecryptedDhtMessage, deserializes the MessageHeader and
 /// sends a `PeerMessage` on the given sink.
 #[derive(Clone)]
-pub struct InboundDomainConnector<TSink> {
-    sink: TSink,
+pub struct InboundDomainConnector {
+    sink: mpsc::Sender<Arc<PeerMessage>>,
 }
 
-impl<TSink> InboundDomainConnector<TSink> {
-    pub fn new(sink: TSink) -> Self {
+impl InboundDomainConnector {
+    pub fn new(sink: mpsc::Sender<Arc<PeerMessage>>) -> Self {
         Self { sink }
     }
 }
 
-impl<TSink> Service<DecryptedDhtMessage> for InboundDomainConnector<TSink>
-where
-    TSink: Sink<Arc<PeerMessage>> + Unpin + Clone + 'static,
-    TSink::Error: std::error::Error + Send + Sync + 'static,
-{
+impl Service<DecryptedDhtMessage> for InboundDomainConnector {
     type Error = PipelineError;
-    type Future = Pin<Box<dyn Future<Output = Result<(), PipelineError>>>>;
+    type Future = Pin<Box<dyn Future<Output = Result<(), PipelineError>> + Send>>;
     type Response = ();
 
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Pin::new(&mut self.sink).poll_ready(cx).map_err(Into::into)
+    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
     }
 
     fn call(&mut self, msg: DecryptedDhtMessage) -> Self::Future {
-        let mut sink = self.sink.clone();
+        let sink = self.sink.clone();
         let future = async move {
             let peer_message = Self::construct_peer_message(msg)?;
-            // If this fails there is something wrong with the sink and the pubsub middleware should not
+            // If this fails the channel has closed and the pubsub middleware should not
             // continue
             sink.send(Arc::new(peer_message)).await?;
 
@@ -70,7 +67,7 @@ where
     }
 }
 
-impl<TSink> InboundDomainConnector<TSink> {
+impl InboundDomainConnector {
     fn construct_peer_message(mut inbound_message: DecryptedDhtMessage) -> Result<PeerMessage, PipelineError> {
         let envelope_body = inbound_message
             .success_mut()
@@ -107,41 +104,17 @@ impl<TSink> InboundDomainConnector<TSink> {
     }
 }
 
-impl<TSink> Sink<DecryptedDhtMessage> for InboundDomainConnector<TSink>
-where
-    TSink: Sink<Arc<PeerMessage>> + Unpin,
-    TSink::Error: Into<PipelineError> + Send + Sync + 'static,
-{
-    type Error = PipelineError;
-
-    fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Pin::new(&mut self.sink).poll_ready(cx).map_err(Into::into)
-    }
-
-    fn start_send(mut self: Pin<&mut Self>, item: DecryptedDhtMessage) -> Result<(), Self::Error> {
-        let item = Self::construct_peer_message(item)?;
-        Pin::new(&mut self.sink).start_send(Arc::new(item)).map_err(Into::into)
-    }
-
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Pin::new(&mut self.sink).poll_flush(cx).map_err(Into::into)
-    }
-
-    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Pin::new(&mut self.sink).poll_close(cx).map_err(Into::into)
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::test_utils::{make_dht_inbound_message, make_node_identity};
-    use futures::{channel::mpsc, executor::block_on, StreamExt};
+    use futures::executor::block_on;
     use tari_comms::{message::MessageExt, wrap_in_envelope_body};
     use tari_comms_dht::domain_message::MessageHeader;
+    use tokio::sync::mpsc;
     use tower::ServiceExt;
 
-    #[tokio_macros::test_basic]
+    #[tokio::test]
     async fn handle_message() {
         let (tx, mut rx) = mpsc::channel(1);
         let header = MessageHeader::new(123);
@@ -151,12 +124,12 @@ mod test {
         let decrypted = DecryptedDhtMessage::succeeded(msg, None, inbound_message);
         InboundDomainConnector::new(tx).oneshot(decrypted).await.unwrap();
 
-        let peer_message = block_on(rx.next()).unwrap();
+        let peer_message = block_on(rx.recv()).unwrap();
         assert_eq!(peer_message.message_header.message_type, 123);
         assert_eq!(peer_message.decode_message::<String>().unwrap(), "my message");
     }
 
-    #[tokio_macros::test_basic]
+    #[tokio::test]
     async fn send_on_sink() {
         let (tx, mut rx) = mpsc::channel(1);
         let header = MessageHeader::new(123);
@@ -165,14 +138,14 @@ mod test {
         let inbound_message = make_dht_inbound_message(&make_node_identity(), msg.to_encoded_bytes());
         let decrypted = DecryptedDhtMessage::succeeded(msg, None, inbound_message);
 
-        InboundDomainConnector::new(tx).send(decrypted).await.unwrap();
+        InboundDomainConnector::new(tx).call(decrypted).await.unwrap();
 
-        let peer_message = block_on(rx.next()).unwrap();
+        let peer_message = block_on(rx.recv()).unwrap();
         assert_eq!(peer_message.message_header.message_type, 123);
         assert_eq!(peer_message.decode_message::<String>().unwrap(), "my message");
     }
 
-    #[tokio_macros::test_basic]
+    #[tokio::test]
     async fn handle_message_fail_deserialize() {
         let (tx, mut rx) = mpsc::channel(1);
         let header = b"dodgy header".to_vec();
@@ -182,10 +155,11 @@ mod test {
         let decrypted = DecryptedDhtMessage::succeeded(msg, None, inbound_message);
         InboundDomainConnector::new(tx).oneshot(decrypted).await.unwrap_err();
 
-        assert!(rx.try_next().unwrap().is_none());
+        rx.close();
+        assert!(rx.recv().await.is_none());
     }
 
-    #[tokio_macros::test_basic]
+    #[tokio::test]
     async fn handle_message_fail_send() {
         // Drop the receiver of the channel, this is the only reason this middleware should return an error
         // from it's call function

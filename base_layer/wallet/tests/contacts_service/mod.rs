@@ -22,7 +22,7 @@
 
 use crate::support::data::get_temp_sqlite_database_connection;
 use rand::rngs::OsRng;
-use tari_core::transactions::types::PublicKey;
+use tari_common_types::types::PublicKey;
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_service_framework::StackBuilder;
 use tari_shutdown::Shutdown;

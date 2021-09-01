@@ -20,35 +20,28 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#[cfg(test)]
+use crate::dns::mock::{DefaultOnSend, MockClientHandle};
+
 use super::DnsClientError;
-use futures::future;
+use futures::{future, FutureExt};
 use std::{net::SocketAddr, sync::Arc};
 use tari_shutdown::Shutdown;
 use tokio::{net::UdpSocket, task};
 use trust_dns_client::{
-    client::{AsyncClient, AsyncDnssecClient},
-    op::{DnsResponse, Query},
-    proto::{
-        rr::dnssec::TrustAnchor,
-        udp::{UdpClientStream, UdpResponse},
-        xfer::DnsRequestOptions,
-        DnsHandle,
-    },
+    client::{AsyncClient, AsyncDnssecClient, ClientHandle},
+    op::Query,
+    proto::{error::ProtoError, rr::dnssec::TrustAnchor, udp::UdpClientStream, xfer::DnsResponse, DnsHandle},
     rr::{DNSClass, IntoName, RecordType},
     serialize::binary::BinEncoder,
 };
 
-#[cfg(test)]
-use std::collections::HashMap;
-#[cfg(test)]
-use trust_dns_client::{proto::xfer::DnsMultiplexerSerialResponse, rr::Record};
-
 #[derive(Clone)]
 pub enum DnsClient {
-    Secure(Client<AsyncDnssecClient<UdpResponse>>),
-    Normal(Client<AsyncClient<UdpResponse>>),
+    Secure(Client<AsyncDnssecClient>),
+    Normal(Client<AsyncClient>),
     #[cfg(test)]
-    Mock(Client<AsyncClient<DnsMultiplexerSerialResponse>>),
+    Mock(Client<MockClientHandle<DefaultOnSend, ProtoError>>),
 }
 
 impl DnsClient {
@@ -63,18 +56,18 @@ impl DnsClient {
     }
 
     #[cfg(test)]
-    pub async fn connect_mock(records: HashMap<&'static str, Vec<Record>>) -> Result<Self, DnsClientError> {
-        let client = Client::connect_mock(records).await?;
+    pub async fn connect_mock(messages: Vec<Result<DnsResponse, ProtoError>>) -> Result<Self, DnsClientError> {
+        let client = Client::connect_mock(messages).await?;
         Ok(DnsClient::Mock(client))
     }
 
-    pub async fn lookup(&mut self, query: Query, options: DnsRequestOptions) -> Result<DnsResponse, DnsClientError> {
+    pub async fn lookup(&mut self, query: Query) -> Result<DnsResponse, DnsClientError> {
         use DnsClient::*;
         match self {
-            Secure(ref mut client) => client.lookup(query, options).await,
-            Normal(ref mut client) => client.lookup(query, options).await,
+            Secure(ref mut client) => client.lookup(query).await,
+            Normal(ref mut client) => client.lookup(query).await,
             #[cfg(test)]
-            Mock(ref mut client) => client.lookup(query, options).await,
+            Mock(ref mut client) => client.lookup(query).await,
         }
     }
 
@@ -85,11 +78,11 @@ impl DnsClient {
             .set_query_class(DNSClass::IN)
             .set_query_type(RecordType::TXT);
 
-        let response = self.lookup(query, Default::default()).await?;
+        let responses = self.lookup(query).await?;
 
-        let records = response
-            .messages()
-            .flat_map(|msg| msg.answers())
+        let records = responses
+            .answers()
+            .iter()
             .map(|answer| {
                 let data = answer.rdata();
                 let mut buf = Vec::new();
@@ -116,7 +109,7 @@ pub struct Client<C> {
     shutdown: Arc<Shutdown>,
 }
 
-impl Client<AsyncDnssecClient<UdpResponse>> {
+impl Client<AsyncDnssecClient> {
     pub async fn connect_secure(name_server: SocketAddr, trust_anchor: TrustAnchor) -> Result<Self, DnsClientError> {
         let shutdown = Shutdown::new();
         let stream = UdpClientStream::<UdpSocket>::new(name_server);
@@ -124,7 +117,7 @@ impl Client<AsyncDnssecClient<UdpResponse>> {
             .trust_anchor(trust_anchor)
             .build()
             .await?;
-        task::spawn(future::select(shutdown.to_signal(), background));
+        task::spawn(future::select(shutdown.to_signal(), background.fuse()));
 
         Ok(Self {
             inner: client,
@@ -133,12 +126,12 @@ impl Client<AsyncDnssecClient<UdpResponse>> {
     }
 }
 
-impl Client<AsyncClient<UdpResponse>> {
+impl Client<AsyncClient> {
     pub async fn connect(name_server: SocketAddr) -> Result<Self, DnsClientError> {
         let shutdown = Shutdown::new();
         let stream = UdpClientStream::<UdpSocket>::new(name_server);
         let (client, background) = AsyncClient::connect(stream).await?;
-        task::spawn(future::select(shutdown.to_signal(), background));
+        task::spawn(future::select(shutdown.to_signal(), background.fuse()));
 
         Ok(Self {
             inner: client,
@@ -148,87 +141,31 @@ impl Client<AsyncClient<UdpResponse>> {
 }
 
 impl<C> Client<C>
-where C: DnsHandle
+where C: DnsHandle<Error = ProtoError>
 {
-    pub async fn lookup(&mut self, query: Query, options: DnsRequestOptions) -> Result<DnsResponse, DnsClientError> {
-        let resp = self.inner.lookup(query, options).await?;
-        Ok(resp)
+    pub async fn lookup(&mut self, query: Query) -> Result<DnsResponse, DnsClientError> {
+        let client_resp = self
+            .inner
+            .query(query.name().clone(), query.query_class(), query.query_type())
+            .await?;
+        Ok(client_resp)
     }
 }
 
 #[cfg(test)]
 mod mock {
     use super::*;
-    use futures::{channel::mpsc, future, Stream, StreamExt};
-    use std::{
-        fmt,
-        fmt::Display,
-        net::SocketAddr,
-        pin::Pin,
-        sync::Arc,
-        task::{Context, Poll},
-    };
+    use crate::dns::mock::{DefaultOnSend, MockClientHandle};
+    use std::sync::Arc;
     use tari_shutdown::Shutdown;
-    use tokio::task;
-    use trust_dns_client::{
-        client::AsyncClient,
-        op::Message,
-        proto::{
-            error::ProtoError,
-            xfer::{DnsClientStream, DnsMultiplexerSerialResponse, SerialMessage},
-            StreamHandle,
-        },
-        rr::Record,
-    };
+    use trust_dns_client::proto::error::ProtoError;
 
-    pub struct MockStream {
-        receiver: mpsc::UnboundedReceiver<Vec<u8>>,
-        answers: HashMap<&'static str, Vec<Record>>,
-    }
-
-    impl DnsClientStream for MockStream {
-        fn name_server_addr(&self) -> SocketAddr {
-            ([0u8, 0, 0, 0], 53).into()
-        }
-    }
-
-    impl Display for MockStream {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "MockStream")
-        }
-    }
-
-    impl Stream for MockStream {
-        type Item = Result<SerialMessage, ProtoError>;
-
-        fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-            let req = match futures::ready!(self.receiver.poll_next_unpin(cx)) {
-                Some(r) => r,
-                None => return Poll::Ready(None),
-            };
-            let req = Message::from_vec(&req).unwrap();
-            let name = req.queries()[0].name().to_string();
-            let mut msg = Message::new();
-            let answers = self.answers.get(name.as_str()).into_iter().flatten().cloned();
-            msg.set_id(req.id()).add_answers(answers);
-            Poll::Ready(Some(Ok(SerialMessage::new(
-                msg.to_vec().unwrap(),
-                self.name_server_addr(),
-            ))))
-        }
-    }
-
-    impl Client<AsyncClient<DnsMultiplexerSerialResponse>> {
-        pub async fn connect_mock(answers: HashMap<&'static str, Vec<Record>>) -> Result<Self, ProtoError> {
-            let (tx, rx) = mpsc::unbounded();
-            let stream = future::ready(Ok(MockStream { receiver: rx, answers }));
-            let (client, background) = AsyncClient::new(stream, Box::new(StreamHandle::new(tx)), None).await?;
-
-            let shutdown = Shutdown::new();
-            task::spawn(future::select(shutdown.to_signal(), background));
+    impl Client<MockClientHandle<DefaultOnSend, ProtoError>> {
+        pub async fn connect_mock(messages: Vec<Result<DnsResponse, ProtoError>>) -> Result<Self, ProtoError> {
+            let client = MockClientHandle::mock(messages);
             Ok(Self {
                 inner: client,
-                shutdown: Arc::new(shutdown),
+                shutdown: Arc::new(Shutdown::new()),
             })
         }
     }

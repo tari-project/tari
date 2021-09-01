@@ -13,16 +13,15 @@ use tower::Service;
 /// Filtered response future
 #[pin_project]
 #[derive(Debug)]
-pub struct ResponseFuture<T, S, Request>
+pub struct ResponseFuture<S, Request>
 where S: Service<Request>
 {
     #[pin]
     /// Response future state
     state: State<Request, S::Future>,
 
-    #[pin]
-    /// Predicate future
-    check: T,
+    /// Predicate result
+    check: bool,
 
     /// Inner service
     service: S,
@@ -35,12 +34,10 @@ enum State<Request, U> {
     WaitResponse(#[pin] U),
 }
 
-impl<F, T, S, Request> ResponseFuture<F, S, Request>
-where
-    F: Future<Output = Result<T, PipelineError>>,
-    S: Service<Request, Error = PipelineError>,
+impl<S, Request> ResponseFuture<S, Request>
+where S: Service<Request, Error = PipelineError>
 {
-    pub(crate) fn new(request: Request, check: F, service: S) -> Self {
+    pub(crate) fn new(request: Request, check: bool, service: S) -> Self {
         ResponseFuture {
             state: State::Check(Some(request)),
             check,
@@ -49,10 +46,8 @@ where
     }
 }
 
-impl<F, T, S, Request> Future for ResponseFuture<F, S, Request>
-where
-    F: Future<Output = Result<T, PipelineError>>,
-    S: Service<Request, Error = PipelineError>,
+impl<S, Request> Future for ResponseFuture<S, Request>
+where S: Service<Request, Response = (), Error = PipelineError>
 {
     type Output = Result<S::Response, PipelineError>;
 
@@ -66,15 +61,13 @@ where
                         .take()
                         .expect("we either give it back or leave State::Check once we take");
 
-                    // Poll predicate
-                    match this.check.as_mut().poll(cx)? {
-                        Poll::Ready(_) => {
+                    match this.check {
+                        true => {
                             let response = this.service.call(request);
                             this.state.set(State::WaitResponse(response));
                         },
-                        Poll::Pending => {
-                            this.state.set(State::Check(Some(request)));
-                            return Poll::Pending;
+                        false => {
+                            return Poll::Ready(Ok(()));
                         },
                     }
                 },

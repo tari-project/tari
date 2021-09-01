@@ -22,11 +22,15 @@
 
 use super::peer_message::PeerMessage;
 use crate::{comms_connector::InboundDomainConnector, tari_message::TariMessageType};
-use futures::{channel::mpsc, future, stream::Fuse, Stream, StreamExt};
+use futures::{future, Stream, StreamExt};
 use log::*;
 use std::{cmp, fmt::Debug, sync::Arc, time::Duration};
 use tari_comms::rate_limit::RateLimit;
-use tokio::{runtime::Handle, sync::broadcast};
+use tokio::{
+    sync::{broadcast, mpsc},
+    task,
+};
+use tokio_stream::wrappers;
 
 const LOG_TARGET: &str = "comms::middleware::pubsub";
 
@@ -35,16 +39,11 @@ const RATE_LIMIT_MIN_CAPACITY: usize = 5;
 const RATE_LIMIT_RESTOCK_INTERVAL: Duration = Duration::from_millis(1000);
 
 /// Alias for a pubsub-type domain connector
-pub type PubsubDomainConnector = InboundDomainConnector<mpsc::Sender<Arc<PeerMessage>>>;
+pub type PubsubDomainConnector = InboundDomainConnector;
 pub type SubscriptionFactory = TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>;
 
 /// Connects `InboundDomainConnector` to a `tari_pubsub::TopicPublisher` through a buffered broadcast channel
-pub fn pubsub_connector(
-    // TODO: Remove this arg in favor of task::spawn
-    executor: Handle,
-    buf_size: usize,
-    rate_limit: usize,
-) -> (PubsubDomainConnector, SubscriptionFactory) {
+pub fn pubsub_connector(buf_size: usize, rate_limit: usize) -> (PubsubDomainConnector, SubscriptionFactory) {
     let (publisher, subscription_factory) = pubsub_channel(buf_size);
     let (sender, receiver) = mpsc::channel(buf_size);
     trace!(
@@ -55,8 +54,8 @@ pub fn pubsub_connector(
     );
 
     // Spawn a task which forwards messages from the pubsub service to the TopicPublisher
-    executor.spawn(async move {
-        let forwarder = receiver
+    task::spawn(async move {
+        wrappers::ReceiverStream::new(receiver)
             // Rate limit the receiver; the sender will adhere to the limit
             .rate_limit(cmp::max(rate_limit, RATE_LIMIT_MIN_CAPACITY), RATE_LIMIT_RESTOCK_INTERVAL)
             // Map DomainMessage into a TopicPayload
@@ -89,8 +88,7 @@ pub fn pubsub_connector(
                     );
                 }
                 future::ready(())
-            });
-        forwarder.await;
+            }).await;
     });
     (InboundDomainConnector::new(sender), subscription_factory)
 }
@@ -98,8 +96,8 @@ pub fn pubsub_connector(
 /// Create a topic-based pub-sub channel
 fn pubsub_channel<T, M>(size: usize) -> (TopicPublisher<T, M>, TopicSubscriptionFactory<T, M>)
 where
-    T: Clone + Debug + Send + Eq,
-    M: Send + Clone,
+    T: Clone + Debug + Send + Eq + 'static,
+    M: Send + Clone + 'static,
 {
     let (publisher, _) = broadcast::channel(size);
     (publisher.clone(), TopicSubscriptionFactory::new(publisher))
@@ -138,8 +136,8 @@ pub struct TopicSubscriptionFactory<T, M> {
 
 impl<T, M> TopicSubscriptionFactory<T, M>
 where
-    T: Clone + Eq + Debug + Send,
-    M: Clone + Send,
+    T: Clone + Eq + Debug + Send + 'static,
+    M: Clone + Send + 'static,
 {
     pub fn new(sender: broadcast::Sender<TopicPayload<T, M>>) -> Self {
         TopicSubscriptionFactory { sender }
@@ -148,38 +146,22 @@ where
     /// Create a subscription stream to a particular topic. The provided label is used to identify which consumer is
     /// lagging.
     pub fn get_subscription(&self, topic: T, label: &'static str) -> impl Stream<Item = M> {
-        self.sender
-            .subscribe()
-            .filter_map({
-                let topic = topic.clone();
-                move |result| {
-                    let opt = match result {
-                        Ok(payload) => Some(payload),
-                        Err(broadcast::RecvError::Closed) => None,
-                        Err(broadcast::RecvError::Lagged(n)) => {
-                            warn!(
-                                target: LOG_TARGET,
-                                "Subscription '{}' for topic '{:?}' lagged. {} message(s) dropped.", label, topic, n
-                            );
-                            None
-                        },
-                    };
-                    future::ready(opt)
-                }
-            })
-            .filter_map(move |item| {
-                let opt = if item.topic() == &topic {
-                    Some(item.message)
-                } else {
-                    None
+        wrappers::BroadcastStream::new(self.sender.subscribe()).filter_map({
+            move |result| {
+                let opt = match result {
+                    Ok(payload) if *payload.topic() == topic => Some(payload.message),
+                    Ok(_) => None,
+                    Err(wrappers::errors::BroadcastStreamRecvError::Lagged(n)) => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Subscription '{}' for topic '{:?}' lagged. {} message(s) dropped.", label, topic, n
+                        );
+                        None
+                    },
                 };
                 future::ready(opt)
-            })
-    }
-
-    /// Convenience function that returns a fused (`stream::Fuse`) version of the subscription stream.
-    pub fn get_subscription_fused(&self, topic: T, label: &'static str) -> Fuse<impl Stream<Item = M>> {
-        self.get_subscription(topic, label).fuse()
+            }
+        })
     }
 }
 
@@ -190,7 +172,7 @@ mod test {
     use std::time::Duration;
     use tari_test_utils::collect_stream;
 
-    #[tokio_macros::test_basic]
+    #[tokio::test]
     async fn topic_pub_sub() {
         let (publisher, subscriber_factory) = pubsub_channel(10);
 

@@ -20,24 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// use crate::helpers::database::create_test_db;
-// use crate::helpers::database::create_store;
-use crate::helpers::{
-    block_builders::{
-        append_block,
-        chain_block,
-        create_chain_header,
-        create_genesis_block,
-        find_header_with_achieved_difficulty,
-        generate_new_block,
-        generate_new_block_with_achieved_difficulty,
-        generate_new_block_with_coinbase,
-    },
-    database::create_orphan_block,
-    sample_blockchains::{create_new_blockchain, create_new_blockchain_lmdb},
-    test_blockchain::TestBlockchain,
-};
 use rand::{rngs::OsRng, RngCore};
+use tari_crypto::{script::StackItem, tari_utilities::Hashable};
+
 use tari_common::configuration::Network;
 use tari_common_types::types::BlockHash;
 use tari_core::{
@@ -63,15 +48,32 @@ use tari_core::{
     transactions::{
         helpers::{schema_to_transaction, spend_utxos},
         tari_amount::{uT, MicroTari, T},
-        types::CryptoFactories,
+        CryptoFactories,
     },
     tx,
     txn_schema,
     validation::{mocks::MockValidator, DifficultyCalculator, ValidationError},
 };
-use tari_crypto::{script::StackItem, tari_utilities::Hashable};
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
+
+// use crate::helpers::database::create_test_db;
+// use crate::helpers::database::create_store;
+use crate::helpers::{
+    block_builders::{
+        append_block,
+        chain_block,
+        create_chain_header,
+        create_genesis_block,
+        find_header_with_achieved_difficulty,
+        generate_new_block,
+        generate_new_block_with_achieved_difficulty,
+        generate_new_block_with_coinbase,
+    },
+    database::create_orphan_block,
+    sample_blockchains::{create_new_blockchain, create_new_blockchain_lmdb},
+    test_blockchain::TestBlockchain,
+};
 
 #[test]
 fn fetch_nonexistent_header() {

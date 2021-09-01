@@ -46,7 +46,7 @@ use std::{
 use tari_common::configuration::bootstrap::ApplicationType;
 use tari_utilities::hex::Hex;
 
-const LOG_TARGET: &str = "p2p::auto-update";
+const LOG_TARGET: &str = "p2p::auto_update";
 
 #[derive(Debug, Clone)]
 pub struct AutoUpdateConfig {
@@ -56,6 +56,12 @@ pub struct AutoUpdateConfig {
     pub download_base_url: String,
     pub hashes_url: String,
     pub hashes_sig_url: String,
+}
+
+impl AutoUpdateConfig {
+    pub fn is_update_enabled(&self) -> bool {
+        !self.update_uris.is_empty()
+    }
 }
 
 pub async fn check_for_updates(

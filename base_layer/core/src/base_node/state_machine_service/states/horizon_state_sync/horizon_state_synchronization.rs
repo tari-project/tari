@@ -39,10 +39,7 @@ use crate::{
         SyncUtxosRequest,
         SyncUtxosResponse,
     },
-    transactions::{
-        transaction::{TransactionKernel, TransactionOutput},
-        types::{HashDigest, RangeProofService},
-    },
+    transactions::transaction::{TransactionKernel, TransactionOutput},
 };
 use croaring::Bitmap;
 use futures::StreamExt;
@@ -51,6 +48,7 @@ use std::{
     convert::{TryFrom, TryInto},
     sync::Arc,
 };
+use tari_common_types::types::{HashDigest, RangeProofService};
 use tari_comms::PeerConnection;
 use tari_crypto::{
     commitment::HomomorphicCommitment,

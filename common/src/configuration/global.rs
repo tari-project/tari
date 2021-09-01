@@ -71,7 +71,6 @@ pub struct GlobalConfig {
     pub pruning_horizon: u64,
     pub pruned_mode_cleanup_interval: u64,
     pub core_threads: Option<usize>,
-    pub max_threads: Option<usize>,
     pub base_node_identity_file: PathBuf,
     pub public_address: Multiaddr,
     pub grpc_enabled: bool,
@@ -137,6 +136,7 @@ pub struct GlobalConfig {
     pub mining_pool_address: String,
     pub mining_wallet_address: String,
     pub mining_worker_name: String,
+    pub base_node_bypass_range_proof_verification: bool,
 }
 
 impl GlobalConfig {
@@ -270,10 +270,6 @@ fn convert_node_config(
     let core_threads =
         optional(cfg.get_int(&key).map(|n| n as usize)).map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
-    let key = config_string("base_node", &net_str, "max_threads");
-    let max_threads =
-        optional(cfg.get_int(&key).map(|n| n as usize)).map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
-
     // Max RandomX VMs
     let key = config_string("base_node", &net_str, "max_randomx_vms");
     let max_randomx_vms = optional(cfg.get_int(&key).map(|n| n as usize))
@@ -376,6 +372,8 @@ fn convert_node_config(
             s.parse::<SocketAddr>()
                 .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
         })?;
+    let key = config_string("base_node", &net_str, "bypass_range_proof_verification");
+    let base_node_bypass_range_proof_verification = cfg.get_bool(&key).unwrap_or(false);
 
     let key = config_string("base_node", &net_str, "dns_seeds_use_dnssec");
     let dns_seeds_use_dnssec = cfg
@@ -712,7 +710,6 @@ fn convert_node_config(
         pruning_horizon,
         pruned_mode_cleanup_interval,
         core_threads,
-        max_threads,
         base_node_identity_file,
         public_address,
         grpc_enabled,
@@ -778,6 +775,7 @@ fn convert_node_config(
         mining_pool_address,
         mining_wallet_address,
         mining_worker_name,
+        base_node_bypass_range_proof_verification,
     })
 }
 

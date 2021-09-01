@@ -25,8 +25,8 @@ use log::*;
 use rand::rngs::OsRng;
 use std::{clone::Clone, fs, path::Path, string::ToString, sync::Arc};
 use tari_common::configuration::bootstrap::prompt;
+use tari_common_types::types::PrivateKey;
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
-use tari_core::transactions::types::PrivateKey;
 use tari_crypto::{
     keys::SecretKey,
     tari_utilities::{hex::Hex, message_format::MessageFormat},
@@ -55,14 +55,19 @@ pub fn setup_node_identity<P: AsRef<Path>>(
             if !create_id {
                 let prompt = prompt("Node identity does not exist.\nWould you like to to create one (Y/n)?");
                 if !prompt {
-                    let msg = format!(
+                    error!(
+                        target: LOG_TARGET,
                         "Node identity information not found. {}. You can update the configuration file to point to a \
                          valid node identity file, or re-run the node with the --create-id flag to create a new \
                          identity.",
                         e
                     );
-                    error!(target: LOG_TARGET, "{}", msg);
-                    return Err(ExitCodes::ConfigError(msg));
+                    return Err(ExitCodes::ConfigError(format!(
+                        "Node identity information not found. {}. You can update the configuration file to point to a \
+                         valid node identity file, or re-run the node with the --create-id flag to create a new \
+                         identity.",
+                        e
+                    )));
                 };
             }
 

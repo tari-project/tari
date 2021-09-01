@@ -23,7 +23,7 @@
 use crate::base_node::state_machine_service::states::{BlockSync, HeaderSync, HorizonStateSync, StateEvent};
 use log::info;
 use std::time::Duration;
-use tokio::time::delay_for;
+use tokio::time::sleep;
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::waiting";
 
@@ -41,7 +41,7 @@ impl Waiting {
             "The base node has started a WAITING state for {} seconds",
             self.timeout.as_secs()
         );
-        delay_for(self.timeout).await;
+        sleep(self.timeout).await;
         info!(
             target: LOG_TARGET,
             "The base node waiting state has completed. Resuming normal operations"

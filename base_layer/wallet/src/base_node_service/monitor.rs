@@ -25,7 +25,7 @@ use crate::{
         handle::{BaseNodeEvent, BaseNodeEventSender},
         service::BaseNodeState,
     },
-    connectivity_service::{OnlineStatus, WalletConnectivityHandle},
+    connectivity_service::WalletConnectivityHandle,
     error::WalletStorageError,
     storage::database::{WalletBackend, WalletDatabase},
 };
@@ -33,7 +33,7 @@ use chrono::Utc;
 use log::*;
 use std::{convert::TryFrom, sync::Arc, time::Duration};
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::{peer_manager::NodeId, protocol::rpc::RpcError};
+use tari_comms::protocol::rpc::RpcError;
 use tokio::{sync::RwLock, time};
 
 const LOG_TARGET: &str = "wallet::base_node_service::chain_metadata_monitor";
@@ -78,9 +78,6 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
                 },
                 Err(e @ BaseNodeMonitorError::RpcFailed(_)) => {
                     warn!(target: LOG_TARGET, "Connectivity failure to base node: {}", e);
-                    debug!(target: LOG_TARGET, "Setting as OFFLINE and retrying...",);
-
-                    self.set_offline().await;
                     continue;
                 },
                 Err(e @ BaseNodeMonitorError::InvalidBaseNodeResponse(_)) |
@@ -96,33 +93,18 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
         );
     }
 
-    async fn update_connectivity_status(&self) -> NodeId {
-        let mut watcher = self.wallet_connectivity.get_connectivity_status_watch();
-        loop {
-            use OnlineStatus::*;
-            match watcher.recv().await.unwrap_or(Offline) {
-                Online => match self.wallet_connectivity.get_current_base_node_id() {
-                    Some(node_id) => return node_id,
-                    _ => continue,
-                },
-                Connecting => {
-                    self.set_connecting().await;
-                },
-                Offline => {
-                    self.set_offline().await;
-                },
-            }
-        }
-    }
-
     async fn monitor_node(&mut self) -> Result<(), BaseNodeMonitorError> {
         loop {
-            let peer_node_id = self.update_connectivity_status().await;
             let mut client = self
                 .wallet_connectivity
                 .obtain_base_node_wallet_rpc_client()
                 .await
                 .ok_or(BaseNodeMonitorError::NodeShuttingDown)?;
+
+            let base_node_id = match self.wallet_connectivity.get_current_base_node_id() {
+                Some(n) => n,
+                None => continue,
+            };
 
             let tip_info = client.get_tip_info().await?;
 
@@ -138,7 +120,7 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
             debug!(
                 target: LOG_TARGET,
                 "Base node {} Tip: {} ({}) Latency: {} ms",
-                peer_node_id,
+                base_node_id,
                 chain_metadata.height_of_longest_chain(),
                 if is_synced { "Synced" } else { "Syncing..." },
                 latency.as_millis()
@@ -151,38 +133,15 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
                 is_synced: Some(is_synced),
                 updated: Some(Utc::now().naive_utc()),
                 latency: Some(latency),
-                online: OnlineStatus::Online,
             })
             .await;
 
-            time::delay_for(self.interval).await
+            time::sleep(self.interval).await
         }
 
         // loop only exits on shutdown/error
         #[allow(unreachable_code)]
         Ok(())
-    }
-
-    async fn set_connecting(&self) {
-        self.map_state(|_| BaseNodeState {
-            chain_metadata: None,
-            is_synced: None,
-            updated: Some(Utc::now().naive_utc()),
-            latency: None,
-            online: OnlineStatus::Connecting,
-        })
-        .await;
-    }
-
-    async fn set_offline(&self) {
-        self.map_state(|_| BaseNodeState {
-            chain_metadata: None,
-            is_synced: None,
-            updated: Some(Utc::now().naive_utc()),
-            latency: None,
-            online: OnlineStatus::Offline,
-        })
-        .await;
     }
 
     async fn map_state<F>(&self, transform: F)

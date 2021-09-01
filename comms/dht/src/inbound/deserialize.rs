@@ -137,9 +137,12 @@ mod test {
             service_spy,
         },
     };
-    use tari_comms::message::{MessageExt, MessageTag};
+    use tari_comms::{
+        message::{MessageExt, MessageTag},
+        runtime,
+    };
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn deserialize() {
         let spy = service_spy();
         let peer_manager = build_peer_manager();

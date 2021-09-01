@@ -14,10 +14,6 @@ appenders:
     kind: console
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {h({l}):5} {m}{n}"
-    filters:
-      -
-        kind: threshold
-        level: warn
   # An appender named "base_layer" that writes to a file with a custom pattern encoder
   mining_node:
     kind: rolling_file
@@ -37,9 +33,22 @@ appenders:
 
 # Set the default logging level to "warn" and attach the "stdout" appender to the root
 root:
-  level: info
+  level: warn
   appenders:
     - stdout
-    - mining_node
+
+loggers:
+  # mining_node
+  tari::application:
+    level: debug
+    appenders:
+      - mining_node
+    additive: false
+  tari_mining_node:
+    level: debug
+    appenders:
+      - mining_node
+      - stdout
+    additive: false
 
 

@@ -24,7 +24,6 @@ use crate::{
     discovery::{DhtDiscoveryRequest, DhtDiscoveryRequester},
     test_utils::make_peer,
 };
-use futures::{channel::mpsc, stream::Fuse, StreamExt};
 use log::*;
 use std::{
     sync::{
@@ -35,15 +34,13 @@ use std::{
     time::Duration,
 };
 use tari_comms::peer_manager::Peer;
+use tokio::sync::mpsc;
 
 const LOG_TARGET: &str = "comms::dht::discovery_mock";
 
 pub fn create_dht_discovery_mock(buf_size: usize, timeout: Duration) -> (DhtDiscoveryRequester, DhtDiscoveryMock) {
     let (tx, rx) = mpsc::channel(buf_size);
-    (
-        DhtDiscoveryRequester::new(tx, timeout),
-        DhtDiscoveryMock::new(rx.fuse()),
-    )
+    (DhtDiscoveryRequester::new(tx, timeout), DhtDiscoveryMock::new(rx))
 }
 
 #[derive(Debug, Clone)]
@@ -75,12 +72,12 @@ impl DhtDiscoveryMockState {
 }
 
 pub struct DhtDiscoveryMock {
-    receiver: Fuse<mpsc::Receiver<DhtDiscoveryRequest>>,
+    receiver: mpsc::Receiver<DhtDiscoveryRequest>,
     state: DhtDiscoveryMockState,
 }
 
 impl DhtDiscoveryMock {
-    pub fn new(receiver: Fuse<mpsc::Receiver<DhtDiscoveryRequest>>) -> Self {
+    pub fn new(receiver: mpsc::Receiver<DhtDiscoveryRequest>) -> Self {
         Self {
             receiver,
             state: DhtDiscoveryMockState::new(),
@@ -92,7 +89,7 @@ impl DhtDiscoveryMock {
     }
 
     pub async fn run(mut self) {
-        while let Some(req) = self.receiver.next().await {
+        while let Some(req) = self.receiver.recv().await {
             self.handle_request(req).await;
         }
     }

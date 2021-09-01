@@ -43,8 +43,9 @@ use std::{
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
+use tari_common_types::types::BlindingFactor;
 use tari_comms::types::CommsPublicKey;
-use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction, types::BlindingFactor};
+use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction};
 
 const LOG_TARGET: &str = "wallet::transaction_service::database";
 

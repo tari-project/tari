@@ -69,7 +69,7 @@ impl DnsResolver for TorDnsResolver {
                 let resolved = match client.tor_resolve(&addr).await {
                     Ok(a) => a,
                     Err(err) => {
-                        error!(target: LOG_TARGET, "{}", err);
+                        error!(target: LOG_TARGET, "Error resolving address: {}", err);
                         return Err(err.into());
                     },
                 };

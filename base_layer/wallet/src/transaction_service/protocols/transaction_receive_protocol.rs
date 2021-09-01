@@ -34,21 +34,18 @@ use crate::{
     },
 };
 use chrono::Utc;
-use futures::{
-    channel::{mpsc, oneshot},
-    future::FutureExt,
-    StreamExt,
-};
+use futures::future::FutureExt;
 use log::*;
 use std::sync::Arc;
 use tari_comms::types::CommsPublicKey;
+use tokio::sync::{mpsc, oneshot};
 
 use tari_core::transactions::{
     transaction::Transaction,
     transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
 };
 use tari_crypto::tari_utilities::Hashable;
-use tokio::time::delay_for;
+use tokio::time::sleep;
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::receive_protocol";
 const LOG_TARGET_STRESS: &str = "stress_test::receive_protocol";
@@ -263,7 +260,8 @@ where TBackend: TransactionBackend + 'static
             },
             Some(t) => t,
         };
-        let mut timeout_delay = delay_for(timeout_duration).fuse();
+        let timeout_delay = sleep(timeout_duration).fuse();
+        tokio::pin!(timeout_delay);
 
         // check to see if a resend is due
         let resend = match inbound_tx.last_send_timestamp {
@@ -310,9 +308,9 @@ where TBackend: TransactionBackend + 'static
         let mut incoming_finalized_transaction = None;
         loop {
             loop {
-                let mut resend_timeout = delay_for(self.resources.config.transaction_resend_period).fuse();
-                futures::select! {
-                    (spk, tx_id, tx) = receiver.select_next_some() => {
+                let resend_timeout = sleep(self.resources.config.transaction_resend_period).fuse();
+                tokio::select! {
+                    Some((spk, tx_id, tx)) = receiver.recv() => {
                         incoming_finalized_transaction = Some(tx);
                         if inbound_tx.source_public_key != spk {
                             warn!(
@@ -325,16 +323,14 @@ where TBackend: TransactionBackend + 'static
                             break;
                         }
                     },
-                    result = cancellation_receiver => {
-                        if result.is_ok() {
-                            info!(target: LOG_TARGET, "Cancelling Transaction Receive Protocol for TxId: {}", self.id);
-                            return Err(TransactionServiceProtocolError::new(
-                                self.id,
-                                TransactionServiceError::TransactionCancelled,
-                            ));
-                        }
+                    Ok(_) = &mut cancellation_receiver => {
+                        info!(target: LOG_TARGET, "Cancelling Transaction Receive Protocol for TxId: {}", self.id);
+                        return Err(TransactionServiceProtocolError::new(
+                            self.id,
+                            TransactionServiceError::TransactionCancelled,
+                        ));
                     },
-                    () = resend_timeout => {
+                    _ = resend_timeout => {
                         match send_transaction_reply(
                             inbound_tx.clone(),
                             self.resources.outbound_message_service.clone(),
@@ -353,10 +349,10 @@ where TBackend: TransactionBackend + 'static
                                         ),
                         }
                     },
-                    () = timeout_delay => {
+                    _ = &mut timeout_delay => {
                         return self.timeout_transaction().await;
                     }
-                    _ = shutdown => {
+                    _ = shutdown.wait() => {
                         info!(target: LOG_TARGET, "Transaction Receive Protocol (id: {}) shutting down because it received the shutdown signal", self.id);
                         return Err(TransactionServiceProtocolError::new(self.id, TransactionServiceError::Shutdown))
                     }
@@ -381,7 +377,7 @@ where TBackend: TransactionBackend + 'static
             );
 
             finalized_transaction
-                .validate_internal_consistency(&self.resources.factories, None)
+                .validate_internal_consistency(true, &self.resources.factories, None)
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
             // Find your own output in the transaction

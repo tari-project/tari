@@ -39,22 +39,22 @@ use crate::{
     types::CommsPublicKey,
 };
 use futures::{
-    channel::{mpsc, oneshot},
     future,
     future::{BoxFuture, Either, FusedFuture},
     pin_mut,
-    stream::{Fuse, FuturesUnordered},
-    AsyncRead,
-    AsyncWrite,
-    AsyncWriteExt,
+    stream::FuturesUnordered,
     FutureExt,
-    SinkExt,
-    StreamExt,
 };
 use log::*;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::{task::JoinHandle, time};
+use tokio::{
+    io::{AsyncRead, AsyncWrite, AsyncWriteExt},
+    sync::{mpsc, oneshot},
+    task::JoinHandle,
+    time,
+};
+use tokio_stream::StreamExt;
 use tracing::{self, span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::connection_manager::dialer";
@@ -79,7 +79,7 @@ pub struct Dialer<TTransport, TBackoff> {
     transport: TTransport,
     noise_config: NoiseConfig,
     backoff: Arc<TBackoff>,
-    request_rx: Fuse<mpsc::Receiver<DialerRequest>>,
+    request_rx: mpsc::Receiver<DialerRequest>,
     cancel_signals: HashMap<NodeId, Shutdown>,
     conn_man_notifier: mpsc::Sender<ConnectionManagerEvent>,
     shutdown: Option<ShutdownSignal>,
@@ -112,7 +112,7 @@ where
             transport,
             noise_config,
             backoff: Arc::new(backoff),
-            request_rx: request_rx.fuse(),
+            request_rx,
             cancel_signals: Default::default(),
             conn_man_notifier,
             shutdown: Some(shutdown),
@@ -139,16 +139,20 @@ where
             .expect("Establisher initialized without a shutdown");
         debug!(target: LOG_TARGET, "Connection dialer started");
         loop {
-            futures::select! {
-                request = self.request_rx.select_next_some() => self.handle_request(&mut pending_dials, request),
-                (dial_state, dial_result) = pending_dials.select_next_some() => {
-                    self.handle_dial_result(dial_state, dial_result).await;
-                }
-                _ = shutdown => {
+            tokio::select! {
+                // Biased ordering is used because we already have the futures polled here in a fair order, and so wish to
+                // forgo the minor cost of the random ordering
+                biased;
+
+                _ = &mut shutdown => {
                     info!(target: LOG_TARGET, "Connection dialer shutting down because the shutdown signal was received");
                     self.cancel_all_dials();
                     break;
                 }
+                Some((dial_state, dial_result)) = pending_dials.next() => {
+                    self.handle_dial_result(dial_state, dial_result).await;
+                }
+                Some(request) = self.request_rx.recv() => self.handle_request(&mut pending_dials, request),
             }
         }
     }
@@ -179,12 +183,7 @@ where
             self.cancel_signals.len()
         );
         self.cancel_signals.drain().for_each(|(_, mut signal)| {
-            log_if_error_fmt!(
-                level: warn,
-                target: LOG_TARGET,
-                signal.trigger(),
-                "Shutdown trigger failed",
-            );
+            signal.trigger();
         })
     }
 
@@ -339,7 +338,7 @@ where
     }
 
     #[allow(clippy::too_many_arguments)]
-    #[tracing::instrument(skip(peer_manager, socket, conn_man_notifier, config, cancel_signal), err)]
+    #[tracing::instrument(skip(peer_manager, socket, conn_man_notifier, config, cancel_signal))]
     async fn perform_socket_upgrade_procedure(
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
@@ -352,7 +351,6 @@ where
         cancel_signal: ShutdownSignal,
     ) -> Result<PeerConnection, ConnectionManagerError> {
         static CONNECTION_DIRECTION: ConnectionDirection = ConnectionDirection::Outbound;
-
         let mut muxer = Yamux::upgrade_connection(socket, CONNECTION_DIRECTION)
             .await
             .map_err(|err| ConnectionManagerError::YamuxUpgradeFailure(err.to_string()))?;
@@ -448,9 +446,9 @@ where
                 current_state.peer.node_id.short_str(),
                 backoff_duration.as_secs()
             );
-            let mut delay = time::delay_for(backoff_duration).fuse();
-            let mut cancel_signal = current_state.get_cancel_signal();
-            futures::select! {
+            let delay = time::sleep(backoff_duration).fuse();
+            let cancel_signal = current_state.get_cancel_signal();
+            tokio::select! {
                 _ = delay => {
                     debug!(target: LOG_TARGET, "[Attempt {}] Connecting to peer '{}'", current_state.num_attempts(), current_state.peer.node_id.short_str());
                     match Self::dial_peer(current_state, &noise_config, &current_transport, config.network_info.network_byte).await {
@@ -544,17 +542,12 @@ where
                             // Try the next address
                             continue;
                         },
-                        Either::Right((cancel_result, _)) => {
+                        // Canceled
+                        Either::Right(_) => {
                             debug!(
                                 target: LOG_TARGET,
                                 "Dial for peer '{}' cancelled",
                                 dial_state.peer.node_id.short_str()
-                            );
-                            log_if_error!(
-                                level: warn,
-                                target: LOG_TARGET,
-                                cancel_result,
-                                "Cancel channel error during dial: {}",
                             );
                             Err(ConnectionManagerError::DialCancelled)
                         },
