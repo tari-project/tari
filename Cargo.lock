@@ -4357,7 +4357,7 @@ dependencies = [
 
 [[package]]
 name = "tari_app_grpc"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "chrono",
  "prost",
@@ -4373,7 +4373,7 @@ dependencies = [
 
 [[package]]
 name = "tari_app_utilities"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "config",
  "dirs-next",
@@ -4399,7 +4399,7 @@ dependencies = [
 
 [[package]]
 name = "tari_base_node"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "anyhow",
  "bincode",
@@ -4456,7 +4456,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "anyhow",
  "config",
@@ -4485,7 +4485,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common_types"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "digest",
  "futures 0.3.16",
@@ -4498,7 +4498,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4547,7 +4547,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_dht"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "anyhow",
  "bitflags 1.3.2",
@@ -4594,7 +4594,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_rpc_macros"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "futures 0.3.16",
  "proc-macro2 1.0.28",
@@ -4609,7 +4609,7 @@ dependencies = [
 
 [[package]]
 name = "tari_console_wallet"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "bitflags 1.3.2",
  "chrono",
@@ -4651,7 +4651,7 @@ dependencies = [
 
 [[package]]
 name = "tari_core"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "bincode",
  "bitflags 1.3.2",
@@ -4729,7 +4729,7 @@ dependencies = [
 
 [[package]]
 name = "tari_infra_derive"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "blake2",
  "proc-macro2 0.4.30",
@@ -4739,7 +4739,7 @@ dependencies = [
 
 [[package]]
 name = "tari_key_manager"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "digest",
  "rand 0.8.4",
@@ -4753,7 +4753,7 @@ dependencies = [
 
 [[package]]
 name = "tari_merge_mining_proxy"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "anyhow",
  "bincode",
@@ -4790,7 +4790,7 @@ dependencies = [
 
 [[package]]
 name = "tari_mining_node"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "bufstream",
  "chrono",
@@ -4820,7 +4820,7 @@ dependencies = [
 
 [[package]]
 name = "tari_mmr"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "bincode",
  "blake2",
@@ -4839,7 +4839,7 @@ dependencies = [
 
 [[package]]
 name = "tari_p2p"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "anyhow",
  "bytes 0.5.6",
@@ -4881,7 +4881,7 @@ dependencies = [
 
 [[package]]
 name = "tari_service_framework"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4898,7 +4898,7 @@ dependencies = [
 
 [[package]]
 name = "tari_shutdown"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "futures 0.3.16",
  "tokio 1.10.1",
@@ -4906,7 +4906,7 @@ dependencies = [
 
 [[package]]
 name = "tari_storage"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "bincode",
  "bytes 0.5.6",
@@ -4977,7 +4977,7 @@ dependencies = [
 
 [[package]]
 name = "tari_test_utils"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "futures 0.3.16",
  "futures-test",
@@ -5008,7 +5008,7 @@ dependencies = [
 
 [[package]]
 name = "tari_wallet"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "aes-gcm 0.8.0",
  "bincode",
@@ -5049,7 +5049,7 @@ dependencies = [
 
 [[package]]
 name = "tari_wallet_ffi"
-version = "0.17.4"
+version = "0.17.5"
 dependencies = [
  "chrono",
  "env_logger 0.7.1",
@@ -5100,7 +5100,7 @@ dependencies = [
 
 [[package]]
 name = "test_faucet"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "rand 0.8.4",
  "serde 1.0.130",

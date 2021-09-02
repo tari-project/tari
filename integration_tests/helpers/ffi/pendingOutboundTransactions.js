@@ -2,35 +2,28 @@ const PendingOutboundTransaction = require("./pendingOutboundTransaction");
 const InterfaceFFI = require("./ffiInterface");
 
 class PendingOutboundTransactions {
-  #tari_pending_outbound_transactions_ptr;
+  ptr = undefined;
 
   constructor(ptr) {
-    this.#tari_pending_outbound_transactions_ptr = ptr;
+    this.ptr = ptr;
   }
 
   getLength() {
-    return InterfaceFFI.pendingOutboundTransactionsGetLength(
-      this.#tari_pending_outbound_transactions_ptr
-    );
+    return InterfaceFFI.pendingOutboundTransactionsGetLength(this.ptr);
   }
 
   getAt(position) {
     let result = new PendingOutboundTransaction();
     result.pointerAssign(
-      InterfaceFFI.pendingOutboundTransactionsGetAt(
-        this.#tari_pending_outbound_transactions_ptr,
-        position
-      )
+      InterfaceFFI.pendingOutboundTransactionsGetAt(this.ptr, position)
     );
     return result;
   }
 
   destroy() {
-    if (this.#tari_pending_outbound_transactions_ptr) {
-      InterfaceFFI.pendingOutboundTransactionsDestroy(
-        this.#tari_pending_outbound_transactions_ptr
-      );
-      this.#tari_pending_outbound_transactions_ptr = undefined; //prevent double free segfault
+    if (this.ptr) {
+      InterfaceFFI.pendingOutboundTransactionsDestroy(this.ptr);
+      this.ptr = undefined; //prevent double free segfault
     }
   }
 }

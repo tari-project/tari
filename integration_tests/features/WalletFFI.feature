@@ -1,7 +1,10 @@
 @wallet-ffi
 Feature: Wallet FFI
-    # Increase heap memory available to nodejs if frequent crashing occurs with
-    # error being be similar to this: `0x1a32cd5 V8_Fatal(char const*, ...)`
+    # Appears to run in NodeJS v12 consistently on mac (5 crash-less runs in a row).
+    # Crashes in v14+ intermittently on mac (more frequently than not) and completely broken on Linux.
+    # See issues:
+    # https://github.com/nodejs/node/issues/32463
+    # https://github.com/node-ffi-napi/node-ffi-napi/issues/97
 
     # It's just calling the encrypt function, we don't test if it's actually encrypted
     Scenario: As a client I want to be able to protect my wallet with a passphrase
@@ -35,11 +38,12 @@ Feature: Wallet FFI
         And I stop ffi wallet FFI_WALLET
         And I stop node BASE1
         And I wait 5 seconds
-        And I restart ffi wallet FFI_WALLET
-        # Possibly check SAF messages, no way to get current connected base node peer from the library itself afaik
-        # Good idea just to add a fn to do this to the library.
-        # Then I wait for ffi wallet FFI_WALLET to receive 1 SAF message
-        And I wait 5 seconds
+        # Broken step with reason base node is not persisted
+        # See details on:
+        # Scenario: As a client I want to receive Tari via my Public Key sent while I am offline when I come back online
+        # And I restart ffi wallet FFI_WALLET
+        And I restart ffi wallet FFI_WALLET connected to base node BASE2
+        Then I wait for ffi wallet FFI_WALLET to receive at least 1 SAF message
         And I stop ffi wallet FFI_WALLET
 
     Scenario: As a client I want to cancel a transaction
@@ -101,12 +105,18 @@ Feature: Wallet FFI
         And I wait 10 seconds
         And I send 2000000 uT from wallet SENDER to wallet FFI_WALLET at fee 100
         And I wait 5 seconds
-        And I restart ffi wallet FFI_WALLET
+        # Broken step with reason base node is not persisted
+        # Log:
+        # [wallet::transaction_service::callback_handler] DEBUG Calling Received Finalized Transaction callback function for TxId: 7595706993517535281
+        # [wallet::transaction_service::service] WARN  Error broadcasting completed transaction TxId: 7595706993517535281 to mempool: NoBaseNodeKeysProvided
+        # And I restart ffi wallet FFI_WALLET
+        And I restart ffi wallet FFI_WALLET connected to base node BASE
         Then I wait for ffi wallet FFI_WALLET to receive 1 transaction
         Then I wait for ffi wallet FFI_WALLET to receive 1 finalization
-        # Assume tx will be mined to reduce time taken for test, balance is tested in later scenarios.
-        # And mining node MINER mines 10 blocks
-        # Then I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
+        Then I wait for ffi wallet FFI_WALLET to receive 1 broadcast
+        And mining node MINER mines 10 blocks
+        Then I wait for ffi wallet FFI_WALLET to receive 1 mined
+        Then I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
         And I stop ffi wallet FFI_WALLET
 
     # Scenario: As a client I want to get my balance
