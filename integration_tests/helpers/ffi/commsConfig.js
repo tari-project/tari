@@ -2,7 +2,7 @@ const InterfaceFFI = require("./ffiInterface");
 const utf8 = require("utf8");
 
 class CommsConfig {
-  #comms_config_ptr;
+  ptr;
 
   constructor(
     public_address,
@@ -17,7 +17,7 @@ class CommsConfig {
     let sanitize_db_name = utf8.encode(database_name);
     let sanitize_db_path = utf8.encode(datastore_path);
     let sanitize_network = utf8.encode(network);
-    this.#comms_config_ptr = InterfaceFFI.commsConfigCreate(
+    this.ptr = InterfaceFFI.commsConfigCreate(
       sanitize_address,
       transport_ptr,
       sanitize_db_name,
@@ -29,13 +29,13 @@ class CommsConfig {
   }
 
   getPtr() {
-    return this.#comms_config_ptr;
+    return this.ptr;
   }
 
   destroy() {
-    if (this.#comms_config_ptr) {
-      InterfaceFFI.commsConfigDestroy(this.#comms_config_ptr);
-      this.#comms_config_ptr = undefined; //prevent double free segfault
+    if (this.ptr) {
+      InterfaceFFI.commsConfigDestroy(this.ptr);
+      this.ptr = undefined; //prevent double free segfault
     }
   }
 }

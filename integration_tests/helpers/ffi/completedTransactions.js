@@ -2,35 +2,28 @@ const CompletedTransaction = require("./completedTransaction");
 const InterfaceFFI = require("./ffiInterface");
 
 class CompletedTransactions {
-  #tari_completed_transactions_ptr;
+  ptr;
 
   constructor(ptr) {
-    this.#tari_completed_transactions_ptr = ptr;
+    this.ptr = ptr;
   }
 
   getLength() {
-    return InterfaceFFI.completedTransactionsGetLength(
-      this.#tari_completed_transactions_ptr
-    );
+    return InterfaceFFI.completedTransactionsGetLength(this.ptr);
   }
 
   getAt(position) {
     let result = new CompletedTransaction();
     result.pointerAssign(
-      InterfaceFFI.completedTransactionsGetAt(
-        this.#tari_completed_transactions_ptr,
-        position
-      )
+      InterfaceFFI.completedTransactionsGetAt(this.ptr, position)
     );
     return result;
   }
 
   destroy() {
-    if (this.#tari_completed_transactions_ptr) {
-      InterfaceFFI.completedTransactionsDestroy(
-        this.#tari_completed_transactions_ptr
-      );
-      this.#tari_completed_transactions_ptr = undefined; //prevent double free segfault
+    if (this.ptr) {
+      InterfaceFFI.completedTransactionsDestroy(this.ptr);
+      this.ptr = undefined; //prevent double free segfault
     }
   }
 }
