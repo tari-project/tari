@@ -276,4 +276,5 @@ jobs:
           artifacts: "tari_base_node-*"
           token: ${{ secrets.GITHUB_TOKEN }}
           prerelease: true
+          tag: test-release-ci
           draft: true
