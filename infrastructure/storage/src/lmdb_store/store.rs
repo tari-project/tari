@@ -6,7 +6,8 @@ use crate::{
 };
 use lmdb_zero::{
     db,
-    error::{self, LmdbResultExt},
+    error,
+    error::LmdbResultExt,
     open,
     put,
     traits::AsLmdbBytes,
@@ -175,12 +176,12 @@ impl LMDBBuilder {
             builder.set_maxdbs(max_dbs)?;
             // Using open::Flags::NOTLS does not compile!?! NOTLS=0x200000
             let flags = open::Flags::from_bits(0x0020_0000).expect("LMDB open::Flag is correct");
-            builder.open(&path, flags, 0o600)?
+            let env = builder.open(&path, flags, 0o600)?;
+            // SAFETY: no transactions can be open at this point
+            LMDBStore::resize_if_required(&env, &self.env_config)?;
+            Arc::new(env)
         };
-        let env = Arc::new(env);
 
-        // Increase map size if usage gets close to the db size
-        LMDBStore::resize_if_required(&env, &self.env_config)?;
         info!(
             target: LOG_TARGET,
             "({}) LMDB environment created with a capacity of {} MB, {} MB remaining.",
@@ -393,19 +394,28 @@ impl LMDBStore {
         self.env.clone()
     }
 
-    /// Resize the LMDB environment if the resize threshold is breached.
-    pub fn resize_if_required(env: &Environment, config: &LMDBConfig) -> Result<(), LMDBError> {
+    /// Resize the LMDB environment if remaining mapsize is less than the configured resize threshold.
+    ///
+    /// # Safety
+    /// This may only be called if no write transactions are active in the current process. Note that the library does
+    /// not check for this condition, the caller must ensure it explicitly.
+    ///
+    /// http://www.lmdb.tech/doc/group__mdb.html#gaa2506ec8dab3d969b0e609cd82e619e5
+    pub unsafe fn resize_if_required(env: &Environment, config: &LMDBConfig) -> Result<(), LMDBError> {
         let env_info = env.info()?;
-        let size_used_bytes = env.stat()?.psize as usize * env_info.last_pgno;
+        let stat = env.stat()?;
+        let size_used_bytes = stat.psize as usize * env_info.last_pgno;
         let size_left_bytes = env_info.mapsize - size_used_bytes;
+        debug!(
+            target: LOG_TARGET,
+            "Resize check: Used bytes: {}, Remaining bytes: {}", size_used_bytes, size_left_bytes
+        );
 
         if size_left_bytes <= config.resize_threshold_bytes {
-            unsafe {
-                env.set_mapsize(size_used_bytes + config.grow_size_bytes)?;
-            }
+            env.set_mapsize(env_info.mapsize + config.grow_size_bytes)?;
             debug!(
                 target: LOG_TARGET,
-                "({}) LMDB size used {:?} MB, environment space left {:?} MB, increased by {:?} MB.",
+                "({}) LMDB size used {:?} MB, environment space left {:?} MB, increased by {:?} MB",
                 env.path()?.to_str()?,
                 size_used_bytes / BYTES_PER_MB,
                 size_left_bytes / BYTES_PER_MB,
@@ -432,17 +442,42 @@ impl LMDBDatabase {
         K: AsLmdbBytes + ?Sized,
         V: Serialize,
     {
-        let env = &(*self.db.env());
+        const MAX_RESIZES: usize = 3;
 
-        LMDBStore::resize_if_required(env, &self.env_config)?;
+        let value = LMDBWriteTransaction::convert_value(value)?;
+        for _ in 0..MAX_RESIZES {
+            match self.write(key, &value) {
+                Ok(txn) => return Ok(txn),
+                Err(error::Error::Code(error::MAP_FULL)) => {
+                    info!(
+                        target: LOG_TARGET,
+                        "Failed to obtain write transaction because the database needs to be resized"
+                    );
+                    // SAFETY: We know that there are no open transactions at this point because ...
+                    // TODO: we don't guarantee this here but it works because the caller does this.
+                    unsafe {
+                        LMDBStore::resize_if_required(&self.env, &self.env_config)?;
+                    }
+                },
+                Err(e) => return Err(e.into()),
+            }
+        }
 
+        // Failed to resize
+        Err(error::Error::Code(error::MAP_FULL).into())
+    }
+
+    #[allow(clippy::ptr_arg)]
+    fn write<K>(&self, key: &K, value: &Vec<u8>) -> Result<(), lmdb_zero::Error>
+    where K: AsLmdbBytes + ?Sized {
+        let env = self.db.env();
         let tx = WriteTransaction::new(env)?;
         {
             let mut accessor = tx.access();
-            let buf = LMDBWriteTransaction::convert_value(value)?;
-            accessor.put(&*self.db, key, &buf, put::Flags::empty())?;
+            accessor.put(&*self.db, key, value, put::Flags::empty())?;
         }
-        tx.commit().map_err(LMDBError::from)
+        tx.commit()?;
+        Ok(())
     }
 
     /// Get a value from the database. This is an atomic operation. A read transaction is created, the value

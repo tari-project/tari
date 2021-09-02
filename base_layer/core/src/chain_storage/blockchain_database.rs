@@ -35,6 +35,8 @@ use crate::{
         BlockchainBackend,
         ChainBlock,
         ChainHeader,
+        DbBasicStats,
+        DbTotalSizeStats,
         HistoricalBlock,
         HorizonData,
         MmrTree,
@@ -902,6 +904,18 @@ where B: BlockchainBackend
             height,
             chain_metadata.best_block().clone(),
         ))
+    }
+
+    pub fn get_stats(&self) -> Result<DbBasicStats, ChainStorageError> {
+        let lock = self.db_read_access()?;
+        lock.get_stats()
+    }
+
+    /// Returns total size information about each internal database. This call may be very slow and will obtain a read
+    /// lock for the duration.
+    pub fn fetch_total_size_stats(&self) -> Result<DbTotalSizeStats, ChainStorageError> {
+        let lock = self.db_read_access()?;
+        lock.fetch_total_size_stats()
     }
 }
 

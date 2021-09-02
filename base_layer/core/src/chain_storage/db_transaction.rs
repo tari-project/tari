@@ -255,10 +255,6 @@ impl DbTransaction {
         &self.operations
     }
 
-    pub(crate) fn into_operations(self) -> Vec<WriteOperation> {
-        self.operations
-    }
-
     /// This will store the seed key with the height. This is called when a block is accepted into the main chain.
     /// This will only update the hieght of the seed, if its lower then currently stored.
     pub fn insert_monero_seed_height(&mut self, monero_seed: Vec<u8>, height: u64) {
