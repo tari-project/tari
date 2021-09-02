@@ -350,7 +350,7 @@ class CustomWorld {
 
 setWorldConstructor(CustomWorld);
 
-BeforeAll({ timeout: 1200000 }, async function () {
+BeforeAll({ timeout: 2400000 }, async function () {
   const baseNode = new BaseNodeProcess("compile");
   console.log("Compiling base node...");
   await baseNode.init();
