@@ -47,7 +47,7 @@ use tari_comms_dht::{
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::KernelFeatures,
-    transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::SingleRoundSenderData},
+    transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::SingleRoundSenderData, TxId},
     SenderTransactionProtocol,
 };
 use tari_crypto::script;
@@ -56,7 +56,6 @@ use tokio::{
     sync::{mpsc::Receiver, oneshot},
     time::sleep,
 };
-use tari_core::transactions::transaction_protocol::TxId;
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::send_protocol";
 const LOG_TARGET_STRESS: &str = "stress_test::send_protocol";

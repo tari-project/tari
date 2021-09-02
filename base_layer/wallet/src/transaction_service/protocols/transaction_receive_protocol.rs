@@ -20,17 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    transaction_service::{
-        error::{TransactionServiceError, TransactionServiceProtocolError},
-        handle::TransactionEvent,
-        service::TransactionServiceResources,
-        storage::{
-            database::TransactionBackend,
-            models::{CompletedTransaction, InboundTransaction, TransactionDirection, TransactionStatus},
-        },
-        tasks::send_transaction_reply::send_transaction_reply,
+use crate::transaction_service::{
+    error::{TransactionServiceError, TransactionServiceProtocolError},
+    handle::TransactionEvent,
+    service::TransactionServiceResources,
+    storage::{
+        database::TransactionBackend,
+        models::{CompletedTransaction, InboundTransaction, TransactionDirection, TransactionStatus},
     },
+    tasks::send_transaction_reply::send_transaction_reply,
 };
 use chrono::Utc;
 use futures::future::FutureExt;
@@ -41,11 +39,10 @@ use tokio::sync::{mpsc, oneshot};
 
 use tari_core::transactions::{
     transaction::Transaction,
-    transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
+    transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage, TxId},
 };
 use tari_crypto::tari_utilities::Hashable;
 use tokio::time::sleep;
-use tari_core::transactions::transaction_protocol::TxId;
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::receive_protocol";
 const LOG_TARGET_STRESS: &str = "stress_test::receive_protocol";

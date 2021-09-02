@@ -20,15 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    transaction_service::{
-        error::{TransactionServiceError, TransactionServiceProtocolError},
-        handle::TransactionEvent,
-        service::TransactionServiceResources,
-        storage::{
-            database::TransactionBackend,
-            models::{CompletedTransaction, TransactionStatus},
-        },
+use crate::transaction_service::{
+    error::{TransactionServiceError, TransactionServiceProtocolError},
+    handle::TransactionEvent,
+    service::TransactionServiceResources,
+    storage::{
+        database::TransactionBackend,
+        models::{CompletedTransaction, TransactionStatus},
     },
 };
 use futures::FutureExt;
@@ -41,11 +39,10 @@ use tari_core::{
         proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
         rpc::BaseNodeWalletRpcClient,
     },
-    transactions::transaction::Transaction,
+    transactions::{transaction::Transaction, transaction_protocol::TxId},
 };
 use tari_crypto::tari_utilities::hex::Hex;
 use tokio::{sync::broadcast, time::sleep};
-use tari_core::transactions::transaction_protocol::TxId;
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::broadcast_protocol";
 

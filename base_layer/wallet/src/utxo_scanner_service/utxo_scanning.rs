@@ -74,8 +74,8 @@ use crate::{
     },
     WalletSqlite,
 };
-use tokio::time::MissedTickBehavior;
 use tari_core::transactions::transaction_protocol::TxId;
+use tokio::time::MissedTickBehavior;
 
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 

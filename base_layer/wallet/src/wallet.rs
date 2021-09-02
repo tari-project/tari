@@ -60,6 +60,7 @@ use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 
 use crate::{
+    assets::AssetManagerHandle,
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     config::{WalletConfig, KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY},
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer},
@@ -81,13 +82,12 @@ use crate::{
     types::KeyDigest,
     utxo_scanner_service::{handle::UtxoScannerHandle, UtxoScannerServiceInitializer},
 };
-use crate::assets::{AssetManagerHandle};
 
-
-use crate::assets::infrastructure::initializer::AssetManagerServiceInitializer;
+use crate::{
+    assets::infrastructure::initializer::AssetManagerServiceInitializer,
+    tokens::{infrastructure::initializer::TokenManagerServiceInitializer, TokenManagerHandle},
+};
 use tari_core::transactions::transaction_protocol::TxId;
-use crate::tokens::TokenManagerHandle;
-use crate::tokens::infrastructure::initializer::TokenManagerServiceInitializer;
 
 const LOG_TARGET: &str = "wallet";
 
@@ -201,7 +201,8 @@ where
                 wallet_database.clone(),
                 factories.clone(),
                 node_identity.clone(),
-            )).add_initializer(AssetManagerServiceInitializer::new(output_manager_backend.clone()))
+            ))
+            .add_initializer(AssetManagerServiceInitializer::new(output_manager_backend.clone()))
             .add_initializer(TokenManagerServiceInitializer::new(output_manager_backend));
 
         let mut handles = stack.build().await?;
@@ -342,9 +343,9 @@ where
             script_private_key.clone(),
             sender_offset_public_key.clone(),
             metadata_signature,
-        // TODO: Allow importing of unique ids
-        None,
-            None
+            // TODO: Allow importing of unique ids
+            None,
+            None,
         );
 
         let tx_id = self
