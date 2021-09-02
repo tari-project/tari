@@ -147,6 +147,8 @@ impl TestParams {
             self.script_private_key.clone(),
             self.sender_offset_public_key.clone(),
             metadata_signature,
+            None,
+            None,
         )
     }
 
@@ -550,7 +552,7 @@ pub fn create_utxo(
         offset_keys.pk,
         metadata_sig,
         None,
-        None
+        None,
     );
     (utxo, keys.k, offset_keys.k)
 }

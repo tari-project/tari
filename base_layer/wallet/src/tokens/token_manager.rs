@@ -20,87 +20,116 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::{
+    assets::Asset,
+    error::WalletError,
+    output_manager_service::storage::database::{OutputManagerBackend, OutputManagerDatabase},
+};
+use tari_core::transactions::transaction::{OutputFeatures, OutputFlags, Transaction};
 
-use crate::error::WalletError;
-use crate::assets::Asset;
-use crate::output_manager_service::storage::database::{OutputManagerDatabase, OutputManagerBackend};
-use tari_core::transactions::transaction::{OutputFlags, Transaction, OutputFeatures};
-
-use crate::output_manager_service::handle::OutputManagerHandle;
+use crate::{
+    output_manager_service::{handle::OutputManagerHandle, storage::models::DbUnblindedOutput},
+    tokens::Token,
+    types::PersistentKeyManager,
+};
 use log::*;
 use tari_core::transactions::transaction_protocol::TxId;
-use tari_core::transactions::types::{PublicKey, Commitment};
-use crate::types::PersistentKeyManager;
-use crate::output_manager_service::storage::models::DbUnblindedOutput;
 use tari_crypto::tari_utilities::ByteArray;
-use crate::tokens::Token;
 
 const LOG_TARGET: &str = "wallet::tokens::token_manager";
 
-pub(crate) struct TokenManager<T:OutputManagerBackend + 'static>  {
-    output_database : OutputManagerDatabase<T>,
+pub(crate) struct TokenManager<T: OutputManagerBackend + 'static> {
+    output_database: OutputManagerDatabase<T>,
     output_manager: OutputManagerHandle,
     // transaction_service: TransactionServiceHandle
 }
-impl<T:OutputManagerBackend + 'static> TokenManager<T> {
-
+impl<T: OutputManagerBackend + 'static> TokenManager<T> {
     pub fn new(backend: T, output_manager: OutputManagerHandle) -> Self {
-        Self{ output_database: OutputManagerDatabase::new(backend), output_manager}
+        Self {
+            output_database: OutputManagerDatabase::new(backend),
+            output_manager,
+        }
     }
 
-    pub async fn list_owned(&self) -> Result<Vec<Token>, WalletError>{
-        let outputs = self.output_database.fetch_with_features(OutputFlags::NON_FUNGIBLE).await.map_err(|err| WalletError::OutputManagerError(err.into()))?;
+    pub async fn list_owned(&self) -> Result<Vec<Token>, WalletError> {
+        let outputs = self
+            .output_database
+            .fetch_with_features(OutputFlags::NON_FUNGIBLE)
+            .await
+            .map_err(|err| WalletError::OutputManagerError(err.into()))?;
 
         // These will include assets registrations
 
-        debug!(target: LOG_TARGET, "Found {} owned outputs that contain tokens", outputs.len());
-        let assets: Vec<Token> = outputs.into_iter().filter(|ub | {
-            // Filter out asset registrations that don't have a parent pub key
-            ub.unblinded_output.parent_public_key.is_some()
-        }).map(|unblinded_output| {
-
-            convert_to_token(unblinded_output)
-        }
-        ).collect::<Result<_, _>>()?;
+        debug!(
+            target: LOG_TARGET,
+            "Found {} owned outputs that contain tokens",
+            outputs.len()
+        );
+        let assets: Vec<Token> = outputs
+            .into_iter()
+            .filter(|ub| {
+                // Filter out asset registrations that don't have a parent pub key
+                ub.unblinded_output.parent_public_key.is_some()
+            })
+            .map(|unblinded_output| convert_to_token(unblinded_output))
+            .collect::<Result<_, _>>()?;
         Ok(assets)
     }
-
 }
-
 
 fn convert_to_token(unblinded_output: DbUnblindedOutput) -> Result<Token, WalletError> {
     if unblinded_output.unblinded_output.features.metadata.is_empty() {
         // TODO: sort out unwraps
-        return Ok(Token::new("<Invalid metadata:empty>".to_string(), unblinded_output.status.to_string(),unblinded_output.unblinded_output.parent_public_key.as_ref().map(|a| a.clone()).unwrap(), unblinded_output.commitment, unblinded_output.unblinded_output.unique_id.unwrap_or_default()));
+        return Ok(Token::new(
+            "<Invalid metadata:empty>".to_string(),
+            unblinded_output.status.to_string(),
+            unblinded_output
+                .unblinded_output
+                .parent_public_key
+                .as_ref()
+                .map(|a| a.clone())
+                .unwrap(),
+            unblinded_output.commitment,
+            unblinded_output.unblinded_output.unique_id.unwrap_or_default(),
+        ));
     }
     let version = unblinded_output.unblinded_output.features.metadata[0];
 
     let deserializer = get_deserializer(version);
 
     let metadata = deserializer.deserialize(&unblinded_output.unblinded_output.features.metadata[1..]);
-    Ok(Token::new(metadata.name, unblinded_output.status.to_string(),unblinded_output.unblinded_output.parent_public_key.as_ref().map(|a| a.clone()).unwrap(), unblinded_output.commitment, unblinded_output.unblinded_output.unique_id.unwrap_or_default()))
+    Ok(Token::new(
+        metadata.name,
+        unblinded_output.status.to_string(),
+        unblinded_output
+            .unblinded_output
+            .parent_public_key
+            .as_ref()
+            .map(|a| a.clone())
+            .unwrap(),
+        unblinded_output.commitment,
+        unblinded_output.unblinded_output.unique_id.unwrap_or_default(),
+    ))
 }
 
 fn get_deserializer(_version: u8) -> impl TokenMetadataDeserializer {
-    V1TokenMetadataSerializer{}
+    V1TokenMetadataSerializer {}
 }
 
 pub trait TokenMetadataDeserializer {
     fn deserialize(&self, metadata: &[u8]) -> TokenMetadata;
 }
 pub trait TokenMetadataSerializer {
-    fn serialize(&self, model: &TokenMetadata) -> Vec<u8> ;
+    fn serialize(&self, model: &TokenMetadata) -> Vec<u8>;
 }
 
-pub struct V1TokenMetadataSerializer {
-
-}
+pub struct V1TokenMetadataSerializer {}
 
 // TODO: Replace with proto serializer
 impl TokenMetadataDeserializer for V1TokenMetadataSerializer {
     fn deserialize(&self, metadata: &[u8]) -> TokenMetadata {
         TokenMetadata {
-            name: String::from_utf8(Vec::from(metadata)).unwrap()
+            name: String::from_utf8(Vec::from(metadata)).unwrap(),
         }
     }
 }
@@ -112,5 +141,5 @@ impl TokenMetadataSerializer for V1TokenMetadataSerializer {
 }
 
 pub struct TokenMetadata {
-    name: String
+    name: String,
 }

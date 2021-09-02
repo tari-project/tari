@@ -1,18 +1,17 @@
-use diesel::{prelude::*,  SqliteConnection};
 use crate::{
     output_manager_service::{
         error::OutputManagerStorageError,
+        storage::{
+            sqlite_db::{AeadError, NullOutputSql, UpdateOutput, UpdateOutputSql},
+            OutputStatus,
+        },
     },
-    schema::{  outputs, },
+    schema::{outputs, outputs::columns},
     util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
 };
-use crate::output_manager_service::storage::OutputStatus;
-use crate::schema::outputs::columns;
-use tari_core::transactions::transaction::OutputFlags;
-use crate::output_manager_service::storage::sqlite_db::{NullOutputSql, UpdateOutput, UpdateOutputSql};
 use aes_gcm::Aes256Gcm;
-use tari_core::transactions::transaction_protocol::TxId;
-use crate::output_manager_service::storage::sqlite_db::AeadError;
+use diesel::{prelude::*, SqliteConnection};
+use tari_core::transactions::{transaction::OutputFlags, transaction_protocol::TxId};
 
 #[derive(Clone, Debug, Queryable, QueryableByName, Identifiable, PartialEq)]
 #[table_name = "outputs"]
@@ -30,7 +29,7 @@ pub struct OutputSql {
     pub input_data: Vec<u8>,
     pub script_private_key: Vec<u8>,
     pub sender_offset_public_key: Vec<u8>,
-    pub metadata_signature_nonce : Vec<u8>,
+    pub metadata_signature_nonce: Vec<u8>,
     pub metadata_signature_u_key: Vec<u8>,
     pub metadata_signature_v_key: Vec<u8>,
     pub unique_id: Option<Vec<u8>>,
@@ -64,8 +63,12 @@ impl OutputSql {
     }
 
     pub fn index_by_feature_flags(
-        flags: OutputFlags, conn : &SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
-        let res = diesel::sql_query("SELECT * FROM outputs where flags & $1 = $1 ORDER BY id;").bind::<diesel::sql_types::Integer, _>(flags.bits() as i32).load(conn)?;
+        flags: OutputFlags,
+        conn: &SqliteConnection,
+    ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        let res = diesel::sql_query("SELECT * FROM outputs where flags & $1 = $1 ORDER BY id;")
+            .bind::<diesel::sql_types::Integer, _>(flags.bits() as i32)
+            .load(conn)?;
         Ok(res)
     }
 
@@ -102,6 +105,17 @@ impl OutputSql {
         };
 
         Ok(request.first::<OutputSql>(conn)?)
+    }
+
+    pub fn find_by_tx_id_and_status(
+        tx_id: TxId,
+        status: OutputStatus,
+        conn: &SqliteConnection,
+    ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        Ok(outputs::table
+            .filter(outputs::tx_id.eq(Some(tx_id.as_u64() as i64)))
+            .filter(outputs::status.eq(status as i32))
+            .load(conn)?)
     }
 
     /// Find outputs via tx_id
@@ -193,7 +207,7 @@ impl OutputSql {
             UpdateOutput {
                 spending_key: Some(self.spending_key.clone()),
                 script_private_key: Some(self.script_private_key.clone()),
-                .. Default::default()
+                ..Default::default()
             },
             conn,
         )?;

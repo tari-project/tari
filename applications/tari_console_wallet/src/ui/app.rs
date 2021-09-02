@@ -24,13 +24,16 @@ use crate::{
     notifier::Notifier,
     ui::{
         components::{
+            assets_tab::AssetsTab,
             base_node::BaseNode,
+            events_component::EventsComponent,
             log_tab::LogTab,
             menu::Menu,
             network_tab::NetworkTab,
             receive_tab::ReceiveTab,
             send_tab::SendTab,
             tabs_container::TabsContainer,
+            tokens_component::TokensComponent,
             transactions_tab::TransactionsTab,
             Component,
         },
@@ -48,9 +51,6 @@ use tui::{
     layout::{Constraint, Direction, Layout},
     Frame,
 };
-use crate::ui::components::assets_tab::AssetsTab;
-use crate::ui::components::events_component::EventsComponent;
-use crate::ui::components::tokens_component::TokensComponent;
 
 pub const LOG_TARGET: &str = "wallet::ui::app";
 
@@ -90,13 +90,11 @@ impl<B: Backend> App<B> {
             .add("Send".into(), Box::new(SendTab::new()))
             .add("Receive".into(), Box::new(ReceiveTab::new()))
             .add("Network".into(), Box::new(NetworkTab::new(base_node_selected)))
-            .add("Log".into(), Box::new(LogTab::new()));
             .add("Network".into(), Box::new(NetworkTab::new(base_node_selected)))
             .add("Assets".into(), Box::new(AssetsTab::new()))
             .add("Tokens".into(), Box::new(TokensComponent::new()))
+            .add("Log".into(), Box::new(LogTab::new()))
             .add("Events".into(), Box::new(EventsComponent::new()));
-
-
 
         let base_node_status = BaseNode::new();
         let menu = Menu::new();

@@ -59,6 +59,7 @@ use crate::{
     },
     util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
 };
+use tari_core::transactions::transaction_protocol::TxId;
 
 const LOG_TARGET: &str = "wallet::transaction_service::database::sqlite_db";
 
@@ -581,7 +582,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
 
     fn set_pending_transaction_cancellation_status(
         &self,
-        tx_id: u64,
+        tx_id: TxId,
         cancelled: bool,
     ) -> Result<(), TransactionStorageError> {
         let conn = self.database_connection.acquire_lock();
@@ -865,7 +866,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(())
     }
 
-    fn set_completed_transaction_validity(&self, tx_id: TxId , valid: bool) -> Result<(), TransactionStorageError> {
+    fn set_completed_transaction_validity(&self, tx_id: TxId, valid: bool) -> Result<(), TransactionStorageError> {
         let conn = self.database_connection.acquire_lock();
         match CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
             Ok(v) => {
@@ -927,7 +928,7 @@ struct InboundTransactionSql {
     direct_send_success: i32,
     send_count: i32,
     last_send_timestamp: Option<NaiveDateTime>,
-    unique_id: Option<Vec<u8>>
+    unique_id: Option<Vec<u8>>,
 }
 
 impl InboundTransactionSql {
@@ -1113,7 +1114,7 @@ struct OutboundTransactionSql {
     direct_send_success: i32,
     send_count: i32,
     last_send_timestamp: Option<NaiveDateTime>,
-    unique_id: Option<Vec<u8>>
+    unique_id: Option<Vec<u8>>,
 }
 
 impl OutboundTransactionSql {
@@ -1248,7 +1249,7 @@ impl TryFrom<OutboundTransaction> for OutboundTransactionSql {
             direct_send_success: o.direct_send_success as i32,
             send_count: o.send_count as i32,
             last_send_timestamp: o.last_send_timestamp,
-            unique_id: o.unique_id
+            unique_id: o.unique_id,
         })
     }
 }
@@ -1307,7 +1308,7 @@ struct CompletedTransactionSql {
     valid: i32,
     confirmations: Option<i64>,
     mined_height: Option<i64>,
-    unique_id: Option<Vec<u8>>
+    unique_id: Option<Vec<u8>>,
 }
 
 impl CompletedTransactionSql {

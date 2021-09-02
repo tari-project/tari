@@ -60,7 +60,7 @@ use tari_shutdown::ShutdownSignal;
 use tokio::sync::{mpsc, mpsc::Sender, oneshot};
 
 use crate::{
-    output_manager_service::{handle::OutputManagerHandle, TxId},
+    output_manager_service::handle::OutputManagerHandle,
     transaction_service::{
         config::TransactionServiceConfig,
         error::{TransactionServiceError, TransactionServiceProtocolError},
@@ -83,6 +83,7 @@ use crate::{
         },
     },
     types::{HashDigest, ValidationRetryStrategy},
+    OperationId,
 };
 use tari_core::transactions::transaction_protocol::TxId;
 
@@ -510,7 +511,13 @@ where
 
         trace!(target: LOG_TARGET, "Handling Service Request: {}", request);
         let response = match request {
-            TransactionServiceRequest::SendTransaction{dest_pubkey, amount, unique_id, fee_per_gram, message} => {
+            TransactionServiceRequest::SendTransaction {
+                dest_pubkey,
+                amount,
+                unique_id,
+                fee_per_gram,
+                message,
+            } => {
                 let rp = reply_channel.take().expect("Cannot be missing");
                 self.send_transaction(
                     dest_pubkey,
@@ -525,7 +532,13 @@ where
                 .await?;
                 return Ok(());
             },
-            TransactionServiceRequest::SendOneSidedTransaction{dest_pubkey, amount, unique_id, fee_per_gram, message} => self
+            TransactionServiceRequest::SendOneSidedTransaction {
+                dest_pubkey,
+                amount,
+                unique_id,
+                fee_per_gram,
+                message,
+            } => self
                 .send_one_sided_transaction(
                     dest_pubkey,
                     amount,
@@ -669,7 +682,7 @@ where
         >,
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) -> Result<(), TransactionServiceError> {
-        let tx_id = OsRng.next_u64();
+        let tx_id = TxId::new_random();
 
         // If we're paying ourselves, let's complete and submit the transaction immediately
         if self.node_identity.public_key() == &dest_pubkey {
@@ -765,7 +778,7 @@ where
             ));
         }
 
-        let tx_id = OsRng.next_u64();
+        let tx_id = TxId::new_random();
 
         // Prepare sender part of the transaction
         let mut stp = self
@@ -1295,7 +1308,7 @@ where
         &mut self,
         source_pubkey: CommsPublicKey,
         finalized_transaction: proto::TransactionFinalizedMessage,
-        join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
+        join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError>>>,
     ) -> Result<(), TransactionServiceError> {
         let tx_id = finalized_transaction.tx_id.into();
         let transaction: Transaction = finalized_transaction
@@ -1439,7 +1452,7 @@ where
         &mut self,
         tx_id: TxId,
         source_public_key: CommsPublicKey,
-        join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
+        join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError>>>,
     ) {
         if !self.pending_transaction_reply_senders.contains_key(&tx_id) {
             debug!(
@@ -2035,7 +2048,6 @@ where
 
         Ok(())
     }
-
 }
 
 /// This struct is a collection of the common resources that a protocol in the service requires.

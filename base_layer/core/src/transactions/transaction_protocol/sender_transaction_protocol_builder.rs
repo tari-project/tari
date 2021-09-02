@@ -54,6 +54,7 @@ use crate::transactions::{
         sender::{calculate_tx_id, RawTransactionInfo, SenderState, SenderTransactionProtocol},
         RewindData,
         TransactionMetadata,
+        TxId,
     },
 };
 use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey};
@@ -94,7 +95,7 @@ pub struct SenderTransactionProtocolBuilder {
     recipient_sender_offset_private_keys: FixedSet<PrivateKey>,
     private_commitment_nonces: FixedSet<PrivateKey>,
     unique_id: Option<Vec<u8>>,
-    tx_id: Option<u64>,
+    tx_id: Option<TxId>,
 }
 
 pub struct BuildError {
@@ -292,7 +293,7 @@ impl SenderTransactionProtocolBuilder {
                 let change_amount = v.checked_sub(extra_fee);
                 let change_sender_offset_private_key = PrivateKey::random(&mut OsRng);
                 self.change_sender_offset_private_key = Some(change_sender_offset_private_key.clone());
-//TODO: Add unique id if needed
+                // TODO: Add unique id if needed
                 match change_amount {
                     // You can't win. Just add the change to the fee (which is less than the cost of adding another
                     // output and go without a change output
@@ -333,7 +334,7 @@ impl SenderTransactionProtocolBuilder {
                             PublicKey::from_secret_key(&change_sender_offset_private_key),
                             metadata_signature,
                             None,
-                            None
+                            None,
                         );
                         Ok((fee_with_change, v, Some(change_unblinded_output)))
                     },
@@ -343,7 +344,7 @@ impl SenderTransactionProtocolBuilder {
     }
 
     /// Specify the tx_id of this transaction, if not provided it will be calculated on build
-    pub fn with_tx_id(&mut self, tx_id: u64) -> &mut Self {
+    pub fn with_tx_id(&mut self, tx_id: TxId) -> &mut Self {
         self.tx_id = Some(tx_id);
         self
     }
@@ -426,7 +427,6 @@ impl SenderTransactionProtocolBuilder {
         }
 
         // Create transaction outputs
-
 
         let mut outputs = match self
             .sender_custom_outputs
@@ -576,7 +576,7 @@ impl SenderTransactionProtocolBuilder {
             recipient_info,
             signatures: Vec::new(),
             message: self.message.unwrap_or_else(|| "".to_string()),
-            unique_id: self.unique_id
+            unique_id: self.unique_id,
         };
 
         let state = SenderState::Initializing(Box::new(sender_info));

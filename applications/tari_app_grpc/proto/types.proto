@@ -308,6 +308,8 @@ message UnblindedOutput {
     bytes sender_offset_public_key = 8;
     // UTXO signature with the script offset private key, k_O
     ComSignature metadata_signature = 9;
+    // Unique Id
+    bytes unique_id = 10;
 }
 
 // ----------------------------- Network Types ----------------------------- //
@@ -358,7 +360,6 @@ message NetworkStatusResponse {
     //    uint32 outgoing_bps = 5;
     //    uint64 total_bytes_read = 6;
     //    uint64 total_bytes_written = 7;
-    bytes unique_id = 10;
 }
 
 message Address{

@@ -48,7 +48,12 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tari_app_utilities::{identity_management, identity_management::setup_node_identity, utilities};
+use tari_app_utilities::{
+    identity_management,
+    identity_management::{load_from_json, setup_node_identity},
+    utilities,
+    utilities::convert_socks_authentication,
+};
 use tari_common::{CommsTransport, ConfigBootstrap, GlobalConfig, TorControlAuthentication};
 use tari_comms::{
     peer_manager::PeerFeatures,
@@ -167,8 +172,7 @@ impl DanNode {
         // this code is duplicated from the base node
         let comms_config = self.create_comms_config(node_identity.clone());
 
-        let (publisher, peer_message_subscriptions) =
-            pubsub_connector(Handle::current(), 100, self.config.buffer_rate_limit_base_node);
+        let (publisher, peer_message_subscriptions) = pubsub_connector(100, self.config.buffer_rate_limit_base_node);
         let mut handles = StackBuilder::new(shutdown.clone())
             .add_initializer(P2pInitializer::new(comms_config, publisher))
             .build()
@@ -227,10 +231,10 @@ impl DanNode {
             dns_seeds: self.config.dns_seeds.clone(),
             dns_seeds_name_server: self.config.dns_seeds_name_server,
             dns_seeds_use_dnssec: self.config.dns_seeds_use_dnssec,
+            auxilary_tcp_listener_address: self.config.auxilary_tcp_listener_address,
         }
     }
 
-    // COPIed from base node
     /// Creates a transport type from the given configuration
     ///
     /// ## Paramters
@@ -252,9 +256,8 @@ impl DanNode {
                 listener_address,
                 tor_socks_config: tor_socks_address.map(|proxy_address| SocksConfig {
                     proxy_address,
-                    authentication: tor_socks_auth
-                        .map(utilities::convert_socks_authentication)
-                        .unwrap_or_default(),
+                    authentication: tor_socks_auth.map(convert_socks_authentication).unwrap_or_default(),
+                    proxy_bypass_addresses: vec![],
                 }),
             },
             CommsTransport::TorHiddenService {
@@ -263,12 +266,13 @@ impl DanNode {
                 forward_address,
                 auth,
                 onion_port,
+                tor_proxy_bypass_addresses,
             } => {
                 let identity = Some(&self.config.base_node_tor_identity_file)
                     .filter(|p| p.exists())
                     .and_then(|p| {
                         // If this fails, we can just use another address
-                        identity_management::load_from_json::<_, TorIdentity>(p).ok()
+                        load_from_json::<_, TorIdentity>(p).ok()
                     });
                 info!(
                     target: LOG_TARGET,
@@ -294,9 +298,9 @@ impl DanNode {
                     },
                     identity: identity.map(Box::new),
                     port_mapping: (onion_port, forward_addr).into(),
-                    // TODO: make configurable
                     socks_address_override,
                     socks_auth: socks::Authentication::None,
+                    tor_proxy_bypass_addresses,
                 })
             },
             CommsTransport::Socks5 {
@@ -306,7 +310,8 @@ impl DanNode {
             } => TransportType::Socks {
                 socks_config: SocksConfig {
                     proxy_address,
-                    authentication: utilities::convert_socks_authentication(auth),
+                    authentication: convert_socks_authentication(auth),
+                    proxy_bypass_addresses: vec![],
                 },
                 listener_address,
             },

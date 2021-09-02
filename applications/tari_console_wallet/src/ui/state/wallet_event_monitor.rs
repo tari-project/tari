@@ -122,7 +122,6 @@ impl WalletEventMonitor {
                         match result {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet connectivity event {:?}", msg);
-                              self.app_state_inner.write().await.add_event(EventListItem{event_type: "Connectivity".to_string(), desc: (&*msg).to_string() });
                                 match msg {
                                     ConnectivityEvent::PeerDisconnected(_) |
                                     ConnectivityEvent::ManagedPeerDisconnected(_) |

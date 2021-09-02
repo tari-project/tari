@@ -42,12 +42,10 @@ use std::{
     sync::Arc,
 };
 use strum_macros::Display;
-use tari_common_types::types::{BlockHash, HashOutput};
+use tari_common_types::types::{BlockHash, HashOutput, PublicKey};
 use tari_comms::peer_manager::NodeId;
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex, ByteArray};
 use tokio::sync::Semaphore;
-use crate::chain_storage::PrunedOutput;
-use crate::transactions::types::PublicKey;
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
 const MAX_HEADERS_PER_RESPONSE: u32 = 100;
@@ -419,56 +417,75 @@ where T: BlockchainBackend + 'static
 
                 Ok(NodeCommsResponse::TransactionKernels(kernels))
             },
-             NodeCommsRequest::FetchTokens { asset_public_key, unique_ids } => {
-                 // TODO: use index to prevent reading all outputs
-                 let tip_header = self.blockchain_db.fetch_tip_header().await?;
+            NodeCommsRequest::FetchTokens {
+                asset_public_key,
+                unique_ids,
+            } => {
+                // TODO: use index to prevent reading all outputs
+                let tip_header = self.blockchain_db.fetch_tip_header().await?;
 
-                 debug!(target: LOG_TARGET, "Starting fetch tokens");
-                 let mut pos = 0;
-                 let mut tokens = vec![];
-                 // TODO: fix this janky AF way of doing this
-                 while pos < tip_header.header().output_mmr_size {
-                     let (utxos, deleted) = self.blockchain_db.fetch_utxos_by_mmr_position(pos, tip_header.header().output_mmr_size, tip_header.hash().clone()).await?;
+                debug!(target: LOG_TARGET, "Starting fetch tokens");
+                let mut pos = 0;
+                let mut tokens = vec![];
+                // TODO: fix this janky AF way of doing this
+                while pos < tip_header.header().output_mmr_size {
+                    unimplemented!("Need to read from db index");
+                    // let (utxos, deleted) = self
+                    //     .blockchain_db
+                    //     .fetch_utxos_by_mmr_position(
+                    //         pos,
+                    //         tip_header.header().output_mmr_size,
+                    //         tip_header.hash().clone(),
+                    //     )
+                    //     .await?;
 
-                     debug!(target: LOG_TARGET, "Checking {}  utxos", utxos.len());
-                     let pub_key = PublicKey::from_bytes(&asset_public_key).unwrap();
-
-
-                     for u in utxos {
-                         match u {
-                             PrunedOutput::Pruned { output_hash, range_proof_hash } => {
-                                 pos += 1;
-                                 debug!(target: LOG_TARGET, "Checking pruned utxo at {} for NFT:{}", pos, output_hash.to_hex());
-                                 continue;
-                             }
-                             PrunedOutput::NotPruned {
-                                 output
-                             } => {
-                                 debug!(target: LOG_TARGET, "Checking unpruned utxo at {} for NFT:{}", pos, output.hash().to_hex());
-                                 if deleted.contains(pos as u32) {
-                                     debug!(target: LOG_TARGET, "Utxo is spent");
-                                     pos += 1;
-                                     continue;
-                                 }
-                                 if output.parent_public_key.as_ref() == Some(&pub_key) {
-                                     debug!(target: LOG_TARGET, "Utxo has matching pub key");
-                                     if unique_ids.is_empty() {
-                                         tokens.push(output.clone());
-                                     } else {
-                                         if let Some(ref unique_id) = output.unique_id {
-                                             if unique_ids.contains(unique_id) {
-                                                 tokens.push(output.clone());
-                                             }
-                                         }
-                                     }
-                                 }
-                                 pos += 1;
-                             }
-                         }
-                     }
-                 }
-                Ok(NodeCommsResponse::FetchTokensResponse{ outputs: tokens})
-             }
+                    // debug!(target: LOG_TARGET, "Checking {}  utxos", utxos.len());
+                    // let pub_key = PublicKey::from_bytes(&asset_public_key).unwrap();
+                    //
+                    // for u in utxos {
+                    //     match u {
+                    //         PrunedOutput::Pruned {
+                    //             output_hash,
+                    //             witness_hash,
+                    //         } => {
+                    //             pos += 1;
+                    //             debug!(
+                    //                 target: LOG_TARGET,
+                    //                 "Checking pruned utxo at {} for NFT:{}",
+                    //                 pos,
+                    //                 output_hash.to_hex()
+                    //             );
+                    //             continue;
+                    //         },
+                    //         PrunedOutput::NotPruned { output } => {
+                    //             debug!(
+                    //                 target: LOG_TARGET,
+                    //                 "Checking unpruned utxo at {} for NFT:{}",
+                    //                 pos,
+                    //                 output.hash().to_hex()
+                    //             );
+                    //             if deleted.contains(pos as u32) {
+                    //                 debug!(target: LOG_TARGET, "Utxo is spent");
+                    //                 pos += 1;
+                    //                 continue;
+                    //             }
+                    //             if output.parent_public_key.as_ref() == Some(&pub_key) {
+                    //                 debug!(target: LOG_TARGET, "Utxo has matching pub key");
+                    //                 if unique_ids.is_empty() {
+                    //                     tokens.push(output.clone());
+                    //                 } else if let Some(ref unique_id) = output.unique_id {
+                    //                     if unique_ids.contains(unique_id) {
+                    //                         tokens.push(output.clone());
+                    //                     }
+                    //                 }
+                    //             }
+                    //             pos += 1;
+                    //         },
+                    //     }
+                    // }
+                }
+                Ok(NodeCommsResponse::FetchTokensResponse { outputs: tokens })
+            },
         }
     }
 

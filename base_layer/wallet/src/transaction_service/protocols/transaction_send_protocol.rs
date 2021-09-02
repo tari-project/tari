@@ -155,6 +155,7 @@ where TBackend: TransactionBackend + 'static
             .prepare_transaction_to_send(
                 self.id,
                 self.amount,
+                None, // TODO: is this supposed to be populated?
                 self.fee_per_gram,
                 None,
                 self.message.clone(),

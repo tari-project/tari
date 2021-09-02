@@ -62,7 +62,7 @@ use tari_shutdown::ShutdownSignal;
 
 use crate::{
     error::WalletError,
-    output_manager_service::{handle::OutputManagerHandle, TxId},
+    output_manager_service::handle::OutputManagerHandle,
     storage::{
         database::{WalletBackend, WalletDatabase},
         sqlite_db::WalletSqliteDatabase,

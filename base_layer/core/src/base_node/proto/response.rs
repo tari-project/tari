@@ -45,7 +45,6 @@ use std::{
     convert::TryInto,
     iter::{FromIterator, Iterator},
 };
-use crate::base_node::comms_interface::NodeCommsResponse;
 
 impl TryInto<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
     type Error = String;
@@ -128,7 +127,9 @@ impl From<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
             }),
             TargetDifficulty(difficulty) => ProtoNodeCommsResponse::TargetDifficulty(difficulty.as_u64()),
             MmrNodes(added, deleted) => ProtoNodeCommsResponse::MmrNodes(ProtoMmrNodes { added, deleted }),
-            FetchTokensResponse { .. } => { unimplemented!("This should not go over the wire")}
+            FetchTokensResponse { .. } => {
+                unimplemented!("This should not go over the wire")
+            },
         }
     }
 }

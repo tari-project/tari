@@ -19,15 +19,18 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use core::convert::TryFrom;
-use core::result::Result;
-use core::result::Result::{Err, Ok};
 use crate::output_manager_service::error::OutputManagerStorageError;
-use std::fmt;
-use std::fmt::Formatter;
+use core::{
+    convert::TryFrom,
+    result::{
+        Result,
+        Result::{Err, Ok},
+    },
+};
+use std::{fmt, fmt::Formatter};
 
 /// The status of a given output
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Copy)]
 pub enum OutputStatus {
     Unspent,
     Spent,
@@ -35,7 +38,7 @@ pub enum OutputStatus {
     EncumberedToBeSpent,
     Invalid,
     CancelledInbound,
-    NotStored
+    NotStored,
 }
 
 impl TryFrom<i32> for OutputStatus {
@@ -58,13 +61,27 @@ impl TryFrom<i32> for OutputStatus {
 impl fmt::Display for OutputStatus {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            OutputStatus::Unspent => {write!(f, "Unspent")}
-            OutputStatus::Spent => {write!(f, "Spent")}
-            OutputStatus::EncumberedToBeReceived => {write!(f, "EncumberedToBeReceived")}
-            OutputStatus::EncumberedToBeSpent => {write!(f, "EncumberedToBeSpent")}
-            OutputStatus::Invalid => {write!(f, "Invalid")}
-            OutputStatus::CancelledInbound => {write!(f, "CancelledInbound")}
-            OutputStatus::NotStored => {write!(f, "NotStored")}
+            OutputStatus::Unspent => {
+                write!(f, "Unspent")
+            },
+            OutputStatus::Spent => {
+                write!(f, "Spent")
+            },
+            OutputStatus::EncumberedToBeReceived => {
+                write!(f, "EncumberedToBeReceived")
+            },
+            OutputStatus::EncumberedToBeSpent => {
+                write!(f, "EncumberedToBeSpent")
+            },
+            OutputStatus::Invalid => {
+                write!(f, "Invalid")
+            },
+            OutputStatus::CancelledInbound => {
+                write!(f, "CancelledInbound")
+            },
+            OutputStatus::NotStored => {
+                write!(f, "NotStored")
+            },
         }
     }
 }

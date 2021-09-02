@@ -36,7 +36,6 @@ use crate::{
 use std::convert::{From, TryFrom, TryInto};
 use tari_common_types::types::{Commitment, HashOutput, Signature};
 use tari_crypto::tari_utilities::ByteArrayError;
-use crate::base_node::comms_interface::NodeCommsRequest;
 
 //---------------------------------- BaseNodeRequest --------------------------------------------//
 impl TryInto<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
@@ -120,7 +119,9 @@ impl From<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
             },
             GetNewBlock(block_template) => ProtoNodeCommsRequest::GetNewBlock(block_template.into()),
             FetchKernelByExcessSig(signature) => ProtoNodeCommsRequest::FetchKernelByExcessSig(signature.into()),
-            FetchTokens { .. } => { unimplemented!("This should not go over the wire")}
+            FetchTokens { .. } => {
+                unimplemented!("This should not go over the wire")
+            },
         }
     }
 }

@@ -20,37 +20,51 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_core::transactions::types::{PublicKey, Commitment};
+use tari_common_types::types::{Commitment, PublicKey};
 
 #[derive(Clone)]
 pub struct Token {
-  name: String,
+    name: String,
     output_status: String,
     asset_public_key: PublicKey,
     owner_commitment: Commitment,
-    unique_id: Vec<u8>
+    unique_id: Vec<u8>,
 }
 
 impl Token {
-  pub fn new(name: String, output_status: String, asset_public_key: PublicKey, owner_commitment: Commitment, unique_id: Vec<u8>) -> Self {
-    Self {
-      name, output_status, asset_public_key, owner_commitment, unique_id
+    pub fn new(
+        name: String,
+        output_status: String,
+        asset_public_key: PublicKey,
+        owner_commitment: Commitment,
+        unique_id: Vec<u8>,
+    ) -> Self {
+        Self {
+            name,
+            output_status,
+            asset_public_key,
+            owner_commitment,
+            unique_id,
+        }
     }
-  }
 
-  pub fn name(&self) -> &str {
-    &self.name
-  }
-  pub fn output_status(&self) -> &str {
-    &self.output_status
-  }
-  pub fn asset_public_key(&self) -> &PublicKey {
-    &self.asset_public_key
-  }
-  pub fn owner_commitment(&self) -> &Commitment {
-    &self.owner_commitment
-  }
-  pub fn unique_id(&self) -> &[u8] {
-    self.unique_id.as_slice()
-  }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn output_status(&self) -> &str {
+        &self.output_status
+    }
+
+    pub fn asset_public_key(&self) -> &PublicKey {
+        &self.asset_public_key
+    }
+
+    pub fn owner_commitment(&self) -> &Commitment {
+        &self.owner_commitment
+    }
+
+    pub fn unique_id(&self) -> &[u8] {
+        self.unique_id.as_slice()
+    }
 }

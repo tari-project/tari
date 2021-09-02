@@ -4,7 +4,6 @@ use log::*;
 use std::convert::TryFrom;
 use tari_app_grpc::{
     conversions::naive_datetime_to_timestamp,
-    tari_rpc,
     tari_rpc::{
         self,
         payment_recipient::PaymentType,
@@ -35,7 +34,7 @@ use tari_app_grpc::{
         TransferResult,
     },
 };
-use tari_common_types::types::Signature;
+use tari_common_types::types::{PublicKey, Signature};
 use tari_comms::{types::CommsPublicKey, CommsNode};
 use tari_core::{
     tari_utilities::{hex::Hex, ByteArray},
@@ -473,7 +472,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         );
         let mut transaction_service = self.get_transaction_service();
 
-        match transaction_service.cancel_transaction(message.tx_id).await {
+        match transaction_service.cancel_transaction(message.tx_id.into()).await {
             Ok(_) => {
                 return Ok(Response::new(tari_rpc::CancelTransactionResponse {
                     is_success: true,

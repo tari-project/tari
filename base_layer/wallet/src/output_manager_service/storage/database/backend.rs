@@ -1,11 +1,17 @@
-use crate::output_manager_service::storage::database::{DbKey, DbValue, WriteOperation};
-use crate::output_manager_service::error::OutputManagerStorageError;
-use crate::output_manager_service::storage::models::DbUnblindedOutput;
-use std::time::Duration;
-use tari_core::transactions::types::{Commitment, PublicKey};
+use crate::output_manager_service::{
+    error::OutputManagerStorageError,
+    storage::{
+        database::{DbKey, DbValue, WriteOperation},
+        models::DbUnblindedOutput,
+    },
+};
 use aes_gcm::Aes256Gcm;
-use tari_core::transactions::transaction::{OutputFlags, TransactionOutput};
-use tari_core::transactions::transaction_protocol::TxId;
+use std::time::Duration;
+use tari_common_types::types::{Commitment, PublicKey};
+use tari_core::transactions::{
+    transaction::{OutputFlags, TransactionOutput},
+    transaction_protocol::TxId,
+};
 
 /// This trait defines the required behaviour that a storage backend must provide for the Output Manager service.
 /// Data is passed to and from the backend via the [DbKey], [DbValue], and [DbValueKey] enums. If new data types are
@@ -21,7 +27,10 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     /// Fetch outputs with specific features
     fn fetch_with_features(&self, features: OutputFlags) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
 
-    fn fetch_by_features_asset_public_key(&self, public_key: PublicKey) -> Result<DbUnblindedOutput, OutputManagerStorageError>;
+    fn fetch_by_features_asset_public_key(
+        &self,
+        public_key: PublicKey,
+    ) -> Result<DbUnblindedOutput, OutputManagerStorageError>;
 
     /// Modify the state the of the backend with a write operation
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError>;

@@ -21,14 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::{error::BaseNodeServiceError, service::BaseNodeState};
-use std::{sync::Arc, time::Duration};
+use std::{fmt, fmt::Formatter, sync::Arc, time::Duration};
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::peer_manager::Peer;
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
-use std::fmt;
-use std::fmt::Formatter;
 
 pub type BaseNodeEventSender = broadcast::Sender<Arc<BaseNodeEvent>>;
 pub type BaseNodeEventReceiver = broadcast::Receiver<Arc<BaseNodeEvent>>;
@@ -54,11 +52,15 @@ pub enum BaseNodeEvent {
     BaseNodePeerSet(Box<Peer>),
 }
 
-impl fmt::Display  for BaseNodeEvent {
+impl fmt::Display for BaseNodeEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            BaseNodeEvent::BaseNodeStateChanged(state) => { write!(f, "BaseNodeStateChanged: Online: {:?}, Synced:{:?}", state.online, state.is_synced)}
-            BaseNodeEvent::BaseNodePeerSet(peer) => { write!(f, "BaseNodePeerSet:{}", peer)}
+            BaseNodeEvent::BaseNodeStateChanged(state) => {
+                write!(f, "BaseNodeStateChanged: Synced:{:?}", state.is_synced)
+            },
+            BaseNodeEvent::BaseNodePeerSet(peer) => {
+                write!(f, "BaseNodePeerSet:{}", peer)
+            },
         }
     }
 }

@@ -31,7 +31,7 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
-        transaction::{KernelFeatures, OutputFeatures, TransactionKernel, TransactionOutput},
+        transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionKernel, TransactionOutput},
     },
 };
 use chrono::DateTime;
@@ -41,7 +41,6 @@ use tari_crypto::{
     script::TariScript,
     tari_utilities::{hash::Hashable, hex::*},
 };
-use crate::transactions::transaction::OutputFlags;
 
 pub fn get_mainnet_genesis_block() -> ChainBlock {
     unimplemented!()
@@ -288,6 +287,7 @@ pub fn get_igor_genesis_block_raw() -> Block {
             features: OutputFeatures {
                 flags: OutputFlags::COINBASE_OUTPUT,
                 maturity: 60,
+               .. Default::default()
             },
             commitment: Commitment::from_hex(
                 "fadafb12de96d90042dcbf839985aadb7ae88baa3446d5c6a17937ef2b36783e",
@@ -300,6 +300,8 @@ pub fn get_igor_genesis_block_raw() -> Block {
             sender_offset_public_key: Default::default(),
             // For genesis block: Metadata signature will never be checked
             metadata_signature: Default::default(),
+            unique_id: None,
+            parent_public_key: None
         }],
         vec![TransactionKernel {
             features: KernelFeatures::COINBASE_KERNEL,

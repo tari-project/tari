@@ -71,7 +71,6 @@ use crate::{
         handle::OutputManagerHandle,
         storage::{database::OutputManagerBackend, models::KnownOneSidedPaymentScript},
         OutputManagerServiceInitializer,
-        TxId,
     },
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{

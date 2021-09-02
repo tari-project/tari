@@ -23,7 +23,7 @@
 use crate::output_manager_service::{
     error::OutputManagerStorageError,
     service::Balance,
-    storage::models::{DbUnblindedOutput, KnownOneSidedPaymentScript, OutputStatus},
+    storage::models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
 };
 use aes_gcm::Aes256Gcm;
 use chrono::{NaiveDateTime, Utc};
@@ -34,16 +34,15 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use tari_common_types::types::{BlindingFactor, Commitment, PrivateKey};
+use tari_common_types::types::{BlindingFactor, Commitment, PrivateKey, PublicKey};
 use tari_core::transactions::{tari_amount::MicroTari, transaction::TransactionOutput};
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database";
 
 mod backend;
+use crate::output_manager_service::storage::OutputStatus;
 pub use backend::OutputManagerBackend;
-use tari_core::transactions::transaction::OutputFlags;
-use tari_core::transactions::transaction_protocol::TxId;
-use tari_core::transactions::types::PublicKey;
+use tari_core::transactions::{transaction::OutputFlags, transaction_protocol::TxId};
 
 /// Holds the outputs that have been selected for a given pending transaction waiting for confirmation
 #[derive(Debug, Clone, PartialEq)]
@@ -126,13 +125,13 @@ macro_rules! fetch {
 /// data access logic required by the module built onto the functionality defined by the trait
 #[derive(Clone)]
 pub struct OutputManagerDatabase<T>
-    where T: OutputManagerBackend + 'static
+where T: OutputManagerBackend + 'static
 {
     db: Arc<T>,
 }
 
 impl<T> OutputManagerDatabase<T>
-    where T: OutputManagerBackend + 'static
+where T: OutputManagerBackend + 'static
 {
     pub fn new(db: T) -> Self {
         Self { db: Arc::new(db) }
@@ -146,9 +145,9 @@ impl<T> OutputManagerDatabase<T>
             Ok(Some(other)) => unexpected_result(DbKey::KeyManagerState, other),
             Err(e) => log_error(DbKey::KeyManagerState, e),
         })
-            .await
-            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
-            .and_then(|inner_result| inner_result)
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
+        .and_then(|inner_result| inner_result)
     }
 
     pub async fn set_key_manager_state(&self, state: KeyManagerState) -> Result<(), OutputManagerStorageError> {
@@ -156,8 +155,8 @@ impl<T> OutputManagerDatabase<T>
         tokio::task::spawn_blocking(move || {
             db_clone.write(WriteOperation::Insert(DbKeyValuePair::KeyManagerState(state)))
         })
-            .await
-            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
 
         Ok(())
     }
@@ -186,8 +185,8 @@ impl<T> OutputManagerDatabase<T>
                 Box::new(output),
             )))
         })
-            .await
-            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
 
         Ok(())
     }
@@ -204,8 +203,8 @@ impl<T> OutputManagerDatabase<T>
                 (tx_id, Box::new(output)),
             )))
         })
-            .await
-            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
 
         Ok(())
     }
@@ -222,16 +221,16 @@ impl<T> OutputManagerDatabase<T>
                 )
             })
         })
-            .await
-            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
 
         let unspent_outputs = tokio::task::spawn_blocking(move || {
             db_clone2.fetch(&DbKey::UnspentOutputs)?.ok_or_else(|| {
                 OutputManagerStorageError::UnexpectedResult("Unspent Outputs cannot be retrieved".to_string())
             })
         })
-            .await
-            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
 
         if let DbValue::UnspentOutputs(uo) = unspent_outputs {
             if let DbValue::AllPendingTransactionOutputs(pto) = pending_txs {
@@ -246,8 +245,8 @@ impl<T> OutputManagerDatabase<T>
                             )
                         })
                     })
-                        .await
-                        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+                    .await
+                    .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
                     if let DbValue::UnspentOutputs(time_locked_uo) = time_locked_outputs {
                         Some(
                             time_locked_uo
@@ -299,8 +298,8 @@ impl<T> OutputManagerDatabase<T>
                 Box::new(pending_transaction_outputs),
             )))
         })
-            .await
-            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
 
         Ok(())
     }
@@ -349,8 +348,8 @@ impl<T> OutputManagerDatabase<T>
                 }),
             )))
         })
-            .await
-            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
     }
 
@@ -366,9 +365,9 @@ impl<T> OutputManagerDatabase<T>
         tokio::task::spawn_blocking(move || {
             db_clone.short_term_encumber_outputs(tx_id, &outputs_to_send, &outputs_to_receive)
         })
-            .await
-            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
-            .and_then(|inner_result| inner_result)
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
+        .and_then(|inner_result| inner_result)
     }
 
     /// This method is called when a transaction is finished being negotiated. This will fully encumber the outputs
@@ -412,18 +411,17 @@ impl<T> OutputManagerDatabase<T>
     }
 
     pub async fn fetch_all_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
-       let result =  match self.db.fetch(&DbKey::UnspentOutputs)? {
-           Some(DbValue::UnspentOutputs(outputs)) => outputs,
-           Some(other) => return unexpected_result(DbKey::UnspentOutputs, other),
-           None => vec![]
-       };
+        let result = match self.db.fetch(&DbKey::UnspentOutputs)? {
+            Some(DbValue::UnspentOutputs(outputs)) => outputs,
+            Some(other) => return unexpected_result(DbKey::UnspentOutputs, other),
+            None => vec![],
+        };
         Ok(result)
     }
 
     pub fn fetch_spendable_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
-       self.db.fetch_spendable_outputs()
+        self.db.fetch_spendable_outputs()
     }
-
 
     pub async fn fetch_spent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let db_clone = self.db.clone();
@@ -437,8 +435,8 @@ impl<T> OutputManagerDatabase<T>
             Ok(Some(other)) => unexpected_result(DbKey::SpentOutputs, other),
             Err(e) => log_error(DbKey::SpentOutputs, e),
         })
-            .await
-            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(uo)
     }
 
@@ -458,8 +456,8 @@ impl<T> OutputManagerDatabase<T>
             Ok(Some(other)) => unexpected_result(DbKey::AllPendingTransactionOutputs, other),
             Err(e) => log_error(DbKey::AllPendingTransactionOutputs, e),
         })
-            .await
-            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(uo)
     }
 
@@ -475,17 +473,23 @@ impl<T> OutputManagerDatabase<T>
             Ok(Some(other)) => unexpected_result(DbKey::UnspentOutputs, other),
             Err(e) => log_error(DbKey::UnspentOutputs, e),
         })
-            .await
-            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(uo)
     }
 
-    pub async fn fetch_with_features(&self, feature: OutputFlags) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
-        let db_clone =  self.db.clone();
+    pub async fn fetch_with_features(
+        &self,
+        feature: OutputFlags,
+    ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+        let db_clone = self.db.clone();
         db_clone.fetch_with_features(feature)
     }
 
-    pub fn fetch_by_features_asset_public_key(&self, public_key: PublicKey) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
+    pub fn fetch_by_features_asset_public_key(
+        &self,
+        public_key: PublicKey,
+    ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
         self.db.fetch_by_features_asset_public_key(public_key)
     }
 
@@ -501,8 +505,8 @@ impl<T> OutputManagerDatabase<T>
             Ok(Some(other)) => unexpected_result(DbKey::SpentOutputs, other),
             Err(e) => log_error(DbKey::SpentOutputs, e),
         })
-            .await
-            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(uo)
     }
 
@@ -518,8 +522,8 @@ impl<T> OutputManagerDatabase<T>
             Ok(Some(other)) => unexpected_result(DbKey::UnspentOutputs, other),
             Err(e) => log_error(DbKey::UnspentOutputs, e),
         })
-            .await
-            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(uo)
     }
 
@@ -535,8 +539,8 @@ impl<T> OutputManagerDatabase<T>
             Ok(Some(other)) => unexpected_result(DbKey::InvalidOutputs, other),
             Err(e) => log_error(DbKey::InvalidOutputs, e),
         })
-            .await
-            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(uo)
     }
 
@@ -622,8 +626,8 @@ impl<T> OutputManagerDatabase<T>
             Ok(Some(other)) => unexpected_result(DbKey::KnownOneSidedPaymentScripts, other),
             Err(e) => log_error(DbKey::KnownOneSidedPaymentScripts, e),
         })
-            .await
-            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(scripts)
     }
 
@@ -637,8 +641,8 @@ impl<T> OutputManagerDatabase<T>
                 known_script,
             )))
         })
-            .await
-            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
 
         Ok(())
     }

@@ -32,10 +32,8 @@ use crate::{
     types::PersistentKeyManager,
 };
 use log::*;
-use tari_core::transactions::{
-    transaction_protocol::TxId,
-    types::{Commitment, PublicKey},
-};
+use tari_common_types::types::{Commitment, PublicKey};
+use tari_core::transactions::transaction_protocol::TxId;
 use tari_crypto::tari_utilities::ByteArray;
 
 const LOG_TARGET: &str = "wallet::assets::asset_manager";

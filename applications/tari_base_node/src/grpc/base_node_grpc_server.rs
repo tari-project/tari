@@ -57,7 +57,6 @@ use tari_crypto::tari_utilities::{message_format::MessageFormat, Hashable};
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tokio::task;
 use tonic::{Request, Response, Status};
-use tari_crypto::tari_utilities::ByteArray;
 
 const LOG_TARGET: &str = "tari::base_node::grpc";
 const GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS: usize = 1_000_000;
@@ -117,9 +116,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type GetNetworkDifficultyStream = mpsc::Receiver<Result<tari_rpc::NetworkDifficultyResponse, Status>>;
     type GetPeersStream = mpsc::Receiver<Result<tari_rpc::GetPeersResponse, Status>>;
     type GetTokensInCirculationStream = mpsc::Receiver<Result<tari_rpc::ValueAtHeightResponse, Status>>;
+    type GetTokensStream = mpsc::Receiver<Result<tari_rpc::GetTokensResponse, Status>>;
     type ListHeadersStream = mpsc::Receiver<Result<tari_rpc::BlockHeader, Status>>;
     type SearchKernelsStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
-    type GetTokensStream = mpsc::Receiver<Result<tari_rpc::GetTokensResponse, Status>>;
 
     async fn get_network_difficulty(
         &self,
@@ -392,13 +391,21 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(rx))
     }
 
-    async fn get_tokens(&self, request: Request<tari_rpc::GetTokensRequest>) -> Result<Response<Self::GetTokensStream>, Status> {
+    async fn get_tokens(
+        &self,
+        request: Request<tari_rpc::GetTokensRequest>,
+    ) -> Result<Response<Self::GetTokensStream>, Status> {
         let request = request.into_inner();
         debug!(
             target: LOG_TARGET,
             "Incoming GRPC request for GetTokens: asset_pub_key: {}, unique_ids: [{}]",
             request.asset_public_key.to_hex(),
-            request.unique_ids.iter().map(|s| s.to_hex()).collect::<Vec<_>>().join(",")
+            request
+                .unique_ids
+                .iter()
+                .map(|s| s.to_hex())
+                .collect::<Vec<_>>()
+                .join(",")
         );
         let mut handler = self.node_service.clone();
         let (mut tx, rx) = mpsc::channel(50);
@@ -406,15 +413,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             let asset_pub_key_hex = request.asset_public_key.to_hex();
             debug!(
                 target: LOG_TARGET,
-                "Starting thread to process GetTokens: asset_pub_key: {}",
-                asset_pub_key_hex,
+                "Starting thread to process GetTokens: asset_pub_key: {}", asset_pub_key_hex,
             );
             let tokens = match handler.get_tokens(request.asset_public_key, request.unique_ids).await {
                 Ok(tokens) => tokens,
                 Err(err) => {
-                    warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err, );
+                    warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err,);
                     return;
-                }
+                },
             };
 
             debug!(
@@ -425,13 +431,16 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             );
 
             for token in tokens {
-                match tx.send(Ok(tari_rpc::GetTokensResponse {
- asset_public_key: token.parent_public_key.map(|pk| pk.to_vec()).unwrap_or_default(),
-                    unique_id: token.unique_id.unwrap_or_default(),
-                    owner_commitment: token.commitment.to_vec(),
-                    mined_in_block: vec![],
-                    mined_height: 0
-                })).await {
+                match tx
+                    .send(Ok(tari_rpc::GetTokensResponse {
+                        asset_public_key: token.parent_public_key.map(|pk| pk.to_vec()).unwrap_or_default(),
+                        unique_id: token.unique_id.unwrap_or_default(),
+                        owner_commitment: token.commitment.to_vec(),
+                        mined_in_block: vec![],
+                        mined_height: 0,
+                    }))
+                    .await
+                {
                     Ok(_) => (),
                     Err(err) => {
                         warn!(target: LOG_TARGET, "Error sending token via GRPC:  {}", err);
@@ -445,7 +454,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     },
                 }
             }
-
         });
         Ok(Response::new(rx))
     }

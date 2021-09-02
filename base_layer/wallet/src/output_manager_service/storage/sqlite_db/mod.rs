@@ -46,11 +46,17 @@ use tari_core::{
     tari_utilities::hash::Hashable,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{OutputFeatures, OutputFlags, TransactionOutput, UnblindedOutput},
+        transaction::{
+            AssetOutputFeatures,
+            MintNonFungibleFeatures,
+            OutputFeatures,
+            OutputFlags,
+            TransactionOutput,
+            UnblindedOutput,
+        },
         CryptoFactories,
     },
 };
-use tari_core::transactions::transaction::{AssetOutputFeatures, MintNonFungibleFeatures, TransactionOutput};
 
 use crate::{
     output_manager_service::{
@@ -65,21 +71,28 @@ use crate::{
                 PendingTransactionOutputs,
                 WriteOperation,
             },
-            models::{DbUnblindedOutput, KnownOneSidedPaymentScript, OutputStatus},
+            models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
+            sqlite_db::{new_output_sql::NewOutputSql, output_sql::OutputSql},
             OutputStatus,
         },
     },
-    schema::{key_manager_states, known_one_sided_payment_scripts, outputs, pending_transaction_outputs},
+    schema::{
+        key_manager_states,
+        known_one_sided_payment_scripts,
+        outputs,
+        outputs::columns,
+        pending_transaction_outputs,
+    },
     storage::sqlite_utilities::WalletDbConnection,
     util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
 };
-use crate::schema::outputs::columns;
-use tari_core::transactions::types::ComSignature;
+use std::convert::TryInto;
+use tari_core::transactions::transaction_protocol::TxId;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database::sqlite_db";
 
-mod output_sql;
 mod new_output_sql;
+mod output_sql;
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
@@ -310,12 +323,17 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .collect::<Result<Vec<_>, _>>()
     }
 
-    fn fetch_by_features_asset_public_key(&self, public_key: PublicKey) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
+    fn fetch_by_features_asset_public_key(
+        &self,
+        public_key: PublicKey,
+    ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
         let conn = self.database_connection.acquire_lock();
-        let mut o :OutputSql = outputs::table.filter(columns::features_asset_public_key.eq(public_key.to_vec())).filter(outputs::status.eq(OutputStatus::Unspent as i32)).first(&*conn)?;
-            self.decrypt_if_necessary(&mut o)?;
-            o.try_into()
-
+        let mut o: OutputSql = outputs::table
+            .filter(columns::features_asset_public_key.eq(public_key.to_vec()))
+            .filter(outputs::status.eq(OutputStatus::Unspent as i32))
+            .first(&*conn)?;
+        self.decrypt_if_necessary(&mut o)?;
+        o.try_into()
     }
 
     #[allow(clippy::cognitive_complexity)]
@@ -693,7 +711,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             UpdateOutput {
                 metadata_signature_nonce: Some(output.metadata_signature.public_nonce().to_vec()),
                 metadata_signature_u_key: Some(output.metadata_signature.u().to_vec()),
-                .. Default::default()
+                ..Default::default()
             },
             &(*conn),
         )?;
@@ -910,20 +928,22 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             None => None,
         };
         let mint_non_fungible = match o.features_mint_asset_public_key {
-            Some(ref public_key) => Some(MintNonFungibleFeatures{
+            Some(ref public_key) => Some(MintNonFungibleFeatures {
                 asset_public_key: PublicKey::from_bytes(public_key)?,
-                asset_owner_commitment: o.features_mint_asset_owner_commitment.map(|ao| Commitment::from_bytes(&ao)).unwrap()?
+                asset_owner_commitment: o
+                    .features_mint_asset_owner_commitment
+                    .map(|ao| Commitment::from_bytes(&ao))
+                    .unwrap()?,
             }),
-            None => None
-
+            None => None,
         };
-        let features = Some(OutputFeatures {
+        let features = OutputFeatures {
             flags: OutputFlags::from_bits(o.flags as u8).ok_or(OutputManagerStorageError::ConversionError)?,
             maturity: o.maturity as u64,
             metadata: o.metadata.unwrap_or_default(),
             asset: asset_features,
-            mint_non_fungible
-        });
+            mint_non_fungible,
+        };
         let unblinded_output = UnblindedOutput::new(
             MicroTari::from(o.value as u64),
             PrivateKey::from_vec(&o.spending_key).map_err(|_| {
@@ -933,10 +953,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 );
                 OutputManagerStorageError::ConversionError
             })?,
-            OutputFeatures {
-                flags: OutputFlags::from_bits(o.flags as u8).ok_or(OutputManagerStorageError::ConversionError)?,
-                maturity: o.maturity as u64,
-            },
+            features,
             TariScript::from_bytes(o.script.as_slice())?,
             ExecutionStack::from_bytes(o.input_data.as_slice())?,
             PrivateKey::from_vec(&o.script_private_key).map_err(|_| {
@@ -977,7 +994,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 })?,
             ),
             o.unique_id.clone(),
-            o.parent_public_key.map(|p| PublicKey::from_bytes(&p)).transpose()?
+            o.parent_public_key.map(|p| PublicKey::from_bytes(&p)).transpose()?,
         );
 
         let hash = match o.hash {

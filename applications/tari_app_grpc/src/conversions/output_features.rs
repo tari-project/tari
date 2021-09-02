@@ -21,11 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::tari_rpc as grpc;
-use std::convert::TryFrom;
-use tari_core::transactions::transaction::{OutputFeatures, OutputFlags, AssetOutputFeatures, MintNonFungibleFeatures};
-use tari_core::transactions::types::{PublicKey, Commitment};
+use std::convert::{TryFrom, TryInto};
+use tari_common_types::types::{Commitment, PublicKey};
+use tari_core::transactions::transaction::{AssetOutputFeatures, MintNonFungibleFeatures, OutputFeatures, OutputFlags};
 use tari_crypto::tari_utilities::ByteArray;
-use std::convert::TryInto;
 
 impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
     type Error = String;
@@ -37,7 +36,7 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             maturity: features.maturity,
             metadata: features.metadata,
             asset: features.asset.map(|a| a.try_into()).transpose()?,
-            mint_non_fungible: features.mint_non_fungible.map(|m| m.try_into()).transpose()?
+            mint_non_fungible: features.mint_non_fungible.map(|m| m.try_into()).transpose()?,
         })
     }
 }
@@ -49,7 +48,7 @@ impl From<OutputFeatures> for grpc::OutputFeatures {
             maturity: features.maturity,
             metadata: features.metadata,
             asset: features.asset.map(|a| a.into()),
-            mint_non_fungible: features.mint_non_fungible.map(|m| m.into())
+            mint_non_fungible: features.mint_non_fungible.map(|m| m.into()),
         }
     }
 }
@@ -60,16 +59,14 @@ impl TryFrom<grpc::AssetOutputFeatures> for AssetOutputFeatures {
     fn try_from(features: grpc::AssetOutputFeatures) -> Result<Self, Self::Error> {
         let public_key = PublicKey::from_bytes(features.public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
 
-        Ok(Self {
-            public_key
-        })
+        Ok(Self { public_key })
     }
 }
 
 impl From<AssetOutputFeatures> for grpc::AssetOutputFeatures {
     fn from(features: AssetOutputFeatures) -> Self {
-        Self{
-            public_key: features.public_key.as_bytes().to_vec()
+        Self {
+            public_key: features.public_key.as_bytes().to_vec(),
         }
     }
 }
@@ -99,5 +96,3 @@ impl From<MintNonFungibleFeatures> for grpc::MintNonFungibleFeatures {
         }
     }
 }
-
-

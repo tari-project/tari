@@ -20,24 +20,29 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_core::transactions::types::{PublicKey, Commitment};
+use tari_common_types::types::{Commitment, PublicKey};
 
 #[derive(Clone)]
 pub struct Asset {
-    name : String,
+    name: String,
     registration_output_status: String,
     public_key: PublicKey,
-    owner_commitment: Commitment
+    owner_commitment: Commitment,
 }
 
 impl Asset {
-    pub fn new(name: String, registration_output_status: String, public_key: PublicKey, owner_commitment: Commitment)  -> Self{
-       Self {
-           name,
-           registration_output_status,
-           public_key,
-           owner_commitment
-       }
+    pub fn new(
+        name: String,
+        registration_output_status: String,
+        public_key: PublicKey,
+        owner_commitment: Commitment,
+    ) -> Self {
+        Self {
+            name,
+            registration_output_status,
+            public_key,
+            owner_commitment,
+        }
     }
 
     pub fn name(&self) -> &str {

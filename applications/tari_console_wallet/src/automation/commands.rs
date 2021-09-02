@@ -52,7 +52,6 @@ use tari_core::{
         tari_amount::{uT, MicroTari, Tari},
         transaction::UnblindedOutput,
         transaction_protocol::TxId,
-        types::PublicKey,
     },
 };
 use tari_wallet::{

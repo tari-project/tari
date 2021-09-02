@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::ConfigurationError;
-use config::{Config, ConfigError};
+use config::Config;
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]

@@ -20,28 +20,33 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-
 mod asset_manager_service;
-pub use asset_manager_service::AssetManagerService;
 use crate::assets::Asset;
+pub use asset_manager_service::AssetManagerService;
 
-use tari_core::transactions::transaction::Transaction;
-use tari_core::transactions::transaction_protocol::TxId;
-use tari_core::transactions::types::{PublicKey, Commitment};
+use tari_common_types::types::{Commitment, PublicKey};
+use tari_core::transactions::{transaction::Transaction, transaction_protocol::TxId};
 
 pub mod initializer;
 
-
 pub enum AssetManagerRequest {
-    ListOwned{},
-    GetOwnedAsset{ public_key: PublicKey},
-    CreateRegistrationTransaction{name: String},
-    CreateMintingTransaction{asset_public_key: Box<PublicKey>, asset_owner_commitment: Box<Commitment>, unique_ids: Vec<Vec<u8>>}
+    ListOwned {},
+    GetOwnedAsset {
+        public_key: PublicKey,
+    },
+    CreateRegistrationTransaction {
+        name: String,
+    },
+    CreateMintingTransaction {
+        asset_public_key: Box<PublicKey>,
+        asset_owner_commitment: Box<Commitment>,
+        unique_ids: Vec<Vec<u8>>,
+    },
 }
 
 pub enum AssetManagerResponse {
-    ListOwned{ assets : Vec<Asset>},
-    GetOwnedAsset{ asset: Box<Asset>},
-    CreateRegistrationTransaction{transaction: Box<Transaction>, tx_id: TxId},
-    CreateMintingTransaction{transaction: Box<Transaction>, tx_id: TxId}
+    ListOwned { assets: Vec<Asset> },
+    GetOwnedAsset { asset: Box<Asset> },
+    CreateRegistrationTransaction { transaction: Box<Transaction>, tx_id: TxId },
+    CreateMintingTransaction { transaction: Box<Transaction>, tx_id: TxId },
 }
