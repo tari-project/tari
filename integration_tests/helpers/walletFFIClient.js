@@ -4,136 +4,131 @@ const CommsConfig = require("./ffi/commsConfig");
 const Wallet = require("./ffi/wallet");
 const { getFreePort } = require("./util");
 const dateFormat = require("dateformat");
-const InterfaceFFI = require("./ffi/ffiInterface");
 
 class WalletFFIClient {
-  #name;
-  #wallet;
-  #comms_config;
-  #transport;
-  #seed_words;
-  #pass_phrase;
-  #port;
+  name;
+  wallet;
+  comms_config;
+  transport;
+  seed_words;
+  pass_phrase;
+  port;
   baseDir = "";
 
   constructor(name) {
-    this.#name = name;
-  }
-
-  static async Init() {
-    await InterfaceFFI.Init();
+    this.name = name;
   }
 
   async startNew(seed_words_text, pass_phrase) {
-    this.#port = await getFreePort(19000, 25000);
-    const name = `WalletFFI${this.#port}-${this.#name}`;
+    this.port = await getFreePort(19000, 25000);
+    const name = `WalletFFI${this.port}-${this.name}`;
     this.baseDir = `./temp/base_nodes/${dateFormat(
       new Date(),
       "yyyymmddHHMM"
     )}/${name}`;
-    this.#transport = TransportType.createTCP(`/ip4/0.0.0.0/tcp/${this.#port}`);
-    this.#comms_config = new CommsConfig(
-      `/ip4/0.0.0.0/tcp/${this.#port}`,
-      this.#transport.getPtr(),
+    this.transport = TransportType.createTCP(`/ip4/0.0.0.0/tcp/${this.port}`);
+    this.comms_config = new CommsConfig(
+      `/ip4/0.0.0.0/tcp/${this.port}`,
+      this.transport.getPtr(),
       "wallet.dat",
       this.baseDir,
       30,
       600,
       "localnet"
     );
-    this.#start(seed_words_text, pass_phrase);
+    this.start(seed_words_text, pass_phrase);
   }
 
   async restart(seed_words_text, pass_phrase) {
-    this.#transport = TransportType.createTCP(`/ip4/0.0.0.0/tcp/${this.#port}`);
-    this.#comms_config = new CommsConfig(
-      `/ip4/0.0.0.0/tcp/${this.#port}`,
-      this.#transport.getPtr(),
+    this.transport = TransportType.createTCP(`/ip4/0.0.0.0/tcp/${this.port}`);
+    this.comms_config = new CommsConfig(
+      `/ip4/0.0.0.0/tcp/${this.port}`,
+      this.transport.getPtr(),
       "wallet.dat",
       this.baseDir,
       30,
       600,
       "localnet"
     );
-    this.#start(seed_words_text, pass_phrase);
+    this.start(seed_words_text, pass_phrase);
   }
 
   getStxoValidationStatus() {
-    return this.#wallet.getStxoValidationStatus();
+    return this.wallet.getStxoValidationStatus();
   }
 
   getUtxoValidationStatus() {
-    return this.#wallet.getUtxoValidationStatus();
+    return this.wallet.getUtxoValidationStatus();
   }
   identify() {
-    return this.#wallet.getPublicKey();
+    return this.wallet.getPublicKey();
   }
 
   identifyEmoji() {
-    return this.#wallet.getEmojiId();
+    return this.wallet.getEmojiId();
   }
 
   getBalance() {
-    return this.#wallet.getBalance();
+    return this.wallet.getBalance();
   }
 
   addBaseNodePeer(public_key_hex, address) {
-    return this.#wallet.addBaseNodePeer(public_key_hex, address);
+    return this.wallet.addBaseNodePeer(public_key_hex, address);
   }
 
   addContact(alias, pubkey_hex) {
-    return this.#wallet.addContact(alias, pubkey_hex);
+    return this.wallet.addContact(alias, pubkey_hex);
   }
 
   getContactList() {
-    return this.#wallet.getContacts();
+    return this.wallet.getContacts();
   }
 
   getCompletedTxs() {
-    return this.#wallet.getCompletedTransactions();
+    return this.wallet.getCompletedTransactions();
   }
 
   getInboundTxs() {
-    return this.#wallet.getInboundTransactions();
+    return this.wallet.getInboundTransactions();
   }
 
   getOutboundTxs() {
-    return this.#wallet.getOutboundTransactions();
+    return this.wallet.getOutboundTransactions();
   }
 
   removeContact(contact) {
-    return this.#wallet.removeContact(contact);
+    return this.wallet.removeContact(contact);
   }
 
   startRecovery(base_node_pubkey) {
-    this.#wallet.startRecovery(base_node_pubkey);
+    this.wallet.startRecovery(base_node_pubkey);
   }
 
   checkRecoveryInProgress() {
-    return this.#wallet.recoveryInProgress();
+    return this.wallet.recoveryInProgress();
   }
 
   applyEncryption(passphrase) {
-    this.#wallet.applyEncryption(passphrase);
+    this.wallet.applyEncryption(passphrase);
   }
 
   startStxoValidation() {
-    this.#wallet.startStxoValidation();
+    this.wallet.startStxoValidation();
   }
 
   startUtxoValidation() {
-    this.#wallet.startUtxoValidation();
+    this.wallet.startUtxoValidation();
   }
 
   getCounters() {
-    return this.#wallet.getCounters();
+    return this.wallet.getCounters();
   }
   resetCounters() {
-    this.#wallet.clearCallbackCounters();
+    this.wallet.clearCallbackCounters();
   }
 
   sendTransaction(destination, amount, fee_per_gram, message) {
-    return this.#wallet.sendTransaction(
+    return this.wallet.sendTransaction(
       destination,
       amount,
       fee_per_gram,
@@ -141,46 +136,49 @@ class WalletFFIClient {
     );
   }
 
-  #start(
+  start(
     seed_words_text,
     pass_phrase,
     rolling_log_files = 50,
     byte_size_per_log = 102400
   ) {
-    this.#pass_phrase = pass_phrase;
+    this.pass_phrase = pass_phrase;
     if (seed_words_text) {
       let seed_words = SeedWords.fromText(seed_words_text);
-      this.#seed_words = seed_words;
+      this.seed_words = seed_words;
     }
 
     let log_path = `${this.baseDir}/log/wallet.log`;
-    this.#wallet = new Wallet(
-      this.#comms_config.getPtr(),
+    this.wallet = new Wallet(
+      this.comms_config.getPtr(),
       log_path,
-      this.#pass_phrase,
-      this.#seed_words ? this.#seed_words.getPtr() : null,
+      this.pass_phrase,
+      this.seed_words ? this.seed_words.getPtr() : null,
       rolling_log_files,
       byte_size_per_log
     );
   }
 
   getOutboundTransactions() {
-    return this.#wallet.getOutboundTransactions();
+    return this.wallet.getOutboundTransactions();
   }
 
   cancelPendingTransaction(tx_id) {
-    return this.#wallet.cancelPendingTransaction(tx_id);
+    return this.wallet.cancelPendingTransaction(tx_id);
   }
 
   stop() {
-    if (this.#wallet) {
-      this.#wallet.destroy();
+    if (this.wallet) {
+      this.wallet.destroy();
     }
-    if (this.#comms_config) {
-      this.#comms_config.destroy();
+    if (this.comms_config) {
+      this.comms_config.destroy();
     }
-    if (this.#seed_words) {
-      this.#seed_words.destroy();
+    if (this.transport) {
+      this.transport.destroy();
+    }
+    if (this.seed_words) {
+      this.seed_words.destroy();
     }
   }
 }
