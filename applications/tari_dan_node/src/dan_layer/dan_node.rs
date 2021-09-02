@@ -231,7 +231,7 @@ impl DanNode {
             dns_seeds: self.config.dns_seeds.clone(),
             dns_seeds_name_server: self.config.dns_seeds_name_server,
             dns_seeds_use_dnssec: self.config.dns_seeds_use_dnssec,
-            auxilary_tcp_listener_address: self.config.auxilary_tcp_listener_address,
+            auxilary_tcp_listener_address: self.config.auxilary_tcp_listener_address.clone(),
         }
     }
 

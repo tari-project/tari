@@ -37,5 +37,5 @@ bytecodec = { version ="0.4.14", features = ["json_codec"] }
 serde_json = "1.0.64"
 
 [build-dependencies]
-tonic-build = "0.2"
+tonic-build = "0.5.2"
 tari_common = { path="../../common", features = ["build"]}

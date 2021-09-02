@@ -90,7 +90,6 @@ impl<B: Backend> App<B> {
             .add("Send".into(), Box::new(SendTab::new()))
             .add("Receive".into(), Box::new(ReceiveTab::new()))
             .add("Network".into(), Box::new(NetworkTab::new(base_node_selected)))
-            .add("Network".into(), Box::new(NetworkTab::new(base_node_selected)))
             .add("Assets".into(), Box::new(AssetsTab::new()))
             .add("Tokens".into(), Box::new(TokensComponent::new()))
             .add("Log".into(), Box::new(LogTab::new()))

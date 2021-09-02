@@ -3376,40 +3376,12 @@ dependencies = [
 
 [[package]]
 name = "prost"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce49aefe0a6144a45de32927c77bd2859a5f7677b55f220ae5b744e87389c212"
-dependencies = [
- "bytes 0.5.6",
- "prost-derive 0.6.1",
-]
-
-[[package]]
-name = "prost"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "de5e2533f59d08fcf364fd374ebda0692a70bd6d7e66ef97f306f45c6c5d8020"
 dependencies = [
  "bytes 1.1.0",
- "prost-derive 0.8.0",
-]
-
-[[package]]
-name = "prost-build"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02b10678c913ecbd69350e8535c3aef91a8676c0773fc1d7b95cdd196d7f2f26"
-dependencies = [
- "bytes 0.5.6",
- "heck",
- "itertools 0.8.2",
- "log 0.4.14",
- "multimap",
- "petgraph",
- "prost 0.6.1",
- "prost-types 0.6.1",
- "tempfile",
- "which 3.1.1",
+ "prost-derive",
 ]
 
 [[package]]
@@ -3424,23 +3396,10 @@ dependencies = [
  "log 0.4.14",
  "multimap",
  "petgraph",
- "prost 0.8.0",
- "prost-types 0.8.0",
+ "prost",
+ "prost-types",
  "tempfile",
  "which 4.2.2",
-]
-
-[[package]]
-name = "prost-derive"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "537aa19b95acde10a12fec4301466386f757403de4cd4e5b4fa78fb5ecb18f72"
-dependencies = [
- "anyhow",
- "itertools 0.8.2",
- "proc-macro2 1.0.28",
- "quote 1.0.9",
- "syn 1.0.75",
 ]
 
 [[package]]
@@ -3458,22 +3417,12 @@ dependencies = [
 
 [[package]]
 name = "prost-types"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1834f67c0697c001304b75be76f67add9c89742eda3a085ad8ee0bb38c3417aa"
-dependencies = [
- "bytes 0.5.6",
- "prost 0.6.1",
-]
-
-[[package]]
-name = "prost-types"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "603bbd6394701d13f3f25aada59c7de9d35a6a5887cfc156181234a44002771b"
 dependencies = [
  "bytes 1.1.0",
- "prost 0.8.0",
+ "prost",
 ]
 
 [[package]]
@@ -4520,15 +4469,15 @@ name = "tari_app_grpc"
 version = "0.9.6"
 dependencies = [
  "chrono",
- "prost 0.8.0",
- "prost-types 0.8.0",
+ "prost",
+ "prost-types",
  "tari_common_types",
  "tari_comms",
  "tari_core",
  "tari_crypto",
  "tari_wallet",
  "tonic",
- "tonic-build 0.5.2",
+ "tonic-build",
 ]
 
 [[package]]
@@ -4629,7 +4578,7 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-jaeger",
  "path-clean",
- "prost-build 0.8.0",
+ "prost-build",
  "serde 1.0.130",
  "serde_json",
  "sha2",
@@ -4681,7 +4630,7 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-jaeger",
  "pin-project 1.0.8",
- "prost 0.8.0",
+ "prost",
  "rand 0.8.4",
  "serde 1.0.130",
  "serde_derive",
@@ -4728,8 +4677,8 @@ dependencies = [
  "log 0.4.14",
  "petgraph",
  "pin-project 0.4.28",
- "prost 0.8.0",
- "prost-types 0.8.0",
+ "prost",
+ "prost-types",
  "rand 0.8.4",
  "serde 1.0.130",
  "serde_derive",
@@ -4758,7 +4707,7 @@ version = "0.9.6"
 dependencies = [
  "futures 0.3.16",
  "proc-macro2 1.0.28",
- "prost 0.8.0",
+ "prost",
  "quote 1.0.9",
  "syn 1.0.75",
  "tari_comms",
@@ -4832,8 +4781,8 @@ dependencies = [
  "newtype-ops",
  "num 0.3.1",
  "num-format",
- "prost 0.8.0",
- "prost-types 0.8.0",
+ "prost",
+ "prost-types",
  "rand 0.8.4",
  "randomx-rs",
  "serde 1.0.130",
@@ -4899,8 +4848,8 @@ dependencies = [
  "futures 0.3.16",
  "log 0.4.14",
  "patricia_tree",
- "prost 0.8.0",
- "prost-types 0.8.0",
+ "prost",
+ "prost-types",
  "serde_json",
  "tari_app_utilities",
  "tari_common",
@@ -4915,7 +4864,7 @@ dependencies = [
  "thiserror",
  "tokio 0.2.25",
  "tonic",
- "tonic-build 0.2.0",
+ "tonic-build",
 ]
 
 [[package]]
@@ -5001,7 +4950,7 @@ dependencies = [
  "log 0.4.14",
  "native-tls",
  "num_cpus",
- "prost-types 0.8.0",
+ "prost-types",
  "rand 0.8.4",
  "reqwest 0.11.4",
  "serde 1.0.130",
@@ -5054,7 +5003,7 @@ dependencies = [
  "log 0.4.14",
  "log4rs 0.8.3",
  "pgp",
- "prost 0.8.0",
+ "prost",
  "rand 0.8.4",
  "reqwest 0.10.10",
  "semver 1.0.4",
@@ -5168,7 +5117,7 @@ dependencies = [
  "thiserror",
  "tokio 1.10.1",
  "tonic",
- "tonic-build 0.5.2",
+ "tonic-build",
  "tracing",
  "tracing-futures",
  "tracing-subscriber",
@@ -5239,7 +5188,7 @@ dependencies = [
  "lmdb-zero",
  "log 0.4.14",
  "log4rs 1.0.0",
- "prost 0.8.0",
+ "prost",
  "rand 0.8.4",
  "serde 1.0.130",
  "serde_json",
@@ -5645,8 +5594,8 @@ dependencies = [
  "hyper-timeout",
  "percent-encoding 2.1.0",
  "pin-project 1.0.8",
- "prost 0.8.0",
- "prost-derive 0.8.0",
+ "prost",
+ "prost-derive",
  "tokio 1.10.1",
  "tokio-stream",
  "tokio-util 0.6.7",
@@ -5659,24 +5608,12 @@ dependencies = [
 
 [[package]]
 name = "tonic-build"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71d8d21cb568e802d77055ab7fcd43f0992206de5028de95c8d3a41118d32e8e"
-dependencies = [
- "proc-macro2 1.0.28",
- "prost-build 0.6.1",
- "quote 1.0.9",
- "syn 1.0.75",
-]
-
-[[package]]
-name = "tonic-build"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "12b52d07035516c2b74337d2ac7746075e7dcae7643816c1b12c5ff8a7484c08"
 dependencies = [
  "proc-macro2 1.0.28",
- "prost-build 0.8.0",
+ "prost-build",
  "quote 1.0.9",
  "syn 1.0.75",
 ]
