@@ -21,12 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    connection_manager::PeerConnectionRequest,
     noise,
     peer_manager::PeerManagerError,
     protocol::{IdentityProtocolError, ProtocolError},
 };
-use futures::channel::mpsc;
 use thiserror::Error;
+use tokio::{sync::mpsc, time::error::Elapsed};
 
 #[derive(Debug, Error, Clone)]
 pub enum ConnectionManagerError {
@@ -78,6 +79,8 @@ pub enum ConnectionManagerError {
     WireFormatSendFailed,
     #[error("Noise protocol handshake timed out")]
     NoiseProtocolTimeout,
+    #[error("Listener oneshot cancelled")]
+    ListenerOneshotCancelled,
 }
 
 impl From<yamux::ConnectionError> for ConnectionManagerError {
@@ -105,7 +108,15 @@ pub enum PeerConnectionError {
     #[error("Internal oneshot reply channel was unexpectedly cancelled")]
     InternalReplyCancelled,
     #[error("Failed to send internal request: {0}")]
-    InternalRequestSendFailed(#[from] mpsc::SendError),
+    InternalRequestSendFailed(#[from] mpsc::error::SendError<PeerConnectionRequest>),
     #[error("Protocol error: {0}")]
     ProtocolError(#[from] ProtocolError),
+    #[error("Protocol negotiation timeout")]
+    ProtocolNegotiationTimeout,
+}
+
+impl From<Elapsed> for PeerConnectionError {
+    fn from(_: Elapsed) -> Self {
+        PeerConnectionError::ProtocolNegotiationTimeout
+    }
 }

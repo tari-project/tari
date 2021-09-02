@@ -20,6 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
+
+use log::*;
+use serde::{Deserialize, Serialize};
+use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+
 use crate::{
     blocks::Block,
     mempool::{
@@ -27,18 +36,9 @@ use crate::{
         priority::{FeePriority, PrioritizedTransaction},
         unconfirmed_pool::UnconfirmedPoolError,
     },
-    transactions::{
-        transaction::Transaction,
-        types::{HashOutput, Signature},
-    },
+    transactions::transaction::Transaction,
 };
-use log::*;
-use serde::{Deserialize, Serialize};
-use std::{
-    collections::{BTreeMap, HashMap},
-    sync::Arc,
-};
-use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+use tari_common_types::types::{HashOutput, Signature};
 
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
 
@@ -474,22 +474,24 @@ impl UnconfirmedPool {
 
 #[cfg(test)]
 mod test {
-    use super::*;
+    use tari_common::configuration::Network;
+
     use crate::{
         consensus::ConsensusManagerBuilder,
         test_helpers::create_orphan_block,
         transactions::{
             fee::Fee,
-            helpers::{create_unblinded_output, TestParams},
+            helpers::{TestParams, UtxoTestParams},
             tari_amount::MicroTari,
-            transaction::{KernelFeatures, OutputFeatures},
-            types::{CryptoFactories, HashDigest},
+            transaction::KernelFeatures,
+            CryptoFactories,
             SenderTransactionProtocol,
         },
         tx,
     };
-    use tari_common::configuration::Network;
-    use tari_crypto::script;
+    use tari_common_types::types::HashDigest;
+
+    use super::*;
 
     #[test]
     fn test_find_duplicate_input() {
@@ -572,12 +574,11 @@ mod test {
         let double_spend_input = inputs.first().unwrap().clone();
 
         let estimated_fee = Fee::calculate(20.into(), 1, 1, 1);
-        let utxo = create_unblinded_output(
-            script!(Nop),
-            OutputFeatures::default(),
-            test_params.clone(),
-            INPUT_AMOUNT - estimated_fee,
-        );
+
+        let utxo = test_params.create_unblinded_output(UtxoTestParams {
+            value: INPUT_AMOUNT - estimated_fee,
+            ..Default::default()
+        });
         stx_builder
             .with_input(double_spend_utxo, double_spend_input)
             .with_output(utxo, test_params.sender_offset_private_key)

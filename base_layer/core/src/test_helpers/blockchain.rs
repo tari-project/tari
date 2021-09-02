@@ -20,6 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    fs,
+    ops::Deref,
+    path::{Path, PathBuf},
+};
+
+use croaring::Bitmap;
+
+use tari_common::configuration::Network;
+use tari_common_types::chain_metadata::ChainMetadata;
+use tari_storage::lmdb_store::LMDBConfig;
+use tari_test_utils::paths::create_temporary_data_path;
+
 use crate::{
     blocks::{genesis_block::get_weatherwax_genesis_block, Block, BlockHeader},
     chain_storage::{
@@ -35,6 +48,7 @@ use crate::{
         DbKey,
         DbTransaction,
         DbValue,
+        DeletedBitmap,
         HorizonData,
         LMDBDatabase,
         MmrTree,
@@ -43,8 +57,8 @@ use crate::{
     },
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
     transactions::{
-        transaction::{TransactionInput, TransactionKernel, TransactionOutput},
-        types::{CryptoFactories, HashOutput, Signature},
+        transaction::{TransactionInput, TransactionKernel},
+        CryptoFactories,
     },
     validation::{
         block_validators::{BodyOnlyValidator, OrphanBlockValidator},
@@ -52,16 +66,7 @@ use crate::{
         DifficultyCalculator,
     },
 };
-use croaring::Bitmap;
-use std::{
-    fs,
-    ops::Deref,
-    path::{Path, PathBuf},
-};
-use tari_common::configuration::Network;
-use tari_common_types::chain_metadata::ChainMetadata;
-use tari_storage::lmdb_store::LMDBConfig;
-use tari_test_utils::paths::create_temporary_data_path;
+use tari_common_types::types::{Commitment, HashOutput, Signature};
 
 /// Create a new blockchain database containing no blocks.
 pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {
@@ -110,7 +115,7 @@ pub fn create_store_with_consensus(rules: ConsensusManager) -> BlockchainDatabas
     let validators = Validators::new(
         BodyOnlyValidator::default(),
         MockValidator::new(true),
-        OrphanBlockValidator::new(rules.clone(), factories),
+        OrphanBlockValidator::new(rules.clone(), false, factories),
     );
     create_store_with_consensus_and_validators(rules, validators)
 }
@@ -243,11 +248,15 @@ impl BlockchainBackend for TempDatabase {
         self.db.fetch_utxos_by_mmr_position(start, end, deleted)
     }
 
-    fn fetch_output(
-        &self,
-        output_hash: &HashOutput,
-    ) -> Result<Option<(TransactionOutput, u32, u64)>, ChainStorageError> {
+    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(PrunedOutput, u32, u64)>, ChainStorageError> {
         self.db.fetch_output(output_hash)
+    }
+
+    fn fetch_unspent_output_hash_by_commitment(
+        &self,
+        commitment: &Commitment,
+    ) -> Result<Option<HashOutput>, ChainStorageError> {
+        self.db.fetch_unspent_output_hash_by_commitment(commitment)
     }
 
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError> {
@@ -300,6 +309,10 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_orphan_chain_block(&self, hash: HashOutput) -> Result<Option<ChainBlock>, ChainStorageError> {
         self.db.fetch_orphan_chain_block(hash)
+    }
+
+    fn fetch_deleted_bitmap(&self) -> Result<DeletedBitmap, ChainStorageError> {
+        self.db.fetch_deleted_bitmap()
     }
 
     fn delete_oldest_orphans(

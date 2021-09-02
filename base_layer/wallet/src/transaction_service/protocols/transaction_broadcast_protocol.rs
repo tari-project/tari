@@ -31,19 +31,20 @@ use crate::{
         },
     },
 };
-use futures::{FutureExt, StreamExt};
+use futures::FutureExt;
 use log::*;
 use std::{convert::TryFrom, sync::Arc, time::Duration};
+use tari_common_types::types::Signature;
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey, PeerConnection};
 use tari_core::{
     base_node::{
         proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
         rpc::BaseNodeWalletRpcClient,
     },
-    transactions::{transaction::Transaction, types::Signature},
+    transactions::transaction::Transaction,
 };
 use tari_crypto::tari_utilities::hex::Hex;
-use tokio::{sync::broadcast, time::delay_for};
+use tokio::{sync::broadcast, time::sleep};
 use tari_core::transactions::transaction_protocol::TxId;
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::broadcast_protocol";
@@ -86,21 +87,13 @@ where TBackend: TransactionBackend + 'static
 
     /// The task that defines the execution of the protocol.
     pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError> {
-        let mut timeout_update_receiver = self
-            .timeout_update_receiver
-            .take()
-            .ok_or_else(|| {
-                TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::InvalidStateError)
-            })?
-            .fuse();
+        let mut timeout_update_receiver = self.timeout_update_receiver.take().ok_or_else(|| {
+            TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::InvalidStateError)
+        })?;
 
-        let mut base_node_update_receiver = self
-            .base_node_update_receiver
-            .take()
-            .ok_or_else(|| {
-                TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::InvalidStateError)
-            })?
-            .fuse();
+        let mut base_node_update_receiver = self.base_node_update_receiver.take().ok_or_else(|| {
+            TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::InvalidStateError)
+        })?;
 
         let mut shutdown = self.resources.shutdown_signal.clone();
         // Main protocol loop
@@ -108,14 +101,14 @@ where TBackend: TransactionBackend + 'static
             let base_node_node_id = NodeId::from_key(&self.base_node_public_key);
             let mut connection: Option<PeerConnection> = None;
 
-            let delay = delay_for(self.timeout);
+            let delay = sleep(self.timeout);
 
             debug!(
                 target: LOG_TARGET,
                 "Connecting to Base Node (Public Key: {})", self.base_node_public_key,
             );
-            futures::select! {
-                dial_result = self.resources.connectivity_manager.dial_peer(base_node_node_id.clone()).fuse() => {
+            tokio::select! {
+                dial_result = self.resources.connectivity_manager.dial_peer(base_node_node_id.clone()) => {
                     match dial_result {
                         Ok(base_node_connection) => {
                             connection = Some(base_node_connection);
@@ -139,7 +132,7 @@ where TBackend: TransactionBackend + 'static
                         },
                     }
                 },
-                updated_timeout = timeout_update_receiver.select_next_some() => {
+                updated_timeout = timeout_update_receiver.recv() => {
                     match updated_timeout {
                         Ok(to) => {
                             self.timeout = to;
@@ -158,7 +151,7 @@ where TBackend: TransactionBackend + 'static
                         }
                     }
                 },
-                new_base_node = base_node_update_receiver.select_next_some() => {
+                new_base_node = base_node_update_receiver.recv() => {
                     match new_base_node {
                         Ok(bn) => {
                             self.base_node_public_key = bn;
@@ -179,7 +172,7 @@ where TBackend: TransactionBackend + 'static
                         }
                     }
                 }
-                _ = shutdown => {
+                _ = shutdown.wait() => {
                     info!(target: LOG_TARGET, "Transaction Broadcast Protocol (TxId: {}) shutting down because it received the shutdown signal", self.tx_id);
                     return Err(TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::Shutdown))
                 },
@@ -187,11 +180,11 @@ where TBackend: TransactionBackend + 'static
 
             let mut base_node_connection = match connection {
                 None => {
-                    futures::select! {
+                    tokio::select! {
                         _ = delay.fuse() => {
                             continue;
                         },
-                        _ = shutdown => {
+                        _ = shutdown.wait() => {
                             info!(target: LOG_TARGET, "Transaction Broadcast Protocol (TxId: {}) shutting down because it received the shutdown signal", self.tx_id);
                             return Err(TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::Shutdown))
                         },
@@ -230,7 +223,8 @@ where TBackend: TransactionBackend + 'static
             let mut client = match base_node_connection
                 .connect_rpc_using_builder(
                     BaseNodeWalletRpcClient::builder()
-                        .with_deadline(self.resources.config.broadcast_monitoring_timeout),
+                        .with_deadline(self.resources.config.broadcast_monitoring_timeout)
+                        .with_handshake_timeout(self.resources.config.broadcast_monitoring_timeout),
                 )
                 .await
             {
@@ -242,10 +236,10 @@ where TBackend: TransactionBackend + 'static
                 },
             };
 
-            let delay = delay_for(self.timeout);
+            let delay = sleep(self.timeout);
             loop {
-                futures::select! {
-                    new_base_node = base_node_update_receiver.select_next_some() => {
+                tokio::select! {
+                    new_base_node = base_node_update_receiver.recv() => {
                         match new_base_node {
                             Ok(bn) => {
                                 self.base_node_public_key = bn;
@@ -314,7 +308,7 @@ where TBackend: TransactionBackend + 'static
                         delay.await;
                         break;
                     },
-                    updated_timeout = timeout_update_receiver.select_next_some() => {
+                    updated_timeout = timeout_update_receiver.recv() => {
                         if let Ok(to) = updated_timeout {
                             self.timeout = to;
                              info!(
@@ -331,7 +325,7 @@ where TBackend: TransactionBackend + 'static
                             );
                         }
                     },
-                    _ = shutdown => {
+                    _ = shutdown.wait() => {
                         info!(target: LOG_TARGET, "Transaction Broadcast Protocol (TxId: {}) shutting down because it received the shutdown signal", self.tx_id);
                         return Err(TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::Shutdown))
                     },
@@ -416,6 +410,18 @@ where TBackend: TransactionBackend + 'static
                 .mine_completed_transaction(self.tx_id)
                 .await
                 .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
+            let _ = self
+                .resources
+                .event_publisher
+                .send(Arc::new(TransactionEvent::TransactionMined(self.tx_id)))
+                .map_err(|e| {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Error sending event because there are no subscribers: {:?}",
+                        e
+                    );
+                    e
+                });
         } else {
             info!(
                 target: LOG_TARGET,

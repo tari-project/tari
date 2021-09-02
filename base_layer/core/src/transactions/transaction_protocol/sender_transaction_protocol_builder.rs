@@ -20,7 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    collections::HashMap,
+    fmt::{Debug, Error, Formatter},
+};
+
+use digest::Digest;
+use log::*;
+use rand::rngs::OsRng;
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::{PublicKey as PublicKeyTrait, SecretKey},
+    ristretto::pedersen::PedersenCommitmentFactory,
+    script::{ExecutionStack, TariScript},
+    tari_utilities::fixed_set::FixedSet,
+};
+
 use crate::transactions::{
+    crypto_factories::CryptoFactories,
     fee::Fee,
     tari_amount::*,
     transaction::{
@@ -38,23 +55,8 @@ use crate::transactions::{
         RewindData,
         TransactionMetadata,
     },
-    types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey},
 };
-use digest::Digest;
-use log::*;
-use rand::rngs::OsRng;
-use std::{
-    cmp::max,
-    collections::HashMap,
-    fmt::{Debug, Error, Formatter},
-};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
-    ristretto::pedersen::PedersenCommitmentFactory,
-    script::{ExecutionStack, TariScript},
-    tari_utilities::fixed_set::FixedSet,
-};
+use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey};
 
 pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
 
@@ -91,7 +93,8 @@ pub struct SenderTransactionProtocolBuilder {
     recipient_scripts: FixedSet<TariScript>,
     recipient_sender_offset_private_keys: FixedSet<PrivateKey>,
     private_commitment_nonces: FixedSet<PrivateKey>,
-    unique_id: Option<Vec<u8>>
+    unique_id: Option<Vec<u8>>,
+    tx_id: Option<u64>,
 }
 
 pub struct BuildError {
@@ -131,7 +134,8 @@ impl SenderTransactionProtocolBuilder {
             recipient_scripts: FixedSet::new(num_recipients),
             recipient_sender_offset_private_keys: FixedSet::new(num_recipients),
             private_commitment_nonces: FixedSet::new(num_recipients),
-            unique_id: None
+            unique_id: None,
+            tx_id: None,
         }
     }
 
@@ -316,7 +320,7 @@ impl SenderTransactionProtocolBuilder {
                         let change_unblinded_output = UnblindedOutput::new(
                             v,
                             change_key.clone(),
-                            Some(output_features),
+                            output_features,
                             script,
                             self.change_input_data
                                 .as_ref()
@@ -336,6 +340,12 @@ impl SenderTransactionProtocolBuilder {
                 }
             },
         }
+    }
+
+    /// Specify the tx_id of this transaction, if not provided it will be calculated on build
+    pub fn with_tx_id(&mut self, tx_id: u64) -> &mut Self {
+        self.tx_id = Some(tx_id);
+        self
     }
 
     fn check_value<T>(name: &str, val: &Option<T>, vec: &mut Vec<String>) {
@@ -507,23 +517,22 @@ impl SenderTransactionProtocolBuilder {
             1 => RecipientInfo::Single(None),
             _ => RecipientInfo::Multiple(HashMap::new()),
         };
-        let num_ids = max(1, self.num_recipients);
-        let mut ids = Vec::with_capacity(num_ids);
-        for i in 0..num_ids {
-            ids.push(calculate_tx_id::<D>(&public_nonce, i));
-        }
+
+        let tx_id = match self.tx_id {
+            Some(id) => id,
+            None => calculate_tx_id::<D>(&public_nonce, 0),
+        };
 
         // The fee should be less than the amount being sent. This isn't a protocol requirement, but it's what you want
         // 99.999% of the time, however, always preventing this will also prevent spending dust in some edge
         // cases.
         if self.amounts.size() > 0 && total_fee > self.calculate_amount_to_others() {
-            let ids_clone = ids.to_vec();
             warn!(
                 target: LOG_TARGET,
                 "Fee ({}) is greater than amount ({}) being sent for Transaction (TxId: {}).",
                 total_fee,
                 self.calculate_amount_to_others(),
-                ids_clone[0]
+                tx_id
             );
             if self.prevent_fee_gt_amount {
                 return self.build_err("Fee is greater than amount");
@@ -539,7 +548,7 @@ impl SenderTransactionProtocolBuilder {
         let sender_info = RawTransactionInfo {
             num_recipients: self.num_recipients,
             amount_to_self,
-            ids,
+            tx_id,
             amounts: self.amounts.into_vec(),
             recipient_output_features: self.recipient_output_features.into_vec(),
             recipient_scripts: self.recipient_scripts.into_vec(),
@@ -582,21 +591,6 @@ impl SenderTransactionProtocolBuilder {
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        consensus::{KERNEL_WEIGHT, WEIGHT_PER_INPUT, WEIGHT_PER_OUTPUT},
-        transactions::{
-            fee::Fee,
-            helpers::{create_test_input, create_unblinded_output, TestParams},
-            tari_amount::*,
-            transaction::{OutputFeatures, MAX_TRANSACTION_INPUTS},
-            transaction_protocol::{
-                sender::SenderState,
-                sender_transaction_protocol_builder::SenderTransactionInitializer,
-                TransactionProtocolError,
-            },
-            types::{CryptoFactories, PrivateKey},
-        },
-    };
     use rand::rngs::OsRng;
     use tari_crypto::{
         common::Blake256,
@@ -604,6 +598,23 @@ mod test {
         script,
         script::{ExecutionStack, TariScript},
     };
+
+    use crate::{
+        consensus::{KERNEL_WEIGHT, WEIGHT_PER_INPUT, WEIGHT_PER_OUTPUT},
+        transactions::{
+            crypto_factories::CryptoFactories,
+            fee::Fee,
+            helpers::{create_test_input, create_unblinded_output, TestParams, UtxoTestParams},
+            tari_amount::*,
+            transaction::{OutputFeatures, MAX_TRANSACTION_INPUTS},
+            transaction_protocol::{
+                sender::SenderState,
+                sender_transaction_protocol_builder::SenderTransactionInitializer,
+                TransactionProtocolError,
+            },
+        },
+    };
+    use tari_common_types::types::PrivateKey;
 
     /// One input, 2 outputs
     #[test]
@@ -633,7 +644,10 @@ mod test {
                 PrivateKey::random(&mut OsRng),
             )
             .unwrap();
-        let (utxo, input) = create_test_input(MicroTari(5_000), 0, &factories.commitment);
+        let (utxo, input) = TestParams::new().create_input(UtxoTestParams {
+            value: MicroTari(5_000),
+            ..Default::default()
+        });
         builder.with_input(utxo, input);
         builder
             .with_fee_per_gram(MicroTari(20))
@@ -657,7 +671,6 @@ mod test {
         if let SenderState::Finalizing(info) = result.state {
             assert_eq!(info.num_recipients, 0, "Number of receivers");
             assert_eq!(info.signatures.len(), 0, "Number of signatures");
-            assert_eq!(info.ids.len(), 1, "Number of tx_ids");
             assert_eq!(info.amounts.len(), 0, "Number of external payment amounts");
             assert_eq!(info.metadata.lock_height, 100, "Lock height");
             assert_eq!(info.metadata.fee, expected_fee, "Fee");
@@ -699,7 +712,6 @@ mod test {
         if let SenderState::Finalizing(info) = result.state {
             assert_eq!(info.num_recipients, 0, "Number of receivers");
             assert_eq!(info.signatures.len(), 0, "Number of signatures");
-            assert_eq!(info.ids.len(), 1, "Number of tx_ids");
             assert_eq!(info.amounts.len(), 0, "Number of external payment amounts");
             assert_eq!(info.metadata.lock_height, 0, "Lock height");
             assert_eq!(info.metadata.fee, expected_fee, "Fee");
@@ -722,12 +734,10 @@ mod test {
         // fee == 340, output = 80
 
         // Pay out so that I should get change, but not enough to pay for the output
-        let output = create_unblinded_output(
-            TariScript::default(),
-            OutputFeatures::default(),
-            p.clone(),
-            MicroTari(500) - expected_fee - MicroTari(50),
-        );
+        let output = p.create_unblinded_output(UtxoTestParams {
+            value: MicroTari(500) - expected_fee - MicroTari(50),
+            ..Default::default()
+        });
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0);
         builder
@@ -744,7 +754,6 @@ mod test {
         if let SenderState::Finalizing(info) = result.state {
             assert_eq!(info.num_recipients, 0, "Number of receivers");
             assert_eq!(info.signatures.len(), 0, "Number of signatures");
-            assert_eq!(info.ids.len(), 1, "Number of tx_ids");
             assert_eq!(info.amounts.len(), 0, "Number of external payment amounts");
             assert_eq!(info.metadata.lock_height, 0, "Lock height");
             assert_eq!(info.metadata.fee, expected_fee + MicroTari(50), "Fee");
@@ -776,6 +785,7 @@ mod test {
             .with_output(output, p.sender_offset_private_key)
             .unwrap()
             .with_fee_per_gram(MicroTari(2));
+
         for _ in 0..MAX_TRANSACTION_INPUTS + 1 {
             let (utxo, input) = create_test_input(MicroTari(50), 0, &factories.commitment);
             builder.with_input(utxo, input);
@@ -934,7 +944,6 @@ mod test {
         if let SenderState::SingleRoundMessageReady(info) = result.state {
             assert_eq!(info.num_recipients, 1, "Number of receivers");
             assert_eq!(info.signatures.len(), 0, "Number of signatures");
-            assert_eq!(info.ids.len(), 1, "Number of tx_ids");
             assert_eq!(info.amounts.len(), 1, "Number of external payment amounts");
             assert_eq!(info.metadata.lock_height, 1234, "Lock height");
             assert_eq!(info.metadata.fee, expected_fee, "Fee");

@@ -25,26 +25,25 @@ use crate::{
     actor::{DhtRequest, DhtRequester},
     storage::DhtMetadataKey,
 };
-use futures::{channel::mpsc, stream::Fuse, StreamExt};
 use std::{
     collections::HashMap,
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicUsize, Ordering},
         Arc,
         RwLock,
     },
 };
 use tari_comms::peer_manager::Peer;
-use tokio::task;
+use tokio::{sync::mpsc, task};
 
 pub fn create_dht_actor_mock(buf_size: usize) -> (DhtRequester, DhtActorMock) {
     let (tx, rx) = mpsc::channel(buf_size);
-    (DhtRequester::new(tx), DhtActorMock::new(rx.fuse()))
+    (DhtRequester::new(tx), DhtActorMock::new(rx))
 }
 
 #[derive(Default, Debug, Clone)]
 pub struct DhtMockState {
-    signature_cache_insert: Arc<AtomicBool>,
+    signature_cache_insert: Arc<AtomicUsize>,
     call_count: Arc<AtomicUsize>,
     select_peers: Arc<RwLock<Vec<Peer>>>,
     settings: Arc<RwLock<HashMap<String, Vec<u8>>>>,
@@ -52,16 +51,11 @@ pub struct DhtMockState {
 
 impl DhtMockState {
     pub fn new() -> Self {
-        Self {
-            signature_cache_insert: Arc::new(AtomicBool::new(false)),
-            call_count: Arc::new(AtomicUsize::new(0)),
-            select_peers: Arc::new(RwLock::new(Vec::new())),
-            settings: Arc::new(RwLock::new(HashMap::new())),
-        }
+        Default::default()
     }
 
-    pub fn set_signature_cache_insert(&self, v: bool) -> &Self {
-        self.signature_cache_insert.store(v, Ordering::SeqCst);
+    pub fn set_number_of_message_hits(&self, v: u32) -> &Self {
+        self.signature_cache_insert.store(v as usize, Ordering::SeqCst);
         self
     }
 
@@ -80,12 +74,12 @@ impl DhtMockState {
 }
 
 pub struct DhtActorMock {
-    receiver: Fuse<mpsc::Receiver<DhtRequest>>,
+    receiver: mpsc::Receiver<DhtRequest>,
     state: DhtMockState,
 }
 
 impl DhtActorMock {
-    pub fn new(receiver: Fuse<mpsc::Receiver<DhtRequest>>) -> Self {
+    pub fn new(receiver: mpsc::Receiver<DhtRequest>) -> Self {
         Self {
             receiver,
             state: DhtMockState::default(),
@@ -101,7 +95,7 @@ impl DhtActorMock {
     }
 
     pub async fn run(mut self) {
-        while let Some(req) = self.receiver.next().await {
+        while let Some(req) = self.receiver.recv().await {
             self.handle_request(req).await;
         }
     }
@@ -111,9 +105,13 @@ impl DhtActorMock {
         self.state.inc_call_count();
         match req {
             SendJoin => {},
-            MsgHashCacheInsert(_, reply_tx) => {
+            MsgHashCacheInsert { reply_tx, .. } => {
                 let v = self.state.signature_cache_insert.load(Ordering::SeqCst);
-                reply_tx.send(v).unwrap();
+                reply_tx.send(v as u32).unwrap();
+            },
+            GetMsgHashHitCount(_, reply_tx) => {
+                let v = self.state.signature_cache_insert.load(Ordering::SeqCst);
+                reply_tx.send(v as u32).unwrap();
             },
             SelectPeers(_, reply_tx) => {
                 let lock = self.state.select_peers.read().unwrap();

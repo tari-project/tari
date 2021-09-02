@@ -19,18 +19,21 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::transactions::{transaction::TransactionOutput, types::HashOutput};
+use crate::transactions::transaction::TransactionOutput;
+use tari_common_types::types::HashOutput;
 
 #[allow(clippy::large_enum_variant)]
+#[derive(Debug, PartialEq)]
 pub enum PrunedOutput {
     Pruned {
         output_hash: HashOutput,
-        range_proof_hash: HashOutput,
+        witness_hash: HashOutput,
     },
     NotPruned {
         output: TransactionOutput,
     },
 }
+
 impl PrunedOutput {
     pub fn is_pruned(&self) -> bool {
         matches!(self, PrunedOutput::Pruned { .. })

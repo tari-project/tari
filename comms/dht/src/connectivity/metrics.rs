@@ -20,20 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{
-    channel::{mpsc, mpsc::SendError, oneshot, oneshot::Canceled},
-    future,
-    SinkExt,
-    StreamExt,
-};
 use log::*;
 use std::{
     collections::{hash_map::Entry, HashMap, VecDeque},
-    future::Future,
     time::{Duration, Instant},
 };
 use tari_comms::peer_manager::NodeId;
-use tokio::task;
+use tokio::{
+    sync::{mpsc, oneshot},
+    task,
+};
 
 const LOG_TARGET: &str = "comms::dht::metrics";
 
@@ -124,7 +120,7 @@ impl MetricsState {
 }
 
 pub struct MetricsCollector {
-    stream: Option<mpsc::Receiver<MetricOp>>,
+    stream: mpsc::Receiver<MetricOp>,
     state: MetricsState,
 }
 
@@ -133,18 +129,17 @@ impl MetricsCollector {
         let (metrics_tx, metrics_rx) = mpsc::channel(500);
         let metrics_collector = MetricsCollectorHandle::new(metrics_tx);
         let collector = Self {
-            stream: Some(metrics_rx),
+            stream: metrics_rx,
             state: Default::default(),
         };
         task::spawn(collector.run());
         metrics_collector
     }
 
-    fn run(mut self) -> impl Future<Output = ()> {
-        self.stream.take().unwrap().for_each(move |op| {
+    async fn run(mut self) {
+        while let Some(op) = self.stream.recv().await {
             self.handle(op);
-            future::ready(())
-        })
+        }
     }
 
     fn handle(&mut self, op: MetricOp) {
@@ -286,7 +281,7 @@ impl MetricsCollectorHandle {
         match self.inner.try_send(MetricOp::Write(write)) {
             Ok(_) => true,
             Err(err) => {
-                warn!(target: LOG_TARGET, "Failed to write metric: {}", err.into_send_error());
+                warn!(target: LOG_TARGET, "Failed to write metric: {:?}", err);
                 false
             },
         }
@@ -338,14 +333,14 @@ pub enum MetricsError {
     ReplyCancelled,
 }
 
-impl From<mpsc::SendError> for MetricsError {
-    fn from(_: SendError) -> Self {
+impl<T> From<mpsc::error::SendError<T>> for MetricsError {
+    fn from(_: mpsc::error::SendError<T>) -> Self {
         MetricsError::ChannelClosedUnexpectedly
     }
 }
 
-impl From<oneshot::Canceled> for MetricsError {
-    fn from(_: Canceled) -> Self {
+impl From<oneshot::error::RecvError> for MetricsError {
+    fn from(_: oneshot::error::RecvError) -> Self {
         MetricsError::ReplyCancelled
     }
 }

@@ -19,20 +19,20 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#![allow(dead_code)]
 
 use crate::{
-    comms_connector::{InboundDomainConnector, PeerMessage, PubsubDomainConnector},
+    comms_connector::{InboundDomainConnector, PubsubDomainConnector},
     peer_seeds::{DnsSeedResolver, SeedPeer},
     transport::{TorConfig, TransportType},
     MAJOR_NETWORK_VERSION,
     MINOR_NETWORK_VERSION,
 };
 use fs2::FileExt;
-use futures::{channel::mpsc, future, Sink};
+use futures::future;
 use log::*;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use std::{
-    error::Error,
     fs::File,
     iter,
     net::SocketAddr,
@@ -44,9 +44,9 @@ use std::{
 use tari_common::configuration::Network;
 use tari_comms::{
     backoff::ConstantBackoff,
+    multiaddr::Multiaddr,
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerManagerError},
     pipeline,
-    pipeline::SinkService,
     protocol::{
         messaging::{MessagingEventSender, MessagingProtocolExtension},
         rpc::RpcServer,
@@ -70,7 +70,7 @@ use tari_storage::{
     LMDBWrapper,
 };
 use thiserror::Error;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 use tower::ServiceBuilder;
 
 const LOG_TARGET: &str = "p2p::initialization";
@@ -150,21 +150,21 @@ pub struct CommsConfig {
     pub dns_seeds_name_server: SocketAddr,
     /// All DNS seed records must pass DNSSEC validation
     pub dns_seeds_use_dnssec: bool,
+    /// The address to bind on using the TCP transport _in addition to_ the primary transport. This is typically useful
+    /// for direct comms between a wallet and base node. If this is set to None, no listener will be bound.
+    /// Default: None
+    pub auxilary_tcp_listener_address: Option<Multiaddr>,
 }
 
 /// Initialize Tari Comms configured for tests
-pub async fn initialize_local_test_comms<TSink>(
+pub async fn initialize_local_test_comms(
     node_identity: Arc<NodeIdentity>,
-    connector: InboundDomainConnector<TSink>,
+    connector: InboundDomainConnector,
     data_path: &str,
     discovery_request_timeout: Duration,
     seed_peers: Vec<Peer>,
     shutdown_signal: ShutdownSignal,
-) -> Result<(CommsNode, Dht, MessagingEventSender), CommsInitializationError>
-where
-    TSink: Sink<Arc<PeerMessage>> + Unpin + Clone + Send + Sync + 'static,
-    TSink::Error: Error + Send + Sync,
-{
+) -> Result<(CommsNode, Dht, MessagingEventSender), CommsInitializationError> {
     let peer_database_name = {
         let mut rng = thread_rng();
         iter::repeat(())
@@ -225,7 +225,7 @@ where
         .with_inbound_pipeline(
             ServiceBuilder::new()
                 .layer(dht.inbound_middleware_layer())
-                .service(SinkService::new(connector)),
+                .service(connector),
         )
         .build();
 
@@ -304,7 +304,8 @@ async fn initialize_hidden_service(
         .with_socks_address_override(config.socks_address_override)
         .with_socks_authentication(config.socks_auth)
         .with_control_server_auth(config.control_server_auth)
-        .with_control_server_address(config.control_server_addr);
+        .with_control_server_address(config.control_server_addr)
+        .with_bypass_proxy_addresses(config.tor_proxy_bypass_addresses);
 
     if let Some(identity) = config.identity {
         builder = builder.with_tor_identity(*identity);
@@ -313,15 +314,11 @@ async fn initialize_hidden_service(
     builder.build().await
 }
 
-async fn configure_comms_and_dht<TSink>(
+async fn configure_comms_and_dht(
     builder: CommsBuilder,
     config: &CommsConfig,
-    connector: InboundDomainConnector<TSink>,
-) -> Result<(UnspawnedCommsNode, Dht), CommsInitializationError>
-where
-    TSink: Sink<Arc<PeerMessage>> + Unpin + Clone + Send + Sync + 'static,
-    TSink::Error: Error + Send + Sync,
-{
+    connector: InboundDomainConnector,
+) -> Result<(UnspawnedCommsNode, Dht), CommsInitializationError> {
     let file_lock = acquire_exclusive_file_lock(&config.datastore_path)?;
 
     let datastore = LMDBBuilder::new()
@@ -337,12 +334,16 @@ where
     let listener_liveness_allowlist_cidrs = parse_cidrs(&config.listener_liveness_allowlist_cidrs)
         .map_err(CommsInitializationError::InvalidLivenessCidrs)?;
 
-    let mut comms = builder
+    let builder = builder
         .with_listener_liveness_max_sessions(config.listener_liveness_max_sessions)
         .with_listener_liveness_allowlist_cidrs(listener_liveness_allowlist_cidrs)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
-        .with_peer_storage(peer_database, Some(file_lock))
-        .build()?;
+        .with_peer_storage(peer_database, Some(file_lock));
+
+    let mut comms = match config.auxilary_tcp_listener_address {
+        Some(ref addr) => builder.with_auxilary_tcp_listener_address(addr.clone()).build()?,
+        None => builder.build()?,
+    };
 
     let peer_manager = comms.peer_manager();
     let connectivity = comms.connectivity();
@@ -381,7 +382,7 @@ where
         .with_inbound_pipeline(
             ServiceBuilder::new()
                 .layer(dht.inbound_middleware_layer())
-                .service(SinkService::new(connector)),
+                .service(connector),
         )
         .build();
 

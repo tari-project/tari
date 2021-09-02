@@ -25,7 +25,6 @@ use crate::{transaction_service::{
     storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
 }, OperationId};
 use aes_gcm::Aes256Gcm;
-use futures::{stream::Fuse, StreamExt};
 use std::{collections::HashMap, fmt, sync::Arc};
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction};
@@ -34,8 +33,6 @@ use tokio::sync::broadcast;
 use tower::Service;
 
 use crate::types::ValidationRetryStrategy;
-#[cfg(feature = "test_harness")]
-use tokio::runtime::Handle;
 use tari_core::transactions::transaction_protocol::TxId;
 use std::fmt::Formatter;
 
@@ -69,16 +66,6 @@ pub enum TransactionServiceRequest {
     SetNumConfirmationsRequired(u64),
     SetCompletedTransactionValidity(TxId, bool),
     ValidateTransactions(ValidationRetryStrategy),
-    #[cfg(feature = "test_harness")]
-    CompletePendingOutboundTransaction(CompletedTransaction),
-    #[cfg(feature = "test_harness")]
-    FinalizePendingInboundTransaction(TxId),
-    #[cfg(feature = "test_harness")]
-    AcceptTestTransaction((TxId, MicroTari, CommsPublicKey, Handle)),
-    #[cfg(feature = "test_harness")]
-    MineTransaction(TxId),
-    #[cfg(feature = "test_harness")]
-    BroadcastTransaction(TxId),
 }
 
 impl fmt::Display for TransactionServiceRequest {
@@ -118,20 +105,6 @@ impl fmt::Display for TransactionServiceRequest {
             Self::RestartBroadcastProtocols => f.write_str("RestartBroadcastProtocols"),
             Self::GetNumConfirmationsRequired => f.write_str("GetNumConfirmationsRequired"),
             Self::SetNumConfirmationsRequired(_) => f.write_str("SetNumConfirmationsRequired"),
-            #[cfg(feature = "test_harness")]
-            Self::CompletePendingOutboundTransaction(tx) => {
-                f.write_str(&format!("CompletePendingOutboundTransaction ({})", tx.tx_id))
-            },
-            #[cfg(feature = "test_harness")]
-            Self::FinalizePendingInboundTransaction(id) => {
-                f.write_str(&format!("FinalizePendingInboundTransaction ({})", id))
-            },
-            #[cfg(feature = "test_harness")]
-            Self::AcceptTestTransaction((id, _, _, _)) => f.write_str(&format!("AcceptTestTransaction ({})", id)),
-            #[cfg(feature = "test_harness")]
-            Self::MineTransaction(id) => f.write_str(&format!("MineTransaction ({})", id)),
-            #[cfg(feature = "test_harness")]
-            Self::BroadcastTransaction(id) => f.write_str(&format!("BroadcastTransaction ({})", id)),
             Self::GetAnyTransaction(t) => f.write_str(&format!("GetAnyTransaction({})", t)),
             TransactionServiceRequest::ValidateTransactions(t) => f.write_str(&format!("ValidateTransaction({:?})", t)),
             TransactionServiceRequest::SetCompletedTransactionValidity(tx_id, s) => f.write_str(&format!(
@@ -165,16 +138,6 @@ pub enum TransactionServiceResponse {
     NumConfirmationsSet,
     ValidationStarted(OperationId),
     CompletedTransactionValidityChanged,
-    #[cfg(feature = "test_harness")]
-    CompletedPendingTransaction,
-    #[cfg(feature = "test_harness")]
-    FinalizedPendingInboundTransaction,
-    #[cfg(feature = "test_harness")]
-    AcceptedTestTransaction,
-    #[cfg(feature = "test_harness")]
-    TransactionMined,
-    #[cfg(feature = "test_harness")]
-    TransactionBroadcast,
 }
 
 /// Events that can be published on the Text Message Service Event Stream
@@ -253,8 +216,8 @@ impl TransactionServiceHandle {
         }
     }
 
-    pub fn get_event_stream_fused(&self) -> Fuse<TransactionEventReceiver> {
-        self.event_stream_sender.subscribe().fuse()
+    pub fn get_event_stream(&self) -> TransactionEventReceiver {
+        self.event_stream_sender.subscribe()
     }
 
     pub async fn send_transaction(
@@ -599,82 +562,6 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::CompletedTransactionValidityChanged => Ok(()),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
-        }
-    }
-
-    #[cfg(feature = "test_harness")]
-    pub async fn test_complete_pending_transaction(
-        &mut self,
-        completed_tx: CompletedTransaction,
-    ) -> Result<(), TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::CompletePendingOutboundTransaction(
-                completed_tx,
-            ))
-            .await??
-        {
-            TransactionServiceResponse::CompletedPendingTransaction => Ok(()),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
-        }
-    }
-
-    #[cfg(feature = "test_harness")]
-    pub async fn test_accept_transaction(
-        &mut self,
-        tx_id: TxId,
-        amount: MicroTari,
-        source_public_key: CommsPublicKey,
-        handle: &Handle,
-    ) -> Result<(), TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::AcceptTestTransaction((
-                tx_id,
-                amount,
-                source_public_key,
-                handle.clone(),
-            )))
-            .await??
-        {
-            TransactionServiceResponse::AcceptedTestTransaction => Ok(()),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
-        }
-    }
-
-    #[cfg(feature = "test_harness")]
-    pub async fn test_finalize_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::FinalizePendingInboundTransaction(tx_id))
-            .await??
-        {
-            TransactionServiceResponse::FinalizedPendingInboundTransaction => Ok(()),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
-        }
-    }
-
-    #[cfg(feature = "test_harness")]
-    pub async fn test_broadcast_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::BroadcastTransaction(tx_id))
-            .await??
-        {
-            TransactionServiceResponse::TransactionBroadcast => Ok(()),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
-        }
-    }
-
-    #[cfg(feature = "test_harness")]
-    pub async fn test_mine_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::MineTransaction(tx_id))
-            .await??
-        {
-            TransactionServiceResponse::TransactionMined => Ok(()),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

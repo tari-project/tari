@@ -4,7 +4,7 @@
 
 ![status: draft](theme/images/status-draft.svg)
 
-**Maintainer(s)**: [Cayle Sharrock](https://github.com/CjS77) and [S W van heerden](https://github.com/SWvheerden)
+**Maintainer(s)**: [Cayle Sharrock](https://github.com/CjS77), [S W van heerden](https://github.com/SWvheerden) and [Stanley Bondi](https://github.com/sdbondi)
 
 # Licence
 
@@ -58,26 +58,63 @@ The aim of this Request for Comment (RFC) is to describe the fields that a block
 
 ## Description
 
+Blockchain consensus is a set of rules that a majority of nodes agree on, that determines the state of the blockchain. 
+
+This RFC details the consensus rules for the Tari network. 
+
 ### Blocks
+[Blocks]: #blocks "Block consensus"
 
-Every [block] MUST conform to the following:
+Every [block] MUST:
 
-* Have a _single_ valid coinbase [UTXO] and kernel
-* have a _single_ valid blockheader;
-* every [UTXO] has a valid [range proof].
+* have _exactly one_ valid [block header], as per the [Block Headers] section
+* have _exactly one_ [coinbase] transaction
+* have a total [transaction weight] less than the consensus maximum
+* be able to calculate matching Merkle roots ([kernel_mr], [output_mr], [witness_mr] and [input_mr]) 
+* each [transaction input] MUST: 
+  * spend an existing valid [UTXO] 
+  * have a maturity greater than the current block height
+  * be in a canonical order (see [Transaction ordering])
+* each [transaction output] MUST:
+  * have a unique hash (`features || commitment || script`)
+  * have a unique commitment in the current [UTXO] set
+  * be in a canonical order (see [Transaction ordering])
+  * have a valid [range proof]
+  * have a valid [metadata signature]
+  * have a valid script offset (\\gamma), as per [RFC-0201_TariScript](./RFC-0201_TariScript.md).
+* each [transaction kernel] MUST 
+  * have a valid kernel signature
+  * have a unique excess
+* the transaction commitments and kernels MUST balance, as follows:
 
-If a [block] does not confirm to the above, the block should be rejected as invalid and the peer from which it was received marked as a malicious peer.
+  $$
+  \begin{align}
+  \sum_i\mathrm{Cout_{i}} - \sum_j\mathrm{Cin_{j}} + \text{fees}H \stackrel{?}{=} \sum_k\mathrm{K_k} + \text{offset}
+  \\ \text{each output}, i,
+  \\ \text{for each input} j,
+  \\ \text{and each kernel excess}, k
+  \\ \textit{offset }\text{is the total kernel offset}
+  \end{align}
+  \tag{1}
+  $$
+
+
+If a [block] does not conform to the above, the block SHOULD be discarded and MAY ban the peer that sent it.
 
 #### Coinbase
+[coinbase]: #coinbase "Coinbase consensus"
 
-Every coinbase transaction contained in a block MUST conform to the following:
+A coinbase transaction contained in a block MUST:
 
-* Be only one UTXO
-* Have only one kernel
-* Contain the exact specified emission amount
-* Contain the exact specified lock-height.
+* be the only transaction in the block with the coinbase flag
+* consist of exactly one output and one kernel (no input)
+* have a valid kernel signature
+* have a value exactly equal to the emission at the block height it was minted (see [emission schedule]) 
+  plus the total transaction fees within the block
+* have a lock-height as per consensus
 
-### Blockheaders
+### Block Headers
+[block headers]: #block-headers "Block headers"
 
 Every [block header] MUST contain the following fields:
 
@@ -96,19 +133,22 @@ Every [block header] MUST contain the following fields:
 * nonce;
 * pow.
 
-The [block header] MUST confirm to the following:
+The [block header] MUST conform to the following:
 
 * The nonce and [PoW](#pow) must be valid for the [block header].
-* All the merkle roots must be valid for the states _after_ the [block] was applied to the local state.
+  * The achieved difficulty MUST be greater than or equal to the [target difficulty].
+* The [FTL] and [MTP] rules, detailed below.
+  
+The Merkle roots are validated as part of the full block validation, detailed in [Blocks].
 
-If the [block header] does not confirm to any of the above, the [block] MUST be rejected.
-If a peer rejects multiple blocks from a given peer, it MAY denylist the peer and ignore further communication from it.
+If the [block header] does not conform to any of the above, the [block] SHOULD be rejected and MAY ban the peer that
+sent it.
 
 #### Version
 
 This is the version currently running on the chain.
 
-The version MUST confirm to the following:
+The version MUST conform to the following:
 
 * It is represented as an unsigned 16-bit integer.
 * Version numbers MUST be incremented whenever there is a change in the blockchain schema starting from 1.
@@ -117,7 +157,7 @@ The version MUST confirm to the following:
 
 A counter indicating how many blocks have passed since the genesis block (inclusive).
 
-The height MUST confirm to the following:
+The height MUST conform to the following:
 
 * Represented as an unsigned 64-bit integer.
 * The height MUST be exactly 1 more than the block referenced in the `prev_hash` block header field.
@@ -127,7 +167,7 @@ The height MUST confirm to the following:
 
 This is the hash of the previous block's header.
 
-The prev_hash MUST confirm to the following:
+The prev_hash MUST conform to the following:
 
 * represented as an array of unsigned 8-bit integers (bytes) in little-endian format.
 * MUST be a hash of the entire contents of the previous block's header.
@@ -136,70 +176,75 @@ The prev_hash MUST confirm to the following:
 
 This is the timestamp at which the block was mined.
 
-The timestamp MUST confirm to the following:
+The timestamp MUST conform to the following:
 
 * Must be transmitted as UNIX timestamp.
 * MUST be less than [FTL].
 * MUST be higher than the [MTP].
 
 #### Output_mr
+[output_mr]: #output_mr "Output Merkle root"
 
-This is the merkle root of the outputs. It MUST be calculated in the following way: Hash (`txo MMR root`  || 
-Hash(`roaring bitmap`)). The output_mr field is used to represent the entire UTXO set in the blockchain; this is a 
-proof that every UTXO exists and that a TXO is either spent or unspent. The `txo MMR root` MUST be the merkle 
-mountain range (MMR) root of all transactional outputs in existence. The `roaring bitmap hash` MUST be a roaring bitmap 
-of every spent transactional output (aka every input in a block). The index used in the roaring bitmap represents the 
-leaf index of the UTXO in the output MMR. 
+The `output_mr` MUST be calculated as follows: Hash (`TXO MMR root`  || Hash(`spent TXO bitmap`)).
 
-The output_mr MUST confirm to the following:
+The `TXO MMR root` is the MMR root that commits to every [transaction output] that has ever existed since 
+the genesis [block]. 
+
+The `spent TXO bitmap` is a compact serialized [roaring bitmap] containing all the output MMR leaf indexes 
+of all the outputs that have ever been spent. 
+
+The output_mr MUST conform to the following:
 
 * Represented as an array of unsigned 8-bit integers (bytes) in little-endian format.
 * The hashing function used MUST be blake2b with a 256 bit digest.
 
 #### Output_mmr_size
 
-This is the total size of the leaves in the output merkle mountain range.
+This is the total size of the leaves in the output Merkle mountain range.
 
-The Output_mmr_size MUST confirm to the following:
+The Output_mmr_size MUST conform to the following:
 
 * Represented as a single unsigned 64-bit integer.
 
 #### Input_mr
+[input_mr]: #input_mr "Input Merkle root"
 
-This is the merkle root of all the inputs in the block, which consists of the hashed inputs. It is used to prove that 
+This is the Merkle root of all the inputs in the block, which consists of the hashed inputs. It is used to prove that 
 all inputs are correct and not changed after mining. This MUST be constructed by adding in order, the hash of every 
-input contained in the block.
+input contained in the block. 
 
-The input_mr MUST confirm to the following:
+The input_mr MUST conform to the following:
 
 * Represented as an array of unsigned 8-bit integers (bytes) in little-endian format.
 * The hashing function used must be blake2b with a 256 bit digest.
 
 #### Witness_mr
+[witness_mr]: #witness_mr "Witness Merkle root"
 
-This is the merkle root of the output witness data. Contained in this merkle mountain range is the rangeproofs and 
-sender_meta_data signatures of all created outputs. This MUST be constructed by adding the Hash ( `RangeProof` || 
-`sender_meta_data signature`) in order for every output contain in the block.
+This is the Merkle root of the output witness data, specifically the [range proof] and 
+metadata signatures of all created outputs. This MUST be constructed by 
+Hash ( `RangeProof` || `metadata commitment signature`) in order for every output contain in the block.
 
-The witness_mr MUST confirm to the following:
+The witness_mr MUST conform to the following:
 
 * Represented as an array of unsigned 8-bit integers (bytes) in little-endian format.
 * The hashing function used must be blake2b with a 256 bit digest.
 
 #### Kernel_mr
+[kernel_mr]: #kernel_mr "Kernel Merkle root"
 
-This is the merkle root of the outputs.
+This is the Merkle root of the outputs.
 
-The kernel_mr MUST confirm to the following:.
+The kernel_mr MUST conform to the following:.
 
 * Must be transmitted as an array of unsigned 8-bit integers (bytes) in little-endian format.
 * The hashing function used must be blake2b with a 256 bit digest.
 
 #### Kernel_mmr_size
 
-This is the total size of the leaves in the kernel merkle mountain range.
+This is the total size of the leaves in the kernel Merkle mountain range.
 
-The Kernel_mmr_size MUST confirm to the following:
+The Kernel_mmr_size MUST conform to the following:
 
 * Represented as a single unsigned 64-bit integer.
 
@@ -207,7 +252,7 @@ The Kernel_mmr_size MUST confirm to the following:
 
 This is total summed offset of all the transactions contained in this block.
 
-The total_kernel_offset MUST confirm to the following:
+The total_kernel_offset MUST conform to the following:
 
 * Must be transmitted as an array of unsigned 8-bit integers (bytes) in little-endian format
 
@@ -215,7 +260,7 @@ The total_kernel_offset MUST confirm to the following:
 
 This is total summed script offset of all the transactions contained in this block.
 
-The total_script_offset MUST confirm to the following:
+The total_script_offset MUST conform to the following:
 
 * Must be transmitted as an array of unsigned 8-bit integers (bytes) in little-endian format
 
@@ -223,7 +268,7 @@ The total_script_offset MUST confirm to the following:
 
 This is the total accumulated difficulty of the mined chained.
 
-The total_difficulty MUST confirm to the following:
+The total_difficulty MUST conform to the following:
 
 * Must be transmitted as unsigned 64-bit integer.
 * MUST be larger than the previous block's `total_difficulty`.
@@ -233,7 +278,7 @@ The total_difficulty MUST confirm to the following:
 
 This is the nonce used in solving the Proof of Work.
 
-The nonce MUST confirm to the following:
+The nonce MUST conform to the following:
 
 * Must be transmitted as unsigned 64-bit integer;
 
@@ -248,7 +293,39 @@ The [PoW] MUST contain the following:
 * pow_algo as an enum (0 for monero, 1 for blake).
 * pow_data as array of unsigned 8-bit integers (bytes) in little-endian format.
 
+#### Difficulty Calculation
+[target difficulty]: #target-difficulty "Target Difficulty"
+
+The target difficulty represents how difficult it is to mine a given block. This difficulty is not fixed and needs to
+constantly adjust to changing network hash rates. 
+
+The difficulty adjustment MUST be calculated using a linear-weighted moving average (LWMA) algorithm (2)
+$$
+\newcommand{\solvetime}{ \mathrm{ST_i} }
+\newcommand{\solvetimemax}{ \mathrm{ST_{max}} }
+$$
+
+| Symbol                 	| Value                   	| Description                                                                                                                	|
+|--------------------------	|-------------------------	|----------------------------------------------------------------------------------------------------------------------------	|
+| N                        	| 90                      	| Target difficulty block window                                                                                             	|
+| T                        	| SHA3: 300 Monero: 200    	| Target block time in seconds.  The value used depends on the  PoW algorithm being used.                                    	|
+| \\( \solvetimemax \\)    	| SHA3: 1800 Monero: 1200 	| Maximum solve time.  This is 6 times the target time  of the current PoW algorithm.                                        	|
+| \\( \solvetime \\)    	| variable                	| The timestamp difference in seconds between  block _i_ and _i - 1_ where \\( 1 \le \solvetime \le \solvetimemax \\) 	|
+| \\( \mathrm{D_{avg}} \\) 	| variable                	| The average difficulty of the last _N_ blocks                                                                              	|
+
+$$
+\begin{align}
+\\ \textit{weighted_solve_time} = \sum\limits_{i=1}^N(\solvetime*i) 
+\\ \textit{weighted_target_time} = (\sum\limits_{i=1}^Ni) * \mathrm{T} 
+\\ \textit{difficulty} = \mathrm{D_{avg}} * \frac{\textit{weighted_target_time}}{\textit{weighted_solve_time}}
+\end{align}
+\tag{2}
+$$
+
+It is important to note that the 2 proof of work algorithms are calculated _independently_. i.e. if the current block is using _SHA3_ proof of work, the block window and solve times only include _SHA3_ blocks and vice versa.
+
 ### FTL
+[FTL]: #ftl "Future Time Limit"
 
 The Future Time Limit. This is how far into the future a time is accepted as a valid time. Any time that is more than the FTL is rejected until such a time that it is not less than the FTL.
 The FTL is calculated as (T*N)/20 with T and N defined as:
@@ -256,19 +333,44 @@ T: Target time - This is the ideal time that should pass between blocks which ha
 N: Block window - This is the amount of blocks used when calculating difficulty adjustments.
 
 ### MTP
+[MTP]: #mtp "Median Time Passed"
 
-The Median Time Past. This is the lower limit of a time. Any time that is less than the MTP is rejected.
-THe MTP is calculated as the median timestamp of the previous 11 blocks.
+The Median Time Passed (MTP) is the lower bound calculated by taking the median average timestamp of the 
+last _N_ blocks. Any block with a timestamp that is less than MTP will be rejected.
 
 ### Total accumulated proof of work
 
-This is defined as the total accumulated proof of work done on a single block chain. Because we use two proof of work algorithms which are rated at different difficulties and we would like to weight them as equal we need to compare them. To compare them we use a [Geometric mean](https://en.wikipedia.org/wiki/Geometric_mean). Because we only have two algorithms this is calculated as the ceil of SQRT(accumulated_monero_difficulty*accumulated_blake_difficulty). This number is never transmitted and is simply calculated from the tip of the chain.
+This is defined as the total accumulated proof of work done on the blockchain. Tari uses two _independent_ proof of work algorithms that are
+rated at different difficulties. To compare them, we simply multiply them together into one number:
+$$
+ \textit{accumulated_monero_difficulty} * \textit{accumulated_sha_difficulty} 
+$$
+This value is used to compare chain tips to determine the strongest chain.
+
+### Transaction Ordering
+[Transaction ordering]: #transaction-ordering "Canonical Transaction Ordering"
+
+The order in which transaction inputs, outputs and kernels are added to the Merkle mountain range completely changes the
+final Merkle root. Input, output and kernel ordering within a block is therefore part of consensus. 
+
+The block MUST be transmitted in canonical ordering. The advantage of this approach is that sorting does not need to be 
+done by the whole network, and verification of sorting is extremely cheap.
+
+Transaction inputs and outputs are sorted by their Pedersen commitment i.e. `kG + vH`. Specifically, the byte representation of the 
+compressed [Ristretto] point of the commitment.
 
 
 [block]: Glossary.md#block
 [block header]: Glossary.md#block-header
+[transaction input]: Glossary.md#transaction
+[transaction output]: Glossary.md#unspent-transaction-outputs
+[transaction weight]: Glossary.md#transaction-weight
+[metadata signature]: Glossary.md#metadata-signature
 [utxo]: Glossary.md#unspent-transaction-outputs
 [range proof]: Glossary.md#range-proof
 [cut-through]: Glossary.md#cut-through
+[emission schedule]: Glossary.md#emission-schedule
+[roaring bitmap]: https://github.com/RoaringBitmap/RoaringFormatSpec
+[Ristretto]: https://docs.rs/curve25519-dalek/3.1.0/curve25519_dalek/ristretto/index.html
 [FTL]: RFC-0120_Consensus.md#FTL
 [MTP]: RFC-0120_Consensus.md#MTP

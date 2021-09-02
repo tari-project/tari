@@ -21,11 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::ui::{state::UiTransactionSendStatus, UiError};
-use futures::StreamExt;
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::tari_amount::MicroTari;
 use tari_wallet::transaction_service::handle::{TransactionEvent, TransactionServiceHandle};
-use tokio::sync::watch;
+use tokio::sync::{broadcast, watch};
 
 const LOG_TARGET: &str = "wallet::console_wallet::tasks ";
 
@@ -37,8 +36,8 @@ pub async fn send_transaction_task(
     mut transaction_service_handle: TransactionServiceHandle,
     result_tx: watch::Sender<UiTransactionSendStatus>,
 ) {
-    let _ = result_tx.broadcast(UiTransactionSendStatus::Initiated);
-    let mut event_stream = transaction_service_handle.get_event_stream_fused();
+    let _ = result_tx.send(UiTransactionSendStatus::Initiated);
+    let mut event_stream = transaction_service_handle.get_event_stream();
     let mut send_direct_received_result = (false, false);
     let mut send_saf_received_result = (false, false);
     match transaction_service_handle
@@ -46,15 +45,15 @@ pub async fn send_transaction_task(
         .await
     {
         Err(e) => {
-            let _ = result_tx.broadcast(UiTransactionSendStatus::Error(UiError::from(e).to_string()));
+            let _ = result_tx.send(UiTransactionSendStatus::Error(UiError::from(e).to_string()));
         },
         Ok(our_tx_id) => {
-            while let Some(event_result) = event_stream.next().await {
-                match event_result {
+            loop {
+                match event_stream.recv().await {
                     Ok(event) => match &*event {
                         TransactionEvent::TransactionDiscoveryInProgress(tx_id) => {
                             if our_tx_id == *tx_id {
-                                let _ = result_tx.broadcast(UiTransactionSendStatus::DiscoveryInProgress);
+                                let _ = result_tx.send(UiTransactionSendStatus::DiscoveryInProgress);
                             }
                         },
                         TransactionEvent::TransactionDirectSendResult(tx_id, result) => {
@@ -75,25 +74,28 @@ pub async fn send_transaction_task(
                         },
                         TransactionEvent::TransactionCompletedImmediately(tx_id) => {
                             if our_tx_id == *tx_id {
-                                let _ = result_tx.broadcast(UiTransactionSendStatus::TransactionComplete);
+                                let _ = result_tx.send(UiTransactionSendStatus::TransactionComplete);
                                 return;
                             }
                         },
                         _ => (),
                     },
-                    Err(e) => {
+                    Err(e @ broadcast::error::RecvError::Lagged(_)) => {
                         log::warn!(target: LOG_TARGET, "Error reading from event broadcast channel {:?}", e);
+                        continue;
+                    },
+                    Err(broadcast::error::RecvError::Closed) => {
                         break;
                     },
                 }
             }
 
             if send_direct_received_result.1 {
-                let _ = result_tx.broadcast(UiTransactionSendStatus::SentDirect);
+                let _ = result_tx.send(UiTransactionSendStatus::SentDirect);
             } else if send_saf_received_result.1 {
-                let _ = result_tx.broadcast(UiTransactionSendStatus::SentViaSaf);
+                let _ = result_tx.send(UiTransactionSendStatus::SentViaSaf);
             } else {
-                let _ = result_tx.broadcast(UiTransactionSendStatus::Error(
+                let _ = result_tx.send(UiTransactionSendStatus::Error(
                     "Transaction could not be sent".to_string(),
                 ));
             }
@@ -109,34 +111,37 @@ pub async fn send_one_sided_transaction_task(
     mut transaction_service_handle: TransactionServiceHandle,
     result_tx: watch::Sender<UiTransactionSendStatus>,
 ) {
-    let _ = result_tx.broadcast(UiTransactionSendStatus::Initiated);
-    let mut event_stream = transaction_service_handle.get_event_stream_fused();
+    let _ = result_tx.send(UiTransactionSendStatus::Initiated);
+    let mut event_stream = transaction_service_handle.get_event_stream();
     match transaction_service_handle
         .send_one_sided_transaction(public_key, amount, None, fee_per_gram, message)
         .await
     {
         Err(e) => {
-            let _ = result_tx.broadcast(UiTransactionSendStatus::Error(UiError::from(e).to_string()));
+            let _ = result_tx.send(UiTransactionSendStatus::Error(UiError::from(e).to_string()));
         },
         Ok(our_tx_id) => {
-            while let Some(event_result) = event_stream.next().await {
-                match event_result {
+            loop {
+                match event_stream.recv().await {
                     Ok(event) => {
                         if let TransactionEvent::TransactionCompletedImmediately(tx_id) = &*event {
                             if our_tx_id == *tx_id {
-                                let _ = result_tx.broadcast(UiTransactionSendStatus::TransactionComplete);
+                                let _ = result_tx.send(UiTransactionSendStatus::TransactionComplete);
                                 return;
                             }
                         }
                     },
-                    Err(e) => {
+                    Err(e @ broadcast::error::RecvError::Lagged(_)) => {
                         log::warn!(target: LOG_TARGET, "Error reading from event broadcast channel {:?}", e);
+                        continue;
+                    },
+                    Err(broadcast::error::RecvError::Closed) => {
                         break;
                     },
                 }
             }
 
-            let _ = result_tx.broadcast(UiTransactionSendStatus::Error(
+            let _ = result_tx.send(UiTransactionSendStatus::Error(
                 "One-sided transaction could not be sent".to_string(),
             ));
         },

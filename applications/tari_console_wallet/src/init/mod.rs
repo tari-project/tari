@@ -20,23 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    utils::db::get_custom_base_node_peer_from_db,
-    wallet_modes::{PeerConfig, WalletMode},
-};
+use std::{fs, path::PathBuf, str::FromStr, sync::Arc};
+
 use log::*;
 use rpassword::prompt_password_stdout;
 use rustyline::Editor;
-use std::{fs, path::PathBuf, str::FromStr, sync::Arc};
-use tari_app_utilities::utilities::{setup_wallet_transport_type, ExitCodes};
+
+use tari_app_utilities::utilities::{create_transport_type, ExitCodes};
 use tari_common::{ConfigBootstrap, GlobalConfig};
+use tari_common_types::types::PrivateKey;
 use tari_comms::{
     peer_manager::{Peer, PeerFeatures},
     types::CommsSecretKey,
     NodeIdentity,
 };
 use tari_comms_dht::{DbConnectionUrl, DhtConfig};
-use tari_core::transactions::types::{CryptoFactories, PrivateKey};
+use tari_core::transactions::CryptoFactories;
 use tari_p2p::{
     initialization::CommsConfig,
     peer_seeds::SeedPeer,
@@ -57,6 +56,11 @@ use tari_wallet::{
     Wallet,
     WalletConfig,
     WalletSqlite,
+};
+
+use crate::{
+    utils::db::get_custom_base_node_peer_from_db,
+    wallet_modes::{PeerConfig, WalletMode},
 };
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::init";
@@ -128,9 +132,15 @@ pub async fn change_password(
         return Err(ExitCodes::InputError("Passwords don't match!".to_string()));
     }
 
-    wallet.remove_encryption().await?;
+    wallet
+        .remove_encryption()
+        .await
+        .map_err(|e| ExitCodes::WalletError(e.to_string()))?;
 
-    wallet.apply_encryption(passphrase).await?;
+    wallet
+        .apply_encryption(passphrase)
+        .await
+        .map_err(|e| ExitCodes::WalletError(e.to_string()))?;
 
     println!("Wallet password changed successfully.");
 
@@ -176,7 +186,7 @@ pub async fn get_base_node_peer_config(
 pub fn wallet_mode(bootstrap: &ConfigBootstrap, boot_mode: WalletBoot) -> WalletMode {
     // Recovery mode
     if matches!(boot_mode, WalletBoot::Recovery) {
-        if bootstrap.daemon_mode {
+        if bootstrap.non_interactive_mode {
             return WalletMode::RecoveryDaemon;
         } else {
             return WalletMode::RecoveryTui;
@@ -184,13 +194,13 @@ pub fn wallet_mode(bootstrap: &ConfigBootstrap, boot_mode: WalletBoot) -> Wallet
     }
 
     match (
-        bootstrap.daemon_mode,
+        bootstrap.non_interactive_mode,
         bootstrap.input_file.clone(),
         bootstrap.command.clone(),
     ) {
         // TUI mode
         (false, None, None) => WalletMode::Tui,
-        // GRPC daemon mode
+        // GRPC mode
         (true, None, None) => WalletMode::Grpc,
         // Script mode
         (_, Some(path), None) => WalletMode::Script(path),
@@ -306,7 +316,7 @@ pub async fn init_wallet(
         node_features,
     ));
 
-    let transport_type = setup_wallet_transport_type(&config);
+    let transport_type = create_transport_type(&config);
     let transport_type = match transport_type {
         Tor(mut tor_config) => {
             tor_config.identity = wallet_db.get_tor_id().await?.map(Box::new);
@@ -320,20 +330,21 @@ pub async fn init_wallet(
         node_identity,
         user_agent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
         transport_type,
+        auxilary_tcp_listener_address: None,
         datastore_path: config.console_wallet_peer_db_path.clone(),
         peer_database_name: "peers".to_string(),
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
-        // TODO - make this configurable
         dht: DhtConfig {
             database_url: DbConnectionUrl::File(config.data_dir.join("dht-console-wallet.db")),
             auto_join: true,
             allow_test_addresses: config.allow_test_addresses,
             flood_ban_max_msg_count: config.flood_ban_max_msg_count,
             saf_msg_validity: config.saf_expiry_duration,
+            dedup_cache_capacity: config.dedup_cache_capacity,
             ..Default::default()
         },
-        // TODO: This should be false unless testing locally - make this configurable
+        // This should be false unless testing locally
         allow_test_addresses: config.allow_test_addresses,
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
@@ -346,10 +357,11 @@ pub async fn init_wallet(
     let base_node_service_config = BaseNodeServiceConfig::new(
         config.wallet_base_node_service_refresh_interval,
         config.wallet_base_node_service_request_max_age,
+        config.base_node_event_channel_size,
     );
 
     let factories = CryptoFactories::default();
-    let mut wallet_config = WalletConfig::new(
+    let wallet_config = WalletConfig::new(
         comms_config.clone(),
         factories,
         Some(TransactionServiceConfig {
@@ -361,20 +373,25 @@ pub async fn init_wallet(
                 config.transaction_routing_mechanism.clone(),
             ),
             num_confirmations_required: config.transaction_num_confirmations_required,
+            transaction_event_channel_size: config.transaction_event_channel_size,
             ..Default::default()
         }),
         Some(OutputManagerServiceConfig {
             base_node_query_timeout: config.base_node_query_timeout,
             prevent_fee_gt_amount: config.prevent_fee_gt_amount,
+            event_channel_size: config.output_manager_event_channel_size,
+            base_node_update_publisher_channel_size: config.base_node_update_publisher_channel_size,
             ..Default::default()
         }),
         config.network.into(),
         Some(base_node_service_config),
-        Some(config.buffer_size_base_node_wallet),
-        Some(config.buffer_rate_limit_base_node_wallet),
+        Some(std::cmp::max(
+            BASE_NODE_BUFFER_MIN_SIZE,
+            config.buffer_size_console_wallet,
+        )),
+        Some(config.buffer_rate_limit_console_wallet),
         Some(config.scan_for_utxo_interval),
     );
-    wallet_config.buffer_size = std::cmp::max(BASE_NODE_BUFFER_MIN_SIZE, config.buffer_size_base_node);
 
     let mut wallet = Wallet::start(
         wallet_config,
@@ -426,7 +443,14 @@ pub async fn init_wallet(
         debug!(target: LOG_TARGET, "Wallet encrypted.");
 
         if interactive && recovery_master_key.is_none() {
-            confirm_seed_words(&mut wallet).await?;
+            match confirm_seed_words(&mut wallet).await {
+                Ok(()) => {
+                    print!("\x1Bc"); // Clear the screen
+                },
+                Err(error) => {
+                    return Err(error);
+                },
+            };
         }
         if let Some(file_name) = seed_words_file_name {
             let seed_words = wallet.output_manager_service.get_seed_words().await?.join(" ");

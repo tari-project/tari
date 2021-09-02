@@ -7,23 +7,30 @@ const { expect } = require("chai");
 const { createEnv } = require("./config");
 const WalletClient = require("./walletClient");
 const csvParser = require("csv-parser");
+var tari_crypto = require("tari_crypto");
 
 let outputProcess;
 
 class WalletProcess {
-  constructor(name, options, logFilePath, seedWords) {
+  constructor(name, excludeTestEnvars, options, logFilePath, seedWords) {
     this.name = name;
-    this.options = options;
+    this.options = Object.assign(
+      {
+        baseDir: "./temp/base_nodes",
+      },
+      options || {}
+    );
     this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath;
     this.recoverWallet = !!seedWords;
     this.seedWords = seedWords;
+    this.excludeTestEnvars = excludeTestEnvars;
   }
 
   async init() {
-    this.port = await getFreePort(19000, 25000);
+    this.port = await getFreePort();
     this.name = `Wallet${this.port}-${this.name}`;
-    this.grpcPort = await getFreePort(19000, 25000);
-    this.baseDir = `./temp/base_nodes/${dateFormat(
+    this.grpcPort = await getFreePort();
+    this.baseDir = `${this.options.baseDir}/${dateFormat(
       new Date(),
       "yyyymmddHHMM"
     )}/${this.name}`;
@@ -34,8 +41,10 @@ class WalletProcess {
     return "127.0.0.1:" + this.grpcPort;
   }
 
-  getClient() {
-    return new WalletClient(this.getGrpcAddress(), this.name);
+  async connectClient() {
+    let client = new WalletClient(this.name);
+    await client.connect(this.getGrpcAddress());
+    return client;
   }
 
   getSeedWords() {
@@ -50,41 +59,68 @@ class WalletProcess {
     this.peerSeeds = addresses.join(",");
   }
 
-  run(cmd, args, saveFile) {
+  run(cmd, args, saveFile, input_buffer, output) {
     return new Promise((resolve, reject) => {
       if (!fs.existsSync(this.baseDir)) {
         fs.mkdirSync(this.baseDir, { recursive: true });
         fs.mkdirSync(this.baseDir + "/log", { recursive: true });
       }
 
-      const envs = createEnv(
-        this.name,
-        true,
-        "cwalletid.json",
-        "127.0.0.1",
-        this.grpcPort,
-        this.port,
-        "127.0.0.1",
-        "8080",
-        "8081",
-        "127.0.0.1:8084",
-        this.options,
-        this.peerSeeds
-      );
+      let envs = {};
+      const network =
+        this.options && this.options.network
+          ? this.options.network.toUpperCase()
+          : "LOCALNET";
+      envs[`TARI_BASE_NODE__COMMON__NETWORK`] = network;
+      if (!this.excludeTestEnvars) {
+        envs = createEnv(
+          this.name,
+          true,
+          "cwalletid.json",
+          "127.0.0.1",
+          this.grpcPort,
+          this.port,
+          "127.0.0.1",
+          "8080",
+          "8081",
+          "127.0.0.1:8084",
+          "127.0.0.1:8085",
+          this.options,
+          this.peerSeeds
+        );
+      } else if (this.options["grpc_console_wallet_address"]) {
+        envs[`TARI_BASE_NODE__${network}__GRPC_CONSOLE_WALLET_ADDRESS`] =
+          this.options["grpc_console_wallet_address"];
+        this.grpcPort =
+          this.options["grpc_console_wallet_address"].split(":")[1];
+      }
 
       if (saveFile) {
         fs.appendFileSync(`${this.baseDir}/.env`, JSON.stringify(envs));
       }
+
       const ps = spawn(cmd, args, {
         cwd: this.baseDir,
         // shell: true,
         env: { ...process.env, ...envs },
       });
 
+      if (input_buffer) {
+        // If we want to simulate user input we can do so here.
+        ps.stdin.write(input_buffer);
+      }
       ps.stdout.on("data", (data) => {
-        // console.log(`stdout: ${data}`);
+        //console.log(`stdout: ${data}`);
+        if (output !== undefined && output.buffer !== undefined) {
+          output.buffer += data;
+        }
         fs.appendFileSync(`${this.baseDir}/log/stdout.log`, data.toString());
-        if (data.toString().match(/Starting grpc server/)) {
+        if (
+          (!this.recoverWallet &&
+            data.toString().match(/Starting grpc server/)) ||
+          (this.recoverWallet &&
+            data.toString().match(/Initializing logging according/))
+        ) {
           resolve(ps);
         }
       });
@@ -97,7 +133,9 @@ class WalletProcess {
       ps.on("close", (code) => {
         const ps = this.ps;
         this.ps = null;
-        if (code) {
+        if (code == 112) {
+          reject("Incorrect password");
+        } else if (code) {
           console.log(`child process exited with code ${code}`);
           reject(`child process exited with code ${code}`);
         } else {
@@ -125,9 +163,9 @@ class WalletProcess {
         "-Z",
         "unstable-options",
         "--out-dir",
-        __dirname + "/../temp/out",
+        process.cwd() + "/temp/out",
       ]);
-      outputProcess = __dirname + "/../temp/out/tari_console_wallet";
+      outputProcess = process.cwd() + "/temp/out/tari_console_wallet";
     }
     return outputProcess;
   }
@@ -147,17 +185,17 @@ class WalletProcess {
     });
   }
 
-  async start() {
+  async start(password) {
     const args = [
       "--base-path",
       ".",
       "--init",
       "--create_id",
       "--password",
-      "kensentme",
+      `${password ? password : "kensentme"}`,
       "--seed-words-file-name",
       this.seedWordsFile,
-      "--daemon",
+      "--non-interactive",
     ];
     if (this.recoverWallet) {
       args.push("--recover", "--seed-words", this.seedWords);
@@ -166,6 +204,47 @@ class WalletProcess {
       args.push("--log-config", this.logFilePath);
     }
     return await this.run(await this.compile(), args, true);
+  }
+
+  async changePassword(oldPassword, newPassword) {
+    const args = [
+      "--base-path",
+      ".",
+      "--password",
+      oldPassword,
+      "--update-password",
+    ];
+    if (this.logFilePath) {
+      args.push("--log-config", this.logFilePath);
+    }
+    // Set input_buffer to double confirmation of the new password
+    return await this.run(
+      await this.compile(),
+      args,
+      true,
+      newPassword + "\n" + newPassword + "\n"
+    );
+  }
+
+  async runCommand(command) {
+    // we need to quit the wallet before running a command
+    await this.stop();
+    const args = [
+      "--base-path",
+      ".",
+      "--password",
+      "kensentme",
+      "--command",
+      command,
+      "--non-interactive",
+    ];
+    if (this.logFilePath) {
+      args.push("--log-config", this.logFilePath);
+    }
+    let output = { buffer: "" };
+    // In case we killed the wallet fast send enter. Because it will ask for the logs again (e.g. whois test)
+    await this.run(await this.compile(), args, true, "\n", output);
+    return output;
   }
 
   async exportSpentOutputs() {
@@ -238,6 +317,43 @@ class WalletProcess {
     });
 
     return unblinded_outputs;
+  }
+
+  // Faucet outputs are only provided with an amount and spending key so we zero out the other output data
+  // and update the input data to be the public key of the spending key, make the script private key the spending key
+  // and then we can test if this output is still spendable when imported into the wallet.
+  async readExportedOutputsAsFaucetOutputs() {
+    let outputs = await this.readExportedOutputs();
+    for (let i = 0; i < outputs.length; i++) {
+      outputs[i].metadata_signature = {
+        public_nonce_commitment: Buffer.from(
+          "0000000000000000000000000000000000000000000000000000000000000000",
+          "hex"
+        ),
+        signature_u: Buffer.from(
+          "0000000000000000000000000000000000000000000000000000000000000000",
+          "hex"
+        ),
+        signature_v: Buffer.from(
+          "0000000000000000000000000000000000000000000000000000000000000000",
+          "hex"
+        ),
+      };
+      outputs[i].sender_offset_public_key = Buffer.from(
+        "0000000000000000000000000000000000000000000000000000000000000000",
+        "hex"
+      );
+      outputs[i].script_private_key = outputs[i].spending_key;
+      let scriptPublicKey = tari_crypto.pubkey_from_secret(
+        outputs[i].spending_key.toString("hex")
+      );
+      let input_data = Buffer.concat([
+        Buffer.from([0x04]),
+        Buffer.from(scriptPublicKey, "hex"),
+      ]);
+      outputs[i].input_data = input_data;
+    }
+    return outputs;
   }
 }
 

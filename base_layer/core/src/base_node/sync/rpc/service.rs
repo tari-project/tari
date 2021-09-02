@@ -21,9 +21,8 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::sync::rpc::BaseNodeSyncService,
+    base_node::sync::rpc::{sync_utxos_task::SyncUtxosTask, BaseNodeSyncService},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, OrNotFound},
-    crypto::tari_utilities::Hashable,
     iterators::NonOverlappingIntegerPairIter,
     proto,
     proto::base_node::{
@@ -32,17 +31,19 @@ use crate::{
         SyncBlocksRequest,
         SyncHeadersRequest,
         SyncKernelsRequest,
-        SyncUtxo,
         SyncUtxosRequest,
         SyncUtxosResponse,
     },
 };
-use futures::{channel::mpsc, stream, SinkExt};
 use log::*;
-use std::{cmp, time::Instant};
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
+use std::cmp;
+use tari_comms::{
+    protocol::rpc::{Request, Response, RpcStatus, Streaming},
+    utils,
+};
 use tari_crypto::tari_utilities::hex::Hex;
-use tokio::task;
+use tokio::{sync::mpsc, task};
+use tracing::{instrument, span, Instrument, Level};
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc";
 
@@ -63,6 +64,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
 
 #[tari_comms::async_trait]
 impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcService<B> {
+    #[instrument(name = "sync_rpc::sync_blocks", skip(self), err)]
     async fn sync_blocks(
         &self,
         request: Request<SyncBlocksRequest>,
@@ -116,58 +118,60 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
 
         // Number of blocks to load and push to the stream before loading the next batch
         const BATCH_SIZE: usize = 4;
-        let (mut tx, rx) = mpsc::channel(BATCH_SIZE);
+        let (tx, rx) = mpsc::channel(BATCH_SIZE);
 
-        task::spawn(async move {
-            let iter = NonOverlappingIntegerPairIter::new(start, end + 1, BATCH_SIZE);
-            for (start, end) in iter {
-                if tx.is_closed() {
-                    break;
-                }
-
-                debug!(target: LOG_TARGET, "Sending blocks #{} - #{}", start, end);
-                let blocks = db
-                    .fetch_blocks(start..=end)
-                    .await
-                    .map_err(RpcStatus::log_internal_error(LOG_TARGET));
-
-                match blocks {
-                    Ok(blocks) if blocks.is_empty() => {
+        let span = span!(Level::TRACE, "sync_rpc::block_sync::inner_worker");
+        task::spawn(
+            async move {
+                let iter = NonOverlappingIntegerPairIter::new(start, end + 1, BATCH_SIZE);
+                for (start, end) in iter {
+                    if tx.is_closed() {
                         break;
-                    },
-                    Ok(blocks) => {
-                        let mut blocks = stream::iter(
-                            blocks
+                    }
+
+                    debug!(target: LOG_TARGET, "Sending blocks #{} - #{}", start, end);
+                    let blocks = db
+                        .fetch_blocks(start..=end)
+                        .await
+                        .map_err(RpcStatus::log_internal_error(LOG_TARGET));
+
+                    match blocks {
+                        Ok(blocks) if blocks.is_empty() => {
+                            break;
+                        },
+                        Ok(blocks) => {
+                            let blocks = blocks
                                 .into_iter()
                                 .map(|hb| hb.try_into_block().map_err(RpcStatus::log_internal_error(LOG_TARGET)))
                                 .map(|block| match block {
                                     Ok(b) => Ok(proto::base_node::BlockBodyResponse::from(b)),
                                     Err(err) => Err(err),
-                                })
-                                .map(Ok),
-                        );
+                                });
 
-                        // Ensure task stops if the peer prematurely stops their RPC session
-                        if tx.send_all(&mut blocks).await.is_err() {
+                            // Ensure task stops if the peer prematurely stops their RPC session
+                            if utils::mpsc::send_all(&tx, blocks).await.is_err() {
+                                break;
+                            }
+                        },
+                        Err(err) => {
+                            let _ = tx.send(Err(err)).await;
                             break;
-                        }
-                    },
-                    Err(err) => {
-                        let _ = tx.send(Err(err)).await;
-                        break;
-                    },
+                        },
+                    }
                 }
-            }
 
-            debug!(
-                target: LOG_TARGET,
-                "Block sync round complete for peer `{}`.", peer_node_id,
-            );
-        });
+                debug!(
+                    target: LOG_TARGET,
+                    "Block sync round complete for peer `{}`.", peer_node_id,
+                );
+            }
+            .instrument(span),
+        );
 
         Ok(Streaming::new(rx))
     }
 
+    #[instrument(name = "sync_rpc::sync_headers", skip(self), err)]
     async fn sync_headers(
         &self,
         request: Request<SyncHeadersRequest>,
@@ -204,51 +208,55 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             chunk_size
         );
 
-        let (mut tx, rx) = mpsc::channel(chunk_size);
-        task::spawn(async move {
-            let iter = NonOverlappingIntegerPairIter::new(
-                start_header.height + 1,
-                start_header.height.saturating_add(count).saturating_add(1),
-                chunk_size,
-            );
-            for (start, end) in iter {
-                if tx.is_closed() {
-                    break;
-                }
-                debug!(target: LOG_TARGET, "Sending headers #{} - #{}", start, end);
-                let headers = db
-                    .fetch_headers(start..=end)
-                    .await
-                    .map_err(RpcStatus::log_internal_error(LOG_TARGET));
-
-                match headers {
-                    Ok(headers) if headers.is_empty() => {
+        let (tx, rx) = mpsc::channel(chunk_size);
+        let span = span!(Level::TRACE, "sync_rpc::sync_headers::inner_worker");
+        task::spawn(
+            async move {
+                let iter = NonOverlappingIntegerPairIter::new(
+                    start_header.height + 1,
+                    start_header.height.saturating_add(count).saturating_add(1),
+                    chunk_size,
+                );
+                for (start, end) in iter {
+                    if tx.is_closed() {
                         break;
-                    },
-                    Ok(headers) => {
-                        let mut headers =
-                            stream::iter(headers.into_iter().map(proto::core::BlockHeader::from).map(Ok).map(Ok));
-                        // Ensure task stops if the peer prematurely stops their RPC session
-                        if tx.send_all(&mut headers).await.is_err() {
+                    }
+                    debug!(target: LOG_TARGET, "Sending headers #{} - #{}", start, end);
+                    let headers = db
+                        .fetch_headers(start..=end)
+                        .await
+                        .map_err(RpcStatus::log_internal_error(LOG_TARGET));
+
+                    match headers {
+                        Ok(headers) if headers.is_empty() => {
                             break;
-                        }
-                    },
-                    Err(err) => {
-                        let _ = tx.send(Err(err)).await;
-                        break;
-                    },
+                        },
+                        Ok(headers) => {
+                            let headers = headers.into_iter().map(proto::core::BlockHeader::from).map(Ok);
+                            // Ensure task stops if the peer prematurely stops their RPC session
+                            if utils::mpsc::send_all(&tx, headers).await.is_err() {
+                                break;
+                            }
+                        },
+                        Err(err) => {
+                            let _ = tx.send(Err(err)).await;
+                            break;
+                        },
+                    }
                 }
-            }
 
-            debug!(
-                target: LOG_TARGET,
-                "Header sync round complete for peer `{}`.", peer_node_id,
-            );
-        });
+                debug!(
+                    target: LOG_TARGET,
+                    "Header sync round complete for peer `{}`.", peer_node_id,
+                );
+            }
+            .instrument(span),
+        );
 
         Ok(Streaming::new(rx))
     }
 
+    #[instrument(skip(self), err)]
     async fn get_header_by_height(
         &self,
         request: Request<u64>,
@@ -264,6 +272,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         Ok(Response::new(header.into()))
     }
 
+    #[instrument(skip(self), err)]
     async fn find_chain_split(
         &self,
         request: Request<FindChainSplitRequest>,
@@ -326,6 +335,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         }
     }
 
+    #[instrument(skip(self), err)]
     async fn get_chain_metadata(&self, _: Request<()>) -> Result<Response<proto::base_node::ChainMetadata>, RpcStatus> {
         let chain_metadata = self
             .db()
@@ -335,13 +345,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         Ok(Response::new(chain_metadata.into()))
     }
 
+    #[instrument(skip(self), err)]
     async fn sync_kernels(
         &self,
         request: Request<SyncKernelsRequest>,
     ) -> Result<Streaming<proto::types::TransactionKernel>, RpcStatus> {
         let req = request.into_message();
         const BATCH_SIZE: usize = 1000;
-        let (mut tx, rx) = mpsc::channel(BATCH_SIZE);
+        let (tx, rx) = mpsc::channel(BATCH_SIZE);
         let db = self.db();
 
         task::spawn(async move {
@@ -381,15 +392,9 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                         break;
                     },
                     Ok(kernels) => {
-                        let mut kernels = stream::iter(
-                            kernels
-                                .into_iter()
-                                .map(proto::types::TransactionKernel::from)
-                                .map(Ok)
-                                .map(Ok),
-                        );
+                        let kernels = kernels.into_iter().map(proto::types::TransactionKernel::from).map(Ok);
                         // Ensure task stops if the peer prematurely stops their RPC session
-                        if tx.send_all(&mut kernels).await.is_err() {
+                        if utils::mpsc::send_all(&tx, kernels).await.is_err() {
                             break;
                         }
                     },
@@ -403,6 +408,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         Ok(Streaming::new(rx))
     }
 
+    #[instrument(skip(self), err)]
     async fn sync_utxos(&self, request: Request<SyncUtxosRequest>) -> Result<Streaming<SyncUtxosResponse>, RpcStatus> {
         let req = request.message();
         let peer = request.context().peer_node_id();
@@ -414,170 +420,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             req.include_pruned_utxos,
             req.include_deleted_bitmaps
         );
-
-        struct SyncUtxosTask<B> {
-            db: AsyncBlockchainDb<B>,
-            request: SyncUtxosRequest,
-        }
-
-        impl<B> SyncUtxosTask<B>
-        where B: BlockchainBackend + 'static
-        {
-            pub fn new(db: AsyncBlockchainDb<B>, request: SyncUtxosRequest) -> Self {
-                Self { db, request }
-            }
-
-            pub async fn run(self, mut tx: mpsc::Sender<Result<SyncUtxosResponse, RpcStatus>>) {
-                if let Err(err) = self.start_streaming(&mut tx).await {
-                    let _ = tx.send(Err(err)).await;
-                }
-            }
-
-            async fn start_streaming(
-                &self,
-                tx: &mut mpsc::Sender<Result<SyncUtxosResponse, RpcStatus>>,
-            ) -> Result<(), RpcStatus> {
-                let end_header = self
-                    .db
-                    .fetch_header_by_block_hash(self.request.end_header_hash.clone())
-                    .await
-                    .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
-                    .ok_or_else(|| {
-                        RpcStatus::not_found(format!(
-                            "End header hash {} is was not found",
-                            self.request.end_header_hash.to_hex()
-                        ))
-                    })?;
-                let end_header_hash = end_header.hash();
-
-                if self.request.start > end_header.output_mmr_size - 1 {
-                    return Err(RpcStatus::bad_request(format!(
-                        "start index {} cannot be greater than the end header's output MMR size ({})",
-                        self.request.start, end_header.output_mmr_size
-                    )));
-                }
-
-                let prev_header = self
-                    .db
-                    .fetch_header_containing_utxo_mmr(self.request.start)
-                    .await
-                    .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
-                let (mut prev_header, _) = prev_header.into_parts();
-
-                if prev_header.height > end_header.height {
-                    return Err(RpcStatus::bad_request("start index is greater than end index"));
-                }
-
-                loop {
-                    let timer = Instant::now();
-                    if prev_header.height == end_header.height {
-                        break;
-                    }
-
-                    let current_header = self
-                        .db
-                        .fetch_header(prev_header.height + 1)
-                        .await
-                        .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
-                        .ok_or_else(|| {
-                            RpcStatus::general(format!(
-                                "Potential data consistency issue: header {} not found",
-                                prev_header.height + 1
-                            ))
-                        })?;
-
-                    debug!(
-                        target: LOG_TARGET,
-                        "previous header = {} ({}) current header = {} ({})",
-                        prev_header.height,
-                        prev_header.hash().to_hex(),
-                        current_header.height,
-                        current_header.hash().to_hex()
-                    );
-
-                    let start = cmp::max(self.request.start, prev_header.output_mmr_size);
-                    let end = current_header.output_mmr_size - 1;
-
-                    if tx.is_closed() {
-                        debug!(target: LOG_TARGET, "Exiting sync_utxos early because client has gone",);
-                        break;
-                    }
-
-                    debug!(
-                        target: LOG_TARGET,
-                        "Streaming UTXOs {}-{} ({}) for block #{}",
-                        start,
-                        end,
-                        end.saturating_sub(start).saturating_add(1),
-                        current_header.height
-                    );
-                    let (utxos, deleted_diff) = self
-                        .db
-                        .fetch_utxos_by_mmr_position(start, end, end_header_hash.clone())
-                        .await
-                        .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
-                    trace!(
-                        target: LOG_TARGET,
-                        "Loaded {} UTXO(s) and |deleted_diff| = {}",
-                        utxos.len(),
-                        deleted_diff.cardinality(),
-                    );
-                    let mut utxos = stream::iter(
-                        utxos
-                            .into_iter()
-                            .enumerate()
-                            // Only include pruned UTXOs if include_pruned_utxos is true
-                            .filter(|(_, utxo)| self.request.include_pruned_utxos || !utxo.is_pruned())
-                            .map(|(i, utxo)| {
-                                SyncUtxosResponse {
-                                    utxo_or_deleted: Some(proto::base_node::sync_utxos_response::UtxoOrDeleted::Utxo(
-                                        SyncUtxo::from(utxo)
-                                    )),
-                                    mmr_index: start + i  as u64,
-                                }
-                            })
-                            .map(Ok)
-                            .map(Ok),
-                    );
-
-                    // Ensure task stops if the peer prematurely stops their RPC session
-                    if tx.send_all(&mut utxos).await.is_err() {
-                        break;
-                    }
-
-                    if self.request.include_deleted_bitmaps {
-                        let bitmaps = SyncUtxosResponse {
-                            utxo_or_deleted: Some(proto::base_node::sync_utxos_response::UtxoOrDeleted::DeletedDiff(
-                                deleted_diff.serialize(),
-                            )),
-                            mmr_index: 0,
-                        };
-
-                        if tx.send(Ok(bitmaps)).await.is_err() {
-                            break;
-                        }
-                    }
-                    debug!(
-                        target: LOG_TARGET,
-                        "Streamed utxos {} to {} in {:.2?} (including stream backpressure)",
-                        start,
-                        end,
-                        timer.elapsed()
-                    );
-
-                    prev_header = current_header;
-                }
-
-                debug!(
-                    target: LOG_TARGET,
-                    "UTXO sync completed to UTXO {} (Header hash = {})",
-                    prev_header.output_mmr_size,
-                    prev_header.hash().to_hex()
-                );
-
-                Ok(())
-            }
-        }
 
         let (tx, rx) = mpsc::channel(200);
         task::spawn(SyncUtxosTask::new(self.db(), request.into_message()).run(tx));

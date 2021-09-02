@@ -20,31 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod config;
-pub mod error;
-pub mod handle;
-pub mod protocols;
-pub mod service;
-pub mod storage;
-pub mod tasks;
+use std::sync::Arc;
 
-use crate::{
-    output_manager_service::handle::OutputManagerHandle,
-    transaction_service::{
-        config::TransactionServiceConfig,
-        handle::TransactionServiceHandle,
-        service::TransactionService,
-        storage::database::{TransactionBackend, TransactionDatabase},
-    },
-};
 use futures::{Stream, StreamExt};
 use log::*;
-use std::sync::Arc;
+use tokio::sync::broadcast;
+
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeIdentity};
 use tari_comms_dht::Dht;
 use tari_core::{
     proto::base_node as base_node_proto,
-    transactions::{transaction_protocol::proto, types::CryptoFactories},
+    transactions::{transaction_protocol::proto, CryptoFactories},
 };
 use tari_p2p::{
     comms_connector::SubscriptionFactory,
@@ -59,7 +45,24 @@ use tari_service_framework::{
     ServiceInitializer,
     ServiceInitializerContext,
 };
-use tokio::sync::broadcast;
+
+use crate::{
+    output_manager_service::handle::OutputManagerHandle,
+    transaction_service::{
+        config::TransactionServiceConfig,
+        handle::TransactionServiceHandle,
+        service::TransactionService,
+        storage::database::{TransactionBackend, TransactionDatabase},
+    },
+};
+
+pub mod config;
+pub mod error;
+pub mod handle;
+pub mod protocols;
+pub mod service;
+pub mod storage;
+pub mod tasks;
 
 const LOG_TARGET: &str = "wallet::transaction_service";
 const SUBSCRIPTION_LABEL: &str = "Transaction Service";
@@ -172,7 +175,7 @@ where T: TransactionBackend + 'static
         let base_node_response_stream = self.base_node_response_stream();
         let transaction_cancelled_stream = self.transaction_cancelled_stream();
 
-        let (publisher, _) = broadcast::channel(200);
+        let (publisher, _) = broadcast::channel(self.config.transaction_event_channel_size);
 
         let transaction_handle = TransactionServiceHandle::new(sender, publisher.clone());
 

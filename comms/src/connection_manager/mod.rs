@@ -34,7 +34,7 @@ mod requester;
 pub use requester::{ConnectionManagerRequest, ConnectionManagerRequester};
 
 mod manager;
-pub use manager::{ConnectionManager, ConnectionManagerConfig, ConnectionManagerEvent};
+pub use manager::{ConnectionManager, ConnectionManagerConfig, ConnectionManagerEvent, ListenerInfo};
 
 mod error;
 pub use error::{ConnectionManagerError, PeerConnectionError};

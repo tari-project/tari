@@ -65,11 +65,11 @@ use crate::{
     },
 };
 use clap::{App, Arg};
-use futures::channel::mpsc;
 use std::{path::Path, time::Duration};
 use tari_comms::peer_manager::PeerFeatures;
+use tokio::sync::mpsc;
 
-#[tokio_macros::main]
+#[tokio::main]
 #[allow(clippy::same_item_push)]
 async fn main() {
     env_logger::init();
@@ -96,7 +96,7 @@ async fn main() {
         NUM_WALLETS
     );
 
-    let (messaging_events_tx, _messaging_events_rx) = mpsc::unbounded();
+    let (messaging_events_tx, _messaging_events_rx) = mpsc::unbounded_channel();
 
     let mut seed_identities = Vec::new();
     for _ in 0..NUM_SEED_NODES {

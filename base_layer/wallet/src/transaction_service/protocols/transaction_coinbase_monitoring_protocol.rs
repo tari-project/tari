@@ -28,19 +28,17 @@ use crate::{
         storage::{database::TransactionBackend, models::CompletedTransaction},
     },
 };
-use futures::{FutureExt, StreamExt};
+use futures::FutureExt;
 use log::*;
 use std::{convert::TryFrom, sync::Arc, time::Duration};
+use tari_common_types::types::Signature;
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey, PeerConnection};
-use tari_core::{
-    base_node::{
-        proto::wallet_rpc::{TxLocation, TxQueryResponse},
-        rpc::BaseNodeWalletRpcClient,
-    },
-    transactions::types::Signature,
+use tari_core::base_node::{
+    proto::wallet_rpc::{TxLocation, TxQueryResponse},
+    rpc::BaseNodeWalletRpcClient,
 };
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
-use tokio::{sync::broadcast, time::delay_for};
+use tokio::{sync::broadcast, time::sleep};
 use tari_core::transactions::transaction_protocol::TxId;
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::coinbase_monitoring";
@@ -86,21 +84,13 @@ where TBackend: TransactionBackend + 'static
 
     /// The task that defines the execution of the protocol.
     pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError> {
-        let mut base_node_update_receiver = self
-            .base_node_update_receiver
-            .take()
-            .ok_or_else(|| {
-                TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::InvalidStateError)
-            })?
-            .fuse();
+        let mut base_node_update_receiver = self.base_node_update_receiver.take().ok_or_else(|| {
+            TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::InvalidStateError)
+        })?;
 
-        let mut timeout_update_receiver = self
-            .timeout_update_receiver
-            .take()
-            .ok_or_else(|| {
-                TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::InvalidStateError)
-            })?
-            .fuse();
+        let mut timeout_update_receiver = self.timeout_update_receiver.take().ok_or_else(|| {
+            TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::InvalidStateError)
+        })?;
 
         trace!(
             target: LOG_TARGET,
@@ -121,17 +111,23 @@ where TBackend: TransactionBackend + 'static
             let completed_tx = match self.resources.db.get_completed_transaction(self.tx_id).await {
                 Ok(tx) => tx,
                 Err(e) => {
-                    error!(
+                    info!(
                         target: LOG_TARGET,
-                        "Cannot find Completed Transaction (TxId: {}) referred to by this Coinbase Monitoring \
-                         Protocol: {:?}",
-                        self.tx_id,
-                        e
+                        "Cannot find Coinbase Transaction (TxId: {}) likely due to being cancelled: {}", self.tx_id, e
                     );
-                    return Err(TransactionServiceProtocolError::new(
-                        self.tx_id,
-                        TransactionServiceError::TransactionDoesNotExistError,
-                    ));
+                    let _ = self
+                        .resources
+                        .event_publisher
+                        .send(Arc::new(TransactionEvent::TransactionCancelled(self.tx_id)))
+                        .map_err(|e| {
+                            trace!(
+                                target: LOG_TARGET,
+                                "Error sending event, usually because there are no subscribers: {:?}",
+                                e
+                            );
+                            e
+                        });
+                    return Ok(self.tx_id);
                 },
             };
             debug!(
@@ -167,7 +163,7 @@ where TBackend: TransactionBackend + 'static
                 self.base_node_public_key,
                 self.tx_id,
             );
-            futures::select! {
+            tokio::select! {
                 dial_result = self.resources.connectivity_manager.dial_peer(base_node_node_id.clone()).fuse() => {
                     match dial_result {
                         Ok(base_node_connection) => {
@@ -197,7 +193,7 @@ where TBackend: TransactionBackend + 'static
                         },
                     }
                 },
-                updated_timeout = timeout_update_receiver.select_next_some() => {
+                updated_timeout = timeout_update_receiver.recv() => {
                     match updated_timeout {
                         Ok(to) => {
                             self.timeout = to;
@@ -219,7 +215,7 @@ where TBackend: TransactionBackend + 'static
                         }
                     }
                 },
-                new_base_node = base_node_update_receiver.select_next_some() => {
+                new_base_node = base_node_update_receiver.recv() => {
                     match new_base_node {
                         Ok(bn) => {
                             self.base_node_public_key = bn;
@@ -242,7 +238,7 @@ where TBackend: TransactionBackend + 'static
                         }
                     }
                 }
-                _ = shutdown => {
+                _ = shutdown.wait() => {
                     info!(
                         target: LOG_TARGET,
                         "Coinbase Monitoring protocol (TxId: {}) shutting down because it received the shutdown \
@@ -253,14 +249,14 @@ where TBackend: TransactionBackend + 'static
                 },
             }
 
-            let delay = delay_for(self.timeout);
+            let delay = sleep(self.timeout);
             let mut base_node_connection = match connection {
                 None => {
-                    futures::select! {
+                    tokio::select! {
                         _ = delay.fuse() => {
                             continue;
                         },
-                        _ = shutdown => {
+                        _ = shutdown.wait() => {
                             info!(
                                 target: LOG_TARGET,
                                 "Coinbase Monitoring Protocol (TxId: {}) shutting down because it received the \
@@ -278,7 +274,9 @@ where TBackend: TransactionBackend + 'static
             };
             let mut client = match base_node_connection
                 .connect_rpc_using_builder(
-                    BaseNodeWalletRpcClient::builder().with_deadline(self.resources.config.chain_monitoring_timeout),
+                    BaseNodeWalletRpcClient::builder()
+                        .with_deadline(self.resources.config.chain_monitoring_timeout)
+                        .with_handshake_timeout(self.resources.config.chain_monitoring_timeout),
                 )
                 .await
             {
@@ -306,10 +304,10 @@ where TBackend: TransactionBackend + 'static
                     TransactionServiceError::InvalidCompletedTransaction,
                 ));
             }
-            let delay = delay_for(self.timeout).fuse();
+            let delay = sleep(self.timeout).fuse();
             loop {
-                futures::select! {
-                    new_base_node = base_node_update_receiver.select_next_some() => {
+                tokio::select! {
+                    new_base_node = base_node_update_receiver.recv() => {
                         match new_base_node {
                             Ok(bn) => {
                                 self.base_node_public_key = bn;
@@ -332,9 +330,7 @@ where TBackend: TransactionBackend + 'static
                             }
                         }
                     }
-                    result = self.query_coinbase_transaction(
-                        signature.clone(), completed_tx.clone(), &mut client
-                    ).fuse() => {
+                    result = self.query_coinbase_transaction(signature.clone(), completed_tx.clone(), &mut client).fuse() => {
                         let (coinbase_kernel_found, metadata) = match result {
                             Ok(r) => r,
                             _ => (false, None),
@@ -386,7 +382,7 @@ where TBackend: TransactionBackend + 'static
                         delay.await;
                         break;
                     },
-                    updated_timeout = timeout_update_receiver.select_next_some() => {
+                    updated_timeout = timeout_update_receiver.recv() => {
                         if let Ok(to) = updated_timeout {
                             self.timeout = to;
                              info!(
@@ -405,7 +401,7 @@ where TBackend: TransactionBackend + 'static
                             );
                         }
                     },
-                    _ = shutdown => {
+                    _ = shutdown.wait() => {
                         info!(
                             target: LOG_TARGET,
                             "Coinbase Monitoring Protocol (TxId: {}) shutting down because it received the shutdown \

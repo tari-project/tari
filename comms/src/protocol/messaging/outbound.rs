@@ -29,13 +29,13 @@ use crate::{
     peer_manager::NodeId,
     protocol::messaging::protocol::MESSAGING_PROTOCOL,
 };
-use futures::{channel::mpsc, future::Either, SinkExt, StreamExt};
-use log::*;
+use futures::{future::Either, StreamExt, TryStreamExt};
 use std::{
     io,
     time::{Duration, Instant},
 };
-use tokio::stream as tokio_stream;
+use tokio::sync::mpsc as tokiompsc;
+use tracing::{debug, error, event, span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::protocol::messaging::outbound";
 /// The number of times to retry sending a failed message before publishing a SendMessageFailed event.
@@ -45,8 +45,8 @@ const MAX_SEND_RETRIES: usize = 1;
 
 pub struct OutboundMessaging {
     connectivity: ConnectivityRequester,
-    request_rx: mpsc::UnboundedReceiver<OutboundMessage>,
-    messaging_events_tx: mpsc::Sender<MessagingEvent>,
+    request_rx: tokiompsc::UnboundedReceiver<OutboundMessage>,
+    messaging_events_tx: tokiompsc::Sender<MessagingEvent>,
     peer_node_id: NodeId,
     inactivity_timeout: Option<Duration>,
 }
@@ -54,8 +54,8 @@ pub struct OutboundMessaging {
 impl OutboundMessaging {
     pub fn new(
         connectivity: ConnectivityRequester,
-        messaging_events_tx: mpsc::Sender<MessagingEvent>,
-        request_rx: mpsc::UnboundedReceiver<OutboundMessage>,
+        messaging_events_tx: tokiompsc::Sender<MessagingEvent>,
+        request_rx: tokiompsc::UnboundedReceiver<OutboundMessage>,
         peer_node_id: NodeId,
         inactivity_timeout: Option<Duration>,
     ) -> Self {
@@ -69,49 +69,77 @@ impl OutboundMessaging {
     }
 
     pub async fn run(self) {
-        debug!(
-            target: LOG_TARGET,
-            "Attempting to dial peer '{}' if required",
-            self.peer_node_id.short_str()
+        let span = span!(
+            Level::DEBUG,
+            "comms::messaging::outbound",
+            node_id = self.peer_node_id.to_string().as_str()
         );
-        let peer_node_id = self.peer_node_id.clone();
-        let mut messaging_events_tx = self.messaging_events_tx.clone();
-        match self.run_inner().await {
-            Ok(_) => {
-                debug!(
-                    target: LOG_TARGET,
-                    "Outbound messaging for peer '{}' has stopped because the stream was closed",
-                    peer_node_id.short_str()
-                );
-            },
-            Err(MessagingProtocolError::Inactivity) => {
-                debug!(
-                    target: LOG_TARGET,
-                    "Outbound messaging for peer '{}' has stopped because it was inactive",
-                    peer_node_id.short_str()
-                );
-            },
-            Err(err) => {
-                debug!(target: LOG_TARGET, "Outbound messaging substream failed: {}", err);
-            },
-        }
+        async move {
+            debug!(
+                target: LOG_TARGET,
+                "Attempting to dial peer '{}' if required",
+                self.peer_node_id.short_str()
+            );
+            let peer_node_id = self.peer_node_id.clone();
+            let messaging_events_tx = self.messaging_events_tx.clone();
+            match self.run_inner().await {
+                Ok(_) => {
+                    event!(
+                        Level::DEBUG,
+                        "Outbound messaging for peer has stopped because the stream was closed"
+                    );
 
-        let _ = messaging_events_tx
-            .send(MessagingEvent::OutboundProtocolExited(peer_node_id))
-            .await;
+                    debug!(
+                        target: LOG_TARGET,
+                        "Outbound messaging for peer '{}' has stopped because the stream was closed",
+                        peer_node_id.short_str()
+                    );
+                },
+                Err(MessagingProtocolError::Inactivity) => {
+                    event!(
+                        Level::ERROR,
+                        "Outbound messaging for peer has stopped because it was inactive"
+                    );
+                    debug!(
+                        target: LOG_TARGET,
+                        "Outbound messaging for peer '{}' has stopped because it was inactive",
+                        peer_node_id.short_str()
+                    );
+                },
+                Err(err) => match err {
+                    MessagingProtocolError::PeerDialFailed => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Outbound messaging substream failed due to a dial fail. Most likely the peer is offline \
+                             or doesn't exist: {}",
+                            err
+                        );
+                    },
+                    _ => {
+                        error!(target: LOG_TARGET, "Outbound messaging substream failed:{}", err);
+                    },
+                },
+            }
+
+            let _ = messaging_events_tx
+                .send(MessagingEvent::OutboundProtocolExited(peer_node_id))
+                .await;
+        }
+        .instrument(span)
+        .await
     }
 
     async fn run_inner(mut self) -> Result<(), MessagingProtocolError> {
         let mut attempts = 0;
+
         let substream = loop {
             match self.try_establish().await {
-                Ok(substream) => break substream,
+                Ok(substream) => {
+                    event!(Level::DEBUG, "Substream established");
+                    break substream;
+                },
                 Err(err) => {
-                    assert!(
-                        attempts <= MAX_SEND_RETRIES,
-                        "Attempt count was greater than the maximum"
-                    );
-                    if attempts == MAX_SEND_RETRIES {
+                    if attempts >= MAX_SEND_RETRIES {
                         debug!(
                             target: LOG_TARGET,
                             "Error establishing messaging protocol: {}. Aborting because maximum retries reached.", err
@@ -133,77 +161,110 @@ impl OutboundMessaging {
     }
 
     async fn try_dial_peer(&mut self) -> Result<PeerConnection, MessagingProtocolError> {
-        loop {
-            match self.connectivity.dial_peer(self.peer_node_id.clone()).await {
-                Ok(conn) => break Ok(conn),
-                Err(ConnectivityError::DialCancelled) => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Dial was cancelled for peer '{}'. This is probably because of connection tie-breaking. \
-                         Retrying...",
-                        self.peer_node_id.short_str(),
-                    );
-                    continue;
-                },
-                Err(err) => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "MessagingProtocol failed to dial peer '{}' because '{:?}'",
-                        self.peer_node_id.short_str(),
-                        err
-                    );
+        let span = span!(
+            Level::DEBUG,
+            "dial_peer",
+            node_id = self.peer_node_id.to_string().as_str()
+        );
+        async move {
+            loop {
+                match self.connectivity.dial_peer(self.peer_node_id.clone()).await {
+                    Ok(conn) => break Ok(conn),
+                    Err(ConnectivityError::DialCancelled) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Dial was cancelled for peer '{}'. This is probably because of connection tie-breaking. \
+                             Retrying...",
+                            self.peer_node_id.short_str(),
+                        );
+                        continue;
+                    },
+                    Err(err) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "MessagingProtocol failed to dial peer '{}' because '{:?}'",
+                            self.peer_node_id.short_str(),
+                            err
+                        );
 
-                    break Err(MessagingProtocolError::PeerDialFailed);
-                },
+                        break Err(MessagingProtocolError::PeerDialFailed);
+                    },
+                }
             }
         }
+        .instrument(span)
+        .await
     }
 
     async fn try_establish(&mut self) -> Result<NegotiatedSubstream<Substream>, MessagingProtocolError> {
-        debug!(
-            target: LOG_TARGET,
-            "Attempting to establish messaging protocol connection to peer `{}`",
-            self.peer_node_id.short_str()
+        let span = span!(
+            Level::DEBUG,
+            "establish_connection",
+            node_id = self.peer_node_id.to_string().as_str()
         );
-        let start = Instant::now();
-        let conn = self.try_dial_peer().await?;
-        debug!(
-            target: LOG_TARGET,
-            "Connection succeeded for peer `{}` in {:.0?}",
-            self.peer_node_id.short_str(),
-            start.elapsed()
-        );
-        let substream = self.try_open_substream(conn).await?;
-        debug!(
-            target: LOG_TARGET,
-            "Substream established for peer `{}`",
-            self.peer_node_id.short_str(),
-        );
-        Ok(substream)
+        async move {
+            debug!(
+                target: LOG_TARGET,
+                "Attempting to establish messaging protocol connection to peer `{}`",
+                self.peer_node_id.short_str()
+            );
+            let start = Instant::now();
+            let conn = self.try_dial_peer().await?;
+            debug!(
+                target: LOG_TARGET,
+                "Connection succeeded for peer `{}` in {:.0?}",
+                self.peer_node_id.short_str(),
+                start.elapsed()
+            );
+            let substream = self.try_open_substream(conn).await?;
+            debug!(
+                target: LOG_TARGET,
+                "Substream established for peer `{}`",
+                self.peer_node_id.short_str(),
+            );
+            Ok(substream)
+        }
+        .instrument(span)
+        .await
     }
 
     async fn try_open_substream(
         &mut self,
         mut conn: PeerConnection,
     ) -> Result<NegotiatedSubstream<Substream>, MessagingProtocolError> {
-        match conn.open_substream(&MESSAGING_PROTOCOL).await {
-            Ok(substream) => Ok(substream),
-            Err(err) => {
-                debug!(
-                    target: LOG_TARGET,
-                    "MessagingProtocol failed to open a substream to peer '{}' because '{}'",
-                    self.peer_node_id.short_str(),
-                    err
-                );
-                Err(err.into())
-            },
+        let span = span!(
+            Level::DEBUG,
+            "open_substream",
+            node_id = self.peer_node_id.to_string().as_str()
+        );
+        async move {
+            match conn.open_substream(&MESSAGING_PROTOCOL).await {
+                Ok(substream) => Ok(substream),
+                Err(err) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "MessagingProtocol failed to open a substream to peer '{}' because '{}'",
+                        self.peer_node_id.short_str(),
+                        err
+                    );
+                    Err(err.into())
+                },
+            }
         }
+        .instrument(span)
+        .await
     }
 
     async fn start_forwarding_messages(
         self,
         substream: NegotiatedSubstream<Substream>,
     ) -> Result<(), MessagingProtocolError> {
+        let span = span!(
+            Level::DEBUG,
+            "start_forwarding_messages",
+            node_id = self.peer_node_id.to_string().as_str()
+        );
+        let _enter = span.enter();
         debug!(
             target: LOG_TARGET,
             "Starting direct message forwarding for peer `{}`",
@@ -211,7 +272,7 @@ impl OutboundMessaging {
         );
         let substream = substream.stream;
 
-        let (sink, _) = MessagingProtocol::framed(substream).split();
+        let framed = MessagingProtocol::framed(substream);
 
         let Self {
             request_rx,
@@ -219,30 +280,30 @@ impl OutboundMessaging {
             ..
         } = self;
 
+        // Convert unbounded channel to a stream
+        let stream = futures::stream::unfold(request_rx, |mut rx| async move {
+            let v = rx.recv().await;
+            v.map(|v| (v, rx))
+        });
+
         let stream = match inactivity_timeout {
             Some(timeout) => {
-                let s = tokio_stream::StreamExt::timeout(request_rx, timeout).map(|r| match r {
-                    Ok(s) => Ok(s),
-                    Err(_) => Err(io::Error::new(
-                        io::ErrorKind::TimedOut,
-                        MessagingProtocolError::Inactivity,
-                    )),
-                });
+                let s = tokio_stream::StreamExt::timeout(stream, timeout)
+                    .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, MessagingProtocolError::Inactivity));
                 Either::Left(s)
             },
-            None => Either::Right(request_rx.map(Ok)),
+            None => Either::Right(stream.map(Ok)),
         };
 
-        stream
-            .map(|msg| {
-                msg.map(|mut out_msg| {
-                    trace!(target: LOG_TARGET, "Message buffered for sending {}", out_msg);
-                    out_msg.reply_success();
-                    out_msg.body
-                })
+        let stream = stream.map(|msg| {
+            msg.map(|mut out_msg| {
+                event!(Level::DEBUG, "Message buffered for sending {}", out_msg);
+                out_msg.reply_success();
+                out_msg.body
             })
-            .forward(sink)
-            .await?;
+        });
+
+        super::forward::Forward::new(stream, framed).await?;
 
         debug!(
             target: LOG_TARGET,
@@ -256,7 +317,7 @@ impl OutboundMessaging {
         // Close the request channel so that we can read all the remaining messages and flush them
         // to a failed event
         self.request_rx.close();
-        while let Some(mut out_msg) = self.request_rx.next().await {
+        while let Some(mut out_msg) = self.request_rx.recv().await {
             out_msg.reply_fail(reason);
             let _ = self
                 .messaging_events_tx

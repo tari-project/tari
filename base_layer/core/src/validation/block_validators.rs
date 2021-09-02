@@ -1,3 +1,13 @@
+use std::marker::PhantomData;
+
+use log::*;
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    tari_utilities::{hash::Hashable, hex::Hex},
+};
+
+use tari_common_types::chain_metadata::ChainMetadata;
+
 // Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -27,7 +37,7 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         transaction::{KernelFeatures, OutputFlags, TransactionError},
-        types::CryptoFactories,
+        CryptoFactories,
     },
     validation::{
         helpers::{check_accounting_balance, check_block_weight, check_coinbase_output, is_all_unique_and_sorted},
@@ -37,12 +47,6 @@ use crate::{
         ValidationError,
     },
 };
-use log::*;
-use std::marker::PhantomData;
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    tari_utilities::{hash::Hashable, hex::Hex},
-};
 
 pub const LOG_TARGET: &str = "c::val::block_validators";
 
@@ -50,12 +54,17 @@ pub const LOG_TARGET: &str = "c::val::block_validators";
 #[derive(Clone)]
 pub struct OrphanBlockValidator {
     rules: ConsensusManager,
+    bypass_range_proof_verification: bool,
     factories: CryptoFactories,
 }
 
 impl OrphanBlockValidator {
-    pub fn new(rules: ConsensusManager, factories: CryptoFactories) -> Self {
-        Self { rules, factories }
+    pub fn new(rules: ConsensusManager, bypass_range_proof_verification: bool, factories: CryptoFactories) -> Self {
+        Self {
+            rules,
+            bypass_range_proof_verification,
+            factories,
+        }
     }
 }
 
@@ -100,7 +109,12 @@ impl OrphanValidation for OrphanBlockValidator {
         trace!(target: LOG_TARGET, "SV - Output constraints are ok for {} ", &block_id);
         check_coinbase_output(block, &self.rules, &self.factories)?;
         trace!(target: LOG_TARGET, "SV - Coinbase output is ok for {} ", &block_id);
-        check_accounting_balance(block, &self.rules, &self.factories)?;
+        check_accounting_balance(
+            block,
+            &self.rules,
+            self.bypass_range_proof_verification,
+            &self.factories,
+        )?;
         trace!(target: LOG_TARGET, "SV - accounting balance correct for {}", &block_id);
         debug!(
             target: LOG_TARGET,
@@ -124,10 +138,28 @@ impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for BodyOnlyValidator {
     /// 1. Are all inputs currently in the UTXO set?
     /// 1. Are all inputs and outputs not in the STXO set?
     /// 1. Are the block header MMR roots valid?
-    fn validate_body_for_valid_orphan(&self, block: &ChainBlock, backend: &B) -> Result<(), ValidationError> {
+    fn validate_body_for_valid_orphan(
+        &self,
+        block: &ChainBlock,
+        backend: &B,
+        metadata: &ChainMetadata,
+    ) -> Result<(), ValidationError> {
+        if block.header().height != metadata.height_of_longest_chain() + 1 {
+            return Err(ValidationError::IncorrectNextTipHeight {
+                expected: metadata.height_of_longest_chain() + 1,
+                block_height: block.height(),
+            });
+        }
+        if block.header().prev_hash != *metadata.best_block() {
+            return Err(ValidationError::IncorrectPreviousHash {
+                expected: metadata.best_block().to_hex(),
+                block_hash: block.hash().to_hex(),
+            });
+        }
+
         let block_id = format!("block #{} ({})", block.header().height, block.hash().to_hex());
-        check_inputs_are_utxos(&block.block(), backend)?;
-        check_not_duplicate_txos(&block.block(), backend)?;
+        check_inputs_are_utxos(block.block(), backend)?;
+        check_not_duplicate_txos(block.block(), backend)?;
         trace!(
             target: LOG_TARGET,
             "Block validation: All inputs and outputs are valid for {}",
@@ -156,50 +188,60 @@ fn check_sorting_and_duplicates(body: &AggregateBody) -> Result<(), ValidationEr
     Ok(())
 }
 
-/// This function checks that all inputs in the blocks are valid UTXO's to be spend
+/// This function checks that all inputs in the blocks are valid UTXO's to be spent
 fn check_inputs_are_utxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), ValidationError> {
-    let data = db
-        .fetch_block_accumulated_data(&block.header.prev_hash)?
-        .ok_or(ValidationError::PreviousHashNotFound)?;
-
     for input in block.body.inputs() {
-        if let Some((_, index, _height)) = db.fetch_output(&input.output_hash())? {
-            if data.deleted().contains(index) {
-                warn!(
-                    target: LOG_TARGET,
-                    "Block validation failed due to already spent input: {}", input
-                );
-                return Err(ValidationError::ContainsSTxO);
+        if let Some(utxo_hash) = db.fetch_unspent_output_hash_by_commitment(&input.commitment)? {
+            // We know that the commitment exists in the UTXO set. Check that the output hash matches i.e. all fields
+            // (output features etc.) match
+            if utxo_hash == input.output_hash() {
+                continue;
             }
-        } else {
-            // lets check if the input exists in the output field
-            if !block
-                .body
-                .outputs()
-                .iter()
-                .any(|output| output.hash() == input.output_hash())
-            {
-                warn!(
-                    target: LOG_TARGET,
-                    "Block validation failed because the block has invalid input: {} which does not exist", input
-                );
-                return Err(ValidationError::BlockError(BlockValidationError::InvalidInput));
-            }
+
+            warn!(
+                target: LOG_TARGET,
+                "The input spends an unspent output but does not produce the same hash as the output it spends. {}",
+                input
+            );
+            return Err(ValidationError::BlockError(BlockValidationError::InvalidInput));
         }
+
+        // The input was not found in the UTXO/STXO set, lets check if the input spends an output in the current block
+        let output_hash = input.output_hash();
+        if block.body.outputs().iter().any(|output| output.hash() == output_hash) {
+            continue;
+        }
+
+        // The input does not spend a known UTXO
+        warn!(
+            target: LOG_TARGET,
+            "Block validation failed due an input that does not spend a known UTXO: {}", input
+        );
+        return Err(ValidationError::BlockError(BlockValidationError::InvalidInput));
     }
 
     Ok(())
 }
 
-// This function checks that the inputs and outputs do not exist in the STxO set.
+/// This function checks that the outputs do not already exist in the UTxO set.
 fn check_not_duplicate_txos<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), ValidationError> {
     for output in block.body.outputs() {
-        if db.fetch_mmr_leaf_index(MmrTree::Utxo, &output.hash())?.is_some() {
+        if let Some(index) = db.fetch_mmr_leaf_index(MmrTree::Utxo, &output.hash())? {
             warn!(
                 target: LOG_TARGET,
-                "Block validation failed due to previously spent output: {}", output
+                "Block validation failed due to previously spent output: {} (MMR index = {})", output, index
             );
             return Err(ValidationError::ContainsTxO);
+        }
+        if db
+            .fetch_unspent_output_hash_by_commitment(&output.commitment)?
+            .is_some()
+        {
+            warn!(
+                target: LOG_TARGET,
+                "Duplicate UTXO set commitment found for output: {}", output
+            );
+            return Err(ValidationError::ContainsDuplicateUtxoCommitment);
         }
     }
     Ok(())
@@ -255,7 +297,7 @@ fn check_mmr_roots<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), Va
     if header.witness_mr != mmr_roots.witness_mr {
         warn!(
             target: LOG_TARGET,
-            "Block header range_proof MMR roots in {} do not match calculated roots",
+            "Block header witness MMR roots in {} do not match calculated roots",
             block.hash().to_hex()
         );
         return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));
@@ -282,15 +324,17 @@ fn check_mmr_roots<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), Va
 /// the block body using the header. It is assumed that the `BlockHeader` has already been validated.
 pub struct BlockValidator<B: BlockchainBackend> {
     rules: ConsensusManager,
+    bypass_range_proof_verification: bool,
     factories: CryptoFactories,
     phantom_data: PhantomData<B>,
 }
 
 impl<B: BlockchainBackend> BlockValidator<B> {
-    pub fn new(rules: ConsensusManager, factories: CryptoFactories) -> Self {
+    pub fn new(rules: ConsensusManager, bypass_range_proof_verification: bool, factories: CryptoFactories) -> Self {
         Self {
             rules,
             factories,
+            bypass_range_proof_verification,
             phantom_data: Default::default(),
         }
     }
@@ -382,60 +426,6 @@ impl<B: BlockchainBackend> BlockValidator<B> {
 
         Ok(())
     }
-
-    fn check_mmr_roots(&self, db: &B, block: &Block) -> Result<(), ValidationError> {
-        let mmr_roots = chain_storage::calculate_mmr_roots(db, block)?;
-        let header = &block.header;
-        if header.kernel_mr != mmr_roots.kernel_mr {
-            warn!(
-                target: LOG_TARGET,
-                "Block header kernel MMR roots in {} do not match calculated roots",
-                block.hash().to_hex()
-            );
-            return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));
-        }
-        if header.kernel_mmr_size != mmr_roots.kernel_mmr_size {
-            warn!(
-                target: LOG_TARGET,
-                "Block header kernel MMR size in {} does not match MMR size",
-                block.hash().to_hex()
-            );
-            return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrSize {
-                mmr_tree: MmrTree::Kernel,
-                expected: header.kernel_mmr_size,
-                actual: mmr_roots.kernel_mmr_size,
-            }));
-        }
-        if header.output_mr != mmr_roots.output_mr {
-            warn!(
-                target: LOG_TARGET,
-                "Block header output MMR roots in {} do not match calculated roots",
-                block.hash().to_hex()
-            );
-            return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));
-        }
-        if header.witness_mr != mmr_roots.witness_mr {
-            warn!(
-                target: LOG_TARGET,
-                "Block header range_proof MMR roots in {} do not match calculated roots",
-                block.hash().to_hex()
-            );
-            return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));
-        }
-        if header.output_mmr_size != mmr_roots.output_mmr_size {
-            warn!(
-                target: LOG_TARGET,
-                "Block header output MMR size in {} does not match MMR size",
-                block.hash().to_hex()
-            );
-            return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrSize {
-                mmr_tree: MmrTree::Utxo,
-                expected: header.output_mmr_size,
-                actual: mmr_roots.output_mmr_size,
-            }));
-        }
-        Ok(())
-    }
 }
 
 impl<B: BlockchainBackend> CandidateBlockBodyValidation<B> for BlockValidator<B> {
@@ -453,14 +443,19 @@ impl<B: BlockchainBackend> CandidateBlockBodyValidation<B> for BlockValidator<B>
         self.check_inputs(block)?;
         self.check_outputs(block)?;
 
-        check_accounting_balance(block, &self.rules, &self.factories)?;
+        check_accounting_balance(
+            block,
+            &self.rules,
+            self.bypass_range_proof_verification,
+            &self.factories,
+        )?;
         trace!(target: LOG_TARGET, "SV - accounting balance correct for {}", &block_id);
         debug!(
             target: LOG_TARGET,
             "{} has PASSED stateless VALIDATION check.", &block_id
         );
 
-        self.check_mmr_roots(backend, &block)?;
+        check_mmr_roots(&block, backend)?;
         trace!(
             target: LOG_TARGET,
             "Block validation: MMR roots are valid for {}",

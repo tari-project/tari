@@ -96,7 +96,7 @@ Bob then sends the following back to Alice:
 | \\( s_b, R_b \\)  | Bob's partial signature               |
 
 ### Alice Round 2
-Alice now has the information to construct the challenge \\( e \\)to calculate her partial signature:
+Alice now has the information to construct the challenge \\( e \\) to calculate her partial signature:
 
 \\( s_a = r_a + ek_a \\)
 

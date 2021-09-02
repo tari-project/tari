@@ -217,6 +217,17 @@ impl StoreAndForwardDatabase {
             .await
     }
 
+    pub(crate) async fn delete_messages_older_than(&self, since: NaiveDateTime) -> Result<usize, StorageError> {
+        self.connection
+            .with_connection_async(move |conn| {
+                diesel::delete(stored_messages::table)
+                    .filter(stored_messages::stored_at.lt(since))
+                    .execute(conn)
+                    .map_err(Into::into)
+            })
+            .await
+    }
+
     pub(crate) async fn truncate_messages(&self, max_size: usize) -> Result<usize, StorageError> {
         self.connection
             .with_connection_async(move |conn| {
@@ -244,9 +255,10 @@ impl StoreAndForwardDatabase {
 #[cfg(test)]
 mod test {
     use super::*;
+    use tari_comms::runtime;
     use tari_test_utils::random;
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn insert_messages() {
         let conn = DbConnection::connect_memory(random::string(8)).await.unwrap();
         conn.migrate().await.unwrap();
@@ -266,7 +278,7 @@ mod test {
         assert_eq!(messages[1].body_hash, msg2.body_hash);
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn remove_messages() {
         let conn = DbConnection::connect_memory(random::string(8)).await.unwrap();
         conn.migrate().await.unwrap();
@@ -293,7 +305,7 @@ mod test {
         assert_eq!(messages[0].id, msg2_id);
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn truncate_messages() {
         let conn = DbConnection::connect_memory(random::string(8)).await.unwrap();
         conn.migrate().await.unwrap();

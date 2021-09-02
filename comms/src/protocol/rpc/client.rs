@@ -25,24 +25,24 @@ use crate::{
     framing::CanonicalFraming,
     message::MessageExt,
     proto,
-    protocol::rpc::{
-        body::ClientStreaming,
-        message::BaseRequest,
-        Handshake,
-        NamedProtocolService,
-        Response,
-        RpcError,
-        RpcStatus,
+    protocol::{
+        rpc::{
+            body::ClientStreaming,
+            message::{BaseRequest, RpcMessageFlags},
+            Handshake,
+            NamedProtocolService,
+            Response,
+            RpcError,
+            RpcStatus,
+        },
+        ProtocolId,
     },
     runtime::task,
 };
 use bytes::Bytes;
 use futures::{
-    channel::{mpsc, oneshot},
-    future::Either,
+    future::{BoxFuture, Either},
     task::{Context, Poll},
-    AsyncRead,
-    AsyncWrite,
     FutureExt,
     SinkExt,
     StreamExt,
@@ -50,13 +50,22 @@ use futures::{
 use log::*;
 use prost::Message;
 use std::{
+    borrow::Cow,
+    convert::TryFrom,
     fmt,
     future::Future,
     marker::PhantomData,
+    sync::Arc,
     time::{Duration, Instant},
 };
-use tokio::time;
+use tari_shutdown::{Shutdown, ShutdownSignal};
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::{mpsc, oneshot, Mutex},
+    time,
+};
 use tower::{Service, ServiceExt};
+use tracing::{event, span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::rpc::client";
 
@@ -70,14 +79,25 @@ impl RpcClient {
     pub async fn connect<TSubstream>(
         config: RpcClientConfig,
         framed: CanonicalFraming<TSubstream>,
+        protocol_name: ProtocolId,
     ) -> Result<Self, RpcError>
     where
         TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     {
         let (request_tx, request_rx) = mpsc::channel(1);
-        let connector = ClientConnector { inner: request_tx };
+        let shutdown = Shutdown::new();
+        let shutdown_signal = shutdown.to_signal();
+        let connector = ClientConnector::new(request_tx, shutdown);
         let (ready_tx, ready_rx) = oneshot::channel();
-        task::spawn(RpcClientWorker::new(config, request_rx, framed, ready_tx).run());
+        let tracing_id = tracing::Span::current().id();
+        task::spawn({
+            let span = span!(Level::TRACE, "start_rpc_worker");
+            span.follows_from(tracing_id);
+
+            RpcClientWorker::new(config, request_rx, framed, ready_tx, protocol_name, shutdown_signal)
+                .run()
+                .instrument(span)
+        });
         ready_rx
             .await
             .expect("ready_rx oneshot is never dropped without a reply")?;
@@ -95,7 +115,7 @@ impl RpcClient {
         let request = BaseRequest::new(method.into(), req_bytes.into());
 
         let mut resp = self.call_inner(request).await?;
-        let resp = resp.next().await.ok_or(RpcError::ServerClosedRequest)??;
+        let resp = resp.recv().await.ok_or(RpcError::ServerClosedRequest)??;
         let resp = R::decode(resp.into_message())?;
 
         Ok(resp)
@@ -117,13 +137,22 @@ impl RpcClient {
     }
 
     /// Close the RPC session. Any subsequent calls will error.
-    pub fn close(&mut self) {
-        self.connector.close()
+    pub async fn close(&mut self) {
+        self.connector.close().await;
+    }
+
+    pub fn is_connected(&self) -> bool {
+        self.connector.is_connected()
     }
 
     /// Return the latency of the last request
     pub fn get_last_request_latency(&mut self) -> impl Future<Output = Result<Option<Duration>, RpcError>> + '_ {
         self.connector.get_last_request_latency()
+    }
+
+    /// Sends a ping and returns the latency
+    pub fn ping(&mut self) -> impl Future<Output = Result<Duration, RpcError>> + '_ {
+        self.connector.send_ping()
     }
 
     async fn call_inner(
@@ -145,6 +174,7 @@ impl fmt::Debug for RpcClient {
 #[derive(Debug, Clone)]
 pub struct RpcClientBuilder<TClient> {
     config: RpcClientConfig,
+    protocol_id: Option<ProtocolId>,
     _client: PhantomData<TClient>,
 }
 
@@ -152,6 +182,7 @@ impl<TClient> Default for RpcClientBuilder<TClient> {
     fn default() -> Self {
         Self {
             config: Default::default(),
+            protocol_id: None,
             _client: PhantomData,
         }
     }
@@ -193,10 +224,21 @@ where TClient: From<RpcClient> + NamedProtocolService
         self
     }
 
+    pub(crate) fn with_protocol_id(mut self, protocol_id: ProtocolId) -> Self {
+        self.protocol_id = Some(protocol_id);
+        self
+    }
+
     /// Negotiates and establishes a session to the peer's RPC service
     pub async fn connect<TSubstream>(self, framed: CanonicalFraming<TSubstream>) -> Result<TClient, RpcError>
     where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static {
-        RpcClient::connect(self.config, framed).await.map(Into::into)
+        RpcClient::connect(
+            self.config,
+            framed,
+            self.protocol_id.as_ref().cloned().unwrap_or_default(),
+        )
+        .await
+        .map(Into::into)
     }
 }
 
@@ -222,9 +264,9 @@ impl RpcClientConfig {
 impl Default for RpcClientConfig {
     fn default() -> Self {
         Self {
-            deadline: Some(Duration::from_secs(30)),
-            deadline_grace_period: Duration::from_secs(10),
-            handshake_timeout: Duration::from_secs(30),
+            deadline: Some(Duration::from_secs(120)),
+            deadline_grace_period: Duration::from_secs(60),
+            handshake_timeout: Duration::from_secs(90),
         }
     }
 }
@@ -232,11 +274,20 @@ impl Default for RpcClientConfig {
 #[derive(Clone)]
 pub struct ClientConnector {
     inner: mpsc::Sender<ClientRequest>,
+    shutdown: Arc<Mutex<Shutdown>>,
 }
 
 impl ClientConnector {
-    pub fn close(&mut self) {
-        self.inner.close_channel();
+    pub(self) fn new(sender: mpsc::Sender<ClientRequest>, shutdown: Shutdown) -> Self {
+        Self {
+            inner: sender,
+            shutdown: Arc::new(Mutex::new(shutdown)),
+        }
+    }
+
+    pub async fn close(&mut self) {
+        let mut lock = self.shutdown.lock().await;
+        lock.trigger();
     }
 
     pub async fn get_last_request_latency(&mut self) -> Result<Option<Duration>, RpcError> {
@@ -248,6 +299,21 @@ impl ClientConnector {
 
         reply_rx.await.map_err(|_| RpcError::RequestCancelled)
     }
+
+    pub async fn send_ping(&mut self) -> Result<Duration, RpcError> {
+        let (reply, reply_rx) = oneshot::channel();
+        self.inner
+            .send(ClientRequest::SendPing(reply))
+            .await
+            .map_err(|_| RpcError::ClientClosed)?;
+
+        let latency = reply_rx.await.map_err(|_| RpcError::RequestCancelled)??;
+        Ok(latency)
+    }
+
+    pub fn is_connected(&self) -> bool {
+        !self.inner.is_closed()
+    }
 }
 
 impl fmt::Debug for ClientConnector {
@@ -258,17 +324,16 @@ impl fmt::Debug for ClientConnector {
 
 impl Service<BaseRequest<Bytes>> for ClientConnector {
     type Error = RpcError;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
     type Response = mpsc::Receiver<Result<Response<Bytes>, RpcStatus>>;
 
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
-
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready_unpin(cx).map_err(|_| RpcError::ClientClosed)
+    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
     }
 
     fn call(&mut self, request: BaseRequest<Bytes>) -> Self::Future {
         let (reply, reply_rx) = oneshot::channel();
-        let mut inner = self.inner.clone();
+        let inner = self.inner.clone();
         async move {
             inner
                 .send(ClientRequest::SendRequest { request, reply })
@@ -277,6 +342,7 @@ impl Service<BaseRequest<Bytes>> for ClientConnector {
 
             reply_rx.await.map_err(|_| RpcError::RequestCancelled)
         }
+        .boxed()
     }
 }
 
@@ -285,10 +351,12 @@ pub struct RpcClientWorker<TSubstream> {
     request_rx: mpsc::Receiver<ClientRequest>,
     framed: CanonicalFraming<TSubstream>,
     // Request ids are limited to u16::MAX because varint encoding is used over the wire and the magnitude of the value
-    // sent determines the byte size. A u16 will be more than enough for the purpose (currently just logging)
-    request_id: u16,
+    // sent determines the byte size. A u16 will be more than enough for the purpose
+    next_request_id: u16,
     ready_tx: Option<oneshot::Sender<Result<(), RpcError>>>,
-    latency: Option<Duration>,
+    last_request_latency: Option<Duration>,
+    protocol_id: ProtocolId,
+    shutdown_signal: ShutdownSignal,
 }
 
 impl<TSubstream> RpcClientWorker<TSubstream>
@@ -299,19 +367,32 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
         request_rx: mpsc::Receiver<ClientRequest>,
         framed: CanonicalFraming<TSubstream>,
         ready_tx: oneshot::Sender<Result<(), RpcError>>,
+        protocol_id: ProtocolId,
+        shutdown_signal: ShutdownSignal,
     ) -> Self {
         Self {
             config,
             request_rx,
             framed,
-            request_id: 0,
+            next_request_id: 0,
             ready_tx: Some(ready_tx),
-            latency: None,
+            last_request_latency: None,
+            protocol_id,
+            shutdown_signal,
         }
     }
 
+    fn protocol_name(&self) -> Cow<'_, str> {
+        String::from_utf8_lossy(&self.protocol_id)
+    }
+
+    #[tracing::instrument(name = "rpc_client_worker run", skip(self), fields(next_request_id= self.next_request_id))]
     async fn run(mut self) {
-        debug!(target: LOG_TARGET, "Performing client handshake");
+        debug!(
+            target: LOG_TARGET,
+            "Performing client handshake for '{}'",
+            self.protocol_name()
+        );
         let start = Instant::now();
         let mut handshake = Handshake::new(&mut self.framed).with_timeout(self.config.handshake_timeout());
         match handshake.perform_client_handshake().await {
@@ -319,9 +400,11 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
                 let latency = start.elapsed();
                 debug!(
                     target: LOG_TARGET,
-                    "RPC Session negotiation completed. Latency: {:.0?}", latency
+                    "RPC Session ({}) negotiation completed. Latency: {:.0?}",
+                    self.protocol_name(),
+                    latency
                 );
-                self.latency = Some(latency);
+                self.last_request_latency = Some(latency);
                 if let Some(r) = self.ready_tx.take() {
                     let _ = r.send(Ok(()));
                 }
@@ -335,27 +418,100 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
             },
         }
 
-        while let Some(req) = self.request_rx.next().await {
-            use ClientRequest::*;
-            match req {
-                SendRequest { request, reply } => {
-                    if let Err(err) = self.do_request_response(request, reply).await {
-                        debug!(target: LOG_TARGET, "Unexpected error: {}. Worker is terminating.", err);
-                        break;
+        loop {
+            tokio::select! {
+                biased;
+                _ = &mut self.shutdown_signal => {
+                    break;
+                }
+                req = self.request_rx.recv() => {
+                    match req {
+                        Some(req) => {
+                            if let Err(err) = self.handle_request(req).await {
+                                error!(target: LOG_TARGET, "Unexpected error: {}. Worker is terminating.", err);
+                                break;
+                            }
+                        }
+                        None => break,
                     }
-                },
-                GetLastRequestLatency(reply) => {
-                    let _ = reply.send(self.latency);
-                },
+                }
             }
         }
+
         if let Err(err) = self.framed.close().await {
             debug!(target: LOG_TARGET, "IO Error when closing substream: {}", err);
         }
 
-        debug!(target: LOG_TARGET, "RpcClientWorker terminated.");
+        debug!(
+            target: LOG_TARGET,
+            "RpcClientWorker ({}) terminated.",
+            self.protocol_name()
+        );
     }
 
+    async fn handle_request(&mut self, req: ClientRequest) -> Result<(), RpcError> {
+        use ClientRequest::*;
+        match req {
+            SendRequest { request, reply } => {
+                self.do_request_response(request, reply).await?;
+            },
+            GetLastRequestLatency(reply) => {
+                let _ = reply.send(self.last_request_latency);
+            },
+            SendPing(reply) => {
+                self.do_ping_pong(reply).await?;
+            },
+        }
+        Ok(())
+    }
+
+    async fn do_ping_pong(&mut self, reply: oneshot::Sender<Result<Duration, RpcStatus>>) -> Result<(), RpcError> {
+        let ack = proto::rpc::RpcRequest {
+            flags: RpcMessageFlags::ACK.bits() as u32,
+            deadline: self.config.deadline.map(|t| t.as_secs()).unwrap_or(0),
+            ..Default::default()
+        };
+
+        let start = Instant::now();
+        self.framed.send(ack.to_encoded_bytes().into()).await?;
+
+        debug!(
+            target: LOG_TARGET,
+            "Ping (protocol {}) sent in {:.2?}",
+            self.protocol_name(),
+            start.elapsed()
+        );
+        let resp = match self.read_reply().await {
+            Ok(resp) => resp,
+            Err(RpcError::ReplyTimeout) => {
+                debug!(target: LOG_TARGET, "Ping timed out after {:.0?}", start.elapsed());
+                let _ = reply.send(Err(RpcStatus::timed_out("Response timed out")));
+                return Ok(());
+            },
+            Err(err) => return Err(err),
+        };
+
+        let status = RpcStatus::from(&resp);
+        if !status.is_ok() {
+            let _ = reply.send(Err(status.clone()));
+            return Err(status.into());
+        }
+
+        let resp_flags = RpcMessageFlags::from_bits_truncate(resp.flags as u8);
+        if !resp_flags.contains(RpcMessageFlags::ACK) {
+            warn!(target: LOG_TARGET, "Invalid ping response {:?}", resp);
+            let _ = reply.send(Err(RpcStatus::protocol_error(format!(
+                "Received invalid ping response on protocol '{}'",
+                self.protocol_name()
+            ))));
+            return Err(RpcError::InvalidPingResponse);
+        }
+
+        let _ = reply.send(Ok(start.elapsed()));
+        Ok(())
+    }
+
+    #[tracing::instrument(name = "rpc_do_request_response", skip(self, reply))]
     async fn do_request_response(
         &mut self,
         request: BaseRequest<Bytes>,
@@ -374,44 +530,50 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
         debug!(target: LOG_TARGET, "Sending request: {}", req);
 
         let start = Instant::now();
+        if reply.is_closed() {
+            event!(Level::WARN, "Client request was cancelled before request was sent");
+            warn!(
+                target: LOG_TARGET,
+                "Client request was cancelled before request was sent"
+            );
+        }
         self.framed.send(req.to_encoded_bytes().into()).await?;
 
-        let (mut response_tx, response_rx) = mpsc::channel(1);
-        if reply.send(response_rx).is_err() {
-            debug!(target: LOG_TARGET, "Client request was cancelled.");
-            response_tx.close_channel();
+        let (response_tx, response_rx) = mpsc::channel(10);
+        if let Err(mut rx) = reply.send(response_rx) {
+            event!(Level::WARN, "Client request was cancelled after request was sent");
+            warn!(
+                target: LOG_TARGET,
+                "Client request was cancelled after request was sent"
+            );
+            rx.close();
+            // RPC is strictly request/response
+            // If the client drops the RpcClient request at this point after the , we have two options:
+            // 1. Obey the protocol: receive the response
+            // 2. Close the RPC session and return an error (seems brittle and unexpected)
+            // Option 1 has the disadvantage when receiving large/many streamed responses.
+            // TODO: Detect if all handles to the client handles have been dropped. If so,
+            // immediately close the RPC session
         }
 
         loop {
-            // Wait until the timeout, allowing an extra grace period to account for latency
-            let next_msg_fut = match self.config.timeout_with_grace_period() {
-                Some(timeout) => Either::Left(time::timeout(timeout, self.framed.next())),
-                None => Either::Right(self.framed.next().map(Ok)),
-            };
-
-            let resp = match next_msg_fut.await {
-                Ok(Some(Ok(resp))) => {
+            let resp = match self.read_reply().await {
+                Ok(resp) => {
                     let latency = start.elapsed();
+                    event!(Level::TRACE, "Message received");
                     trace!(
                         target: LOG_TARGET,
-                        "Received response ({} byte(s)) from request #{} (method={}) in {:.0?}",
-                        resp.len(),
+                        "Received response ({} byte(s)) from request #{} (protocol = {}, method={}) in {:.0?}",
+                        resp.message.len(),
                         request_id,
+                        self.protocol_name(),
                         method,
                         latency
                     );
-                    self.latency = Some(latency);
-                    proto::rpc::RpcResponse::decode(resp)?
+                    self.last_request_latency = Some(latency);
+                    resp
                 },
-                Ok(Some(Err(err))) => {
-                    return Err(err.into());
-                },
-                Ok(None) => {
-                    return Err(RpcError::ServerClosedRequest);
-                },
-
-                // Timeout
-                Err(_) => {
+                Err(RpcError::ReplyTimeout) => {
                     debug!(
                         target: LOG_TARGET,
                         "Request {} (method={}) timed out after {:.0?}",
@@ -419,51 +581,123 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
                         method,
                         start.elapsed()
                     );
-                    let _ = response_tx.send(Err(RpcStatus::timed_out("Response timed out"))).await;
-                    response_tx.close_channel();
+                    event!(Level::ERROR, "Response timed out");
+                    if !response_tx.is_closed() {
+                        let _ = response_tx.send(Err(RpcStatus::timed_out("Response timed out"))).await;
+                    }
                     break;
+                },
+                Err(RpcError::ClientClosed) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Request {} (method={}) was closed after {:.0?} (read_reply)",
+                        request_id,
+                        method,
+                        start.elapsed()
+                    );
+                    self.request_rx.close();
+                    break;
+                },
+                Err(err) => {
+                    event!(Level::ERROR, "Errored:{}", err);
+                    return Err(err);
                 },
             };
 
-            match Self::convert_to_result(resp) {
-                Ok(resp) => {
+            match Self::convert_to_result(resp, request_id) {
+                Ok(Ok(resp)) => {
                     // The consumer may drop the receiver before all responses are received.
                     // We just ignore that as we still want obey the protocol and receive messages until the FIN flag or
                     // the connection is dropped
                     let is_finished = resp.is_finished();
-                    if !response_tx.is_closed() {
+                    if response_tx.is_closed() {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Response receiver was dropped before the response/stream could complete for protocol {}, \
+                             the stream will continue until completed",
+                            self.protocol_name()
+                        );
+                    } else {
                         let _ = response_tx.send(Ok(resp)).await;
                     }
                     if is_finished {
-                        response_tx.close_channel();
                         break;
                     }
                 },
-                Err(err) => {
+                Ok(Err(err)) => {
                     debug!(target: LOG_TARGET, "Remote service returned error: {}", err);
                     if !response_tx.is_closed() {
                         let _ = response_tx.send(Err(err)).await;
                     }
-                    response_tx.close_channel();
                     break;
                 },
+                Err(err @ RpcError::ResponseIdDidNotMatchRequest { .. }) |
+                Err(err @ RpcError::UnexpectedAckResponse) => {
+                    warn!(target: LOG_TARGET, "{}", err);
+                    // Ignore the response, this can happen when there is excessive latency. The server sends back a
+                    // reply before the deadline but it is only received after the client has timed
+                    // out
+                    continue;
+                },
+                Err(err) => return Err(err),
             }
         }
 
         Ok(())
     }
 
+    async fn read_reply(&mut self) -> Result<proto::rpc::RpcResponse, RpcError> {
+        // Wait until the timeout, allowing an extra grace period to account for latency
+        let next_msg_fut = match self.config.timeout_with_grace_period() {
+            Some(timeout) => Either::Left(time::timeout(timeout, self.framed.next())),
+            None => Either::Right(self.framed.next().map(Ok)),
+        };
+
+        let result = tokio::select! {
+            biased;
+            _ = &mut self.shutdown_signal => {
+                return Err(RpcError::ClientClosed);
+            }
+            result = next_msg_fut => result,
+        };
+
+        match result {
+            Ok(Some(Ok(resp))) => Ok(proto::rpc::RpcResponse::decode(resp)?),
+            Ok(Some(Err(err))) => Err(err.into()),
+            Ok(None) => Err(RpcError::ServerClosedRequest),
+            Err(_) => Err(RpcError::ReplyTimeout),
+        }
+    }
+
     fn next_request_id(&mut self) -> u16 {
-        let next_id = self.request_id;
+        let next_id = self.next_request_id;
         // request_id is allowed to wrap around back to 0
-        self.request_id = self.request_id.checked_add(1).unwrap_or(0);
+        self.next_request_id = self.next_request_id.checked_add(1).unwrap_or(0);
         next_id
     }
 
-    fn convert_to_result(resp: proto::rpc::RpcResponse) -> Result<Response<Bytes>, RpcStatus> {
+    fn convert_to_result(
+        resp: proto::rpc::RpcResponse,
+        request_id: u16,
+    ) -> Result<Result<Response<Bytes>, RpcStatus>, RpcError> {
+        let resp_id = u16::try_from(resp.request_id)
+            .map_err(|_| RpcStatus::protocol_error(format!("invalid request_id: must be less than {}", u16::MAX)))?;
+
+        let flags = RpcMessageFlags::from_bits_truncate(resp.flags as u8);
+        if flags.contains(RpcMessageFlags::ACK) {
+            return Err(RpcError::UnexpectedAckResponse);
+        }
+
+        if resp_id != request_id {
+            return Err(RpcError::ResponseIdDidNotMatchRequest {
+                expected: request_id,
+                actual: resp.request_id as u16,
+            });
+        }
+
         let status = RpcStatus::from(&resp);
         if !status.is_ok() {
-            return Err(status);
+            return Ok(Err(status));
         }
 
         let resp = Response {
@@ -471,7 +705,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
             message: resp.message.into(),
         };
 
-        Ok(resp)
+        Ok(Ok(resp))
     }
 }
 
@@ -481,4 +715,5 @@ pub enum ClientRequest {
         reply: oneshot::Sender<mpsc::Receiver<Result<Response<Bytes>, RpcStatus>>>,
     },
     GetLastRequestLatency(oneshot::Sender<Option<Duration>>),
+    SendPing(oneshot::Sender<Result<Duration, RpcStatus>>),
 }

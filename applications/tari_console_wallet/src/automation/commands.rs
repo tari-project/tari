@@ -21,12 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::error::CommandError;
-use crate::{
-    automation::command_parser::{ParsedArgument, ParsedCommand},
-    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
-};
-use chrono::{DateTime, Utc};
-use futures::{FutureExt, StreamExt};
 use log::*;
 use std::{
     fs::File,
@@ -34,8 +28,18 @@ use std::{
     str::FromStr,
     time::{Duration, Instant},
 };
+
+use chrono::{DateTime, Utc};
+use futures::FutureExt;
 use strum_macros::{Display, EnumIter, EnumString};
+use tari_crypto::ristretto::pedersen::PedersenCommitmentFactory;
+
+use crate::{
+    automation::command_parser::{ParsedArgument, ParsedCommand},
+    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
+};
 use tari_common::GlobalConfig;
+use tari_common_types::{emoji::EmojiId, types::PublicKey};
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
     multiaddr::Multiaddr,
@@ -51,16 +55,14 @@ use tari_core::{
         types::PublicKey,
     },
 };
-use tari_crypto::ristretto::pedersen::PedersenCommitmentFactory;
 use tari_wallet::{
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
-    util::emoji::EmojiId,
     WalletSqlite,
 };
 use tokio::{
-    runtime::Handle,
-    time::{delay_for, timeout},
+    sync::{broadcast, mpsc},
+    time::{sleep, timeout},
 };
 
 pub const LOG_TARGET: &str = "wallet::automation::commands";
@@ -178,21 +180,22 @@ pub async fn coin_split(
     Ok(tx_id)
 }
 
-async fn wait_for_comms(connectivity_requester: &ConnectivityRequester) -> Result<bool, CommandError> {
-    let mut connectivity = connectivity_requester.get_event_subscription().fuse();
+async fn wait_for_comms(connectivity_requester: &ConnectivityRequester) -> Result<(), CommandError> {
+    let mut connectivity = connectivity_requester.get_event_subscription();
     print!("Waiting for connectivity... ");
-    let mut timeout = delay_for(Duration::from_secs(30)).fuse();
+    let timeout = sleep(Duration::from_secs(30));
+    tokio::pin!(timeout);
+    let mut timeout = timeout.fuse();
     loop {
-        futures::select! {
-            result = connectivity.select_next_some() => {
-                if let Ok(msg) = result {
-                    if let ConnectivityEvent::PeerConnected(_) = (*msg).clone() {
-                        println!("✅");
-                        return Ok(true);
-                    }
+        tokio::select! {
+            // Wait for the first base node connection
+            Ok(ConnectivityEvent::PeerConnected(conn)) = connectivity.recv() => {
+                if conn.peer_features().is_node() {
+                    println!("✅");
+                    return Ok(());
                 }
             },
-            () = timeout => {
+            () = &mut timeout => {
                 println!("❌");
                 return Err(CommandError::Comms("Timed out".to_string()));
             }
@@ -251,10 +254,9 @@ pub async fn discover_peer(
 }
 
 pub async fn make_it_rain(
-    handle: Handle,
     wallet_transaction_service: TransactionServiceHandle,
     args: Vec<ParsedArgument>,
-) -> Result<Vec<TxId>, CommandError> {
+) -> Result<(), CommandError> {
     use ParsedArgument::*;
 
     let txps = match args[0].clone() {
@@ -287,60 +289,148 @@ pub async fn make_it_rain(
         _ => Err(CommandError::Argument),
     }?;
 
-    let message = match args[6].clone() {
+    let negotiated = match args[6].clone() {
+        Negotiated(val) => Ok(val),
+        _ => Err(CommandError::Argument),
+    }?;
+
+    let message = match args[7].clone() {
         Text(m) => Ok(m),
         _ => Err(CommandError::Argument),
     }?;
 
-    // Wait until specified test start time
-    let now = Utc::now();
-    let delay_ms = if start_time > now {
-        println!(
-            "`make-it-rain` scheduled to start at {}: msg \"{}\"",
-            start_time, message
+    // We are spawning this command in parallel, thus not collecting transaction IDs
+    tokio::task::spawn(async move {
+        // Wait until specified test start time
+        let now = Utc::now();
+        let delay_ms = if start_time > now {
+            println!(
+                "`make-it-rain` scheduled to start at {}: msg \"{}\"",
+                start_time, message
+            );
+            (start_time - now).num_milliseconds() as u64
+        } else {
+            0
+        };
+
+        debug!(
+            target: LOG_TARGET,
+            "make-it-rain delaying for {:?} ms - scheduled to start at {}", delay_ms, start_time
         );
-        (start_time - now).num_milliseconds() as u64
-    } else {
-        0
-    };
+        sleep(Duration::from_millis(delay_ms)).await;
 
-    debug!(
-        target: LOG_TARGET,
-        "make-it-rain delaying for {:?} ms - scheduled to start at {}", delay_ms, start_time
-    );
-    delay_for(Duration::from_millis(delay_ms)).await;
+        let num_txs = (txps * duration as f64) as usize;
+        let started_at = Utc::now();
 
-    let num_txs = (txps * duration as f64) as usize;
-
-    let mut tx_ids = Vec::new();
-    let started_at = Utc::now();
-
-    for i in 0..num_txs {
-        // Manage Tx rate
-        let actual_ms = (Utc::now() - started_at).num_milliseconds();
-        let target_ms = (i as f64 / (txps / 1000.0)) as i64;
-        if target_ms - actual_ms > 0 {
-            // Maximum delay between Txs set to 120 s
-            delay_for(Duration::from_millis((target_ms - actual_ms).min(120_000i64) as u64)).await;
+        struct TransactionSendStats {
+            i: usize,
+            tx_id: Result<TxId, CommandError>,
+            delayed_for: Duration,
+            submit_time: Duration,
         }
-        // Send Tx
-        let amount = start_amount + inc_amount * (i as u64);
-        let send_args = vec![
-            ParsedArgument::Amount(amount),
-            ParsedArgument::PublicKey(public_key.clone()),
-            ParsedArgument::Text(message.clone()),
-        ];
-        let tx_service = wallet_transaction_service.clone();
-        let tx_id = handle
-            .spawn(send_tari(tx_service, send_args))
-            .await
-            .map_err(CommandError::Join)??;
+        let transaction_type = if negotiated { "negotiated" } else { "one-sided" };
+        println!(
+            "\n`make-it-rain` starting {} {} transactions \"{}\"\n",
+            num_txs, transaction_type, message
+        );
+        let (sender, mut receiver) = mpsc::channel(num_txs);
+        {
+            let sender = sender;
+            for i in 0..num_txs {
+                debug!(
+                    target: LOG_TARGET,
+                    "make-it-rain starting {} of {} {} transactions",
+                    i + 1,
+                    num_txs,
+                    transaction_type
+                );
+                let loop_started_at = Instant::now();
+                let tx_service = wallet_transaction_service.clone();
+                // Transaction details
+                let amount = start_amount + inc_amount * (i as u64);
+                let send_args = vec![
+                    ParsedArgument::Amount(amount),
+                    ParsedArgument::PublicKey(public_key.clone()),
+                    ParsedArgument::Text(message.clone()),
+                ];
+                // Manage transaction submission rate
+                let actual_ms = (Utc::now() - started_at).num_milliseconds();
+                let target_ms = (i as f64 / (txps / 1000.0)) as i64;
+                if target_ms - actual_ms > 0 {
+                    // Maximum delay between Txs set to 120 s
+                    sleep(Duration::from_millis((target_ms - actual_ms).min(120_000i64) as u64)).await;
+                }
+                let delayed_for = Instant::now();
+                let sender_clone = sender.clone();
+                tokio::task::spawn(async move {
+                    let spawn_start = Instant::now();
+                    // Send transaction
+                    let tx_id = if negotiated {
+                        send_tari(tx_service, send_args).await
+                    } else {
+                        send_one_sided(tx_service, send_args).await
+                    };
+                    let submit_time = Instant::now();
+                    tokio::task::spawn(async move {
+                        print!("{} ", i + 1);
+                    });
+                    if let Err(e) = sender_clone
+                        .send(TransactionSendStats {
+                            i: i + 1,
+                            tx_id,
+                            delayed_for: delayed_for.duration_since(loop_started_at),
+                            submit_time: submit_time.duration_since(spawn_start),
+                        })
+                        .await
+                    {
+                        warn!(
+                            target: LOG_TARGET,
+                            "make-it-rain: Error sending transaction send stats to channel: {}",
+                            e.to_string()
+                        );
+                    }
+                });
+            }
+        }
+        while let Some(send_stats) = receiver.recv().await {
+            match send_stats.tx_id {
+                Ok(tx_id) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "make-it-rain transaction {} ({}) submitted to queue, tx_id: {}, delayed for ({}ms), submit \
+                         time ({}ms)",
+                        send_stats.i,
+                        transaction_type,
+                        tx_id,
+                        send_stats.delayed_for.as_millis(),
+                        send_stats.submit_time.as_millis()
+                    );
+                },
+                Err(e) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "make-it-rain transaction {} ({}) error: {}",
+                        send_stats.i,
+                        transaction_type,
+                        e.to_string(),
+                    );
+                },
+            }
+        }
+        debug!(
+            target: LOG_TARGET,
+            "make-it-rain concluded {} {} transactions", num_txs, transaction_type
+        );
+        println!(
+            "\n`make-it-rain` concluded {} {} transactions (\"{}\") at {}",
+            num_txs,
+            transaction_type,
+            message,
+            Utc::now()
+        );
+    });
 
-        debug!(target: LOG_TARGET, "make-it-rain tx_id: {}", tx_id);
-        tx_ids.push(tx_id);
-    }
-
-    Ok(tx_ids)
+    Ok(())
 }
 
 pub async fn monitor_transactions(
@@ -348,7 +438,7 @@ pub async fn monitor_transactions(
     tx_ids: Vec<TxId>,
     wait_stage: TransactionStage,
 ) -> Vec<SentTransaction> {
-    let mut event_stream = transaction_service.get_event_stream_fused();
+    let mut event_stream = transaction_service.get_event_stream();
     let mut results = Vec::new();
     debug!(target: LOG_TARGET, "monitor transactions wait_stage: {:?}", wait_stage);
     println!(
@@ -358,103 +448,101 @@ pub async fn monitor_transactions(
     );
 
     loop {
-        match event_stream.next().await {
-            Some(event_result) => match event_result {
-                Ok(event) => match &*event {
-                    TransactionEvent::TransactionDirectSendResult(id, success) if tx_ids.contains(id) => {
-                        debug!(
-                            target: LOG_TARGET,
-                            "tx direct send event for tx_id: {}, success: {}", *id, success
-                        );
-                        if wait_stage == TransactionStage::DirectSendOrSaf {
-                            results.push(SentTransaction {
-                                id: *id,
-                                stage: TransactionStage::DirectSendOrSaf,
-                            });
-                            if results.len() == tx_ids.len() {
-                                break;
-                            }
+        match event_stream.recv().await {
+            Ok(event) => match &*event {
+                TransactionEvent::TransactionDirectSendResult(id, success) if tx_ids.contains(id) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "tx direct send event for tx_id: {}, success: {}", *id, success
+                    );
+                    if wait_stage == TransactionStage::DirectSendOrSaf {
+                        results.push(SentTransaction {
+                            id: *id,
+                            stage: TransactionStage::DirectSendOrSaf,
+                        });
+                        if results.len() == tx_ids.len() {
+                            break;
                         }
-                    },
-                    TransactionEvent::TransactionStoreForwardSendResult(id, success) if tx_ids.contains(id) => {
-                        debug!(
-                            target: LOG_TARGET,
-                            "tx store and forward event for tx_id: {}, success: {}", *id, success
-                        );
-                        if wait_stage == TransactionStage::DirectSendOrSaf {
-                            results.push(SentTransaction {
-                                id: *id,
-                                stage: TransactionStage::DirectSendOrSaf,
-                            });
-                            if results.len() == tx_ids.len() {
-                                break;
-                            }
-                        }
-                    },
-                    TransactionEvent::ReceivedTransactionReply(id) if tx_ids.contains(id) => {
-                        debug!(target: LOG_TARGET, "tx reply event for tx_id: {}", *id);
-                        if wait_stage == TransactionStage::Negotiated {
-                            results.push(SentTransaction {
-                                id: *id,
-                                stage: TransactionStage::Negotiated,
-                            });
-                            if results.len() == tx_ids.len() {
-                                break;
-                            }
-                        }
-                    },
-                    TransactionEvent::TransactionBroadcast(id) if tx_ids.contains(id) => {
-                        debug!(target: LOG_TARGET, "tx mempool broadcast event for tx_id: {}", *id);
-                        if wait_stage == TransactionStage::Broadcast {
-                            results.push(SentTransaction {
-                                id: *id,
-                                stage: TransactionStage::Broadcast,
-                            });
-                            if results.len() == tx_ids.len() {
-                                break;
-                            }
-                        }
-                    },
-                    TransactionEvent::TransactionMinedUnconfirmed(id, confirmations) if tx_ids.contains(id) => {
-                        debug!(
-                            target: LOG_TARGET,
-                            "tx mined unconfirmed event for tx_id: {}, confirmations: {}", *id, confirmations
-                        );
-                        if wait_stage == TransactionStage::MinedUnconfirmed {
-                            results.push(SentTransaction {
-                                id: *id,
-                                stage: TransactionStage::MinedUnconfirmed,
-                            });
-                            if results.len() == tx_ids.len() {
-                                break;
-                            }
-                        }
-                    },
-                    TransactionEvent::TransactionMined(id) if tx_ids.contains(id) => {
-                        debug!(target: LOG_TARGET, "tx mined confirmed event for tx_id: {}", *id);
-                        if wait_stage == TransactionStage::Mined {
-                            results.push(SentTransaction {
-                                id: *id,
-                                stage: TransactionStage::Mined,
-                            });
-                            if results.len() == tx_ids.len() {
-                                break;
-                            }
-                        }
-                    },
-                    _ => {},
+                    }
                 },
-                Err(e) => {
-                    eprintln!("RecvError in monitor_transactions: {:?}", e);
-                    break;
+                TransactionEvent::TransactionStoreForwardSendResult(id, success) if tx_ids.contains(id) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "tx store and forward event for tx_id: {}, success: {}", *id, success
+                    );
+                    if wait_stage == TransactionStage::DirectSendOrSaf {
+                        results.push(SentTransaction {
+                            id: *id,
+                            stage: TransactionStage::DirectSendOrSaf,
+                        });
+                        if results.len() == tx_ids.len() {
+                            break;
+                        }
+                    }
                 },
+                TransactionEvent::ReceivedTransactionReply(id) if tx_ids.contains(id) => {
+                    debug!(target: LOG_TARGET, "tx reply event for tx_id: {}", *id);
+                    if wait_stage == TransactionStage::Negotiated {
+                        results.push(SentTransaction {
+                            id: *id,
+                            stage: TransactionStage::Negotiated,
+                        });
+                        if results.len() == tx_ids.len() {
+                            break;
+                        }
+                    }
+                },
+                TransactionEvent::TransactionBroadcast(id) if tx_ids.contains(id) => {
+                    debug!(target: LOG_TARGET, "tx mempool broadcast event for tx_id: {}", *id);
+                    if wait_stage == TransactionStage::Broadcast {
+                        results.push(SentTransaction {
+                            id: *id,
+                            stage: TransactionStage::Broadcast,
+                        });
+                        if results.len() == tx_ids.len() {
+                            break;
+                        }
+                    }
+                },
+                TransactionEvent::TransactionMinedUnconfirmed(id, confirmations) if tx_ids.contains(id) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "tx mined unconfirmed event for tx_id: {}, confirmations: {}", *id, confirmations
+                    );
+                    if wait_stage == TransactionStage::MinedUnconfirmed {
+                        results.push(SentTransaction {
+                            id: *id,
+                            stage: TransactionStage::MinedUnconfirmed,
+                        });
+                        if results.len() == tx_ids.len() {
+                            break;
+                        }
+                    }
+                },
+                TransactionEvent::TransactionMined(id) if tx_ids.contains(id) => {
+                    debug!(target: LOG_TARGET, "tx mined confirmed event for tx_id: {}", *id);
+                    if wait_stage == TransactionStage::Mined {
+                        results.push(SentTransaction {
+                            id: *id,
+                            stage: TransactionStage::Mined,
+                        });
+                        if results.len() == tx_ids.len() {
+                            break;
+                        }
+                    }
+                },
+                _ => {},
             },
-            None => {
-                warn!(
+            // All event senders have gone (i.e. we take it that the node is shutting down)
+            Err(broadcast::error::RecvError::Closed) => {
+                debug!(
                     target: LOG_TARGET,
-                    "`None` result in event in monitor_transactions loop"
+                    "All Transaction event senders have gone. Exiting `monitor_transactions` loop."
                 );
                 break;
+            },
+            Err(err) => {
+                warn!(target: LOG_TARGET, "monitor_transactions: {}", err);
             },
         }
     }
@@ -463,7 +551,6 @@ pub async fn monitor_transactions(
 }
 
 pub async fn command_runner(
-    handle: Handle,
     commands: Vec<ParsedCommand>,
     wallet: WalletSqlite,
     config: GlobalConfig,
@@ -495,7 +582,8 @@ pub async fn command_runner(
             },
             DiscoverPeer => {
                 if !online {
-                    online = wait_for_comms(&connectivity_requester).await?;
+                    wait_for_comms(&connectivity_requester).await?;
+                    online = true;
                 }
                 discover_peer(dht_service.clone(), parsed.args).await?
             },
@@ -510,8 +598,7 @@ pub async fn command_runner(
                 tx_ids.push(tx_id);
             },
             MakeItRain => {
-                let rain_ids = make_it_rain(handle.clone(), transaction_service.clone(), parsed.args).await?;
-                tx_ids.extend(rain_ids);
+                make_it_rain(transaction_service.clone(), parsed.args).await?;
             },
             CoinSplit => {
                 let tx_id = coin_split(&parsed.args, &mut output_service, &mut transaction_service.clone()).await?;
@@ -670,7 +757,7 @@ pub async fn command_runner(
             },
             Err(_e) => {
                 println!(
-                    "The configured timeout ({:#?}s) was reached before all transactions reached the {:?} stage. See \
+                    "The configured timeout ({:#?}) was reached before all transactions reached the {:?} stage. See \
                      the logs for more info.",
                     duration, wait_stage
                 );

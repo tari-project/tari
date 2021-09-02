@@ -1,9 +1,10 @@
 use crate::wallet_modes::grpc_mode;
-use futures::future;
+use futures::{channel::mpsc, future, SinkExt};
 use log::*;
 use std::convert::TryFrom;
 use tari_app_grpc::{
     conversions::naive_datetime_to_timestamp,
+    tari_rpc,
     tari_rpc::{
         self,
         payment_recipient::PaymentType,
@@ -34,21 +35,18 @@ use tari_app_grpc::{
         TransferResult,
     },
 };
-use tari_comms::types::CommsPublicKey;
+use tari_common_types::types::Signature;
+use tari_comms::{types::CommsPublicKey, CommsNode};
 use tari_core::{
     tari_utilities::{hex::Hex, ByteArray},
-    transactions::{
-        tari_amount::MicroTari,
-        transaction::UnblindedOutput,
-        types::{PublicKey, Signature},
-    },
+    transactions::{tari_amount::MicroTari, transaction::UnblindedOutput},
 };
 use tari_wallet::{
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::{handle::TransactionServiceHandle, storage::models},
     WalletSqlite,
 };
-use tokio::{sync::mpsc, task};
+use tokio::task;
 use tonic::{Request, Response, Status};
 
 const LOG_TARGET: &str = "wallet::ui::grpc";
@@ -69,6 +67,10 @@ impl WalletGrpcServer {
     fn get_output_manager_service(&self) -> OutputManagerHandle {
         self.wallet.output_manager_service.clone()
     }
+
+    fn comms(&self) -> &CommsNode {
+        &self.wallet.comms
+    }
 }
 
 #[tonic::async_trait]
@@ -81,9 +83,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }))
     }
 
-    async fn identify(&self, request: Request<GetIdentityRequest>) -> Result<Response<GetIdentityResponse>, Status> {
-        let _request = request.into_inner();
-
+    async fn identify(&self, _: Request<GetIdentityRequest>) -> Result<Response<GetIdentityResponse>, Status> {
         let identity = self.wallet.comms.node_identity();
         Ok(Response::new(GetIdentityResponse {
             public_key: identity.public_key().to_string().as_bytes().to_vec(),
@@ -212,7 +212,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
             let tx_id = tx_id.into();
             let mut transaction_service = self.get_transaction_service();
             async move {
-                error!(target: LOG_TARGET, "TX_ID: {}", tx_id);
                 transaction_service
                     .get_any_transaction(tx_id)
                     .await
@@ -273,7 +272,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .to_vec(),
                         message: txn.message,
                         valid: txn.valid,
-                        is_found: true,
                     }),
                 };
                 match sender.send(Ok(response)).await {
@@ -409,6 +407,87 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .collect();
         Ok(Response::new(tari_rpc::GetOwnedTokensResponse { tokens: owned }))
     }
+
+    async fn get_network_status(
+        &self,
+        _: Request<tari_rpc::Empty>,
+    ) -> Result<Response<tari_rpc::NetworkStatusResponse>, Status> {
+        let status = self
+            .comms()
+            .connectivity()
+            .get_connectivity_status()
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
+        let mut base_node_service = self.wallet.base_node_service.clone();
+
+        let resp = tari_rpc::NetworkStatusResponse {
+            status: tari_rpc::ConnectivityStatus::from(status) as i32,
+            avg_latency_ms: base_node_service
+                .get_base_node_latency()
+                .await
+                .map_err(|err| Status::internal(err.to_string()))?
+                .map(|d| u32::try_from(d.as_millis()).unwrap_or(u32::MAX))
+                .unwrap_or_default(),
+            num_node_connections: status.num_connected_nodes() as u32,
+        };
+
+        Ok(Response::new(resp))
+    }
+
+    async fn list_connected_peers(
+        &self,
+        _: Request<tari_rpc::Empty>,
+    ) -> Result<Response<tari_rpc::ListConnectedPeersResponse>, Status> {
+        let mut connectivity = self.comms().connectivity();
+        let peer_manager = self.comms().peer_manager();
+        let connected_peers = connectivity
+            .get_active_connections()
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
+
+        let mut peers = Vec::with_capacity(connected_peers.len());
+        for peer in connected_peers {
+            peers.push(
+                peer_manager
+                    .find_by_node_id(peer.peer_node_id())
+                    .await
+                    .map_err(|err| Status::internal(err.to_string()))?,
+            );
+        }
+
+        let resp = tari_rpc::ListConnectedPeersResponse {
+            connected_peers: peers.into_iter().map(Into::into).collect(),
+        };
+
+        Ok(Response::new(resp))
+    }
+
+    async fn cancel_transaction(
+        &self,
+        request: Request<tari_rpc::CancelTransactionRequest>,
+    ) -> Result<Response<tari_rpc::CancelTransactionResponse>, Status> {
+        let message = request.into_inner();
+        debug!(
+            target: LOG_TARGET,
+            "Incoming gRPC request to Cancel Transaction (TxId: {})", message.tx_id,
+        );
+        let mut transaction_service = self.get_transaction_service();
+
+        match transaction_service.cancel_transaction(message.tx_id).await {
+            Ok(_) => {
+                return Ok(Response::new(tari_rpc::CancelTransactionResponse {
+                    is_success: true,
+                    failure_message: "".to_string(),
+                }))
+            },
+            Err(e) => {
+                return Ok(Response::new(tari_rpc::CancelTransactionResponse {
+                    is_success: false,
+                    failure_message: e.to_string(),
+                }))
+            },
+        }
+    }
 }
 
 fn convert_wallet_transaction_into_transaction_info(
@@ -416,7 +495,6 @@ fn convert_wallet_transaction_into_transaction_info(
     wallet_pk: &CommsPublicKey,
 ) -> TransactionInfo {
     use models::WalletTransaction::*;
-    error!(target: LOG_TARGET, "FOUND WALLET: {:?}", tx);
     match tx {
         PendingInbound(tx) => TransactionInfo {
             tx_id: tx.tx_id.into(),
@@ -431,7 +509,6 @@ fn convert_wallet_transaction_into_transaction_info(
             timestamp: Some(naive_datetime_to_timestamp(tx.timestamp)),
             message: tx.message,
             valid: true,
-            is_found: true,
         },
         PendingOutbound(tx) => TransactionInfo {
             tx_id: tx.tx_id.into(),
@@ -446,7 +523,6 @@ fn convert_wallet_transaction_into_transaction_info(
             timestamp: Some(naive_datetime_to_timestamp(tx.timestamp)),
             message: tx.message,
             valid: true,
-            is_found: true,
         },
         Completed(tx) => TransactionInfo {
             tx_id: tx.tx_id.into(),
@@ -465,7 +541,6 @@ fn convert_wallet_transaction_into_transaction_info(
                 .unwrap_or_default(),
             message: tx.message,
             valid: tx.valid,
-            is_found: true,
         },
     }
 }

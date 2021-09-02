@@ -21,8 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{conversions::datetime_to_timestamp, tari_rpc as grpc};
-use tari_comms::{net_address::MutliaddrWithStats, peer_manager::Peer};
-use tari_crypto::tari_utilities::ByteArray;
+use tari_comms::{connectivity::ConnectivityStatus, net_address::MutliaddrWithStats, peer_manager::Peer};
+use tari_core::crypto::tari_utilities::ByteArray;
 
 impl From<Peer> for grpc::Peer {
     fn from(peer: Peer) -> Self {
@@ -87,6 +87,18 @@ impl From<MutliaddrWithStats> for grpc::Address {
             connection_attempts,
             rejected_message_count,
             avg_latency,
+        }
+    }
+}
+
+impl From<ConnectivityStatus> for grpc::ConnectivityStatus {
+    fn from(status: ConnectivityStatus) -> Self {
+        use ConnectivityStatus::*;
+        match status {
+            Initializing => grpc::ConnectivityStatus::Initializing,
+            Online(_) => grpc::ConnectivityStatus::Online,
+            Degraded(_) => grpc::ConnectivityStatus::Degraded,
+            Offline => grpc::ConnectivityStatus::Offline,
         }
     }
 }

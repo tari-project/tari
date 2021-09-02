@@ -17,6 +17,11 @@
 # default, or the location specified in the TARI_LOGFILE environment variable.
 
 [common]
+# Select the network to connect to. Valid options are:
+#   mainnet - the "real" Tari network (default)
+#   weatherwax - the Tari test net
+network = "weatherwax"
+
 # Tari is a 100% peer-to-peer network, so there are no servers to hold messages for you while you're offline.
 # Instead, we rely on our peers to hold messages for us while we're offline. This settings sets maximum size of the
 # message cache that for holding our peers' messages, in MB.
@@ -38,16 +43,19 @@
 #liveness_allowlist_cidrs = ["127.0.0.1/32"]
 
 # The buffer size constants for the publish/subscribe connector channel, connecting comms messages to the domain layer:
-# - Buffer size for the base node (min value = 30, default value = 100).
-#buffer_size_base_node = 100
-# - Buffer size for the base node wallet (min value = 300, default value = 1000).
-#buffer_size_base_node_wallet = 1000
+# - Buffer size for the base node (min value = 30, default value = 1500).
+#buffer_size_base_node = 1500
+# - Buffer size for the console wallet (min value = 300, default value = 50000).
+#buffer_size_console_wallet = 50000
 # The rate limit constants for the publish/subscribe connector channel, i.e. maximum amount of inbound messages to
 # accept - any rate attemting to exceed this limit will be throttled.
-# - Rate limit for the base node (min value = 5, default value = 20).
-#buffer_rate_limit_base_node = 20
-# - Rate limit for the base node wallet (min value = 5, default value = 20).
-#buffer_rate_limit_base_node_wallet = 20
+# - Rate limit for the base node (min value = 5, default value = 1000).
+#buffer_rate_limit_base_node = 1000
+# - Rate limit for the console wallet (min value = 5, default value = 1000).
+buffer_rate_limit_console_wallet = 1000
+# The message deduplication persistent cache size - messages with these hashes in the cache will only be processed once.
+# The cache will also be trimmed down to size periodically (min value = 0, default value = 2500).
+dedup_cache_capacity = 25000
 
 # The timeout (s) for requesting blocks from a peer during blockchain sync (min value = 10 s, default value = 150 s).
 #fetch_blocks_timeout = 150
@@ -58,8 +66,9 @@
 # The timeout (s) for requesting other base node services (min value = 10 s, default value = 180 s).
 #service_request_timeout = 180
 
-# The maximum simultaneous comms RPC sessions allowed. Setting this to -1 will allow unlimited sessions.
-# rpc_max_simultaneous_sessions = 1000
+# The maximum simultaneous comms RPC sessions allowed (default value = 1000). Setting this to -1 will allow unlimited
+# sessions.
+rpc_max_simultaneous_sessions = 10000
 
 # Auto Update
 #
@@ -80,6 +89,8 @@
 # If you are not running a wallet from this configuration, you can simply leave everything in this section commented out
 
 [wallet]
+# Override common.network for wallet
+# network = "weatherwax"
 
 # The relative folder to store your local key data and transaction history. DO NOT EVER DELETE THIS FILE unless you
 #  a) have backed up your seed phrase and
@@ -106,20 +117,33 @@ console_wallet_db_file = "wallet/console-wallet.dat"
 
 # This is the timeout period that will be used to monitor TXO queries to the base node (default = 60). Larger values
 # are needed for wallets with many (>1000) TXOs to be validated.
-base_node_query_timeout = 120
+base_node_query_timeout = 180
 # The amount of seconds added to the current time (Utc) which will then be used to check if the message has
 # expired or not when processing the message (default = 10800).
 #saf_expiry_duration = 10800
-# This is the number of block confirmations required for a transaction to be considered completely mined and confirmed. (default = 3)
+# This is the number of block confirmations required for a transaction to be considered completely mined and
+# confirmed. (default = 3)
 #transaction_num_confirmations_required = 3
 # This is the timeout period that will be used for base node broadcast monitoring tasks (default = 60)
-#transaction_broadcast_monitoring_timeout = 60
+transaction_broadcast_monitoring_timeout = 180
 # This is the timeout period that will be used for chain monitoring tasks (default = 60)
 #transaction_chain_monitoring_timeout = 60
 # This is the timeout period that will be used for sending transactions directly (default = 20)
-#transaction_direct_send_timeout = 20
+transaction_direct_send_timeout = 180
 # This is the timeout period that will be used for sending transactions via broadcast mode (default = 60)
-#transaction_broadcast_send_timeout = 60
+transaction_broadcast_send_timeout = 180
+# This is the size of the event channel used to communicate transaction status events to the wallet's UI. A busy console
+# wallet doing thousands of bulk payments or used for stress testing needs a fairly big size (>10000) (default = 1000).
+transaction_event_channel_size = 25000
+# This is the size of the event channel used to communicate base node events to the wallet. A busy console
+# wallet doing thousands of bulk payments or used for stress testing needs a fairly big size (>3000) (default = 250).
+base_node_event_channel_size = 3500
+# This is the size of the event channel used to communicate output manager events to the wallet. A busy console
+# wallet doing thousands of bulk payments or used for stress testing needs a fairly big size (>3000) (default = 250).
+output_manager_event_channel_size = 3500
+# This is the size of the event channel used to communicate base node update events to the wallet. A busy console
+# wallet doing thousands of bulk payments or used for stress testing needs a fairly big size (>300) (default = 50).
+base_node_update_publisher_channel_size = 500
 # If a large amount of tiny valued uT UTXOs are used as inputs to a transaction, the fee may be larger than
 # the transaction amount. Set this value to `false` to allow spending of "dust" UTXOs for small valued
 # transactions (default = true).
@@ -129,7 +153,8 @@ base_node_query_timeout = 120
 # (options: "DirectOnly", "StoreAndForwardOnly", DirectAndStoreAndForward". default: "DirectAndStoreAndForward").
 #transaction_routing_mechanism = "DirectAndStoreAndForward"
 
-scan_for_utxo_interval=60
+# UTXO scanning service interval (default = 12 hours, i.e. 60 * 60 * 12 seconds)
+scan_for_utxo_interval = 180
 
 # When running the console wallet in command mode, use these values to determine what "stage" and timeout to wait
 # for sent transactions.
@@ -140,9 +165,9 @@ scan_for_utxo_interval=60
 # - "MinedUnconfirmed" - The transaction was successfully detected as mined but unconfirmed on the blockchain.
 # - "Mined" - The transaction was successfully detected as mined and confirmed on the blockchain.
 
-# The default values are:
+# The default values are: "Broadcast", 300
 #command_send_wait_stage = "Broadcast"
-#command_send_wait_timeout = 600
+#command_send_wait_timeout = 300
 
 # The base nodes that the wallet should use for service requests and tracking chain state.
 # base_node_service_peers = ["public_key::net_address", ...]
@@ -150,15 +175,63 @@ scan_for_utxo_interval=60
 
 # Configuration for the wallet's base node service
 # The refresh interval, defaults to 10 seconds
-# base_node_service_refresh_interval = 10
+base_node_service_refresh_interval = 30
 # The maximum age of service requests in seconds, requests older than this are discarded
-# base_node_service_request_max_age = 60
+base_node_service_request_max_age = 180
 
 #[base_node.transport.tor]
 #control_address = "/ip4/127.0.0.1/tcp/9051"
 #control_auth_type = "none" # or "password"
 # Required for control_auth_type = "password"
 #control_auth_password = "super-secure-password"
+
+# Wallet configuration options for testnet
+[wallet.weatherwax]
+# -------------- Transport configuration --------------
+# Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
+# e.g. tor onion addresses will not be contactable.
+#transport = "tcp"
+# The address and port to listen for peer connections over TCP.
+#tcp_listener_address = "/ip4/0.0.0.0/tcp/18188"
+# Configures a tor proxy used to connect to onion addresses. All other traffic uses direct TCP connections.
+# This setting is optional however, if it is not specified, this node will not be able to connect to nodes that
+# only advertise an onion address.
+#tcp_tor_socks_address = "/ip4/127.0.0.1/tcp/36050"
+#tcp_tor_socks_auth = "none"
+
+# Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
+# onion v2, onion v3 and dns addresses.
+transport = "tor"
+# Address of the tor control server
+tor_control_address = "/ip4/127.0.0.1/tcp/9051"
+# Authentication to use for the tor control server
+tor_control_auth = "none" # or "password=xxxxxx"
+# The onion port to use.
+#tor_onion_port = 18141
+# The address to which traffic on the node's onion address will be forwarded
+# tor_forward_address = "/ip4/127.0.0.1/tcp/0"
+# Instead of attemping to get the SOCKS5 address from the tor control port, use this one. The default is to
+# use the first address returned by the tor control port (GETINFO /net/listeners/socks).
+#tor_socks_address_override=
+
+# Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
+#transport = "socks5"
+# The address of the SOCKS5 proxy
+#socks5_proxy_address = "/ip4/127.0.0.1/tcp/9050"
+# The address to which traffic will be forwarded
+#socks5_listener_address = "/ip4/127.0.0.1/tcp/18188"
+#socks5_auth = "none" # or "username_password=username:xxxxxxx"
+
+# Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
+# Use cases include:
+# - allowing wallets to locally connect to their base node, rather than through tor, when used in conjunction with `tor_proxy_bypass_addresses`
+# - multiple P2P addresses, one public over DNS and one private over TOR
+# - a "bridge" between TOR and TCP-only nodes
+# auxilary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
+
+# When these addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
+# direcly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
+# tor_proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
 
 ########################################################################################################################
 #                                                                                                                      #
@@ -171,14 +244,10 @@ scan_for_utxo_interval=60
 # no-one is cheating you out of your money.
 
 [base_node]
-
-# Select the network to connect to. Valid options are:
-#   mainnet - the "real" Tari network (default)
-#   weatherwax - the Tari test net
-network = "weatherwax"
+# Override common.network for base node
+# network = "weatherwax"
 
 # Configuration options for testnet
-
 [base_node.weatherwax]
 # The type of database backend to use. Currently supported options are "memory" and "lmdb". LMDB is recommnded for
 # almost all use cases.
@@ -198,6 +267,10 @@ db_type = "lmdb"
 # is "0", which indicates an archival node without any pruning.
 #pruning_horizon = 0
 
+# The amount of messages that will be permitted in the flood ban timespan of 100s (Default weatherwax = 1000,
+# default mainnet = 10000)
+flood_ban_max_msg_count = 10000
+
 # The relative path to store persistent data
 data_dir = "weatherwax"
 
@@ -208,6 +281,7 @@ data_dir = "weatherwax"
 # new nodes can use to introduce themselves to the network.
 # peer_seeds = ["public_key1::address1", "public_key2::address2",... ]
 peer_seeds = [
+    "98bc76afc1c35ad4651bdc9ef57bbe0655a2ea3cd86c0e19b5fd5890546eb040::/onion3/33izgtjkrlxhxybj6luqowkpiy2wvte43osejnbqyieqtdfhovzghxad:18141", #jozi
     "9a26e910288213d649b26f9a7a7ee51fe2b2a67ff7d42334523463bf4be94312::/onion3/56kq54ylttnbl5ikotqex3oqvtzlxdpn7zlx4v56rvzf4kq7eezlclid:18141", #london
     "6afd5b3c7772ad7d4bb26e0c19668fe04f2d68f99de9e132bee50a6c1846946d::/onion3/may4ajbmcn4dlnzf6fanvqlklxzqiw6qwu6ywqwkjc3bb354rc2i5wid:18141", #ncal
     "8e7beec9becdc44fe6015a00d97a77fa3dbafe65127dcc988df6326bd9fd040d::/onion3/3pise36l4imoopsbjic5rtw67adx7rms6w5pgjmccpdwiqx66j7oqcqd:18141", #nvir
@@ -216,12 +290,12 @@ peer_seeds = [
     "f2ce179fb733725961a5f7e1e45dacdd443dd43ba6237438d6abe344fb717058::/onion3/nvgdmjf4wucgatz7vemzvi2u4sw5o4gyzwuikagpepoj4w7mkii47zid:18141", #stockholm
     "909c0160f4d8e815aba5c2bbccfcceb448877e7b38759fb160f3e9494484d515::/onion3/qw5uxv533sqdn2qoncfyqo35dgecy4rt4x27rexi2her6q6pcpxbm4qd:18141", #sydney
     # backups
-    "0c3fe3c23866ed3827e1cd72aae0c9d364d860d597993104e90d9a9401e52f05::/onion3/2m2xnylrsqbaozsndkbmfisxxbwh2vgvs6oyfak2qah4snnxykrf7zad:18141",
-    "b6b2c8a997ba3500d44b64a3b47203d922d614c01ebd9cad5563dc59086f9938::/onion3/kxtcwaoan6wvdl4wltguo4omo2san2ge727cfoc65hrzuwixprvop5id:18141",
-    "4471cec2b77b1608ff26b8695281e0b4ab35bad7f882eeaab043398644094a6c::/onion3/fqmbme5qvagh2tv722nrnwwcd2ooa4aqr43mxgiozo2yq33w74bop5qd:18141",
-    "e427d6007cb46e8c311fc75d2daaa95898a6162ce6a29cb4ab257c2ef70bfd62::/onion3/glicssekriwwwvfm2o5sk2mari4czbd7eklv4lsdn4wmy4ljss2t7zqd:18141",
-    "021baaee838a6c7a21ae3ed74f1cbb27e46351b78f0e00810c1a344a9042754d::/onion3/p2z2ptouqgi3agmw62uhz2tambqfzfdtetrfw443of3jnkkiw44e2zqd:18141",
-    "002a5b9d129401ca250d120b126caf067f8eb7a616252e630b6974da48def71a::/onion3/cldbbow3yzgxkvz4g2apoclrkbvg3mjxdvonoaeej3tarhlzkluodeyd:18141",
+    # "0c3fe3c23866ed3827e1cd72aae0c9d364d860d597993104e90d9a9401e52f05::/onion3/2m2xnylrsqbaozsndkbmfisxxbwh2vgvs6oyfak2qah4snnxykrf7zad:18141",
+    # "b6b2c8a997ba3500d44b64a3b47203d922d614c01ebd9cad5563dc59086f9938::/onion3/kxtcwaoan6wvdl4wltguo4omo2san2ge727cfoc65hrzuwixprvop5id:18141",
+    # "4471cec2b77b1608ff26b8695281e0b4ab35bad7f882eeaab043398644094a6c::/onion3/fqmbme5qvagh2tv722nrnwwcd2ooa4aqr43mxgiozo2yq33w74bop5qd:18141",
+    # "e427d6007cb46e8c311fc75d2daaa95898a6162ce6a29cb4ab257c2ef70bfd62::/onion3/glicssekriwwwvfm2o5sk2mari4czbd7eklv4lsdn4wmy4ljss2t7zqd:18141",
+    # "021baaee838a6c7a21ae3ed74f1cbb27e46351b78f0e00810c1a344a9042754d::/onion3/p2z2ptouqgi3agmw62uhz2tambqfzfdtetrfw443of3jnkkiw44e2zqd:18141",
+    # "002a5b9d129401ca250d120b126caf067f8eb7a616252e630b6974da48def71a::/onion3/cldbbow3yzgxkvz4g2apoclrkbvg3mjxdvonoaeej3tarhlzkluodeyd:18141",
 ]
 
 # This allowlist provides a method to force syncing from any known nodes you may choose, for example if you have a
@@ -319,6 +393,17 @@ base_node_tor_identity_file = "config/base_node_tor.json"
 # A path to the file that stores the console wallet's tor hidden service private key, if using the tor transport.
 console_wallet_tor_identity_file = "config/console_wallet_tor.json"
 
+# Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
+# Use cases include:
+# - allowing wallets to locally connect to their base node, rather than through tor, when used in conjunction with `tor_proxy_bypass_addresses`
+# - multiple P2P addresses, one public over DNS and one private over TOR
+# - a "bridge" between TOR and TCP-only nodes
+# auxilary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
+
+# When these addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
+# direcly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
+# tor_proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
+
 ########################################################################################################################
 #                                                                                                                      #
 #                                             Mempool Configuration Options                                            #
@@ -398,9 +483,10 @@ console_wallet_tor_identity_file = "config/console_wallet_tor.json"
 [merge_mining_proxy.weatherwax]
 
 # URL to monerod
-monerod_url = "http://monero-stagenet.exan.tech:38081" # stagenet
-#monerod_url = "http://18.133.59.45:28081"  # testnet
-#monerod_url = "http://18.132.124.81:18081" # mainnet
+monerod_url = "http://monero-stagenet.exan.tech:38081"  # stagenet
+#monerod_url = "http://18.133.59.45:28081"               # testnet
+#monerod_url = "http://18.132.124.81:18081"              # mainnet
+#monerod_url = "http://monero.exan.tech:18081"           # mainnet alternative
 
 # Address of the tari_merge_mining_proxy application
 proxy_host_address = "127.0.0.1:7878"
@@ -425,6 +511,11 @@ monerod_password = ""
 # accepted. (Default value = true; will wait for base node initial sync).
 #wait_for_initial_sync_at_startup = true
 
+[stratum_transcoder]
+
+# Address of the tari_stratum_transcoder application
+transcoder_host_address = "127.0.0.1:7879"
+
 [mining_node]
 # Number of mining threads
 # Default: number of logical CPU cores
@@ -448,3 +539,8 @@ monerod_password = ""
 # to true
 # Default: 30 seconds
 #validate_tip_timeout_sec=30
+
+# Stratum Mode configuration
+# mining_pool_address = "miningcore.tarilabs.com:3052"
+# mining_wallet_address = "YOUR_WALLET_PUBLIC_KEY"
+# mining_worker_name = "worker1"

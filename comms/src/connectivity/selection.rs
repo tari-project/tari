@@ -135,8 +135,8 @@ mod test {
         peer_manager::node_id::NodeDistance,
         test_utils::{mocks::create_dummy_peer_connection, node_id, node_identity::build_node_identity},
     };
-    use futures::channel::mpsc;
     use std::iter::repeat_with;
+    use tokio::sync::mpsc;
 
     fn create_pool_with_connections(n: usize) -> (ConnectionPool, Vec<mpsc::Receiver<PeerConnectionRequest>>) {
         let mut pool = ConnectionPool::new();

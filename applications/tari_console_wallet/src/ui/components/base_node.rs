@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::ui::{components::Component, state::AppState};
-use tari_wallet::base_node_service::service::OnlineState;
+use tari_wallet::connectivity_service::OnlineStatus;
 use tui::{
     backend::Backend,
     layout::Rect,
@@ -42,21 +42,22 @@ impl BaseNode {
 impl<B: Backend> Component<B> for BaseNode {
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {
-        let base_node_state = app_state.get_base_node_state();
+        let current_online_status = app_state.get_wallet_connectivity().get_connectivity_status();
 
-        let chain_info = match base_node_state.online {
-            OnlineState::Connecting => Spans::from(vec![
+        let chain_info = match current_online_status {
+            OnlineStatus::Connecting => Spans::from(vec![
                 Span::styled("Chain Tip:", Style::default().fg(Color::Magenta)),
                 Span::raw(" "),
                 Span::styled("Connecting...", Style::default().fg(Color::Reset)),
             ]),
-            OnlineState::Offline => Spans::from(vec![
+            OnlineStatus::Offline => Spans::from(vec![
                 Span::styled("Chain Tip:", Style::default().fg(Color::Magenta)),
                 Span::raw(" "),
                 Span::styled("Offline", Style::default().fg(Color::Red)),
             ]),
-            OnlineState::Online => {
-                if let Some(metadata) = base_node_state.clone().chain_metadata {
+            OnlineStatus::Online => {
+                let base_node_state = app_state.get_base_node_state();
+                if let Some(ref metadata) = base_node_state.chain_metadata {
                     let tip = metadata.height_of_longest_chain();
 
                     let synced = base_node_state.is_synced.unwrap_or_default();
@@ -92,7 +93,7 @@ impl<B: Backend> Component<B> for BaseNode {
                     Spans::from(vec![
                         Span::styled("Chain Tip:", Style::default().fg(Color::Magenta)),
                         Span::raw(" "),
-                        Span::styled("Error", Style::default().fg(Color::Red)),
+                        Span::styled("Waiting for data...", Style::default().fg(Color::DarkGray)),
                     ])
                 }
             },

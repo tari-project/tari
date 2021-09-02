@@ -33,7 +33,7 @@ use futures::future;
 use log::*;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{connectivity::ConnectivityRequester, NodeIdentity};
-use tari_core::transactions::types::CryptoFactories;
+use tari_core::transactions::CryptoFactories;
 use tari_service_framework::{
     async_trait,
     reply_channel,
@@ -105,7 +105,7 @@ where T: WalletBackend + 'static
 
             let scanning_service = UtxoScannerService::<T>::builder()
                 .with_peers(vec![])
-                .with_retry_limit(10)
+                .with_retry_limit(2)
                 .with_scanning_interval(interval)
                 .with_mode(UtxoScannerMode::Scanning)
                 .build_with_resources(

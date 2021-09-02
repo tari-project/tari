@@ -23,7 +23,6 @@
 use crate::store_forward::{StoreAndForwardRequest, StoreAndForwardRequester, StoredMessage};
 use chrono::Utc;
 use digest::Digest;
-use futures::{channel::mpsc, stream::Fuse, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use std::sync::{
@@ -32,14 +31,17 @@ use std::sync::{
 };
 use tari_comms::types::Challenge;
 use tari_utilities::hex;
-use tokio::{runtime, sync::RwLock};
+use tokio::{
+    runtime,
+    sync::{mpsc, RwLock},
+};
 
 const LOG_TARGET: &str = "comms::dht::discovery_mock";
 
 pub fn create_store_and_forward_mock() -> (StoreAndForwardRequester, StoreAndForwardMockState) {
     let (tx, rx) = mpsc::channel(10);
 
-    let mock = StoreAndForwardMock::new(rx.fuse());
+    let mock = StoreAndForwardMock::new(rx);
     let state = mock.get_shared_state();
     runtime::Handle::current().spawn(mock.run());
     (StoreAndForwardRequester::new(tx), state)
@@ -83,17 +85,19 @@ impl StoreAndForwardMockState {
     }
 
     pub async fn take_calls(&self) -> Vec<String> {
-        self.calls.write().await.drain(..).collect()
+        let calls = self.calls.write().await.drain(..).collect();
+        self.call_count.store(0, Ordering::SeqCst);
+        calls
     }
 }
 
 pub struct StoreAndForwardMock {
-    receiver: Fuse<mpsc::Receiver<StoreAndForwardRequest>>,
+    receiver: mpsc::Receiver<StoreAndForwardRequest>,
     state: StoreAndForwardMockState,
 }
 
 impl StoreAndForwardMock {
-    pub fn new(receiver: Fuse<mpsc::Receiver<StoreAndForwardRequest>>) -> Self {
+    pub fn new(receiver: mpsc::Receiver<StoreAndForwardRequest>) -> Self {
         Self {
             receiver,
             state: StoreAndForwardMockState::new(),
@@ -105,7 +109,7 @@ impl StoreAndForwardMock {
     }
 
     pub async fn run(mut self) {
-        while let Some(req) = self.receiver.next().await {
+        while let Some(req) = self.receiver.recv().await {
             self.handle_request(req).await;
         }
     }
@@ -115,9 +119,16 @@ impl StoreAndForwardMock {
         trace!(target: LOG_TARGET, "StoreAndForwardMock received request {:?}", req);
         self.state.add_call(&req).await;
         match req {
-            FetchMessages(_, reply_tx) => {
+            FetchMessages(request, reply_tx) => {
+                let since = request.since().unwrap();
+
                 let msgs = self.state.stored_messages.read().await;
-                let _ = reply_tx.send(Ok(msgs.clone()));
+
+                let _ = reply_tx.send(Ok(msgs
+                    .clone()
+                    .drain(..)
+                    .filter(|m| m.stored_at >= since.naive_utc())
+                    .collect()));
             },
             InsertMessage(msg, reply_tx) => {
                 self.state.stored_messages.write().await.push(StoredMessage {
@@ -143,6 +154,13 @@ impl StoreAndForwardMock {
             },
             SendStoreForwardRequestToPeer(_) => {},
             SendStoreForwardRequestNeighbours => {},
+            RemoveMessagesOlderThan(threshold) => {
+                self.state
+                    .stored_messages
+                    .write()
+                    .await
+                    .retain(|msg| msg.stored_at >= threshold.naive_utc());
+            },
         }
     }
 }

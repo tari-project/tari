@@ -21,23 +21,26 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::{error::ConnectionManagerError, peer_connection::PeerConnection};
-use crate::{connection_manager::manager::ConnectionManagerEvent, multiaddr::Multiaddr, peer_manager::NodeId};
-use futures::{
-    channel::{mpsc, oneshot},
-    SinkExt,
+use crate::{
+    connection_manager::manager::{ConnectionManagerEvent, ListenerInfo},
+    peer_manager::NodeId,
 };
 use std::sync::Arc;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc, oneshot};
 
 /// Requests which are handled by the ConnectionManagerService
 #[derive(Debug)]
 pub enum ConnectionManagerRequest {
     /// Dial a given peer by node id.
-    DialPeer(NodeId, oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>),
+    DialPeer {
+        node_id: NodeId,
+        reply_tx: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
+        tracing_id: Option<tracing::span::Id>,
+    },
     /// Cancels a pending dial if one exists
     CancelDial(NodeId),
     /// Register a oneshot to get triggered when the node is listening, or has failed to listen
-    NotifyListening(oneshot::Sender<Multiaddr>),
+    NotifyListening(oneshot::Sender<ListenerInfo>),
 }
 
 /// Responsible for constructing requests to the ConnectionManagerService
@@ -71,9 +74,10 @@ impl ConnectionManagerRequester {
     }
 
     /// Attempt to connect to a remote peer
+    #[tracing::instrument(skip(self))]
     pub async fn dial_peer(&mut self, node_id: NodeId) -> Result<PeerConnection, ConnectionManagerError> {
         let (reply_tx, reply_rx) = oneshot::channel();
-        self.send_dial_peer(node_id, reply_tx).await?;
+        self.send_dial_peer(node_id, Some(reply_tx)).await?;
         reply_rx
             .await
             .map_err(|_| ConnectionManagerError::ActorRequestCanceled)?
@@ -89,31 +93,44 @@ impl ConnectionManagerRequester {
     }
 
     /// Send instruction to ConnectionManager to dial a peer and return the result on the given oneshot
+    #[tracing::instrument(skip(self, reply_tx))]
     pub(crate) async fn send_dial_peer(
         &mut self,
         node_id: NodeId,
-        reply_tx: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
+        reply_tx: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
     ) -> Result<(), ConnectionManagerError> {
+        let tracing_id;
+        let reply_tx = if let Some(r) = reply_tx {
+            tracing_id = tracing::Span::current().id();
+            r
+        } else {
+            let (tx, _) = oneshot::channel();
+            tracing_id = None;
+            tx
+        };
         self.sender
-            .send(ConnectionManagerRequest::DialPeer(node_id, reply_tx))
+            .send(ConnectionManagerRequest::DialPeer {
+                node_id,
+                reply_tx,
+                tracing_id,
+            })
             .await
             .map_err(|_| ConnectionManagerError::SendToActorFailed)?;
         Ok(())
     }
 
     /// Send instruction to ConnectionManager to dial a peer without waiting for a result.
+    #[tracing::instrument(skip(self))]
     pub(crate) async fn send_dial_peer_no_reply(&mut self, node_id: NodeId) -> Result<(), ConnectionManagerError> {
-        let (reply_tx, _) = oneshot::channel();
-        self.send_dial_peer(node_id, reply_tx).await?;
+        self.send_dial_peer(node_id, None).await?;
         Ok(())
     }
 
-    /// Return the listening address of this node's listener. This will asynchronously block until the listener has
-    /// initialized and a listening address has been established.
+    /// Return the ListenerInfo for the configured listener once the listener(s) are bound to the socket.
     ///
     /// This is useful when using "assigned port" addresses, such as /ip4/0.0.0.0/tcp/0 or /memory/0 for listening and
     /// you wish to know the final assigned port.
-    pub async fn wait_until_listening(&mut self) -> Result<Multiaddr, ConnectionManagerError> {
+    pub async fn wait_until_listening(&mut self) -> Result<ListenerInfo, ConnectionManagerError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
             .send(ConnectionManagerRequest::NotifyListening(reply_tx))

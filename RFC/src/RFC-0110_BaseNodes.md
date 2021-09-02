@@ -110,18 +110,19 @@ validated and either stored or rejected.
 
 The transaction is validated as follows:
 
-* All inputs to the transaction are valid [UTXO]s.
+* All inputs to the transaction are valid [UTXO]s in the [UTXO] set or are outputs in the current block.
 * No inputs are duplicated.
 * All inputs are able to be spent (they are not time-locked).
 * All inputs are signed by their owners.
 * All outputs have valid [range proof]s.
-* No outputs currently exist in the [UTXO] set.
+* No outputs currently exist in the current [UTXO] set.
 * The transaction does not have [timelocks] applied, limiting it from being mined and added to the blockchain before a
   specified block height or timestamp has been reached.
 * The transaction excess has a valid signature.
 * The [transaction weight] does not exceed the maximum permitted in a single block as defined by consensus.
 * The transaction excess is a valid public key. This proves that:
   $$ \Sigma \left( \mathrm{inputs} - \mathrm{outputs} - \mathrm{fees} \right) = 0 $$.
+* The transaction excess has a unique value across the whole chain.
 * The [Tari script] of each input must execute successfully and return the public key that signs the script signature. 
 * The script offset \\( \so\\) is calculated and verified as per [RFC-0201_TariScript].
 
@@ -154,6 +155,7 @@ When a new block is received, it is passed to the block validation service. The 
     greater than the current chain tip for some preconfigured period.
 * The sum of all excesses is a valid public key. This proves that:
    $$ \Sigma \left( \mathrm{inputs} - \mathrm{outputs} - \mathrm{fees} \right) = 0$$. 
+* That all kernel excess values are unique for that block and the entire chain.
 * Check if a block contains already spent outputs, reject that block.
 * The [Tari script] of every input must execute successfully and return the public key that signs the script signature.
 * The script offset \\( \so\\) is calculated and verified as per [RFC-0201_TariScript]. This prevents [cut-through] from 

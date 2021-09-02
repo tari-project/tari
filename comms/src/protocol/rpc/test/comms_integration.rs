@@ -37,7 +37,7 @@ use crate::{
 use tari_shutdown::Shutdown;
 use tari_test_utils::unpack_enum;
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn run_service() {
     let node_identity1 = build_node_identity(Default::default());
     let rpc_service = MockRpcService::new();

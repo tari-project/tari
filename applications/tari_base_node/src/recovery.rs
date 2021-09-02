@@ -21,14 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use anyhow::anyhow;
-use log::*;
 use std::{
     fs,
     io::{self, Write},
     path::Path,
     sync::Arc,
 };
+
+use anyhow::anyhow;
+use log::*;
+
 use tari_app_utilities::utilities::ExitCodes;
 use tari_common::{configuration::Network, DatabaseType, GlobalConfig};
 use tari_core::{
@@ -42,8 +44,8 @@ use tari_core::{
         Validators,
     },
     consensus::ConsensusManager,
-    proof_of_work::randomx_factory::{RandomXConfig, RandomXFactory},
-    transactions::types::CryptoFactories,
+    proof_of_work::randomx_factory::RandomXFactory,
+    transactions::CryptoFactories,
     validation::{
         block_validators::{BodyOnlyValidator, OrphanBlockValidator},
         header_validator::HeaderValidator,
@@ -94,11 +96,15 @@ pub async fn run_recovery(node_config: &GlobalConfig) -> Result<(), anyhow::Erro
     };
     let rules = ConsensusManager::builder(node_config.network).build();
     let factories = CryptoFactories::default();
-    let randomx_factory = RandomXFactory::new(RandomXConfig::default(), node_config.max_randomx_vms);
+    let randomx_factory = RandomXFactory::new(node_config.max_randomx_vms);
     let validators = Validators::new(
         BodyOnlyValidator::default(),
         HeaderValidator::new(rules.clone()),
-        OrphanBlockValidator::new(rules.clone(), factories.clone()),
+        OrphanBlockValidator::new(
+            rules.clone(),
+            node_config.base_node_bypass_range_proof_verification,
+            factories.clone(),
+        ),
     );
     let db_config = BlockchainDatabaseConfig {
         orphan_storage_capacity: node_config.orphan_storage_capacity,
@@ -173,12 +179,12 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
         db.add_block(Arc::new(block))
             .await
             .map_err(|e| anyhow!("Stopped recovery at height {}, reason: {}", counter, e))?;
-        counter += 1;
-        if counter > max_height {
-            info!(target: LOG_TARGET, "Done with recovery, chain height {}", counter - 1);
+        if counter >= max_height {
+            info!(target: LOG_TARGET, "Done with recovery, chain height {}", counter);
             break;
         }
-        print!("\x1B[{}D\x1B[K", (counter + 1).to_string().chars().count());
+        print!("\x1B[{}D\x1B[K", counter.to_string().len());
+        counter += 1;
     }
     Ok(())
 }

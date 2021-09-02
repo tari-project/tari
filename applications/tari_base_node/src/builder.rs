@@ -20,10 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::bootstrap::BaseNodeBootstrapper;
-use log::*;
 use std::sync::Arc;
-use tari_common::{DatabaseType, GlobalConfig};
+
+use log::*;
+use tokio::sync::watch;
+
+use tari_common::{configuration::Network, DatabaseType, GlobalConfig};
 use tari_comms::{peer_manager::NodeIdentity, protocol::rpc::RpcServerHandle, CommsNode};
 use tari_comms_dht::Dht;
 use tari_core::{
@@ -31,8 +33,8 @@ use tari_core::{
     chain_storage::{create_lmdb_database, BlockchainDatabase, BlockchainDatabaseConfig, LMDBDatabase, Validators},
     consensus::ConsensusManager,
     mempool::{service::LocalMempoolService, Mempool, MempoolConfig},
-    proof_of_work::randomx_factory::{RandomXConfig, RandomXFactory},
-    transactions::types::CryptoFactories,
+    proof_of_work::randomx_factory::RandomXFactory,
+    transactions::CryptoFactories,
     validation::{
         block_validators::{BodyOnlyValidator, OrphanBlockValidator},
         header_validator::HeaderValidator,
@@ -45,10 +47,11 @@ use tari_core::{
         DifficultyCalculator,
     },
 };
-use tari_p2p::auto_update::SoftwareUpdaterHandle;
+use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
-use tokio::sync::watch;
+
+use crate::bootstrap::BaseNodeBootstrapper;
 
 const LOG_TARGET: &str = "c::bn::initialization";
 
@@ -57,6 +60,7 @@ const LOG_TARGET: &str = "c::bn::initialization";
 /// on the comms stack.
 pub struct BaseNodeContext {
     config: Arc<GlobalConfig>,
+    consensus_rules: ConsensusManager,
     blockchain_db: BlockchainDatabase<LMDBDatabase>,
     base_node_comms: CommsNode,
     base_node_dht: Dht,
@@ -66,13 +70,12 @@ pub struct BaseNodeContext {
 impl BaseNodeContext {
     /// Starts the node container. This entails the base node state machine.
     /// This call consumes the NodeContainer instance.
+    #[tracing::instrument(name = "base_node::run", skip(self))]
     pub async fn run(self) {
         info!(target: LOG_TARGET, "Tari base node has STARTED");
 
-        if let Err(e) = self.state_machine().shutdown_signal().await {
-            warn!(target: LOG_TARGET, "Error shutting down Base Node State Machine: {}", e);
-        }
-        info!(target: LOG_TARGET, "Initiating communications stack shutdown");
+        self.state_machine().shutdown_signal().wait().await;
+        info!(target: LOG_TARGET, "Waiting for communications stack shutdown");
 
         self.base_node_comms.wait_until_shutdown().await;
         info!(target: LOG_TARGET, "Communications stack has shutdown");
@@ -96,6 +99,11 @@ impl BaseNodeContext {
     /// Returns the CommsNode.
     pub fn base_node_comms(&self) -> &CommsNode {
         &self.base_node_comms
+    }
+
+    /// Returns the liveness service handle
+    pub fn liveness(&self) -> LivenessHandle {
+        self.base_node_handles.expect_handle()
     }
 
     /// Returns the base node state machine
@@ -126,6 +134,16 @@ impl BaseNodeContext {
     /// Returns a BlockchainDatabase handle
     pub fn blockchain_db(&self) -> BlockchainDatabase<LMDBDatabase> {
         self.blockchain_db.clone()
+    }
+
+    /// Returns the configured network
+    pub fn network(&self) -> Network {
+        self.config.network
+    }
+
+    /// Returns the consensus rules
+    pub fn consensus_rules(&self) -> &ConsensusManager {
+        &self.consensus_rules
     }
 
     /// Return the state machine channel to provide info updates
@@ -201,11 +219,15 @@ async fn build_node_context(
 
     let rules = ConsensusManager::builder(config.network).build();
     let factories = CryptoFactories::default();
-    let randomx_factory = RandomXFactory::new(RandomXConfig::default(), config.max_randomx_vms);
+    let randomx_factory = RandomXFactory::new(config.max_randomx_vms);
     let validators = Validators::new(
         BodyOnlyValidator::default(),
         HeaderValidator::new(rules.clone()),
-        OrphanBlockValidator::new(rules.clone(), factories.clone()),
+        OrphanBlockValidator::new(
+            rules.clone(),
+            config.base_node_bypass_range_proof_verification,
+            factories.clone(),
+        ),
     );
     let db_config = BlockchainDatabaseConfig {
         orphan_storage_capacity: config.orphan_storage_capacity,
@@ -221,7 +243,10 @@ async fn build_node_context(
         cleanup_orphans_at_startup,
     )?;
     let mempool_validator = MempoolValidator::new(vec![
-        Box::new(TxInternalConsistencyValidator::new(factories.clone())),
+        Box::new(TxInternalConsistencyValidator::new(
+            factories.clone(),
+            config.base_node_bypass_range_proof_verification,
+        )),
         Box::new(TxInputAndMaturityValidator::new(blockchain_db.clone())),
         Box::new(TxConsensusValidator::new(blockchain_db.clone())),
     ]);
@@ -247,6 +272,7 @@ async fn build_node_context(
 
     Ok(BaseNodeContext {
         config,
+        consensus_rules: rules,
         blockchain_db,
         base_node_comms,
         base_node_dht,

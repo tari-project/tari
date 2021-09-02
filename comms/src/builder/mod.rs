@@ -51,10 +51,9 @@ use crate::{
     tor,
     types::CommsDatabase,
 };
-use futures::channel::mpsc;
 use std::{fs::File, sync::Arc};
 use tari_shutdown::ShutdownSignal;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 
 /// The `CommsBuilder` provides a simple builder API for getting Tari comms p2p messaging up and running.
 pub struct CommsBuilder {
@@ -142,6 +141,11 @@ impl CommsBuilder {
 
     pub fn with_listener_address(mut self, listener_address: Multiaddr) -> Self {
         self.connection_manager_config.listener_address = listener_address;
+        self
+    }
+
+    pub fn with_auxilary_tcp_listener_address(mut self, listener_address: Multiaddr) -> Self {
+        self.connection_manager_config.auxilary_tcp_listener_address = Some(listener_address);
         self
     }
 

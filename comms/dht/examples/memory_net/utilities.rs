@@ -22,7 +22,7 @@
 #![allow(clippy::mutex_atomic)]
 
 use crate::memory_net::DrainBurst;
-use futures::{channel::mpsc, future, StreamExt};
+use futures::future;
 use lazy_static::lazy_static;
 use rand::{rngs::OsRng, Rng};
 use std::{
@@ -62,8 +62,13 @@ use tari_storage::{
     lmdb_store::{LMDBBuilder, LMDBConfig},
     LMDBWrapper,
 };
-use tari_test_utils::{paths::create_temporary_data_path, random};
-use tokio::{runtime, sync::broadcast, task, time};
+use tari_test_utils::{paths::create_temporary_data_path, random, streams::convert_unbounded_mpsc_to_stream};
+use tokio::{
+    runtime,
+    sync::{broadcast, mpsc},
+    task,
+    time,
+};
 use tower::ServiceBuilder;
 
 pub type NodeEventRx = mpsc::UnboundedReceiver<(NodeId, NodeId)>;
@@ -154,7 +159,7 @@ pub async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut NodeEvent
                     start.elapsed()
                 );
 
-                time::delay_for(Duration::from_secs(5)).await;
+                time::sleep(Duration::from_secs(5)).await;
                 total_messages += drain_messaging_events(messaging_events_rx, false).await;
             },
             Err(err) => {
@@ -166,7 +171,7 @@ pub async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut NodeEvent
                     err
                 );
 
-                time::delay_for(Duration::from_secs(5)).await;
+                time::sleep(Duration::from_secs(5)).await;
                 total_messages += drain_messaging_events(messaging_events_rx, false).await;
             },
         }
@@ -298,7 +303,7 @@ pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_ind
             let node_name = node.name.clone();
 
             task::spawn(async move {
-                let result = time::timeout(Duration::from_secs(30), ims_rx.next()).await;
+                let result = time::timeout(Duration::from_secs(30), ims_rx.recv()).await;
                 let mut is_success = false;
                 match result {
                     Ok(Some(msg)) => {
@@ -450,21 +455,23 @@ pub async fn do_store_and_forward_message_propagation(
     for (idx, mut s) in neighbour_subs.into_iter().enumerate() {
         let neighbour = neighbours[idx].name.clone();
         task::spawn(async move {
-            let msg = time::timeout(Duration::from_secs(2), s.next()).await;
+            let msg = time::timeout(Duration::from_secs(2), s.recv()).await;
             match msg {
-                Ok(Some(Ok(evt))) => {
+                Ok(Ok(evt)) => {
                     if let MessagingEvent::MessageReceived(_, tag) = &*evt {
                         println!("{} received propagated SAF message ({})", neighbour, tag);
                     }
                 },
-                Ok(_) => {},
+                Ok(Err(err)) => {
+                    println!("{}", err);
+                },
                 Err(_) => println!("{} did not receive the SAF message", neighbour),
             }
         });
     }
 
     banner!("⏰ Waiting a few seconds for messages to propagate around the network...");
-    time::delay_for(Duration::from_secs(5)).await;
+    time::sleep(Duration::from_secs(5)).await;
 
     let mut total_messages = drain_messaging_events(messaging_rx, false).await;
 
@@ -515,7 +522,7 @@ pub async fn do_store_and_forward_message_propagation(
     let mut num_msgs = 0;
     let mut succeeded = 0;
     loop {
-        let result = time::timeout(Duration::from_secs(10), wallet.ims_rx.as_mut().unwrap().next()).await;
+        let result = time::timeout(Duration::from_secs(10), wallet.ims_rx.as_mut().unwrap().recv()).await;
         num_msgs += 1;
         match result {
             Ok(msg) => {
@@ -554,7 +561,9 @@ pub async fn do_store_and_forward_message_propagation(
 }
 
 pub async fn drain_messaging_events(messaging_rx: &mut NodeEventRx, show_logs: bool) -> usize {
-    let drain_fut = DrainBurst::new(messaging_rx);
+    let stream = convert_unbounded_mpsc_to_stream(messaging_rx);
+    tokio::pin!(stream);
+    let drain_fut = DrainBurst::new(&mut stream);
     if show_logs {
         let messages = drain_fut.await;
         let num_messages = messages.len();
@@ -632,7 +641,6 @@ fn connection_manager_logger(
                     node_name, err
                 );
             },
-            Listening(_) | ListenFailed(_) => unreachable!(),
             NewInboundSubstream(node_id, protocol, _) => {
                 println!(
                     "'{}' negotiated protocol '{}' to '{}'",
@@ -695,42 +703,46 @@ impl TestNode {
 
     fn spawn_event_monitor(
         comms: &CommsNode,
-        messaging_events: MessagingEventReceiver,
+        mut messaging_events: MessagingEventReceiver,
         events_tx: mpsc::Sender<Arc<ConnectionManagerEvent>>,
         messaging_events_tx: NodeEventTx,
         quiet_mode: bool,
     ) {
-        let conn_man_event_sub = comms.subscribe_connection_manager_events();
+        let mut conn_man_event_sub = comms.subscribe_connection_manager_events();
         let executor = runtime::Handle::current();
 
-        executor.spawn(
-            conn_man_event_sub
-                .filter(|r| future::ready(r.is_ok()))
-                .map(Result::unwrap)
-                .map(connection_manager_logger(
-                    comms.node_identity().node_id().clone(),
-                    quiet_mode,
-                ))
-                .map(Ok)
-                .forward(events_tx),
-        );
+        let node_id = comms.node_identity().node_id().clone();
+        executor.spawn(async move {
+            let mut logger = connection_manager_logger(node_id, quiet_mode);
+            loop {
+                match conn_man_event_sub.recv().await {
+                    Ok(event) => {
+                        events_tx.send(logger(event)).await.unwrap();
+                    },
+                    Err(broadcast::error::RecvError::Closed) => break,
+                    Err(err) => log::error!("{}", err),
+                }
+            }
+        });
 
         let node_id = comms.node_identity().node_id().clone();
-
-        executor.spawn(
-            messaging_events
-                .filter(|r| future::ready(r.is_ok()))
-                .map(Result::unwrap)
-                .filter_map(move |event| {
-                    use MessagingEvent::*;
-                    future::ready(match &*event {
-                        MessageReceived(peer_node_id, _) => Some((Clone::clone(&*peer_node_id), node_id.clone())),
-                        _ => None,
-                    })
-                })
-                .map(Ok)
-                .forward(messaging_events_tx),
-        );
+        executor.spawn(async move {
+            loop {
+                let event = messaging_events.recv().await;
+                use MessagingEvent::*;
+                match event.as_deref() {
+                    Ok(MessageReceived(peer_node_id, _)) => {
+                        messaging_events_tx
+                            .send((Clone::clone(&*peer_node_id), node_id.clone()))
+                            .unwrap();
+                    },
+                    Err(broadcast::error::RecvError::Closed) => {
+                        break;
+                    },
+                    _ => {},
+                }
+            }
+        });
     }
 
     #[inline]
@@ -750,7 +762,7 @@ impl TestNode {
         }
         use ConnectionManagerEvent::*;
         loop {
-            let event = time::timeout(Duration::from_secs(30), self.conn_man_events_rx.next())
+            let event = time::timeout(Duration::from_secs(30), self.conn_man_events_rx.recv())
                 .await
                 .ok()??;
 
@@ -764,7 +776,7 @@ impl TestNode {
     }
 
     pub async fn shutdown(mut self) {
-        self.shutdown.trigger().unwrap();
+        self.shutdown.trigger();
         self.comms.wait_until_shutdown().await;
     }
 }
@@ -947,5 +959,5 @@ async fn setup_comms_dht(
 
 pub async fn take_a_break(num_nodes: usize) {
     banner!("Taking a break for a few seconds to let things settle...");
-    time::delay_for(Duration::from_millis(num_nodes as u64 * 100)).await;
+    time::sleep(Duration::from_millis(num_nodes as u64 * 100)).await;
 }

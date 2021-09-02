@@ -20,18 +20,27 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{comms_and_services::get_next_memory_address, utils::make_input};
-use tari_core::transactions::transaction::OutputFeatures;
+use std::{panic, path::Path, sync::Arc, time::Duration};
 
 use aes_gcm::{
     aead::{generic_array::GenericArray, NewAead},
     Aes256Gcm,
 };
 use digest::Digest;
-use futures::{FutureExt, StreamExt};
 use rand::rngs::OsRng;
-use std::{panic, path::Path, sync::Arc, time::Duration};
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_crypto::{
+    common::Blake256,
+    inputs,
+    keys::{PublicKey as PublicKeyTrait, SecretKey},
+    script,
+};
+use tempfile::tempdir;
+use tokio::runtime::Runtime;
+
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{PrivateKey, PublicKey},
+};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
@@ -41,13 +50,8 @@ use tari_comms_dht::DhtConfig;
 use tari_core::transactions::{
     helpers::{create_unblinded_output, TestParams},
     tari_amount::{uT, MicroTari},
-    types::{CryptoFactories, PrivateKey, PublicKey},
-};
-use tari_crypto::{
-    common::Blake256,
-    inputs,
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
-    script,
+    transaction::OutputFeatures,
+    CryptoFactories,
 };
 use tari_p2p::{initialization::CommsConfig, transport::TransportType, Network, DEFAULT_DNS_NAME_SERVER};
 use tari_shutdown::{Shutdown, ShutdownSignal};
@@ -70,8 +74,9 @@ use tari_wallet::{
     WalletConfig,
     WalletSqlite,
 };
-use tempfile::tempdir;
-use tokio::{runtime::Runtime, time::delay_for};
+use tokio::time::sleep;
+
+use crate::support::{comms_and_services::get_next_memory_address, utils::make_input};
 
 fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
     Peer::new(
@@ -101,6 +106,7 @@ async fn create_wallet(
         transport_type: TransportType::Memory {
             listener_address: node_identity.public_address(),
         },
+        auxilary_tcp_listener_address: None,
         datastore_path: data_path.to_path_buf(),
         peer_database_name: random::string(8),
         max_concurrent_inbound_tasks: 100,
@@ -162,7 +168,7 @@ async fn create_wallet(
     .await
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 async fn test_wallet() {
     let mut shutdown_a = Shutdown::new();
     let mut shutdown_b = Shutdown::new();
@@ -226,7 +232,7 @@ async fn test_wallet() {
         .await
         .unwrap();
 
-    let mut alice_event_stream = alice_wallet.transaction_service.get_event_stream_fused();
+    let mut alice_event_stream = alice_wallet.transaction_service.get_event_stream();
 
     let value = MicroTari::from(1000);
     let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment);
@@ -244,15 +250,16 @@ async fn test_wallet() {
         .await
         .unwrap();
 
-    let mut delay = delay_for(Duration::from_secs(60)).fuse();
+    let delay = sleep(Duration::from_secs(60));
+    tokio::pin!(delay);
     let mut reply_count = false;
     loop {
-        futures::select! {
-            event = alice_event_stream.select_next_some() => if let TransactionEvent::ReceivedTransactionReply(_) = &*event.unwrap() {
-                        reply_count = true;
-                        break;
-                    },
-            () = delay => {
+        tokio::select! {
+            event = alice_event_stream.recv() => if let TransactionEvent::ReceivedTransactionReply(_) = &*event.unwrap() {
+                reply_count = true;
+                break;
+            },
+            () = &mut delay => {
                 break;
             },
         }
@@ -297,7 +304,7 @@ async fn test_wallet() {
     }
 
     drop(alice_event_stream);
-    shutdown_a.trigger().unwrap();
+    shutdown_a.trigger();
     alice_wallet.wait_until_shutdown().await;
 
     let connection =
@@ -342,7 +349,7 @@ async fn test_wallet() {
 
     alice_wallet.remove_encryption().await.unwrap();
 
-    shutdown_a.trigger().unwrap();
+    shutdown_a.trigger();
     alice_wallet.wait_until_shutdown().await;
 
     let connection =
@@ -378,7 +385,7 @@ async fn test_wallet() {
         .await
         .unwrap();
 
-    shutdown_a.trigger().unwrap();
+    shutdown_a.trigger();
     alice_wallet.wait_until_shutdown().await;
 
     partial_wallet_backup(current_wallet_path.clone(), backup_wallet_path.clone())
@@ -399,12 +406,12 @@ async fn test_wallet() {
     let master_secret_key = backup_wallet_db.get_master_secret_key().await.unwrap();
     assert!(master_secret_key.is_none());
 
-    shutdown_b.trigger().unwrap();
+    shutdown_b.trigger();
 
     bob_wallet.wait_until_shutdown().await;
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 async fn test_do_not_overwrite_master_key() {
     let factories = CryptoFactories::default();
     let dir = tempdir().unwrap();
@@ -422,7 +429,7 @@ async fn test_do_not_overwrite_master_key() {
     )
     .await
     .unwrap();
-    shutdown.trigger().unwrap();
+    shutdown.trigger();
     wallet.wait_until_shutdown().await;
 
     // try to use a new master key to create a wallet using the existing wallet database
@@ -456,7 +463,7 @@ async fn test_do_not_overwrite_master_key() {
     .unwrap();
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 async fn test_sign_message() {
     let factories = CryptoFactories::default();
     let dir = tempdir().unwrap();
@@ -503,6 +510,8 @@ fn test_20_store_and_forward_send_tx() {
 }
 
 #[test]
+#[ignore = "Flakey on CI, theory is that it is due to SAF neighbourhoods. Retry after Kademlia style neighbourhoods \
+            are included"]
 fn test_store_and_forward_send_tx() {
     let mut shutdown_a = Shutdown::new();
     let mut shutdown_b = Shutdown::new();
@@ -513,9 +522,9 @@ fn test_store_and_forward_send_tx() {
     let bob_db_tempdir = tempdir().unwrap();
     let carol_db_tempdir = tempdir().unwrap();
 
-    let mut alice_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
-    let mut bob_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
-    let mut carol_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
+    let alice_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
+    let bob_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
+    let carol_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
 
     let mut alice_wallet = alice_runtime
         .block_on(create_wallet(
@@ -551,7 +560,7 @@ fn test_store_and_forward_send_tx() {
         ))
         .unwrap();
     let carol_identity = (*carol_wallet.comms.node_identity()).clone();
-    shutdown_c.trigger().unwrap();
+    shutdown_c.trigger();
     carol_runtime.block_on(carol_wallet.wait_until_shutdown());
 
     alice_runtime
@@ -588,13 +597,13 @@ fn test_store_and_forward_send_tx() {
         .unwrap();
 
     // Waiting here for a while to make sure the discovery retry is over
-    alice_runtime.block_on(async { delay_for(Duration::from_secs(60)).await });
+    alice_runtime.block_on(async { sleep(Duration::from_secs(60)).await });
 
     alice_runtime
         .block_on(alice_wallet.transaction_service.cancel_transaction(tx_id))
         .unwrap();
 
-    alice_runtime.block_on(async { delay_for(Duration::from_secs(60)).await });
+    alice_runtime.block_on(async { sleep(Duration::from_secs(60)).await });
 
     let carol_wallet = carol_runtime
         .block_on(create_wallet(
@@ -607,7 +616,7 @@ fn test_store_and_forward_send_tx() {
         ))
         .unwrap();
 
-    let mut carol_event_stream = carol_wallet.transaction_service.get_event_stream_fused();
+    let mut carol_event_stream = carol_wallet.transaction_service.get_event_stream();
 
     carol_runtime
         .block_on(carol_wallet.comms.peer_manager().add_peer(create_peer(
@@ -620,13 +629,14 @@ fn test_store_and_forward_send_tx() {
         .unwrap();
 
     carol_runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let delay = sleep(Duration::from_secs(60));
+        tokio::pin!(delay);
 
         let mut tx_recv = false;
         let mut tx_cancelled = false;
         loop {
-            futures::select! {
-                event = carol_event_stream.select_next_some() => {
+            tokio::select! {
+                event = carol_event_stream.recv() => {
                     match &*event.unwrap() {
                         TransactionEvent::ReceivedTransaction(_) => tx_recv = true,
                         TransactionEvent::TransactionCancelled(_) => tx_cancelled = true,
@@ -636,7 +646,7 @@ fn test_store_and_forward_send_tx() {
                         break;
                     }
                 },
-                () = delay => {
+                () = &mut delay => {
                     break;
                 },
             }
@@ -644,15 +654,15 @@ fn test_store_and_forward_send_tx() {
         assert!(tx_recv, "Must have received a tx from alice");
         assert!(tx_cancelled, "Must have received a cancel tx from alice");
     });
-    shutdown_a.trigger().unwrap();
-    shutdown_b.trigger().unwrap();
-    shutdown_c2.trigger().unwrap();
+    shutdown_a.trigger();
+    shutdown_b.trigger();
+    shutdown_c2.trigger();
     alice_runtime.block_on(alice_wallet.wait_until_shutdown());
     bob_runtime.block_on(bob_wallet.wait_until_shutdown());
     carol_runtime.block_on(carol_wallet.wait_until_shutdown());
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 async fn test_import_utxo() {
     let shutdown = Shutdown::new();
     let factories = CryptoFactories::default();
@@ -675,6 +685,7 @@ async fn test_import_utxo() {
             listener_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             tor_socks_config: None,
         },
+        auxilary_tcp_listener_address: None,
         datastore_path: temp_dir.path().to_path_buf(),
         peer_database_name: random::string(8),
         max_concurrent_inbound_tasks: 100,
@@ -751,94 +762,6 @@ async fn test_import_utxo() {
     assert_eq!(completed_tx.amount, 20000 * uT);
     let stored_utxo = alice_wallet.output_manager_service.get_unspent_outputs().await.unwrap()[0].clone();
     assert_eq!(stored_utxo, utxo);
-}
-
-#[cfg(feature = "test_harness")]
-#[tokio_macros::test]
-async fn test_data_generation() {
-    let mut shutdown = Shutdown::new();
-    use tari_wallet::testnet_utils::generate_wallet_test_data;
-    let factories = CryptoFactories::default();
-    let node_id = NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
-    let temp_dir = tempdir().unwrap();
-    let comms_config = CommsConfig {
-        network: Network::Weatherwax,
-        node_identity: Arc::new(node_id.clone()),
-        transport_type: TransportType::Memory {
-            listener_address: node_id.public_address(),
-        },
-        datastore_path: temp_dir.path().to_path_buf(),
-        peer_database_name: random::string(8),
-        max_concurrent_inbound_tasks: 100,
-        outbound_buffer_size: 100,
-        dht: DhtConfig {
-            discovery_request_timeout: Duration::from_millis(500),
-            allow_test_addresses: true,
-            ..Default::default()
-        },
-        allow_test_addresses: true,
-        listener_liveness_allowlist_cidrs: Vec::new(),
-        listener_liveness_max_sessions: 0,
-        user_agent: "tari/test-wallet".to_string(),
-        dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
-        peer_seeds: Default::default(),
-        dns_seeds: Default::default(),
-        dns_seeds_use_dnssec: false,
-    };
-
-    let config = WalletConfig::new(
-        comms_config,
-        factories,
-        None,
-        None,
-        Network::Weatherwax.into(),
-        None,
-        None,
-        None,
-        None,
-    );
-
-    let (db, transaction_backend, oms_backend, contacts_backend, _temp_dir) = make_wallet_databases(None);
-
-    let metadata = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
-
-    db.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(metadata)))
-        .unwrap();
-
-    let mut wallet = Wallet::start(
-        config,
-        WalletDatabase::new(db),
-        transaction_backend.clone(),
-        oms_backend,
-        contacts_backend,
-        shutdown.to_signal(),
-        None,
-    )
-    .await
-    .unwrap();
-
-    generate_wallet_test_data(&mut wallet, temp_dir.path(), transaction_backend)
-        .await
-        .unwrap();
-
-    let contacts = wallet.contacts_service.get_contacts().await.unwrap();
-    assert!(!contacts.is_empty());
-
-    let balance = wallet.output_manager_service.get_balance().await.unwrap();
-    assert!(balance.available_balance > MicroTari::from(0));
-
-    // TODO Put this back when the new comms goes in and we use the new Event bus
-    //    let outbound_tx = wallet
-    //        .runtime
-    //        .block_on(wallet.transaction_service.get_pending_outbound_transactions())
-    //        .unwrap();
-    //    assert!(outbound_tx.len() > 0);
-
-    let completed_tx = wallet.transaction_service.get_completed_transactions().await.unwrap();
-    assert!(!completed_tx.is_empty());
-
-    shutdown.trigger().unwrap();
-    wallet.wait_until_shutdown().await;
 }
 
 #[test]

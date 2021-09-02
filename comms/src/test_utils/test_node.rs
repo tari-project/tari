@@ -27,19 +27,19 @@ use crate::{
     noise::NoiseConfig,
     peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
     protocol::Protocols,
-    runtime,
-    transports::MemoryTransport,
+    transports::Transport,
 };
-use futures::channel::mpsc;
 use rand::rngs::OsRng;
 use std::{sync::Arc, time::Duration};
 use tari_shutdown::ShutdownSignal;
 use tari_storage::HashmapDatabase;
-use tokio::sync::broadcast;
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::{broadcast, mpsc},
+};
 
 #[derive(Clone, Debug)]
 pub struct TestNodeConfig {
-    pub transport: MemoryTransport,
     pub dial_backoff_duration: Duration,
     pub connection_manager_config: ConnectionManagerConfig,
     pub node_identity: Arc<NodeIdentity>,
@@ -54,8 +54,8 @@ impl Default for TestNodeConfig {
         ));
 
         Self {
-            transport: MemoryTransport,
             connection_manager_config: ConnectionManagerConfig {
+                allow_test_addresses: true,
                 listener_address: "/memory/0".parse().unwrap(),
                 ..Default::default()
             },
@@ -65,12 +65,17 @@ impl Default for TestNodeConfig {
     }
 }
 
-pub fn build_connection_manager(
+pub fn build_connection_manager<TTransport>(
     config: TestNodeConfig,
+    transport: TTransport,
     peer_manager: Arc<PeerManager>,
     protocols: Protocols<Substream>,
     shutdown: ShutdownSignal,
-) -> ConnectionManagerRequester {
+) -> ConnectionManagerRequester
+where
+    TTransport: Transport + Unpin + Send + Sync + Clone + 'static,
+    TTransport::Output: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static,
+{
     let noise_config = NoiseConfig::new(config.node_identity.clone());
     let (request_tx, request_rx) = mpsc::channel(10);
     let (event_tx, _) = broadcast::channel(100);
@@ -79,7 +84,7 @@ pub fn build_connection_manager(
 
     let mut connection_manager = ConnectionManager::new(
         config.connection_manager_config,
-        config.transport,
+        transport,
         noise_config,
         ConstantBackoff::new(config.dial_backoff_duration),
         request_rx,
@@ -90,7 +95,7 @@ pub fn build_connection_manager(
     );
     connection_manager.add_protocols(protocols);
 
-    runtime::current().spawn(connection_manager.run());
+    connection_manager.spawn();
 
     requester
 }

@@ -167,13 +167,15 @@ class TransactionBuilder {
       flags: 0,
       maturity: 0,
     };
-    let key = Math.floor(Math.random() * 500 + 1);
+    let key = Math.floor(Math.random() * 500000000000 + 1);
     let privateKey = Buffer.from(toLittleEndian(key, 256)).toString("hex");
-    let scriptKey = Math.floor(Math.random() * 500 + 1);
+    let scriptKey = Math.floor(Math.random() * 500000000000 + 1);
     let scriptPrivateKey = Buffer.from(toLittleEndian(scriptKey, 256)).toString(
       "hex"
     );
-    let scriptOffsetPrivateKeyNum = Math.floor(Math.random() * 500 + 1);
+    let scriptOffsetPrivateKeyNum = Math.floor(
+      Math.random() * 500000000000 + 1
+    );
     let scriptOffsetPrivateKey = Buffer.from(
       toLittleEndian(scriptOffsetPrivateKeyNum, 256)
     ).toString("hex");
@@ -339,7 +341,9 @@ class TransactionBuilder {
       flags: 1,
       maturity: lockHeight,
     };
-    let scriptOffsetPrivateKeyNum = Math.floor(Math.random() * 500 + 1);
+    let scriptOffsetPrivateKeyNum = Math.floor(
+      Math.random() * 500000000000 + 1
+    );
     let scriptOffsetPrivateKey = Buffer.from(
       toLittleEndian(scriptOffsetPrivateKeyNum, 256)
     ).toString("hex");

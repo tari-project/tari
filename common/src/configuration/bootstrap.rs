@@ -59,6 +59,7 @@ use crate::{
     DEFAULT_CONFIG,
     DEFAULT_MERGE_MINING_PROXY_LOG_CONFIG,
     DEFAULT_MINING_NODE_LOG_CONFIG,
+    DEFAULT_STRATUM_TRANSCODER_LOG_CONFIG,
     DEFAULT_WALLET_LOG_CONFIG,
 };
 use std::{
@@ -100,9 +101,9 @@ pub struct ConfigBootstrap {
     /// Create and save new node identity if one doesn't exist
     #[structopt(long, alias = "create_id")]
     pub create_id: bool,
-    /// Run in daemon mode, with no interface
-    #[structopt(short, long, alias = "daemon")]
-    pub daemon_mode: bool,
+    /// Run in non-interactive mode, with no UI.
+    #[structopt(short, long, alias = "non-interactive")]
+    pub non_interactive_mode: bool,
     /// This will rebuild the db, adding block for block in
     #[structopt(long, alias = "rebuild_db")]
     pub rebuild_db: bool,
@@ -145,6 +146,11 @@ pub struct ConfigBootstrap {
     pub miner_min_diff: Option<u64>,
     #[structopt(long, alias = "max-difficulty")]
     pub miner_max_diff: Option<u64>,
+    #[structopt(long, alias = "tracing")]
+    pub tracing_enabled: bool,
+    /// Supply a network (overrides existing configuration)
+    #[structopt(long, alias = "network")]
+    pub network: Option<String>,
 }
 
 fn normalize_path(path: PathBuf) -> PathBuf {
@@ -163,7 +169,7 @@ impl Default for ConfigBootstrap {
             log_config: normalize_path(dir_utils::default_path(DEFAULT_BASE_NODE_LOG_CONFIG, None)),
             init: false,
             create_id: false,
-            daemon_mode: false,
+            non_interactive_mode: false,
             rebuild_db: false,
             input_file: None,
             command: None,
@@ -179,6 +185,8 @@ impl Default for ConfigBootstrap {
             miner_max_blocks: None,
             miner_min_diff: None,
             miner_max_diff: None,
+            tracing_enabled: false,
+            network: None,
         }
     }
 }
@@ -227,6 +235,12 @@ impl ConfigBootstrap {
                 ApplicationType::MergeMiningProxy => {
                     self.log_config = normalize_path(dir_utils::default_path(
                         DEFAULT_MERGE_MINING_PROXY_LOG_CONFIG,
+                        Some(&self.base_path),
+                    ))
+                },
+                ApplicationType::StratumTranscoder => {
+                    self.log_config = normalize_path(dir_utils::default_path(
+                        DEFAULT_STRATUM_TRANSCODER_LOG_CONFIG,
                         Some(&self.base_path),
                     ))
                 },
@@ -285,6 +299,10 @@ impl ConfigBootstrap {
                         &self.log_config,
                         logging::install_default_merge_mining_proxy_logfile_config,
                     ),
+                    ApplicationType::StratumTranscoder => install_configuration(
+                        &self.log_config,
+                        logging::install_default_stratum_transcoder_logfile_config,
+                    ),
                     ApplicationType::MiningNode => {
                         install_configuration(&self.log_config, logging::install_default_mining_node_logfile_config)
                     },
@@ -313,7 +331,7 @@ impl ConfigBootstrap {
     }
 }
 
-fn prompt(question: &str) -> bool {
+pub fn prompt(question: &str) -> bool {
     println!("{}", question);
     let mut input = "".to_string();
     io::stdin().read_line(&mut input).unwrap();
@@ -338,6 +356,7 @@ pub enum ApplicationType {
     ConsoleWallet,
     MergeMiningProxy,
     MiningNode,
+    StratumTranscoder,
     DanNode
 }
 
@@ -349,17 +368,19 @@ impl ApplicationType {
             ConsoleWallet => "Tari Console Wallet",
             MergeMiningProxy => "Tari Merge Mining Proxy",
             MiningNode => "Tari Mining Node",
-            DanNode => "Digital Assets Network Node"
+            DanNode => "Digital Assets Network Node",
+            StratumTranscoder => "Tari Stratum Transcoder",
         }
     }
 
-    pub const fn as_tag_str(&self) -> &'static str {
+    pub const fn as_config_str(&self) -> &'static str {
         use ApplicationType::*;
         match self {
-            BaseNode => "base-node",
-            ConsoleWallet => "console-wallet",
-            MergeMiningProxy => "mm-proxy",
+            BaseNode => "base_node",
+            ConsoleWallet => "wallet",
+            MergeMiningProxy => "merge_mining_proxy",
             MiningNode => "miner",
+            StratumTranscoder => "stratum-transcoder",
             DanNode =>"dan-node"
         }
     }
@@ -371,11 +392,12 @@ impl FromStr for ApplicationType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         use ApplicationType::*;
         match s {
-            "base-node" => Ok(BaseNode),
-            "console-wallet" => Ok(ConsoleWallet),
-            "mm-proxy" => Ok(MergeMiningProxy),
+            "base-node" | "base_node" => Ok(BaseNode),
+            "console-wallet" | "console_wallet" => Ok(ConsoleWallet),
+            "mm-proxy" | "mm_proxy" => Ok(MergeMiningProxy),
             "miner" => Ok(MiningNode),
             "dan-node" => Ok(DanNode),
+            "stratum-proxy" => Ok(StratumTranscoder),
             _ => Err(ConfigError::new("Invalid ApplicationType", None)),
         }
     }

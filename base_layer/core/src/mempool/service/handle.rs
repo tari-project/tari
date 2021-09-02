@@ -28,8 +28,9 @@ use crate::{
         StatsResponse,
         TxStorageResponse,
     },
-    transactions::{transaction::Transaction, types::Signature},
+    transactions::transaction::Transaction,
 };
+use tari_common_types::types::Signature;
 use tari_service_framework::{reply_channel::TrySenderService, Service};
 
 #[derive(Clone)]

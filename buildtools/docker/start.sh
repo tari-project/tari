@@ -4,8 +4,11 @@
 #  script to run tor, sleep 15 seconds and start the base node
 #
 
+# ToDo:
+#  Add tor running check
 tor &
 sleep 15
+
 TARI_CONFIG=~/.tari/config/config.toml
 if [[ ! -f $TARI_CONFIG ]]; then
   tari_base_node --init --create-id

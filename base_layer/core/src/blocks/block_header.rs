@@ -39,11 +39,7 @@
 
 #[cfg(feature = "base_node")]
 use crate::blocks::{BlockBuilder, NewBlockHeaderTemplate};
-
-use crate::{
-    proof_of_work::{PowAlgorithm, PowError, ProofOfWork},
-    transactions::types::{BlindingFactor, HashDigest},
-};
+use crate::proof_of_work::{PowAlgorithm, PowError, ProofOfWork};
 use chrono::{DateTime, Utc};
 use digest::Digest;
 use serde::{
@@ -57,7 +53,7 @@ use std::{
     fmt,
     fmt::{Display, Error, Formatter},
 };
-use tari_common_types::types::{BlockHash, BLOCK_HASH_LENGTH};
+use tari_common_types::types::{BlindingFactor, BlockHash, HashDigest, BLOCK_HASH_LENGTH};
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
 use thiserror::Error;
 
@@ -96,7 +92,7 @@ pub struct BlockHeader {
     /// This is calculated as Hash (txo MMR root  || roaring bitmap hash of UTXO indices)
     #[serde(with = "hash_serializer")]
     pub output_mr: BlockHash,
-    /// This is the MMR root of the range proofs
+    /// This is the MMR root of the witness proofs
     #[serde(with = "hash_serializer")]
     pub witness_mr: BlockHash,
     /// The size (number  of leaves) of the output and range proof MMRs at the time of this header
@@ -283,7 +279,7 @@ impl Display for BlockHeader {
         )?;
         writeln!(
             fmt,
-            "Merkle roots:\nInputs: {},\n Outputs: {} ({})\nRange proofs: {}\nKernels: {} ({})\n",
+            "Merkle roots:\nInputs: {},\n Outputs: {} ({})\nWitness: {}\nKernels: {} ({})\n",
             self.input_mr.to_hex(),
             self.output_mr.to_hex(),
             self.output_mmr_size,

@@ -6,13 +6,13 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.8.11"
+version = "0.9.6"
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-futures = "^0.3.1"
+futures = "^0.3"
 
 [dev-dependencies]
-tokio = {version="^0.2", features=["rt-core"]}
+tokio = {version="1", default-features = false, features = ["rt", "macros"]}

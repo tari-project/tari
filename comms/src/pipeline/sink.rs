@@ -21,8 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::PipelineError;
-use futures::{task::Context, Future, Sink, SinkExt};
-use std::{pin::Pin, task::Poll};
+use futures::{future::BoxFuture, task::Context, FutureExt};
+use std::task::Poll;
 use tower::Service;
 
 /// A service which forwards and messages it gets to the given Sink
@@ -35,22 +35,24 @@ impl<TSink> SinkService<TSink> {
     }
 }
 
-impl<T, TSink> Service<T> for SinkService<TSink>
-where
-    TSink: Sink<T> + Unpin + Clone + 'static,
-    TSink::Error: Into<PipelineError> + Send + Sync + 'static,
+impl<T> Service<T> for SinkService<tokio::sync::mpsc::Sender<T>>
+where T: Send + 'static
 {
     type Error = PipelineError;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
     type Response = ();
 
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
-
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Pin::new(&mut self.0).poll_ready(cx).map_err(Into::into)
+    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
     }
 
     fn call(&mut self, item: T) -> Self::Future {
-        let mut sink = self.0.clone();
-        async move { sink.send(item).await.map_err(Into::into) }
+        let sink = self.0.clone();
+        async move {
+            sink.send(item)
+                .await
+                .map_err(|_| anyhow::anyhow!("sink closed in sink service"))
+        }
+        .boxed()
     }
 }

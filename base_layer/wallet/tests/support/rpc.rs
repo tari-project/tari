@@ -25,12 +25,15 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
+use tari_common_types::types::Signature;
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 use tari_core::{
     base_node::{
         proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
         rpc::BaseNodeWalletService,
     },
+    blocks::BlockHeader,
+    proto,
     proto::{
         base_node::{
             ChainMetadata,
@@ -50,12 +53,9 @@ use tari_core::{
         },
     },
     tari_utilities::Hashable,
-    transactions::{
-        transaction::{Transaction, TransactionOutput},
-        types::Signature,
-    },
+    transactions::transaction::{Transaction, TransactionOutput},
 };
-use tokio::time::delay_for;
+use tokio::time::sleep;
 
 /// This macro unlocks a Mutex or RwLock. If the lock is
 /// poisoned (i.e. panic while unlocked) the last value
@@ -86,6 +86,7 @@ pub struct BaseNodeWalletRpcMockState {
     fetch_utxos_calls: Arc<Mutex<Vec<Vec<Vec<u8>>>>>,
     response_delay: Arc<Mutex<Option<Duration>>>,
     rpc_status_error: Arc<Mutex<Option<RpcStatus>>>,
+    get_header_response: Arc<Mutex<Option<BlockHeader>>>,
     synced: Arc<Mutex<bool>>,
     utxos: Arc<Mutex<Vec<TransactionOutput>>>,
 }
@@ -114,14 +115,14 @@ impl BaseNodeWalletRpcMockState {
                     height_of_longest_chain: Some(std::u64::MAX),
                     best_block: Some(Vec::new()),
                     accumulated_difficulty: Vec::new(),
-                    pruning_horizon: 0,
-                    effective_pruned_height: 0,
+                    pruned_height: 0,
                 }),
                 is_synced: true,
             })),
             fetch_utxos_calls: Arc::new(Mutex::new(Vec::new())),
             response_delay: Arc::new(Mutex::new(None)),
             rpc_status_error: Arc::new(Mutex::new(None)),
+            get_header_response: Arc::new(Mutex::new(None)),
             synced: Arc::new(Mutex::new(true)),
             utxos: Arc::new(Mutex::new(Vec::new())),
         }
@@ -209,7 +210,7 @@ impl BaseNodeWalletRpcMockState {
                 return Ok((*lock).drain(..num_calls).collect());
             }
             drop(lock);
-            delay_for(Duration::from_millis(100)).await;
+            sleep(Duration::from_millis(100)).await;
         }
         Err(format!(
             "Did not receive enough calls within the timeout period, received {}, expected {}.",
@@ -231,7 +232,7 @@ impl BaseNodeWalletRpcMockState {
                 return Ok((*lock).drain(..num_calls).collect());
             }
             drop(lock);
-            delay_for(Duration::from_millis(100)).await;
+            sleep(Duration::from_millis(100)).await;
         }
         Err(format!(
             "Did not receive enough calls within the timeout period, received {}, expected {}.",
@@ -253,7 +254,7 @@ impl BaseNodeWalletRpcMockState {
                 return Ok((*lock).drain(..num_calls).collect());
             }
             drop(lock);
-            delay_for(Duration::from_millis(100)).await;
+            sleep(Duration::from_millis(100)).await;
         }
         Err(format!(
             "Did not receive enough calls within the timeout period, received {}, expected {}.",
@@ -273,7 +274,7 @@ impl BaseNodeWalletRpcMockState {
                 return Ok((*lock).drain(..num_calls).collect());
             }
             drop(lock);
-            delay_for(Duration::from_millis(100)).await;
+            sleep(Duration::from_millis(100)).await;
         }
         Err("Did not receive enough calls within the timeout period".to_string())
     }
@@ -315,7 +316,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
     ) -> Result<Response<TxSubmissionResponseProto>, RpcStatus> {
         let delay_lock = *acquire_lock!(self.state.response_delay);
         if let Some(delay) = delay_lock {
-            delay_for(delay).await;
+            sleep(delay).await;
         }
 
         let message = request.into_message();
@@ -342,7 +343,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
     ) -> Result<Response<TxQueryResponseProto>, RpcStatus> {
         let delay_lock = *acquire_lock!(self.state.response_delay);
         if let Some(delay) = delay_lock {
-            delay_for(delay).await;
+            sleep(delay).await;
         }
 
         let message = request.into_message();
@@ -368,7 +369,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
     ) -> Result<Response<TxQueryBatchResponsesProto>, RpcStatus> {
         let delay_lock = *acquire_lock!(self.state.response_delay);
         if let Some(delay) = delay_lock {
-            delay_for(delay).await;
+            sleep(delay).await;
         }
 
         let message = request.into_message();
@@ -412,7 +413,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
     ) -> Result<Response<FetchUtxosResponse>, RpcStatus> {
         let delay_lock = *acquire_lock!(self.state.response_delay);
         if let Some(delay) = delay_lock {
-            delay_for(delay).await;
+            sleep(delay).await;
         }
 
         let message = request.into_message();
@@ -445,7 +446,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
     async fn get_tip_info(&self, _request: Request<()>) -> Result<Response<TipInfoResponse>, RpcStatus> {
         let delay_lock = *acquire_lock!(self.state.response_delay);
         if let Some(delay) = delay_lock {
-            delay_for(delay).await;
+            sleep(delay).await;
         }
 
         log::info!("Get tip info call received");
@@ -459,6 +460,15 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
 
         Ok(Response::new(tip_info_response_lock.clone()))
     }
+
+    async fn get_header(&self, _: Request<u64>) -> Result<Response<proto::core::BlockHeader>, RpcStatus> {
+        let lock = acquire_lock!(self.state.get_header_response);
+        let resp = lock
+            .as_ref()
+            .cloned()
+            .ok_or_else(|| RpcStatus::not_found("get_header_response set to None"))?;
+        Ok(Response::new(resp.into()))
+    }
 }
 
 #[cfg(test)]
@@ -471,17 +481,18 @@ mod test {
     };
 
     use std::convert::TryFrom;
+    use tari_common_types::types::BlindingFactor;
     use tari_core::{
         base_node::{
             proto::wallet_rpc::{TxSubmissionRejectionReason, TxSubmissionResponse},
             rpc::{BaseNodeWalletRpcClient, BaseNodeWalletRpcServer},
         },
         proto::base_node::{ChainMetadata, TipInfoResponse},
-        transactions::{transaction::Transaction, types::BlindingFactor},
+        transactions::transaction::Transaction,
     };
     use tokio::time::Duration;
 
-    #[tokio_macros::test]
+    #[tokio::test]
     async fn test_wallet_rpc_mock() {
         let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
         let client_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
@@ -537,8 +548,7 @@ mod test {
             height_of_longest_chain: Some(444),
             best_block: Some(Vec::new()),
             accumulated_difficulty: Vec::new(),
-            pruning_horizon: 0,
-            effective_pruned_height: 0,
+            pruned_height: 0,
         };
         service_state.set_tip_info_response(TipInfoResponse {
             metadata: Some(chain_metadata),

@@ -19,12 +19,14 @@ use init::{
     WalletBoot,
 };
 use log::*;
+use opentelemetry::{self, global, KeyValue};
 use recovery::prompt_private_key_from_seed_words;
-use std::process;
+use std::{env, process};
 use tari_app_utilities::{consts, initialization::init_configuration, utilities::ExitCodes};
 use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap};
-use tari_core::transactions::types::PrivateKey;
+use tari_common_types::types::PrivateKey;
 use tari_shutdown::Shutdown;
+use tracing_subscriber::{layer::SubscriberExt, Registry};
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::main";
@@ -56,8 +58,7 @@ fn main() {
 }
 
 fn main_inner() -> Result<(), ExitCodes> {
-    let mut runtime = tokio::runtime::Builder::new()
-        .threaded_scheduler()
+    let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .expect("Failed to build a runtime!");
@@ -90,6 +91,7 @@ fn main_inner() -> Result<(), ExitCodes> {
         info!(target: LOG_TARGET, "Default configuration created. Done.");
     }
 
+    enable_tracing_if_specified(&bootstrap);
     // get command line password if provided
     let arg_password = bootstrap.password.clone();
     let seed_words_file_name = bootstrap.seed_words_file_name.clone();
@@ -153,11 +155,8 @@ fn main_inner() -> Result<(), ExitCodes> {
     };
 
     print!("\nShutting down wallet... ");
-    if shutdown.trigger().is_ok() {
-        runtime.block_on(wallet.wait_until_shutdown());
-    } else {
-        error!(target: LOG_TARGET, "No listeners for the shutdown signal!");
-    }
+    shutdown.trigger();
+    runtime.block_on(wallet.wait_until_shutdown());
     println!("Done.");
 
     result
@@ -183,5 +182,24 @@ fn get_recovery_master_key(
         Ok(Some(private_key))
     } else {
         Ok(None)
+    }
+}
+
+fn enable_tracing_if_specified(bootstrap: &ConfigBootstrap) {
+    if bootstrap.tracing_enabled {
+        // To run: docker run -d -p6831:6831/udp -p6832:6832/udp -p16686:16686 -p14268:14268 \
+        // jaegertracing/all-in-one:latest
+        global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
+        let tracer = opentelemetry_jaeger::new_pipeline()
+            .with_service_name("tari::console_wallet")
+            .with_tags(vec![KeyValue::new("pid", process::id().to_string()), KeyValue::new("current_exe", env::current_exe().unwrap().to_str().unwrap_or_default().to_owned())])
+            // TODO: uncomment when using tokio 1
+            // .install_batch(opentelemetry::runtime::Tokio)
+            .install_simple()
+            .unwrap();
+        let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
+        let subscriber = Registry::default().with(telemetry);
+        tracing::subscriber::set_global_default(subscriber)
+            .expect("Tracing could not be set. Try running without `--tracing-enabled`");
     }
 }

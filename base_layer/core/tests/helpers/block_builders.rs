@@ -20,10 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{iter::repeat_with, sync::Arc};
+
 use croaring::Bitmap;
 use rand::{rngs::OsRng, RngCore};
-use std::{iter::repeat_with, sync::Arc};
+use tari_crypto::{
+    keys::PublicKey as PublicKeyTrait,
+    script,
+    tari_utilities::{hash::Hashable, hex::Hex},
+};
+
 use tari_common::configuration::Network;
+use tari_common_types::types::{Commitment, HashDigest, HashOutput, PublicKey};
 use tari_core::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{
@@ -57,14 +65,8 @@ use tari_core::{
             TransactionOutput,
             UnblindedOutput,
         },
-        types::{Commitment, CryptoFactories, HashDigest, HashOutput, PublicKey},
+        CryptoFactories,
     },
-};
-use tari_crypto::{
-    keys::PublicKey as PublicKeyTrait,
-    script,
-    script::TariScript,
-    tari_utilities::{hash::Hashable, hex::Hex},
 };
 use tari_mmr::MutableMmr;
 
@@ -114,8 +116,7 @@ pub fn _create_act_gen_block() {
     let factories = CryptoFactories::default();
     let mut header = BlockHeader::new(consensus_manager.consensus_constants(0).blockchain_version());
     let value = consensus_manager.emission_schedule().block_reward(0);
-    let (mut utxo, key, _) = create_utxo(value, &factories, None, &TariScript::default());
-    utxo.features = OutputFeatures::create_coinbase(1);
+    let (utxo, key, _) = create_utxo(value, &factories, OutputFeatures::create_coinbase(1), &script![Nop]);
     let (pk, sig) = create_random_signature_from_s_key(key.clone(), 0.into(), 0);
     let excess = Commitment::from_public_key(&pk);
     let kernel = KernelBuilder::new()
@@ -289,6 +290,7 @@ pub fn chain_block_with_new_coinbase(
         height + consensus_manager.consensus_constants(0).coinbase_lock_height(),
     );
     let mut header = BlockHeader::from_previous(&prev_block.header());
+    header.height = height;
     header.version = consensus_manager
         .consensus_constants(header.height)
         .blockchain_version();

@@ -48,6 +48,9 @@ pub use error::RpcError;
 mod handshake;
 pub use handshake::{Handshake, RpcHandshakeError};
 
+mod client_pool;
+pub use client_pool::{RpcClientLease, RpcClientPool, RpcClientPoolError, RpcPoolClient};
+
 mod status;
 pub use status::{RpcStatus, RpcStatusCode};
 
@@ -62,6 +65,7 @@ pub mod __macro_reexports {
         framing::CanonicalFraming,
         protocol::{
             rpc::{
+                client_pool::RpcPoolClient,
                 message::{Request, Response},
                 server::{NamedProtocolService, RpcServerError},
                 Body,
@@ -76,6 +80,7 @@ pub mod __macro_reexports {
         },
         Bytes,
     };
-    pub use futures::{future, future::BoxFuture, AsyncRead, AsyncWrite};
+    pub use futures::{future, future::BoxFuture};
+    pub use tokio::io::{AsyncRead, AsyncWrite};
     pub use tower::Service;
 }

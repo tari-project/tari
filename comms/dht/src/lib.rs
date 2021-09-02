@@ -71,7 +71,7 @@
 //! #use std::sync::Arc;
 //! #use tari_comms::CommsBuilder;
 //! #use tokio::runtime::Runtime;
-//! #use futures::channel::mpsc;
+//! #use tokio::sync::mpsc;
 //!
 //! let runtime = Runtime::new().unwrap();
 //! // Channel from comms to inbound dht
@@ -153,11 +153,11 @@ pub use storage::DbConnectionUrl;
 mod dedup;
 pub use dedup::DedupLayer;
 
+mod filter;
 mod logging_middleware;
 mod proto;
 mod rpc;
 mod schema;
-mod tower_filter;
 
 pub mod broadcast_strategy;
 pub mod domain_message;

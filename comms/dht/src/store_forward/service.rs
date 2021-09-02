@@ -36,14 +36,8 @@ use crate::{
     DhtRequester,
 };
 use chrono::{DateTime, NaiveDateTime, Utc};
-use futures::{
-    channel::{mpsc, oneshot},
-    stream::Fuse,
-    SinkExt,
-    StreamExt,
-};
 use log::*;
-use std::{cmp, convert::TryFrom, sync::Arc, time::Duration};
+use std::{convert::TryFrom, sync::Arc, time::Duration};
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityEventRx, ConnectivityRequester},
     peer_manager::{NodeId, PeerFeatures},
@@ -51,7 +45,11 @@ use tari_comms::{
     PeerManager,
 };
 use tari_shutdown::ShutdownSignal;
-use tokio::{task, time};
+use tokio::{
+    sync::{mpsc, oneshot},
+    task,
+    time,
+};
 
 const LOG_TARGET: &str = "comms::dht::storeforward::actor";
 /// The interval to initiate a database cleanup.
@@ -76,7 +74,7 @@ impl FetchStoredMessageQuery {
         }
     }
 
-    pub fn since(&mut self, since: DateTime<Utc>) -> &mut Self {
+    pub fn with_messages_since(&mut self, since: DateTime<Utc>) -> &mut Self {
         self.since = Some(since);
         self
     }
@@ -85,6 +83,10 @@ impl FetchStoredMessageQuery {
         self.response_type = response_type;
         self
     }
+
+    pub fn since(&self) -> Option<DateTime<Utc>> {
+        self.since
+    }
 }
 
 #[derive(Debug)]
@@ -92,6 +94,7 @@ pub enum StoreAndForwardRequest {
     FetchMessages(FetchStoredMessageQuery, oneshot::Sender<SafResult<Vec<StoredMessage>>>),
     InsertMessage(NewStoredMessage, oneshot::Sender<SafResult<bool>>),
     RemoveMessages(Vec<i32>),
+    RemoveMessagesOlderThan(DateTime<Utc>),
     SendStoreForwardRequestToPeer(Box<NodeId>),
     SendStoreForwardRequestNeighbours,
 }
@@ -132,6 +135,14 @@ impl StoreAndForwardRequester {
         Ok(())
     }
 
+    pub async fn remove_messages_older_than(&mut self, threshold: DateTime<Utc>) -> SafResult<()> {
+        self.sender
+            .send(StoreAndForwardRequest::RemoveMessagesOlderThan(threshold))
+            .await
+            .map_err(|_| StoreAndForwardError::RequesterChannelClosed)?;
+        Ok(())
+    }
+
     pub async fn request_saf_messages_from_peer(&mut self, node_id: NodeId) -> SafResult<()> {
         self.sender
             .send(StoreAndForwardRequest::SendStoreForwardRequestToPeer(Box::new(node_id)))
@@ -154,13 +165,13 @@ pub struct StoreAndForwardService {
     dht_requester: DhtRequester,
     database: StoreAndForwardDatabase,
     peer_manager: Arc<PeerManager>,
-    connection_events: Fuse<ConnectivityEventRx>,
+    connection_events: ConnectivityEventRx,
     outbound_requester: OutboundMessageRequester,
-    request_rx: Fuse<mpsc::Receiver<StoreAndForwardRequest>>,
-    shutdown_signal: Option<ShutdownSignal>,
+    request_rx: mpsc::Receiver<StoreAndForwardRequest>,
+    shutdown_signal: ShutdownSignal,
     num_received_saf_responses: Option<usize>,
     num_online_peers: Option<usize>,
-    saf_response_signal_rx: Fuse<mpsc::Receiver<()>>,
+    saf_response_signal_rx: mpsc::Receiver<()>,
     event_publisher: DhtEventSender,
 }
 
@@ -183,13 +194,13 @@ impl StoreAndForwardService {
             database: StoreAndForwardDatabase::new(conn),
             peer_manager,
             dht_requester,
-            request_rx: request_rx.fuse(),
-            connection_events: connectivity.get_event_subscription().fuse(),
+            request_rx,
+            connection_events: connectivity.get_event_subscription(),
             outbound_requester,
-            shutdown_signal: Some(shutdown_signal),
+            shutdown_signal,
             num_received_saf_responses: Some(0),
             num_online_peers: None,
-            saf_response_signal_rx: saf_response_signal_rx.fuse(),
+            saf_response_signal_rx,
             event_publisher,
         }
     }
@@ -200,20 +211,15 @@ impl StoreAndForwardService {
     }
 
     async fn run(mut self) {
-        let mut shutdown_signal = self
-            .shutdown_signal
-            .take()
-            .expect("StoreAndForwardActor initialized without shutdown_signal");
-
-        let mut cleanup_ticker = time::interval(CLEANUP_INTERVAL).fuse();
+        let mut cleanup_ticker = time::interval(CLEANUP_INTERVAL);
 
         loop {
-            futures::select! {
-                request = self.request_rx.select_next_some() => {
+            tokio::select! {
+                Some(request) = self.request_rx.recv() => {
                     self.handle_request(request).await;
                 },
 
-               event = self.connection_events.select_next_some() => {
+               event = self.connection_events.recv() => {
                     if let Ok(event) = event {
                          if let Err(err) = self.handle_connectivity_event(&event).await {
                             error!(target: LOG_TARGET, "Error handling connection manager event: {:?}", err);
@@ -221,20 +227,20 @@ impl StoreAndForwardService {
                     }
                 },
 
-                _ = cleanup_ticker.select_next_some() => {
+                _ = cleanup_ticker.tick() => {
                     if let Err(err) = self.cleanup().await {
                         error!(target: LOG_TARGET, "Error when performing store and forward cleanup: {:?}", err);
                     }
                 },
 
-                _ = self.saf_response_signal_rx.select_next_some() => {
+                Some(_) = self.saf_response_signal_rx.recv() => {
                     if let Some(n) = self.num_received_saf_responses {
                         self.num_received_saf_responses = Some(n + 1);
                         self.check_saf_response_threshold();
                     }
                 },
 
-                _ = shutdown_signal => {
+                _ = self.shutdown_signal.wait() => {
                     info!(target: LOG_TARGET, "StoreAndForwardActor is shutting down because the shutdown signal was triggered");
                     break;
                 }
@@ -295,6 +301,12 @@ impl StoreAndForwardService {
                         target: LOG_TARGET,
                         "Error sending store and forward request to neighbours: {:?}", err
                     );
+                }
+            },
+            RemoveMessagesOlderThan(threshold) => {
+                match self.database.delete_messages_older_than(threshold.naive_utc()).await {
+                    Ok(_) => trace!(target: LOG_TARGET, "Removed messages older than {}", threshold),
+                    Err(err) => error!(target: LOG_TARGET, "RemoveMessage failed because '{:?}'", err),
                 }
             },
         }
@@ -382,9 +394,9 @@ impl StoreAndForwardService {
     async fn get_saf_request(&mut self) -> SafResult<StoredMessagesRequest> {
         let request = self
             .dht_requester
-            .get_metadata(DhtMetadataKey::OfflineTimestamp)
+            .get_metadata(DhtMetadataKey::LastSafMessageReceived)
             .await?
-            .map(|t| StoredMessagesRequest::since(cmp::min(t, since_utc(self.config.saf_minimum_request_period))))
+            .map(StoredMessagesRequest::since)
             .unwrap_or_else(StoredMessagesRequest::new);
 
         Ok(request)
@@ -489,8 +501,4 @@ fn since(period: Duration) -> NaiveDateTime {
         .naive_utc()
         .checked_sub_signed(period)
         .expect("period overflowed when used with checked_sub_signed")
-}
-
-fn since_utc(period: Duration) -> DateTime<Utc> {
-    DateTime::<Utc>::from_utc(since(period), Utc)
 }

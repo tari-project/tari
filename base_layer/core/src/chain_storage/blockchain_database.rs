@@ -22,7 +22,7 @@
 use crate::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{
-        accumulated_data::{BlockAccumulatedData, BlockHeaderAccumulatedData},
+        accumulated_data::{BlockAccumulatedData, BlockHeaderAccumulatedData, CompleteDeletedBitmap},
         consts::{
             BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY,
             BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
@@ -46,10 +46,7 @@ use crate::{
     consensus::{chain_strength_comparer::ChainStrengthComparer, ConsensusConstants, ConsensusManager},
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
     tari_utilities::epoch_time::EpochTime,
-    transactions::{
-        transaction::{TransactionKernel, TransactionOutput},
-        types::{Commitment, HashDigest, HashOutput, Signature},
-    },
+    transactions::transaction::TransactionKernel,
     validation::{DifficultyCalculator, HeaderValidation, OrphanValidation, PostOrphanBodyValidation, ValidationError},
 };
 use croaring::Bitmap;
@@ -58,12 +55,16 @@ use std::{
     cmp,
     cmp::Ordering,
     collections::VecDeque,
+    convert::TryFrom,
     mem,
     ops::Bound,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
     time::Instant,
 };
-use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{BlockHash, Commitment, HashDigest, HashOutput, Signature},
+};
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray, Hashable};
 use tari_mmr::{MerkleMountainRange, MutableMmr};
 use uint::static_assertions::_core::ops::RangeBounds;
@@ -283,36 +284,30 @@ where B: BlockchainBackend
     }
 
     // Fetch the utxo
-    pub fn fetch_utxo(&self, hash: HashOutput) -> Result<Option<TransactionOutput>, ChainStorageError> {
+    pub fn fetch_utxo(&self, hash: HashOutput) -> Result<Option<PrunedOutput>, ChainStorageError> {
         let db = self.db_read_access()?;
         Ok(db.fetch_output(&hash)?.map(|(out, _index, _)| out))
+    }
+
+    pub fn fetch_unspent_output_by_commitment(
+        &self,
+        commitment: &Commitment,
+    ) -> Result<Option<HashOutput>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_unspent_output_hash_by_commitment(commitment)
     }
 
     /// Return a list of matching utxos, with each being `None` if not found. If found, the transaction
     /// output, and a boolean indicating if the UTXO was spent as of the block hash specified or the tip if not
     /// specified.
-    pub fn fetch_utxos(
-        &self,
-        hashes: Vec<HashOutput>,
-        is_spent_as_of: Option<HashOutput>,
-    ) -> Result<Vec<Option<(TransactionOutput, bool)>>, ChainStorageError> {
+    pub fn fetch_utxos(&self, hashes: Vec<HashOutput>) -> Result<Vec<Option<(PrunedOutput, bool)>>, ChainStorageError> {
         let db = self.db_read_access()?;
-        let is_spent_as_of = match is_spent_as_of {
-            Some(hash) => hash,
-            None => db.fetch_chain_metadata()?.best_block().clone(),
-        };
-        let data =
-            db.fetch_block_accumulated_data(&is_spent_as_of)?
-                .ok_or_else(|| ChainStorageError::ValueNotFound {
-                    entity: "BlockAccumulatedData".to_string(),
-                    field: "header_hash".to_string(),
-                    value: is_spent_as_of.to_hex(),
-                })?;
+        let deleted = db.fetch_deleted_bitmap()?;
 
         let mut result = Vec::with_capacity(hashes.len());
         for hash in hashes {
             let output = db.fetch_output(&hash)?;
-            result.push(output.map(|(out, mmr_index, _)| (out, data.deleted().contains(mmr_index))));
+            result.push(output.map(|(out, mmr_index, _)| (out, deleted.bitmap().contains(mmr_index))));
         }
         Ok(result)
     }
@@ -346,15 +341,10 @@ where B: BlockchainBackend
         &self,
         start: u64,
         end: u64,
-        end_header_hash: HashOutput,
+        deleted: Arc<Bitmap>,
     ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError> {
         let db = self.db_read_access()?;
-        let accum_data = db.fetch_block_accumulated_data(&end_header_hash).or_not_found(
-            "BlockAccumulatedData",
-            "hash",
-            end_header_hash.to_hex(),
-        )?;
-        db.fetch_utxos_by_mmr_position(start, end, accum_data.deleted())
+        db.fetch_utxos_by_mmr_position(start, end, deleted.as_ref())
     }
 
     /// Returns the block header at the given block height.
@@ -433,8 +423,8 @@ where B: BlockchainBackend
         let start_header =
             self.fetch_header_by_block_hash(start_hash.clone())?
                 .ok_or_else(|| ChainStorageError::ValueNotFound {
-                    entity: "BlockHeader".to_string(),
-                    field: "start_hash".to_string(),
+                    entity: "BlockHeader",
+                    field: "start_hash",
                     value: start_hash.to_hex(),
                 })?;
         let constants = self.consensus_manager.consensus_constants(start_header.height);
@@ -512,8 +502,8 @@ where B: BlockchainBackend
             let accumulated_data =
                 db.fetch_header_accumulated_data(&hash)?
                     .ok_or_else(|| ChainStorageError::ValueNotFound {
-                        entity: "BlockHeaderAccumulatedData".to_string(),
-                        field: "hash".to_string(),
+                        entity: "BlockHeaderAccumulatedData",
+                        field: "hash",
                         value: hash.to_hex(),
                     })?;
 
@@ -578,8 +568,8 @@ where B: BlockchainBackend
         let db = self.db_read_access()?;
         db.fetch_block_accumulated_data(&at_hash)?
             .ok_or_else(|| ChainStorageError::ValueNotFound {
-                entity: "BlockAccumulatedData".to_string(),
-                field: "at_hash".to_string(),
+                entity: "BlockAccumulatedData",
+                field: "at_hash",
                 value: at_hash.to_hex(),
             })
     }
@@ -817,8 +807,8 @@ where B: BlockchainBackend
 
         if end > metadata.height_of_longest_chain() {
             return Err(ChainStorageError::ValueNotFound {
-                entity: "Block".to_string(),
-                field: "end height".to_string(),
+                entity: "Block",
+                field: "end height",
                 value: end.to_string(),
             });
         }
@@ -887,6 +877,32 @@ where B: BlockchainBackend
         let db = self.db_read_access()?;
         db.fetch_horizon_data()
     }
+
+    pub fn fetch_complete_deleted_bitmap_at(
+        &self,
+        hash: HashOutput,
+    ) -> Result<CompleteDeletedBitmap, ChainStorageError> {
+        let db = self.db_read_access()?;
+        let mut deleted = db.fetch_deleted_bitmap()?.into_bitmap();
+
+        let end_header =
+            fetch_header_by_block_hash(&*db, hash.clone()).or_not_found("BlockHeader", "start_hash", hash.to_hex())?;
+        let chain_metadata = db.fetch_chain_metadata()?;
+        let height = chain_metadata.height_of_longest_chain();
+        for i in end_header.height..height {
+            // order here does not matter, we dont have to go in reverse
+            deleted.xor_inplace(
+                db.fetch_block_accumulated_data_by_height(i + 1)
+                    .or_not_found("BlockAccumulatedData", "height", height.to_string())?
+                    .deleted(),
+            );
+        }
+        Ok(CompleteDeletedBitmap::new(
+            deleted,
+            height,
+            chain_metadata.best_block().clone(),
+        ))
+    }
 }
 
 fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, ChainStorageError> {
@@ -910,21 +926,33 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
     let header = &block.header;
     let body = &block.body;
 
+    let metadata = db.fetch_chain_metadata()?;
+    if header.prev_hash != *metadata.best_block() {
+        return Err(ChainStorageError::CannotCalculateNonTipMmr(format!(
+            "Block (#{}) previous hash is {} but the current tip is #{} {}",
+            header.height,
+            header.prev_hash.to_hex(),
+            metadata.height_of_longest_chain(),
+            metadata.best_block().to_hex()
+        )));
+    }
+
+    let deleted = db.fetch_deleted_bitmap()?;
+    let deleted = deleted.into_bitmap();
+
     let BlockAccumulatedData {
         kernels,
         outputs,
         range_proofs,
-        deleted,
         ..
     } = db
         .fetch_block_accumulated_data(&header.prev_hash)?
         .ok_or_else(|| ChainStorageError::ValueNotFound {
-            entity: "BlockAccumulatedData".to_string(),
-            field: "header_hash".to_string(),
+            entity: "BlockAccumulatedData",
+            field: "header_hash",
             value: header.prev_hash.to_hex(),
         })?;
 
-    let deleted = deleted.deleted;
     let mut kernel_mmr = MerkleMountainRange::<HashDigest, _>::new(kernels);
     let mut output_mmr = MutableMmr::<HashDigest, _>::new(outputs, deleted)?;
     let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(range_proofs);
@@ -940,26 +968,45 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
     }
 
     for input in body.inputs().iter() {
-        // Search the DB for the output leaf index so that it can be marked as spent/deleted.
-        // If the output hash is not found, check the current output_mmr. This allows zero-conf transactions
-        let index =
-            match db.fetch_mmr_leaf_index(MmrTree::Utxo, &input.output_hash())? {
-                Some(index) => index,
-                None => output_mmr.find_leaf_index(&input.output_hash())?.ok_or_else(|| {
-                    ChainStorageError::ValueNotFound {
-                        entity: "UTXO".to_string(),
-                        field: "hash".to_string(),
-                        value: input.output_hash().to_hex(),
-                    }
-                })?,
-            };
         input_mmr.push(input.hash())?;
 
+        // Search the DB for the output leaf index so that it can be marked as spent/deleted.
+        // If the output hash is not found, check the current output_mmr. This allows zero-conf transactions
+        let output_hash = input.output_hash();
+        let index = match db.fetch_mmr_leaf_index(MmrTree::Utxo, &output_hash)? {
+            Some(index) => index,
+            None => {
+                let index =
+                    output_mmr
+                        .find_leaf_index(&output_hash)?
+                        .ok_or_else(|| ChainStorageError::ValueNotFound {
+                            entity: "UTXO",
+                            field: "hash",
+                            value: output_hash.to_hex(),
+                        })?;
+                debug!(
+                    target: LOG_TARGET,
+                    "0-conf spend detected when calculating MMR roots for UTXO index {} ({})",
+                    index,
+                    output_hash.to_hex()
+                );
+                index
+            },
+        };
+
         if !output_mmr.delete(index) {
-            let len = output_mmr.len();
+            let num_leaves = u32::try_from(output_mmr.get_leaf_count())
+                .map_err(|_| ChainStorageError::CriticalError("UTXO MMR leaf count overflows u32".to_string()))?;
+            if index < num_leaves && output_mmr.deleted().contains(index) {
+                return Err(ChainStorageError::InvalidOperation(format!(
+                    "UTXO {} was already marked as deleted.",
+                    output_hash.to_hex()
+                )));
+            }
+
             return Err(ChainStorageError::InvalidOperation(format!(
-                "Could not delete index {} from the output MMR (length is {})",
-                index, len
+                "Could not delete index {} from the output MMR ({} leaves)",
+                index, num_leaves
             )));
         }
     }
@@ -971,8 +1018,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
         kernel_mmr_size: kernel_mmr.get_leaf_count()? as u64,
         input_mr: input_mmr.get_merkle_root()?,
         output_mr: output_mmr.get_merkle_root()?,
-        // witness mmr size and output mmr size should be the same size
-        output_mmr_size: witness_mmr.get_leaf_count()? as u64,
+        output_mmr_size: output_mmr.get_leaf_count() as u64,
         witness_mr: witness_mmr.get_merkle_root()?,
     };
     Ok(mmr_roots)
@@ -1087,9 +1133,10 @@ fn insert_block(txn: &mut DbTransaction, block: Arc<ChainBlock>) -> Result<(), C
 
     let height = block.height();
     let accumulated_difficulty = block.accumulated_data().total_accumulated_difficulty;
+    let expected_prev_best_block = block.block().header.prev_hash.clone();
     txn.insert_chain_header(block.to_chain_header())
         .insert_block_body(block)
-        .set_best_block(height, block_hash, accumulated_difficulty);
+        .set_best_block(height, block_hash, accumulated_difficulty, expected_prev_best_block);
 
     Ok(())
 }
@@ -1138,9 +1185,9 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64) -> Result<HistoricalBl
         match output {
             PrunedOutput::Pruned {
                 output_hash,
-                range_proof_hash,
+                witness_hash,
             } => {
-                pruned.push((output_hash, range_proof_hash));
+                pruned.push((output_hash, witness_hash));
             },
             PrunedOutput::NotPruned { output } => unpruned.push(output),
         }
@@ -1205,8 +1252,8 @@ fn fetch_block_with_kernel<T: BlockchainBackend>(
             None => Ok(None),
         },
         Err(_) => Err(ChainStorageError::ValueNotFound {
-            entity: "Kernel".to_string(),
-            field: "Excess sig".to_string(),
+            entity: "Kernel",
+            field: "Excess sig",
             value: excess_sig.get_signature().to_hex(),
         }),
     }
@@ -1225,8 +1272,8 @@ fn fetch_block_with_utxo<T: BlockchainBackend>(
             None => Ok(None),
         },
         Err(_) => Err(ChainStorageError::ValueNotFound {
-            entity: "Output".to_string(),
-            field: "Commitment".to_string(),
+            entity: "Output",
+            field: "Commitment",
             value: commitment.to_hex(),
         }),
     }
@@ -1268,6 +1315,7 @@ fn rewind_to_height<T: BlockchainBackend>(
     // Delete headers
     let last_header_height = last_header.height;
     let metadata = db.fetch_chain_metadata()?;
+    let expected_block_hash = metadata.best_block().clone();
     let last_block_height = metadata.height_of_longest_chain();
     let steps_back = last_header_height
         .checked_sub(cmp::max(last_block_height, height))
@@ -1368,6 +1416,7 @@ fn rewind_to_height<T: BlockchainBackend>(
         chain_header.height(),
         chain_header.accumulated_data().hash.clone(),
         chain_header.accumulated_data().total_accumulated_difficulty,
+        expected_block_hash,
     );
     db.write(txn)?;
 
@@ -1379,12 +1428,11 @@ fn rewind_to_hash<T: BlockchainBackend>(
     block_hash: BlockHash,
 ) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
     let block_hash_hex = block_hash.to_hex();
-    let target_header =
-        fetch_header_by_block_hash(&*db, block_hash)?.ok_or_else(|| ChainStorageError::ValueNotFound {
-            entity: "BlockHeader".to_string(),
-            field: "block_hash".to_string(),
-            value: block_hash_hex,
-        })?;
+    let target_header = fetch_header_by_block_hash(&*db, block_hash)?.ok_or(ChainStorageError::ValueNotFound {
+        entity: "BlockHeader",
+        field: "block_hash",
+        value: block_hash_hex,
+    })?;
     rewind_to_height(db, target_header.height)
 }
 
@@ -1515,8 +1563,8 @@ fn handle_possible_reorg<T: BlockchainBackend>(
             }, // We want a warning if the number of removed blocks is at least 2.
             "Chain reorg required from {} to {} (accum_diff:{}, hash:{}) to (accum_diff:{}, hash:{}). Number of \
              blocks to remove: {}, to add: {}.",
-            tip_header.header(),
-            fork_header.header(),
+            tip_header.header().height,
+            fork_header.header().height,
             tip_header.accumulated_data().total_accumulated_difficulty,
             tip_header.accumulated_data().hash.to_hex(),
             fork_header.accumulated_data().total_accumulated_difficulty,
@@ -1565,7 +1613,8 @@ fn reorganize_chain<T: BlockchainBackend>(
         let mut txn = DbTransaction::new();
         let block_hash_hex = block.accumulated_data().hash.to_hex();
         txn.delete_orphan(block.accumulated_data().hash.clone());
-        if let Err(e) = block_validator.validate_body_for_valid_orphan(&block, backend) {
+        let chain_metadata = backend.fetch_chain_metadata()?;
+        if let Err(e) = block_validator.validate_body_for_valid_orphan(&block, backend, &chain_metadata) {
             warn!(
                 target: LOG_TARGET,
                 "Orphan block {} ({}) failed validation during chain reorg: {:?}",
@@ -1844,6 +1893,13 @@ fn prune_database_if_needed<T: BlockchainBackend>(
     let db_height = metadata.height_of_longest_chain();
     let abs_pruning_horizon = db_height.saturating_sub(pruning_horizon);
 
+    debug!(
+        target: LOG_TARGET,
+        "Current pruned height is: {}, pruning horizon is: {}, while the pruning interval is: {}",
+        metadata.pruned_height(),
+        abs_pruning_horizon,
+        pruning_interval,
+    );
     if metadata.pruned_height() < abs_pruning_horizon.saturating_sub(pruning_interval) {
         let last_pruned = metadata.pruned_height();
         info!(
@@ -1864,7 +1920,7 @@ fn prune_database_if_needed<T: BlockchainBackend>(
             )?;
             // Note, this could actually be done in one step instead of each block, since deleted is
             // accumulated
-            let inputs_to_prune = curr_block.deleted.deleted.clone() - last_block.deleted.deleted;
+            let inputs_to_prune = curr_block.deleted.bitmap().clone() - last_block.deleted.bitmap();
             last_block = curr_block;
 
             txn.prune_outputs_and_update_horizon(inputs_to_prune.to_vec(), block_to_prune);
@@ -2056,7 +2112,7 @@ mod test {
         fn it_inserts_true_orphan_chain() {
             let db = create_new_blockchain();
             let validator = MockValidator::new(true);
-            let (_, main_chain) = create_main_chain(&db, &[("A->GB", 1, 120), ("B->GB", 1, 120)]);
+            let (_, main_chain) = create_main_chain(&db, &[("A->GB", 1, 120), ("B->A", 1, 120)]);
 
             let block_b = main_chain.get("B").unwrap().clone();
             let (_, orphan_chain) =
@@ -2606,7 +2662,7 @@ mod test {
             let prev_block = block_hashes
                 .get(&from)
                 .unwrap_or_else(|| panic!("Could not find block {}", from));
-            let mut block = create_block(1, prev_block.height() + 1, vec![]);
+            let (mut block, _) = create_block(1, prev_block.height() + 1, vec![]);
             block.header.prev_hash = prev_block.hash().clone();
 
             // Keep times constant in case we need a particular target difficulty

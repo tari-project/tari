@@ -20,16 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
-
-use chrono::Utc;
-use futures::{channel::mpsc::Receiver, FutureExt, StreamExt};
-use log::*;
-
 use crate::transaction_service::{
     config::TransactionRoutingMechanism,
     error::{TransactionServiceError, TransactionServiceProtocolError},
-    handle::TransactionEvent,
+    handle::{TransactionEvent, TransactionServiceResponse},
     service::TransactionServiceResources,
     storage::{
         database::TransactionBackend,
@@ -41,7 +35,10 @@ use crate::transaction_service::{
         wait_on_dial::wait_on_dial,
     },
 };
-use futures::channel::oneshot;
+use chrono::Utc;
+use futures::FutureExt;
+use log::*;
+use std::sync::Arc;
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
@@ -53,8 +50,12 @@ use tari_core::transactions::{
     transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::SingleRoundSenderData},
     SenderTransactionProtocol,
 };
+use tari_crypto::script;
 use tari_p2p::tari_message::TariMessageType;
-use tokio::time::delay_for;
+use tokio::{
+    sync::{mpsc::Receiver, oneshot},
+    time::sleep,
+};
 use tari_core::transactions::transaction_protocol::TxId;
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::send_protocol";
@@ -72,8 +73,9 @@ where TBackend: TransactionBackend + 'static
     id: TxId,
     dest_pubkey: CommsPublicKey,
     amount: MicroTari,
+    fee_per_gram: MicroTari,
     message: String,
-    sender_protocol: SenderTransactionProtocol,
+    service_request_reply_channel: Option<oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>>,
     stage: TransactionSendProtocolStage,
     resources: TransactionServiceResources<TBackend>,
     transaction_reply_receiver: Option<Receiver<(CommsPublicKey, RecipientSignedMessage)>>,
@@ -91,8 +93,11 @@ where TBackend: TransactionBackend + 'static
         cancellation_receiver: oneshot::Receiver<()>,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
+        fee_per_gram: MicroTari,
         message: String,
-        sender_protocol: SenderTransactionProtocol,
+        service_request_reply_channel: Option<
+            oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
+        >,
         stage: TransactionSendProtocolStage,
     ) -> Self {
         Self {
@@ -102,8 +107,9 @@ where TBackend: TransactionBackend + 'static
             cancellation_receiver: Some(cancellation_receiver),
             dest_pubkey,
             amount,
+            fee_per_gram,
             message,
-            sender_protocol,
+            service_request_reply_channel,
             stage,
         }
     }
@@ -117,7 +123,8 @@ where TBackend: TransactionBackend + 'static
 
         match self.stage {
             TransactionSendProtocolStage::Initial => {
-                self.initial_send_transaction().await?;
+                let sender_protocol = self.prepare_transaction().await?;
+                self.initial_send_transaction(sender_protocol).await?;
                 self.wait_for_reply().await?;
             },
             TransactionSendProtocolStage::WaitForReply => {
@@ -128,8 +135,64 @@ where TBackend: TransactionBackend + 'static
         Ok(self.id)
     }
 
-    async fn initial_send_transaction(&mut self) -> Result<(), TransactionServiceProtocolError> {
-        if !self.sender_protocol.is_single_round_message_ready() {
+    async fn prepare_transaction(&mut self) -> Result<SenderTransactionProtocol, TransactionServiceProtocolError> {
+        let service_reply_channel = match self.service_request_reply_channel.take() {
+            Some(src) => src,
+            None => {
+                error!(
+                    target: LOG_TARGET,
+                    "Service Reply Channel not provided for new Send Transaction Protocol"
+                );
+                return Err(TransactionServiceProtocolError::new(
+                    self.id,
+                    TransactionServiceError::ProtocolChannelError,
+                ));
+            },
+        };
+
+        match self
+            .resources
+            .output_manager_service
+            .prepare_transaction_to_send(
+                self.id,
+                self.amount,
+                self.fee_per_gram,
+                None,
+                self.message.clone(),
+                script!(Nop),
+            )
+            .await
+        {
+            Ok(sp) => {
+                let _ = service_reply_channel
+                    .send(Ok(TransactionServiceResponse::TransactionSent(self.id)))
+                    .map_err(|e| {
+                        warn!(target: LOG_TARGET, "Failed to send service reply");
+                        e
+                    });
+                Ok(sp)
+            },
+            Err(e) => {
+                let error_string = e.to_string();
+                let _ = service_reply_channel
+                    .send(Err(TransactionServiceError::from(e)))
+                    .map_err(|e| {
+                        warn!(target: LOG_TARGET, "Failed to send service reply");
+                        e
+                    });
+                Err(TransactionServiceProtocolError::new(
+                    self.id,
+                    TransactionServiceError::ServiceError(error_string),
+                ))
+            },
+        }
+    }
+
+    async fn initial_send_transaction(
+        &mut self,
+        mut sender_protocol: SenderTransactionProtocol,
+    ) -> Result<(), TransactionServiceProtocolError> {
+        if !sender_protocol.is_single_round_message_ready() {
             error!(target: LOG_TARGET, "Sender Transaction Protocol is in an invalid state");
             return Err(TransactionServiceProtocolError::new(
                 self.id,
@@ -137,8 +200,7 @@ where TBackend: TransactionBackend + 'static
             ));
         }
 
-        let msg = self
-            .sender_protocol
+        let msg = sender_protocol
             .build_single_round_message()
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
         let tx_id = msg.tx_id;
@@ -162,8 +224,7 @@ where TBackend: TransactionBackend + 'static
                 .await
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
-            let fee = self
-                .sender_protocol
+            let fee = sender_protocol
                 .get_fee_amount()
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
             let outbound_tx = OutboundTransaction::new(
@@ -173,7 +234,7 @@ where TBackend: TransactionBackend + 'static
                 // TODO: put value in here
                 None,
                 fee,
-                self.sender_protocol.clone(),
+                sender_protocol.clone(),
                 TransactionStatus::Pending,
                 self.message.clone(),
                 Utc::now().naive_utc(),
@@ -286,7 +347,8 @@ where TBackend: TransactionBackend + 'static
             },
             Some(t) => t,
         };
-        let mut timeout_delay = delay_for(timeout_duration).fuse();
+        let timeout_delay = sleep(timeout_duration).fuse();
+        tokio::pin!(timeout_delay);
 
         // check to see if a resend is due
         let resend = match outbound_tx.last_send_timestamp {
@@ -332,9 +394,9 @@ where TBackend: TransactionBackend + 'static
         #[allow(unused_assignments)]
         let mut reply = None;
         loop {
-            let mut resend_timeout = delay_for(self.resources.config.transaction_resend_period).fuse();
-            futures::select! {
-                (spk, rr) = receiver.select_next_some() => {
+            let resend_timeout = sleep(self.resources.config.transaction_resend_period).fuse();
+            tokio::select! {
+                Some((spk, rr)) = receiver.recv() => {
                     let rr_tx_id = rr.tx_id;
                     reply = Some(rr);
 
@@ -349,7 +411,7 @@ where TBackend: TransactionBackend + 'static
                         break;
                     }
                 },
-                result = cancellation_receiver => {
+                result = &mut cancellation_receiver => {
                     if result.is_ok() {
                         info!(target: LOG_TARGET, "Cancelling Transaction Send Protocol (TxId: {})", self.id);
                         let _ = send_transaction_cancelled_message(self.id,self.dest_pubkey.clone(), self.resources.outbound_message_service.clone(), ).await.map_err(|e| {
@@ -383,10 +445,10 @@ where TBackend: TransactionBackend + 'static
                             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
                     }
                 },
-                () = timeout_delay => {
+                () = &mut timeout_delay => {
                     return self.timeout_transaction().await;
                 }
-                _ = shutdown => {
+                _ = shutdown.wait() => {
                     info!(target: LOG_TARGET, "Transaction Send Protocol (id: {}) shutting down because it received the shutdown signal", self.id);
                     return Err(TransactionServiceProtocolError::new(self.id, TransactionServiceError::Shutdown))
                 }

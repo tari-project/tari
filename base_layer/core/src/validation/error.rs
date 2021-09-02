@@ -24,8 +24,9 @@ use crate::{
     blocks::{block_header::BlockHeaderValidationError, BlockValidationError},
     chain_storage::ChainStorageError,
     proof_of_work::{monero_rx::MergeMineError, PowError},
-    transactions::{transaction::TransactionError, types::HashOutput},
+    transactions::transaction::TransactionError,
 };
+use tari_common_types::types::HashOutput;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -53,14 +54,8 @@ pub enum ValidationError {
     ContainsSTxO,
     #[error("Transaction contains already outputs that already exist")]
     ContainsTxO,
-    #[error("The recorded chain accumulated difficulty was stronger")]
-    WeakerAccumulatedDifficulty,
-    #[error("Invalid output merkle root")]
-    InvalidOutputMr,
-    #[error("Invalid kernel merkle root")]
-    InvalidKernelMr,
-    #[error("Invalid range proof merkle root")]
-    InvalidRangeProofMr,
+    #[error("Transaction contains an output commitment that already exists")]
+    ContainsDuplicateUtxoCommitment,
     #[error("Final state validation failed: The UTXO set did not balance with the expected emission at height {0}")]
     ChainBalanceValidationFailed(u64),
     #[error("Proof of work error: {0}")]
@@ -81,6 +76,10 @@ pub enum ValidationError {
     MaxTransactionWeightExceeded,
     #[error("End of time: {0}")]
     EndOfTimeError(String),
+    #[error("Expected block height to be {expected}, but was {block_height}")]
+    IncorrectNextTipHeight { expected: u64, block_height: u64 },
+    #[error("Expected block previous hash to be {expected}, but was {block_hash}")]
+    IncorrectPreviousHash { expected: String, block_hash: String },
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in

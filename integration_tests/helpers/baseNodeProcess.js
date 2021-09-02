@@ -9,20 +9,27 @@ const { createEnv } = require("./config");
 
 let outputProcess;
 class BaseNodeProcess {
-  constructor(name, options, logFilePath, nodeFile) {
+  constructor(name, excludeTestEnvars, options, logFilePath, nodeFile) {
     this.name = name;
     this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath;
     this.nodeFile = nodeFile;
-    this.options = options;
+    this.options = Object.assign(
+      {
+        baseDir: "./temp/base_nodes",
+      },
+      options || {}
+    );
+    this.excludeTestEnvars = excludeTestEnvars;
   }
 
   async init() {
-    this.port = await getFreePort(19000, 25000);
-    this.grpcPort = await getFreePort(19000, 25000);
+    this.port = await getFreePort();
+    this.grpcPort = await getFreePort();
     this.name = `Basenode${this.port}-${this.name}`;
     this.nodeFile = this.nodeFile || "nodeid.json";
+
     do {
-      this.baseDir = `./temp/base_nodes/${dateFormat(
+      this.baseDir = `${this.options.baseDir}/${dateFormat(
         new Date(),
         "yyyymmddHHMM"
       )}/${this.name}`;
@@ -53,9 +60,9 @@ class BaseNodeProcess {
         "-Z",
         "unstable-options",
         "--out-dir",
-        __dirname + "/../temp/out",
+        process.cwd() + "/temp/out",
       ]);
-      outputProcess = __dirname + "/../temp/out/tari_base_node";
+      outputProcess = process.cwd() + "/temp/out/tari_base_node";
     }
     return outputProcess;
   }
@@ -83,6 +90,10 @@ class BaseNodeProcess {
     this.peerSeeds = addresses.join(",");
   }
 
+  setForceSyncPeers(addresses) {
+    this.forceSyncPeers = addresses.join(",");
+  }
+
   getGrpcAddress() {
     const address = "127.0.0.1:" + this.grpcPort;
     // console.log("Base Node GRPC Address:",address);
@@ -96,20 +107,26 @@ class BaseNodeProcess {
         fs.mkdirSync(this.baseDir + "/log", { recursive: true });
       }
 
-      const envs = createEnv(
-        this.name,
-        false,
-        this.nodeFile,
-        "127.0.0.1",
-        "8082",
-        "8081",
-        "127.0.0.1",
-        this.grpcPort,
-        this.port,
-        "127.0.0.1:8080",
-        this.options,
-        this.peerSeeds
-      );
+      let envs = [];
+      if (!this.excludeTestEnvars) {
+        envs = createEnv(
+          this.name,
+          false,
+          this.nodeFile,
+          "127.0.0.1",
+          "8082",
+          "8081",
+          "127.0.0.1",
+          this.grpcPort,
+          this.port,
+          "127.0.0.1:8080",
+          "127.0.0.1:8085",
+          this.options,
+          this.peerSeeds,
+          "DirectAndStoreAndForward",
+          this.forceSyncPeers
+        );
+      }
 
       const ps = spawn(cmd, args, {
         cwd: this.baseDir,
@@ -169,14 +186,15 @@ class BaseNodeProcess {
 
   async startAndConnect() {
     await this.startNew();
-    return this.createGrpcClient();
+    return await this.createGrpcClient();
   }
 
-  async start() {
+  async start(opts = []) {
     const args = ["--base-path", "."];
     if (this.logFilePath) {
       args.push("--log-config", this.logFilePath);
     }
+    args.push(...opts);
     return await this.run(await this.compile(), args);
   }
 
@@ -195,8 +213,8 @@ class BaseNodeProcess {
     });
   }
 
-  createGrpcClient() {
-    return new BaseNodeClient(this.grpcPort);
+  async createGrpcClient() {
+    return await BaseNodeClient.create(this.grpcPort);
   }
 }
 

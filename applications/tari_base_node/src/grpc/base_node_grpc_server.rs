@@ -19,41 +19,43 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::grpc::{
-    blocks::{block_fees, block_heights, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
-    helpers::{mean, median},
+use crate::{
+    builder::BaseNodeContext,
+    grpc::{
+        blocks::{block_fees, block_heights, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
+        helpers::{mean, median},
+    },
 };
+use futures::{channel::mpsc, SinkExt};
 use log::*;
 use std::{
     cmp,
     convert::{TryFrom, TryInto},
-    sync::Arc,
 };
-
 use tari_app_grpc::{
     tari_rpc,
     tari_rpc::{CalcType, Sorting},
 };
 use tari_app_utilities::consts;
-use tari_common::configuration::Network;
-use tari_comms::PeerManager;
+use tari_common_types::types::Signature;
+use tari_comms::{Bytes, CommsNode};
 use tari_core::{
     base_node::{
-        comms_interface::Broadcast,
-        state_machine_service::states::BlockSyncInfo,
+        comms_interface::{Broadcast, CommsInterfaceError},
         LocalNodeCommsInterface,
         StateMachineHandle,
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
+    chain_storage::ChainStorageError,
     consensus::{emission::Emission, ConsensusManager, NetworkConsensus},
-    crypto::tari_utilities::hex::Hex,
+    crypto::tari_utilities::{hex::Hex, ByteArray},
     mempool::{service::LocalMempoolService, TxStorageResponse},
     proof_of_work::PowAlgorithm,
-    transactions::{transaction::Transaction, types::Signature},
+    transactions::transaction::Transaction,
 };
 use tari_crypto::tari_utilities::{message_format::MessageFormat, Hashable};
-use tari_p2p::auto_update::SoftwareUpdaterHandle;
-use tokio::{sync::mpsc, task};
+use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
+use tokio::task;
 use tonic::{Request, Response, Status};
 use tari_crypto::tari_utilities::ByteArray;
 
@@ -79,28 +81,23 @@ pub struct BaseNodeGrpcServer {
     mempool_service: LocalMempoolService,
     network: NetworkConsensus,
     state_machine_handle: StateMachineHandle,
-    peer_manager: Arc<PeerManager>,
     consensus_rules: ConsensusManager,
     software_updater: SoftwareUpdaterHandle,
+    comms: CommsNode,
+    liveness: LivenessHandle,
 }
 
 impl BaseNodeGrpcServer {
-    pub fn new(
-        local_node: LocalNodeCommsInterface,
-        local_mempool: LocalMempoolService,
-        network: Network,
-        state_machine_handle: StateMachineHandle,
-        peer_manager: Arc<PeerManager>,
-        software_updater: SoftwareUpdaterHandle,
-    ) -> Self {
+    pub fn from_base_node_context(ctx: &BaseNodeContext) -> Self {
         Self {
-            node_service: local_node,
-            mempool_service: local_mempool,
-            consensus_rules: ConsensusManager::builder(network).build(),
-            network: network.into(),
-            state_machine_handle,
-            peer_manager,
-            software_updater,
+            node_service: ctx.local_node(),
+            mempool_service: ctx.local_mempool(),
+            network: ctx.network().into(),
+            state_machine_handle: ctx.state_machine(),
+            consensus_rules: ctx.consensus_rules().clone(),
+            software_updater: ctx.software_updater(),
+            comms: ctx.base_node_comms().clone(),
+            liveness: ctx.liveness(),
         }
     }
 }
@@ -509,10 +506,18 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let mut handler = self.node_service.clone();
 
-        let new_block = handler
-            .get_new_block(block_template)
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+        let new_block = match handler.get_new_block(block_template).await {
+            Ok(b) => b,
+            Err(CommsInterfaceError::ChainStorageError(ChainStorageError::CannotCalculateNonTipMmr(msg))) => {
+                let status = Status::with_details(
+                    tonic::Code::FailedPrecondition,
+                    msg,
+                    Bytes::from_static(b"CannotCalculateNonTipMmr"),
+                );
+                return Err(status);
+            },
+            Err(e) => return Err(Status::internal(e.to_string())),
+        };
         // construct response
         let block_hash = new_block.hash();
         let mining_hash = new_block.header.merged_mining_hash();
@@ -669,7 +674,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         debug!(target: LOG_TARGET, "Incoming GRPC request for get all peers");
 
         let peers = self
-            .peer_manager
+            .comms
+            .peer_manager()
             .all()
             .await
             .map_err(|e| Status::unknown(e.to_string()))?;
@@ -1051,32 +1057,25 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<tari_rpc::SyncInfoResponse>, Status> {
         debug!(target: LOG_TARGET, "Incoming GRPC request for BN sync data");
 
-        let mut channel = self.state_machine_handle.get_status_info_watch();
-
-        let mut sync_info: Option<BlockSyncInfo> = None;
-
-        if let Some(info) = channel.recv().await {
-            sync_info = info.state_info.get_block_sync_info();
-        }
-
-        let mut response = tari_rpc::SyncInfoResponse {
-            tip_height: 0,
-            local_height: 0,
-            peer_node_id: vec![],
-        };
-
-        if let Some(info) = sync_info {
-            let node_ids = info
-                .sync_peers
-                .iter()
-                .map(|x| x.to_string().as_bytes().to_vec())
-                .collect();
-            response = tari_rpc::SyncInfoResponse {
-                tip_height: info.tip_height,
-                local_height: info.local_height,
-                peer_node_id: node_ids,
-            };
-        }
+        let response = self
+            .state_machine_handle
+            .get_status_info_watch()
+            .borrow()
+            .state_info
+            .get_block_sync_info()
+            .map(|info| {
+                let node_ids = info
+                    .sync_peers
+                    .iter()
+                    .map(|x| x.to_string().as_bytes().to_vec())
+                    .collect();
+                tari_rpc::SyncInfoResponse {
+                    tip_height: info.tip_height,
+                    local_height: info.local_height,
+                    peer_node_id: node_ids,
+                }
+            })
+            .unwrap_or_default();
 
         debug!(target: LOG_TARGET, "Sending SyncData response to client");
         Ok(Response::new(response))
@@ -1113,7 +1112,90 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         }
     }
 
+    async fn identify(&self, _: Request<tari_rpc::Empty>) -> Result<Response<tari_rpc::NodeIdentity>, Status> {
+        let identity = self.comms.node_identity_ref();
+        Ok(Response::new(tari_rpc::NodeIdentity {
+            public_key: identity.public_key().to_vec(),
+            public_address: identity.public_address().to_string(),
+            node_id: identity.node_id().to_vec(),
+        }))
+    }
 
+    async fn get_network_status(
+        &self,
+        _: Request<tari_rpc::Empty>,
+    ) -> Result<Response<tari_rpc::NetworkStatusResponse>, Status> {
+        let status = self
+            .comms
+            .connectivity()
+            .get_connectivity_status()
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
+
+        let latency = self
+            .liveness
+            .clone()
+            .get_network_avg_latency()
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
+
+        let resp = tari_rpc::NetworkStatusResponse {
+            status: tari_rpc::ConnectivityStatus::from(status) as i32,
+            avg_latency_ms: latency.unwrap_or_default(),
+            num_node_connections: status.num_connected_nodes() as u32,
+        };
+
+        Ok(Response::new(resp))
+    }
+
+    async fn list_connected_peers(
+        &self,
+        _: Request<tari_rpc::Empty>,
+    ) -> Result<Response<tari_rpc::ListConnectedPeersResponse>, Status> {
+        let mut connectivity = self.comms.connectivity();
+        let peer_manager = self.comms.peer_manager();
+        let connected_peers = connectivity
+            .get_active_connections()
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
+
+        let mut peers = Vec::with_capacity(connected_peers.len());
+        for peer in connected_peers {
+            peers.push(
+                peer_manager
+                    .find_by_node_id(peer.peer_node_id())
+                    .await
+                    .map_err(|err| Status::internal(err.to_string()))?,
+            );
+        }
+
+        let resp = tari_rpc::ListConnectedPeersResponse {
+            connected_peers: peers.into_iter().map(Into::into).collect(),
+        };
+
+        Ok(Response::new(resp))
+    }
+
+    async fn get_mempool_stats(
+        &self,
+        _: Request<tari_rpc::Empty>,
+    ) -> Result<Response<tari_rpc::MempoolStatsResponse>, Status> {
+        let mut mempool_handle = self.mempool_service.clone();
+
+        let mempool_stats = mempool_handle.get_mempool_stats().await.map_err(|e| {
+            error!(target: LOG_TARGET, "Error submitting query:{}", e);
+            Status::internal(e.to_string())
+        })?;
+
+        let response = tari_rpc::MempoolStatsResponse {
+            total_txs: mempool_stats.total_txs as u64,
+            unconfirmed_txs: mempool_stats.unconfirmed_txs as u64,
+            reorg_txs: mempool_stats.reorg_txs as u64,
+            total_weight: mempool_stats.total_weight,
+        };
+
+        Ok(Response::new(response))
+    }
 }
 
 enum BlockGroupType {

@@ -86,6 +86,7 @@ Feature: Mempool
     #   Collects 7 coinbases into one wallet, send 7 transactions
     #   Stronger chain
     #
+    Given I do not expect all automated transactions to succeed
     Given I have a seed node SEED_A
     And I have a base node NODE_A1 connected to seed SEED_A
     And I have wallet WALLET_A1 connected to seed node SEED_A
@@ -169,3 +170,33 @@ Feature: Mempool
     Then SENDER has TX11 in MINED state
     Then SENDER has TX12 in MINED state
     Then SENDER has TX13 in MINED state
+
+    @critical
+    Scenario: Mempool unconfirmed transactions
+      Given I have 1 seed nodes
+      And I have a base node BN1 connected to all seed nodes
+      When I mine a block on BN1 with coinbase CB1
+      When I mine 5 blocks on BN1
+      When I create a custom fee transaction TX1 spending CB1 to UTX1 with fee 80
+      When I create a custom fee transaction TX2 spending CB1 to UTX1 with fee 80
+      When I create a custom fee transaction TX3 spending CB1 to UTX1 with fee 80
+      When I create a custom fee transaction TX4 spending CB1 to UTX1 with fee 80
+      When I create a custom fee transaction TX5 spending CB1 to UTX1 with fee 80
+      When I submit transaction TX1 to BN1
+      When I submit transaction TX2 to BN1
+      When I submit transaction TX3 to BN1
+      When I submit transaction TX4 to BN1
+      When I submit transaction TX5 to BN1
+      Then I wait until base node BN1 has 5 unconfirmed transactions in its mempool
+
+  @critical
+  Scenario: Mempool unconfirmed transaction to mined transaction
+    Given I have 1 seed nodes
+    And I have a base node BN1 connected to all seed nodes
+    When I mine a block on BN1 with coinbase CB1
+    When I mine 2 blocks on BN1
+    When I create a custom fee transaction TX1 spending CB1 to UTX1 with fee 80
+    When I submit transaction TX1 to BN1
+    Then I wait until base node BN1 has 1 unconfirmed transactions in its mempool
+    When I mine 1 blocks on BN1
+    Then I wait until base node BN1 has 0 unconfirmed transactions in its mempool

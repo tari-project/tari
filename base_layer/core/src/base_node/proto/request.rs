@@ -32,9 +32,9 @@ use crate::{
             HashOutputs,
         },
     },
-    transactions::types::{Commitment, HashOutput, Signature},
 };
 use std::convert::{From, TryFrom, TryInto};
+use tari_common_types::types::{Commitment, HashOutput, Signature};
 use tari_crypto::tari_utilities::ByteArrayError;
 use crate::base_node::comms_interface::NodeCommsRequest;
 

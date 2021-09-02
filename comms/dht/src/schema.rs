@@ -1,4 +1,15 @@
 table! {
+    dedup_cache (id) {
+        id -> Integer,
+        body_hash -> Text,
+        sender_public_key -> Text,
+        number_of_hits -> Integer,
+        stored_at -> Timestamp,
+        last_hit_at -> Timestamp,
+    }
+}
+
+table! {
     dht_metadata (id) {
         id -> Integer,
         key -> Text,
@@ -23,4 +34,4 @@ table! {
     }
 }
 
-allow_tables_to_appear_in_same_query!(dht_metadata, stored_messages,);
+allow_tables_to_appear_in_same_query!(dedup_cache, dht_metadata, stored_messages,);

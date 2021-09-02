@@ -20,22 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{cmp, fs, str::FromStr, sync::Arc, time::Duration};
+
 use anyhow::anyhow;
 use log::*;
-use std::{cmp, fs, str::FromStr, sync::Arc, time::Duration};
-use tari_app_utilities::{consts, identity_management, utilities};
-use tari_common::{configuration::bootstrap::ApplicationType, CommsTransport, GlobalConfig, TorControlAuthentication};
-use tari_comms::{
-    peer_manager::Peer,
-    protocol::rpc::RpcServer,
-    socks,
-    tor,
-    tor::TorIdentity,
-    transports::SocksConfig,
-    utils::multiaddr::multiaddr_to_socketaddr,
-    NodeIdentity,
-    UnspawnedCommsNode,
-};
+
+use tari_app_utilities::{consts, identity_management, utilities::create_transport_type};
+use tari_common::{configuration::bootstrap::ApplicationType, GlobalConfig};
+use tari_comms::{peer_manager::Peer, protocol::rpc::RpcServer, NodeIdentity, UnspawnedCommsNode};
 use tari_comms_dht::{DbConnectionUrl, Dht, DhtConfig};
 use tari_core::{
     base_node,
@@ -57,7 +49,7 @@ use tari_core::{
         MempoolServiceInitializer,
         MempoolSyncInitializer,
     },
-    transactions::types::CryptoFactories,
+    transactions::CryptoFactories,
 };
 use tari_p2p::{
     auto_update::{AutoUpdateConfig, SoftwareUpdaterService},
@@ -66,11 +58,9 @@ use tari_p2p::{
     initialization::{CommsConfig, P2pInitializer},
     peer_seeds::SeedPeer,
     services::liveness::{LivenessConfig, LivenessInitializer},
-    transport::{TorConfig, TransportType},
 };
 use tari_service_framework::{ServiceHandles, StackBuilder};
 use tari_shutdown::ShutdownSignal;
-use tokio::runtime;
 
 const LOG_TARGET: &str = "c::bn::initialization";
 /// The minimum buffer size for the base node pubsub_connector channel
@@ -95,11 +85,15 @@ where B: BlockchainBackend + 'static
         fs::create_dir_all(&config.peer_db_path)?;
 
         let buf_size = cmp::max(BASE_NODE_BUFFER_MIN_SIZE, config.buffer_size_base_node);
-        let (publisher, peer_message_subscriptions) =
-            pubsub_connector(runtime::Handle::current(), buf_size, config.buffer_rate_limit_base_node);
+        let (publisher, peer_message_subscriptions) = pubsub_connector(buf_size, config.buffer_rate_limit_base_node);
         let peer_message_subscriptions = Arc::new(peer_message_subscriptions);
 
-        let node_config = BaseNodeServiceConfig::default(); // TODO - make this configurable
+        let node_config = BaseNodeServiceConfig {
+            service_request_timeout: config.service_request_timeout,
+            fetch_blocks_timeout: config.fetch_blocks_timeout,
+            fetch_utxos_timeout: config.fetch_utxos_timeout,
+            ..Default::default()
+        };
         let mempool_config = MempoolServiceConfig::default(); // TODO - make this configurable
 
         let comms_config = self.create_comms_config();
@@ -244,7 +238,8 @@ where B: BlockchainBackend + 'static
         CommsConfig {
             network: self.config.network,
             node_identity: self.node_identity.clone(),
-            transport_type: self.create_transport_type(),
+            transport_type: create_transport_type(self.config),
+            auxilary_tcp_listener_address: self.config.auxilary_tcp_listener_address.clone(),
             datastore_path: self.config.peer_db_path.clone(),
             peer_database_name: "peers".to_string(),
             max_concurrent_inbound_tasks: 100,
@@ -255,6 +250,7 @@ where B: BlockchainBackend + 'static
                 allow_test_addresses: self.config.allow_test_addresses,
                 flood_ban_max_msg_count: self.config.flood_ban_max_msg_count,
                 saf_msg_validity: self.config.saf_expiry_duration,
+                dedup_cache_capacity: self.config.dedup_cache_capacity,
                 ..Default::default()
             },
             allow_test_addresses: self.config.allow_test_addresses,
@@ -272,87 +268,6 @@ where B: BlockchainBackend + 'static
             dns_seeds: self.config.dns_seeds.clone(),
             dns_seeds_name_server: self.config.dns_seeds_name_server,
             dns_seeds_use_dnssec: self.config.dns_seeds_use_dnssec,
-        }
-    }
-
-    /// Creates a transport type from the given configuration
-    ///
-    /// ## Paramters
-    /// `config` - The reference to the configuration in which to set up the comms stack, see [GlobalConfig]
-    ///
-    /// ##Returns
-    /// TransportType based on the configuration
-    fn create_transport_type(&self) -> TransportType {
-        let config = self.config;
-        debug!(target: LOG_TARGET, "Transport is set to '{:?}'", config.comms_transport);
-
-        match config.comms_transport.clone() {
-            CommsTransport::Tcp {
-                listener_address,
-                tor_socks_address,
-                tor_socks_auth,
-            } => TransportType::Tcp {
-                listener_address,
-                tor_socks_config: tor_socks_address.map(|proxy_address| SocksConfig {
-                    proxy_address,
-                    authentication: tor_socks_auth
-                        .map(utilities::convert_socks_authentication)
-                        .unwrap_or_default(),
-                }),
-            },
-            CommsTransport::TorHiddenService {
-                control_server_address,
-                socks_address_override,
-                forward_address,
-                auth,
-                onion_port,
-            } => {
-                let identity = Some(&config.base_node_tor_identity_file)
-                    .filter(|p| p.exists())
-                    .and_then(|p| {
-                        // If this fails, we can just use another address
-                        identity_management::load_from_json::<_, TorIdentity>(p).ok()
-                    });
-                info!(
-                    target: LOG_TARGET,
-                    "Tor identity at path '{}' {:?}",
-                    config.base_node_tor_identity_file.to_string_lossy(),
-                    identity
-                        .as_ref()
-                        .map(|ident| format!("loaded for address '{}.onion'", ident.service_id))
-                        .or_else(|| Some("not found".to_string()))
-                        .unwrap()
-                );
-
-                let forward_addr = multiaddr_to_socketaddr(&forward_address).expect("Invalid tor forward address");
-                TransportType::Tor(TorConfig {
-                    control_server_addr: control_server_address,
-                    control_server_auth: {
-                        match auth {
-                            TorControlAuthentication::None => tor::Authentication::None,
-                            TorControlAuthentication::Password(password) => {
-                                tor::Authentication::HashedPassword(password)
-                            },
-                        }
-                    },
-                    identity: identity.map(Box::new),
-                    port_mapping: (onion_port, forward_addr).into(),
-                    // TODO: make configurable
-                    socks_address_override,
-                    socks_auth: socks::Authentication::None,
-                })
-            },
-            CommsTransport::Socks5 {
-                proxy_address,
-                listener_address,
-                auth,
-            } => TransportType::Socks {
-                socks_config: SocksConfig {
-                    proxy_address,
-                    authentication: utilities::convert_socks_authentication(auth),
-                },
-                listener_address,
-            },
         }
     }
 }

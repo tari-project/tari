@@ -32,17 +32,20 @@ use crate::{
     multiplexing,
     multiplexing::{IncomingSubstreams, Substream, SubstreamCounter, Yamux},
     peer_manager::{NodeId, Peer, PeerFeatures},
-    test_utils::transport,
+    test_utils::{node_identity::build_node_identity, transport},
 };
-use futures::{channel::mpsc, lock::Mutex, stream::Fuse, StreamExt};
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
 };
-use tokio::runtime::Handle;
+use tokio::{
+    runtime::Handle,
+    sync::{mpsc, Mutex},
+};
+use tokio_stream::StreamExt;
 
 pub fn create_dummy_peer_connection(node_id: NodeId) -> (PeerConnection, mpsc::Receiver<PeerConnectionRequest>) {
-    let (tx, rx) = mpsc::channel(0);
+    let (tx, rx) = mpsc::channel(1);
     (
         PeerConnection::new(
             1,
@@ -58,7 +61,6 @@ pub fn create_dummy_peer_connection(node_id: NodeId) -> (PeerConnection, mpsc::R
 }
 
 pub async fn create_peer_connection_mock_pair(
-    buf_size: usize,
     peer1: Peer,
     peer2: Peer,
 ) -> (
@@ -68,15 +70,15 @@ pub async fn create_peer_connection_mock_pair(
     PeerConnectionMockState,
 ) {
     let rt_handle = Handle::current();
-    let (tx1, rx1) = mpsc::channel(buf_size);
-    let (tx2, rx2) = mpsc::channel(buf_size);
+    let (tx1, rx1) = mpsc::channel(1);
+    let (tx2, rx2) = mpsc::channel(1);
     let (listen_addr, muxer_in, muxer_out) = transport::build_multiplexed_connections().await;
 
     // Start both mocks on current handle
-    let mock = PeerConnectionMock::new(rx1.fuse(), muxer_in);
+    let mock = PeerConnectionMock::new(rx1, muxer_in);
     let mock_state_in = mock.get_shared_state();
     rt_handle.spawn(mock.run());
-    let mock = PeerConnectionMock::new(rx2.fuse(), muxer_out);
+    let mock = PeerConnectionMock::new(rx2, muxer_out);
     let mock_state_out = mock.get_shared_state();
     rt_handle.spawn(mock.run());
 
@@ -104,7 +106,18 @@ pub async fn create_peer_connection_mock_pair(
     )
 }
 
-#[derive(Debug, Clone)]
+pub async fn new_peer_connection_mock_pair() -> (
+    PeerConnection,
+    PeerConnectionMockState,
+    PeerConnection,
+    PeerConnectionMockState,
+) {
+    let peer1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE).to_peer();
+    let peer2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE).to_peer();
+    create_peer_connection_mock_pair(peer1, peer2).await
+}
+
+#[derive(Clone)]
 pub struct PeerConnectionMockState {
     call_count: Arc<AtomicUsize>,
     mux_control: Arc<Mutex<multiplexing::Control>>,
@@ -140,6 +153,10 @@ impl PeerConnectionMockState {
         self.substream_counter.clone()
     }
 
+    pub fn num_open_substreams(&self) -> usize {
+        self.substream_counter.get()
+    }
+
     pub async fn next_incoming_substream(&self) -> Option<Substream> {
         self.mux_incoming.lock().await.next().await
     }
@@ -150,12 +167,12 @@ impl PeerConnectionMockState {
 }
 
 pub struct PeerConnectionMock {
-    receiver: Fuse<mpsc::Receiver<PeerConnectionRequest>>,
+    receiver: mpsc::Receiver<PeerConnectionRequest>,
     state: PeerConnectionMockState,
 }
 
 impl PeerConnectionMock {
-    pub fn new(receiver: Fuse<mpsc::Receiver<PeerConnectionRequest>>, muxer: Yamux) -> Self {
+    pub fn new(receiver: mpsc::Receiver<PeerConnectionRequest>, muxer: Yamux) -> Self {
         Self {
             receiver,
             state: PeerConnectionMockState::new(muxer),
@@ -167,7 +184,7 @@ impl PeerConnectionMock {
     }
 
     pub async fn run(mut self) {
-        while let Some(req) = self.receiver.next().await {
+        while let Some(req) = self.receiver.recv().await {
             self.handle_request(req).await;
         }
     }
@@ -176,9 +193,16 @@ impl PeerConnectionMock {
         use PeerConnectionRequest::*;
         self.state.inc_call_count();
         match req {
-            OpenSubstream(protocol, reply_tx) => match self.state.open_substream().await {
+            OpenSubstream {
+                protocol_id,
+                reply_tx,
+                tracing_id: _,
+            } => match self.state.open_substream().await {
                 Ok(stream) => {
-                    let negotiated_substream = NegotiatedSubstream { protocol, stream };
+                    let negotiated_substream = NegotiatedSubstream {
+                        protocol: protocol_id,
+                        stream,
+                    };
                     reply_tx.send(Ok(negotiated_substream)).unwrap();
                 },
                 Err(err) => {
@@ -186,6 +210,7 @@ impl PeerConnectionMock {
                 },
             },
             Disconnect(_, reply_tx) => {
+                self.receiver.close();
                 reply_tx.send(self.state.disconnect().await).unwrap();
             },
         }

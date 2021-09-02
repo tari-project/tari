@@ -20,26 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
-    config::{WalletConfig, KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY},
-    contacts_service::{handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer},
-    error::WalletError,
-    output_manager_service::{
-        error::OutputManagerError,
-        handle::OutputManagerHandle,
-        storage::{database::OutputManagerBackend, models::KnownOneSidedPaymentScript},
-        OutputManagerServiceInitializer,
-    },
-    storage::database::{WalletBackend, WalletDatabase},
-    transaction_service::{
-        handle::TransactionServiceHandle,
-        storage::database::TransactionBackend,
-        TransactionServiceInitializer,
-    },
-    types::KeyDigest,
-    utxo_scanner_service::{handle::UtxoScannerHandle, UtxoScannerServiceInitializer},
-};
+use std::{marker::PhantomData, sync::Arc};
+
 use aes_gcm::{
     aead::{generic_array::GenericArray, NewAead},
     Aes256Gcm,
@@ -47,7 +29,17 @@ use aes_gcm::{
 use digest::Digest;
 use log::*;
 use rand::rngs::OsRng;
-use std::{marker::PhantomData, sync::Arc};
+use tari_crypto::{
+    common::Blake256,
+    keys::SecretKey,
+    ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
+    script,
+    script::{ExecutionStack, TariScript},
+    signatures::{SchnorrSignature, SchnorrSignatureError},
+    tari_utilities::hex::Hex,
+};
+
+use tari_common_types::types::{ComSignature, PrivateKey, PublicKey};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
@@ -60,22 +52,35 @@ use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{OutputFeatures, UnblindedOutput},
-    types::{ComSignature, CryptoFactories, PrivateKey, PublicKey},
-};
-use tari_crypto::{
-    common::Blake256,
-    keys::SecretKey,
-    ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
-    script,
-    script::{ExecutionStack, TariScript},
-    signatures::{SchnorrSignature, SchnorrSignatureError},
-    tari_utilities::hex::Hex,
+    CryptoFactories,
 };
 use tari_key_manager::key_manager::KeyManager;
 use tari_p2p::{comms_connector::pubsub_connector, initialization, initialization::P2pInitializer};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
-use tokio::runtime;
+
+use crate::{
+    base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
+    config::{WalletConfig, KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY},
+    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer},
+    contacts_service::{handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer},
+    error::WalletError,
+    output_manager_service::{
+        error::OutputManagerError,
+        handle::OutputManagerHandle,
+        storage::{database::OutputManagerBackend, models::KnownOneSidedPaymentScript},
+        OutputManagerServiceInitializer,
+        TxId,
+    },
+    storage::database::{WalletBackend, WalletDatabase},
+    transaction_service::{
+        handle::TransactionServiceHandle,
+        storage::database::TransactionBackend,
+        TransactionServiceInitializer,
+    },
+    types::KeyDigest,
+    utxo_scanner_service::{handle::UtxoScannerHandle, UtxoScannerServiceInitializer},
+};
 use crate::assets::{AssetManagerHandle};
 
 
@@ -101,6 +106,7 @@ where
     pub store_and_forward_requester: StoreAndForwardRequester,
     pub output_manager_service: OutputManagerHandle,
     pub transaction_service: TransactionServiceHandle,
+    pub wallet_connectivity: WalletConnectivityHandle,
     pub contacts_service: ContactsServiceHandle,
     pub base_node_service: BaseNodeServiceHandle,
     pub utxo_scanner_service: UtxoScannerHandle,
@@ -108,8 +114,6 @@ where
     pub token_manager: TokenManagerHandle,
     pub db: WalletDatabase<T>,
     pub factories: CryptoFactories,
-    #[cfg(feature = "test_harness")]
-    pub transaction_backend: U,
     _u: PhantomData<U>,
     _v: PhantomData<V>,
     _w: PhantomData<W>,
@@ -145,12 +149,9 @@ where
         comms_config.node_identity = node_identity.clone();
 
         let bn_service_db = wallet_database.clone();
-        #[cfg(feature = "test_harness")]
-        let transaction_backend_handle = transaction_backend.clone();
 
         let factories = config.clone().factories;
-        let (publisher, subscription_factory) =
-            pubsub_connector(runtime::Handle::current(), config.buffer_size, config.rate_limit);
+        let (publisher, subscription_factory) = pubsub_connector(config.buffer_size, config.rate_limit);
         let peer_message_subscription_factory = Arc::new(subscription_factory);
         let transport_type = config.comms_config.transport_type.clone();
 
@@ -191,9 +192,10 @@ where
             ))
             .add_initializer(ContactsServiceInitializer::new(contacts_backend))
             .add_initializer(BaseNodeServiceInitializer::new(
-                config.base_node_service_config,
+                config.base_node_service_config.clone(),
                 bn_service_db,
             ))
+            .add_initializer(WalletConnectivityInitializer::new(config.base_node_service_config))
             .add_initializer(UtxoScannerServiceInitializer::new(
                 config.scan_for_utxo_interval,
                 wallet_database.clone(),
@@ -219,6 +221,7 @@ where
         let utxo_scanner_service_handle = handles.expect_handle::<UtxoScannerHandle>();
         let asset_manager_handle = handles.expect_handle::<AssetManagerHandle>();
         let token_manager_handle = handles.expect_handle::<TokenManagerHandle>();
+        let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle>();
 
         persist_one_sided_payment_script_for_node_identity(&mut output_manager_handle, comms.node_identity())
             .await
@@ -245,6 +248,7 @@ where
             contacts_service: contacts_handle,
             base_node_service: base_node_service_handle,
             utxo_scanner_service: utxo_scanner_service_handle,
+            wallet_connectivity,
             db: wallet_database,
             factories,
             asset_manager: asset_manager_handle,
@@ -287,10 +291,6 @@ where
         );
 
         self.comms.peer_manager().add_peer(peer.clone()).await?;
-        self.comms
-            .connectivity()
-            .add_managed_peers(vec![peer.node_id.clone()])
-            .await?;
 
         self.transaction_service
             .set_base_node_public_key(peer.public_key.clone())
@@ -336,7 +336,7 @@ where
         let unblinded_output = UnblindedOutput::new(
             amount,
             spending_key.clone(),
-            Some(features.clone()),
+            features.clone(),
             script,
             input_data,
             script_private_key.clone(),

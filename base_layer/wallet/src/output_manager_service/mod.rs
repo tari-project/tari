@@ -20,22 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    base_node_service::handle::BaseNodeServiceHandle,
-    output_manager_service::{
-        config::OutputManagerServiceConfig,
-        handle::OutputManagerHandle,
-        service::OutputManagerService,
-        storage::{database::OutputManagerBackend, database::OutputManagerDatabase},
-    },
-    transaction_service::handle::TransactionServiceHandle,
-};
 use futures::future;
 use log::*;
+use tokio::sync::broadcast;
+
+pub(crate) use master_key_manager::MasterKeyManager;
 use tari_comms::{connectivity::ConnectivityRequester, types::CommsSecretKey};
 use tari_core::{
     consensus::{ConsensusConstantsBuilder, NetworkConsensus},
-    transactions::types::CryptoFactories,
+    transactions::CryptoFactories,
 };
 use tari_service_framework::{
     async_trait,
@@ -44,7 +37,18 @@ use tari_service_framework::{
     ServiceInitializer,
     ServiceInitializerContext,
 };
-use tokio::sync::broadcast;
+pub use tasks::TxoValidationType;
+
+use crate::{
+    base_node_service::handle::BaseNodeServiceHandle,
+    output_manager_service::{
+        config::OutputManagerServiceConfig,
+        handle::OutputManagerHandle,
+        service::OutputManagerService,
+        storage::database::{OutputManagerBackend, OutputManagerDatabase},
+    },
+    transaction_service::handle::TransactionServiceHandle,
+};
 
 pub mod config;
 pub mod error;
@@ -56,9 +60,6 @@ pub mod resources;
 pub mod service;
 pub mod storage;
 mod tasks;
-
-pub(crate) use master_key_manager::MasterKeyManager;
-pub use tasks::TxoValidationType;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::initializer";
 
@@ -104,7 +105,7 @@ where T: OutputManagerBackend + 'static
         );
 
         let (sender, receiver) = reply_channel::unbounded();
-        let (publisher, _) = broadcast::channel(200);
+        let (publisher, _) = broadcast::channel(self.config.event_channel_size);
 
         // Register handle before waiting for handles to be ready
         let oms_handle = OutputManagerHandle::new(sender, publisher.clone());

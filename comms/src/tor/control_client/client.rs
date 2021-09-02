@@ -34,10 +34,13 @@ use crate::{
     tor::control_client::{event::TorControlEvent, monitor::spawn_monitor},
     transports::{TcpTransport, Transport},
 };
-use futures::{channel::mpsc, AsyncRead, AsyncWrite, SinkExt, StreamExt};
 use log::*;
 use std::{borrow::Cow, fmt, fmt::Display, num::NonZeroU16};
-use tokio::sync::broadcast;
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::{broadcast, mpsc},
+};
+use tokio_stream::wrappers::BroadcastStream;
 
 /// Client for the Tor control port.
 ///
@@ -56,7 +59,7 @@ impl TorControlPortClient {
     ) -> Result<Self, TorClientError> {
         let mut tcp = TcpTransport::new();
         tcp.set_nodelay(true);
-        let socket = tcp.dial(addr)?.await?;
+        let socket = tcp.dial(addr).await?;
         Ok(Self::new(socket, event_tx))
     }
 
@@ -80,8 +83,8 @@ impl TorControlPortClient {
         &self.event_tx
     }
 
-    pub fn get_event_stream(&self) -> broadcast::Receiver<TorControlEvent> {
-        self.event_tx.subscribe()
+    pub fn get_event_stream(&self) -> BroadcastStream<TorControlEvent> {
+        BroadcastStream::new(self.event_tx.subscribe())
     }
 
     /// Authenticate with the tor control port
@@ -232,8 +235,7 @@ impl TorControlPortClient {
     }
 
     async fn receive_line(&mut self) -> Result<ResponseLine, TorClientError> {
-        let line = self.output_stream.next().await.ok_or(TorClientError::UnexpectedEof)?;
-
+        let line = self.output_stream.recv().await.ok_or(TorClientError::UnexpectedEof)?;
         Ok(line)
     }
 }
@@ -276,6 +278,8 @@ mod test {
     use futures::future;
     use std::net::SocketAddr;
     use tari_test_utils::unpack_enum;
+    use tokio::io::AsyncWriteExt;
+    use tokio_stream::StreamExt;
 
     async fn setup_test() -> (TorControlPortClient, test_server::State) {
         let (_, mock_state, socket) = test_server::spawn().await;
@@ -288,7 +292,6 @@ mod test {
     async fn connect() {
         let (mut listener, addr) = TcpTransport::default()
             .listen("/ip4/127.0.0.1/tcp/0".parse().unwrap())
-            .unwrap()
             .await
             .unwrap();
         let (event_tx, _) = broadcast::channel(1);
@@ -296,8 +299,10 @@ mod test {
             future::join(TorControlPortClient::connect(addr, event_tx), listener.next()).await;
 
         // Check that the connection is successfully made
-        result_out.unwrap();
-        result_in.unwrap().unwrap().0.await.unwrap();
+        let _out_sock = result_out.unwrap();
+        let (mut in_sock, _) = result_in.unwrap().unwrap();
+        in_sock.write(b"test123").await.unwrap();
+        in_sock.shutdown().await.unwrap();
     }
 
     #[runtime::test]

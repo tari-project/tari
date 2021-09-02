@@ -23,13 +23,15 @@
 //! # Global configuration of tari base layer system
 
 use crate::{
-    configuration::{DanNodeConfig, Network},
+    configuration::{bootstrap::ApplicationType,DanNodeConfig, Network},
     ConfigurationError,
 };
 use config::{Config, ConfigError, Environment};
 use multiaddr::Multiaddr;
 use std::{
     convert::TryInto,
+    fmt,
+    fmt::{Display, Formatter},
     net::SocketAddr,
     num::{NonZeroU16, TryFromIntError},
     path::PathBuf,
@@ -56,6 +58,7 @@ pub struct GlobalConfig {
     pub autoupdate_hashes_sig_url: String,
     pub network: Network,
     pub comms_transport: CommsTransport,
+    pub auxilary_tcp_listener_address: Option<Multiaddr>,
     pub allow_test_addresses: bool,
     pub listnener_liveness_max_sessions: usize,
     pub listener_liveness_allowlist_cidrs: Vec<String>,
@@ -68,7 +71,6 @@ pub struct GlobalConfig {
     pub pruning_horizon: u64,
     pub pruned_mode_cleanup_interval: u64,
     pub core_threads: Option<usize>,
-    pub max_threads: Option<usize>,
     pub base_node_identity_file: PathBuf,
     pub public_address: Multiaddr,
     pub grpc_enabled: bool,
@@ -79,7 +81,6 @@ pub struct GlobalConfig {
     pub dns_seeds_name_server: SocketAddr,
     pub dns_seeds_use_dnssec: bool,
     pub peer_db_path: PathBuf,
-    pub enable_wallet: bool,
     pub num_mining_threads: usize,
     pub base_node_tor_identity_file: PathBuf,
     pub wallet_db_file: PathBuf,
@@ -89,9 +90,10 @@ pub struct GlobalConfig {
     pub wallet_peer_db_path: PathBuf,
     pub console_wallet_peer_db_path: PathBuf,
     pub buffer_size_base_node: usize,
-    pub buffer_size_base_node_wallet: usize,
+    pub buffer_size_console_wallet: usize,
     pub buffer_rate_limit_base_node: usize,
-    pub buffer_rate_limit_base_node_wallet: usize,
+    pub buffer_rate_limit_console_wallet: usize,
+    pub dedup_cache_capacity: usize,
     pub fetch_blocks_timeout: Duration,
     pub fetch_utxos_timeout: Duration,
     pub service_request_timeout: Duration,
@@ -104,6 +106,10 @@ pub struct GlobalConfig {
     pub transaction_broadcast_send_timeout: Duration,
     pub transaction_routing_mechanism: String,
     pub transaction_num_confirmations_required: u64,
+    pub transaction_event_channel_size: usize,
+    pub base_node_event_channel_size: usize,
+    pub output_manager_event_channel_size: usize,
+    pub base_node_update_publisher_channel_size: usize,
     pub console_wallet_password: Option<String>,
     pub wallet_command_send_wait_stage: String,
     pub wallet_command_send_wait_timeout: u64,
@@ -116,6 +122,7 @@ pub struct GlobalConfig {
     pub monerod_password: String,
     pub monerod_use_auth: bool,
     pub proxy_host_address: SocketAddr,
+    pub transcoder_host_address: SocketAddr,
     pub proxy_submit_to_origin: bool,
     pub force_sync_peers: Vec<String>,
     pub wait_for_initial_sync_at_startup: bool,
@@ -127,27 +134,37 @@ pub struct GlobalConfig {
     pub mine_on_tip_only: bool,
     pub validate_tip_timeout_sec: u64,
     pub dan_node: Option<DanNodeConfig>,
+    pub mining_pool_address: String,
+    pub mining_wallet_address: String,
+    pub mining_worker_name: String,
+    pub base_node_bypass_range_proof_verification: bool,
 }
 
 impl GlobalConfig {
-    pub fn convert_from(mut cfg: Config) -> Result<Self, ConfigurationError> {
+    pub fn convert_from(application: ApplicationType, mut cfg: Config) -> Result<Self, ConfigurationError> {
         // Add in settings from the environment (with a prefix of TARI_NODE)
         // Eg.. `TARI_NODE_DEBUG=1 ./target/app` would set the `debug` key
         let env = Environment::with_prefix("tari").separator("__");
         cfg.merge(env)
             .map_err(|e| ConfigurationError::new("environment variable", &e.to_string()))?;
 
-        let network = cfg
-            .get_str("base_node.network")
-            .map_err(|e| ConfigurationError::new("base_node.network", &e.to_string()))?
-            .parse()?;
+        let network = one_of::<Network>(&cfg, &[
+            &format!("{}.network", application.as_config_str()),
+            "common.network",
+            // TODO: Remove this once some time has passed and folks have upgraded their configs
+            "base_node.network",
+        ])?;
 
-        convert_node_config(network, cfg)
+        convert_node_config(application, network, cfg)
     }
 }
 
-fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, ConfigurationError> {
-    let net_str = network.to_string().to_lowercase();
+fn convert_node_config(
+    application: ApplicationType,
+    network: Network,
+    cfg: Config,
+) -> Result<GlobalConfig, ConfigurationError> {
+    let net_str = network.as_str();
 
     let key = config_string("base_node", &net_str, "data_dir");
     let data_dir: PathBuf = cfg
@@ -254,10 +271,6 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     let core_threads =
         optional(cfg.get_int(&key).map(|n| n as usize)).map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
-    let key = config_string("base_node", &net_str, "max_threads");
-    let max_threads =
-        optional(cfg.get_int(&key).map(|n| n as usize)).map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
-
     // Max RandomX VMs
     let key = config_string("base_node", &net_str, "max_randomx_vms");
     let max_randomx_vms = optional(cfg.get_int(&key).map(|n| n as usize))
@@ -292,7 +305,15 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .into();
 
     // Transport
-    let comms_transport = network_transport_config(&cfg, &net_str)?;
+    let comms_transport = network_transport_config(&cfg, application, &net_str)?;
+
+    let key = config_string("base_node", &net_str, "auxilary_tcp_listener_address");
+    let auxilary_tcp_listener_address = optional(cfg.get_str(&key))?
+        .map(|addr| {
+            addr.parse::<Multiaddr>()
+                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+        })
+        .transpose()?;
 
     let key = config_string("base_node", &net_str, "allow_test_addresses");
     let allow_test_addresses = cfg
@@ -352,6 +373,8 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
             s.parse::<SocketAddr>()
                 .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
         })?;
+    let key = config_string("base_node", &net_str, "bypass_range_proof_verification");
+    let base_node_bypass_range_proof_verification = cfg.get_bool(&key).unwrap_or(false);
 
     let key = config_string("base_node", &net_str, "dns_seeds_use_dnssec");
     let dns_seeds_use_dnssec = cfg
@@ -370,17 +393,6 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     let wallet_peer_db_path = data_dir.join("wallet_peer_db");
     let console_wallet_peer_db_path = data_dir.join("console_wallet_peer_db");
 
-    // set base node wallet
-    let key = config_string("base_node", &net_str, "enable_wallet");
-    let enable_wallet = cfg
-        .get_bool(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
-
-    let key = config_string("base_node", &net_str, "num_mining_threads");
-    let num_mining_threads = cfg
-        .get_int(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
-
     let key = config_string("base_node", &net_str, "flood_ban_max_msg_count");
     let flood_ban_max_msg_count = cfg
         .get_int(&key)
@@ -388,11 +400,13 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
 
     // block sync
     let key = config_string("base_node", &net_str, "force_sync_peers");
-    let force_sync_peers = optional(
-        cfg.get_array(&key)
-            .map(|values| values.into_iter().map(|v| v.into_str().unwrap()).collect()),
-    )?
-    .unwrap_or_default();
+    let force_sync_peers = match cfg.get_array(&key) {
+        Ok(peers) => peers.into_iter().map(|v| v.into_str().unwrap()).collect(),
+        Err(..) => match cfg.get_str(&key) {
+            Ok(s) => s.split(',').map(|v| v.to_string()).collect(),
+            Err(..) => vec![],
+        },
+    };
 
     // Liveness auto ping interval
     let key = config_string("base_node", &net_str, "auto_ping_interval");
@@ -461,6 +475,18 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     let key = "wallet.transaction_num_confirmations_required";
     let transaction_num_confirmations_required = optional(cfg.get_int(&key))?.unwrap_or(3) as u64;
 
+    let key = "wallet.transaction_event_channel_size";
+    let transaction_event_channel_size = optional(cfg.get_int(&key))?.unwrap_or(1000) as usize;
+
+    let key = "wallet.base_node_event_channel_size";
+    let base_node_event_channel_size = optional(cfg.get_int(&key))?.unwrap_or(250) as usize;
+
+    let key = "wallet.output_manager_event_channel_size";
+    let output_manager_event_channel_size = optional(cfg.get_int(&key))?.unwrap_or(250) as usize;
+
+    let key = "wallet.base_node_update_publisher_channel_size";
+    let base_node_update_publisher_channel_size = optional(cfg.get_int(&key))?.unwrap_or(50) as usize;
+
     let key = "wallet.prevent_fee_gt_amount";
     let prevent_fee_gt_amount = cfg
         .get_bool(&key)
@@ -493,18 +519,16 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     let console_wallet_notify_file = optional(cfg.get_str(key))?.map(PathBuf::from);
 
     let key = "wallet.base_node_service_refresh_interval";
-    let wallet_base_node_service_refresh_interval = match cfg.get_int(key) {
-        Ok(seconds) => seconds as u64,
-        Err(ConfigError::NotFound(_)) => 30,
-        Err(e) => return Err(ConfigurationError::new(&key, &e.to_string())),
-    };
+    let wallet_base_node_service_refresh_interval = cfg
+        .get_int(key)
+        .map(|seconds| seconds as u64)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
     let key = "wallet.base_node_service_request_max_age";
-    let wallet_base_node_service_request_max_age = match cfg.get_int(key) {
-        Ok(seconds) => seconds as u64,
-        Err(ConfigError::NotFound(_)) => 60,
-        Err(e) => return Err(ConfigurationError::new(&key, &e.to_string())),
-    };
+    let wallet_base_node_service_request_max_age = cfg
+        .get_int(key)
+        .map(|seconds| seconds as u64)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
     let key = "common.liveness_max_sessions";
     let liveness_max_sessions = cfg
@@ -537,8 +561,8 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .get_int(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
 
-    let key = "common.buffer_size_base_node_wallet";
-    let buffer_size_base_node_wallet = cfg
+    let key = "common.buffer_size_console_wallet";
+    let buffer_size_console_wallet = cfg
         .get_int(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
 
@@ -547,10 +571,15 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .get_int(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
 
-    let key = "common.buffer_rate_limit_base_node_wallet";
-    let buffer_rate_limit_base_node_wallet =
+    let key = "common.buffer_rate_limit_console_wallet";
+    let buffer_rate_limit_console_wallet =
         cfg.get_int(&key)
             .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
+
+    let key = "common.dedup_cache_capacity";
+    let dedup_cache_capacity = cfg
+        .get_int(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
 
     let key = "common.fetch_blocks_timeout";
     let fetch_blocks_timeout = Duration::from_secs(
@@ -599,6 +628,15 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
                 .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
         })?;
 
+    let key = config_string("stratum_transcoder", &net_str, "transcoder_host_address");
+    let transcoder_host_address = cfg
+        .get_str(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+        .and_then(|addr| {
+            addr.parse::<SocketAddr>()
+                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+        })?;
+
     let key = config_string("merge_mining_proxy", &net_str, "wait_for_initial_sync_at_startup");
     let wait_for_initial_sync_at_startup = cfg
         .get_bool(&key)
@@ -606,6 +644,9 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
 
     let key = config_string("merge_mining_proxy", &net_str, "proxy_submit_to_origin");
     let proxy_submit_to_origin = cfg.get_bool(&key).unwrap_or(true);
+
+    let key = "mining_node.num_mining_threads";
+    let num_mining_threads = optional(cfg.get_int(&key))?.unwrap_or(1) as usize;
 
     let key = "mining_node.mine_on_tip_only";
     let mine_on_tip_only = cfg.get_bool(key).unwrap_or(true);
@@ -638,6 +679,18 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     let key = "common.auto_update.hashes_sig_url";
     let autoupdate_hashes_sig_url = cfg.get_str(&key)?;
 
+    let key = "mining_node.mining_pool_address";
+    let mining_pool_address = cfg.get_str(&key).unwrap_or_else(|_| "".to_string());
+    let key = "mining_node.mining_wallet_address";
+    let mining_wallet_address = cfg.get_str(&key).unwrap_or_else(|_| "".to_string());
+    let key = "mining_node.mining_worker_name";
+    let mining_worker_name = cfg
+        .get_str(&key)
+        .unwrap_or_else(|_| "".to_string())
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .collect::<String>();
+
     Ok(GlobalConfig {
         autoupdate_check_interval,
         autoupdate_dns_hosts,
@@ -645,6 +698,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         autoupdate_hashes_sig_url,
         network,
         comms_transport,
+        auxilary_tcp_listener_address,
         allow_test_addresses,
         listnener_liveness_max_sessions: liveness_max_sessions,
         listener_liveness_allowlist_cidrs: liveness_allowlist_cidrs,
@@ -657,7 +711,6 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         pruning_horizon,
         pruned_mode_cleanup_interval,
         core_threads,
-        max_threads,
         base_node_identity_file,
         public_address,
         grpc_enabled,
@@ -668,7 +721,6 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         dns_seeds_name_server,
         dns_seeds_use_dnssec,
         peer_db_path,
-        enable_wallet,
         num_mining_threads,
         base_node_tor_identity_file,
         console_wallet_identity_file,
@@ -678,9 +730,10 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         wallet_peer_db_path,
         console_wallet_peer_db_path,
         buffer_size_base_node,
-        buffer_size_base_node_wallet,
+        buffer_size_console_wallet,
         buffer_rate_limit_base_node,
-        buffer_rate_limit_base_node_wallet,
+        buffer_rate_limit_console_wallet,
+        dedup_cache_capacity,
         fetch_blocks_timeout,
         fetch_utxos_timeout,
         service_request_timeout,
@@ -693,6 +746,10 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         transaction_broadcast_send_timeout,
         transaction_routing_mechanism,
         transaction_num_confirmations_required,
+        transaction_event_channel_size,
+        base_node_event_channel_size,
+        output_manager_event_channel_size,
+        base_node_update_publisher_channel_size,
         console_wallet_password,
         wallet_command_send_wait_stage,
         wallet_command_send_wait_timeout,
@@ -701,6 +758,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         wallet_base_node_service_request_max_age,
         prevent_fee_gt_amount,
         proxy_host_address,
+        transcoder_host_address,
         proxy_submit_to_origin,
         monerod_url,
         monerod_username,
@@ -716,6 +774,10 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         mine_on_tip_only,
         validate_tip_timeout_sec,
         dan_node: DanNodeConfig::convert_if_present(cfg)?,
+        mining_pool_address,
+        mining_wallet_address,
+        mining_worker_name,
+        base_node_bypass_range_proof_verification,
     })
 }
 
@@ -728,7 +790,37 @@ fn optional<T>(result: Result<T, ConfigError>) -> Result<Option<T>, ConfigError>
     }
 }
 
-fn network_transport_config(cfg: &Config, network: &str) -> Result<CommsTransport, ConfigurationError> {
+fn one_of<T>(cfg: &Config, keys: &[&str]) -> Result<T, ConfigError>
+where
+    T: FromStr,
+    T::Err: Display,
+{
+    for k in keys {
+        if let Some(v) = optional(cfg.get_str(k))? {
+            return v
+                .parse()
+                .map_err(|err| ConfigError::Message(format!("Failed to parse {}: {}", k, err)));
+        }
+    }
+    Err(ConfigError::NotFound(format!(
+        "None of the config keys [{}] were found",
+        keys.join(", ")
+    )))
+}
+
+fn network_transport_config(
+    cfg: &Config,
+    mut application: ApplicationType,
+    network: &str,
+) -> Result<CommsTransport, ConfigurationError> {
+    const P2P_APPS: &[ApplicationType] = &[ApplicationType::BaseNode, ApplicationType::ConsoleWallet];
+    if !P2P_APPS.contains(&application) {
+        // TODO: If/when we split the configs by app, this hack can be removed
+        //       This removed the need to setup defaults for apps that dont use the network,
+        //       assuming base node has been set up
+        application = ApplicationType::BaseNode;
+    }
+
     let get_conf_str = |key| {
         cfg.get_str(key)
             .map_err(|err| ConfigurationError::new(key, &err.to_string()))
@@ -741,16 +833,17 @@ fn network_transport_config(cfg: &Config, network: &str) -> Result<CommsTranspor
             .map_err(|err| ConfigurationError::new(key, &err.to_string()))
     };
 
-    let transport_key = config_string("base_node", network, "transport");
+    let app_str = application.as_config_str();
+    let transport_key = config_string(app_str, network, "transport");
     let transport = get_conf_str(&transport_key)?;
 
     match transport.to_lowercase().as_str() {
         "tcp" => {
-            let key = config_string("base_node", network, "tcp_listener_address");
+            let key = config_string(app_str, network, "tcp_listener_address");
             let listener_address = get_conf_multiaddr(&key)?;
-            let key = config_string("base_node", network, "tcp_tor_socks_address");
+            let key = config_string(app_str, network, "tcp_tor_socks_address");
             let tor_socks_address = get_conf_multiaddr(&key).ok();
-            let key = config_string("base_node", network, "tcp_tor_socks_auth");
+            let key = config_string(app_str, network, "tcp_tor_socks_auth");
             let tor_socks_auth = get_conf_str(&key).ok().and_then(|auth_str| auth_str.parse().ok());
 
             Ok(CommsTransport::Tcp {
@@ -760,23 +853,37 @@ fn network_transport_config(cfg: &Config, network: &str) -> Result<CommsTranspor
             })
         },
         "tor" => {
-            let key = config_string("base_node", network, "tor_control_address");
+            let key = config_string(app_str, network, "tor_control_address");
             let control_server_address = get_conf_multiaddr(&key)?;
 
-            let key = config_string("base_node", network, "tor_control_auth");
+            let key = config_string(app_str, network, "tor_control_auth");
             let auth_str = get_conf_str(&key)?;
             let auth = auth_str
                 .parse()
                 .map_err(|err: String| ConfigurationError::new(&key, &err))?;
 
-            let key = config_string("base_node", network, "tor_forward_address");
+            let key = config_string(app_str, network, "tor_forward_address");
             let forward_address = get_conf_multiaddr(&key)?;
-            let key = config_string("base_node", network, "tor_onion_port");
+            let key = config_string(app_str, network, "tor_onion_port");
             let onion_port = cfg
                 .get::<NonZeroU16>(&key)
                 .map_err(|err| ConfigurationError::new(&key, &err.to_string()))?;
 
-            let key = config_string("base_node", network, "tor_socks_address_override");
+            // TODO
+            let key = config_string(app_str, network, "tor_proxy_bypass_addresses");
+            let tor_proxy_bypass_addresses = optional(cfg.get_array(&key))?
+                .unwrap_or_default()
+                .into_iter()
+                .map(|v| {
+                    v.into_str()
+                        .map_err(|err| ConfigurationError::new(&key, &err.to_string()))
+                        .and_then(|s| {
+                            Multiaddr::from_str(&s).map_err(|err| ConfigurationError::new(&key, &err.to_string()))
+                        })
+                })
+                .collect::<Result<_, _>>()?;
+
+            let key = config_string(app_str, network, "tor_socks_address_override");
             let socks_address_override = match get_conf_str(&key).ok() {
                 Some(addr) => Some(
                     addr.parse::<Multiaddr>()
@@ -791,19 +898,20 @@ fn network_transport_config(cfg: &Config, network: &str) -> Result<CommsTranspor
                 socks_address_override,
                 forward_address,
                 onion_port,
+                tor_proxy_bypass_addresses,
             })
         },
         "socks5" => {
-            let key = config_string("base_node", network, "socks5_proxy_address");
+            let key = config_string(app_str, network, "socks5_proxy_address");
             let proxy_address = get_conf_multiaddr(&key)?;
 
-            let key = config_string("base_node", network, "socks5_auth");
+            let key = config_string(app_str, network, "socks5_auth");
             let auth_str = get_conf_str(&key)?;
             let auth = auth_str
                 .parse()
                 .map_err(|err: String| ConfigurationError::new(&key, &err))?;
 
-            let key = config_string("base_node", network, "socks5_listener_address");
+            let key = config_string(app_str, network, "socks5_listener_address");
             let listener_address = get_conf_multiaddr(&key)?;
 
             Ok(CommsTransport::Socks5 {
@@ -831,7 +939,7 @@ pub enum DatabaseType {
 }
 
 //---------------------------------------------     Network Transport     ------------------------------------------//
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum TorControlAuthentication {
     None,
     Password(String),
@@ -864,6 +972,16 @@ impl FromStr for TorControlAuthentication {
                 Ok(TorControlAuthentication::Password(password.to_string()))
             },
             s => Err(format!("Invalid tor auth type '{}'", s)),
+        }
+    }
+}
+
+impl fmt::Debug for TorControlAuthentication {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        use TorControlAuthentication::*;
+        match self {
+            None => write!(f, "None"),
+            Password(_) => write!(f, "Password(...)"),
         }
     }
 }
@@ -920,6 +1038,7 @@ pub enum CommsTransport {
         forward_address: Multiaddr,
         auth: TorControlAuthentication,
         onion_port: NonZeroU16,
+        tor_proxy_bypass_addresses: Vec<Multiaddr>,
     },
     /// Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
     Socks5 {

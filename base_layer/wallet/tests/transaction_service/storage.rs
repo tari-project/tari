@@ -26,19 +26,23 @@ use aes_gcm::{
 };
 use chrono::Utc;
 use rand::rngs::OsRng;
+use tari_crypto::{
+    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+    script,
+    script::{ExecutionStack, TariScript},
+};
+use tempfile::tempdir;
+use tokio::runtime::Runtime;
+
+use tari_common_types::types::{HashDigest, PrivateKey, PublicKey};
 use tari_core::transactions::{
     helpers::{create_unblinded_output, TestParams},
     tari_amount::{uT, MicroTari},
     transaction::{OutputFeatures, Transaction},
     transaction_protocol::sender::TransactionSenderMessage,
-    types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
+    CryptoFactories,
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
-};
-use tari_crypto::{
-    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-    script,
-    script::{ExecutionStack, TariScript},
 };
 use tari_test_utils::random;
 use tari_wallet::{
@@ -56,11 +60,8 @@ use tari_wallet::{
         sqlite_db::TransactionServiceSqliteDatabase,
     },
 };
-use tempfile::tempdir;
-use tokio::runtime::Runtime;
-
 pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
-    let mut runtime = Runtime::new().unwrap();
+    let runtime = Runtime::new().unwrap();
     let mut db = TransactionDatabase::new(backend);
     let factories = CryptoFactories::default();
     let input = create_unblinded_output(
@@ -329,38 +330,6 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         assert_eq!(tx, retrieved_completed_tx);
     } else {
         panic!("Should have found completed tx");
-    }
-
-    if cfg!(feature = "test_harness") {
-        let retrieved_completed_txs = runtime.block_on(db.get_completed_transactions()).unwrap();
-        assert!(retrieved_completed_txs.contains_key(&completed_txs[0].tx_id));
-        assert_eq!(
-            retrieved_completed_txs.get(&completed_txs[0].tx_id).unwrap().status,
-            TransactionStatus::Completed
-        );
-        #[cfg(feature = "test_harness")]
-        runtime
-            .block_on(db.broadcast_completed_transaction(completed_txs[0].tx_id))
-            .unwrap();
-        let retrieved_completed_txs = runtime.block_on(db.get_completed_transactions()).unwrap();
-
-        assert!(retrieved_completed_txs.contains_key(&completed_txs[0].tx_id));
-        assert_eq!(
-            retrieved_completed_txs.get(&completed_txs[0].tx_id).unwrap().status,
-            TransactionStatus::Broadcast
-        );
-
-        #[cfg(feature = "test_harness")]
-        runtime
-            .block_on(db.mine_completed_transaction(completed_txs[0].tx_id))
-            .unwrap();
-        let retrieved_completed_txs = runtime.block_on(db.get_completed_transactions()).unwrap();
-
-        assert!(retrieved_completed_txs.contains_key(&completed_txs[0].tx_id));
-        assert_eq!(
-            retrieved_completed_txs.get(&completed_txs[0].tx_id).unwrap().status,
-            TransactionStatus::MinedUnconfirmed
-        );
     }
 
     let completed_txs = runtime.block_on(db.get_completed_transactions()).unwrap();

@@ -26,17 +26,61 @@ function withTimeout(ms, promise, message = "") {
   return Promise.race([timeout, promise]);
 }
 
+async function tryConnect(makeClient, opts = {}) {
+  const options = Object.assign(
+    {
+      deadline: Infinity,
+      maxAttempts: 3,
+    },
+    opts
+  );
+  let attempts = 0;
+  for (;;) {
+    let client = makeClient();
+
+    // Don't log the uninteresting case
+    if (attempts > 0) {
+      console.warn(
+        `GRPC connection attempt ${attempts + 1}/${options.maxAttempts}`
+      );
+    }
+    let error = await new Promise((resolve) => {
+      client.waitForReady(options.deadline, (err) => {
+        if (err) {
+          return resolve(err);
+        }
+        resolve(null);
+      });
+    });
+
+    if (error) {
+      if (attempts >= options.maxAttempts) {
+        throw error;
+      }
+      attempts++;
+      console.error(
+        `Failed connection attempt ${attempts + 1}/${options.maxAttempts}`
+      );
+      console.error(error);
+      await sleep(1000);
+      continue;
+    }
+
+    return client;
+  }
+}
+
 async function waitFor(
   asyncTestFn,
   toBe,
-  maxTime,
+  maxTimeMs,
   timeOut = 500,
   skipLog = 50
 ) {
   const now = new Date();
 
   let i = 0;
-  while (new Date() - now < maxTime) {
+  while (new Date() - now < maxTimeMs) {
     try {
       const value = await asyncTestFn();
       if (value === toBe) {
@@ -53,7 +97,7 @@ async function waitFor(
     } catch (e) {
       if (i > 1) {
         if (e && e.code && e.code === NO_CONNECTION) {
-          console.log("No connection yet (waitFor)...");
+          // console.log("No connection yet (waitFor)...");
         } else {
           console.error("Error in waitFor: ", e);
         }
@@ -61,6 +105,18 @@ async function waitFor(
       await sleep(timeOut);
     }
   }
+}
+
+async function waitForPredicate(predicate, timeOut, sleep_ms = 500) {
+  const now = new Date();
+  while (new Date() - now < timeOut) {
+    const val = await predicate();
+    if (val) {
+      return val;
+    }
+    await sleep(sleep_ms);
+  }
+  throw new Error(`Predicate was not true after ${timeOut} ms`);
 }
 
 function dec2hex(n) {
@@ -107,52 +163,23 @@ function hexSwitchEndianness(val) {
   return res;
 }
 
-// Thanks to https://stackoverflow.com/questions/29860354/in-nodejs-how-do-i-check-if-a-port-is-listening-or-in-use
-const portInUse = function (port, callback) {
-  const server = net.createServer(function (socket) {
-    socket.write("Echo server\r\n");
-    socket.pipe(socket);
-  });
-
-  server.listen(port, "127.0.0.1");
-  server.on("error", function () {
-    callback(true);
-  });
-  server.on("listening", function () {
-    server.close();
-    callback(false);
-  });
-};
-
-let index = 0;
-const getFreePort = async function (from, to) {
-  function testPort(port) {
-    return new Promise((r) => {
-      portInUse(port, (v) => {
-        if (v) {
-          r(false);
+const getFreePort = function () {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer(function (_sock) {});
+    srv.listen(0, function () {
+      let { port } = srv.address();
+      srv.close((err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(port);
         }
-        r(true);
       });
     });
-  }
-
-  let port = from + index;
-  if (port > to) {
-    index = from;
-    port = from;
-  }
-  while (port < to) {
-    // let port = getRandomInt(from, to);
-    // await sleep(100);
-    port++;
-    index++;
-    const notInUse = await testPort(port);
-    // console.log("Port not in use:", notInUse);
-    if (notInUse) {
-      return port;
-    }
-  }
+    srv.on("error", function (err) {
+      reject(err);
+    });
+  });
 };
 
 const getTransactionOutputHash = function (output) {
@@ -174,23 +201,17 @@ const getTransactionOutputHash = function (output) {
   return Buffer.from(final);
 };
 
-function consoleLogTransactionDetails(txnDetails, txId) {
-  const found = txnDetails[0];
-  const status = txnDetails[1];
-  if (found) {
-    console.log(
-      "  Transaction " +
-        pad("'" + status.transactions[0].tx_id + "'", 24) +
-        " has status " +
-        pad("'" + status.transactions[0].status + "'", 40) +
-        " and " +
-        pad("is_cancelled(" + status.transactions[0].is_cancelled + ")", 21) +
-        " and " +
-        pad("is_valid(" + status.transactions[0].valid + ")", 16)
-    );
-  } else {
-    console.log("  Transaction '" + txId + "' " + status);
-  }
+function consoleLogTransactionDetails(txnDetails) {
+  console.log(
+    "  Transaction " +
+      pad("'" + txnDetails.tx_id + "'", 24) +
+      " has status " +
+      pad("'" + txnDetails.status + "'", 40) +
+      " and " +
+      pad("is_cancelled(" + txnDetails.is_cancelled + ")", 21) +
+      " and " +
+      pad("is_valid(" + txnDetails.valid + ")", 16)
+  );
 }
 
 function consoleLogBalance(balance) {
@@ -202,19 +223,6 @@ function consoleLogBalance(balance) {
       " uT, Pending outgoing " +
       pad(balance.pending_outgoing_balance, 16) +
       " uT"
-  );
-}
-
-function consoleLogCoinbaseDetails(txnDetails) {
-  console.log(
-    "  Transaction " +
-      pad("'" + txnDetails.tx_id + "'", 24) +
-      " has status " +
-      pad("'" + txnDetails.status + "'", 40) +
-      " and " +
-      pad("is_cancelled(" + txnDetails.is_cancelled + ")", 21) +
-      " and " +
-      pad("is_valid(" + txnDetails.valid + ")", 16)
   );
 }
 
@@ -252,6 +260,9 @@ function combineTwoTariKeys(key1, key2) {
   return total_key;
 }
 
+const byteArrayToHex = (bytes) =>
+  bytes.reduce((str, byte) => str + byte.toString(16).padStart(2, "0"), "");
+
 module.exports = {
   getRandomInt,
   sleep,
@@ -263,9 +274,12 @@ module.exports = {
   getTransactionOutputHash,
   hexSwitchEndianness,
   consoleLogTransactionDetails,
+  tryConnect,
   consoleLogBalance,
-  consoleLogCoinbaseDetails,
   withTimeout,
   combineTwoTariKeys,
+  byteArrayToHex,
+  waitForPredicate,
+
   NO_CONNECTION,
 };

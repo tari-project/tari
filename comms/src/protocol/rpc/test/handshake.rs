@@ -29,11 +29,11 @@ use crate::{
         Handshake,
     },
     runtime,
+    runtime::task,
 };
 use tari_test_utils::unpack_enum;
-use tokio::task;
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn it_performs_the_handshake() {
     let (client, server) = MemorySocket::new_pair();
 
@@ -51,7 +51,7 @@ async fn it_performs_the_handshake() {
     assert!(SUPPORTED_RPC_VERSIONS.contains(&v));
 }
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn it_rejects_the_handshake() {
     let (client, server) = MemorySocket::new_pair();
 

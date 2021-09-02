@@ -23,19 +23,23 @@
 // Acknowledgement to @sticnarf for tokio-socks on which this code is based
 use super::error::SocksError;
 use data_encoding::BASE32;
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use multiaddr::{Multiaddr, Protocol};
 use std::{
     borrow::Cow,
+    fmt,
+    fmt::Formatter,
     net::{Ipv4Addr, Ipv6Addr},
 };
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 pub type Result<T> = std::result::Result<T, SocksError>;
 
 /// Authentication methods
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Authentication {
+    /// No auth
     None,
+    /// Password auth (username, password)
     Password(String, String),
 }
 
@@ -51,6 +55,16 @@ impl Authentication {
 impl Default for Authentication {
     fn default() -> Self {
         Authentication::None
+    }
+}
+
+impl fmt::Debug for Authentication {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        use Authentication::*;
+        match self {
+            None => write!(f, "None"),
+            Password(username, _) => write!(f, "Password({}, ...)", username),
+        }
     }
 }
 
@@ -90,6 +104,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 
     /// Connects to a address through a SOCKS5 proxy and returns the 'upgraded' socket. This consumes the
     /// `Socks5Client` as once connected, the socks protocol does not recognise any further commands.
+    #[tracing::instrument(name = "socks::connect", skip(self))]
     pub async fn connect(mut self, address: &Multiaddr) -> Result<(TSocket, Multiaddr)> {
         let address = self.execute_command(Command::Connect, address).await?;
         Ok((self.protocol.socket, address))
@@ -97,6 +112,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 
     /// Requests the tor proxy to resolve a DNS address is resolved into an IP address.
     /// This operation only works with the tor SOCKS proxy.
+    #[tracing::instrument(name = "socks:tor_resolve", skip(self))]
     pub async fn tor_resolve(&mut self, address: &Multiaddr) -> Result<Multiaddr> {
         // Tor resolve does not return the port back
         let (dns, rest) = multiaddr_split_first(&address);
@@ -110,6 +126,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 
     /// Requests the tor proxy to reverse resolve an IP address into a DNS address if it is able.
     /// This operation only works with the tor SOCKS proxy.
+    #[tracing::instrument(name = "socks::tor_resolve_ptr", skip(self))]
     pub async fn tor_resolve_ptr(&mut self, address: &Multiaddr) -> Result<Multiaddr> {
         self.execute_command(Command::TorResolvePtr, address).await
     }
@@ -394,7 +411,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                 self.len = 7 + len;
             },
             // Special case for Tor resolve
-            (Protocol::Dns4(domain), None) => {
+            (Protocol::Dns4(domain), None) | (Protocol::Dns(domain), None) => {
                 self.buf[3] = 0x03;
                 let domain = domain.as_bytes();
                 let len = domain.len();

@@ -24,13 +24,13 @@ mod stress;
 use stress::{error::Error, prompt::user_prompt};
 
 use crate::stress::{node, prompt::parse_from_short_str, service, service::StressTestServiceRequest};
-use futures::{channel::oneshot, future, future::Either, SinkExt};
+use futures::{future, future::Either};
 use std::{env, net::Ipv4Addr, path::Path, process, sync::Arc, time::Duration};
 use tari_crypto::tari_utilities::message_format::MessageFormat;
 use tempfile::Builder;
-use tokio::time;
+use tokio::{sync::oneshot, time};
 
-#[tokio_macros::main]
+#[tokio::main]
 async fn main() {
     env_logger::init();
     match run().await {
@@ -99,7 +99,7 @@ async fn run() -> Result<(), Error> {
     }
 
     println!("Stress test service started!");
-    let (handle, mut requester) = service::start_service(comms_node, protocol_notif, inbound_rx, outbound_tx);
+    let (handle, requester) = service::start_service(comms_node, protocol_notif, inbound_rx, outbound_tx);
 
     let mut last_peer = peer.as_ref().and_then(parse_from_short_str);
 

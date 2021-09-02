@@ -1,8 +1,13 @@
 use crate::{consts, utilities::ExitCodes};
 use config::Config;
-use std::path::PathBuf;
+use std::{path::PathBuf, str::FromStr};
 use structopt::StructOpt;
-use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, DatabaseType, GlobalConfig};
+use tari_common::{
+    configuration::{bootstrap::ApplicationType, Network},
+    ConfigBootstrap,
+    DatabaseType,
+    GlobalConfig,
+};
 
 pub const LOG_TARGET: &str = "tari::application";
 
@@ -24,9 +29,31 @@ pub fn init_configuration(
     log::info!(target: LOG_TARGET, "{} ({})", application_type, consts::APP_VERSION);
 
     // Populate the configuration struct
-    let mut global_config =
-        GlobalConfig::convert_from(cfg.clone()).map_err(|err| ExitCodes::ConfigError(err.to_string()))?;
+    let mut global_config = GlobalConfig::convert_from(application_type, cfg.clone())
+        .map_err(|err| ExitCodes::ConfigError(err.to_string()))?;
     check_file_paths(&mut global_config, &bootstrap);
+
+    if let Some(str) = bootstrap.network.clone() {
+        log::info!(target: LOG_TARGET, "Network selection requested");
+        let network = Network::from_str(&str);
+        match network {
+            Ok(network) => {
+                log::info!(
+                    target: LOG_TARGET,
+                    "Network selection successful, current network is: {}",
+                    network
+                );
+                global_config.network = network;
+            },
+            Err(_) => {
+                log::warn!(
+                    target: LOG_TARGET,
+                    "Network selection was invalid, continuing with default network."
+                );
+            },
+        }
+    }
+
     Ok((bootstrap, global_config, cfg))
 }
 

@@ -75,6 +75,7 @@ pub struct HiddenServiceController {
     identity: Option<TorIdentity>,
     hs_flags: HsFlags,
     is_authenticated: bool,
+    proxy_bypass_addresses: Vec<Multiaddr>,
     shutdown_signal: OptionalShutdownSignal,
 }
 
@@ -88,6 +89,7 @@ impl HiddenServiceController {
         socks_auth: socks::Authentication,
         identity: Option<TorIdentity>,
         hs_flags: HsFlags,
+        proxy_bypass_addresses: Vec<Multiaddr>,
         shutdown_signal: OptionalShutdownSignal,
     ) -> Self {
         Self {
@@ -100,6 +102,7 @@ impl HiddenServiceController {
             hs_flags,
             identity,
             is_authenticated: false,
+            proxy_bypass_addresses,
             shutdown_signal,
         }
     }
@@ -116,6 +119,7 @@ impl HiddenServiceController {
         Ok(SocksTransport::new(SocksConfig {
             proxy_address: socks_addr,
             authentication: self.socks_auth.clone(),
+            proxy_bypass_addresses: self.proxy_bypass_addresses.clone(),
         }))
     }
 
@@ -210,7 +214,7 @@ impl HiddenServiceController {
                         "Failed to reestablish connection with tor control server because '{:?}'", err
                     );
                     warn!(target: LOG_TARGET, "Will attempt again in 5 seconds...");
-                    time::delay_for(Duration::from_secs(5)).await;
+                    time::sleep(Duration::from_secs(5)).await;
                 },
 
                 Either::Right(_) => {
@@ -319,8 +323,6 @@ impl HiddenServiceController {
         let proxied_addr = socketaddr_to_multiaddr(self.proxied_port_mapping.proxied_address());
 
         Ok(HiddenService {
-            socks_addr,
-            socks_auth: self.socks_auth.clone(),
             identity,
             proxied_addr,
             shutdown_signal: self.shutdown_signal.clone(),

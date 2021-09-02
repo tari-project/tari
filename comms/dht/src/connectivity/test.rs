@@ -30,6 +30,7 @@ use std::{iter::repeat_with, sync::Arc, time::Duration};
 use tari_comms::{
     connectivity::ConnectivityEvent,
     peer_manager::{Peer, PeerFeatures},
+    runtime,
     test_utils::{
         count_string_occurrences,
         mocks::{create_connectivity_mock, create_dummy_peer_connection, ConnectivityManagerMockState},
@@ -89,8 +90,7 @@ async fn setup(
     )
 }
 
-#[tokio_macros::test_basic]
-#[allow(clippy::redundant_closure)]
+#[runtime::test]
 async fn initialize() {
     let config = DhtConfig {
         num_neighbouring_nodes: 4,
@@ -111,13 +111,10 @@ async fn initialize() {
 
     // Wait for calls to add peers
     async_assert!(
-        connectivity.call_count().await >= 2,
+        connectivity.count_calls_containing("AddManagedPeers").await >= 2,
         max_attempts = 20,
         interval = Duration::from_millis(10),
     );
-
-    let calls = connectivity.take_calls().await;
-    assert_eq!(count_string_occurrences(&calls, &["AddManagedPeers"]), 2);
 
     // Check that neighbours are added
     let mut managed = connectivity.get_managed_peers().await;
@@ -131,7 +128,7 @@ async fn initialize() {
     assert!(managed.iter().all(|n| !neighbours.contains(n)));
 }
 
-#[tokio_macros::test_basic]
+#[runtime::test]
 async fn added_neighbours() {
     let node_identity = make_node_identity();
     let mut node_identities =
@@ -177,7 +174,7 @@ async fn added_neighbours() {
     assert!(managed.contains(closer_peer.node_id()));
 }
 
-#[tokio_macros::test_basic]
+#[runtime::test]
 #[allow(clippy::redundant_closure)]
 async fn reinitialize_pools_when_offline() {
     let node_identity = make_node_identity();
@@ -219,7 +216,7 @@ async fn reinitialize_pools_when_offline() {
     assert_eq!(managed.len(), 5);
 }
 
-#[tokio_macros::test_basic]
+#[runtime::test]
 async fn insert_neighbour() {
     let node_identity = make_node_identity();
     let node_identities =
@@ -258,11 +255,13 @@ async fn insert_neighbour() {
 }
 
 mod metrics {
+    use super::*;
     mod collector {
+        use super::*;
         use crate::connectivity::MetricsCollector;
         use tari_comms::peer_manager::NodeId;
 
-        #[tokio_macros::test_basic]
+        #[runtime::test]
         async fn it_adds_message_received() {
             let mut metric_collector = MetricsCollector::spawn();
             let node_id = NodeId::default();
@@ -277,7 +276,7 @@ mod metrics {
             assert_eq!(ts.count(), 100);
         }
 
-        #[tokio_macros::test_basic]
+        #[runtime::test]
         async fn it_clears_the_metrics() {
             let mut metric_collector = MetricsCollector::spawn();
             let node_id = NodeId::default();

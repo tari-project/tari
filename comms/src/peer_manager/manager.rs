@@ -337,7 +337,7 @@ mod test {
         peer
     }
 
-    #[runtime::test_basic]
+    #[runtime::test]
     async fn get_broadcast_identities() {
         // Create peer manager with random peers
         let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
@@ -446,7 +446,7 @@ mod test {
         assert_ne!(identities1, identities2);
     }
 
-    #[runtime::test_basic]
+    #[runtime::test]
     async fn calc_region_threshold() {
         let n = 5;
         // Create peer manager with random peers
@@ -514,7 +514,7 @@ mod test {
         }
     }
 
-    #[runtime::test_basic]
+    #[runtime::test]
     async fn closest_peers() {
         let n = 5;
         // Create peer manager with random peers
@@ -548,7 +548,7 @@ mod test {
         }
     }
 
-    #[runtime::test_basic]
+    #[runtime::test]
     async fn add_or_update_online_peer() {
         let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
         let mut peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);

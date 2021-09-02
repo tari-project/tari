@@ -24,18 +24,6 @@
 mod service;
 #[cfg(feature = "base_node")]
 use crate::base_node::StateMachineHandle;
-use crate::proto::{
-    base_node::{
-        FetchMatchingUtxos,
-        FetchUtxosResponse,
-        Signatures,
-        TipInfoResponse,
-        TxQueryBatchResponses,
-        TxQueryResponse,
-        TxSubmissionResponse,
-    },
-    types::{Signature, Transaction},
-};
 #[cfg(feature = "base_node")]
 use crate::{
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
@@ -43,6 +31,22 @@ use crate::{
 };
 #[cfg(feature = "base_node")]
 pub use service::BaseNodeWalletRpcService;
+
+use crate::{
+    proto,
+    proto::{
+        base_node::{
+            FetchMatchingUtxos,
+            FetchUtxosResponse,
+            Signatures,
+            TipInfoResponse,
+            TxQueryBatchResponses,
+            TxQueryResponse,
+            TxSubmissionResponse,
+        },
+        types::{Signature, Transaction},
+    },
+};
 
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 use tari_comms_rpc_macros::tari_rpc;
@@ -72,6 +76,9 @@ pub trait BaseNodeWalletService: Send + Sync + 'static {
 
     #[rpc(method = 5)]
     async fn get_tip_info(&self, request: Request<()>) -> Result<Response<TipInfoResponse>, RpcStatus>;
+
+    #[rpc(method = 6)]
+    async fn get_header(&self, request: Request<u64>) -> Result<Response<proto::core::BlockHeader>, RpcStatus>;
 }
 
 #[cfg(feature = "base_node")]

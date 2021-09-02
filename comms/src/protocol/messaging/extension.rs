@@ -26,7 +26,7 @@ use crate::{
     message::InboundMessage,
     pipeline,
     protocol::{
-        messaging::{consts, protocol::MESSAGING_PROTOCOL, MessagingEventSender},
+        messaging::{protocol::MESSAGING_PROTOCOL, MessagingEventSender},
         ProtocolExtension,
         ProtocolExtensionContext,
         ProtocolExtensionError,
@@ -34,9 +34,21 @@ use crate::{
     runtime,
     runtime::task,
 };
-use futures::channel::mpsc;
 use std::fmt;
+use tokio::sync::mpsc;
 use tower::Service;
+
+/// Buffer size for inbound messages from _all_ peers. This should be large enough to buffer quite a few incoming
+/// messages before creating backpressure on peers speaking the messaging protocol.
+pub const INBOUND_MESSAGE_BUFFER_SIZE: usize = 100;
+/// Buffer size notifications that a peer wants to speak /tari/messaging. This buffer is used for all peers, but a low
+/// value is ok because this events happen once (or less) per connecting peer. For e.g. a value of 10 would allow 10
+/// peers to concurrently request to speak /tari/messaging.
+pub const MESSAGING_PROTOCOL_EVENTS_BUFFER_SIZE: usize = 30;
+
+/// Buffer size for requests to the messaging protocol. All outbound messages will be sent along this channel. Some
+/// buffering may be required if the node needs to send many messages out at the same time.
+pub const MESSAGING_REQUEST_BUFFER_SIZE: usize = 50;
 
 pub struct MessagingProtocolExtension<TInPipe, TOutPipe, TOutReq> {
     event_tx: MessagingEventSender,
@@ -60,11 +72,11 @@ where
     TOutReq: Send + 'static,
 {
     fn install(self: Box<Self>, context: &mut ProtocolExtensionContext) -> Result<(), ProtocolExtensionError> {
-        let (proto_tx, proto_rx) = mpsc::channel(consts::MESSAGING_PROTOCOL_EVENTS_BUFFER_SIZE);
+        let (proto_tx, proto_rx) = mpsc::channel(MESSAGING_PROTOCOL_EVENTS_BUFFER_SIZE);
         context.add_protocol(&[MESSAGING_PROTOCOL.clone()], proto_tx);
 
-        let (messaging_request_tx, messaging_request_rx) = mpsc::channel(consts::MESSAGING_REQUEST_BUFFER_SIZE);
-        let (inbound_message_tx, inbound_message_rx) = mpsc::channel(consts::INBOUND_MESSAGE_BUFFER_SIZE);
+        let (messaging_request_tx, messaging_request_rx) = mpsc::channel(MESSAGING_REQUEST_BUFFER_SIZE);
+        let (inbound_message_tx, inbound_message_rx) = mpsc::channel(INBOUND_MESSAGE_BUFFER_SIZE);
 
         let messaging = MessagingProtocol::new(
             Default::default(),

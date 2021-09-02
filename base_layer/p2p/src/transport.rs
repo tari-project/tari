@@ -58,6 +58,9 @@ pub struct TorConfig {
     pub socks_address_override: Option<Multiaddr>,
     /// Authentication for the Tor SOCKS5 proxy
     pub socks_auth: socks::Authentication,
+    /// If the underlying SOCKS transport encounters these addresses, bypass the proxy and dial directly using the
+    /// TcpTransport
+    pub tor_proxy_bypass_addresses: Vec<Multiaddr>,
 }
 
 impl fmt::Display for TorConfig {

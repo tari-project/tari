@@ -22,8 +22,9 @@
 
 use super::protocol as proto;
 
-use crate::transactions::{transaction_protocol::recipient::RecipientSignedMessage, types::PublicKey};
+use crate::transactions::transaction_protocol::recipient::RecipientSignedMessage;
 use std::convert::{TryFrom, TryInto};
+use tari_common_types::types::PublicKey;
 use tari_crypto::tari_utilities::ByteArray;
 
 impl TryFrom<proto::RecipientSignedMessage> for RecipientSignedMessage {

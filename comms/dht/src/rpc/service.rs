@@ -24,16 +24,16 @@ use crate::{
     proto::rpc::{GetCloserPeersRequest, GetPeersRequest, GetPeersResponse},
     rpc::DhtRpcService,
 };
-use futures::{channel::mpsc, stream, SinkExt};
 use log::*;
 use std::{cmp, sync::Arc};
 use tari_comms::{
     peer_manager::{NodeId, Peer, PeerFeatures, PeerQuery},
     protocol::rpc::{Request, RpcError, RpcStatus, Streaming},
+    utils,
     PeerManager,
 };
 use tari_utilities::ByteArray;
-use tokio::task;
+use tokio::{sync::mpsc, task};
 
 const LOG_TARGET: &str = "comms::dht::rpc";
 
@@ -56,17 +56,15 @@ impl DhtRpcServiceImpl {
 
         // A maximum buffer size of 10 is selected arbitrarily and is to allow the producer/consumer some room to
         // buffer.
-        let (mut tx, rx) = mpsc::channel(cmp::min(10, peers.len() as usize));
+        let (tx, rx) = mpsc::channel(cmp::min(10, peers.len() as usize));
         task::spawn(async move {
             let iter = peers
                 .into_iter()
                 .map(|peer| GetPeersResponse {
                     peer: Some(peer.into()),
                 })
-                .map(Ok)
                 .map(Ok);
-            let mut stream = stream::iter(iter);
-            let _ = tx.send_all(&mut stream).await;
+            let _ = utils::mpsc::send_all(&tx, iter).await;
         });
 
         Streaming::new(rx)

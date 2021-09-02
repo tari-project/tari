@@ -22,11 +22,14 @@
 
 use crate::{framing::CanonicalFraming, message::MessageExt, proto, protocol::rpc::error::HandshakeRejectReason};
 use bytes::BytesMut;
-use futures::{AsyncRead, AsyncWrite, SinkExt, StreamExt};
-use log::*;
+use futures::{SinkExt, StreamExt};
 use prost::{DecodeError, Message};
 use std::{io, time::Duration};
-use tokio::time;
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    time,
+};
+use tracing::{debug, error, event, span, warn, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::rpc::handshake";
 
@@ -66,42 +69,60 @@ where T: AsyncRead + AsyncWrite + Unpin
         Self { framed, timeout: None }
     }
 
-    /// Set the length of time that a client/server should wait for the other side to response before timing out.
+    /// Set the length of time that a client/server should wait for the other side to respond before timing out.
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = Some(timeout);
         self
     }
 
     /// Server-side handshake protocol
+    #[tracing::instrument(name = "rpc::server::perform_server_handshake", skip(self), err, fields(comms.direction="inbound"))]
     pub async fn perform_server_handshake(&mut self) -> Result<u32, RpcHandshakeError> {
         match self.recv_next_frame().await {
             Ok(Some(Ok(msg))) => {
+                event!(Level::DEBUG, "Handshake bytes received");
                 let msg = proto::rpc::RpcSession::decode(&mut msg.freeze())?;
                 let version = SUPPORTED_RPC_VERSIONS
                     .iter()
                     .find(|v| msg.supported_versions.contains(v));
                 if let Some(version) = version {
+                    event!(Level::INFO, version = version, "Server accepted version");
                     debug!(target: LOG_TARGET, "Server accepted version {}", version);
                     let reply = proto::rpc::RpcSessionReply {
                         session_result: Some(proto::rpc::rpc_session_reply::SessionResult::AcceptedVersion(*version)),
                         ..Default::default()
                     };
-                    self.framed.send(reply.to_encoded_bytes().into()).await?;
+                    let span = span!(Level::INFO, "rpc::server::handshake::send_accept_version_reply");
+                    self.framed
+                        .send(reply.to_encoded_bytes().into())
+                        .instrument(span)
+                        .await?;
                     return Ok(*version);
                 }
 
+                let span = span!(Level::INFO, "rpc::server::handshake::send_rejection");
                 self.reject_with_reason(HandshakeRejectReason::UnsupportedVersion)
+                    .instrument(span)
                     .await?;
                 Err(RpcHandshakeError::ClientNoSupportedVersion)
             },
-            Ok(Some(Err(err))) => Err(err.into()),
-            Ok(None) => Err(RpcHandshakeError::ClientClosed),
-            Err(_elapsed) => Err(RpcHandshakeError::TimedOut),
+            Ok(Some(Err(err))) => {
+                event!(Level::ERROR, "Error: {}", err);
+                Err(err.into())
+            },
+            Ok(None) => {
+                event!(Level::ERROR, "Client closed request");
+                Err(RpcHandshakeError::ClientClosed)
+            },
+            Err(_elapsed) => {
+                event!(Level::ERROR, "Timed out");
+                Err(RpcHandshakeError::TimedOut)
+            },
         }
     }
 
     pub async fn reject_with_reason(&mut self, reject_reason: HandshakeRejectReason) -> Result<(), RpcHandshakeError> {
-        debug!(target: LOG_TARGET, "Rejecting handshake because {}", reject_reason);
+        warn!(target: LOG_TARGET, "Rejecting handshake because {}", reject_reason);
         let reply = proto::rpc::RpcSessionReply {
             session_result: Some(proto::rpc::rpc_session_reply::SessionResult::Rejected(true)),
             reject_reason: reject_reason.as_i32(),
@@ -112,6 +133,7 @@ where T: AsyncRead + AsyncWrite + Unpin
     }
 
     /// Client-side handshake protocol
+    #[tracing::instrument(name = "rpc::client::perform_client_handshake", skip(self), err, fields(comms.direction="outbound"))]
     pub async fn perform_client_handshake(&mut self) -> Result<(), RpcHandshakeError> {
         let msg = proto::rpc::RpcSession {
             supported_versions: SUPPORTED_RPC_VERSIONS.to_vec(),
@@ -120,7 +142,7 @@ where T: AsyncRead + AsyncWrite + Unpin
         // anything. Rather than returning an IO error, let's ignore the send error and see if we can receive anything,
         // or return an IO error similarly to what send would have done.
         if let Err(err) = self.framed.send(msg.to_encoded_bytes().into()).await {
-            debug!(
+            warn!(
                 target: LOG_TARGET,
                 "IO error when sending new session handshake to peer: {}", err
             );
@@ -129,16 +151,27 @@ where T: AsyncRead + AsyncWrite + Unpin
             Ok(Some(Ok(msg))) => {
                 let msg = proto::rpc::RpcSessionReply::decode(&mut msg.freeze())?;
                 let version = msg.result()?;
+                event!(Level::INFO, "Server accepted version: {}", version);
                 debug!(target: LOG_TARGET, "Server accepted version {}", version);
                 Ok(())
             },
-            Ok(Some(Err(err))) => Err(err.into()),
-            Ok(None) => Err(RpcHandshakeError::ServerClosedRequest),
-            Err(_) => Err(RpcHandshakeError::TimedOut),
+            Ok(Some(Err(err))) => {
+                event!(Level::ERROR, "Error: {}", err);
+                Err(err.into())
+            },
+            Ok(None) => {
+                event!(Level::ERROR, "Server closed request");
+                Err(RpcHandshakeError::ServerClosedRequest)
+            },
+            Err(_) => {
+                event!(Level::ERROR, "Timed out");
+                Err(RpcHandshakeError::TimedOut)
+            },
         }
     }
 
-    async fn recv_next_frame(&mut self) -> Result<Option<Result<BytesMut, io::Error>>, time::Elapsed> {
+    #[tracing::instrument(name = "rpc::receive_handshake_reply", skip(self), err)]
+    async fn recv_next_frame(&mut self) -> Result<Option<Result<BytesMut, io::Error>>, time::error::Elapsed> {
         match self.timeout {
             Some(timeout) => time::timeout(timeout, self.framed.next()).await,
             None => Ok(self.framed.next().await),

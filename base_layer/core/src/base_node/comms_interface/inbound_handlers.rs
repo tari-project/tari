@@ -30,11 +30,11 @@ use crate::{
         OutboundNodeCommsInterface,
     },
     blocks::{block_header::BlockHeader, Block, NewBlock, NewBlockTemplate},
-    chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainBlock},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainBlock, PrunedOutput},
     consensus::{ConsensusConstants, ConsensusManager},
     mempool::{async_mempool, Mempool},
     proof_of_work::{Difficulty, PowAlgorithm},
-    transactions::{transaction::TransactionKernel, types::HashOutput},
+    transactions::transaction::TransactionKernel,
 };
 use log::*;
 use std::{
@@ -42,7 +42,7 @@ use std::{
     sync::Arc,
 };
 use strum_macros::Display;
-use tari_common_types::types::BlockHash;
+use tari_common_types::types::{BlockHash, HashOutput};
 use tari_comms::peer_manager::NodeId;
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex, ByteArray};
 use tokio::sync::Semaphore;
@@ -226,12 +226,14 @@ where T: BlockchainBackend + 'static
             },
             NodeCommsRequest::FetchMatchingUtxos(utxo_hashes) => {
                 let mut res = Vec::with_capacity(utxo_hashes.len());
-                for (output, spent) in (self.blockchain_db.fetch_utxos(utxo_hashes, None).await?)
+                for (pruned_output, spent) in (self.blockchain_db.fetch_utxos(utxo_hashes).await?)
                     .into_iter()
                     .flatten()
                 {
-                    if !spent {
-                        res.push(output);
+                    if let PrunedOutput::NotPruned { output } = pruned_output {
+                        if !spent {
+                            res.push(output);
+                        }
                     }
                 }
                 Ok(NodeCommsResponse::TransactionOutputs(res))
@@ -239,10 +241,13 @@ where T: BlockchainBackend + 'static
             NodeCommsRequest::FetchMatchingTxos(hashes) => {
                 let res = self
                     .blockchain_db
-                    .fetch_utxos(hashes, None)
+                    .fetch_utxos(hashes)
                     .await?
                     .into_iter()
-                    .filter_map(|opt| opt.map(|(output, _)| output))
+                    .filter_map(|opt| match opt {
+                        Some((PrunedOutput::NotPruned { output }, _)) => Some(output),
+                        _ => None,
+                    })
                     .collect();
                 Ok(NodeCommsResponse::TransactionOutputs(res))
             },
@@ -364,7 +369,13 @@ where T: BlockchainBackend + 'static
                     .await?
                     .into_iter()
                     .map(|tx| Arc::try_unwrap(tx).unwrap_or_else(|tx| (*tx).clone()))
-                    .collect();
+                    .collect::<Vec<_>>();
+
+                debug!(
+                    target: LOG_TARGET,
+                    "Adding {} transaction(s) to new block template",
+                    transactions.len()
+                );
 
                 let prev_hash = header.prev_hash.clone();
                 let height = header.height;

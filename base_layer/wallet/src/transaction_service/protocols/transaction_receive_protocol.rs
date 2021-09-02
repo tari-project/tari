@@ -33,21 +33,18 @@ use crate::{
     },
 };
 use chrono::Utc;
-use futures::{
-    channel::{mpsc, oneshot},
-    future::FutureExt,
-    StreamExt,
-};
+use futures::future::FutureExt;
 use log::*;
 use std::sync::Arc;
 use tari_comms::types::CommsPublicKey;
+use tokio::sync::{mpsc, oneshot};
 
 use tari_core::transactions::{
     transaction::Transaction,
     transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
 };
 use tari_crypto::tari_utilities::Hashable;
-use tokio::time::delay_for;
+use tokio::time::sleep;
 use tari_core::transactions::transaction_protocol::TxId;
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::receive_protocol";
@@ -264,7 +261,8 @@ where TBackend: TransactionBackend + 'static
             },
             Some(t) => t,
         };
-        let mut timeout_delay = delay_for(timeout_duration).fuse();
+        let timeout_delay = sleep(timeout_duration).fuse();
+        tokio::pin!(timeout_delay);
 
         // check to see if a resend is due
         let resend = match inbound_tx.last_send_timestamp {
@@ -312,9 +310,9 @@ where TBackend: TransactionBackend + 'static
 
         loop {
             loop {
-                let mut resend_timeout = delay_for(self.resources.config.transaction_resend_period).fuse();
-                futures::select! {
-                    (spk, tx_id, tx) = receiver.select_next_some() => {
+                let resend_timeout = sleep(self.resources.config.transaction_resend_period).fuse();
+                tokio::select! {
+                    Some((spk, tx_id, tx)) = receiver.recv() => {
                         incoming_finalized_transaction = Some(tx);
                         if inbound_tx.source_public_key != spk {
                             warn!(
@@ -327,16 +325,14 @@ where TBackend: TransactionBackend + 'static
                             break;
                         }
                     },
-                    result = cancellation_receiver => {
-                        if result.is_ok() {
-                            info!(target: LOG_TARGET, "Cancelling Transaction Receive Protocol for TxId: {}", self.id);
-                            return Err(TransactionServiceProtocolError::new(
-                                self.id,
-                                TransactionServiceError::TransactionCancelled,
-                            ));
-                        }
+                    Ok(_) = &mut cancellation_receiver => {
+                        info!(target: LOG_TARGET, "Cancelling Transaction Receive Protocol for TxId: {}", self.id);
+                        return Err(TransactionServiceProtocolError::new(
+                            self.id,
+                            TransactionServiceError::TransactionCancelled,
+                        ));
                     },
-                    () = resend_timeout => {
+                    _ = resend_timeout => {
                         match send_transaction_reply(
                             inbound_tx.clone(),
                             self.resources.outbound_message_service.clone(),
@@ -355,10 +351,10 @@ where TBackend: TransactionBackend + 'static
                                         ),
                         }
                     },
-                    () = timeout_delay => {
+                    _ = &mut timeout_delay => {
                         return self.timeout_transaction().await;
                     }
-                    _ = shutdown => {
+                    _ = shutdown.wait() => {
                         info!(target: LOG_TARGET, "Transaction Receive Protocol (id: {}) shutting down because it received the shutdown signal", self.id);
                         return Err(TransactionServiceProtocolError::new(self.id, TransactionServiceError::Shutdown))
                     }
@@ -382,6 +378,11 @@ where TBackend: TransactionBackend + 'static
                 self.source_pubkey.clone()
             );
 
+            finalized_transaction
+                .validate_internal_consistency(true, &self.resources.factories, None)
+                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+
+            // Find your own output in the transaction
             let rtp_output = match inbound_tx.receiver_protocol.state.clone() {
                 RecipientState::Finalized(s) => s.output,
                 RecipientState::Failed(_) => {
@@ -398,12 +399,47 @@ where TBackend: TransactionBackend + 'static
 
             let finalized_outputs = finalized_transaction.body.outputs();
 
-            if !finalized_outputs.iter().any(|o| o.hash() == rtp_output.hash()) {
-                warn!(
-                    target: LOG_TARGET,
-                    "Finalized Transaction does not contain the Receiver's output"
-                );
-                continue;
+            // Update output metadata signature if not valid
+            match finalized_outputs
+                .iter()
+                .find(|output| output.hash() == rtp_output.hash())
+            {
+                Some(v) => {
+                    if rtp_output.verify_metadata_signature().is_err() {
+                        match self
+                            .resources
+                            .output_manager_service
+                            .update_output_metadata_signature(v.clone())
+                            .await
+                            .map_err(|e| {
+                                TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e))
+                            }) {
+                            Ok(..) => {
+                                debug!(
+                                    target: LOG_TARGET,
+                                    "Updated metadata signature (TxId: {}) for output {}", self.id, v
+                                );
+                            },
+                            Err(e) => {
+                                warn!(
+                                    target: LOG_TARGET,
+                                    "Could not update metadata signature (TxId: {}) for output {} ({}, {})",
+                                    self.id,
+                                    v,
+                                    e.id,
+                                    e.error.to_string()
+                                );
+                            },
+                        }
+                    }
+                },
+                None => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Finalized Transaction does not contain the Receiver's output"
+                    );
+                    continue;
+                },
             }
 
             let completed_transaction = CompletedTransaction::new(
@@ -421,43 +457,11 @@ where TBackend: TransactionBackend + 'static
                 None,
             );
 
-            finalized_transaction
-                .validate_internal_consistency(&Default::default(), None)
-                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
             self.resources
                 .db
                 .complete_inbound_transaction(self.id, completed_transaction.clone())
                 .await
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-
-            // Update output metadata signature if not valid
-            if let Some(v) = finalized_outputs
-                .iter()
-                .find(|output| output.hash() == rtp_output.hash())
-            {
-                if rtp_output.verify_metadata_signature().is_err() {
-                    match self
-                        .resources
-                        .output_manager_service
-                        .update_output_metadata_signature(v.clone())
-                        .await
-                        .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))
-                    {
-                        Ok(..) => {
-                            debug!(target: LOG_TARGET, "Updated metadata signature for output {}", v);
-                        },
-                        Err(e) => {
-                            warn!(
-                                target: LOG_TARGET,
-                                "Could not updated metadata signature for output {} ({}, {})",
-                                v,
-                                e.id,
-                                e.error.to_string()
-                            );
-                        },
-                    }
-                }
-            }
 
             info!(
                 target: LOG_TARGET,

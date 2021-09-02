@@ -20,17 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::output_manager_service::error::OutputManagerStorageError;
 use std::cmp::Ordering;
+
+use tari_crypto::script::{ExecutionStack, TariScript};
+
+use tari_common_types::types::{Commitment, HashOutput, PrivateKey};
 use tari_core::{
     tari_utilities::hash::Hashable,
-    transactions::{
-        transaction::UnblindedOutput,
-        transaction_protocol::RewindData,
-        types::{Commitment, CryptoFactories, HashOutput, PrivateKey},
-    },
+    transactions::{transaction::UnblindedOutput, transaction_protocol::RewindData, CryptoFactories},
 };
-use tari_crypto::script::{ExecutionStack, TariScript};
+
+use crate::output_manager_service::error::OutputManagerStorageError;
 use crate::output_manager_service::storage::OutputStatus;
 
 #[derive(Debug, Clone)]
@@ -108,4 +108,15 @@ impl PartialEq for KnownOneSidedPaymentScript {
     fn eq(&self, other: &KnownOneSidedPaymentScript) -> bool {
         self.script_hash == other.script_hash
     }
+}
+
+/// The status of a given output
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum OutputStatus {
+    Unspent,
+    Spent,
+    EncumberedToBeReceived,
+    EncumberedToBeSpent,
+    Invalid,
+    CancelledInbound,
 }

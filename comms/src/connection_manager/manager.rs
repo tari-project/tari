@@ -33,24 +33,21 @@ use crate::{
     noise::NoiseConfig,
     peer_manager::{NodeId, NodeIdentity},
     protocol::{NodeNetworkInfo, ProtocolEvent, ProtocolId, Protocols},
-    runtime,
-    transports::Transport,
+    transports::{TcpTransport, Transport},
     PeerManager,
-};
-use futures::{
-    channel::{mpsc, oneshot},
-    stream::Fuse,
-    AsyncRead,
-    AsyncWrite,
-    SinkExt,
-    StreamExt,
 };
 use log::*;
 use multiaddr::Multiaddr;
 use std::{fmt, sync::Arc};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use time::Duration;
-use tokio::{sync::broadcast, task, time};
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::{broadcast, mpsc, oneshot},
+    task,
+    time,
+};
+use tracing::{span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::connection_manager::manager";
 
@@ -65,10 +62,6 @@ pub enum ConnectionManagerEvent {
     PeerConnectFailed(Box<NodeId>, ConnectionManagerError),
     PeerInboundConnectFailed(ConnectionManagerError),
 
-    // Listener
-    Listening(Multiaddr),
-    ListenFailed(ConnectionManagerError),
-
     // Substreams
     NewInboundSubstream(Box<NodeId>, ProtocolId, Substream),
 }
@@ -81,8 +74,6 @@ impl fmt::Display for ConnectionManagerEvent {
             PeerDisconnected(node_id) => write!(f, "PeerDisconnected({})", node_id.short_str()),
             PeerConnectFailed(node_id, err) => write!(f, "PeerConnectFailed({}, {:?})", node_id.short_str(), err),
             PeerInboundConnectFailed(err) => write!(f, "PeerInboundConnectFailed({:?})", err),
-            Listening(addr) => write!(f, "Listening({})", addr),
-            ListenFailed(err) => write!(f, "ListenFailed({:?})", err),
             NewInboundSubstream(node_id, protocol, _) => write!(
                 f,
                 "NewInboundSubstream({}, {}, Stream)",
@@ -101,29 +92,35 @@ pub struct ConnectionManagerConfig {
     /// The number of dial attempts to make before giving up. Default: 3
     pub max_dial_attempts: usize,
     /// The maximum number of connection tasks that will be spawned at the same time. Once this limit is reached, peers
-    /// attempting to connect will have to wait for another connection attempt to complete. Default: 20
+    /// attempting to connect will have to wait for another connection attempt to complete. Default: 100
     pub max_simultaneous_inbound_connects: usize,
     /// Set to true to allow peers to send loopback, local-link and other addresses normally not considered valid for
     /// peer-to-peer comms. Default: false
     pub allow_test_addresses: bool,
     /// Version information for this node
     pub network_info: NodeNetworkInfo,
-    /// The maximum time to wait for the first byte before closing the connection. Default: 7s
+    /// The maximum time to wait for the first byte before closing the connection. Default: 45s
     pub time_to_first_byte: Duration,
     /// The number of liveness check sessions to allow. Default: 0
     pub liveness_max_sessions: usize,
     /// CIDR blocks that allowlist liveness checks. Default: Localhost only (127.0.0.1/32)
     pub liveness_cidr_allowlist: Vec<cidr::AnyIpCidr>,
+    /// If set, an additional TCP-only p2p listener will be started. This is useful for local wallet connections.
+    /// Default: None (disabled)
+    pub auxilary_tcp_listener_address: Option<Multiaddr>,
 }
 
 impl Default for ConnectionManagerConfig {
     fn default() -> Self {
         Self {
+            #[cfg(not(test))]
             listener_address: "/ip4/0.0.0.0/tcp/7898"
                 .parse()
                 .expect("DEFAULT_LISTENER_ADDRESS is malformed"),
-            max_dial_attempts: 3,
-            max_simultaneous_inbound_connects: 20,
+            #[cfg(test)]
+            listener_address: "/memory/0".parse().unwrap(),
+            max_dial_attempts: 1,
+            max_simultaneous_inbound_connects: 100,
             network_info: Default::default(),
             #[cfg(not(test))]
             allow_test_addresses: false,
@@ -131,23 +128,42 @@ impl Default for ConnectionManagerConfig {
             #[cfg(test)]
             allow_test_addresses: true,
             liveness_max_sessions: 0,
-            time_to_first_byte: Duration::from_secs(7),
+            time_to_first_byte: Duration::from_secs(45),
             liveness_cidr_allowlist: vec![cidr::AnyIpCidr::V4("127.0.0.1/32".parse().unwrap())],
+            auxilary_tcp_listener_address: None,
         }
     }
 }
 
+/// Container struct for the listener addresses
+#[derive(Debug, Clone)]
+pub struct ListenerInfo {
+    bind_address: Multiaddr,
+    aux_bind_address: Option<Multiaddr>,
+}
+
+impl ListenerInfo {
+    pub fn bind_address(&self) -> &Multiaddr {
+        &self.bind_address
+    }
+
+    pub fn auxilary_bind_address(&self) -> Option<&Multiaddr> {
+        self.aux_bind_address.as_ref()
+    }
+}
+
 pub struct ConnectionManager<TTransport, TBackoff> {
-    request_rx: Fuse<mpsc::Receiver<ConnectionManagerRequest>>,
-    internal_event_rx: Fuse<mpsc::Receiver<ConnectionManagerEvent>>,
+    request_rx: mpsc::Receiver<ConnectionManagerRequest>,
+    internal_event_rx: mpsc::Receiver<ConnectionManagerEvent>,
     dialer_tx: mpsc::Sender<DialerRequest>,
     dialer: Option<Dialer<TTransport, TBackoff>>,
     listener: Option<PeerListener<TTransport>>,
+    aux_listener: Option<PeerListener<TcpTransport>>,
     peer_manager: Arc<PeerManager>,
     shutdown_signal: Option<ShutdownSignal>,
     protocols: Protocols<Substream>,
-    listener_address: Option<Multiaddr>,
-    listening_notifiers: Vec<oneshot::Sender<Multiaddr>>,
+    listener_info: Option<ListenerInfo>,
+    listening_notifiers: Vec<oneshot::Sender<ListenerInfo>>,
     connection_manager_events_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
     complete_trigger: Shutdown,
 }
@@ -160,7 +176,7 @@ where
 {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        config: ConnectionManagerConfig,
+        mut config: ConnectionManagerConfig,
         transport: TTransport,
         noise_config: NoiseConfig,
         backoff: TBackoff,
@@ -171,18 +187,31 @@ where
         shutdown_signal: ShutdownSignal,
     ) -> Self {
         let (internal_event_tx, internal_event_rx) = mpsc::channel(EVENT_CHANNEL_SIZE);
-
         let (dialer_tx, dialer_rx) = mpsc::channel(DIALER_REQUEST_CHANNEL_SIZE);
 
         let listener = PeerListener::new(
             config.clone(),
+            config.listener_address.clone(),
             transport.clone(),
             noise_config.clone(),
             internal_event_tx.clone(),
             peer_manager.clone(),
-            Arc::clone(&node_identity),
+            node_identity.clone(),
             shutdown_signal.clone(),
         );
+
+        let aux_listener = config.auxilary_tcp_listener_address.take().map(|addr| {
+            PeerListener::new(
+                config.clone(),
+                addr,
+                TcpTransport::new(),
+                noise_config.clone(),
+                internal_event_tx.clone(),
+                peer_manager.clone(),
+                node_identity.clone(),
+                shutdown_signal.clone(),
+            )
+        });
 
         let dialer = Dialer::new(
             config,
@@ -198,14 +227,15 @@ where
 
         Self {
             shutdown_signal: Some(shutdown_signal),
-            request_rx: request_rx.fuse(),
+            request_rx,
             peer_manager,
             protocols: Protocols::new(),
-            internal_event_rx: internal_event_rx.fuse(),
+            internal_event_rx,
             dialer_tx,
             dialer: Some(dialer),
             listener: Some(listener),
-            listener_address: None,
+            listener_info: None,
+            aux_listener,
             listening_notifiers: Vec::new(),
             connection_manager_events_tx,
             complete_trigger: Shutdown::new(),
@@ -226,13 +256,29 @@ where
     }
 
     pub async fn run(mut self) {
+        let span = span!(Level::DEBUG, "comms::connection_manager::run");
+        let _enter = span.enter();
         let mut shutdown = self
             .shutdown_signal
             .take()
             .expect("ConnectionManager initialized without a shutdown");
 
-        self.run_listener();
+        // Runs the listeners. Sockets are bound and ready once this resolves
+        match self.run_listeners().await {
+            Ok(info) => {
+                self.listener_info = Some(info);
+            },
+            Err(err) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Failed to start listener(s). {}. Connection manager is quitting.", err
+                );
+                return;
+            },
+        };
         self.run_dialer();
+        // Notify any awaiting tasks that the listener(s) are ready to receive connections
+        self.notify_all_ready();
 
         debug!(
             target: LOG_TARGET,
@@ -244,16 +290,16 @@ where
                 .join(", ")
         );
         loop {
-            futures::select! {
-                event = self.internal_event_rx.select_next_some() => {
+            tokio::select! {
+                Some(event) = self.internal_event_rx.recv() => {
                     self.handle_event(event).await;
                 },
 
-                request = self.request_rx.select_next_some() => {
+                Some(request) = self.request_rx.recv() => {
                     self.handle_request(request).await;
                 },
 
-                _ = shutdown => {
+                _ = &mut shutdown => {
                     info!(target: LOG_TARGET, "ConnectionManager is shutting down because it received the shutdown signal");
                     break;
                 }
@@ -261,14 +307,33 @@ where
         }
     }
 
-    fn run_listener(&mut self) {
+    async fn run_listeners(&mut self) -> Result<ListenerInfo, ConnectionManagerError> {
         let mut listener = self
             .listener
             .take()
             .expect("ConnectionManager initialized without a listener");
 
         listener.set_supported_protocols(self.protocols.get_supported_protocols());
-        runtime::current().spawn(listener.run());
+
+        let mut listener_info = ListenerInfo {
+            bind_address: Multiaddr::empty(),
+            aux_bind_address: None,
+        };
+        match listener.listen().await {
+            Ok(addr) => {
+                listener_info.bind_address = addr;
+            },
+            Err(err) => return Err(err),
+        }
+
+        if let Some(mut listener) = self.aux_listener.take() {
+            listener.set_supported_protocols(self.protocols.get_supported_protocols());
+            let addr = listener.listen().await?;
+            debug!(target: LOG_TARGET, "TCP listener bound to address {}", addr);
+            listener_info.aux_bind_address = Some(addr);
+        }
+
+        Ok(listener_info)
     }
 
     fn run_dialer(&mut self) {
@@ -278,14 +343,23 @@ where
             .expect("ConnectionManager initialized without a dialer");
 
         dialer.set_supported_protocols(self.protocols.get_supported_protocols());
-        runtime::current().spawn(dialer.run());
+        dialer.spawn();
     }
 
     async fn handle_request(&mut self, request: ConnectionManagerRequest) {
         use ConnectionManagerRequest::*;
         trace!(target: LOG_TARGET, "Connection manager got request: {:?}", request);
         match request {
-            DialPeer(node_id, reply) => self.dial_peer(node_id, reply).await,
+            DialPeer {
+                node_id,
+                reply_tx,
+                tracing_id: _tracing,
+            } => {
+                let span = span!(Level::TRACE, "connection_manager::handle_request");
+                // This causes a panic for some reason?
+                // span.follows_from(tracing_id);
+                self.dial_peer(node_id, reply_tx).instrument(span).await
+            },
             CancelDial(node_id) => {
                 if let Err(err) = self.dialer_tx.send(DialerRequest::CancelPendingDial(node_id)).await {
                     error!(
@@ -294,9 +368,9 @@ where
                     );
                 }
             },
-            NotifyListening(reply) => match self.listener_address.as_ref() {
-                Some(addr) => {
-                    let _ = reply.send(addr.clone());
+            NotifyListening(reply) => match self.listener_info.as_ref() {
+                Some(info) => {
+                    let _ = reply.send(info.clone());
                 },
                 None => {
                     self.listening_notifiers.push(reply);
@@ -305,17 +379,20 @@ where
         }
     }
 
+    fn notify_all_ready(&mut self) {
+        let info = self
+            .listener_info
+            .as_ref()
+            .expect("notify_all_ready called before listeners were successfully bound");
+        for notifier in self.listening_notifiers.drain(..) {
+            let _ = notifier.send(info.clone());
+        }
+    }
+
     async fn handle_event(&mut self, event: ConnectionManagerEvent) {
         use ConnectionManagerEvent::*;
 
         match event {
-            Listening(addr) => {
-                self.listener_address = Some(addr.clone());
-                self.publish_event(ConnectionManagerEvent::Listening(addr.clone()));
-                for notifier in self.listening_notifiers.drain(..) {
-                    let _ = notifier.send(addr.clone());
-                }
-            },
             NewInboundSubstream(node_id, protocol, stream) => {
                 let proto_str = String::from_utf8_lossy(&protocol);
                 debug!(
@@ -324,15 +401,25 @@ where
                     node_id.short_str(),
                     proto_str
                 );
-                if let Err(err) = self
+                let notify_fut = self
                     .protocols
-                    .notify(&protocol, ProtocolEvent::NewInboundSubstream(*node_id, stream))
-                    .await
-                {
-                    error!(
-                        target: LOG_TARGET,
-                        "Error sending NewSubstream notification for protocol '{}' because '{:?}'", proto_str, err
-                    );
+                    .notify(&protocol, ProtocolEvent::NewInboundSubstream(*node_id, stream));
+                match time::timeout(Duration::from_secs(10), notify_fut).await {
+                    Ok(Err(err)) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "Error sending NewSubstream notification for protocol '{}' because '{:?}'", proto_str, err
+                        );
+                    },
+                    Err(err) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "Error sending NewSubstream notification for protocol '{}' because {}", proto_str, err
+                        );
+                    },
+                    _ => {
+                        debug!(target: LOG_TARGET, "Protocol notification for '{}' sent", proto_str);
+                    },
                 }
             },
 
@@ -354,6 +441,7 @@ where
         let _ = self.connection_manager_events_tx.send(Arc::new(event));
     }
 
+    #[tracing::instrument(skip(self, reply))]
     async fn dial_peer(
         &mut self,
         node_id: NodeId,

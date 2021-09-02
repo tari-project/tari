@@ -70,13 +70,13 @@
 //! # args.init = true;
 //! args.init_dirs(ApplicationType::BaseNode);
 //! let config = args.load_configuration().unwrap();
-//! let global = GlobalConfig::convert_from(config).unwrap();
+//! let global = GlobalConfig::convert_from(ApplicationType::BaseNode, config).unwrap();
 //! assert_eq!(global.network, Network::Weatherwax);
-//! assert!(global.max_threads.is_none());
+//! assert!(global.core_threads.is_none());
 //! # std::fs::remove_dir_all(temp_dir).unwrap();
 //! ```
 
-#[cfg(feature = "build")]
+#[cfg(any(feature = "build", feature = "static-application-info"))]
 pub mod build;
 #[macro_use]
 mod logging;
@@ -98,6 +98,7 @@ pub const DEFAULT_CONFIG: &str = "config/config.toml";
 pub const DEFAULT_BASE_NODE_LOG_CONFIG: &str = "config/log4rs_base_node.yml";
 pub const DEFAULT_WALLET_LOG_CONFIG: &str = "config/log4rs_console_wallet.yml";
 pub const DEFAULT_MERGE_MINING_PROXY_LOG_CONFIG: &str = "config/log4rs_merge_mining_proxy.yml";
+pub const DEFAULT_STRATUM_TRANSCODER_LOG_CONFIG: &str = "config/log4rs_miningcore_transcoder.yml";
 pub const DEFAULT_MINING_NODE_LOG_CONFIG: &str = "config/log4rs_mining_node.yml";
 
 pub(crate) const LOG_TARGET: &str = "common::config";

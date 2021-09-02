@@ -22,7 +22,7 @@
 
 use std::{
     collections::HashMap,
-    convert::{TryFrom, TryInto},
+    convert::TryFrom,
     str::from_utf8,
     sync::{Arc, RwLock},
     time::Duration,
@@ -36,20 +36,18 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     script::{ExecutionStack, TariScript},
     tari_utilities::{
-        ByteArray,
         hex::{from_hex, Hex},
+        ByteArray,
     },
 };
 
-pub(crate) use new_output_sql::NewOutputSql;
-pub(crate) use output_sql::OutputSql;
+use tari_common_types::types::{ComSignature, Commitment, PrivateKey, PublicKey};
 use tari_core::{
     tari_utilities::hash::Hashable,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{OutputFeatures, OutputFlags, UnblindedOutput},
-        transaction_protocol::TxId,
-        types::{Commitment, CryptoFactories, PrivateKey, PublicKey},
+        transaction::{OutputFeatures, OutputFlags, TransactionOutput, UnblindedOutput},
+        CryptoFactories,
     },
 };
 use tari_core::transactions::transaction::{AssetOutputFeatures, MintNonFungibleFeatures, TransactionOutput};
@@ -67,7 +65,7 @@ use crate::{
                 PendingTransactionOutputs,
                 WriteOperation,
             },
-            models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
+            models::{DbUnblindedOutput, KnownOneSidedPaymentScript, OutputStatus},
             OutputStatus,
         },
     },
@@ -117,6 +115,7 @@ impl OutputManagerSqliteDatabase {
     }
 }
 impl OutputManagerBackend for OutputManagerSqliteDatabase {
+    #[allow(clippy::cognitive_complexity)]
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, OutputManagerStorageError> {
         let conn = self.database_connection.acquire_lock();
 
@@ -147,6 +146,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     None
                 },
             },
+
             DbKey::AnyOutputByCommitment(commitment) => {
                 match OutputSql::find_by_commitment(&commitment.to_vec(), &(*conn)) {
                     Ok(mut o) => {
@@ -184,6 +184,18 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     };
                     None
                 },
+            },
+            DbKey::OutputsByTxIdAndStatus(tx_id, status) => {
+                let mut outputs = OutputSql::find_by_tx_id_and_status(*tx_id, *status, &(*conn))?;
+                for o in outputs.iter_mut() {
+                    self.decrypt_if_necessary(o)?;
+                }
+                Some(DbValue::AnyOutputs(
+                    outputs
+                        .iter()
+                        .map(|o| DbUnblindedOutput::try_from(o.clone()))
+                        .collect::<Result<Vec<_>, _>>()?,
+                ))
             },
             DbKey::UnspentOutputs => {
                 let mut outputs = OutputSql::index_status(OutputStatus::Unspent, &(*conn))?;
@@ -306,6 +318,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
     }
 
+    #[allow(clippy::cognitive_complexity)]
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError> {
         let conn = self.database_connection.acquire_lock();
 
@@ -369,6 +382,20 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     let mut script_sql = KnownOneSidedPaymentScriptSql::from(script);
                     self.encrypt_if_necessary(&mut script_sql)?;
                     script_sql.commit(&(*conn))?
+                },
+                DbKeyValuePair::UpdateOutputStatus(commitment, status) => {
+                    let output = OutputSql::find_by_commitment(&commitment.to_vec(), &(*conn))?;
+                    output.update(
+                        UpdateOutput {
+                            status: Some(status),
+                            tx_id: None,
+                            spending_key: None,
+                            script_private_key: None,
+                            metadata_signature_nonce: None,
+                            metadata_signature_u_key: None,
+                        },
+                        &(*conn),
+                    )?;
                 },
             },
             WriteOperation::Remove(k) => match k {
@@ -442,6 +469,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 DbKey::InvalidOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::TimeLockedUnspentOutputs(_) => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::KnownOneSidedPaymentScripts => return Err(OutputManagerStorageError::OperationNotSupported),
+                DbKey::OutputsByTxIdAndStatus(_, _) => return Err(OutputManagerStorageError::OperationNotSupported),
             },
         }
 
@@ -905,7 +933,10 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 );
                 OutputManagerStorageError::ConversionError
             })?,
-            features,
+            OutputFeatures {
+                flags: OutputFlags::from_bits(o.flags as u8).ok_or(OutputManagerStorageError::ConversionError)?,
+                maturity: o.maturity as u64,
+            },
             TariScript::from_bytes(o.script.as_slice())?,
             ExecutionStack::from_bytes(o.input_data.as_slice())?,
             PrivateKey::from_vec(&o.script_private_key).map_err(|_| {
@@ -1452,7 +1483,7 @@ impl Encryptable<Aes256Gcm> for KnownOneSidedPaymentScriptSql {
 
 #[cfg(test)]
 mod test {
-    use std::{convert::TryFrom, iter, time::Duration};
+    use std::{convert::TryFrom, time::Duration};
 
     use aes_gcm::{
         aead::{generic_array::GenericArray, NewAead},
@@ -1460,19 +1491,18 @@ mod test {
     };
     use chrono::{Duration as ChronoDuration, Utc};
     use diesel::{Connection, SqliteConnection};
-    use rand::{CryptoRng, distributions::Alphanumeric, Rng, RngCore, rngs::OsRng};
-    use tari_crypto::{
-        inputs,
-        keys::{PublicKey as PublicKeyTrait, SecretKey},
-        script,
-    };
+    use rand::{rngs::OsRng, RngCore};
+    use tari_crypto::{keys::SecretKey, script};
     use tempfile::tempdir;
 
+    use tari_common_types::types::{CommitmentFactory, PrivateKey};
     use tari_core::transactions::{
+        helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
         tari_amount::MicroTari,
-        transaction::{TransactionInput, UnblindedOutput},
-        types::{CommitmentFactory, CryptoFactories, PrivateKey, PublicKey},
+        transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
+        CryptoFactories,
     };
+    use tari_test_utils::random;
 
     use crate::{
         output_manager_service::storage::{
@@ -1490,7 +1520,6 @@ mod test {
         storage::sqlite_utilities::WalletDbConnection,
         util::encryption::Encryptable,
     };
-    use crate::output_manager_service::storage::sqlite_db::new_output_sql::NewOutputSql;
 
     pub fn make_input(val: MicroTari) -> (TransactionInput, UnblindedOutput) {
         let test_params = TestParamsHelpers::new();

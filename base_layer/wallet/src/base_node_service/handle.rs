@@ -21,11 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::{error::BaseNodeServiceError, service::BaseNodeState};
-use futures::{stream::Fuse, StreamExt};
-use std::sync::Arc;
-use tari_comms::peer_manager::Peer;
-
+use std::{sync::Arc, time::Duration};
 use tari_common_types::chain_metadata::ChainMetadata;
+use tari_comms::peer_manager::Peer;
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
@@ -40,6 +38,7 @@ pub enum BaseNodeServiceRequest {
     GetChainMetadata,
     SetBaseNodePeer(Box<Peer>),
     GetBaseNodePeer,
+    GetBaseNodeLatency,
 }
 /// API Response enum
 #[derive(Debug)]
@@ -47,6 +46,7 @@ pub enum BaseNodeServiceResponse {
     ChainMetadata(Option<ChainMetadata>),
     BaseNodePeerSet,
     BaseNodePeer(Option<Box<Peer>>),
+    Latency(Option<Duration>),
 }
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum BaseNodeEvent {
@@ -82,8 +82,8 @@ impl BaseNodeServiceHandle {
         }
     }
 
-    pub fn get_event_stream_fused(&self) -> Fuse<BaseNodeEventReceiver> {
-        self.event_stream_sender.subscribe().fuse()
+    pub fn get_event_stream(&self) -> BaseNodeEventReceiver {
+        self.event_stream_sender.subscribe()
     }
 
     pub async fn get_chain_metadata(&mut self) -> Result<Option<ChainMetadata>, BaseNodeServiceError> {
@@ -107,6 +107,13 @@ impl BaseNodeServiceHandle {
     pub async fn get_base_node_peer(&mut self) -> Result<Option<Peer>, BaseNodeServiceError> {
         match self.handle.call(BaseNodeServiceRequest::GetBaseNodePeer).await?? {
             BaseNodeServiceResponse::BaseNodePeer(peer) => Ok(peer.map(|p| *p)),
+            _ => Err(BaseNodeServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_base_node_latency(&mut self) -> Result<Option<Duration>, BaseNodeServiceError> {
+        match self.handle.call(BaseNodeServiceRequest::GetBaseNodeLatency).await?? {
+            BaseNodeServiceResponse::Latency(latency) => Ok(latency),
             _ => Err(BaseNodeServiceError::UnexpectedApiResponse),
         }
     }

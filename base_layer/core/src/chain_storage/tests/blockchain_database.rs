@@ -28,6 +28,7 @@ use crate::{
         blockchain::{create_new_blockchain, TempDatabase},
         create_block,
     },
+    transactions::transaction::{Transaction, UnblindedOutput},
 };
 use std::sync::Arc;
 use tari_test_utils::unpack_enum;
@@ -36,20 +37,33 @@ fn setup() -> BlockchainDatabase<TempDatabase> {
     create_new_blockchain()
 }
 
-fn add_many_chained_blocks(size: usize, db: &BlockchainDatabase<TempDatabase>) -> Vec<Arc<Block>> {
+fn create_next_block(prev_block: &Block, transactions: Vec<Arc<Transaction>>) -> (Arc<Block>, UnblindedOutput) {
+    let (mut block, output) = create_block(
+        1,
+        prev_block.header.height + 1,
+        transactions.into_iter().map(|t| (&*t).clone()).collect(),
+    );
+    block.header.prev_hash = prev_block.hash();
+    block.header.output_mmr_size = prev_block.header.output_mmr_size + block.body.outputs().len() as u64;
+    block.header.kernel_mmr_size = prev_block.header.kernel_mmr_size + block.body.kernels().len() as u64;
+    (Arc::new(block), output)
+}
+
+fn add_many_chained_blocks(
+    size: usize,
+    db: &BlockchainDatabase<TempDatabase>,
+) -> (Vec<Arc<Block>>, Vec<UnblindedOutput>) {
     let mut prev_block = Arc::new(db.fetch_block(0).unwrap().try_into_block().unwrap());
     let mut blocks = Vec::with_capacity(size);
-    for i in 1..=size as u64 {
-        let mut block = create_block(1, i, vec![]);
-        block.header.prev_hash = prev_block.hash().clone();
-        block.header.output_mmr_size = prev_block.header.output_mmr_size + block.body.outputs().len() as u64;
-        block.header.kernel_mmr_size = prev_block.header.kernel_mmr_size + block.body.kernels().len() as u64;
-        let block = Arc::new(block);
-        prev_block = block.clone();
+    let mut outputs = Vec::with_capacity(size);
+    for _ in 1..=size as u64 {
+        let (block, coinbase_utxo) = create_next_block(&prev_block, vec![]);
         db.add_block(block.clone()).unwrap().assert_added();
+        prev_block = block.clone();
         blocks.push(block);
+        outputs.push(coinbase_utxo);
     }
-    blocks
+    (blocks, outputs)
 }
 
 mod fetch_blocks {
@@ -76,7 +90,7 @@ mod fetch_blocks {
     #[test]
     fn it_returns_one() {
         let db = setup();
-        let new_blocks = add_many_chained_blocks(1, &db);
+        let (new_blocks, _) = add_many_chained_blocks(1, &db);
         let blocks = db.fetch_blocks(1..=1).unwrap();
         assert_eq!(blocks.len(), 1);
         assert_eq!(blocks[0].block().hash(), new_blocks[0].hash());
@@ -291,7 +305,7 @@ mod fetch_block_hashes_from_header_tip {
     #[test]
     fn it_returns_n_hashes_from_tip() {
         let db = setup();
-        let blocks = add_many_chained_blocks(5, &db);
+        let (blocks, _) = add_many_chained_blocks(5, &db);
         let hashes = db.fetch_block_hashes_from_header_tip(3, 1).unwrap();
         assert_eq!(hashes.len(), 3);
         assert_eq!(hashes[0], blocks[3].hash());
@@ -302,7 +316,7 @@ mod fetch_block_hashes_from_header_tip {
     #[test]
     fn it_returns_hashes_without_overlapping() {
         let db = setup();
-        let blocks = add_many_chained_blocks(3, &db);
+        let (blocks, _) = add_many_chained_blocks(3, &db);
         let hashes = db.fetch_block_hashes_from_header_tip(2, 0).unwrap();
         assert_eq!(hashes[0], blocks[2].hash());
         assert_eq!(hashes[1], blocks[1].hash());
@@ -314,10 +328,81 @@ mod fetch_block_hashes_from_header_tip {
     fn it_returns_all_hashes_from_tip() {
         let db = setup();
         let genesis = db.fetch_tip_header().unwrap();
-        let blocks = add_many_chained_blocks(5, &db);
+        let (blocks, _) = add_many_chained_blocks(5, &db);
         let hashes = db.fetch_block_hashes_from_header_tip(10, 0).unwrap();
         assert_eq!(hashes.len(), 6);
         assert_eq!(hashes[0], blocks[4].hash());
         assert_eq!(&hashes[5], genesis.hash());
+    }
+}
+
+mod add_block {
+    use super::*;
+    use crate::{
+        chain_storage::ChainStorageError,
+        crypto::tari_utilities::hex::Hex,
+        transactions::{
+            helpers::{schema_to_transaction, TransactionSchema},
+            tari_amount::T,
+            transaction::OutputFeatures,
+        },
+        txn_schema,
+    };
+
+    #[test]
+    fn it_does_not_allow_duplicate_commitments_in_the_utxo_set() {
+        let db = setup();
+        let (blocks, outputs) = add_many_chained_blocks(5, &db);
+
+        let prev_block = blocks.last().unwrap();
+
+        let (txns, tx_outputs) =
+            schema_to_transaction(&[txn_schema!(from: vec![outputs[0].clone()], to: vec![500 * T])]);
+        let mut prev_utxo = tx_outputs[0].clone();
+
+        let (block, _) = create_next_block(&prev_block, txns);
+        db.add_block(block.clone()).unwrap().assert_added();
+
+        let prev_block = block;
+        let prev_output = prev_utxo.as_transaction_output(&Default::default()).unwrap();
+
+        let (txns, _) = schema_to_transaction(&[TransactionSchema {
+            from: vec![outputs[1].clone()],
+            to: vec![],
+            to_outputs: vec![prev_utxo.clone()],
+            fee: 25.into(),
+            lock_height: 0,
+            features: Default::default(),
+            script: tari_crypto::script![Nop],
+            input_data: None,
+        }]);
+
+        let (block, _) = create_next_block(&prev_block, txns);
+        let err = db.add_block(block).unwrap_err();
+        unpack_enum!(ChainStorageError::KeyExists { key, table_name } = err);
+        assert_eq!(table_name, "utxo_commitment_index");
+        assert_eq!(key, prev_output.commitment.to_hex());
+
+        let (txns, _) = schema_to_transaction(&[txn_schema!(from: vec![prev_utxo.clone()], to: vec![50 * T])]);
+        let (block, _) = create_next_block(&prev_block, txns);
+        let block = db.add_block(block).unwrap().assert_added();
+        let prev_block = block.to_arc_block();
+
+        // Different maturity so that the output hash is different in txo_hash_to_index_db
+        prev_utxo.features = OutputFeatures::with_maturity(1);
+        // Now we can reuse a commitment
+        let (txns, _) = schema_to_transaction(&[TransactionSchema {
+            from: vec![outputs[1].clone()],
+            to: vec![],
+            to_outputs: vec![prev_utxo],
+            fee: 25.into(),
+            lock_height: 0,
+            features: Default::default(),
+            script: tari_crypto::script![Nop],
+            input_data: None,
+        }]);
+
+        let (block, _) = create_next_block(&prev_block, txns);
+        db.add_block(block).unwrap().assert_added();
     }
 }

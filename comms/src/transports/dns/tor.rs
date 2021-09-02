@@ -55,7 +55,7 @@ impl TorDnsResolver {
 }
 
 async fn connect_inner(addr: Multiaddr) -> io::Result<TcpSocks5Client> {
-    let socket = SocksTransport::get_tcp_transport().dial(addr)?.await?;
+    let socket = SocksTransport::create_socks_tcp_transport().dial(addr).await?;
     Ok(Socks5Client::new(socket))
 }
 
@@ -69,7 +69,7 @@ impl DnsResolver for TorDnsResolver {
                 let resolved = match client.tor_resolve(&addr).await {
                     Ok(a) => a,
                     Err(err) => {
-                        error!(target: LOG_TARGET, "{}", err);
+                        error!(target: LOG_TARGET, "Error resolving address: {}", err);
                         return Err(err.into());
                     },
                 };
@@ -94,10 +94,17 @@ mod test {
         let resolver = TorDnsResolver::new(SocksConfig {
             proxy_address: "/ip4/127.0.0.1/tcp/9050".parse().unwrap(),
             authentication: Default::default(),
+            proxy_bypass_addresses: vec![],
         });
 
         let addr = resolver
             .resolve("/dns4/tari.com/tcp/443".parse().unwrap())
+            .await
+            .unwrap();
+        assert_eq!(addr.port(), 443);
+
+        let addr = resolver
+            .resolve("/dns/tari.com/tcp/443".parse().unwrap())
             .await
             .unwrap();
         assert_eq!(addr.port(), 443);

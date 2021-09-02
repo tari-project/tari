@@ -1,6 +1,7 @@
 use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{
+        accumulated_data::DeletedBitmap,
         pruned_output::PrunedOutput,
         BlockAccumulatedData,
         BlockHeaderAccumulatedData,
@@ -13,13 +14,13 @@ use crate::{
         HorizonData,
         MmrTree,
     },
-    transactions::{
-        transaction::{TransactionInput, TransactionKernel, TransactionOutput},
-        types::{HashOutput, Signature},
-    },
+    transactions::transaction::{TransactionInput, TransactionKernel},
 };
 use croaring::Bitmap;
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{Commitment, HashOutput, Signature},
+};
 use tari_mmr::Hash;
 
 /// Identify behaviour for Blockchain database backends. Implementations must support `Send` and `Sync` so that
@@ -102,11 +103,14 @@ pub trait BlockchainBackend: Send + Sync {
     ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError>;
 
     /// Fetch a specific output. Returns the output and the leaf index in the output MMR
-    fn fetch_output(
-        &self,
-        output_hash: &HashOutput,
-    ) -> Result<Option<(TransactionOutput, u32, u64)>, ChainStorageError>;
+    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(PrunedOutput, u32, u64)>, ChainStorageError>;
 
+    /// Returns the unspent TransactionOutput output that matches the given commitment if it exists in the current UTXO
+    /// set, otherwise None is returned.
+    fn fetch_unspent_output_hash_by_commitment(
+        &self,
+        commitment: &Commitment,
+    ) -> Result<Option<HashOutput>, ChainStorageError>;
     /// Fetch all outputs in a block
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError>;
 
@@ -139,6 +143,9 @@ pub trait BlockchainBackend: Send + Sync {
     fn fetch_orphan_children_of(&self, hash: HashOutput) -> Result<Vec<Block>, ChainStorageError>;
 
     fn fetch_orphan_chain_block(&self, hash: HashOutput) -> Result<Option<ChainBlock>, ChainStorageError>;
+
+    /// Returns the full deleted bitmap at the current blockchain tip
+    fn fetch_deleted_bitmap(&self) -> Result<DeletedBitmap, ChainStorageError>;
 
     /// Delete orphans according to age. Used to keep the orphan pool at a certain capacity
     fn delete_oldest_orphans(

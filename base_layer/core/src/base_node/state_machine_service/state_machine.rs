@@ -52,6 +52,7 @@ pub struct BaseNodeStateMachineConfig {
     pub pruning_horizon: u64,
     pub max_randomx_vms: usize,
     pub blocks_behind_before_considered_lagging: u64,
+    pub bypass_range_proof_verification: bool,
 }
 
 /// A Tari full node, aka Base Node.
@@ -158,7 +159,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             state_info: self.info.clone(),
         };
 
-        if let Err(e) = self.status_event_sender.broadcast(status) {
+        if let Err(e) = self.status_event_sender.send(status) {
             debug!(target: LOG_TARGET, "Error broadcasting a StatusEvent update: {}", e);
         }
     }

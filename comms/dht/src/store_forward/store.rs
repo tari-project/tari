@@ -122,16 +122,31 @@ where
     }
 
     fn call(&mut self, msg: DecryptedDhtMessage) -> Self::Future {
-        Box::pin(
-            StoreTask::new(
-                self.next_service.clone(),
-                self.config.clone(),
-                Arc::clone(&self.peer_manager),
-                Arc::clone(&self.node_identity),
-                self.saf_requester.clone(),
+        if msg.is_duplicate() {
+            trace!(
+                target: LOG_TARGET,
+                "Passing duplicate message {} to next service (Trace: {})",
+                msg.tag,
+                msg.dht_header.message_tag
+            );
+
+            let service = self.next_service.clone();
+            Box::pin(async move {
+                let service = service.ready_oneshot().await?;
+                service.oneshot(msg).await
+            })
+        } else {
+            Box::pin(
+                StoreTask::new(
+                    self.next_service.clone(),
+                    self.config.clone(),
+                    Arc::clone(&self.peer_manager),
+                    Arc::clone(&self.node_identity),
+                    self.saf_requester.clone(),
+                )
+                .handle(msg),
             )
-            .handle(msg),
-        )
+        }
     }
 }
 
@@ -226,7 +241,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
         }
 
         if message.dht_header.message_type.is_saf_message() {
-            log_not_eligible("it is a SAF message");
+            log_not_eligible("it is a SAF protocol message");
             return Ok(None);
         }
 
@@ -447,11 +462,11 @@ mod test {
     };
     use chrono::Utc;
     use std::time::Duration;
-    use tari_comms::wrap_in_envelope_body;
+    use tari_comms::{runtime, wrap_in_envelope_body};
     use tari_test_utils::async_assert_eventually;
     use tari_utilities::hex::Hex;
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn cleartext_message_no_origin() {
         let (requester, mock_state) = create_store_and_forward_mock();
 
@@ -471,7 +486,7 @@ mod test {
         assert_eq!(messages.len(), 0);
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn decryption_succeeded_no_store() {
         let (requester, mock_state) = create_store_and_forward_mock();
 
@@ -499,7 +514,7 @@ mod test {
         assert_eq!(mock_state.call_count(), 0);
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn decryption_failed_should_store() {
         let (requester, mock_state) = create_store_and_forward_mock();
         let spy = service_spy();
@@ -538,7 +553,7 @@ mod test {
         assert!(duration.num_seconds() <= 5);
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn decryption_failed_banned_peer() {
         let (requester, mock_state) = create_store_and_forward_mock();
         let spy = service_spy();

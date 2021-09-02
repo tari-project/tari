@@ -36,9 +36,9 @@ use std::sync::{
     RwLock,
 };
 
-use tari_crypto::tari_utilities::acquire_write_lock;
+use tari_crypto::tari_utilities::{acquire_read_lock, acquire_write_lock};
 use tari_service_framework::{reply_channel, reply_channel::RequestContext};
-use tokio::sync::{broadcast, broadcast::SendError};
+use tokio::sync::{broadcast, broadcast::error::SendError};
 
 const LOG_TARGET: &str = "p2p::liveness_mock";
 
@@ -69,7 +69,8 @@ impl LivenessMockState {
     }
 
     pub async fn publish_event(&self, event: LivenessEvent) -> Result<(), SendError<Arc<LivenessEvent>>> {
-        acquire_write_lock!(self.event_publisher).send(Arc::new(event))?;
+        let lock = acquire_read_lock!(self.event_publisher);
+        lock.send(Arc::new(event))?;
         Ok(())
     }
 
@@ -132,6 +133,9 @@ impl LivenessMock {
                 reply.send(Ok(LivenessResponse::Count(1))).unwrap();
             },
             GetAvgLatency(_) => {
+                reply.send(Ok(LivenessResponse::AvgLatency(None))).unwrap();
+            },
+            GetNetworkAvgLatency => {
                 reply.send(Ok(LivenessResponse::AvgLatency(None))).unwrap();
             },
             SetMetadataEntry(_, _) => {

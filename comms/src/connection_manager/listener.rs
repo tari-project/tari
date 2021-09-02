@@ -30,7 +30,10 @@ use super::{
 };
 use crate::{
     bounded_executor::BoundedExecutor,
-    connection_manager::{liveness::LivenessSession, wire_mode::WireMode},
+    connection_manager::{
+        liveness::LivenessSession,
+        wire_mode::{WireMode, LIVENESS_WIRE_MODE},
+    },
     multiaddr::Multiaddr,
     multiplexing::Yamux,
     noise::NoiseConfig,
@@ -38,27 +41,37 @@ use crate::{
     protocol::ProtocolId,
     runtime,
     transports::Transport,
+    types::CommsPublicKey,
     utils::multiaddr::multiaddr_to_socketaddr,
     PeerManager,
 };
-use futures::{channel::mpsc, future, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, SinkExt, StreamExt};
+use futures::{future, FutureExt};
 use log::*;
 use std::{
     convert::TryInto,
-    mem,
+    future::Future,
+    io::{Error, ErrorKind},
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
     },
     time::Duration,
 };
-use tari_shutdown::ShutdownSignal;
-use tokio::time;
+use tari_crypto::tari_utilities::hex::Hex;
+use tari_shutdown::{oneshot_trigger, oneshot_trigger::OneshotTrigger, ShutdownSignal};
+use tokio::{
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
+    sync::mpsc,
+    time,
+};
+use tokio_stream::StreamExt;
+use tracing::{span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::connection_manager::listener";
 
 pub struct PeerListener<TTransport> {
     config: ConnectionManagerConfig,
+    bind_address: Multiaddr,
     bounded_executor: BoundedExecutor,
     conn_man_notifier: mpsc::Sender<ConnectionManagerEvent>,
     shutdown_signal: ShutdownSignal,
@@ -68,16 +81,18 @@ pub struct PeerListener<TTransport> {
     node_identity: Arc<NodeIdentity>,
     our_supported_protocols: Vec<ProtocolId>,
     liveness_session_count: Arc<AtomicUsize>,
+    on_listening: OneshotTrigger<Result<Multiaddr, ConnectionManagerError>>,
 }
 
 impl<TTransport> PeerListener<TTransport>
 where
-    TTransport: Transport,
+    TTransport: Transport + Send + Sync + 'static,
     TTransport::Output: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: ConnectionManagerConfig,
+        bind_address: Multiaddr,
         transport: TTransport,
         noise_config: NoiseConfig,
         conn_man_notifier: mpsc::Sender<ConnectionManagerEvent>,
@@ -87,6 +102,7 @@ where
     ) -> Self {
         Self {
             transport,
+            bind_address,
             noise_config,
             conn_man_notifier,
             peer_manager,
@@ -96,7 +112,17 @@ where
             bounded_executor: BoundedExecutor::from_current(config.max_simultaneous_inbound_connects),
             liveness_session_count: Arc::new(AtomicUsize::new(config.liveness_max_sessions)),
             config,
+            on_listening: oneshot_trigger::channel(),
         }
+    }
+
+    /// Returns a future that resolves once the listener has either succeeded (`Ok(bind_addr)`) or failed (`Err(...)`)
+    /// in binding the listener socket
+    // This returns an impl Future and is not async because we want to exclude &self from the future so that it has a
+    // 'static lifetime as well as to flatten the oneshot result for ergonomics
+    pub fn on_listening(&self) -> impl Future<Output = Result<Multiaddr, ConnectionManagerError>> + 'static {
+        let signal = self.on_listening.to_signal();
+        signal.map(|r| r.ok_or(ConnectionManagerError::ListenerOneshotCancelled)?)
     }
 
     /// Set the supported protocols of this node to send to peers during the peer identity exchange
@@ -105,57 +131,72 @@ where
         self
     }
 
+    pub async fn listen(self) -> Result<Multiaddr, ConnectionManagerError> {
+        let on_listening = self.on_listening();
+        runtime::current().spawn(self.run());
+        on_listening.await
+    }
+
     pub async fn run(mut self) {
         let mut shutdown_signal = self.shutdown_signal.clone();
 
-        match self.listen().await {
-            Ok((inbound, address)) => {
-                let inbound = inbound.fuse();
-                futures::pin_mut!(inbound);
-
+        match self.bind().await {
+            Ok((mut inbound, address)) => {
                 info!(target: LOG_TARGET, "Listening for peer connections on '{}'", address);
 
-                self.send_event(ConnectionManagerEvent::Listening(address)).await;
+                self.on_listening.broadcast(Ok(address));
 
                 loop {
-                    futures::select! {
-                        inbound_result = inbound.select_next_some() => {
-                            if let Some((inbound_future, peer_addr)) = log_if_error!(target: LOG_TARGET, inbound_result, "Inbound connection failed because '{error}'",) {
-                                if let Some(socket) = log_if_error!(target: LOG_TARGET, inbound_future.await,  "Inbound connection failed because '{error}'",) {
-                                    self.spawn_listen_task(socket, peer_addr).await;
-                                }
-                            }
-                        },
-                        _ = shutdown_signal => {
+                    tokio::select! {
+                        biased;
+
+                        _ = &mut shutdown_signal => {
                             info!(target: LOG_TARGET, "PeerListener is shutting down because the shutdown signal was triggered");
                             break;
+                        },
+                        Some(inbound_result) = inbound.next() => {
+                            if let Some((socket, peer_addr)) = log_if_error!(target: LOG_TARGET, inbound_result, "Inbound connection failed because '{error}'",) {
+                                self.spawn_listen_task(socket, peer_addr).await;
+                            }
                         },
                     }
                 }
             },
             Err(err) => {
                 warn!(target: LOG_TARGET, "PeerListener was unable to start because '{}'", err);
-                self.send_event(ConnectionManagerEvent::ListenFailed(err)).await;
+                self.on_listening.broadcast(Err(err));
             },
         }
     }
 
-    async fn read_wire_format(socket: &mut TTransport::Output, time_to_first_byte: Duration) -> Option<WireMode> {
+    async fn read_wire_format(
+        socket: &mut TTransport::Output,
+        time_to_first_byte: Duration,
+    ) -> Result<WireMode, Error> {
         let mut buf = [0u8; 1];
-        match time::timeout(time_to_first_byte, socket.read_exact(&mut buf))
-            .await
-            .ok()?
-        {
-            Ok(_) => match buf[0].try_into().ok() {
-                Some(wf) => Some(wf),
-                None => {
-                    warn!(target: LOG_TARGET, "Invalid wire format byte '{}'", buf[0]);
-                    None
+        match time::timeout(time_to_first_byte, socket.read_exact(&mut buf)).await {
+            Ok(result) => match result {
+                Ok(_) => match buf[0].try_into().ok() {
+                    Some(wf) => Ok(wf),
+                    None => {
+                        warn!(target: LOG_TARGET, "Invalid wire format byte '{}'", buf[0]);
+                        Err(ErrorKind::InvalidData.into())
+                    },
+                },
+                Err(err) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Failed to read wire format byte due to error: {}", err
+                    );
+                    Err(err)
                 },
             },
-            Err(err) => {
-                warn!(target: LOG_TARGET, "Failed to read first byte: {}", err);
-                None
+            Err(elapsed) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Failed to read wire format byte within timeout of {:#?}. {}", time_to_first_byte, elapsed
+                );
+                Err(elapsed.into())
             },
         }
     }
@@ -190,21 +231,22 @@ where
     async fn spawn_listen_task(&self, mut socket: TTransport::Output, peer_addr: Multiaddr) {
         let node_identity = self.node_identity.clone();
         let peer_manager = self.peer_manager.clone();
-        let mut conn_man_notifier = self.conn_man_notifier.clone();
+        let conn_man_notifier = self.conn_man_notifier.clone();
         let noise_config = self.noise_config.clone();
         let config = self.config.clone();
         let our_supported_protocols = self.our_supported_protocols.clone();
         let liveness_session_count = self.liveness_session_count.clone();
         let shutdown_signal = self.shutdown_signal.clone();
 
+        let span = span!(Level::TRACE, "connection_mann::listener::inbound_task",);
         let inbound_fut = async move {
             match Self::read_wire_format(&mut socket, config.time_to_first_byte).await {
-                Some(WireMode::Comms(byte)) if byte == config.network_info.network_byte => {
+                Ok(WireMode::Comms(byte)) if byte == config.network_info.network_byte => {
                     let this_node_id_str = node_identity.node_id().short_str();
                     let result = Self::perform_socket_upgrade_procedure(
                         node_identity,
                         peer_manager,
-                        noise_config,
+                        noise_config.clone(),
                         conn_man_notifier.clone(),
                         socket,
                         peer_addr,
@@ -240,16 +282,21 @@ where
                         },
                     }
                 },
-                Some(WireMode::Comms(byte)) => {
+                Ok(WireMode::Comms(byte)) => {
+                    // TODO: This call is expensive and only added for the benefit of improved logging and may lead to
+                    // TODO: DoS attacks. Remove later when not needed anymore or make it optional with a config file
+                    // TODO: setting.
+                    let public_key = Self::remote_public_key_from_socket(socket, noise_config).await;
                     warn!(
                         target: LOG_TARGET,
-                        "Peer at address '{}' sent invalid wire format byte. Expected {:x?} got: {:x?} ",
+                        "Peer at address '{}' ({}) sent invalid wire format byte. Expected {:x?} got: {:x?} ",
                         peer_addr,
+                        public_key,
                         config.network_info.network_byte,
                         byte,
                     );
                 },
-                Some(WireMode::Liveness) => {
+                Ok(WireMode::Liveness) => {
                     if liveness_session_count.load(Ordering::SeqCst) > 0 &&
                         Self::is_address_in_liveness_cidr_range(&peer_addr, &config.liveness_cidr_allowlist)
                     {
@@ -264,29 +311,53 @@ where
                             "No liveness sessions available or permitted for peer address '{}'", peer_addr
                         );
 
-                        let _ = socket.close().await;
+                        let _ = socket.shutdown().await;
                     }
                 },
-                None => {
+                Err(err) => {
                     warn!(
                         target: LOG_TARGET,
-                        "Peer at address '{}' failed to send valid wire format", peer_addr
+                        "Peer at address '{}' failed to send its wire format. Expected network byte {:x?} or liveness \
+                         byte {:x?} not received. Error: {}",
+                        peer_addr,
+                        config.network_info.network_byte,
+                        LIVENESS_WIRE_MODE,
+                        err
                     );
                 },
             }
-        };
+        }
+        .instrument(span);
 
         // This will block (asynchronously) if we have reached the maximum simultaneous connections, creating
         // back-pressure on nodes connecting to this node
         self.bounded_executor.spawn(inbound_fut).await;
     }
 
-    async fn send_event(&mut self, event: ConnectionManagerEvent) {
-        log_if_error_fmt!(
-            target: LOG_TARGET,
-            self.conn_man_notifier.send(event).await,
-            "Failed to send connection manager event in listener",
-        );
+    async fn remote_public_key_from_socket(socket: TTransport::Output, noise_config: NoiseConfig) -> String {
+        let public_key: Option<CommsPublicKey> = match time::timeout(
+            Duration::from_secs(30),
+            noise_config.upgrade_socket(socket, ConnectionDirection::Inbound),
+        )
+        .await
+        .map_err(|_| ConnectionManagerError::NoiseProtocolTimeout)
+        {
+            Ok(Ok(noise_socket)) => {
+                match noise_socket
+                    .get_remote_public_key()
+                    .ok_or(ConnectionManagerError::InvalidStaticPublicKey)
+                {
+                    Ok(pk) => Some(pk),
+                    _ => None,
+                }
+            },
+            _ => None,
+        };
+
+        match public_key {
+            None => "public key not known".to_string(),
+            Some(pk) => pk.to_hex(),
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -377,12 +448,11 @@ where
         )
     }
 
-    async fn listen(&mut self) -> Result<(TTransport::Listener, Multiaddr), ConnectionManagerError> {
-        let listener_address = mem::replace(&mut self.config.listener_address, Multiaddr::empty());
-        debug!(target: LOG_TARGET, "Attempting to listen on {}", listener_address);
+    async fn bind(&mut self) -> Result<(TTransport::Listener, Multiaddr), ConnectionManagerError> {
+        let bind_address = self.bind_address.clone();
+        debug!(target: LOG_TARGET, "Attempting to listen on {}", bind_address);
         self.transport
-            .listen(listener_address)
-            .map_err(|err| ConnectionManagerError::TransportError(err.to_string()))?
+            .listen(bind_address)
             .await
             .map_err(|err| ConnectionManagerError::TransportError(err.to_string()))
     }

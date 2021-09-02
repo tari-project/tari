@@ -20,6 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use log::*;
+use tokio::sync::{broadcast, watch};
+
+use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
+use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+
 use crate::{
     base_node::{
         chain_metadata_service::ChainMetadataHandle,
@@ -34,14 +42,9 @@ use crate::{
     },
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     consensus::ConsensusManager,
-    proof_of_work::randomx_factory::{RandomXConfig, RandomXFactory},
-    transactions::types::CryptoFactories,
+    proof_of_work::randomx_factory::RandomXFactory,
+    transactions::CryptoFactories,
 };
-use log::*;
-use std::sync::Arc;
-use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
-use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
-use tokio::sync::{broadcast, watch};
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::initializer";
 
@@ -98,7 +101,8 @@ where B: BlockchainBackend + 'static
             let connectivity = handles.expect_handle::<ConnectivityRequester>();
             let peer_manager = handles.expect_handle::<Arc<PeerManager>>();
 
-            let sync_validators = SyncValidators::full_consensus(rules.clone(), factories);
+            let sync_validators =
+                SyncValidators::full_consensus(rules.clone(), factories, config.bypass_range_proof_verification);
             let max_randomx_vms = config.max_randomx_vms;
 
             let node = BaseNodeStateMachine::new(
@@ -112,7 +116,7 @@ where B: BlockchainBackend + 'static
                 sync_validators,
                 status_event_sender,
                 state_event_publisher,
-                RandomXFactory::new(RandomXConfig::default(), max_randomx_vms),
+                RandomXFactory::new(max_randomx_vms),
                 rules,
                 handles.get_shutdown_signal(),
             );

@@ -49,18 +49,16 @@ use crate::{
     types::{CommsDatabase, CommsPublicKey},
 };
 use bytes::Bytes;
-use futures::{
-    channel::{mpsc, oneshot},
-    stream::FuturesUnordered,
-    SinkExt,
-    StreamExt,
-};
+use futures::{stream::FuturesUnordered, SinkExt, StreamExt};
 use rand::rngs::OsRng;
 use std::{io, sync::Arc, time::Duration};
 use tari_crypto::keys::PublicKey;
 use tari_shutdown::Shutdown;
-use tari_test_utils::{collect_stream, unpack_enum};
-use tokio::{sync::broadcast, time};
+use tari_test_utils::{collect_recv, collect_stream, unpack_enum};
+use tokio::{
+    sync::{broadcast, mpsc, oneshot},
+    time,
+};
 
 static TEST_MSG1: Bytes = Bytes::from_static(b"TEST_MSG1");
 
@@ -110,9 +108,9 @@ async fn spawn_messaging_protocol() -> (
     )
 }
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn new_inbound_substream_handling() {
-    let (peer_manager, _, _, mut proto_tx, _, mut inbound_msg_rx, mut events_rx, _shutdown) =
+    let (peer_manager, _, _, proto_tx, _, mut inbound_msg_rx, mut events_rx, _shutdown) =
         spawn_messaging_protocol().await;
 
     let expected_node_id = node_id::random();
@@ -148,7 +146,7 @@ async fn new_inbound_substream_handling() {
 
     framed_theirs.send(TEST_MSG1.clone()).await.unwrap();
 
-    let in_msg = time::timeout(Duration::from_secs(5), inbound_msg_rx.next())
+    let in_msg = time::timeout(Duration::from_secs(5), inbound_msg_rx.recv())
         .await
         .unwrap()
         .unwrap();
@@ -156,9 +154,8 @@ async fn new_inbound_substream_handling() {
     assert_eq!(in_msg.body, TEST_MSG1);
 
     let expected_tag = in_msg.tag;
-    let event = time::timeout(Duration::from_secs(5), events_rx.next())
+    let event = time::timeout(Duration::from_secs(5), events_rx.recv())
         .await
-        .unwrap()
         .unwrap()
         .unwrap();
     unpack_enum!(MessagingEvent::MessageReceived(node_id, tag) = &*event);
@@ -166,14 +163,14 @@ async fn new_inbound_substream_handling() {
     assert_eq!(*node_id, expected_node_id);
 }
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn send_message_request() {
-    let (_, node_identity, conn_man_mock, _, mut request_tx, _, _, _shutdown) = spawn_messaging_protocol().await;
+    let (_, node_identity, conn_man_mock, _, request_tx, _, _, _shutdown) = spawn_messaging_protocol().await;
 
     let peer_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
     let (conn1, peer_conn_mock1, _, peer_conn_mock2) =
-        create_peer_connection_mock_pair(1, node_identity.to_peer(), peer_node_identity.to_peer()).await;
+        create_peer_connection_mock_pair(node_identity.to_peer(), peer_node_identity.to_peer()).await;
 
     // Add mock peer connection to connection manager mock for node 2
     conn_man_mock.add_active_connection(conn1).await;
@@ -192,9 +189,9 @@ async fn send_message_request() {
     assert_eq!(peer_conn_mock1.call_count(), 1);
 }
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn send_message_dial_failed() {
-    let (_, _, conn_manager_mock, _, mut request_tx, _, mut event_tx, _shutdown) = spawn_messaging_protocol().await;
+    let (_, _, conn_manager_mock, _, request_tx, _, mut event_tx, _shutdown) = spawn_messaging_protocol().await;
 
     let node_id = node_id::random();
     let out_msg = OutboundMessage::new(node_id, TEST_MSG1.clone());
@@ -202,7 +199,7 @@ async fn send_message_dial_failed() {
     // Send a message to node 2
     request_tx.send(MessagingRequest::SendMessage(out_msg)).await.unwrap();
 
-    let event = event_tx.next().await.unwrap().unwrap();
+    let event = event_tx.recv().await.unwrap();
     unpack_enum!(MessagingEvent::SendMessageFailed(out_msg, reason) = &*event);
     unpack_enum!(SendFailReason::PeerDialFailed = reason);
     assert_eq!(out_msg.tag, expected_out_msg_tag);
@@ -212,7 +209,7 @@ async fn send_message_dial_failed() {
     assert!(calls.iter().all(|evt| evt.starts_with("DialPeer")));
 }
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn send_message_substream_bulk_failure() {
     const NUM_MSGS: usize = 10;
     let (_, node_identity, conn_manager_mock, _, mut request_tx, _, mut events_rx, _shutdown) =
@@ -221,7 +218,7 @@ async fn send_message_substream_bulk_failure() {
     let peer_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
     let (conn1, _, _, peer_conn_mock2) =
-        create_peer_connection_mock_pair(1, node_identity.to_peer(), peer_node_identity.to_peer()).await;
+        create_peer_connection_mock_pair(node_identity.to_peer(), peer_node_identity.to_peer()).await;
 
     let peer_node_id = peer_node_identity.node_id();
     // Add mock peer connection to connection manager mock for node 2
@@ -258,25 +255,24 @@ async fn send_message_substream_bulk_failure() {
     }
 
     // Check that the outbound handler closed
-    let event = time::timeout(Duration::from_secs(10), events_rx.next())
+    let event = time::timeout(Duration::from_secs(10), events_rx.recv())
         .await
-        .unwrap()
         .unwrap()
         .unwrap();
     unpack_enum!(MessagingEvent::OutboundProtocolExited(node_id) = &*event);
     assert_eq!(node_id, peer_node_id);
 }
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn many_concurrent_send_message_requests() {
     const NUM_MSGS: usize = 100;
-    let (_, _, conn_man_mock, _, mut request_tx, _, _, _shutdown) = spawn_messaging_protocol().await;
+    let (_, _, conn_man_mock, _, request_tx, _, _, _shutdown) = spawn_messaging_protocol().await;
 
     let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
     let (conn1, peer_conn_mock1, _, peer_conn_mock2) =
-        create_peer_connection_mock_pair(1, node_identity1.to_peer(), node_identity2.to_peer()).await;
+        create_peer_connection_mock_pair(node_identity1.to_peer(), node_identity2.to_peer()).await;
 
     let node_id2 = node_identity2.node_id();
     // Add mock peer connection to connection manager mock for node 2
@@ -315,10 +311,10 @@ async fn many_concurrent_send_message_requests() {
     assert_eq!(peer_conn_mock1.call_count(), 1);
 }
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn many_concurrent_send_message_requests_that_fail() {
     const NUM_MSGS: usize = 100;
-    let (_, _, _, _, mut request_tx, _, mut events_rx, _shutdown) = spawn_messaging_protocol().await;
+    let (_, _, _, _, request_tx, _, mut events_rx, _shutdown) = spawn_messaging_protocol().await;
 
     let node_id2 = node_id::random();
 
@@ -339,10 +335,9 @@ async fn many_concurrent_send_message_requests_that_fail() {
     }
 
     // Check that we got message success events
-    let events = collect_stream!(events_rx, take = NUM_MSGS, timeout = Duration::from_secs(10));
+    let events = collect_recv!(events_rx, take = NUM_MSGS, timeout = Duration::from_secs(10));
     assert_eq!(events.len(), NUM_MSGS);
     for event in events {
-        let event = event.unwrap();
         unpack_enum!(MessagingEvent::SendMessageFailed(out_msg, reason) = &*event);
         unpack_enum!(SendFailReason::PeerDialFailed = reason);
         // Assert that each tag is emitted only once
@@ -357,7 +352,7 @@ async fn many_concurrent_send_message_requests_that_fail() {
     assert_eq!(msg_tags.len(), 0);
 }
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn inactivity_timeout() {
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_CLIENT);
     let (inbound_msg_tx, mut inbound_msg_rx) = mpsc::channel(5);
@@ -381,13 +376,13 @@ async fn inactivity_timeout() {
     let mut framed = MessagingProtocol::framed(socket_out);
     for _ in 0..5u8 {
         framed.send(Bytes::from_static(b"some message")).await.unwrap();
-        time::delay_for(Duration::from_millis(1)).await;
+        time::sleep(Duration::from_millis(1)).await;
     }
 
-    time::delay_for(Duration::from_millis(10)).await;
+    time::sleep(Duration::from_millis(10)).await;
 
     let err = framed.send(Bytes::from_static(b"another message")).await.unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::BrokenPipe);
 
-    let _ = collect_stream!(inbound_msg_rx, take = 5, timeout = Duration::from_secs(10));
+    let _ = collect_recv!(inbound_msg_rx, take = 5, timeout = Duration::from_secs(10));
 }

@@ -88,13 +88,11 @@ pub mod sender_transaction_protocol_builder;
 mod tx_id;
 pub use tx_id::*;
 
-use crate::transactions::{
-    tari_amount::*,
-    transaction::TransactionError,
-    types::{Challenge, MessageHash, PrivateKey, PublicKey},
-};
+use crate::transactions::{tari_amount::*, transaction::TransactionError};
 use digest::Digest;
 use serde::{Deserialize, Serialize};
+use tari_common_types::types::{MessageHash, PrivateKey, PublicKey};
+use tari_comms::types::Challenge;
 use tari_crypto::{
     range_proof::{RangeProofError, REWIND_USER_MESSAGE_LENGTH},
     signatures::SchnorrSignatureError,

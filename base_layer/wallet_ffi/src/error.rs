@@ -33,6 +33,7 @@ use tari_wallet::{
     output_manager_service::error::{OutputManagerError, OutputManagerStorageError},
     transaction_service::error::{TransactionServiceError, TransactionStorageError},
 };
+
 use thiserror::Error;
 
 const LOG_TARGET: &str = "wallet_ffi::error";
@@ -47,6 +48,8 @@ pub enum InterfaceError {
     PositionInvalidError,
     #[error("An error has occurred when trying to create the tokio runtime: `{0}`")]
     TokioError(String),
+    #[error("An error has occurred when trying to select network: `{0}`")]
+    NetworkError(String),
     #[error("Emoji ID is invalid")]
     InvalidEmojiId,
 }
@@ -77,6 +80,10 @@ impl From<InterfaceError> for LibWalletError {
             },
             InterfaceError::TokioError(_) => Self {
                 code: 4,
+                message: format!("{:?}", v),
+            },
+            InterfaceError::NetworkError(_) => Self {
+                code: 5,
                 message: format!("{:?}", v),
             },
             InterfaceError::InvalidEmojiId => Self {

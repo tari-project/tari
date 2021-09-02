@@ -626,13 +626,17 @@ impl<B: Backend> Component<B> for SendTab {
     }
 
     fn on_key(&mut self, app_state: &mut AppState, c: char) {
-        if self.error_message.is_some() && '\n' == c {
-            self.error_message = None;
+        if self.error_message.is_some() {
+            if '\n' == c {
+                self.error_message = None;
+            }
             return;
         }
 
-        if self.success_message.is_some() && '\n' == c {
-            self.success_message = None;
+        if self.success_message.is_some() {
+            if '\n' == c {
+                self.success_message = None;
+            }
             return;
         }
 
@@ -721,8 +725,10 @@ impl<B: Backend> Component<B> for SendTab {
     }
 
     fn on_esc(&mut self, _: &mut AppState) {
+        self.edit_contact_mode = ContactInputMode::None;
         self.send_input_mode = SendInputMode::None;
         self.show_contacts = false;
+        self.show_edit_contact = false;
     }
 
     fn on_backspace(&mut self, _app_state: &mut AppState) {

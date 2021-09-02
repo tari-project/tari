@@ -66,17 +66,16 @@ pub struct DhtConfig {
     pub saf_max_message_size: usize,
     /// When true, store and forward messages are requested from peers on connect (Default: true)
     pub saf_auto_request: bool,
-    /// The minimum period used to request SAF messages from a peer. When requesting SAF messages,
-    /// it will request messages since the DHT last went offline, but this may be a small amount of
-    /// time, so `minimum_request_period` can be used so that messages aren't missed.
-    /// Default: 3 days
-    pub saf_minimum_request_period: Duration,
     /// The max capacity of the message hash cache
-    /// Default: 100,000
-    pub msg_hash_cache_capacity: usize,
-    /// The time-to-live for items in the message hash cache
+    /// Default: 2,500
+    pub dedup_cache_capacity: usize,
+    /// The periodic trim interval for items in the message hash cache
     /// Default: 300s (5 mins)
-    pub msg_hash_cache_ttl: Duration,
+    pub dedup_cache_trim_interval: Duration,
+    /// The number of occurrences of a message is allowed to pass through the DHT pipeline before being
+    /// deduped/discarded
+    /// Default: 1
+    pub dedup_allowed_message_occurrences: usize,
     /// The duration to wait for a peer discovery to complete before giving up.
     /// Default: 2 minutes
     pub discovery_request_timeout: Duration,
@@ -141,6 +140,7 @@ impl DhtConfig {
 
 impl Default for DhtConfig {
     fn default() -> Self {
+        // NB: please remember to update field comments to reflect these defaults
         Self {
             num_neighbouring_nodes: 8,
             num_random_nodes: 4,
@@ -154,9 +154,9 @@ impl Default for DhtConfig {
             saf_high_priority_msg_storage_ttl: Duration::from_secs(3 * 24 * 60 * 60), // 3 days
             saf_auto_request: true,
             saf_max_message_size: 512 * 1024,
-            saf_minimum_request_period: Duration::from_secs(3 * 24 * 60 * 60), // 3 days
-            msg_hash_cache_capacity: 100_000,
-            msg_hash_cache_ttl: Duration::from_secs(5 * 60),
+            dedup_cache_capacity: 2_500,
+            dedup_cache_trim_interval: Duration::from_secs(5 * 60),
+            dedup_allowed_message_occurrences: 1,
             database_url: DbConnectionUrl::Memory,
             discovery_request_timeout: Duration::from_secs(2 * 60),
             connectivity_update_interval: Duration::from_secs(2 * 60),

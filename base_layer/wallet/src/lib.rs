@@ -6,7 +6,6 @@
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
 #![recursion_limit = "2048"]
-#![feature(drain_filter)]
 
 #![allow(clippy::too_many_arguments)]
 
@@ -14,6 +13,7 @@
 mod macros;
 pub mod assets;
 pub mod base_node_service;
+pub mod connectivity_service;
 pub mod contacts_service;
 pub mod error;
 pub mod output_manager_service;
@@ -27,15 +27,10 @@ pub mod wallet;
 mod operation_id;
 pub use operation_id::OperationId;
 
-#[cfg(feature = "test_harness")]
-pub mod testnet_utils;
-
 #[macro_use]
 extern crate diesel;
 #[macro_use]
 extern crate diesel_migrations;
-#[macro_use]
-extern crate lazy_static;
 
 mod config;
 pub mod schema;

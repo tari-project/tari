@@ -28,6 +28,7 @@
 #![deny(unknown_lints)]
 
 mod block_template_data;
+mod block_template_protocol;
 mod common;
 mod error;
 mod proxy;
@@ -45,7 +46,7 @@ use tari_app_utilities::initialization::init_configuration;
 use tari_common::configuration::bootstrap::ApplicationType;
 use tokio::time::Duration;
 
-#[tokio_macros::main]
+#[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let (_, config, _) = init_configuration(ApplicationType::MergeMiningProxy)?;
 
@@ -57,8 +58,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .pool_max_idle_per_host(25)
         .build()
         .map_err(MmProxyError::ReqwestError)?;
+    println!("Connecting to base node at {}", config.grpc_base_node_address);
     let base_node_client =
         grpc::base_node_client::BaseNodeClient::connect(format!("http://{}", config.grpc_base_node_address)).await?;
+    println!("Connecting to wallet at {}", config.grpc_console_wallet_address);
     let wallet_client =
         grpc::wallet_client::WalletClient::connect(format!("http://{}", config.grpc_console_wallet_address)).await?;
     let xmrig_service = MergeMiningProxyService::new(

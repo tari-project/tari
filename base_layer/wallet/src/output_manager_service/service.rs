@@ -20,29 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    base_node_service::handle::BaseNodeServiceHandle,
-    output_manager_service::{
-        config::OutputManagerServiceConfig,
-        error::{OutputManagerError, OutputManagerProtocolError, OutputManagerStorageError},
-        handle::{OutputManagerEventSender, OutputManagerRequest, OutputManagerResponse},
-        recovery::StandardUtxoRecoverer,
-        resources::OutputManagerResources,
-        storage::{
-            database::{OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
-            models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
-        },
-        tasks::{TxoValidationTask, TxoValidationType},
-        MasterKeyManager,
-    },
-    transaction_service::handle::TransactionServiceHandle,
-    types::{HashDigest, ValidationRetryStrategy},
-};
-use blake2::Digest;
-use diesel::result::{DatabaseErrorKind, Error as DieselError};
-use futures::{pin_mut, StreamExt};
-use log::*;
-use rand::{rngs::OsRng, RngCore};
 use std::{
     cmp::Ordering,
     collections::HashMap,
@@ -50,6 +27,23 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+
+use blake2::Digest;
+use chrono::Utc;
+use diesel::result::{DatabaseErrorKind, Error as DieselError};
+use futures::{pin_mut, StreamExt};
+use log::*;
+use rand::{rngs::OsRng, RngCore};
+use tari_crypto::{
+    inputs,
+    keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
+    script,
+    script::TariScript,
+    tari_utilities::{hex::Hex, ByteArray},
+};
+use tokio::sync::broadcast;
+
+use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_comms::{
     connectivity::ConnectivityRequester,
     types::{CommsPublicKey, CommsSecretKey},
@@ -67,23 +61,35 @@ use tari_core::{
             TransactionOutput,
             UnblindedOutput,
         },
-        transaction_protocol::{sender::TransactionSenderMessage, TxId},
-        types::{CryptoFactories, PrivateKey, PublicKey},
+        transaction_protocol::sender::TransactionSenderMessage,
         CoinbaseBuilder,
+        CryptoFactories,
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::{
-    inputs,
-    keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
-    script,
-    script::TariScript,
-    tari_utilities::{hex::Hex, ByteArray},
-};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
-use tokio::sync::broadcast;
+
+use crate::{
+    base_node_service::handle::BaseNodeServiceHandle,
+    output_manager_service::{
+        config::OutputManagerServiceConfig,
+        error::{OutputManagerError, OutputManagerProtocolError, OutputManagerStorageError},
+        handle::{OutputManagerEventSender, OutputManagerRequest, OutputManagerResponse},
+        recovery::StandardUtxoRecoverer,
+        resources::OutputManagerResources,
+        storage::{
+            database::{OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
+            models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
+        },
+        tasks::{TxoValidationTask, TxoValidationType},
+        MasterKeyManager,
+        TxId,
+    },
+    transaction_service::handle::TransactionServiceHandle,
+    types::{HashDigest, ValidationRetryStrategy},
+};
 use tari_core::transactions::types::Commitment;
 use tari_core::transactions::transaction::UnblindedOutputBuilder;
 
@@ -143,7 +149,8 @@ where TBackend: OutputManagerBackend + 'static
             shutdown_signal,
         };
 
-        let (base_node_update_publisher, _) = broadcast::channel(50);
+        let (base_node_update_publisher, _) =
+            broadcast::channel(resources.config.base_node_update_publisher_channel_size);
 
         Ok(OutputManagerService {
             resources,
@@ -165,9 +172,9 @@ where TBackend: OutputManagerBackend + 'static
 
         info!(target: LOG_TARGET, "Output Manager Service started");
         loop {
-            futures::select! {
-                request_context = request_stream.select_next_some() => {
-                trace!(target: LOG_TARGET, "Handling Service API Request");
+            tokio::select! {
+                Some(request_context) = request_stream.next() => {
+                    trace!(target: LOG_TARGET, "Handling Service API Request");
                     let (request, reply_tx) = request_context.split();
                     let response = self.handle_request(request).await.map_err(|e| {
                         warn!(target: LOG_TARGET, "Error handling request: {:?}", e);
@@ -178,12 +185,8 @@ where TBackend: OutputManagerBackend + 'static
                         e
                     });
                 },
-                _ = shutdown => {
+                _ = shutdown.wait() => {
                     info!(target: LOG_TARGET, "Output manager service shutting down because it received the shutdown signal");
-                    break;
-                }
-                complete => {
-                    info!(target: LOG_TARGET, "Output manager service shutting down");
                     break;
                 }
             }
@@ -236,17 +239,18 @@ where TBackend: OutputManagerBackend + 'static
                 message,
                 script,
             } => self
-                .prepare_transaction_to_send(amount, unique_id, fee_per_gram, lock_height, message, script)
+                .prepare_transaction_to_send(tx_id, amount, unique_id, fee_per_gram, lock_height, message, script)
                 .await
                 .map(OutputManagerResponse::TransactionToSend),
             OutputManagerRequest::CreatePayToSelfTransaction {
+                tx_id,
                 amount,
                 unique_id,
                 fee_per_gram,
                 lock_height,
                 message,
             } => self
-                .create_pay_to_self_transaction(amount, unique_id, fee_per_gram, lock_height, message)
+                .create_pay_to_self_transaction(tx_id, amount, unique_id, fee_per_gram, lock_height, message)
                 .await
                 .map(OutputManagerResponse::PayToSelfTransaction),
             OutputManagerRequest::FeeEstimate((amount, fee_per_gram, num_kernels, num_outputs)) => self
@@ -351,6 +355,10 @@ where TBackend: OutputManagerBackend + 'static
                 .add_known_script(known_script)
                 .await
                 .map(|_| OutputManagerResponse::AddKnownOneSidedPaymentScript),
+            OutputManagerRequest::ReinstateCancelledInboundTx(tx_id) => self
+                .reinstate_cancelled_inbound_transaction(tx_id)
+                .await
+                .map(|_| OutputManagerResponse::ReinstatedCancelledInboundTx),
             OutputManagerRequest::CreateOutputWithFeatures {
                 value,
                 features,
@@ -495,7 +503,7 @@ where TBackend: OutputManagerBackend + 'static
             UnblindedOutput::new(
                 single_round_sender_data.amount,
                 spending_key.clone(),
-                Some(single_round_sender_data.features.clone()),
+                single_round_sender_data.features.clone(),
                 single_round_sender_data.script.clone(),
                 // TODO: The input data should be variable; this will only work for a Nop script
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
@@ -611,6 +619,7 @@ where TBackend: OutputManagerBackend + 'static
     /// will be produced.
     pub async fn prepare_transaction_to_send(
         &mut self,
+        tx_id: TxId,
         amount: MicroTari,
         unique_id: Option<Vec<u8>>,
         fee_per_gram: MicroTari,
@@ -644,7 +653,8 @@ where TBackend: OutputManagerBackend + 'static
                 PrivateKey::random(&mut OsRng),
             )
             .with_message(message)
-            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
+            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
+            .with_tx_id(tx_id);
 
         if let Some(ref unique_id) = unique_id {
             builder = builder.with_unique_id(unique_id.clone());
@@ -698,7 +708,6 @@ where TBackend: OutputManagerBackend + 'static
             )?);
         }
 
-        let tx_id = stp.get_tx_id()?;
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
         self.resources
@@ -726,6 +735,11 @@ where TBackend: OutputManagerBackend + 'static
         fees: MicroTari,
         block_height: u64,
     ) -> Result<Transaction, OutputManagerError> {
+        debug!(
+            target: LOG_TARGET,
+            "Building coinbase transaction for block_height {} with TxId: {}", block_height, tx_id
+        );
+
         let (spending_key, script_key) = self
             .resources
             .master_key_manager
@@ -880,12 +894,13 @@ where TBackend: OutputManagerBackend + 'static
 
     async fn create_pay_to_self_transaction(
         &mut self,
+        tx_id: TxId,
         amount: MicroTari,
         unique_id: Option<Vec<u8>>,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
-    ) -> Result<(TxId, MicroTari, Transaction), OutputManagerError> {
+    ) -> Result<(MicroTari, Transaction), OutputManagerError> {
         let (inputs, _, total) = self
             .select_utxos(amount, fee_per_gram, 1, None, unique_id.as_ref())
             .await?;
@@ -902,7 +917,8 @@ where TBackend: OutputManagerBackend + 'static
             .with_offset(offset.clone())
             .with_private_nonce(nonce.clone())
             .with_message(message)
-            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
+            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
+            .with_tx_id(tx_id);
 
         if let Some(ref unique_id) = unique_id {
             builder = builder.with_unique_id(unique_id.clone());
@@ -934,7 +950,7 @@ where TBackend: OutputManagerBackend + 'static
             UnblindedOutput::new(
                 amount,
                 spending_key.clone(),
-                Some(output_features),
+                output_features,
                 script,
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
                 script_private_key,
@@ -984,7 +1000,6 @@ where TBackend: OutputManagerBackend + 'static
             outputs.push(change_output);
         }
 
-        let tx_id = stp.get_tx_id()?;
         trace!(
             target: LOG_TARGET,
             "Encumber send to self transaction ({}) outputs.",
@@ -997,7 +1012,7 @@ where TBackend: OutputManagerBackend + 'static
         stp.finalize(KernelFeatures::empty(), &factories)?;
         let tx = stp.take_transaction()?;
 
-        Ok((tx_id, fee, tx))
+        Ok((fee, tx))
     }
 
     /// Confirm that a transaction has finished being negotiated between parties so the short-term encumberance can be
@@ -1065,6 +1080,27 @@ where TBackend: OutputManagerBackend + 'static
             "Cancelling pending transaction outputs for TxId: {}", tx_id
         );
         Ok(self.resources.db.cancel_pending_transaction_outputs(tx_id).await?)
+    }
+
+    /// Restore the pending transaction encumberance and output for an inbound transaction that was previously
+    /// cancelled.
+    async fn reinstate_cancelled_inbound_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
+        self.resources.db.reinstate_inbound_output(tx_id).await?;
+
+        self.resources
+            .db
+            .add_pending_transaction_outputs(PendingTransactionOutputs {
+                tx_id,
+                outputs_to_be_spent: Vec::new(),
+                outputs_to_be_received: Vec::new(),
+                timestamp: Utc::now().naive_utc(),
+                coinbase_block_height: None,
+            })
+            .await?;
+
+        self.confirm_encumberance(tx_id).await?;
+
+        Ok(())
     }
 
     /// Go through the pending transaction and if any have existed longer than the specified duration, cancel them
@@ -1183,22 +1219,20 @@ where TBackend: OutputManagerBackend + 'static
                 break;
             }
             fee_with_change = Fee::calculate(fee_per_gram, 1, utxos.len(), output_count + 1);
-            if utxos_total_value >= amount + fee_with_change {
+            if utxos_total_value > amount + fee_with_change {
                 require_change_output = true;
                 break;
             }
         }
 
-        let current_chain_tip = chain_metadata.map(|cm| cm.height_of_longest_chain());
-        let balance = self.get_balance(current_chain_tip).await?;
-        let pending_incoming = balance.pending_incoming_balance;
-
         let perfect_utxo_selection = utxos_total_value == amount + fee_without_change;
-        let not_enough_spendable = utxos_total_value < amount + fee_with_change;
-        let enough_with_pending = utxos_total_value + pending_incoming >= amount + fee_with_change;
+        let enough_spendable = utxos_total_value > amount + fee_with_change;
 
-        if !perfect_utxo_selection && not_enough_spendable {
-            if enough_with_pending {
+        if !perfect_utxo_selection && !enough_spendable {
+            let current_chain_tip = chain_metadata.map(|cm| cm.height_of_longest_chain());
+            let balance = self.get_balance(current_chain_tip).await?;
+            let pending_incoming = balance.pending_incoming_balance;
+            if utxos_total_value + pending_incoming >= amount + fee_with_change {
                 return Err(OutputManagerError::FundsPending);
             } else {
                 return Err(OutputManagerError::NotEnoughFunds);
@@ -1332,7 +1366,7 @@ where TBackend: OutputManagerBackend + 'static
                 UnblindedOutput::new(
                     output_amount,
                     spending_key.clone(),
-                    Some(output_features),
+                    output_features,
                     script,
                     inputs!(PublicKey::from_secret_key(&script_private_key)),
                     script_private_key,
@@ -1416,7 +1450,7 @@ where TBackend: OutputManagerBackend + 'static
                     let rewound_output = UnblindedOutput::new(
                         rewound_result.committed_value,
                         rewound_result.blinding_factor.clone(),
-                        Some(output.features),
+                        output.features,
                         known_one_sided_payment_scripts[i].script.clone(),
                         known_one_sided_payment_scripts[i].input.clone(),
                         known_one_sided_payment_scripts[i].private_key.clone(),
@@ -1428,12 +1462,26 @@ where TBackend: OutputManagerBackend + 'static
                     let db_output =
                         DbUnblindedOutput::from_unblinded_output(rewound_output.clone(), &self.resources.factories)?;
 
-                    rewound_outputs.push(rewound_output);
-                    self.resources.db.add_unspent_output(db_output).await?;
+                    let output_hex = output.commitment.to_hex();
+                    match self.resources.db.add_unspent_output(db_output).await {
+                        Ok(_) => {
+                            rewound_outputs.push(rewound_output);
+                        },
+                        Err(OutputManagerStorageError::DuplicateOutput) => {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Attempt to add scanned output {} that already exists. Ignoring the output.",
+                                output_hex
+                            );
+                        },
+                        Err(err) => {
+                            return Err(err.into());
+                        },
+                    }
                     trace!(
                         target: LOG_TARGET,
                         "One-sided payment Output {} with value {} recovered",
-                        output.commitment.to_hex(),
+                        output_hex,
                         rewound_result.committed_value,
                     );
                 }

@@ -20,30 +20,28 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::identity_management::load_from_json;
 use futures::future::Either;
 use log::*;
-use std::{net::SocketAddr, path::Path};
+use thiserror::Error;
+use tokio::{runtime, runtime::Runtime};
+
 use tari_common::{CommsTransport, GlobalConfig, SocksAuthentication, TorControlAuthentication};
 use tari_comms::{
     connectivity::ConnectivityError,
-    peer_manager::NodeId,
+    peer_manager::{NodeId, PeerManagerError},
     protocol::rpc::RpcError,
     socks,
     tor,
     tor::TorIdentity,
     transports::SocksConfig,
     types::CommsPublicKey,
+    utils::multiaddr::multiaddr_to_socketaddr,
 };
 use tari_core::tari_utilities::hex::Hex;
 use tari_p2p::transport::{TorConfig, TransportType};
-use tari_wallet::{
-    error::{WalletError, WalletStorageError},
-    output_manager_service::error::OutputManagerError,
-    util::emoji::EmojiId,
-};
-use thiserror::Error;
-use tokio::{runtime, runtime::Runtime};
+
+use crate::identity_management::load_from_json;
+use tari_common_types::emoji::EmojiId;
 
 pub const LOG_TARGET: &str = "tari::application";
 
@@ -107,20 +105,6 @@ impl From<tari_common::ConfigError> for ExitCodes {
     }
 }
 
-impl From<WalletError> for ExitCodes {
-    fn from(err: WalletError) -> Self {
-        error!(target: LOG_TARGET, "{}", err);
-        Self::WalletError(err.to_string())
-    }
-}
-
-impl From<OutputManagerError> for ExitCodes {
-    fn from(err: OutputManagerError) -> Self {
-        error!(target: LOG_TARGET, "{}", err);
-        Self::WalletError(err.to_string())
-    }
-}
-
 impl From<ConnectivityError> for ExitCodes {
     fn from(err: ConnectivityError) -> Self {
         error!(target: LOG_TARGET, "{}", err);
@@ -135,14 +119,43 @@ impl From<RpcError> for ExitCodes {
     }
 }
 
-impl From<WalletStorageError> for ExitCodes {
-    fn from(err: WalletStorageError) -> Self {
-        use WalletStorageError::*;
-        match err {
-            NoPasswordError => ExitCodes::NoPassword,
-            IncorrectPassword => ExitCodes::IncorrectPassword,
-            e => ExitCodes::WalletError(e.to_string()),
+#[cfg(feature = "wallet")]
+mod wallet {
+    use super::*;
+    use tari_wallet::{
+        error::{WalletError, WalletStorageError},
+        output_manager_service::error::OutputManagerError,
+    };
+
+    impl From<WalletError> for ExitCodes {
+        fn from(err: WalletError) -> Self {
+            error!(target: LOG_TARGET, "{}", err);
+            Self::WalletError(err.to_string())
         }
+    }
+
+    impl From<OutputManagerError> for ExitCodes {
+        fn from(err: OutputManagerError) -> Self {
+            error!(target: LOG_TARGET, "{}", err);
+            Self::WalletError(err.to_string())
+        }
+    }
+
+    impl From<WalletStorageError> for ExitCodes {
+        fn from(err: WalletStorageError) -> Self {
+            use WalletStorageError::*;
+            match err {
+                NoPasswordError => ExitCodes::NoPassword,
+                IncorrectPassword => ExitCodes::IncorrectPassword,
+                e => ExitCodes::WalletError(e.to_string()),
+            }
+        }
+    }
+}
+
+impl From<PeerManagerError> for ExitCodes {
+    fn from(err: PeerManagerError) -> Self {
+        ExitCodes::NetworkError(err.to_string())
     }
 }
 
@@ -152,17 +165,15 @@ impl ExitCodes {
     }
 }
 
-/// Creates a transport type for the console wallet using the provided configuration
-/// ## Parameters
+/// Creates a transport type from the given configuration
+///
+/// ## Paramters
 /// `config` - The reference to the configuration in which to set up the comms stack, see [GlobalConfig]
 ///
 /// ##Returns
 /// TransportType based on the configuration
-pub fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
-    debug!(
-        target: LOG_TARGET,
-        "Console wallet transport is set to '{:?}'", config.comms_transport
-    );
+pub fn create_transport_type(config: &GlobalConfig) -> TransportType {
+    debug!(target: LOG_TARGET, "Transport is set to '{:?}'", config.comms_transport);
 
     match config.comms_transport.clone() {
         CommsTransport::Tcp {
@@ -174,29 +185,27 @@ pub fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
             tor_socks_config: tor_socks_address.map(|proxy_address| SocksConfig {
                 proxy_address,
                 authentication: tor_socks_auth.map(convert_socks_authentication).unwrap_or_default(),
+                proxy_bypass_addresses: vec![],
             }),
         },
         CommsTransport::TorHiddenService {
             control_server_address,
             socks_address_override,
+            forward_address,
             auth,
-            ..
+            onion_port,
+            tor_proxy_bypass_addresses,
         } => {
-            // The wallet should always use an OS-assigned forwarding port and an onion port number of 18101
-            // to ensure that different wallet implementations cannot be differentiated by their port.
-            let port_mapping = (18101u16, "127.0.0.1:0".parse::<SocketAddr>().unwrap()).into();
-
-            let tor_identity_path = Path::new(&config.console_wallet_tor_identity_file);
-            let identity = if tor_identity_path.exists() {
-                // If this fails, we can just use another address
-                load_from_json::<_, TorIdentity>(&tor_identity_path).ok()
-            } else {
-                None
-            };
+            let identity = Some(&config.base_node_tor_identity_file)
+                .filter(|p| p.exists())
+                .and_then(|p| {
+                    // If this fails, we can just use another address
+                    load_from_json::<_, TorIdentity>(p).ok()
+                });
             info!(
                 target: LOG_TARGET,
-                "Console wallet tor identity at path '{}' {:?}",
-                tor_identity_path.to_string_lossy(),
+                "Tor identity at path '{}' {:?}",
+                config.base_node_tor_identity_file.to_string_lossy(),
                 identity
                     .as_ref()
                     .map(|ident| format!("loaded for address '{}.onion'", ident.service_id))
@@ -204,6 +213,7 @@ pub fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
                     .unwrap()
             );
 
+            let forward_addr = multiaddr_to_socketaddr(&forward_address).expect("Invalid tor forward address");
             TransportType::Tor(TorConfig {
                 control_server_addr: control_server_address,
                 control_server_auth: {
@@ -213,9 +223,10 @@ pub fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
                     }
                 },
                 identity: identity.map(Box::new),
-                port_mapping,
+                port_mapping: (onion_port, forward_addr).into(),
                 socks_address_override,
                 socks_auth: socks::Authentication::None,
+                tor_proxy_bypass_addresses,
             })
         },
         CommsTransport::Socks5 {
@@ -226,6 +237,7 @@ pub fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
             socks_config: SocksConfig {
                 proxy_address,
                 authentication: convert_socks_authentication(auth),
+                proxy_bypass_addresses: vec![],
             },
             listener_address,
         },
@@ -254,26 +266,22 @@ pub fn convert_socks_authentication(auth: SocksAuthentication) -> socks::Authent
 /// ## Returns
 /// A result containing the runtime on success, string indicating the error on failure
 pub fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, String> {
-    info!(
-        target: LOG_TARGET,
-        "Configuring the node to run on up to {} core threads and {} mining threads.",
-        config.max_threads.unwrap_or(512),
-        config.num_mining_threads
-    );
+    let mut builder = runtime::Builder::new_multi_thread();
 
-    let mut builder = runtime::Builder::new();
-
-    if let Some(max_threads) = config.max_threads {
-        // Ensure that there are always enough threads for mining.
-        // e.g if the user sets max_threads = 2, mining_threads = 5 then 7 threads are available in total
-        builder.max_threads(max_threads + config.num_mining_threads);
-    }
     if let Some(core_threads) = config.core_threads {
-        builder.core_threads(core_threads);
+        info!(
+            target: LOG_TARGET,
+            "Configuring the node to run on up to {} core threads.",
+            config
+                .core_threads
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "<num cores>".to_string()),
+        );
+        builder.worker_threads(core_threads);
     }
 
     builder
-        .threaded_scheduler()
         .enable_all()
         .build()
         .map_err(|e| format!("There was an error while building the node runtime. {}", e.to_string()))

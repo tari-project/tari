@@ -37,11 +37,24 @@ pub enum Network {
     Ridcully = 0x21,
     Stibbons = 0x22,
     Weatherwax = 0xa3,
+    Igor = 0x24,
 }
 
 impl Network {
     pub fn as_byte(self) -> u8 {
         self as u8
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        use Network::*;
+        match self {
+            MainNet => "mainnet",
+            Ridcully => "ridcully",
+            Stibbons => "stibbons",
+            Weatherwax => "weatherwax",
+            Igor => "igor",
+            LocalNet => "localnet",
+        }
     }
 }
 
@@ -62,6 +75,7 @@ impl FromStr for Network {
             "weatherwax" => Ok(Weatherwax),
             "mainnet" => Ok(MainNet),
             "localnet" => Ok(LocalNet),
+            "igor" => Ok(Igor),
             invalid => Err(ConfigurationError::new(
                 "network",
                 &format!("Invalid network option: {}", invalid),
@@ -72,14 +86,6 @@ impl FromStr for Network {
 
 impl Display for Network {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        use Network::*;
-        let msg = match self {
-            MainNet => "mainnet",
-            Ridcully => "ridcully",
-            Stibbons => "stibbons",
-            Weatherwax => "weatherwax",
-            LocalNet => "localnet",
-        };
-        f.write_str(msg)
+        f.write_str(self.as_str())
     }
 }

@@ -4,7 +4,7 @@
 
 ![status: draft](theme/images/status-draft.svg)
 
-**Maintainer(s)**: [Hansie Odendaal](https://github.com/hansieodendaal)
+**Maintainer(s)**: [Hansie Odendaal](https://github.com/hansieodendaal), [Philip Robinson](https://github.com/philipr-za)
 
 # Licence
 
@@ -61,10 +61,10 @@ This document describes the final proof-of-work strategy proposal for Tari main 
 The following proposal draws from many of the key points of debate from the Tari community on the topic of Tari’s
 main chain proof of work strategy. The early working assumption was that Tari would be 100% merged mined by Monero.
 
-It would be nice to have a single, merge mined Proof of Work (PoW) algorithm, but the risks of hash rate attacks are real and
-meaningful. Double-spends and altering history can happen with >50% hash power, while selfish mining and eclipse
-attacks can happen with >33% hash power for a poorly connected attacker and >25% for a well-connected attacker (see
-[_Merged Mining: Analysis of Effects and Implications_](http://repositum.tuwien.ac.at/obvutwhs/download/pdf/2315652)).
+It would be nice to have a single, merge mined Proof of Work (PoW) algorithm, but the risks of hash rate attacks are 
+real and meaningful. Double-spends and altering history can happen with >50% hash power, while selfish mining and 
+eclipse attacks can happen with >33% hash power for a poorly connected attacker and >25% for a well-connected attacker 
+(see [_Merged Mining: Analysis of Effects and Implications_](http://repositum.tuwien.ac.at/obvutwhs/download/pdf/2315652)).
 Any non-merge mined PoW algorithm that is currently employed is even more vulnerable, especially if one can simply buy
 hash rate on platforms like NiceHash.
 
@@ -80,15 +80,13 @@ This proposal puts forward Hybrid mining as the Tari PoW algorithm. However, som
 * the block distribution;
 * the difficulty adjustment strategy.
 
-
-
 ### The number of algorithms
 
 In hybrid mining, "independence" of algorithms is key. If the same mining hardware can be used on multiple PoW
 algorithms in the hybrid mining scheme, you may as well not bother with hybrid mining, because miners can simply
 switch between them.
 
-In practice, no set of algorithms are truly independent. The best we can do is try and choose algorithms that work best
+In practice, no set of algorithms are truly independent. The best we can do is try to choose algorithms that work best
 on CPUs, GPUs, and ASICs. In truth, the distinction between GPUs and ASICs is only a matter of time. Any "GPU-friendly"
 algorithm is ASIC-friendly too; it's just a case of whether the capital outlay for fabricating them is worth it; and
 this will eventually become true for any algorithm that supplies PoW for a growing market cap. Employing merged mining
@@ -99,25 +97,21 @@ _**Note:** Merge mining does not add security per se, but it does add plenty of 
 
 So really the answer to how many algorithms is: More than one, as independent as possible.
 
-
-
 ### The choice of algorithms
 
 A good technical choice would be merge mining with Monero, Bitcoin and Litecoin, if enough interest could be
 attracted from those mining communities. However, that would rule out any participation from Tari supporters and
 enthusiasts, at least in the early stages. So, to be inclusive of Tari supporters and enthusiasts, merge mining RandomX
-with Monero and another GPU/ASIC-friendly algorithm, like SHA3, is proposed. For the independent miners, the proposal
-settled on a SHA3-based algorithm, being GPU/ASIC-friendly as well. Since no major coin uses SHA3, it's not currently
-available on NiceHash, and because it's such a simple algorithm, it stands a good chance of being "commoditized" when
-ASICs are eventually manufactured. Meaning, SHA3 ASICs will be widely available and not available from only a single
-supplier.
+with Monero and another GPU/ASIC-friendly algorithm, like SHA3 also known as Keccak, is proposed. Using a custom
+configuration of such a simple and well understood algorithm means there is a low likelihood of unforeseen optimizations
+that will give a single miner a huge advantage. It also means that it stands a good chance of being "commoditized" when 
+ASICs are eventually manufactured. This means that SHA3 ASICs will be widely available and not available from only a 
+single supplier.
 
 _**Edit:** Handshake, which launched a few months ago, selected a Hashcash PoW algorithm
 [(see #Consensus)](https://handshake.org/files/handshake.txt) using SHA3 and Blake2B for many of the same reasons:
 SHA3 is currently under-represented in PoW; SHA3 usage in combination with Blake2B in PoW creates a more level playing
 field for hardware manufacturers._
-
-
 
 ### The block distribution
 
@@ -128,8 +122,6 @@ Tari supporters and enthusiasts, a 60/40 split is proposed in favour of merge mi
 approaching [Monero tail emission](https://web.getmonero.org/resources/moneropedia/tail-emission.html) at the end of May
 2022 should also make this a worthwhile proposal for Monero pool operators.
 
-
-
 ### The difficulty adjustment strategy
 
 The choice of difficulty adjustment algorithm is important. In typical hybrid mining strategies, each algorithm operates
@@ -139,8 +131,6 @@ Clones [version 2018-11-27](https://github.com/zawy12/difficulty-algorithms/issu
 difficulty adjustment algorithm has also been
 [tested in simulations](https://github.com/tari-labs/modelling/tree/master/scenarios/multi_pow_01) and it proved to be a
 good choice in the multi-PoW scene as well.
-
-
 
 ### Final proposal, hybrid mining details
 

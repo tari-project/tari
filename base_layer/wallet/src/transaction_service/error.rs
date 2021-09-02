@@ -31,7 +31,7 @@ use tari_p2p::services::liveness::error::LivenessError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
 use time::OutOfRangeError;
-use tokio::sync::broadcast::RecvError;
+use tokio::sync::broadcast::error::RecvError;
 use tari_core::transactions::transaction_protocol::TxId;
 
 #[derive(Debug, Error)]
@@ -78,7 +78,7 @@ pub enum TransactionServiceError {
     InvalidCompletedTransaction,
     #[error("No Base Node public keys are provided for Base chain broadcast and monitoring")]
     NoBaseNodeKeysProvided,
-    #[error("Error sending data to Protocol via register channels")]
+    #[error("Error sending data to Protocol via registered channels")]
     ProtocolChannelError,
     #[error("Transaction detected as rejected by mempool")]
     MempoolRejection,
@@ -100,9 +100,6 @@ pub enum TransactionServiceError {
     TransactionStorageError(#[from] TransactionStorageError),
     #[error("Invalid message error: `{0}`")]
     InvalidMessageError(String),
-    #[cfg(feature = "test_harness")]
-    #[error("Test harness error: `{0}`")]
-    TestHarnessError(String),
     #[error("Transaction error: `{0}`")]
     TransactionError(#[from] TransactionError),
     #[error("Conversion error: `{0}`")]
@@ -139,6 +136,8 @@ pub enum TransactionServiceError {
     MaximumAttemptsExceeded,
     #[error("Byte array error")]
     ByteArrayError(#[from] tari_crypto::tari_utilities::ByteArrayError),
+    #[error("Transaction Service Error: `{0}`")]
+    ServiceError(String),
 }
 
 #[derive(Debug, Error)]

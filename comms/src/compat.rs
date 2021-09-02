@@ -27,8 +27,9 @@
 use std::{
     io,
     pin::Pin,
-    task::{self, Poll},
+    task::{self, Context, Poll},
 };
+use tokio::io::ReadBuf;
 
 /// `IoCompat` provides a compatibility shim between the `AsyncRead`/`AsyncWrite` traits provided by
 /// the `futures` library and those provided by the `tokio` library since they are different and
@@ -47,16 +48,16 @@ impl<T> IoCompat<T> {
 impl<T> tokio::io::AsyncRead for IoCompat<T>
 where T: futures::io::AsyncRead + Unpin
 {
-    fn poll_read(mut self: Pin<&mut Self>, cx: &mut task::Context, buf: &mut [u8]) -> Poll<io::Result<usize>> {
-        futures::io::AsyncRead::poll_read(Pin::new(&mut self.inner), cx, buf)
+    fn poll_read(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<Result<usize>> {
+        futures::io::AsyncRead::poll_read(Pin::new(&mut self.inner), cx, buf.filled_mut())
     }
 }
 
 impl<T> futures::io::AsyncRead for IoCompat<T>
 where T: tokio::io::AsyncRead + Unpin
 {
-    fn poll_read(mut self: Pin<&mut Self>, cx: &mut task::Context, buf: &mut [u8]) -> Poll<io::Result<usize>> {
-        tokio::io::AsyncRead::poll_read(Pin::new(&mut self.inner), cx, buf)
+    fn poll_read(mut self: Pin<&mut Self>, cx: &mut task::Context, buf: &mut [u8]) -> Poll<io::Result<()>> {
+        tokio::io::AsyncRead::poll_read(Pin::new(&mut self.inner), cx, &mut ReadBuf::new(buf))
     }
 }
 

@@ -22,11 +22,11 @@
 
 use crate::{message::MessageTag, peer_manager::NodeId, protocol::messaging::SendFailReason};
 use bytes::Bytes;
-use futures::channel::oneshot;
 use std::{
     fmt,
     fmt::{Error, Formatter},
 };
+use tokio::sync::oneshot;
 
 pub type MessagingReplyResult = Result<(), SendFailReason>;
 pub type MessagingReplyRx = oneshot::Receiver<MessagingReplyResult>;

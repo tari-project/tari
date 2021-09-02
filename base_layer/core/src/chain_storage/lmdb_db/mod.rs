@@ -24,12 +24,10 @@ mod lmdb;
 #[allow(clippy::module_inception)]
 mod lmdb_db;
 
-use crate::transactions::{
-    transaction::{TransactionInput, TransactionKernel, TransactionOutput},
-    types::HashOutput,
-};
+use crate::transactions::transaction::{TransactionInput, TransactionKernel, TransactionOutput};
 pub use lmdb_db::{create_lmdb_database, create_recovery_lmdb_database, LMDBDatabase};
 use serde::{Deserialize, Serialize};
+use tari_common_types::types::HashOutput;
 
 pub const LMDB_DB_METADATA: &str = "metadata";
 pub const LMDB_DB_HEADERS: &str = "headers";
@@ -44,6 +42,7 @@ pub const LMDB_DB_KERNEL_EXCESS_INDEX: &str = "kernel_excess_index";
 pub const LMDB_DB_KERNEL_EXCESS_SIG_INDEX: &str = "kernel_excess_sig_index";
 pub const LMDB_DB_KERNEL_MMR_SIZE_INDEX: &str = "kernel_mmr_size_index";
 pub const LMDB_DB_UTXO_MMR_SIZE_INDEX: &str = "utxo_mmr_size_index";
+pub const LMDB_DB_UTXO_COMMITMENT_INDEX: &str = "utxo_commitment_index";
 pub const LMDB_DB_ORPHANS: &str = "orphans";
 pub const LMDB_DB_MONERO_SEED_HEIGHT: &str = "monero_seed_height";
 pub const LMDB_DB_ORPHAN_HEADER_ACCUMULATED_DATA: &str = "orphan_accumulated_data";
@@ -56,7 +55,7 @@ pub(crate) struct TransactionOutputRowData {
     pub header_hash: HashOutput,
     pub mmr_position: u32,
     pub hash: HashOutput,
-    pub range_proof_hash: HashOutput,
+    pub witness_hash: HashOutput,
     pub mined_height: u64,
 }
 

@@ -1,4 +1,10 @@
-use crate::{dir_utils::default_subdir, ConfigBootstrap, ConfigError, LOG_TARGET};
+use crate::{
+    configuration::bootstrap::ApplicationType,
+    dir_utils::default_subdir,
+    ConfigBootstrap,
+    ConfigError,
+    LOG_TARGET,
+};
 use config::Config;
 use log::{debug, info};
 use multiaddr::{Multiaddr, Protocol};
@@ -19,9 +25,11 @@ pub fn load_configuration(bootstrap: &ConfigBootstrap) -> Result<Config, ConfigE
         .to_str()
         .ok_or_else(|| ConfigError::new("Invalid config file path", None))?;
     let config_file = config::File::with_name(filename);
+
     cfg.merge(config_file)
         .map_err(|e| ConfigError::new("Failed to parse the configuration file", Some(e.to_string())))?;
     info!(target: LOG_TARGET, "Configuration file loaded.");
+
     Ok(cfg)
 }
 
@@ -53,10 +61,11 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("common.liveness_max_sessions", 0).unwrap();
     cfg.set_default("common.denylist_ban_period", 1440).unwrap();
     cfg.set_default("common.buffer_size_base_node", 1_500).unwrap();
-    cfg.set_default("common.buffer_size_base_node_wallet", 50_000).unwrap();
+    cfg.set_default("common.buffer_size_console_wallet", 50_000).unwrap();
     cfg.set_default("common.buffer_rate_limit_base_node", 1_000).unwrap();
-    cfg.set_default("common.buffer_rate_limit_base_node_wallet", 1_000)
+    cfg.set_default("common.buffer_rate_limit_console_wallet", 1_000)
         .unwrap();
+    cfg.set_default("common.dedup_cache_capacity", 2_500).unwrap();
     cfg.set_default("common.fetch_blocks_timeout", 150).unwrap();
     cfg.set_default("common.fetch_utxos_timeout", 600).unwrap();
     cfg.set_default("common.service_request_timeout", 180).unwrap();
@@ -89,7 +98,8 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     )
     .unwrap();
     cfg.set_default("wallet.base_node_query_timeout", 60).unwrap();
-    // 60 sec * 60 mintues * 12 hours.
+    cfg.set_default("wallet.base_node_service_refresh_interval", 5).unwrap();
+    cfg.set_default("wallet.base_node_service_request_max_age", 60).unwrap();
     cfg.set_default("wallet.scan_for_utxo_interval", 60 * 60 * 12).unwrap();
     cfg.set_default("wallet.transaction_broadcast_monitoring_timeout", 60)
         .unwrap();
@@ -108,7 +118,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
 
     //---------------------------------- Mainnet Defaults --------------------------------------------//
 
-    cfg.set_default("base_node.network", "mainnet").unwrap();
+    cfg.set_default("common.network", "mainnet").unwrap();
 
     // Mainnet base node defaults
     cfg.set_default("base_node.mainnet.db_type", "lmdb").unwrap();
@@ -163,8 +173,6 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         .unwrap();
     cfg.set_default("base_node.mainnet.grpc_console_wallet_address", "127.0.0.1:18143")
         .unwrap();
-    cfg.set_default("base_node.mainnet.enable_wallet", true).unwrap();
-    cfg.set_default("base_node.mainnet.num_mining_threads", 1).unwrap();
     cfg.set_default("base_node.mainnet.flood_ban_max_msg_count", 10000)
         .unwrap();
 
@@ -184,7 +192,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         .unwrap();
     cfg.set_default(
         "base_node.weatherwax.data_dir",
-        default_subdir("stibbons/", Some(&bootstrap.base_path)),
+        default_subdir("weatherwax/", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
@@ -220,9 +228,6 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         .unwrap();
     cfg.set_default("base_node.weatherwax.grpc_console_wallet_address", "127.0.0.1:18143")
         .unwrap();
-    cfg.set_default("base_node.weatherwax.enable_wallet", true).unwrap();
-    cfg.set_default("base_node.weatherwax.num_mining_threads", 1).unwrap();
-
     cfg.set_default("base_node.weatherwax.dns_seeds_name_server", "1.1.1.1:53")
         .unwrap();
     cfg.set_default("base_node.weatherwax.dns_seeds_use_dnssec", true)
@@ -232,10 +237,46 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("wallet.base_node_service_peers", Vec::<String>::new())
         .unwrap();
 
-    set_transport_defaults(&mut cfg);
+    //---------------------------------- Igor Defaults --------------------------------------------//
+
+    cfg.set_default("base_node.igor.db_type", "lmdb").unwrap();
+    cfg.set_default("base_node.igor.orphan_storage_capacity", 720).unwrap();
+    cfg.set_default("base_node.igor.orphan_db_clean_out_threshold", 0)
+        .unwrap();
+    cfg.set_default("base_node.igor.pruning_horizon", 0).unwrap();
+    cfg.set_default("base_node.igor.pruned_mode_cleanup_interval", 50)
+        .unwrap();
+    cfg.set_default("base_node.igor.flood_ban_max_msg_count", 1000).unwrap();
+    cfg.set_default("base_node.igor.public_address", format!("{}/tcp/18141", local_ip_addr))
+        .unwrap();
+    cfg.set_default("base_node.igor.grpc_enabled", false).unwrap();
+    cfg.set_default("base_node.igor.grpc_base_node_address", "127.0.0.1:18142")
+        .unwrap();
+    cfg.set_default("base_node.igor.grpc_console_wallet_address", "127.0.0.1:18143")
+        .unwrap();
+    cfg.set_default("base_node.igor.dns_seeds_name_server", "1.1.1.1:53")
+        .unwrap();
+    cfg.set_default("base_node.igor.dns_seeds_use_dnssec", true).unwrap();
+    cfg.set_default("base_node.igor.auto_ping_interval", 30).unwrap();
+
+    set_transport_defaults(&mut cfg).unwrap();
     set_merge_mining_defaults(&mut cfg);
+    set_mining_node_defaults(&mut cfg);
+    set_stratum_transcoder_defaults(&mut cfg);
 
     cfg
+}
+
+fn set_stratum_transcoder_defaults(cfg: &mut Config) {
+    cfg.set_default("stratum_transcoder.mainnet.transcoder_host_address", "127.0.0.1:7879")
+        .unwrap();
+    cfg.set_default(
+        "stratum_transcoder.weatherwax.transcoder_host_address",
+        "127.0.0.1:7879",
+    )
+    .unwrap();
+    cfg.set_default("stratum_transcoder.igor.transcoder_host_address", "127.0.0.1:7879")
+        .unwrap();
 }
 
 fn set_merge_mining_defaults(cfg: &mut Config) {
@@ -254,7 +295,6 @@ fn set_merge_mining_defaults(cfg: &mut Config) {
         .unwrap();
     cfg.set_default("merge_mining_proxy.mainnet.wait_for_initial_sync_at_startup", true)
         .unwrap();
-
     cfg.set_default(
         "merge_mining_proxy.weatherwax.monerod_url",
         "http://monero-stagenet.exan.tech:38081",
@@ -272,47 +312,113 @@ fn set_merge_mining_defaults(cfg: &mut Config) {
         .unwrap();
     cfg.set_default("merge_mining_proxy.weatherwax.wait_for_initial_sync_at_startup", true)
         .unwrap();
+    cfg.set_default("merge_mining_proxy.igor.proxy_host_address", "127.0.0.1:7878")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.igor.proxy_submit_to_origin", true)
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.igor.monerod_use_auth", "false")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.igor.monerod_username", "").unwrap();
+    cfg.set_default("merge_mining_proxy.igor.monerod_password", "").unwrap();
+    cfg.set_default("merge_mining_proxy.igor.wait_for_initial_sync_at_startup", true)
+        .unwrap();
 }
 
-fn set_transport_defaults(cfg: &mut Config) {
-    // Mainnet
-    // Default transport for mainnet is tcp
-    cfg.set_default("base_node.mainnet.transport", "tcp").unwrap();
-    cfg.set_default("base_node.mainnet.tcp_listener_address", "/ip4/0.0.0.0/tcp/18089")
-        .unwrap();
+fn set_mining_node_defaults(cfg: &mut Config) {
+    cfg.set_default("mining_node.num_mining_threads", 1).unwrap();
+    cfg.set_default("mining_node.mine_on_tip_only", true).unwrap();
+    cfg.set_default("mining_node.validate_tip_timeout_sec", 0).unwrap();
+}
 
-    cfg.set_default("base_node.mainnet.tor_control_address", "/ip4/127.0.0.1/tcp/9051")
-        .unwrap();
-    cfg.set_default("base_node.mainnet.tor_control_auth", "none").unwrap();
-    cfg.set_default("base_node.mainnet.tor_forward_address", "/ip4/127.0.0.1/tcp/0")
-        .unwrap();
-    cfg.set_default("base_node.mainnet.tor_onion_port", "18141").unwrap();
+fn set_transport_defaults(cfg: &mut Config) -> Result<(), config::ConfigError> {
+    // Defaults that should not conflict across apps
+    cfg.set_default(
+        &format!("{}.mainnet.tcp_listener_address", ApplicationType::BaseNode),
+        "/ip4/0.0.0.0/tcp/18089",
+    )?;
+    cfg.set_default(
+        &format!("{}.mainnet.tcp_listener_address", ApplicationType::ConsoleWallet),
+        "/ip4/0.0.0.0/tcp/18088",
+    )?;
+    cfg.set_default(
+        &format!("{}.weatherwax.tcp_listener_address", ApplicationType::BaseNode),
+        "/ip4/0.0.0.0/tcp/18199",
+    )?;
+    cfg.set_default(
+        &format!("{}.weatherwax.tcp_listener_address", ApplicationType::ConsoleWallet),
+        "/ip4/0.0.0.0/tcp/18198",
+    )?;
+    cfg.set_default(
+        &format!("{}.mainnet.socks5_listener_address", ApplicationType::BaseNode),
+        "/ip4/0.0.0.0/tcp/18099",
+    )?;
+    cfg.set_default(
+        &format!("{}.mainnet.socks5_listener_address", ApplicationType::ConsoleWallet),
+        "/ip4/0.0.0.0/tcp/18098",
+    )?;
+    cfg.set_default(
+        &format!("{}.weatherwax.socks5_listener_address", ApplicationType::BaseNode),
+        "/ip4/0.0.0.0/tcp/18199",
+    )?;
+    cfg.set_default(
+        &format!("{}.weatherwax.socks5_listener_address", ApplicationType::ConsoleWallet),
+        "/ip4/0.0.0.0/tcp/18198",
+    )?;
 
-    cfg.set_default("base_node.mainnet.socks5_proxy_address", "/ip4/0.0.0.0/tcp/9050")
-        .unwrap();
-    cfg.set_default("base_node.mainnet.socks5_listener_address", "/ip4/0.0.0.0/tcp/18099")
-        .unwrap();
-    cfg.set_default("base_node.mainnet.socks5_auth", "none").unwrap();
+    let apps = &[ApplicationType::BaseNode, ApplicationType::ConsoleWallet];
+    for app in apps {
+        let app = app.as_config_str();
 
-    // weatherwax
-    // Default transport for weatherwax is tcp
-    cfg.set_default("base_node.weatherwax.transport", "tcp").unwrap();
-    cfg.set_default("base_node.weatherwax.tcp_listener_address", "/ip4/0.0.0.0/tcp/18189")
-        .unwrap();
+        // Mainnet
+        cfg.set_default(&format!("{}.mainnet.transport", app), "tor")?;
+        cfg.set_default(
+            &format!("{}.mainnet.tor_control_address", app),
+            "/ip4/127.0.0.1/tcp/9051",
+        )?;
+        cfg.set_default(&format!("{}.mainnet.tor_control_auth", app), "none")?;
+        cfg.set_default(&format!("{}.mainnet.tor_forward_address", app), "/ip4/127.0.0.1/tcp/0")?;
+        cfg.set_default(&format!("{}.mainnet.tor_onion_port", app), "18141")?;
 
-    cfg.set_default("base_node.weatherwax.tor_control_address", "/ip4/127.0.0.1/tcp/9051")
-        .unwrap();
-    cfg.set_default("base_node.weatherwax.tor_control_auth", "none")
-        .unwrap();
-    cfg.set_default("base_node.weatherwax.tor_forward_address", "/ip4/127.0.0.1/tcp/0")
-        .unwrap();
-    cfg.set_default("base_node.weatherwax.tor_onion_port", "18141").unwrap();
+        cfg.set_default(
+            &format!("{}.mainnet.socks5_proxy_address", app),
+            "/ip4/0.0.0.0/tcp/9050",
+        )?;
+        cfg.set_default(&format!("{}.mainnet.socks5_auth", app), "none")?;
 
-    cfg.set_default("base_node.weatherwax.socks5_proxy_address", "/ip4/0.0.0.0/tcp/9150")
-        .unwrap();
-    cfg.set_default("base_node.weatherwax.socks5_listener_address", "/ip4/0.0.0.0/tcp/18199")
-        .unwrap();
-    cfg.set_default("base_node.weatherwax.socks5_auth", "none").unwrap();
+        // weatherwax
+        cfg.set_default(&format!("{}.weatherwax.transport", app), "tor")?;
+
+        cfg.set_default(
+            &format!("{}.weatherwax.tor_control_address", app),
+            "/ip4/127.0.0.1/tcp/9051",
+        )?;
+        cfg.set_default(&format!("{}.weatherwax.tor_control_auth", app), "none")?;
+        cfg.set_default(
+            &format!("{}.weatherwax.tor_forward_address", app),
+            "/ip4/127.0.0.1/tcp/0",
+        )?;
+        cfg.set_default(&format!("{}.weatherwax.tor_onion_port", app), "18141")?;
+
+        cfg.set_default(
+            &format!("{}.weatherwax.socks5_proxy_address", app),
+            "/ip4/0.0.0.0/tcp/9150",
+        )?;
+
+        cfg.set_default(&format!("{}.weatherwax.socks5_auth", app), "none")?;
+
+        // igor
+        cfg.set_default(&format!("{}.igor.transport", app), "tor")?;
+
+        cfg.set_default(&format!("{}.igor.tor_control_address", app), "/ip4/127.0.0.1/tcp/9051")?;
+        cfg.set_default(&format!("{}.igor.tor_control_auth", app), "none")?;
+        cfg.set_default(&format!("{}.igor.tor_forward_address", app), "/ip4/127.0.0.1/tcp/0")?;
+        cfg.set_default(&format!("{}.igor.tor_onion_port", app), "18141")?;
+
+        cfg.set_default(&format!("{}.igor.socks5_proxy_address", app), "/ip4/0.0.0.0/tcp/9150")?;
+
+        cfg.set_default(&format!("{}.igor.socks5_auth", app), "none")?;
+    }
+    Ok(())
 }
 
 fn get_local_ip() -> Option<Multiaddr> {

@@ -21,11 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use chrono::offset::Local;
-use futures::{FutureExt, StreamExt};
+use futures::FutureExt;
 use log::*;
 use rustyline::Editor;
 use tari_app_utilities::utilities::ExitCodes;
-use tari_core::transactions::types::PrivateKey;
+use tari_common_types::types::PrivateKey;
 use tari_key_manager::mnemonic::to_secretkey;
 use tari_shutdown::Shutdown;
 use tari_wallet::{
@@ -35,6 +35,7 @@ use tari_wallet::{
 };
 
 use crate::wallet_modes::PeerConfig;
+use tokio::sync::broadcast;
 
 pub const LOG_TARGET: &str = "wallet::recovery";
 
@@ -83,24 +84,27 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfi
     let shutdown = Shutdown::new();
     let shutdown_signal = shutdown.to_signal();
 
-    let peer_public_keys = base_node_config
-        .get_all_peers()
-        .iter()
-        .map(|peer| peer.public_key.clone())
-        .collect();
+    let peers = base_node_config.get_all_peers();
+
+    let peer_manager = wallet.comms.peer_manager();
+    let mut peer_public_keys = Vec::with_capacity(peers.len());
+    for peer in peers {
+        peer_public_keys.push(peer.public_key.clone());
+        peer_manager.add_peer(peer).await?;
+    }
 
     let mut recovery_task = UtxoScannerService::<WalletSqliteDatabase>::builder()
         .with_peers(peer_public_keys)
         .with_retry_limit(10)
         .build_with_wallet(wallet, shutdown_signal);
 
-    let mut event_stream = recovery_task.get_event_receiver().fuse();
+    let mut event_stream = recovery_task.get_event_receiver();
 
     let recovery_join_handle = tokio::spawn(recovery_task.run()).fuse();
 
     // Read recovery task events. The event stream will end once recovery has completed.
-    while let Some(event) = event_stream.next().await {
-        match event {
+    loop {
+        match event_stream.recv().await {
             Ok(UtxoScannerEvent::ConnectingToBaseNode(peer)) => {
                 print!("Connecting to base node {}... ", peer);
             },
@@ -131,8 +135,12 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfi
             Ok(UtxoScannerEvent::ScanningRoundFailed {
                 num_retries,
                 retry_limit,
+                error,
             }) => {
-                let s = format!("Failed to sync. Attempt {} of {}", num_retries, retry_limit);
+                let s = format!(
+                    "Attempt {}/{}: Failed to complete wallet recovery {}.",
+                    num_retries, retry_limit, error
+                );
                 println!("{}", s);
                 warn!(target: LOG_TARGET, "{}", s);
             },
@@ -163,10 +171,15 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfi
                 info!(target: LOG_TARGET, "{}", stats);
                 println!("{}", stats);
             },
-            Err(e) => {
-                // Can occur if we read events too slowly (lagging/slow subscriber)
+            Err(e @ broadcast::error::RecvError::Lagged(_)) => {
                 debug!(target: LOG_TARGET, "Error receiving Wallet recovery events: {}", e);
                 continue;
+            },
+            Err(broadcast::error::RecvError::Closed) => {
+                break;
+            },
+            Ok(UtxoScannerEvent::ScanningFailed) => {
+                error!(target: LOG_TARGET, "Wallet Recovery process failed and is exiting");
             },
         }
     }

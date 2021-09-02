@@ -35,7 +35,6 @@ use crate::{
     consensus::ConsensusManager,
     proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
     tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex},
-    transactions::types::HashOutput,
     validation::helpers::{
         check_header_timestamp_greater_than_median,
         check_pow_data,
@@ -45,6 +44,7 @@ use crate::{
 };
 use log::*;
 use std::cmp::Ordering;
+use tari_common_types::types::HashOutput;
 
 const LOG_TARGET: &str = "c::bn::header_sync";
 
@@ -92,8 +92,8 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             .fetch_header_accumulated_data(start_hash.clone())
             .await?
             .ok_or_else(|| ChainStorageError::ValueNotFound {
-                entity: "BlockHeaderAccumulatedData".to_string(),
-                field: "hash".to_string(),
+                entity: "BlockHeaderAccumulatedData",
+                field: "hash",
                 value: start_hash.to_hex(),
             })?;
         debug!(
@@ -113,6 +113,10 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         });
 
         Ok(())
+    }
+
+    pub fn current_valid_chain_tip_header(&self) -> Option<&ChainHeader> {
+        self.valid_headers().last()
     }
 
     pub fn validate(&mut self, header: BlockHeader) -> Result<(), BlockHeaderSyncError> {
@@ -283,7 +287,7 @@ mod test {
     mod initialize_state {
         use super::*;
 
-        #[tokio_macros::test_basic]
+        #[tokio::test]
         async fn it_initializes_state_to_given_header() {
             let (mut validator, _, tip) = setup_with_headers(1).await;
             validator.initialize_state(&tip.header().hash()).await.unwrap();
@@ -295,7 +299,7 @@ mod test {
             assert_eq!(state.current_height, 1);
         }
 
-        #[tokio_macros::test_basic]
+        #[tokio::test]
         async fn it_errors_if_hash_does_not_exist() {
             let (mut validator, _) = setup();
             let start_hash = vec![0; 32];
@@ -308,7 +312,7 @@ mod test {
     mod validate {
         use super::*;
 
-        #[tokio_macros::test_basic]
+        #[tokio::test]
         async fn it_passes_if_headers_are_valid() {
             let (mut validator, _, tip) = setup_with_headers(1).await;
             validator.initialize_state(tip.hash()).await.unwrap();
@@ -322,7 +326,7 @@ mod test {
             assert_eq!(validator.valid_headers().len(), 2);
         }
 
-        #[tokio_macros::test_basic]
+        #[tokio::test]
         async fn it_fails_if_height_is_not_serial() {
             let (mut validator, _, tip) = setup_with_headers(2).await;
             validator.initialize_state(tip.hash()).await.unwrap();

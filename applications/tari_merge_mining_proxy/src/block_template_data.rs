@@ -22,8 +22,8 @@
 use crate::error::MmProxyError;
 use chrono::{self, DateTime, Duration, Utc};
 use std::{collections::HashMap, sync::Arc};
-use tari_app_grpc::tari_rpc::{Block, MinerData};
-use tari_core::{crypto::tari_utilities::hex::Hex, proof_of_work::monero_rx::FixedByteArray};
+use tari_app_grpc::tari_rpc as grpc;
+use tari_core::proof_of_work::monero_rx::FixedByteArray;
 use tokio::sync::RwLock;
 use tracing::trace;
 
@@ -102,8 +102,8 @@ impl BlockTemplateRepository {
 #[derive(Clone, Debug)]
 pub struct BlockTemplateData {
     pub monero_seed: FixedByteArray,
-    pub tari_block: Block,
-    pub tari_miner_data: MinerData,
+    pub tari_block: grpc::Block,
+    pub tari_miner_data: grpc::MinerData,
     pub monero_difficulty: u64,
     pub tari_difficulty: u64,
 }
@@ -112,25 +112,29 @@ impl BlockTemplateData {}
 
 #[derive(Default)]
 pub struct BlockTemplateDataBuilder {
-    monero_seed: Option<String>,
-    tari_block: Option<Block>,
-    tari_miner_data: Option<MinerData>,
+    monero_seed: Option<FixedByteArray>,
+    tari_block: Option<grpc::Block>,
+    tari_miner_data: Option<grpc::MinerData>,
     monero_difficulty: Option<u64>,
     tari_difficulty: Option<u64>,
 }
 
 impl BlockTemplateDataBuilder {
-    pub fn monero_seed(mut self, monero_seed: String) -> Self {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn monero_seed(mut self, monero_seed: FixedByteArray) -> Self {
         self.monero_seed = Some(monero_seed);
         self
     }
 
-    pub fn tari_block(mut self, tari_block: Block) -> Self {
+    pub fn tari_block(mut self, tari_block: grpc::Block) -> Self {
         self.tari_block = Some(tari_block);
         self
     }
 
-    pub fn tari_miner_data(mut self, miner_data: MinerData) -> Self {
+    pub fn tari_miner_data(mut self, miner_data: grpc::MinerData) -> Self {
         self.tari_miner_data = Some(miner_data);
         self
     }
@@ -163,7 +167,7 @@ impl BlockTemplateDataBuilder {
             .ok_or_else(|| MmProxyError::MissingDataError("tari_difficulty not provided".to_string()))?;
 
         Ok(BlockTemplateData {
-            monero_seed: FixedByteArray::from_hex(&monero_seed).map_err(|_| MmProxyError::InvalidRandomXSeed)?,
+            monero_seed,
             tari_block,
             tari_miner_data,
             monero_difficulty,

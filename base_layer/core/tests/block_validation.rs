@@ -20,12 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::helpers::block_builders::chain_block_with_new_coinbase;
-use monero::blockdata::block::Block as MoneroBlock;
 use std::sync::Arc;
+
+use monero::blockdata::block::Block as MoneroBlock;
+use tari_crypto::inputs;
+
 use tari_common::configuration::Network;
 use tari_core::{
-    blocks::{Block, BlockHeaderValidationError},
+    blocks::{Block, BlockHeaderValidationError, BlockValidationError},
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
     consensus::{consensus_constants::PowAlgorithmConstants, ConsensusConstantsBuilder, ConsensusManagerBuilder},
     crypto::tari_utilities::hex::Hex,
@@ -35,15 +37,23 @@ use tari_core::{
         PowAlgorithm,
     },
     test_helpers::blockchain::{create_store_with_consensus_and_validators, create_test_db},
-    transactions::types::CryptoFactories,
+    transactions::{
+        helpers::{schema_to_transaction, TestParams, UtxoTestParams},
+        tari_amount::T,
+        CryptoFactories,
+    },
+    txn_schema,
     validation::{
-        block_validators::{BodyOnlyValidator, OrphanBlockValidator},
+        block_validators::{BlockValidator, BodyOnlyValidator, OrphanBlockValidator},
         header_validator::HeaderValidator,
         mocks::MockValidator,
+        CandidateBlockBodyValidation,
         DifficultyCalculator,
         ValidationError,
     },
 };
+
+use crate::helpers::{block_builders::chain_block_with_new_coinbase, test_blockchain::TestBlockchain};
 
 mod helpers;
 
@@ -56,7 +66,7 @@ fn test_genesis_block() {
     let validators = Validators::new(
         BodyOnlyValidator::default(),
         HeaderValidator::new(rules.clone()),
-        OrphanBlockValidator::new(rules.clone(), factories),
+        OrphanBlockValidator::new(rules.clone(), false, factories),
     );
     let db = BlockchainDatabase::new(
         backend,
@@ -164,4 +174,59 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
     let serialized = monero_rx::serialize(&monero_data);
     tblock.header.pow.pow_algo = PowAlgorithm::Monero;
     tblock.header.pow.pow_data = serialized;
+}
+
+#[test]
+fn inputs_are_not_malleable() {
+    let mut blockchain = TestBlockchain::with_genesis("GB");
+    let blocks = blockchain.builder();
+
+    let (_, output) = blockchain.add_block(blocks.new_block("A1").child_of("GB").difficulty(1));
+
+    let (txs, _) = schema_to_transaction(&[txn_schema!(from: vec![output.clone()], to: vec![50 * T])]);
+    let txs = txs.into_iter().map(|tx| Clone::clone(&*tx)).collect();
+    blockchain.add_block(
+        blocks
+            .new_block("A2")
+            .child_of("A1")
+            .difficulty(1)
+            .with_transactions(txs),
+    );
+    let spent_output = output;
+    let mut block = blockchain.get_block("A2").cloned().unwrap().block.block().clone();
+    blockchain.store().rewind_to_height(block.header.height - 1).unwrap();
+
+    let mut malicious_test_params = TestParams::new();
+
+    // New key which used to manipulate the input
+    let (malicious_script_private_key, malicious_script_public_key) = malicious_test_params.get_script_keypair();
+
+    // Oh noes - they've managed to get hold of the private script and spend keys
+    malicious_test_params.spend_key = spent_output.spending_key;
+
+    block.header.total_script_offset =
+        block.header.total_script_offset - &spent_output.script_private_key + &malicious_script_private_key;
+
+    let (malicious_input, _) = malicious_test_params.create_input(UtxoTestParams {
+        value: spent_output.value,
+        script: spent_output.script.clone(),
+        input_data: Some(inputs![malicious_script_public_key]),
+        output_features: spent_output.features,
+    });
+
+    let input_mut = block.body.inputs_mut().get_mut(0).unwrap();
+    // Put the crafted input into the block
+    input_mut.input_data = malicious_input.input_data;
+    input_mut.script_signature = malicious_input.script_signature;
+
+    let validator = BlockValidator::new(blockchain.consensus_manager().clone(), true, CryptoFactories::default());
+    let err = validator
+        .validate_body(&block, &*blockchain.store().db_read_access().unwrap())
+        .unwrap_err();
+
+    // All validations pass, except the Input MMR.
+    assert!(matches!(
+        err,
+        ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots)
+    ));
 }

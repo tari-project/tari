@@ -30,6 +30,8 @@ pub enum StorageError {
     InvalidUnicodePath,
     #[error("ConnectionError: {0}")]
     ConnectionError(#[from] diesel::ConnectionError),
+    #[error("UniqueViolation")]
+    UniqueViolation(String),
     #[error("Error when joining to tokio task : {0}")]
     JoinError(#[from] task::JoinError),
     #[error("DatabaseMigrationFailed: {0}")]
@@ -38,4 +40,6 @@ pub enum StorageError {
     ResultError(#[from] diesel::result::Error),
     #[error("MessageFormatError: {0}")]
     MessageFormatError(#[from] MessageFormatError),
+    #[error("Unexpected result: {0}")]
+    UnexpectedResult(String),
 }

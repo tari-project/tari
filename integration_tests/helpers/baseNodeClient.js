@@ -1,24 +1,20 @@
 const expect = require("chai").expect;
-const grpc = require("grpc");
+const grpc = require("@grpc/grpc-js");
 const protoLoader = require("@grpc/proto-loader");
-const grpc_promise = require("grpc-promise");
 const TransactionBuilder = require("./transactionBuilder");
 const { SHA3 } = require("sha3");
-const { toLittleEndian } = require("./util");
+const { toLittleEndian, byteArrayToHex, tryConnect } = require("./util");
+const { PowAlgo } = require("./types");
 const cloneDeep = require("clone-deep");
-const PowAlgo = { MONERO: 0, SHA3: 1 };
+const grpcPromise = require("grpc-promise");
 
 class BaseNodeClient {
-  constructor(clientOrPort) {
-    if (typeof clientOrPort === "number") {
-      this.client = this.createGrpcClient(clientOrPort);
-    } else {
-      this.client = clientOrPort;
-    }
+  constructor() {
+    this.client = null;
     this.blockTemplates = {};
   }
 
-  createGrpcClient(port) {
+  async connect(port) {
     const PROTO_PATH =
       __dirname + "/../../applications/tari_app_grpc/proto/base_node.proto";
     const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
@@ -30,12 +26,17 @@ class BaseNodeClient {
     });
     const protoDescriptor = grpc.loadPackageDefinition(packageDefinition);
     const tari = protoDescriptor.tari.rpc;
-    const client = new tari.BaseNode(
-      "127.0.0.1:" + port,
-      grpc.credentials.createInsecure()
+    this.client = await tryConnect(
+      () =>
+        new tari.BaseNode(
+          "127.0.0.1:" + port,
+          grpc.credentials.createInsecure()
+        )
     );
-    grpc_promise.promisifyAll(client);
-    return client;
+
+    grpcPromise.promisifyAll(this.client, {
+      metadata: new grpc.Metadata(),
+    });
   }
 
   getHeaderAt(height) {
@@ -76,11 +77,24 @@ class BaseNodeClient {
       });
   }
 
+  async getHeaders(from_height, num_headers, sorting = 0) {
+    return await this.client
+      .listHeaders()
+      .sendMessage({ from_height, num_headers, sorting });
+  }
+
   getTipHeight() {
     return this.client
       .getTipInfo()
       .sendMessage({})
       .then((tip) => parseInt(tip.metadata.height_of_longest_chain));
+  }
+
+  getPrunedHeight() {
+    return this.client
+      .getTipInfo()
+      .sendMessage({})
+      .then((tip) => parseInt(tip.metadata.pruned_height));
   }
 
   getPreviousBlockTemplate(height) {
@@ -386,6 +400,53 @@ class BaseNodeClient {
     hash2.update(first_round);
     const res = hash2.digest("hex");
     return res;
+  }
+
+  async identify() {
+    const info = await this.client.identify().sendMessage({});
+    return {
+      public_key: byteArrayToHex(info.public_key),
+      public_address: info.public_address,
+      node_id: byteArrayToHex(info.node_id),
+    };
+  }
+
+  async listConnectedPeers() {
+    const { connected_peers } = await this.client
+      .listConnectedPeers()
+      .sendMessage({});
+    return connected_peers.map((peer) => ({
+      ...peer,
+      public_key: byteArrayToHex(peer.public_key),
+      node_id: byteArrayToHex(peer.node_id),
+      supported_protocols: peer.supported_protocols.map((p) =>
+        p.toString("utf8")
+      ),
+      features: +peer.features,
+    }));
+  }
+
+  async getNetworkStatus() {
+    let resp = await this.client.getNetworkStatus().sendMessage({});
+    return {
+      ...resp,
+      num_node_connections: +resp.num_node_connections,
+    };
+  }
+
+  static async create(port) {
+    const client = new BaseNodeClient();
+    await client.connect(port);
+    return client;
+  }
+
+  async getMempoolStats() {
+    const mempoolStats = await this.client.getMempoolStats().sendMessage({});
+    return mempoolStats;
+  }
+
+  async getBlocks(heights) {
+    return await this.client.getBlocks().sendMessage({ heights });
   }
 }
 

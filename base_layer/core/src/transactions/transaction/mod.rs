@@ -23,29 +23,6 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use crate::transactions::{
-    aggregated_body::AggregateBody,
-    tari_amount::{uT, MicroTari},
-    transaction_protocol::{build_challenge, RewindData, TransactionMetadata},
-    types::{
-        BlindingFactor,
-        Challenge,
-        ComSignature,
-        Commitment,
-        CommitmentFactory,
-        CryptoFactories,
-        HashDigest,
-        MessageHash,
-        PrivateKey,
-        PublicKey,
-        RangeProof,
-        RangeProofService,
-        Signature,
-    },
-};
-use blake2::Digest;
-use rand::rngs::OsRng;
-use serde::{Deserialize, Serialize};
 use std::{
     cmp::{max, min, Ordering},
     fmt,
@@ -53,6 +30,10 @@ use std::{
     hash::{Hash, Hasher},
     ops::Add,
 };
+
+use blake2::Digest;
+use rand::rngs::OsRng;
+use serde::{Deserialize, Serialize};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
@@ -69,6 +50,27 @@ use tari_crypto::{
     tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable},
 };
 use thiserror::Error;
+
+use crate::transactions::{
+    aggregated_body::AggregateBody,
+    crypto_factories::CryptoFactories,
+    tari_amount::{uT, MicroTari},
+    transaction_protocol::{build_challenge, RewindData, TransactionMetadata},
+};
+use tari_common_types::types::{
+    BlindingFactor,
+    Challenge,
+    ComSignature,
+    Commitment,
+    CommitmentFactory,
+    HashDigest,
+    MessageHash,
+    PrivateKey,
+    PublicKey,
+    RangeProof,
+    RangeProofService,
+    Signature,
+};
 
 // Tx_weight(inputs(12,500), outputs(500), kernels(1)) = 19,003, still well enough below block weight of 19,500
 pub const MAX_TRANSACTION_INPUTS: usize = 12_500;
@@ -389,7 +391,7 @@ impl UnblindedOutput {
     pub fn new(
         value: MicroTari,
         spending_key: BlindingFactor,
-        features: Option<OutputFeatures>,
+        features: OutputFeatures,
         script: TariScript,
         input_data: ExecutionStack,
         script_private_key: PrivateKey,
@@ -401,7 +403,7 @@ impl UnblindedOutput {
         UnblindedOutput {
             value,
             spending_key,
-            features: features.unwrap_or_default(),
+            features,
             script,
             input_data,
             script_private_key,
@@ -428,7 +430,7 @@ impl UnblindedOutput {
         );
         let script_signature = ComSignature::sign(
             self.value.into(),
-            self.script_private_key.clone() + self.spending_key.clone(),
+            &self.script_private_key + &self.spending_key,
             script_nonce_a,
             script_nonce_b,
             &challenge,
@@ -1289,12 +1291,18 @@ impl Transaction {
     #[allow(clippy::erasing_op)] // This is for 0 * uT
     pub fn validate_internal_consistency(
         &self,
+        bypass_range_proof_verification: bool,
         factories: &CryptoFactories,
         reward: Option<MicroTari>,
     ) -> Result<(), TransactionError> {
         let reward = reward.unwrap_or_else(|| 0 * uT);
-        self.body
-            .validate_internal_consistency(&self.offset, &self.script_offset, reward, factories)
+        self.body.validate_internal_consistency(
+            &self.offset,
+            &self.script_offset,
+            bypass_range_proof_verification,
+            reward,
+            factories,
+        )
     }
 
     pub fn get_body(&self) -> &AggregateBody {
@@ -1444,7 +1452,7 @@ impl TransactionBuilder {
         if let (Some(script_offset), Some(offset)) = (self.script_offset, self.offset) {
             let (i, o, k) = self.body.dissolve();
             let tx = Transaction::new(i, o, k, offset, script_offset);
-            tx.validate_internal_consistency(factories, self.reward)?;
+            tx.validate_internal_consistency(true, factories, self.reward)?;
             Ok(tx)
         } else {
             Err(TransactionError::ValidationError(
@@ -1469,16 +1477,6 @@ impl Default for TransactionBuilder {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::{
-        transactions::{
-            helpers::{create_test_kernel, create_tx, create_unblinded_output, spend_utxos, TestParams},
-            tari_amount::T,
-            r#mod::OutputFeatures,
-            types::{BlindingFactor, PrivateKey, PublicKey, RangeProof},
-        },
-        txn_schema,
-    };
     use rand::{self, rngs::OsRng};
     use tari_crypto::{
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
@@ -1487,12 +1485,25 @@ mod test {
         script::ExecutionStack,
     };
 
+    use crate::{
+        transactions::{
+            helpers,
+            helpers::{TestParams, UtxoTestParams},
+            tari_amount::T,
+            transaction::OutputFeatures,
+        },
+        txn_schema,
+    };
+    use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey};
+
+    use super::*;
+
     #[test]
     fn input_and_output_hash_match() {
         let test_params = TestParams::new();
         let factory = PedersenCommitmentFactory::default();
 
-        let i = create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params, 10.into());
+        let i = test_params.create_unblinded_output(Default::default());
         let output = i.as_transaction_output(&CryptoFactories::default()).unwrap();
         let input = i.as_transaction_input(&factory).unwrap();
         assert_eq!(output.hash(), input.output_hash());
@@ -1503,7 +1514,7 @@ mod test {
         let test_params = TestParams::new();
         let factory = PedersenCommitmentFactory::default();
 
-        let i = create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params, 10.into());
+        let i = test_params.create_unblinded_output(Default::default());
         let input = i
             .as_transaction_input(&factory)
             .expect("Should be able to create transaction input");
@@ -1524,25 +1535,21 @@ mod test {
         // Directly test the tx_output verification
         let test_params_1 = TestParams::new();
         let test_params_2 = TestParams::new();
-        let script = script!(Nop);
         let output_features = OutputFeatures::default();
 
         // For testing the max range has been limited to 2^32 so this value is too large.
-        let unblinded_output1 = create_unblinded_output(
-            script.clone(),
-            output_features.clone(),
-            test_params_1,
-            (2u64.pow(32) - 1u64).into(),
-        );
+        let unblinded_output1 = test_params_1.create_unblinded_output(UtxoTestParams {
+            value: (2u64.pow(32) - 1u64).into(),
+            ..Default::default()
+        });
+        let script = unblinded_output1.script.clone();
         let tx_output1 = unblinded_output1.as_transaction_output(&factories).unwrap();
         assert!(tx_output1.verify_range_proof(&factories.range_proof).unwrap());
 
-        let unblinded_output2 = create_unblinded_output(
-            script.clone(),
-            output_features.clone(),
-            test_params_2.clone(),
-            (2u64.pow(32) + 1u64).into(),
-        );
+        let unblinded_output2 = test_params_2.create_unblinded_output(UtxoTestParams {
+            value: (2u64.pow(32) + 1u64).into(),
+            ..Default::default()
+        });
         let tx_output2 = unblinded_output2.as_transaction_output(&factories);
         match tx_output2 {
             Ok(_) => panic!("Range proof should have failed to verify"),
@@ -1582,9 +1589,7 @@ mod test {
     fn sender_signature_verification() {
         let test_params = TestParams::new();
         let factories = CryptoFactories::new(32);
-        let script = script!(Nop);
-        let output_features = OutputFeatures::default();
-        let unblinded_output = create_unblinded_output(script, output_features, test_params, 100.into());
+        let unblinded_output = test_params.create_unblinded_output(Default::default());
 
         let mut tx_output = unblinded_output.as_transaction_output(&factories).unwrap();
         assert!(tx_output.verify_metadata_signature().is_ok());
@@ -1660,7 +1665,7 @@ mod test {
             offset_pub_key,
         );
 
-        let mut kernel = create_test_kernel(0.into(), 0);
+        let mut kernel = helpers::create_test_kernel(0.into(), 0);
         let mut tx = Transaction::new(Vec::new(), Vec::new(), Vec::new(), 0.into(), 0.into());
 
         // lets add time locks
@@ -1696,26 +1701,26 @@ mod test {
 
     #[test]
     fn test_validate_internal_consistency() {
-        let (tx, _, _) = create_tx(5000.into(), 15.into(), 1, 2, 1, 4);
+        let (tx, _, _) = helpers::create_tx(5000.into(), 15.into(), 1, 2, 1, 4);
 
         let factories = CryptoFactories::default();
-        assert!(tx.validate_internal_consistency(&factories, None).is_ok());
+        assert!(tx.validate_internal_consistency(false, &factories, None).is_ok());
     }
 
     #[test]
     #[allow(clippy::identity_op)]
     fn check_cut_through() {
-        let (tx, _, outputs) = create_tx(50000000.into(), 15.into(), 1, 2, 1, 2);
+        let (tx, _, outputs) = helpers::create_tx(50000000.into(), 15.into(), 1, 2, 1, 2);
 
         assert_eq!(tx.body.inputs().len(), 2);
         assert_eq!(tx.body.outputs().len(), 2);
         assert_eq!(tx.body.kernels().len(), 1);
 
         let factories = CryptoFactories::default();
-        assert!(tx.validate_internal_consistency(&factories, None).is_ok());
+        assert!(tx.validate_internal_consistency(false, &factories, None).is_ok());
 
         let schema = txn_schema!(from: vec![outputs[1].clone()], to: vec![1 * T, 2 * T]);
-        let (tx2, _outputs, _) = spend_utxos(schema);
+        let (tx2, _outputs, _) = helpers::spend_utxos(schema);
 
         assert_eq!(tx2.body.inputs().len(), 1);
         assert_eq!(tx2.body.outputs().len(), 3);
@@ -1743,15 +1748,17 @@ mod test {
         }
 
         // Validate basis transaction where cut-through has not been applied.
-        assert!(tx3.validate_internal_consistency(&factories, None).is_ok());
+        assert!(tx3.validate_internal_consistency(false, &factories, None).is_ok());
 
         // tx3_cut_through has manual cut-through, it should not be possible so this should fail
-        assert!(tx3_cut_through.validate_internal_consistency(&factories, None).is_err());
+        assert!(tx3_cut_through
+            .validate_internal_consistency(false, &factories, None)
+            .is_err());
     }
 
     #[test]
     fn check_duplicate_inputs_outputs() {
-        let (tx, _, _outputs) = create_tx(50000000.into(), 15.into(), 1, 2, 1, 2);
+        let (tx, _, _outputs) = helpers::create_tx(50000000.into(), 15.into(), 1, 2, 1, 2);
         assert!(!tx.body.contains_duplicated_outputs());
         assert!(!tx.body.contains_duplicated_inputs());
 
@@ -1766,6 +1773,25 @@ mod test {
 
         assert!(broken_tx_1.body.contains_duplicated_inputs());
         assert!(broken_tx_2.body.contains_duplicated_outputs());
+    }
+
+    #[test]
+    fn inputs_not_malleable() {
+        let (mut inputs, outputs) = helpers::create_unblinded_txos(5000.into(), 1, 1, 2, 15.into());
+        let mut stack = inputs[0].input_data.clone();
+        inputs[0].script = script!(Drop Nop);
+        inputs[0].input_data.push(StackItem::Hash([0; 32])).unwrap();
+        let mut tx = helpers::create_transaction_with(1, 15.into(), inputs, outputs);
+
+        stack
+            .push(StackItem::Hash(*b"Pls put this on tha tari network"))
+            .unwrap();
+
+        tx.body.inputs_mut()[0].input_data = stack;
+
+        let factories = CryptoFactories::default();
+        let err = tx.validate_internal_consistency(false, &factories, None).unwrap_err();
+        assert!(matches!(err, TransactionError::InvalidSignatureError(_)));
     }
 
     #[test]
@@ -1787,7 +1813,10 @@ mod test {
             proof_message: proof_message.to_owned(),
         };
 
-        let unblinded_output = create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params.clone(), v);
+        let unblinded_output = test_params.create_unblinded_output(UtxoTestParams {
+            value: v,
+            ..Default::default()
+        });
         let output = unblinded_output
             .as_rewindable_transaction_output(&factories, &rewind_data)
             .unwrap();

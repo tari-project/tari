@@ -74,6 +74,14 @@ service BaseNode {
     rpc GetPeers(GetPeersRequest) returns (stream GetPeersResponse);
     rpc GetMempoolTransactions(GetMempoolTransactionsRequest) returns (stream GetMempoolTransactionsResponse);
     rpc TransactionState(TransactionStateRequest) returns (TransactionStateResponse);
+    // This returns the node's network identity
+    rpc Identify (Empty) returns (NodeIdentity);
+    // Get Base Node network connectivity status
+    rpc GetNetworkStatus(Empty) returns (NetworkStatusResponse);
+    // List currently connected peers
+    rpc ListConnectedPeers(Empty) returns (ListConnectedPeersResponse);
+    // Get mempool stats
+    rpc GetMempoolStats(Empty) returns (MempoolStatsResponse);
 
     rpc GetTokens(GetTokensRequest) returns (stream GetTokensResponse);
 }
@@ -251,9 +259,8 @@ message MetaData {
     uint64 height_of_longest_chain = 1;
     // The block hash of the current tip of the longest valid chain, or `None` for an empty chain
     bytes best_block = 2;
-    // The number of blocks back from the tip that this database tracks. A value of 0 indicates that all blocks are
-    // tracked (i.e. the database is in full archival mode).
-    uint64 pruning_horizon = 4;
+    // This is the min height this node can provide complete blocks for. A 0 here means this node is archival and can provide complete blocks for every height.
+    uint64 pruned_height = 6;
     // The current geometric mean of the pow of the chain tip, or `None` if there is no chain
     bytes accumulated_difficulty = 5;
 }
@@ -347,4 +354,11 @@ message SoftwareUpdate {
     string version = 2;
     string sha = 3;
     string download_url = 4;
+}
+
+message MempoolStatsResponse {
+    uint64 total_txs = 1;
+    uint64 unconfirmed_txs = 2;
+    uint64 reorg_txs = 3;
+    uint64 total_weight = 4;
 }

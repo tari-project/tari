@@ -134,7 +134,7 @@ pub fn command_mode(config: WalletModeConfig, wallet: WalletSqlite, command: Str
     } = config.clone();
     let commands = vec![parse_command(&command)?];
     info!(target: LOG_TARGET, "Starting wallet command mode");
-    handle.block_on(command_runner(handle.clone(), commands, wallet.clone(), global_config))?;
+    handle.block_on(command_runner(commands, wallet.clone(), global_config))?;
 
     info!(target: LOG_TARGET, "Completed wallet command mode");
 
@@ -166,7 +166,7 @@ pub fn script_mode(config: WalletModeConfig, wallet: WalletSqlite, path: PathBuf
     println!("{} commands parsed successfully.", commands.len());
 
     println!("Starting the command runner!");
-    handle.block_on(command_runner(handle.clone(), commands, wallet.clone(), global_config))?;
+    handle.block_on(command_runner(commands, wallet.clone(), global_config))?;
 
     info!(target: LOG_TARGET, "Completed wallet script mode");
 
@@ -180,7 +180,7 @@ fn wallet_or_exit(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), 
         return Ok(());
     }
 
-    if config.bootstrap.daemon_mode {
+    if config.bootstrap.non_interactive_mode {
         info!(target: LOG_TARGET, "Starting GRPC server.");
         grpc_mode(config, wallet)
     } else {
@@ -239,7 +239,10 @@ pub fn tui_mode(config: WalletModeConfig, mut wallet: WalletSqlite) -> Result<()
 
     info!(target: LOG_TARGET, "Starting app");
 
-    handle.enter(|| ui::run(app))?;
+    {
+        let _enter = handle.enter();
+        ui::run(app)?;
+    }
 
     info!(
         target: LOG_TARGET,
