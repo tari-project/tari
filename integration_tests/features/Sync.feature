@@ -148,12 +148,8 @@ Feature: Block Sync
       | X1   | Y1 | SYNC_TIME |
       | 501  | 50 | 20        |
       | 999  | 50 | 60        |
-      | 1001 | 50 | 60        |
-
-    @critical @long-running @broken
-    Examples:
-      | X1   | Y1 | SYNC_TIME |
       | 1000 | 50 | 60        |
+      | 1001 | 50 | 60        |
 
   Scenario: Pruned mode network only
     Given I have a base node NODE1 connected to all seed nodes
@@ -185,9 +181,9 @@ Feature: Block Sync
       | 5     | 100    | 0             | 30        |
       | 10    | 100    | 0             | 30        |
       | 20    | 100    | 0             | 30        |
-      | 5     | 1001   | 0             | 60        |
-      | 10    | 1001   | 0             | 60        |
+      | 5     | 999    | 0             | 60        |
+      | 10    | 1000   | 0             | 60        |
       | 20    | 1001   | 0             | 60        |
-      | 5     | 1001   | 100           | 90        |
-      | 10    | 1001   | 100           | 90        |
+      | 5     | 999    | 100           | 90        |
+      | 10    | 1000   | 100           | 90        |
       | 20    | 1001   | 100           | 90        |
