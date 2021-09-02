@@ -1,5 +1,6 @@
 const InterfaceFFI = require("./ffiInterface");
 const PublicKey = require("./publicKey");
+const TransactionKernel = require("./transactionKernel");
 
 class CompletedTransaction {
   ptr;
@@ -67,6 +68,12 @@ class CompletedTransaction {
 
   getConfirmations() {
     return InterfaceFFI.completedTransactionGetConfirmations(this.ptr);
+  }
+
+  getKernel() {
+    let result = new TransactionKernel();
+    result.pointerAssign(InterfaceFFI.completedTransactionGetKernel(this.ptr));
+    return result;
   }
 
   destroy() {
