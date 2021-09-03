@@ -68,7 +68,7 @@ MinVersion=0,6.1
 VersionInfoCompany=The Tari Developer Community
 VersionInfoProductName=tari_base_node
 InfoAfterFile="..\applications\tari_base_node\windows\README.md"
-SignTool=SignTool
+;SignTool=SignTool
 
 PrivilegesRequired=none
 
