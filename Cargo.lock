@@ -5028,6 +5028,7 @@ dependencies = [
  "rand 0.8.4",
  "serde 1.0.130",
  "serde_json",
+ "tari_common",
  "tari_common_types",
  "tari_comms",
  "tari_comms_dht",

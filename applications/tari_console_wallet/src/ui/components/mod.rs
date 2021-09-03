@@ -26,6 +26,7 @@ mod component;
 pub mod log_tab;
 pub(crate) mod menu;
 pub mod network_tab;
+pub mod notification_tab;
 pub mod receive_tab;
 pub mod send_tab;
 pub mod tabs_container;

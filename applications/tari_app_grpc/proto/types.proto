@@ -352,3 +352,9 @@ message ListConnectedPeersResponse {
     repeated Peer connected_peers = 1;
 }
 
+message SoftwareUpdate {
+    bool has_update = 1;
+    string version = 2;
+    string sha = 3;
+    string download_url = 4;
+}
