@@ -116,6 +116,7 @@ pub struct GlobalConfig {
     pub wallet_base_node_service_peers: Vec<String>,
     pub wallet_base_node_service_refresh_interval: u64,
     pub wallet_base_node_service_request_max_age: u64,
+    pub wallet_balance_enquiry_cooldown_period: u64,
     pub prevent_fee_gt_amount: bool,
     pub monerod_url: String,
     pub monerod_username: String,
@@ -532,6 +533,12 @@ fn convert_node_config(
         .map(|seconds| seconds as u64)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
+    let key = "wallet.balance_enquiry_cooldown_period";
+    let wallet_balance_enquiry_cooldown_period = cfg
+        .get_int(key)
+        .map(|seconds| seconds as u64)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+
     let key = "common.liveness_max_sessions";
     let liveness_max_sessions = cfg
         .get_int(key)
@@ -758,6 +765,7 @@ fn convert_node_config(
         wallet_base_node_service_peers,
         wallet_base_node_service_refresh_interval,
         wallet_base_node_service_request_max_age,
+        wallet_balance_enquiry_cooldown_period,
         prevent_fee_gt_amount,
         proxy_host_address,
         transcoder_host_address,

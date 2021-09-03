@@ -31,7 +31,11 @@ use crate::{
 };
 use chrono::Utc;
 use log::*;
-use std::{convert::TryFrom, sync::Arc, time::Duration};
+use std::{
+    convert::TryFrom,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::protocol::rpc::RpcError;
 use tokio::{sync::RwLock, time};
@@ -78,6 +82,13 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
                 },
                 Err(e @ BaseNodeMonitorError::RpcFailed(_)) => {
                     warn!(target: LOG_TARGET, "Connectivity failure to base node: {}", e);
+                    self.map_state(move |_| BaseNodeState {
+                        chain_metadata: None,
+                        is_synced: None,
+                        updated: None,
+                        latency: None,
+                    })
+                    .await;
                     continue;
                 },
                 Err(e @ BaseNodeMonitorError::InvalidBaseNodeResponse(_)) |
@@ -95,27 +106,37 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
 
     async fn monitor_node(&mut self) -> Result<(), BaseNodeMonitorError> {
         loop {
+            let start = Instant::now();
             let mut client = self
                 .wallet_connectivity
                 .obtain_base_node_wallet_rpc_client()
                 .await
                 .ok_or(BaseNodeMonitorError::NodeShuttingDown)?;
+            trace!(
+                target: LOG_TARGET,
+                "Obtain RPC client {} ms",
+                Instant::now().duration_since(start).as_millis(),
+            );
 
             let base_node_id = match self.wallet_connectivity.get_current_base_node_id() {
                 Some(n) => n,
                 None => continue,
             };
 
+            let start = Instant::now();
             let tip_info = client.get_tip_info().await?;
-
             let chain_metadata = tip_info
                 .metadata
                 .ok_or_else(|| BaseNodeMonitorError::InvalidBaseNodeResponse("Tip info no metadata".to_string()))
                 .and_then(|metadata| {
                     ChainMetadata::try_from(metadata).map_err(BaseNodeMonitorError::InvalidBaseNodeResponse)
                 })?;
+            // Note: Do not use an RPC ping call to measure latency here, as the time measured for that always follows
+            // the time it takes for the metadata call, which is evident as well when the base node gets busy and will
+            // often take longer than the metadata call itself. Having two longish RPC calls with no added value
+            // results in more RPC request timeouts than is necessary.
+            let latency = Instant::now().duration_since(start);
 
-            let latency = client.ping().await?;
             let is_synced = tip_info.is_synced;
             debug!(
                 target: LOG_TARGET,
@@ -126,6 +147,7 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
                 latency.as_millis()
             );
 
+            let start = Instant::now();
             self.db.set_chain_metadata(chain_metadata.clone()).await?;
 
             self.map_state(move |_| BaseNodeState {
@@ -135,6 +157,11 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
                 latency: Some(latency),
             })
             .await;
+            trace!(
+                target: LOG_TARGET,
+                "Update metadata in db and publish event {} ms",
+                Instant::now().duration_since(start).as_millis(),
+            );
 
             time::sleep(self.interval).await
         }

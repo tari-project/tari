@@ -74,6 +74,7 @@ use crate::{
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
     wallet_modes::PeerConfig,
 };
+use std::ops::Sub;
 
 const LOG_TARGET: &str = "wallet::console_wallet::app_state";
 
@@ -98,7 +99,14 @@ impl AppState {
         node_config: GlobalConfig,
     ) -> Self {
         let wallet_connectivity = wallet.wallet_connectivity.clone();
-        let inner = AppStateInner::new(node_identity, network, wallet, base_node_selected, base_node_config);
+        let inner = AppStateInner::new(
+            node_identity,
+            network,
+            wallet,
+            base_node_selected,
+            base_node_config,
+            node_config.wallet_balance_enquiry_cooldown_period,
+        );
         let cached_data = inner.data.clone();
 
         Self {
@@ -441,6 +449,9 @@ pub struct AppStateInner {
     updated: bool,
     data: AppStateData,
     wallet: WalletSqlite,
+    balance_enquiry_cooldown_start: Instant,
+    balance_enquiry_cooldown_infringement: bool,
+    balance_enquiry_cooldown_period: u64,
 }
 
 impl AppStateInner {
@@ -450,6 +461,7 @@ impl AppStateInner {
         wallet: WalletSqlite,
         base_node_selected: Peer,
         base_node_config: PeerConfig,
+        balance_enquiry_cooldown_period: u64,
     ) -> Self {
         let data = AppStateData::new(node_identity, network, base_node_selected, base_node_config);
 
@@ -457,6 +469,10 @@ impl AppStateInner {
             updated: false,
             data,
             wallet,
+            balance_enquiry_cooldown_start: Instant::now()
+                .sub(Duration::from_secs(balance_enquiry_cooldown_period + 1)),
+            balance_enquiry_cooldown_infringement: false,
+            balance_enquiry_cooldown_period,
         }
     }
 
@@ -643,9 +659,30 @@ impl AppStateInner {
     }
 
     pub async fn refresh_balance(&mut self) -> Result<(), UiError> {
-        let balance = self.wallet.output_manager_service.get_balance().await?;
-        self.data.balance = balance;
-        self.updated = true;
+        if Instant::now().duration_since(self.balance_enquiry_cooldown_start) >
+            Duration::from_secs(self.balance_enquiry_cooldown_period)
+        {
+            self.balance_enquiry_cooldown_start = Instant::now();
+            self.balance_enquiry_cooldown_infringement = false;
+            let balance = self.wallet.output_manager_service.get_balance().await?;
+            self.data.balance = balance;
+            self.updated = true;
+        } else {
+            self.balance_enquiry_cooldown_infringement = true;
+        }
+
+        Ok(())
+    }
+
+    pub async fn refresh_balance_check(&mut self) -> Result<(), UiError> {
+        if self.balance_enquiry_cooldown_infringement {
+            trace!(
+                target: LOG_TARGET,
+                "Balance enquiry cooldown period ({}s) was infringed; trying to update balance again now",
+                self.balance_enquiry_cooldown_period
+            );
+            self.refresh_balance().await?;
+        };
 
         Ok(())
     }

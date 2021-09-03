@@ -159,6 +159,7 @@ impl WalletEventMonitor {
                                 match (*msg).clone() {
                                     BaseNodeEvent::BaseNodeStateChanged(state) => {
                                         self.trigger_base_node_state_refresh(state).await;
+                                        self.trigger_balance_refresh_check().await;
                                     }
                                     BaseNodeEvent::BaseNodePeerSet(peer) => {
                                         self.trigger_base_node_peer_refresh(*peer).await;
@@ -260,5 +261,13 @@ impl WalletEventMonitor {
     async fn add_notification(&mut self, notification: String) {
         let mut inner = self.app_state_inner.write().await;
         inner.add_notification(notification);
+    }
+
+    async fn trigger_balance_refresh_check(&mut self) {
+        let mut inner = self.app_state_inner.write().await;
+
+        if let Err(e) = inner.refresh_balance_check().await {
+            warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
+        }
     }
 }
