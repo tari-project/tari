@@ -40,6 +40,7 @@ function Client(address) {
     "listConnectedPeers",
     "getNetworkStatus",
     "cancelTransaction",
+    "checkForUpdates",
   ];
 
   this.waitForReady = (...args) => {
