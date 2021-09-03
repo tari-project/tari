@@ -3,15 +3,15 @@ const ByteVector = require("./byteVector");
 const utf8 = require("utf8");
 
 class PublicKey {
-  #tari_public_key_ptr;
+  ptr;
 
   pointerAssign(ptr) {
     // Prevent pointer from being leaked in case of re-assignment
-    if (this.#tari_public_key_ptr) {
+    if (this.ptr) {
       this.destroy();
-      this.#tari_public_key_ptr = ptr;
+      this.ptr = ptr;
     } else {
-      this.#tari_public_key_ptr = ptr;
+      this.ptr = ptr;
     }
   }
 
@@ -42,14 +42,12 @@ class PublicKey {
   }
 
   getPtr() {
-    return this.#tari_public_key_ptr;
+    return this.ptr;
   }
 
   getBytes() {
     let result = new ByteVector();
-    result.pointerAssign(
-      InterfaceFFI.publicKeyGetBytes(this.#tari_public_key_ptr)
-    );
+    result.pointerAssign(InterfaceFFI.publicKeyGetBytes(this.ptr));
     return result;
   }
 
@@ -66,16 +64,16 @@ class PublicKey {
   }
 
   getEmojiId() {
-    const emoji_id = InterfaceFFI.publicKeyToEmojiId(this.#tari_public_key_ptr);
-    const result = emoji_id.readCString();
+    let emoji_id = InterfaceFFI.publicKeyToEmojiId(this.ptr);
+    let result = emoji_id.readCString();
     InterfaceFFI.stringDestroy(emoji_id);
     return result;
   }
 
   destroy() {
-    if (this.#tari_public_key_ptr) {
-      InterfaceFFI.publicKeyDestroy(this.#tari_public_key_ptr);
-      this.#tari_public_key_ptr = undefined; //prevent double free segfault
+    if (this.ptr) {
+      InterfaceFFI.publicKeyDestroy(this.ptr);
+      this.ptr = undefined; //prevent double free segfault
     }
   }
 }

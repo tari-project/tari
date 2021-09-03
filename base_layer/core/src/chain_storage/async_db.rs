@@ -32,6 +32,8 @@ use crate::{
         ChainHeader,
         ChainStorageError,
         CompleteDeletedBitmap,
+        DbBasicStats,
+        DbTotalSizeStats,
         DbTransaction,
         HistoricalBlock,
         HorizonData,
@@ -226,6 +228,10 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(fetch_block_hashes_from_header_tip(n: usize, offset: usize) -> Vec<HashOutput>, "fetch_block_hashes_from_header_tip");
 
     make_async_fn!(fetch_complete_deleted_bitmap_at(hash: HashOutput) -> CompleteDeletedBitmap, "fetch_deleted_bitmap");
+
+    make_async_fn!(get_stats() -> DbBasicStats, "get_stats");
+
+    make_async_fn!(fetch_total_size_stats() -> DbTotalSizeStats, "fetch_total_size_stats");
 }
 
 impl<B: BlockchainBackend + 'static> From<BlockchainDatabase<B>> for AsyncBlockchainDb<B> {

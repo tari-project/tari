@@ -3,20 +3,19 @@ const ByteVector = require("./byteVector");
 const utf8 = require("utf8");
 
 class PrivateKey {
-  #tari_private_key_ptr;
-
+  ptr;
   pointerAssign(ptr) {
     // Prevent pointer from being leaked in case of re-assignment
-    if (this.#tari_private_key_ptr) {
-      this.#tari_private_key_ptr = ptr;
+    if (this.ptr) {
+      this.ptr = ptr;
       this.destroy();
     } else {
-      this.#tari_private_key_ptr = ptr;
+      this.ptr = ptr;
     }
   }
 
   generate() {
-    this.#tari_private_key_ptr = InterfaceFFI.privateKeyGenerate();
+    this.ptr = InterfaceFFI.privateKeyGenerate();
   }
 
   fromHexString(hex) {
@@ -33,14 +32,12 @@ class PrivateKey {
   }
 
   getPtr() {
-    return this.#tari_private_key_ptr;
+    return this.ptr;
   }
 
   getBytes() {
     let result = new ByteVector();
-    result.pointerAssign(
-      InterfaceFFI.privateKeyGetBytes(this.#tari_private_key_ptr)
-    );
+    result.pointerAssign(InterfaceFFI.privateKeyGetBytes(this.ptr));
     return result;
   }
 
@@ -57,9 +54,9 @@ class PrivateKey {
   }
 
   destroy() {
-    if (this.#tari_private_key_ptr) {
-      InterfaceFFI.privateKeyDestroy(this.#tari_private_key_ptr);
-      this.#tari_private_key_ptr = undefined; //prevent double free segfault
+    if (this.ptr) {
+      InterfaceFFI.privateKeyDestroy(this.ptr);
+      this.ptr = undefined; //prevent double free segfault
     }
   }
 }

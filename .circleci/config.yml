@@ -127,9 +127,15 @@ commands:
           name: Generate report
           command: cd integration_tests && node ./generate_report.js
           when: always
+      #- run:
+      #    name: Set the correct Node version for wallet FFI tests
+      #    shell: bash -l {0}
+      #    command: nvm install v12.22.6 && nvm use v12.22.6 && cd integration_tests && npm install
+      #    when: always
       - run:
-          name: Run ffi cucumber scenarios
+          name: Run FFI wallet library cucumber scenarios
           command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running and not @broken and not @flaky and @wallet-ffi" --format json:cucumber_output/tests_ffi.cucumber --exit
+          when: always
       - run:
           name: Generate report (ffi)
           command: cd integration_tests && node ./generate_report.js "cucumber_output/tests_ffi.cucumber" "temp/reports/cucumber_ffi_report.html"
