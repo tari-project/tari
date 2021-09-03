@@ -22,9 +22,9 @@ let lastResult;
 const AUTOUPDATE_HASHES_TXT_URL =
   "https://raw.githubusercontent.com/sdbondi/tari/autoupdate-test-branch/meta/hashes.txt";
 const AUTOUPDATE_HASHES_TXT_SIG_URL =
-  "https://github.com/sdbondi/tari/raw/base-node-auto-update/meta/good.sig";
+  "https://github.com/sdbondi/tari/raw/autoupdate-test-branch/meta/good.sig";
 const AUTOUPDATE_HASHES_TXT_BAD_SIG_URL =
-  "https://github.com/sdbondi/tari/raw/base-node-auto-update/meta/bad.sig";
+  "https://github.com/sdbondi/tari/raw/autoupdate-test-branch/meta/bad.sig";
 
 Given(/I have a seed node (.*)/, { timeout: 20 * 1000 }, async function (name) {
   return await this.createSeedNode(name);
@@ -98,7 +98,7 @@ Given(
       },
     });
     await node.startNew();
-    this.addNode(name, node);
+    await this.addNode(name, node);
   }
 );
 
@@ -117,7 +117,41 @@ Given(
       },
     });
     await node.startNew();
-    this.addNode(name, node);
+    await this.addNode(name, node);
+  }
+);
+
+Given(
+  /I have a wallet (.*) with auto update enabled/,
+  { timeout: 20 * 1000 },
+  async function (name) {
+    await this.createAndAddWallet(name, "", {
+      common: {
+        auto_update: {
+          enabled: true,
+          dns_hosts: ["_test_autoupdate.tari.io"],
+          hashes_url: AUTOUPDATE_HASHES_TXT_URL,
+          hashes_sig_url: AUTOUPDATE_HASHES_TXT_SIG_URL,
+        },
+      },
+    });
+  }
+);
+
+Given(
+  /I have a wallet (.*) with auto update configured with a bad signature/,
+  { timeout: 20 * 1000 },
+  async function (name) {
+    await this.createAndAddWallet(name, "", {
+      common: {
+        auto_update: {
+          enabled: true,
+          dns_hosts: ["_test_autoupdate.tari.io"],
+          hashes_url: AUTOUPDATE_HASHES_TXT_URL,
+          hashes_sig_url: AUTOUPDATE_HASHES_TXT_BAD_SIG_URL,
+        },
+      },
+    });
   }
 );
 
@@ -239,8 +273,7 @@ Given(
     const miner = this.createNode(name, { pruningHorizon: horizon });
     miner.setPeerSeeds([this.nodes[node].peerAddress()]);
     await miner.startNew();
-    this.addNode(name, miner);
-    await sleep(1000);
+    await this.addNode(name, miner);
   }
 );
 
@@ -253,8 +286,7 @@ Given(
     });
     miner.setPeerSeeds([this.nodes[node].peerAddress()]);
     await miner.startNew();
-    this.addNode(name, miner);
-    await sleep(1000);
+    await this.addNode(name, miner);
   }
 );
 
@@ -264,7 +296,7 @@ Given(
   async function (name) {
     const node = this.createNode(name);
     await node.startNew();
-    this.addNode(name, node);
+    await this.addNode(name, node);
   }
 );
 
@@ -934,13 +966,15 @@ Then(
   /(.*) does not have a new software update/,
   { timeout: 1200 * 1000 },
   async function (name) {
-    let client = this.getClient(name);
+    let client = await this.getNodeOrWalletClient(name);
     await sleep(5000);
     await waitFor(
       async () => client.checkForUpdates().has_update,
       false,
       60 * 1000
     );
+    expect(client.checkForUpdates().has_update, "There should be no update").to
+      .be.false;
   }
 );
 
@@ -948,7 +982,7 @@ Then(
   /(.+) has a new software update/,
   { timeout: 1200 * 1000 },
   async function (name) {
-    let client = this.getClient(name);
+    let client = await this.getNodeOrWalletClient(name);
     await waitFor(
       async () => {
         return client.checkForUpdates().has_update;
@@ -956,6 +990,8 @@ Then(
       true,
       1150 * 1000
     );
+    expect(client.checkForUpdates().has_update, "There should be update").to.be
+      .true;
   }
 );
 
@@ -4033,7 +4069,31 @@ Then(
   }
 );
 
-When(/I stop ffi wallet (.*)/, function (walletName) {
+Then(
+  "I want to view the transaction kernels for completed transactions in ffi wallet {word}",
+  { timeout: 20 * 1000 },
+  function (name) {
+    let ffi_wallet = this.getWallet(name);
+    let transactions = ffi_wallet.getCompletedTxs();
+    let length = transactions.getLength();
+    expect(length > 0).to.equal(true);
+    for (let i = 0; i < length; i++) {
+      let tx = transactions.getAt(i);
+      let kernel = tx.getKernel();
+      let data = kernel.asObject();
+      console.log("Transaction kernel info:");
+      console.log(data);
+      expect(data.excess.length > 0).to.equal(true);
+      expect(data.nonce.length > 0).to.equal(true);
+      expect(data.sig.length > 0).to.equal(true);
+      kernel.destroy();
+      tx.destroy();
+    }
+    transactions.destroy();
+  }
+);
+
+When("I stop ffi wallet {word}", function (walletName) {
   let wallet = this.getWallet(walletName);
   wallet.stop();
   wallet.resetCounters();

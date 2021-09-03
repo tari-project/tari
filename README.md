@@ -118,10 +118,6 @@ sudo apt-get install -y powershell
 
 First you'll need to make sure you have a full development environment set up:
 
-- git
-
-- https://git-scm.com/downloads
-
 - LLVM
 
   - https://releases.llvm.org/
@@ -132,33 +128,16 @@ First you'll need to make sure you have a full development environment set up:
 
 - Build Tools
 
-  - Microsoft Visual Studio Version 2019 or later
-    - C++ CMake tools for Windows
-    - MSVC build tools (latest version for your platform ARM, ARM64 or x64.x86)
-    - Spectre-mitigated libs (latest version for your platform ARM, ARM64 or x64.x86)
-
-  or
-
-  - [CMake](https://cmake.org/download/)
-  - [Build Tools for Visual Studio 2019](https://visualstudio.microsoft.com/thank-you-downloading-visual-studio/?sku=BuildTools&rel=16)
-
-- SQLite:
-
-  - Download 32bit/64bit Precompiled Binaries for Windows for [SQL Lite](https://www.sqlite.org/index.html) and unzip
-    to local path, e.g. `%USERPROFILE%\.sqlite`
-  - Open the appropriate x64\x86 `Native Tools Command Prompt for VS 2019` in `%USERPROFILE%\.sqlite`
-    - Run either of these, depending on your environment (32bit/64bit):
-      ```
-      lib /DEF:sqlite3.def /OUT:sqlite3.lib /MACHINE:x64
-      ```
-      ```
-      lib /DEF:sqlite3.def /OUT:sqlite3.lib /MACHINE:x86
-      ```
-  - Ensure the directory containing `sqlite3.dll`, e.g. `%USERPROFILE%\.sqlite`, is in the path
-  - Create a `SQLITE3_LIB_DIR` environment variable pointing to the SQLite lib path, e.g.
-    ```
-    setx SQLITE3_LIB_DIR "%USERPROFILE%\.sqlite"
-    ```
+  - [CMake](https://cmake.org/download/) (Used for RandomX)
+  
+  - Either: 
+    - Microsoft Visual Studio Version 2019 or later
+      - C++ CMake tools for Windows
+      - MSVC build tools (latest version for your platform ARM, ARM64 or x64.x86)
+      - Spectre-mitigated libs (latest version for your platform ARM, ARM64 or x64.x86)
+    
+    or
+    - [Build Tools for Visual Studio 2019](https://visualstudio.microsoft.com/thank-you-downloading-visual-studio/?sku=BuildTools&rel=16)
 
 - Perl for OpenSSL:
 

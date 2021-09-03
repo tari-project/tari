@@ -29,7 +29,7 @@ log = "0.4.6"
 pgp = { version = "0.7.1", optional = true }
 prost = "=0.8.0"
 rand = "0.8"
-reqwest = { version = "0.10", optional = true, default-features = false }
+reqwest = { version = "0.11", optional = true, default-features = false }
 semver = "1.0.1"
 serde = "1.0.90"
 serde_derive = "1.0.90"
@@ -38,7 +38,7 @@ tokio = { version = "1.10", features = ["macros"] }
 tokio-stream = { version = "0.1.7", default-features = false, features = ["time"] }
 tower = "0.3.0-alpha.2"
 tower-service = { version = "0.3.0-alpha.2" }
-trust-dns-client = { version = "0.21.0-alpha.1", features = ["dns-over-rustls"] }
+trust-dns-client = { version = "0.21.0-alpha.2", features = ["dns-over-rustls"] }
 
 [dev-dependencies]
 tari_test_utils = { version = "^0.9", path = "../../infrastructure/test_utils" }

@@ -6,10 +6,10 @@ Feature: Wallet FFI
     # https://github.com/nodejs/node/issues/32463
     # https://github.com/node-ffi-napi/node-ffi-napi/issues/97
 
-    # It's just calling the encrypt function, we don't test if it's actually encrypted
     Scenario: As a client I want to be able to protect my wallet with a passphrase
         Given I have a base node BASE
         And I have a ffi wallet FFI_WALLET connected to base node BASE
+        # It's just calling the encrypt function, we don't test if it's actually encrypted
         And I set passphrase PASSPHRASE of ffi wallet FFI_WALLET
         And I stop ffi wallet FFI_WALLET
 
@@ -90,6 +90,7 @@ Feature: Wallet FFI
         And mining node MINER mines 10 blocks
         Then I wait for wallet RECEIVER to have at least 1000000 uT
         And I have 1 received and 1 send transaction in ffi wallet FFI_WALLET
+        Then I want to view the transaction kernels for completed transactions in ffi wallet FFI_WALLET
         And I start STXO validation on ffi wallet FFI_WALLET
         And I start UTXO validation on ffi wallet FFI_WALLET
         And I stop ffi wallet FFI_WALLET
