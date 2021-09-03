@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2021. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,22 +20,26 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod balance;
-pub mod base_node;
-mod component;
-pub mod log_tab;
-pub(crate) mod menu;
-pub mod network_tab;
-pub mod notification_tab;
-pub mod receive_tab;
-pub mod send_tab;
-pub mod tabs_container;
-pub mod transactions_tab;
+use crate::config::common::{InstallLocation, SourceLocation};
 
-pub use self::component::*;
+pub struct BaseNodeOptions {
+    // Where do we get the base node code from?
+    source: SourceLocation,
+    // Where do the base node and related files live?
+    install_location: InstallLocation,
+    // Tor setup
+    tor_options: TorOptions,
+}
 
-#[derive(PartialEq, Eq)]
-pub enum KeyHandled {
-    Handled = 1,
-    NotHandled,
+pub enum TorLocation {
+    // Use the globally instaled system version of tor
+    System,
+    // Run Tor from a docker image
+    Docker,
+    // Install a new version of Tor in the base node executable folder
+    Local,
+}
+
+pub struct TorOptions {
+    location: TorLocation,
 }

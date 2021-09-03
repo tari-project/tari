@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2021. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,22 +20,61 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod balance;
-pub mod base_node;
-mod component;
-pub mod log_tab;
-pub(crate) mod menu;
-pub mod network_tab;
-pub mod notification_tab;
-pub mod receive_tab;
-pub mod send_tab;
-pub mod tabs_container;
-pub mod transactions_tab;
+use std::path::PathBuf;
 
-pub use self::component::*;
+#[cfg(target_os = "windows")]
+const TARI_FOLDER: &str = "tari";
+#[cfg(any(target_os = "macos", target_os = "unix"))]
+const TARI_FOLDER: &str = ".tari";
 
-#[derive(PartialEq, Eq)]
-pub enum KeyHandled {
-    Handled = 1,
-    NotHandled,
+pub enum SourceLocation {
+    SourceCode(SourceCodeOptions),
+    Docker(DockerOptions),
+}
+
+pub struct SourceCodeOptions {}
+
+pub struct DockerOptions {}
+
+pub struct InstallLocation {
+    config_folder: PathBuf,
+    executable_folder: PathBuf,
+    data_folder: PathBuf,
+}
+
+impl Default for InstallLocation {
+    fn default() -> Self {
+        let mut home = dirs::home_dir().expect("No default home folder");
+        let mut bin: PathBuf;
+        let data = dirs::data_dir().expect("No default data folder");
+        #[cfg(target_os = "windows")]
+        {
+            home.push(TARI_FOLDER);
+            bin = PathBuf::from("C:\\Program Files");
+        }
+        #[cfg(any(target_os = "macos", target_os = "unix"))]
+        {
+            bin = dirs::home_dir().expect("No default home folder");
+            bin.push("bin");
+            home.push(TARI_FOLDER);
+        }
+
+        Self {
+            config_folder: home,
+            executable_folder: bin,
+            data_folder: data,
+        }
+    }
+}
+
+pub enum TariConfig {
+    Default,
+    Supplied(PathBuf),
+    Inline(String),
+}
+
+pub enum Network {
+    Stibbons,
+    Weatherwax,
+    Mainnet,
 }

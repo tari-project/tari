@@ -276,6 +276,8 @@ impl InnerService {
 
             let monero_data = monero_rx::construct_monero_data(monero_block, block_data.monero_seed.clone())?;
 
+            debug!(target: LOG_TARGET, "Monero PoW Data: {:?}", monero_data);
+
             let header_mut = block_data.tari_block.header.as_mut().unwrap();
             let height = header_mut.height;
             header_mut.pow.as_mut().unwrap().pow_data = monero_rx::serialize(&monero_data);

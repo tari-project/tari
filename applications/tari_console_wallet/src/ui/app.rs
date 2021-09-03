@@ -28,6 +28,7 @@ use crate::{
             log_tab::LogTab,
             menu::Menu,
             network_tab::NetworkTab,
+            notification_tab::NotificationTab,
             receive_tab::ReceiveTab,
             send_tab::SendTab,
             tabs_container::TabsContainer,
@@ -87,7 +88,8 @@ impl<B: Backend> App<B> {
             .add("Send".into(), Box::new(SendTab::new()))
             .add("Receive".into(), Box::new(ReceiveTab::new()))
             .add("Network".into(), Box::new(NetworkTab::new(base_node_selected)))
-            .add("Log".into(), Box::new(LogTab::new()));
+            .add("Log".into(), Box::new(LogTab::new()))
+            .add("Notifications".into(), Box::new(NotificationTab::new()));
 
         let base_node_status = BaseNode::new();
         let menu = Menu::new();
@@ -164,10 +166,10 @@ impl<B: Backend> App<B> {
             .split(max_width_layout[0]);
         let title_halves = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+            .constraints([Constraint::Percentage(55), Constraint::Percentage(45)].as_ref())
             .split(title_chunks[0]);
 
-        self.tabs.draw_titles(f, title_halves[0]);
+        self.tabs.draw_titles(f, title_halves[0], &self.app_state);
 
         self.base_node_status.draw(f, title_halves[1], &self.app_state);
         self.tabs.draw_content(f, title_chunks[1], &mut self.app_state);

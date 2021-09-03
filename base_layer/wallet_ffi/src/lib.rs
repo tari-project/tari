@@ -2875,6 +2875,8 @@ pub unsafe extern "C" fn wallet_create(
         None,
         None,
         None,
+        None,
+        None,
     );
 
     let mut recovery_lookup = match runtime.block_on(wallet_database.get_client_key_value(RECOVERY_KEY.to_owned())) {

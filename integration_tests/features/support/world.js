@@ -269,7 +269,7 @@ class CustomWorld {
     }
     let wallet = this.wallets[name.trim()];
     if (wallet) {
-      let client = await wallet.connectClient();
+      client = await wallet.connectClient();
       client.isNode = false;
       client.isWallet = true;
       return client;

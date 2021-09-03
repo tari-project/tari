@@ -37,6 +37,7 @@ use tari_comms::{
 use tari_comms_dht::{DbConnectionUrl, DhtConfig};
 use tari_core::transactions::CryptoFactories;
 use tari_p2p::{
+    auto_update::AutoUpdateConfig,
     initialization::CommsConfig,
     peer_seeds::SeedPeer,
     transport::TransportType::Tor,
@@ -360,6 +361,15 @@ pub async fn init_wallet(
         config.base_node_event_channel_size,
     );
 
+    let updater_config = AutoUpdateConfig {
+        name_server: config.dns_seeds_name_server,
+        update_uris: config.autoupdate_dns_hosts.clone(),
+        use_dnssec: config.dns_seeds_use_dnssec,
+        download_base_url: "https://tari-binaries.s3.amazonaws.com/latest".to_string(),
+        hashes_url: config.autoupdate_hashes_url.clone(),
+        hashes_sig_url: config.autoupdate_hashes_sig_url.clone(),
+    };
+
     let factories = CryptoFactories::default();
     let wallet_config = WalletConfig::new(
         comms_config.clone(),
@@ -391,6 +401,8 @@ pub async fn init_wallet(
         )),
         Some(config.buffer_rate_limit_console_wallet),
         Some(config.scan_for_utxo_interval),
+        Some(updater_config),
+        config.autoupdate_check_interval,
     );
 
     let mut wallet = Wallet::start(

@@ -314,8 +314,14 @@ force_sync_peers = [
 dns_seeds =["seeds.weatherwax.tari.com"]
 # The name server used to resolve DNS seeds  (Default: "1.1.1.1:53")
 # dns_seeds_name_server = "1.1.1.1:53"
+# Servers addresses, majority of them have to agree.
+# autoupdate_dns_hosts = [#server1, #server2, ...]
 # Set to true to only accept DNS records that pass DNSSEC validation (Default: true)
 dns_seeds_use_dnssec = false
+# Address with the update hashes.
+# autoupdate_hashes_url = "https://<address>/hashes.txt"
+# Address with the update hashes signatures.
+# autoupdate_hashes_sig_url = "https://<address>/signature.sig"
 
 # Determines the method of syncing blocks when the node is lagging. If you are not struggling with syncing, then
 # it is recommended to leave this setting as it. Available values are ViaBestChainMetadata and ViaRandomPeer.
