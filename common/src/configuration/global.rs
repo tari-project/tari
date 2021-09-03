@@ -41,12 +41,12 @@ use std::{
 use tari_storage::lmdb_store::LMDBConfig;
 
 const DB_INIT_DEFAULT_MB: usize = 1000;
-const DB_GROW_DEFAULT_MB: usize = 500;
-const DB_RESIZE_DEFAULT_MB: usize = 100;
+const DB_GROW_SIZE_DEFAULT_MB: usize = 500;
+const DB_RESIZE_THRESHOLD_DEFAULT_MB: usize = 100;
 
 const DB_INIT_MIN_MB: i64 = 100;
-const DB_GROW_MIN_MB: i64 = 20;
-const DB_RESIZE_MIN_MB: i64 = 10;
+const DB_GROW_SIZE_MIN_MB: i64 = 20;
+const DB_RESIZE_THRESHOLD_MIN_MB: i64 = 10;
 
 //-------------------------------------        Main Configuration Struct      --------------------------------------//
 
@@ -203,25 +203,28 @@ fn convert_node_config(
 
     let key = config_string("base_node", &net_str, "db_grow_size_mb");
     let grow_size_mb = match cfg.get_int(&key) {
-        Ok(mb) if mb < DB_GROW_MIN_MB => {
+        Ok(mb) if mb < DB_GROW_SIZE_MIN_MB => {
             return Err(ConfigurationError::new(
                 &key,
-                &format!("DB grow size must be at least {} MB.", DB_GROW_MIN_MB),
+                &format!("DB grow size must be at least {} MB.", DB_GROW_SIZE_MIN_MB),
             ))
         },
         Ok(mb) => mb as usize,
         Err(e) => match e {
-            ConfigError::NotFound(_) => DB_GROW_DEFAULT_MB, // default
+            ConfigError::NotFound(_) => DB_GROW_SIZE_DEFAULT_MB, // default
             other => return Err(ConfigurationError::new(&key, &other.to_string())),
         },
     };
 
     let key = config_string("base_node", &net_str, "db_resize_threshold_mb");
     let resize_threshold_mb = match cfg.get_int(&key) {
-        Ok(mb) if mb < DB_RESIZE_MIN_MB => {
+        Ok(mb) if mb < DB_RESIZE_THRESHOLD_MIN_MB => {
             return Err(ConfigurationError::new(
                 &key,
-                &format!("DB resize threshold must be at least {} MB.", DB_RESIZE_MIN_MB),
+                &format!(
+                    "DB resize threshold must be at least {} MB.",
+                    DB_RESIZE_THRESHOLD_MIN_MB
+                ),
             ))
         },
         Ok(mb) if mb as usize >= grow_size_mb => {
@@ -238,7 +241,7 @@ fn convert_node_config(
         },
         Ok(mb) => mb as usize,
         Err(e) => match e {
-            ConfigError::NotFound(_) => DB_RESIZE_DEFAULT_MB, // default
+            ConfigError::NotFound(_) => DB_RESIZE_THRESHOLD_DEFAULT_MB, // default
             other => return Err(ConfigurationError::new(&key, &other.to_string())),
         },
     };

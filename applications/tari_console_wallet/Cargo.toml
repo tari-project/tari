@@ -44,7 +44,6 @@ tracing-subscriber = "0.2.20"
 opentelemetry = { version = "0.16", default-features = false, features = ["trace","rt-tokio"] }
 opentelemetry-jaeger = { version="0.15", features=["rt-tokio"]}
 
-
 [dependencies.tari_core]
 path = "../../base_layer/core"
 version = "^0.9"
