@@ -2,15 +2,15 @@ const InterfaceFFI = require("./ffiInterface");
 const utf8 = require("utf8");
 
 class SeedWords {
-  #tari_seed_words_ptr;
+  ptr;
 
   pointerAssign(ptr) {
     // Prevent pointer from being leaked in case of re-assignment
-    if (this.#tari_seed_words_ptr) {
+    if (this.ptr) {
       this.destroy();
-      this.#tari_seed_words_ptr = ptr;
+      this.ptr = ptr;
     } else {
-      this.#tari_seed_words_ptr = ptr;
+      this.ptr = ptr;
     }
   }
 
@@ -28,27 +28,24 @@ class SeedWords {
   }
 
   getLength() {
-    return InterfaceFFI.seedWordsGetLength(this.#tari_seed_words_ptr);
+    return InterfaceFFI.seedWordsGetLength(this.ptr);
   }
 
   getPtr() {
-    return this.#tari_seed_words_ptr;
+    return this.ptr;
   }
 
   getAt(position) {
-    const seed_word = InterfaceFFI.seedWordsGetAt(
-      this.#tari_seed_words_ptr,
-      position
-    );
-    const result = seed_word.readCString();
+    let seed_word = InterfaceFFI.seedWordsGetAt(this.ptr, position);
+    let result = seed_word.readCString();
     InterfaceFFI.stringDestroy(seed_word);
     return result;
   }
 
   destroy() {
-    if (this.#tari_seed_words_ptr) {
-      InterfaceFFI.seedWordsDestroy(this.#tari_seed_words_ptr);
-      this.#tari_seed_words_ptr = undefined; //prevent double free segfault
+    if (this.ptr) {
+      InterfaceFFI.seedWordsDestroy(this.ptr);
+      this.ptr = undefined; //prevent double free segfault
     }
   }
 }
