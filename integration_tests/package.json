@@ -50,6 +50,7 @@
     "synchronized-promise": "^0.3.1",
     "tari_crypto": "^0.9.1",
     "utf8": "^3.0.0",
-    "wallet-grpc-client": "file:../clients/wallet_grpc_client"
+    "wallet-grpc-client": "file:../clients/wallet_grpc_client",
+    "why-is-node-running": "^2.2.0"
   }
 }

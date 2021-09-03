@@ -1,4 +1,5 @@
-const { setWorldConstructor, After, BeforeAll } = require("cucumber");
+const logWhyIsNodeRunning = require("why-is-node-running"); // should be your first require
+const { setWorldConstructor, After, BeforeAll, AfterAll } = require("cucumber");
 
 const BaseNodeProcess = require("../../helpers/baseNodeProcess");
 const MergeMiningProxyProcess = require("../../helpers/mergeMiningProxyProcess");
@@ -10,6 +11,11 @@ const glob = require("glob");
 const fs = require("fs");
 const archiver = require("archiver");
 const InterfaceFFI = require("../../helpers/ffi/ffiInterface");
+
+//let whyIsNodeRunningHandle =
+setInterval(function () {
+  logWhyIsNodeRunning(); // logs out active handles that are keeping node running
+}, 10 * 60 * 1000);
 
 class CustomWorld {
   constructor({ attach, parameters }) {
@@ -386,6 +392,10 @@ BeforeAll({ timeout: 1200000 }, async function () {
   await InterfaceFFI.compile();
   await InterfaceFFI.init();
   console.log("Finished compilation.");
+});
+
+AfterAll(async function () {
+  // clearTimeout(whyIsNodeRunningHandle);
 });
 
 After(async function (testCase) {
