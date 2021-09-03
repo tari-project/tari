@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{chain_storage::MmrTree, proof_of_work::PowError, validation::ValidationError};
+use lmdb_zero::error;
 use tari_mmr::{error::MerkleMountainRangeError, MerkleProofError};
 use tari_storage::lmdb_store::LMDBError;
 use thiserror::Error;
@@ -109,6 +110,8 @@ pub enum ChainStorageError {
     CannotCalculateNonTipMmr(String),
     #[error("Key {key} in {table_name} already exists")]
     KeyExists { table_name: &'static str, key: String },
+    #[error("Database resize required")]
+    DbResizeRequired,
 }
 
 impl ChainStorageError {
@@ -131,11 +134,12 @@ impl From<lmdb_zero::Error> for ChainStorageError {
     fn from(err: lmdb_zero::Error) -> Self {
         use lmdb_zero::Error::*;
         match err {
-            Code(c) if c == lmdb_zero::error::NOTFOUND => ChainStorageError::ValueNotFound {
+            Code(error::NOTFOUND) => ChainStorageError::ValueNotFound {
                 entity: "<unspecified entity>",
                 field: "<unknown>",
                 value: "<unknown>".to_string(),
             },
+            Code(error::MAP_FULL) => ChainStorageError::DbResizeRequired,
             _ => ChainStorageError::AccessError(err.to_string()),
         }
     }

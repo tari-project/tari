@@ -92,5 +92,8 @@ pub use lmdb_db::{
     LMDB_DB_UTXOS,
 };
 
+mod stats;
+pub use stats::{DbBasicStats, DbSize, DbStat, DbTotalSizeStats};
+
 mod target_difficulties;
 pub use target_difficulties::TargetDifficulties;

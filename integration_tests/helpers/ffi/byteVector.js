@@ -1,15 +1,15 @@
 const InterfaceFFI = require("./ffiInterface");
 
 class ByteVector {
-  #byte_vector_ptr;
+  ptr;
 
   pointerAssign(ptr) {
     // Prevent pointer from being leaked in case of re-assignment
-    if (this.#byte_vector_ptr) {
+    if (this.ptr) {
       this.destroy();
-      this.#byte_vector_ptr = ptr;
+      this.ptr = ptr;
     } else {
-      this.#byte_vector_ptr = ptr;
+      this.ptr = ptr;
     }
   }
 
@@ -30,21 +30,21 @@ class ByteVector {
   }
 
   getLength() {
-    return InterfaceFFI.byteVectorGetLength(this.#byte_vector_ptr);
+    return InterfaceFFI.byteVectorGetLength(this.ptr);
   }
 
   getAt(position) {
-    return InterfaceFFI.byteVectorGetAt(this.#byte_vector_ptr, position);
+    return InterfaceFFI.byteVectorGetAt(this.ptr, position);
   }
 
   getPtr() {
-    return this.#byte_vector_ptr;
+    return this.ptr;
   }
 
   destroy() {
-    if (this.#byte_vector_ptr) {
-      InterfaceFFI.byteVectorDestroy(this.#byte_vector_ptr);
-      this.#byte_vector_ptr = undefined; //prevent double free segfault
+    if (this.ptr) {
+      InterfaceFFI.byteVectorDestroy(this.ptr);
+      this.ptr = undefined; //prevent double free segfault
     }
   }
 }

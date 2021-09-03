@@ -27,6 +27,10 @@ class WalletClient {
     return await this.client.getVersion();
   }
 
+  async checkForUpdates() {
+    return await this.client.checkForUpdates({});
+  }
+
   async getBalance() {
     return await this.client.getBalance().then((balance) => ({
       available_balance: parseInt(balance.available_balance),

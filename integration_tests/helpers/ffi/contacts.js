@@ -2,28 +2,26 @@ const Contact = require("./contact");
 const InterfaceFFI = require("./ffiInterface");
 
 class Contacts {
-  #tari_contacts_ptr;
+  ptr;
 
   constructor(ptr) {
-    this.#tari_contacts_ptr = ptr;
+    this.ptr = ptr;
   }
 
   getLength() {
-    return InterfaceFFI.contactsGetLength(this.#tari_contacts_ptr);
+    return InterfaceFFI.contactsGetLength(this.ptr);
   }
 
   getAt(position) {
     let result = new Contact();
-    result.pointerAssign(
-      InterfaceFFI.contactsGetAt(this.#tari_contacts_ptr, position)
-    );
+    result.pointerAssign(InterfaceFFI.contactsGetAt(this.ptr, position));
     return result;
   }
 
   destroy() {
-    if (this.#tari_contacts_ptr) {
-      InterfaceFFI.contactsDestroy(this.#tari_contacts_ptr);
-      this.#tari_contacts_ptr = undefined; //prevent double free segfault
+    if (this.ptr) {
+      InterfaceFFI.contactsDestroy(this.ptr);
+      this.ptr = undefined; //prevent double free segfault
     }
   }
 }

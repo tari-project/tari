@@ -329,7 +329,7 @@ fn lmdb_resize_on_create() {
             let size_used_round_2 = env_stat.psize as usize * env_info.last_pgno;
             let space_remaining = env_info.mapsize - size_used_round_2;
             assert_eq!(size_used_round_1, size_used_round_2);
-            assert_eq!(space_remaining, PRESET_SIZE * 1024 * 1024);
+            assert!(space_remaining > PRESET_SIZE * 1024 * 1024);
             assert!(env_info.mapsize >= 2 * (PRESET_SIZE * 1024 * 1024));
         }
     }
@@ -338,6 +338,7 @@ fn lmdb_resize_on_create() {
 
 #[test]
 fn test_lmdb_resize_before_full() {
+    env_logger::init();
     let db_env_name = "resize_dynamic";
     {
         let path = get_path(&db_env_name);
@@ -360,10 +361,7 @@ fn test_lmdb_resize_before_full() {
             // our 1MB env size should be out of space
             // however the db should now be allocating additional space as it fills up
             for key in 0..32 {
-                if let Err(_e) = db.insert(&key, &value) {
-                    // println!("LMDBError {:#?}", _e);
-                    panic!("Failed to resize the LMDB store.");
-                }
+                db.insert(&key, &value).unwrap();
             }
             let env_info = store.env().info().unwrap();
             let psize = store.env().stat().unwrap().psize as usize;
