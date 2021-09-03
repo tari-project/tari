@@ -24,4 +24,4 @@ pub mod transaction_broadcast_protocol;
 pub mod transaction_coinbase_monitoring_protocol;
 pub mod transaction_receive_protocol;
 pub mod transaction_send_protocol;
-pub mod transaction_validation_protocol;
+pub mod transaction_validation_protocol_v2;

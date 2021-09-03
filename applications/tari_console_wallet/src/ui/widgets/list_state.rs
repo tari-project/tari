@@ -83,7 +83,7 @@ impl WindowedListState {
             let i = match self.selected {
                 Some(i) => {
                     if i >= self.num_items - 1 {
-                        0
+                        i
                     } else {
                         i + 1
                     }
@@ -101,7 +101,7 @@ impl WindowedListState {
             let i = match self.selected {
                 Some(i) => {
                     if i == 0 {
-                        self.num_items - 1
+                        i
                     } else {
                         i - 1
                     }

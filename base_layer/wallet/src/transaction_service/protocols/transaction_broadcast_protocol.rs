@@ -276,35 +276,35 @@ where TBackend: TransactionBackend + 'static
                             },
                             TxBroadcastMode::TransactionQuery => {
                                 if result? {
-                                    // We are done!
-                                    self.resources
-                                        .output_manager_service
-                                        .confirm_transaction(
-                                            completed_tx.tx_id,
-                                            completed_tx.transaction.body.inputs().clone(),
-                                            completed_tx.transaction.body.outputs().clone(),
-                                        )
-                                        .await
-                                        .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
-
-                                    self.resources
-                                        .db
-                                        .confirm_broadcast_or_coinbase_transaction(completed_tx.tx_id)
-                                        .await
-                                        .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
-
-                                   let _ = self
-                                        .resources
-                                        .event_publisher
-                                        .send(Arc::new(TransactionEvent::TransactionMined(self.tx_id)))
-                                        .map_err(|e| {
-                                            trace!(
-                                                target: LOG_TARGET,
-                                                "Error sending event because there are no subscribers: {:?}",
-                                                e
-                                            );
-                                            e
-                                        });
+                                    debug!(target: LOG_TARGET, "Transaction already mined, transaction validation protocol will continue from here ");
+                                   //  self.resources
+                                   //      .output_manager_service
+                                   //      .confirm_transaction(
+                                   //          completed_tx.tx_id,
+                                   //          completed_tx.transaction.body.inputs().clone(),
+                                   //          completed_tx.transaction.body.outputs().clone(),
+                                   //      )
+                                   //      .await
+                                   //      .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
+                                   //
+                                   //  self.resources
+                                   //      .db
+                                   //      .confirm_broadcast_or_coinbase_transaction(completed_tx.tx_id)
+                                   //      .await
+                                   //      .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
+                                   //
+                                   // let _ = self
+                                   //      .resources
+                                   //      .event_publisher
+                                   //      .send(Arc::new(TransactionEvent::TransactionMined(self.tx_id)))
+                                   //      .map_err(|e| {
+                                   //          trace!(
+                                   //              target: LOG_TARGET,
+                                   //              "Error sending event because there are no subscribers: {:?}",
+                                   //              e
+                                   //          );
+                                   //          e
+                                   //      });
 
                                     return Ok(self.tx_id)
                                 }
@@ -410,25 +410,10 @@ where TBackend: TransactionBackend + 'static
         } else if response.rejection_reason == TxSubmissionRejectionReason::AlreadyMined {
             info!(
                 target: LOG_TARGET,
-                "Transaction (TxId: {}) is Already Mined according to Base Node.", self.tx_id
+                "Transaction (TxId: {}) is Already Mined according to Base Node. Will be completed by transaction \
+                 validation protocol.",
+                self.tx_id
             );
-            self.resources
-                .db
-                .mine_completed_transaction(self.tx_id)
-                .await
-                .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
-            let _ = self
-                .resources
-                .event_publisher
-                .send(Arc::new(TransactionEvent::TransactionMined(self.tx_id)))
-                .map_err(|e| {
-                    trace!(
-                        target: LOG_TARGET,
-                        "Error sending event because there are no subscribers: {:?}",
-                        e
-                    );
-                    e
-                });
         } else {
             info!(
                 target: LOG_TARGET,
@@ -497,56 +482,70 @@ where TBackend: TransactionBackend + 'static
 
         // Mined?
         if response.location == TxLocation::Mined {
-            self.resources
-                .db
-                .set_transaction_confirmations(self.tx_id, response.confirmations)
-                .await
-                .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
-
-            self.resources
-                .db
-                .set_transaction_mined_height(
-                    self.tx_id,
-                    response.height_of_longest_chain.saturating_sub(response.confirmations),
-                )
-                .await
-                .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
-
-            if response.confirmations >= self.resources.config.num_confirmations_required as u64 {
-                info!(
-                    target: LOG_TARGET,
-                    "Transaction (TxId: {}) detected as mined and CONFIRMED with {} confirmations",
-                    self.tx_id,
-                    response.confirmations
-                );
-                return Ok(true);
-            }
             info!(
                 target: LOG_TARGET,
-                "Transaction (TxId: {}) detected as mined but UNCONFIRMED with {} confirmations",
-                self.tx_id,
-                response.confirmations
+                "Broadcast transaction detected as mined, will be managed by transaction validation protoocol"
             );
-            self.resources
-                .db
-                .mine_completed_transaction(self.tx_id)
-                .await
-                .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
-            let _ = self
-                .resources
-                .event_publisher
-                .send(Arc::new(TransactionEvent::TransactionMinedUnconfirmed(
-                    self.tx_id,
-                    response.confirmations,
-                )))
-                .map_err(|e| {
-                    trace!(
-                        target: LOG_TARGET,
-                        "Error sending event because there are no subscribers: {:?}",
-                        e
-                    );
-                    e
-                });
+            return Ok(true);
+            // self.resources
+            //     .db
+            //     .set_transaction_confirmations(self.tx_id, response.confirmations)
+            //     .await
+            //     .for_protocol(self.tx_id)?;
+            //
+            // self.resources
+            //     .db
+            //     .set_transaction_mined_height(
+            //         self.tx_id,
+            //         response.height_of_longest_chain.saturating_sub(response.confirmations),
+            //         response
+            //             .block_hash
+            //             .map(|bh| bh.clone())
+            //             .ok_or_else(|| {
+            //                 TransactionServiceError::InvalidMessageError(
+            //                     "Block hash was not provided for mined transaction".to_string(),
+            //                 )
+            //             })
+            //             .for_protocol(self.tx_id)?,
+            //     )
+            //     .await
+            //     .for_protocol(self.tx_id)?;
+            //
+            // if response.confirmations >= self.resources.config.num_confirmations_required as u64 {
+            //     info!(
+            //         target: LOG_TARGET,
+            //         "Transaction (TxId: {}) detected as mined and CONFIRMED with {} confirmations",
+            //         self.tx_id,
+            //         response.confirmations
+            //     );
+            //     return Ok(true);
+            // }
+            // info!(
+            //     target: LOG_TARGET,
+            //     "Transaction (TxId: {}) detected as mined but UNCONFIRMED with {} confirmations",
+            //     self.tx_id,
+            //     response.confirmations
+            // );
+            // self.resources
+            //     .db
+            //     .mine_completed_transaction(self.tx_id)
+            //     .await
+            //     .for_protocol(self.tx_id)?;
+            // let _ = self
+            //     .resources
+            //     .event_publisher
+            //     .send(Arc::new(TransactionEvent::TransactionMinedUnconfirmed(
+            //         self.tx_id,
+            //         response.confirmations,
+            //     )))
+            //     .map_err(|e| {
+            //         trace!(
+            //             target: LOG_TARGET,
+            //             "Error sending event because there are no subscribers: {:?}",
+            //             e
+            //         );
+            //         e
+            //     });
         } else if response.location != TxLocation::InMempool {
             if !self.first_rejection {
                 info!(

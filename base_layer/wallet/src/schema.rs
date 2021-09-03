@@ -24,6 +24,7 @@ table! {
         valid -> Integer,
         confirmations -> Nullable<BigInt>,
         mined_height -> Nullable<BigInt>,
+        mined_in_block -> Nullable<Binary>,
     }
 }
 
@@ -51,7 +52,7 @@ table! {
 
 table! {
     key_manager_states (id) {
-        id -> Nullable<BigInt>,
+        id -> Integer,
         master_key -> Binary,
         branch_seed -> Text,
         primary_key_index -> BigInt,
@@ -102,6 +103,13 @@ table! {
         metadata_signature_nonce -> Binary,
         metadata_signature_u_key -> Binary,
         metadata_signature_v_key -> Binary,
+        mined_height -> Nullable<BigInt>,
+        mined_in_block -> Nullable<Binary>,
+        mined_mmr_position -> Nullable<BigInt>,
+        marked_deleted_at_height -> Nullable<BigInt>,
+        marked_deleted_in_block -> Nullable<Binary>,
+        received_in_tx_id -> Nullable<BigInt>,
+        spent_in_tx_id -> Nullable<BigInt>,
     }
 }
 

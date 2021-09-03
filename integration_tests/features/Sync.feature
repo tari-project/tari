@@ -25,7 +25,7 @@ Feature: Block Sync
     # All nodes should sync to tip
     Then all nodes are at height 20
 
-  @critical 
+  @critical
   Scenario: Pruned mode simple sync
     Given I have 1 seed nodes
     Given I have a SHA3 miner NODE1 connected to all seed nodes
@@ -36,7 +36,7 @@ Feature: Block Sync
     Given I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
     Then all nodes are at height 20
 
-@critical
+  @critical
   Scenario: When a new node joins the network, it should receive all peers
     Given I have 10 seed nodes
     And I have a base node NODE1 connected to all seed nodes
@@ -103,7 +103,7 @@ Feature: Block Sync
     When I mine 15 blocks on PNODE2
     Then all nodes are at height 23
 
-    Scenario: Node should not sync from pruned node
+  Scenario: Node should not sync from pruned node
     Given I have a base node NODE1 connected to all seed nodes
     Given I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
     When I mine 40 blocks on NODE1
@@ -155,7 +155,7 @@ Feature: Block Sync
       | X1   | Y1 | SYNC_TIME |
       | 1000 | 50 | 60        |
 
-Scenario: Pruned mode network only
+  Scenario: Pruned mode network only
     Given I have a base node NODE1 connected to all seed nodes
     Given I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
     Given I have a pruned node PNODE2 connected to node PNODE1 with pruning horizon set to 5
@@ -170,3 +170,24 @@ Scenario: Pruned mode network only
     Then node PNODE2 is at height 20
     Given I have a pruned node PNODE3 connected to node PNODE1 with pruning horizon set to 5
     Then node PNODE3 is at height 20
+
+  Scenario Outline: Force sync many nodes agains one peer
+    Given I have a base node BASE
+    And I have a SHA3 miner MINER connected to node BASE
+    And mining node MINER mines <BLOCKS> blocks
+    And I have <NODES> base nodes with pruning horizon <PRUNE_HORIZON> force syncing on node BASE
+    When I wait <SYNC_TIME> seconds
+    Then all nodes are at height <BLOCKS>
+
+    @critical @long-running
+    Examples:
+      | NODES | BLOCKS | PRUNE_HORIZON | SYNC_TIME |
+      | 5     | 100    | 0             | 30        |
+      | 10    | 100    | 0             | 30        |
+      | 20    | 100    | 0             | 30        |
+      | 5     | 1001   | 0             | 60        |
+      | 10    | 1001   | 0             | 60        |
+      | 20    | 1001   | 0             | 60        |
+      | 5     | 1001   | 100           | 90        |
+      | 10    | 1001   | 100           | 90        |
+      | 20    | 1001   | 100           | 90        |

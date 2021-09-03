@@ -1,4 +1,4 @@
-@coinbase_reorg
+@coinbase_reorg @wallet
 Feature: Wallet Monitoring
 
   Scenario: Wallets monitoring coinbase after a reorg

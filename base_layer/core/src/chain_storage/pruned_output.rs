@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::transactions::{transaction::TransactionOutput, types::HashOutput};
+use tari_crypto::tari_utilities::Hashable;
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, PartialEq)]
@@ -36,5 +37,15 @@ pub enum PrunedOutput {
 impl PrunedOutput {
     pub fn is_pruned(&self) -> bool {
         matches!(self, PrunedOutput::Pruned { .. })
+    }
+
+    pub fn hash(&self) -> Vec<u8> {
+        match self {
+            PrunedOutput::Pruned {
+                output_hash,
+                witness_hash: _,
+            } => output_hash.clone(),
+            PrunedOutput::NotPruned { output } => output.hash(),
+        }
     }
 }

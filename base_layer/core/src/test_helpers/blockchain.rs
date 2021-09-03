@@ -19,7 +19,6 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use crate::{
     blocks::{genesis_block::get_weatherwax_genesis_block, Block, BlockHeader},
     chain_storage::{
@@ -40,6 +39,7 @@ use crate::{
         LMDBDatabase,
         MmrTree,
         PrunedOutput,
+        UtxoMinedInfo,
         Validators,
     },
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
@@ -244,7 +244,7 @@ impl BlockchainBackend for TempDatabase {
         self.db.fetch_utxos_by_mmr_position(start, end, deleted)
     }
 
-    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(PrunedOutput, u32, u64)>, ChainStorageError> {
+    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
         self.db.fetch_output(output_hash)
     }
 

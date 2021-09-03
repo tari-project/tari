@@ -32,7 +32,7 @@ use crate::{
             database::{OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
             models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
         },
-        tasks::{TxoValidationTask, TxoValidationType},
+        tasks::{TxoValidationTaskV2, TxoValidationType},
         MasterKeyManager,
         TxId,
     },
@@ -40,7 +40,6 @@ use crate::{
     types::{HashDigest, ValidationRetryStrategy},
 };
 use blake2::Digest;
-use chrono::Utc;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
 use log::*;
@@ -50,7 +49,7 @@ use std::{
     collections::HashMap,
     fmt::{self, Display},
     sync::Arc,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tari_comms::{
     connectivity::ConnectivityRequester,
@@ -85,7 +84,7 @@ use tari_crypto::{
 };
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
-use tokio::sync::broadcast;
+use tokio::{sync::broadcast, time::interval_at};
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
 const LOG_TARGET_STRESS: &str = "stress_test::output_manager_service";
@@ -163,10 +162,25 @@ where TBackend: OutputManagerBackend + 'static
         pin_mut!(request_stream);
 
         let mut shutdown = self.resources.shutdown_signal.clone();
-
+        // Should probably be block time or at least configurable
+        // Start a bit later so that the wallet can start up
+        let mut txo_validation_interval = interval_at(
+            (Instant::now() + Duration::from_secs(35)).into(),
+            Duration::from_secs(30),
+        )
+        .fuse();
         info!(target: LOG_TARGET, "Output Manager Service started");
         loop {
             futures::select! {
+                      // tx validation timer
+               _ = txo_validation_interval.select_next_some() => {
+                   let _ =self
+                        .validate_outputs(TxoValidationType::Unspent, ValidationRetryStrategy::Limited(0)).map_err(|e| {
+                        warn!(target: LOG_TARGET, "Error validating  txos: {:?}", e);
+                        e
+                    });
+                },
+
                 request_context = request_stream.select_next_some() => {
                 trace!(target: LOG_TARGET, "Handling Service API Request");
                     let (request, reply_tx) = request_context.split();
@@ -357,24 +371,53 @@ where TBackend: OutputManagerBackend + 'static
     fn validate_outputs(
         &mut self,
         validation_type: TxoValidationType,
-        retry_strategy: ValidationRetryStrategy,
+        _retry_strategy: ValidationRetryStrategy,
     ) -> Result<u64, OutputManagerError> {
         match self.resources.base_node_public_key.as_ref() {
             None => Err(OutputManagerError::NoBaseNodeKeysProvided),
             Some(pk) => {
                 let id = OsRng.next_u64();
+                // let utxo_validation_task = TxoValidationTask::new(
+                //     id,
+                //     validation_type,
+                //     retry_strategy,
+                //     self.resources.clone(),
+                //     pk.clone(),
+                //     self.base_node_update_publisher.subscribe(),
+                // );
+                //
+                // tokio::spawn(async move {
+                //     match utxo_validation_task.execute().await {
+                //         Ok(id) => {
+                //             info!(
+                //                 target: LOG_TARGET,
+                //                 "UTXO Validation Protocol (Id: {}) completed successfully", id
+                //             );
+                //         },
+                //         Err(OutputManagerProtocolError { id, error }) => {
+                //             warn!(
+                //                 target: LOG_TARGET,
+                //                 "Error completing UTXO Validation Protocol (Id: {}): {:?}", id, error
+                //             );
+                //         },
+                //     }
+                // });
 
-                let utxo_validation_task = TxoValidationTask::new(
-                    id,
-                    validation_type,
-                    retry_strategy,
-                    self.resources.clone(),
+                let utxo_validation = TxoValidationTaskV2::new(
                     pk.clone(),
-                    self.base_node_update_publisher.subscribe(),
+                    id,
+                    100,
+                    self.resources.db.clone(),
+                    self.resources.connectivity_manager.clone(),
+                    self.resources.event_publisher.clone(),
+                    validation_type,
+                    self.resources.config.clone(),
                 );
 
+                let shutdown = self.resources.shutdown_signal.clone();
+
                 tokio::spawn(async move {
-                    match utxo_validation_task.execute().await {
+                    match utxo_validation.execute(shutdown).await {
                         Ok(id) => {
                             info!(
                                 target: LOG_TARGET,
@@ -389,7 +432,6 @@ where TBackend: OutputManagerBackend + 'static
                         },
                     }
                 });
-
                 Ok(id)
             },
         }
@@ -908,23 +950,25 @@ where TBackend: OutputManagerBackend + 'static
 
     /// Restore the pending transaction encumberance and output for an inbound transaction that was previously
     /// cancelled.
-    async fn reinstate_cancelled_inbound_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
-        self.resources.db.reinstate_inbound_output(tx_id).await?;
+    async fn reinstate_cancelled_inbound_transaction(&mut self, _tx_id: TxId) -> Result<(), OutputManagerError> {
+        // TODO: is this still needed?
+        unimplemented!()
+        // self.resources.db.reinstate_inbound_output(tx_id).await?;
+        //
+        // self.resources
+        //     .db
+        //     .add_pending_transaction_outputs(PendingTransactionOutputs {
+        //         tx_id,
+        //         outputs_to_be_spent: Vec::new(),
+        //         outputs_to_be_received: Vec::new(),
+        //         timestamp: Utc::now().naive_utc(),
+        //         coinbase_block_height: None,
+        //     })
+        //     .await?;
+        //
+        // self.confirm_encumberance(tx_id).await?;
 
-        self.resources
-            .db
-            .add_pending_transaction_outputs(PendingTransactionOutputs {
-                tx_id,
-                outputs_to_be_spent: Vec::new(),
-                outputs_to_be_received: Vec::new(),
-                timestamp: Utc::now().naive_utc(),
-                coinbase_block_height: None,
-            })
-            .await?;
-
-        self.confirm_encumberance(tx_id).await?;
-
-        Ok(())
+        // Ok(())
     }
 
     /// Go through the pending transaction and if any have existed longer than the specified duration, cancel them

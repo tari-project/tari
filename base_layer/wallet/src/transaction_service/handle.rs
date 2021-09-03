@@ -64,7 +64,6 @@ pub enum TransactionServiceRequest {
     RestartBroadcastProtocols,
     GetNumConfirmationsRequired,
     SetNumConfirmationsRequired(u64),
-    SetCompletedTransactionValidity(u64, bool),
     ValidateTransactions(ValidationRetryStrategy),
 }
 
@@ -107,10 +106,10 @@ impl fmt::Display for TransactionServiceRequest {
             Self::SetNumConfirmationsRequired(_) => f.write_str("SetNumConfirmationsRequired"),
             Self::GetAnyTransaction(t) => f.write_str(&format!("GetAnyTransaction({})", t)),
             TransactionServiceRequest::ValidateTransactions(t) => f.write_str(&format!("ValidateTransaction({:?})", t)),
-            TransactionServiceRequest::SetCompletedTransactionValidity(tx_id, s) => f.write_str(&format!(
-                "SetCompletedTransactionValidity(TxId: {}, Validity: {:?})",
-                tx_id, s
-            )),
+            /* TransactionServiceRequest::SetCompletedTransactionValidity(tx_id, s) => f.write_str(&format!(
+             *     "SetCompletedTransactionValidity(TxId: {}, Validity: {:?})",
+             *     tx_id, s
+             * )), */
         }
     }
 }
@@ -154,9 +153,17 @@ pub enum TransactionEvent {
     TransactionCancelled(TxId),
     TransactionBroadcast(TxId),
     TransactionImported(TxId),
-    TransactionMined(TxId),
+    TransactionMined {
+        tx_id: TxId,
+        is_valid: bool,
+    },
     TransactionMinedRequestTimedOut(TxId),
-    TransactionMinedUnconfirmed(TxId, u64),
+    // TODO: Split into normal transaction mined and coinbase transaction mined
+    TransactionMinedUnconfirmed {
+        tx_id: TxId,
+        num_confirmations: u64,
+        is_valid: bool,
+    },
     TransactionValidationTimedOut(u64),
     TransactionValidationSuccess(u64),
     TransactionValidationFailure(u64),
@@ -518,17 +525,6 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::ValidationStarted(id) => Ok(id),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn set_transaction_validity(&mut self, tx_id: TxId, valid: bool) -> Result<(), TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::SetCompletedTransactionValidity(tx_id, valid))
-            .await??
-        {
-            TransactionServiceResponse::CompletedTransactionValidityChanged => Ok(()),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

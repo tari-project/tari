@@ -10,7 +10,6 @@ The Tari applications have the following dependencies, which can be
 installed automatically if selected:
 
 - SQLite
-- OpenSSL
 - Tor Services
 - Redistributable for Microsoft Visual Studio 2019 
 - XMRig
@@ -45,9 +44,7 @@ Notes:
       |---config
       |       config.toml
       |---runtime
-              get_openssl_win.ps1
               get_xmrig_win.ps1
-              install_openssl.bat
               install_sqlite.bat
               install_tor_services.bat
               install_vs2019_redist.bat
@@ -151,17 +148,6 @@ depending on the choices you make when prompted:
     
   - Ensure folder containing `sqlite3.dll`, is in the user or system path 
     environment variable (hint: type `path` in a command console to verify).
-
-- OpenSSL:
-  - Download full version of the 64bit Precompiled Binaries for Windows for
-    [OpenSSL](https://slproweb.com/products/Win32OpenSSL.html)
-  - Install using all the default prompts
-  
-    **Note**: It is important that the dlls are available in the path. To test:
-    ```
-    where libcrypto-1_1-x64.dll
-    where libssl-1_1-x64.dll
-    ```
 
 - Tor Services
   - Donwload 

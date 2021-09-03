@@ -71,12 +71,12 @@ impl WalletEventMonitor {
                                         self.trigger_tx_state_refresh(tx_id).await;
                                         notifier.transaction_received(tx_id);
                                     },
-                                    TransactionEvent::TransactionMinedUnconfirmed(tx_id, confirmations) => {
-                                        self.trigger_confirmations_refresh(tx_id, confirmations).await;
+                                    TransactionEvent::TransactionMinedUnconfirmed{tx_id, num_confirmations, is_valid: _} => {
+                                        self.trigger_confirmations_refresh(tx_id, num_confirmations).await;
                                         self.trigger_tx_state_refresh(tx_id).await;
-                                        notifier.transaction_mined_unconfirmed(tx_id, confirmations);
+                                        notifier.transaction_mined_unconfirmed(tx_id, num_confirmations);
                                     },
-                                    TransactionEvent::TransactionMined(tx_id) => {
+                                    TransactionEvent::TransactionMined{tx_id, is_valid: _} => {
                                         self.trigger_confirmations_cleanup(tx_id).await;
                                         self.trigger_tx_state_refresh(tx_id).await;
                                         notifier.transaction_mined(tx_id);

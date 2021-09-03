@@ -1,4 +1,4 @@
-@wallet-recovery
+@wallet-recovery @wallet
 Feature: Wallet Recovery
 
     @critical
@@ -19,6 +19,24 @@ Feature: Wallet Recovery
         When I mine 5 blocks on NODE
         Then all nodes are at height 20
         Then I wait for wallet WALLET_C to have at least 100000 uT
+
+    Scenario Outline: Multiple Wallet recovery from seed node
+        Given I have a seed node NODE
+        And I have wallet WALLET_A connected to all seed nodes
+        And I have a merge mining proxy PROXY connected to NODE and WALLET_A with default config
+        When I merge mine 15 blocks via PROXY
+        When I wait for wallet WALLET_A to have at least 55000000000 uT
+        Then all nodes are at height 15
+        When I recover wallet WALLET_A into <NumWallets> wallets connected to all seed nodes
+        When I wait for <NumWallets> wallets to have at least 55000000000 uT
+        Then Wallet WALLET_A and <NumWallets> wallets have the same balance
+        @critical
+        Examples:
+            | NumWallets |
+            | 1        |
+            | 2        |
+            | 5        |
+            | 10        |
 
     # fails often on circle CI
     @critical @flaky

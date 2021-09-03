@@ -3,6 +3,7 @@ use crate::{
     chain_storage::{
         accumulated_data::DeletedBitmap,
         pruned_output::PrunedOutput,
+        utxo_mined_info::UtxoMinedInfo,
         BlockAccumulatedData,
         BlockHeaderAccumulatedData,
         ChainBlock,
@@ -103,7 +104,7 @@ pub trait BlockchainBackend: Send + Sync {
     ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError>;
 
     /// Fetch a specific output. Returns the output and the leaf index in the output MMR
-    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(PrunedOutput, u32, u64)>, ChainStorageError>;
+    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<UtxoMinedInfo>, ChainStorageError>;
 
     /// Returns the unspent TransactionOutput output that matches the given commitment if it exists in the current UTXO
     /// set, otherwise None is returned.
