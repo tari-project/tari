@@ -27,9 +27,11 @@ use std::{
 };
 
 use bitflags::bitflags;
+use chrono::{DateTime, Local};
 use log::*;
 use qrcode::{render::unicode, QrCode};
 use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
+use tari_p2p::auto_update::SoftwareUpdaterHandle;
 use tokio::{
     sync::{watch, RwLock},
     task,
@@ -456,8 +458,26 @@ impl AppState {
     pub fn toggle_abandoned_coinbase_filter(&mut self) {
         self.completed_tx_filter.toggle(TransactionFilter::ABANDONED_COINBASES);
     }
-}
 
+    pub fn get_notifications(&self) -> &Vec<(DateTime<Local>, String)> {
+        &self.cached_data.notifications
+    }
+
+    pub fn unread_notifications_count(&self) -> u32 {
+        self.cached_data.new_notification_count
+    }
+
+    pub async fn mark_notifications_as_read(&mut self) {
+        // Do not update if not necessary
+        if self.unread_notifications_count() > 0 {
+            {
+                let mut inner = self.inner.write().await;
+                inner.mark_notifications_as_read();
+            }
+            self.update_cache().await;
+        }
+    }
+}
 pub struct AppStateInner {
     updated: bool,
     data: AppStateData,
@@ -866,6 +886,21 @@ impl AppStateInner {
             }
         });
     }
+
+    pub fn add_notification(&mut self, notification: String) {
+        self.data.notifications.push((Local::now(), notification));
+        self.data.new_notification_count += 1;
+        self.updated = true;
+    }
+
+    pub fn mark_notifications_as_read(&mut self) {
+        self.data.new_notification_count = 0;
+        self.updated = true;
+    }
+
+    pub fn get_software_updater(&self) -> SoftwareUpdaterHandle {
+        self.wallet.get_software_updater()
+    }
 }
 
 #[derive(Clone)]
@@ -884,7 +919,9 @@ struct AppStateData {
     base_node_previous: Peer,
     base_node_list: Vec<(String, Peer)>,
     base_node_peer_custom: Option<Peer>,
-    all_events: VecDeque<EventListItem>
+    all_events: VecDeque<EventListItem>,
+    notifications: Vec<(DateTime<Local>, String)>,
+    new_notification_count: u32,
 }
 
 
@@ -958,7 +995,9 @@ impl AppStateData {
             base_node_previous,
             base_node_list,
             base_node_peer_custom: base_node_config.base_node_custom,
-            all_events: VecDeque::new()
+            all_events: VecDeque::new(),
+            notifications: Vec::new(),
+            new_notification_count: 0,
         }
     }
 }

@@ -82,6 +82,22 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }))
     }
 
+    async fn check_for_updates(
+        &self,
+        _: Request<tari_rpc::Empty>,
+    ) -> Result<Response<tari_rpc::SoftwareUpdate>, Status> {
+        let mut resp = tari_rpc::SoftwareUpdate::default();
+
+        if let Some(ref update) = *self.wallet.get_software_updater().new_update_notifier().borrow() {
+            resp.has_update = true;
+            resp.version = update.version().to_string();
+            resp.sha = update.to_hash_hex();
+            resp.download_url = update.download_url().to_string();
+        }
+
+        Ok(Response::new(resp))
+    }
+
     async fn identify(&self, _: Request<GetIdentityRequest>) -> Result<Response<GetIdentityResponse>, Status> {
         let identity = self.wallet.comms.node_identity();
         Ok(Response::new(GetIdentityResponse {

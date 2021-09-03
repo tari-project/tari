@@ -30,6 +30,8 @@ import "types.proto";
 service Wallet {
     // This returns the current version
     rpc GetVersion (GetVersionRequest) returns (GetVersionResponse);
+    // Check for new updates
+    rpc CheckForUpdates (Empty) returns (SoftwareUpdate);
     // This returns the identity information
     rpc Identify (GetIdentityRequest) returns (GetIdentityResponse);
     // This returns a coinbase transaction

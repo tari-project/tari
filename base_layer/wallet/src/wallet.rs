@@ -29,6 +29,7 @@ use aes_gcm::{
 use digest::Digest;
 use log::*;
 use rand::rngs::OsRng;
+use tari_common::configuration::bootstrap::ApplicationType;
 use tari_crypto::{
     common::Blake256,
     keys::SecretKey,
@@ -55,7 +56,12 @@ use tari_core::transactions::{
     CryptoFactories,
 };
 use tari_key_manager::key_manager::KeyManager;
-use tari_p2p::{comms_connector::pubsub_connector, initialization, initialization::P2pInitializer};
+use tari_p2p::{
+    auto_update::{SoftwareUpdaterHandle, SoftwareUpdaterService},
+    comms_connector::pubsub_connector,
+    initialization,
+    initialization::P2pInitializer,
+};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 
@@ -111,6 +117,7 @@ where
     pub utxo_scanner_service: UtxoScannerHandle,
     pub asset_manager: AssetManagerHandle,
     pub token_manager: TokenManagerHandle,
+    pub updater_service: Option<SoftwareUpdaterHandle>,
     pub db: WalletDatabase<T>,
     pub factories: CryptoFactories,
     _u: PhantomData<U>,
@@ -204,6 +211,20 @@ where
             .add_initializer(AssetManagerServiceInitializer::new(output_manager_backend.clone()))
             .add_initializer(TokenManagerServiceInitializer::new(output_manager_backend));
 
+        // Check if we have update config. FFI wallets don't do this, the update on mobile is done differently.
+        let stack = match config.updater_config {
+            Some(ref updater_config) => stack.add_initializer(SoftwareUpdaterService::new(
+                ApplicationType::ConsoleWallet,
+                env!("CARGO_PKG_VERSION")
+                    .to_string()
+                    .parse()
+                    .expect("Unable to parse console wallet version."),
+                updater_config.clone(),
+                config.autoupdate_check_interval,
+            )),
+            _ => stack,
+        };
+
         let mut handles = stack.build().await?;
 
         let comms = handles
@@ -222,6 +243,9 @@ where
         let asset_manager_handle = handles.expect_handle::<AssetManagerHandle>();
         let token_manager_handle = handles.expect_handle::<TokenManagerHandle>();
         let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle>();
+        let updater_handle = config
+            .updater_config
+            .map(|_updater_config| handles.expect_handle::<SoftwareUpdaterHandle>());
 
         persist_one_sided_payment_script_for_node_identity(&mut output_manager_handle, comms.node_identity())
             .await
@@ -248,6 +272,7 @@ where
             contacts_service: contacts_handle,
             base_node_service: base_node_service_handle,
             utxo_scanner_service: utxo_scanner_service_handle,
+            updater_service: updater_handle,
             wallet_connectivity,
             db: wallet_database,
             factories,
@@ -314,6 +339,42 @@ where
             .get_base_node_peer()
             .await
             .map_err(WalletError::BaseNodeServiceError)
+    }
+
+    pub async fn check_for_update(&self) -> Option<String> {
+        let mut updater = self.updater_service.clone().unwrap();
+        debug!(
+            target: LOG_TARGET,
+            "Checking for updates (current version: {})...",
+            env!("CARGO_PKG_VERSION").to_string()
+        );
+        match updater.check_for_updates().await {
+            Some(update) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Version {} of the {} is available: {} (sha: {})",
+                    update.version(),
+                    update.app(),
+                    update.download_url(),
+                    update.to_hash_hex()
+                );
+                Some(format!(
+                    "Version {} of the {} is available: {} (sha: {})",
+                    update.version(),
+                    update.app(),
+                    update.download_url(),
+                    update.to_hash_hex()
+                ))
+            },
+            None => {
+                debug!(target: LOG_TARGET, "No updates found.",);
+                None
+            },
+        }
+    }
+
+    pub fn get_software_updater(&self) -> SoftwareUpdaterHandle {
+        self.updater_service.clone().unwrap()
     }
 
     /// Import an external spendable UTXO into the wallet. The output will be added to the Output Manager and made

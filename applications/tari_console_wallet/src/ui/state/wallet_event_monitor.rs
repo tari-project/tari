@@ -61,6 +61,13 @@ impl WalletEventMonitor {
         let mut connectivity_status = wallet_connectivity.get_connectivity_status_watch();
 
         let mut base_node_events = self.app_state_inner.read().await.get_base_node_event_stream();
+        let mut software_update_notif = self
+            .app_state_inner
+            .read()
+            .await
+            .get_software_updater()
+            .new_update_notifier()
+            .clone();
 
         info!(target: LOG_TARGET, "Wallet Event Monitor starting");
         loop {
@@ -108,7 +115,7 @@ impl WalletEventMonitor {
                                     _ => (),
                                 }
                             },
-                              Err(broadcast::error::RecvError::Lagged(n)) => {
+                            Err(broadcast::error::RecvError::Lagged(n)) => {
                                 warn!(target: LOG_TARGET, "Missed {} from Transaction events", n);
                             }
                             Err(broadcast::error::RecvError::Closed) => {}
@@ -117,6 +124,19 @@ impl WalletEventMonitor {
                     Ok(_) = connectivity_status.changed() => {
                         trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet connectivity status changed");
                         self.trigger_peer_state_refresh().await;
+                    },
+                    Ok(_) = software_update_notif.changed() => {
+                        trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet auto update status changed");
+                        let update = software_update_notif.borrow().as_ref().cloned();
+                        if let Some(update) = update {
+                            self.add_notification(format!(
+                                "Version {} of the {} is available: {} (sha: {})",
+                                update.version(),
+                                update.app(),
+                                update.download_url(),
+                                update.to_hash_hex()
+                            )).await;
+                        }
                     },
                     result = connectivity_events.recv() => {
                         match result {
@@ -152,7 +172,7 @@ impl WalletEventMonitor {
                                     }
                                 }
                             },
-                             Err(broadcast::error::RecvError::Lagged(n)) => {
+                            Err(broadcast::error::RecvError::Lagged(n)) => {
                                 warn!(target: LOG_TARGET, "Missed {} from Base node Service events", n);
                             }
                             Err(broadcast::error::RecvError::Closed) => {}
@@ -173,7 +193,7 @@ impl WalletEventMonitor {
                             Err(broadcast::error::RecvError::Closed) => {}
                         }
                     },
-                     _ = shutdown_signal.wait() => {
+                    _ = shutdown_signal.wait() => {
                         info!(target: LOG_TARGET, "Wallet Event Monitor shutting down because the shutdown signal was received");
                         break;
                     },
@@ -243,5 +263,10 @@ impl WalletEventMonitor {
         if let Err(e) = inner.refresh_balance().await {
             warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
         }
+    }
+
+    async fn add_notification(&mut self, notification: String) {
+        let mut inner = self.app_state_inner.write().await;
+        inner.add_notification(notification);
     }
 }

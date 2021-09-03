@@ -107,6 +107,19 @@ async function waitFor(
   }
 }
 
+async function waitForIterate(testFn, toBe, sleepMs, maxIterations = 500) {
+  let count = 0;
+  let val = testFn();
+  while (!(val === toBe)) {
+    val = testFn();
+    if (count >= maxIterations) {
+      break;
+    }
+    count++;
+    await sleep(sleepMs);
+  }
+}
+
 async function waitForPredicate(predicate, timeOut, sleep_ms = 500) {
   const now = new Date();
   while (new Date() - now < timeOut) {
@@ -280,6 +293,6 @@ module.exports = {
   combineTwoTariKeys,
   byteArrayToHex,
   waitForPredicate,
-
+  waitForIterate,
   NO_CONNECTION,
 };

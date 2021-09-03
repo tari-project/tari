@@ -45,7 +45,9 @@ use crate::{
         ChainBlock,
         ChainHeader,
         ChainStorageError,
+        DbBasicStats,
         DbKey,
+        DbTotalSizeStats,
         DbTransaction,
         DbValue,
         DeletedBitmap,
@@ -329,5 +331,13 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_horizon_data(&self) -> Result<Option<HorizonData>, ChainStorageError> {
         self.db.fetch_horizon_data()
+    }
+
+    fn get_stats(&self) -> Result<DbBasicStats, ChainStorageError> {
+        self.db.get_stats()
+    }
+
+    fn fetch_total_size_stats(&self) -> Result<DbTotalSizeStats, ChainStorageError> {
+        self.db.fetch_total_size_stats()
     }
 }

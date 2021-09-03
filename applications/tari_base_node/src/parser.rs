@@ -53,6 +53,7 @@ pub enum BaseNodeCommand {
     CheckForUpdates,
     Status,
     GetChainMetadata,
+    GetDbStats,
     GetPeer,
     ListPeers,
     DialPeer,
@@ -184,6 +185,9 @@ impl Parser {
             GetChainMetadata => {
                 self.command_handler.get_chain_meta();
             },
+            GetDbStats => {
+                self.command_handler.get_blockchain_db_stats();
+            },
             DialPeer => {
                 self.process_dial_peer(args);
             },
@@ -284,6 +288,9 @@ impl Parser {
             },
             GetChainMetadata => {
                 println!("Gets your base node chain meta data");
+            },
+            GetDbStats => {
+                println!("Gets your base node database stats");
             },
             DialPeer => {
                 println!("Attempt to connect to a known peer");

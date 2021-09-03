@@ -25,7 +25,7 @@ use tui::{
     backend::Backend,
     layout::Rect,
     style::{Color, Modifier, Style},
-    text::{Span, Spans},
+    text::Span,
     widgets::{Block, Borders, Tabs},
     Frame,
 };
@@ -65,11 +65,12 @@ impl<B: Backend> TabsContainer<B> {
         }
     }
 
-    pub fn draw_titles(&self, f: &mut Frame<B>, area: Rect) {
+    pub fn draw_titles(&self, f: &mut Frame<B>, area: Rect, app_state: &AppState) {
         let titles = self
             .titles
             .iter()
-            .map(|t| Spans::from(Span::styled(t, Style::default().fg(Color::White))))
+            .enumerate()
+            .map(|(i, title)| self.tabs[i].format_title(title, app_state))
             .collect();
         let tabs = Tabs::new(titles)
             .block(Block::default().borders(Borders::ALL).title(Span::styled(
