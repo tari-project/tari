@@ -4069,7 +4069,31 @@ Then(
   }
 );
 
-When(/I stop ffi wallet (.*)/, function (walletName) {
+Then(
+  "I want to view the transaction kernels for completed transactions in ffi wallet {word}",
+  { timeout: 20 * 1000 },
+  function (name) {
+    let ffi_wallet = this.getWallet(name);
+    let transactions = ffi_wallet.getCompletedTxs();
+    let length = transactions.getLength();
+    expect(length > 0).to.equal(true);
+    for (let i = 0; i < length; i++) {
+      let tx = transactions.getAt(i);
+      let kernel = tx.getKernel();
+      let data = kernel.asObject();
+      console.log("Transaction kernel info:");
+      console.log(data);
+      expect(data.excess.length > 0).to.equal(true);
+      expect(data.nonce.length > 0).to.equal(true);
+      expect(data.sig.length > 0).to.equal(true);
+      kernel.destroy();
+      tx.destroy();
+    }
+    transactions.destroy();
+  }
+);
+
+When("I stop ffi wallet {word}", function (walletName) {
   let wallet = this.getWallet(walletName);
   wallet.stop();
   wallet.resetCounters();
