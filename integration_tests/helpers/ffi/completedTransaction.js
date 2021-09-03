@@ -1,34 +1,31 @@
 const InterfaceFFI = require("./ffiInterface");
 const PublicKey = require("./publicKey");
+const TransactionKernel = require("./transactionKernel");
 
 class CompletedTransaction {
-  #tari_completed_transaction_ptr;
+  ptr;
 
   pointerAssign(ptr) {
-    if (this.#tari_completed_transaction_ptr) {
+    if (this.ptr) {
       this.destroy();
-      this.#tari_completed_transaction_ptr = ptr;
+      this.ptr = ptr;
     } else {
-      this.#tari_completed_transaction_ptr = ptr;
+      this.ptr = ptr;
     }
   }
 
   getPtr() {
-    return this.#tari_completed_transaction_ptr;
+    return this.ptr;
   }
 
   isOutbound() {
-    return InterfaceFFI.completedTransactionIsOutbound(
-      this.#tari_completed_transaction_ptr
-    );
+    return InterfaceFFI.completedTransactionIsOutbound(this.ptr);
   }
 
   getDestinationPublicKey() {
     let result = new PublicKey();
     result.pointerAssign(
-      InterfaceFFI.completedTransactionGetDestinationPublicKey(
-        this.#tari_completed_transaction_ptr
-      )
+      InterfaceFFI.completedTransactionGetDestinationPublicKey(this.ptr)
     );
     return result;
   }
@@ -36,67 +33,53 @@ class CompletedTransaction {
   getSourcePublicKey() {
     let result = new PublicKey();
     result.pointerAssign(
-      InterfaceFFI.completedTransactionGetSourcePublicKey(
-        this.#tari_completed_transaction_ptr
-      )
+      InterfaceFFI.completedTransactionGetSourcePublicKey(this.ptr)
     );
     return result;
   }
 
   getAmount() {
-    return InterfaceFFI.completedTransactionGetAmount(
-      this.#tari_completed_transaction_ptr
-    );
+    return InterfaceFFI.completedTransactionGetAmount(this.ptr);
   }
 
   getFee() {
-    return InterfaceFFI.completedTransactionGetFee(
-      this.#tari_completed_transaction_ptr
-    );
+    return InterfaceFFI.completedTransactionGetFee(this.ptr);
   }
 
   getMessage() {
-    return InterfaceFFI.completedTransactionGetMessage(
-      this.#tari_completed_transaction_ptr
-    );
+    return InterfaceFFI.completedTransactionGetMessage(this.ptr);
   }
 
   getStatus() {
-    return InterfaceFFI.completedTransactionGetStatus(
-      this.#tari_completed_transaction_ptr
-    );
+    return InterfaceFFI.completedTransactionGetStatus(this.ptr);
   }
 
   getTransactionID() {
-    return InterfaceFFI.completedTransactionGetTransactionId(
-      this.#tari_completed_transaction_ptr
-    );
+    return InterfaceFFI.completedTransactionGetTransactionId(this.ptr);
   }
 
   getTimestamp() {
-    return InterfaceFFI.completedTransactionGetTimestamp(
-      this.#tari_completed_transaction_ptr
-    );
+    return InterfaceFFI.completedTransactionGetTimestamp(this.ptr);
   }
 
   isValid() {
-    return InterfaceFFI.completedTransactionIsValid(
-      this.#tari_completed_transaction_ptr
-    );
+    return InterfaceFFI.completedTransactionIsValid(this.ptr);
   }
 
   getConfirmations() {
-    return InterfaceFFI.completedTransactionGetConfirmations(
-      this.#tari_completed_transaction_ptr
-    );
+    return InterfaceFFI.completedTransactionGetConfirmations(this.ptr);
+  }
+
+  getKernel() {
+    let result = new TransactionKernel();
+    result.pointerAssign(InterfaceFFI.completedTransactionGetKernel(this.ptr));
+    return result;
   }
 
   destroy() {
-    if (this.#tari_completed_transaction_ptr) {
-      InterfaceFFI.completedTransactionDestroy(
-        this.#tari_completed_transaction_ptr
-      );
-      this.#tari_completed_transaction_ptr = undefined; //prevent double free segfault
+    if (this.ptr) {
+      InterfaceFFI.completedTransactionDestroy(this.ptr);
+      this.ptr = undefined; //prevent double free segfault
     }
   }
 }

@@ -13,6 +13,7 @@ const {
   consoleLogBalance,
   consoleLogTransactionDetails,
   withTimeout,
+  waitForIterate,
 } = require("../../helpers/util");
 const { ConnectivityStatus, PaymentType } = require("../../helpers/types");
 const TransactionBuilder = require("../../helpers/transactionBuilder");
@@ -21,9 +22,9 @@ let lastResult;
 const AUTOUPDATE_HASHES_TXT_URL =
   "https://raw.githubusercontent.com/sdbondi/tari/autoupdate-test-branch/meta/hashes.txt";
 const AUTOUPDATE_HASHES_TXT_SIG_URL =
-  "https://github.com/sdbondi/tari/raw/base-node-auto-update/meta/good.sig";
+  "https://github.com/sdbondi/tari/raw/autoupdate-test-branch/meta/good.sig";
 const AUTOUPDATE_HASHES_TXT_BAD_SIG_URL =
-  "https://github.com/sdbondi/tari/raw/base-node-auto-update/meta/bad.sig";
+  "https://github.com/sdbondi/tari/raw/autoupdate-test-branch/meta/bad.sig";
 
 Given(/I have a seed node (.*)/, { timeout: 20 * 1000 }, async function (name) {
   return await this.createSeedNode(name);
@@ -97,7 +98,7 @@ Given(
       },
     });
     await node.startNew();
-    this.addNode(name, node);
+    await this.addNode(name, node);
   }
 );
 
@@ -116,7 +117,41 @@ Given(
       },
     });
     await node.startNew();
-    this.addNode(name, node);
+    await this.addNode(name, node);
+  }
+);
+
+Given(
+  /I have a wallet (.*) with auto update enabled/,
+  { timeout: 20 * 1000 },
+  async function (name) {
+    await this.createAndAddWallet(name, "", {
+      common: {
+        auto_update: {
+          enabled: true,
+          dns_hosts: ["_test_autoupdate.tari.io"],
+          hashes_url: AUTOUPDATE_HASHES_TXT_URL,
+          hashes_sig_url: AUTOUPDATE_HASHES_TXT_SIG_URL,
+        },
+      },
+    });
+  }
+);
+
+Given(
+  /I have a wallet (.*) with auto update configured with a bad signature/,
+  { timeout: 20 * 1000 },
+  async function (name) {
+    await this.createAndAddWallet(name, "", {
+      common: {
+        auto_update: {
+          enabled: true,
+          dns_hosts: ["_test_autoupdate.tari.io"],
+          hashes_url: AUTOUPDATE_HASHES_TXT_URL,
+          hashes_sig_url: AUTOUPDATE_HASHES_TXT_BAD_SIG_URL,
+        },
+      },
+    });
   }
 );
 
@@ -238,8 +273,7 @@ Given(
     const miner = this.createNode(name, { pruningHorizon: horizon });
     miner.setPeerSeeds([this.nodes[node].peerAddress()]);
     await miner.startNew();
-    this.addNode(name, miner);
-    await sleep(1000);
+    await this.addNode(name, miner);
   }
 );
 
@@ -252,8 +286,7 @@ Given(
     });
     miner.setPeerSeeds([this.nodes[node].peerAddress()]);
     await miner.startNew();
-    this.addNode(name, miner);
-    await sleep(1000);
+    await this.addNode(name, miner);
   }
 );
 
@@ -263,7 +296,7 @@ Given(
   async function (name) {
     const node = this.createNode(name);
     await node.startNew();
-    this.addNode(name, node);
+    await this.addNode(name, node);
   }
 );
 
@@ -933,13 +966,15 @@ Then(
   /(.*) does not have a new software update/,
   { timeout: 1200 * 1000 },
   async function (name) {
-    let client = this.getClient(name);
+    let client = await this.getNodeOrWalletClient(name);
     await sleep(5000);
     await waitFor(
       async () => client.checkForUpdates().has_update,
       false,
       60 * 1000
     );
+    expect(client.checkForUpdates().has_update, "There should be no update").to
+      .be.false;
   }
 );
 
@@ -947,7 +982,7 @@ Then(
   /(.+) has a new software update/,
   { timeout: 1200 * 1000 },
   async function (name) {
-    let client = this.getClient(name);
+    let client = await this.getNodeOrWalletClient(name);
     await waitFor(
       async () => {
         return client.checkForUpdates().has_update;
@@ -955,6 +990,8 @@ Then(
       true,
       1150 * 1000
     );
+    expect(client.checkForUpdates().has_update, "There should be update").to.be
+      .true;
   }
 );
 
@@ -3539,19 +3576,6 @@ When(
 );
 
 Then(
-  "I want to get public key of ffi wallet {word}",
-  { timeout: 20 * 1000 },
-  function (name) {
-    let wallet = this.getWallet(name);
-    let public_key = wallet.identify();
-    expect(public_key.length).to.be.equal(
-      64,
-      `Public key has wrong length : ${public_key}`
-    );
-  }
-);
-
-Then(
   "I want to get emoji id of ffi wallet {word}",
   { timeout: 20 * 1000 },
   async function (name) {
@@ -3826,14 +3850,13 @@ Then(
       "Waiting for " + wallet_name + " to receive " + amount + " transaction(s)"
     );
 
-    await waitFor(
-      async () => {
+    await waitForIterate(
+      () => {
         return wallet.getCounters().received >= amount;
       },
       true,
-      700 * 1000,
-      5 * 1000,
-      5
+      1000,
+      700
     );
 
     if (!(wallet.getCounters().received >= amount)) {
@@ -3860,14 +3883,13 @@ Then(
         " transaction finalization(s)"
     );
 
-    await waitFor(
-      async () => {
+    await waitForIterate(
+      () => {
         return wallet.getCounters().finalized >= amount;
       },
       true,
-      700 * 1000,
-      5 * 1000,
-      5
+      1000,
+      700
     );
 
     if (!(wallet.getCounters().finalized >= amount)) {
@@ -3880,7 +3902,7 @@ Then(
 );
 
 Then(
-  /I wait for ffi wallet (.*) to receive (.*) SAF message/,
+  /I wait for ffi wallet (.*) to receive (.*) broadcast/,
   { timeout: 710 * 1000 },
   async function (wallet_name, amount) {
     let wallet = this.getWallet(wallet_name);
@@ -3891,17 +3913,82 @@ Then(
         wallet_name +
         " to receive " +
         amount +
+        " transaction broadcast(s)"
+    );
+
+    await waitForIterate(
+      () => {
+        return wallet.getCounters().broadcast >= amount;
+      },
+      true,
+      1000,
+      700
+    );
+
+    if (!(wallet.getCounters().broadcast >= amount)) {
+      console.log("Counter not adequate!");
+    } else {
+      console.log(wallet.getCounters());
+    }
+    expect(wallet.getCounters().broadcast >= amount).to.equal(true);
+  }
+);
+
+Then(
+  /I wait for ffi wallet (.*) to receive (.*) mined/,
+  { timeout: 710 * 1000 },
+  async function (wallet_name, amount) {
+    let wallet = this.getWallet(wallet_name);
+
+    console.log("\n");
+    console.log(
+      "Waiting for " +
+        wallet_name +
+        " to receive " +
+        amount +
+        " transaction mined"
+    );
+
+    await waitForIterate(
+      () => {
+        return wallet.getCounters().mined >= amount;
+      },
+      true,
+      1000,
+      700
+    );
+
+    if (!(wallet.getCounters().mined >= amount)) {
+      console.log("Counter not adequate!");
+    } else {
+      console.log(wallet.getCounters());
+    }
+    expect(wallet.getCounters().mined >= amount).to.equal(true);
+  }
+);
+
+Then(
+  /I wait for ffi wallet (.*) to receive at least (.*) SAF message/,
+  { timeout: 710 * 1000 },
+  async function (wallet_name, amount) {
+    let wallet = this.getWallet(wallet_name);
+
+    console.log("\n");
+    console.log(
+      "Waiting for " +
+        wallet_name +
+        " to receive at least " +
+        amount +
         " SAF messages(s)"
     );
 
-    await waitFor(
-      async () => {
+    await waitForIterate(
+      () => {
         return wallet.getCounters().saf >= amount;
       },
       true,
-      700 * 1000,
-      5 * 1000,
-      5
+      1000,
+      700
     );
 
     if (!(wallet.getCounters().saf >= amount)) {
@@ -3924,23 +4011,21 @@ Then(
       "Waiting for " + wallet_name + " balance to be at least " + amount + " uT"
     );
 
-    let count = 0;
-
-    while (!(wallet.getBalance().available >= amount)) {
-      await sleep(1000);
-      count++;
-      if (count > 700) {
-        break;
-      }
-    }
+    await waitForIterate(
+      () => {
+        return wallet.getBalance().available >= amount;
+      },
+      true,
+      1000,
+      700
+    );
 
     let balance = wallet.getBalance().available;
 
     if (!(balance >= amount)) {
       console.log("Balance not adequate!");
-    } else {
-      console.log(wallet.getBalance());
     }
+
     expect(balance >= amount).to.equal(true);
   }
 );
@@ -3961,12 +4046,54 @@ When(/I start ffi wallet (.*)/, async function (walletName) {
   await wallet.startNew(null, null);
 });
 
-When(/I restart ffi wallet (.*)/, async function (walletName) {
-  let wallet = this.getWallet(walletName);
-  await wallet.restart();
-});
+When(
+  /I restart ffi wallet (.*) connected to base node (.*)/,
+  async function (walletName, node) {
+    let wallet = this.getWallet(walletName);
+    await wallet.restart();
+    let peer = this.nodes[node].peerAddress().split("::");
+    wallet.addBaseNodePeer(peer[0], peer[1]);
+  }
+);
 
-When(/I stop ffi wallet (.*)/, function (walletName) {
+Then(
+  "I want to get public key of ffi wallet {word}",
+  { timeout: 20 * 1000 },
+  function (name) {
+    let wallet = this.getWallet(name);
+    let public_key = wallet.identify();
+    expect(public_key.length).to.be.equal(
+      64,
+      `Public key has wrong length : ${public_key}`
+    );
+  }
+);
+
+Then(
+  "I want to view the transaction kernels for completed transactions in ffi wallet {word}",
+  { timeout: 20 * 1000 },
+  function (name) {
+    let ffi_wallet = this.getWallet(name);
+    let transactions = ffi_wallet.getCompletedTxs();
+    let length = transactions.getLength();
+    expect(length > 0).to.equal(true);
+    for (let i = 0; i < length; i++) {
+      let tx = transactions.getAt(i);
+      let kernel = tx.getKernel();
+      let data = kernel.asObject();
+      console.log("Transaction kernel info:");
+      console.log(data);
+      expect(data.excess.length > 0).to.equal(true);
+      expect(data.nonce.length > 0).to.equal(true);
+      expect(data.sig.length > 0).to.equal(true);
+      kernel.destroy();
+      tx.destroy();
+    }
+    transactions.destroy();
+  }
+);
+
+When("I stop ffi wallet {word}", function (walletName) {
   let wallet = this.getWallet(walletName);
   wallet.stop();
   wallet.resetCounters();

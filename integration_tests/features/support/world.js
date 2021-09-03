@@ -9,6 +9,8 @@ const TransactionBuilder = require("../../helpers/transactionBuilder");
 const glob = require("glob");
 const fs = require("fs");
 const archiver = require("archiver");
+const InterfaceFFI = require("../../helpers/ffi/ffiInterface");
+
 class CustomWorld {
   constructor({ attach, parameters }) {
     // this.variable = 0;
@@ -267,7 +269,7 @@ class CustomWorld {
     }
     let wallet = this.wallets[name.trim()];
     if (wallet) {
-      let client = await wallet.connectClient();
+      client = await wallet.connectClient();
       client.isNode = false;
       client.isWallet = true;
       return client;
@@ -381,8 +383,13 @@ BeforeAll({ timeout: 1200000 }, async function () {
   await miningNode.compile();
 
   console.log("Compiling wallet FFI...");
-  await WalletFFIClient.Init();
+  await InterfaceFFI.compile();
   console.log("Finished compilation.");
+  console.log("Loading FFI interface..");
+  await InterfaceFFI.init();
+  console.log("FFI interface loaded.");
+
+  console.log("World ready, now lets run some tests! :)");
 });
 
 After(async function (testCase) {
