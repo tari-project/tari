@@ -38,7 +38,7 @@ use std::{
 use tokio::{
     sync::{AcquireError, OwnedSemaphorePermit, Semaphore},
     time,
-    time::Interval,
+    time::{Interval, MissedTickBehavior},
 };
 use tokio_stream::Stream;
 
@@ -73,11 +73,13 @@ pub struct RateLimiter<T> {
 
 impl<T: Stream> RateLimiter<T> {
     pub fn new(stream: T, capacity: usize, restock_interval: Duration) -> Self {
+        let mut interval = time::interval(restock_interval);
+        interval.set_missed_tick_behavior(MissedTickBehavior::Burst);
         RateLimiter {
             stream,
             capacity,
 
-            interval: time::interval(restock_interval),
+            interval,
             // `interval` starts immediately, so we can start with zero permits
             permits: Arc::new(Semaphore::new(0)),
             permit_future: None,
