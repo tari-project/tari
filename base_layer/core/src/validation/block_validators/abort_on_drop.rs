@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,32 +20,45 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{chain_storage::ChainStorageError, validation::ValidationError};
-use tari_comms::{
-    connectivity::ConnectivityError,
-    protocol::rpc::{RpcError, RpcStatus},
+use std::{
+    future::Future,
+    ops::Deref,
+    pin::Pin,
+    task::{Context, Poll},
 };
+use tokio::task;
 
-#[derive(Debug, thiserror::Error)]
-pub enum BlockSyncError {
-    #[error("RPC error: {0}")]
-    RpcError(#[from] RpcError),
-    #[error("RPC request failed: {0}")]
-    RpcRequestError(#[from] RpcStatus),
-    #[error("Chain storage error: {0}")]
-    ChainStorageError(#[from] ChainStorageError),
-    #[error("Peer sent invalid block body: {0}")]
-    ReceivedInvalidBlockBody(String),
-    #[error("Peer sent a block that did not form a chain. Expected hash = {expected}, got = {got}")]
-    PeerSentBlockThatDidNotFormAChain { expected: String, got: String },
-    #[error("Connectivity Error: {0}")]
-    ConnectivityError(#[from] ConnectivityError),
-    #[error("No sync peers available")]
-    NoSyncPeers,
-    #[error("Block validation failed: {0}")]
-    ValidationError(#[from] ValidationError),
-    #[error("Failed to ban peer: {0}")]
-    FailedToBan(ConnectivityError),
-    #[error("Failed to construct valid chain block")]
-    FailedToConstructChainBlock,
+/// A task JoinHandle that aborts the inner task associated with this handle if it is dropped.
+/// Awaiting a cancelled task might complete as usual if the task was already completed before the time
+/// it was cancelled, otherwise it will complete with a Err(JoinError::Cancelled).
+pub struct AbortOnDropJoinHandle<T> {
+    inner: task::JoinHandle<T>,
+}
+
+impl<T> From<task::JoinHandle<T>> for AbortOnDropJoinHandle<T> {
+    fn from(handle: task::JoinHandle<T>) -> Self {
+        Self { inner: handle }
+    }
+}
+
+impl<T> Deref for AbortOnDropJoinHandle<T> {
+    type Target = task::JoinHandle<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<T> Drop for AbortOnDropJoinHandle<T> {
+    fn drop(&mut self) {
+        self.inner.abort();
+    }
+}
+
+impl<T> Future for AbortOnDropJoinHandle<T> {
+    type Output = Result<T, task::JoinError>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        Pin::new(&mut self.inner).poll(cx)
+    }
 }

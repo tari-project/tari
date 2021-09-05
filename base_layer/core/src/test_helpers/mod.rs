@@ -23,13 +23,7 @@
 //! Common test helper functions that are small and useful enough to be included in the main crate, rather than the
 //! integration test folder.
 
-use std::{iter, path::Path, sync::Arc};
-
-use rand::{distributions::Alphanumeric, Rng};
-
-use tari_common::configuration::Network;
-use tari_comms::PeerManager;
-use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
+pub mod blockchain;
 
 use crate::{
     blocks::{Block, BlockHeader},
@@ -38,14 +32,74 @@ use crate::{
     crypto::tari_utilities::Hashable,
     proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
-        tari_amount::T,
+        tari_amount::MicroTari,
         transaction::{Transaction, UnblindedOutput},
         CoinbaseBuilder,
         CryptoFactories,
     },
 };
+use rand::{distributions::Alphanumeric, Rng};
+use std::{iter, path::Path, sync::Arc};
+use tari_comms::PeerManager;
+use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 
-pub mod blockchain;
+#[derive(Debug, Clone)]
+pub struct BlockSpec {
+    version: u16,
+    difficulty: Difficulty,
+    block_time: u64,
+    reward_override: Option<MicroTari>,
+    transactions: Vec<Transaction>,
+    skip_coinbase: bool,
+}
+
+impl BlockSpec {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn with_difficulty(mut self, difficulty: Difficulty) -> Self {
+        self.difficulty = difficulty;
+        self
+    }
+
+    pub fn with_block_time(mut self, block_time: u64) -> Self {
+        self.block_time = block_time;
+        self
+    }
+
+    pub fn with_reward(mut self, reward: MicroTari) -> Self {
+        self.reward_override = Some(reward);
+        self
+    }
+
+    pub fn skip_coinbase(mut self) -> Self {
+        self.skip_coinbase = true;
+        self
+    }
+
+    pub fn with_transactions(mut self, transactions: Vec<Transaction>) -> Self {
+        self.transactions = transactions;
+        self
+    }
+
+    pub fn finish(self) -> Self {
+        self
+    }
+}
+
+impl Default for BlockSpec {
+    fn default() -> Self {
+        Self {
+            version: 0,
+            difficulty: 1.into(),
+            block_time: 120,
+            reward_override: None,
+            transactions: vec![],
+            skip_coinbase: false,
+        }
+    }
+}
 
 /// Create a partially constructed block using the provided set of transactions
 /// is chain_block, or rename it to `create_orphan_block` and drop the prev_block argument
@@ -55,24 +109,47 @@ pub fn create_orphan_block(block_height: u64, transactions: Vec<Transaction>, co
     header.into_builder().with_transactions(transactions).build()
 }
 
-pub fn create_block(block_version: u16, block_height: u64, transactions: Vec<Transaction>) -> (Block, UnblindedOutput) {
-    let mut header = BlockHeader::new(block_version);
+pub fn create_block(rules: &ConsensusManager, prev_block: &Block, spec: BlockSpec) -> (Block, UnblindedOutput) {
+    let mut header = BlockHeader::new(spec.version);
+    let block_height = prev_block.header.height + 1;
     header.height = block_height;
-    let constants = ConsensusManager::builder(Network::LocalNet).build();
+    header.prev_hash = prev_block.hash();
+    let reward = spec.reward_override.unwrap_or_else(|| {
+        rules.calculate_coinbase_and_fees(
+            header.height,
+            &spec
+                .transactions
+                .iter()
+                .map(|tx| tx.body.kernels().clone())
+                .flatten()
+                .collect::<Vec<_>>(),
+        )
+    });
+
     let (coinbase, coinbase_output) = CoinbaseBuilder::new(CryptoFactories::default())
-        .with_block_height(block_height)
+        .with_block_height(header.height)
         .with_fees(0.into())
         .with_nonce(0.into())
         .with_spend_key(block_height.into())
-        .build_with_reward(constants.consensus_constants(block_height), 5000 * T)
+        .build_with_reward(rules.consensus_constants(block_height), reward)
         .unwrap();
-    (
-        header
-            .into_builder()
-            .with_transactions(iter::once(coinbase).chain(transactions).collect())
-            .build(),
-        coinbase_output,
-    )
+
+    let mut block = header
+        .into_builder()
+        .with_transactions(
+            Some(coinbase)
+                .filter(|_| !spec.skip_coinbase)
+                .into_iter()
+                .chain(spec.transactions)
+                .collect(),
+        )
+        .build();
+
+    // Keep times constant in case we need a particular target difficulty
+    block.header.timestamp = prev_block.header.timestamp.increase(spec.block_time);
+    block.header.output_mmr_size = prev_block.header.output_mmr_size + block.body.outputs().len() as u64;
+    block.header.kernel_mmr_size = prev_block.header.kernel_mmr_size + block.body.kernels().len() as u64;
+    (block, coinbase_output)
 }
 
 pub fn mine_to_difficulty(mut block: Block, difficulty: Difficulty) -> Result<Block, String> {

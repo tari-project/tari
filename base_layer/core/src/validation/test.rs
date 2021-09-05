@@ -92,7 +92,6 @@ fn header_iter_fetch_in_chunks() {
 }
 
 #[test]
-// TODO: Fix this test with the new DB structure
 fn chain_balance_validation() {
     let factories = CryptoFactories::default();
     let consensus_manager = ConsensusManagerBuilder::new(Network::Weatherwax).build();
@@ -130,7 +129,7 @@ fn chain_balance_validation() {
     // block that contains an extra faucet utxo
     let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet)
         .with_block(genesis.clone())
-        .with_consensus_constants(constants)
+        .add_consensus_constants(constants)
         .build();
 
     let db = create_store_with_consensus(consensus_manager.clone());

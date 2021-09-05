@@ -31,6 +31,7 @@ tari_shutdown = { version = "^0.9", path = "../../infrastructure/shutdown" }
 tari_storage = { version = "^0.9", path = "../../infrastructure/storage" }
 tari_test_utils = { version = "^0.9", path = "../../infrastructure/test_utils" }
 
+async-trait = "0.1.50"
 bincode = "1.1.4"
 bitflags = "1.0.4"
 blake2 = "^0.9.0"

@@ -20,19 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    fs,
-    ops::Deref,
-    path::{Path, PathBuf},
-};
-
-use croaring::Bitmap;
-
-use tari_common::configuration::Network;
-use tari_common_types::chain_metadata::ChainMetadata;
-use tari_storage::lmdb_store::LMDBConfig;
-use tari_test_utils::paths::create_temporary_data_path;
-
+use super::{create_block, mine_to_difficulty};
 use crate::{
     blocks::{genesis_block::get_weatherwax_genesis_block, Block, BlockHeader},
     chain_storage::{
@@ -58,8 +46,11 @@ use crate::{
         Validators,
     },
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
+    crypto::tari_utilities::Hashable,
+    proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
+    test_helpers::BlockSpec,
     transactions::{
-        transaction::{TransactionInput, TransactionKernel},
+        transaction::{TransactionInput, TransactionKernel, UnblindedOutput},
         CryptoFactories,
     },
     validation::{
@@ -68,24 +59,43 @@ use crate::{
         DifficultyCalculator,
     },
 };
-use tari_common_types::types::{Commitment, HashOutput, Signature};
+use croaring::Bitmap;
+use std::{
+    collections::HashMap,
+    fs,
+    ops::Deref,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+use tari_common::configuration::Network;
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{Commitment, HashOutput, Signature},
+};
+use tari_storage::lmdb_store::LMDBConfig;
+use tari_test_utils::paths::create_temporary_data_path;
 
 /// Create a new blockchain database containing no blocks.
 pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {
-    let network = Network::Weatherwax;
+    let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network).build();
     let genesis = get_weatherwax_genesis_block();
     let consensus_manager = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(genesis)
         .on_ties(ChainStrengthComparerBuilder::new().by_height().build())
         .build();
+    create_custom_blockchain(consensus_manager)
+}
+
+/// Create a new custom blockchain database containing no blocks.
+pub fn create_custom_blockchain(rules: ConsensusManager) -> BlockchainDatabase<TempDatabase> {
     let validators = Validators::new(
         MockValidator::new(true),
         MockValidator::new(true),
         MockValidator::new(true),
     );
-    create_store_with_consensus_and_validators(consensus_manager, validators)
+    create_store_with_consensus_and_validators(rules, validators)
 }
 
 pub fn create_store_with_consensus_and_validators(
@@ -339,5 +349,173 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_total_size_stats(&self) -> Result<DbTotalSizeStats, ChainStorageError> {
         self.db.fetch_total_size_stats()
+    }
+}
+
+pub fn create_chained_blocks(
+    blocks: &[(&str, u64, u64)],
+    genesis_block: Arc<ChainBlock>,
+) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
+    let mut block_hashes = HashMap::new();
+    block_hashes.insert("GB".to_string(), genesis_block);
+    let rules = ConsensusManager::builder(Network::LocalNet).build();
+
+    let mut block_names = Vec::with_capacity(blocks.len());
+    for (name, difficulty, time) in blocks {
+        let split = name.split("->").collect::<Vec<_>>();
+        let to = split[0].to_string();
+        let from = split[1].to_string();
+
+        let prev_block = block_hashes
+            .get(&from)
+            .unwrap_or_else(|| panic!("Could not find block {}", from));
+        let block_spec = BlockSpec::new()
+            .with_difficulty((*difficulty).into())
+            .with_block_time(*time)
+            .finish();
+        let (block, _) = create_block(&rules, prev_block.block(), block_spec);
+        let block = mine_block(block, prev_block.accumulated_data(), (*difficulty).into());
+
+        block_names.push(to.clone());
+        block_hashes.insert(to, block);
+    }
+    (block_names, block_hashes)
+}
+
+fn mine_block(block: Block, prev_block_accum: &BlockHeaderAccumulatedData, difficulty: Difficulty) -> Arc<ChainBlock> {
+    let block = mine_to_difficulty(block, difficulty).unwrap();
+    let accum = BlockHeaderAccumulatedData::builder(prev_block_accum)
+        .with_hash(block.hash())
+        .with_achieved_target_difficulty(
+            AchievedTargetDifficulty::try_construct(PowAlgorithm::Sha3, (difficulty.as_u64() - 1).into(), difficulty)
+                .unwrap(),
+        )
+        .with_total_kernel_offset(block.header.total_kernel_offset.clone())
+        .build()
+        .unwrap();
+    Arc::new(ChainBlock::try_construct(Arc::new(block), accum).unwrap())
+}
+
+pub fn create_main_chain(
+    db: &BlockchainDatabase<TempDatabase>,
+    blocks: &[(&str, u64, u64)],
+) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
+    let genesis_block = db.fetch_block(0).unwrap().try_into_chain_block().map(Arc::new).unwrap();
+    let (names, chain) = create_chained_blocks(blocks, genesis_block);
+    names.iter().for_each(|name| {
+        let block = chain.get(name).unwrap();
+        db.add_block(block.to_arc_block()).unwrap();
+    });
+
+    (names, chain)
+}
+
+pub fn create_orphan_chain(
+    db: &BlockchainDatabase<TempDatabase>,
+    blocks: &[(&str, u64, u64)],
+    root_block: Arc<ChainBlock>,
+) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
+    let (names, chain) = create_chained_blocks(blocks, root_block);
+    let mut txn = DbTransaction::new();
+    for name in &names {
+        let block = chain.get(name).unwrap().clone();
+        txn.insert_chained_orphan(block);
+    }
+    db.write(txn).unwrap();
+
+    (names, chain)
+}
+
+pub struct TestBlockchain {
+    db: BlockchainDatabase<TempDatabase>,
+    chain: Vec<(&'static str, Arc<ChainBlock>)>,
+    rules: ConsensusManager,
+}
+
+impl TestBlockchain {
+    pub fn new(db: BlockchainDatabase<TempDatabase>, rules: ConsensusManager) -> Self {
+        let genesis = db.fetch_block(0).unwrap().try_into_chain_block().map(Arc::new).unwrap();
+        let mut blockchain = Self {
+            db,
+            chain: Default::default(),
+            rules,
+        };
+
+        blockchain.chain.push(("GB", genesis));
+        blockchain
+    }
+
+    pub fn create(rules: ConsensusManager) -> Self {
+        Self::new(create_custom_blockchain(rules.clone()), rules)
+    }
+
+    pub fn rules(&self) -> &ConsensusManager {
+        &self.rules
+    }
+
+    pub fn db(&self) -> &BlockchainDatabase<TempDatabase> {
+        &self.db
+    }
+
+    pub fn add_block(
+        &mut self,
+        name: &'static str,
+        child_of: &'static str,
+        block_spec: BlockSpec,
+    ) -> (Arc<ChainBlock>, UnblindedOutput) {
+        let (block, coinbase) = self.create_chained_block(child_of, block_spec);
+        self.append_block(name, block.clone());
+        (block, coinbase)
+    }
+
+    pub fn add_next_tip(&mut self, name: &'static str, spec: BlockSpec) -> (Arc<ChainBlock>, UnblindedOutput) {
+        let (block, coinbase) = self.create_next_tip(spec);
+        self.append_block(name, block.clone());
+        (block, coinbase)
+    }
+
+    pub fn append_block(&mut self, name: &'static str, block: Arc<ChainBlock>) {
+        let result = self.db.add_block(block.to_arc_block()).unwrap();
+        assert!(result.is_added());
+        let _ = self.chain.push((name, block));
+    }
+
+    pub fn get_block_by_name(&self, name: &'static str) -> Option<Arc<ChainBlock>> {
+        self.chain.iter().find(|(n, _)| *n == name).map(|(_, ch)| ch.clone())
+    }
+
+    pub fn get_tip_block(&self) -> (&'static str, Arc<ChainBlock>) {
+        self.chain.last().cloned().unwrap()
+    }
+
+    pub fn create_chained_block(
+        &self,
+        parent_name: &'static str,
+        block_spec: BlockSpec,
+    ) -> (Arc<ChainBlock>, UnblindedOutput) {
+        let parent = self.get_block_by_name(parent_name).unwrap();
+        let difficulty = block_spec.difficulty;
+        let (block, coinbase) = create_block(&self.rules, parent.block(), block_spec);
+        let block = mine_block(block, parent.accumulated_data(), difficulty);
+        (block, coinbase)
+    }
+
+    pub fn create_unmined_block(&self, parent_name: &'static str, block_spec: BlockSpec) -> (Block, UnblindedOutput) {
+        let parent = self.get_block_by_name(parent_name).unwrap();
+        create_block(&self.rules, parent.block(), block_spec)
+    }
+
+    pub fn mine_block(&self, parent_name: &'static str, block: Block, difficulty: Difficulty) -> Arc<ChainBlock> {
+        let parent = self.get_block_by_name(parent_name).unwrap();
+        mine_block(block, parent.accumulated_data(), difficulty)
+    }
+
+    pub fn create_next_tip(&self, spec: BlockSpec) -> (Arc<ChainBlock>, UnblindedOutput) {
+        let (name, _) = self.get_tip_block();
+        self.create_chained_block(name, spec)
+    }
+
+    pub fn get_genesis_block(&self) -> Arc<ChainBlock> {
+        self.chain.first().map(|(_, block)| block).unwrap().clone()
     }
 }

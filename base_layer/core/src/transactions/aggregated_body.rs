@@ -81,6 +81,21 @@ impl AggregateBody {
         }
     }
 
+    /// Create a new aggregate body from provided inputs, outputs and kernels.
+    /// It is up to the caller to ensure that the inputs, outputs and kernels are sorted
+    pub(crate) fn new_sorted_unchecked(
+        inputs: Vec<TransactionInput>,
+        outputs: Vec<TransactionOutput>,
+        kernels: Vec<TransactionKernel>,
+    ) -> AggregateBody {
+        AggregateBody {
+            sorted: true,
+            inputs,
+            outputs,
+            kernels,
+        }
+    }
+
     /// Provide read-only access to the input list
     pub fn inputs(&self) -> &Vec<TransactionInput> {
         &self.inputs
@@ -317,16 +332,17 @@ impl AggregateBody {
         total_reward: MicroTari,
         factories: &CryptoFactories,
     ) -> Result<(), TransactionError> {
-        let total_offset = factories.commitment.commit_value(&tx_offset, total_reward.0);
-        let script_offset_g = PublicKey::from_secret_key(&script_offset);
-
         self.verify_kernel_signatures()?;
+
+        let total_offset = factories.commitment.commit_value(&tx_offset, total_reward.0);
         self.validate_kernel_sum(total_offset, &factories.commitment)?;
 
         if !bypass_range_proof_verification {
             self.validate_range_proofs(&factories.range_proof)?;
         }
         self.verify_metadata_signatures()?;
+
+        let script_offset_g = PublicKey::from_secret_key(&script_offset);
         self.validate_script_offset(script_offset_g, &factories.commitment)
     }
 

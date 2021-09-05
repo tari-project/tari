@@ -27,12 +27,14 @@ use crate::{
     transactions::transaction::Transaction,
     validation::{error::ValidationError, DifficultyCalculator},
 };
+use async_trait::async_trait;
 use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
 
 /// A validator that determines if a block body is valid, assuming that the header has already been
 /// validated
-pub trait BlockSyncBodyValidation<B: BlockchainBackend>: Send + Sync {
-    fn validate_body(&self, block: &Block, backend: &B) -> Result<(), ValidationError>;
+#[async_trait]
+pub trait BlockSyncBodyValidation: Send + Sync {
+    async fn validate_body(&self, block: Block) -> Result<Block, ValidationError>;
 }
 
 /// A validator that validates a body after it has been determined to be a valid orphan

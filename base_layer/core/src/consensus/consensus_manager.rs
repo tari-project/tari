@@ -21,15 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{
-        genesis_block::{
-            get_igor_genesis_block,
-            get_mainnet_genesis_block,
-            get_ridcully_genesis_block,
-            get_stibbons_genesis_block,
-            get_weatherwax_genesis_block,
-        },
-        Block,
+    blocks::genesis_block::{
+        get_igor_genesis_block,
+        get_mainnet_genesis_block,
+        get_ridcully_genesis_block,
+        get_stibbons_genesis_block,
+        get_weatherwax_genesis_block,
     },
     chain_storage::{ChainBlock, ChainStorageError},
     consensus::{
@@ -39,7 +36,7 @@ use crate::{
         NetworkConsensus,
     },
     proof_of_work::{DifficultyAdjustmentError, PowAlgorithm, TargetDifficultyWindow},
-    transactions::tari_amount::MicroTari,
+    transactions::{tari_amount::MicroTari, transaction::TransactionKernel},
 };
 use std::{convert::TryFrom, sync::Arc};
 use tari_common::configuration::Network;
@@ -129,10 +126,10 @@ impl ConsensusManager {
         )
     }
 
-    /// Creates a total_coinbase offset containing all fees for the validation from block
-    pub fn calculate_coinbase_and_fees(&self, block: &Block) -> MicroTari {
-        let coinbase = self.emission_schedule().block_reward(block.header.height);
-        coinbase + block.calculate_fees()
+    /// Creates a total_coinbase offset containing all fees for the validation from the height and kernel set
+    pub fn calculate_coinbase_and_fees(&self, height: u64, kernels: &[TransactionKernel]) -> MicroTari {
+        let coinbase = self.emission_schedule().block_reward(height);
+        kernels.iter().fold(coinbase, |total, k| total + k.fee)
     }
 
     pub fn chain_strength_comparer(&self) -> &dyn ChainStrengthComparer {
@@ -180,7 +177,7 @@ impl ConsensusManagerBuilder {
     }
 
     /// Adds in a custom consensus constants to be used
-    pub fn with_consensus_constants(mut self, consensus_constants: ConsensusConstants) -> Self {
+    pub fn add_consensus_constants(mut self, consensus_constants: ConsensusConstants) -> Self {
         self.consensus_constants.push(consensus_constants);
         self
     }
