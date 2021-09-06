@@ -29,7 +29,14 @@ use crate::{
     utils,
 };
 use core::iter;
-use std::{sync::Arc, time::Duration};
+use std::{
+    cmp,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 use tari_crypto::tari_utilities::hex::Hex;
 use tokio::{
     sync::{mpsc, RwLock},
@@ -54,10 +61,14 @@ pub trait GreetingRpc: Send + Sync + 'static {
     async fn get_public_key_hex(&self, _: Request<()>) -> Result<String, RpcStatus>;
     // #[rpc(method = 7)]
     async fn reply_with_msg_of_size(&self, request: Request<u64>) -> Result<Vec<u8>, RpcStatus>;
+    // #[rpc(method = 8)]
+    async fn slow_stream(&self, request: Request<SlowStreamRequest>) -> Result<Streaming<Vec<u8>>, RpcStatus>;
 }
 
+#[derive(Clone)]
 pub struct GreetingService {
     greetings: Vec<String>,
+    call_count: Arc<AtomicUsize>,
 }
 
 impl GreetingService {
@@ -67,7 +78,16 @@ impl GreetingService {
     pub fn new(greetings: &[&str]) -> Self {
         Self {
             greetings: greetings.iter().map(ToString::to_string).collect(),
+            call_count: Default::default(),
         }
+    }
+
+    pub fn call_count(&self) -> usize {
+        self.call_count.load(Ordering::Acquire)
+    }
+
+    fn inc_call_count(&self) {
+        self.call_count.fetch_add(1, Ordering::Relaxed);
     }
 }
 
@@ -80,6 +100,7 @@ impl Default for GreetingService {
 #[async_trait]
 impl GreetingRpc for GreetingService {
     async fn say_hello(&self, request: Request<SayHelloRequest>) -> Result<Response<SayHelloResponse>, RpcStatus> {
+        self.inc_call_count();
         let msg = request.message();
         let greeting = self
             .greetings
@@ -91,13 +112,15 @@ impl GreetingRpc for GreetingService {
     }
 
     async fn return_error(&self, _: Request<()>) -> Result<Response<()>, RpcStatus> {
+        self.inc_call_count();
         Err(RpcStatus::not_implemented("I haven't gotten to this yet :("))
     }
 
     async fn get_greetings(&self, request: Request<u32>) -> Result<Streaming<String>, RpcStatus> {
+        self.inc_call_count();
         let (tx, rx) = mpsc::channel(1);
         let num = *request.message();
-        let greetings = self.greetings[..num as usize].to_vec();
+        let greetings = self.greetings[..cmp::min(num as usize, self.greetings.len())].to_vec();
         task::spawn(async move {
             let _ = utils::mpsc::send_all(&tx, greetings.into_iter().map(Ok)).await;
         });
@@ -106,6 +129,7 @@ impl GreetingRpc for GreetingService {
     }
 
     async fn streaming_error(&self, request: Request<String>) -> Result<Streaming<String>, RpcStatus> {
+        self.inc_call_count();
         Err(RpcStatus::bad_request(format!(
             "What does '{}' mean?",
             request.message()
@@ -113,6 +137,7 @@ impl GreetingRpc for GreetingService {
     }
 
     async fn streaming_error2(&self, _: Request<()>) -> Result<Streaming<String>, RpcStatus> {
+        self.inc_call_count();
         let (tx, rx) = mpsc::channel(2);
         tx.send(Ok("This is ok".to_string())).await.unwrap();
         tx.send(Err(RpcStatus::bad_request("This is a problem"))).await.unwrap();
@@ -121,14 +146,36 @@ impl GreetingRpc for GreetingService {
     }
 
     async fn get_public_key_hex(&self, req: Request<()>) -> Result<String, RpcStatus> {
+        self.inc_call_count();
         let context = req.context();
         let peer = context.fetch_peer().await?;
         Ok(peer.public_key.to_hex())
     }
 
     async fn reply_with_msg_of_size(&self, request: Request<u64>) -> Result<Vec<u8>, RpcStatus> {
+        self.inc_call_count();
         let size = request.into_message() as usize;
         Ok(iter::repeat(0).take(size).collect())
+    }
+
+    async fn slow_stream(&self, request: Request<SlowStreamRequest>) -> Result<Streaming<Vec<u8>>, RpcStatus> {
+        self.inc_call_count();
+        let SlowStreamRequest {
+            num_items,
+            item_size,
+            delay_ms,
+        } = request.into_message();
+
+        let (tx, rx) = mpsc::channel(1);
+        let item = iter::repeat(0u8).take(item_size as usize).collect::<Vec<_>>();
+        tokio::spawn(async move {
+            for _ in 0..num_items {
+                time::sleep(Duration::from_millis(delay_ms)).await;
+                tx.send(Ok(item.clone())).await.unwrap();
+            }
+        });
+
+        Ok(Streaming::new(rx))
     }
 }
 
@@ -175,6 +222,19 @@ impl GreetingRpc for SlowGreetingService {
     async fn reply_with_msg_of_size(&self, _: Request<u64>) -> Result<Vec<u8>, RpcStatus> {
         unimplemented!()
     }
+
+    async fn slow_stream(&self, _: Request<SlowStreamRequest>) -> Result<Streaming<Vec<u8>>, RpcStatus> {
+        unimplemented!()
+    }
+}
+#[derive(prost::Message)]
+pub struct SlowStreamRequest {
+    #[prost(uint32, tag = "1")]
+    pub num_items: u32,
+    #[prost(uint32, tag = "2")]
+    pub item_size: u32,
+    #[prost(uint64, tag = "3")]
+    pub delay_ms: u64,
 }
 
 #[derive(prost::Message)]
@@ -277,6 +337,14 @@ impl<T: GreetingRpc> __rpc_deps::Service<Request<__rpc_deps::Bytes>> for Greetin
                 };
                 Box::pin(fut)
             },
+            // slow_stream
+            8 => {
+                let fut = async move {
+                    let resp = inner.slow_stream(req.decode()?).await?;
+                    Ok(Response::new(resp.into_body()))
+                };
+                Box::pin(fut)
+            },
 
             id => Box::pin(__rpc_deps::future::ready(Err(RpcStatus::unsupported_method(format!(
                 "Method identifier `{}` is not recognised or supported",
@@ -361,6 +429,13 @@ impl GreetingClient {
 
     pub async fn reply_with_msg_of_size(&mut self, request: u64) -> Result<String, RpcError> {
         self.inner.request_response(request, 7).await
+    }
+
+    pub async fn slow_stream(
+        &mut self,
+        request: SlowStreamRequest,
+    ) -> Result<__rpc_deps::ClientStreaming<Vec<u8>>, RpcError> {
+        self.inner.server_streaming(request, 8).await
     }
 
     pub async fn get_last_request_latency(&mut self) -> Result<Option<Duration>, RpcError> {
