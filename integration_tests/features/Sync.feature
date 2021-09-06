@@ -103,7 +103,6 @@ Feature: Block Sync
     When I mine 15 blocks on PNODE2
     Then all nodes are at height 23
 
-  @broken
   Scenario: Node should not sync from pruned node
     Given I have a base node NODE1 connected to all seed nodes
     Given I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
@@ -112,6 +111,7 @@ Feature: Block Sync
     When I stop node NODE1
     Given I have a base node NODE2 connected to node PNODE1
     Given I have a pruned node PNODE2 connected to node PNODE1 with pruning horizon set to 5
+    Given I do not expect all automated transactions to succeed
     When I mine 5 blocks on NODE2
     Then node NODE2 is at height 5
     Then node PNODE2 is at height 40
@@ -120,6 +120,7 @@ Feature: Block Sync
     And I connect node NODE2 to node NODE1 and wait 5 seconds
     # NODE2 may initially try to sync from PNODE1 and PNODE2, then eventually try to sync from NODE1; mining blocks
     # on NODE1 will make this test less flaky and force NODE2 to sync from NODE1 much quicker
+    Given I expect all automated transactions to succeed
     When I mine 10 blocks on NODE1
     Then all nodes are at height 50
 
