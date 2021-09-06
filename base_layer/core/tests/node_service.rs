@@ -40,6 +40,7 @@ use helpers::{
         BaseNodeBuilder,
     },
 };
+use randomx_rs::RandomXFlag;
 use std::{sync::Arc, time::Duration};
 use tari_common::configuration::Network;
 use tari_comms::protocol::messaging::MessagingEvent;
@@ -274,18 +275,26 @@ async fn propagate_and_forward_many_valid_blocks() {
     alice_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     bob_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     carol_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     dan_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
 
     let mut bob_block_event_stream = bob_node.local_nci.get_block_event_stream();
@@ -374,14 +383,20 @@ async fn propagate_and_forward_invalid_block_hash() {
     alice_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     bob_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     carol_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
 
     let block1 = append_block(&alice_node.blockchain_db, &block0, vec![], &rules, 1.into()).unwrap();
@@ -488,18 +503,26 @@ async fn propagate_and_forward_invalid_block() {
     alice_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     bob_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     carol_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     dan_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
 
     // This is a valid block, however Bob, Carol and Dan's block validator is set to always reject the block

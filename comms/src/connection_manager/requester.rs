@@ -34,7 +34,7 @@ pub enum ConnectionManagerRequest {
     /// Dial a given peer by node id.
     DialPeer {
         node_id: NodeId,
-        reply_tx: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
+        reply_tx: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
         tracing_id: Option<tracing::span::Id>,
     },
     /// Cancels a pending dial if one exists
@@ -99,20 +99,11 @@ impl ConnectionManagerRequester {
         node_id: NodeId,
         reply_tx: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
     ) -> Result<(), ConnectionManagerError> {
-        let tracing_id;
-        let reply_tx = if let Some(r) = reply_tx {
-            tracing_id = tracing::Span::current().id();
-            r
-        } else {
-            let (tx, _) = oneshot::channel();
-            tracing_id = None;
-            tx
-        };
         self.sender
             .send(ConnectionManagerRequest::DialPeer {
                 node_id,
                 reply_tx,
-                tracing_id,
+                tracing_id: tracing::Span::current().id(),
             })
             .await
             .map_err(|_| ConnectionManagerError::SendToActorFailed)?;

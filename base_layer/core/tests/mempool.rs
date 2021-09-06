@@ -38,6 +38,7 @@ use helpers::{
     nodes::{create_network_with_2_base_nodes_with_config, create_network_with_3_base_nodes_with_config},
     sample_blockchains::{create_new_blockchain, create_new_blockchain_with_constants},
 };
+use randomx_rs::RandomXFlag;
 use tari_common::configuration::Network;
 use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
 use tari_comms_dht::domain_message::OutboundDomainMessage;
@@ -860,14 +861,20 @@ async fn receive_and_propagate_transaction() {
     alice_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     bob_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     carol_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
 
     let (tx, _, _) = spend_utxos(txn_schema!(from: vec![utxo], to: vec![2 * T, 2 * T, 2 * T]));
@@ -1092,6 +1099,8 @@ async fn block_event_and_reorg_event_handling() {
     alice.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
 
     // Bob creates Block 1 and sends it to Alice. Alice adds it to her chain and creates a block event that the Mempool

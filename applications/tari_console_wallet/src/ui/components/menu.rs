@@ -3,7 +3,7 @@ use tari_app_utilities::consts;
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
+    style::{Color, Modifier, Style},
     text::{Span, Spans},
     widgets::{Block, Paragraph},
     Frame,
@@ -35,6 +35,14 @@ impl<B: Backend> Component<B> for Menu {
         let version = Spans::from(vec![
             Span::styled(" Version: ", Style::default().fg(Color::White)),
             Span::styled(consts::APP_VERSION_NUMBER, Style::default().fg(Color::Magenta)),
+            Span::raw(" "),
+            match cfg!(feature = "avx2") {
+                true => Span::styled("Avx2", Style::default().fg(Color::LightGreen)),
+                false => Span::styled(
+                    "Avx2",
+                    Style::default().fg(Color::LightRed).add_modifier(Modifier::CROSSED_OUT),
+                ),
+            },
         ]);
         let tabs = Spans::from(vec![
             Span::styled("LeftArrow: ", Style::default().fg(Color::White)),

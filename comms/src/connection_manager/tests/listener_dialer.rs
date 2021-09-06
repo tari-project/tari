@@ -128,7 +128,7 @@ async fn smoke() {
 
     let (reply_tx, reply_rx) = oneshot::channel();
     request_tx
-        .send(DialerRequest::Dial(Box::new(peer), reply_tx))
+        .send(DialerRequest::Dial(Box::new(peer), Some(reply_tx)))
         .await
         .unwrap();
 
@@ -229,7 +229,7 @@ async fn banned() {
 
     let (reply_tx, reply_rx) = oneshot::channel();
     request_tx
-        .send(DialerRequest::Dial(Box::new(peer), reply_tx))
+        .send(DialerRequest::Dial(Box::new(peer), Some(reply_tx)))
         .await
         .unwrap();
 

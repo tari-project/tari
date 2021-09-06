@@ -52,7 +52,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tari_shutdown::ShutdownSignal;
-use tokio::{sync::mpsc, task::JoinHandle, time};
+use tokio::{sync::mpsc, task::JoinHandle, time, time::MissedTickBehavior};
 use tracing::{span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::connectivity::manager";
@@ -175,6 +175,7 @@ impl ConnectivityManagerActor {
                 .into(),
             interval,
         );
+        ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         self.publish_event(ConnectivityEvent::ConnectivityStateInitialized);
 
