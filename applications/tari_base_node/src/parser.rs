@@ -57,6 +57,7 @@ pub enum BaseNodeCommand {
     GetPeer,
     ListPeers,
     DialPeer,
+    PingPeer,
     ResetOfflinePeers,
     RewindBlockchain,
     BanPeer,
@@ -191,6 +192,9 @@ impl Parser {
             DialPeer => {
                 self.process_dial_peer(args);
             },
+            PingPeer => {
+                self.process_ping_peer(args);
+            },
             DiscoverPeer => {
                 self.process_discover_peer(args);
             },
@@ -294,6 +298,9 @@ impl Parser {
             },
             DialPeer => {
                 println!("Attempt to connect to a known peer");
+            },
+            PingPeer => {
+                println!("Send a ping to a known peer and wait for a pong reply");
             },
             DiscoverPeer => {
                 println!("Attempt to discover a peer on the Tari network");
@@ -541,12 +548,30 @@ impl Parser {
             Some(n) => n,
             None => {
                 println!("Please enter a valid destination public key or emoji id");
-                println!("discover-peer [hex public key or emoji id]");
+                println!("dial-peer [hex public key or emoji id]");
                 return;
             },
         };
 
         self.command_handler.dial_peer(dest_node_id)
+    }
+
+    /// Function to process the dial-peer command
+    fn process_ping_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
+        let dest_node_id = match args
+            .next()
+            .and_then(parse_emoji_id_or_public_key_or_node_id)
+            .map(either_to_node_id)
+        {
+            Some(n) => n,
+            None => {
+                println!("Please enter a valid destination public key or emoji id");
+                println!("ping-peer [hex public key or emoji id]");
+                return;
+            },
+        };
+
+        self.command_handler.ping_peer(dest_node_id)
     }
 
     /// Function to process the ban-peer command

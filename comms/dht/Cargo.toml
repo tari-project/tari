@@ -35,7 +35,7 @@ serde = "1.0.90"
 serde_derive = "1.0.90"
 serde_repr = "0.1.5"
 thiserror = "1.0.26"
-tokio = { version = "1.10", features = ["rt", "macros"] }
+tokio = { version = "1.11", features = ["rt", "macros"] }
 tower = "0.3.1"
 ttl_cache = "0.5.1"
 
