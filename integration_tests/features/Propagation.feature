@@ -31,6 +31,7 @@ Feature: Block Propagation
     Then node MINER is at height 5
     Then all nodes are at height 5
 
+  @broken
   Scenario: Duplicate block is rejected
     Given I have 1 seed nodes
     And I have a base node MINER connected to all seed nodes
@@ -92,7 +93,7 @@ Feature: Block Propagation
     When I wait 20 seconds
     Then all nodes are at height 7
 
-    Scenario: Pruned node should prune outputs
+  Scenario: Pruned node should prune outputs
     Given I have 1 seed nodes
     And I have a base node SENDER connected to all seed nodes
     Given I have a pruned node PNODE1 connected to node SENDER with pruning horizon set to 5
