@@ -73,11 +73,7 @@ struct TariSeedWords;
 
 struct EmojiSet;
 
-struct TariExcess;
-
-struct TariExcessPublicNonce;
-
-struct TariExcessSignature;
+struct TariTransactionKernel;
 
 /// -------------------------------- Transport Types ----------------------------------------------- ///
 
@@ -262,26 +258,25 @@ bool completed_transaction_is_outbound(struct TariCompletedTransaction *tx, int 
 /// Gets the number of confirmations of a TariCompletedTransaction
 unsigned long long completed_transaction_get_confirmations(struct TariCompletedTransaction *transaction, int *error_out);
 
+// Gets the TariTransactionKernel of a TariCompletedTransaction
+struct TariTransactionKernel *completed_transaction_get_transaction_kernel(struct TariCompletedTransaction *transaction, int *error_out);
+
 // Frees memory for a TariCompletedTransaction
 void completed_transaction_destroy(struct TariCompletedTransaction *transaction);
 
-// Gets the TariExcess of a TariCompletedTransaction
-struct TariExcess *completed_transaction_get_excess(struct TariCompletedTransaction *transaction, int *error_out);
+/// --------------------------------------- TransactionKernel ------------------------------------------------------ ///
 
-// Gets the TariExcessPublicNonce of a TariCompletedTransaction
-struct TariExcessPublicNonce *completed_transaction_get_public_nonce(struct TariCompletedTransaction *transaction, int *error_out);
+// Gets the excess for a TariTransactionKernel
+const char *transaction_kernel_get_excess_hex(struct TariTransactionKernel *kernel, int *error_out);
 
-// Gets the TariExcessSignature of a TariCompletedTransaction
-struct TariExcessSignature *completed_transaction_get_signature(struct TariCompletedTransaction *transaction, int *error_out);
+// Gets the public nonce for a TariTransactionKernel
+const char *transaction_kernel_get_excess_public_nonce_hex(struct TariTransactionKernel *kernel, int *error_out);
 
-// Frees memory for a TariExcess
-void excess_destroy(struct TariExcess *excess);
+// Gets the signature for a TariTransactionKernel
+const char *transaction_kernel_get_excess_signature_hex(struct TariTransactionKernel *kernel, int *error_out);
 
-// Frees memory for a TariExcessPublicNonce
-void nonce_destroy(struct TariExcessPublicNonce *nonce);
-
-// Frees memory for a TariExcessSignature
-void signature_destroy(struct TariExcessSignature *signature);
+// Frees memory for a TariTransactionKernel
+void transaction_kernel_destroy(struct TariTransactionKernel *kernel);
 
 /// -------------------------------- CompletedTransactions ------------------------------------------------------ ///
 

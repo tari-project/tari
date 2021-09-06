@@ -338,7 +338,6 @@ fn lmdb_resize_on_create() {
 
 #[test]
 fn test_lmdb_resize_before_full() {
-    env_logger::init();
     let db_env_name = "resize_dynamic";
     {
         let path = get_path(&db_env_name);

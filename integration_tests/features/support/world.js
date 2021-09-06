@@ -384,8 +384,12 @@ BeforeAll({ timeout: 1200000 }, async function () {
 
   console.log("Compiling wallet FFI...");
   await InterfaceFFI.compile();
-  await InterfaceFFI.init();
   console.log("Finished compilation.");
+  console.log("Loading FFI interface..");
+  await InterfaceFFI.init();
+  console.log("FFI interface loaded.");
+
+  console.log("World ready, now lets run some tests! :)");
 });
 
 After(async function (testCase) {

@@ -11,23 +11,23 @@ const LOG_TARGET: &str = "c::pow::randomx_factory";
 
 #[derive(Clone)]
 pub struct RandomXVMInstance {
-    // Note: If the cache and dataset drops, the vm will be wonky, so have to store all
-    // three for now
-    instance: Arc<Mutex<(RandomXVM, RandomXCache, RandomXDataset)>>,
+    // Note: If a cache and dataset (if assigned) allocated to the VM drops, the VM will crash.
+    // The cache and dataset for the VM need to be stored together with it since they are not
+    // mix and match.
+    instance: Arc<Mutex<(RandomXVM, RandomXCache, Option<RandomXDataset>)>>,
     flags: RandomXFlag,
 }
 
 impl RandomXVMInstance {
-    // Note: Can maybe even get more gains by creating a new VM and sharing the dataset and cache
     fn create(key: &[u8], flags: RandomXFlag) -> Result<Self, RandomXError> {
         let (flags, cache) = match RandomXCache::new(flags, key) {
             Ok(cache) => (flags, cache),
             Err(err) => {
                 warn!(
                     target: LOG_TARGET,
-                    "Error initializing randomx cache with flags {:?}. {}. Fallback to default flags", flags, err
+                    "Error initializing randomx cache with flags {:?}. {:?}. Fallback to default flags", flags, err
                 );
-                // This is informed by how randomx falls back on any cache allocation failure
+                // This is informed by how RandomX falls back on any cache allocation failure
                 // https://github.com/xmrig/xmrig/blob/02b2b87bb685ab83b132267aa3c2de0766f16b8b/src/crypto/rx/RxCache.cpp#L88
                 let flags = RandomXFlag::FLAG_DEFAULT;
                 let cache = RandomXCache::new(flags, key)?;
@@ -35,11 +35,19 @@ impl RandomXVMInstance {
             },
         };
 
-        let dataset = RandomXDataset::new(flags, &cache, 0)?;
-        let vm = RandomXVM::new(flags, Some(&cache), Some(&dataset))?;
+        // Note: Memory required per VM in light mode is 256MB
+        let vm = RandomXVM::new(flags, Some(&cache), None)?;
+
+        // Note: No dataset is initialized here because we want to run in light mode. Only a cache
+        // is required by the VM for verification, giving it a dataset will only make the VM
+        // consume more memory than necessary. Dataset is currently an optional value as it may be
+        // useful at some point in future.
+
+        // Note: RandomXFlag::FULL_MEM and RandomXFlag::LARGE_PAGES are incompatible with
+        // light mode. These are not set by RandomX automatically even in fast mode.
 
         Ok(Self {
-            instance: Arc::new(Mutex::new((vm, cache, dataset))),
+            instance: Arc::new(Mutex::new((vm, cache, None))),
             flags,
         })
     }
@@ -102,7 +110,7 @@ impl RandomXFactoryInner {
         let flags = RandomXFlag::get_recommended_flags();
         debug!(
             target: LOG_TARGET,
-            "RandomX factory started with {} max VMs and flags = {:?}", max_vms, flags
+            "RandomX factory started with {} max VMs and recommended flags = {:?}", max_vms, flags
         );
         Self {
             flags,
@@ -166,15 +174,5 @@ mod test {
         let key = b"another-key";
         let vm = factory.create(&key[..]).unwrap();
         assert_ne!(vm.calculate_hash(&preimage[..]).unwrap(), hash1);
-    }
-
-    #[test]
-    fn large_page_fallback() {
-        // This only tests the fallback branch on platforms that do not support large pages (e.g. MacOS)
-        let factory = RandomXFactory::new(1);
-        factory.inner.write().unwrap().flags = RandomXFlag::FLAG_LARGE_PAGES;
-        let key = "highly-imaginative-key-name";
-        let vm = factory.create(key.as_bytes()).unwrap();
-        vm.calculate_hash("hashme".as_bytes()).unwrap();
     }
 }

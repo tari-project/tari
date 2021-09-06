@@ -29,11 +29,8 @@ use crate::{
     peer_manager::NodeId,
     protocol::messaging::protocol::MESSAGING_PROTOCOL,
 };
-use futures::{future::Either, StreamExt, TryStreamExt};
-use std::{
-    io,
-    time::{Duration, Instant},
-};
+use futures::{future::Either, SinkExt, StreamExt, TryStreamExt};
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc as tokiompsc;
 use tracing::{debug, error, event, span, Instrument, Level};
 
@@ -106,18 +103,17 @@ impl OutboundMessaging {
                         peer_node_id.short_str()
                     );
                 },
-                Err(err) => match err {
-                    MessagingProtocolError::PeerDialFailed => {
-                        debug!(
-                            target: LOG_TARGET,
-                            "Outbound messaging substream failed due to a dial fail. Most likely the peer is offline \
-                             or doesn't exist: {}",
-                            err
-                        );
-                    },
-                    _ => {
-                        error!(target: LOG_TARGET, "Outbound messaging substream failed:{}", err);
-                    },
+                Err(MessagingProtocolError::PeerDialFailed(err)) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Outbound messaging protocol was unable to dial peer {}: {}", peer_node_id, err
+                    );
+                },
+                Err(err) => {
+                    error!(
+                        target: LOG_TARGET,
+                        "Outbound messaging protocol failed for peer {}: {}", peer_node_id, err
+                    );
                 },
             }
 
@@ -187,7 +183,7 @@ impl OutboundMessaging {
                             err
                         );
 
-                        break Err(MessagingProtocolError::PeerDialFailed);
+                        break Err(MessagingProtocolError::PeerDialFailed(err));
                     },
                 }
             }
@@ -287,11 +283,9 @@ impl OutboundMessaging {
         });
 
         let stream = match inactivity_timeout {
-            Some(timeout) => {
-                let s = tokio_stream::StreamExt::timeout(stream, timeout)
-                    .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, MessagingProtocolError::Inactivity));
-                Either::Left(s)
-            },
+            Some(timeout) => Either::Left(
+                tokio_stream::StreamExt::timeout(stream, timeout).map_err(|_| MessagingProtocolError::Inactivity),
+            ),
             None => Either::Right(stream.map(Ok)),
         };
 
@@ -303,7 +297,7 @@ impl OutboundMessaging {
             })
         });
 
-        super::forward::Forward::new(stream, framed).await?;
+        super::forward::Forward::new(stream, framed.sink_map_err(Into::into)).await?;
 
         debug!(
             target: LOG_TARGET,

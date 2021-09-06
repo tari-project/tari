@@ -110,7 +110,7 @@ impl LivenessHandle {
         }
     }
 
-    /// Returns a fused event stream for the liveness service
+    /// Returns an event stream for the liveness service
     pub fn get_event_stream(&self) -> LivenessEventReceiver {
         self.event_stream_sender.subscribe()
     }

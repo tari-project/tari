@@ -59,8 +59,15 @@ use tari_core::{
     tari_utilities::{hex::Hex, message_format::MessageFormat},
 };
 use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::Hashable};
-use tari_p2p::auto_update::SoftwareUpdaterHandle;
-use tokio::{runtime, sync::watch};
+use tari_p2p::{
+    auto_update::SoftwareUpdaterHandle,
+    services::liveness::{LivenessEvent, LivenessHandle},
+};
+use tokio::{
+    runtime,
+    sync::{broadcast, watch},
+    time,
+};
 
 pub enum StatusOutput {
     Log,
@@ -77,6 +84,7 @@ pub struct CommandHandler {
     base_node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
     connectivity: ConnectivityRequester,
+    liveness: LivenessHandle,
     node_service: LocalNodeCommsInterface,
     mempool_service: LocalMempoolService,
     state_machine_info: watch::Receiver<StatusInfo>,
@@ -85,7 +93,7 @@ pub struct CommandHandler {
 
 impl CommandHandler {
     pub fn new(executor: runtime::Handle, ctx: &BaseNodeContext) -> Self {
-        CommandHandler {
+        Self {
             executor,
             config: ctx.config(),
             blockchain_db: ctx.blockchain_db().into(),
@@ -95,6 +103,7 @@ impl CommandHandler {
             base_node_identity: ctx.base_node_identity(),
             peer_manager: ctx.base_node_comms().peer_manager(),
             connectivity: ctx.base_node_comms().connectivity(),
+            liveness: ctx.liveness(),
             node_service: ctx.local_node(),
             mempool_service: ctx.local_mempool(),
             state_machine_info: ctx.get_state_machine_info_channel(),
@@ -546,6 +555,42 @@ impl CommandHandler {
                 },
             }
         });
+    }
+
+    pub fn ping_peer(&self, dest_node_id: NodeId) {
+        let mut liveness = self.liveness.clone();
+
+        self.executor.spawn(time::timeout(Duration::from_secs(30), async move {
+            println!("🏓 Pinging peer...");
+            let mut liveness_events = liveness.get_event_stream();
+
+            match liveness.send_ping(dest_node_id.clone()).await {
+                Ok(_) => loop {
+                    match liveness_events.recv().await {
+                        Ok(event) =>
+                        {
+                            #[allow(clippy::single_match)]
+                            match &*event {
+                                LivenessEvent::ReceivedPong(pong) => {
+                                    if pong.node_id == dest_node_id {
+                                        println!("🏓️ Pong received, latency in is {}ms!", pong.latency.unwrap_or(0));
+                                        break;
+                                    }
+                                },
+                                _ => {},
+                            }
+                        },
+                        Err(broadcast::error::RecvError::Closed) => {
+                            break;
+                        },
+                        _ => {},
+                    }
+                },
+                Err(err) => {
+                    println!("📞  Could not send ping: {}", err);
+                },
+            }
+        }));
     }
 
     pub fn ban_peer(&self, node_id: NodeId, duration: Duration, must_ban: bool) {
