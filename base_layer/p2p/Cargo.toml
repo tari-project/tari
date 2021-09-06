@@ -34,7 +34,7 @@ semver = "1.0.1"
 serde = "1.0.90"
 serde_derive = "1.0.90"
 thiserror = "1.0.26"
-tokio = { version = "1.10", features = ["macros"] }
+tokio = { version = "1.11", features = ["macros"] }
 tokio-stream = { version = "0.1.7", default-features = false, features = ["time"] }
 tower = "0.3.0-alpha.2"
 tower-service = { version = "0.3.0-alpha.2" }
