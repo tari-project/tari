@@ -132,19 +132,19 @@ impl ConnectionManagerMock {
         match req {
             DialPeer {
                 node_id,
-                reply_tx,
+                mut reply_tx,
                 tracing_id: _,
             } => {
                 // Send Ok(conn) if we have an active connection, otherwise Err(DialConnectFailedAllAddresses)
-                let _ = reply_tx.send(
-                    self.state
-                        .active_conns
-                        .lock()
-                        .await
-                        .get(&node_id)
-                        .map(Clone::clone)
-                        .ok_or(ConnectionManagerError::DialConnectFailedAllAddresses),
-                );
+                let result = self
+                    .state
+                    .active_conns
+                    .lock()
+                    .await
+                    .get(&node_id)
+                    .map(Clone::clone)
+                    .ok_or(ConnectionManagerError::DialConnectFailedAllAddresses);
+                let _ = reply_tx.take().map(|tx| tx.send(result));
             },
             CancelDial(_) => {},
             NotifyListening(_reply_tx) => {},

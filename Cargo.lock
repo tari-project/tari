@@ -1673,7 +1673,7 @@ dependencies = [
  "http",
  "indexmap",
  "slab",
- "tokio 1.10.1",
+ "tokio 1.11.0",
  "tokio-util",
  "tracing",
 ]
@@ -1800,7 +1800,7 @@ dependencies = [
  "itoa",
  "pin-project-lite 0.2.7",
  "socket2",
- "tokio 1.10.1",
+ "tokio 1.11.0",
  "tower-service",
  "tracing",
  "want",
@@ -1814,7 +1814,7 @@ checksum = "bbb958482e8c7be4bc3cf272a766a2b0bf1a6755e7a6ae777f017a31d11b13b1"
 dependencies = [
  "hyper 0.14.12",
  "pin-project-lite 0.2.7",
- "tokio 1.10.1",
+ "tokio 1.11.0",
  "tokio-io-timeout",
 ]
 
@@ -1827,7 +1827,7 @@ dependencies = [
  "bytes 1.1.0",
  "hyper 0.14.12",
  "native-tls",
- "tokio 1.10.1",
+ "tokio 1.11.0",
  "tokio-native-tls",
 ]
 
@@ -2738,7 +2738,7 @@ dependencies = [
  "pin-project 1.0.8",
  "rand 0.8.4",
  "thiserror",
- "tokio 1.10.1",
+ "tokio 1.11.0",
  "tokio-stream",
 ]
 
@@ -2754,7 +2754,7 @@ dependencies = [
  "opentelemetry-semantic-conventions",
  "thiserror",
  "thrift",
- "tokio 1.10.1",
+ "tokio 1.11.0",
 ]
 
 [[package]]
@@ -3467,7 +3467,7 @@ dependencies = [
  "serde 1.0.130",
  "serde_json",
  "serde_urlencoded",
- "tokio 1.10.1",
+ "tokio 1.11.0",
  "tokio-native-tls",
  "url 2.2.2",
  "wasm-bindgen",
@@ -4196,7 +4196,7 @@ dependencies = [
  "tari_p2p",
  "tari_wallet",
  "thiserror",
- "tokio 1.10.1",
+ "tokio 1.11.0",
  "tonic",
 ]
 
@@ -4230,7 +4230,7 @@ dependencies = [
  "tari_service_framework",
  "tari_shutdown",
  "thiserror",
- "tokio 1.10.1",
+ "tokio 1.11.0",
  "tonic",
  "tracing",
  "tracing-opentelemetry",
@@ -4296,7 +4296,7 @@ dependencies = [
  "rand 0.8.4",
  "serde 1.0.130",
  "tari_crypto",
- "tokio 1.10.1",
+ "tokio 1.11.0",
 ]
 
 [[package]]
@@ -4338,7 +4338,7 @@ dependencies = [
  "tari_test_utils",
  "tempfile",
  "thiserror",
- "tokio 1.10.1",
+ "tokio 1.11.0",
  "tokio-stream",
  "tokio-util",
  "tower 0.3.1",
@@ -4387,7 +4387,7 @@ dependencies = [
  "tari_utilities",
  "tempfile",
  "thiserror",
- "tokio 1.10.1",
+ "tokio 1.11.0",
  "tokio-stream",
  "tokio-test 0.4.2",
  "tower 0.3.1",
@@ -4406,7 +4406,7 @@ dependencies = [
  "syn 1.0.75",
  "tari_comms",
  "tari_test_utils",
- "tokio 1.10.1",
+ "tokio 1.11.0",
  "tower-service",
 ]
 
@@ -4442,7 +4442,7 @@ dependencies = [
  "tari_shutdown",
  "tari_wallet",
  "thiserror",
- "tokio 1.10.1",
+ "tokio 1.11.0",
  "tonic",
  "tracing",
  "tracing-opentelemetry",
@@ -4497,7 +4497,7 @@ dependencies = [
  "tari_test_utils",
  "tempfile",
  "thiserror",
- "tokio 1.10.1",
+ "tokio 1.11.0",
  "tracing",
  "tracing-attributes",
  "tracing-futures",
@@ -4583,7 +4583,7 @@ dependencies = [
  "tari_crypto",
  "tari_utilities",
  "thiserror",
- "tokio 1.10.1",
+ "tokio 1.11.0",
  "tonic",
  "tracing",
  "tracing-futures",
@@ -4617,7 +4617,7 @@ dependencies = [
  "tari_crypto",
  "thiserror",
  "time",
- "tokio 1.10.1",
+ "tokio 1.11.0",
  "tonic",
 ]
 
@@ -4675,7 +4675,7 @@ dependencies = [
  "tari_utilities",
  "tempfile",
  "thiserror",
- "tokio 1.10.1",
+ "tokio 1.11.0",
  "tokio-stream",
  "tower 0.3.1",
  "tower-service",
@@ -4694,7 +4694,7 @@ dependencies = [
  "tari_shutdown",
  "tari_test_utils",
  "thiserror",
- "tokio 1.10.1",
+ "tokio 1.11.0",
  "tower 0.3.1",
  "tower-service",
 ]
@@ -4704,7 +4704,7 @@ name = "tari_shutdown"
 version = "0.9.6"
 dependencies = [
  "futures 0.3.16",
- "tokio 1.10.1",
+ "tokio 1.11.0",
 ]
 
 [[package]]
@@ -4769,7 +4769,7 @@ dependencies = [
  "tari_crypto",
  "tari_utilities",
  "thiserror",
- "tokio 1.10.1",
+ "tokio 1.11.0",
  "tonic",
  "tonic-build",
  "tracing",
@@ -4788,7 +4788,7 @@ dependencies = [
  "rand 0.8.4",
  "tari_shutdown",
  "tempfile",
- "tokio 1.10.1",
+ "tokio 1.11.0",
 ]
 
 [[package]]
@@ -4847,7 +4847,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "time",
- "tokio 1.10.1",
+ "tokio 1.11.0",
  "tower 0.3.1",
 ]
 
@@ -4876,7 +4876,7 @@ dependencies = [
  "tari_wallet",
  "tempfile",
  "thiserror",
- "tokio 1.10.1",
+ "tokio 1.11.0",
 ]
 
 [[package]]
@@ -4913,7 +4913,7 @@ dependencies = [
  "tari_core",
  "tari_crypto",
  "tari_utilities",
- "tokio 1.10.1",
+ "tokio 1.11.0",
 ]
 
 [[package]]
@@ -5047,9 +5047,9 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "1.10.1"
+version = "1.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92036be488bb6594459f2e03b60e42df6f937fe6ca5c5ffdcb539c6b84dc40f5"
+checksum = "b4efe6fc2395938c8155973d7be49fe8d03a843726e285e100a8a383cc0154ce"
 dependencies = [
  "autocfg 1.0.1",
  "bytes 1.1.0",
@@ -5071,7 +5071,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90c49f106be240de154571dd31fbe48acb10ba6c6dd6f6517ad603abffa42de9"
 dependencies = [
  "pin-project-lite 0.2.7",
- "tokio 1.10.1",
+ "tokio 1.11.0",
 ]
 
 [[package]]
@@ -5092,7 +5092,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7d995660bd2b7f8c1568414c1126076c13fbb725c40112dc0120b78eb9b717b"
 dependencies = [
  "native-tls",
- "tokio 1.10.1",
+ "tokio 1.11.0",
 ]
 
 [[package]]
@@ -5102,7 +5102,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc6844de72e57df1980054b38be3a9f4702aba4858be64dd700181a8a6d0e1b6"
 dependencies = [
  "rustls",
- "tokio 1.10.1",
+ "tokio 1.11.0",
  "webpki",
 ]
 
@@ -5114,7 +5114,7 @@ checksum = "7b2f3f698253f03119ac0102beaa64f67a67e08074d03a22d18784104543727f"
 dependencies = [
  "futures-core",
  "pin-project-lite 0.2.7",
- "tokio 1.10.1",
+ "tokio 1.11.0",
  "tokio-util",
 ]
 
@@ -5138,7 +5138,7 @@ dependencies = [
  "async-stream",
  "bytes 1.1.0",
  "futures-core",
- "tokio 1.10.1",
+ "tokio 1.11.0",
  "tokio-stream",
 ]
 
@@ -5154,7 +5154,7 @@ dependencies = [
  "futures-sink",
  "log 0.4.14",
  "pin-project-lite 0.2.7",
- "tokio 1.10.1",
+ "tokio 1.11.0",
 ]
 
 [[package]]
@@ -5196,7 +5196,7 @@ dependencies = [
  "pin-project 1.0.8",
  "prost",
  "prost-derive",
- "tokio 1.10.1",
+ "tokio 1.11.0",
  "tokio-stream",
  "tokio-util",
  "tower 0.4.8",
@@ -5248,7 +5248,7 @@ dependencies = [
  "pin-project 1.0.8",
  "rand 0.8.4",
  "slab",
- "tokio 1.10.1",
+ "tokio 1.11.0",
  "tokio-stream",
  "tokio-util",
  "tower-layer",
@@ -5516,7 +5516,7 @@ dependencies = [
  "ring",
  "rustls",
  "thiserror",
- "tokio 1.10.1",
+ "tokio 1.11.0",
  "trust-dns-proto",
  "webpki",
 ]
@@ -5544,7 +5544,7 @@ dependencies = [
  "smallvec",
  "thiserror",
  "tinyvec",
- "tokio 1.10.1",
+ "tokio 1.11.0",
  "tokio-rustls",
  "url 2.2.2",
  "webpki",
