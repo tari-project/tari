@@ -146,7 +146,7 @@ pub struct ConfigBootstrap {
     pub miner_min_diff: Option<u64>,
     #[structopt(long, alias = "max-difficulty")]
     pub miner_max_diff: Option<u64>,
-    #[structopt(long, alias = "tracing")]
+    #[structopt(long, aliases = &["tracing", "enable-tracing"])]
     pub tracing_enabled: bool,
     /// Supply a network (overrides existing configuration)
     #[structopt(long, alias = "network")]

@@ -548,12 +548,12 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
             );
             rx.close();
             // RPC is strictly request/response
-            // If the client drops the RpcClient request at this point after the , we have two options:
+            // If the client drops the RpcClient request at this point after the, we have two options:
             // 1. Obey the protocol: receive the response
-            // 2. Close the RPC session and return an error (seems brittle and unexpected)
-            // Option 1 has the disadvantage when receiving large/many streamed responses.
-            // TODO: Detect if all handles to the client handles have been dropped. If so,
-            // immediately close the RPC session
+            // 2. Error out and immediately close the session (seems brittle and may be unexpected)
+            // Option 1 has the disadvantage when receiving large/many streamed responses, however if all client handles
+            // have been dropped, then read_reply will exit early the stream will close and the server-side
+            // can exit early
         }
 
         loop {

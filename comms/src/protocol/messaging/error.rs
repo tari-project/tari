@@ -22,6 +22,7 @@
 
 use crate::{
     connection_manager::PeerConnectionError,
+    connectivity::ConnectivityError,
     message::OutboundMessage,
     peer_manager::PeerManagerError,
     protocol::ProtocolError,
@@ -46,8 +47,8 @@ pub enum MessagingProtocolError {
     ProtocolError(#[from] ProtocolError),
     #[error("PeerConnectionError: {0}")]
     PeerConnectionError(#[from] PeerConnectionError),
-    #[error("Failed to dial peer")]
-    PeerDialFailed,
+    #[error("Failed to dial peer: {0}")]
+    PeerDialFailed(ConnectivityError),
     #[error("IO Error: {0}")]
     Io(#[from] io::Error),
     #[error("Sender error: {0}")]

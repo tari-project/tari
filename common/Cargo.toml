@@ -21,7 +21,7 @@ serde_json = "1.0.51"
 dirs-next = "1.0.2"
 get_if_addrs = "0.5.3"
 log = "0.4.8"
-log4rs = { version = "1.0.0", default_features= false, features = ["config_parsing", "threshold_filter"]}
+log4rs = { version = "1.0.0", default_features= false, features = ["config_parsing", "threshold_filter", "yaml_format"]}
 multiaddr={version = "0.13.0"}
 sha2 = "0.9.5"
 path-clean = "0.1.0"

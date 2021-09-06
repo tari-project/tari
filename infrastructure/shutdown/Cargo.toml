@@ -15,4 +15,4 @@ edition = "2018"
 futures = "^0.3"
 
 [dev-dependencies]
-tokio = {version="1", default-features = false, features = ["rt", "macros"]}
+tokio = { version = "1", default-features = false, features = ["rt", "macros"] }
