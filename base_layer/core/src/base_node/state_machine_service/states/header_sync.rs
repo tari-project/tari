@@ -74,6 +74,8 @@ impl HeaderSync {
 
         let status_event_sender = shared.status_event_sender.clone();
         let bootstrapped = shared.is_bootstrapped();
+        let randomx_vm_cnt = shared.get_randomx_vm_cnt();
+        let randomx_vm_flags = shared.get_randomx_vm_flags();
         synchronizer.on_progress(move |details, sync_peers| {
             let details = details.map(|(current_height, remote_tip_height)| BlockSyncInfo {
                 tip_height: remote_tip_height,
@@ -83,6 +85,8 @@ impl HeaderSync {
             let _ = status_event_sender.send(StatusInfo {
                 bootstrapped,
                 state_info: StateInfo::HeaderSync(details),
+                randomx_vm_cnt,
+                randomx_vm_flags,
             });
         });
 
