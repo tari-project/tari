@@ -127,6 +127,11 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     warn!(target: LOG_TARGET, "Chain split not found for peer {}.", peer);
                     self.ban_peer_long(peer, BanReason::ChainSplitNotFound).await?;
                 },
+                Err(err @ BlockHeaderSyncError::InvalidRemotePeerBehaviour(_)) => {
+                    warn!(target: LOG_TARGET, "{}", err);
+                    self.ban_peer_long(node_id, BanReason::PeerMisbehaviour(err.to_string()))
+                        .await?;
+                },
                 Err(err @ BlockHeaderSyncError::InvalidBlockHeight { .. }) => {
                     warn!(target: LOG_TARGET, "{}", err);
                     self.ban_peer_long(node_id, BanReason::GeneralHeaderSyncFailure(err))
@@ -381,6 +386,13 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             headers.len(),
             peer
         );
+
+        if headers.is_empty() {
+            return Err(BlockHeaderSyncError::InvalidRemotePeerBehaviour(format!(
+                "Remote peer {} advertised a better chain but did not return headers",
+                peer
+            )));
+        }
 
         if fork_hash_index >= block_hashes.len() as u32 {
             let _ = self
@@ -677,6 +689,8 @@ enum BanReason {
     GeneralHeaderSyncFailure(BlockHeaderSyncError),
     #[error("Peer did not respond timeously during RPC negotiation")]
     RpcNegotiationTimedOut,
+    #[error("Peer misbehaviour: {0}")]
+    PeerMisbehaviour(String),
 }
 
 struct ChainSplitInfo {
