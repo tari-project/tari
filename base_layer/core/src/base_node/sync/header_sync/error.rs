@@ -63,6 +63,4 @@ pub enum BlockHeaderSyncError {
     InvalidProtocolResponse(String),
     #[error("Headers did not form a chain. Expected {actual} to equal the previous hash {expected}")]
     ChainLinkBroken { actual: String, expected: String },
-    #[error("Invalid remote peer behaviour: {0}")]
-    InvalidRemotePeerBehaviour(String),
 }
