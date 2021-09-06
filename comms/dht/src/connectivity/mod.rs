@@ -38,7 +38,7 @@ use tari_comms::{
 };
 use tari_shutdown::ShutdownSignal;
 use thiserror::Error;
-use tokio::{sync::broadcast, task, task::JoinHandle, time};
+use tokio::{sync::broadcast, task, task::JoinHandle, time, time::MissedTickBehavior};
 
 const LOG_TARGET: &str = "comms::dht::connectivity";
 
@@ -135,6 +135,7 @@ impl DhtConnectivity {
         self.refresh_neighbour_pool().await?;
 
         let mut ticker = time::interval(self.config.connectivity_update_interval);
+        ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         loop {
             tokio::select! {

@@ -45,7 +45,7 @@ Feature: Block Sync
     Then NODE1 should have 11 peers
     Then NODE2 should have 11 peers
 
-  @critical @reorg
+  @critical @reorg @broken
   Scenario: Full block sync with small reorg
     Given I have a base node NODE1
     And I have wallet WALLET1 connected to base node NODE1
@@ -103,6 +103,7 @@ Feature: Block Sync
     When I mine 15 blocks on PNODE2
     Then all nodes are at height 23
 
+  @broken
   Scenario: Node should not sync from pruned node
     Given I have a base node NODE1 connected to all seed nodes
     Given I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5

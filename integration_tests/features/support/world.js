@@ -1,4 +1,4 @@
-const { setWorldConstructor, After, BeforeAll } = require("cucumber");
+const { setWorldConstructor, After, BeforeAll, Before } = require("cucumber");
 
 const BaseNodeProcess = require("../../helpers/baseNodeProcess");
 const MergeMiningProxyProcess = require("../../helpers/mergeMiningProxyProcess");
@@ -143,6 +143,12 @@ class CustomWorld {
     if (txInputs == null) {
       return result;
     }
+    // This function is called from steps with timeout = -1. So we need to
+    // write something to the console from time to time. Because otherwise
+    // it will timeout and the tests will be killed.
+    let keepAlive = setInterval(() => {
+      console.log(".");
+    }, 1000 * 60 * 10);
     let i = 0;
     for (const input of txInputs) {
       const txn = new TransactionBuilder();
@@ -164,6 +170,7 @@ class CustomWorld {
         break;
       }
     }
+    clearInterval(keepAlive);
     console.log(
       `Created ${i} transactions for node: ${name} at height: ${height}`
     );
@@ -390,6 +397,10 @@ BeforeAll({ timeout: 1200000 }, async function () {
   console.log("FFI interface loaded.");
 
   console.log("World ready, now lets run some tests! :)");
+});
+
+Before(async function (testCase) {
+  console.log(`Testing scenario "${testCase.pickle.name}"`);
 });
 
 After(async function (testCase) {

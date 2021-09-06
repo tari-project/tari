@@ -445,7 +445,7 @@ where
     async fn dial_peer(
         &mut self,
         node_id: NodeId,
-        reply: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
+        reply: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
     ) {
         match self.peer_manager.find_by_node_id(&node_id).await {
             Ok(peer) => {
@@ -454,7 +454,9 @@ where
             },
             Err(err) => {
                 warn!(target: LOG_TARGET, "Failed to fetch peer to dial because '{}'", err);
-                let _ = reply.send(Err(ConnectionManagerError::PeerManagerError(err)));
+                if let Some(reply) = reply {
+                    let _ = reply.send(Err(ConnectionManagerError::PeerManagerError(err)));
+                }
             },
         }
     }
