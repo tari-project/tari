@@ -36,6 +36,7 @@ use crate::{
                     GreetingService,
                     SayHelloRequest,
                     SlowGreetingService,
+                    SlowStreamRequest,
                 },
                 mock::create_mocked_rpc_context,
             },
@@ -343,4 +344,43 @@ async fn rejected_no_sessions_available() {
         err,
         RpcError::HandshakeError(RpcHandshakeError::Rejected(HandshakeRejectReason::NoSessionsAvailable))
     ));
+}
+
+#[runtime::test]
+async fn stream_still_works_after_cancel() {
+    let service_impl = GreetingService::default();
+    let (socket, _, _, _shutdown) = setup(service_impl.clone(), 1).await;
+
+    let framed = framing::canonical(socket, 1024);
+    let mut client = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(5))
+        .connect(framed)
+        .await
+        .unwrap();
+
+    // Ask for a stream, but immediately throw away the receiver
+    let _ = client
+        .slow_stream(SlowStreamRequest {
+            num_items: 100,
+            item_size: 100,
+            delay_ms: 10,
+        })
+        .await
+        .unwrap();
+    // Request was sent
+    assert_eq!(service_impl.call_count(), 1);
+
+    // Subsequent call still works, after waiting for the previous one
+    let resp = client
+        .slow_stream(SlowStreamRequest {
+            num_items: 100,
+            item_size: 100,
+            delay_ms: 10,
+        })
+        .await
+        .unwrap();
+
+    resp.collect::<Vec<_>>().await.into_iter().for_each(|r| {
+        r.unwrap();
+    });
 }

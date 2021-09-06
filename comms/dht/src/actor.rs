@@ -53,6 +53,7 @@ use tokio::{
     sync::{mpsc, oneshot},
     task,
     time,
+    time::MissedTickBehavior,
 };
 
 const LOG_TARGET: &str = "comms::dht::actor";
@@ -267,6 +268,7 @@ impl DhtActor {
         let mut pending_jobs = FuturesUnordered::new();
 
         let mut dedup_cache_trim_ticker = time::interval(self.config.dedup_cache_trim_interval);
+        dedup_cache_trim_ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         loop {
             tokio::select! {
