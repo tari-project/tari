@@ -854,7 +854,8 @@ mod test {
         let dedup_cache_db = actor.msg_hash_dedup_cache.clone();
         // The cleanup ticker starts when the actor is spawned; the first cleanup event will fire fairly soon after the
         // task is running on a thread. To remove this race condition, we trim the cache in the test.
-        dedup_cache_db.trim_entries().await.unwrap();
+        let num_trimmed = dedup_cache_db.trim_entries().await.unwrap();
+        assert_eq!(num_trimmed, 10);
         actor.spawn();
 
         // Verify that the last half of the signatures are still present in the cache
