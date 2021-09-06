@@ -533,6 +533,9 @@ fn convert_node_config(
         .map(|seconds| seconds as u64)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
+    // The cooldown period between balance enquiry checks in seconds; requests faster than this will be ignored.
+    // For specialized wallets processing many batch transactions this setting could be increased to 60 s to retain
+    // responsiveness of the wallet with slightly delayed balance updates (default: 1)
     let key = "wallet.balance_enquiry_cooldown_period";
     let wallet_balance_enquiry_cooldown_period = cfg
         .get_int(key)

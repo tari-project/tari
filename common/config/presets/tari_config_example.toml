@@ -178,8 +178,6 @@ scan_for_utxo_interval = 180
 base_node_service_refresh_interval = 30
 # The maximum age of service requests in seconds, requests older than this are discarded
 base_node_service_request_max_age = 180
-# The cooldown period between balance enquiry checks in seconds, requests faster than this will be ignored
-balance_enquiry_cooldown_period = 60
 
 #[base_node.transport.tor]
 #control_address = "/ip4/127.0.0.1/tcp/9051"

@@ -149,6 +149,13 @@ impl AppState {
         Ok(())
     }
 
+    pub async fn refresh_balance_check(&self) -> Result<(), UiError> {
+        let mut inner = self.inner.write().await;
+        inner.refresh_balance_check().await?;
+        drop(inner);
+        Ok(())
+    }
+
     pub async fn update_cache(&mut self) {
         let update = match self.cache_update_cooldown {
             Some(last_update) => last_update.elapsed() > self.config.cache_update_cooldown,
@@ -676,11 +683,6 @@ impl AppStateInner {
 
     pub async fn refresh_balance_check(&mut self) -> Result<(), UiError> {
         if self.balance_enquiry_cooldown_infringement {
-            trace!(
-                target: LOG_TARGET,
-                "Balance enquiry cooldown period ({}s) was infringed; trying to update balance again now",
-                self.balance_enquiry_cooldown_period
-            );
             self.refresh_balance().await?;
         };
 

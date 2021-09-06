@@ -115,7 +115,7 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
             trace!(
                 target: LOG_TARGET,
                 "Obtain RPC client {} ms",
-                Instant::now().duration_since(start).as_millis(),
+                start.elapsed().as_millis()
             );
 
             let base_node_id = match self.wallet_connectivity.get_current_base_node_id() {
@@ -135,7 +135,8 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
             // the time it takes for the metadata call, which is evident as well when the base node gets busy and will
             // often take longer than the metadata call itself. Having two longish RPC calls with no added value
             // results in more RPC request timeouts than is necessary.
-            let latency = Instant::now().duration_since(start);
+            // TODO: Find root cause of RPC ping calls taking approximately as long as RPC fetch meta data calls
+            let latency = start.elapsed();
 
             let is_synced = tip_info.is_synced;
             debug!(
@@ -160,7 +161,7 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
             trace!(
                 target: LOG_TARGET,
                 "Update metadata in db and publish event {} ms",
-                Instant::now().duration_since(start).as_millis(),
+                start.elapsed().as_millis()
             );
 
             time::sleep(self.interval).await
