@@ -20,18 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    output_manager_service::TxId,
-    transaction_service::{
-        error::{TransactionServiceError, TransactionServiceProtocolError},
-        handle::TransactionEvent,
-        service::TransactionServiceResources,
-        storage::{
-            database::TransactionBackend,
-            models::{CompletedTransaction, InboundTransaction, TransactionDirection, TransactionStatus},
-        },
-        tasks::send_transaction_reply::send_transaction_reply,
+use crate::transaction_service::{
+    error::{TransactionServiceError, TransactionServiceProtocolError},
+    handle::TransactionEvent,
+    service::TransactionServiceResources,
+    storage::{
+        database::TransactionBackend,
+        models::{CompletedTransaction, InboundTransaction, TransactionDirection, TransactionStatus},
     },
+    tasks::send_transaction_reply::send_transaction_reply,
 };
 use chrono::Utc;
 use futures::future::FutureExt;
@@ -42,7 +39,7 @@ use tokio::sync::{mpsc, oneshot};
 
 use tari_core::transactions::{
     transaction::Transaction,
-    transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
+    transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage, TxId},
 };
 use tari_crypto::tari_utilities::Hashable;
 use tokio::time::sleep;
@@ -59,7 +56,7 @@ pub enum TransactionReceiveProtocolStage {
 pub struct TransactionReceiveProtocol<TBackend>
 where TBackend: TransactionBackend + 'static
 {
-    id: u64,
+    id: TxId,
     source_pubkey: CommsPublicKey,
     sender_message: TransactionSenderMessage,
     stage: TransactionReceiveProtocolStage,
@@ -72,7 +69,7 @@ impl<TBackend> TransactionReceiveProtocol<TBackend>
 where TBackend: TransactionBackend + 'static
 {
     pub fn new(
-        id: u64,
+        id: TxId,
         source_pubkey: CommsPublicKey,
         sender_message: TransactionSenderMessage,
         stage: TransactionReceiveProtocolStage,
@@ -91,7 +88,7 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
-    pub async fn execute(mut self) -> Result<u64, TransactionServiceProtocolError> {
+    pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError> {
         info!(
             target: LOG_TARGET,
             "Starting Transaction Receive protocol for TxId: {} at Stage {:?}", self.id, self.stage
@@ -146,6 +143,7 @@ where TBackend: TransactionBackend + 'static
                 data.tx_id,
                 self.source_pubkey.clone(),
                 amount,
+                data.unique_id,
                 rtp,
                 TransactionStatus::Pending,
                 data.message.clone(),
@@ -306,6 +304,7 @@ where TBackend: TransactionBackend + 'static
 
         #[allow(unused_assignments)]
         let mut incoming_finalized_transaction = None;
+
         loop {
             loop {
                 let resend_timeout = sleep(self.resources.config.transaction_resend_period).fuse();
@@ -445,6 +444,7 @@ where TBackend: TransactionBackend + 'static
                 self.source_pubkey.clone(),
                 self.resources.node_identity.public_key().clone(),
                 inbound_tx.amount,
+                rtp_output.unique_id.clone(),
                 finalized_transaction.body.get_total_fee(),
                 finalized_transaction.clone(),
                 TransactionStatus::Completed,

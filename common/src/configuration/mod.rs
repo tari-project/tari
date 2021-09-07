@@ -40,6 +40,8 @@ pub mod global;
 pub mod loader;
 mod network;
 pub use network::Network;
+mod dan_config;
 pub mod seconds;
 pub mod utils;
 pub mod writer;
+pub use dan_config::DanNodeConfig;

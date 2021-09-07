@@ -250,6 +250,12 @@ impl ConfigBootstrap {
                         Some(&self.base_path),
                     ))
                 },
+                ApplicationType::DanNode => {
+                    self.log_config = normalize_path(dir_utils::default_path(
+                        DEFAULT_BASE_NODE_LOG_CONFIG,
+                        Some(&self.base_path),
+                    ))
+                },
             }
         }
 
@@ -300,6 +306,9 @@ impl ConfigBootstrap {
                     ApplicationType::MiningNode => {
                         install_configuration(&self.log_config, logging::install_default_mining_node_logfile_config)
                     },
+                    ApplicationType::DanNode => {
+                        install_configuration(&self.log_config, logging::install_default_base_node_logfile_config)
+                    }
                 }
             }
         };
@@ -348,6 +357,7 @@ pub enum ApplicationType {
     MergeMiningProxy,
     MiningNode,
     StratumTranscoder,
+    DanNode
 }
 
 impl ApplicationType {
@@ -358,6 +368,7 @@ impl ApplicationType {
             ConsoleWallet => "Tari Console Wallet",
             MergeMiningProxy => "Tari Merge Mining Proxy",
             MiningNode => "Tari Mining Node",
+            DanNode => "Digital Assets Network Node",
             StratumTranscoder => "Tari Stratum Transcoder",
         }
     }
@@ -370,6 +381,7 @@ impl ApplicationType {
             MergeMiningProxy => "merge_mining_proxy",
             MiningNode => "miner",
             StratumTranscoder => "stratum-transcoder",
+            DanNode =>"dan-node"
         }
     }
 }
@@ -384,6 +396,7 @@ impl FromStr for ApplicationType {
             "console-wallet" | "console_wallet" => Ok(ConsoleWallet),
             "mm-proxy" | "mm_proxy" => Ok(MergeMiningProxy),
             "miner" => Ok(MiningNode),
+            "dan-node" => Ok(DanNode),
             "stratum-proxy" => Ok(StratumTranscoder),
             _ => Err(ConfigError::new("Invalid ApplicationType", None)),
         }

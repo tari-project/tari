@@ -31,8 +31,11 @@ pub mod receive_tab;
 pub mod send_tab;
 pub mod tabs_container;
 pub mod transactions_tab;
-
+pub mod tokens_component;
+pub mod assets_tab;
+mod styles;
 pub use self::component::*;
+pub mod events_component;
 
 #[derive(PartialEq, Eq)]
 pub enum KeyHandled {

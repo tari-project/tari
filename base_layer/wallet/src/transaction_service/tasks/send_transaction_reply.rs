@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::output_manager_service::TxId;
 use log::*;
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::SendMessageResponse};
 use tari_p2p::tari_message::TariMessageType;
@@ -34,7 +33,7 @@ use crate::transaction_service::{
 use std::time::Duration;
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_comms_dht::outbound::{OutboundEncryption, OutboundMessageRequester};
-use tari_core::transactions::transaction_protocol::proto;
+use tari_core::transactions::transaction_protocol::{proto, TxId};
 
 const LOG_TARGET: &str = "wallet::transaction_service::tasks::send_transaction_reply";
 

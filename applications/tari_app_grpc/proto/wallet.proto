@@ -54,6 +54,11 @@ service Wallet {
     rpc ListConnectedPeers(Empty) returns (ListConnectedPeersResponse);
     // Cancel pending transaction
     rpc CancelTransaction (CancelTransactionRequest) returns (CancelTransactionResponse);
+
+    // Mint base layer tokens for an asset
+    rpc MintTokens(MintTokensRequest) returns (MintTokensResponse);
+
+    rpc GetOwnedTokens(GetOwnedTokensRequest) returns (GetOwnedTokensResponse);
 }
 
 message GetVersionRequest { }
@@ -187,6 +192,29 @@ message ImportUtxosRequest {
 
 message ImportUtxosResponse {
     repeated uint64 tx_ids = 1;
+}
+
+message MintTokensRequest {
+    bytes asset_public_key = 1;
+    repeated bytes unique_ids = 2;
+}
+
+message MintTokensResponse {
+    repeated bytes owner_commitments =1;
+}
+
+message GetOwnedTokensRequest {
+    bytes asset_public_key = 1;
+}
+
+message GetOwnedTokensResponse {
+    repeated TokenUtxo tokens =1;
+}
+
+message TokenUtxo {
+    bytes commitment = 1;
+    bytes unique_id = 2;
+    bytes asset_public_key = 3;
 }
 
 message CancelTransactionRequest {

@@ -51,10 +51,11 @@ use tari_core::{
     transactions::{
         tari_amount::{uT, MicroTari, Tari},
         transaction::UnblindedOutput,
+        transaction_protocol::TxId,
     },
 };
 use tari_wallet::{
-    output_manager_service::{handle::OutputManagerHandle, TxId},
+    output_manager_service::handle::OutputManagerHandle,
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
     WalletSqlite,
 };
@@ -82,6 +83,8 @@ pub enum WalletCommand {
     SetBaseNode,
     SetCustomBaseNode,
     ClearCustomBaseNode,
+    RegisterAsset,
+    MintTokens,
 }
 
 #[derive(Debug, EnumString, PartialEq, Clone)]
@@ -133,7 +136,7 @@ pub async fn send_tari(
 ) -> Result<TxId, CommandError> {
     let (fee_per_gram, amount, dest_pubkey, message) = get_transaction_parameters(args)?;
     wallet_transaction_service
-        .send_transaction(dest_pubkey, amount, fee_per_gram, message)
+        .send_transaction(dest_pubkey, amount, None, fee_per_gram, message)
         .await
         .map_err(CommandError::TransactionServiceError)
 }
@@ -145,7 +148,7 @@ pub async fn send_one_sided(
 ) -> Result<TxId, CommandError> {
     let (fee_per_gram, amount, dest_pubkey, message) = get_transaction_parameters(args)?;
     wallet_transaction_service
-        .send_one_sided_transaction(dest_pubkey, amount, fee_per_gram, message)
+        .send_one_sided_transaction(dest_pubkey, amount, None, fee_per_gram, message)
         .await
         .map_err(CommandError::TransactionServiceError)
 }
@@ -554,7 +557,7 @@ pub async fn command_runner(
     let wait_stage = TransactionStage::from_str(&config.wallet_command_send_wait_stage)
         .map_err(|e| CommandError::Config(e.to_string()))?;
 
-    let transaction_service = wallet.transaction_service.clone();
+    let mut transaction_service = wallet.transaction_service.clone();
     let mut output_service = wallet.output_manager_service.clone();
     let dht_service = wallet.dht_service.discovery_service_requester().clone();
     let connectivity_requester = wallet.comms.connectivity();
@@ -683,6 +686,50 @@ pub async fn command_runner(
                     .clear_client_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string())
                     .await?;
                 println!("Custom base node peer cleared from wallet database.");
+            },
+            RegisterAsset => {
+                println!("Registering asset.");
+                let name = parsed.args[0].to_string();
+                let mut manager = wallet.asset_manager.clone();
+                let (tx_id, transaction) = manager.create_registration_transaction(name).await?;
+                let fee = transaction.body.get_total_fee();
+                let _result = transaction_service
+                    .submit_transaction(tx_id, transaction, fee, 0.into(), "test o ramam".to_string())
+                    .await?;
+            },
+            MintTokens => {
+                println!("Minting tokens for asset");
+                let public_key = match parsed.args[0] {
+                    ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
+                    _ => Err(CommandError::Argument),
+                }?;
+
+                let unique_ids: Vec<Vec<u8>> = parsed.args[1..]
+                    .iter()
+                    .map(|arg| {
+                        let s = arg.to_string();
+                        match &s[0..2] {
+                            "0x" => {
+                                let s = s[2..].to_string();
+                                let r: Vec<u8> = Hex::from_hex(&s).unwrap();
+                                r
+                            },
+                            _ => s.into_bytes(),
+                        }
+                    })
+                    .collect();
+
+                let mut asset_manager = wallet.asset_manager.clone();
+                let asset = asset_manager.get_owned_asset_by_pub_key(&public_key).await?;
+                println!("Found asset:{}", asset.name());
+
+                let (tx_id, transaction) = asset_manager
+                    .create_minting_transaction(&public_key, asset.owner_commitment(), unique_ids)
+                    .await?;
+                let fee = transaction.body.get_total_fee();
+                let _result = transaction_service
+                    .submit_transaction(tx_id, transaction, fee, 0.into(), "test mint transaction".to_string())
+                    .await?;
             },
         }
     }

@@ -184,7 +184,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         let mut state = Starting(states::Starting);
         loop {
             if let Shutdown(reason) = &state {
-                debug!(
+                info!(
                     target: LOG_TARGET,
                     "Base Node state machine is shutting down because {}", reason
                 );

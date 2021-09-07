@@ -40,6 +40,11 @@
         <th>Commitment</th>
         <th>Flags</th>
         <th>Maturity</th>
+        <th>Metadata</th>
+        <th>Asset data</th>
+        <th>NFT data</th>
+        <th>Unique Id</th>
+        <td>Parent PK</td>
     </tr>
     </thead>
     <tbody>
@@ -49,6 +54,11 @@
          <td>{{hex commitment}}</td>
          <td>{{features.flags}}</td>
          <td>{{features.maturity}}</td>
+         <td>{{hex features.metadata}}</td>
+         <td>{{ json features.asset }}</td>
+         <td>{{ json features.mint_non_fungible }}</td>
+         <td>{{ hex unique_id}}</td>
+         <td><a href="/assets/{{ hex parent_public_key }}">{{ hex parent_public_key }}</a></td>
      </tr>
     {{/each}}
     </tbody>

@@ -66,6 +66,7 @@ use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 
 use crate::{
+    assets::AssetManagerHandle,
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     config::{WalletConfig, KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY},
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer},
@@ -76,7 +77,6 @@ use crate::{
         handle::OutputManagerHandle,
         storage::{database::OutputManagerBackend, models::KnownOneSidedPaymentScript},
         OutputManagerServiceInitializer,
-        TxId,
     },
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
@@ -87,6 +87,12 @@ use crate::{
     types::KeyDigest,
     utxo_scanner_service::{handle::UtxoScannerHandle, UtxoScannerServiceInitializer},
 };
+
+use crate::{
+    assets::infrastructure::initializer::AssetManagerServiceInitializer,
+    tokens::{infrastructure::initializer::TokenManagerServiceInitializer, TokenManagerHandle},
+};
+use tari_core::transactions::transaction_protocol::TxId;
 
 const LOG_TARGET: &str = "wallet";
 
@@ -109,6 +115,8 @@ where
     pub contacts_service: ContactsServiceHandle,
     pub base_node_service: BaseNodeServiceHandle,
     pub utxo_scanner_service: UtxoScannerHandle,
+    pub asset_manager: AssetManagerHandle,
+    pub token_manager: TokenManagerHandle,
     pub updater_service: Option<SoftwareUpdaterHandle>,
     pub db: WalletDatabase<T>,
     pub factories: CryptoFactories,
@@ -176,7 +184,7 @@ where
             .add_initializer(P2pInitializer::new(comms_config, publisher))
             .add_initializer(OutputManagerServiceInitializer::new(
                 config.output_manager_service_config.unwrap_or_default(),
-                output_manager_backend,
+                output_manager_backend.clone(),
                 factories.clone(),
                 config.network,
                 master_secret_key,
@@ -199,7 +207,9 @@ where
                 wallet_database.clone(),
                 factories.clone(),
                 node_identity.clone(),
-            ));
+            ))
+            .add_initializer(AssetManagerServiceInitializer::new(output_manager_backend.clone()))
+            .add_initializer(TokenManagerServiceInitializer::new(output_manager_backend));
 
         // Check if we have update config. FFI wallets don't do this, the update on mobile is done differently.
         let stack = match config.updater_config {
@@ -230,6 +240,8 @@ where
 
         let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
         let utxo_scanner_service_handle = handles.expect_handle::<UtxoScannerHandle>();
+        let asset_manager_handle = handles.expect_handle::<AssetManagerHandle>();
+        let token_manager_handle = handles.expect_handle::<TokenManagerHandle>();
         let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle>();
         let updater_handle = config
             .updater_config
@@ -264,6 +276,10 @@ where
             wallet_connectivity,
             db: wallet_database,
             factories,
+            asset_manager: asset_manager_handle,
+            token_manager: token_manager_handle,
+            #[cfg(feature = "test_harness")]
+            transaction_backend: transaction_backend_handle,
             _u: PhantomData,
             _v: PhantomData,
             _w: PhantomData,
@@ -387,6 +403,9 @@ where
             script_private_key.clone(),
             sender_offset_public_key.clone(),
             metadata_signature,
+            // TODO: Allow importing of unique ids
+            None,
+            None,
         );
 
         let tx_id = self

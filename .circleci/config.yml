@@ -85,9 +85,11 @@ commands:
             TOOLCHAIN=$(cat rust-toolchain)
             rustup component add --toolchain $TOOLCHAIN clippy
             cargo clippy -- -D warnings -W clippy::cognitive_complexity
+          when: always
       - run:
           name: Run clippy (all targets)
           command: cargo clippy --all-targets -- -D warnings
+          when: always
       - save_cache:
           paths:
             - /usr/local/cargo/registry

@@ -49,6 +49,7 @@ pub enum NodeCommsResponse {
     TargetDifficulty(Difficulty),
     FetchHeadersAfterResponse(Vec<BlockHeader>),
     MmrNodes(Vec<HashOutput>, Vec<u8>),
+    FetchTokensResponse{ outputs: Vec<TransactionOutput> }
 }
 
 impl Display for NodeCommsResponse {
@@ -76,6 +77,7 @@ impl Display for NodeCommsResponse {
             TargetDifficulty(_) => write!(f, "TargetDifficulty"),
             FetchHeadersAfterResponse(_) => write!(f, "FetchHeadersAfterResponse"),
             MmrNodes(_, _) => write!(f, "MmrNodes"),
+            FetchTokensResponse { .. } => write!(f, "FetchTokensResponse")
         }
     }
 }

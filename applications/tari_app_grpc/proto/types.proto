@@ -190,6 +190,11 @@ message TransactionOutput {
     // Metadata signature with the homomorphic commitment private values (amount and blinding factor) and the sender
     // offset private key
     ComSignature metadata_signature = 7;
+    // Tari script offset pubkey, K_O
+
+    // Unique id, e.g. for NFTs
+    bytes unique_id = 8;
+    bytes parent_public_key = 9;
 }
 
 // Options for UTXO's
@@ -199,7 +204,22 @@ message OutputFeatures {
     // The maturity of the specific UTXO. This is the min lock height at which an UTXO can be spend. Coinbase UTXO
     // require a min maturity of the Coinbase_lock_height, this should be checked on receiving new blocks.
     uint64 maturity = 2;
+
+    bytes metadata= 3;
+
+    AssetOutputFeatures asset = 16;
+    MintNonFungibleFeatures mint_non_fungible = 17;
 }
+
+message AssetOutputFeatures {
+    bytes public_key = 1;
+}
+
+message MintNonFungibleFeatures {
+    bytes asset_public_key = 1;
+    bytes asset_owner_commitment  = 2;
+}
+
 
 // The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
 // cut-through means that blocks and transactions have the same structure. The inputs, outputs and kernels should
@@ -288,6 +308,8 @@ message UnblindedOutput {
     bytes sender_offset_public_key = 8;
     // UTXO signature with the script offset private key, k_O
     ComSignature metadata_signature = 9;
+    // Unique Id
+    bytes unique_id = 10;
 }
 
 // ----------------------------- Network Types ----------------------------- //

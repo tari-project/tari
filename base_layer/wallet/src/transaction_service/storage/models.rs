@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{output_manager_service::TxId, transaction_service::error::TransactionStorageError};
+use crate::{transaction_service::error::TransactionStorageError};
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -35,6 +35,7 @@ use tari_core::transactions::{
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
+use tari_core::transactions::transaction_protocol::TxId;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TransactionStatus {
@@ -100,6 +101,7 @@ pub struct InboundTransaction {
     pub tx_id: TxId,
     pub source_public_key: CommsPublicKey,
     pub amount: MicroTari,
+    pub unique_id: Option<Vec<u8>>,
     pub receiver_protocol: ReceiverTransactionProtocol,
     pub status: TransactionStatus,
     pub message: String,
@@ -115,6 +117,7 @@ impl InboundTransaction {
         tx_id: TxId,
         source_public_key: CommsPublicKey,
         amount: MicroTari,
+        unique_id: Option<Vec<u8>>,
         receiver_protocol: ReceiverTransactionProtocol,
         status: TransactionStatus,
         message: String,
@@ -124,6 +127,7 @@ impl InboundTransaction {
             tx_id,
             source_public_key,
             amount,
+            unique_id,
             receiver_protocol,
             status,
             message,
@@ -150,6 +154,7 @@ pub struct OutboundTransaction {
     pub direct_send_success: bool,
     pub send_count: u32,
     pub last_send_timestamp: Option<NaiveDateTime>,
+    pub unique_id: Option<Vec<u8>>
 }
 
 impl OutboundTransaction {
@@ -158,6 +163,7 @@ impl OutboundTransaction {
         tx_id: TxId,
         destination_public_key: CommsPublicKey,
         amount: MicroTari,
+        unique_id: Option<Vec<u8>>,
         fee: MicroTari,
         sender_protocol: SenderTransactionProtocol,
         status: TransactionStatus,
@@ -169,6 +175,7 @@ impl OutboundTransaction {
             tx_id,
             destination_public_key,
             amount,
+            unique_id,
             fee,
             sender_protocol,
             status,
@@ -188,6 +195,7 @@ pub struct CompletedTransaction {
     pub source_public_key: CommsPublicKey,
     pub destination_public_key: CommsPublicKey,
     pub amount: MicroTari,
+    pub unique_id: Option<Vec<u8>>,
     pub fee: MicroTari,
     pub transaction: Transaction,
     pub status: TransactionStatus,
@@ -210,6 +218,7 @@ impl CompletedTransaction {
         source_public_key: CommsPublicKey,
         destination_public_key: CommsPublicKey,
         amount: MicroTari,
+        unique_id: Option<Vec<u8>>,
         fee: MicroTari,
         transaction: Transaction,
         status: TransactionStatus,
@@ -223,6 +232,7 @@ impl CompletedTransaction {
             source_public_key,
             destination_public_key,
             amount,
+            unique_id,
             fee,
             transaction,
             status,
@@ -279,6 +289,7 @@ impl From<CompletedTransaction> for InboundTransaction {
             tx_id: ct.tx_id,
             source_public_key: ct.source_public_key,
             amount: ct.amount,
+            unique_id: ct.unique_id,
             receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
             status: ct.status,
             message: ct.message,
@@ -297,6 +308,7 @@ impl From<CompletedTransaction> for OutboundTransaction {
             tx_id: ct.tx_id,
             destination_public_key: ct.destination_public_key,
             amount: ct.amount,
+            unique_id: ct.unique_id.clone(),
             fee: ct.fee,
             sender_protocol: SenderTransactionProtocol::new_placeholder(),
             status: ct.status,
@@ -317,6 +329,7 @@ impl From<OutboundTransaction> for CompletedTransaction {
             source_public_key: Default::default(),
             destination_public_key: tx.destination_public_key,
             amount: tx.amount,
+            unique_id: tx.unique_id,
             fee: tx.fee,
             status: tx.status,
             message: tx.message,
@@ -341,6 +354,7 @@ impl From<InboundTransaction> for CompletedTransaction {
             source_public_key: tx.source_public_key,
             destination_public_key: Default::default(),
             amount: tx.amount,
+            unique_id: tx.unique_id,
             fee: MicroTari::from(0),
             status: tx.status,
             message: tx.message,

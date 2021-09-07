@@ -5,8 +5,9 @@ const cookieParser = require('cookie-parser')
 const logger = require('morgan')
 const asciichart = require('asciichart')
 
-var indexRouter = require('./routes/index')
-var blocksRouter = require('./routes/blocks')
+var indexRouter = require('./routes/index');
+var blocksRouter = require('./routes/blocks');
+var assetsRouter = require('./routes/assets');
 
 var hbs = require('hbs')
 hbs.registerHelper('hex', function (buffer) {
@@ -43,6 +44,10 @@ hbs.registerHelper('chart', function(data, height) {
   return asciichart.plot(data, {height: height})
 })
 
+hbs.registerHelper('json', function(obj) {
+  return JSON.stringify(obj);
+})
+
 var app = express()
 
 // view engine setup
@@ -55,8 +60,9 @@ app.use(express.urlencoded({ extended: false }))
 app.use(cookieParser())
 app.use(express.static(path.join(__dirname, 'public')))
 
-app.use('/', indexRouter)
-app.use('/blocks', blocksRouter)
+app.use('/', indexRouter);
+app.use('/blocks', blocksRouter);
+app.use('/assets', assetsRouter);
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {

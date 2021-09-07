@@ -52,20 +52,17 @@ use log::*;
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
 use tari_shutdown::ShutdownSignal;
-use tari_wallet::{
-    output_manager_service::{
-        handle::{OutputManagerEvent, OutputManagerEventReceiver},
-        TxId,
-        TxoValidationType,
+use tari_wallet::{output_manager_service::{
+    handle::{OutputManagerEvent, OutputManagerEventReceiver},
+    TxoValidationType,
+}, transaction_service::{
+    handle::{TransactionEvent, TransactionEventReceiver},
+    storage::{
+        database::{TransactionBackend, TransactionDatabase},
+        models::{CompletedTransaction, InboundTransaction},
     },
-    transaction_service::{
-        handle::{TransactionEvent, TransactionEventReceiver},
-        storage::{
-            database::{TransactionBackend, TransactionDatabase},
-            models::{CompletedTransaction, InboundTransaction},
-        },
-    },
-};
+}, OperationId};
+use tari_core::transactions::transaction_protocol::TxId;
 
 const LOG_TARGET: &str = "wallet::transaction_service::callback_handler";
 
@@ -86,8 +83,8 @@ where TBackend: TransactionBackend + 'static
     callback_transaction_broadcast: unsafe extern "C" fn(*mut CompletedTransaction),
     callback_transaction_mined: unsafe extern "C" fn(*mut CompletedTransaction),
     callback_transaction_mined_unconfirmed: unsafe extern "C" fn(*mut CompletedTransaction, u64),
-    callback_direct_send_result: unsafe extern "C" fn(TxId, bool),
-    callback_store_and_forward_send_result: unsafe extern "C" fn(TxId, bool),
+    callback_direct_send_result: unsafe extern "C" fn(u64, bool),
+    callback_store_and_forward_send_result: unsafe extern "C" fn(u64, bool),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction),
     callback_utxo_validation_complete: unsafe extern "C" fn(u64, u8),
     callback_stxo_validation_complete: unsafe extern "C" fn(u64, u8),
@@ -119,13 +116,13 @@ where TBackend: TransactionBackend + 'static
         callback_transaction_broadcast: unsafe extern "C" fn(*mut CompletedTransaction),
         callback_transaction_mined: unsafe extern "C" fn(*mut CompletedTransaction),
         callback_transaction_mined_unconfirmed: unsafe extern "C" fn(*mut CompletedTransaction, u64),
-        callback_direct_send_result: unsafe extern "C" fn(TxId, bool),
-        callback_store_and_forward_send_result: unsafe extern "C" fn(TxId, bool),
+        callback_direct_send_result: unsafe extern "C" fn(u64, bool),
+        callback_store_and_forward_send_result: unsafe extern "C" fn(u64, bool),
         callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction),
-        callback_utxo_validation_complete: unsafe extern "C" fn(TxId, u8),
-        callback_stxo_validation_complete: unsafe extern "C" fn(TxId, u8),
-        callback_invalid_txo_validation_complete: unsafe extern "C" fn(TxId, u8),
-        callback_transaction_validation_complete: unsafe extern "C" fn(TxId, u8),
+        callback_utxo_validation_complete: unsafe extern "C" fn(u64, u8),
+        callback_stxo_validation_complete: unsafe extern "C" fn(u64, u8),
+        callback_invalid_txo_validation_complete: unsafe extern "C" fn(u64, u8),
+        callback_transaction_validation_complete: unsafe extern "C" fn(u64, u8),
         callback_saf_messages_received: unsafe extern "C" fn(),
     ) -> Self {
         info!(
@@ -318,7 +315,7 @@ where TBackend: TransactionBackend + 'static
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Calling Received Transaction callback function for TxId: {}", tx_id
+                    "Calling Received Transaction callback function for u64: {}", tx_id
                 );
                 let boxing = Box::into_raw(Box::new(tx));
                 unsafe {
@@ -337,7 +334,7 @@ where TBackend: TransactionBackend + 'static
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Calling Received Transaction Reply callback function for TxId: {}", tx_id
+                    "Calling Received Transaction Reply callback function for u64: {}", tx_id
                 );
                 let boxing = Box::into_raw(Box::new(tx));
                 unsafe {
@@ -370,7 +367,7 @@ where TBackend: TransactionBackend + 'static
             "Calling Direct Send Result callback function for TxId: {} with result {}", tx_id, result
         );
         unsafe {
-            (self.callback_direct_send_result)(tx_id, result);
+            (self.callback_direct_send_result)(tx_id.as_u64(), result);
         }
     }
 
@@ -380,19 +377,19 @@ where TBackend: TransactionBackend + 'static
             "Calling Store and Forward Send Result callback function for TxId: {} with result {}", tx_id, result
         );
         unsafe {
-            (self.callback_store_and_forward_send_result)(tx_id, result);
+            (self.callback_store_and_forward_send_result)(tx_id.as_u64(), result);
         }
     }
 
     async fn receive_transaction_cancellation(&mut self, tx_id: TxId) {
         let mut transaction = None;
-        if let Ok(tx) = self.db.get_cancelled_completed_transaction(tx_id).await {
+        if let Ok(tx) = self.db.get_cancelled_completed_transaction(tx_id.into()).await {
             transaction = Some(tx);
-        } else if let Ok(tx) = self.db.get_cancelled_pending_outbound_transaction(tx_id).await {
+        } else if let Ok(tx) = self.db.get_cancelled_pending_outbound_transaction(tx_id.into()).await {
             let mut outbound_tx = CompletedTransaction::from(tx);
             outbound_tx.source_public_key = self.comms_public_key.clone();
             transaction = Some(outbound_tx);
-        } else if let Ok(tx) = self.db.get_cancelled_pending_inbound_transaction(tx_id).await {
+        } else if let Ok(tx) = self.db.get_cancelled_pending_inbound_transaction(tx_id.into()).await {
             let mut inbound_tx = CompletedTransaction::from(tx);
             inbound_tx.destination_public_key = self.comms_public_key.clone();
             transaction = Some(inbound_tx);
@@ -417,7 +414,7 @@ where TBackend: TransactionBackend + 'static
     }
 
     async fn receive_transaction_broadcast_event(&mut self, tx_id: TxId) {
-        match self.db.get_completed_transaction(tx_id).await {
+        match self.db.get_completed_transaction(tx_id.into()).await {
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,
@@ -433,7 +430,7 @@ where TBackend: TransactionBackend + 'static
     }
 
     async fn receive_transaction_mined_event(&mut self, tx_id: TxId) {
-        match self.db.get_completed_transaction(tx_id).await {
+        match self.db.get_completed_transaction(tx_id.into()).await {
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,
@@ -449,7 +446,7 @@ where TBackend: TransactionBackend + 'static
     }
 
     async fn receive_transaction_mined_unconfirmed_event(&mut self, tx_id: TxId, confirmations: u64) {
-        match self.db.get_completed_transaction(tx_id).await {
+        match self.db.get_completed_transaction(tx_id.into()).await {
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,
@@ -464,7 +461,7 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
-    fn transaction_validation_complete_event(&mut self, request_key: u64, result: CallbackValidationResults) {
+    fn transaction_validation_complete_event(&mut self, request_key: OperationId, result: CallbackValidationResults) {
         debug!(
             target: LOG_TARGET,
             "Calling Transaction Validation Complete callback function for Request Key: {} with result {:?}",
@@ -473,17 +470,17 @@ where TBackend: TransactionBackend + 'static
         );
         match result {
             CallbackValidationResults::Success => unsafe {
-                (self.callback_transaction_validation_complete)(request_key, CallbackValidationResults::Success as u8);
+                (self.callback_transaction_validation_complete)(request_key.as_u64(), CallbackValidationResults::Success as u8);
             },
             CallbackValidationResults::Aborted => unsafe {
-                (self.callback_transaction_validation_complete)(request_key, CallbackValidationResults::Aborted as u8);
+                (self.callback_transaction_validation_complete)(request_key.as_u64(), CallbackValidationResults::Aborted as u8);
             },
             CallbackValidationResults::Failure => unsafe {
-                (self.callback_transaction_validation_complete)(request_key, CallbackValidationResults::Failure as u8);
+                (self.callback_transaction_validation_complete)(request_key.as_u64(), CallbackValidationResults::Failure as u8);
             },
             CallbackValidationResults::BaseNodeNotInSync => unsafe {
                 (self.callback_transaction_validation_complete)(
-                    request_key,
+                    request_key.as_u64(),
                     CallbackValidationResults::BaseNodeNotInSync as u8,
                 );
             },

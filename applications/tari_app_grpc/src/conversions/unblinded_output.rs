@@ -36,10 +36,7 @@ impl From<UnblindedOutput> for grpc::UnblindedOutput {
         grpc::UnblindedOutput {
             value: u64::from(output.value),
             spending_key: output.spending_key.as_bytes().to_vec(),
-            features: Some(grpc::OutputFeatures {
-                flags: output.features.flags.bits() as u32,
-                maturity: output.features.maturity,
-            }),
+            features: Some(output.features.into()),
             script: output.script.as_bytes(),
             input_data: output.input_data.as_bytes(),
             script_private_key: output.script_private_key.as_bytes().to_vec(),
@@ -49,6 +46,7 @@ impl From<UnblindedOutput> for grpc::UnblindedOutput {
                 signature_u: Vec::from(output.metadata_signature.u().as_bytes()),
                 signature_v: Vec::from(output.metadata_signature.v().as_bytes()),
             }),
+            unique_id: output.unique_id.unwrap_or_default()
         }
     }
 }
@@ -82,6 +80,7 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
             .try_into()
             .map_err(|_| "Metadata signature could not be converted".to_string())?;
 
+        let unique_id = if output.unique_id.is_empty() { None } else {Some(output.unique_id.clone())};
         Ok(Self {
             value: MicroTari::from(output.value),
             spending_key,
@@ -91,6 +90,10 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
             script_private_key,
             sender_offset_public_key,
             metadata_signature,
+            unique_id,
+
+            // TODO: Remove this none
+            parent_public_key: None
         })
     }
 }

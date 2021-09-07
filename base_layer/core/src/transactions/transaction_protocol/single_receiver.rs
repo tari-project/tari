@@ -128,6 +128,8 @@ impl SingleReceiverTransactionProtocol {
             sender_info.script.clone(),
             sender_info.sender_offset_public_key.clone(),
             partial_metadata_signature,
+            None,
+            None
         );
         Ok(output)
     }

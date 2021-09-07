@@ -52,6 +52,7 @@ pub enum NodeCommsRequest {
     GetNewBlockTemplate(GetNewBlockTemplateRequest),
     GetNewBlock(NewBlockTemplate),
     FetchKernelByExcessSig(Signature),
+    FetchTokens {  asset_public_key: Vec<u8>, unique_ids: Vec<Vec<u8>>}
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -84,6 +85,7 @@ impl Display for NodeCommsRequest {
                 s.get_public_nonce().to_hex(),
                 s.get_signature().to_hex()
             ),
+            FetchTokens { .. } => { write!(f, "FetchTokens")}
         }
     }
 }

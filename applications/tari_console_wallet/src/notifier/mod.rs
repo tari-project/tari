@@ -28,7 +28,6 @@ use std::{
 };
 use tari_core::tari_utilities::hex::Hex;
 use tari_wallet::{
-    output_manager_service::TxId,
     transaction_service::storage::models::{
         CompletedTransaction,
         InboundTransaction,
@@ -38,6 +37,7 @@ use tari_wallet::{
     WalletSqlite,
 };
 use tokio::runtime::Handle;
+use tari_core::transactions::transaction_protocol::TxId;
 
 pub const LOG_TARGET: &str = "wallet::notifier";
 const RECEIVED: &str = "received";

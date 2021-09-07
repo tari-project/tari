@@ -36,7 +36,7 @@ pub enum Network {
     LocalNet = 0x10,
     Ridcully = 0x21,
     Stibbons = 0x22,
-    Weatherwax = 0x23,
+    Weatherwax = 0xa3,
     Igor = 0x24,
 }
 

@@ -20,23 +20,23 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    output_manager_service::TxId,
-    transaction_service::{
-        error::{TransactionServiceError, TransactionServiceProtocolError},
-        handle::TransactionEvent,
-        service::TransactionServiceResources,
-        storage::{database::TransactionBackend, models::CompletedTransaction},
-    },
+use crate::transaction_service::{
+    error::{TransactionServiceError, TransactionServiceProtocolError},
+    handle::TransactionEvent,
+    service::TransactionServiceResources,
+    storage::{database::TransactionBackend, models::CompletedTransaction},
 };
 use futures::FutureExt;
 use log::*;
 use std::{convert::TryFrom, sync::Arc, time::Duration};
 use tari_common_types::types::Signature;
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey, PeerConnection};
-use tari_core::base_node::{
-    proto::wallet_rpc::{TxLocation, TxQueryResponse},
-    rpc::BaseNodeWalletRpcClient,
+use tari_core::{
+    base_node::{
+        proto::wallet_rpc::{TxLocation, TxQueryResponse},
+        rpc::BaseNodeWalletRpcClient,
+    },
+    transactions::transaction_protocol::TxId,
 };
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tokio::{sync::broadcast, time::sleep};
@@ -83,7 +83,7 @@ where TBackend: TransactionBackend + 'static
     }
 
     /// The task that defines the execution of the protocol.
-    pub async fn execute(mut self) -> Result<u64, TransactionServiceProtocolError> {
+    pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError> {
         let mut base_node_update_receiver = self.base_node_update_receiver.take().ok_or_else(|| {
             TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::InvalidStateError)
         })?;

@@ -62,7 +62,7 @@ use tari_shutdown::ShutdownSignal;
 
 use crate::{
     error::WalletError,
-    output_manager_service::{handle::OutputManagerHandle, TxId},
+    output_manager_service::handle::OutputManagerHandle,
     storage::{
         database::{WalletBackend, WalletDatabase},
         sqlite_db::WalletSqliteDatabase,
@@ -74,6 +74,7 @@ use crate::{
     },
     WalletSqlite,
 };
+use tari_core::transactions::transaction_protocol::TxId;
 use tokio::time::MissedTickBehavior;
 
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";

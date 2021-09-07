@@ -1,10 +1,11 @@
+use crate::wallet_modes::grpc_mode;
 use futures::{channel::mpsc, future, SinkExt};
 use log::*;
 use std::convert::TryFrom;
 use tari_app_grpc::{
     conversions::naive_datetime_to_timestamp,
-    tari_rpc,
     tari_rpc::{
+        self,
         payment_recipient::PaymentType,
         wallet_server,
         CoinSplitRequest,
@@ -23,6 +24,8 @@ use tari_app_grpc::{
         GetVersionResponse,
         ImportUtxosRequest,
         ImportUtxosResponse,
+        MintTokensRequest,
+        MintTokensResponse,
         TransactionDirection,
         TransactionInfo,
         TransactionStatus,
@@ -31,7 +34,7 @@ use tari_app_grpc::{
         TransferResult,
     },
 };
-use tari_common_types::types::Signature;
+use tari_common_types::types::{PublicKey, Signature};
 use tari_comms::{types::CommsPublicKey, CommsNode};
 use tari_core::{
     tari_utilities::{hex::Hex, ByteArray},
@@ -167,7 +170,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     (
                         address,
                         transaction_service
-                            .send_transaction(pk, amount.into(), fee_per_gram.into(), message)
+                            .send_transaction(pk, amount.into(), None, fee_per_gram.into(), message)
                             .await,
                     )
                 });
@@ -176,7 +179,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     (
                         address,
                         transaction_service
-                            .send_one_sided_transaction(pk, amount.into(), fee_per_gram.into(), message)
+                            .send_one_sided_transaction(pk, amount.into(), None, fee_per_gram.into(), message)
                             .await,
                     )
                 });
@@ -192,7 +195,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map(|(address, result)| match result {
                 Ok(tx_id) => TransferResult {
                     address,
-                    transaction_id: tx_id,
+                    transaction_id: tx_id.into(),
                     is_success: true,
                     failure_message: Default::default(),
                 },
@@ -221,6 +224,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let message = request.into_inner();
 
         let queries = message.transaction_ids.into_iter().map(|tx_id| {
+            let tx_id = tx_id.into();
             let mut transaction_service = self.get_transaction_service();
             async move {
                 transaction_service
@@ -266,7 +270,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             for (_, txn) in transactions {
                 let response = GetCompletedTransactionsResponse {
                     transaction: Some(TransactionInfo {
-                        tx_id: txn.tx_id,
+                        tx_id: txn.tx_id.into(),
                         source_pk: txn.source_public_key.to_vec(),
                         dest_pk: txn.destination_public_key.to_vec(),
                         status: TransactionStatus::from(txn.status) as i32,
@@ -326,7 +330,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
 
-        Ok(Response::new(CoinSplitResponse { tx_id }))
+        Ok(Response::new(CoinSplitResponse { tx_id: tx_id.into() }))
     }
 
     async fn import_utxos(
@@ -350,11 +354,73 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 wallet
                     .import_unblinded_utxo(o.clone(), &CommsPublicKey::default(), "Imported via gRPC".to_string())
                     .await
-                    .map_err(|e| Status::internal(format!("{:?}", e)))?,
+                    .map_err(|e| Status::internal(format!("{:?}", e)))?
+                    .into(),
             );
         }
 
         Ok(Response::new(ImportUtxosResponse { tx_ids }))
+    }
+
+    async fn mint_tokens(&self, request: Request<MintTokensRequest>) -> Result<Response<MintTokensResponse>, Status> {
+        let mut asset_manager = self.wallet.asset_manager.clone();
+        let mut transaction_service = self.wallet.transaction_service.clone();
+        let message = request.into_inner();
+
+        // TODO: Clean up unwrap
+        let asset_public_key = PublicKey::from_bytes(message.asset_public_key.as_slice()).unwrap();
+        let asset = asset_manager
+            .get_owned_asset_by_pub_key(&asset_public_key)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        let (tx_id, transaction) = asset_manager
+            .create_minting_transaction(&asset_public_key, asset.owner_commitment(), message.unique_ids)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        let fee = transaction.body.get_total_fee();
+
+        let owner_commitments = transaction
+            .body
+            .outputs()
+            .iter()
+            .filter_map(|o| o.unique_id.as_ref().map(|_| o.commitment.to_vec()))
+            .collect();
+        let _result = transaction_service
+            .submit_transaction(tx_id, transaction, fee, 0.into(), "test mint transaction".to_string())
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(MintTokensResponse { owner_commitments }))
+    }
+
+    async fn get_owned_tokens(
+        &self,
+        request: Request<tari_rpc::GetOwnedTokensRequest>,
+    ) -> Result<Response<tari_rpc::GetOwnedTokensResponse>, Status> {
+        let request = request.into_inner();
+        let request_public_key = PublicKey::from_bytes(&request.asset_public_key)
+            .map_err(|e| Status::invalid_argument(format!("asset_public key was not a valid public key: {}", e)))?;
+        let mut token_manager = self.wallet.token_manager.clone();
+        let owned = token_manager
+            .list_owned_tokens()
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        let owned = owned
+            .into_iter()
+            .filter_map(|t| {
+                if t.asset_public_key() == &request_public_key {
+                    Some(tari_rpc::TokenUtxo {
+                        asset_public_key: Vec::from(t.asset_public_key().as_bytes()),
+                        unique_id: Vec::from(t.unique_id()),
+                        commitment: Vec::from(t.owner_commitment().as_bytes()),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+        Ok(Response::new(tari_rpc::GetOwnedTokensResponse { tokens: owned }))
     }
 
     async fn get_network_status(
@@ -422,7 +488,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         );
         let mut transaction_service = self.get_transaction_service();
 
-        match transaction_service.cancel_transaction(message.tx_id).await {
+        match transaction_service.cancel_transaction(message.tx_id.into()).await {
             Ok(_) => {
                 return Ok(Response::new(tari_rpc::CancelTransactionResponse {
                     is_success: true,
@@ -446,7 +512,7 @@ fn convert_wallet_transaction_into_transaction_info(
     use models::WalletTransaction::*;
     match tx {
         PendingInbound(tx) => TransactionInfo {
-            tx_id: tx.tx_id,
+            tx_id: tx.tx_id.into(),
             source_pk: tx.source_public_key.to_vec(),
             dest_pk: wallet_pk.to_vec(),
             status: TransactionStatus::from(tx.status) as i32,
@@ -460,7 +526,7 @@ fn convert_wallet_transaction_into_transaction_info(
             valid: true,
         },
         PendingOutbound(tx) => TransactionInfo {
-            tx_id: tx.tx_id,
+            tx_id: tx.tx_id.into(),
             source_pk: wallet_pk.to_vec(),
             dest_pk: tx.destination_public_key.to_vec(),
             status: TransactionStatus::from(tx.status) as i32,
@@ -474,7 +540,7 @@ fn convert_wallet_transaction_into_transaction_info(
             valid: true,
         },
         Completed(tx) => TransactionInfo {
-            tx_id: tx.tx_id,
+            tx_id: tx.tx_id.into(),
             source_pk: tx.source_public_key.to_vec(),
             dest_pk: tx.destination_public_key.to_vec(),
             status: TransactionStatus::from(tx.status) as i32,

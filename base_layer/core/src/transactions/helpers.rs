@@ -147,6 +147,8 @@ impl TestParams {
             self.script_private_key.clone(),
             self.sender_offset_public_key.clone(),
             metadata_signature,
+            None,
+            None,
         )
     }
 
@@ -506,6 +508,8 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
         test_params_change_and_txn.script_private_key.clone(),
         change_sender_offset_public_key,
         metadata_sig,
+        None,
+        None,
     );
     outputs.push(change_output);
     stx_protocol.finalize(KernelFeatures::empty(), &factories).unwrap();
@@ -547,6 +551,8 @@ pub fn create_utxo(
         script.clone(),
         offset_keys.pk,
         metadata_sig,
+        None,
+        None,
     );
     (utxo, keys.k, offset_keys.k)
 }

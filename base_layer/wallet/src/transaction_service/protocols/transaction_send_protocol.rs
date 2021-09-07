@@ -47,7 +47,7 @@ use tari_comms_dht::{
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::KernelFeatures,
-    transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::SingleRoundSenderData},
+    transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::SingleRoundSenderData, TxId},
     SenderTransactionProtocol,
 };
 use tari_crypto::script;
@@ -69,7 +69,7 @@ pub enum TransactionSendProtocolStage {
 pub struct TransactionSendProtocol<TBackend>
 where TBackend: TransactionBackend + 'static
 {
-    id: u64,
+    id: TxId,
     dest_pubkey: CommsPublicKey,
     amount: MicroTari,
     fee_per_gram: MicroTari,
@@ -86,7 +86,7 @@ impl<TBackend> TransactionSendProtocol<TBackend>
 where TBackend: TransactionBackend + 'static
 {
     pub fn new(
-        id: u64,
+        id: TxId,
         resources: TransactionServiceResources<TBackend>,
         transaction_reply_receiver: Receiver<(CommsPublicKey, RecipientSignedMessage)>,
         cancellation_receiver: oneshot::Receiver<()>,
@@ -114,7 +114,7 @@ where TBackend: TransactionBackend + 'static
     }
 
     /// Execute the Transaction Send Protocol as an async task.
-    pub async fn execute(mut self) -> Result<u64, TransactionServiceProtocolError> {
+    pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError> {
         info!(
             target: LOG_TARGET,
             "Starting Transaction Send protocol for TxId: {} at Stage {:?}", self.id, self.stage
@@ -155,6 +155,7 @@ where TBackend: TransactionBackend + 'static
             .prepare_transaction_to_send(
                 self.id,
                 self.amount,
+                None, // TODO: is this supposed to be populated?
                 self.fee_per_gram,
                 None,
                 self.message.clone(),
@@ -230,6 +231,8 @@ where TBackend: TransactionBackend + 'static
                 tx_id,
                 self.dest_pubkey.clone(),
                 self.amount,
+                // TODO: put value in here
+                None,
                 fee,
                 sender_protocol.clone(),
                 TransactionStatus::Pending,
@@ -486,6 +489,7 @@ where TBackend: TransactionBackend + 'static
             self.resources.node_identity.public_key().clone(),
             outbound_tx.destination_public_key.clone(),
             outbound_tx.amount,
+            outbound_tx.unique_id,
             outbound_tx.fee,
             tx.clone(),
             TransactionStatus::Completed,

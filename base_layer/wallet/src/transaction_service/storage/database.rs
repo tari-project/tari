@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    output_manager_service::TxId,
     transaction_service::{
         error::TransactionStorageError,
         storage::models::{
@@ -46,6 +45,7 @@ use std::{
 use tari_common_types::types::BlindingFactor;
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction};
+use tari_core::transactions::transaction_protocol::TxId;
 
 const LOG_TARGET: &str = "wallet::transaction_service::database";
 
@@ -615,6 +615,7 @@ where T: TransactionBackend + 'static
             source_public_key.clone(),
             comms_public_key.clone(),
             amount,
+            None,
             MicroTari::from(0),
             Transaction::new(
                 Vec::new(),

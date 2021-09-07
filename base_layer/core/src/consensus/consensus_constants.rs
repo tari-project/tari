@@ -221,7 +221,7 @@ impl ConsensusConstants {
         // seting sha3/monero to 40/60 split
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
-            min_difficulty: 60_000_000.into(),
+            min_difficulty: 60_00.into(),
             max_difficulty: u64::MAX.into(),
             target_time: 300,
         });
@@ -266,7 +266,7 @@ impl ConsensusConstants {
         // });
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
-            min_difficulty: 60_000_000.into(),
+            min_difficulty: 60_00.into(),
             max_difficulty: 60_000_000.into(),
             target_time: 300,
         });
@@ -328,10 +328,10 @@ impl ConsensusConstants {
         let mut algos = HashMap::new();
         // seting sha3/monero to 40/60 split
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
-            max_target_time: 1800,
-            min_difficulty: 60_000_000.into(),
+            max_target_time: 180,
+            min_difficulty: 60_00.into(),
             max_difficulty: u64::MAX.into(),
-            target_time: 300,
+            target_time: 30,
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
             max_target_time: 1200,
@@ -394,13 +394,13 @@ impl ConsensusConstants {
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
-            min_difficulty: 60_000_000.into(),
+            min_difficulty: 40_000.into(),
             max_difficulty: u64::MAX.into(),
             target_time: 300,
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
             max_target_time: 800,
-            min_difficulty: 60_000_000.into(),
+            min_difficulty: 70_000_000.into(),
             max_difficulty: u64::MAX.into(),
             target_time: 200,
         });

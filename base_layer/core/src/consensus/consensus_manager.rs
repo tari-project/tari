@@ -26,7 +26,6 @@ use crate::{
             get_igor_genesis_block,
             get_mainnet_genesis_block,
             get_ridcully_genesis_block,
-            get_stibbons_genesis_block,
             get_weatherwax_genesis_block,
         },
         Block,
@@ -76,7 +75,7 @@ impl ConsensusManager {
         match self.inner.network.as_network() {
             Network::MainNet => get_mainnet_genesis_block(),
             Network::Ridcully => get_ridcully_genesis_block(),
-            Network::Stibbons => get_stibbons_genesis_block(),
+            Network::Stibbons => unimplemented!(),
             Network::Weatherwax => get_weatherwax_genesis_block(),
             Network::LocalNet => self
                 .inner

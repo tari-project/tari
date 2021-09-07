@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+//import "google/protobuf/wrappers.proto";
+//import "google/protobuf/timestamp.proto";
+//import "transaction.proto";
+//import "types.proto";
+
+package tari.dan_p2p;
+
+enum HotStuffMessageType {
+    HOT_STUFF_MESSAGE_TYPE_UNKNOWN = 0;
+    HOT_STUFF_MESSAGE_TYPE_NEW_VIEW = 1;
+    HOT_STUFF_MESSAGE_TYPE_PREPARE = 2;
+    HOT_STUFF_MESSAGE_TYPE_PRE_COMMIT = 3;
+    HOT_STUFF_MESSAGE_TYPE_COMMIT = 4;
+    HOT_STUFF_MESSAGE_TYPE_GENESIS = 255;
+
+}
+
+message HotStuffMessage {
+    uint64 view_number = 1;
+    HotStuffMessageType message_type = 2;
+    QuorumCertificate justify = 3;
+    HotStuffTreeNode node= 4;
+    Signature partial_sig = 5;
+}
+
+message QuorumCertificate {
+    HotStuffMessageType message_type = 1;
+    HotStuffTreeNode node = 2;
+    uint64 view_number = 3;
+    Signature signature = 4;
+}
+
+message HotStuffTreeNode {
+    bytes parent = 1;
+    InstructionSet payload = 2;
+}
+
+message Signature{
+
+}
+
+message InstructionSet{
+    repeated Instruction instructions = 1;
+}
+message Instruction {
+    bytes asset_id = 1;
+    string method = 2;
+    repeated bytes args = 3;
+    bytes from = 4;
+    bytes signature = 5;
+}

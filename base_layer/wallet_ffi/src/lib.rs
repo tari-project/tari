@@ -204,6 +204,7 @@ mod callback_handler;
 mod enums;
 mod error;
 mod tasks;
+use tari_core::transactions::transaction_protocol::TxId;
 
 const LOG_TARGET: &str = "wallet_ffi";
 
@@ -1441,7 +1442,7 @@ pub unsafe extern "C" fn completed_transaction_get_transaction_id(
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
-    (*transaction).tx_id as c_ulonglong
+    (*transaction).tx_id.as_u64() as c_ulonglong
 }
 
 /// Gets the destination TariPublicKey of a TariCompletedTransaction
@@ -1948,7 +1949,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_transaction_id(
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
-    (*transaction).tx_id as c_ulonglong
+    (*transaction).tx_id.as_u64() as c_ulonglong
 }
 
 /// Gets the destination TariPublicKey of a TariPendingOutboundTransaction
@@ -2175,7 +2176,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_transaction_id(
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
-    (*transaction).tx_id as c_ulonglong
+    (*transaction).tx_id.as_u64() as c_ulonglong
 }
 
 /// Gets the source TariPublicKey of a TariPendingInboundTransaction
@@ -3453,10 +3454,11 @@ pub unsafe extern "C" fn wallet_send_transaction(
         .block_on((*wallet).wallet.transaction_service.send_transaction(
             (*dest_public_key).clone(),
             MicroTari::from(amount),
+            None,
             MicroTari::from(fee_per_gram),
             message_string,
         )) {
-        Ok(tx_id) => tx_id,
+        Ok(tx_id) => tx_id.as_u64(),
         Err(e) => {
             error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
             ptr::swap(error_out, &mut error as *mut c_int);
@@ -3938,7 +3940,7 @@ pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
 
     match completed_transactions {
         Ok(completed_transactions) => {
-            if let Some(tx) = completed_transactions.get(&transaction_id) {
+            if let Some(tx) = completed_transactions.get(&TxId::from(transaction_id)) {
                 if tx.status != TransactionStatus::Completed && tx.status != TransactionStatus::Broadcast {
                     let completed = tx.clone();
                     return Box::into_raw(Box::new(completed));
@@ -3978,6 +3980,7 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
     error_out: *mut c_int,
 ) -> *mut TariPendingInboundTransaction {
     let mut error = 0;
+    let transaction_id = TxId::from(transaction_id);
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
@@ -4051,6 +4054,7 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
     error_out: *mut c_int,
 ) -> *mut TariPendingOutboundTransaction {
     let mut error = 0;
+    let transaction_id = TxId::from(transaction_id);
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
@@ -4125,6 +4129,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
     error_out: *mut c_int,
 ) -> *mut TariCompletedTransaction {
     let mut error = 0;
+    let transaction_id = TxId::from(transaction_id);
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
@@ -4303,7 +4308,7 @@ pub unsafe extern "C" fn wallet_import_utxo(
         &(*spending_key).clone(),
         &Default::default(),
     )) {
-        Ok(tx_id) => tx_id,
+        Ok(tx_id) => tx_id.as_u64(),
         Err(e) => {
             error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);
@@ -4341,7 +4346,7 @@ pub unsafe extern "C" fn wallet_cancel_pending_transaction(
 
     match (*wallet)
         .runtime
-        .block_on((*wallet).wallet.transaction_service.cancel_transaction(transaction_id))
+        .block_on((*wallet).wallet.transaction_service.cancel_transaction(TxId::from(transaction_id)))
     {
         Ok(_) => true,
         Err(e) => {
@@ -4547,7 +4552,7 @@ pub unsafe extern "C" fn wallet_start_transaction_validation(
             .transaction_service
             .validate_transactions(ValidationRetryStrategy::Limited(0)),
     ) {
-        Ok(request_key) => request_key,
+        Ok(request_key) => request_key.as_u64(),
         Err(e) => {
             error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
             ptr::swap(error_out, &mut error as *mut c_int);
@@ -4650,7 +4655,7 @@ pub unsafe extern "C" fn wallet_coin_split(
         message,
         Some(lock_height),
     )) {
-        Ok(request_key) => request_key,
+        Ok(request_key) => request_key.as_u64(),
         Err(e) => {
             error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);

@@ -20,8 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::error::WalletError;
+use rand::rngs::OsRng;
+use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_core::transactions::tari_amount::MicroTari;
-use tari_crypto::common::Blake256;
+use tari_crypto::{common::Blake256, keys::PublicKey as OtherPublicKey};
+use tari_key_manager::key_manager::KeyManager;
 
 /// The default fee per gram that the wallet will use to build transactions.
 /// TODO discuss what the default fee value should actually be
@@ -37,4 +41,26 @@ pub type HashDigest = Blake256;
 pub enum ValidationRetryStrategy {
     Limited(u8),
     UntilSuccess,
+}
+
+pub(crate) trait PersistentKeyManager {
+    fn create_and_store_new(&mut self) -> Result<PublicKey, WalletError>;
+}
+
+pub(crate) struct MockPersistentKeyManager {
+    key_manager: KeyManager<PrivateKey, KeyDigest>,
+}
+
+impl MockPersistentKeyManager {
+    pub fn new() -> Self {
+        Self {
+            key_manager: KeyManager::new(&mut OsRng),
+        }
+    }
+}
+
+impl PersistentKeyManager for MockPersistentKeyManager {
+    fn create_and_store_new(&mut self) -> Result<PublicKey, WalletError> {
+        Ok(PublicKey::from_secret_key(&self.key_manager.next_key().unwrap().k))
+    }
 }

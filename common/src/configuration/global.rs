@@ -23,7 +23,7 @@
 //! # Global configuration of tari base layer system
 
 use crate::{
-    configuration::{bootstrap::ApplicationType, Network},
+    configuration::{bootstrap::ApplicationType,DanNodeConfig, Network},
     ConfigurationError,
 };
 use config::{Config, ConfigError, Environment};
@@ -133,6 +133,7 @@ pub struct GlobalConfig {
     pub flood_ban_max_msg_count: usize,
     pub mine_on_tip_only: bool,
     pub validate_tip_timeout_sec: u64,
+    pub dan_node: Option<DanNodeConfig>,
     pub mining_pool_address: String,
     pub mining_wallet_address: String,
     pub mining_worker_name: String,
@@ -775,6 +776,7 @@ fn convert_node_config(
         flood_ban_max_msg_count,
         mine_on_tip_only,
         validate_tip_timeout_sec,
+        dan_node: DanNodeConfig::convert_if_present(cfg)?,
         mining_pool_address,
         mining_wallet_address,
         mining_worker_name,

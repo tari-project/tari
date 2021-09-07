@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    output_manager_service::{error::OutputManagerError, TxId},
-    transaction_service::storage::database::DbKey,
-};
+use crate::{output_manager_service::{error::OutputManagerError}, transaction_service::storage::database::DbKey, OperationId};
 use diesel::result::Error as DieselError;
 use futures::channel::oneshot::Canceled;
 use serde_json::Error as SerdeJsonError;
@@ -35,6 +32,7 @@ use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
 use time::OutOfRangeError;
 use tokio::sync::broadcast::error::RecvError;
+use tari_core::transactions::transaction_protocol::TxId;
 
 #[derive(Debug, Error)]
 pub enum TransactionServiceError {
@@ -184,13 +182,14 @@ pub enum TransactionStorageError {
 /// include the ID of the protocol
 #[derive(Debug)]
 pub struct TransactionServiceProtocolError {
+    // TODO: Replace with T or something to account for OperationId or TxId
     pub id: u64,
     pub error: TransactionServiceError,
 }
 
 impl TransactionServiceProtocolError {
-    pub fn new(id: u64, error: TransactionServiceError) -> Self {
-        Self { id, error }
+    pub fn new<T:Into<u64>>(id: T, error: TransactionServiceError) -> Self {
+        Self { id: id.into(), error }
     }
 }
 

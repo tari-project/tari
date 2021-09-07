@@ -82,6 +82,22 @@ service BaseNode {
     rpc ListConnectedPeers(Empty) returns (ListConnectedPeersResponse);
     // Get mempool stats
     rpc GetMempoolStats(Empty) returns (MempoolStatsResponse);
+
+    rpc GetTokens(GetTokensRequest) returns (stream GetTokensResponse);
+}
+
+message GetTokensRequest {
+    bytes asset_public_key = 1;
+    // Optionally get a set of specific unique_ids
+    repeated bytes unique_ids = 2;
+}
+
+message GetTokensResponse {
+    bytes unique_id = 1;
+    bytes asset_public_key = 2;
+    bytes owner_commitment = 3;
+    bytes mined_in_block = 4;
+    uint64 mined_height = 5;
 }
 
 message SubmitBlockResponse {

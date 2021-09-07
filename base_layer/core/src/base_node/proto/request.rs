@@ -119,6 +119,9 @@ impl From<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
             },
             GetNewBlock(block_template) => ProtoNodeCommsRequest::GetNewBlock(block_template.into()),
             FetchKernelByExcessSig(signature) => ProtoNodeCommsRequest::FetchKernelByExcessSig(signature.into()),
+            FetchTokens { .. } => {
+                unimplemented!("This should not go over the wire")
+            },
         }
     }
 }

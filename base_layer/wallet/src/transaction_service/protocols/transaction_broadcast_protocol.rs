@@ -20,16 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    output_manager_service::TxId,
-    transaction_service::{
-        error::{TransactionServiceError, TransactionServiceProtocolError},
-        handle::TransactionEvent,
-        service::TransactionServiceResources,
-        storage::{
-            database::TransactionBackend,
-            models::{CompletedTransaction, TransactionStatus},
-        },
+use crate::transaction_service::{
+    error::{TransactionServiceError, TransactionServiceProtocolError},
+    handle::TransactionEvent,
+    service::TransactionServiceResources,
+    storage::{
+        database::TransactionBackend,
+        models::{CompletedTransaction, TransactionStatus},
     },
 };
 use futures::FutureExt;
@@ -42,7 +39,7 @@ use tari_core::{
         proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
         rpc::BaseNodeWalletRpcClient,
     },
-    transactions::transaction::Transaction,
+    transactions::{transaction::Transaction, transaction_protocol::TxId},
 };
 use tari_crypto::tari_utilities::hex::Hex;
 use tokio::{sync::broadcast, time::sleep};
@@ -86,7 +83,7 @@ where TBackend: TransactionBackend + 'static
     }
 
     /// The task that defines the execution of the protocol.
-    pub async fn execute(mut self) -> Result<u64, TransactionServiceProtocolError> {
+    pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError> {
         let mut timeout_update_receiver = self.timeout_update_receiver.take().ok_or_else(|| {
             TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::InvalidStateError)
         })?;

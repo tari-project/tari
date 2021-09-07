@@ -57,7 +57,8 @@ impl TryFrom<grpc::Transaction> for Transaction {
 #[cfg(feature = "wallet")]
 mod wallet {
     use super::*;
-    use tari_wallet::{output_manager_service::TxId, transaction_service::storage::models};
+    use tari_core::transactions::transaction_protocol::TxId;
+    use tari_wallet::transaction_service::storage::models;
 
     impl From<models::TransactionStatus> for grpc::TransactionStatus {
         fn from(status: models::TransactionStatus) -> Self {
@@ -88,7 +89,7 @@ mod wallet {
     impl grpc::TransactionInfo {
         pub fn not_found(tx_id: TxId) -> Self {
             Self {
-                tx_id,
+                tx_id: tx_id.into(),
                 status: grpc::TransactionStatus::NotFound as i32,
                 ..Default::default()
             }

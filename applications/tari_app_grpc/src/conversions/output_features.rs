@@ -21,8 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::tari_rpc as grpc;
-use std::convert::TryFrom;
-use tari_core::transactions::transaction::{OutputFeatures, OutputFlags};
+use std::convert::{TryFrom, TryInto};
+use tari_common_types::types::{Commitment, PublicKey};
+use tari_core::transactions::transaction::{AssetOutputFeatures, MintNonFungibleFeatures, OutputFeatures, OutputFlags};
+use tari_crypto::tari_utilities::ByteArray;
 
 impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
     type Error = String;
@@ -32,6 +34,65 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             flags: OutputFlags::from_bits(features.flags as u8)
                 .ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
             maturity: features.maturity,
+            metadata: features.metadata,
+            asset: features.asset.map(|a| a.try_into()).transpose()?,
+            mint_non_fungible: features.mint_non_fungible.map(|m| m.try_into()).transpose()?,
         })
+    }
+}
+
+impl From<OutputFeatures> for grpc::OutputFeatures {
+    fn from(features: OutputFeatures) -> Self {
+        Self {
+            flags: features.flags.bits() as u32,
+            maturity: features.maturity,
+            metadata: features.metadata,
+            asset: features.asset.map(|a| a.into()),
+            mint_non_fungible: features.mint_non_fungible.map(|m| m.into()),
+        }
+    }
+}
+
+impl TryFrom<grpc::AssetOutputFeatures> for AssetOutputFeatures {
+    type Error = String;
+
+    fn try_from(features: grpc::AssetOutputFeatures) -> Result<Self, Self::Error> {
+        let public_key = PublicKey::from_bytes(features.public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+
+        Ok(Self { public_key })
+    }
+}
+
+impl From<AssetOutputFeatures> for grpc::AssetOutputFeatures {
+    fn from(features: AssetOutputFeatures) -> Self {
+        Self {
+            public_key: features.public_key.as_bytes().to_vec(),
+        }
+    }
+}
+
+impl TryFrom<grpc::MintNonFungibleFeatures> for MintNonFungibleFeatures {
+    type Error = String;
+
+    fn try_from(value: grpc::MintNonFungibleFeatures) -> Result<Self, Self::Error> {
+        let asset_public_key =
+            PublicKey::from_bytes(value.asset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+
+        let asset_owner_commitment =
+            Commitment::from_bytes(&value.asset_owner_commitment).map_err(|err| err.to_string())?;
+
+        Ok(Self {
+            asset_public_key,
+            asset_owner_commitment,
+        })
+    }
+}
+
+impl From<MintNonFungibleFeatures> for grpc::MintNonFungibleFeatures {
+    fn from(value: MintNonFungibleFeatures) -> Self {
+        Self {
+            asset_public_key: value.asset_public_key.as_bytes().to_vec(),
+            asset_owner_commitment: value.asset_owner_commitment.to_vec(),
+        }
     }
 }

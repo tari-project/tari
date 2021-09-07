@@ -42,6 +42,7 @@ use tari_crypto::tari_utilities::{hex::HexError, ByteArrayError};
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
 use tari_service_framework::ServiceInitializationError;
 use thiserror::Error;
+use tari_service_framework::reply_channel::TransportChannelError;
 
 #[derive(Debug, Error)]
 pub enum WalletError {
@@ -83,6 +84,12 @@ pub enum WalletError {
     ByteArrayError(#[from] tari_crypto::tari_utilities::ByteArrayError),
     #[error("Utxo Scanner Error: {0}")]
     UtxoScannerError(#[from] UtxoScannerError),
+
+    #[error("Transport channel error: `{0}`")]
+    TransportChannelError(#[from] TransportChannelError),
+
+    #[error("Unexpected API Response while calling method `{method}` on `{api}`")]
+    UnexpectedApiResponse{ method: String, api: String},
 }
 
 #[derive(Debug, Error)]

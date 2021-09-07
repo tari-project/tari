@@ -30,13 +30,14 @@ use tari_core::{
     transactions::{transaction::UnblindedOutput, transaction_protocol::RewindData, CryptoFactories},
 };
 
-use crate::output_manager_service::error::OutputManagerStorageError;
+use crate::output_manager_service::{error::OutputManagerStorageError, storage::OutputStatus};
 
 #[derive(Debug, Clone)]
 pub struct DbUnblindedOutput {
     pub commitment: Commitment,
     pub unblinded_output: UnblindedOutput,
     pub hash: HashOutput,
+    pub status: OutputStatus,
 }
 
 impl DbUnblindedOutput {
@@ -44,11 +45,12 @@ impl DbUnblindedOutput {
         output: UnblindedOutput,
         factory: &CryptoFactories,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
-        let tx_out = output.as_transaction_output(factory)?;
+        let tx_out = output.as_transaction_output(factory, false)?;
         Ok(DbUnblindedOutput {
             hash: tx_out.hash(),
             commitment: tx_out.commitment,
             unblinded_output: output,
+            status: OutputStatus::NotStored,
         })
     }
 
@@ -57,11 +59,12 @@ impl DbUnblindedOutput {
         factory: &CryptoFactories,
         rewind_data: &RewindData,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
-        let tx_out = output.as_rewindable_transaction_output(factory, rewind_data)?;
+        let tx_out = output.as_rewindable_transaction_output(factory, rewind_data, false)?;
         Ok(DbUnblindedOutput {
             hash: tx_out.hash(),
             commitment: tx_out.commitment,
             unblinded_output: output,
+            status: OutputStatus::NotStored,
         })
     }
 }
@@ -104,15 +107,4 @@ impl PartialEq for KnownOneSidedPaymentScript {
     fn eq(&self, other: &KnownOneSidedPaymentScript) -> bool {
         self.script_hash == other.script_hash
     }
-}
-
-/// The status of a given output
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum OutputStatus {
-    Unspent,
-    Spent,
-    EncumberedToBeReceived,
-    EncumberedToBeSpent,
-    Invalid,
-    CancelledInbound,
 }

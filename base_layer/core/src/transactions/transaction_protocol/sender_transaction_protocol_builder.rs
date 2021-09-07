@@ -54,6 +54,7 @@ use crate::transactions::{
         sender::{calculate_tx_id, RawTransactionInfo, SenderState, SenderTransactionProtocol},
         RewindData,
         TransactionMetadata,
+        TxId,
     },
 };
 use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey};
@@ -69,7 +70,7 @@ pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
 /// which returns an instance of this builder. Once all the sender's information has been added via the builder
 /// methods, you can call `build()` which will return a
 #[derive(Debug, Clone)]
-pub struct SenderTransactionInitializer {
+pub struct SenderTransactionProtocolBuilder {
     num_recipients: usize,
     amounts: FixedSet<MicroTari>,
     lock_height: Option<u64>,
@@ -93,11 +94,12 @@ pub struct SenderTransactionInitializer {
     recipient_scripts: FixedSet<TariScript>,
     recipient_sender_offset_private_keys: FixedSet<PrivateKey>,
     private_commitment_nonces: FixedSet<PrivateKey>,
-    tx_id: Option<u64>,
+    unique_id: Option<Vec<u8>>,
+    tx_id: Option<TxId>,
 }
 
 pub struct BuildError {
-    pub builder: SenderTransactionInitializer,
+    pub builder: SenderTransactionProtocolBuilder,
     pub message: String,
 }
 
@@ -107,7 +109,7 @@ impl Debug for BuildError {
     }
 }
 
-impl SenderTransactionInitializer {
+impl SenderTransactionProtocolBuilder {
     pub fn new(num_recipients: usize) -> Self {
         Self {
             num_recipients,
@@ -133,6 +135,7 @@ impl SenderTransactionInitializer {
             recipient_scripts: FixedSet::new(num_recipients),
             recipient_sender_offset_private_keys: FixedSet::new(num_recipients),
             private_commitment_nonces: FixedSet::new(num_recipients),
+            unique_id: None,
             tx_id: None,
         }
     }
@@ -290,7 +293,7 @@ impl SenderTransactionInitializer {
                 let change_amount = v.checked_sub(extra_fee);
                 let change_sender_offset_private_key = PrivateKey::random(&mut OsRng);
                 self.change_sender_offset_private_key = Some(change_sender_offset_private_key.clone());
-
+                // TODO: Add unique id if needed
                 match change_amount {
                     // You can't win. Just add the change to the fee (which is less than the cost of adding another
                     // output and go without a change output
@@ -330,6 +333,8 @@ impl SenderTransactionInitializer {
                                 .clone(),
                             PublicKey::from_secret_key(&change_sender_offset_private_key),
                             metadata_signature,
+                            None,
+                            None,
                         );
                         Ok((fee_with_change, v, Some(change_unblinded_output)))
                     },
@@ -339,7 +344,7 @@ impl SenderTransactionInitializer {
     }
 
     /// Specify the tx_id of this transaction, if not provided it will be calculated on build
-    pub fn with_tx_id(&mut self, tx_id: u64) -> &mut Self {
+    pub fn with_tx_id(&mut self, tx_id: TxId) -> &mut Self {
         self.tx_id = Some(tx_id);
         self
     }
@@ -359,6 +364,11 @@ impl SenderTransactionInitializer {
 
     fn calculate_amount_to_others(&self) -> MicroTari {
         self.amounts.clone().into_vec().iter().sum()
+    }
+
+    pub fn with_unique_id(mut self, unique_id: Vec<u8>) -> Self {
+        self.unique_id = Some(unique_id);
+        self
     }
 
     /// Construct a `SenderTransactionProtocol` instance in and appropriate state. The data stored
@@ -415,15 +425,19 @@ impl SenderTransactionInitializer {
         if total_fee < MINIMUM_TRANSACTION_FEE {
             return self.build_err("Fee is less than the minimum");
         }
+
         // Create transaction outputs
+
         let mut outputs = match self
             .sender_custom_outputs
             .iter()
             .map(|o| {
                 if let Some(rewind_data) = self.rewind_data.as_ref() {
-                    o.as_rewindable_transaction_output(factories, rewind_data)
+                    // TODO: Should proof be verified?
+                    o.as_rewindable_transaction_output(factories, rewind_data, false)
                 } else {
-                    o.as_transaction_output(factories)
+                    // TODO: Should proof be verified
+                    o.as_transaction_output(factories, false)
                 }
             })
             .collect::<Result<Vec<TransactionOutput>, _>>()
@@ -444,14 +458,16 @@ impl SenderTransactionInitializer {
 
             // If rewind data is present we produce a rewindable output, else a standard output
             let change_output = if let Some(rewind_data) = self.rewind_data.as_ref() {
-                match change_unblinded_output.as_rewindable_transaction_output(factories, rewind_data) {
+                // TODO: Should proof be verified?
+                match change_unblinded_output.as_rewindable_transaction_output(factories, rewind_data, false) {
                     Ok(o) => o,
                     Err(e) => {
                         return self.build_err(e.to_string().as_str());
                     },
                 }
             } else {
-                match change_unblinded_output.as_transaction_output(factories) {
+                // TODO: Should proof be verified?
+                match change_unblinded_output.as_transaction_output(factories, false) {
                     Ok(o) => o,
                     Err(e) => {
                         return self.build_err(e.to_string().as_str());
@@ -560,6 +576,7 @@ impl SenderTransactionInitializer {
             recipient_info,
             signatures: Vec::new(),
             message: self.message.unwrap_or_else(|| "".to_string()),
+            unique_id: self.unique_id,
         };
 
         let state = SenderState::Initializing(Box::new(sender_info));
@@ -592,7 +609,7 @@ mod test {
             transaction::{OutputFeatures, MAX_TRANSACTION_INPUTS},
             transaction_protocol::{
                 sender::SenderState,
-                transaction_initializer::SenderTransactionInitializer,
+                sender_transaction_protocol_builder::SenderTransactionInitializer,
                 TransactionProtocolError,
             },
         },
