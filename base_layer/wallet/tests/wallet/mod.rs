@@ -57,8 +57,9 @@ use tari_p2p::{initialization::CommsConfig, transport::TransportType, Network, D
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
 use tari_wallet::{
-    contacts_service::storage::database::Contact,
+    contacts_service::storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
     error::{WalletError, WalletStorageError},
+    output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
     storage::{
         database::{DbKeyValuePair, WalletBackend, WalletDatabase, WriteOperation},
         sqlite_db::WalletSqliteDatabase,
@@ -68,8 +69,12 @@ use tari_wallet::{
             run_migration_and_create_sqlite_connection,
         },
     },
-    test_utils::make_wallet_databases,
-    transaction_service::{config::TransactionServiceConfig, handle::TransactionEvent},
+    test_utils::make_wallet_database_connection,
+    transaction_service::{
+        config::TransactionServiceConfig,
+        handle::TransactionEvent,
+        storage::sqlite_db::TransactionServiceSqliteDatabase,
+    },
     Wallet,
     WalletConfig,
     WalletSqlite,
@@ -679,7 +684,7 @@ async fn test_import_utxo() {
         PeerFeatures::COMMUNICATION_NODE,
     );
     let temp_dir = tempdir().unwrap();
-    let (wallet_backend, tx_backend, oms_backend, contacts_backend, _temp_dir) = make_wallet_databases(None);
+    let (connection, _temp_dir) = make_wallet_database_connection(None);
     let comms_config = CommsConfig {
         network: Network::Weatherwax,
         node_identity: Arc::new(alice_identity.clone()),
@@ -717,10 +722,10 @@ async fn test_import_utxo() {
     );
     let mut alice_wallet = Wallet::start(
         config,
-        WalletDatabase::new(wallet_backend),
-        tx_backend,
-        oms_backend,
-        contacts_backend,
+        WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap()),
+        TransactionServiceSqliteDatabase::new(connection.clone(), None),
+        OutputManagerSqliteDatabase::new(connection.clone(), None),
+        ContactsServiceSqliteDatabase::new(connection),
         shutdown.to_signal(),
         None,
     )
