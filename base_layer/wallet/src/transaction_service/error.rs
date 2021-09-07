@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    error::WalletStorageError,
     output_manager_service::{error::OutputManagerError, TxId},
     transaction_service::storage::database::DbKey,
 };
@@ -100,6 +101,8 @@ pub enum TransactionServiceError {
     TransportChannelError(#[from] TransportChannelError),
     #[error("Transaction storage error: `{0}`")]
     TransactionStorageError(#[from] TransactionStorageError),
+    #[error("Wallet storage error: `{0}`")]
+    WalletStorageError(#[from] WalletStorageError),
     #[error("Invalid message error: `{0}`")]
     InvalidMessageError(String),
     #[error("Transaction error: `{0}`")]
@@ -140,6 +143,8 @@ pub enum TransactionServiceError {
     ByteArrayError(#[from] tari_crypto::tari_utilities::ByteArrayError),
     #[error("Transaction Service Error: `{0}`")]
     ServiceError(String),
+    #[error("Wallet Recovery in progress so Transaction Service Messaging Requests ignored")]
+    WalletRecoveryInProgress,
 }
 
 #[derive(Debug, Error)]
