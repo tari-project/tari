@@ -190,7 +190,7 @@ impl UnspawnedCommsNode {
         connection_manager.add_protocols(protocols);
 
         //---------------------------------- Spawn Actors --------------------------------------------//
-        connectivity_manager.create().spawn();
+        connectivity_manager.spawn();
         connection_manager.spawn();
 
         info!(target: LOG_TARGET, "Hello from comms!");
