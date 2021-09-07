@@ -136,10 +136,12 @@ impl Control {
 
     /// Open a new stream to the remote.
     pub async fn open_stream(&mut self) -> Result<Substream, ConnectionError> {
+        // Ensure that this counts as used while the substream is being opened
+        let counter_guard = self.substream_counter.new_guard();
         let stream = self.inner.open_stream().await?;
         Ok(Substream {
             stream: stream.compat(),
-            counter_guard: self.substream_counter.new_guard(),
+            counter_guard,
         })
     }
 

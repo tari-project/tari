@@ -41,6 +41,7 @@ use tari_comms::{
     Substream,
 };
 use tari_crypto::tari_utilities::hex::Hex;
+use tari_shutdown::Shutdown;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     sync::{mpsc, oneshot, RwLock},
@@ -54,6 +55,7 @@ pub fn start_service(
     protocol_notif: mpsc::Receiver<ProtocolNotification<Substream>>,
     inbound_rx: mpsc::Receiver<InboundMessage>,
     outbound_tx: mpsc::Sender<OutboundMessage>,
+    shutdown: Shutdown,
 ) -> (JoinHandle<Result<(), Error>>, mpsc::Sender<StressTestServiceRequest>) {
     let node_identity = comms_node.node_identity();
     let (request_tx, request_rx) = mpsc::channel(1);
@@ -65,7 +67,14 @@ pub fn start_service(
         comms_node.listening_address(),
     );
 
-    let service = StressTestService::new(request_rx, comms_node, protocol_notif, inbound_rx, outbound_tx);
+    let service = StressTestService::new(
+        request_rx,
+        comms_node,
+        protocol_notif,
+        inbound_rx,
+        outbound_tx,
+        shutdown,
+    );
     (task::spawn(service.start()), request_tx)
 }
 
@@ -138,10 +147,11 @@ struct StressTestService {
     request_rx: mpsc::Receiver<StressTestServiceRequest>,
     comms_node: CommsNode,
     protocol_notif: mpsc::Receiver<ProtocolNotification<Substream>>,
-    shutdown: bool,
 
     inbound_rx: Arc<RwLock<mpsc::Receiver<InboundMessage>>>,
     outbound_tx: mpsc::Sender<OutboundMessage>,
+
+    shutdown: Shutdown,
 }
 
 impl StressTestService {
@@ -151,12 +161,13 @@ impl StressTestService {
         protocol_notif: mpsc::Receiver<ProtocolNotification<Substream>>,
         inbound_rx: mpsc::Receiver<InboundMessage>,
         outbound_tx: mpsc::Sender<OutboundMessage>,
+        shutdown: Shutdown,
     ) -> Self {
         Self {
             request_rx,
             comms_node,
             protocol_notif,
-            shutdown: false,
+            shutdown,
             inbound_rx: Arc::new(RwLock::new(inbound_rx)),
             outbound_tx,
         }
@@ -164,6 +175,7 @@ impl StressTestService {
 
     async fn start(mut self) -> Result<(), Error> {
         let mut events = self.comms_node.subscribe_connectivity_events();
+        let mut shutdown_signal = self.shutdown.to_signal();
 
         loop {
             tokio::select! {
@@ -180,10 +192,9 @@ impl StressTestService {
                 Some(notif) = self.protocol_notif.recv() => {
                     self.handle_protocol_notification(notif).await;
                 },
-            }
-
-            if self.shutdown {
-                break;
+                _ = shutdown_signal.wait() => {
+                    break;
+                }
             }
         }
 
@@ -197,7 +208,7 @@ impl StressTestService {
         match request {
             BeginProtocol(peer, protocol, reply) => self.begin_protocol(peer, protocol, reply).await?,
             Shutdown => {
-                self.shutdown = true;
+                self.shutdown.trigger();
             },
         }
 

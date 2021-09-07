@@ -38,6 +38,7 @@ use tari_comms::{
     NodeIdentity,
     Substream,
 };
+use tari_shutdown::ShutdownSignal;
 use tari_storage::{
     lmdb_store::{LMDBBuilder, LMDBConfig},
     LMDBWrapper,
@@ -51,6 +52,7 @@ pub async fn create(
     port: u16,
     tor_identity: Option<TorIdentity>,
     is_tcp: bool,
+    shutdown_signal: ShutdownSignal,
 ) -> Result<
     (
         CommsNode,
@@ -94,6 +96,7 @@ pub async fn create(
 
     let builder = CommsBuilder::new()
         .allow_test_addresses()
+        .with_shutdown_signal(shutdown_signal)
         .with_node_identity(node_identity.clone())
         .with_dial_backoff(ConstantBackoff::new(Duration::from_secs(0)))
         .with_peer_storage(peer_database, None)
