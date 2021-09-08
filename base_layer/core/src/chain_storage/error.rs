@@ -112,6 +112,8 @@ pub enum ChainStorageError {
     KeyExists { table_name: &'static str, key: String },
     #[error("Database resize required")]
     DbResizeRequired,
+    #[error("DB transaction was too large ({0} operations)")]
+    DbTransactionTooLarge(usize),
 }
 
 impl ChainStorageError {
