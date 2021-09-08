@@ -190,7 +190,7 @@ impl CommandHandler {
             status_line.add_field(
                 "RandomX",
                 format!(
-                    " #{} with flags {:?}",
+                    "#{} with flags {:?}",
                     state_info.borrow().randomx_vm_cnt,
                     state_info.borrow().randomx_vm_flags
                 ),
