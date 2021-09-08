@@ -1289,7 +1289,8 @@ When(
   { timeout: 600 * 1000 },
   async function (miner, numBlocks) {
     const miningNode = this.getMiningNode(miner);
-    await miningNode.init(numBlocks, null, 1, 100000, null, null);
+    // Don't wait for sync before mining
+    await miningNode.init(numBlocks, null, 1, 100000, false, null);
     await miningNode.startNew();
   }
 );
