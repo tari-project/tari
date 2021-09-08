@@ -1335,7 +1335,7 @@ impl BlockchainBackend for LMDBDatabase {
 
         let mark = Instant::now();
         // Resize this many times before assuming something is not right
-        const MAX_RESIZES: usize = 3;
+        const MAX_RESIZES: usize = 5;
         for i in 0..MAX_RESIZES {
             let num_operations = txn.operations().len();
             match self.apply_db_transaction(&txn) {
@@ -1350,13 +1350,17 @@ impl BlockchainBackend for LMDBDatabase {
                     return Ok(());
                 },
                 Err(ChainStorageError::DbResizeRequired) => {
-                    info!(target: LOG_TARGET, "Database resize required (iteration: {})", i);
+                    info!(
+                        target: LOG_TARGET,
+                        "Database resize required (resized {} time(s) in this transaction)",
+                        i + 1
+                    );
                     // SAFETY: This depends on the thread safety of the caller. Technically, `write` is unsafe too
                     // however we happen to know that `LmdbDatabase` is wrapped in an exclusive write lock in
                     // BlockchainDatabase, so we know there are no other threads taking out LMDB transactions when this
                     // is called.
                     unsafe {
-                        LMDBStore::resize_if_required(&self.env, &self.env_config)?;
+                        LMDBStore::resize(&self.env, &self.env_config)?;
                     }
                 },
                 Err(e) => {
@@ -1366,7 +1370,7 @@ impl BlockchainBackend for LMDBDatabase {
             }
         }
 
-        Err(ChainStorageError::DbResizeRequired)
+        Err(ChainStorageError::DbTransactionTooLarge(txn.operations().len()))
     }
 
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError> {
