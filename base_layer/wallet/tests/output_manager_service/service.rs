@@ -36,7 +36,6 @@ use tari_comms::{
         node_identity::build_node_identity,
     },
     types::CommsSecretKey,
-    Substream,
 };
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcServer,
@@ -97,7 +96,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     OutputManagerHandle,
     Shutdown,
     TransactionServiceHandle,
-    MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>, Substream>,
+    MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>>,
     Arc<NodeIdentity>,
     BaseNodeWalletRpcMockState,
     ConnectivityManagerMockState,

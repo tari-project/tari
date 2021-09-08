@@ -52,19 +52,16 @@ use crate::{
     proto,
     protocol::{ProtocolEvent, ProtocolId, ProtocolNotification, ProtocolNotificationRx},
     Bytes,
+    Substream,
 };
 use futures::SinkExt;
 use prost::Message;
 use std::{
-    borrow::Cow,
     future::Future,
+    sync::Arc,
     time::{Duration, Instant},
 };
-use tokio::{
-    io::{AsyncRead, AsyncWrite},
-    sync::mpsc,
-    time,
-};
+use tokio::{sync::mpsc, time};
 use tokio_stream::StreamExt;
 use tower::Service;
 use tower_make::MakeService;
@@ -116,14 +113,13 @@ impl RpcServer {
         RpcServerHandle::new(self.request_tx.clone())
     }
 
-    pub(super) async fn serve<S, TSubstream, TCommsProvider>(
+    pub(super) async fn serve<S, TCommsProvider>(
         self,
         service: S,
-        notifications: ProtocolNotificationRx<TSubstream>,
+        notifications: ProtocolNotificationRx<Substream>,
         comms_provider: TCommsProvider,
     ) -> Result<(), RpcServerError>
     where
-        TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static,
         S: MakeService<
                 ProtocolId,
                 Request<Bytes>,
@@ -197,18 +193,17 @@ impl Default for RpcServerBuilder {
     }
 }
 
-pub(super) struct PeerRpcServer<TSvc, TSubstream, TCommsProvider> {
+pub(super) struct PeerRpcServer<TSvc, TCommsProvider> {
     executor: BoundedExecutor,
     config: RpcServerBuilder,
     service: TSvc,
-    protocol_notifications: Option<ProtocolNotificationRx<TSubstream>>,
+    protocol_notifications: Option<ProtocolNotificationRx<Substream>>,
     comms_provider: TCommsProvider,
     request_rx: mpsc::Receiver<RpcServerRequest>,
 }
 
-impl<TSvc, TSubstream, TCommsProvider> PeerRpcServer<TSvc, TSubstream, TCommsProvider>
+impl<TSvc, TCommsProvider> PeerRpcServer<TSvc, TCommsProvider>
 where
-    TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     TSvc: MakeService<
             ProtocolId,
             Request<Bytes>,
@@ -225,7 +220,7 @@ where
     fn new(
         config: RpcServerBuilder,
         service: TSvc,
-        protocol_notifications: ProtocolNotificationRx<TSubstream>,
+        protocol_notifications: ProtocolNotificationRx<Substream>,
         comms_provider: TCommsProvider,
         request_rx: mpsc::Receiver<RpcServerRequest>,
     ) -> Self {
@@ -289,7 +284,7 @@ where
     #[tracing::instrument(name = "rpc::server::new_client_connection", skip(self, notification), err)]
     async fn handle_protocol_notification(
         &mut self,
-        notification: ProtocolNotification<TSubstream>,
+        notification: ProtocolNotification<Substream>,
     ) -> Result<(), RpcServerError> {
         match notification.event {
             ProtocolEvent::NewInboundSubstream(node_id, substream) => {
@@ -318,7 +313,7 @@ where
         &mut self,
         protocol: ProtocolId,
         node_id: NodeId,
-        mut framed: CanonicalFraming<TSubstream>,
+        mut framed: CanonicalFraming<Substream>,
     ) -> Result<(), RpcServerError> {
         let mut handshake = Handshake::new(&mut framed).with_timeout(self.config.handshake_timeout);
 
@@ -357,14 +352,14 @@ where
             "Server negotiated RPC v{} with client node `{}`", version, node_id
         );
 
-        let service = ActivePeerRpcService {
-            config: self.config.clone(),
+        let service = ActivePeerRpcService::new(
+            self.config.clone(),
             protocol,
-            node_id: node_id.clone(),
-            framed,
+            node_id.clone(),
             service,
-            comms_provider: self.comms_provider.clone(),
-        };
+            framed,
+            self.comms_provider.clone(),
+        );
 
         self.executor
             .try_spawn(service.start())
@@ -374,64 +369,91 @@ where
     }
 }
 
-struct ActivePeerRpcService<TSvc, TSubstream, TCommsProvider> {
+struct ActivePeerRpcService<TSvc, TCommsProvider> {
     config: RpcServerBuilder,
     protocol: ProtocolId,
     node_id: NodeId,
     service: TSvc,
-    framed: CanonicalFraming<TSubstream>,
+    framed: CanonicalFraming<Substream>,
     comms_provider: TCommsProvider,
+    logging_context_string: Arc<String>,
 }
 
-impl<TSvc, TSubstream, TCommsProvider> ActivePeerRpcService<TSvc, TSubstream, TCommsProvider>
+impl<TSvc, TCommsProvider> ActivePeerRpcService<TSvc, TCommsProvider>
 where
-    TSubstream: AsyncRead + AsyncWrite + Unpin,
     TSvc: Service<Request<Bytes>, Response = Response<Body>, Error = RpcStatus>,
     TCommsProvider: RpcCommsProvider + Send + Clone + 'static,
 {
+    pub(self) fn new(
+        config: RpcServerBuilder,
+        protocol: ProtocolId,
+        node_id: NodeId,
+        service: TSvc,
+        framed: CanonicalFraming<Substream>,
+        comms_provider: TCommsProvider,
+    ) -> Self {
+        Self {
+            logging_context_string: Arc::new(format!(
+                "stream_id: {}, peer: {}, protocol: {}",
+                framed.get_ref().id(),
+                node_id,
+                String::from_utf8_lossy(&protocol)
+            )),
+
+            config,
+            protocol,
+            node_id,
+            service,
+            framed,
+            comms_provider,
+        }
+    }
+
     async fn start(mut self) {
         debug!(
             target: LOG_TARGET,
-            "(Peer = `{}`) Rpc server ({}) started.",
-            self.node_id,
-            self.protocol_name()
+            "({}) Rpc server started.", self.logging_context_string,
         );
         if let Err(err) = self.run().await {
             error!(
                 target: LOG_TARGET,
-                "(Peer = `{}`) Rpc server ({}) exited with an error: {}",
-                self.node_id,
-                self.protocol_name(),
-                err
+                "({}) Rpc server exited with an error: {}", self.logging_context_string, err
             );
         }
         debug!(
             target: LOG_TARGET,
-            "(Peer = {}) Rpc service ({}) shutdown",
-            self.node_id,
-            self.protocol_name()
+            "({}) Rpc service shutdown", self.logging_context_string
         );
-    }
-
-    fn protocol_name(&self) -> Cow<'_, str> {
-        String::from_utf8_lossy(&self.protocol)
     }
 
     async fn run(&mut self) -> Result<(), RpcServerError> {
         while let Some(result) = self.framed.next().await {
-            let start = Instant::now();
-            if let Err(err) = self.handle(result?.freeze()).await {
-                self.framed.close().await?;
-                return Err(err);
+            match result {
+                Ok(frame) => {
+                    let start = Instant::now();
+                    if let Err(err) = self.handle(frame.freeze()).await {
+                        self.framed.close().await?;
+                        return Err(err);
+                    }
+                    let elapsed = start.elapsed();
+                    debug!(
+                        target: LOG_TARGET,
+                        "({}) RPC request completed in {:.0?}{}",
+                        self.logging_context_string,
+                        elapsed,
+                        if elapsed.as_secs() > 5 { " (LONG REQUEST)" } else { "" }
+                    );
+                },
+                Err(err) => {
+                    if let Err(err) = self.framed.close().await {
+                        error!(
+                            target: LOG_TARGET,
+                            "({}) Failed to close substream after socket error: {}", self.logging_context_string, err
+                        );
+                    }
+                    return Err(err.into());
+                },
             }
-            let elapsed = start.elapsed();
-            debug!(
-                target: LOG_TARGET,
-                "RPC ({}) request completed in {:.0?}{}",
-                self.protocol_name(),
-                elapsed,
-                if elapsed.as_secs() > 5 { " (LONG REQUEST)" } else { "" }
-            );
         }
 
         self.framed.close().await?;
@@ -450,7 +472,7 @@ where
         if deadline < self.config.minimum_client_deadline {
             debug!(
                 target: LOG_TARGET,
-                "[Peer=`{}`] Client has an invalid deadline. {}", self.node_id, decoded_msg
+                "({}) Client has an invalid deadline. {}", self.logging_context_string, decoded_msg
             );
             // Let the client know that they have disobeyed the spec
             let status = RpcStatus::bad_request(format!(
@@ -471,9 +493,7 @@ where
         if msg_flags.contains(RpcMessageFlags::ACK) {
             debug!(
                 target: LOG_TARGET,
-                "[Peer=`{}` {}] sending ACK response.",
-                self.node_id,
-                self.protocol_name()
+                "({}) sending ACK response.", self.logging_context_string
             );
             let ack = proto::rpc::RpcResponse {
                 request_id,
@@ -487,7 +507,7 @@ where
 
         debug!(
             target: LOG_TARGET,
-            "[Peer=`{}`] Got request {}", self.node_id, decoded_msg
+            "({}) Got request {}", self.logging_context_string, decoded_msg
         );
 
         let req = Request::with_context(
@@ -496,7 +516,12 @@ where
             decoded_msg.message.into(),
         );
 
-        let service_call = log_timing(request_id, "service call", self.service.call(req));
+        let service_call = log_timing(
+            self.logging_context_string.clone(),
+            request_id,
+            "service call",
+            self.service.call(req),
+        );
         let service_result = time::timeout(deadline, service_call).await;
         let service_result = match service_result {
             Ok(v) => v,
@@ -545,7 +570,12 @@ where
 
                 let mut message = body.into_message();
                 loop {
-                    let msg_read = log_timing(request_id, "message read", message.next());
+                    let msg_read = log_timing(
+                        self.logging_context_string.clone(),
+                        request_id,
+                        "message read",
+                        message.next(),
+                    );
                     match time::timeout(deadline, msg_read).await {
                         Ok(Some(msg)) => {
                             let resp = match msg {
@@ -573,8 +603,13 @@ where
                                 },
                             };
 
-                            let is_valid =
-                                log_timing(request_id, "transmit", self.send_response(request_id, resp)).await?;
+                            let is_valid = log_timing(
+                                self.logging_context_string.clone(),
+                                request_id,
+                                "transmit",
+                                self.send_response(request_id, resp),
+                            )
+                            .await?;
 
                             if !is_valid {
                                 break;
@@ -647,14 +682,15 @@ where
     }
 }
 
-async fn log_timing<R, F: Future<Output = R>>(request_id: u32, tag: &str, fut: F) -> R {
+async fn log_timing<R, F: Future<Output = R>>(context_str: Arc<String>, request_id: u32, tag: &str, fut: F) -> R {
     let t = Instant::now();
     let span = span!(Level::TRACE, "rpc::internal::timing::{}::{}", request_id, tag);
     let ret = fut.instrument(span).await;
     let elapsed = t.elapsed();
     trace!(
         target: LOG_TARGET,
-        "RPC TIMING(REQ_ID={}): '{}' took {:.2}s{}",
+        "({}) RPC TIMING(REQ_ID={}): '{}' took {:.2}s{}",
+        context_str,
         request_id,
         tag,
         elapsed.as_secs_f32(),
