@@ -25,12 +25,12 @@ use prost::Message;
 use std::{collections::HashMap, ops::AddAssign, sync::Arc};
 use tari_comms::{
     framing,
-    memsocket::MemorySocket,
     message::MessageExt,
     protocol::{
         rpc,
         rpc::{NamedProtocolService, Request, Response, RpcStatus, RpcStatusCode, Streaming},
     },
+    test_utils::transport::build_multiplexed_connections,
 };
 use tari_comms_rpc_macros::tari_rpc;
 use tari_test_utils::unpack_enum;
@@ -152,9 +152,12 @@ async fn it_returns_an_error_for_invalid_method_nums() {
 
 #[tokio::test]
 async fn it_generates_client_calls() {
-    let (sock_client, sock_server) = MemorySocket::new_pair();
-    let client = task::spawn(TestClient::connect(framing::canonical(sock_client, 1024)));
-    let mut sock_server = framing::canonical(sock_server, 1024);
+    let (_, sock_client, mut sock_server) = build_multiplexed_connections().await;
+    let client = task::spawn(TestClient::connect(framing::canonical(
+        sock_client.get_yamux_control().open_stream().await.unwrap(),
+        1024,
+    )));
+    let mut sock_server = framing::canonical(sock_server.incoming_mut().next().await.unwrap(), 1024);
     let mut handshake = rpc::Handshake::new(&mut sock_server);
     handshake.perform_server_handshake().await.unwrap();
     // Wait for client to connect

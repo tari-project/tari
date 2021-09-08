@@ -22,7 +22,7 @@
 
 use crate::{
     framing,
-    memsocket::MemorySocket,
+    multiplexing::Yamux,
     protocol::{
         rpc::{
             context::RpcCommsBackend,
@@ -50,10 +50,11 @@ use crate::{
         ProtocolNotification,
     },
     runtime,
-    test_utils::node_identity::build_node_identity,
+    test_utils::{node_identity::build_node_identity, transport::build_multiplexed_connections},
     NodeIdentity,
+    Substream,
 };
-use futures::{future, future::Either, StreamExt};
+use futures::StreamExt;
 use std::{sync::Arc, time::Duration};
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_shutdown::Shutdown;
@@ -67,7 +68,7 @@ pub(super) async fn setup_service<T: GreetingRpc>(
     service_impl: T,
     num_concurrent_sessions: usize,
 ) -> (
-    mpsc::Sender<ProtocolNotification<MemorySocket>>,
+    mpsc::Sender<ProtocolNotification<Substream>>,
     task::JoinHandle<()>,
     RpcCommsBackend,
     Shutdown,
@@ -86,11 +87,10 @@ pub(super) async fn setup_service<T: GreetingRpc>(
                 .add_service(GreetingServer::new(service_impl))
                 .serve(notif_rx, context);
 
-            futures::pin_mut!(fut);
-
-            match future::select(shutdown_signal, fut).await {
-                Either::Left(_) => {},
-                Either::Right((r, _)) => r.unwrap(),
+            tokio::select! {
+                biased;
+                _ = shutdown_signal => {},
+                r = fut => r.unwrap(),
             }
         }
     });
@@ -100,31 +100,35 @@ pub(super) async fn setup_service<T: GreetingRpc>(
 pub(super) async fn setup<T: GreetingRpc>(
     service_impl: T,
     num_concurrent_sessions: usize,
-) -> (MemorySocket, task::JoinHandle<()>, Arc<NodeIdentity>, Shutdown) {
+) -> (Yamux, Yamux, task::JoinHandle<()>, Arc<NodeIdentity>, Shutdown) {
     let (notif_tx, server_hnd, context, shutdown) = setup_service(service_impl, num_concurrent_sessions).await;
-    let (inbound, outbound) = MemorySocket::new_pair();
-    let node_identity = build_node_identity(Default::default());
+    let (_, inbound, outbound) = build_multiplexed_connections().await;
+    let substream = outbound.get_yamux_control().open_stream().await.unwrap();
 
+    let node_identity = build_node_identity(Default::default());
     // Notify that a peer wants to speak the greeting RPC protocol
     context.peer_manager().add_peer(node_identity.to_peer()).await.unwrap();
     notif_tx
         .send(ProtocolNotification::new(
             ProtocolId::from_static(b"/test/greeting/1.0"),
-            ProtocolEvent::NewInboundSubstream(node_identity.node_id().clone(), inbound),
+            ProtocolEvent::NewInboundSubstream(node_identity.node_id().clone(), substream),
         ))
         .await
         .unwrap();
 
-    (outbound, server_hnd, node_identity, shutdown)
+    (inbound, outbound, server_hnd, node_identity, shutdown)
 }
 
 #[runtime::test]
 async fn request_response_errors_and_streaming() {
-    let (socket, server_hnd, node_identity, mut shutdown) = setup(GreetingService::default(), 1).await;
+    let (mut muxer, _outbound, server_hnd, node_identity, mut shutdown) = setup(GreetingService::default(), 1).await;
+    let socket = muxer.incoming_mut().next().await.unwrap();
 
     let framed = framing::canonical(socket, 1024);
     let mut client = GreetingClient::builder()
         .with_deadline(Duration::from_secs(5))
+        .with_deadline_grace_period(Duration::from_secs(5))
+        .with_handshake_timeout(Duration::from_secs(5))
         .connect(framed)
         .await
         .unwrap();
@@ -200,7 +204,8 @@ async fn request_response_errors_and_streaming() {
 
 #[runtime::test]
 async fn concurrent_requests() {
-    let (socket, _, _, _shutdown) = setup(GreetingService::default(), 1).await;
+    let (mut muxer, _outbound, _, _, _shutdown) = setup(GreetingService::default(), 1).await;
+    let socket = muxer.incoming_mut().next().await.unwrap();
 
     let framed = framing::canonical(socket, 1024);
     let mut client = GreetingClient::builder()
@@ -240,7 +245,8 @@ async fn concurrent_requests() {
 
 #[runtime::test]
 async fn response_too_big() {
-    let (socket, _, _, _shutdown) = setup(GreetingService::new(&[]), 1).await;
+    let (mut muxer, _outbound, _, _, _shutdown) = setup(GreetingService::new(&[]), 1).await;
+    let socket = muxer.incoming_mut().next().await.unwrap();
 
     let framed = framing::canonical(socket, RPC_MAX_FRAME_SIZE);
     let mut client = GreetingClient::builder().connect(framed).await.unwrap();
@@ -261,7 +267,8 @@ async fn response_too_big() {
 
 #[runtime::test]
 async fn ping_latency() {
-    let (socket, _, _, _shutdown) = setup(GreetingService::new(&[]), 1).await;
+    let (mut muxer, _outbound, _, _, _shutdown) = setup(GreetingService::new(&[]), 1).await;
+    let socket = muxer.incoming_mut().next().await.unwrap();
 
     let framed = framing::canonical(socket, RPC_MAX_FRAME_SIZE);
     let mut client = GreetingClient::builder().connect(framed).await.unwrap();
@@ -274,7 +281,8 @@ async fn ping_latency() {
 
 #[runtime::test]
 async fn server_shutdown_before_connect() {
-    let (socket, _, _, mut shutdown) = setup(GreetingService::new(&[]), 1).await;
+    let (mut muxer, _outbound, _, _, mut shutdown) = setup(GreetingService::new(&[]), 1).await;
+    let socket = muxer.incoming_mut().next().await.unwrap();
     let framed = framing::canonical(socket, 1024);
     shutdown.trigger();
 
@@ -288,7 +296,8 @@ async fn server_shutdown_before_connect() {
 #[runtime::test]
 async fn timeout() {
     let delay = Arc::new(RwLock::new(Duration::from_secs(10)));
-    let (socket, _, _, _shutdown) = setup(SlowGreetingService::new(delay.clone()), 1).await;
+    let (mut muxer, _outbound, _, _, _shutdown) = setup(SlowGreetingService::new(delay.clone()), 1).await;
+    let socket = muxer.incoming_mut().next().await.unwrap();
     let framed = framing::canonical(socket, 1024);
     let mut client = GreetingClient::builder()
         .with_deadline(Duration::from_secs(1))
@@ -313,7 +322,9 @@ async fn timeout() {
 async fn unknown_protocol() {
     let (notif_tx, _, _, _shutdown) = setup_service(GreetingService::new(&[]), 1).await;
 
-    let (inbound, socket) = MemorySocket::new_pair();
+    let (_, inbound, mut outbound) = build_multiplexed_connections().await;
+    let in_substream = inbound.get_yamux_control().open_stream().await.unwrap();
+
     let node_identity = build_node_identity(Default::default());
 
     // This case should never happen because protocols are preregistered with the connection manager and so a
@@ -322,12 +333,13 @@ async fn unknown_protocol() {
     notif_tx
         .send(ProtocolNotification::new(
             ProtocolId::from_static(b"this-is-junk"),
-            ProtocolEvent::NewInboundSubstream(node_identity.node_id().clone(), inbound),
+            ProtocolEvent::NewInboundSubstream(node_identity.node_id().clone(), in_substream),
         ))
         .await
         .unwrap();
 
-    let framed = framing::canonical(socket, 1024);
+    let out_socket = outbound.incoming_mut().next().await.unwrap();
+    let framed = framing::canonical(out_socket, 1024);
     let err = GreetingClient::connect(framed).await.unwrap_err();
     assert!(matches!(
         err,
@@ -337,7 +349,8 @@ async fn unknown_protocol() {
 
 #[runtime::test]
 async fn rejected_no_sessions_available() {
-    let (socket, _, _, _shutdown) = setup(GreetingService::new(&[]), 0).await;
+    let (mut muxer, _outbound, _, _, _shutdown) = setup(GreetingService::new(&[]), 0).await;
+    let socket = muxer.incoming_mut().next().await.unwrap();
     let framed = framing::canonical(socket, 1024);
     let err = GreetingClient::builder().connect(framed).await.unwrap_err();
     assert!(matches!(
@@ -349,7 +362,8 @@ async fn rejected_no_sessions_available() {
 #[runtime::test]
 async fn stream_still_works_after_cancel() {
     let service_impl = GreetingService::default();
-    let (socket, _, _, _shutdown) = setup(service_impl.clone(), 1).await;
+    let (mut muxer, _outbound, _, _, _shutdown) = setup(service_impl.clone(), 1).await;
+    let socket = muxer.incoming_mut().next().await.unwrap();
 
     let framed = framing::canonical(socket, 1024);
     let mut client = GreetingClient::builder()

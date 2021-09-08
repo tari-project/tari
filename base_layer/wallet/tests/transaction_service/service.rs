@@ -72,7 +72,6 @@ use tari_comms::{
     },
     types::CommsSecretKey,
     CommsNode,
-    Substream,
 };
 use tari_comms_dht::outbound::mock::{
     create_outbound_service_mock,
@@ -244,7 +243,7 @@ pub fn setup_transaction_service_no_comms(
     Sender<DomainMessage<base_node_proto::BaseNodeServiceResponse>>,
     Sender<DomainMessage<proto::TransactionCancelledMessage>>,
     Shutdown,
-    MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>, Substream>,
+    MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>>,
     Arc<NodeIdentity>,
     BaseNodeWalletRpcMockState,
 ) {
@@ -268,7 +267,7 @@ pub fn setup_transaction_service_no_comms_and_oms_backend(
     Sender<DomainMessage<base_node_proto::BaseNodeServiceResponse>>,
     Sender<DomainMessage<proto::TransactionCancelledMessage>>,
     Shutdown,
-    MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>, Substream>,
+    MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>>,
     Arc<NodeIdentity>,
     BaseNodeWalletRpcMockState,
 ) {

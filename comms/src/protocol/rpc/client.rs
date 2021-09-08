@@ -38,6 +38,7 @@ use crate::{
         ProtocolId,
     },
     runtime::task,
+    Substream,
 };
 use bytes::Bytes;
 use futures::{
@@ -60,7 +61,6 @@ use std::{
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
-    io::{AsyncRead, AsyncWrite},
     sync::{mpsc, oneshot, Mutex},
     time,
 };
@@ -76,14 +76,11 @@ pub struct RpcClient {
 
 impl RpcClient {
     /// Create a new RpcClient using the given framed substream and perform the RPC handshake.
-    pub async fn connect<TSubstream>(
+    pub async fn connect(
         config: RpcClientConfig,
-        framed: CanonicalFraming<TSubstream>,
+        framed: CanonicalFraming<Substream>,
         protocol_name: ProtocolId,
-    ) -> Result<Self, RpcError>
-    where
-        TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static,
-    {
+    ) -> Result<Self, RpcError> {
         let (request_tx, request_rx) = mpsc::channel(1);
         let shutdown = Shutdown::new();
         let shutdown_signal = shutdown.to_signal();
@@ -224,14 +221,14 @@ where TClient: From<RpcClient> + NamedProtocolService
         self
     }
 
-    pub(crate) fn with_protocol_id(mut self, protocol_id: ProtocolId) -> Self {
+    /// Set the protocol ID associated with this client. This is used for logging purposes only.
+    pub fn with_protocol_id(mut self, protocol_id: ProtocolId) -> Self {
         self.protocol_id = Some(protocol_id);
         self
     }
 
     /// Negotiates and establishes a session to the peer's RPC service
-    pub async fn connect<TSubstream>(self, framed: CanonicalFraming<TSubstream>) -> Result<TClient, RpcError>
-    where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static {
+    pub async fn connect(self, framed: CanonicalFraming<Substream>) -> Result<TClient, RpcError> {
         RpcClient::connect(
             self.config,
             framed,
@@ -346,10 +343,10 @@ impl Service<BaseRequest<Bytes>> for ClientConnector {
     }
 }
 
-pub struct RpcClientWorker<TSubstream> {
+struct RpcClientWorker {
     config: RpcClientConfig,
     request_rx: mpsc::Receiver<ClientRequest>,
-    framed: CanonicalFraming<TSubstream>,
+    framed: CanonicalFraming<Substream>,
     // Request ids are limited to u16::MAX because varint encoding is used over the wire and the magnitude of the value
     // sent determines the byte size. A u16 will be more than enough for the purpose
     next_request_id: u16,
@@ -359,13 +356,11 @@ pub struct RpcClientWorker<TSubstream> {
     shutdown_signal: ShutdownSignal,
 }
 
-impl<TSubstream> RpcClientWorker<TSubstream>
-where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
-{
-    pub fn new(
+impl RpcClientWorker {
+    pub(self) fn new(
         config: RpcClientConfig,
         request_rx: mpsc::Receiver<ClientRequest>,
-        framed: CanonicalFraming<TSubstream>,
+        framed: CanonicalFraming<Substream>,
         ready_tx: oneshot::Sender<Result<(), RpcError>>,
         protocol_id: ProtocolId,
         shutdown_signal: ShutdownSignal,
@@ -386,11 +381,16 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
         String::from_utf8_lossy(&self.protocol_id)
     }
 
-    #[tracing::instrument(name = "rpc_client_worker run", skip(self), fields(next_request_id= self.next_request_id))]
+    fn stream_id(&self) -> yamux::StreamId {
+        self.framed.get_ref().id()
+    }
+
+    #[tracing::instrument(name = "rpc_client_worker run", skip(self), fields(next_request_id = self.next_request_id))]
     async fn run(mut self) {
         debug!(
             target: LOG_TARGET,
-            "Performing client handshake for '{}'",
+            "(stream={}) Performing client handshake for '{}'",
+            self.stream_id(),
             self.protocol_name()
         );
         let start = Instant::now();
@@ -400,7 +400,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
                 let latency = start.elapsed();
                 debug!(
                     target: LOG_TARGET,
-                    "RPC Session ({}) negotiation completed. Latency: {:.0?}",
+                    "(stream={}) RPC Session ({}) negotiation completed. Latency: {:.0?}",
+                    self.stream_id(),
                     self.protocol_name(),
                     latency
                 );
@@ -428,7 +429,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
                     match req {
                         Some(req) => {
                             if let Err(err) = self.handle_request(req).await {
-                                error!(target: LOG_TARGET, "Unexpected error: {}. Worker is terminating.", err);
+                                error!(target: LOG_TARGET, "(stream={}) Unexpected error: {}. Worker is terminating.", self.stream_id(), err);
                                 break;
                             }
                         }
@@ -439,12 +440,18 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
         }
 
         if let Err(err) = self.framed.close().await {
-            debug!(target: LOG_TARGET, "IO Error when closing substream: {}", err);
+            debug!(
+                target: LOG_TARGET,
+                "(stream={}) IO Error when closing substream: {}",
+                self.stream_id(),
+                err
+            );
         }
 
         debug!(
             target: LOG_TARGET,
-            "RpcClientWorker ({}) terminated.",
+            "(stream={}) RpcClientWorker ({}) terminated.",
+            self.stream_id(),
             self.protocol_name()
         );
     }
@@ -477,14 +484,20 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
 
         debug!(
             target: LOG_TARGET,
-            "Ping (protocol {}) sent in {:.2?}",
+            "(stream={}) Ping (protocol {}) sent in {:.2?}",
+            self.stream_id(),
             self.protocol_name(),
             start.elapsed()
         );
         let resp = match self.read_reply().await {
             Ok(resp) => resp,
             Err(RpcError::ReplyTimeout) => {
-                debug!(target: LOG_TARGET, "Ping timed out after {:.0?}", start.elapsed());
+                debug!(
+                    target: LOG_TARGET,
+                    "(stream={}) Ping timed out after {:.0?}",
+                    self.stream_id(),
+                    start.elapsed()
+                );
                 let _ = reply.send(Err(RpcStatus::timed_out("Response timed out")));
                 return Ok(());
             },
@@ -499,7 +512,12 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
 
         let resp_flags = RpcMessageFlags::from_bits_truncate(resp.flags as u8);
         if !resp_flags.contains(RpcMessageFlags::ACK) {
-            warn!(target: LOG_TARGET, "Invalid ping response {:?}", resp);
+            warn!(
+                target: LOG_TARGET,
+                "(stream={}) Invalid ping response {:?}",
+                self.stream_id(),
+                resp
+            );
             let _ = reply.send(Err(RpcStatus::protocol_error(format!(
                 "Received invalid ping response on protocol '{}'",
                 self.protocol_name()
@@ -613,8 +631,9 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
                     if response_tx.is_closed() {
                         warn!(
                             target: LOG_TARGET,
-                            "Response receiver was dropped before the response/stream could complete for protocol {}, \
-                             the stream will continue until completed",
+                            "(stream={}) Response receiver was dropped before the response/stream could complete for \
+                             protocol {}, the stream will continue until completed",
+                            self.framed.get_ref().id(),
                             self.protocol_name()
                         );
                     } else {
