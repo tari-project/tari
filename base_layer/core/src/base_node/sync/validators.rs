@@ -28,7 +28,7 @@ use crate::{
     transactions::CryptoFactories,
     validation::{
         block_validators::BlockValidator,
-        CandidateBlockBodyValidation,
+        BlockSyncBodyValidation,
         ChainBalanceValidator,
         FinalHorizonStateValidation,
     },
@@ -36,14 +36,14 @@ use crate::{
 
 #[derive(Clone)]
 pub struct SyncValidators<B: BlockchainBackend> {
-    pub block_body: Arc<dyn CandidateBlockBodyValidation<B>>,
+    pub block_body: Arc<dyn BlockSyncBodyValidation<B>>,
     pub final_horizon_state: Arc<dyn FinalHorizonStateValidation<B>>,
 }
 
 impl<B: BlockchainBackend + 'static> SyncValidators<B> {
     pub fn new<TBody, TFinal>(block_body: TBody, final_state: TFinal) -> Self
     where
-        TBody: CandidateBlockBodyValidation<B> + 'static,
+        TBody: BlockSyncBodyValidation<B> + 'static,
         TFinal: FinalHorizonStateValidation<B> + 'static,
     {
         Self {
