@@ -34,7 +34,7 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     mempool::{async_mempool, Mempool},
     proof_of_work::{Difficulty, PowAlgorithm},
-    transactions::{transaction::TransactionKernel, types::HashOutput},
+    transactions::transaction::TransactionKernel,
 };
 use log::*;
 use std::{
@@ -42,7 +42,7 @@ use std::{
     sync::Arc,
 };
 use strum_macros::Display;
-use tari_common_types::types::BlockHash;
+use tari_common_types::types::{BlockHash, HashOutput};
 use tari_comms::peer_manager::NodeId;
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
 use tokio::sync::Semaphore;
@@ -129,7 +129,7 @@ where T: BlockchainBackend + 'static
                 self.blockchain_db.get_chain_metadata().await?,
             )),
             NodeCommsRequest::FetchHeaders(block_nums) => {
-                let mut block_headers = Vec::<BlockHeader>::new();
+                let mut block_headers = Vec::<BlockHeader>::with_capacity(block_nums.len());
                 for block_num in block_nums {
                     match self.blockchain_db.fetch_header(block_num).await {
                         Ok(Some(block_header)) => {
@@ -145,7 +145,7 @@ where T: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::BlockHeaders(block_headers))
             },
             NodeCommsRequest::FetchHeadersWithHashes(block_hashes) => {
-                let mut block_headers = Vec::<BlockHeader>::new();
+                let mut block_headers = Vec::<BlockHeader>::with_capacity(block_hashes.len());
                 for block_hash in block_hashes {
                     let block_hex = block_hash.to_hex();
                     match self.blockchain_db.fetch_header_by_block_hash(block_hash).await? {
@@ -196,7 +196,7 @@ where T: BlockchainBackend + 'static
                         .await?
                         .ok_or(CommsInterfaceError::BlockHeaderNotFound(0))?,
                 };
-                let mut headers = vec![];
+                let mut headers = Vec::with_capacity(MAX_HEADERS_PER_RESPONSE as usize);
                 for i in 1..MAX_HEADERS_PER_RESPONSE {
                     match self.blockchain_db.fetch_header(starting_block.height + i as u64).await {
                         Ok(header) => {

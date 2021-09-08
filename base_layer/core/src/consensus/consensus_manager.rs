@@ -23,6 +23,7 @@
 use crate::{
     blocks::{
         genesis_block::{
+            get_igor_genesis_block,
             get_mainnet_genesis_block,
             get_ridcully_genesis_block,
             get_stibbons_genesis_block,
@@ -82,6 +83,7 @@ impl ConsensusManager {
                 .gen_block
                 .clone()
                 .unwrap_or_else(get_weatherwax_genesis_block),
+            Network::Igor => get_igor_genesis_block(),
         }
     }
 

@@ -3,12 +3,13 @@ name = "tari_wallet_ffi"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet C FFI bindings"
 license = "BSD-3-Clause"
-version = "0.17.4"
+version = "0.17.6"
 edition = "2018"
 
 [dependencies]
 tari_comms = { version = "^0.9", path = "../../comms", default-features = false}
 tari_comms_dht = { version = "^0.9", path = "../../comms/dht", default-features = false }
+tari_common_types = {path="../common_types"}
 tari_crypto = "0.11.1"
 tari_key_manager = { version = "^0.9", path = "../key_manager" }
 tari_p2p = { version = "^0.9", path = "../p2p" }
@@ -16,14 +17,14 @@ tari_wallet = { version = "^0.9", path = "../wallet", features = ["c_integration
 tari_shutdown = { version = "^0.9", path = "../../infrastructure/shutdown" }
 tari_utilities = "^0.3"
 
-futures =  { version = "^0.3.1", features =["compat", "std"]}
-tokio = "0.2.10"
-libc = "0.2.65"
-rand = "0.8"
 chrono = { version = "0.4.6", features = ["serde"]}
-thiserror = "1.0.20"
+futures =  { version = "^0.3.1", features =["compat", "std"]}
+libc = "0.2.65"
 log = "0.4.6"
 log4rs = {version = "1.0.0", features = ["console_appender", "file_appender", "yaml_format"]}
+rand = "0.8"
+thiserror = "1.0.26"
+tokio = "1.11"
 
 [dependencies.tari_core]
 path = "../../base_layer/core"
@@ -41,4 +42,3 @@ env_logger = "0.7.1"
 tari_key_manager = { version = "^0.9", path = "../key_manager" }
 tari_common_types = { version = "^0.9", path = "../../base_layer/common_types"}
 tari_test_utils = { version = "^0.9", path = "../../infrastructure/test_utils"}
-tokio = { version="0.2.10" }

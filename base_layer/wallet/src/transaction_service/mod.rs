@@ -20,16 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod config;
-pub mod error;
-pub mod handle;
-pub mod protocols;
-pub mod service;
-pub mod storage;
-pub mod tasks;
+use std::sync::Arc;
 
 use crate::{
     output_manager_service::handle::OutputManagerHandle,
+    storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
         config::TransactionServiceConfig,
         handle::TransactionServiceHandle,
@@ -39,12 +34,13 @@ use crate::{
 };
 use futures::{Stream, StreamExt};
 use log::*;
-use std::sync::Arc;
+use tokio::sync::broadcast;
+
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeIdentity};
 use tari_comms_dht::Dht;
 use tari_core::{
     proto::base_node as base_node_proto,
-    transactions::{transaction_protocol::proto, types::CryptoFactories},
+    transactions::{transaction_protocol::proto, CryptoFactories},
 };
 use tari_p2p::{
     comms_connector::SubscriptionFactory,
@@ -59,23 +55,35 @@ use tari_service_framework::{
     ServiceInitializer,
     ServiceInitializerContext,
 };
-use tokio::sync::broadcast;
+
+pub mod config;
+pub mod error;
+pub mod handle;
+pub mod protocols;
+pub mod service;
+pub mod storage;
+pub mod tasks;
 
 const LOG_TARGET: &str = "wallet::transaction_service";
 const SUBSCRIPTION_LABEL: &str = "Transaction Service";
 
-pub struct TransactionServiceInitializer<T>
-where T: TransactionBackend
+pub struct TransactionServiceInitializer<T, W>
+where
+    T: TransactionBackend,
+    W: WalletBackend,
 {
     config: TransactionServiceConfig,
     subscription_factory: Arc<SubscriptionFactory>,
-    backend: Option<T>,
+    tx_backend: Option<T>,
     node_identity: Arc<NodeIdentity>,
     factories: CryptoFactories,
+    wallet_database: Option<WalletDatabase<W>>,
 }
 
-impl<T> TransactionServiceInitializer<T>
-where T: TransactionBackend
+impl<T, W> TransactionServiceInitializer<T, W>
+where
+    T: TransactionBackend,
+    W: WalletBackend,
 {
     pub fn new(
         config: TransactionServiceConfig,
@@ -83,13 +91,15 @@ where T: TransactionBackend
         backend: T,
         node_identity: Arc<NodeIdentity>,
         factories: CryptoFactories,
+        wallet_database: WalletDatabase<W>,
     ) -> Self {
         Self {
             config,
             subscription_factory,
-            backend: Some(backend),
+            tx_backend: Some(backend),
             node_identity,
             factories,
+            wallet_database: Some(wallet_database),
         }
     }
 
@@ -161,8 +171,10 @@ where T: TransactionBackend
 }
 
 #[async_trait]
-impl<T> ServiceInitializer for TransactionServiceInitializer<T>
-where T: TransactionBackend + 'static
+impl<T, W> ServiceInitializer for TransactionServiceInitializer<T, W>
+where
+    T: TransactionBackend + 'static,
+    W: WalletBackend + 'static,
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (sender, receiver) = reply_channel::unbounded();
@@ -179,10 +191,15 @@ where T: TransactionBackend + 'static
         // Register handle before waiting for handles to be ready
         context.register_handle(transaction_handle);
 
-        let backend = self
-            .backend
+        let tx_backend = self
+            .tx_backend
             .take()
             .expect("Cannot start Transaction Service without providing a backend");
+
+        let wallet_database = self
+            .wallet_database
+            .take()
+            .expect("Cannot start Transaction Service without providing a wallet database");
 
         let node_identity = self.node_identity.clone();
         let factories = self.factories.clone();
@@ -195,7 +212,8 @@ where T: TransactionBackend + 'static
 
             let result = TransactionService::new(
                 config,
-                TransactionDatabase::new(backend),
+                TransactionDatabase::new(tx_backend),
+                wallet_database,
                 receiver,
                 transaction_stream,
                 transaction_reply_stream,

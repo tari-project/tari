@@ -21,11 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use chrono::offset::Local;
-use futures::{FutureExt, StreamExt};
+use futures::FutureExt;
 use log::*;
 use rustyline::Editor;
 use tari_app_utilities::utilities::ExitCodes;
-use tari_core::transactions::types::PrivateKey;
+use tari_common_types::types::PrivateKey;
 use tari_key_manager::mnemonic::to_secretkey;
 use tari_shutdown::Shutdown;
 use tari_wallet::{
@@ -35,6 +35,7 @@ use tari_wallet::{
 };
 
 use crate::wallet_modes::PeerConfig;
+use tokio::sync::broadcast;
 
 pub const LOG_TARGET: &str = "wallet::recovery";
 
@@ -97,13 +98,13 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfi
         .with_retry_limit(10)
         .build_with_wallet(wallet, shutdown_signal);
 
-    let mut event_stream = recovery_task.get_event_receiver().fuse();
+    let mut event_stream = recovery_task.get_event_receiver();
 
     let recovery_join_handle = tokio::spawn(recovery_task.run()).fuse();
 
     // Read recovery task events. The event stream will end once recovery has completed.
-    while let Some(event) = event_stream.next().await {
-        match event {
+    loop {
+        match event_stream.recv().await {
             Ok(UtxoScannerEvent::ConnectingToBaseNode(peer)) => {
                 print!("Connecting to base node {}... ", peer);
             },
@@ -170,10 +171,12 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfi
                 info!(target: LOG_TARGET, "{}", stats);
                 println!("{}", stats);
             },
-            Err(e) => {
-                // Can occur if we read events too slowly (lagging/slow subscriber)
+            Err(e @ broadcast::error::RecvError::Lagged(_)) => {
                 debug!(target: LOG_TARGET, "Error receiving Wallet recovery events: {}", e);
                 continue;
+            },
+            Err(broadcast::error::RecvError::Closed) => {
+                break;
             },
             Ok(UtxoScannerEvent::ScanningFailed) => {
                 error!(target: LOG_TARGET, "Wallet Recovery process failed and is exiting");

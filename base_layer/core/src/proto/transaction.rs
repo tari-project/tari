@@ -27,7 +27,6 @@ use crate::{
     tari_utilities::convert::try_convert_all,
     transactions::{
         aggregated_body::AggregateBody,
-        bullet_rangeproofs::BulletRangeProof,
         tari_amount::MicroTari,
         transaction::{
             KernelFeatures,
@@ -38,10 +37,10 @@ use crate::{
             TransactionKernel,
             TransactionOutput,
         },
-        types::{BlindingFactor, Commitment, PublicKey},
     },
 };
 use std::convert::{TryFrom, TryInto};
+use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, PublicKey};
 use tari_crypto::{
     script::{ExecutionStack, TariScript},
     tari_utilities::{ByteArray, ByteArrayError},

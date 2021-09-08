@@ -21,11 +21,14 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::{event::TorControlEvent, parsers, response::ResponseLine, LOG_TARGET};
-use crate::{compat::IoCompat, runtime::task};
-use futures::{channel::mpsc, future, future::Either, AsyncRead, AsyncWrite, SinkExt, Stream, StreamExt};
+use crate::runtime::task;
+use futures::{future::Either, SinkExt, Stream, StreamExt};
 use log::*;
 use std::fmt;
-use tokio::sync::broadcast;
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::{broadcast, mpsc},
+};
 use tokio_util::codec::{Framed, LinesCodec};
 
 pub fn spawn_monitor<TSocket>(
@@ -36,16 +39,19 @@ pub fn spawn_monitor<TSocket>(
 where
     TSocket: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
-    let (mut responses_tx, responses_rx) = mpsc::channel(100);
+    let (responses_tx, responses_rx) = mpsc::channel(100);
 
     task::spawn(async move {
-        let framed = Framed::new(IoCompat::new(socket), LinesCodec::new());
+        let framed = Framed::new(socket, LinesCodec::new());
         let (mut sink, mut stream) = framed.split();
         loop {
-            let either = future::select(cmd_rx.next(), stream.next()).await;
+            let either = tokio::select! {
+                next = cmd_rx.recv() => Either::Left(next),
+                next = stream.next() => Either::Right(next),
+            };
             match either {
                 // Received a command to send to the control server
-                Either::Left((Some(line), _)) => {
+                Either::Left(Some(line)) => {
                     trace!(target: LOG_TARGET, "Writing command of length '{}'", line.len());
                     if let Err(err) = sink.send(line).await {
                         error!(
@@ -56,7 +62,7 @@ where
                     }
                 },
                 // Command stream ended
-                Either::Left((None, _)) => {
+                Either::Left(None) => {
                     debug!(
                         target: LOG_TARGET,
                         "Tor control server command receiver closed. Monitor is exiting."
@@ -65,7 +71,7 @@ where
                 },
 
                 // Received a line from the control server
-                Either::Right((Some(Ok(line)), _)) => {
+                Either::Right(Some(Ok(line))) => {
                     trace!(target: LOG_TARGET, "Read line of length '{}'", line.len());
                     match parsers::response_line(&line) {
                         Ok(mut line) => {
@@ -95,7 +101,7 @@ where
                 },
 
                 // Error receiving a line from the control server
-                Either::Right((Some(Err(err)), _)) => {
+                Either::Right(Some(Err(err))) => {
                     error!(
                         target: LOG_TARGET,
                         "Line framing error when reading from tor control server: '{:?}'. Monitor is exiting.", err
@@ -103,7 +109,7 @@ where
                     break;
                 },
                 // The control server disconnected
-                Either::Right((None, _)) => {
+                Either::Right(None) => {
                     cmd_rx.close();
                     debug!(
                         target: LOG_TARGET,

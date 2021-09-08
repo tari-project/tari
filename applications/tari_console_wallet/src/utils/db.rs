@@ -21,11 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
+use tari_common_types::types::PublicKey;
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
 };
-use tari_core::transactions::types::PublicKey;
+
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_wallet::WalletSqlite;
 

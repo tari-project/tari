@@ -146,6 +146,11 @@ pub struct ConfigBootstrap {
     pub miner_min_diff: Option<u64>,
     #[structopt(long, alias = "max-difficulty")]
     pub miner_max_diff: Option<u64>,
+    #[structopt(long, aliases = &["tracing", "enable-tracing"])]
+    pub tracing_enabled: bool,
+    /// Supply a network (overrides existing configuration)
+    #[structopt(long, alias = "network")]
+    pub network: Option<String>,
 }
 
 fn normalize_path(path: PathBuf) -> PathBuf {
@@ -180,6 +185,8 @@ impl Default for ConfigBootstrap {
             miner_max_blocks: None,
             miner_min_diff: None,
             miner_max_diff: None,
+            tracing_enabled: false,
+            network: None,
         }
     }
 }

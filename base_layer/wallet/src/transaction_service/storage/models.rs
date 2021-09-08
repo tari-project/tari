@@ -27,12 +27,11 @@ use std::{
     convert::TryFrom,
     fmt::{Display, Error, Formatter},
 };
-use tari_common_types::types::BlockHash;
+use tari_common_types::types::{BlockHash, PrivateKey};
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::Transaction,
-    types::PrivateKey,
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };

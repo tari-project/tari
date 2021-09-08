@@ -1,7 +1,6 @@
 use anyhow::anyhow;
 use bytes::Bytes;
 use chrono::Utc;
-use futures::{channel::mpsc, SinkExt, StreamExt};
 use rand::{rngs::OsRng, thread_rng, RngCore};
 use std::{collections::HashMap, convert::identity, env, net::SocketAddr, path::Path, process, sync::Arc};
 use tari_comms::{
@@ -21,7 +20,10 @@ use tari_storage::{
     LMDBWrapper,
 };
 use tempfile::Builder;
-use tokio::{runtime, sync::broadcast};
+use tokio::{
+    runtime,
+    sync::{broadcast, mpsc},
+};
 
 // Tor example for tari_comms.
 //
@@ -29,7 +31,7 @@ use tokio::{runtime, sync::broadcast};
 
 type Error = anyhow::Error;
 
-#[tokio_macros::main]
+#[tokio::main]
 async fn main() {
     env_logger::init();
     if let Err(err) = run().await {
@@ -56,7 +58,7 @@ async fn run() -> Result<(), Error> {
     println!("Starting comms nodes...",);
 
     let temp_dir1 = Builder::new().prefix("tor-example1").tempdir().unwrap();
-    let (comms_node1, inbound_rx1, mut outbound_tx1) = setup_node_with_tor(
+    let (comms_node1, inbound_rx1, outbound_tx1) = setup_node_with_tor(
         control_port_addr.clone(),
         temp_dir1.as_ref(),
         (9098u16, "127.0.0.1:0".parse::<SocketAddr>().unwrap()),
@@ -208,11 +210,11 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
 async fn start_ping_ponger(
     dest_node_id: NodeId,
     mut inbound_rx: mpsc::Receiver<InboundMessage>,
-    mut outbound_tx: mpsc::Sender<OutboundMessage>,
+    outbound_tx: mpsc::Sender<OutboundMessage>,
 ) -> Result<usize, Error> {
     let mut inflight_pings = HashMap::new();
     let mut counter = 0;
-    while let Some(msg) = inbound_rx.next().await {
+    while let Some(msg) = inbound_rx.recv().await {
         counter += 1;
 
         let msg_str = String::from_utf8_lossy(&msg.body);

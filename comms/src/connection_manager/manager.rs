@@ -36,20 +36,18 @@ use crate::{
     transports::{TcpTransport, Transport},
     PeerManager,
 };
-use futures::{
-    channel::{mpsc, oneshot},
-    stream::Fuse,
-    AsyncRead,
-    AsyncWrite,
-    SinkExt,
-    StreamExt,
-};
 use log::*;
 use multiaddr::Multiaddr;
 use std::{fmt, sync::Arc};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use time::Duration;
-use tokio::{sync::broadcast, task, time};
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::{broadcast, mpsc, oneshot},
+    task,
+    time,
+};
+use tracing::{span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::connection_manager::manager";
 
@@ -121,7 +119,7 @@ impl Default for ConnectionManagerConfig {
                 .expect("DEFAULT_LISTENER_ADDRESS is malformed"),
             #[cfg(test)]
             listener_address: "/memory/0".parse().unwrap(),
-            max_dial_attempts: 3,
+            max_dial_attempts: 1,
             max_simultaneous_inbound_connects: 100,
             network_info: Default::default(),
             #[cfg(not(test))]
@@ -155,8 +153,8 @@ impl ListenerInfo {
 }
 
 pub struct ConnectionManager<TTransport, TBackoff> {
-    request_rx: Fuse<mpsc::Receiver<ConnectionManagerRequest>>,
-    internal_event_rx: Fuse<mpsc::Receiver<ConnectionManagerEvent>>,
+    request_rx: mpsc::Receiver<ConnectionManagerRequest>,
+    internal_event_rx: mpsc::Receiver<ConnectionManagerEvent>,
     dialer_tx: mpsc::Sender<DialerRequest>,
     dialer: Option<Dialer<TTransport, TBackoff>>,
     listener: Option<PeerListener<TTransport>>,
@@ -229,10 +227,10 @@ where
 
         Self {
             shutdown_signal: Some(shutdown_signal),
-            request_rx: request_rx.fuse(),
+            request_rx,
             peer_manager,
             protocols: Protocols::new(),
-            internal_event_rx: internal_event_rx.fuse(),
+            internal_event_rx,
             dialer_tx,
             dialer: Some(dialer),
             listener: Some(listener),
@@ -258,12 +256,14 @@ where
     }
 
     pub async fn run(mut self) {
+        let span = span!(Level::DEBUG, "comms::connection_manager::run");
+        let _enter = span.enter();
         let mut shutdown = self
             .shutdown_signal
             .take()
             .expect("ConnectionManager initialized without a shutdown");
 
-        // Runs the listeners, waiting for a
+        // Runs the listeners. Sockets are bound and ready once this resolves
         match self.run_listeners().await {
             Ok(info) => {
                 self.listener_info = Some(info);
@@ -290,16 +290,16 @@ where
                 .join(", ")
         );
         loop {
-            futures::select! {
-                event = self.internal_event_rx.select_next_some() => {
+            tokio::select! {
+                Some(event) = self.internal_event_rx.recv() => {
                     self.handle_event(event).await;
                 },
 
-                request = self.request_rx.select_next_some() => {
+                Some(request) = self.request_rx.recv() => {
                     self.handle_request(request).await;
                 },
 
-                _ = shutdown => {
+                _ = &mut shutdown => {
                     info!(target: LOG_TARGET, "ConnectionManager is shutting down because it received the shutdown signal");
                     break;
                 }
@@ -350,7 +350,16 @@ where
         use ConnectionManagerRequest::*;
         trace!(target: LOG_TARGET, "Connection manager got request: {:?}", request);
         match request {
-            DialPeer(node_id, reply) => self.dial_peer(node_id, reply).await,
+            DialPeer {
+                node_id,
+                reply_tx,
+                tracing_id: _tracing,
+            } => {
+                let span = span!(Level::TRACE, "connection_manager::handle_request");
+                // This causes a panic for some reason?
+                // span.follows_from(tracing_id);
+                self.dial_peer(node_id, reply_tx).instrument(span).await
+            },
             CancelDial(node_id) => {
                 if let Err(err) = self.dialer_tx.send(DialerRequest::CancelPendingDial(node_id)).await {
                     error!(
@@ -432,10 +441,11 @@ where
         let _ = self.connection_manager_events_tx.send(Arc::new(event));
     }
 
+    #[tracing::instrument(skip(self, reply))]
     async fn dial_peer(
         &mut self,
         node_id: NodeId,
-        reply: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
+        reply: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
     ) {
         match self.peer_manager.find_by_node_id(&node_id).await {
             Ok(peer) => {
@@ -444,7 +454,9 @@ where
             },
             Err(err) => {
                 warn!(target: LOG_TARGET, "Failed to fetch peer to dial because '{}'", err);
-                let _ = reply.send(Err(ConnectionManagerError::PeerManagerError(err)));
+                if let Some(reply) = reply {
+                    let _ = reply.send(Err(ConnectionManagerError::PeerManagerError(err)));
+                }
             },
         }
     }

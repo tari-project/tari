@@ -5,8 +5,8 @@ rem - Tor Services {Note: `powershell` cannot `expand-archive` to `C:\Program Fi
 rem   - Download 'Windows Expert Bundle' at https://archive.torproject.org/tor-package-archive/torbrowser/, 
 rem     e.g. `9.5.3/tor-win64-0.4.3.6.zip`
 
-set tor_version=9.5.3
-set tor_zip=tor-win64-0.4.3.6.zip
+set tor_version=11.0a5
+set tor_zip=tor-win64-0.4.6.7.zip
 set tor_folder=%USERPROFILE%\.tor_services
 set tor_runtime=tor.exe
 

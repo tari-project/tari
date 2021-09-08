@@ -39,7 +39,7 @@ Feature: Reorgs
     And I mine a block on B at height 4 with an invalid MMR
     Then node B is at tip BTip1
 
-  @critical @reorg
+  @critical @reorg @broken
   Scenario: Pruned mode reorg simple
     Given I have a base node NODE1 connected to all seed nodes
     And I have wallet WALLET1 connected to base node NODE1
@@ -63,7 +63,7 @@ Feature: Reorgs
     When I start base node NODE1
     Then all nodes are at height 20
 
-  @critical @reorg
+  @critical @reorg @broken
   Scenario: Pruned mode reorg past horizon
     Given I have a base node NODE1 connected to all seed nodes
     And I have wallet WALLET1 connected to base node NODE1
@@ -96,6 +96,7 @@ Feature: Reorgs
 
       @critical @reorg
   Scenario: Zero-conf reorg with spending
+    Given I do not expect all automated transactions to succeed
     Given I have a base node NODE1 connected to all seed nodes
     Given I have a base node NODE2 connected to node NODE1
     When I mine 14 blocks on NODE1
@@ -142,6 +143,7 @@ Feature: Reorgs
         # Chain 1a:
         #   Mine X1 blocks (orphan_storage_capacity default set to 10)
         #
+    Given I do not expect all automated transactions to succeed
     Given I have a seed node SEED_A1
         # Add multiple base nodes to ensure more robust comms
     And I have a base node NODE_A1 connected to seed SEED_A1

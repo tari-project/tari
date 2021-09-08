@@ -1,4 +1,4 @@
-use futures::future;
+use futures::{channel::mpsc, future, SinkExt};
 use log::*;
 use std::convert::TryFrom;
 use tari_app_grpc::{
@@ -31,17 +31,18 @@ use tari_app_grpc::{
         TransferResult,
     },
 };
+use tari_common_types::types::Signature;
 use tari_comms::{types::CommsPublicKey, CommsNode};
 use tari_core::{
     tari_utilities::{hex::Hex, ByteArray},
-    transactions::{tari_amount::MicroTari, transaction::UnblindedOutput, types::Signature},
+    transactions::{tari_amount::MicroTari, transaction::UnblindedOutput},
 };
 use tari_wallet::{
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::{handle::TransactionServiceHandle, storage::models},
     WalletSqlite,
 };
-use tokio::{sync::mpsc, task};
+use tokio::task;
 use tonic::{Request, Response, Status};
 
 const LOG_TARGET: &str = "wallet::ui::grpc";
@@ -76,6 +77,22 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(GetVersionResponse {
             version: env!("CARGO_PKG_VERSION").to_string(),
         }))
+    }
+
+    async fn check_for_updates(
+        &self,
+        _: Request<tari_rpc::Empty>,
+    ) -> Result<Response<tari_rpc::SoftwareUpdate>, Status> {
+        let mut resp = tari_rpc::SoftwareUpdate::default();
+
+        if let Some(ref update) = *self.wallet.get_software_updater().new_update_notifier().borrow() {
+            resp.has_update = true;
+            resp.version = update.version().to_string();
+            resp.sha = update.to_hash_hex();
+            resp.download_url = update.download_url().to_string();
+        }
+
+        Ok(Response::new(resp))
     }
 
     async fn identify(&self, _: Request<GetIdentityRequest>) -> Result<Response<GetIdentityResponse>, Status> {

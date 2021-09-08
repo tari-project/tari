@@ -31,7 +31,6 @@ use crate::{
     peer_manager::NodeId,
     runtime::task,
 };
-use futures::{channel::mpsc, lock::Mutex, stream::Fuse, StreamExt};
 use std::{
     collections::HashMap,
     sync::{
@@ -39,14 +38,14 @@ use std::{
         Arc,
     },
 };
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc, Mutex};
 
 pub fn create_connection_manager_mock() -> (ConnectionManagerRequester, ConnectionManagerMock) {
     let (tx, rx) = mpsc::channel(10);
     let (event_tx, _) = broadcast::channel(10);
     (
         ConnectionManagerRequester::new(tx, event_tx.clone()),
-        ConnectionManagerMock::new(rx.fuse(), event_tx),
+        ConnectionManagerMock::new(rx, event_tx),
     )
 }
 
@@ -97,13 +96,13 @@ impl ConnectionManagerMockState {
 }
 
 pub struct ConnectionManagerMock {
-    receiver: Fuse<mpsc::Receiver<ConnectionManagerRequest>>,
+    receiver: mpsc::Receiver<ConnectionManagerRequest>,
     state: ConnectionManagerMockState,
 }
 
 impl ConnectionManagerMock {
     pub fn new(
-        receiver: Fuse<mpsc::Receiver<ConnectionManagerRequest>>,
+        receiver: mpsc::Receiver<ConnectionManagerRequest>,
         event_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
     ) -> Self {
         Self {
@@ -121,7 +120,7 @@ impl ConnectionManagerMock {
     }
 
     pub async fn run(mut self) {
-        while let Some(req) = self.receiver.next().await {
+        while let Some(req) = self.receiver.recv().await {
             self.handle_request(req).await;
         }
     }
@@ -131,17 +130,21 @@ impl ConnectionManagerMock {
         self.state.inc_call_count();
         self.state.add_call(format!("{:?}", req)).await;
         match req {
-            DialPeer(node_id, reply_tx) => {
+            DialPeer {
+                node_id,
+                mut reply_tx,
+                tracing_id: _,
+            } => {
                 // Send Ok(conn) if we have an active connection, otherwise Err(DialConnectFailedAllAddresses)
-                let _ = reply_tx.send(
-                    self.state
-                        .active_conns
-                        .lock()
-                        .await
-                        .get(&node_id)
-                        .map(Clone::clone)
-                        .ok_or(ConnectionManagerError::DialConnectFailedAllAddresses),
-                );
+                let result = self
+                    .state
+                    .active_conns
+                    .lock()
+                    .await
+                    .get(&node_id)
+                    .map(Clone::clone)
+                    .ok_or(ConnectionManagerError::DialConnectFailedAllAddresses);
+                let _ = reply_tx.take().map(|tx| tx.send(result));
             },
             CancelDial(_) => {},
             NotifyListening(_reply_tx) => {},

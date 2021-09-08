@@ -53,11 +53,12 @@ Feature: Wallet Monitoring
 #    Then all COINBASE transactions for wallet WALLET_A1 and wallet WALLET_B1 have consistent but opposing validity
 
   Scenario: Wallets monitoring normal transactions after a reorg
+    Given I do not expect all automated transactions to succeed
         #
         # Chain 1:
         #   Collects 10 coinbases into one wallet, send 7 transactions
         #
-    Given I have a seed node SEED_A
+    And I have a seed node SEED_A
         # Add multiple base nodes to ensure more robust comms
     And I have a base node NODE_A1 connected to seed SEED_A
     And I have wallet WALLET_A1 connected to seed node SEED_A

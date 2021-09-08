@@ -25,18 +25,18 @@ use crate::{
     connection_manager::manager::{ConnectionManagerEvent, ListenerInfo},
     peer_manager::NodeId,
 };
-use futures::{
-    channel::{mpsc, oneshot},
-    SinkExt,
-};
 use std::sync::Arc;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc, oneshot};
 
 /// Requests which are handled by the ConnectionManagerService
 #[derive(Debug)]
 pub enum ConnectionManagerRequest {
     /// Dial a given peer by node id.
-    DialPeer(NodeId, oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>),
+    DialPeer {
+        node_id: NodeId,
+        reply_tx: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
+        tracing_id: Option<tracing::span::Id>,
+    },
     /// Cancels a pending dial if one exists
     CancelDial(NodeId),
     /// Register a oneshot to get triggered when the node is listening, or has failed to listen
@@ -74,9 +74,10 @@ impl ConnectionManagerRequester {
     }
 
     /// Attempt to connect to a remote peer
+    #[tracing::instrument(skip(self))]
     pub async fn dial_peer(&mut self, node_id: NodeId) -> Result<PeerConnection, ConnectionManagerError> {
         let (reply_tx, reply_rx) = oneshot::channel();
-        self.send_dial_peer(node_id, reply_tx).await?;
+        self.send_dial_peer(node_id, Some(reply_tx)).await?;
         reply_rx
             .await
             .map_err(|_| ConnectionManagerError::ActorRequestCanceled)?
@@ -92,22 +93,27 @@ impl ConnectionManagerRequester {
     }
 
     /// Send instruction to ConnectionManager to dial a peer and return the result on the given oneshot
+    #[tracing::instrument(skip(self, reply_tx))]
     pub(crate) async fn send_dial_peer(
         &mut self,
         node_id: NodeId,
-        reply_tx: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
+        reply_tx: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
     ) -> Result<(), ConnectionManagerError> {
         self.sender
-            .send(ConnectionManagerRequest::DialPeer(node_id, reply_tx))
+            .send(ConnectionManagerRequest::DialPeer {
+                node_id,
+                reply_tx,
+                tracing_id: tracing::Span::current().id(),
+            })
             .await
             .map_err(|_| ConnectionManagerError::SendToActorFailed)?;
         Ok(())
     }
 
     /// Send instruction to ConnectionManager to dial a peer without waiting for a result.
+    #[tracing::instrument(skip(self))]
     pub(crate) async fn send_dial_peer_no_reply(&mut self, node_id: NodeId) -> Result<(), ConnectionManagerError> {
-        let (reply_tx, _) = oneshot::channel();
-        self.send_dial_peer(node_id, reply_tx).await?;
+        self.send_dial_peer(node_id, None).await?;
         Ok(())
     }
 

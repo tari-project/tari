@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::{error::Error, STRESS_PROTOCOL_NAME, TOR_CONTROL_PORT_ADDR, TOR_SOCKS_ADDR};
-use futures::channel::mpsc;
 use rand::rngs::OsRng;
 use std::{convert, net::Ipv4Addr, path::Path, sync::Arc, time::Duration};
 use tari_comms::{
@@ -39,11 +38,12 @@ use tari_comms::{
     NodeIdentity,
     Substream,
 };
+use tari_shutdown::ShutdownSignal;
 use tari_storage::{
     lmdb_store::{LMDBBuilder, LMDBConfig},
     LMDBWrapper,
 };
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 
 pub async fn create(
     node_identity: Option<Arc<NodeIdentity>>,
@@ -52,6 +52,7 @@ pub async fn create(
     port: u16,
     tor_identity: Option<TorIdentity>,
     is_tcp: bool,
+    shutdown_signal: ShutdownSignal,
 ) -> Result<
     (
         CommsNode,
@@ -95,6 +96,7 @@ pub async fn create(
 
     let builder = CommsBuilder::new()
         .allow_test_addresses()
+        .with_shutdown_signal(shutdown_signal)
         .with_node_identity(node_identity.clone())
         .with_dial_backoff(ConstantBackoff::new(Duration::from_secs(0)))
         .with_peer_storage(peer_database, None)

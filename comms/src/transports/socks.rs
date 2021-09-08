@@ -24,12 +24,13 @@ use crate::{
     multiaddr::Multiaddr,
     socks,
     socks::Socks5Client,
-    transports::{dns::SystemDnsResolver, tcp::TcpTransport, TcpSocket, Transport},
+    transports::{dns::SystemDnsResolver, tcp::TcpTransport, Transport},
 };
-use std::{io, time::Duration};
+use std::io;
+use tokio::net::TcpStream;
 
-/// SO_KEEPALIVE setting for the SOCKS TCP connection
-const SOCKS_SO_KEEPALIVE: Duration = Duration::from_millis(1500);
+// /// SO_KEEPALIVE setting for the SOCKS TCP connection
+// const SOCKS_SO_KEEPALIVE: Duration = Duration::from_millis(1500);
 
 #[derive(Clone, Debug)]
 pub struct SocksConfig {
@@ -57,7 +58,7 @@ impl SocksTransport {
     pub fn create_socks_tcp_transport() -> TcpTransport {
         let mut tcp_transport = TcpTransport::new();
         tcp_transport.set_nodelay(true);
-        tcp_transport.set_keepalive(Some(SOCKS_SO_KEEPALIVE));
+        // .set_keepalive(Some(SOCKS_SO_KEEPALIVE))
         tcp_transport.set_dns_resolver(SystemDnsResolver);
         tcp_transport
     }
@@ -66,7 +67,7 @@ impl SocksTransport {
         tcp: TcpTransport,
         socks_config: SocksConfig,
         dest_addr: Multiaddr,
-    ) -> io::Result<TcpSocket> {
+    ) -> io::Result<TcpStream> {
         // Create a new connection to the SOCKS proxy
         let socks_conn = tcp.dial(socks_config.proxy_address).await?;
         let mut client = Socks5Client::new(socks_conn);

@@ -21,9 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::outbound::{message::SendFailure, DhtOutboundError};
-use futures::channel::mpsc::SendError;
 use tari_comms::peer_manager::PeerManagerError;
 use thiserror::Error;
+use tokio::sync::mpsc::error::SendError;
 
 #[derive(Debug, Error)]
 pub enum DhtDiscoveryError {
@@ -37,8 +37,6 @@ pub enum DhtDiscoveryError {
     InvalidNodeId,
     #[error("MPSC channel is disconnected")]
     ChannelDisconnected,
-    #[error("MPSC sender was unable to send because the channel buffer is full")]
-    SendBufferFull,
     #[error("The discovery request timed out")]
     DiscoveryTimeout,
     #[error("Failed to send discovery message: {0}")]
@@ -56,14 +54,8 @@ impl DhtDiscoveryError {
     }
 }
 
-impl From<SendError> for DhtDiscoveryError {
-    fn from(err: SendError) -> Self {
-        if err.is_disconnected() {
-            DhtDiscoveryError::ChannelDisconnected
-        } else if err.is_full() {
-            DhtDiscoveryError::SendBufferFull
-        } else {
-            unreachable!();
-        }
+impl<T> From<SendError<T>> for DhtDiscoveryError {
+    fn from(_: SendError<T>) -> Self {
+        DhtDiscoveryError::ChannelDisconnected
     }
 }

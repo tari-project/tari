@@ -1,28 +1,51 @@
-const WalletFFI = require("./walletFFI");
+const InterfaceFFI = require("./ffiInterface");
 
 class ByteVector {
-  #byte_vector_ptr;
+  ptr;
 
-  constructor(byte_vector_ptr) {
-    this.#byte_vector_ptr = byte_vector_ptr;
+  pointerAssign(ptr) {
+    // Prevent pointer from being leaked in case of re-assignment
+    if (this.ptr) {
+      this.destroy();
+      this.ptr = ptr;
+    } else {
+      this.ptr = ptr;
+    }
   }
 
-  static async fromBuffer(buffer) {
-    let buf = Buffer.from(buffer, "utf-8"); // get the bytes
+  fromBytes(input) {
+    let buf = Buffer.from(input, "utf-8"); // ensure encoding is utf=8, js default is utf-16
     let len = buf.length; // get the length
-    return new ByteVector(await WalletFFI.byteVectorCreate(buf, len));
+    let result = new ByteVector();
+    result.pointerAssign(InterfaceFFI.byteVectorCreate(buf, len));
+    return result;
+  }
+
+  getBytes() {
+    let result = [];
+    for (let i = 0; i < this.getLength(); i++) {
+      result.push(this.getAt(i));
+    }
+    return result;
   }
 
   getLength() {
-    return WalletFFI.byteVectorGetLength(this.#byte_vector_ptr);
+    return InterfaceFFI.byteVectorGetLength(this.ptr);
   }
 
   getAt(position) {
-    return WalletFFI.byteVectorGetAt(this.#byte_vector_ptr, position);
+    return InterfaceFFI.byteVectorGetAt(this.ptr, position);
+  }
+
+  getPtr() {
+    return this.ptr;
   }
 
   destroy() {
-    return WalletFFI.byteVectorDestroy(this.#byte_vector_ptr);
+    if (this.ptr) {
+      InterfaceFFI.byteVectorDestroy(this.ptr);
+      this.ptr = undefined; //prevent double free segfault
+    }
   }
 }
 

@@ -80,6 +80,7 @@ pub mod __macro_reexports {
         },
         Bytes,
     };
-    pub use futures::{future, future::BoxFuture, AsyncRead, AsyncWrite};
+    pub use futures::{future, future::BoxFuture};
+    pub use tokio::io::{AsyncRead, AsyncWrite};
     pub use tower::Service;
 }

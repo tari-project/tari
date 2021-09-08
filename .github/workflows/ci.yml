@@ -3,15 +3,16 @@ on:
     branches:
       - development
       - main
+      - ci-*
   pull_request:
-    types: [opened, synchronize, reopened ]
+    types: [opened, synchronize, reopened]
 
 name: CI
 
 jobs:
   clippy:
     name: clippy
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-18.04
     steps:
       - name: checkout
         uses: actions/checkout@v2
@@ -41,7 +42,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-20.04, macos-10.15, windows-2019]
+        os: [ubuntu-18.04, macos-10.15, windows-2019]
     runs-on: ${{ matrix.os }}
     steps:
       - name: checkout
@@ -53,6 +54,7 @@ jobs:
           sudo apt-get update && \
           sudo apt-get -y install \
             libssl-dev \
+            clang-10 \
             pkg-config \
             git \
             cmake \
@@ -100,7 +102,7 @@ jobs:
 
   test:
     name: test
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-18.04
     steps:
       - name: checkout
         uses: actions/checkout@v2

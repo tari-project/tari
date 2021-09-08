@@ -31,11 +31,11 @@ use crate::{
     },
     peer_manager::NodeIdentity,
 };
-use futures::{AsyncRead, AsyncWrite};
 use log::*;
 use snow::{self, params::NoiseParams};
 use std::sync::Arc;
 use tari_crypto::tari_utilities::ByteArray;
+use tokio::io::{AsyncRead, AsyncWrite};
 
 const LOG_TARGET: &str = "comms::noise";
 pub(super) const NOISE_IX_PARAMETER: &str = "Noise_IX_25519_ChaChaPoly_BLAKE2b";
@@ -60,6 +60,7 @@ impl NoiseConfig {
 
     /// Upgrades the given socket to using the noise protocol. The upgraded socket and the peer's static key
     /// is returned.
+    #[tracing::instrument(name = "noise::upgrade_socket", skip(self, socket))]
     pub async fn upgrade_socket<TSocket>(
         &self,
         socket: TSocket,
@@ -95,10 +96,15 @@ impl NoiseConfig {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{memsocket::MemorySocket, peer_manager::PeerFeatures, test_utils::node_identity::build_node_identity};
-    use futures::{future, AsyncReadExt, AsyncWriteExt, FutureExt};
+    use crate::{
+        memsocket::MemorySocket,
+        peer_manager::PeerFeatures,
+        runtime,
+        test_utils::node_identity::build_node_identity,
+    };
+    use futures::{future, FutureExt};
     use snow::params::{BaseChoice, CipherChoice, DHChoice, HandshakePattern, HashChoice};
-    use tokio::runtime::Runtime;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     fn check_noise_params(config: &NoiseConfig) {
         assert_eq!(config.parameters.hash, HashChoice::Blake2b);
@@ -117,39 +123,35 @@ mod test {
         assert_eq!(config.node_identity.public_key(), node_identity.public_key());
     }
 
-    #[test]
-    fn upgrade_socket() {
-        let mut rt = Runtime::new().unwrap();
-
+    #[runtime::test]
+    async fn upgrade_socket() {
         let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
         let config1 = NoiseConfig::new(node_identity1.clone());
 
         let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
         let config2 = NoiseConfig::new(node_identity2.clone());
 
-        rt.block_on(async move {
-            let (in_socket, out_socket) = MemorySocket::new_pair();
-            let (mut socket_in, mut socket_out) = future::join(
-                config1.upgrade_socket(in_socket, ConnectionDirection::Inbound),
-                config2.upgrade_socket(out_socket, ConnectionDirection::Outbound),
-            )
-            .map(|(s1, s2)| (s1.unwrap(), s2.unwrap()))
-            .await;
+        let (in_socket, out_socket) = MemorySocket::new_pair();
+        let (mut socket_in, mut socket_out) = future::join(
+            config1.upgrade_socket(in_socket, ConnectionDirection::Inbound),
+            config2.upgrade_socket(out_socket, ConnectionDirection::Outbound),
+        )
+        .map(|(s1, s2)| (s1.unwrap(), s2.unwrap()))
+        .await;
 
-            let in_pubkey = socket_in.get_remote_public_key().unwrap();
-            let out_pubkey = socket_out.get_remote_public_key().unwrap();
+        let in_pubkey = socket_in.get_remote_public_key().unwrap();
+        let out_pubkey = socket_out.get_remote_public_key().unwrap();
 
-            assert_eq!(&in_pubkey, node_identity2.public_key());
-            assert_eq!(&out_pubkey, node_identity1.public_key());
+        assert_eq!(&in_pubkey, node_identity2.public_key());
+        assert_eq!(&out_pubkey, node_identity1.public_key());
 
-            let sample = b"Children of time";
-            socket_in.write_all(sample).await.unwrap();
-            socket_in.flush().await.unwrap();
-            socket_in.close().await.unwrap();
+        let sample = b"Children of time";
+        socket_in.write_all(sample).await.unwrap();
+        socket_in.flush().await.unwrap();
+        socket_in.shutdown().await.unwrap();
 
-            let mut read_buf = Vec::with_capacity(16);
-            socket_out.read_to_end(&mut read_buf).await.unwrap();
-            assert_eq!(read_buf, sample);
-        });
+        let mut read_buf = Vec::with_capacity(16);
+        socket_out.read_to_end(&mut read_buf).await.unwrap();
+        assert_eq!(read_buf, sample);
     }
 }

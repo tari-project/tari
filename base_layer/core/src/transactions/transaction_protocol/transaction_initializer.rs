@@ -20,7 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    collections::HashMap,
+    fmt::{Debug, Error, Formatter},
+};
+
+use digest::Digest;
+use log::*;
+use rand::rngs::OsRng;
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::{PublicKey as PublicKeyTrait, SecretKey},
+    ristretto::pedersen::PedersenCommitmentFactory,
+    script::{ExecutionStack, TariScript},
+    tari_utilities::fixed_set::FixedSet,
+};
+
 use crate::transactions::{
+    crypto_factories::CryptoFactories,
     fee::Fee,
     tari_amount::*,
     transaction::{
@@ -38,22 +55,8 @@ use crate::transactions::{
         RewindData,
         TransactionMetadata,
     },
-    types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey},
 };
-use digest::Digest;
-use log::*;
-use rand::rngs::OsRng;
-use std::{
-    collections::HashMap,
-    fmt::{Debug, Error, Formatter},
-};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
-    ristretto::pedersen::PedersenCommitmentFactory,
-    script::{ExecutionStack, TariScript},
-    tari_utilities::fixed_set::FixedSet,
-};
+use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey};
 
 pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
 
@@ -571,9 +574,18 @@ impl SenderTransactionInitializer {
 
 #[cfg(test)]
 mod test {
+    use rand::rngs::OsRng;
+    use tari_crypto::{
+        common::Blake256,
+        keys::SecretKey,
+        script,
+        script::{ExecutionStack, TariScript},
+    };
+
     use crate::{
         consensus::{KERNEL_WEIGHT, WEIGHT_PER_INPUT, WEIGHT_PER_OUTPUT},
         transactions::{
+            crypto_factories::CryptoFactories,
             fee::Fee,
             helpers::{create_test_input, create_unblinded_output, TestParams, UtxoTestParams},
             tari_amount::*,
@@ -583,16 +595,9 @@ mod test {
                 transaction_initializer::SenderTransactionInitializer,
                 TransactionProtocolError,
             },
-            types::{CryptoFactories, PrivateKey},
         },
     };
-    use rand::rngs::OsRng;
-    use tari_crypto::{
-        common::Blake256,
-        keys::SecretKey,
-        script,
-        script::{ExecutionStack, TariScript},
-    };
+    use tari_common_types::types::PrivateKey;
 
     /// One input, 2 outputs
     #[test]
@@ -763,6 +768,7 @@ mod test {
             .with_output(output, p.sender_offset_private_key)
             .unwrap()
             .with_fee_per_gram(MicroTari(2));
+
         for _ in 0..MAX_TRANSACTION_INPUTS + 1 {
             let (utxo, input) = create_test_input(MicroTari(50), 0, &factories.commitment);
             builder.with_input(utxo, input);

@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{channel::mpsc, StreamExt};
 use rand::rngs::OsRng;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
@@ -46,6 +45,7 @@ use tari_comms_dht::{
     DbConnectionUrl,
     Dht,
     DhtBuilder,
+    DhtConfig,
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_storage::{
@@ -54,16 +54,20 @@ use tari_storage::{
 };
 use tari_test_utils::{
     async_assert_eventually,
-    collect_stream,
+    collect_try_recv,
     paths::create_temporary_data_path,
     random,
     streams,
     unpack_enum,
 };
-use tokio::{sync::broadcast, time};
+use tokio::{
+    sync::{broadcast, mpsc},
+    time,
+};
 use tower::ServiceBuilder;
 
 struct TestNode {
+    name: String,
     comms: CommsNode,
     dht: Dht,
     inbound_messages: mpsc::Receiver<DecryptedDhtMessage>,
@@ -80,12 +84,16 @@ impl TestNode {
         self.comms.node_identity().to_peer()
     }
 
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
     pub async fn next_inbound_message(&mut self, timeout: Duration) -> Option<DecryptedDhtMessage> {
-        time::timeout(timeout, self.inbound_messages.next()).await.ok()?
+        time::timeout(timeout, self.inbound_messages.recv()).await.ok()?
     }
 
     pub async fn shutdown(mut self) {
-        self.shutdown.trigger().unwrap();
+        self.shutdown.trigger();
         self.comms.wait_until_shutdown().await;
     }
 }
@@ -113,24 +121,36 @@ fn create_peer_storage() -> CommsDatabase {
     LMDBWrapper::new(Arc::new(peer_database))
 }
 
-async fn make_node(features: PeerFeatures, seed_peer: Option<Peer>) -> TestNode {
+async fn make_node<I: IntoIterator<Item = Peer>>(
+    name: &str,
+    features: PeerFeatures,
+    dht_config: DhtConfig,
+    known_peers: I,
+) -> TestNode {
     let node_identity = make_node_identity(features);
-    make_node_with_node_identity(node_identity, seed_peer).await
+    make_node_with_node_identity(name, node_identity, dht_config, known_peers).await
 }
 
-async fn make_node_with_node_identity(node_identity: Arc<NodeIdentity>, seed_peer: Option<Peer>) -> TestNode {
+async fn make_node_with_node_identity<I: IntoIterator<Item = Peer>>(
+    name: &str,
+    node_identity: Arc<NodeIdentity>,
+    dht_config: DhtConfig,
+    known_peers: I,
+) -> TestNode {
     let (tx, inbound_messages) = mpsc::channel(10);
     let shutdown = Shutdown::new();
     let (comms, dht, messaging_events) = setup_comms_dht(
         node_identity,
         create_peer_storage(),
         tx,
-        seed_peer.into_iter().collect(),
+        known_peers.into_iter().collect(),
+        dht_config,
         shutdown.to_signal(),
     )
     .await;
 
     TestNode {
+        name: name.to_string(),
         comms,
         dht,
         inbound_messages,
@@ -145,6 +165,7 @@ async fn setup_comms_dht(
     storage: CommsDatabase,
     inbound_tx: mpsc::Sender<DecryptedDhtMessage>,
     peers: Vec<Peer>,
+    dht_config: DhtConfig,
     shutdown_signal: ShutdownSignal,
 ) -> (CommsNode, Dht, MessagingEventSender) {
     // Create inbound and outbound channels
@@ -168,11 +189,8 @@ async fn setup_comms_dht(
         comms.connectivity(),
         comms.shutdown_signal(),
     )
-    .local_test()
-    .set_auto_store_and_forward_requests(false)
+    .with_config(dht_config)
     .with_database_url(DbConnectionUrl::MemoryShared(random::string(8)))
-    .with_discovery_timeout(Duration::from_secs(60))
-    .with_num_neighbouring_nodes(8)
     .build()
     .await
     .unwrap();
@@ -205,17 +223,38 @@ async fn setup_comms_dht(
     (comms, dht, event_tx)
 }
 
-#[tokio_macros::test]
+fn dht_config() -> DhtConfig {
+    let mut config = DhtConfig::default_local_test();
+    config.allow_test_addresses = true;
+    config.saf_auto_request = false;
+    config.discovery_request_timeout = Duration::from_secs(60);
+    config.num_neighbouring_nodes = 8;
+    config
+}
+
+#[tokio::test]
 #[allow(non_snake_case)]
 async fn dht_join_propagation() {
     // Create 3 nodes where only Node B knows A and C, but A and C want to talk to each other
 
     // Node C knows no one
-    let node_C = make_node(PeerFeatures::COMMUNICATION_NODE, None).await;
+    let node_C = make_node("node_C", PeerFeatures::COMMUNICATION_NODE, dht_config(), None).await;
     // Node B knows about Node C
-    let node_B = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_C.to_peer())).await;
+    let node_B = make_node(
+        "node_B",
+        PeerFeatures::COMMUNICATION_NODE,
+        dht_config(),
+        Some(node_C.to_peer()),
+    )
+    .await;
     // Node A knows about Node B
-    let node_A = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_B.to_peer())).await;
+    let node_A = make_node(
+        "node_A",
+        PeerFeatures::COMMUNICATION_NODE,
+        dht_config(),
+        Some(node_B.to_peer()),
+    )
+    .await;
 
     node_A
         .comms
@@ -262,19 +301,37 @@ async fn dht_join_propagation() {
     node_C.shutdown().await;
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 #[allow(non_snake_case)]
 async fn dht_discover_propagation() {
     // Create 4 nodes where A knows B, B knows A and C, C knows B and D, and D knows C
 
     // Node D knows no one
-    let node_D = make_node(PeerFeatures::COMMUNICATION_CLIENT, None).await;
+    let node_D = make_node("node_D", PeerFeatures::COMMUNICATION_CLIENT, dht_config(), None).await;
     // Node C knows about Node D
-    let node_C = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_D.to_peer())).await;
+    let node_C = make_node(
+        "node_C",
+        PeerFeatures::COMMUNICATION_NODE,
+        dht_config(),
+        Some(node_D.to_peer()),
+    )
+    .await;
     // Node B knows about Node C
-    let node_B = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_C.to_peer())).await;
+    let node_B = make_node(
+        "node_B",
+        PeerFeatures::COMMUNICATION_NODE,
+        dht_config(),
+        Some(node_C.to_peer()),
+    )
+    .await;
     // Node A knows about Node B
-    let node_A = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_B.to_peer())).await;
+    let node_A = make_node(
+        "node_A",
+        PeerFeatures::COMMUNICATION_NODE,
+        dht_config(),
+        Some(node_B.to_peer()),
+    )
+    .await;
     log::info!(
         "NodeA = {}, NodeB = {}, Node C = {}, Node D = {}",
         node_A.node_identity().node_id().short_str(),
@@ -318,14 +375,20 @@ async fn dht_discover_propagation() {
     assert!(node_D_peer_manager.exists(node_A.node_identity().public_key()).await);
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 #[allow(non_snake_case)]
 async fn dht_store_forward() {
     let node_C_node_identity = make_node_identity(PeerFeatures::COMMUNICATION_NODE);
     // Node B knows about Node C
-    let node_B = make_node(PeerFeatures::COMMUNICATION_NODE, None).await;
+    let node_B = make_node("node_B", PeerFeatures::COMMUNICATION_NODE, dht_config(), None).await;
     // Node A knows about Node B
-    let node_A = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_B.to_peer())).await;
+    let node_A = make_node(
+        "node_A",
+        PeerFeatures::COMMUNICATION_NODE,
+        dht_config(),
+        Some(node_B.to_peer()),
+    )
+    .await;
     log::info!(
         "NodeA = {}, NodeB = {}, Node C = {}",
         node_A.node_identity().node_id().short_str(),
@@ -370,9 +433,10 @@ async fn dht_store_forward() {
         .unwrap();
 
     // Wait for node B to receive 2 propagation messages
-    collect_stream!(node_B_msg_events, take = 2, timeout = Duration::from_secs(20));
+    collect_try_recv!(node_B_msg_events, take = 2, timeout = Duration::from_secs(20));
 
-    let mut node_C = make_node_with_node_identity(node_C_node_identity, Some(node_B.to_peer())).await;
+    let mut node_C =
+        make_node_with_node_identity("node_C", node_C_node_identity, dht_config(), Some(node_B.to_peer())).await;
     let mut node_C_dht_events = node_C.dht.subscribe_dht_events();
     let mut node_C_msg_events = node_C.messaging_events.subscribe();
     // Ask node B for messages
@@ -389,8 +453,8 @@ async fn dht_store_forward() {
         .await
         .unwrap();
     // Wait for node C to and receive a response from the SAF request
-    let event = collect_stream!(node_C_msg_events, take = 1, timeout = Duration::from_secs(20));
-    unpack_enum!(MessagingEvent::MessageReceived(_node_id, _msg) = &**event.get(0).unwrap().as_ref().unwrap());
+    let event = collect_try_recv!(node_C_msg_events, take = 1, timeout = Duration::from_secs(20));
+    unpack_enum!(MessagingEvent::MessageReceived(_node_id, _msg) = &*event.get(0).unwrap().as_ref());
 
     let msg = node_C.next_inbound_message(Duration::from_secs(5)).await.unwrap();
     assert_eq!(
@@ -418,25 +482,47 @@ async fn dht_store_forward() {
     assert!(msgs.is_empty());
 
     // Check that Node C emitted the StoreAndForwardMessagesReceived event when it went Online
-    let event = collect_stream!(node_C_dht_events, take = 1, timeout = Duration::from_secs(20));
-    unpack_enum!(DhtEvent::StoreAndForwardMessagesReceived = &**event.get(0).unwrap().as_ref().unwrap());
+    let event = collect_try_recv!(node_C_dht_events, take = 1, timeout = Duration::from_secs(20));
+    unpack_enum!(DhtEvent::StoreAndForwardMessagesReceived = &*event.get(0).unwrap().as_ref());
 
     node_A.shutdown().await;
     node_B.shutdown().await;
     node_C.shutdown().await;
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 #[allow(non_snake_case)]
 async fn dht_propagate_dedup() {
+    let mut config = dht_config();
+    // For this test we want to exactly measure the path of a message, so we disable repropagation of messages (i.e
+    // allow 1 occurrence)
+    config.dedup_allowed_message_occurrences = 1;
     // Node D knows no one
-    let mut node_D = make_node(PeerFeatures::COMMUNICATION_NODE, None).await;
+    let mut node_D = make_node("node_D", PeerFeatures::COMMUNICATION_NODE, config.clone(), None).await;
     // Node C knows about Node D
-    let mut node_C = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_D.to_peer())).await;
+    let mut node_C = make_node(
+        "node_C",
+        PeerFeatures::COMMUNICATION_NODE,
+        config.clone(),
+        Some(node_D.to_peer()),
+    )
+    .await;
     // Node B knows about Node C
-    let mut node_B = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_C.to_peer())).await;
+    let mut node_B = make_node(
+        "node_B",
+        PeerFeatures::COMMUNICATION_NODE,
+        config.clone(),
+        Some(node_C.to_peer()),
+    )
+    .await;
     // Node A knows about Node B and C
-    let mut node_A = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_B.to_peer())).await;
+    let mut node_A = make_node(
+        "node_A",
+        PeerFeatures::COMMUNICATION_NODE,
+        config.clone(),
+        Some(node_B.to_peer()),
+    )
+    .await;
     node_A.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
     log::info!(
         "NodeA = {}, NodeB = {}, Node C = {}, Node D = {}",
@@ -482,8 +568,7 @@ async fn dht_propagate_dedup() {
         .dht
         .outbound_requester()
         .propagate(
-            // Node D is a client node, so an destination is required for domain messages
-            NodeDestination::Unknown, // NodeId(Box::new(node_D.node_identity().node_id().clone())),
+            NodeDestination::Unknown,
             OutboundEncryption::EncryptFor(Box::new(node_D.node_identity().public_key().clone())),
             vec![],
             out_msg,
@@ -496,6 +581,7 @@ async fn dht_propagate_dedup() {
         .await
         .expect("Node D expected an inbound message but it never arrived");
     assert!(msg.decryption_succeeded());
+    log::info!("Received message {}", msg.tag);
     let person = msg
         .decryption_result
         .unwrap()
@@ -515,35 +601,150 @@ async fn dht_propagate_dedup() {
     node_D.shutdown().await;
 
     // Check the message flow BEFORE deduping
-    let received = filter_received(collect_stream!(node_A_messaging, timeout = Duration::from_secs(20)));
+    let received = filter_received(collect_try_recv!(node_A_messaging, timeout = Duration::from_secs(20)));
     // Expected race condition: If A->(B|C)->(C|B) before A->(C|B) then (C|B)->A
     if !received.is_empty() {
         assert_eq!(count_messages_received(&received, &[&node_B_id, &node_C_id]), 1);
     }
 
-    let received = filter_received(collect_stream!(node_B_messaging, timeout = Duration::from_secs(20)));
+    let received = filter_received(collect_try_recv!(node_B_messaging, timeout = Duration::from_secs(20)));
     let recv_count = count_messages_received(&received, &[&node_A_id, &node_C_id]);
     // Expected race condition: If A->B->C before A->C then C->B does not happen
     assert!((1..=2).contains(&recv_count));
 
-    let received = filter_received(collect_stream!(node_C_messaging, timeout = Duration::from_secs(20)));
+    let received = filter_received(collect_try_recv!(node_C_messaging, timeout = Duration::from_secs(20)));
     let recv_count = count_messages_received(&received, &[&node_A_id, &node_B_id]);
     assert_eq!(recv_count, 2);
     assert_eq!(count_messages_received(&received, &[&node_D_id]), 0);
 
-    let received = filter_received(collect_stream!(node_D_messaging, timeout = Duration::from_secs(20)));
+    let received = filter_received(collect_try_recv!(node_D_messaging, timeout = Duration::from_secs(20)));
     assert_eq!(received.len(), 1);
     assert_eq!(count_messages_received(&received, &[&node_C_id]), 1);
 }
 
-#[tokio_macros::test]
+#[tokio::test]
+#[allow(non_snake_case)]
+async fn dht_repropagate() {
+    let mut config = dht_config();
+    config.dedup_allowed_message_occurrences = 3;
+    let mut node_C = make_node("node_C", PeerFeatures::COMMUNICATION_NODE, config.clone(), []).await;
+    let mut node_B = make_node("node_B", PeerFeatures::COMMUNICATION_NODE, config.clone(), [
+        node_C.to_peer()
+    ])
+    .await;
+    let mut node_A = make_node("node_A", PeerFeatures::COMMUNICATION_NODE, config, [
+        node_B.to_peer(),
+        node_C.to_peer(),
+    ])
+    .await;
+    node_A.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
+    node_B.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
+    node_C.comms.peer_manager().add_peer(node_A.to_peer()).await.unwrap();
+    node_C.comms.peer_manager().add_peer(node_B.to_peer()).await.unwrap();
+    log::info!(
+        "NodeA = {}, NodeB = {}, Node C = {}",
+        node_A.node_identity().node_id().short_str(),
+        node_B.node_identity().node_id().short_str(),
+        node_C.node_identity().node_id().short_str(),
+    );
+
+    // Connect the peers that should be connected
+    async fn connect_nodes(node1: &mut TestNode, node2: &mut TestNode) {
+        node1
+            .comms
+            .connectivity()
+            .dial_peer(node2.node_identity().node_id().clone())
+            .await
+            .unwrap();
+    }
+    // Pre-connect nodes, this helps message passing be more deterministic
+    connect_nodes(&mut node_A, &mut node_B).await;
+    connect_nodes(&mut node_A, &mut node_C).await;
+    connect_nodes(&mut node_B, &mut node_C).await;
+
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    struct Person {
+        #[prost(string, tag = "1")]
+        name: String,
+        #[prost(uint32, tag = "2")]
+        age: u32,
+    }
+
+    let out_msg = OutboundDomainMessage::new(123, Person {
+        name: "Alan Turing".into(),
+        age: 41,
+    });
+    node_A
+        .dht
+        .outbound_requester()
+        .propagate(
+            NodeDestination::Unknown,
+            OutboundEncryption::ClearText,
+            vec![],
+            out_msg.clone(),
+        )
+        .await
+        .unwrap();
+
+    async fn receive_and_repropagate(node: &mut TestNode, out_msg: &OutboundDomainMessage<Person>) {
+        let msg = node
+            .next_inbound_message(Duration::from_secs(10))
+            .await
+            .unwrap_or_else(|| panic!("{} expected an inbound message but it never arrived", node.name()));
+        log::info!("Received message {}", msg.tag);
+
+        node.dht
+            .outbound_requester()
+            .send_message(
+                SendMessageParams::new()
+                    .propagate(NodeDestination::Unknown, vec![])
+                    .with_destination(NodeDestination::Unknown)
+                    .with_tag(msg.tag)
+                    .finish(),
+                out_msg.clone(),
+            )
+            .await
+            .unwrap()
+            .resolve()
+            .await
+            .unwrap();
+    }
+
+    // This relies on the DHT being set with .with_dedup_discard_hit_count(3)
+    receive_and_repropagate(&mut node_B, &out_msg).await;
+    receive_and_repropagate(&mut node_C, &out_msg).await;
+    receive_and_repropagate(&mut node_A, &out_msg).await;
+    receive_and_repropagate(&mut node_B, &out_msg).await;
+    receive_and_repropagate(&mut node_C, &out_msg).await;
+    receive_and_repropagate(&mut node_A, &out_msg).await;
+    receive_and_repropagate(&mut node_B, &out_msg).await;
+    receive_and_repropagate(&mut node_C, &out_msg).await;
+
+    node_A.shutdown().await;
+    node_B.shutdown().await;
+    node_C.shutdown().await;
+}
+
+#[tokio::test]
 #[allow(non_snake_case)]
 async fn dht_propagate_message_contents_not_malleable_ban() {
-    let node_C = make_node(PeerFeatures::COMMUNICATION_NODE, None).await;
+    let node_C = make_node("node_C", PeerFeatures::COMMUNICATION_NODE, dht_config(), None).await;
     // Node B knows about Node C
-    let mut node_B = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_C.to_peer())).await;
+    let mut node_B = make_node(
+        "node_B",
+        PeerFeatures::COMMUNICATION_NODE,
+        dht_config(),
+        Some(node_C.to_peer()),
+    )
+    .await;
     // Node A knows about Node B
-    let node_A = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_B.to_peer())).await;
+    let node_A = make_node(
+        "node_A",
+        PeerFeatures::COMMUNICATION_NODE,
+        dht_config(),
+        Some(node_B.to_peer()),
+    )
+    .await;
     node_A.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
     log::info!(
         "NodeA = {}, NodeB = {}",
@@ -613,10 +814,10 @@ async fn dht_propagate_message_contents_not_malleable_ban() {
     let node_B_node_id = node_B.node_identity().node_id().clone();
 
     // Node C should ban node B
-    let banned_node_id = streams::assert_in_stream(
+    let banned_node_id = streams::assert_in_broadcast(
         &mut connectivity_events,
-        |r| match &*r.unwrap() {
-            ConnectivityEvent::PeerBanned(node_id) => Some(node_id.clone()),
+        |r| match r {
+            ConnectivityEvent::PeerBanned(node_id) => Some(node_id),
             _ => None,
         },
         Duration::from_secs(10),
@@ -629,12 +830,9 @@ async fn dht_propagate_message_contents_not_malleable_ban() {
     node_C.shutdown().await;
 }
 
-fn filter_received(
-    events: Vec<Result<Arc<MessagingEvent>, tokio::sync::broadcast::RecvError>>,
-) -> Vec<Arc<MessagingEvent>> {
+fn filter_received(events: Vec<Arc<MessagingEvent>>) -> Vec<Arc<MessagingEvent>> {
     events
         .into_iter()
-        .map(Result::unwrap)
         .filter(|e| match &**e {
             MessagingEvent::MessageReceived(_, _) => true,
             _ => unreachable!(),

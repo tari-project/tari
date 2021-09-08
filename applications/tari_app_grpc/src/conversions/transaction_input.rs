@@ -22,10 +22,8 @@
 
 use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
-use tari_core::transactions::{
-    transaction::TransactionInput,
-    types::{Commitment, PublicKey},
-};
+use tari_common_types::types::{Commitment, PublicKey};
+use tari_core::transactions::transaction::TransactionInput;
 use tari_crypto::{
     script::{ExecutionStack, TariScript},
     tari_utilities::{ByteArray, Hashable},

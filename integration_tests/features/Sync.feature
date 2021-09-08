@@ -45,7 +45,7 @@ Feature: Block Sync
     Then NODE1 should have 11 peers
     Then NODE2 should have 11 peers
 
-  @critical @reorg
+  @critical @reorg @broken
   Scenario: Full block sync with small reorg
     Given I have a base node NODE1
     And I have wallet WALLET1 connected to base node NODE1
@@ -105,12 +105,13 @@ Feature: Block Sync
 
   Scenario: Node should not sync from pruned node
     Given I have a base node NODE1 connected to all seed nodes
-    Given I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
+    And I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
     When I mine 40 blocks on NODE1
     Then all nodes are at height 40
     When I stop node NODE1
     Given I have a base node NODE2 connected to node PNODE1
     Given I have a pruned node PNODE2 connected to node PNODE1 with pruning horizon set to 5
+    Given I do not expect all automated transactions to succeed
     When I mine 5 blocks on NODE2
     Then node NODE2 is at height 5
     Then node PNODE2 is at height 40
@@ -119,6 +120,7 @@ Feature: Block Sync
     And I connect node NODE2 to node NODE1 and wait 5 seconds
     # NODE2 may initially try to sync from PNODE1 and PNODE2, then eventually try to sync from NODE1; mining blocks
     # on NODE1 will make this test less flaky and force NODE2 to sync from NODE1 much quicker
+    Given I expect all automated transactions to succeed
     When I mine 10 blocks on NODE1
     Then all nodes are at height 50
 
@@ -148,12 +150,8 @@ Feature: Block Sync
       | X1   | Y1 | SYNC_TIME |
       | 501  | 50 | 20        |
       | 999  | 50 | 60        |
-      | 1001 | 50 | 60        |
-
-    @critical @long-running @broken
-    Examples:
-      | X1   | Y1 | SYNC_TIME |
       | 1000 | 50 | 60        |
+      | 1001 | 50 | 60        |
 
   Scenario: Pruned mode network only
     Given I have a base node NODE1 connected to all seed nodes
@@ -185,9 +183,9 @@ Feature: Block Sync
       | 5     | 100    | 0             | 30        |
       | 10    | 100    | 0             | 30        |
       | 20    | 100    | 0             | 30        |
-      | 5     | 1001   | 0             | 60        |
-      | 10    | 1001   | 0             | 60        |
+      | 5     | 999    | 0             | 60        |
+      | 10    | 1000   | 0             | 60        |
       | 20    | 1001   | 0             | 60        |
-      | 5     | 1001   | 100           | 90        |
-      | 10    | 1001   | 100           | 90        |
+      | 5     | 999    | 100           | 90        |
+      | 10    | 1000   | 100           | 90        |
       | 20    | 1001   | 100           | 90        |

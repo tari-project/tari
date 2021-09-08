@@ -20,14 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    blocks::BlockValidationError,
-    chain_storage::{BlockchainBackend, BlockchainDatabase, MmrTree},
-    crypto::tari_utilities::Hashable,
-    transactions::{transaction::Transaction, types::CryptoFactories},
-    validation::{MempoolTransactionValidation, ValidationError},
-};
 use log::*;
+
+use crate::{
+    chain_storage::{BlockchainBackend, BlockchainDatabase},
+    transactions::{transaction::Transaction, CryptoFactories},
+    validation::{
+        helpers::{check_inputs_are_utxos, check_not_duplicate_txos},
+        MempoolTransactionValidation,
+        ValidationError,
+    },
+};
 
 pub const LOG_TARGET: &str = "c::val::transaction_validators";
 
@@ -40,17 +43,21 @@ pub const LOG_TARGET: &str = "c::val::transaction_validators";
 /// This function does NOT check that inputs come from the UTXO set
 pub struct TxInternalConsistencyValidator {
     factories: CryptoFactories,
+    bypass_range_proof_verification: bool,
 }
 
 impl TxInternalConsistencyValidator {
-    pub fn new(factories: CryptoFactories) -> Self {
-        Self { factories }
+    pub fn new(factories: CryptoFactories, bypass_range_proof_verification: bool) -> Self {
+        Self {
+            factories,
+            bypass_range_proof_verification,
+        }
     }
 }
 
 impl MempoolTransactionValidation for TxInternalConsistencyValidator {
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
-        tx.validate_internal_consistency(&self.factories, None)
+        tx.validate_internal_consistency(self.bypass_range_proof_verification, &self.factories, None)
             .map_err(ValidationError::TransactionError)?;
         Ok(())
     }
@@ -98,8 +105,8 @@ impl<B: BlockchainBackend> TxInputAndMaturityValidator<B> {
 impl<B: BlockchainBackend> MempoolTransactionValidation for TxInputAndMaturityValidator<B> {
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
         let db = self.db.db_read_access()?;
-        verify_inputs_are_spendable(tx, &*db)?;
-        check_not_duplicate_txos(tx, &*db)?;
+        check_inputs_are_utxos(tx.get_body(), &*db)?;
+        check_not_duplicate_txos(tx.get_body(), &*db)?;
 
         let tip_height = db.fetch_chain_metadata()?.height_of_longest_chain();
         verify_timelocks(tx, tip_height)?;
@@ -112,70 +119,11 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxInputAndMaturityVa
 // input maturities
 fn verify_timelocks(tx: &Transaction, current_height: u64) -> Result<(), ValidationError> {
     if tx.min_spendable_height() > current_height + 1 {
-        return Err(ValidationError::MaturityError);
-    }
-    Ok(())
-}
-
-/// This function checks that the inputs exists in the UTXO set but do not exist in the STXO set.
-fn verify_inputs_are_spendable<B: BlockchainBackend>(tx: &Transaction, db: &B) -> Result<(), ValidationError> {
-    let mut not_found_input = Vec::new();
-    for input in tx.body.inputs() {
-        let output_hash = input.output_hash();
-        if let Some(utxo_hash) = db.fetch_unspent_output_hash_by_commitment(&input.commitment)? {
-            // We know that the commitment exists in the UTXO set. Check that the output hash matches (i.e. all fields
-            // like output features match)
-            if utxo_hash == output_hash {
-                continue;
-            }
-
-            warn!(
-                target: LOG_TARGET,
-                "Input spends a UTXO but does not produce the same hash as the output it spends:
-            {}",
-                input
-            );
-            return Err(ValidationError::BlockError(BlockValidationError::InvalidInput));
-        }
-
-        // Wallet needs to know if a transaction has already been mined and uses this error variant to do so.
-        if db.fetch_output(&output_hash)?.is_some() {
-            warn!(
-                target: LOG_TARGET,
-                "Transaction validation failed due to already spent input: {}", input
-            );
-            // We know that the output here must be spent because `fetch_unspent_output_hash_by_commitment` would have
-            // been Some
-            return Err(ValidationError::ContainsSTxO);
-        }
-
-        if tx.body.outputs().iter().any(|output| output.hash() == output_hash) {
-            continue;
-        }
-
         warn!(
             target: LOG_TARGET,
-            "Transaction uses input: {} which does not exist yet", input
+            "Transaction has a min spend height higher than the current tip"
         );
-        not_found_input.push(output_hash);
-    }
-    if !not_found_input.is_empty() {
-        return Err(ValidationError::UnknownInputs(not_found_input));
-    }
-
-    Ok(())
-}
-
-/// This function checks that the outputs do not exist in the TxO set.
-fn check_not_duplicate_txos<B: BlockchainBackend>(transaction: &Transaction, db: &B) -> Result<(), ValidationError> {
-    for output in transaction.body.outputs() {
-        if db.fetch_mmr_leaf_index(MmrTree::Utxo, &output.hash())?.is_some() {
-            warn!(
-                target: LOG_TARGET,
-                "Transaction validation failed due to previously spent output: {}", output
-            );
-            return Err(ValidationError::ContainsTxO);
-        }
+        return Err(ValidationError::MaturityError);
     }
     Ok(())
 }

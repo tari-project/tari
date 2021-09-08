@@ -32,7 +32,6 @@ use crate::{
     bounded_executor::BoundedExecutor,
     connection_manager::{
         liveness::LivenessSession,
-        types::OneshotTrigger,
         wire_mode::{WireMode, LIVENESS_WIRE_MODE},
     },
     multiaddr::Multiaddr,
@@ -46,17 +45,7 @@ use crate::{
     utils::multiaddr::multiaddr_to_socketaddr,
     PeerManager,
 };
-use futures::{
-    channel::mpsc,
-    future,
-    AsyncRead,
-    AsyncReadExt,
-    AsyncWrite,
-    AsyncWriteExt,
-    FutureExt,
-    SinkExt,
-    StreamExt,
-};
+use futures::{future, FutureExt};
 use log::*;
 use std::{
     convert::TryInto,
@@ -69,8 +58,14 @@ use std::{
     time::Duration,
 };
 use tari_crypto::tari_utilities::hex::Hex;
-use tari_shutdown::ShutdownSignal;
-use tokio::time;
+use tari_shutdown::{oneshot_trigger, oneshot_trigger::OneshotTrigger, ShutdownSignal};
+use tokio::{
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
+    sync::mpsc,
+    time,
+};
+use tokio_stream::StreamExt;
+use tracing::{span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::connection_manager::listener";
 
@@ -117,7 +112,7 @@ where
             bounded_executor: BoundedExecutor::from_current(config.max_simultaneous_inbound_connects),
             liveness_session_count: Arc::new(AtomicUsize::new(config.liveness_max_sessions)),
             config,
-            on_listening: OneshotTrigger::new(),
+            on_listening: oneshot_trigger::channel(),
         }
     }
 
@@ -127,7 +122,7 @@ where
     // 'static lifetime as well as to flatten the oneshot result for ergonomics
     pub fn on_listening(&self) -> impl Future<Output = Result<Multiaddr, ConnectionManagerError>> + 'static {
         let signal = self.on_listening.to_signal();
-        signal.map(|r| r.map_err(|_| ConnectionManagerError::ListenerOneshotCancelled)?)
+        signal.map(|r| r.ok_or(ConnectionManagerError::ListenerOneshotCancelled)?)
     }
 
     /// Set the supported protocols of this node to send to peers during the peer identity exchange
@@ -146,31 +141,30 @@ where
         let mut shutdown_signal = self.shutdown_signal.clone();
 
         match self.bind().await {
-            Ok((inbound, address)) => {
+            Ok((mut inbound, address)) => {
                 info!(target: LOG_TARGET, "Listening for peer connections on '{}'", address);
 
-                self.on_listening.trigger(Ok(address));
-
-                let inbound = inbound.fuse();
-                futures::pin_mut!(inbound);
+                self.on_listening.broadcast(Ok(address));
 
                 loop {
-                    futures::select! {
-                        inbound_result = inbound.select_next_some() => {
+                    tokio::select! {
+                        biased;
+
+                        _ = &mut shutdown_signal => {
+                            info!(target: LOG_TARGET, "PeerListener is shutting down because the shutdown signal was triggered");
+                            break;
+                        },
+                        Some(inbound_result) = inbound.next() => {
                             if let Some((socket, peer_addr)) = log_if_error!(target: LOG_TARGET, inbound_result, "Inbound connection failed because '{error}'",) {
                                 self.spawn_listen_task(socket, peer_addr).await;
                             }
-                        },
-                        _ = shutdown_signal => {
-                            info!(target: LOG_TARGET, "PeerListener is shutting down because the shutdown signal was triggered");
-                            break;
                         },
                     }
                 }
             },
             Err(err) => {
                 warn!(target: LOG_TARGET, "PeerListener was unable to start because '{}'", err);
-                self.on_listening.trigger(Err(err));
+                self.on_listening.broadcast(Err(err));
             },
         }
     }
@@ -237,13 +231,14 @@ where
     async fn spawn_listen_task(&self, mut socket: TTransport::Output, peer_addr: Multiaddr) {
         let node_identity = self.node_identity.clone();
         let peer_manager = self.peer_manager.clone();
-        let mut conn_man_notifier = self.conn_man_notifier.clone();
+        let conn_man_notifier = self.conn_man_notifier.clone();
         let noise_config = self.noise_config.clone();
         let config = self.config.clone();
         let our_supported_protocols = self.our_supported_protocols.clone();
         let liveness_session_count = self.liveness_session_count.clone();
         let shutdown_signal = self.shutdown_signal.clone();
 
+        let span = span!(Level::TRACE, "connection_mann::listener::inbound_task",);
         let inbound_fut = async move {
             match Self::read_wire_format(&mut socket, config.time_to_first_byte).await {
                 Ok(WireMode::Comms(byte)) if byte == config.network_info.network_byte => {
@@ -316,7 +311,7 @@ where
                             "No liveness sessions available or permitted for peer address '{}'", peer_addr
                         );
 
-                        let _ = socket.close().await;
+                        let _ = socket.shutdown().await;
                     }
                 },
                 Err(err) => {
@@ -331,7 +326,8 @@ where
                     );
                 },
             }
-        };
+        }
+        .instrument(span);
 
         // This will block (asynchronously) if we have reached the maximum simultaneous connections, creating
         // back-pressure on nodes connecting to this node

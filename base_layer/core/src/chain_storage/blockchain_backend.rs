@@ -9,19 +9,21 @@ use crate::{
         ChainBlock,
         ChainHeader,
         ChainStorageError,
+        DbBasicStats,
         DbKey,
+        DbTotalSizeStats,
         DbTransaction,
         DbValue,
         HorizonData,
         MmrTree,
     },
-    transactions::{
-        transaction::{TransactionInput, TransactionKernel},
-        types::{Commitment, HashOutput, Signature},
-    },
+    transactions::transaction::{TransactionInput, TransactionKernel},
 };
 use croaring::Bitmap;
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{Commitment, HashOutput, Signature},
+};
 use tari_mmr::Hash;
 
 /// Identify behaviour for Blockchain database backends. Implementations must support `Send` and `Sync` so that
@@ -159,4 +161,11 @@ pub trait BlockchainBackend: Send + Sync {
     fn fetch_monero_seed_first_seen_height(&self, seed: &[u8]) -> Result<u64, ChainStorageError>;
 
     fn fetch_horizon_data(&self) -> Result<Option<HorizonData>, ChainStorageError>;
+
+    /// Returns basic database stats for each internal database, such as number of entries and page sizes. This call may
+    /// not apply to every database implementation.
+    fn get_stats(&self) -> Result<DbBasicStats, ChainStorageError>;
+    /// Returns total size information about each internal database. This call may be very slow and will obtain a read
+    /// lock for the duration.
+    fn fetch_total_size_stats(&self) -> Result<DbTotalSizeStats, ChainStorageError>;
 }

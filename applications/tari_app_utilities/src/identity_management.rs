@@ -25,8 +25,8 @@ use log::*;
 use rand::rngs::OsRng;
 use std::{clone::Clone, fs, path::Path, string::ToString, sync::Arc};
 use tari_common::configuration::bootstrap::prompt;
+use tari_common_types::types::PrivateKey;
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
-use tari_core::transactions::types::PrivateKey;
 use tari_crypto::{
     keys::SecretKey,
     tari_utilities::{hex::Hex, message_format::MessageFormat},

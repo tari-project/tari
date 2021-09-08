@@ -33,6 +33,8 @@ use crate::{
         ChainHeader,
         ChainStorageError,
         CompleteDeletedBitmap,
+        DbBasicStats,
+        DbTotalSizeStats,
         DbTransaction,
         HistoricalBlock,
         HorizonData,
@@ -43,16 +45,16 @@ use crate::{
     common::rolling_vec::RollingVec,
     proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
     tari_utilities::epoch_time::EpochTime,
-    transactions::{
-        transaction::{TransactionKernel, TransactionOutput},
-        types::{Commitment, HashOutput, Signature},
-    },
+    transactions::transaction::{TransactionKernel, TransactionOutput},
 };
 use croaring::Bitmap;
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use std::{mem, ops::RangeBounds, sync::Arc, time::Instant};
-use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{BlockHash, Commitment, HashOutput, Signature},
+};
 use tari_mmr::pruned_hashset::PrunedHashSet;
 
 const LOG_TARGET: &str = "c::bn::async_db";
@@ -229,6 +231,10 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(fetch_block_hashes_from_header_tip(n: usize, offset: usize) -> Vec<HashOutput>, "fetch_block_hashes_from_header_tip");
 
     make_async_fn!(fetch_complete_deleted_bitmap_at(hash: HashOutput) -> CompleteDeletedBitmap, "fetch_deleted_bitmap");
+
+    make_async_fn!(get_stats() -> DbBasicStats, "get_stats");
+
+    make_async_fn!(fetch_total_size_stats() -> DbTotalSizeStats, "fetch_total_size_stats");
 }
 
 impl<B: BlockchainBackend + 'static> From<BlockchainDatabase<B>> for AsyncBlockchainDb<B> {
@@ -256,8 +262,15 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         }
     }
 
-    pub fn set_best_block(&mut self, height: u64, hash: HashOutput, accumulated_data: u128) -> &mut Self {
-        self.transaction.set_best_block(height, hash, accumulated_data);
+    pub fn set_best_block(
+        &mut self,
+        height: u64,
+        hash: HashOutput,
+        accumulated_data: u128,
+        expected_prev_best_block: HashOutput,
+    ) -> &mut Self {
+        self.transaction
+            .set_best_block(height, hash, accumulated_data, expected_prev_best_block);
         self
     }
 

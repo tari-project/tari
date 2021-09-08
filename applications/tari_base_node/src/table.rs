@@ -48,6 +48,8 @@ impl<'t, 's> Table<'t, 's> {
 
     pub fn render<T: Write>(&self, out: &mut T) -> io::Result<()> {
         self.render_titles(out)?;
+        out.write_all(b"\n")?;
+        self.render_separator(out)?;
         if !self.rows.is_empty() {
             out.write_all(b"\n")?;
             self.render_rows(out)?;
@@ -56,7 +58,7 @@ impl<'t, 's> Table<'t, 's> {
         Ok(())
     }
 
-    pub fn print_std(&self) {
+    pub fn print_stdout(&self) {
         self.render(&mut io::stdout()).unwrap();
     }
 
@@ -106,6 +108,23 @@ impl<'t, 's> Table<'t, 's> {
         }
         Ok(())
     }
+
+    fn render_separator<T: Write>(&self, out: &mut T) -> io::Result<()> {
+        if let Some(rows_len) = self.rows.first().map(|r| r.len()) {
+            for i in 0..rows_len {
+                let width = self.col_width(i);
+                let pad_left = if i == 0 { "" } else { " " };
+                out.write_all(pad_left.as_bytes())?;
+                let sep = "-".repeat(width);
+                out.write_all(sep.as_bytes())?;
+                out.write_all(" ".as_bytes())?;
+                if i < rows_len - 1 {
+                    out.write_all(self.delim_str.as_bytes())?;
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 macro_rules! row {
@@ -126,7 +145,7 @@ mod test {
         table.render(&mut buf).unwrap();
         assert_eq!(
             String::from_utf8_lossy(&buf.into_inner()),
-            "Hello | World | Bonjour | Le | Monde "
+            "Hello | World | Bonjour | Le | Monde \n"
         );
     }
 
@@ -141,7 +160,8 @@ mod test {
         table.render(&mut buf).unwrap();
         assert_eq!(
             String::from_utf8_lossy(&buf.into_inner()),
-            "Name    | Age | Telephone Number | Favourite Headwear \nTrevor  | 132 | +123 12323223    | Pith Helmet        \n\nHatless | 2   \n"
+            "Name    | Age | Telephone Number | Favourite Headwear \n------- | --- | ---------------- | \
+             ------------------ \nTrevor  | 132 | +123 12323223    | Pith Helmet        \n\nHatless | 2   \n"
         );
     }
 }

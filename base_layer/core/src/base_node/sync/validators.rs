@@ -20,29 +20,30 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{fmt, sync::Arc};
+
 use crate::{
     chain_storage::BlockchainBackend,
     consensus::ConsensusManager,
-    transactions::types::CryptoFactories,
+    transactions::CryptoFactories,
     validation::{
         block_validators::BlockValidator,
-        CandidateBlockBodyValidation,
+        BlockSyncBodyValidation,
         ChainBalanceValidator,
         FinalHorizonStateValidation,
     },
 };
-use std::{fmt, sync::Arc};
 
 #[derive(Clone)]
 pub struct SyncValidators<B: BlockchainBackend> {
-    pub block_body: Arc<dyn CandidateBlockBodyValidation<B>>,
+    pub block_body: Arc<dyn BlockSyncBodyValidation<B>>,
     pub final_horizon_state: Arc<dyn FinalHorizonStateValidation<B>>,
 }
 
 impl<B: BlockchainBackend + 'static> SyncValidators<B> {
     pub fn new<TBody, TFinal>(block_body: TBody, final_state: TFinal) -> Self
     where
-        TBody: CandidateBlockBodyValidation<B> + 'static,
+        TBody: BlockSyncBodyValidation<B> + 'static,
         TFinal: FinalHorizonStateValidation<B> + 'static,
     {
         Self {
@@ -51,9 +52,13 @@ impl<B: BlockchainBackend + 'static> SyncValidators<B> {
         }
     }
 
-    pub fn full_consensus(rules: ConsensusManager, factories: CryptoFactories) -> Self {
+    pub fn full_consensus(
+        rules: ConsensusManager,
+        factories: CryptoFactories,
+        bypass_range_proof_verification: bool,
+    ) -> Self {
         Self::new(
-            BlockValidator::new(rules.clone(), factories.clone()),
+            BlockValidator::new(rules.clone(), bypass_range_proof_verification, factories.clone()),
             ChainBalanceValidator::<B>::new(rules, factories),
         )
     }

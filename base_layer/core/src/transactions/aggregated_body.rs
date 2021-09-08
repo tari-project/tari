@@ -19,15 +19,21 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::transactions::{
-    fee::Fee,
-    tari_amount::*,
-    transaction::*,
-    types::{BlindingFactor, Commitment, CommitmentFactory, CryptoFactories, PrivateKey, PublicKey, RangeProofService},
-};
+use crate::transactions::{crypto_factories::CryptoFactories, fee::Fee, tari_amount::*, transaction::*};
 use log::*;
 use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Error, Formatter};
+use std::{
+    cmp::max,
+    fmt::{Display, Error, Formatter},
+};
+use tari_common_types::types::{
+    BlindingFactor,
+    Commitment,
+    CommitmentFactory,
+    PrivateKey,
+    PublicKey,
+    RangeProofService,
+};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PublicKeyTrait,
@@ -307,6 +313,7 @@ impl AggregateBody {
         &self,
         tx_offset: &BlindingFactor,
         script_offset: &BlindingFactor,
+        bypass_range_proof_verification: bool,
         total_reward: MicroTari,
         factories: &CryptoFactories,
     ) -> Result<(), TransactionError> {
@@ -316,7 +323,9 @@ impl AggregateBody {
         self.verify_kernel_signatures()?;
         self.validate_kernel_sum(total_offset, &factories.commitment)?;
 
-        self.validate_range_proofs(&factories.range_proof)?;
+        if !bypass_range_proof_verification {
+            self.validate_range_proofs(&factories.range_proof)?;
+        }
         self.verify_metadata_signatures()?;
         self.validate_script_offset(script_offset_g, &factories.commitment)
     }
@@ -441,6 +450,12 @@ impl AggregateBody {
             self.outputs.len(),
             self.kernels.len()
         )
+    }
+
+    pub fn max_kernel_timelock(&self) -> u64 {
+        self.kernels()
+            .iter()
+            .fold(0, |max_timelock, kernel| max(max_timelock, kernel.lock_height))
     }
 }
 

@@ -46,11 +46,13 @@ use crate::{
     CommsBuilder,
     Substream,
 };
-use futures::{channel::mpsc, AsyncRead, AsyncWrite};
 use log::*;
 use std::{iter, sync::Arc};
 use tari_shutdown::ShutdownSignal;
-use tokio::sync::broadcast;
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::{broadcast, mpsc},
+};
 
 const LOG_TARGET: &str = "comms::node";
 
@@ -188,7 +190,7 @@ impl UnspawnedCommsNode {
         connection_manager.add_protocols(protocols);
 
         //---------------------------------- Spawn Actors --------------------------------------------//
-        connectivity_manager.create().spawn();
+        connectivity_manager.spawn();
         connection_manager.spawn();
 
         info!(target: LOG_TARGET, "Hello from comms!");

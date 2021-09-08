@@ -20,16 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{future, future::Either, FutureExt, Stream, StreamExt};
 use std::time::Duration;
+use tokio::{sync::broadcast, time};
 
 #[allow(dead_code)]
-pub async fn event_stream_next<TStream>(stream: &mut TStream, timeout: Duration) -> Option<TStream::Item>
-where TStream: Stream + Unpin {
-    let either = future::select(stream.next(), tokio::time::delay_for(timeout).fuse()).await;
-
-    match either {
-        Either::Left((v, _)) => v,
-        Either::Right(_) => None,
+pub async fn event_stream_next<T: Clone>(stream: &mut broadcast::Receiver<T>, timeout: Duration) -> Option<T> {
+    tokio::select! {
+        item = stream.recv() => match item {
+            Ok(item) => Some(item),
+            Err(broadcast::error::RecvError::Closed) => None,
+            Err(broadcast::error::RecvError::Lagged(n)) => panic!("Lagged events channel {}", n),
+        },
+        _ = time::sleep(timeout) => None
     }
 }

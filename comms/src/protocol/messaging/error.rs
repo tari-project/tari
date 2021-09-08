@@ -20,10 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{connection_manager::PeerConnectionError, peer_manager::PeerManagerError, protocol::ProtocolError};
-use futures::channel::mpsc;
+use crate::{
+    connection_manager::PeerConnectionError,
+    connectivity::ConnectivityError,
+    message::OutboundMessage,
+    peer_manager::PeerManagerError,
+    protocol::ProtocolError,
+};
 use std::io;
 use thiserror::Error;
+use tokio::sync::mpsc;
 
 #[derive(Debug, Error)]
 pub enum InboundMessagingError {
@@ -41,12 +47,12 @@ pub enum MessagingProtocolError {
     ProtocolError(#[from] ProtocolError),
     #[error("PeerConnectionError: {0}")]
     PeerConnectionError(#[from] PeerConnectionError),
-    #[error("Failed to dial peer")]
-    PeerDialFailed,
+    #[error("Failed to dial peer: {0}")]
+    PeerDialFailed(ConnectivityError),
     #[error("IO Error: {0}")]
     Io(#[from] io::Error),
     #[error("Sender error: {0}")]
-    SenderError(#[from] mpsc::SendError),
+    SenderError(#[from] mpsc::error::SendError<OutboundMessage>),
     #[error("Stream closed due to inactivity")]
     Inactivity,
 }

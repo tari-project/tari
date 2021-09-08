@@ -77,30 +77,29 @@ where
     V: Serialize + Debug,
 {
     let val_buf = serialize(val)?;
-    txn.access().put(&db, key, &val_buf, put::NOOVERWRITE).map_err(|e| {
-        error!(
-            target: LOG_TARGET,
-            "Could not insert value into lmdb {} ({}/{:?}): {:?}",
+    trace!(target: LOG_TARGET, "LMDB: {} bytes inserted", val_buf.len());
+    match txn.access().put(&db, key, &val_buf, put::NOOVERWRITE) {
+        Ok(_) => Ok(()),
+        Err(lmdb_zero::Error::Code(lmdb_zero::error::KEYEXIST)) => Err(ChainStorageError::KeyExists {
             table_name,
-            to_hex(key.as_lmdb_bytes()),
-            val,
-            e,
-        );
-
-        if let lmdb_zero::Error::Code(code) = &e {
-            if *code == lmdb_zero::error::KEYEXIST {
-                return ChainStorageError::KeyExists {
-                    table_name,
-                    key: to_hex(key.as_lmdb_bytes()),
-                };
-            }
-        }
-
-        ChainStorageError::InsertError {
-            table: table_name,
-            error: e.to_string(),
-        }
-    })
+            key: to_hex(key.as_lmdb_bytes()),
+        }),
+        Err(lmdb_zero::Error::Code(lmdb_zero::error::MAP_FULL)) => Err(ChainStorageError::DbResizeRequired),
+        Err(e) => {
+            error!(
+                target: LOG_TARGET,
+                "Could not insert value into lmdb {} ({}/{:?}): {:?}",
+                table_name,
+                to_hex(key.as_lmdb_bytes()),
+                val,
+                e,
+            );
+            Err(ChainStorageError::InsertError {
+                table: table_name,
+                error: e.to_string(),
+            })
+        },
+    }
 }
 
 /// Note that calling this on a table that does not allow duplicates will replace it
@@ -116,6 +115,11 @@ where
 {
     let val_buf = serialize(val)?;
     txn.access().put(&db, key, &val_buf, put::Flags::empty()).map_err(|e| {
+        if let lmdb_zero::Error::Code(code) = &e {
+            if *code == lmdb_zero::error::MAP_FULL {
+                return ChainStorageError::DbResizeRequired;
+            }
+        }
         error!(
             target: LOG_TARGET,
             "Could not insert value into lmdb transaction: {:?}", e
@@ -132,6 +136,11 @@ where
 {
     let val_buf = serialize(val)?;
     txn.access().put(&db, key, &val_buf, put::Flags::empty()).map_err(|e| {
+        if let lmdb_zero::Error::Code(code) = &e {
+            if *code == lmdb_zero::error::MAP_FULL {
+                return ChainStorageError::DbResizeRequired;
+            }
+        }
         error!(
             target: LOG_TARGET,
             "Could not replace value in lmdb transaction: {:?}", e
@@ -386,4 +395,20 @@ where
         }
     }
     Ok(result)
+}
+
+/// Fetches all the size of all key/values in the given DB. Returns the number of entries, the total size of all the
+/// keys and values in bytes.
+pub fn fetch_db_entry_sizes(txn: &ConstTransaction<'_>, db: &Database) -> Result<(u64, u64, u64), ChainStorageError> {
+    let access = txn.access();
+    let mut cursor = txn.cursor(db)?;
+    let mut num_entries = 0;
+    let mut total_key_size = 0;
+    let mut total_value_size = 0;
+    while let Some((key, value)) = cursor.next::<[u8], [u8]>(&access).to_opt()? {
+        num_entries += 1;
+        total_key_size += key.len() as u64;
+        total_value_size += value.len() as u64;
+    }
+    Ok((num_entries, total_key_size, total_value_size))
 }

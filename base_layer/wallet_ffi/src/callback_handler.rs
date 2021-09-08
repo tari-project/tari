@@ -48,7 +48,6 @@
 //! request_key is used to identify which request this callback references and a result of true means it was successful
 //! and false that the process timed out and new one will be started
 
-use futures::{stream::Fuse, StreamExt};
 use log::*;
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
@@ -96,9 +95,9 @@ where TBackend: TransactionBackend + 'static
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, u8),
     callback_saf_messages_received: unsafe extern "C" fn(),
     db: TransactionDatabase<TBackend>,
-    transaction_service_event_stream: Fuse<TransactionEventReceiver>,
-    output_manager_service_event_stream: Fuse<OutputManagerEventReceiver>,
-    dht_event_stream: Fuse<DhtEventReceiver>,
+    transaction_service_event_stream: TransactionEventReceiver,
+    output_manager_service_event_stream: OutputManagerEventReceiver,
+    dht_event_stream: DhtEventReceiver,
     shutdown_signal: Option<ShutdownSignal>,
     comms_public_key: CommsPublicKey,
 }
@@ -109,9 +108,9 @@ where TBackend: TransactionBackend + 'static
 {
     pub fn new(
         db: TransactionDatabase<TBackend>,
-        transaction_service_event_stream: Fuse<TransactionEventReceiver>,
-        output_manager_service_event_stream: Fuse<OutputManagerEventReceiver>,
-        dht_event_stream: Fuse<DhtEventReceiver>,
+        transaction_service_event_stream: TransactionEventReceiver,
+        output_manager_service_event_stream: OutputManagerEventReceiver,
+        dht_event_stream: DhtEventReceiver,
         shutdown_signal: ShutdownSignal,
         comms_public_key: CommsPublicKey,
         callback_received_transaction: unsafe extern "C" fn(*mut InboundTransaction),
@@ -219,8 +218,8 @@ where TBackend: TransactionBackend + 'static
         info!(target: LOG_TARGET, "Transaction Service Callback Handler starting");
 
         loop {
-            futures::select! {
-                result = self.transaction_service_event_stream.select_next_some() => {
+            tokio::select! {
+                result = self.transaction_service_event_stream.recv() => {
                     match result {
                         Ok(msg) => {
                             trace!(target: LOG_TARGET, "Transaction Service Callback Handler event {:?}", msg);
@@ -271,7 +270,7 @@ where TBackend: TransactionBackend + 'static
                         Err(_e) => error!(target: LOG_TARGET, "Error reading from Transaction Service event broadcast channel"),
                     }
                 },
-                result = self.output_manager_service_event_stream.select_next_some() => {
+                result = self.output_manager_service_event_stream.recv() => {
                     match result {
                         Ok(msg) => {
                             trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {:?}", msg);
@@ -295,7 +294,7 @@ where TBackend: TransactionBackend + 'static
                         Err(_e) => error!(target: LOG_TARGET, "Error reading from Output Manager Service event broadcast channel"),
                     }
                 },
-                result = self.dht_event_stream.select_next_some() => {
+                result = self.dht_event_stream.recv() => {
                     match result {
                         Ok(msg) => {
                             trace!(target: LOG_TARGET, "DHT Callback Handler event {:?}", msg);
@@ -306,11 +305,7 @@ where TBackend: TransactionBackend + 'static
                         Err(_e) => error!(target: LOG_TARGET, "Error reading from DHT event broadcast channel"),
                     }
                 }
-                complete => {
-                    info!(target: LOG_TARGET, "Callback Handler is exiting because all tasks have completed");
-                    break;
-                },
-                 _ = shutdown_signal => {
+                 _ = shutdown_signal.wait() => {
                     info!(target: LOG_TARGET, "Transaction Callback Handler shutting down because the shutdown signal was received");
                     break;
                 },
@@ -585,18 +580,17 @@ where TBackend: TransactionBackend + 'static
 mod test {
     use crate::callback_handler::CallbackHandler;
     use chrono::Utc;
-    use futures::StreamExt;
     use rand::rngs::OsRng;
     use std::{
         sync::{Arc, Mutex},
         thread,
         time::Duration,
     };
+    use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey};
     use tari_comms_dht::event::DhtEvent;
     use tari_core::transactions::{
         tari_amount::{uT, MicroTari},
         transaction::Transaction,
-        types::{BlindingFactor, PrivateKey, PublicKey},
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     };
@@ -604,7 +598,7 @@ mod test {
     use tari_shutdown::Shutdown;
     use tari_wallet::{
         output_manager_service::{handle::OutputManagerEvent, TxoValidationType},
-        test_utils::make_wallet_databases,
+        test_utils::make_wallet_database_connection,
         transaction_service::{
             handle::TransactionEvent,
             storage::{
@@ -616,6 +610,7 @@ mod test {
                     TransactionDirection,
                     TransactionStatus,
                 },
+                sqlite_db::TransactionServiceSqliteDatabase,
             },
         },
     };
@@ -774,10 +769,10 @@ mod test {
 
     #[test]
     fn test_callback_handler() {
-        let mut runtime = Runtime::new().unwrap();
+        let runtime = Runtime::new().unwrap();
 
-        let (_wallet_backend, backend, _oms_backend, _, _tempdir) = make_wallet_databases(None);
-        let db = TransactionDatabase::new(backend);
+        let (connection, _tempdir) = make_wallet_database_connection(None);
+        let db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(connection, None));
         let rtp = ReceiverTransactionProtocol::new_placeholder();
         let inbound_tx = InboundTransaction::new(
             1u64,
@@ -854,9 +849,9 @@ mod test {
         let shutdown_signal = Shutdown::new();
         let callback_handler = CallbackHandler::new(
             db,
-            tx_receiver.fuse(),
-            oms_receiver.fuse(),
-            dht_receiver.fuse(),
+            tx_receiver,
+            oms_receiver,
+            dht_receiver,
             shutdown_signal.to_signal(),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             received_tx_callback,

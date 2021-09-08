@@ -24,26 +24,26 @@ use crate::{
     connection_manager::{error::ConnectionManagerError, peer_connection::PeerConnection},
     peer_manager::Peer,
 };
-use futures::channel::oneshot;
 use tari_shutdown::ShutdownSignal;
+use tokio::sync::oneshot;
 
 /// The state of the dial request
 pub struct DialState {
     /// Number of dial attempts
     attempts: usize,
     /// This peer being dialed
-    pub peer: Box<Peer>,
+    peer: Box<Peer>,
     /// Cancel signal
     cancel_signal: ShutdownSignal,
     /// Reply channel for a connection result
-    pub reply_tx: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
+    reply_tx: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
 }
 
 impl DialState {
     /// Create a new DialState for the given NodeId
     pub fn new(
         peer: Box<Peer>,
-        reply_tx: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
+        reply_tx: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
         cancel_signal: ShutdownSignal,
     ) -> Self {
         Self {
@@ -67,5 +67,20 @@ impl DialState {
 
     pub fn num_attempts(&self) -> usize {
         self.attempts
+    }
+
+    pub fn send_reply(
+        &mut self,
+        result: Result<PeerConnection, ConnectionManagerError>,
+    ) -> Result<(), Result<PeerConnection, ConnectionManagerError>> {
+        if let Some(reply) = self.reply_tx.take() {
+            reply.send(result)?;
+            return Ok(());
+        }
+        Ok(())
+    }
+
+    pub fn peer(&self) -> &Peer {
+        &self.peer
     }
 }

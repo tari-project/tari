@@ -37,7 +37,7 @@ use crate::{
     proto,
     transactions::transaction::Transaction,
 };
-use futures::{channel::mpsc, future, Stream, StreamExt};
+use futures::{Stream, StreamExt};
 use log::*;
 use std::{convert::TryFrom, sync::Arc};
 use tari_comms_dht::Dht;
@@ -54,7 +54,7 @@ use tari_service_framework::{
     ServiceInitializer,
     ServiceInitializerContext,
 };
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 
 const LOG_TARGET: &str = "c::bn::mempool_service::initializer";
 const SUBSCRIPTION_LABEL: &str = "Mempool";
@@ -148,7 +148,7 @@ impl ServiceInitializer for MempoolServiceInitializer {
         let mempool_handle = MempoolHandle::new(request_sender);
         context.register_handle(mempool_handle);
 
-        let (outbound_tx_sender, outbound_tx_stream) = mpsc::unbounded();
+        let (outbound_tx_sender, outbound_tx_stream) = mpsc::unbounded_channel();
         let (outbound_request_sender_service, outbound_request_stream) = reply_channel::unbounded();
         let (local_request_sender_service, local_request_stream) = reply_channel::unbounded();
         let (mempool_state_event_publisher, _) = broadcast::channel(100);
@@ -167,7 +167,7 @@ impl ServiceInitializer for MempoolServiceInitializer {
         context.register_handle(outbound_mp_interface);
         context.register_handle(local_mp_interface);
 
-        context.spawn_when_ready(move |handles| async move {
+        context.spawn_until_shutdown(move |handles| {
             let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
             let state_machine = handles.expect_handle::<StateMachineHandle>();
             let base_node = handles.expect_handle::<LocalNodeCommsInterface>();
@@ -182,11 +182,7 @@ impl ServiceInitializer for MempoolServiceInitializer {
                 block_event_stream: base_node.get_block_event_stream(),
                 request_receiver,
             };
-            let service =
-                MempoolService::new(outbound_message_service, inbound_handlers, config, state_machine).start(streams);
-            futures::pin_mut!(service);
-            future::select(service, handles.get_shutdown_signal()).await;
-            info!(target: LOG_TARGET, "Mempool Service shutdown");
+            MempoolService::new(outbound_message_service, inbound_handlers, config, state_machine).start(streams)
         });
 
         Ok(())

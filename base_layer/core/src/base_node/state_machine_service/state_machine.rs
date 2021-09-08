@@ -35,6 +35,7 @@ use crate::{
 };
 use futures::{future, future::Either};
 use log::*;
+use randomx_rs::RandomXFlag;
 use std::{future::Future, sync::Arc};
 use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
 use tari_shutdown::ShutdownSignal;
@@ -52,6 +53,7 @@ pub struct BaseNodeStateMachineConfig {
     pub pruning_horizon: u64,
     pub max_randomx_vms: usize,
     pub blocks_behind_before_considered_lagging: u64,
+    pub bypass_range_proof_verification: bool,
 }
 
 /// A Tari full node, aka Base Node.
@@ -156,9 +158,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         let status = StatusInfo {
             bootstrapped: self.is_bootstrapped(),
             state_info: self.info.clone(),
+            randomx_vm_cnt: self.randomx_factory.get_count(),
+            randomx_vm_flags: self.randomx_factory.get_flags(),
         };
 
-        if let Err(e) = self.status_event_sender.broadcast(status) {
+        if let Err(e) = self.status_event_sender.send(status) {
             debug!(target: LOG_TARGET, "Error broadcasting a StatusEvent update: {}", e);
         }
     }
@@ -175,6 +179,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
 
     pub fn is_bootstrapped(&self) -> bool {
         self.is_bootstrapped
+    }
+
+    pub fn get_randomx_vm_cnt(&self) -> usize {
+        self.randomx_factory.get_count()
+    }
+
+    pub fn get_randomx_vm_flags(&self) -> RandomXFlag {
+        self.randomx_factory.get_flags()
     }
 
     /// Start the base node runtime.
