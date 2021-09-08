@@ -45,7 +45,7 @@ Feature: Block Sync
     Then NODE1 should have 11 peers
     Then NODE2 should have 11 peers
 
-  @critical @reorg @broken
+  @critical @reorg
   Scenario: Full block sync with small reorg
     Given I have a base node NODE1
     And I have wallet WALLET1 connected to base node NODE1
