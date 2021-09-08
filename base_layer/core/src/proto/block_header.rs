@@ -25,9 +25,9 @@ use crate::{
     blocks::BlockHeader,
     proof_of_work::{PowAlgorithm, ProofOfWork},
     proto::utils::{datetime_to_timestamp, timestamp_to_datetime},
-    transactions::types::BlindingFactor,
 };
 use std::convert::TryFrom;
+use tari_common_types::types::BlindingFactor;
 use tari_crypto::tari_utilities::ByteArray;
 
 //---------------------------------- BlockHeader --------------------------------------------//

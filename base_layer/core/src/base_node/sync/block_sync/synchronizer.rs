@@ -30,7 +30,7 @@ use crate::{
     proto::base_node::SyncBlocksRequest,
     tari_utilities::{hex::Hex, Hashable},
     transactions::aggregated_body::AggregateBody,
-    validation::CandidateBlockBodyValidation,
+    validation::BlockSyncBodyValidation,
 };
 use futures::StreamExt;
 use log::*;
@@ -46,6 +46,7 @@ use tari_comms::{
     PeerConnection,
 };
 use tokio::task;
+use tracing;
 
 const LOG_TARGET: &str = "c::bn::block_sync";
 
@@ -54,7 +55,7 @@ pub struct BlockSynchronizer<B> {
     db: AsyncBlockchainDb<B>,
     connectivity: ConnectivityRequester,
     sync_peer: Option<PeerConnection>,
-    block_validator: Arc<dyn CandidateBlockBodyValidation<B>>,
+    block_validator: Arc<dyn BlockSyncBodyValidation<B>>,
     hooks: Hooks,
 }
 
@@ -64,7 +65,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         db: AsyncBlockchainDb<B>,
         connectivity: ConnectivityRequester,
         sync_peer: Option<PeerConnection>,
-        block_validator: Arc<dyn CandidateBlockBodyValidation<B>>,
+        block_validator: Arc<dyn BlockSyncBodyValidation<B>>,
     ) -> Self {
         Self {
             config,
@@ -86,6 +87,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         self.hooks.add_on_complete_hook(hook);
     }
 
+    #[tracing::instrument(skip(self), err)]
     pub async fn synchronize(&mut self) -> Result<(), BlockSyncError> {
         let peer_conn = self.get_next_sync_peer().await?;
         let node_id = peer_conn.peer_node_id().clone();
@@ -226,6 +228,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                     block.height(),
                     header_hash,
                     block.accumulated_data().total_accumulated_difficulty,
+                    block.header().prev_hash.clone(),
                 )
                 .commit()
                 .await?;
@@ -249,17 +252,6 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         }
 
         if let Some(block) = current_block {
-            // Update metadata to last tip header
-            let header = &block.header();
-            let height = header.height;
-            let best_block = header.hash();
-            let accumulated_difficulty = block.accumulated_data().total_accumulated_difficulty;
-            self.db
-                .write_transaction()
-                .set_best_block(height, best_block.to_vec(), accumulated_difficulty)
-                .commit()
-                .await?;
-
             self.hooks.call_on_complete_hooks(block);
         }
 

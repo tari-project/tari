@@ -1,29 +1,28 @@
 const Contact = require("./contact");
-const WalletFFI = require("./walletFFI");
+const InterfaceFFI = require("./ffiInterface");
 
 class Contacts {
-  #tari_contacts_ptr;
+  ptr;
 
-  constructor(tari_contacts_ptr) {
-    this.#tari_contacts_ptr = tari_contacts_ptr;
-  }
-
-  static async fromWallet(wallet) {
-    return new Contacts(await WalletFFI.walletGetContacts(wallet));
+  constructor(ptr) {
+    this.ptr = ptr;
   }
 
   getLength() {
-    return WalletFFI.contactsGetLength(this.#tari_contacts_ptr);
+    return InterfaceFFI.contactsGetLength(this.ptr);
   }
 
-  async getAt(position) {
-    return new Contact(
-      await WalletFFI.contactsGetAt(this.#tari_contacts_ptr, position)
-    );
+  getAt(position) {
+    let result = new Contact();
+    result.pointerAssign(InterfaceFFI.contactsGetAt(this.ptr, position));
+    return result;
   }
 
   destroy() {
-    return WalletFFI.contactsDestroy(this.#tari_contacts_ptr);
+    if (this.ptr) {
+      InterfaceFFI.contactsDestroy(this.ptr);
+      this.ptr = undefined; //prevent double free segfault
+    }
   }
 }
 

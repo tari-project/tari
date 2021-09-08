@@ -23,6 +23,18 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
+use std::{
+    fmt,
+    fmt::{Display, Formatter},
+};
+
+use log::*;
+use serde::{Deserialize, Serialize};
+use tari_crypto::tari_utilities::Hashable;
+use thiserror::Error;
+
+use tari_common_types::types::BlockHash;
+
 use crate::{
     blocks::BlockHeader,
     chain_storage::MmrTree,
@@ -33,18 +45,9 @@ use crate::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
         transaction::{Transaction, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
-        types::CryptoFactories,
+        CryptoFactories,
     },
 };
-use log::*;
-use serde::{Deserialize, Serialize};
-use std::{
-    fmt,
-    fmt::{Display, Formatter},
-};
-use tari_common_types::types::BlockHash;
-use tari_crypto::tari_utilities::Hashable;
-use thiserror::Error;
 
 #[derive(Clone, Debug, PartialEq, Error)]
 pub enum BlockValidationError {
@@ -52,6 +55,8 @@ pub enum BlockValidationError {
     TransactionError(#[from] TransactionError),
     #[error("Invalid input in block")]
     InvalidInput,
+    #[error("Contains kernels or inputs that are not yet spendable")]
+    MaturityError,
     #[error("Mismatched MMR roots")]
     MismatchedMmrRoots,
     #[error("MMR size for {mmr_tree} does not match. Expected: {expected}, received: {actual}")]
@@ -106,9 +111,12 @@ impl Block {
         Ok(())
     }
 
-    /// Checks that all STXO rules (maturity etc) are followed
-    pub fn check_stxo_rules(&self) -> Result<(), BlockValidationError> {
+    /// Checks that all STXO rules (maturity etc) and kernel heights are followed
+    pub fn check_spend_rules(&self) -> Result<(), BlockValidationError> {
         self.body.check_stxo_rules(self.header.height)?;
+        if self.body.max_kernel_timelock() > self.header.height {
+            return Err(BlockValidationError::MaturityError);
+        }
         Ok(())
     }
 

@@ -41,12 +41,12 @@ use std::{
 use tari_storage::lmdb_store::LMDBConfig;
 
 const DB_INIT_DEFAULT_MB: usize = 1000;
-const DB_GROW_DEFAULT_MB: usize = 500;
-const DB_RESIZE_DEFAULT_MB: usize = 100;
+const DB_GROW_SIZE_DEFAULT_MB: usize = 500;
+const DB_RESIZE_THRESHOLD_DEFAULT_MB: usize = 100;
 
 const DB_INIT_MIN_MB: i64 = 100;
-const DB_GROW_MIN_MB: i64 = 20;
-const DB_RESIZE_MIN_MB: i64 = 10;
+const DB_GROW_SIZE_MIN_MB: i64 = 20;
+const DB_RESIZE_THRESHOLD_MIN_MB: i64 = 10;
 
 //-------------------------------------        Main Configuration Struct      --------------------------------------//
 
@@ -71,7 +71,6 @@ pub struct GlobalConfig {
     pub pruning_horizon: u64,
     pub pruned_mode_cleanup_interval: u64,
     pub core_threads: Option<usize>,
-    pub max_threads: Option<usize>,
     pub base_node_identity_file: PathBuf,
     pub public_address: Multiaddr,
     pub grpc_enabled: bool,
@@ -137,6 +136,7 @@ pub struct GlobalConfig {
     pub mining_pool_address: String,
     pub mining_wallet_address: String,
     pub mining_worker_name: String,
+    pub base_node_bypass_range_proof_verification: bool,
 }
 
 impl GlobalConfig {
@@ -203,25 +203,28 @@ fn convert_node_config(
 
     let key = config_string("base_node", &net_str, "db_grow_size_mb");
     let grow_size_mb = match cfg.get_int(&key) {
-        Ok(mb) if mb < DB_GROW_MIN_MB => {
+        Ok(mb) if mb < DB_GROW_SIZE_MIN_MB => {
             return Err(ConfigurationError::new(
                 &key,
-                &format!("DB grow size must be at least {} MB.", DB_GROW_MIN_MB),
+                &format!("DB grow size must be at least {} MB.", DB_GROW_SIZE_MIN_MB),
             ))
         },
         Ok(mb) => mb as usize,
         Err(e) => match e {
-            ConfigError::NotFound(_) => DB_GROW_DEFAULT_MB, // default
+            ConfigError::NotFound(_) => DB_GROW_SIZE_DEFAULT_MB, // default
             other => return Err(ConfigurationError::new(&key, &other.to_string())),
         },
     };
 
     let key = config_string("base_node", &net_str, "db_resize_threshold_mb");
     let resize_threshold_mb = match cfg.get_int(&key) {
-        Ok(mb) if mb < DB_RESIZE_MIN_MB => {
+        Ok(mb) if mb < DB_RESIZE_THRESHOLD_MIN_MB => {
             return Err(ConfigurationError::new(
                 &key,
-                &format!("DB resize threshold must be at least {} MB.", DB_RESIZE_MIN_MB),
+                &format!(
+                    "DB resize threshold must be at least {} MB.",
+                    DB_RESIZE_THRESHOLD_MIN_MB
+                ),
             ))
         },
         Ok(mb) if mb as usize >= grow_size_mb => {
@@ -238,7 +241,7 @@ fn convert_node_config(
         },
         Ok(mb) => mb as usize,
         Err(e) => match e {
-            ConfigError::NotFound(_) => DB_RESIZE_DEFAULT_MB, // default
+            ConfigError::NotFound(_) => DB_RESIZE_THRESHOLD_DEFAULT_MB, // default
             other => return Err(ConfigurationError::new(&key, &other.to_string())),
         },
     };
@@ -268,10 +271,6 @@ fn convert_node_config(
     // Thread counts
     let key = config_string("base_node", &net_str, "core_threads");
     let core_threads =
-        optional(cfg.get_int(&key).map(|n| n as usize)).map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
-
-    let key = config_string("base_node", &net_str, "max_threads");
-    let max_threads =
         optional(cfg.get_int(&key).map(|n| n as usize)).map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
     // Max RandomX VMs
@@ -376,6 +375,8 @@ fn convert_node_config(
             s.parse::<SocketAddr>()
                 .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
         })?;
+    let key = config_string("base_node", &net_str, "bypass_range_proof_verification");
+    let base_node_bypass_range_proof_verification = cfg.get_bool(&key).unwrap_or(false);
 
     let key = config_string("base_node", &net_str, "dns_seeds_use_dnssec");
     let dns_seeds_use_dnssec = cfg
@@ -712,7 +713,6 @@ fn convert_node_config(
         pruning_horizon,
         pruned_mode_cleanup_interval,
         core_threads,
-        max_threads,
         base_node_identity_file,
         public_address,
         grpc_enabled,
@@ -778,6 +778,7 @@ fn convert_node_config(
         mining_pool_address,
         mining_wallet_address,
         mining_worker_name,
+        base_node_bypass_range_proof_verification,
     })
 }
 

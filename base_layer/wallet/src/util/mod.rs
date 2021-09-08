@@ -23,4 +23,3 @@
 pub mod diesel_ext;
 pub mod emoji;
 pub mod encryption;
-pub mod luhn;

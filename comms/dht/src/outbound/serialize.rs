@@ -137,9 +137,9 @@ mod test {
     use super::*;
     use crate::test_utils::{assert_send_static_service, create_outbound_message, service_spy};
     use prost::Message;
-    use tari_comms::peer_manager::NodeId;
+    use tari_comms::{peer_manager::NodeId, runtime};
 
-    #[tokio_macros::test_basic]
+    #[runtime::test]
     async fn serialize() {
         let spy = service_spy();
         let mut serialize = SerializeLayer.layer(spy.to_service::<PipelineError>());

@@ -20,17 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::compat::IoCompat;
-use futures::{AsyncRead, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
 /// Tari comms canonical framing
-pub type CanonicalFraming<T> = Framed<IoCompat<T>, LengthDelimitedCodec>;
+pub type CanonicalFraming<T> = Framed<T, LengthDelimitedCodec>;
 
 pub fn canonical<T>(stream: T, max_frame_len: usize) -> CanonicalFraming<T>
 where T: AsyncRead + AsyncWrite + Unpin {
     Framed::new(
-        IoCompat::new(stream),
+        stream,
         LengthDelimitedCodec::builder()
             .max_frame_length(max_frame_len)
             .new_codec(),

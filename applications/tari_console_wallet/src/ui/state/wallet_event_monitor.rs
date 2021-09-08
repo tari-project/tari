@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{notifier::Notifier, ui::state::AppStateInner};
-use futures::stream::StreamExt;
 use log::*;
 use std::sync::Arc;
 use tari_comms::{connectivity::ConnectivityEvent, peer_manager::Peer};
@@ -30,7 +29,7 @@ use tari_wallet::{
     output_manager_service::{handle::OutputManagerEvent, TxId},
     transaction_service::handle::TransactionEvent,
 };
-use tokio::sync::RwLock;
+use tokio::sync::{broadcast, RwLock};
 
 const LOG_TARGET: &str = "wallet::console_wallet::wallet_event_monitor";
 
@@ -55,14 +54,21 @@ impl WalletEventMonitor {
 
         let mut connectivity_events = self.app_state_inner.read().await.get_connectivity_event_stream();
         let wallet_connectivity = self.app_state_inner.read().await.get_wallet_connectivity();
-        let mut connectivity_status = wallet_connectivity.get_connectivity_status_watch().fuse();
+        let mut connectivity_status = wallet_connectivity.get_connectivity_status_watch();
 
         let mut base_node_events = self.app_state_inner.read().await.get_base_node_event_stream();
+        let mut software_update_notif = self
+            .app_state_inner
+            .read()
+            .await
+            .get_software_updater()
+            .new_update_notifier()
+            .clone();
 
         info!(target: LOG_TARGET, "Wallet Event Monitor starting");
         loop {
-            futures::select! {
-                    result = transaction_service_events.select_next_some() => {
+            tokio::select! {
+                    result = transaction_service_events.recv() => {
                         match result {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet transaction service event {:?}", msg);
@@ -104,18 +110,34 @@ impl WalletEventMonitor {
                                     _ => (),
                                 }
                             },
-                            Err(_) => debug!(target: LOG_TARGET, "Lagging read on Transaction Service event broadcast channel"),
+                            Err(broadcast::error::RecvError::Lagged(n)) => {
+                                warn!(target: LOG_TARGET, "Missed {} from Transaction events", n);
+                            }
+                            Err(broadcast::error::RecvError::Closed) => {}
                         }
                     },
-                    status = connectivity_status.select_next_some() => {
-                        trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet connectivity status {:?}", status);
+                    Ok(_) = connectivity_status.changed() => {
+                        trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet connectivity status changed");
                         self.trigger_peer_state_refresh().await;
                     },
-                    result = connectivity_events.select_next_some() => {
+                    Ok(_) = software_update_notif.changed() => {
+                        trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet auto update status changed");
+                        let update = software_update_notif.borrow().as_ref().cloned();
+                        if let Some(update) = update {
+                            self.add_notification(format!(
+                                "Version {} of the {} is available: {} (sha: {})",
+                                update.version(),
+                                update.app(),
+                                update.download_url(),
+                                update.to_hash_hex()
+                            )).await;
+                        }
+                    },
+                    result = connectivity_events.recv() => {
                         match result {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet connectivity event {:?}", msg);
-                                match &*msg {
+                                match msg {
                                     ConnectivityEvent::PeerDisconnected(_) |
                                     ConnectivityEvent::ManagedPeerDisconnected(_) |
                                     ConnectivityEvent::PeerConnected(_)  => {
@@ -125,10 +147,13 @@ impl WalletEventMonitor {
                                     _ => (),
                                 }
                             },
-                            Err(_) => debug!(target: LOG_TARGET, "Lagging read on Connectivity event broadcast channel"),
+                            Err(broadcast::error::RecvError::Lagged(n)) => {
+                                warn!(target: LOG_TARGET, "Missed {} from Connectivity events", n);
+                            }
+                            Err(broadcast::error::RecvError::Closed) => {}
                         }
                     },
-                    result = base_node_events.select_next_some() => {
+                    result = base_node_events.recv() => {
                         match result {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Wallet Event Monitor received base node event {:?}", msg);
@@ -141,10 +166,13 @@ impl WalletEventMonitor {
                                     }
                                 }
                             },
-                            Err(_) => debug!(target: LOG_TARGET, "Lagging read on base node event broadcast channel"),
+                            Err(broadcast::error::RecvError::Lagged(n)) => {
+                                warn!(target: LOG_TARGET, "Missed {} from Base node Service events", n);
+                            }
+                            Err(broadcast::error::RecvError::Closed) => {}
                         }
                     },
-                    result = output_manager_service_events.select_next_some() => {
+                    result = output_manager_service_events.recv() => {
                         match result {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {:?}", msg);
@@ -152,14 +180,13 @@ impl WalletEventMonitor {
                                     self.trigger_balance_refresh().await;
                                 }
                             },
-                            Err(_e) => error!(target: LOG_TARGET, "Error reading from Output Manager Service event broadcast channel"),
+                            Err(broadcast::error::RecvError::Lagged(n)) => {
+                                warn!(target: LOG_TARGET, "Missed {} from Output Manager Service events", n);
+                            }
+                            Err(broadcast::error::RecvError::Closed) => {}
                         }
-                },
-                    complete => {
-                        info!(target: LOG_TARGET, "Wallet Event Monitor is exiting because all tasks have completed");
-                        break;
                     },
-                     _ = shutdown_signal => {
+                    _ = shutdown_signal.wait() => {
                         info!(target: LOG_TARGET, "Wallet Event Monitor shutting down because the shutdown signal was received");
                         break;
                     },
@@ -229,5 +256,10 @@ impl WalletEventMonitor {
         if let Err(e) = inner.refresh_balance().await {
             warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
         }
+    }
+
+    async fn add_notification(&mut self, notification: String) {
+        let mut inner = self.app_state_inner.write().await;
+        inner.add_notification(notification);
     }
 }

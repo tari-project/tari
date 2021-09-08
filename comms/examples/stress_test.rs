@@ -24,13 +24,14 @@ mod stress;
 use stress::{error::Error, prompt::user_prompt};
 
 use crate::stress::{node, prompt::parse_from_short_str, service, service::StressTestServiceRequest};
-use futures::{channel::oneshot, future, future::Either, SinkExt};
+use futures::{future, future::Either};
 use std::{env, net::Ipv4Addr, path::Path, process, sync::Arc, time::Duration};
 use tari_crypto::tari_utilities::message_format::MessageFormat;
+use tari_shutdown::Shutdown;
 use tempfile::Builder;
-use tokio::time;
+use tokio::{sync::oneshot, time};
 
-#[tokio_macros::main]
+#[tokio::main]
 async fn main() {
     env_logger::init();
     match run().await {
@@ -85,10 +86,19 @@ async fn run() -> Result<(), Error> {
 
     let tor_identity = tor_identity_path.as_ref().and_then(load_json);
     let node_identity = node_identity_path.as_ref().and_then(load_json).map(Arc::new);
+    let shutdown = Shutdown::new();
 
     let temp_dir = Builder::new().prefix("stress-test").tempdir().unwrap();
-    let (comms_node, protocol_notif, inbound_rx, outbound_tx) =
-        node::create(node_identity, temp_dir.as_ref(), public_ip, port, tor_identity, is_tcp).await?;
+    let (comms_node, protocol_notif, inbound_rx, outbound_tx) = node::create(
+        node_identity,
+        temp_dir.as_ref(),
+        public_ip,
+        port,
+        tor_identity,
+        is_tcp,
+        shutdown.to_signal(),
+    )
+    .await?;
     if let Some(node_identity_path) = node_identity_path.as_ref() {
         save_json(comms_node.node_identity_ref(), node_identity_path)?;
     }
@@ -99,7 +109,7 @@ async fn run() -> Result<(), Error> {
     }
 
     println!("Stress test service started!");
-    let (handle, mut requester) = service::start_service(comms_node, protocol_notif, inbound_rx, outbound_tx);
+    let (handle, requester) = service::start_service(comms_node, protocol_notif, inbound_rx, outbound_tx, shutdown);
 
     let mut last_peer = peer.as_ref().and_then(parse_from_short_str);
 

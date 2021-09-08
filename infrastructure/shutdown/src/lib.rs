@@ -26,14 +26,16 @@
 #![deny(unused_must_use)]
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
-use futures::{
-    channel::{oneshot, oneshot::Canceled},
-    future::{Fuse, FusedFuture, Shared},
+
+pub mod oneshot_trigger;
+
+use crate::oneshot_trigger::OneshotSignal;
+use futures::future::FusedFuture;
+use std::{
+    future::Future,
+    pin::Pin,
     task::{Context, Poll},
-    Future,
-    FutureExt,
 };
-use std::pin::Pin;
 
 /// Trigger for shutdowns.
 ///
@@ -42,60 +44,22 @@ use std::pin::Pin;
 ///
 /// _Note_: This will trigger when dropped, so the `Shutdown` instance should be held as
 /// long as required by the application.
-pub struct Shutdown {
-    trigger: Option<oneshot::Sender<()>>,
-    signal: ShutdownSignal,
-    on_triggered: Option<Box<dyn FnOnce() + Send + Sync>>,
-}
-
+pub struct Shutdown(oneshot_trigger::OneshotTrigger<()>);
 impl Shutdown {
-    /// Create a new Shutdown
     pub fn new() -> Self {
-        let (tx, rx) = oneshot::channel();
-        Self {
-            trigger: Some(tx),
-            signal: rx.fuse().shared(),
-            on_triggered: None,
-        }
+        Self(oneshot_trigger::OneshotTrigger::new())
     }
 
-    /// Set the on_triggered callback
-    pub fn on_triggered<F>(&mut self, on_trigger: F) -> &mut Self
-    where F: FnOnce() + Send + Sync + 'static {
-        self.on_triggered = Some(Box::new(on_trigger));
-        self
-    }
-
-    /// Convert this into a ShutdownSignal without consuming the
-    /// struct.
-    pub fn to_signal(&self) -> ShutdownSignal {
-        self.signal.clone()
-    }
-
-    /// Trigger any listening signals
-    pub fn trigger(&mut self) -> Result<(), ShutdownError> {
-        match self.trigger.take() {
-            Some(trigger) => {
-                trigger.send(()).map_err(|_| ShutdownError)?;
-
-                if let Some(on_triggered) = self.on_triggered.take() {
-                    on_triggered();
-                }
-
-                Ok(())
-            },
-            None => Ok(()),
-        }
+    pub fn trigger(&mut self) {
+        self.0.broadcast(());
     }
 
     pub fn is_triggered(&self) -> bool {
-        self.trigger.is_none()
+        self.0.is_used()
     }
-}
 
-impl Drop for Shutdown {
-    fn drop(&mut self) {
-        let _ = self.trigger();
+    pub fn to_signal(&self) -> ShutdownSignal {
+        self.0.to_signal().into()
     }
 }
 
@@ -106,7 +70,43 @@ impl Default for Shutdown {
 }
 
 /// Receiver end of a shutdown signal. Once received the consumer should shut down.
-pub type ShutdownSignal = Shared<Fuse<oneshot::Receiver<()>>>;
+#[derive(Debug, Clone)]
+pub struct ShutdownSignal(oneshot_trigger::OneshotSignal<()>);
+
+impl ShutdownSignal {
+    pub fn is_triggered(&self) -> bool {
+        self.0.is_terminated()
+    }
+
+    /// Wait for the shutdown signal to trigger.
+    pub fn wait(&mut self) -> &mut Self {
+        self
+    }
+}
+
+impl Future for ShutdownSignal {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        match Pin::new(&mut self.0).poll(cx) {
+            // Whether `trigger()` was called Some(()), or the Shutdown dropped (None) we want to resolve this future
+            Poll::Ready(_) => Poll::Ready(()),
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
+
+impl FusedFuture for ShutdownSignal {
+    fn is_terminated(&self) -> bool {
+        self.0.is_terminated()
+    }
+}
+
+impl From<oneshot_trigger::OneshotSignal<()>> for ShutdownSignal {
+    fn from(inner: OneshotSignal<()>) -> Self {
+        Self(inner)
+    }
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct OptionalShutdownSignal(Option<ShutdownSignal>);
@@ -137,11 +137,11 @@ impl OptionalShutdownSignal {
 }
 
 impl Future for OptionalShutdownSignal {
-    type Output = Result<(), Canceled>;
+    type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.0.as_mut() {
-            Some(inner) => inner.poll_unpin(cx),
+            Some(inner) => Pin::new(inner).poll(cx),
             None => Poll::Pending,
         }
     }
@@ -165,73 +165,50 @@ impl FusedFuture for OptionalShutdownSignal {
     }
 }
 
-#[derive(Debug)]
-pub struct ShutdownError;
-
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    };
-    use tokio::runtime::Runtime;
+    use tokio::task;
 
-    #[test]
-    fn trigger() {
-        let rt = Runtime::new().unwrap();
+    #[tokio::test]
+    async fn trigger() {
         let mut shutdown = Shutdown::new();
         let signal = shutdown.to_signal();
         assert!(!shutdown.is_triggered());
-        rt.spawn(async move {
-            signal.await.unwrap();
+        let fut = task::spawn(async move {
+            signal.await;
         });
-        shutdown.trigger().unwrap();
-        // Shutdown::trigger is idempotent
-        shutdown.trigger().unwrap();
+        shutdown.trigger();
         assert!(shutdown.is_triggered());
+        // Shutdown::trigger is idempotent
+        shutdown.trigger();
+        assert!(shutdown.is_triggered());
+        fut.await.unwrap();
     }
 
-    #[test]
-    fn signal_clone() {
-        let rt = Runtime::new().unwrap();
+    #[tokio::test]
+    async fn signal_clone() {
         let mut shutdown = Shutdown::new();
         let signal = shutdown.to_signal();
         let signal_clone = signal.clone();
-        rt.spawn(async move {
-            signal_clone.await.unwrap();
-            signal.await.unwrap();
+        let fut = task::spawn(async move {
+            signal_clone.await;
+            signal.await;
         });
-        shutdown.trigger().unwrap();
+        shutdown.trigger();
+        fut.await.unwrap();
     }
 
-    #[test]
-    fn drop_trigger() {
-        let rt = Runtime::new().unwrap();
+    #[tokio::test]
+    async fn drop_trigger() {
         let shutdown = Shutdown::new();
         let signal = shutdown.to_signal();
         let signal_clone = signal.clone();
-        rt.spawn(async move {
-            signal_clone.await.unwrap();
-            signal.await.unwrap();
+        let fut = task::spawn(async move {
+            signal_clone.await;
+            signal.await;
         });
         drop(shutdown);
-    }
-
-    #[test]
-    fn on_trigger() {
-        let rt = Runtime::new().unwrap();
-        let spy = Arc::new(AtomicBool::new(false));
-        let spy_clone = Arc::clone(&spy);
-        let mut shutdown = Shutdown::new();
-        shutdown.on_triggered(move || {
-            spy_clone.store(true, Ordering::SeqCst);
-        });
-        let signal = shutdown.to_signal();
-        rt.spawn(async move {
-            signal.await.unwrap();
-        });
-        shutdown.trigger().unwrap();
-        assert!(spy.load(Ordering::SeqCst));
+        fut.await.unwrap();
     }
 }

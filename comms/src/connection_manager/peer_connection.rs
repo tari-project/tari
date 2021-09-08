@@ -44,20 +44,22 @@ use crate::{
     protocol::{ProtocolId, ProtocolNegotiation},
     runtime,
 };
-use futures::{
-    channel::{mpsc, oneshot},
-    stream::Fuse,
-    SinkExt,
-    StreamExt,
-};
 use log::*;
 use multiaddr::Multiaddr;
 use std::{
     fmt,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
     time::{Duration, Instant},
 };
-use tokio::time;
+use tokio::{
+    sync::{mpsc, oneshot},
+    time,
+};
+use tokio_stream::StreamExt;
+use tracing::{self, span, Instrument, Level, Span};
 
 const LOG_TARGET: &str = "comms::connection_manager::peer_connection";
 
@@ -111,10 +113,11 @@ pub fn create(
 #[derive(Debug)]
 pub enum PeerConnectionRequest {
     /// Open a new substream and negotiate the given protocol
-    OpenSubstream(
-        ProtocolId,
-        oneshot::Sender<Result<NegotiatedSubstream<Substream>, PeerConnectionError>>,
-    ),
+    OpenSubstream {
+        protocol_id: ProtocolId,
+        reply_tx: oneshot::Sender<Result<NegotiatedSubstream<Substream>, PeerConnectionError>>,
+        tracing_id: Option<tracing::span::Id>,
+    },
     /// Disconnect all substreams and close the transport connection
     Disconnect(bool, oneshot::Sender<Result<(), PeerConnectionError>>),
 }
@@ -128,7 +131,7 @@ pub struct PeerConnection {
     peer_node_id: NodeId,
     peer_features: PeerFeatures,
     request_tx: mpsc::Sender<PeerConnectionRequest>,
-    address: Multiaddr,
+    address: Arc<Multiaddr>,
     direction: ConnectionDirection,
     started_at: Instant,
     substream_counter: SubstreamCounter,
@@ -149,7 +152,7 @@ impl PeerConnection {
             request_tx,
             peer_node_id,
             peer_features,
-            address,
+            address: Arc::new(address),
             direction,
             started_at: Instant::now(),
             substream_counter,
@@ -188,19 +191,25 @@ impl PeerConnection {
         self.substream_counter.get()
     }
 
+    #[tracing::instrument("peer_connection::open_substream", skip(self))]
     pub async fn open_substream(
         &mut self,
         protocol_id: &ProtocolId,
     ) -> Result<NegotiatedSubstream<Substream>, PeerConnectionError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.request_tx
-            .send(PeerConnectionRequest::OpenSubstream(protocol_id.clone(), reply_tx))
+            .send(PeerConnectionRequest::OpenSubstream {
+                protocol_id: protocol_id.clone(),
+                reply_tx,
+                tracing_id: Span::current().id(),
+            })
             .await?;
         reply_rx
             .await
             .map_err(|_| PeerConnectionError::InternalReplyCancelled)?
     }
 
+    #[tracing::instrument("peer_connection::open_framed_substream", skip(self))]
     pub async fn open_framed_substream(
         &mut self,
         protocol_id: &ProtocolId,
@@ -211,12 +220,14 @@ impl PeerConnection {
     }
 
     #[cfg(feature = "rpc")]
+    #[tracing::instrument("peer_connection::connect_rpc", skip(self), fields(peer_node_id = self.peer_node_id.to_string().as_str()))]
     pub async fn connect_rpc<T>(&mut self) -> Result<T, RpcError>
     where T: From<RpcClient> + NamedProtocolService {
         self.connect_rpc_using_builder(Default::default()).await
     }
 
     #[cfg(feature = "rpc")]
+    #[tracing::instrument("peer_connection::connect_rpc_with_builder", skip(self, builder))]
     pub async fn connect_rpc_using_builder<T>(&mut self, builder: RpcClientBuilder<T>) -> Result<T, RpcError>
     where T: From<RpcClient> + NamedProtocolService {
         let protocol = ProtocolId::from_static(T::PROTOCOL_NAME);
@@ -291,9 +302,9 @@ impl PartialEq for PeerConnection {
 struct PeerConnectionActor {
     id: ConnectionId,
     peer_node_id: NodeId,
-    request_rx: Fuse<mpsc::Receiver<PeerConnectionRequest>>,
+    request_rx: mpsc::Receiver<PeerConnectionRequest>,
     direction: ConnectionDirection,
-    incoming_substreams: Fuse<IncomingSubstreams>,
+    incoming_substreams: IncomingSubstreams,
     control: Control,
     event_notifier: mpsc::Sender<ConnectionManagerEvent>,
     our_supported_protocols: Vec<ProtocolId>,
@@ -317,8 +328,8 @@ impl PeerConnectionActor {
             peer_node_id,
             direction,
             control: connection.get_yamux_control(),
-            incoming_substreams: connection.incoming().fuse(),
-            request_rx: request_rx.fuse(),
+            incoming_substreams: connection.incoming(),
+            request_rx,
             event_notifier,
             our_supported_protocols,
             their_supported_protocols,
@@ -327,8 +338,8 @@ impl PeerConnectionActor {
 
     pub async fn run(mut self) {
         loop {
-            futures::select! {
-                request = self.request_rx.select_next_some() => self.handle_request(request).await,
+            tokio::select! {
+                Some(request) = self.request_rx.recv() => self.handle_request(request).await,
 
                 maybe_substream = self.incoming_substreams.next() => {
                     match maybe_substream {
@@ -352,14 +363,20 @@ impl PeerConnectionActor {
                 }
             }
         }
-        self.request_rx.get_mut().close();
+        self.request_rx.close();
     }
 
     async fn handle_request(&mut self, request: PeerConnectionRequest) {
         use PeerConnectionRequest::*;
         match request {
-            OpenSubstream(proto, reply_tx) => {
-                let result = self.open_negotiated_protocol_stream(proto).await;
+            OpenSubstream {
+                protocol_id,
+                reply_tx,
+                tracing_id,
+            } => {
+                let span = span!(Level::TRACE, "handle_request");
+                span.follows_from(tracing_id);
+                let result = self.open_negotiated_protocol_stream(protocol_id).instrument(span).await;
                 log_if_error_fmt!(
                     target: LOG_TARGET,
                     reply_tx.send(result),
@@ -380,6 +397,7 @@ impl PeerConnectionActor {
         }
     }
 
+    #[tracing::instrument(skip(self, stream),fields(comms.direction="inbound"))]
     async fn handle_incoming_substream(&mut self, mut stream: Substream) -> Result<(), PeerConnectionError> {
         let selected_protocol = ProtocolNegotiation::new(&mut stream)
             .negotiate_protocol_inbound(&self.our_supported_protocols)
@@ -395,6 +413,7 @@ impl PeerConnectionActor {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self))]
     async fn open_negotiated_protocol_stream(
         &mut self,
         protocol: ProtocolId,

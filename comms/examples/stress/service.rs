@@ -23,15 +23,7 @@
 use super::error::Error;
 use crate::stress::{MAX_FRAME_SIZE, STRESS_PROTOCOL_NAME};
 use bytes::{Buf, Bytes, BytesMut};
-use futures::{
-    channel::{mpsc, oneshot},
-    stream,
-    stream::Fuse,
-    AsyncReadExt,
-    AsyncWriteExt,
-    SinkExt,
-    StreamExt,
-};
+use futures::{stream, SinkExt, StreamExt};
 use rand::{rngs::OsRng, RngCore};
 use std::{
     iter::repeat_with,
@@ -43,18 +35,27 @@ use tari_comms::{
     message::{InboundMessage, OutboundMessage},
     peer_manager::{NodeId, Peer},
     protocol::{ProtocolEvent, ProtocolNotification},
+    utils,
     CommsNode,
     PeerConnection,
     Substream,
 };
 use tari_crypto::tari_utilities::hex::Hex;
-use tokio::{sync::RwLock, task, task::JoinHandle, time};
+use tari_shutdown::Shutdown;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    sync::{mpsc, oneshot, RwLock},
+    task,
+    task::JoinHandle,
+    time,
+};
 
 pub fn start_service(
     comms_node: CommsNode,
     protocol_notif: mpsc::Receiver<ProtocolNotification<Substream>>,
     inbound_rx: mpsc::Receiver<InboundMessage>,
     outbound_tx: mpsc::Sender<OutboundMessage>,
+    shutdown: Shutdown,
 ) -> (JoinHandle<Result<(), Error>>, mpsc::Sender<StressTestServiceRequest>) {
     let node_identity = comms_node.node_identity();
     let (request_tx, request_rx) = mpsc::channel(1);
@@ -66,10 +67,18 @@ pub fn start_service(
         comms_node.listening_address(),
     );
 
-    let service = StressTestService::new(request_rx, comms_node, protocol_notif, inbound_rx, outbound_tx);
+    let service = StressTestService::new(
+        request_rx,
+        comms_node,
+        protocol_notif,
+        inbound_rx,
+        outbound_tx,
+        shutdown,
+    );
     (task::spawn(service.start()), request_tx)
 }
 
+#[derive(Debug)]
 pub enum StressTestServiceRequest {
     BeginProtocol(Peer, StressProtocol, oneshot::Sender<Result<(), Error>>),
     Shutdown,
@@ -135,13 +144,14 @@ impl StressProtocol {
 }
 
 struct StressTestService {
-    request_rx: Fuse<mpsc::Receiver<StressTestServiceRequest>>,
+    request_rx: mpsc::Receiver<StressTestServiceRequest>,
     comms_node: CommsNode,
-    protocol_notif: Fuse<mpsc::Receiver<ProtocolNotification<Substream>>>,
-    shutdown: bool,
+    protocol_notif: mpsc::Receiver<ProtocolNotification<Substream>>,
 
     inbound_rx: Arc<RwLock<mpsc::Receiver<InboundMessage>>>,
     outbound_tx: mpsc::Sender<OutboundMessage>,
+
+    shutdown: Shutdown,
 }
 
 impl StressTestService {
@@ -151,41 +161,40 @@ impl StressTestService {
         protocol_notif: mpsc::Receiver<ProtocolNotification<Substream>>,
         inbound_rx: mpsc::Receiver<InboundMessage>,
         outbound_tx: mpsc::Sender<OutboundMessage>,
+        shutdown: Shutdown,
     ) -> Self {
         Self {
-            request_rx: request_rx.fuse(),
+            request_rx,
             comms_node,
-            protocol_notif: protocol_notif.fuse(),
-            shutdown: false,
+            protocol_notif,
+            shutdown,
             inbound_rx: Arc::new(RwLock::new(inbound_rx)),
             outbound_tx,
         }
     }
 
     async fn start(mut self) -> Result<(), Error> {
-        let mut events = self.comms_node.subscribe_connectivity_events().fuse();
+        let mut events = self.comms_node.subscribe_connectivity_events();
+        let mut shutdown_signal = self.shutdown.to_signal();
 
         loop {
-            futures::select! {
-                event = events.select_next_some() => {
-                    if let Ok(event) = event {
-                        println!("{}", event);
-                    }
+            tokio::select! {
+                Ok(event) = events.recv() => {
+                    println!("{}", event);
                 },
 
-                request = self.request_rx.select_next_some() => {
+                Some(request) = self.request_rx.recv() => {
                     if let Err(err) = self.handle_request(request).await {
                         println!("Error: {}", err);
                     }
                 },
 
-                notif = self.protocol_notif.select_next_some() => {
+                Some(notif) = self.protocol_notif.recv() => {
                     self.handle_protocol_notification(notif).await;
                 },
-            }
-
-            if self.shutdown {
-                break;
+                _ = shutdown_signal.wait() => {
+                    break;
+                }
             }
         }
 
@@ -199,7 +208,7 @@ impl StressTestService {
         match request {
             BeginProtocol(peer, protocol, reply) => self.begin_protocol(peer, protocol, reply).await?,
             Shutdown => {
-                self.shutdown = true;
+                self.shutdown.trigger();
             },
         }
 
@@ -431,7 +440,7 @@ async fn messaging_flood(
     peer: NodeId,
     protocol: StressProtocol,
     inbound_rx: Arc<RwLock<mpsc::Receiver<InboundMessage>>>,
-    mut outbound_tx: mpsc::Sender<OutboundMessage>,
+    outbound_tx: mpsc::Sender<OutboundMessage>,
 ) -> Result<(), Error> {
     let start = Instant::now();
     let mut counter = 1u32;
@@ -441,18 +450,15 @@ async fn messaging_flood(
         protocol.num_messages * protocol.message_size / 1024 / 1024
     );
     let outbound_task = task::spawn(async move {
-        let mut iter = stream::iter(
-            repeat_with(|| {
-                counter += 1;
+        let iter = repeat_with(|| {
+            counter += 1;
 
-                println!("Send MSG {}", counter);
-                OutboundMessage::new(peer.clone(), generate_message(counter, protocol.message_size as usize))
-            })
-            .take(protocol.num_messages as usize)
-            .map(Ok),
-        );
-        outbound_tx.send_all(&mut iter).await?;
-        time::delay_for(Duration::from_secs(5)).await;
+            println!("Send MSG {}", counter);
+            OutboundMessage::new(peer.clone(), generate_message(counter, protocol.message_size as usize))
+        })
+        .take(protocol.num_messages as usize);
+        utils::mpsc::send_all(&outbound_tx, iter).await?;
+        time::sleep(Duration::from_secs(5)).await;
         outbound_tx
             .send(OutboundMessage::new(peer.clone(), Bytes::from_static(&[0u8; 4])))
             .await?;
@@ -462,7 +468,7 @@ async fn messaging_flood(
     let inbound_task = task::spawn(async move {
         let mut inbound_rx = inbound_rx.write().await;
         let mut msgs = vec![];
-        while let Some(msg) = inbound_rx.next().await {
+        while let Some(msg) = inbound_rx.recv().await {
             let msg_id = decode_msg(msg.body);
             println!("GOT MSG {}", msg_id);
             if msgs.len() == protocol.num_messages as usize {
@@ -497,6 +503,6 @@ fn generate_message(n: u32, size: usize) -> Bytes {
 
 fn decode_msg<T: prost::bytes::Buf>(msg: T) -> u32 {
     let mut buf = [0u8; 4];
-    msg.bytes().copy_to_slice(&mut buf);
+    msg.chunk().copy_to_slice(&mut buf);
     u32::from_be_bytes(buf)
 }

@@ -19,6 +19,20 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::{
+    fs,
+    ops::Deref,
+    path::{Path, PathBuf},
+};
+
+use croaring::Bitmap;
+
+use tari_common::configuration::Network;
+use tari_common_types::chain_metadata::ChainMetadata;
+use tari_storage::lmdb_store::LMDBConfig;
+use tari_test_utils::paths::create_temporary_data_path;
+
 use crate::{
     blocks::{genesis_block::get_weatherwax_genesis_block, Block, BlockHeader},
     chain_storage::{
@@ -31,7 +45,9 @@ use crate::{
         ChainBlock,
         ChainHeader,
         ChainStorageError,
+        DbBasicStats,
         DbKey,
+        DbTotalSizeStats,
         DbTransaction,
         DbValue,
         DeletedBitmap,
@@ -45,7 +61,7 @@ use crate::{
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
     transactions::{
         transaction::{TransactionInput, TransactionKernel},
-        types::{Commitment, CryptoFactories, HashOutput, Signature},
+        CryptoFactories,
     },
     validation::{
         block_validators::{BodyOnlyValidator, OrphanBlockValidator},
@@ -53,16 +69,7 @@ use crate::{
         DifficultyCalculator,
     },
 };
-use croaring::Bitmap;
-use std::{
-    fs,
-    ops::Deref,
-    path::{Path, PathBuf},
-};
-use tari_common::configuration::Network;
-use tari_common_types::chain_metadata::ChainMetadata;
-use tari_storage::lmdb_store::LMDBConfig;
-use tari_test_utils::paths::create_temporary_data_path;
+use tari_common_types::types::{Commitment, HashOutput, Signature};
 
 /// Create a new blockchain database containing no blocks.
 pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {
@@ -111,7 +118,7 @@ pub fn create_store_with_consensus(rules: ConsensusManager) -> BlockchainDatabas
     let validators = Validators::new(
         BodyOnlyValidator::default(),
         MockValidator::new(true),
-        OrphanBlockValidator::new(rules.clone(), factories),
+        OrphanBlockValidator::new(rules.clone(), false, factories),
     );
     create_store_with_consensus_and_validators(rules, validators)
 }
@@ -325,5 +332,13 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_horizon_data(&self) -> Result<Option<HorizonData>, ChainStorageError> {
         self.db.fetch_horizon_data()
+    }
+
+    fn get_stats(&self) -> Result<DbBasicStats, ChainStorageError> {
+        self.db.get_stats()
+    }
+
+    fn fetch_total_size_stats(&self) -> Result<DbTotalSizeStats, ChainStorageError> {
+        self.db.fetch_total_size_stats()
     }
 }

@@ -16,6 +16,7 @@ members = [
     "infrastructure/shutdown",
     "infrastructure/storage",
     "infrastructure/test_utils",
+    # "applications/installer",
     "applications/tari_base_node",
     "applications/tari_console_wallet",
     "applications/test_faucet",
@@ -24,3 +25,6 @@ members = [
     "applications/tari_stratum_transcoder",
     "applications/tari_mining_node",
 ]
+#
+#[profile.release]
+#debug = true

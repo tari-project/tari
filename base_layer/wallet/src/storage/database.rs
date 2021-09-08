@@ -373,7 +373,7 @@ mod test {
 
     #[test]
     fn test_database_crud() {
-        let mut runtime = Runtime::new().unwrap();
+        let runtime = Runtime::new().unwrap();
 
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let db_folder = tempdir().unwrap().path().to_str().unwrap().to_string();

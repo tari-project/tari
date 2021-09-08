@@ -38,6 +38,12 @@ use crate::{
     },
     transaction_service::handle::TransactionServiceHandle,
     types::{HashDigest, ValidationRetryStrategy},
+use std::{
+    cmp::Ordering,
+    collections::HashMap,
+    fmt::{self, Display},
+    sync::Arc,
+    time::Duration,
 };
 use blake2::Digest;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
@@ -50,7 +56,15 @@ use std::{
     fmt::{self, Display},
     sync::Arc,
     time::{Duration, Instant},
+use tari_crypto::{
+    inputs,
+    keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
+    script,
+    script::TariScript,
+    tari_utilities::{hex::Hex, ByteArray},
 };
+use tokio::sync::broadcast;
+use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_comms::{
     connectivity::ConnectivityRequester,
     types::{CommsPublicKey, CommsSecretKey},
@@ -69,18 +83,11 @@ use tari_core::{
             UnblindedOutput,
         },
         transaction_protocol::sender::TransactionSenderMessage,
-        types::{CryptoFactories, PrivateKey, PublicKey},
         CoinbaseBuilder,
+        CryptoFactories,
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     },
-};
-use tari_crypto::{
-    inputs,
-    keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
-    script,
-    script::TariScript,
-    tari_utilities::{hex::Hex, ByteArray},
 };
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
@@ -171,7 +178,7 @@ where TBackend: OutputManagerBackend + 'static
         .fuse();
         info!(target: LOG_TARGET, "Output Manager Service started");
         loop {
-            futures::select! {
+            tokio::select! {
                       // tx validation timer
                _ = txo_validation_interval.select_next_some() => {
                    let _ =self
@@ -180,8 +187,7 @@ where TBackend: OutputManagerBackend + 'static
                         e
                     });
                 },
-
-                request_context = request_stream.select_next_some() => {
+                Some(request_context) = request_stream.next() => {
                 trace!(target: LOG_TARGET, "Handling Service API Request");
                     let (request, reply_tx) = request_context.split();
                     let response = self.handle_request(request).await.map_err(|e| {
@@ -193,12 +199,8 @@ where TBackend: OutputManagerBackend + 'static
                         e
                     });
                 },
-                _ = shutdown => {
+                _ = shutdown.wait() => {
                     info!(target: LOG_TARGET, "Output manager service shutting down because it received the shutdown signal");
-                    break;
-                }
-                complete => {
-                    info!(target: LOG_TARGET, "Output manager service shutting down");
                     break;
                 }
             }

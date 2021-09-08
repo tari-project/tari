@@ -36,20 +36,17 @@ use crate::{
     test_utils::{node_identity::build_node_identity, test_node::build_peer_manager},
     transports::MemoryTransport,
 };
-use futures::{
-    channel::{mpsc, oneshot},
-    AsyncReadExt,
-    AsyncWriteExt,
-    SinkExt,
-    StreamExt,
-};
 use multiaddr::Protocol;
 use std::{error::Error, time::Duration};
 use tari_shutdown::Shutdown;
 use tari_test_utils::unpack_enum;
-use tokio::time::timeout;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    sync::{mpsc, oneshot},
+    time::timeout,
+};
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn listen() -> Result<(), Box<dyn Error>> {
     let (event_tx, _) = mpsc::channel(1);
     let mut shutdown = Shutdown::new();
@@ -61,7 +58,7 @@ async fn listen() -> Result<(), Box<dyn Error>> {
         "/memory/0".parse()?,
         MemoryTransport,
         noise_config.clone(),
-        event_tx.clone(),
+        event_tx,
         peer_manager,
         node_identity,
         shutdown.to_signal(),
@@ -72,12 +69,12 @@ async fn listen() -> Result<(), Box<dyn Error>> {
     unpack_enum!(Protocol::Memory(port) = bind_addr.pop().unwrap());
     assert!(port > 0);
 
-    shutdown.trigger().unwrap();
+    shutdown.trigger();
 
     Ok(())
 }
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn smoke() {
     let rt_handle = runtime::current();
     // This test sets up Dialer and Listener components, uses the Dialer to dial the Listener,
@@ -108,7 +105,7 @@ async fn smoke() {
 
     let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let noise_config2 = NoiseConfig::new(node_identity2.clone());
-    let (mut request_tx, request_rx) = mpsc::channel(1);
+    let (request_tx, request_rx) = mpsc::channel(1);
     let peer_manager2 = build_peer_manager();
     let mut dialer = Dialer::new(
         ConnectionManagerConfig::default(),
@@ -131,7 +128,7 @@ async fn smoke() {
 
     let (reply_tx, reply_rx) = oneshot::channel();
     request_tx
-        .send(DialerRequest::Dial(Box::new(peer), reply_tx))
+        .send(DialerRequest::Dial(Box::new(peer), Some(reply_tx)))
         .await
         .unwrap();
 
@@ -148,11 +145,11 @@ async fn smoke() {
     }
 
     // Read PeerConnected events - we don't know which connection is which
-    unpack_enum!(ConnectionManagerEvent::PeerConnected(conn1) = event_rx.next().await.unwrap());
-    unpack_enum!(ConnectionManagerEvent::PeerConnected(_conn2) = event_rx.next().await.unwrap());
+    unpack_enum!(ConnectionManagerEvent::PeerConnected(conn1) = event_rx.recv().await.unwrap());
+    unpack_enum!(ConnectionManagerEvent::PeerConnected(_conn2) = event_rx.recv().await.unwrap());
 
     // Next event should be a NewInboundSubstream has been received
-    let listen_event = event_rx.next().await.unwrap();
+    let listen_event = event_rx.recv().await.unwrap();
     {
         unpack_enum!(ConnectionManagerEvent::NewInboundSubstream(node_id, proto, in_stream) = listen_event);
         assert_eq!(&*node_id, node_identity2.node_id());
@@ -165,7 +162,7 @@ async fn smoke() {
 
     conn1.disconnect().await.unwrap();
 
-    shutdown.trigger().unwrap();
+    shutdown.trigger();
 
     let peer2 = peer_manager1.find_by_node_id(node_identity2.node_id()).await.unwrap();
     let peer1 = peer_manager2.find_by_node_id(node_identity1.node_id()).await.unwrap();
@@ -176,7 +173,7 @@ async fn smoke() {
     timeout(Duration::from_secs(5), dialer_fut).await.unwrap().unwrap();
 }
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn banned() {
     let rt_handle = runtime::current();
     let (event_tx, mut event_rx) = mpsc::channel(10);
@@ -209,7 +206,7 @@ async fn banned() {
     peer_manager1.add_peer(peer).await.unwrap();
 
     let noise_config2 = NoiseConfig::new(node_identity2.clone());
-    let (mut request_tx, request_rx) = mpsc::channel(1);
+    let (request_tx, request_rx) = mpsc::channel(1);
     let peer_manager2 = build_peer_manager();
     let mut dialer = Dialer::new(
         ConnectionManagerConfig::default(),
@@ -232,7 +229,7 @@ async fn banned() {
 
     let (reply_tx, reply_rx) = oneshot::channel();
     request_tx
-        .send(DialerRequest::Dial(Box::new(peer), reply_tx))
+        .send(DialerRequest::Dial(Box::new(peer), Some(reply_tx)))
         .await
         .unwrap();
 
@@ -241,10 +238,10 @@ async fn banned() {
     let err = reply_rx.await.unwrap().unwrap_err();
     unpack_enum!(ConnectionManagerError::IdentityProtocolError(_err) = err);
 
-    unpack_enum!(ConnectionManagerEvent::PeerInboundConnectFailed(err) = event_rx.next().await.unwrap());
+    unpack_enum!(ConnectionManagerEvent::PeerInboundConnectFailed(err) = event_rx.recv().await.unwrap());
     unpack_enum!(ConnectionManagerError::PeerBanned = err);
 
-    shutdown.trigger().unwrap();
+    shutdown.trigger();
 
     timeout(Duration::from_secs(5), dialer_fut).await.unwrap().unwrap();
 }

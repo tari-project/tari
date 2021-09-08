@@ -22,7 +22,6 @@
 
 use super::error::MessagingProtocolError;
 use crate::{
-    compat::IoCompat,
     connectivity::{ConnectivityEvent, ConnectivityRequester},
     framing,
     message::{InboundMessage, MessageTag, OutboundMessage},
@@ -36,7 +35,6 @@ use crate::{
     runtime::task,
 };
 use bytes::Bytes;
-use futures::{channel::mpsc, stream::Fuse, AsyncRead, AsyncWrite, SinkExt, StreamExt};
 use log::*;
 use std::{
     collections::{hash_map::Entry, HashMap},
@@ -46,7 +44,10 @@ use std::{
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use thiserror::Error;
-use tokio::sync::broadcast;
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::{broadcast, mpsc},
+};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
 const LOG_TARGET: &str = "comms::protocol::messaging";
@@ -106,13 +107,13 @@ impl fmt::Display for MessagingEvent {
 pub struct MessagingProtocol {
     config: MessagingConfig,
     connectivity: ConnectivityRequester,
-    proto_notification: Fuse<mpsc::Receiver<ProtocolNotification<Substream>>>,
+    proto_notification: mpsc::Receiver<ProtocolNotification<Substream>>,
     active_queues: HashMap<NodeId, mpsc::UnboundedSender<OutboundMessage>>,
-    request_rx: Fuse<mpsc::Receiver<MessagingRequest>>,
+    request_rx: mpsc::Receiver<MessagingRequest>,
     messaging_events_tx: MessagingEventSender,
     inbound_message_tx: mpsc::Sender<InboundMessage>,
     internal_messaging_event_tx: mpsc::Sender<MessagingEvent>,
-    internal_messaging_event_rx: Fuse<mpsc::Receiver<MessagingEvent>>,
+    internal_messaging_event_rx: mpsc::Receiver<MessagingEvent>,
     shutdown_signal: ShutdownSignal,
     complete_trigger: Shutdown,
 }
@@ -133,11 +134,11 @@ impl MessagingProtocol {
         Self {
             config,
             connectivity,
-            proto_notification: proto_notification.fuse(),
-            request_rx: request_rx.fuse(),
+            proto_notification,
+            request_rx,
             active_queues: Default::default(),
             messaging_events_tx,
-            internal_messaging_event_rx: internal_messaging_event_rx.fuse(),
+            internal_messaging_event_rx,
             internal_messaging_event_tx,
             inbound_message_tx,
             shutdown_signal,
@@ -151,15 +152,15 @@ impl MessagingProtocol {
 
     pub async fn run(mut self) {
         let mut shutdown_signal = self.shutdown_signal.clone();
-        let mut connectivity_events = self.connectivity.get_event_subscription().fuse();
+        let mut connectivity_events = self.connectivity.get_event_subscription();
 
         loop {
-            futures::select! {
-                event = self.internal_messaging_event_rx.select_next_some() => {
+            tokio::select! {
+                Some(event) = self.internal_messaging_event_rx.recv() => {
                     self.handle_internal_messaging_event(event).await;
                 },
 
-                req = self.request_rx.select_next_some() => {
+                Some(req) = self.request_rx.recv() => {
                     if let Err(err) = self.handle_request(req).await {
                         error!(
                             target: LOG_TARGET,
@@ -169,17 +170,17 @@ impl MessagingProtocol {
                     }
                 },
 
-                event = connectivity_events.select_next_some() => {
+                event = connectivity_events.recv() => {
                     if let Ok(event) = event {
                         self.handle_connectivity_event(&event);
                     }
                 }
 
-                notification = self.proto_notification.select_next_some() => {
+                Some(notification) = self.proto_notification.recv() => {
                     self.handle_protocol_notification(notification).await;
                 },
 
-                _ = shutdown_signal => {
+                _ = &mut shutdown_signal => {
                     info!(target: LOG_TARGET, "MessagingProtocol is shutting down because the shutdown signal was triggered");
                     break;
                 }
@@ -188,7 +189,7 @@ impl MessagingProtocol {
     }
 
     #[inline]
-    pub fn framed<TSubstream>(socket: TSubstream) -> Framed<IoCompat<TSubstream>, LengthDelimitedCodec>
+    pub fn framed<TSubstream>(socket: TSubstream) -> Framed<TSubstream, LengthDelimitedCodec>
     where TSubstream: AsyncRead + AsyncWrite + Unpin {
         framing::canonical(socket, MAX_FRAME_LENGTH)
     }
@@ -198,11 +199,9 @@ impl MessagingProtocol {
         #[allow(clippy::single_match)]
         match event {
             PeerConnectionWillClose(node_id, _) => {
-                // If the peer connection will close, cut off the pipe to send further messages.
-                // Any messages in the channel will be sent (hopefully) before the connection is disconnected.
-                if let Some(sender) = self.active_queues.remove(node_id) {
-                    sender.close_channel();
-                }
+                // If the peer connection will close, cut off the pipe to send further messages by dropping the sender.
+                // Any messages in the channel may be sent before the connection is disconnected.
+                let _ = self.active_queues.remove(node_id);
             },
             _ => {},
         }
@@ -247,6 +246,7 @@ impl MessagingProtocol {
         Ok(())
     }
 
+    // #[tracing::instrument(skip(self, out_msg), err)]
     async fn send_message(&mut self, out_msg: OutboundMessage) -> Result<(), MessagingProtocolError> {
         let peer_node_id = out_msg.peer_node_id.clone();
         let sender = loop {
@@ -262,7 +262,7 @@ impl MessagingProtocol {
                     let sender = Self::spawn_outbound_handler(
                         self.connectivity.clone(),
                         self.internal_messaging_event_tx.clone(),
-                        peer_node_id.clone(),
+                        peer_node_id,
                         self.config.inactivity_timeout,
                     );
                     break entry.insert(sender);
@@ -272,7 +272,7 @@ impl MessagingProtocol {
 
         debug!(target: LOG_TARGET, "Sending message {}", out_msg);
         let tag = out_msg.tag;
-        match sender.send(out_msg).await {
+        match sender.send(out_msg) {
             Ok(_) => {
                 debug!(target: LOG_TARGET, "Message ({}) dispatched to outbound handler", tag,);
                 Ok(())
@@ -293,7 +293,7 @@ impl MessagingProtocol {
         peer_node_id: NodeId,
         inactivity_timeout: Option<Duration>,
     ) -> mpsc::UnboundedSender<OutboundMessage> {
-        let (msg_tx, msg_rx) = mpsc::unbounded();
+        let (msg_tx, msg_rx) = mpsc::unbounded_channel();
         let outbound_messaging =
             OutboundMessaging::new(connectivity, events_tx, msg_rx, peer_node_id, inactivity_timeout);
         task::spawn(outbound_messaging.run());

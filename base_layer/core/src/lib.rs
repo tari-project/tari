@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// Needed to make futures::select! work
+// Needed to make tokio::select! work
 #![recursion_limit = "512"]
 #![feature(shrink_to)]
 // #![cfg_attr(not(debug_assertions), deny(unused_variables))]

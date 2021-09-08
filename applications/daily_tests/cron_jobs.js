@@ -44,8 +44,13 @@ async function runWalletRecoveryTest(instances) {
   await emptyFile(LOG_FILE);
 
   try {
-    const { identity, timeDiffMinutes, height, blockRate, recoveredAmount } =
-      await walletRecoveryTest({
+    const {
+      identity,
+      timeDiffMinutes,
+      numScanned,
+      scannedRate,
+      recoveredAmount,
+    } = await walletRecoveryTest({
         seedWords:
           "spare man patrol essay divide hollow trip visual actress sadness country hungry toy blouse body club depend capital sleep aim high recycle crystal abandon",
         log: LOG_FILE,
@@ -56,11 +61,11 @@ async function runWalletRecoveryTest(instances) {
       "🙌 Wallet (Pubkey:",
       identity.public_key,
       ") recovered to a block height of",
-      height,
+      numScanned,
       "completed in",
       timeDiffMinutes,
       "minutes (",
-      blockRate,
+      scannedRate,
       "blocks/min).",
       recoveredAmount,
       "µT recovered for ",
@@ -121,8 +126,8 @@ ${logLines.join("\n")}
 }
 
 // ------------------------- CRON ------------------------- //
-new CronJob("0 7 * * *", runWalletRecoveryTest(1)).start();
-new CronJob("0 7 * * *", runWalletRecoveryTest(5)).start();
+new CronJob("0 7 * * *", () => runWalletRecoveryTest(1)).start();
+new CronJob("30 7 * * *", () => runWalletRecoveryTest(5)).start();
 new CronJob("0 6 * * *", () => runBaseNodeSyncTest(SyncType.Archival)).start();
 new CronJob("30 6 * * *", () => runBaseNodeSyncTest(SyncType.Pruned)).start();
 

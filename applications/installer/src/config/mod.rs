@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2021. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,5 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub const BLOCK_HASH_LENGTH: usize = 32;
-pub type BlockHash = Vec<u8>;
+mod base_node;
+mod combined;
+mod common;
+mod mining;
+mod wallet;
+
+pub use base_node::BaseNodeOptions;
+pub use combined::InstallerOptions;
+pub use common::{InstallLocation, SourceLocation};
+pub use mining::{Miners, MiningOptions};
+pub use wallet::WalletOptions;

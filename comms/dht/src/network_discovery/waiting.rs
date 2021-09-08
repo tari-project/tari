@@ -46,7 +46,7 @@ impl Waiting {
             target: LOG_TARGET,
             "Network discovery is IDLING for {:.0?}", self.duration
         );
-        time::delay_for(self.duration).await;
+        time::sleep(self.duration).await;
         debug!(target: LOG_TARGET, "Network discovery resuming");
         StateEvent::Ready
     }

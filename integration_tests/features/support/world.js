@@ -1,18 +1,21 @@
-const { setWorldConstructor, After, BeforeAll } = require("cucumber");
+const { setWorldConstructor, After, BeforeAll, Before } = require("cucumber");
 
 const BaseNodeProcess = require("../../helpers/baseNodeProcess");
 const MergeMiningProxyProcess = require("../../helpers/mergeMiningProxyProcess");
 const WalletProcess = require("../../helpers/walletProcess");
 const WalletFFIClient = require("../../helpers/walletFFIClient");
 const MiningNodeProcess = require("../../helpers/miningNodeProcess");
+const TransactionBuilder = require("../../helpers/transactionBuilder");
 const glob = require("glob");
 const fs = require("fs");
 const archiver = require("archiver");
+const InterfaceFFI = require("../../helpers/ffi/ffiInterface");
+
 class CustomWorld {
   constructor({ attach, parameters }) {
     // this.variable = 0;
     this.attach = attach;
-
+    this.checkAutoTransactions = true;
     this.seeds = {};
     this.nodes = {};
     this.proxies = {};
@@ -23,6 +26,7 @@ class CustomWorld {
     this.clients = {};
     this.headers = {};
     this.outputs = {};
+    this.transactionOutputs = {};
     this.testrun = `run${Date.now()}`;
     this.lastResult = null;
     this.blocks = {};
@@ -30,7 +34,6 @@ class CustomWorld {
     this.peers = {};
     this.transactionsMap = new Map();
     this.resultStack = [];
-    this.tipHeight = 0;
     this.logFilePathBaseNode =
       parameters.logFilePathBaseNode || "./log4rs/base_node.yml";
     this.logFilePathProxy = parameters.logFilePathProxy || "./log4rs/proxy.yml";
@@ -106,11 +109,11 @@ class CustomWorld {
     this.walletPubkeys[name] = walletInfo.public_key;
   }
 
-  async createAndAddFFIWallet(name, seed_words) {
+  async createAndAddFFIWallet(name, seed_words = null, passphrase = null) {
     const wallet = new WalletFFIClient(name);
-    await wallet.startNew(seed_words);
+    await wallet.startNew(seed_words, passphrase);
     this.walletsFFI[name] = wallet;
-    this.walletPubkeys[name] = await wallet.getPublicKey();
+    this.walletPubkeys[name] = wallet.identify();
     return wallet;
   }
 
@@ -124,6 +127,58 @@ class CustomWorld {
 
   addOutput(name, output) {
     this.outputs[name] = output;
+  }
+
+  addTransactionOutput(spendHeight, output) {
+    if (this.transactionOutputs[spendHeight] == null) {
+      this.transactionOutputs[spendHeight] = [output];
+    } else {
+      this.transactionOutputs[spendHeight].push(output);
+    }
+  }
+
+  async createTransactions(name, height) {
+    let result = true;
+    const txInputs = this.transactionOutputs[height];
+    if (txInputs == null) {
+      return result;
+    }
+    // This function is called from steps with timeout = -1. So we need to
+    // write something to the console from time to time. Because otherwise
+    // it will timeout and the tests will be killed.
+    let keepAlive = setInterval(() => {
+      console.log(".");
+    }, 1000 * 60 * 10);
+    let i = 0;
+    for (const input of txInputs) {
+      const txn = new TransactionBuilder();
+      txn.addInput(input);
+      const txOutput = txn.addOutput(txn.getSpendableAmount());
+      this.addTransactionOutput(height + 1, txOutput);
+      const completedTx = txn.build();
+      const submitResult = await this.getClient(name).submitTransaction(
+        completedTx
+      );
+      if (this.checkAutoTransactions && submitResult.result != "ACCEPTED") {
+        console.log(
+          "Automated transaction failed. If this is not intended add step :",
+          "`I do not expect all automated transactions to succeed` !"
+        );
+        result = false;
+      }
+      if (submitResult.result == "ACCEPTED") {
+        i++;
+      }
+      if (i > 9) {
+        //this is to make sure the blocks stay relatively empty so that the tests don't take too long
+        break;
+      }
+    }
+    clearInterval(keepAlive);
+    console.log(
+      `Created ${i} transactions for node: ${name} at height: ${height}`
+    );
+    return result;
   }
 
   async mineBlock(name, weight, beforeSubmit, onError) {
@@ -225,7 +280,7 @@ class CustomWorld {
     }
     let wallet = this.wallets[name.trim()];
     if (wallet) {
-      let client = await wallet.connectClient();
+      client = await wallet.connectClient();
       client.isNode = false;
       client.isWallet = true;
       return client;
@@ -339,8 +394,17 @@ BeforeAll({ timeout: 1200000 }, async function () {
   await miningNode.compile();
 
   console.log("Compiling wallet FFI...");
-  await WalletFFIClient.Init();
+  await InterfaceFFI.compile();
   console.log("Finished compilation.");
+  console.log("Loading FFI interface..");
+  await InterfaceFFI.init();
+  console.log("FFI interface loaded.");
+
+  console.log("World ready, now lets run some tests! :)");
+});
+
+Before(async function (testCase) {
+  console.log(`Testing scenario "${testCase.pickle.name}"`);
 });
 
 After(async function (testCase) {

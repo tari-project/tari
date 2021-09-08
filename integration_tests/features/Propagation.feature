@@ -38,9 +38,10 @@ Feature: Block Propagation
     When I submit block BLOCKA to MINER
     Then all nodes are at height 1
     When I submit block BLOCKA to MINER
+    # TODO: this step is not implemented.
     Then I receive an error containing 'Block exists'
     And all nodes are at height 1
-        # Check that the base node continues to accept blocks
+    # Check that the base node continues to accept blocks
     When I mine 1 blocks on MINER
     Then all nodes are at height 2
 
@@ -52,7 +53,7 @@ Feature: Block Propagation
     When I submit block BLOCKA to MINER
     Then I receive an error containing 'Orphan block'
     Then all nodes are at height 1
-        # Do it twice to be sure
+    # Do it twice to be sure
     When I submit block BLOCKA to MINER
     Then I receive an error containing 'Orphan block'
     And all nodes are at height 1
@@ -63,7 +64,7 @@ Feature: Block Propagation
     Given I have a SHA3 miner MINER connected to all seed nodes
     And I have a lagging delayed node LAG1 connected to node MINER with blocks_behind_before_considered_lagging 10000
     Given I have a lagging delayed node LAG2 connected to node MINER with blocks_behind_before_considered_lagging 10000
-        # Wait for node to so start and get into listening mode
+    # Wait for node to so start and get into listening mode
     When I wait 100 seconds
     When mining node MINER mines 5 blocks
     Then all nodes are at height 5
@@ -82,17 +83,17 @@ Feature: Block Propagation
     And mining node MINER mines 5 blocks
     When I wait 100 seconds
     When I start base node LAG1
-        # Wait for node to so start and get into listening mode
+    # Wait for node to so start and get into listening mode
     When I wait 100 seconds
     Then node MINER is at height 6
-        #node was shutdown, so it never received the propagation messages
+    #node was shutdown, so it never received the propagation messages
     Then node LAG1 is at height 1
     Given mining node MINER mines 1 blocks
     Then node MINER is at height 7
     When I wait 20 seconds
     Then all nodes are at height 7
 
-    Scenario: Pruned node should prune outputs
+  Scenario: Pruned node should prune outputs
     Given I have 1 seed nodes
     And I have a base node SENDER connected to all seed nodes
     Given I have a pruned node PNODE1 connected to node SENDER with pruning horizon set to 5

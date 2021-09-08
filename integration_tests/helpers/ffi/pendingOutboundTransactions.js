@@ -1,39 +1,30 @@
 const PendingOutboundTransaction = require("./pendingOutboundTransaction");
-const WalletFFI = require("./walletFFI");
+const InterfaceFFI = require("./ffiInterface");
 
 class PendingOutboundTransactions {
-  #tari_pending_outbound_transactions_ptr;
+  ptr = undefined;
 
-  constructor(tari_pending_outbound_transactions_ptr) {
-    this.#tari_pending_outbound_transactions_ptr =
-      tari_pending_outbound_transactions_ptr;
-  }
-
-  static async fromWallet(wallet) {
-    return new PendingOutboundTransactions(
-      await WalletFFI.walletGetPendingOutboundTransactions(wallet)
-    );
+  constructor(ptr) {
+    this.ptr = ptr;
   }
 
   getLength() {
-    return WalletFFI.pendingOutboundTransactionsGetLength(
-      this.#tari_pending_outbound_transactions_ptr
-    );
+    return InterfaceFFI.pendingOutboundTransactionsGetLength(this.ptr);
   }
 
-  async getAt(position) {
-    return new PendingOutboundTransaction(
-      await WalletFFI.pendingOutboundTransactionsGetAt(
-        this.#tari_pending_outbound_transactions_ptr,
-        position
-      )
+  getAt(position) {
+    let result = new PendingOutboundTransaction();
+    result.pointerAssign(
+      InterfaceFFI.pendingOutboundTransactionsGetAt(this.ptr, position)
     );
+    return result;
   }
 
   destroy() {
-    return WalletFFI.pendingOutboundTransactionsDestroy(
-      this.#tari_pending_outbound_transactions_ptr
-    );
+    if (this.ptr) {
+      InterfaceFFI.pendingOutboundTransactionsDestroy(this.ptr);
+      this.ptr = undefined; //prevent double free segfault
+    }
   }
 }
 

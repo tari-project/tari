@@ -26,12 +26,8 @@ use tari_shutdown::Shutdown;
 use tokio::{runtime, runtime::Runtime, task, task::JoinError};
 
 pub fn create_runtime() -> Runtime {
-    tokio::runtime::Builder::new()
-        .threaded_scheduler()
-        .enable_io()
-        .enable_time()
-        .max_threads(8)
-        .core_threads(4)
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
         .build()
         .expect("Could not create runtime")
 }
@@ -49,7 +45,7 @@ where F: Future<Output = ()> + Send + 'static {
 
 /// Create a runtime and report if it panics. If there are tasks still running after the panic, this
 /// will carry on running forever.
-// #[deprecated(note = "use tokio_macros::test instead")]
+// #[deprecated(note = "use tokio::test instead")]
 pub fn test_async<F>(f: F)
 where F: FnOnce(&mut TestRuntime) {
     let mut rt = TestRuntime::from(create_runtime());

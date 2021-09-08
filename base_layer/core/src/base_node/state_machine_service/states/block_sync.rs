@@ -30,6 +30,7 @@ use crate::{
     chain_storage::{BlockAddResult, BlockchainBackend},
 };
 use log::*;
+use randomx_rs::RandomXFlag;
 use std::time::Instant;
 use tari_comms::PeerConnection;
 
@@ -66,8 +67,16 @@ impl BlockSync {
         );
 
         let status_event_sender = shared.status_event_sender.clone();
-        let local_nci = shared.local_node_interface.clone();
         let bootstrapped = shared.is_bootstrapped();
+        let _ = status_event_sender.send(StatusInfo {
+            bootstrapped,
+            state_info: StateInfo::BlockSyncStarting,
+            randomx_vm_cnt: 0,
+            randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
+        });
+        let local_nci = shared.local_node_interface.clone();
+        let randomx_vm_cnt = shared.get_randomx_vm_cnt();
+        let randomx_vm_flags = shared.get_randomx_vm_flags();
         synchronizer.on_progress(move |block, remote_tip_height, sync_peers| {
             let local_height = block.height();
             local_nci.publish_block_event(BlockEvent::ValidBlockAdded(
@@ -76,13 +85,15 @@ impl BlockSync {
                 false.into(),
             ));
 
-            let _ = status_event_sender.broadcast(StatusInfo {
+            let _ = status_event_sender.send(StatusInfo {
                 bootstrapped,
                 state_info: StateInfo::BlockSync(BlockSyncInfo {
                     tip_height: remote_tip_height,
                     local_height,
                     sync_peers: sync_peers.to_vec(),
                 }),
+                randomx_vm_cnt,
+                randomx_vm_flags,
             });
         });
 

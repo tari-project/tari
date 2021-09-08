@@ -22,10 +22,7 @@
 use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{error::ChainStorageError, ChainBlock, ChainHeader, MmrTree},
-    transactions::{
-        transaction::{TransactionKernel, TransactionOutput},
-        types::{Commitment, HashOutput},
-    },
+    transactions::transaction::{TransactionKernel, TransactionOutput},
 };
 use croaring::Bitmap;
 use std::{
@@ -33,7 +30,7 @@ use std::{
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
-use tari_common_types::types::BlockHash;
+use tari_common_types::types::{BlockHash, Commitment, HashOutput};
 use tari_crypto::tari_utilities::{
     hex::{to_hex, Hex},
     Hashable,
@@ -223,11 +220,18 @@ impl DbTransaction {
         self
     }
 
-    pub fn set_best_block(&mut self, height: u64, hash: HashOutput, accumulated_difficulty: u128) -> &mut Self {
+    pub fn set_best_block(
+        &mut self,
+        height: u64,
+        hash: HashOutput,
+        accumulated_difficulty: u128,
+        expected_prev_best_block: HashOutput,
+    ) -> &mut Self {
         self.operations.push(WriteOperation::SetBestBlock {
             height,
             hash,
             accumulated_difficulty,
+            expected_prev_best_block,
         });
         self
     }
@@ -249,10 +253,6 @@ impl DbTransaction {
 
     pub(crate) fn operations(&self) -> &[WriteOperation] {
         &self.operations
-    }
-
-    pub(crate) fn into_operations(self) -> Vec<WriteOperation> {
-        self.operations
     }
 
     /// This will store the seed key with the height. This is called when a block is accepted into the main chain.
@@ -323,6 +323,7 @@ pub enum WriteOperation {
         height: u64,
         hash: HashOutput,
         accumulated_difficulty: u128,
+        expected_prev_best_block: HashOutput,
     },
     SetPruningHorizonConfig(u64),
     SetPrunedHeight {
@@ -421,6 +422,7 @@ impl fmt::Display for WriteOperation {
                 height,
                 hash,
                 accumulated_difficulty,
+                expected_prev_best_block: _,
             } => write!(
                 f,
                 "Update best block to height:{} ({}) with difficulty: {}",

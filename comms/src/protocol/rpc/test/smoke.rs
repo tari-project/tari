@@ -36,6 +36,7 @@ use crate::{
                     GreetingService,
                     SayHelloRequest,
                     SlowGreetingService,
+                    SlowStreamRequest,
                 },
                 mock::create_mocked_rpc_context,
             },
@@ -52,12 +53,15 @@ use crate::{
     test_utils::node_identity::build_node_identity,
     NodeIdentity,
 };
-use futures::{channel::mpsc, future, future::Either, SinkExt, StreamExt};
+use futures::{future, future::Either, StreamExt};
 use std::{sync::Arc, time::Duration};
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_shutdown::Shutdown;
 use tari_test_utils::unpack_enum;
-use tokio::{sync::RwLock, task};
+use tokio::{
+    sync::{mpsc, RwLock},
+    task,
+};
 
 pub(super) async fn setup_service<T: GreetingRpc>(
     service_impl: T,
@@ -85,7 +89,7 @@ pub(super) async fn setup_service<T: GreetingRpc>(
             futures::pin_mut!(fut);
 
             match future::select(shutdown_signal, fut).await {
-                Either::Left((r, _)) => r.unwrap(),
+                Either::Left(_) => {},
                 Either::Right((r, _)) => r.unwrap(),
             }
         }
@@ -97,7 +101,7 @@ pub(super) async fn setup<T: GreetingRpc>(
     service_impl: T,
     num_concurrent_sessions: usize,
 ) -> (MemorySocket, task::JoinHandle<()>, Arc<NodeIdentity>, Shutdown) {
-    let (mut notif_tx, server_hnd, context, shutdown) = setup_service(service_impl, num_concurrent_sessions).await;
+    let (notif_tx, server_hnd, context, shutdown) = setup_service(service_impl, num_concurrent_sessions).await;
     let (inbound, outbound) = MemorySocket::new_pair();
     let node_identity = build_node_identity(Default::default());
 
@@ -114,7 +118,7 @@ pub(super) async fn setup<T: GreetingRpc>(
     (outbound, server_hnd, node_identity, shutdown)
 }
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn request_response_errors_and_streaming() {
     let (socket, server_hnd, node_identity, mut shutdown) = setup(GreetingService::default(), 1).await;
 
@@ -171,7 +175,7 @@ async fn request_response_errors_and_streaming() {
     let pk_hex = client.get_public_key_hex().await.unwrap();
     assert_eq!(pk_hex, node_identity.public_key().to_hex());
 
-    client.close();
+    client.close().await;
 
     let err = client
         .say_hello(SayHelloRequest {
@@ -181,13 +185,20 @@ async fn request_response_errors_and_streaming() {
         .await
         .unwrap_err();
 
-    unpack_enum!(RpcError::ClientClosed = err);
+    match err {
+        // Because of the race between closing the request stream and sending on that stream in the above call
+        // We can either get "this client was closed" or "the request you made was cancelled".
+        // If we delay some small time, we'll always get the former (but arbitrary delays cause flakiness and should be
+        // avoided)
+        RpcError::ClientClosed | RpcError::RequestCancelled => {},
+        err => panic!("Unexpected error {:?}", err),
+    }
 
-    shutdown.trigger().unwrap();
+    shutdown.trigger();
     server_hnd.await.unwrap();
 }
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn concurrent_requests() {
     let (socket, _, _, _shutdown) = setup(GreetingService::default(), 1).await;
 
@@ -227,7 +238,7 @@ async fn concurrent_requests() {
     assert_eq!(spawned2.await.unwrap(), GreetingService::DEFAULT_GREETINGS[..5]);
 }
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn response_too_big() {
     let (socket, _, _, _shutdown) = setup(GreetingService::new(&[]), 1).await;
 
@@ -248,7 +259,7 @@ async fn response_too_big() {
     let _ = client.reply_with_msg_of_size(max_size as u64).await.unwrap();
 }
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn ping_latency() {
     let (socket, _, _, _shutdown) = setup(GreetingService::new(&[]), 1).await;
 
@@ -261,11 +272,11 @@ async fn ping_latency() {
     assert!(latency.as_secs() < 5);
 }
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn server_shutdown_before_connect() {
     let (socket, _, _, mut shutdown) = setup(GreetingService::new(&[]), 1).await;
     let framed = framing::canonical(socket, 1024);
-    shutdown.trigger().unwrap();
+    shutdown.trigger();
 
     let err = GreetingClient::connect(framed).await.unwrap_err();
     assert!(matches!(
@@ -274,7 +285,7 @@ async fn server_shutdown_before_connect() {
     ));
 }
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn timeout() {
     let delay = Arc::new(RwLock::new(Duration::from_secs(10)));
     let (socket, _, _, _shutdown) = setup(SlowGreetingService::new(delay.clone()), 1).await;
@@ -298,9 +309,9 @@ async fn timeout() {
     assert_eq!(resp.greeting, "took a while to load");
 }
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn unknown_protocol() {
-    let (mut notif_tx, _, _, _shutdown) = setup_service(GreetingService::new(&[]), 1).await;
+    let (notif_tx, _, _, _shutdown) = setup_service(GreetingService::new(&[]), 1).await;
 
     let (inbound, socket) = MemorySocket::new_pair();
     let node_identity = build_node_identity(Default::default());
@@ -324,7 +335,7 @@ async fn unknown_protocol() {
     ));
 }
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn rejected_no_sessions_available() {
     let (socket, _, _, _shutdown) = setup(GreetingService::new(&[]), 0).await;
     let framed = framing::canonical(socket, 1024);
@@ -333,4 +344,43 @@ async fn rejected_no_sessions_available() {
         err,
         RpcError::HandshakeError(RpcHandshakeError::Rejected(HandshakeRejectReason::NoSessionsAvailable))
     ));
+}
+
+#[runtime::test]
+async fn stream_still_works_after_cancel() {
+    let service_impl = GreetingService::default();
+    let (socket, _, _, _shutdown) = setup(service_impl.clone(), 1).await;
+
+    let framed = framing::canonical(socket, 1024);
+    let mut client = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(5))
+        .connect(framed)
+        .await
+        .unwrap();
+
+    // Ask for a stream, but immediately throw away the receiver
+    let _ = client
+        .slow_stream(SlowStreamRequest {
+            num_items: 100,
+            item_size: 100,
+            delay_ms: 10,
+        })
+        .await
+        .unwrap();
+    // Request was sent
+    assert_eq!(service_impl.call_count(), 1);
+
+    // Subsequent call still works, after waiting for the previous one
+    let resp = client
+        .slow_stream(SlowStreamRequest {
+            num_items: 100,
+            item_size: 100,
+            delay_ms: 10,
+        })
+        .await
+        .unwrap();
+
+    resp.collect::<Vec<_>>().await.into_iter().for_each(|r| {
+        r.unwrap();
+    });
 }

@@ -24,14 +24,14 @@ use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{BlockchainBackend, ChainBlock},
     proof_of_work::AchievedTargetDifficulty,
-    transactions::{transaction::Transaction, types::Commitment},
+    transactions::transaction::Transaction,
     validation::{error::ValidationError, DifficultyCalculator},
 };
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
 
 /// A validator that determines if a block body is valid, assuming that the header has already been
 /// validated
-pub trait CandidateBlockBodyValidation<B: BlockchainBackend>: Send + Sync {
+pub trait BlockSyncBodyValidation<B: BlockchainBackend>: Send + Sync {
     fn validate_body(&self, block: &Block, backend: &B) -> Result<(), ValidationError>;
 }
 

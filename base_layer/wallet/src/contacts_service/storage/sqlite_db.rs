@@ -31,7 +31,7 @@ use crate::{
 };
 use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
 use std::convert::TryFrom;
-use tari_core::transactions::types::PublicKey;
+use tari_common_types::types::PublicKey;
 use tari_crypto::tari_utilities::ByteArray;
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
@@ -188,7 +188,7 @@ mod test {
     use diesel::{Connection, SqliteConnection};
     use rand::rngs::OsRng;
     use std::convert::TryFrom;
-    use tari_core::transactions::types::{PrivateKey, PublicKey};
+    use tari_common_types::types::{PrivateKey, PublicKey};
     use tari_crypto::{
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
         tari_utilities::ByteArray,

@@ -34,6 +34,10 @@ use std::{
 };
 use tari_app_utilities::consts;
 use tari_common::GlobalConfig;
+use tari_common_types::{
+    emoji::EmojiId,
+    types::{Commitment, HashOutput, Signature},
+};
 use tari_comms::{
     connectivity::ConnectivityRequester,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerManager, PeerManagerError, PeerQuery},
@@ -53,12 +57,22 @@ use tari_core::{
     mempool::service::LocalMempoolService,
     proof_of_work::PowAlgorithm,
     tari_utilities::{hex::Hex, message_format::MessageFormat},
-    transactions::types::{Commitment, HashOutput, Signature},
 };
 use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::Hashable};
-use tari_p2p::auto_update::SoftwareUpdaterHandle;
-use tari_wallet::util::emoji::EmojiId;
-use tokio::{runtime, sync::watch};
+use tari_p2p::{
+    auto_update::SoftwareUpdaterHandle,
+    services::liveness::{LivenessEvent, LivenessHandle},
+};
+use tokio::{
+    runtime,
+    sync::{broadcast, watch},
+    time,
+};
+
+pub enum StatusOutput {
+    Log,
+    Full,
+}
 
 pub enum StatusOutput {
     Log,
@@ -75,6 +89,7 @@ pub struct CommandHandler {
     base_node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
     connectivity: ConnectivityRequester,
+    liveness: LivenessHandle,
     node_service: LocalNodeCommsInterface,
     mempool_service: LocalMempoolService,
     state_machine_info: watch::Receiver<StatusInfo>,
@@ -83,7 +98,7 @@ pub struct CommandHandler {
 
 impl CommandHandler {
     pub fn new(executor: runtime::Handle, ctx: &BaseNodeContext) -> Self {
-        CommandHandler {
+        Self {
             executor,
             config: ctx.config(),
             blockchain_db: ctx.blockchain_db().into(),
@@ -93,6 +108,7 @@ impl CommandHandler {
             base_node_identity: ctx.base_node_identity(),
             peer_manager: ctx.base_node_comms().peer_manager(),
             connectivity: ctx.base_node_comms().connectivity(),
+            liveness: ctx.liveness(),
             node_service: ctx.local_node(),
             mempool_service: ctx.local_mempool(),
             state_machine_info: ctx.get_state_machine_info_channel(),
@@ -101,7 +117,7 @@ impl CommandHandler {
     }
 
     pub fn status(&self, output: StatusOutput) {
-        let mut state_info = self.state_machine_info.clone();
+        let state_info = self.state_machine_info.clone();
         let mut node = self.node_service.clone();
         let mut mempool = self.mempool_service.clone();
         let peer_manager = self.peer_manager.clone();
@@ -114,9 +130,9 @@ impl CommandHandler {
             let mut status_line = StatusLine::new();
             let version = format!("v{}", consts::APP_VERSION_NUMBER);
             status_line.add_field("", version);
-
-            let state = state_info.recv().await.unwrap();
-            status_line.add_field("State", state.state_info.short_desc());
+            let network = format!("{}", config.network);
+            status_line.add_field("", network);
+            status_line.add_field("State", state_info.borrow().state_info.short_desc());
 
             let metadata = node.get_metadata().await.unwrap();
 
@@ -176,6 +192,15 @@ impl CommandHandler {
                 ),
             );
 
+            status_line.add_field(
+                "RandomX",
+                format!(
+                    "#{} with flags {:?}",
+                    state_info.borrow().randomx_vm_cnt,
+                    state_info.borrow().randomx_vm_flags
+                ),
+            );
+
             let target = "base_node::app::status";
             match output {
                 StatusOutput::Full => {
@@ -189,18 +214,8 @@ impl CommandHandler {
 
     /// Function to process the get-state-info command
     pub fn state_info(&self) {
-        let mut channel = self.state_machine_info.clone();
-        self.executor.spawn(async move {
-            match channel.recv().await {
-                None => {
-                    info!(
-                        target: LOG_TARGET,
-                        "Error communicating with state machine, channel could have been closed"
-                    );
-                },
-                Some(data) => println!("Current state machine state:\n{}", data),
-            };
-        });
+        let watch = self.state_machine_info.clone();
+        println!("Current state machine state:\n{}", *watch.borrow());
     }
 
     /// Check for updates
@@ -229,6 +244,10 @@ impl CommandHandler {
     pub fn print_version(&self) {
         println!("Version: {}", consts::APP_VERSION);
         println!("Author: {}", consts::APP_AUTHOR);
+        println!("Avx2: {}", match cfg!(feature = "avx2") {
+            true => "enabled",
+            false => "disabled",
+        });
 
         if let Some(ref update) = *self.software_updater.new_update_notifier().borrow() {
             println!(
@@ -512,7 +531,7 @@ impl CommandHandler {
                             info_str,
                         ]);
                     }
-                    table.print_std();
+                    table.print_stdout();
 
                     println!("{} peer(s) known by this node", num_peers);
                 },
@@ -541,6 +560,42 @@ impl CommandHandler {
                 },
             }
         });
+    }
+
+    pub fn ping_peer(&self, dest_node_id: NodeId) {
+        let mut liveness = self.liveness.clone();
+
+        self.executor.spawn(time::timeout(Duration::from_secs(30), async move {
+            println!("🏓 Pinging peer...");
+            let mut liveness_events = liveness.get_event_stream();
+
+            match liveness.send_ping(dest_node_id.clone()).await {
+                Ok(_) => loop {
+                    match liveness_events.recv().await {
+                        Ok(event) =>
+                        {
+                            #[allow(clippy::single_match)]
+                            match &*event {
+                                LivenessEvent::ReceivedPong(pong) => {
+                                    if pong.node_id == dest_node_id {
+                                        println!("🏓️ Pong received, latency in is {}ms!", pong.latency.unwrap_or(0));
+                                        break;
+                                    }
+                                },
+                                _ => {},
+                            }
+                        },
+                        Err(broadcast::error::RecvError::Closed) => {
+                            break;
+                        },
+                        _ => {},
+                    }
+                },
+                Err(err) => {
+                    println!("📞  Could not send ping: {}", err);
+                },
+            }
+        }));
     }
 
     pub fn ban_peer(&self, node_id: NodeId, duration: Duration, must_ban: bool) {
@@ -686,7 +741,7 @@ impl CommandHandler {
                         ]);
                     }
 
-                    table.print_std();
+                    table.print_stdout();
 
                     println!("{} active connection(s)", num_connections);
                 },
@@ -1062,6 +1117,97 @@ impl CommandHandler {
 
     pub(crate) fn get_software_updater(&self) -> SoftwareUpdaterHandle {
         self.software_updater.clone()
+    }
+
+    pub fn get_blockchain_db_stats(&self) {
+        const BYTES_PER_MB: usize = 1024 * 1024;
+
+        let db = self.blockchain_db.clone();
+
+        self.executor.spawn(async move {
+            let total_db_size = match db.get_stats().await {
+                Ok(stats) => {
+                    let mut table = Table::new();
+                    table.set_titles(vec![
+                        "Name",
+                        "Entries",
+                        "Depth",
+                        "Branch Pages",
+                        "Leaf Pages",
+                        "Overflow Pages",
+                        "Est. Size (MiB)",
+                        "% of total",
+                    ]);
+                    let total_db_size = stats.db_stats().iter().map(|s| s.total_page_size()).sum::<usize>();
+                    stats.db_stats().iter().for_each(|stat| {
+                        table.add_row(row![
+                            stat.name,
+                            stat.entries,
+                            stat.depth,
+                            stat.branch_pages,
+                            stat.leaf_pages,
+                            stat.overflow_pages,
+                            format!("{:.2}", stat.total_page_size() as f32 / BYTES_PER_MB as f32),
+                            format!("{:.2}%", (stat.total_page_size() as f32 / total_db_size as f32) * 100.0)
+                        ]);
+                    });
+
+                    table.print_stdout();
+                    println!();
+                    println!(
+                        "{} databases, {:.2} MiB used ({:.2}%), page size: {} bytes, env_info = ({})",
+                        stats.root().entries,
+                        total_db_size as f32 / BYTES_PER_MB as f32,
+                        (total_db_size as f32 / stats.env_info().mapsize as f32) * 100.0,
+                        stats.root().psize as usize,
+                        stats.env_info()
+                    );
+                    total_db_size
+                },
+                Err(err) => {
+                    println!("{}", err);
+                    return;
+                },
+            };
+
+            println!();
+            println!("Totalling DB entry sizes. This may take a few seconds...");
+            println!();
+            match db.fetch_total_size_stats().await {
+                Ok(stats) => {
+                    println!();
+                    let mut table = Table::new();
+                    table.set_titles(vec![
+                        "Name",
+                        "Entries",
+                        "Total Size (MiB)",
+                        "Avg. Size/Entry (bytes)",
+                        "% of total",
+                    ]);
+                    let total_data_size = stats.sizes().iter().map(|s| s.total()).sum::<u64>();
+                    stats.sizes().iter().for_each(|size| {
+                        let total = size.total() as f32 / BYTES_PER_MB as f32;
+                        table.add_row(row![
+                            size.name,
+                            size.num_entries,
+                            format!("{:.2}", total),
+                            format!("{}", size.avg_bytes_per_entry()),
+                            format!("{:.2}%", (size.total() as f32 / total_data_size as f32) * 100.0)
+                        ])
+                    });
+                    table.print_stdout();
+                    println!();
+                    println!(
+                        "Total blockchain data size: {:.2} MiB ({:.2} % of LMDB map size)",
+                        total_data_size as f32 / BYTES_PER_MB as f32,
+                        (total_data_size as f32 / total_db_size as f32) * 100.0
+                    );
+                },
+                Err(err) => {
+                    println!("{}", err);
+                },
+            }
+        });
     }
 }
 

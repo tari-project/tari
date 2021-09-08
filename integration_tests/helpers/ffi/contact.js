@@ -1,32 +1,50 @@
 const PublicKey = require("./publicKey");
-const WalletFFI = require("./walletFFI");
+const InterfaceFFI = require("./ffiInterface");
 
 class Contact {
-  #tari_contact_ptr;
+  ptr;
 
-  constructor(tari_contact_ptr) {
-    this.#tari_contact_ptr = tari_contact_ptr;
+  pointerAssign(ptr) {
+    // Prevent pointer from being leaked in case of re-assignment
+    if (this.ptr) {
+      this.destroy();
+      this.ptr = ptr;
+    } else {
+      this.ptr = ptr;
+    }
   }
 
   getPtr() {
-    return this.#tari_contact_ptr;
+    return this.ptr;
   }
 
-  async getAlias() {
-    const alias = await WalletFFI.contactGetAlias(this.#tari_contact_ptr);
-    const result = alias.readCString();
-    await WalletFFI.stringDestroy(alias);
+  getAlias() {
+    let alias = InterfaceFFI.contactGetAlias(this.ptr);
+    let result = alias.readCString();
+    InterfaceFFI.stringDestroy(alias);
     return result;
   }
 
-  async getPubkey() {
-    return new PublicKey(
-      await WalletFFI.contactGetPublicKey(this.#tari_contact_ptr)
-    );
+  getPubkey() {
+    let result = new PublicKey();
+    result.pointerAssign(InterfaceFFI.contactGetPublicKey(this.ptr));
+    return result;
+  }
+
+  getPubkeyHex() {
+    let result = "";
+    let pk = new PublicKey();
+    pk.pointerAssign(InterfaceFFI.contactGetPublicKey(this.ptr));
+    result = pk.getHex();
+    pk.destroy();
+    return result;
   }
 
   destroy() {
-    return WalletFFI.contactDestroy(this.#tari_contact_ptr);
+    if (this.ptr) {
+      InterfaceFFI.contactDestroy(this.ptr);
+      this.ptr = undefined; //prevent double free segfault
+    }
   }
 }
 

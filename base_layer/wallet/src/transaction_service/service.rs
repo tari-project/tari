@@ -22,6 +22,7 @@
 
 use crate::{
     output_manager_service::{handle::OutputManagerHandle, TxId},
+    storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
         config::TransactionServiceConfig,
         error::{TransactionServiceError, TransactionServiceProtocolError},
@@ -43,17 +44,11 @@ use crate::{
         },
     },
     types::{HashDigest, ValidationRetryStrategy},
+    utxo_scanner_service::utxo_scanning::RECOVERY_KEY,
 };
 use chrono::{NaiveDateTime, Utc};
 use digest::Digest;
-use futures::{
-    channel::{mpsc, mpsc::Sender, oneshot},
-    pin_mut,
-    stream::FuturesUnordered,
-    SinkExt,
-    Stream,
-    StreamExt,
-};
+use futures::{pin_mut, stream::FuturesUnordered, Stream, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use std::{
@@ -62,6 +57,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use tari_common_types::types::PrivateKey;
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
@@ -76,7 +72,7 @@ use tari_core::{
             sender::TransactionSenderMessage,
             RewindData,
         },
-        types::{CryptoFactories, PrivateKey},
+        CryptoFactories,
         ReceiverTransactionProtocol,
     },
 };
@@ -84,7 +80,11 @@ use tari_crypto::{keys::DiffieHellmanSharedSecret, script, tari_utilities::ByteA
 use tari_p2p::domain_message::DomainMessage;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
-use tokio::{sync::broadcast, task::JoinHandle, time::interval_at};
+use tokio::{
+    sync::{broadcast, mpsc, mpsc::Sender, oneshot},
+    task::JoinHandle,
+    time::interval_at,
+};
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
 
@@ -108,7 +108,10 @@ pub struct TransactionService<
     BNResponseStream,
     TBackend,
     TTxCancelledStream,
-> where TBackend: TransactionBackend + 'static
+    WBackend,
+> where
+    TBackend: TransactionBackend + 'static,
+    WBackend: WalletBackend + 'static,
 {
     config: TransactionServiceConfig,
     db: TransactionDatabase<TBackend>,
@@ -135,11 +138,20 @@ pub struct TransactionService<
     timeout_update_publisher: broadcast::Sender<Duration>,
     base_node_update_publisher: broadcast::Sender<CommsPublicKey>,
     power_mode: PowerMode,
+    wallet_db: WalletDatabase<WBackend>,
 }
 
 #[allow(clippy::too_many_arguments)]
-impl<TTxStream, TTxReplyStream, TTxFinalizedStream, BNResponseStream, TBackend, TTxCancelledStream>
-    TransactionService<TTxStream, TTxReplyStream, TTxFinalizedStream, BNResponseStream, TBackend, TTxCancelledStream>
+impl<TTxStream, TTxReplyStream, TTxFinalizedStream, BNResponseStream, TBackend, TTxCancelledStream, WBackend>
+    TransactionService<
+        TTxStream,
+        TTxReplyStream,
+        TTxFinalizedStream,
+        BNResponseStream,
+        TBackend,
+        TTxCancelledStream,
+        WBackend,
+    >
 where
     TTxStream: Stream<Item = DomainMessage<proto::TransactionSenderMessage>>,
     TTxReplyStream: Stream<Item = DomainMessage<proto::RecipientSignedMessage>>,
@@ -147,10 +159,12 @@ where
     BNResponseStream: Stream<Item = DomainMessage<base_node_proto::BaseNodeServiceResponse>>,
     TTxCancelledStream: Stream<Item = DomainMessage<proto::TransactionCancelledMessage>>,
     TBackend: TransactionBackend + 'static,
+    WBackend: WalletBackend + 'static,
 {
     pub fn new(
         config: TransactionServiceConfig,
         db: TransactionDatabase<TBackend>,
+        wallet_db: WalletDatabase<WBackend>,
         request_stream: Receiver<
             TransactionServiceRequest,
             Result<TransactionServiceResponse, TransactionServiceError>,
@@ -209,6 +223,7 @@ where
             timeout_update_publisher,
             base_node_update_publisher,
             power_mode: PowerMode::Normal,
+            wallet_db,
         }
     }
 
@@ -283,14 +298,13 @@ where
 
         info!(target: LOG_TARGET, "Transaction Service started");
         loop {
-            futures::select! {
+            tokio::select! {
                 // tx validation timer
                _ = tx_validation_interval.select_next_some() => {
                     self.start_transaction_validation_protocol(ValidationRetryStrategy::Limited(0),  &mut transaction_validation_protocol_handles).await?;
                     },
-
                 //Incoming request
-                request_context = request_stream.select_next_some() => {
+                Some(request_context) = request_stream.next() => {
                     // TODO: Remove time measurements; this is to aid in system testing only
                     let start = Instant::now();
                     let (request, reply_tx) = request_context.split();
@@ -315,7 +329,7 @@ where
                     );
                 },
                 // Incoming Transaction messages from the Comms layer
-                msg = transaction_stream.select_next_some() => {
+                Some(msg) = transaction_stream.next() => {
                     // TODO: Remove time measurements; this is to aid in system testing only
                     let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
@@ -330,7 +344,7 @@ where
                             msg.dht_header.message_tag);
                         }
                         Err(e) => {
-                            warn!(target: LOG_TARGET, "Failed to handle incoming Transaction message: {:?} for NodeID: {}, Trace: {}",
+                            warn!(target: LOG_TARGET, "Failed to handle incoming Transaction message: {} for NodeID: {}, Trace: {}",
                                 e, self.node_identity.node_id().short_str(), msg.dht_header.message_tag);
                             let _ = self.event_publisher.send(Arc::new(TransactionEvent::Error(format!("Error handling \
                                 Transaction Sender message: {:?}", e).to_string())));
@@ -345,7 +359,7 @@ where
                     );
                 },
                  // Incoming Transaction Reply messages from the Comms layer
-                msg = transaction_reply_stream.select_next_some() => {
+                Some(msg) = transaction_reply_stream.next() => {
                     // TODO: Remove time measurements; this is to aid in system testing only
                     let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
@@ -360,7 +374,7 @@ where
                             msg.dht_header.message_tag);
                         },
                         Err(e) => {
-                            warn!(target: LOG_TARGET, "Failed to handle incoming Transaction Reply message: {:?} \
+                            warn!(target: LOG_TARGET, "Failed to handle incoming Transaction Reply message: {} \
                             for NodeId: {}, Trace: {}", e, self.node_identity.node_id().short_str(),
                             msg.dht_header.message_tag);
                             let _ = self.event_publisher.send(Arc::new(TransactionEvent::Error("Error handling \
@@ -376,7 +390,7 @@ where
                     );
                 },
                // Incoming Finalized Transaction messages from the Comms layer
-                msg = transaction_finalized_stream.select_next_some() => {
+                Some(msg) = transaction_finalized_stream.next() => {
                     // TODO: Remove time measurements; this is to aid in system testing only
                     let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
@@ -398,7 +412,7 @@ where
                             msg.dht_header.message_tag);
                         },
                        Err(e) => {
-                            warn!(target: LOG_TARGET, "Failed to handle incoming Transaction Finalized message: {:?} \
+                            warn!(target: LOG_TARGET, "Failed to handle incoming Transaction Finalized message: {} \
                             for NodeID: {}, Trace: {}", e , self.node_identity.node_id().short_str(),
                             msg.dht_header.message_tag.as_value());
                             let _ = self.event_publisher.send(Arc::new(TransactionEvent::Error("Error handling Transaction \
@@ -414,7 +428,7 @@ where
                     );
                 },
                 // Incoming messages from the Comms layer
-                msg = base_node_response_stream.select_next_some() => {
+                Some(msg) = base_node_response_stream.next() => {
                     // TODO: Remove time measurements; this is to aid in system testing only
                     let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
@@ -433,7 +447,7 @@ where
                     );
                 }
                 // Incoming messages from the Comms layer
-                msg = transaction_cancelled_stream.select_next_some() => {
+                Some(msg) = transaction_cancelled_stream.next() => {
                     // TODO: Remove time measurements; this is to aid in system testing only
                     let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
@@ -448,7 +462,7 @@ where
                         finish.duration_since(start).as_millis(),
                     );
                 }
-                join_result = send_transaction_protocol_handles.select_next_some() => {
+                Some(join_result) = send_transaction_protocol_handles.next() => {
                     trace!(target: LOG_TARGET, "Send Protocol for Transaction has ended with result {:?}", join_result);
                     match join_result {
                         Ok(join_result_inner) => self.complete_send_transaction_protocol(
@@ -458,7 +472,7 @@ where
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Send Transaction Protocol: {:?}", e),
                     };
                 }
-                join_result = receive_transaction_protocol_handles.select_next_some() => {
+                Some(join_result) = receive_transaction_protocol_handles.next() => {
                     trace!(target: LOG_TARGET, "Receive Transaction Protocol has ended with result {:?}", join_result);
                     match join_result {
                         Ok(join_result_inner) => self.complete_receive_transaction_protocol(
@@ -468,14 +482,14 @@ where
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Send Transaction Protocol: {:?}", e),
                     };
                 }
-                join_result = transaction_broadcast_protocol_handles.select_next_some() => {
+                Some(join_result) = transaction_broadcast_protocol_handles.next() => {
                     trace!(target: LOG_TARGET, "Transaction Broadcast protocol has ended with result {:?}", join_result);
                     match join_result {
                         Ok(join_result_inner) => self.complete_transaction_broadcast_protocol(join_result_inner).await,
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Broadcast Protocol: {:?}", e),
                     };
                 }
-                join_result = coinbase_transaction_monitoring_protocol_handles.select_next_some() => {
+                Some(join_result) = coinbase_transaction_monitoring_protocol_handles.next() => {
                     trace!(target: LOG_TARGET, "Coinbase transaction monitoring protocol has ended with result {:?}",
                     join_result);
                     match join_result {
@@ -483,19 +497,15 @@ where
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Coinbase Monitoring protocol: {:?}", e),
                     };
                 }
-                join_result = transaction_validation_protocol_handles.select_next_some() => {
+                Some(join_result) = transaction_validation_protocol_handles.next() => {
                     trace!(target: LOG_TARGET, "Transaction Validation protocol has ended with result {:?}", join_result);
                     match join_result {
                         Ok(join_result_inner) => self.complete_transaction_validation_protocol(join_result_inner).await,
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Transaction Validation protocol: {:?}", e),
                     };
                 }
-                 _ = shutdown => {
+                 _ = shutdown.wait() => {
                     info!(target: LOG_TARGET, "Transaction service shutting down because it received the shutdown signal");
-                    break;
-                }
-                complete => {
-                    info!(target: LOG_TARGET, "Transaction service shutting down");
                     break;
                 }
             }
@@ -897,6 +907,9 @@ where
         source_pubkey: CommsPublicKey,
         recipient_reply: proto::RecipientSignedMessage,
     ) -> Result<(), TransactionServiceError> {
+        // Check if a wallet recovery is in progress, if it is we will ignore this request
+        self.check_recovery_status().await?;
+
         let recipient_reply: RecipientSignedMessage = recipient_reply
             .try_into()
             .map_err(TransactionServiceError::InvalidMessageError)?;
@@ -1199,6 +1212,9 @@ where
         traced_message_tag: u64,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
     ) -> Result<(), TransactionServiceError> {
+        // Check if a wallet recovery is in progress, if it is we will ignore this request
+        self.check_recovery_status().await?;
+
         let sender_message: TransactionSenderMessage = sender_message
             .try_into()
             .map_err(TransactionServiceError::InvalidMessageError)?;
@@ -1307,6 +1323,9 @@ where
         finalized_transaction: proto::TransactionFinalizedMessage,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
     ) -> Result<(), TransactionServiceError> {
+        // Check if a wallet recovery is in progress, if it is we will ignore this request
+        self.check_recovery_status().await?;
+
         let tx_id = finalized_transaction.tx_id;
         let transaction: Transaction = finalized_transaction
             .transaction
@@ -2062,6 +2081,16 @@ where
         }
 
         Ok(())
+    }
+
+    /// Check if a Recovery Status is currently stored in the databse, this indicates that a wallet recovery is in
+    /// progress
+    async fn check_recovery_status(&self) -> Result<(), TransactionServiceError> {
+        let value = self.wallet_db.get_client_key_value(RECOVERY_KEY.to_owned()).await?;
+        match value {
+            None => Ok(()),
+            Some(_) => Err(TransactionServiceError::WalletRecoveryInProgress),
+        }
     }
 }
 

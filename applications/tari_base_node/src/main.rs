@@ -98,15 +98,18 @@ mod utils;
 use crate::command_handler::{CommandHandler, StatusOutput};
 use futures::{future::Fuse, pin_mut, FutureExt};
 use log::*;
+use opentelemetry::{self, global, KeyValue};
 use parser::Parser;
 use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
 use std::{
+    env,
     net::SocketAddr,
     process,
     sync::Arc,
     time::{Duration, Instant},
 };
 use tari_app_utilities::{
+    consts,
     identity_management::setup_node_identity,
     initialization::init_configuration,
     utilities::{setup_runtime, ExitCodes},
@@ -120,6 +123,7 @@ use tokio::{
     time::{self, Delay},
 };
 use tonic::transport::Server;
+use tracing_subscriber::{layer::SubscriberExt, Registry};
 
 const LOG_TARGET: &str = "base_node::app";
 /// Application entry point
@@ -142,18 +146,22 @@ fn main_inner() -> Result<(), ExitCodes> {
     debug!(target: LOG_TARGET, "Using configuration: {:?}", node_config);
 
     // Set up the Tokio runtime
-    let mut rt = setup_runtime(&node_config).map_err(|e| {
+    let rt = setup_runtime(&node_config).map_err(|e| {
         error!(target: LOG_TARGET, "{}", e);
         ExitCodes::UnknownError
     })?;
 
     rt.block_on(run_node(node_config.into(), bootstrap))?;
-
+    // Shutdown and send any traces
+    global::shutdown_tracer_provider();
     Ok(())
 }
 
 /// Sets up the base node and runs the cli_loop
 async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) -> Result<(), ExitCodes> {
+    if bootstrap.tracing_enabled {
+        enable_tracing();
+    }
     // Load or create the Node identity
     let node_identity = setup_node_identity(
         &node_config.base_node_identity_file,
@@ -247,6 +255,28 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
     Ok(())
 }
 
+fn enable_tracing() {
+    // To run:
+    // docker run -d -p6831:6831/udp -p6832:6832/udp -p16686:16686 -p14268:14268 jaegertracing/all-in-one:latest
+    global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
+    let tracer = opentelemetry_jaeger::new_pipeline()
+        .with_service_name("tari::base_node")
+        .with_tags(vec![
+            KeyValue::new("pid", process::id().to_string()),
+            KeyValue::new(
+                "current_exe",
+                env::current_exe().unwrap().to_str().unwrap_or_default().to_owned(),
+            ),
+            KeyValue::new("version", consts::APP_VERSION),
+        ])
+        .install_batch(opentelemetry::runtime::Tokio)
+        .unwrap();
+    let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
+    let subscriber = Registry::default().with(telemetry);
+    tracing::subscriber::set_global_default(subscriber)
+        .expect("Tracing could not be set. Try running without `--tracing-enabled`");
+}
+
 /// Runs the gRPC server
 async fn run_grpc(
     grpc: crate::grpc::base_node_grpc_server::BaseNodeGrpcServer,
@@ -296,26 +326,28 @@ async fn read_command(mut rustyline: Editor<Parser>) -> Result<(String, Editor<P
     .expect("Could not spawn rustyline task")
 }
 
-fn status_interval(start_time: Instant) -> Fuse<Delay> {
+fn status_interval(start_time: Instant) -> time::Sleep {
     let duration = match start_time.elapsed().as_secs() {
         0..=120 => Duration::from_secs(5),
         _ => Duration::from_secs(30),
     };
-    time::delay_for(duration).fuse()
+    time::sleep(duration)
 }
 
 async fn status_loop(command_handler: Arc<CommandHandler>, shutdown: Shutdown) {
     let start_time = Instant::now();
     let mut shutdown_signal = shutdown.to_signal();
     loop {
-        let mut interval = status_interval(start_time);
-        futures::select! {
+        let interval = status_interval(start_time);
+        tokio::select! {
+            biased;
+            _ = shutdown_signal.wait() => {
+                break;
+            }
+
             _ = interval => {
                command_handler.status(StatusOutput::Log);
             },
-            _ = shutdown_signal => {
-                break;
-            }
         }
     }
 }
@@ -344,9 +376,9 @@ async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
     let start_time = Instant::now();
     let mut software_update_notif = command_handler.get_software_updater().new_update_notifier().clone();
     loop {
-        let mut interval = status_interval(start_time);
-        futures::select! {
-            res = read_command_fut => {
+        let interval = status_interval(start_time);
+        tokio::select! {
+            res = &mut read_command_fut => {
                 match res {
                     Ok((line, mut rustyline)) => {
                         if let Some(p) = rustyline.helper_mut().as_deref_mut() {
@@ -363,8 +395,8 @@ async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
                     }
                 }
             },
-            resp = software_update_notif.recv().fuse() => {
-                if let Some(Some(update)) = resp {
+            Ok(_) = software_update_notif.changed() => {
+                if let Some(ref update) = *software_update_notif.borrow() {
                     println!(
                         "Version {} of the {} is available: {} (sha: {})",
                         update.version(),
@@ -377,7 +409,7 @@ async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
             _ = interval => {
                command_handler.status(StatusOutput::Full);
             },
-            _ = shutdown_signal => {
+            _ = shutdown_signal.wait() => {
                 break;
             }
         }

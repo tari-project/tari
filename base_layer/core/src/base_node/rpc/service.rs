@@ -44,9 +44,10 @@ use crate::{
         },
         types::{Signature as SignatureProto, Transaction as TransactionProto},
     },
-    transactions::{transaction::Transaction, types::Signature},
+    transactions::transaction::Transaction,
 };
 use std::convert::{TryFrom, TryInto};
+use tari_common_types::types::Signature;
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 
 const LOG_TARGET: &str = "c::base_node::rpc";
@@ -234,7 +235,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
 
         // Determine if we are synced
         let status_watch = state_machine.get_status_info_watch();
-        let is_synced = match (*status_watch.borrow()).state_info {
+        let is_synced = match status_watch.borrow().state_info {
             StateInfo::Listening(li) => li.is_synced(),
             _ => false,
         };

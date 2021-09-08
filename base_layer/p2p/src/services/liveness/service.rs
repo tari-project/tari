@@ -48,7 +48,8 @@ use tari_comms_dht::{
 };
 use tari_service_framework::reply_channel::RequestContext;
 use tari_shutdown::ShutdownSignal;
-use tokio::time;
+use tokio::{time, time::MissedTickBehavior};
+use tokio_stream::wrappers;
 
 /// Service responsible for testing Liveness of Peers.
 pub struct LivenessService<THandleStream, TPingStream> {
@@ -59,7 +60,7 @@ pub struct LivenessService<THandleStream, TPingStream> {
     connectivity: ConnectivityRequester,
     outbound_messaging: OutboundMessageRequester,
     event_publisher: LivenessEventSender,
-    shutdown_signal: Option<ShutdownSignal>,
+    shutdown_signal: ShutdownSignal,
 }
 
 impl<TRequestStream, TPingStream> LivenessService<TRequestStream, TPingStream>
@@ -85,7 +86,7 @@ where
             connectivity,
             outbound_messaging,
             event_publisher,
-            shutdown_signal: Some(shutdown_signal),
+            shutdown_signal,
             config,
         }
     }
@@ -100,39 +101,37 @@ where
         pin_mut!(request_stream);
 
         let mut ping_tick = match self.config.auto_ping_interval {
-            Some(interval) => Either::Left(time::interval_at((Instant::now() + interval).into(), interval)),
+            Some(interval) => {
+                let mut interval = time::interval_at((Instant::now() + interval).into(), interval);
+                interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+                Either::Left(wrappers::IntervalStream::new(interval))
+            },
             None => Either::Right(futures::stream::iter(iter::empty())),
-        }
-        .fuse();
-
-        let mut shutdown_signal = self
-            .shutdown_signal
-            .take()
-            .expect("Liveness service initialized without shutdown signal");
+        };
 
         loop {
-            futures::select! {
+            tokio::select! {
                 // Requests from the handle
-                request_context = request_stream.select_next_some() => {
+                Some(request_context) = request_stream.next() => {
                     let (request, reply_tx) = request_context.split();
                     let _ = reply_tx.send(self.handle_request(request).await);
                 },
 
                 // Tick events
-                _ = ping_tick.select_next_some() => {
+                Some(_) = ping_tick.next() => {
                     if let Err(err) = self.start_ping_round().await {
                         warn!(target: LOG_TARGET, "Error when pinging peers: {}", err);
                     }
                 },
 
                 // Incoming messages from the Comms layer
-                msg = ping_stream.select_next_some() => {
+                Some(msg) = ping_stream.next() => {
                     if let Err(err) = self.handle_incoming_message(msg).await {
                         warn!(target: LOG_TARGET, "Failed to handle incoming PingPong message: {}", err);
                     }
                 },
 
-                _ = shutdown_signal => {
+                _ = self.shutdown_signal.wait() => {
                     info!(target: LOG_TARGET, "Liveness service shutting down because the shutdown signal was received");
                     break;
                 }
@@ -143,11 +142,13 @@ where
     async fn handle_incoming_message(&mut self, msg: DomainMessage<PingPongMessage>) -> Result<(), LivenessError> {
         let DomainMessage::<_> {
             source_peer,
+            dht_header,
             inner: ping_pong_msg,
             ..
         } = msg;
         let node_id = source_peer.node_id;
         let public_key = source_peer.public_key;
+        let message_tag = dht_header.message_tag;
 
         match ping_pong_msg.kind().ok_or(LivenessError::InvalidPingPongType)? {
             PingPong::Ping => {
@@ -157,9 +158,10 @@ where
 
                 debug!(
                     target: LOG_TARGET,
-                    "Received ping from peer '{}' with useragent '{}'",
+                    "Received ping from peer '{}' with useragent '{}' (Trace: {})",
                     node_id.short_str(),
                     source_peer.user_agent,
+                    message_tag,
                 );
 
                 let ping_event = PingPongEvent::new(node_id, None, ping_pong_msg.metadata.into());
@@ -169,9 +171,10 @@ where
                 if !self.state.is_inflight(ping_pong_msg.nonce) {
                     debug!(
                         target: LOG_TARGET,
-                        "Received Pong that was not requested from '{}' with useragent {}. Ignoring it.",
+                        "Received Pong that was not requested from '{}' with useragent {}. Ignoring it. (Trace: {})",
                         node_id.short_str(),
                         source_peer.user_agent,
+                        message_tag,
                     );
                     return Ok(());
                 }
@@ -179,10 +182,11 @@ where
                 let maybe_latency = self.state.record_pong(ping_pong_msg.nonce);
                 debug!(
                     target: LOG_TARGET,
-                    "Received pong from peer '{}' with useragent '{}'. {}",
+                    "Received pong from peer '{}' with useragent '{}'. {} (Trace: {})",
                     node_id.short_str(),
                     source_peer.user_agent,
                     maybe_latency.map(|ms| format!("Latency: {}ms", ms)).unwrap_or_default(),
+                    message_tag,
                 );
 
                 let pong_event = PingPongEvent::new(node_id, maybe_latency, ping_pong_msg.metadata.into());
@@ -306,10 +310,7 @@ mod test {
         proto::liveness::MetadataKey,
         services::liveness::{handle::LivenessHandle, state::Metadata},
     };
-    use futures::{
-        channel::{mpsc, oneshot},
-        stream,
-    };
+    use futures::stream;
     use rand::rngs::OsRng;
     use std::time::Duration;
     use tari_comms::{
@@ -325,9 +326,12 @@ mod test {
     use tari_crypto::keys::PublicKey;
     use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;
-    use tokio::{sync::broadcast, task};
+    use tokio::{
+        sync::{broadcast, mpsc, oneshot},
+        task,
+    };
 
-    #[tokio_macros::test_basic]
+    #[tokio::test]
     async fn get_ping_pong_count() {
         let mut state = LivenessState::new();
         state.inc_pings_received();
@@ -369,7 +373,7 @@ mod test {
         assert_eq!(res, 2);
     }
 
-    #[tokio_macros::test]
+    #[tokio::test]
     async fn send_ping() {
         let (connectivity, mock) = create_connectivity_mock();
         mock.spawn();
@@ -401,8 +405,9 @@ mod test {
         let node_id = NodeId::from_key(&pk);
         // Receive outbound request
         task::spawn(async move {
-            match outbound_rx.select_next_some().await {
-                DhtOutboundRequest::SendMessage(_, _, reply_tx) => {
+            #[allow(clippy::single_match)]
+            match outbound_rx.recv().await {
+                Some(DhtOutboundRequest::SendMessage(_, _, reply_tx)) => {
                     let (_, rx) = oneshot::channel();
                     reply_tx
                         .send(SendMessageResponse::Queued(
@@ -410,6 +415,7 @@ mod test {
                         ))
                         .unwrap();
                 },
+                None => {},
             }
         });
 
@@ -445,7 +451,7 @@ mod test {
         }
     }
 
-    #[tokio_macros::test]
+    #[tokio::test]
     async fn handle_message_ping() {
         let state = LivenessState::new();
 
@@ -478,10 +484,10 @@ mod test {
         task::spawn(service.run());
 
         // Test oms got request to send message
-        unwrap_oms_send_msg!(outbound_rx.select_next_some().await);
+        unwrap_oms_send_msg!(outbound_rx.recv().await.unwrap());
     }
 
-    #[tokio_macros::test_basic]
+    #[tokio::test]
     async fn handle_message_pong() {
         let mut state = LivenessState::new();
 
@@ -516,9 +522,9 @@ mod test {
         task::spawn(service.run());
 
         // Listen for the pong event
-        let subscriber = publisher.subscribe();
+        let mut subscriber = publisher.subscribe();
 
-        let event = time::timeout(Duration::from_secs(10), subscriber.fuse().select_next_some())
+        let event = time::timeout(Duration::from_secs(10), subscriber.recv())
             .await
             .unwrap()
             .unwrap();
@@ -530,12 +536,12 @@ mod test {
             _ => panic!("Unexpected event"),
         }
 
-        shutdown.trigger().unwrap();
+        shutdown.trigger();
 
         // No further events (malicious_msg was ignored)
-        let mut subscriber = publisher.subscribe().fuse();
+        let mut subscriber = publisher.subscribe();
         drop(publisher);
-        let msg = subscriber.next().await;
-        assert!(msg.is_none());
+        let msg = subscriber.recv().await;
+        assert!(msg.is_err());
     }
 }

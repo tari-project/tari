@@ -74,14 +74,19 @@ impl HeaderSync {
 
         let status_event_sender = shared.status_event_sender.clone();
         let bootstrapped = shared.is_bootstrapped();
-        synchronizer.on_progress(move |current_height, remote_tip_height, sync_peers| {
-            let _ = status_event_sender.broadcast(StatusInfo {
+        let randomx_vm_cnt = shared.get_randomx_vm_cnt();
+        let randomx_vm_flags = shared.get_randomx_vm_flags();
+        synchronizer.on_progress(move |details, sync_peers| {
+            let details = details.map(|(current_height, remote_tip_height)| BlockSyncInfo {
+                tip_height: remote_tip_height,
+                local_height: current_height,
+                sync_peers: sync_peers.to_vec(),
+            });
+            let _ = status_event_sender.send(StatusInfo {
                 bootstrapped,
-                state_info: StateInfo::HeaderSync(BlockSyncInfo {
-                    tip_height: remote_tip_height,
-                    local_height: current_height,
-                    sync_peers: sync_peers.to_vec(),
-                }),
+                state_info: StateInfo::HeaderSync(details),
+                randomx_vm_cnt,
+                randomx_vm_flags,
             });
         });
 

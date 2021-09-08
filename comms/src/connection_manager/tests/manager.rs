@@ -41,19 +41,17 @@ use crate::{
     },
     transports::{MemoryTransport, TcpTransport},
 };
-use futures::{
-    channel::{mpsc, oneshot},
-    future,
-    AsyncReadExt,
-    AsyncWriteExt,
-    StreamExt,
-};
+use futures::future;
 use std::time::Duration;
 use tari_shutdown::Shutdown;
-use tari_test_utils::{collect_stream, unpack_enum};
-use tokio::{runtime::Handle, sync::broadcast};
+use tari_test_utils::{collect_try_recv, unpack_enum};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    runtime::Handle,
+    sync::{broadcast, mpsc, oneshot},
+};
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn connect_to_nonexistent_peer() {
     let rt_handle = Handle::current();
     let node_identity = build_node_identity(PeerFeatures::empty());
@@ -83,10 +81,10 @@ async fn connect_to_nonexistent_peer() {
     unpack_enum!(ConnectionManagerError::PeerManagerError(err) = err);
     unpack_enum!(PeerManagerError::PeerNotFoundError = err);
 
-    shutdown.trigger().unwrap();
+    shutdown.trigger();
 }
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn dial_success() {
     static TEST_PROTO: ProtocolId = ProtocolId::from_static(b"/test/valid");
     let shutdown = Shutdown::new();
@@ -159,7 +157,7 @@ async fn dial_success() {
     assert_eq!(peer2.supported_protocols, [&IDENTITY_PROTOCOL, &TEST_PROTO]);
     assert_eq!(peer2.user_agent, "node2");
 
-    let event = subscription2.next().await.unwrap().unwrap();
+    let event = subscription2.recv().await.unwrap();
     unpack_enum!(ConnectionManagerEvent::PeerConnected(conn_in) = &*event);
     assert_eq!(conn_in.peer_node_id(), node_identity1.node_id());
 
@@ -179,7 +177,7 @@ async fn dial_success() {
     const MSG: &[u8] = b"Welease Woger!";
     substream_out.stream.write_all(MSG).await.unwrap();
 
-    let protocol_in = proto_rx2.next().await.unwrap();
+    let protocol_in = proto_rx2.recv().await.unwrap();
     assert_eq!(protocol_in.protocol, &TEST_PROTO);
     unpack_enum!(ProtocolEvent::NewInboundSubstream(node_id, substream_in) = protocol_in.event);
     assert_eq!(&node_id, node_identity1.node_id());
@@ -189,7 +187,7 @@ async fn dial_success() {
     assert_eq!(buf, MSG);
 }
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn dial_success_aux_tcp_listener() {
     static TEST_PROTO: ProtocolId = ProtocolId::from_static(b"/test/valid");
     let shutdown = Shutdown::new();
@@ -271,7 +269,7 @@ async fn dial_success_aux_tcp_listener() {
     const MSG: &[u8] = b"Welease Woger!";
     substream_out.stream.write_all(MSG).await.unwrap();
 
-    let protocol_in = proto_rx1.next().await.unwrap();
+    let protocol_in = proto_rx1.recv().await.unwrap();
     assert_eq!(protocol_in.protocol, &TEST_PROTO);
     unpack_enum!(ProtocolEvent::NewInboundSubstream(node_id, substream_in) = protocol_in.event);
     assert_eq!(&node_id, node_identity2.node_id());
@@ -281,7 +279,7 @@ async fn dial_success_aux_tcp_listener() {
     assert_eq!(buf, MSG);
 }
 
-#[runtime::test_basic]
+#[runtime::test]
 async fn simultaneous_dial_events() {
     let mut shutdown = Shutdown::new();
 
@@ -360,29 +358,22 @@ async fn simultaneous_dial_events() {
         _ => panic!("unexpected simultaneous dial result"),
     }
 
-    let event = subscription2.next().await.unwrap().unwrap();
+    let event = subscription2.recv().await.unwrap();
     assert!(count_string_occurrences(&[event], &["PeerConnected", "PeerInboundConnectFailed"]) >= 1);
 
-    shutdown.trigger().unwrap();
+    shutdown.trigger();
     drop(conn_man1);
     drop(conn_man2);
 
-    let _events1 = collect_stream!(subscription1, timeout = Duration::from_secs(5))
-        .into_iter()
-        .map(Result::unwrap)
-        .collect::<Vec<_>>();
-
-    let _events2 = collect_stream!(subscription2, timeout = Duration::from_secs(5))
-        .into_iter()
-        .map(Result::unwrap)
-        .collect::<Vec<_>>();
+    let _events1 = collect_try_recv!(subscription1, timeout = Duration::from_secs(5));
+    let _events2 = collect_try_recv!(subscription2, timeout = Duration::from_secs(5));
 
     // TODO: Investigate why two PeerDisconnected events are sometimes received
     // assert!(count_string_occurrences(&events1, &["PeerDisconnected"]) >= 1);
     // assert!(count_string_occurrences(&events2, &["PeerDisconnected"]) >= 1);
 }
 
-#[tokio_macros::test_basic]
+#[runtime::test]
 async fn dial_cancelled() {
     let mut shutdown = Shutdown::new();
 
@@ -400,6 +391,8 @@ async fn dial_cancelled() {
                 ..Default::default()
             };
             config.connection_manager_config.network_info.user_agent = "node1".to_string();
+            // To ensure that dial takes a long time so that we can test cancelling it
+            config.connection_manager_config.max_dial_attempts = 100;
             config
         },
         MemoryTransport,
@@ -429,13 +422,10 @@ async fn dial_cancelled() {
     let err = dial_result.await.unwrap().unwrap_err();
     unpack_enum!(ConnectionManagerError::DialCancelled = err);
 
-    shutdown.trigger().unwrap();
+    shutdown.trigger();
     drop(conn_man1);
 
-    let events1 = collect_stream!(subscription1, timeout = Duration::from_secs(5))
-        .into_iter()
-        .map(Result::unwrap)
-        .collect::<Vec<_>>();
+    let events1 = collect_try_recv!(subscription1, timeout = Duration::from_secs(5));
 
     assert_eq!(events1.len(), 1);
     unpack_enum!(ConnectionManagerEvent::PeerConnectFailed(node_id, err) = &*events1[0]);

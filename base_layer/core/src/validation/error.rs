@@ -24,8 +24,9 @@ use crate::{
     blocks::{block_header::BlockHeaderValidationError, BlockValidationError},
     chain_storage::ChainStorageError,
     proof_of_work::{monero_rx::MergeMineError, PowError},
-    transactions::{transaction::TransactionError, types::HashOutput},
+    transactions::transaction::TransactionError,
 };
+use tari_common_types::types::HashOutput;
 use thiserror::Error;
 
 #[derive(Debug, Error)]

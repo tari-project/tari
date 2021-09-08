@@ -24,10 +24,10 @@ use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{BlockchainBackend, ChainBlock},
     proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty, PowAlgorithm},
-    transactions::{transaction::Transaction, types::Commitment},
+    transactions::transaction::Transaction,
     validation::{
         error::ValidationError,
-        CandidateBlockBodyValidation,
+        BlockSyncBodyValidation,
         DifficultyCalculator,
         FinalHorizonStateValidation,
         HeaderValidation,
@@ -40,7 +40,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
 
 #[derive(Clone)]
 pub struct MockValidator {
@@ -67,7 +67,7 @@ impl MockValidator {
     }
 }
 
-impl<B: BlockchainBackend> CandidateBlockBodyValidation<B> for MockValidator {
+impl<B: BlockchainBackend> BlockSyncBodyValidation<B> for MockValidator {
     fn validate_body(&self, _item: &Block, _db: &B) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())

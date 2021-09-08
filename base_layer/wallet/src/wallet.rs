@@ -20,6 +20,51 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{marker::PhantomData, sync::Arc};
+
+use aes_gcm::{
+    aead::{generic_array::GenericArray, NewAead},
+    Aes256Gcm,
+};
+use digest::Digest;
+use log::*;
+use rand::rngs::OsRng;
+use tari_common::configuration::bootstrap::ApplicationType;
+use tari_crypto::{
+    common::Blake256,
+    keys::SecretKey,
+    ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
+    script,
+    script::{ExecutionStack, TariScript},
+    signatures::{SchnorrSignature, SchnorrSignatureError},
+    tari_utilities::hex::Hex,
+};
+
+use tari_common_types::types::{ComSignature, PrivateKey, PublicKey};
+use tari_comms::{
+    multiaddr::Multiaddr,
+    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
+    types::{CommsPublicKey, CommsSecretKey},
+    CommsNode,
+    NodeIdentity,
+    UnspawnedCommsNode,
+};
+use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction::{OutputFeatures, UnblindedOutput},
+    CryptoFactories,
+};
+use tari_key_manager::key_manager::KeyManager;
+use tari_p2p::{
+    auto_update::{SoftwareUpdaterHandle, SoftwareUpdaterService},
+    comms_connector::pubsub_connector,
+    initialization,
+    initialization::P2pInitializer,
+};
+use tari_service_framework::StackBuilder;
+use tari_shutdown::ShutdownSignal;
+
 use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     config::{WalletConfig, KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY},
@@ -42,42 +87,6 @@ use crate::{
     types::KeyDigest,
     utxo_scanner_service::{handle::UtxoScannerHandle, UtxoScannerServiceInitializer},
 };
-use aes_gcm::{
-    aead::{generic_array::GenericArray, NewAead},
-    Aes256Gcm,
-};
-use digest::Digest;
-use log::*;
-use rand::rngs::OsRng;
-use std::{marker::PhantomData, sync::Arc};
-use tari_comms::{
-    multiaddr::Multiaddr,
-    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
-    types::{CommsPublicKey, CommsSecretKey},
-    CommsNode,
-    NodeIdentity,
-    UnspawnedCommsNode,
-};
-use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction::{OutputFeatures, UnblindedOutput},
-    types::{ComSignature, CryptoFactories, PrivateKey, PublicKey},
-};
-use tari_crypto::{
-    common::Blake256,
-    keys::SecretKey,
-    ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
-    script,
-    script::{ExecutionStack, TariScript},
-    signatures::{SchnorrSignature, SchnorrSignatureError},
-    tari_utilities::hex::Hex,
-};
-use tari_key_manager::key_manager::KeyManager;
-use tari_p2p::{comms_connector::pubsub_connector, initialization, initialization::P2pInitializer};
-use tari_service_framework::StackBuilder;
-use tari_shutdown::ShutdownSignal;
-use tokio::runtime;
 
 const LOG_TARGET: &str = "wallet";
 
@@ -100,6 +109,7 @@ where
     pub contacts_service: ContactsServiceHandle,
     pub base_node_service: BaseNodeServiceHandle,
     pub utxo_scanner_service: UtxoScannerHandle,
+    pub updater_service: Option<SoftwareUpdaterHandle>,
     pub db: WalletDatabase<T>,
     pub factories: CryptoFactories,
     _u: PhantomData<U>,
@@ -139,8 +149,7 @@ where
         let bn_service_db = wallet_database.clone();
 
         let factories = config.clone().factories;
-        let (publisher, subscription_factory) =
-            pubsub_connector(runtime::Handle::current(), config.buffer_size, config.rate_limit);
+        let (publisher, subscription_factory) = pubsub_connector(config.buffer_size, config.rate_limit);
         let peer_message_subscription_factory = Arc::new(subscription_factory);
         let transport_type = config.comms_config.transport_type.clone();
 
@@ -178,6 +187,7 @@ where
                 transaction_backend,
                 node_identity.clone(),
                 factories.clone(),
+                wallet_database.clone(),
             ))
             .add_initializer(ContactsServiceInitializer::new(contacts_backend))
             .add_initializer(BaseNodeServiceInitializer::new(
@@ -191,6 +201,20 @@ where
                 factories.clone(),
                 node_identity.clone(),
             ));
+
+        // Check if we have update config. FFI wallets don't do this, the update on mobile is done differently.
+        let stack = match config.updater_config {
+            Some(ref updater_config) => stack.add_initializer(SoftwareUpdaterService::new(
+                ApplicationType::ConsoleWallet,
+                env!("CARGO_PKG_VERSION")
+                    .to_string()
+                    .parse()
+                    .expect("Unable to parse console wallet version."),
+                updater_config.clone(),
+                config.autoupdate_check_interval,
+            )),
+            _ => stack,
+        };
 
         let mut handles = stack.build().await?;
 
@@ -208,6 +232,9 @@ where
         let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
         let utxo_scanner_service_handle = handles.expect_handle::<UtxoScannerHandle>();
         let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle>();
+        let updater_handle = config
+            .updater_config
+            .map(|_updater_config| handles.expect_handle::<SoftwareUpdaterHandle>());
 
         persist_one_sided_payment_script_for_node_identity(&mut output_manager_handle, comms.node_identity())
             .await
@@ -234,6 +261,7 @@ where
             contacts_service: contacts_handle,
             base_node_service: base_node_service_handle,
             utxo_scanner_service: utxo_scanner_service_handle,
+            updater_service: updater_handle,
             wallet_connectivity,
             db: wallet_database,
             factories,
@@ -296,6 +324,42 @@ where
             .get_base_node_peer()
             .await
             .map_err(WalletError::BaseNodeServiceError)
+    }
+
+    pub async fn check_for_update(&self) -> Option<String> {
+        let mut updater = self.updater_service.clone().unwrap();
+        debug!(
+            target: LOG_TARGET,
+            "Checking for updates (current version: {})...",
+            env!("CARGO_PKG_VERSION").to_string()
+        );
+        match updater.check_for_updates().await {
+            Some(update) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Version {} of the {} is available: {} (sha: {})",
+                    update.version(),
+                    update.app(),
+                    update.download_url(),
+                    update.to_hash_hex()
+                );
+                Some(format!(
+                    "Version {} of the {} is available: {} (sha: {})",
+                    update.version(),
+                    update.app(),
+                    update.download_url(),
+                    update.to_hash_hex()
+                ))
+            },
+            None => {
+                debug!(target: LOG_TARGET, "No updates found.",);
+                None
+            },
+        }
+    }
+
+    pub fn get_software_updater(&self) -> SoftwareUpdaterHandle {
+        self.updater_service.clone().unwrap()
     }
 
     /// Import an external spendable UTXO into the wallet. The output will be added to the Output Manager and made

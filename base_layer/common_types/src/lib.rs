@@ -21,5 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod chain_metadata;
+pub mod emoji;
+pub mod luhn;
 pub mod types;
 pub mod waiting_requests;
+
+#[macro_use]
+extern crate lazy_static;
