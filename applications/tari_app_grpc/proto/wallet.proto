@@ -54,6 +54,8 @@ service Wallet {
     rpc ListConnectedPeers(Empty) returns (ListConnectedPeersResponse);
     // Cancel pending transaction
     rpc CancelTransaction (CancelTransactionRequest) returns (CancelTransactionResponse);
+    // Get seed words
+    rpc GetSeedWords(Empty) returns (GetSeedWordsResponse);
 }
 
 message GetVersionRequest { }
@@ -196,4 +198,8 @@ message CancelTransactionRequest {
 message CancelTransactionResponse {
     bool is_success = 1;
     string failure_message = 2;
+}
+
+message GetSeedWordsResponse {
+    repeated string seed_words = 1;
 }

@@ -437,6 +437,21 @@ impl wallet_server::Wallet for WalletGrpcServer {
             },
         }
     }
+
+    async fn get_seed_words(
+        &self,
+        _: Request<tari_rpc::Empty>,
+    ) -> Result<Response<tari_rpc::GetSeedWordsResponse>, Status> {
+        debug!(target: LOG_TARGET, "Incoming gRPC request to Get Seed Words");
+        let seed_words = self
+            .get_output_manager_service()
+            .get_seed_words()
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
+        Ok(Response::new(tari_rpc::GetSeedWordsResponse {
+            seed_words: seed_words.into_iter().map(Into::into).collect(),
+        }))
+    }
 }
 
 fn convert_wallet_transaction_into_transaction_info(
