@@ -30,7 +30,7 @@ use crate::{
     proto::base_node::SyncBlocksRequest,
     tari_utilities::{hex::Hex, Hashable},
     transactions::aggregated_body::AggregateBody,
-    validation::CandidateBlockBodyValidation,
+    validation::BlockSyncBodyValidation,
 };
 use futures::StreamExt;
 use log::*;
@@ -55,7 +55,7 @@ pub struct BlockSynchronizer<B> {
     db: AsyncBlockchainDb<B>,
     connectivity: ConnectivityRequester,
     sync_peer: Option<PeerConnection>,
-    block_validator: Arc<dyn CandidateBlockBodyValidation<B>>,
+    block_validator: Arc<dyn BlockSyncBodyValidation<B>>,
     hooks: Hooks,
 }
 
@@ -65,7 +65,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         db: AsyncBlockchainDb<B>,
         connectivity: ConnectivityRequester,
         sync_peer: Option<PeerConnection>,
-        block_validator: Arc<dyn CandidateBlockBodyValidation<B>>,
+        block_validator: Arc<dyn BlockSyncBodyValidation<B>>,
     ) -> Self {
         Self {
             config,

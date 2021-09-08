@@ -1156,10 +1156,7 @@ impl Transaction {
 
     /// Returns the maximum time lock of the kernels inside of the transaction
     pub fn max_kernel_timelock(&self) -> u64 {
-        self.body
-            .kernels()
-            .iter()
-            .fold(0, |max_timelock, kernel| max(max_timelock, kernel.lock_height))
+        self.body.max_kernel_timelock()
     }
 
     /// Returns the height of the minimum height where the transaction is spendable. This is calculated from the
