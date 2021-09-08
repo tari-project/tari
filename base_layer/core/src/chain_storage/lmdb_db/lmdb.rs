@@ -115,15 +115,15 @@ where
 {
     let val_buf = serialize(val)?;
     txn.access().put(&db, key, &val_buf, put::Flags::empty()).map_err(|e| {
-        error!(
-            target: LOG_TARGET,
-            "Could not insert value into lmdb transaction: {:?}", e
-        );
         if let lmdb_zero::Error::Code(code) = &e {
             if *code == lmdb_zero::error::MAP_FULL {
                 return ChainStorageError::DbResizeRequired;
             }
         }
+        error!(
+            target: LOG_TARGET,
+            "Could not insert value into lmdb transaction: {:?}", e
+        );
         ChainStorageError::AccessError(e.to_string())
     })
 }
@@ -136,6 +136,11 @@ where
 {
     let val_buf = serialize(val)?;
     txn.access().put(&db, key, &val_buf, put::Flags::empty()).map_err(|e| {
+        if let lmdb_zero::Error::Code(code) = &e {
+            if *code == lmdb_zero::error::MAP_FULL {
+                return ChainStorageError::DbResizeRequired;
+            }
+        }
         error!(
             target: LOG_TARGET,
             "Could not replace value in lmdb transaction: {:?}", e

@@ -391,6 +391,8 @@ async fn dial_cancelled() {
                 ..Default::default()
             };
             config.connection_manager_config.network_info.user_agent = "node1".to_string();
+            // To ensure that dial takes a long time so that we can test cancelling it
+            config.connection_manager_config.max_dial_attempts = 100;
             config
         },
         MemoryTransport,

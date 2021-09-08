@@ -178,6 +178,7 @@ impl ChainMetadataService {
                     target: LOG_TARGET,
                     "New chain metadata round sent to {} peer(s)", num_peers
                 );
+                self.send_chain_metadata_to_event_publisher().await?;
                 // Ensure that we're waiting for the correct amount of peers to respond
                 // and have allocated space for their replies
 

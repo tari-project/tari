@@ -76,7 +76,6 @@ fn setup_connectivity_manager(
         peer_manager: peer_manager.clone(),
         shutdown_signal: shutdown.to_signal(),
     }
-    .create()
     .spawn();
 
     (

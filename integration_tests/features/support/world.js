@@ -161,6 +161,10 @@ class CustomWorld {
         completedTx
       );
       if (this.checkAutoTransactions && submitResult.result != "ACCEPTED") {
+        console.log(
+          "Automated transaction failed. If this is not intended add step :",
+          "`I do not expect all automated transactions to succeed` !"
+        );
         result = false;
       }
       if (submitResult.result == "ACCEPTED") {

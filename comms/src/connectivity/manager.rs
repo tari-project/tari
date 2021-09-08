@@ -80,7 +80,7 @@ pub struct ConnectivityManager {
 }
 
 impl ConnectivityManager {
-    pub fn create(self) -> ConnectivityManagerActor {
+    pub fn spawn(self) -> JoinHandle<()> {
         ConnectivityManagerActor {
             config: self.config,
             status: ConnectivityStatus::Initializing,
@@ -90,12 +90,11 @@ impl ConnectivityManager {
             event_tx: self.event_tx,
             connection_stats: HashMap::new(),
             node_identity: self.node_identity,
-
             managed_peers: Vec::new(),
-
-            shutdown_signal: Some(self.shutdown_signal),
             pool: ConnectionPool::new(),
+            shutdown_signal: self.shutdown_signal,
         }
+        .spawn()
     }
 }
 
@@ -137,19 +136,18 @@ impl fmt::Display for ConnectivityStatus {
     }
 }
 
-pub struct ConnectivityManagerActor {
+struct ConnectivityManagerActor {
     config: ConnectivityConfig,
     status: ConnectivityStatus,
     request_rx: mpsc::Receiver<ConnectivityRequest>,
     connection_manager: ConnectionManagerRequester,
     node_identity: Arc<NodeIdentity>,
-    shutdown_signal: Option<ShutdownSignal>,
     peer_manager: Arc<PeerManager>,
     event_tx: ConnectivityEventTx,
     connection_stats: HashMap<NodeId, PeerConnectionStats>,
-
     managed_peers: Vec<NodeId>,
     pool: ConnectionPool,
+    shutdown_signal: ShutdownSignal,
 }
 
 impl ConnectivityManagerActor {
@@ -160,10 +158,6 @@ impl ConnectivityManagerActor {
     #[tracing::instrument(name = "connectivity_manager_actor::run", skip(self))]
     pub async fn run(mut self) {
         info!(target: LOG_TARGET, "ConnectivityManager started");
-        let mut shutdown_signal = self
-            .shutdown_signal
-            .take()
-            .expect("ConnectivityManager initialized without a shutdown_signal");
 
         let mut connection_manager_events = self.connection_manager.get_event_subscription();
 
@@ -199,7 +193,7 @@ impl ConnectivityManagerActor {
                     }
                 },
 
-                _ = &mut shutdown_signal => {
+                _ = self.shutdown_signal.wait() => {
                     info!(target: LOG_TARGET, "ConnectivityManager is shutting down because it received the shutdown signal");
                     self.disconnect_all().await;
                     break;

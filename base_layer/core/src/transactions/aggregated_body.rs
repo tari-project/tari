@@ -1,14 +1,3 @@
-use std::fmt::{Display, Error, Formatter};
-
-use log::*;
-use serde::{Deserialize, Serialize};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::PublicKey as PublicKeyTrait,
-    ristretto::pedersen::PedersenCommitment,
-    tari_utilities::hex::Hex,
-};
-
 // Copyright 2019, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -31,6 +20,12 @@ use tari_crypto::{
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::transactions::{crypto_factories::CryptoFactories, fee::Fee, tari_amount::*, transaction::*};
+use log::*;
+use serde::{Deserialize, Serialize};
+use std::{
+    cmp::max,
+    fmt::{Display, Error, Formatter},
+};
 use tari_common_types::types::{
     BlindingFactor,
     Commitment,
@@ -38,6 +33,12 @@ use tari_common_types::types::{
     PrivateKey,
     PublicKey,
     RangeProofService,
+};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::PublicKey as PublicKeyTrait,
+    ristretto::pedersen::PedersenCommitment,
+    tari_utilities::hex::Hex,
 };
 
 pub const LOG_TARGET: &str = "c::tx::aggregated_body";
@@ -449,6 +450,12 @@ impl AggregateBody {
             self.outputs.len(),
             self.kernels.len()
         )
+    }
+
+    pub fn max_kernel_timelock(&self) -> u64 {
+        self.kernels()
+            .iter()
+            .fold(0, |max_timelock, kernel| max(max_timelock, kernel.lock_height))
     }
 }
 

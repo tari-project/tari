@@ -194,14 +194,14 @@ impl RpcCommsProvider for MockCommsProvider {
     }
 }
 
-pub struct MockRpcServer<TSvc, TSubstream> {
-    inner: Option<PeerRpcServer<TSvc, TSubstream, MockCommsProvider>>,
-    protocol_tx: ProtocolNotificationTx<TSubstream>,
+pub struct MockRpcServer<TSvc> {
+    inner: Option<PeerRpcServer<TSvc, MockCommsProvider>>,
+    protocol_tx: ProtocolNotificationTx<Substream>,
     our_node: Arc<NodeIdentity>,
     request_tx: mpsc::Sender<RpcServerRequest>,
 }
 
-impl<TSvc> MockRpcServer<TSvc, Substream>
+impl<TSvc> MockRpcServer<TSvc>
 where
     TSvc: MakeService<
             ProtocolId,
@@ -259,7 +259,7 @@ where
     }
 }
 
-impl MockRpcServer<MockRpcImpl, Substream> {
+impl MockRpcServer<MockRpcImpl> {
     pub async fn create_mockimpl_connection(&self, peer: Peer) -> PeerConnection {
         // MockRpcImpl accepts any protocol
         self.create_connection(peer, ProtocolId::new()).await

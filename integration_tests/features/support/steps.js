@@ -1434,7 +1434,7 @@ When(
       null,
       (block) => {
         this.addTransactionOutput(
-          tipHeight + 2,
+          tipHeight + 1 + 2,
           block.originalTemplate.coinbase
         );
         this.saveBlock(blockName, block);

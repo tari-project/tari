@@ -42,6 +42,7 @@ use crate::{
     },
     runtime::task,
     Bytes,
+    Substream,
 };
 use futures::{
     future::BoxFuture,
@@ -49,10 +50,7 @@ use futures::{
     FutureExt,
 };
 use std::sync::Arc;
-use tokio::{
-    io::{AsyncRead, AsyncWrite},
-    sync::mpsc,
-};
+use tokio::sync::mpsc;
 use tower::Service;
 use tower_make::MakeService;
 
@@ -133,13 +131,12 @@ where
     <B::Service as Service<Request<Bytes>>>::Future: Send + 'static,
 {
     /// Start all services
-    pub(crate) async fn serve<TSubstream, TCommsProvider>(
+    pub(crate) async fn serve<TCommsProvider>(
         self,
-        protocol_notifications: ProtocolNotificationRx<TSubstream>,
+        protocol_notifications: ProtocolNotificationRx<Substream>,
         comms_provider: TCommsProvider,
     ) -> Result<(), RpcError>
     where
-        TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static,
         TCommsProvider: RpcCommsProvider + Clone + Send + 'static,
     {
         self.server
