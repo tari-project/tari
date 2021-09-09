@@ -20,19 +20,25 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{output_manager_service::{error::OutputManagerError}, transaction_service::storage::database::DbKey, OperationId};
+use crate::{
+    output_manager_service::error::OutputManagerError,
+    transaction_service::storage::database::DbKey,
+    OperationId,
+};
 use diesel::result::Error as DieselError;
 use futures::channel::oneshot::Canceled;
 use serde_json::Error as SerdeJsonError;
 use tari_comms::{peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
-use tari_core::transactions::{transaction::TransactionError, transaction_protocol::TransactionProtocolError};
+use tari_core::transactions::{
+    transaction::TransactionError,
+    transaction_protocol::{TransactionProtocolError, TxId},
+};
 use tari_p2p::services::liveness::error::LivenessError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
 use time::OutOfRangeError;
 use tokio::sync::broadcast::error::RecvError;
-use tari_core::transactions::transaction_protocol::TxId;
 
 #[derive(Debug, Error)]
 pub enum TransactionServiceError {
@@ -188,7 +194,7 @@ pub struct TransactionServiceProtocolError {
 }
 
 impl TransactionServiceProtocolError {
-    pub fn new<T:Into<u64>>(id: T, error: TransactionServiceError) -> Self {
+    pub fn new<T: Into<u64>>(id: T, error: TransactionServiceError) -> Self {
         Self { id: id.into(), error }
     }
 }

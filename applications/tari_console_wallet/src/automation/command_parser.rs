@@ -32,9 +32,9 @@ use std::{
 use tari_app_utilities::utilities::parse_emoji_id_or_public_key;
 use tari_comms::multiaddr::Multiaddr;
 
+use std::iter::Peekable;
 use tari_common_types::types::PublicKey;
 use tari_core::transactions::tari_amount::MicroTari;
-use std::iter::Peekable;
 
 #[derive(Debug)]
 pub struct ParsedCommand {
@@ -60,7 +60,7 @@ impl Display for ParsedCommand {
             SetCustomBaseNode => "set-custom-base-node",
             ClearCustomBaseNode => "clear-custom-base-node",
             RegisterAsset => "register-asset",
-            MintTokens=> "mint-tokens"
+            MintTokens => "mint-tokens",
         };
 
         let args = self
@@ -130,7 +130,7 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, ParseError> {
         ClearCustomBaseNode => Vec::new(),
         RegisterAsset => parser_builder(args).text().build()?,
         // mint-tokens pub_key nft_id1 nft_id2
-        MintTokens => parser_builder(args).pub_key().text_array().build()?
+        MintTokens => parser_builder(args).pub_key().text_array().build()?,
     };
 
     Ok(ParsedCommand { command, args })
@@ -138,25 +138,31 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, ParseError> {
 
 struct ArgParser<'a> {
     args: Peekable<SplitWhitespace<'a>>,
-    result: Vec<Result<ParsedArgument, ParseError>>
+    result: Vec<Result<ParsedArgument, ParseError>>,
 }
 
 impl<'a> ArgParser<'a> {
     fn new(args: SplitWhitespace<'a>) -> Self {
-        Self{
-            args: args.peekable(), result: vec![]
+        Self {
+            args: args.peekable(),
+            result: vec![],
         }
     }
+
     fn text(mut self) -> Self {
-    let text_result = self.args.next().map(|t| ParsedArgument::Text(t.to_string()))
-    .ok_or_else(|| ParseError::Empty("text".to_string()));
+        let text_result = self
+            .args
+            .next()
+            .map(|t| ParsedArgument::Text(t.to_string()))
+            .ok_or_else(|| ParseError::Empty("text".to_string()));
         self.result.push(text_result);
-    self
+        self
     }
+
     fn text_array(self) -> Self {
         let mut me = self;
         while me.args.peek().is_some() {
-           me = me.text();
+            me = me.text();
         }
 
         me
@@ -164,15 +170,16 @@ impl<'a> ArgParser<'a> {
 
     fn pub_key(mut self) -> Self {
         // public key/emoji id
-        let pubkey = self.args
+        let pubkey = self
+            .args
             .next()
             .ok_or_else(|| ParseError::Empty("public key or emoji id".to_string()));
-        let result = pubkey.and_then(|pb| {
-            match  parse_emoji_id_or_public_key(pb).ok_or(ParseError::PublicKey) {
+        let result = pubkey.and_then(
+            |pb| match parse_emoji_id_or_public_key(pb).ok_or(ParseError::PublicKey) {
                 Ok(pk) => Ok(ParsedArgument::PublicKey(pk)),
-                Err(err) => Err(err)
-            }
-        });
+                Err(err) => Err(err),
+            },
+        );
         self.result.push(result);
         self
     }
@@ -182,7 +189,7 @@ impl<'a> ArgParser<'a> {
         for r in self.result {
             result.push(r?);
         }
-       Ok(result)
+        Ok(result)
     }
 }
 

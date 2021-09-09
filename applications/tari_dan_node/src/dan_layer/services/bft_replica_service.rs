@@ -20,19 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::models::{ViewId, View};
-use tari_comms::NodeIdentity;
-use tari_comms::peer_manager::NodeId;
+use crate::dan_layer::models::{View, ViewId};
+use tari_comms::{peer_manager::NodeId, NodeIdentity};
 
 pub trait BftReplicaService {
-    fn current_view(&self ) -> View;
+    fn current_view(&self) -> View;
 }
 
 pub struct ConcreteBftReplicaService {
     current_view: ViewId,
     node_identity: NodeIdentity,
     committee: Vec<NodeId>,
-    position_in_committee: usize
+    position_in_committee: usize,
 }
 
 impl ConcreteBftReplicaService {
@@ -43,19 +42,24 @@ impl ConcreteBftReplicaService {
         }
 
         committee.sort();
-        let position_in_committee = committee.iter().position(|n| n == node_identity.node_id()).expect("NodeID should always be present since we add it");
-        Self { current_view: ViewId(0), node_identity, committee, position_in_committee}
+        let position_in_committee = committee
+            .iter()
+            .position(|n| n == node_identity.node_id())
+            .expect("NodeID should always be present since we add it");
+        Self {
+            current_view: ViewId(0),
+            node_identity,
+            committee,
+            position_in_committee,
+        }
     }
-
-
 }
 
-impl BftReplicaService for ConcreteBftReplicaService{
+impl BftReplicaService for ConcreteBftReplicaService {
     fn current_view(&self) -> View {
-       View {
-           view_id: self.current_view,
-           is_leader: self.current_view.current_leader(self.committee.len()) == self.position_in_committee
-       }
+        View {
+            view_id: self.current_view,
+            is_leader: self.current_view.current_leader(self.committee.len()) == self.position_in_committee,
+        }
     }
 }
-

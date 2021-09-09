@@ -22,6 +22,6 @@
 
 pub mod database;
 pub mod models;
-pub mod sqlite_db;
 mod output_status;
+pub mod sqlite_db;
 pub use output_status::*;

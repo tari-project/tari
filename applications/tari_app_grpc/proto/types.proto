@@ -209,6 +209,7 @@ message OutputFeatures {
 
     AssetOutputFeatures asset = 16;
     MintNonFungibleFeatures mint_non_fungible = 17;
+    SideChainCheckpointFeatures sidechain_checkpoint = 18;
 }
 
 message AssetOutputFeatures {
@@ -218,6 +219,10 @@ message AssetOutputFeatures {
 message MintNonFungibleFeatures {
     bytes asset_public_key = 1;
     bytes asset_owner_commitment  = 2;
+}
+
+message SideChainCheckpointFeatures {
+    bytes merkle_root = 1;
 }
 
 

@@ -53,10 +53,10 @@ use crate::transactions::{
         sender_transaction_protocol_builder::SenderTransactionProtocolBuilder,
         TransactionMetadata,
         TransactionProtocolError as TPE,
+        TxId,
     },
 };
 use tari_common_types::types::{BlindingFactor, ComSignature, PrivateKey, PublicKey, RangeProofService, Signature};
-use crate::transactions::transaction_protocol::TxId;
 
 //----------------------------------------   Local Data types     ----------------------------------------------------//
 
@@ -98,7 +98,7 @@ pub(super) struct RawTransactionInfo {
     pub recipient_info: RecipientInfo,
     pub signatures: Vec<Signature>,
     pub message: String,
-    pub unique_id: Option<Vec<u8>>
+    pub unique_id: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -124,7 +124,7 @@ pub struct SingleRoundSenderData {
     /// The sender's portion of the public commitment nonce
     pub public_commitment_nonce: PublicKey,
     /// Unique id on the blockchain, if present
-    pub unique_id: Option<Vec<u8>>
+    pub unique_id: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -374,7 +374,7 @@ impl SenderTransactionProtocol {
                     script: recipient_script,
                     sender_offset_public_key: PublicKey::from_secret_key(recipient_script_offset_secret_key),
                     public_commitment_nonce: PublicKey::from_secret_key(&private_commitment_nonce),
-                    unique_id: info.unique_id.clone()
+                    unique_id: info.unique_id.clone(),
                 })
             },
             _ => Err(TPE::InvalidStateError),

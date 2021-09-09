@@ -20,16 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    transaction_service::{
-        error::TransactionStorageError,
-        storage::models::{
-            CompletedTransaction,
-            InboundTransaction,
-            OutboundTransaction,
-            TransactionDirection,
-            TransactionStatus,
-        },
+use crate::transaction_service::{
+    error::TransactionStorageError,
+    storage::models::{
+        CompletedTransaction,
+        InboundTransaction,
+        OutboundTransaction,
+        TransactionDirection,
+        TransactionStatus,
     },
 };
 use aes_gcm::Aes256Gcm;
@@ -44,8 +42,7 @@ use std::{
 };
 use tari_common_types::types::BlindingFactor;
 use tari_comms::types::CommsPublicKey;
-use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction};
-use tari_core::transactions::transaction_protocol::TxId;
+use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction, transaction_protocol::TxId};
 
 const LOG_TARGET: &str = "wallet::transaction_service::database";
 

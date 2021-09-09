@@ -420,7 +420,10 @@ where TBackend: OutputManagerBackend + 'static
             let output = TransactionOutput::try_from(output_proto.clone()).map_err(|err| {
                 OutputManagerProtocolError::new(
                     self.id,
-                    OutputManagerError::ConversionError(format!("Could not convert protobuf TransactionOutput:{}", err)),
+                    OutputManagerError::ConversionError(format!(
+                        "Could not convert protobuf TransactionOutput:{}",
+                        err
+                    )),
                 )
             })?;
             returned_outputs.push(output);

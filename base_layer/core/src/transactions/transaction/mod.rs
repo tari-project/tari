@@ -98,7 +98,7 @@ impl KernelFeatures {
 
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
 pub struct AssetOutputFeatures {
-    pub public_key: PublicKey
+    pub public_key: PublicKey,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
@@ -106,6 +106,11 @@ pub struct MintNonFungibleFeatures {
     pub asset_public_key: PublicKey,
     pub asset_owner_commitment: Commitment,
     // pub proof_of_ownership: ComSignature
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
+pub struct SideChainCheckpointFeatures {
+    pub merkle_root: Vec<u8>,
 }
 
 /// Options for UTXO's
@@ -118,7 +123,8 @@ pub struct OutputFeatures {
     pub maturity: u64,
     pub metadata: Vec<u8>,
     pub asset: Option<AssetOutputFeatures>,
-    pub mint_non_fungible: Option<MintNonFungibleFeatures>
+    pub mint_non_fungible: Option<MintNonFungibleFeatures>,
+    pub sidechain_checkpoint: Option<SideChainCheckpointFeatures>,
 }
 
 impl OutputFeatures {
@@ -132,7 +138,7 @@ impl OutputFeatures {
         OutputFeatures {
             flags: OutputFlags::COINBASE_OUTPUT,
             maturity: maturity_height,
-         ..Default::default()
+            ..Default::default()
         }
     }
 
@@ -153,26 +159,28 @@ impl OutputFeatures {
     }
 
     pub fn for_asset_registration(metadata: Vec<u8>, public_key: PublicKey) -> OutputFeatures {
-        Self{
+        Self {
             flags: OutputFlags::ASSET_REGISTRATION,
             maturity: 0,
             metadata,
-            asset: Some(AssetOutputFeatures{
-                public_key
-            }),
+            asset: Some(AssetOutputFeatures { public_key }),
             ..Default::default()
         }
     }
 
-    pub fn for_minting(metadata: Vec<u8>, asset_public_key: PublicKey, asset_owner_commitment: Commitment)-> OutputFeatures {
+    pub fn for_minting(
+        metadata: Vec<u8>,
+        asset_public_key: PublicKey,
+        asset_owner_commitment: Commitment,
+    ) -> OutputFeatures {
         Self {
             flags: OutputFlags::MINT_NON_FUNGIBLE,
             metadata,
-            mint_non_fungible: Some(MintNonFungibleFeatures{
+            mint_non_fungible: Some(MintNonFungibleFeatures {
                 asset_public_key,
-                asset_owner_commitment
+                asset_owner_commitment,
             }),
-            .. Default::default()
+            ..Default::default()
         }
     }
 }
@@ -184,8 +192,8 @@ impl Default for OutputFeatures {
             maturity: 0,
             metadata: vec![],
             asset: None,
-            mint_non_fungible: None
-
+            mint_non_fungible: None,
+            sidechain_checkpoint: None,
         }
     }
 }
@@ -264,25 +272,24 @@ pub enum TransactionError {
 #[derive(Debug, Clone)]
 pub struct UnblindedOutputBuilder {
     value: MicroTari,
-     spending_key: BlindingFactor,
-     features: OutputFeatures,
-     script: Option<TariScript>,
-     input_data: Option<ExecutionStack>,
+    spending_key: BlindingFactor,
+    features: OutputFeatures,
+    script: Option<TariScript>,
+    input_data: Option<ExecutionStack>,
     script_private_key: Option<PrivateKey>,
-     sender_offset_public_key: Option<PublicKey>,
-     metadata_signature: Option<ComSignature>,
+    sender_offset_public_key: Option<PublicKey>,
+    metadata_signature: Option<ComSignature>,
     metadata_signed_by_receiver: bool,
     metadata_signed_by_sender: bool,
-     unique_id: Option<Vec<u8>>,
-     parent_public_key: Option<PublicKey>
+    unique_id: Option<Vec<u8>>,
+    parent_public_key: Option<PublicKey>,
 }
 
-
 impl UnblindedOutputBuilder {
-
     pub fn new(value: MicroTari, spending_key: BlindingFactor) -> Self {
-        Self{
-            value, spending_key,
+        Self {
+            value,
+            spending_key,
             features: OutputFeatures::default(),
             script: None,
             input_data: None,
@@ -292,18 +299,26 @@ impl UnblindedOutputBuilder {
             metadata_signed_by_receiver: false,
             metadata_signed_by_sender: false,
             unique_id: None,
-            parent_public_key: None
+            parent_public_key: None,
         }
     }
 
-    pub fn sign_as_receiver(&mut self, sender_offset_public_key: PublicKey, public_nonce_commitment: PublicKey) -> Result<(), TransactionError> {
+    pub fn sign_as_receiver(
+        &mut self,
+        sender_offset_public_key: PublicKey,
+        public_nonce_commitment: PublicKey,
+    ) -> Result<(), TransactionError> {
         self.sender_offset_public_key = Some(sender_offset_public_key.clone());
 
-        let metadata_partial = TransactionOutput::create_partial_metadata_signature(&self.value, &self.spending_key,
-        self.script.as_ref().ok_or_else(||TransactionError::ValidationError("script must be set".to_string()))?,
-        &self.features,
+        let metadata_partial = TransactionOutput::create_partial_metadata_signature(
+            &self.value,
+            &self.spending_key,
+            self.script
+                .as_ref()
+                .ok_or_else(|| TransactionError::ValidationError("script must be set".to_string()))?,
+            &self.features,
             &sender_offset_public_key,
-            &public_nonce_commitment
+            &public_nonce_commitment,
         )?;
         self.metadata_signature = Some(metadata_partial);
         self.metadata_signed_by_receiver = true;
@@ -311,62 +326,86 @@ impl UnblindedOutputBuilder {
     }
 
     pub fn sign_as_sender(&mut self, sender_offset_private_key: &PrivateKey) -> Result<(), TransactionError> {
-       let metadata_sig = TransactionOutput::create_final_metadata_signature(&self.value,&self.spending_key, self.script.as_ref().ok_or_else(||TransactionError::ValidationError("script must be set".to_string()))?,
-                                                                             &self.features,
-           &sender_offset_private_key
-       )?;
+        let metadata_sig = TransactionOutput::create_final_metadata_signature(
+            &self.value,
+            &self.spending_key,
+            self.script
+                .as_ref()
+                .ok_or_else(|| TransactionError::ValidationError("script must be set".to_string()))?,
+            &self.features,
+            &sender_offset_private_key,
+        )?;
         self.metadata_signature = Some(metadata_sig);
         self.metadata_signed_by_sender = true;
         Ok(())
     }
 
-    pub fn try_build(self) -> Result<UnblindedOutput,TransactionError > {
+    pub fn try_build(self) -> Result<UnblindedOutput, TransactionError> {
         if !self.metadata_signed_by_receiver {
-            return Err(TransactionError::ValidationError("Cannot build output because it has not been signed by the receiver".to_string()));
+            return Err(TransactionError::ValidationError(
+                "Cannot build output because it has not been signed by the receiver".to_string(),
+            ));
         }
         if !self.metadata_signed_by_sender {
-            return Err(TransactionError::ValidationError("Cannot build output because it has not been signed by the sender".to_string()));
+            return Err(TransactionError::ValidationError(
+                "Cannot build output because it has not been signed by the sender".to_string(),
+            ));
         }
-        let ub = UnblindedOutput{
+        let ub = UnblindedOutput {
             value: self.value,
             spending_key: self.spending_key,
-            features:self.features,
-            script:self.script.ok_or_else(||TransactionError::ValidationError("script must be set".to_string()))?,
-            input_data: self.input_data.ok_or_else(||TransactionError::ValidationError("input_data must be set".to_string()))?,
-            script_private_key: self.script_private_key.ok_or_else(||TransactionError::ValidationError("script_private_key must be set".to_string()))?,
-            sender_offset_public_key: self.sender_offset_public_key.ok_or_else(||TransactionError::ValidationError("sender_offset_public_key must be set".to_string()))?,
-            metadata_signature: self.metadata_signature.ok_or_else(||TransactionError::ValidationError("metadata_signature must be set".to_string()))?,
+            features: self.features,
+            script: self
+                .script
+                .ok_or_else(|| TransactionError::ValidationError("script must be set".to_string()))?,
+            input_data: self
+                .input_data
+                .ok_or_else(|| TransactionError::ValidationError("input_data must be set".to_string()))?,
+            script_private_key: self
+                .script_private_key
+                .ok_or_else(|| TransactionError::ValidationError("script_private_key must be set".to_string()))?,
+            sender_offset_public_key: self
+                .sender_offset_public_key
+                .ok_or_else(|| TransactionError::ValidationError("sender_offset_public_key must be set".to_string()))?,
+            metadata_signature: self
+                .metadata_signature
+                .ok_or_else(|| TransactionError::ValidationError("metadata_signature must be set".to_string()))?,
             unique_id: self.unique_id,
-            parent_public_key: self.parent_public_key
+            parent_public_key: self.parent_public_key,
         };
         Ok(ub)
     }
+
     pub fn with_features(mut self, features: OutputFeatures) -> Self {
         self.features = features;
         self
     }
+
     pub fn with_script(mut self, script: TariScript) -> Self {
-        self.script =Some( script);
+        self.script = Some(script);
         self
     }
+
     pub fn with_input_data(mut self, input_data: ExecutionStack) -> Self {
-        self.input_data =Some( input_data);
+        self.input_data = Some(input_data);
         self
     }
+
     pub fn with_script_private_key(mut self, script_private_key: PrivateKey) -> Self {
-        self.script_private_key =Some( script_private_key);
+        self.script_private_key = Some(script_private_key);
         self
     }
-    pub fn with_unique_id(mut self, unique_id: Option<Vec<u8>>)-> Self {
+
+    pub fn with_unique_id(mut self, unique_id: Option<Vec<u8>>) -> Self {
         self.unique_id = unique_id;
         self
     }
-    pub fn with_parent_public_key(mut self, parent_public_key: Option<PublicKey>)-> Self {
+
+    pub fn with_parent_public_key(mut self, parent_public_key: Option<PublicKey>) -> Self {
         self.parent_public_key = parent_public_key;
         self
     }
 }
-
 
 /// An unblinded output is one where the value and spending key (blinding factor) are known. This can be used to
 /// build both inputs and outputs (every input comes from an output)
@@ -382,7 +421,7 @@ pub struct UnblindedOutput {
     pub sender_offset_public_key: PublicKey,
     pub metadata_signature: ComSignature,
     pub unique_id: Option<Vec<u8>>,
-    pub parent_public_key: Option<PublicKey>
+    pub parent_public_key: Option<PublicKey>,
 }
 
 impl UnblindedOutput {
@@ -398,7 +437,7 @@ impl UnblindedOutput {
         sender_offset_public_key: PublicKey,
         metadata_signature: ComSignature,
         unique_id: Option<Vec<u8>>,
-        parent_public_key: Option<PublicKey>
+        parent_public_key: Option<PublicKey>,
     ) -> UnblindedOutput {
         UnblindedOutput {
             value,
@@ -410,7 +449,7 @@ impl UnblindedOutput {
             sender_offset_public_key,
             metadata_signature,
             unique_id,
-            parent_public_key
+            parent_public_key,
         }
     }
 
@@ -448,7 +487,11 @@ impl UnblindedOutput {
         })
     }
 
-    pub fn as_transaction_output(&self, factories: &CryptoFactories, verify_proof: bool) -> Result<TransactionOutput, TransactionError> {
+    pub fn as_transaction_output(
+        &self,
+        factories: &CryptoFactories,
+        verify_proof: bool,
+    ) -> Result<TransactionOutput, TransactionError> {
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
         let output = TransactionOutput {
             features: self.features.clone(),
@@ -463,7 +506,7 @@ impl UnblindedOutput {
             sender_offset_public_key: self.sender_offset_public_key.clone(),
             metadata_signature: self.metadata_signature.clone(),
             unique_id: self.unique_id.clone(),
-            parent_public_key: self.parent_public_key.clone()
+            parent_public_key: self.parent_public_key.clone(),
         };
         // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
         if verify_proof && !output.verify_range_proof(&factories.range_proof)? {
@@ -478,7 +521,7 @@ impl UnblindedOutput {
         &self,
         factories: &CryptoFactories,
         rewind_data: &RewindData,
-        verify_proof: bool
+        verify_proof: bool,
     ) -> Result<TransactionOutput, TransactionError> {
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
 
@@ -501,7 +544,7 @@ impl UnblindedOutput {
             sender_offset_public_key: self.sender_offset_public_key.clone(),
             metadata_signature: self.metadata_signature.clone(),
             unique_id: self.unique_id.clone(),
-            parent_public_key: self.parent_public_key.clone()
+            parent_public_key: self.parent_public_key.clone(),
         };
         // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
         if verify_proof && !output.verify_range_proof(&factories.range_proof)? {
@@ -748,7 +791,7 @@ impl TransactionOutput {
         sender_offset_public_key: PublicKey,
         metadata_signature: ComSignature,
         unique_id: Option<Vec<u8>>,
-        parent_public_key: Option<PublicKey>
+        parent_public_key: Option<PublicKey>,
     ) -> TransactionOutput {
         TransactionOutput {
             features,
@@ -758,7 +801,7 @@ impl TransactionOutput {
             sender_offset_public_key,
             metadata_signature,
             unique_id,
-            parent_public_key
+            parent_public_key,
         }
     }
 

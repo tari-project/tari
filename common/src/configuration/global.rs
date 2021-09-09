@@ -23,7 +23,7 @@
 //! # Global configuration of tari base layer system
 
 use crate::{
-    configuration::{bootstrap::ApplicationType,DanNodeConfig, Network},
+    configuration::{bootstrap::ApplicationType, DanNodeConfig, Network},
     ConfigurationError,
 };
 use config::{Config, ConfigError, Environment};

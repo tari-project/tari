@@ -4344,10 +4344,12 @@ pub unsafe extern "C" fn wallet_cancel_pending_transaction(
         return false;
     }
 
-    match (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.transaction_service.cancel_transaction(TxId::from(transaction_id)))
-    {
+    match (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .transaction_service
+            .cancel_transaction(TxId::from(transaction_id)),
+    ) {
         Ok(_) => true,
         Err(e) => {
             error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;

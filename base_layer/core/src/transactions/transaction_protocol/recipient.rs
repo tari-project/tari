@@ -32,10 +32,10 @@ use crate::transactions::{
         single_receiver::SingleReceiverTransactionProtocol,
         RewindData,
         TransactionProtocolError,
+        TxId,
     },
 };
 use tari_common_types::types::{MessageHash, PrivateKey, PublicKey, Signature};
-use crate::transactions::transaction_protocol::TxId;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[allow(clippy::large_enum_variant)]

@@ -308,7 +308,7 @@ impl ConfigBootstrap {
                     },
                     ApplicationType::DanNode => {
                         install_configuration(&self.log_config, logging::install_default_base_node_logfile_config)
-                    }
+                    },
                 }
             }
         };
@@ -357,7 +357,7 @@ pub enum ApplicationType {
     MergeMiningProxy,
     MiningNode,
     StratumTranscoder,
-    DanNode
+    DanNode,
 }
 
 impl ApplicationType {
@@ -381,7 +381,7 @@ impl ApplicationType {
             MergeMiningProxy => "merge_mining_proxy",
             MiningNode => "miner",
             StratumTranscoder => "stratum-transcoder",
-            DanNode =>"dan-node"
+            DanNode => "dan-node",
         }
     }
 }

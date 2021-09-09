@@ -20,10 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{transaction_service::{
-    error::TransactionServiceError,
-    storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
-}, OperationId};
+use crate::{
+    transaction_service::{
+        error::TransactionServiceError,
+        storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
+    },
+    OperationId,
+};
 use aes_gcm::Aes256Gcm;
 use std::{collections::HashMap, fmt, sync::Arc};
 use tari_comms::types::CommsPublicKey;
@@ -33,10 +36,8 @@ use tokio::sync::broadcast;
 use tower::Service;
 
 use crate::types::ValidationRetryStrategy;
-use tari_core::transactions::transaction_protocol::TxId;
 use std::fmt::Formatter;
-
-
+use tari_core::transactions::transaction_protocol::TxId;
 
 /// API Request enum
 #[allow(clippy::large_enum_variant)]
@@ -50,8 +51,20 @@ pub enum TransactionServiceRequest {
     GetCompletedTransaction(TxId),
     GetAnyTransaction(TxId),
     SetBaseNodePublicKey(CommsPublicKey),
-    SendTransaction{dest_pubkey: CommsPublicKey, amount: MicroTari, unique_id: Option<Vec<u8>>, fee_per_gram: MicroTari, message: String},
-    SendOneSidedTransaction{dest_pubkey: CommsPublicKey, amount: MicroTari, unique_id: Option<Vec<u8>>, fee_per_gram: MicroTari, message: String},
+    SendTransaction {
+        dest_pubkey: CommsPublicKey,
+        amount: MicroTari,
+        unique_id: Option<Vec<u8>>,
+        fee_per_gram: MicroTari,
+        message: String,
+    },
+    SendOneSidedTransaction {
+        dest_pubkey: CommsPublicKey,
+        amount: MicroTari,
+        unique_id: Option<Vec<u8>>,
+        fee_per_gram: MicroTari,
+        message: String,
+    },
     CancelTransaction(TxId),
     ImportUtxo(MicroTari, CommsPublicKey, String, Option<u64>),
     SubmitSelfSendTransaction(TxId, Transaction, MicroTari, MicroTari, String),
@@ -79,10 +92,24 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetCancelledCompletedTransactions => f.write_str("GetCancelledCompletedTransactions"),
             Self::GetCompletedTransaction(t) => f.write_str(&format!("GetCompletedTransaction({})", t)),
             Self::SetBaseNodePublicKey(k) => f.write_str(&format!("SetBaseNodePublicKey ({})", k)),
-            Self::SendTransaction{ dest_pubkey, amount, message, .. }=> f.write_str(&format!("SendTransaction (to {}, {}, {})", dest_pubkey, amount, message)),
-            Self::SendOneSidedTransaction{dest_pubkey, amount, message, .. }=> {
-                f.write_str(&format!("SendOneSidedTransaction (to {}, {}, {})", dest_pubkey, amount, message))
-            },
+            Self::SendTransaction {
+                dest_pubkey,
+                amount,
+                message,
+                ..
+            } => f.write_str(&format!(
+                "SendTransaction (to {}, {}, {})",
+                dest_pubkey, amount, message
+            )),
+            Self::SendOneSidedTransaction {
+                dest_pubkey,
+                amount,
+                message,
+                ..
+            } => f.write_str(&format!(
+                "SendOneSidedTransaction (to {}, {}, {})",
+                dest_pubkey, amount, message
+            )),
             Self::CancelTransaction(t) => f.write_str(&format!("CancelTransaction ({})", t)),
             Self::ImportUtxo(v, k, msg, maturity) => f.write_str(&format!(
                 "ImportUtxo (from {}, {}, {} with maturity: {})",
@@ -168,29 +195,70 @@ pub enum TransactionEvent {
 
 impl fmt::Display for TransactionEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-
         match self {
-            TransactionEvent::MempoolBroadcastTimedOut(tx_id) => {write!(f, "MempoolBroadcastTimedOut for tx:{}", tx_id)}
-            TransactionEvent::ReceivedTransaction(tx) => {write!(f, "ReceivedTransaction for {}", tx)}
-            TransactionEvent::ReceivedTransactionReply(tx) => {write!(f, "ReceivedTransactionReply for {}", tx)}
-            TransactionEvent::ReceivedFinalizedTransaction(tx) => {write!(f, "ReceivedFinalizedTransaction for {}", tx)}
-            TransactionEvent::TransactionDiscoveryInProgress(tx) => {write!(f, "TransactionDiscoveryInProgress for {}", tx)}
-            TransactionEvent::TransactionDirectSendResult(tx, success) => {write!(f, "TransactionDirectSendResult for {}: {}", tx, success)}
-            TransactionEvent::TransactionCompletedImmediately(tx) => {write!(f, "TransactionCompletedImmediately for {}", tx)}
-            TransactionEvent::TransactionStoreForwardSendResult(tx, success) => {write!(f, "TransactionStoreForwardSendResult for {}:{}", tx, success)}
-            TransactionEvent::TransactionCancelled(tx) => {write!(f, "TransactionCancelled for {}", tx)}
-            TransactionEvent::TransactionBroadcast(tx) => {write!(f, "TransactionBroadcast for {}", tx)}
-            TransactionEvent::TransactionImported(tx) => {write!(f, "TransactionImported for {}", tx)}
-            TransactionEvent::TransactionMined(tx) => {write!(f, "TransactionMined for {}", tx)}
-            TransactionEvent::TransactionMinedRequestTimedOut(tx) => {write!(f, "TransactionMinedRequestTimedOut for {}", tx)}
-            TransactionEvent::TransactionMinedUnconfirmed(tx, height) => {write!(f, "TransactionMinedUnconfirmed for {} at height:{}", tx, height)}
-            TransactionEvent::TransactionValidationTimedOut(tx) => {write!(f, "TransactionValidationTimedOut for {}", tx)}
-            TransactionEvent::TransactionValidationSuccess(tx) => {write!(f, "TransactionValidationSuccess for {}", tx)}
-            TransactionEvent::TransactionValidationFailure(tx) => {write!(f, "TransactionValidationFailure for {}", tx)}
-            TransactionEvent::TransactionValidationAborted(tx) => {write!(f, "TransactionValidationAborted for {}", tx)}
-            TransactionEvent::TransactionValidationDelayed(tx) => {write!(f, "TransactionValidationDelayed for {}", tx)}
-            TransactionEvent::TransactionBaseNodeConnectionProblem(tx) => {write!(f, "TransactionBaseNodeConnectionProblem for {}", tx)}
-            TransactionEvent::Error(error) => {write!(f, "Error:{}", error)}
+            TransactionEvent::MempoolBroadcastTimedOut(tx_id) => {
+                write!(f, "MempoolBroadcastTimedOut for tx:{}", tx_id)
+            },
+            TransactionEvent::ReceivedTransaction(tx) => {
+                write!(f, "ReceivedTransaction for {}", tx)
+            },
+            TransactionEvent::ReceivedTransactionReply(tx) => {
+                write!(f, "ReceivedTransactionReply for {}", tx)
+            },
+            TransactionEvent::ReceivedFinalizedTransaction(tx) => {
+                write!(f, "ReceivedFinalizedTransaction for {}", tx)
+            },
+            TransactionEvent::TransactionDiscoveryInProgress(tx) => {
+                write!(f, "TransactionDiscoveryInProgress for {}", tx)
+            },
+            TransactionEvent::TransactionDirectSendResult(tx, success) => {
+                write!(f, "TransactionDirectSendResult for {}: {}", tx, success)
+            },
+            TransactionEvent::TransactionCompletedImmediately(tx) => {
+                write!(f, "TransactionCompletedImmediately for {}", tx)
+            },
+            TransactionEvent::TransactionStoreForwardSendResult(tx, success) => {
+                write!(f, "TransactionStoreForwardSendResult for {}:{}", tx, success)
+            },
+            TransactionEvent::TransactionCancelled(tx) => {
+                write!(f, "TransactionCancelled for {}", tx)
+            },
+            TransactionEvent::TransactionBroadcast(tx) => {
+                write!(f, "TransactionBroadcast for {}", tx)
+            },
+            TransactionEvent::TransactionImported(tx) => {
+                write!(f, "TransactionImported for {}", tx)
+            },
+            TransactionEvent::TransactionMined(tx) => {
+                write!(f, "TransactionMined for {}", tx)
+            },
+            TransactionEvent::TransactionMinedRequestTimedOut(tx) => {
+                write!(f, "TransactionMinedRequestTimedOut for {}", tx)
+            },
+            TransactionEvent::TransactionMinedUnconfirmed(tx, height) => {
+                write!(f, "TransactionMinedUnconfirmed for {} at height:{}", tx, height)
+            },
+            TransactionEvent::TransactionValidationTimedOut(tx) => {
+                write!(f, "TransactionValidationTimedOut for {}", tx)
+            },
+            TransactionEvent::TransactionValidationSuccess(tx) => {
+                write!(f, "TransactionValidationSuccess for {}", tx)
+            },
+            TransactionEvent::TransactionValidationFailure(tx) => {
+                write!(f, "TransactionValidationFailure for {}", tx)
+            },
+            TransactionEvent::TransactionValidationAborted(tx) => {
+                write!(f, "TransactionValidationAborted for {}", tx)
+            },
+            TransactionEvent::TransactionValidationDelayed(tx) => {
+                write!(f, "TransactionValidationDelayed for {}", tx)
+            },
+            TransactionEvent::TransactionBaseNodeConnectionProblem(tx) => {
+                write!(f, "TransactionBaseNodeConnectionProblem for {}", tx)
+            },
+            TransactionEvent::Error(error) => {
+                write!(f, "Error:{}", error)
+            },
         }
     }
 }

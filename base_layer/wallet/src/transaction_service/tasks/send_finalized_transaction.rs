@@ -19,12 +19,10 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::{
-    transaction_service::{
-        config::TransactionRoutingMechanism,
-        error::TransactionServiceError,
-        tasks::wait_on_dial::wait_on_dial,
-    },
+use crate::transaction_service::{
+    config::TransactionRoutingMechanism,
+    error::TransactionServiceError,
+    tasks::wait_on_dial::wait_on_dial,
 };
 use log::*;
 use std::time::Duration;
@@ -33,9 +31,11 @@ use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageResponse},
 };
-use tari_core::transactions::{transaction::Transaction, transaction_protocol::proto};
+use tari_core::transactions::{
+    transaction::Transaction,
+    transaction_protocol::{proto, TxId},
+};
 use tari_p2p::tari_message::TariMessageType;
-use tari_core::transactions::transaction_protocol::TxId;
 
 const LOG_TARGET: &str = "wallet::transaction_service::tasks::send_finalized_transaction";
 const LOG_TARGET_STRESS: &str = "stress_test::send_finalized_transaction";

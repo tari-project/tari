@@ -110,6 +110,7 @@ table! {
         features_asset_public_key -> Nullable<Binary>,
         features_mint_asset_public_key -> Nullable<Binary>,
         features_mint_asset_owner_commitment -> Nullable<Binary>,
+        features_sidechain_checkpoint_merkle_root -> Nullable<Binary>,
         parent_public_key -> Nullable<Binary>,
     }
 }

@@ -51,6 +51,7 @@ use tari_core::{
             MintNonFungibleFeatures,
             OutputFeatures,
             OutputFlags,
+            SideChainCheckpointFeatures,
             TransactionOutput,
             UnblindedOutput,
         },
@@ -937,12 +938,19 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             }),
             None => None,
         };
+        let sidechain_checkpoint = match o.features_sidechain_checkpoint_merkle_root {
+            Some(ref merkle_root) => Some(SideChainCheckpointFeatures {
+                merkle_root: merkle_root.to_owned(),
+            }),
+            None => None,
+        };
         let features = OutputFeatures {
             flags: OutputFlags::from_bits(o.flags as u8).ok_or(OutputManagerStorageError::ConversionError)?,
             maturity: o.maturity as u64,
             metadata: o.metadata.unwrap_or_default(),
             asset: asset_features,
             mint_non_fungible,
+            sidechain_checkpoint,
         };
         let unblinded_output = UnblindedOutput::new(
             MicroTari::from(o.value as u64),

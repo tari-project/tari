@@ -51,18 +51,22 @@
 use log::*;
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
-use tari_shutdown::ShutdownSignal;
-use tari_wallet::{output_manager_service::{
-    handle::{OutputManagerEvent, OutputManagerEventReceiver},
-    TxoValidationType,
-}, transaction_service::{
-    handle::{TransactionEvent, TransactionEventReceiver},
-    storage::{
-        database::{TransactionBackend, TransactionDatabase},
-        models::{CompletedTransaction, InboundTransaction},
-    },
-}, OperationId};
 use tari_core::transactions::transaction_protocol::TxId;
+use tari_shutdown::ShutdownSignal;
+use tari_wallet::{
+    output_manager_service::{
+        handle::{OutputManagerEvent, OutputManagerEventReceiver},
+        TxoValidationType,
+    },
+    transaction_service::{
+        handle::{TransactionEvent, TransactionEventReceiver},
+        storage::{
+            database::{TransactionBackend, TransactionDatabase},
+            models::{CompletedTransaction, InboundTransaction},
+        },
+    },
+    OperationId,
+};
 
 const LOG_TARGET: &str = "wallet::transaction_service::callback_handler";
 
@@ -470,13 +474,22 @@ where TBackend: TransactionBackend + 'static
         );
         match result {
             CallbackValidationResults::Success => unsafe {
-                (self.callback_transaction_validation_complete)(request_key.as_u64(), CallbackValidationResults::Success as u8);
+                (self.callback_transaction_validation_complete)(
+                    request_key.as_u64(),
+                    CallbackValidationResults::Success as u8,
+                );
             },
             CallbackValidationResults::Aborted => unsafe {
-                (self.callback_transaction_validation_complete)(request_key.as_u64(), CallbackValidationResults::Aborted as u8);
+                (self.callback_transaction_validation_complete)(
+                    request_key.as_u64(),
+                    CallbackValidationResults::Aborted as u8,
+                );
             },
             CallbackValidationResults::Failure => unsafe {
-                (self.callback_transaction_validation_complete)(request_key.as_u64(), CallbackValidationResults::Failure as u8);
+                (self.callback_transaction_validation_complete)(
+                    request_key.as_u64(),
+                    CallbackValidationResults::Failure as u8,
+                );
             },
             CallbackValidationResults::BaseNodeNotInSync => unsafe {
                 (self.callback_transaction_validation_complete)(

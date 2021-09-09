@@ -129,7 +129,7 @@ impl SingleReceiverTransactionProtocol {
             sender_info.sender_offset_public_key.clone(),
             partial_metadata_signature,
             None,
-            None
+            None,
         );
         Ok(output)
     }
