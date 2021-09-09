@@ -21,15 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{
-        genesis_block::{
-            get_igor_genesis_block,
-            get_mainnet_genesis_block,
-            get_ridcully_genesis_block,
-            get_weatherwax_genesis_block,
-        },
-        Block,
-    },
+    blocks::{genesis_block::*, Block},
     chain_storage::{ChainBlock, ChainStorageError},
     consensus::{
         chain_strength_comparer::{strongest_chain, ChainStrengthComparer},
@@ -83,6 +75,7 @@ impl ConsensusManager {
                 .clone()
                 .unwrap_or_else(get_weatherwax_genesis_block),
             Network::Igor => get_igor_genesis_block(),
+            Network::Dibbler => get_dibbler_genesis_block(),
         }
     }
 
