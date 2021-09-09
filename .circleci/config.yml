@@ -134,7 +134,7 @@ commands:
       # Below step requires NodeJS v12 to run correctly, see explanation in WalletFFI.feature
       - run:
           name: Run FFI wallet library cucumber scenarios
-          command: nvm use 12.22.6 && cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running and not @broken and not @flaky and @wallet-ffi" --format json:cucumber_output/tests_ffi.cucumber --exit
+          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running and not @broken and not @flaky and @wallet-ffi" --format json:cucumber_output/tests_ffi.cucumber --exit
           when: always
       - run:
           name: Generate report (ffi)
