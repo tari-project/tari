@@ -12,7 +12,7 @@ mod options;
 ///
 /// Generates Tari RPC "harness code" for a given trait.
 ///
-/// ```no_run
+/// ```no_run,ignore
 /// # use tari_comms_rpc_macros::tari_rpc;
 /// # use tari_comms::protocol::rpc::{Request, Streaming, Response, RpcStatus, RpcServer};
 /// use tari_comms::{framing, memsocket::MemorySocket};

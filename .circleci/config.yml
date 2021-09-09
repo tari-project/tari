@@ -121,6 +121,9 @@ commands:
           name: Build mining_node
           command: cargo build --release --bin tari_mining_node
       - run:
+          name: Build stratum_transcoder
+          command: cargo build --release --bin tari_stratum_transcoder
+      - run:
           name: Run cucumber scenarios
           no_output_timeout: 20m
           command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running and not @broken and not @flaky and not @wallet-ffi" --format json:cucumber_output/tests.cucumber --exit

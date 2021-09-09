@@ -123,10 +123,8 @@ impl CommandHandler {
 
         self.executor.spawn(async move {
             let mut status_line = StatusLine::new();
-            let version = format!("v{}", consts::APP_VERSION_NUMBER);
-            status_line.add_field("", version);
-            let network = format!("{}", config.network);
-            status_line.add_field("", network);
+            status_line.add_field("", format!("v{}", consts::APP_VERSION_NUMBER));
+            status_line.add_field("", config.network);
             status_line.add_field("State", state_info.borrow().state_info.short_desc());
 
             let metadata = node.get_metadata().await.unwrap();

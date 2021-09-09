@@ -30,6 +30,7 @@ use futures::{
     stream::{FusedStream, Stream},
     task::{Context, Poll},
 };
+use log::*;
 use std::{
     cmp,
     collections::{hash_map::Entry, HashMap},
@@ -433,6 +434,7 @@ impl AsyncRead for MemorySocket {
                         buf.advance(bytes_to_read);
 
                         current_buffer.advance(bytes_to_read);
+                        trace!("reading {} bytes", bytes_to_read);
 
                         bytes_read += bytes_to_read;
                     }
@@ -462,11 +464,12 @@ impl AsyncRead for MemorySocket {
 
 impl AsyncWrite for MemorySocket {
     /// Attempt to write bytes from `buf` into the outgoing channel.
-    fn poll_write(mut self: Pin<&mut Self>, context: &mut Context, buf: &[u8]) -> Poll<io::Result<usize>> {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<io::Result<usize>> {
         let len = buf.len();
 
-        match self.outgoing.poll_ready(context) {
+        match self.outgoing.poll_ready(cx) {
             Poll::Ready(Ok(())) => {
+                trace!("writing {} bytes", len);
                 if let Err(e) = self.outgoing.start_send(Bytes::copy_from_slice(buf)) {
                     if e.is_disconnected() {
                         return Poll::Ready(Err(io::Error::new(ErrorKind::BrokenPipe, e)));
@@ -475,6 +478,7 @@ impl AsyncWrite for MemorySocket {
                     // Unbounded channels should only ever have "Disconnected" errors
                     unreachable!();
                 }
+                Poll::Ready(Ok(len))
             },
             Poll::Ready(Err(e)) => {
                 if e.is_disconnected() {
@@ -484,19 +488,18 @@ impl AsyncWrite for MemorySocket {
                 // Unbounded channels should only ever have "Disconnected" errors
                 unreachable!();
             },
-            Poll::Pending => return Poll::Pending,
+            Poll::Pending => Poll::Pending,
         }
-
-        Poll::Ready(Ok(len))
     }
 
     /// Attempt to flush the channel. Cannot Fail.
-    fn poll_flush(self: Pin<&mut Self>, _context: &mut Context) -> Poll<io::Result<()>> {
+    fn poll_flush(self: Pin<&mut Self>, _: &mut Context) -> Poll<io::Result<()>> {
+        trace!("flush");
         Poll::Ready(Ok(()))
     }
 
     /// Attempt to close the channel. Cannot Fail.
-    fn poll_shutdown(self: Pin<&mut Self>, _context: &mut Context) -> Poll<io::Result<()>> {
+    fn poll_shutdown(self: Pin<&mut Self>, _: &mut Context) -> Poll<io::Result<()>> {
         self.outgoing.close_channel();
 
         Poll::Ready(Ok(()))
@@ -506,7 +509,8 @@ impl AsyncWrite for MemorySocket {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::runtime;
+    use crate::{framing, runtime};
+    use futures::SinkExt;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio_stream::StreamExt;
 
@@ -702,6 +706,23 @@ mod test {
         let bytes_read = b.read(&mut buf).await?;
         assert_eq!(bytes_read, 12);
         assert_eq!(&buf[0..12], b"way of kings");
+
+        Ok(())
+    }
+
+    #[runtime::test]
+    async fn read_and_write_canonical_framing() -> io::Result<()> {
+        let (a, b) = MemorySocket::new_pair();
+        let mut a = framing::canonical(a, 1024);
+        let mut b = framing::canonical(b, 1024);
+
+        a.send(Bytes::from_static(b"frame-1")).await?;
+        b.send(Bytes::from_static(b"frame-2")).await?;
+        let msg = b.next().await.unwrap()?;
+        assert_eq!(&msg[..], b"frame-1");
+
+        let msg = a.next().await.unwrap()?;
+        assert_eq!(&msg[..], b"frame-2");
 
         Ok(())
     }
