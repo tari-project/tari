@@ -6,7 +6,6 @@
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
 #![recursion_limit = "2048"]
-
 #![allow(clippy::too_many_arguments)]
 
 #[macro_use]
@@ -16,6 +15,7 @@ pub mod base_node_service;
 pub mod connectivity_service;
 pub mod contacts_service;
 pub mod error;
+mod operation_id;
 pub mod output_manager_service;
 pub mod storage;
 pub mod test_utils;
@@ -24,7 +24,6 @@ pub mod transaction_service;
 pub mod types;
 pub mod util;
 pub mod wallet;
-mod operation_id;
 pub use operation_id::OperationId;
 
 #[macro_use]

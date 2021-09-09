@@ -78,6 +78,7 @@ message OutputFeatures {
 
     AssetOutputFeatures asset = 16;
     MintNonFungibleFeatures mint_non_fungible = 17;
+    SideChainCheckpointFeatures sidechain_checkpoint = 18;
 }
 
 message AssetOutputFeatures {
@@ -89,6 +90,9 @@ message MintNonFungibleFeatures {
     Commitment asset_owner_commitment  = 2;
 }
 
+message SideChainCheckpointFeatures {
+    bytes merkle_root = 1;
+}
 // The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
 // cut-through means that blocks and transactions have the same structure. The inputs, outputs and kernels should
 // be sorted by their Blake2b-256bit digest hash

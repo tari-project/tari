@@ -28,9 +28,7 @@ pub fn get_operation_mode() -> OperationMode {
 }
 
 pub enum OperationMode {
-    Run
+    Run,
 }
 
-pub struct DanNodeConfig {
-
-}
+pub struct DanNodeConfig {}

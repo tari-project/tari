@@ -54,13 +54,19 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
             .try_into()
             .map_err(|_| "Metadata signature could not be converted".to_string())?;
 
-        let unique_id = if output.unique_id.is_empty()  { None} else { Some(output.unique_id.clone())};
+        let unique_id = if output.unique_id.is_empty() {
+            None
+        } else {
+            Some(output.unique_id.clone())
+        };
 
         let parent_public_key = if output.parent_public_key.is_empty() {
             None
         } else {
-            Some(PublicKey::from_bytes(output.parent_public_key.as_bytes())
-                .map_err(|err| format!("parent_public_key {:?}", err))?)
+            Some(
+                PublicKey::from_bytes(output.parent_public_key.as_bytes())
+                    .map_err(|err| format!("parent_public_key {:?}", err))?,
+            )
         };
 
         Ok(Self {
@@ -71,7 +77,7 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
             script,
             sender_offset_public_key,
             metadata_signature,
-            parent_public_key
+            parent_public_key,
         })
     }
 }
@@ -92,7 +98,7 @@ impl From<TransactionOutput> for grpc::TransactionOutput {
                 signature_v: Vec::from(output.metadata_signature.v().as_bytes()),
             }),
             unique_id: output.unique_id.unwrap_or_default(),
-            parent_public_key: output.parent_public_key.map(|b| b.to_vec()).unwrap_or_default()
+            parent_public_key: output.parent_public_key.map(|b| b.to_vec()).unwrap_or_default(),
         }
     }
 }

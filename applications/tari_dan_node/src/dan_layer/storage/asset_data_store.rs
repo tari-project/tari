@@ -20,33 +20,33 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::models::TokenId;
-use patricia_tree::PatriciaMap;
-use patricia_tree::node::{NodeEncoder, NodeDecoder, Node};
-use bytecodec::null::{NullEncoder, NullDecoder};
-use bytecodec::Encode;
-use bytecodec::io::{IoEncodeExt, IoDecodeExt};
-use std::path::PathBuf;
-use crate::digital_assets_error::DigitalAssetError;
-use std::fs::File;
-use bytecodec::bytes::{BytesEncoder, BytesDecoder, CopyableBytesDecoder};
+use crate::{dan_layer::models::TokenId, digital_assets_error::DigitalAssetError};
+use bytecodec::{
+    bytes::{BytesDecoder, BytesEncoder, CopyableBytesDecoder},
+    io::{IoDecodeExt, IoEncodeExt},
+    json_codec::{JsonDecoder, JsonEncoder},
+    null::{NullDecoder, NullEncoder},
+    Encode,
+};
+use patricia_tree::{
+    node::{Node, NodeDecoder, NodeEncoder},
+    PatriciaMap,
+};
 use serde_json::Value;
-use bytecodec::json_codec::{JsonDecoder, JsonEncoder};
+use std::{fs::File, path::PathBuf};
 
 pub trait AssetDataStore {
-    fn replace_metadata(&mut self, token_id:&TokenId, metadata: Vec<u8>) -> Result<(), DigitalAssetError>;
+    fn replace_metadata(&mut self, token_id: &TokenId, metadata: Vec<u8>) -> Result<(), DigitalAssetError>;
 }
 
 pub struct FileAssetDataStore {
-   token_metadata: PatriciaMap<Value>,
-   // None if dirty and must be regenerated
-   merkle_root: Option<Vec<u8>>,
-    output_file: PathBuf
-
+    token_metadata: PatriciaMap<Value>,
+    // None if dirty and must be regenerated
+    merkle_root: Option<Vec<u8>>,
+    output_file: PathBuf,
 }
 
 impl FileAssetDataStore {
-
     pub fn load_or_create(output_file: PathBuf) -> Self {
         dbg!(&output_file);
         let token_metadata = match File::open(output_file.as_path()) {
@@ -56,13 +56,13 @@ impl FileAssetDataStore {
                 let set = PatriciaMap::from(node);
                 set
             },
-            Err(_) => PatriciaMap::new()
+            Err(_) => PatriciaMap::new(),
         };
 
         Self {
             token_metadata,
             merkle_root: None,
-            output_file
+            output_file,
         }
     }
 
@@ -87,23 +87,22 @@ impl AssetDataStore for FileAssetDataStore {
 }
 
 #[cfg(test)]
-mod test{
+mod test {
     use super::*;
-    use std::path::PathBuf;
-    use std::env::consts::OS;
-    use tari_test_utils::paths::{temp_tari_path, create_temporary_data_path};
     use crate::dan_layer::models::TokenId;
+    use std::{env::consts::OS, path::PathBuf};
+    use tari_test_utils::paths::{create_temporary_data_path, temp_tari_path};
 
     #[test]
     fn test_create() {
         let temp_path = create_temporary_data_path().join("file-asset-data-store");
         {
             let mut store = FileAssetDataStore::load_or_create(temp_path.clone());
-            store.replace_metadata(&TokenId(vec![11u8]), Vec::from("[1,2,3]".as_bytes())).unwrap();
+            store
+                .replace_metadata(&TokenId(vec![11u8]), Vec::from("[1,2,3]".as_bytes()))
+                .unwrap();
         }
         let store2 = FileAssetDataStore::load_or_create(temp_path);
         dbg!(store2.token_metadata);
-
     }
-
 }

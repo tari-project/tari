@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+pub mod assets_tab;
 pub mod balance;
 pub mod base_node;
 mod component;
@@ -29,11 +30,10 @@ pub mod network_tab;
 pub mod notification_tab;
 pub mod receive_tab;
 pub mod send_tab;
-pub mod tabs_container;
-pub mod transactions_tab;
-pub mod tokens_component;
-pub mod assets_tab;
 mod styles;
+pub mod tabs_container;
+pub mod tokens_component;
+pub mod transactions_tab;
 pub use self::component::*;
 pub mod events_component;
 

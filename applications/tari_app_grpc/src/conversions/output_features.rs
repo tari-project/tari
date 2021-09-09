@@ -23,7 +23,13 @@
 use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
 use tari_common_types::types::{Commitment, PublicKey};
-use tari_core::transactions::transaction::{AssetOutputFeatures, MintNonFungibleFeatures, OutputFeatures, OutputFlags};
+use tari_core::transactions::transaction::{
+    AssetOutputFeatures,
+    MintNonFungibleFeatures,
+    OutputFeatures,
+    OutputFlags,
+    SideChainCheckpointFeatures,
+};
 use tari_crypto::tari_utilities::ByteArray;
 
 impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
@@ -37,6 +43,7 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             metadata: features.metadata,
             asset: features.asset.map(|a| a.try_into()).transpose()?,
             mint_non_fungible: features.mint_non_fungible.map(|m| m.try_into()).transpose()?,
+            sidechain_checkpoint: features.sidechain_checkpoint.map(|m| m.into()),
         })
     }
 }
@@ -49,6 +56,7 @@ impl From<OutputFeatures> for grpc::OutputFeatures {
             metadata: features.metadata,
             asset: features.asset.map(|a| a.into()),
             mint_non_fungible: features.mint_non_fungible.map(|m| m.into()),
+            sidechain_checkpoint: features.sidechain_checkpoint.map(|m| m.into()),
         }
     }
 }
@@ -93,6 +101,22 @@ impl From<MintNonFungibleFeatures> for grpc::MintNonFungibleFeatures {
         Self {
             asset_public_key: value.asset_public_key.as_bytes().to_vec(),
             asset_owner_commitment: value.asset_owner_commitment.to_vec(),
+        }
+    }
+}
+
+impl From<SideChainCheckpointFeatures> for grpc::SideChainCheckpointFeatures {
+    fn from(value: SideChainCheckpointFeatures) -> Self {
+        Self {
+            merkle_root: value.merkle_root.as_bytes().to_vec(),
+        }
+    }
+}
+
+impl From<grpc::SideChainCheckpointFeatures> for SideChainCheckpointFeatures {
+    fn from(value: grpc::SideChainCheckpointFeatures) -> Self {
+        Self {
+            merkle_root: value.merkle_root.as_bytes().to_vec(),
         }
     }
 }

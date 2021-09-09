@@ -20,13 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::fmt;
-use std::fmt::Formatter;
-use serde::{Serialize, Deserialize};
-use std::hash::{Hash, Hasher};
-use rand::rngs::OsRng;
-use rand::RngCore;
-
+use rand::{rngs::OsRng, RngCore};
+use serde::{Deserialize, Serialize};
+use std::{
+    fmt,
+    fmt::Formatter,
+    hash::{Hash, Hasher},
+};
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Default)]
 pub struct OperationId(u64);
@@ -53,10 +53,7 @@ impl PartialEq for OperationId {
     }
 }
 
-
-impl Eq for OperationId {
-
-}
+impl Eq for OperationId {}
 
 impl From<u64> for OperationId {
     fn from(s: u64) -> Self {
@@ -65,7 +62,7 @@ impl From<u64> for OperationId {
 }
 
 impl From<OperationId> for u64 {
-    fn from(s: OperationId) ->Self {
+    fn from(s: OperationId) -> Self {
         s.0
     }
 }

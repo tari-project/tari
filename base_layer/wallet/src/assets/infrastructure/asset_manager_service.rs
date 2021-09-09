@@ -26,18 +26,13 @@ use crate::{
         AssetManager,
     },
     error::WalletError,
-    output_manager_service::storage::{
-        database::{OutputManagerBackend},
-    },
-};
-use tari_service_framework::{
-    reply_channel::{Receiver, },
+    output_manager_service::{handle::OutputManagerHandle, storage::database::OutputManagerBackend},
+    types::MockPersistentKeyManager,
 };
 use futures::{pin_mut, StreamExt};
-use tari_shutdown::ShutdownSignal;
 use log::*;
-use crate::output_manager_service::handle::OutputManagerHandle;
-use crate::types::MockPersistentKeyManager;
+use tari_service_framework::reply_channel::Receiver;
+use tari_shutdown::ShutdownSignal;
 
 const LOG_TARGET: &str = "wallet::assets::infrastructure::asset_manager_service";
 
@@ -48,7 +43,7 @@ pub struct AssetManagerService<T: OutputManagerBackend + 'static> {
 impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
     pub fn new(backend: T, output_manager: OutputManagerHandle) -> Self {
         Self {
-            manager: AssetManager::<T,_>::new(backend, output_manager, MockPersistentKeyManager::new()),
+            manager: AssetManager::<T, _>::new(backend, output_manager, MockPersistentKeyManager::new()),
         }
     }
 
@@ -93,18 +88,31 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
             AssetManagerRequest::ListOwned { .. } => Ok(AssetManagerResponse::ListOwned {
                 assets: self.manager.list_owned().await?,
             }),
-            AssetManagerRequest::CreateRegistrationTransaction {name} => {
-                let (tx_id, transaction) =self.manager.create_registration_transaction(name).await?;
-                Ok(AssetManagerResponse::CreateRegistrationTransaction {transaction: Box::new(transaction), tx_id})
-            }
+            AssetManagerRequest::CreateRegistrationTransaction { name } => {
+                let (tx_id, transaction) = self.manager.create_registration_transaction(name).await?;
+                Ok(AssetManagerResponse::CreateRegistrationTransaction {
+                    transaction: Box::new(transaction),
+                    tx_id,
+                })
+            },
             AssetManagerRequest::GetOwnedAsset { public_key } => {
                 let asset = self.manager.get_owned_asset_by_pub_key(public_key).await?;
-                Ok(AssetManagerResponse::GetOwnedAsset { asset: Box::new(asset)})
+                Ok(AssetManagerResponse::GetOwnedAsset { asset: Box::new(asset) })
             },
-            AssetManagerRequest::CreateMintingTransaction { asset_public_key, asset_owner_commitment, unique_ids } => {
-                let (tx_id, transaction) =self.manager.create_minting_transaction(*asset_public_key, *asset_owner_commitment,  unique_ids).await?;
-                Ok(AssetManagerResponse::CreateMintingTransaction {transaction: Box::new(transaction), tx_id})
-            }
+            AssetManagerRequest::CreateMintingTransaction {
+                asset_public_key,
+                asset_owner_commitment,
+                unique_ids,
+            } => {
+                let (tx_id, transaction) = self
+                    .manager
+                    .create_minting_transaction(*asset_public_key, *asset_owner_commitment, unique_ids)
+                    .await?;
+                Ok(AssetManagerResponse::CreateMintingTransaction {
+                    transaction: Box::new(transaction),
+                    tx_id,
+                })
+            },
         }
     }
 }

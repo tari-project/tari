@@ -26,9 +26,9 @@ pub mod initializer;
 pub mod token_manager_service;
 
 pub enum TokenManagerRequest {
-    ListOwned{},
+    ListOwned {},
 }
 
 pub enum TokenManagerResponse {
-    ListOwned{ tokens : Vec<Token>},
+    ListOwned { tokens: Vec<Token> },
 }

@@ -74,10 +74,9 @@ use crate::{
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
     wallet_modes::PeerConfig,
 };
-use tari_wallet::assets::Asset;
-use tari_wallet::tokens::Token;
-use tari_core::transactions::transaction_protocol::TxId;
 use std::collections::VecDeque;
+use tari_core::transactions::transaction_protocol::TxId;
+use tari_wallet::{assets::Asset, tokens::Token};
 
 const LOG_TARGET: &str = "wallet::console_wallet::app_state";
 
@@ -166,6 +165,7 @@ impl AppState {
         }
         Ok(())
     }
+
     pub async fn update_cache(&mut self) {
         let update = match self.cache_update_cooldown {
             Some(last_update) => last_update.elapsed() > self.config.cache_update_cooldown,
@@ -302,7 +302,6 @@ impl AppState {
         let mut tx_service = inner.wallet.transaction_service.clone();
         tx_service.restart_broadcast_protocols().await?;
         Ok(())
-
     }
 
     pub fn get_identity(&self) -> &MyIdentity {
@@ -501,7 +500,7 @@ impl AppStateInner {
         }
     }
 
-    pub fn add_event(&mut self, event : EventListItem) {
+    pub fn add_event(&mut self, event: EventListItem) {
         if self.data.all_events.len() > 30 {
             self.data.all_events.pop_back();
         }
@@ -689,7 +688,6 @@ impl AppStateInner {
         self.updated = true;
         Ok(())
     }
-
 
     pub async fn refresh_assets_state(&mut self) -> Result<(), UiError> {
         let asset_utxos = self.wallet.asset_manager.list_owned_assets().await?;
@@ -924,11 +922,10 @@ struct AppStateData {
     new_notification_count: u32,
 }
 
-
 #[derive(Clone)]
-pub struct EventListItem{
+pub struct EventListItem {
     pub event_type: String,
-    pub desc: String
+    pub desc: String,
 }
 
 impl AppStateData {

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::ui::{
-    components::{balance::Balance, Component},
+    components::{balance::Balance, styles, Component},
     state::AppState,
     widgets::{draw_dialog, MultiColumnList, WindowedListState},
     MAX_WIDTH,
@@ -22,7 +22,6 @@ use tui::{
     widgets::{Block, Borders, ListItem, Paragraph, Wrap},
     Frame,
 };
-use crate::ui::components::styles;
 
 pub struct TransactionsTab {
     balance: Balance,
@@ -536,7 +535,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
             'r' => {
                 // TODO: use this result
                 let _res = Handle::current().block_on(app_state.rebroadcast_all());
-            }
+            },
             'a' => app_state.toggle_abandoned_coinbase_filter(),
             '\n' => match self.selected_tx_list {
                 SelectedTransactionList::None => {},

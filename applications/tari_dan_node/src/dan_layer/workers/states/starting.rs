@@ -20,15 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::digital_assets_error::DigitalAssetError;
-use crate::dan_layer::workers::states::ConsensusWorkerStateEvent;
+use crate::{dan_layer::workers::states::ConsensusWorkerStateEvent, digital_assets_error::DigitalAssetError};
 
-pub struct Starting {
-
-}
+pub struct Starting {}
 
 impl Starting {
-    pub async fn next_event(&self ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
+    pub async fn next_event(&self) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         Ok(ConsensusWorkerStateEvent::Initialized)
     }
 }

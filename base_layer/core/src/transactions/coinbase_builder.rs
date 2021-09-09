@@ -209,7 +209,7 @@ impl CoinbaseBuilder {
             sender_offset_public_key,
             metadata_sig,
             None,
-            None
+            None,
         );
         // TODO: Verify bullet proof?
         let output = if let Some(rewind_data) = self.rewind_data.as_ref() {

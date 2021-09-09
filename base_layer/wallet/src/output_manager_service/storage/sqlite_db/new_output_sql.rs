@@ -23,14 +23,16 @@
 use aes_gcm::{Aes256Gcm, Error as AeadError};
 use diesel::{RunQueryDsl, SqliteConnection};
 
-use tari_core::crypto::tari_utilities::ByteArray;
-use tari_core::transactions::transaction_protocol::TxId;
+use tari_core::{crypto::tari_utilities::ByteArray, transactions::transaction_protocol::TxId};
 
-use crate::output_manager_service::error::OutputManagerStorageError;
-use crate::output_manager_service::storage::models::DbUnblindedOutput;
-use crate::output_manager_service::storage::OutputStatus;
-use crate::schema::outputs;
-use crate::util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable};
+use crate::{
+    output_manager_service::{
+        error::OutputManagerStorageError,
+        storage::{models::DbUnblindedOutput, OutputStatus},
+    },
+    schema::outputs,
+    util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
+};
 
 /// This struct represents an Output in the Sql database. A distinct struct is required to define the Sql friendly
 /// equivalent datatypes for the members.
@@ -103,4 +105,3 @@ impl Encryptable<Aes256Gcm> for NewOutputSql {
         Ok(())
     }
 }
-

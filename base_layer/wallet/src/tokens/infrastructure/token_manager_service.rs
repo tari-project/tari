@@ -21,23 +21,18 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    error::WalletError,
+    output_manager_service::{handle::OutputManagerHandle, storage::database::OutputManagerBackend},
     tokens::{
         infrastructure::{TokenManagerRequest, TokenManagerResponse},
         TokenManager,
     },
-    error::WalletError,
-    output_manager_service::storage::{
-        database::{OutputManagerBackend},
-    },
-};
-use tari_service_framework::{
-    reply_channel::{Receiver, },
+    types::MockPersistentKeyManager,
 };
 use futures::{pin_mut, StreamExt};
-use tari_shutdown::ShutdownSignal;
 use log::*;
-use crate::output_manager_service::handle::OutputManagerHandle;
-use crate::types::MockPersistentKeyManager;
+use tari_service_framework::reply_channel::Receiver;
+use tari_shutdown::ShutdownSignal;
 
 const LOG_TARGET: &str = "wallet::assets::infrastructure::asset_manager_service";
 
@@ -93,7 +88,6 @@ impl<T: OutputManagerBackend + 'static> TokenManagerService<T> {
             TokenManagerRequest::ListOwned { .. } => Ok(TokenManagerResponse::ListOwned {
                 tokens: self.manager.list_owned().await?,
             }),
-
         }
     }
 }

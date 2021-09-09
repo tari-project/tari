@@ -22,14 +22,10 @@
 
 use crate::output_manager_service::storage::database::OutputManagerBackend;
 
-
-use crate::assets::AssetManagerHandle;
-use crate::assets::infrastructure::AssetManagerService;
+use crate::assets::{infrastructure::AssetManagerService, AssetManagerHandle};
 use log::*;
 
 use futures::{future, Future};
-
-
 
 use tari_service_framework::{
     reply_channel,
@@ -39,36 +35,29 @@ use tari_service_framework::{
 };
 
 use crate::output_manager_service::handle::OutputManagerHandle;
-use tari_service_framework::{
-    async_trait,
-};
+use tari_service_framework::async_trait;
 
 const LOG_TARGET: &str = "wallet::assets::infrastructure::initializer";
 
 pub struct AssetManagerServiceInitializer<T>
-    where T: OutputManagerBackend
+where T: OutputManagerBackend
 {
-    backend: Option<T>
+    backend: Option<T>,
 }
 
 impl<T> AssetManagerServiceInitializer<T>
-    where T: OutputManagerBackend + 'static
+where T: OutputManagerBackend + 'static
 {
-    pub fn new(backend: T
-
-    ) -> Self {
-        Self {
-            backend: Some(backend)
-        }
+    pub fn new(backend: T) -> Self {
+        Self { backend: Some(backend) }
     }
 }
 
 #[async_trait]
 impl<T> ServiceInitializer for AssetManagerServiceInitializer<T>
-    where T: OutputManagerBackend + 'static
+where T: OutputManagerBackend + 'static
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-
         let (sender, receiver) = reply_channel::unbounded();
 
         let handle = AssetManagerHandle::new(sender);
@@ -77,8 +66,7 @@ impl<T> ServiceInitializer for AssetManagerServiceInitializer<T>
         let backend = self.backend.take().expect("this expect pattern is dumb");
 
         context.spawn_when_ready(move |handles| async move {
-
-            let output_manager  = handles.expect_handle::<OutputManagerHandle>();
+            let output_manager = handles.expect_handle::<OutputManagerHandle>();
             // let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
             let service = AssetManagerService::new(backend, output_manager);
 
@@ -91,4 +79,3 @@ impl<T> ServiceInitializer for AssetManagerServiceInitializer<T>
         Ok(())
     }
 }
-
