@@ -120,6 +120,14 @@ impl Listening {
         loop {
             let metadata_event = shared.metadata_event_stream.recv().await;
             match metadata_event.as_ref().map(|v| v.deref()) {
+                Ok(ChainMetadataEvent::NetworkSilence) => {
+                    debug!("NetworkSilence event received");
+                    if !self.is_synced {
+                        self.is_synced = true;
+                        shared.set_state_info(StateInfo::Listening(ListeningInfo::new(true)));
+                        debug!(target: LOG_TARGET, "Initial sync achieved");
+                    }
+                },
                 Ok(ChainMetadataEvent::PeerChainMetadataReceived(peer_metadata_list)) => {
                     let mut peer_metadata_list = peer_metadata_list.clone();
 

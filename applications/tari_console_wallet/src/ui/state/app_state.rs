@@ -583,6 +583,7 @@ impl AppStateInner {
                             .partial_cmp(&a.timestamp)
                             .expect("Should be able to compare timestamps")
                     });
+                    self.refresh_balance().await?;
                     self.updated = true;
                     return Ok(());
                 }

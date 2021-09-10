@@ -14,4 +14,9 @@ Feature: Recovery
             | NumBlocks |
             | 10        |
             | 25        |
+
+        # Takes 1min+ on Circle CI
+        @long-running
+        Examples:
+            | NumBlocks |
             | 50        |

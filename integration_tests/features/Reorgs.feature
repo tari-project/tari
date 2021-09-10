@@ -39,7 +39,7 @@ Feature: Reorgs
     And I mine a block on B at height 4 with an invalid MMR
     Then node B is at tip BTip1
 
-  @critical @reorg @broken
+  @critical @reorg
   Scenario: Pruned mode reorg simple
     Given I have a base node NODE1 connected to all seed nodes
     And I have wallet WALLET1 connected to base node NODE1
@@ -58,12 +58,12 @@ Feature: Reorgs
     And node NODE1 is at height 17
     And I stop node NODE1
     And I start base node PNODE2
-    When mining node MINING2 mines 6 blocks with min difficulty 20 and max difficulty 1000000
+    When mining node MINING2 mines 6 blocks with min difficulty 2 and max difficulty 1000000
     And node PNODE2 is at height 20
     When I start base node NODE1
     Then all nodes are at height 20
 
-  @critical @reorg @broken
+  @critical @reorg
   Scenario: Pruned mode reorg past horizon
     Given I have a base node NODE1 connected to all seed nodes
     And I have wallet WALLET1 connected to base node NODE1
@@ -138,6 +138,7 @@ Feature: Reorgs
     When I start base node NODE2
     Then all nodes are on the same chain tip
 
+  @long-running
   Scenario Outline: Massive multiple reorg
         #
         # Chain 1a:

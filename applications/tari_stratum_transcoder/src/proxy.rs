@@ -382,7 +382,7 @@ impl InnerService {
         request: Request<json::Value>,
     ) -> Result<Response<Body>, StratumTranscoderProxyError> {
         let request = request.into_body();
-        let hash = request["hash"]
+        let hash = request["params"]["hash"]
             .as_str()
             .ok_or("hash parameter is not a string")
             .and_then(|hash| hex::decode(hash).map_err(|_| "hash parameter is not a valid hex value"));
@@ -497,7 +497,17 @@ impl InnerService {
 
         let mut grpc_payments = Vec::new();
 
+        let mut client = self.wallet_client.clone();
+        let whoami_info = client.identify(grpc::GetIdentityRequest {}).await?.into_inner();
+        let address = String::from_utf8_lossy(&whoami_info.public_key).to_string();
+        let mut payment_to_self = false;
         for recipient in recipients.iter() {
+            // One-sided transactions are not supported to paying yourself and it is also a waste to do so since you
+            // will be paying fees for the transaction.
+            if recipient["address"] == address {
+                payment_to_self = true;
+                continue;
+            }
             grpc_payments.push(grpc::PaymentRecipient {
                 address: recipient["address"].as_str().unwrap().to_string(),
                 amount: recipient["amount"].as_u64().unwrap(),
@@ -507,7 +517,6 @@ impl InnerService {
             });
         }
 
-        let mut client = self.wallet_client.clone();
         let transfer_results = client
             .transfer(grpc::TransferRequest {
                 recipients: grpc_payments,
@@ -526,6 +535,22 @@ impl InnerService {
             });
             results.push(result.as_object().unwrap().clone());
         }
+
+        // Return success for payment to self, transaction ID of zero since payment wasn't
+        // needed to be made, however is still needed to be returned so balances can be updated
+        // for payments (this will usually be payouts of amounts due to the pool itself using
+        // the same wallet address for both its' funds as well as the mining rewards).
+        // Possibly a better alternative for this is to do an interactive payment to self?
+        if payment_to_self {
+            let result = json!({
+                "address": address,
+                "transaction_id": 0,
+                "is_success": true,
+                "failure_message": "",
+            });
+            results.push(result.as_object().unwrap().clone());
+        }
+
         let json_response = json!({
             "jsonrpc": "2.0",
             "result": {"transaction_results" : results},

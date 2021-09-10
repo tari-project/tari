@@ -20,12 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase,
-    output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
-    storage::{sqlite_db::WalletSqliteDatabase, sqlite_utilities::run_migration_and_create_sqlite_connection},
-    transaction_service::storage::sqlite_db::TransactionServiceSqliteDatabase,
-};
+use crate::storage::sqlite_utilities::{run_migration_and_create_sqlite_connection, WalletDbConnection};
 use core::iter;
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use std::path::Path;
@@ -39,15 +34,7 @@ pub fn random_string(len: usize) -> String {
 }
 
 /// A test helper to create a temporary wallet service databases
-pub fn make_wallet_databases(
-    path: Option<String>,
-) -> (
-    WalletSqliteDatabase,
-    TransactionServiceSqliteDatabase,
-    OutputManagerSqliteDatabase,
-    ContactsServiceSqliteDatabase,
-    Option<TempDir>,
-) {
+pub fn make_wallet_database_connection(path: Option<String>) -> (WalletDbConnection, Option<TempDir>) {
     let (path_string, temp_dir): (String, Option<TempDir>) = if let Some(p) = path {
         (p, None)
     } else {
@@ -61,11 +48,5 @@ pub fn make_wallet_databases(
 
     let connection =
         run_migration_and_create_sqlite_connection(&db_path.to_str().expect("Should be able to make path")).unwrap();
-    (
-        WalletSqliteDatabase::new(connection.clone(), None).expect("Should be able to create wallet database"),
-        TransactionServiceSqliteDatabase::new(connection.clone(), None),
-        OutputManagerSqliteDatabase::new(connection.clone(), None),
-        ContactsServiceSqliteDatabase::new(connection),
-        temp_dir,
-    )
+    (connection, temp_dir)
 }

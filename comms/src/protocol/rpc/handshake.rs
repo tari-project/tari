@@ -138,15 +138,19 @@ where T: AsyncRead + AsyncWrite + Unpin
         let msg = proto::rpc::RpcSession {
             supported_versions: SUPPORTED_RPC_VERSIONS.to_vec(),
         };
+        let payload = msg.to_encoded_bytes();
+        debug!(target: LOG_TARGET, "Sending client handshake ({} bytes)", payload.len());
         // It is possible that the server rejects the session and closes the substream before we've had a chance to send
         // anything. Rather than returning an IO error, let's ignore the send error and see if we can receive anything,
         // or return an IO error similarly to what send would have done.
-        if let Err(err) = self.framed.send(msg.to_encoded_bytes().into()).await {
+        if let Err(err) = self.framed.send(payload.into()).await {
             warn!(
                 target: LOG_TARGET,
                 "IO error when sending new session handshake to peer: {}", err
             );
+            panic!();
         }
+        self.framed.flush().await?;
         match self.recv_next_frame().await {
             Ok(Some(Ok(msg))) => {
                 let msg = proto::rpc::RpcSessionReply::decode(&mut msg.freeze())?;

@@ -63,6 +63,7 @@ pub const RPC_MAX_FRAME_SIZE: usize = 4 * 1024 * 1024; // 4 MiB
 pub mod __macro_reexports {
     pub use crate::{
         framing::CanonicalFraming,
+        multiplexing::Substream,
         protocol::{
             rpc::{
                 client_pool::RpcPoolClient,

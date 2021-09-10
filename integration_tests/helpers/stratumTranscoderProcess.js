@@ -1,59 +1,32 @@
+const { getFreePort } = require("./util");
 const dateFormat = require("dateformat");
 const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
 const { expect } = require("chai");
+const StratumTranscoderClient = require("./stratumTranscoderClient");
 const { createEnv } = require("./config");
 
 let outputProcess;
 
-class MiningNodeProcess {
-  constructor(
-    name,
-    baseNodeAddress,
-    baseNodeClient,
-    walletAddress,
-    logFilePath,
-    mineOnTipOnly = true
-  ) {
-    this.name = `MiningNode-${name}`;
-    this.maxBlocks = 1;
-    this.mineTillHeight = 1000000;
-    this.minDiff = 0;
-    this.maxDiff = 100000;
+class StratumTranscoderProcess {
+  constructor(name, baseNodeAddress, walletAddress, logFilePath) {
+    this.name = name;
     this.nodeAddress = baseNodeAddress.split(":")[0];
     this.nodeGrpcPort = baseNodeAddress.split(":")[1];
-    this.baseNodeClient = baseNodeClient;
     this.walletAddress = walletAddress.split(":")[0];
     this.walletGrpcPort = walletAddress.split(":")[1];
     this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath;
-    this.mineOnTipOnly = mineOnTipOnly;
-    this.numMiningThreads = 1;
+    this.client = null;
   }
 
-  async init(
-    maxBlocks,
-    mineTillHeight,
-    minDiff,
-    maxDiff,
-    mineOnTipOnly,
-    numMiningThreads
-  ) {
-    this.maxBlocks = maxBlocks || this.maxBlocks;
-    this.mineTillHeight = mineTillHeight || this.mineTillHeight;
-    this.minDiff = minDiff || this.minDiff;
-    this.maxDiff = Math.max(maxDiff || this.maxDiff, this.minDiff);
+  async init() {
+    this.port = await getFreePort();
+    this.name = `StratumTranscoder${this.port}-${this.name}`;
     this.baseDir = `./temp/base_nodes/${dateFormat(
       new Date(),
       "yyyymmddHHMM"
     )}/${this.name}`;
-
-    // Can't use the || shortcut here because `false` is a valid value
-    this.mineOnTipOnly =
-      mineOnTipOnly === undefined || mineOnTipOnly === null
-        ? this.mineOnTipOnly
-        : mineOnTipOnly;
-    this.numMiningThreads = numMiningThreads || this.numMiningThreads;
   }
 
   run(cmd, args) {
@@ -63,22 +36,21 @@ class MiningNodeProcess {
         fs.mkdirSync(this.baseDir + "/log", { recursive: true });
       }
 
+      const transcoderAddress = "127.0.0.1:" + this.port;
+
       const envs = createEnv(
         this.name,
         false,
         "nodeid.json",
         this.walletAddress,
         this.walletGrpcPort,
-        "8080",
+        this.port,
         this.nodeAddress,
         this.nodeGrpcPort,
         this.baseNodePort,
-        "127.0.0.1:8084",
         "127.0.0.1:8085",
-        {
-          mineOnTipOnly: this.mineOnTipOnly,
-          numMiningThreads: this.numMiningThreads,
-        },
+        transcoderAddress,
+        [],
         []
       );
 
@@ -91,7 +63,9 @@ class MiningNodeProcess {
       ps.stdout.on("data", (data) => {
         // console.log(`stdout: ${data}`);
         fs.appendFileSync(`${this.baseDir}/log/stdout.log`, data.toString());
-        // resolve(ps);
+        if (data.toString().match(/Listening on/)) {
+          resolve(ps);
+        }
       });
 
       ps.stderr.on("data", (data) => {
@@ -117,20 +91,7 @@ class MiningNodeProcess {
 
   async startNew() {
     await this.init();
-    const args = [
-      "--base-path",
-      ".",
-      "--init",
-      "--non-interactive",
-      "--max-blocks",
-      this.maxBlocks,
-      "--mine-until-height",
-      this.mineTillHeight,
-      "--min-difficulty",
-      this.minDiff,
-      "--max-difficulty",
-      this.maxDiff,
-    ];
+    const args = ["--base-path", ".", "--init"];
     if (this.logFilePath) {
       args.push("--log-config", this.logFilePath);
     }
@@ -143,19 +104,20 @@ class MiningNodeProcess {
         "build",
         "--release",
         "--bin",
-        "tari_mining_node",
+        "tari_stratum_transcoder",
         "-Z",
         "unstable-options",
         "--out-dir",
         __dirname + "/../temp/out",
       ]);
-      outputProcess = __dirname + "/../temp/out/tari_mining_node";
+      outputProcess = __dirname + "/../temp/out/tari_stratum_transcoder";
     }
     return outputProcess;
   }
 
   stop() {
     return new Promise((resolve) => {
+      this.client = null;
       if (!this.ps) {
         return resolve();
       }
@@ -169,14 +131,23 @@ class MiningNodeProcess {
     });
   }
 
-  async mineBlocksUntilHeightIncreasedBy(numBlocks, minDifficulty) {
-    const height =
-      parseInt(await this.baseNodeClient.getTipHeight()) + parseInt(numBlocks);
-    await this.init(numBlocks, height, minDifficulty, 9999999999, true, 1);
-    await this.startNew();
-    await this.stop();
-    return await this.baseNodeClient.getTipHeight();
+  getClient() {
+    if (this.client) {
+      return this.client;
+    } else {
+      this.client = this.createClient();
+      return this.client;
+    }
+  }
+
+  createClient() {
+    const address = "http://127.0.0.1:" + this.port;
+    return new StratumTranscoderClient(
+      address,
+      this.baseNodeAddress,
+      this.walletAddress
+    );
   }
 }
 
-module.exports = MiningNodeProcess;
+module.exports = StratumTranscoderProcess;

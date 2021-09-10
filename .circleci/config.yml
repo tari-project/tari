@@ -1,7 +1,7 @@
 version: 2.1
 
 defaults:
-  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-with-deps:nightly-2021-05-06
+  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-with-deps:nightly-2021-05-09
 
 commands:
   test:
@@ -120,6 +120,9 @@ commands:
       - run:
           name: Build mining_node
           command: cargo build --release --bin tari_mining_node
+      - run:
+          name: Build stratum_transcoder
+          command: cargo build --release --bin tari_stratum_transcoder
       - run:
           name: Run cucumber scenarios
           no_output_timeout: 20m
