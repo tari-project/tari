@@ -27,7 +27,6 @@ use crate::{
         infrastructure::{TokenManagerRequest, TokenManagerResponse},
         TokenManager,
     },
-    types::MockPersistentKeyManager,
 };
 use futures::{pin_mut, StreamExt};
 use log::*;

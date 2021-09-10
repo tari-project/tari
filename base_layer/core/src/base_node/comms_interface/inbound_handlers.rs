@@ -42,9 +42,9 @@ use std::{
     sync::Arc,
 };
 use strum_macros::Display;
-use tari_common_types::types::{BlockHash, HashOutput, PublicKey};
+use tari_common_types::types::{BlockHash, HashOutput};
 use tari_comms::peer_manager::NodeId;
-use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex, ByteArray};
+use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
 use tokio::sync::Semaphore;
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
@@ -418,15 +418,15 @@ where T: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::TransactionKernels(kernels))
             },
             NodeCommsRequest::FetchTokens {
-                asset_public_key,
-                unique_ids,
+                asset_public_key: _asset_public_key,
+                unique_ids: _unique_ids,
             } => {
                 // TODO: use index to prevent reading all outputs
                 let tip_header = self.blockchain_db.fetch_tip_header().await?;
 
                 debug!(target: LOG_TARGET, "Starting fetch tokens");
-                let mut pos = 0;
-                let mut tokens = vec![];
+                let pos = 0;
+                let tokens = vec![];
                 // TODO: fix this janky AF way of doing this
                 while pos < tip_header.header().output_mmr_size {
                     unimplemented!("Need to read from db index");

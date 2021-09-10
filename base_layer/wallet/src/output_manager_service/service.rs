@@ -860,7 +860,7 @@ where TBackend: OutputManagerBackend + 'static
             .build::<HashDigest>(&self.resources.factories)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
         if let Some((spending_key, script_private_key)) = change_keys {
-            let change_script_offset_public_key = stp.get_change_sender_offset_public_key()?.ok_or_else(|| {
+            let _change_script_offset_public_key = stp.get_change_sender_offset_public_key()?.ok_or_else(|| {
                 OutputManagerError::BuildError(
                     "There should be a change script offset public key available".to_string(),
                 )

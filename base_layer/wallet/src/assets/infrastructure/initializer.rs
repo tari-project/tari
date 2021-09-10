@@ -25,7 +25,7 @@ use crate::output_manager_service::storage::database::OutputManagerBackend;
 use crate::assets::{infrastructure::AssetManagerService, AssetManagerHandle};
 use log::*;
 
-use futures::{future, Future};
+use futures::future;
 
 use tari_service_framework::{
     reply_channel,
