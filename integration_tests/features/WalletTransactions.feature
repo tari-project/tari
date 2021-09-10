@@ -163,7 +163,8 @@ Feature: Wallet Transactions
     Then I restart wallet WALLET_B
     Then I check if wallet WALLET_B has 5 transactions
 
-    @critical
+    # runs 8mins on circle ci
+    @critical @long-running
     Scenario: Wallet SAF negotiation and cancellation with offline peers
       Given I have a seed node NODE
       And I have 1 base nodes connected to all seed nodes
