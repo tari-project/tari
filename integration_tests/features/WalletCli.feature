@@ -20,6 +20,8 @@ Feature: Wallet CLI
         Then the password of wallet WALLET is not kensentme
         Then the password of wallet WALLET is changedpwd
 
+    # takes 1min+ on circle ci
+    @long-running
     Scenario: As a user I want to get balance via command line
         Given I have a base node BASE
         And I have wallet WALLET connected to base node BASE
