@@ -31,7 +31,7 @@ use chrono::{NaiveDateTime, Utc};
 use digest::Digest;
 use futures::{pin_mut, stream::FuturesUnordered, Stream, StreamExt};
 use log::*;
-use rand::{rngs::OsRng, RngCore};
+use rand::rngs::OsRng;
 use tari_crypto::{keys::DiffieHellmanSharedSecret, script, tari_utilities::ByteArray};
 use tokio::{sync::broadcast, task::JoinHandle};
 

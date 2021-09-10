@@ -43,7 +43,6 @@ use tari_core::{
         rpc::BaseNodeWalletRpcClient,
     },
     proto::{base_node::Signatures as SignaturesProto, types::Signature as SignatureProto},
-    transactions::transaction_protocol::TxId,
 };
 use tokio::{sync::broadcast, time::sleep};
 

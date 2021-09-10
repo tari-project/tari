@@ -21,33 +21,29 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    assets::Asset,
     error::WalletError,
     output_manager_service::storage::database::{OutputManagerBackend, OutputManagerDatabase},
 };
-use tari_core::transactions::transaction::{OutputFeatures, OutputFlags, Transaction};
+use tari_core::transactions::transaction::OutputFlags;
 
 use crate::{
     output_manager_service::{handle::OutputManagerHandle, storage::models::DbUnblindedOutput},
     tokens::Token,
-    types::PersistentKeyManager,
 };
 use log::*;
-use tari_core::transactions::transaction_protocol::TxId;
-use tari_crypto::tari_utilities::ByteArray;
 
 const LOG_TARGET: &str = "wallet::tokens::token_manager";
 
 pub(crate) struct TokenManager<T: OutputManagerBackend + 'static> {
     output_database: OutputManagerDatabase<T>,
-    output_manager: OutputManagerHandle,
+    _output_manager: OutputManagerHandle,
     // transaction_service: TransactionServiceHandle
 }
 impl<T: OutputManagerBackend + 'static> TokenManager<T> {
     pub fn new(backend: T, output_manager: OutputManagerHandle) -> Self {
         Self {
             output_database: OutputManagerDatabase::new(backend),
-            output_manager,
+            _output_manager: output_manager,
         }
     }
 

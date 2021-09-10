@@ -29,8 +29,6 @@ use crate::{
 };
 use tari_service_framework::{reply_channel::SenderService, Service};
 
-use tari_core::transactions::{transaction::Transaction, transaction_protocol::TxId};
-
 #[derive(Clone)]
 pub struct TokenManagerHandle {
     handle: SenderService<TokenManagerRequest, Result<TokenManagerResponse, WalletError>>,

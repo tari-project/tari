@@ -25,7 +25,7 @@ use crate::output_manager_service::storage::database::OutputManagerBackend;
 use crate::tokens::{infrastructure::token_manager_service::TokenManagerService, TokenManagerHandle};
 use log::*;
 
-use futures::{future, Future};
+use futures::future;
 
 use tari_service_framework::{
     reply_channel,

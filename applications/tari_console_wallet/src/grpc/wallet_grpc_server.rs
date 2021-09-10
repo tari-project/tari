@@ -1,4 +1,3 @@
-use crate::wallet_modes::grpc_mode;
 use futures::{channel::mpsc, future, SinkExt};
 use log::*;
 use std::convert::TryFrom;
