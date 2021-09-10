@@ -52,6 +52,8 @@ Feature: Wallet Monitoring
     # TODO: Uncomment this step when wallets can handle reorg
 #    Then all COINBASE transactions for wallet WALLET_A1 and wallet WALLET_B1 have consistent but opposing validity
 
+  # 18+ mins on circle ci
+  @long-running
   Scenario: Wallets monitoring normal transactions after a reorg
     Given I do not expect all automated transactions to succeed
         #

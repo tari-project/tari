@@ -58,7 +58,7 @@ Feature: Reorgs
     And node NODE1 is at height 17
     And I stop node NODE1
     And I start base node PNODE2
-    When mining node MINING2 mines 6 blocks with min difficulty 20 and max difficulty 1000000
+    When mining node MINING2 mines 6 blocks with min difficulty 2 and max difficulty 1000000
     And node PNODE2 is at height 20
     When I start base node NODE1
     Then all nodes are at height 20
@@ -138,6 +138,7 @@ Feature: Reorgs
     When I start base node NODE2
     Then all nodes are on the same chain tip
 
+  @long-running
   Scenario Outline: Massive multiple reorg
         #
         # Chain 1a:
