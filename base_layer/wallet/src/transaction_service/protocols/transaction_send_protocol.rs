@@ -72,6 +72,7 @@ where TBackend: TransactionBackend + 'static
     id: TxId,
     dest_pubkey: CommsPublicKey,
     amount: MicroTari,
+    unique_id: Option<Vec<u8>>,
     fee_per_gram: MicroTari,
     message: String,
     service_request_reply_channel: Option<oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>>,
@@ -92,6 +93,7 @@ where TBackend: TransactionBackend + 'static
         cancellation_receiver: oneshot::Receiver<()>,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
+        unique_id: Option<Vec<u8>>,
         fee_per_gram: MicroTari,
         message: String,
         service_request_reply_channel: Option<
@@ -106,6 +108,7 @@ where TBackend: TransactionBackend + 'static
             cancellation_receiver: Some(cancellation_receiver),
             dest_pubkey,
             amount,
+            unique_id,
             fee_per_gram,
             message,
             service_request_reply_channel,
@@ -155,7 +158,7 @@ where TBackend: TransactionBackend + 'static
             .prepare_transaction_to_send(
                 self.id,
                 self.amount,
-                None, // TODO: is this supposed to be populated?
+                self.unique_id.clone(),
                 self.fee_per_gram,
                 None,
                 self.message.clone(),

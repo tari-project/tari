@@ -29,12 +29,15 @@ use std::{
 };
 use tari_common_types::types::PrivateKey;
 use tari_comms::types::CommsPublicKey;
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction::Transaction,
-    transaction_protocol::TxId,
-    ReceiverTransactionProtocol,
-    SenderTransactionProtocol,
+use tari_core::{
+    tari_utilities::hex::Hex,
+    transactions::{
+        tari_amount::MicroTari,
+        transaction::Transaction,
+        transaction_protocol::TxId,
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -238,6 +241,23 @@ impl CompletedTransaction {
             confirmations: None,
             mined_height: None,
         }
+    }
+
+    pub fn get_unique_id(&self) -> Option<String> {
+        let body = self.transaction.get_body();
+        for tx_input in body.inputs() {
+            match tx_input.features.unique_id {
+                Some(ref unique_id) => return Some(unique_id.to_hex()),
+                _ => {},
+            }
+        }
+        for tx_output in body.outputs() {
+            match tx_output.features.unique_id {
+                Some(ref unique_id) => return Some(unique_id.to_hex()),
+                _ => {},
+            }
+        }
+        None
     }
 }
 

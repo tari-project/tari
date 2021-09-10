@@ -109,6 +109,8 @@ pub enum OutputManagerError {
     MasterSecretKeyMismatch,
     #[error("Private Key is not found in the current Key Chain")]
     KeyNotFoundInKeyChain,
+    #[error("Token with unique id not found")]
+    TokenUniqueIdNotFound,
 }
 
 #[derive(Debug, Error, PartialEq)]

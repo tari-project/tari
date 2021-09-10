@@ -742,6 +742,7 @@ where
             cancellation_receiver,
             dest_pubkey,
             amount,
+            unique_id,
             fee_per_gram,
             message,
             Some(reply_channel),
@@ -1175,6 +1176,7 @@ where
                     cancellation_receiver,
                     tx.destination_public_key,
                     tx.amount,
+                    None, // TODO: Fill this ?
                     tx.fee,
                     tx.message,
                     None,

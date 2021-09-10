@@ -629,11 +629,26 @@ where TBackend: OutputManagerBackend + 'static
     ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
-            "Preparing to send transaction. Amount: {}. Fee per gram: {}. ", amount, fee_per_gram,
+            "Preparing to send transaction. Amount: {}. Unique id : {:?}. Fee per gram: {}. ",
+            amount,
+            unique_id,
+            fee_per_gram,
         );
         let (outputs, _, total) = self
             .select_utxos(amount, fee_per_gram, 1, None, unique_id.as_ref())
             .await?;
+
+        let output_features = match unique_id {
+            Some(ref _unique_id) => match outputs
+                .clone()
+                .into_iter()
+                .find(|output| output.unblinded_output.features.unique_id.is_some())
+            {
+                Some(output) => output.unblinded_output.features,
+                _ => Default::default(),
+            },
+            _ => Default::default(),
+        };
 
         let offset = PrivateKey::random(&mut OsRng);
         let nonce = PrivateKey::random(&mut OsRng);
@@ -649,16 +664,13 @@ where TBackend: OutputManagerBackend + 'static
                 0,
                 recipient_script,
                 PrivateKey::random(&mut OsRng),
-                Default::default(),
+                output_features,
                 PrivateKey::random(&mut OsRng),
             )
             .with_message(message)
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_tx_id(tx_id);
 
-        if let Some(ref unique_id) = unique_id {
-            builder = builder.with_unique_id(unique_id.clone());
-        }
         for uo in outputs.iter() {
             builder.with_input(
                 uo.unblinded_output
@@ -918,10 +930,6 @@ where TBackend: OutputManagerBackend + 'static
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_tx_id(tx_id);
 
-        if let Some(ref unique_id) = unique_id {
-            builder = builder.with_unique_id(unique_id.clone());
-        }
-
         for uo in &inputs {
             builder.with_input(
                 uo.unblinded_output
@@ -1115,14 +1123,32 @@ where TBackend: OutputManagerBackend + 'static
         strategy: Option<UTXOSelectionStrategy>,
         unique_id: Option<&Vec<u8>>,
     ) -> Result<(Vec<DbUnblindedOutput>, bool, MicroTari), OutputManagerError> {
-        if unique_id.is_some() {
-            // Select UTXO that has this ID
-            todo!();
-        }
+        let token = match unique_id {
+            Some(unique_id) => {
+                warn!(target: LOG_TARGET, "Looking for {:?}", unique_id);
+                let uo = self.resources.db.fetch_all_unspent_outputs().await?;
+                // for x in uo {
+                //     warn!(target: LOG_TARGET, "{:?}", x.unblinded_output.unique_id);
+                // }
+                if let Some(token_id) = uo.into_iter().find(|x| match &x.unblinded_output.features.unique_id {
+                    Some(token_unique_id) => {
+                        warn!(target: LOG_TARGET, "Comparing with {:?}", token_unique_id);
+                        token_unique_id == unique_id
+                    },
+                    _ => false,
+                }) {
+                    Some(token_id)
+                } else {
+                    return Err(OutputManagerError::TokenUniqueIdNotFound);
+                }
+            },
+            _ => None,
+        };
         debug!(
             target: LOG_TARGET,
-            "select_utxos amount: {}, fee_per_gram: {}, output_count: {}, strategy: {:?}",
+            "select_utxos amount: {}, token : {:?}, fee_per_gram: {}, output_count: {}, strategy: {:?}",
             amount,
+            token,
             fee_per_gram,
             output_count,
             strategy
@@ -1131,6 +1157,10 @@ where TBackend: OutputManagerBackend + 'static
         let mut utxos_total_value = MicroTari::from(0);
         let mut fee_without_change = MicroTari::from(0);
         let mut fee_with_change = MicroTari::from(0);
+
+        if let Some(unblinded_token) = token {
+            utxos.push(unblinded_token);
+        }
 
         let uo = self.resources.db.fetch_spendable_outputs()?;
 
@@ -1182,7 +1212,7 @@ where TBackend: OutputManagerBackend + 'static
                 }
             },
         };
-        debug!(target: LOG_TARGET, "select_utxos selection strategy: {}", strategy);
+        warn!(target: LOG_TARGET, "select_utxos selection strategy: {}", strategy);
 
         let uo = match strategy {
             UTXOSelectionStrategy::Smallest => uo,

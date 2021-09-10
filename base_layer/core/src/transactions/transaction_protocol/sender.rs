@@ -98,7 +98,6 @@ pub(super) struct RawTransactionInfo {
     pub recipient_info: RecipientInfo,
     pub signatures: Vec<Signature>,
     pub message: String,
-    pub unique_id: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]

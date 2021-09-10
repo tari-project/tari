@@ -31,6 +31,7 @@ const LOG_TARGET: &str = "wallet::console_wallet::tasks ";
 pub async fn send_transaction_task(
     public_key: CommsPublicKey,
     amount: MicroTari,
+    unique_id: Option<Vec<u8>>,
     message: String,
     fee_per_gram: MicroTari,
     mut transaction_service_handle: TransactionServiceHandle,
@@ -41,7 +42,7 @@ pub async fn send_transaction_task(
     let mut send_direct_received_result = (false, false);
     let mut send_saf_received_result = (false, false);
     match transaction_service_handle
-        .send_transaction(public_key, amount, None, fee_per_gram, message)
+        .send_transaction(public_key, amount, unique_id, fee_per_gram, message)
         .await
     {
         Err(e) => {
@@ -106,6 +107,7 @@ pub async fn send_transaction_task(
 pub async fn send_one_sided_transaction_task(
     public_key: CommsPublicKey,
     amount: MicroTari,
+    unique_id: Option<Vec<u8>>,
     message: String,
     fee_per_gram: MicroTari,
     mut transaction_service_handle: TransactionServiceHandle,
@@ -114,7 +116,7 @@ pub async fn send_one_sided_transaction_task(
     let _ = result_tx.send(UiTransactionSendStatus::Initiated);
     let mut event_stream = transaction_service_handle.get_event_stream();
     match transaction_service_handle
-        .send_one_sided_transaction(public_key, amount, None, fee_per_gram, message)
+        .send_one_sided_transaction(public_key, amount, unique_id, fee_per_gram, message)
         .await
     {
         Err(e) => {
