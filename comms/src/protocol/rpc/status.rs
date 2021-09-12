@@ -118,7 +118,7 @@ impl RpcStatus {
         &self.details
     }
 
-    pub fn details_bytes(&self) -> Vec<u8> {
+    pub fn to_details_bytes(&self) -> Vec<u8> {
         self.details.as_bytes().to_vec()
     }
 
@@ -155,7 +155,7 @@ impl<'a> From<&'a proto::rpc::RpcResponse> for RpcStatus {
 
         RpcStatus {
             code: status_code,
-            details: String::from_utf8_lossy(&resp.message).to_string(),
+            details: String::from_utf8_lossy(&resp.payload).to_string(),
         }
     }
 }

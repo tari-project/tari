@@ -599,7 +599,7 @@ mod test {
         dht_header: DhtMessageHeader,
         stored_at: NaiveDateTime,
     ) -> StoredMessage {
-        let body = message.as_bytes().to_vec();
+        let body = message.into_bytes();
         let body_hash = hex::to_hex(&Challenge::new().chain(body.clone()).finalize());
         StoredMessage {
             id: 1,

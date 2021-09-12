@@ -24,6 +24,7 @@ use crate::{
     framing,
     multiplexing::Yamux,
     protocol::{
+        rpc,
         rpc::{
             context::RpcCommsBackend,
             error::HandshakeRejectReason,
@@ -43,7 +44,6 @@ use crate::{
             RpcError,
             RpcServer,
             RpcStatusCode,
-            RPC_MAX_FRAME_SIZE,
         },
         ProtocolEvent,
         ProtocolId,
@@ -192,8 +192,8 @@ async fn request_response_errors_and_streaming() {
     match err {
         // Because of the race between closing the request stream and sending on that stream in the above call
         // We can either get "this client was closed" or "the request you made was cancelled".
-        // If we delay some small time, we'll always get the former (but arbitrary delays cause flakiness and should be
-        // avoided)
+        // If we delay some small time, we'll probably always get the former (but arbitrary delays cause flakiness and
+        // should be avoided)
         RpcError::ClientClosed | RpcError::RequestCancelled => {},
         err => panic!("Unexpected error {:?}", err),
     }
@@ -248,21 +248,26 @@ async fn response_too_big() {
     let (mut muxer, _outbound, _, _, _shutdown) = setup(GreetingService::new(&[]), 1).await;
     let socket = muxer.incoming_mut().next().await.unwrap();
 
-    let framed = framing::canonical(socket, RPC_MAX_FRAME_SIZE);
-    let mut client = GreetingClient::builder().connect(framed).await.unwrap();
+    let framed = framing::canonical(socket, rpc::max_message_size());
+    let mut client = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(5))
+        .connect(framed)
+        .await
+        .unwrap();
 
     // RPC_MAX_FRAME_SIZE bytes will always be too large because of the overhead of the RpcResponse proto message
     let err = client
-        .reply_with_msg_of_size(RPC_MAX_FRAME_SIZE as u64)
+        .reply_with_msg_of_size(rpc::max_payload_size() as u64 + 1)
         .await
         .unwrap_err();
     unpack_enum!(RpcError::RequestFailed(status) = err);
     unpack_enum!(RpcStatusCode::MalformedResponse = status.status_code());
 
     // Check that the exact frame size boundary works and that the session is still going
-    // Take off 14 bytes for the RpcResponse overhead (i.e request_id + status + flags + msg field + vec_char(len(msg)))
-    let max_size = RPC_MAX_FRAME_SIZE - 14;
-    let _ = client.reply_with_msg_of_size(max_size as u64).await.unwrap();
+    let _ = client
+        .reply_with_msg_of_size(rpc::max_payload_size() as u64 - 9)
+        .await
+        .unwrap();
 }
 
 #[runtime::test]
@@ -270,7 +275,7 @@ async fn ping_latency() {
     let (mut muxer, _outbound, _, _, _shutdown) = setup(GreetingService::new(&[]), 1).await;
     let socket = muxer.incoming_mut().next().await.unwrap();
 
-    let framed = framing::canonical(socket, RPC_MAX_FRAME_SIZE);
+    let framed = framing::canonical(socket, 1024);
     let mut client = GreetingClient::builder().connect(framed).await.unwrap();
 
     let latency = client.ping().await.unwrap();
