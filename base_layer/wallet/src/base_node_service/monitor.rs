@@ -150,7 +150,13 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
 
             let start = Instant::now();
             self.db.set_chain_metadata(chain_metadata.clone()).await?;
+            trace!(
+                target: LOG_TARGET,
+                "Update metadata in db {} ms",
+                start.elapsed().as_millis()
+            );
 
+            let start = Instant::now();
             self.map_state(move |_| BaseNodeState {
                 chain_metadata: Some(chain_metadata),
                 is_synced: Some(is_synced),
@@ -158,11 +164,7 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
                 latency: Some(latency),
             })
             .await;
-            trace!(
-                target: LOG_TARGET,
-                "Update metadata in db and publish event {} ms",
-                start.elapsed().as_millis()
-            );
+            trace!(target: LOG_TARGET, "Publish event {} ms", start.elapsed().as_millis());
 
             time::sleep(self.interval).await
         }
