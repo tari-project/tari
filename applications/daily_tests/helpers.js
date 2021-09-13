@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-const { exec } = require("child_process");
+const { exec, spawn } = require("child_process");
 const { hideBin } = require("yargs/helpers");
 const readline = require("readline");
 const path = require("path");
@@ -153,11 +153,36 @@ async function monitorProcessOutput({
   });
 }
 
+const git = {
+  pull(cwd = null) {
+    cwd = cwd || process.cwd();
+    return new Promise((resolve, reject) => {
+      let ps = spawn("git", ["pull", "--rebase"], { cwd });
+      ps.stdout.on("data", (buf) => {
+        console.log(buf.toString());
+      });
+      ps.stderr.on("data", (buf) => {
+        console.error(buf.toString());
+      });
+      ps.on("close", (exitCode) => {
+        if (exitCode && exitCode !== 0) {
+          console.error(`child process exited with code ${exitCode}`);
+          reject(`child process exited with code ${exitCode}`);
+        } else {
+          console.log(command);
+          resolve(null);
+        }
+      });
+    });
+  },
+};
+
 module.exports = {
-  sendWebhookNotification,
-  getWebhookUrl: getWebhookUrlFromEnv,
-  readLastNLines,
   emptyFile,
-  yargs,
+  getWebhookUrl: getWebhookUrlFromEnv,
+  git,
   monitorProcessOutput,
+  readLastNLines,
+  sendWebhookNotification,
+  yargs,
 };

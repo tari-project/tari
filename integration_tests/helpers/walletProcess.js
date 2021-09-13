@@ -143,7 +143,7 @@ class WalletProcess {
         }
       });
 
-      expect(ps.error).to.be.an("undefined");
+      expect(ps.error).to.be.undefined;
       this.ps = ps;
     });
   }
