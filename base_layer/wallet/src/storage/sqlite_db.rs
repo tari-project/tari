@@ -588,7 +588,7 @@ impl ClientKeyValueSql {
 impl Encryptable<Aes256Gcm> for ClientKeyValueSql {
     #[allow(unused_assignments)]
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
-        let encrypted_value = encrypt_bytes_integral_nonce(&cipher, self.clone().value.as_bytes().to_vec())?;
+        let encrypted_value = encrypt_bytes_integral_nonce(&cipher, self.value.as_bytes().to_vec())?;
         self.value = encrypted_value.to_hex();
         Ok(())
     }
