@@ -3,7 +3,7 @@ const { expect } = require("chai");
 const fs = require("fs");
 const path = require("path");
 const BaseNodeClient = require("./baseNodeClient");
-const { sleep, getFreePort } = require("./util");
+const { getFreePort } = require("./util");
 const dateFormat = require("dateformat");
 const { createEnv } = require("./config");
 
@@ -28,15 +28,18 @@ class BaseNodeProcess {
     this.name = `Basenode${this.port}-${this.name}`;
     this.nodeFile = this.nodeFile || "nodeid.json";
 
+    let instance = 0;
     do {
       this.baseDir = `${this.options.baseDir}/${dateFormat(
         new Date(),
         "yyyymmddHHMM"
-      )}/${this.name}`;
+      )}/${instance}/${this.name}`;
       // Some tests failed during testing because the next base node process started in the previous process
       // directory therefore using the previous blockchain database
       if (fs.existsSync(this.baseDir)) {
-        sleep(1000);
+        instance++;
+      } else {
+        fs.mkdirSync(this.baseDir);
       }
     } while (fs.existsSync(this.baseDir));
     const args = ["--base-path", ".", "--init", "--create-id"];
