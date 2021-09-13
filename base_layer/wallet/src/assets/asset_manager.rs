@@ -134,6 +134,27 @@ impl<T: OutputManagerBackend + 'static, TPersistentKeyManager: PersistentKeyMana
             .await?;
         Ok((tx_id, transaction))
     }
+
+    pub async fn create_initial_asset_checkpoint(
+        &mut self,
+        asset: Asset,
+        merkle_root: Vec<u8>,
+    ) -> Result<(TxId, Transaction), WalletError> {
+        let output = self
+            .output_manager
+            .create_output_with_features(
+                0.into(),
+                OutputFeatures::for_checkpoint(merkle_root),
+                Some([0u8; 64].to_vec()),
+                Some(asset.public_key().clone()),
+            )
+            .await?;
+        let (tx_id, transaction) = self
+            .output_manager
+            .create_send_to_self_with_output(0.into(), vec![output], 0.into())
+            .await?;
+        Ok((tx_id, transaction))
+    }
 }
 
 fn convert_to_asset(unblinded_output: DbUnblindedOutput) -> Result<Asset, WalletError> {

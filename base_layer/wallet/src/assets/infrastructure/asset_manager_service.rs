@@ -113,6 +113,20 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
                     tx_id,
                 })
             },
+            AssetManagerRequest::CreateInitialCheckpoint {
+                asset_public_key,
+                merkle_root,
+            } => {
+                let asset = self.manager.get_owned_asset_by_pub_key(*asset_public_key).await?;
+                let (tx_id, transaction) = self
+                    .manager
+                    .create_initial_asset_checkpoint(asset, *merkle_root)
+                    .await?;
+                Ok(AssetManagerResponse::CreateInitialCheckpoint {
+                    transaction: Box::new(transaction),
+                    tx_id,
+                })
+            },
         }
     }
 }

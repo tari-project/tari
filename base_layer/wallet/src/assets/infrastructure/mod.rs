@@ -42,6 +42,10 @@ pub enum AssetManagerRequest {
         asset_owner_commitment: Box<Commitment>,
         unique_ids: Vec<Vec<u8>>,
     },
+    CreateInitialCheckpoint {
+        asset_public_key: Box<PublicKey>,
+        merkle_root: Box<Vec<u8>>,
+    },
 }
 
 pub enum AssetManagerResponse {
@@ -49,4 +53,5 @@ pub enum AssetManagerResponse {
     GetOwnedAsset { asset: Box<Asset> },
     CreateRegistrationTransaction { transaction: Box<Transaction>, tx_id: TxId },
     CreateMintingTransaction { transaction: Box<Transaction>, tx_id: TxId },
+    CreateInitialCheckpoint { transaction: Box<Transaction>, tx_id: TxId },
 }

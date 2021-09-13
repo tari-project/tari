@@ -85,6 +85,7 @@ pub enum WalletCommand {
     ClearCustomBaseNode,
     RegisterAsset,
     MintTokens,
+    CreateInitialCheckpoint,
 }
 
 #[derive(Debug, EnumString, PartialEq, Clone)]
@@ -729,6 +730,43 @@ pub async fn command_runner(
                 let fee = transaction.body.get_total_fee();
                 let _result = transaction_service
                     .submit_transaction(tx_id, transaction, fee, 0.into(), "test mint transaction".to_string())
+                    .await?;
+            },
+            CreateInitialCheckpoint => {
+                println!("Creating Initial Checkpoint for Asset");
+                let public_key = match parsed.args[0] {
+                    ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
+                    _ => Err(CommandError::Argument),
+                }?;
+
+                let merkle_root = match parsed.args[1] {
+                    ParsedArgument::Text(ref root) => {
+                        let s = root.to_string();
+                        match &s[0..2] {
+                            "0x" => {
+                                let s = s[2..].to_string();
+                                let r: Vec<u8> = Hex::from_hex(&s).unwrap();
+                                Ok(r)
+                            },
+                            _ => Ok(s.into_bytes()),
+                        }
+                    },
+                    _ => Err(CommandError::Argument),
+                }?;
+
+                let mut asset_manager = wallet.asset_manager.clone();
+                let (tx_id, transaction) = asset_manager
+                    .create_initial_asset_checkpoint(&public_key, &merkle_root)
+                    .await?;
+                let fee = transaction.body.get_total_fee();
+                let _result = transaction_service
+                    .submit_transaction(
+                        tx_id,
+                        transaction,
+                        fee,
+                        0.into(),
+                        "test initial asset checkpoint transaction".to_string(),
+                    )
                     .await?;
             },
         }
