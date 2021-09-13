@@ -68,6 +68,27 @@ impl AssetManagerHandle {
         }
     }
 
+    pub async fn create_initial_asset_checkpoint(
+        &mut self,
+        public_key: &PublicKey,
+        merkle_root: &Vec<u8>,
+    ) -> Result<(TxId, Transaction), WalletError> {
+        match self
+            .handle
+            .call(AssetManagerRequest::CreateInitialCheckpoint {
+                asset_public_key: Box::new(public_key.clone()),
+                merkle_root: Box::new(merkle_root.clone()),
+            })
+            .await??
+        {
+            AssetManagerResponse::CreateInitialCheckpoint { transaction, tx_id } => Ok((tx_id, *transaction)),
+            _ => Err(WalletError::UnexpectedApiResponse {
+                method: "create_initial_asset_checkpoint".to_string(),
+                api: "AssetManagerService".to_string(),
+            }),
+        }
+    }
+
     pub async fn create_registration_transaction(&mut self, name: String) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle

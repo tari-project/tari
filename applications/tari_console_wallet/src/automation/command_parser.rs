@@ -61,6 +61,7 @@ impl Display for ParsedCommand {
             ClearCustomBaseNode => "clear-custom-base-node",
             RegisterAsset => "register-asset",
             MintTokens => "mint-tokens",
+            CreateInitialCheckpoint => "create-initial-checkpoint",
         };
 
         let args = self
@@ -131,6 +132,7 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, ParseError> {
         RegisterAsset => parser_builder(args).text().build()?,
         // mint-tokens pub_key nft_id1 nft_id2
         MintTokens => parser_builder(args).pub_key().text_array().build()?,
+        CreateInitialCheckpoint => parser_builder(args).pub_key().text().build()?,
     };
 
     Ok(ParsedCommand { command, args })

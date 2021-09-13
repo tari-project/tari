@@ -183,6 +183,15 @@ impl OutputFeatures {
             ..Default::default()
         }
     }
+
+    pub fn for_checkpoint(merkle_root: Vec<u8>) -> OutputFeatures {
+        Self {
+            flags: OutputFlags::SIDECHAIN_CHECKPOINT,
+            asset: None,
+            sidechain_checkpoint: Some(SideChainCheckpointFeatures { merkle_root }),
+            ..Default::default()
+        }
+    }
 }
 
 impl Default for OutputFeatures {
@@ -229,6 +238,7 @@ bitflags! {
         // TODO: separate these flags
         const ASSET_REGISTRATION = 0b0000_1010; // Registration and also non-fungible
         const MINT_NON_FUNGIBLE = 0b0000_1100; // Mint and non-fungible
+        const SIDECHAIN_CHECKPOINT = 0b0000_1101;
     }
 }
 
