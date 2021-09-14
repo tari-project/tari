@@ -351,10 +351,10 @@ The UTXO will look as follows:
 {
    TransactionOutput: {
       "features": {
-         "flags": "0b1101_1000",
          // SIDECHAIN | MINT
-         "unique_id": "0x0000000000000000"
+         "flags": "0b1101_1000",
          // Special unique id,
+         "unique_id": "0x0000000000000000",
          "parent_public_key": "<yacht_clicker_pub_key",
          "mint": {
             "issuer_proof": "<com_sig of h(commitment |script) using asset registration commitment>"
@@ -375,11 +375,39 @@ The UTXO will look as follows:
 In our game, we now need to create a new yacht that the player can click and start upgrading. This will be a two step process,
 firstly the yacht NFT UTXO must be minted, and then it can be transferred to the new owner. 
 
-> Note that this could be done in one step if there is an out of band communication that provides the 
+> Note that this could be done in one step if there is an out-of-band communication that provides the 
 > issuer with the commitment for the utxo
 
+Usually this process would be done via GRPC by the software running YachtClicker, but we'll do it manually for the first token.
 
+Again using the console wallet I run:
+```
+tari_console_wallet --command "mint-tokens <yacht_clicker_pub_key> yacht1"
+```
 
+This creates and broadcasts a transaction with the following UTXO:
+
+```json
+{
+   TransactionOutput: {
+      "features": {
+         // NON_FUNGIBLE | MINT
+         "flags": "0b1100_0000",
+         "unique_id": "hash('yacht1')",
+         "parent_public_key": "<yacht_clicker_pub_key",
+         "mint": {
+            "issuer_proof": "<com_sig of h(commitment |script) using asset registration commitment>"
+         },
+         "metadata": []
+      },
+      "script": "Nop"
+   }
+}
+```
+
+Note that this must be caller from Asset Issuer's wallet. 
+
+At this point anyone observing the token will know of its presence, but can't use it practically. 
 
 
 ## Example 2: Importing an ERC20
