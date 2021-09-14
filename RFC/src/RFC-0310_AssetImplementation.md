@@ -311,7 +311,77 @@ message InstructionSet{
 The committee members process the proposal via Hotstuff, except that during the prepare and pre-commit stages, they must
 confirm that block in `base_layer_block` is still present in the base node that they are connected to. 
 
-If a validator node has reached the Commit stage, it must prevent the base layer from 
+If a validator node has reached the Commit stage, it must prevent the base layer from reorging by issuing a GRPC call to 
+`LockBlock`
+
+**New RPC Method**
+The base node must implement a GRPC method as follows:
+
+```protobuf
+
+rpc LockBlock(LockBlockRequest) LockBlockResponse;
+
+message LockBlockRequest {
+  bytes block_hash = 1;
+  uint64 until_height = 2;
+}
+
+message LockBlockResponse {
+  uint64 current_height= 1;
+}
+```
+
+Upon receiving the command, the base node must keep the chain up to the block specified until it reaches height
+`until_height`, at which point it may discard the chain if the block is no longer in the main chain. Note: The base node
+may continue to process blocks and reorgs, but must be able to respond to queries as though the specified chain is its
+main chain.
+
+Upon entering the Prepare phase the validator node *should* issue an RPC request to release all locked blocks
+
+```protobuf
+rpc ReleaseLockedBlocks(ReleaseLockedBlocksRequest) ReleaseLockedBlocksResponse;
+
+message ReleaseLockedBlocksRequest{
+  
+}
+
+message ReleaseLockedBlocksResponse {
+  
+}
+```
+
+Upon entering the Decide phase, all committee members validate and execute the instructions in the proposal.
+
+For each instruction:
+1. The base node to retrieve the UTXO the caller specified from the Unspent set (as at the chain in `LockedBlock`). 
+2. If the UTXO does not exist the instruction fails
+3. Checks the caller_sig is valid
+4. Attempts to execute the instruction
+5. At this point the instruction may fail, based on the specific rules of the template, for example:
+   1. The instruction requires the role of AssetIssuer, but the owner commitment was provided
+   2. The instruction is not valid for the current state of the NFT
+6. No state data must be changed in the event of a failed instruction
+
+Instructions, failed or successful, and their results, are added to the InstructionMerkleMountainRange.
+The root of the InstructionMerkleMountainRange and the root of the current state data must be hashed together and
+stored with a reference to the HotstuffNode. This data will be aggregated when creating the sidechain checkpoint.
+
+The state data must be stored as a Patricia Trie, with each key being the `unique_id` and the leaf being a serialized protobuf 
+of the following schema:
+
+```protobuf
+
+message TokenState {
+  repeated TokenStatePair pairs = 1;
+}
+
+message TokenStatePair {
+  string name = 1;
+  bytes value = 2;
+}
+```
+
+
 
 * [structure of checkpoint]
 * [structure of peg in/out]
