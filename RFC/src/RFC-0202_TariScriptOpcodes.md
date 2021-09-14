@@ -49,7 +49,7 @@ technological merits of the potential system outlined herein.
 
 ## Goals
 
-This Request for Comment (RFC) defines the opcodes that make up the TariScript scripting language and provides some 
+This Request for Comment (RFC) defines the opcodes that make up the TariScript scripting language and provides some
 examples and applicaitons.
 
 ## Related Requests for Comment
@@ -324,6 +324,23 @@ push 0.
 
 Identical to [`CheckSig`](#checksigmsg), except that nothing is pushed to the stack if the signature is valid, and the
 operation fails with `VERIFY_FAILED` if the signature is invalid.
+
+##### CheckMultiSig(Msg)
+
+Pop the number $n$ indicating the number of allowed spenders, and then pop $n$ spender public keys off the
+stack. Then pop the number $m$ indicating the number of required spending signatures, and then pop $m$
+signatures from the stack provided as inputs to the script. If $m$ signatures of the possible $n$ public keys
+sign the challenge message, push 1 to the stack, otherwise push 0.
+
+* Fails with `INVALID_SCRIPT_DATA` if the `Msg` is not a valid 32-byte value.
+* Fails with `EMPTY_STACK` if the stack has too few items.
+* Fails with `INVALID_INPUT` if the popped elements are not of the expected types.
+* Fails with `INVALID_INPUT` if $m$ or $n$ are 0, or if $m$ is greater than $n$.
+
+##### CheckMultiSigVerify(Msg),
+
+Identical to [`CheckMultiSig`](#checkmultisigmsg), except that nothing is pushed to the stack if the signatures are valid, and the
+operation fails with `VERIFY_FAILED` if any of the signatures are invalid.
 
 ### Miscellaneous
 
