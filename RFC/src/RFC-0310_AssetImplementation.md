@@ -241,7 +241,77 @@ A base node should expose the following methods on via GRPC:
 
 ```
 
+## Validator Node Instructions
 
+> This section is specific to the Tari Validator Node. Other sidechains may make use of 
+> the base layer mechanisms for sidechains as well
+
+Callers may issue instructions to a validator node committee member using GRPC. Instructions take the form:
+
+```protobuf
+
+message Instruction{
+    // The public key of the asset being invoked
+    bytes asset_public_key =1;
+    // The template being invoked
+    uint32 template_id = 2;
+    // The method on the template being invoked.
+    string method =3;
+    // The position based arguments
+    repeated bytes args = 4;
+    // A commitment that exists on the base layer that identifies
+    // the caller. For example, the asset issuer could use the 
+    // commitment that holds the asset registration, while the owner
+    // could use the commitment on the UTXO containing the NFT
+    bytes caller_commitment = 4;
+    // A unique number to identify this instruction
+    uint64 id = 5;
+    // A comsig proving the caller owns the commitment in `caller_commitment`
+    // The challenge is the hash of the above fields, in order
+    bytes caller_sig = 6;
+    
+    // Fee fields TBD
+}
+
+```
+
+Upon receiving an instruction, a validator node must store it in its mempool and broadcast it to all other members of
+the committee. 
+
+As per Hotstuff and [RFC-0340], when a validator node becomes the leader, it selects a list of instructions from its 
+mempool and creates a proposal. 
+
+> The leader can use any algorithm to select instructions from the mempool and it is 
+valid for it to select no instructions
+
+The proposal must conform to the below protobuf
+
+```protobuf
+
+message HotStuffTreeNode {
+    // The parent node, as per Hotstuff Specification
+    bytes parent = 1;
+    
+    // The payload
+    InstructionSet payload = 2;
+}
+
+message InstructionSet{
+   // A list of instructions
+   repeated Instruction instructions = 1;
+   // The hash of the block at the tip of the base layer, according to the leader's view of the base layer
+   bytes base_layer_block = 3;
+}
+
+```
+
+> Note that the base layer tip used by the leader may be a number of blocks below the actual tip to minimise the 
+> number of reorgs and increase the chance that all committee members have the same view of the base layer
+
+The committee members process the proposal via Hotstuff, except that during the prepare and pre-commit stages, they must
+confirm that block in `base_layer_block` is still present in the base node that they are connected to. 
+
+If a validator node has reached the Commit stage, it must prevent the base layer from 
 
 * [structure of checkpoint]
 * [structure of peg in/out]
@@ -405,9 +475,100 @@ This creates and broadcasts a transaction with the following UTXO:
 }
 ```
 
-Note that this must be caller from Asset Issuer's wallet. 
+Note that this must be caller from Asset Issuer's wallet so that it can create the commitment signature. 
 
-At this point anyone observing the token will know of its presence, but can't use it practically. 
 
+
+### Transferring the token to a new owner
+
+At some point the owner will be assigned to a new owner that is not the issuer. This might happen during a sale or airdrop. In the case
+of YachtClicker we will airdrop a token to the new owner when they first sign up for the game. Let's call the new user Bob.
+
+When Bob signs in, he provides his Tari wallet address. We can then transfer the token to that address interactively or non-interactively 
+using the current Tari base layer transactions, with a few small changes:
+1. The current UTXO that contains the NFT must be spent as an input
+2. Exactly one of the UTXOs in the outputs Bob provides must have the same `unique_id` and `parent_public_key` as the UTXO being spent.
+3. The `MINT` flag must be unset.
+4. The minting proof and other feature data may be copied to the new UTXO but this is not mandatory.
+
+The UTXO created may look like this:
+```json
+{
+   TransactionOutput: {
+      "features": {
+         // NON_FUNGIBLE 
+         "flags": "0b1000_0000",
+         "unique_id": "hash('yacht1')",
+         "parent_public_key": "<yacht_clicker_pub_key",
+         "metadata": []
+      },
+      "script": "Nop"
+   }
+}
+```
+
+Note that if interactive Mimblewimble Tari transactions are used, the new owner of the UTXO is not revealed, only that it 
+has passed to a new owner. Also, we cannot see which other Yachts are owned by Bob.
+
+At this point anyone observing the token will know of its presence, but can't use it practically since there is no metadata associated with it.
+If you are only interested in persisting a number to the blockchain to prove ownership, you can stop here.
+
+### Editing metadata
+
+There are a few actors involved in the metadata that makes up the Yacht. The URI that the Yacht can be found at is 
+designed to be immutable by the asset issuer. This may be an IPFS link or standard link. The [EditableMetadata] template 
+specification allows for special prefixes to determine who owns and can update the metadata. 
+
+| prefix | Who can issue instructions to update |
+| --- | --- | 
+| `issuer` | The owner of the asset registration UTXO |
+| `owner` | The owner of the NFT UTXO |
+| `locked` | This data cannot be updated |
+
+When a user clicks on the image of the Yacht in the game app, the app determines if they are legit and
+submits an instruction to a ValidatorNode that looks as follows:
+
+```json
+{
+   "Instruction": {
+      "unique_id": "hash('yacht1')",
+      "parent_public_key": "<yacht_clicker_pub_key",
+      "template_id": "editable_metadata",
+      "method": "update_metadata",
+      "arguments": [
+         {
+            "name": "issuer.num_clicks",
+            "value": "37"
+         }
+      ],
+      "caller": "<asset_utxo_commitment>",
+      "caller_sig": "<comsig with value in 'caller'>"
+   }
+}
+```
+
+The user has control of fields prefixed with `owner` for as long as they control the UTXO with the NFT. An example instruction
+may look like the following:
+
+```json
+{
+   "Instruction": {
+      "unique_id": "hash('yacht1')",
+      "parent_public_key": "<yacht_clicker_pub_key",
+      "template_id": "editable_metadata",
+      "method": "update_metadata",
+      "arguments": [
+         {
+            "name": "owner.boat_name",
+            "value": "The lone wanderer"
+         }
+      ],
+      "caller": "<nft_utxo_commitment>",
+      "caller_sig": "<comsig with value in 'caller'>"
+   }
+}
+```
+
+Upon receiving an instruction
 
 ## Example 2: Importing an ERC20
