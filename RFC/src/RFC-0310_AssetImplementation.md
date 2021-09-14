@@ -89,12 +89,12 @@ New flags to be added to OutputFlags
 | ASSET_REGISTRATION | 0b1100_1000 | This UTXO contains registration information for a new asset |
 | MINT |0b0100_0000 | This UTXO represents the creation of a new NFT, and is used during the  |
 | BURN | 0b0010_0000 | The `unique_id` in this UTXO can be spent as a normal input and must not appear in the output set unless accompanied by a `MINT` flag |
-| SIDECHAIN_CHECKPOINT | 0b0001_1000 | This UTXO is the | 
+| SIDECHAIN_CHECKPOINT | 0b1001_1000 | This UTXO is a checkpoint for a sidechain | 
 
 
 New fields added to `OutputFeatures`
 
-Note: this replaces information in [RFC-0311](RFC-0310_AssetImplementation.md)
+Note: this replaces some information in [RFC-0311](RFC-0310_AssetImplementation.md)
 
 | Name | Type | Description |
 | --- | --- | --- |
@@ -104,7 +104,10 @@ Note: this replaces information in [RFC-0311](RFC-0310_AssetImplementation.md)
 | asset_registration.name | bytes(64) | utf8 name of the asset. Optional |
 | asset_registration.template_ids | Vec<bytes(32)> |The templates that this asset exposes. Usually, at least one will be specified |
 | asset_registration.creator_sig | bytes(64) (32 Nonce + 32 sig) | A signature of the UTXO's `commitment` and `script` using the public key in `unique_id` to prove this registration was created in this UTXO |
+| asset_registration.checkpoint_unique_id | bytes(32) | A reference to the unique id reserved for checkpoint UTXOs. Optional |
 | mint.issuer_proof | bytes(96) (64 nonce + 32 sig) | A _ComSig_ proof proving that the owner of the UTXO containing the asset registration created this token 
+| checkpoint.merkle_root | bytes(32) | Merkle root of the sidechain data. The format and meaning of this data is specific to the sidechain implementation |
+
 
 Note: `unique_id` is not always required to be a public key
 
@@ -201,6 +204,18 @@ and is only destroyed once the UTXO is spent.
 When receiving a transaction or block with an input with the `BURN` flag set, there must not exist a UTXO in the output set containing the same `unique_id`,`parent_public_key` pair, unless 
 that output has the `MINT` flag set.
 
+### Sidechain Checkpoints
+
+A sidechain checkpoint is a special type of NFT UTXO. Extra sidechain data can be specified in the `sidechain` field of the output features. Like 
+other NFT's, only one sidechain checkpoint UTXO with that unique_id can exist in the unspent set at one time. The conditions of 
+who can spend a checkpoint are determined by the TariScript on the checkpoint. In most cases it will be an `n of m` multisig condition 
+using the members of the Hotstuff committee, with `m` equal to the number of members of the committee and `n` equal to `m` minus 
+the number of failures the committee can tolerate.
+
+The unique_id can be a specificly chosen id, but can also be a random public key. 
+
+There is no limit to the number of different sidechain checkpoint tokens an asset has, but it will usually be one. 
+
 ## New Base Node GRPC methods
 
 A base node should expose the following methods on via GRPC:
@@ -241,7 +256,7 @@ A base node should expose the following methods on via GRPC:
 
 Use case: I want to issue an NFT that has some immutable metadata and some mutable metadata.
 
-In  this example, let's pretend we are making a game YachtClicker in 
+In  this example, let's pretend we are making a simple game YachtClicker in 
 which every time a user clicks on a Yacht, it increases in XP. The user can change the name of the yacht, 
 but only the asset issuer can award XP based on the clicks reported in the app. 
 
@@ -261,7 +276,7 @@ I create a JSON file specifying the template parameters:
    "name": "yacht_clicker",
    "parent_public_key": null,
    "create_initial_checkpoint": true,
-   "committee": [],
+   "committee": ["<committee_pub_key1>"],
    "templates": [{
      "template_id": "editable_metadata",
      "fields": [
@@ -285,7 +300,7 @@ to a base node.
 {
   TransactionOutput: {
     "features": {
-      "flags": "0b1100_1000",
+      "flags": "0b1100_1000", // ASSET_REGISTRATION
       "unique_id": [
         generated_pubkey
       ],
@@ -321,7 +336,48 @@ to a base node.
 ```
 
 This asset has a combination of data on the base layer and metadata on the second layer. Because the ownership of the token is controlled by the base layer, it is fully decentralized and censorship resistant.
-The editing of metadata is done by a permissioned committee of validator nodes, which has a quicker consensus mechanism through HotstuffBFT. 
+The editing of metadata is done by a permissioned committee of validator nodes, which has a quicker consensus mechanism through HotstuffBFT
+
+The `fields` specified in registration JSON file are specific to the [EditableMetadata](tbd) template and take the form 
+of `<owner>.<field_name>`. We have 3 owners here, the `issuer`, `locked` and `owner`. When processing instructions, the DAN layer will check
+whether the caller has access to edit these fields. More on that later.
+
+The `create_initial_checkpoint` option instructs the wallet to create a UTXO that the committee will use to create
+checkpoints
+
+The UTXO will look as follows:
+
+```json
+{
+   TransactionOutput: {
+      "features": {
+         "flags": "0b1101_1000",
+         // SIDECHAIN | MINT
+         "unique_id": "0x0000000000000000"
+         // Special unique id,
+         "parent_public_key": "<yacht_clicker_pub_key",
+         "mint": {
+            "issuer_proof": "<com_sig of h(commitment |script) using asset registration commitment>"
+         },
+         "checkpoint": {
+            "merkle_root": "0x00000000000"
+         },
+         "metadata": []
+      },
+      "script": "CheckMultisig 1 of 1 <committee_pub_key1>"
+   }
+}
+```
+
+
+### Minting the yacht
+
+In our game, we now need to create a new yacht that the player can click and start upgrading. This will be a two step process,
+firstly the yacht NFT UTXO must be minted, and then it can be transferred to the new owner. 
+
+> Note that this could be done in one step if there is an out of band communication that provides the 
+> issuer with the commitment for the utxo
+
 
 
 
