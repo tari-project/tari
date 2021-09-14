@@ -122,6 +122,8 @@ pub struct OutputFeatures {
     /// require a min maturity of the Coinbase_lock_height, this should be checked on receiving new blocks.
     pub maturity: u64,
     pub metadata: Vec<u8>,
+    pub unique_id: Option<Vec<u8>>,
+    pub parent_public_key: Option<PublicKey>,
     pub asset: Option<AssetOutputFeatures>,
     pub mint_non_fungible: Option<MintNonFungibleFeatures>,
     pub sidechain_checkpoint: Option<SideChainCheckpointFeatures>,
@@ -200,6 +202,8 @@ impl Default for OutputFeatures {
             flags: OutputFlags::empty(),
             maturity: 0,
             metadata: vec![],
+            unique_id: None,
+            parent_public_key: None,
             asset: None,
             mint_non_fungible: None,
             sidechain_checkpoint: None,
@@ -291,8 +295,6 @@ pub struct UnblindedOutputBuilder {
     metadata_signature: Option<ComSignature>,
     metadata_signed_by_receiver: bool,
     metadata_signed_by_sender: bool,
-    unique_id: Option<Vec<u8>>,
-    parent_public_key: Option<PublicKey>,
 }
 
 impl UnblindedOutputBuilder {
@@ -308,8 +310,6 @@ impl UnblindedOutputBuilder {
             metadata_signature: None,
             metadata_signed_by_receiver: false,
             metadata_signed_by_sender: false,
-            unique_id: None,
-            parent_public_key: None,
         }
     }
 
@@ -380,8 +380,6 @@ impl UnblindedOutputBuilder {
             metadata_signature: self
                 .metadata_signature
                 .ok_or_else(|| TransactionError::ValidationError("metadata_signature must be set".to_string()))?,
-            unique_id: self.unique_id,
-            parent_public_key: self.parent_public_key,
         };
         Ok(ub)
     }
@@ -407,12 +405,12 @@ impl UnblindedOutputBuilder {
     }
 
     pub fn with_unique_id(mut self, unique_id: Option<Vec<u8>>) -> Self {
-        self.unique_id = unique_id;
+        self.features.unique_id = unique_id;
         self
     }
 
     pub fn with_parent_public_key(mut self, parent_public_key: Option<PublicKey>) -> Self {
-        self.parent_public_key = parent_public_key;
+        self.features.parent_public_key = parent_public_key;
         self
     }
 }
@@ -430,8 +428,6 @@ pub struct UnblindedOutput {
     pub script_private_key: PrivateKey,
     pub sender_offset_public_key: PublicKey,
     pub metadata_signature: ComSignature,
-    pub unique_id: Option<Vec<u8>>,
-    pub parent_public_key: Option<PublicKey>,
 }
 
 impl UnblindedOutput {
@@ -446,8 +442,6 @@ impl UnblindedOutput {
         script_private_key: PrivateKey,
         sender_offset_public_key: PublicKey,
         metadata_signature: ComSignature,
-        unique_id: Option<Vec<u8>>,
-        parent_public_key: Option<PublicKey>,
     ) -> UnblindedOutput {
         UnblindedOutput {
             value,
@@ -458,8 +452,6 @@ impl UnblindedOutput {
             script_private_key,
             sender_offset_public_key,
             metadata_signature,
-            unique_id,
-            parent_public_key,
         }
     }
 
@@ -515,8 +507,6 @@ impl UnblindedOutput {
             script: self.script.clone(),
             sender_offset_public_key: self.sender_offset_public_key.clone(),
             metadata_signature: self.metadata_signature.clone(),
-            unique_id: self.unique_id.clone(),
-            parent_public_key: self.parent_public_key.clone(),
         };
         // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
         if verify_proof && !output.verify_range_proof(&factories.range_proof)? {
@@ -553,8 +543,6 @@ impl UnblindedOutput {
             script: self.script.clone(),
             sender_offset_public_key: self.sender_offset_public_key.clone(),
             metadata_signature: self.metadata_signature.clone(),
-            unique_id: self.unique_id.clone(),
-            parent_public_key: self.parent_public_key.clone(),
         };
         // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
         if verify_proof && !output.verify_range_proof(&factories.range_proof)? {
@@ -784,10 +772,6 @@ pub struct TransactionOutput {
     pub sender_offset_public_key: PublicKey,
     /// UTXO signature with the script offset private key, k_O
     pub metadata_signature: ComSignature,
-    /// Unique id. There can only be one UTXO at a time in the unspent set with this id
-    pub unique_id: Option<Vec<u8>>,
-    /// Public key if this has a parent (e.g. tokens or sub assets)
-    pub parent_public_key: Option<PublicKey>,
 }
 
 /// An output for a transaction, includes a range proof and Tari script metadata
@@ -800,8 +784,6 @@ impl TransactionOutput {
         script: TariScript,
         sender_offset_public_key: PublicKey,
         metadata_signature: ComSignature,
-        unique_id: Option<Vec<u8>>,
-        parent_public_key: Option<PublicKey>,
     ) -> TransactionOutput {
         TransactionOutput {
             features,
@@ -810,8 +792,6 @@ impl TransactionOutput {
             script,
             sender_offset_public_key,
             metadata_signature,
-            unique_id,
-            parent_public_key,
         }
     }
 

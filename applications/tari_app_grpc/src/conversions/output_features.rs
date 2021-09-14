@@ -41,6 +41,11 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
                 .ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
             maturity: features.maturity,
             metadata: features.metadata,
+            unique_id: features.unique_id,
+            parent_public_key: match features.parent_public_key {
+                Some(a) => Some(PublicKey::from_bytes(a.as_bytes()).map_err(|err| format!("{:?}", err))?),
+                None => None,
+            },
             asset: features.asset.map(|a| a.try_into()).transpose()?,
             mint_non_fungible: features.mint_non_fungible.map(|m| m.try_into()).transpose()?,
             sidechain_checkpoint: features.sidechain_checkpoint.map(|m| m.into()),
@@ -54,6 +59,11 @@ impl From<OutputFeatures> for grpc::OutputFeatures {
             flags: features.flags.bits() as u32,
             maturity: features.maturity,
             metadata: features.metadata,
+            unique_id: features.unique_id,
+            parent_public_key: match features.parent_public_key {
+                Some(a) => Some(a.as_bytes().to_vec()),
+                None => None,
+            },
             asset: features.asset.map(|a| a.into()),
             mint_non_fungible: features.mint_non_fungible.map(|m| m.into()),
             sidechain_checkpoint: features.sidechain_checkpoint.map(|m| m.into()),

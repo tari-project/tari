@@ -944,10 +944,16 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             }),
             None => None,
         };
+
         let features = OutputFeatures {
             flags: OutputFlags::from_bits(o.flags as u8).ok_or(OutputManagerStorageError::ConversionError)?,
             maturity: o.maturity as u64,
             metadata: o.metadata.unwrap_or_default(),
+            unique_id: o.features_unique_id.clone(),
+            parent_public_key: o
+                .features_parent_public_key
+                .map(|p| PublicKey::from_bytes(&p))
+                .transpose()?,
             asset: asset_features,
             mint_non_fungible,
             sidechain_checkpoint,
@@ -1001,8 +1007,6 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                     OutputManagerStorageError::ConversionError
                 })?,
             ),
-            o.unique_id.clone(),
-            o.parent_public_key.map(|p| PublicKey::from_bytes(&p)).transpose()?,
         );
 
         let hash = match o.hash {

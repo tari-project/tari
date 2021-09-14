@@ -46,7 +46,6 @@ impl From<UnblindedOutput> for grpc::UnblindedOutput {
                 signature_u: Vec::from(output.metadata_signature.u().as_bytes()),
                 signature_v: Vec::from(output.metadata_signature.v().as_bytes()),
             }),
-            unique_id: output.unique_id.unwrap_or_default(),
         }
     }
 }
@@ -80,11 +79,6 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
             .try_into()
             .map_err(|_| "Metadata signature could not be converted".to_string())?;
 
-        let unique_id = if output.unique_id.is_empty() {
-            None
-        } else {
-            Some(output.unique_id.clone())
-        };
         Ok(Self {
             value: MicroTari::from(output.value),
             spending_key,
@@ -94,10 +88,6 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
             script_private_key,
             sender_offset_public_key,
             metadata_signature,
-            unique_id,
-
-            // TODO: Remove this none
-            parent_public_key: None,
         })
     }
 }

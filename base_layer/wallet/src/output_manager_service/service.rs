@@ -521,9 +521,6 @@ where TBackend: OutputManagerBackend + 'static
                     &single_round_sender_data.sender_offset_public_key.clone(),
                     &single_round_sender_data.public_commitment_nonce.clone(),
                 )?,
-                single_round_sender_data.unique_id.clone(),
-                // TODO: put data in
-                None,
             ),
             &self.resources.factories,
         )?;
@@ -934,7 +931,8 @@ where TBackend: OutputManagerBackend + 'static
         }
 
         let script = script!(Nop);
-        let output_features = OutputFeatures::default();
+        let mut output_features = OutputFeatures::default();
+        output_features.unique_id = unique_id.clone();
         let (spending_key, script_private_key) = self
             .resources
             .master_key_manager
@@ -957,8 +955,6 @@ where TBackend: OutputManagerBackend + 'static
                 script_private_key,
                 PublicKey::from_secret_key(&sender_offset_private_key),
                 metadata_signature,
-                unique_id.clone(),
-                None,
             ),
             &self.resources.factories,
         )?;
@@ -1373,8 +1369,6 @@ where TBackend: OutputManagerBackend + 'static
                     script_private_key,
                     sender_offset_public_key,
                     metadata_signature,
-                    None,
-                    None,
                 ),
                 &self.resources.factories,
             )?;
@@ -1457,8 +1451,6 @@ where TBackend: OutputManagerBackend + 'static
                         known_one_sided_payment_scripts[i].private_key.clone(),
                         output.sender_offset_public_key,
                         output.metadata_signature,
-                        output.unique_id,
-                        output.parent_public_key,
                     );
                     let db_output =
                         DbUnblindedOutput::from_unblinded_output(rewound_output.clone(), &self.resources.factories)?;

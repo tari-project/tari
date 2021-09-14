@@ -404,8 +404,6 @@ where
             sender_offset_public_key.clone(),
             metadata_signature,
             // TODO: Allow importing of unique ids
-            None,
-            None,
         );
 
         let tx_id = self

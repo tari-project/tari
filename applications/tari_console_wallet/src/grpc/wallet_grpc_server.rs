@@ -383,7 +383,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .body
             .outputs()
             .iter()
-            .filter_map(|o| o.unique_id.as_ref().map(|_| o.commitment.to_vec()))
+            .filter_map(|o| o.features.unique_id.as_ref().map(|_| o.commitment.to_vec()))
             .collect();
         let _result = transaction_service
             .submit_transaction(tx_id, transaction, fee, 0.into(), "test mint transaction".to_string())
